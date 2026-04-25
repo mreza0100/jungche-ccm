@@ -23,21 +23,8 @@ A portable, opinionated `.claude/` infrastructure that turns Claude Code from "a
 The blueprint is a set of templates + docs. The fastest install is to let Claude Code do it for you.
 
 ```bash
-# 1. Clone the blueprint somewhere reachable
-git clone https://github.com/mreza0100/jungche-ccm.git ~/jungche-ccm
-
-# 2. In your project, start Claude Code
-cd ~/path/to/your-project
 claude
-```
-
-Then paste:
-
-```
-Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/INSTALL.md
-(or your local clone's INSTALL.md). Walk me through the interactive install —
-ask each section's questions one at a time and wait for my answers before
-proceeding. Do not assume anything about my stack.
+> Clone https://github.com/mreza0100/jungche-ccm/ in /tmp and install here
 ```
 
 Claude reads [`INSTALL.md`](./INSTALL.md), runs a pre-flight on your repo, then asks you 8 batched question groups (project identity, structure, commands, ports, domain & disciplines, optional commands, character, confirmation). Customizes a `/professor` agent specifically for your domain. Confirms before writing anything. First `/build` smoke-test reveals whatever the installer missed.
