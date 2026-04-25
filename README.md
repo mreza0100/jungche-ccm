@@ -34,14 +34,15 @@ claude
 Then paste:
 
 ```
-Read every file in ~/jungche-ccm/blueprint/.
-Follow SETUP.md to install the pipeline in THIS project.
-Ask me about my stack before touching anything: subprojects, tech, ports, package managers.
+Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/INSTALL.md
+(or your local clone's INSTALL.md). Walk me through the interactive install —
+ask each section's questions one at a time and wait for my answers before
+proceeding. Do not assume anything about my stack.
 ```
 
-Claude reads the blueprint, asks you 5–10 questions about your stack, and copies + adapts the templates. First `/build` smoke-test reveals anything missed.
+Claude reads [`INSTALL.md`](./INSTALL.md), runs a pre-flight on your repo, then asks you 8 batched question groups (project identity, structure, commands, ports, domain & disciplines, optional commands, character, confirmation). Customizes a `/professor` agent specifically for your domain. Confirms before writing anything. First `/build` smoke-test reveals whatever the installer missed.
 
-For a manual install, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
+For a manual / non-interactive install, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
 
 ---
 
