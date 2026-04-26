@@ -2,6 +2,8 @@
 
 The philosophy and architecture of the pipeline. Read this before installing it.
 
+> **Technology-agnostic by design.** Nothing in this blueprint names a language, framework, package manager, database, runtime, build tool, or cloud provider. The pipeline shape, role boundaries, doc conventions, and merge rules are what matter — they survive every stack. You bring the stack.
+
 ---
 
 ## Core principles
@@ -34,7 +36,7 @@ If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, MERGE, DO
 Every `/build` invocation creates:
 - A git branch: `pipeline/{name}`
 - A worktree checkout: `.worktrees/{name}/` (full repo)
-- A unique port allocation (BE_PORT, FE_PORT, test ports, etc.)
+- A unique port allocation (whatever ports your stack needs)
 - Pipeline docs: `docs/dev/tasks/{name}/`
 
 This means you can run **multiple pipelines in parallel on the same machine** without port collisions or git state corruption. When the pipeline completes, gitter merges to main, the worktree is removed, and the docs are archived.
@@ -49,10 +51,10 @@ Agents receive paths as variables:
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `$PIPELINE` | Pipeline name (kebab-case, unique) | `session-notes` |
-| `$DOCS` | Pipeline docs from repo root | `docs/dev/tasks/session-notes` |
-| `$DOCS_REL` | Pipeline docs from worktree | `../../../docs/dev/tasks/session-notes` |
-| `$WORKTREE` | Worktree directory | `.worktrees/session-notes` |
+| `$PIPELINE` | Pipeline name (kebab-case, unique) | `{some-feature}` |
+| `$DOCS` | Pipeline docs from repo root | `docs/dev/tasks/{some-feature}` |
+| `$DOCS_REL` | Pipeline docs from worktree | `../../../docs/dev/tasks/{some-feature}` |
+| `$WORKTREE` | Worktree directory | `.worktrees/{some-feature}` |
 | `$ARCHIVE` | Archive parent | `docs/dev/tasks/archive` |
 | `$CDOCS` | Command-owned docs root | `docs/commands` |
 
@@ -67,7 +69,7 @@ When something goes wrong in the pipeline, you don't write a "lesson" file. You 
 Two kinds of docs:
 
 - **Pipeline docs** (`docs/dev/tasks/{name}/`) — temporary, archived after pipeline completes. Plans, architecture decisions, QA reports, runbooks.
-- **Permanent docs** (`docs/agents/`, `freudche-be/docs/`, etc.) — long-lived. Only the `documenter` agent writes here, and only after a pipeline merges.
+- **Permanent docs** (`docs/agents/`, `{project}/docs/`, etc.) — long-lived. Only the `documenter` agent writes here, and only after a pipeline merges.
 
 This prevents docs from rotting under speculative "we might do this someday" content.
 
@@ -96,7 +98,7 @@ This prevents docs from rotting under speculative "we might do this someday" con
                                      ▼
                           ┌─────────────────────┐
                           │  mono-architect     │ → 3-architecture.md
-                          │  cross-project      │   (API contracts, types)
+                          │  cross-project      │   (contracts, shared types)
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
@@ -116,7 +118,7 @@ This prevents docs from rotting under speculative "we might do this someday" con
                                      ▼
                           ┌─────────────────────┐
                           │  fix loop           │ (developer fixes QA bugs;
-                          │                     │   loops until green or budget)
+                          │                     │   capped iterations, hard timeouts)
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
@@ -144,7 +146,7 @@ This prevents docs from rotting under speculative "we might do this someday" con
 | Agent | Role |
 |-------|------|
 | `mono-planner` | Reads parallel codebase analysis from child planners, decides routing (which projects are affected), writes the cross-project plan |
-| `mono-architect` | Designs cross-project architecture (API contracts, shared types) and runs library research inline |
+| `mono-architect` | Designs cross-project architecture (contracts, shared types) and runs library research inline |
 | `gitter` | The ONLY agent that runs git. Phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL |
 | `mono-documenter` | Merges pipeline decisions into permanent docs after merge passes; archives pipeline directory |
 
@@ -156,9 +158,8 @@ This prevents docs from rotting under speculative "we might do this someday" con
 | `architect` | Designs the project's architecture for this feature; researches libraries inline |
 | `developer` | Implements the code, writes happy-path tests, debugs QA-reported bugs |
 | `qa` | Writes adversarial tests (edge cases, unhappy paths), runs the full test suite, reports bugs |
-| `ui-ux` *(frontend only)* | Designs colors, typography, spacing, component classes |
-| `db-admin` *(infra/data layer only)* | Owns schemas, migrations, seeding — single source of truth for the data layer |
-| `devops` *(infra only)* | Implements infra configs (Docker, AWS, CI/CD) |
+
+You can add stack-shaped specialists as the project warrants — e.g., a UI/UX agent for visual layers, a data-layer agent that owns schemas/migrations, an ops agent for deploy configs. The blueprint stays out of naming them. Rule of thumb: split by *concern*, not by *technology*.
 
 ### Commands
 
@@ -168,15 +169,14 @@ This prevents docs from rotting under speculative "we might do this someday" con
 | `/jc {bug}` | Hotfix mode — locate, fix, test, commit on main |
 | `/ccm {request}` | Update pipeline infrastructure (agents, commands, conventions) |
 | `/dev` | Start/stop/restart/status the local dev environment |
-| `/wave {file}` | Run multiple `/build` waves in parallel from a task list |
-| `/git push|pull|...` | Direct gateway to gitter for explicit git ops |
+| `/git push\|pull\|...` | Direct gateway to gitter for explicit git ops |
 
 ### Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `worktree.sh create|remove|list` | Manages git worktrees and bootstraps env (deps, env files, ports) |
-| `alloc-ports.sh alloc|free|list` | Reserves unique port slots per worktree (concurrency-safe via flock) |
+| `worktree.sh create\|remove\|list` | Manages git worktrees and bootstraps env (deps, env files, ports) |
+| `alloc-ports.sh alloc\|free\|list` | Reserves unique port slots per worktree (concurrency-safe via flock) |
 | `dev.sh` | Starts dev servers across all projects with the right env |
 
 ---
@@ -185,20 +185,20 @@ This prevents docs from rotting under speculative "we might do this someday" con
 
 ```
 your-project/
-├── CLAUDE.md                          ← root rules, project structure, character
+├── CLAUDE.md                          ← root rules, project structure, optional character
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
 │   ├── commands/                      ← /build, /jc, /ccm, /dev (and any extras you add)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh
 │   └── settings.json                  ← permissions, env vars, hooks
-├── {project-a}/                       ← e.g., backend
+├── {project-a}/                       ← first subproject (you name it)
 │   ├── CLAUDE.md                      ← project-specific rules
 │   └── .claude/agents/                ← project agents (planner, architect, developer, qa)
-├── {project-b}/                       ← e.g., frontend
+├── {project-b}/                       ← second subproject
 │   ├── CLAUDE.md
 │   └── .claude/agents/
 ├── docs/
-│   ├── agents/                        ← cross-project permanent docs (architecture, API, map)
+│   ├── agents/                        ← cross-project permanent docs (architecture, contracts, map)
 │   ├── commands/{cmd}/                ← command-owned docs ($CDOCS root)
 │   │   ├── references/                ← must-know
 │   │   ├── research/                  ← looked-up material
@@ -228,9 +228,9 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 5. **Never reuse pipeline names** — check `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `.worktrees/` first.
 6. **Never run destructive git commands** — no `--force`, no `reset --hard`, no `clean -fdx` without explicit user approval.
 7. **Never swallow exceptions silently** — every catch logs the full traceback. Silent failures hide bugs.
-8. **No mocking internal dependencies within 1 hop** — mock only external services (LLM APIs, third-party SaaS). Real DB, real queue, real internal services.
+8. **No mocking internal dependencies within 1 hop** — mock only external services (paid APIs, third-party SaaS, anything flaky and outside your trust boundary). Real DB, real queue, real internal services.
 9. **All failing tests are blocking** — no "pre-existing failure" excuse.
-10. **All infrastructure ops go through a single Makefile/script** — no direct `docker exec`, `psql`, `aws sqs` from agent code.
+10. **All infrastructure ops go through a single project-owned script** — never reach around it directly from agent code.
 
 ---
 
@@ -244,11 +244,11 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 - The non-negotiable rules
 
 **Adapt:**
-- Project list (your subprojects, not Freudche's)
-- Tech stack descriptions (your languages, not TS/Python)
-- Test commands (your test runners)
+- Project list (your subprojects, not example placeholders)
+- Stack-shaped descriptions in each project's `CLAUDE.md`
+- Test / lint / typecheck / build commands the agents run
 - Port ranges (whatever's free on your machine)
-- Character/personality in CLAUDE.md (or remove entirely)
-- Domain-specific commands (Freudche has `/officer` for GDPR, `/ckm` for clinical knowledge — yours will be different or none)
+- Optional character/personality in root `CLAUDE.md` (or remove entirely)
+- Domain-specific commands (you may want compliance, knowledge-curation, debate, or auditor commands — see `ADAPTATION.md` for the abstract pattern)
 
-See `ADAPTATION.md` for specifics.
+See `ADAPTATION.md` for how to think through the customization without anyone telling you which tools to pick.

@@ -22,13 +22,17 @@ mkdir -p "$LOG_DIR" "$PID_DIR"
 # === Per-project commands — EDIT FOR YOUR STACK ===
 
 start_infrastructure() {
-  # Example: docker compose up -d in your infra dir
-  # (cd "${ROOT}/infra/local" && docker compose up -d)
+  # Replace this with whatever brings your local infra up
+  # (databases, queues, container stacks, mock services, etc.)
+  # Example shape:
+  #   (cd "${ROOT}/{your-infra-dir}" && {your up command})
   echo "Starting infrastructure..."
 }
 
 stop_infrastructure() {
-  # (cd "${ROOT}/infra/local" && docker compose down)
+  # Replace with the corresponding shutdown command.
+  # Example shape:
+  #   (cd "${ROOT}/{your-infra-dir}" && {your down command})
   echo "Stopping infrastructure..."
 }
 
@@ -60,10 +64,10 @@ stop_project() {
 cmd_start() {
   start_infrastructure
 
-  # Example invocations — adapt:
-  # start_project "api"    "api"    "pnpm dev"
-  # start_project "web"    "web"    "npm run dev"
-  # start_project "worker" "worker" "uv run python -m worker.main"
+  # One line per subproject. Args: name, directory, dev command.
+  # start_project "{name}" "{dir}" "{your dev command}"
+  # start_project "{name}" "{dir}" "{your dev command}"
+  # start_project "{name}" "{dir}" "{your dev command}"
 
   sleep 2
   cmd_status

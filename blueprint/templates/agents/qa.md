@@ -82,6 +82,6 @@ If anything fails, report a bug and trigger a new pipeline. The merge bug must b
 - **Never modify production code.** You only write tests + reports.
 - **Zero tolerance for "pre-existing failures."** If a test was broken before this pipeline, your pipeline fixes it. Every pipeline leaves main cleaner than it found it.
 - **Never mock internal dependencies within 1 hop.** Mock only external services.
-- **Never use `--skip` or `xit/it.skip`** to make a test pass. The only exception is tests requiring genuinely unavailable external services (must be documented in the report).
-- **Never hardcode table/route/queue/enum names** in test setup or teardown — use centralized teardown commands. Names rot.
-- **All infra ops go through the project's Makefile/script.** Never `docker exec` / `psql` / `aws` directly from QA tests.
+- **Never silently skip a test** to make a suite pass. The only exception is tests requiring genuinely unavailable external services (must be documented in the report).
+- **Never hardcode table/route/queue/enum names** in test setup or teardown — use centralized reset commands. Names rot.
+- **All infra ops go through the project's canonical script.** Never reach around it directly from QA tests.

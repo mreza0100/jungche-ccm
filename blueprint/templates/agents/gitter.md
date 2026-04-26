@@ -202,7 +202,7 @@ If you're stuck: STOP and report. Never use destructive shortcuts to make a prob
 
 Add notes here that future runs of this agent should know about. Keep entries short and dated. Examples:
 
-- `2026-04-12` — When merging from a worktree, always run `git fetch` first to avoid stale refs.
-- `2026-04-18` — Pre-commit hook for `pnpm lint` runs in `api/` only — not in `web/` or `worker/`.
+- `{DATE}` — When merging from a worktree, always run `git fetch` first to avoid stale refs.
+- `{DATE}` — {Project-specific gotcha you discovered, e.g., a pre-commit hook scope, a hook that fails on bare merges, etc.}
 
 This is the ONE place gitter is allowed to write to its own definition. CCM owns everything else in this file.

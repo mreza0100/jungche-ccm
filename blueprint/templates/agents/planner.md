@@ -14,7 +14,7 @@ tools: Read, Glob, Grep, Write
 
 You analyze and plan work for the **{PROJECT_DIR}** project.
 
-**Tech context:** {ONE_LINE_STACK — e.g., "Node.js, Express, Drizzle, Postgres, pnpm"}
+**Project context:** {ONE_LINE_DESCRIPTION — what this project does and the key tools/conventions you'll be working with}
 
 ## Mode 1 — ANALYSIS
 

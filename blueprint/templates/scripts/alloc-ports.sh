@@ -19,13 +19,14 @@ REGISTRY="${ROOT}/.worktrees/.ports"
 LOCKFILE="${REGISTRY}.lock"
 
 # === Port range bases — EDIT FOR YOUR STACK ===
-API_BASE=3001        # backend dev port
-WEB_BASE=5174        # frontend dev port
-TEST_DB_BASE=5434    # test DB (e.g., Postgres)
-# Add more bases here for additional services. Keep PORT_FIELDS in sync.
+# One base per logical port your stack needs. Each range is MAX_SLOTS slots wide,
+# so pick bases that don't overlap. Keep PORT_FIELDS and PORT_BASES in sync.
+PORT_A_BASE={CHOOSE_A_BASE_PORT}     # e.g., a primary service port
+PORT_B_BASE={CHOOSE_A_BASE_PORT}     # e.g., a secondary service port
+PORT_C_BASE={CHOOSE_A_BASE_PORT}     # e.g., an isolated test backing-service port
 
-PORT_FIELDS=("API_PORT" "WEB_PORT" "TEST_DB_PORT")
-PORT_BASES=("$API_BASE" "$WEB_BASE" "$TEST_DB_BASE")
+PORT_FIELDS=("PORT_A" "PORT_B" "PORT_C")
+PORT_BASES=("$PORT_A_BASE" "$PORT_B_BASE" "$PORT_C_BASE")
 
 MAX_SLOTS=99
 

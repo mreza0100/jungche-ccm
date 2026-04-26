@@ -18,18 +18,18 @@ Argument: $ARGUMENTS — subcommand (optional, defaults to `start`)
 
 Run `.claude/scripts/dev.sh start`. The script:
 
-1. Boots local infrastructure (Docker Compose / Postgres / queues / etc.)
+1. Boots local infrastructure (whatever your `start_infrastructure` block in `dev.sh` does — containers, backing services, mock servers, etc.)
 2. Starts each project's dev server with the right env file (`.env.local`)
 3. Logs each project's stdout to `tmp/dev-logs/{project}.log`
-4. Reports the URL for each service
+4. Reports the URL or PID for each service
 
 Report to user:
 
 ```
 Dev environment running.
-- API:    http://localhost:3000
-- Web:    http://localhost:5173
-- Worker: pid {N}, log: tmp/dev-logs/worker.log
+- {project-a}: http://localhost:{PORT}
+- {project-b}: http://localhost:{PORT}
+- {project-c}: pid {N}, log: tmp/dev-logs/{project-c}.log
 ```
 
 ---
@@ -51,11 +51,11 @@ Dev environment stopped. {N} processes killed.
 Run `.claude/scripts/dev.sh status`. Shows:
 
 ```
-- API:    running (pid 12345, port 3000)
-- Web:    running (pid 12346, port 5173)
-- Worker: stopped
-- Postgres (local): up
-- Postgres (test):  down
+- {project-a}: running (pid {N}, port {PORT})
+- {project-b}: running (pid {N}, port {PORT})
+- {project-c}: stopped
+- {infra-a} (local): up
+- {infra-a} (test):  down
 ```
 
 ---

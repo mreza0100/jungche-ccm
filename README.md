@@ -2,7 +2,7 @@
 
 A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team** with worktree isolation, QA gates, and self-improvement at the source.
 
-> Distilled from [Freudche](https://github.com/mreza0100), a production AI clinical-documentation assistant. Battle-tested on a 4-language monorepo (TypeScript backend, React Native frontend, Python AI engine, Docker infra). The mechanics survive every stack — the personality is optional.
+> Distilled from a production multi-project codebase. **Technology-agnostic by design** — nothing in the templates names a language, framework, package manager, database, runtime, or cloud provider. The mechanics survive every stack; you bring the stack. Personality is optional.
 
 ---
 
@@ -105,9 +105,9 @@ These are the rules that make the system work. Touch anything else, but leave th
 
 ## Adaptation
 
-Out of the box, the blueprint covers Node (npm/pnpm), Python (uv/poetry), Rust (cargo), Go, Next.js, and Expo/React Native. See [`blueprint/ADAPTATION.md`](./blueprint/ADAPTATION.md) for stack-specific test/lint/build commands and worktree setup snippets.
+The templates use `{PLACEHOLDER}` markers wherever stack-specific content goes. Editing for your stack is mostly find-and-replace plus filling in your test, lint, and build commands. See [`blueprint/ADAPTATION.md`](./blueprint/ADAPTATION.md) for the generic recipe — six questions to answer for each subproject, with no opinion on which tools you pick.
 
-The templates use `{PLACEHOLDER}` markers wherever stack-specific content goes. Editing for your stack is mostly find-and-replace plus filling in your test commands.
+The blueprint is the brain behind the brain. It hands you the discipline; you bring the stack.
 
 ---
 

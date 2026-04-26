@@ -1,6 +1,8 @@
-# ADAPTATION — Customizing the blueprint for your stack
+# ADAPTATION — Fitting the discipline to your stack
 
-The templates are stack-agnostic. This guide shows how to fit them to common setups.
+The blueprint is **technology-agnostic on purpose**. You will not find a single language, framework, package manager, runtime, database, build tool, or cloud provider named in this document — and that is the feature, not the omission.
+
+This guide tells you *how to think* about adapting the templates. It does not tell you *what to use*; that is your call, and the pipeline does not care.
 
 ---
 
@@ -33,104 +35,93 @@ If your repo has 2–6 projects:
 
 ---
 
-## Stack-specific adjustments
+## How to adapt to your stack (generic recipe)
 
-### Node.js / pnpm (backend)
+For each subproject, decide six things and pin them in that project's `CLAUDE.md` and agent files:
 
-- **Test:** `pnpm test`
-- **Lint:** `pnpm lint`
-- **Typecheck:** `pnpm typecheck` or `pnpm tsc --noEmit`
-- **Build:** `pnpm build`
-- **Dev:** `pnpm dev`
-- **Worktree install:** `pnpm install --frozen-lockfile`
-- **CLAUDE.md rule:** "TypeScript strict mode, ESM-only — no `any` without justification comment"
+| Question | Where it lives |
+|----------|----------------|
+| **What command runs the test suite?** | QA agent + developer agent + gitter MERGE phase |
+| **What command lints / typechecks / builds?** | QA agent + developer agent (for self-check) |
+| **What command starts the dev server?** | `dev.sh` |
+| **How are dependencies installed in a fresh checkout?** | `worktree.sh` (the per-project setup block) |
+| **How are tests run against an isolated environment?** | The agent's setup section + your env-file convention |
+| **What's the language's version of "no implicit anything"?** | Root `CLAUDE.md` strict-mode rule |
 
-### Node.js / npm (frontend)
-
-- **Test:** `npm test` (or `npm run test:unit` + `npm run test:e2e`)
-- **Lint:** `npm run lint`
-- **Typecheck:** `npm run typecheck`
-- **Build:** `npm run build`
-- **Dev:** `npm run dev` or `npm start`
-- **Worktree install:** Symlink `node_modules` from main checkout (saves minutes)
-
-### Python / uv
-
-- **Test:** `uv run pytest`
-- **Lint:** `uv run ruff check`
-- **Typecheck:** `uv run mypy .` or `uv run pyright`
-- **Build:** `uv build`
-- **Dev:** `uv run python -m {package}.main`
-- **Worktree install:** `uv sync`
-- **CLAUDE.md rule:** "Python 3.12+ with strict type hints — no `Any` without justification comment"
-
-### Python / poetry
-
-- Same as uv but `poetry install` and `poetry run ...`
-
-### Rust / cargo
-
-- **Test:** `cargo test`
-- **Lint:** `cargo clippy -- -D warnings`
-- **Typecheck:** `cargo check`
-- **Build:** `cargo build --release`
-- **Dev:** `cargo run`
-- **Worktree install:** Cargo handles incremental builds — no install step needed
-
-### Go
-
-- **Test:** `go test ./...`
-- **Lint:** `golangci-lint run`
-- **Typecheck:** `go vet ./...`
-- **Build:** `go build ./...`
-- **Dev:** `go run ./cmd/{name}`
-
-### Next.js / Vercel marketing site
-
-- Treat as a normal Node.js project
-- `npm run dev` for local
-- Note: deployment is automatic via Vercel — gitter doesn't deploy, just merges to main and Vercel picks it up
-
-### Mobile (Expo / React Native)
-
-- **Test:** `npm test` (Jest)
-- **E2E:** Detox or Maestro — flag in QA agent
-- **Dev:** `npm start` opens Metro bundler
-- **Web variant:** Some Expo projects have a web target (`expo start --web`) — set `WEB_PORT` in `.env.ports`
+That's it. The pipeline doesn't need to know what your stack *is* — only what to *run*. Pin the commands, and the agents fill in the rest.
 
 ---
 
-## Domain-specific commands (optional)
+## Test environment isolation (the discipline, not the tools)
 
-The Freudche project has many domain-specific commands. You probably don't want all of them, but here are the patterns in case you do want similar ones:
+The template assumes two environment files per project:
 
-| Pattern | Freudche example | When you'd want it |
-|---------|------------------|-------------------|
-| Compliance / privacy advisor | `/officer` (GDPR) | Regulated data domain |
-| Domain knowledge curator | `/ckm` (clinical knowledge) | Specialized knowledge base in repo |
-| Multi-agent debate | `/council` | High-stakes architectural decisions |
-| Product / UX advisor | `/tpm` | Product-led decisions need PM perspective |
-| Business / startup advisor | `/mentor` | Founder using the repo for company-building |
-| SEO / marketing | `/marketer` | Marketing site lives in the repo |
-| System analysis | `/professor` | Periodic deep-dive audits |
-| Code health audit | `/ca` | Hygiene + security scanning |
-| Wave runner | `/wave` | Many `/build`s from a backlog file |
+- `.env.local` — local development
+- `.env.test` — integration tests
 
-The Freudche `.claude/commands/` directory has each of these — copy and adapt as patterns.
+The contract is what matters, not the specific tools:
+
+- Tests load `.env.test`. Never `.env.local` for DB/port config.
+- For credentials that only exist in `.env.local` (paid API keys, etc.), load them separately *without* overriding `.env.test`.
+- One canonical command resets the test environment between runs. Agents call that command, never reach around it.
+
+If your stack uses different file names or a different convention, fine — keep the *contract* and rename to taste.
+
+---
+
+## Mock policy (universal — keep verbatim)
+
+This rule is technology-independent and load-bearing:
+
+- **Mock external dependencies** — anything you don't own and that costs money, has rate limits, or is flaky. Paid APIs, third-party SaaS, model providers, transactional email, anything outside your trust boundary.
+- **Never mock internal dependencies within 1 hop.** A frontend's integration test hits the *real* backend. A backend's integration test hits the *real* database and the *real* queue. A worker's integration test uses a *fake* model provider but the *real* queue.
+
+The distinction is **external vs internal**, not "mock vs no mock." This rule survives every stack, every domain, every layer.
+
+---
+
+## Specialist agents (when, not which)
+
+Beyond the standard four (`planner`, `architect`, `developer`, `qa`), some projects benefit from a specialist that owns a narrow concern. The pipeline doesn't tell you which to add — it tells you *when* you'd want one:
+
+| You'd add a specialist when… | Concern they'd own |
+|------------------------------|--------------------|
+| Visual / interaction layer is non-trivial | Colors, typography, spacing, layout primitives |
+| Schema/migration changes are risky and cross-cutting | Data layer — schemas, migrations, seeding, isolation |
+| Deployment configs are real code, not vendor clicks | Infra configs, environment promotion, runtime guarantees |
+| Model/agent prompt engineering is a discipline of its own | Prompts, evals, knowledge ingestion |
+
+Name them in your stack's vocabulary. Give them their own agent file. Slot them into `/build` between architect and QA. The pipeline shape doesn't change.
+
+---
+
+## Optional: domain-specific commands
+
+The blueprint ships only the technology-agnostic core: `/build`, `/jc`, `/ccm`, `/dev`. Some teams find narrower commands useful — a compliance advisor that owns regulatory questions, a knowledge curator that owns a research corpus, a multi-agent debate, an auditor, a wave runner. We deliberately do not ship templates for these: they leak domain assumptions, and the right shape for one project is noise in another.
+
+If you want one, the abstract pattern is:
+
+1. **Single concern.** A command earns its place when it owns a coherent piece of the project that doesn't belong to `/build` or `/jc`.
+2. **Idempotent on docs.** It writes only to `docs/commands/{cmd}/` (`$REFS`, `$RESEARCH`, `$RESOURCES`). Permanent docs are still mono-documenter's territory.
+3. **Pipeline-respectful.** If it produces code changes, it routes through `/build` (for new work) or `/jc` (for fixes), never directly to `main`.
+4. **Discoverable.** It appears in the root `CLAUDE.md` commands table with a one-line description.
+
+Model it on `/build` or `/jc` — whichever has the right shape — and adapt.
 
 ---
 
 ## Memory & character
 
-The blueprint does NOT include the auto-memory directory or the character system. Those are user-specific.
+The blueprint does NOT include the auto-memory directory or a character system. Both are user-specific:
 
-If you want them:
-- **Auto-memory:** mostly handled by Claude Code itself — see `~/.claude/projects/{slug}/memory/`. The repo only needs to know it exists; agents can read it.
-- **Character:** define in your root `CLAUDE.md` if you want personality. Be specific about tone, when to drop the persona, and what NOT to do.
+- **Auto-memory** — handled by Claude Code itself. The repo doesn't need to manage it; agents can read it if it exists.
+- **Character** — define in your root `CLAUDE.md` if you want personality. Be specific about tone, when to drop the persona, and what NOT to do (e.g., "no jokes about data loss"). Or delete the section entirely. Mechanics first; personality is taste.
 
 ---
 
 ## What NOT to change
+
+These are the load-bearing walls. Touch anything else, but leave these alone:
 
 - **The "only gitter touches git" rule.** Loosening this is how you end up with three agents racing to commit and a corrupted index.
 - **The QA-before-merge gate.** Skipping QA is how broken code reaches main.
@@ -138,7 +129,7 @@ If you want them:
 - **Worktree isolation.** Running pipelines on `main` or shared branches is how you lose work.
 - **Self-improvement at the source.** Don't replace `/ccm` with a "lessons learned" file — the file rots, the agents don't read it, the bugs come back.
 
-These five are the load-bearing walls. Touch anything else.
+These five are non-negotiable. Touch anything else.
 
 ---
 

@@ -4,12 +4,12 @@
 
 > **Disclaimer (optional):** Add domain-specific scope/safety disclaimers here, or delete the block.
 
-**Architecture:** {DESCRIBE: e.g., "three independent projects sharing REST and message-queue boundaries" or "single-service monorepo"}.
+**Architecture:** {DESCRIBE in your own terms — e.g., "three independent projects sharing a queue boundary" or "single-service monorepo".}
 
-{SUBPROJECT_LIST — bulleted list of subprojects with one-line tech-stack descriptions, e.g.:}
-- `api/` — Node.js, Express, Postgres, Drizzle ORM
-- `web/` — Next.js 15, Tailwind CSS, Vercel
-- `worker/` — Python 3.12, Celery, Redis
+{SUBPROJECT_LIST — bulleted list of subprojects with one-line descriptions in your stack's vocabulary, e.g.:}
+- `{project-a}/` — {one-line description of what it does}
+- `{project-b}/` — {one-line description of what it does}
+- `{project-c}/` — {one-line description of what it does}
 
 Each subproject has its own `CLAUDE.md` and `.claude/` with agents, commands, skills, and settings. Those load automatically when Claude works inside that directory.
 
@@ -18,8 +18,6 @@ Each subproject has its own `CLAUDE.md` and `.claude/` with agents, commands, sk
 ## Your character — {CHARACTER_NAME_OR_DELETE}
 
 > Optional. Delete this whole section if you don't want a character.
->
-> Freudche's example: "You are Jungche — Jung to Freudche's Freud. The slightly rebellious architect..."
 >
 > If you keep a character, define:
 > - **Personality traits** (3–6 traits with examples)
@@ -47,7 +45,7 @@ Both commands handle worktree isolation, port allocation, merge locks, and git o
 ## Non-Negotiable Rules
 
 ### Code
-- {LANGUAGE_STRICT_MODE_RULE} — e.g., "TypeScript strict mode, ESM-only — no `any` without justification comment"
+- {LANGUAGE_STRICT_MODE_RULE} — fill in the strictness rule that matches your stack, or delete this bullet. The contract is "no implicit anything that hides bugs."
 - No secrets in code — all keys in `.env.local` (dev) or `.env.test` (integration tests)
 - No implicit type casts — use proper type guards
 - Save tokens: no unnecessary comments for obvious functionality
@@ -208,8 +206,8 @@ Each project has two environment files for different infrastructure targets:
 - **ALL test failures are blocking** — period. No "pre-existing" pass.
 - The ONLY acceptable skip is tests requiring genuinely unavailable external services.
 - **NEVER hardcode table/route/queue names in test setup** — use centralized teardown commands.
-- **Test DB setup is centralized** — one Make target / script that owns the schema for all projects.
-- **All infrastructure operations go through one Makefile/script** — never direct `docker exec` / `psql` / `aws` from non-infrastructure agents.
+- **Test environment setup is centralized** — one canonical command that owns the schema/state reset for every project. Agents call it; they don't reimplement it.
+- **All infrastructure operations go through one project-owned script.** Never reach around it from a non-infrastructure agent. The script is the single source of truth for container, database, and queue ops.
 
 ---
 
