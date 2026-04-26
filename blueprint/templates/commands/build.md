@@ -23,8 +23,9 @@ done
 ```
 
 For each stale directory:
+- Contains a `BLOCKED.md` → intentionally preserved (deferred for `/jc` resolution — see § Fix Loop Escalation). **SKIP cleanup.** Print `PRESERVED: $dir (BLOCKED-DEFERRED)` and move on.
 - Has `7-post-merge-qa.md` → completed but not archived. Move to `docs/dev/tasks/archive/`.
-- No completion marker → abandoned. Add `ABANDONED.md` and move to archive.
+- No completion marker (and no `BLOCKED.md`) → abandoned. Add `ABANDONED.md` and move to archive.
 - Empty → `rmdir`.
 
 ### 0b. Name the pipeline
@@ -144,7 +145,14 @@ For each project in `$PROJECTS`:
 Agent(general-purpose, parallel): "You are the {PROJECT} QA. Read and follow {PROJECT_DIR}/.claude/agents/qa.md. Mode: PRE-MERGE. Pipeline: $PIPELINE. Docs: $DOCS_REL. Worktree: $WORKTREE."
 ```
 
-Each writes `$DOCS/7-qa-{project}.md`. If any QA reports blockers, route back to that project's developer for the fix loop. Loop until all QA reports green or budget exhausted (default: 3 iterations).
+Each writes `$DOCS/7-qa-{project}.md`. If any QA reports blockers, route back to that project's developer for the fix loop.
+
+### Fix Loop Discipline (load-bearing — do not relax)
+
+- **Iteration cap: 3 maximum.** Never run more than 3 fix-loop iterations per pipeline. After iteration 3 fails, escalate to BLOCKED-DEFERRED (below). Runaway fix loops eat orders of magnitude more wall-time than the work they purport to fix — one historical incident wedged a pipeline for 7+ hours on a single hung test.
+- **Hard timeouts on every test invocation.** Every test command inside the fix loop MUST be wrapped in `timeout {N}s <cmd>` (default ~600s / 10 min). Agent definitions own this discipline — the orchestrator does NOT spawn raw test runs.
+- **Hung-process detection.** If a test process sits at 0% CPU for >2 minutes (deadlocked, not slow), the agent must `kill` it and report `BUG-HUNG-TEST` with the file:line of the hang. A hung test is NOT a fix-loop bug — it is a code bug that needs `/jc` on main.
+- **BLOCKED-DEFERRED escalation.** When the cap trips or a hang is detected, the orchestrator writes `$DOCS/BLOCKED.md` (symptom, last green commit, suspected file, repro command), preserves the worktree, releases merge locks, and reports the blocker to the user. Do NOT keep looping. Do NOT silently abandon the worktree — it must remain on disk so `/jc` can resume from it.
 
 ---
 

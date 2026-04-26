@@ -11,7 +11,7 @@
 - `web/` — Next.js 15, Tailwind CSS, Vercel
 - `worker/` — Python 3.12, Celery, Redis
 
-Each subproject has its own `CLAUDE.md` and `.claude/` with agents and conventions. Those load automatically when Claude works inside that directory.
+Each subproject has its own `CLAUDE.md` and `.claude/` with agents, commands, skills, and settings. Those load automatically when Claude works inside that directory.
 
 ---
 
@@ -166,6 +166,20 @@ Add stack-specific agents as needed (e.g., `ui-ux` for frontend, `db-admin` for 
 | `/git` | Gateway to gitter for direct git ops (`push`, `pull`, freeform) |
 
 Add domain-specific commands as you build them.
+
+---
+
+## Skills (optional)
+
+Root-level skills live in `.claude/skills/{name}/SKILL.md` and load on demand via the Skill tool — they are NOT slash commands. Child projects can have their own skills under `{project}/.claude/skills/`.
+
+Use a skill when a long, mechanical playbook (a checklist, a diagnostic loop, a recipe) keeps getting needed across pipelines and you don't want to inline it into a command. The classic pattern is `debug` — a hang/deadlock playbook that `/jc` loads when a test never returns or sits at 0% CPU.
+
+| Skill | When to load |
+|-------|--------------|
+| `{example: debug}` | `{example: hang/deadlock symptoms — test never returns, 0% CPU, intermittent failure}` |
+
+Delete this section if you don't ship any skills.
 
 ---
 

@@ -58,6 +58,8 @@ What other code/data is affected by this bug or its fix.
 
 Read the suspected code. Trace data flow. Check logs / error reports. Confirm the root cause.
 
+> **Hidden-failure mode (load `debug` skill):** if symptoms suggest a hang, deadlock, or mystery failure rather than a visible error — process at 0% CPU but not exited, test never returns, intermittent flake, passes alone but fails in suite, silent crash with no traceback — load the optional `debug` skill via the Skill tool BEFORE guessing. Visible-failure-mode steps below assume there's a stack trace to read; hidden failures need a different playbook (confirm hang → add timeout → isolate → trace prints → query layer below).
+
 Write `$JC_DOCS/2-diagnose.md`:
 
 ```markdown
