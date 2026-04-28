@@ -26,6 +26,7 @@ The version is stored in:
 When a user installs Jungche via `SETUP.md`, the install records:
 
 - `.claude/JUNGCHE_VERSION` — single-line semver matching the blueprint version at install time
+- `.claude/JUNGCHE_MANIFEST.json` — SHA-256 hash of every Jungche-owned file as installed (post-placeholder-substitution). This is the baseline `/ccm update` uses to detect which files the user has customized vs. left pristine, via a three-way hash compare (installed vs. current-on-disk vs. new-upstream). See `templates/commands/ccm.md` § "Step 5 — Detect what changed" for the truth table. The manifest is regenerated after every successful `/ccm update` so the new on-disk state becomes the next baseline.
 
 When the user runs `/ccm update`, the update flow:
 

@@ -33,7 +33,13 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
-*Pending changes for the next release will accumulate here.*
+### Added
+
+- Mechanics: `.claude/JUNGCHE_MANIFEST.json` — install-time SHA-256 manifest of every Jungche-owned file. Baseline for `/ccm update`'s three-way hash compare (installed vs. current vs. upstream-new) so customization detection is deterministic instead of best-effort diffing.
+- Docs: `blueprint/SETUP.md` Step 11 — install now writes the manifest after placeholder substitution.
+- Docs: `blueprint/templates/commands/ccm.md` Step 5 — full truth table covering pristine / safe-apply / preserve-user / real-conflict, plus edge cases (new files, deleted files, removed-upstream, pre-manifest installs).
+- Docs: `blueprint/templates/commands/ccm.md` Step 9 — manifest regeneration after a successful update so the new on-disk state becomes the next baseline.
+- Docs: `blueprint/RELEASE.md` — adopter version-tracking section now documents the manifest alongside `JUNGCHE_VERSION`.
 
 ---
 

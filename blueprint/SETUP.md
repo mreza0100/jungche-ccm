@@ -208,6 +208,19 @@ Claude takes your answers and:
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
 10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/ccm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
+11. **Writes install manifest** — generates `.claude/JUNGCHE_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/ccm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
+    ```json
+    {
+      "version": "1.0.0",
+      "installed_at": "2026-04-28T14:32:00Z",
+      "files": {
+        ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
+        ".claude/commands/professor.md": "sha256:2c26b46b68ff...",
+        "CLAUDE.md": "sha256:fa7b1ba7e0f3..."
+      }
+    }
+    ```
+    Hashes are computed AFTER placeholder substitution so they reflect the actual on-disk state — a hash mismatch later means the user (or another agent) edited the file post-install.
 
 ---
 

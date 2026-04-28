@@ -322,20 +322,65 @@ For each bullet, classify:
 | Any with `(breaking)` tag | Interactive | Walk through migration steps |
 | Any with `(safe-auto)` tag | Auto-apply unconditionally | Apply |
 
-### Step 5 — Detect user customizations
+### Step 5 — Detect what changed (three-way hash compare)
 
-Before applying any change to a file, check if the user has customized it relative to the version they're upgrading FROM. The check:
+For every file the new release touches, compute three hashes and use the truth table below to decide. No diffs yet — just SHA-256 compares to classify each file's state. Real diffs only get rendered for the cases that need user input.
+
+**The three hashes:**
+
+| Hash | Source | What it tells us |
+|------|--------|------------------|
+| `installed_hash` | `.claude/JUNGCHE_MANIFEST.json` (written at install time) | What the file looked like the moment Jungche was installed, AFTER placeholder substitution. The user's "starting point." |
+| `current_hash` | `sha256sum .claude/{file}` (live on disk now) | What the file looks like RIGHT NOW. If this differs from `installed_hash`, the user (or another agent like /jc) has customized it. |
+| `upstream_new_hash` | `sha256sum ~/.cache/jungche-ccm-update/blueprint/templates/{file}` (fetched from the new release) | What the new release ships. If this differs from `installed_hash`, the blueprint changed this file between releases. |
+
+**Why we don't need `upstream_old_hash`:** `installed_hash` already captures "what the user started from" — that IS the old upstream baseline (with placeholders filled in). Adding a fourth hash by reconstructing the old blueprint via `git show v{LOCAL}:...` would only matter if we wanted to distinguish "blueprint at v1.0.0 vs. v1.1.0" from "user's substituted v1.0.0 vs. v1.1.0," and we don't — the user only cares about THEIR file vs. THEIR file plus an upstream change.
+
+**The truth table — four cases per file:**
+
+| `current_hash` vs `installed_hash` | `upstream_new_hash` vs `installed_hash` | Meaning | Action |
+|------------------------------------|------------------------------------------|---------|--------|
+| **Same** | **Same** | File is pristine, blueprint didn't touch it | **Skip silently.** Don't even mention it. |
+| **Same** | **Different** | User hasn't touched it, blueprint changed it | **Safe-apply** per category rules (auto for Mechanics/Docs, prompt for Tier A character). No conflict possible. |
+| **Different** | **Same** | User customized, blueprint unchanged | **Preserve user file.** Don't even prompt — there's nothing new to offer. |
+| **Different** | **Different** | Both diverged from baseline → real conflict | **Three-way prompt:** show user diff (theirs vs. installed) + upstream diff (installed vs. new) + a merge preview. Ask: keep yours / take upstream / merge interactively. Default for Tier A character files = keep yours. |
+
+**Edge cases:**
+
+| Situation | Detection | Behavior |
+|-----------|-----------|----------|
+| File exists in new release but not in manifest | `installed_hash` is null, file is in new blueprint | New file added by upstream. If Mechanics/Tier A — offer to add. If Tier B — only if user opted into that archetype. |
+| File in manifest but missing on disk | `current_hash` is null, `installed_hash` exists | User deleted it post-install. Ask: re-add (apply new), keep deleted, or restore old. Default = keep deleted (their choice). |
+| File in manifest but removed in new release | `installed_hash` exists, `upstream_new_hash` is null | Upstream deprecated/removed it. If `current_hash == installed_hash` → silently remove. If user customized it → ask before removing. |
+| Manifest doesn't exist (pre-1.0.0 install) | `JUNGCHE_MANIFEST.json` missing | Fall back to `git show v{LOCAL_VERSION}:blueprint/templates/{file}` from the fetched cache as the baseline, and reconstruct what `installed_hash` would have been WITHOUT placeholder substitution. Warn the user that customization detection is fuzzy because their install predates the manifest. |
+| File modified by /jc hotfix between updates | `current_hash != installed_hash`, content is the user's runtime fix | Same as "user customized" — three-way prompt. /jc edits aren't special-cased; they look identical to manual edits at the hash level. |
+
+**Concrete walk:**
 
 ```bash
-# Did the user diverge from the blueprint version they installed?
-diff -q .claude/{file} "$BLUEPRINT_DIR/blueprint/templates/{file}@$LOCAL_VERSION"
+# Per file in the new release:
+INSTALLED=$(jq -r ".files[\"${FILE}\"]" .claude/JUNGCHE_MANIFEST.json | sed 's/sha256://')
+CURRENT=$(sha256sum ".claude/${FILE}" 2>/dev/null | awk '{print $1}')
+UPSTREAM_NEW=$(sha256sum "~/.cache/jungche-ccm-update/blueprint/templates/${FILE}" | awk '{print $1}')
+
+USER_CUSTOMIZED=$([ "$CURRENT" = "$INSTALLED" ] && echo "no" || echo "yes")
+UPSTREAM_CHANGED=$([ "$UPSTREAM_NEW" = "$INSTALLED" ] && echo "no" || echo "yes")
+
+# Then dispatch on the (USER_CUSTOMIZED, UPSTREAM_CHANGED) pair per the truth table.
 ```
 
-If the user customized a file (e.g., they changed Jungche's voice, renamed an agent), the update flow:
+**After each file decision, update the in-memory plan:**
 
-1. Shows the user the three-way picture: their version, the old blueprint, the new blueprint
-2. Asks: keep your customization, take the new blueprint, or merge interactively?
-3. Default for character files (CLAUDE.md persona, /jc, /professor, /council): keep user customization unless explicitly accepted
+```
+[skip]   .claude/scripts/dev.sh           (pristine, no upstream change)
+[apply]  .claude/commands/build.md        (Mechanics, user untouched)
+[keep]   CLAUDE.md                        (user customized Jungche voice, no upstream change)
+[merge]  .claude/commands/jc.md           (Tier A character, both diverged — needs prompt)
+[add]    .claude/commands/marketer.md     (new Tier B, user must opt in)
+[remove] .claude/commands/old-thing.md    (deprecated upstream, user untouched)
+```
+
+This plan becomes the agenda for Step 6's interactive walk. Files in `[skip]` / `[apply]` / `[keep]` need no user input and resolve silently; only `[merge]` / `[add]` / `[remove-with-customization]` go through prompts.
 
 ### Step 6 — Walk the user through changes
 
@@ -374,13 +419,23 @@ If yes, run the relevant subset of the SETUP interview to fill placeholders, the
 
 For changes tagged `(breaking)` or under `### Breaking` headings, walk the user through the migration steps **explicitly per change**. The CHANGELOG entry must include `### Migration` instructions for any breaking change. Read those, present them, ask for explicit confirmation per step.
 
-### Step 9 — Update version + report
+### Step 9 — Update version + manifest + report
 
-After all changes are applied (or skipped):
+After all changes are applied (or skipped), bump the version AND regenerate the manifest so the next `/ccm update` has a fresh baseline:
 
 ```bash
 echo "$LATEST_VERSION" > .claude/JUNGCHE_VERSION
+
+# Rewrite the manifest from the post-update on-disk state — every file
+# Jungche owns gets a new sha256 entry. Files the user kept customized
+# get THEIR current hash recorded as the new baseline (so next update
+# sees them as "user-modified relative to v{LATEST}", not double-counted).
+jq -n --arg v "$LATEST_VERSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{version: $v, installed_at: $ts, files: {}}' > .claude/JUNGCHE_MANIFEST.json
+# Then for every Jungche-owned file: append "{path}: sha256:{hash}" to .files
 ```
+
+Why we rewrite, not merge: if the user took an upstream change, the new hash IS the new baseline. If they kept their customization, their current file IS their new baseline going forward. Either way, "what's pristine" = "what's on disk right now."
 
 Report:
 
