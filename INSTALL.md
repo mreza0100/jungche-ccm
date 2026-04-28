@@ -148,16 +148,27 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     For each you pick, I will need: scope, owned doc paths under $CDOCS, and one-line purpose.
 ```
 
-### Batch 7 — Character (optional)
+### Batch 7 — Character (MANDATORY — choose name + sacred-ground)
 
 ```
-15. Do you want a character for Claude? (Freudche has "Jungche" — sarcastic Dr. House)
+15. Your orchestrator persona — Jungche by default (sarcastic, witty, blunt-but-helpful Dr.
+    House senior engineer; emoji-fluent; ships first, jokes second). The voice is universal
+    and load-bearing — it ships with every Jungche install. You CANNOT skip it. You can:
 
-    - "skip" → Claude stays neutral
-    - "yes, like Jungche" → I clone Jungche's tone with your project's name
-    - "yes, custom" → describe traits (3–6) + boundaries (when to drop the persona) +
-       tone keywords. I'll write the section.
+    - "keep Jungche" → keep the name + voice as-is, I'll just adapt the
+      "what NOT to joke about" bullet to your domain
+    - "rename" → keep the voice, change the name (e.g., "Beatrix" for fintech,
+      "Gandalf" for an OSS library) — give me the new name
+    - "custom voice" → keep the structure but reshape the personality (give me 3–6
+      tone keywords + a one-line "vibe"); the persona section MUST still be written
+
+16. What is your project's SACRED GROUND — the topics where the character
+    drops the humor and reports flat? (e.g., "patient data + clinical safety",
+    "user funds + financial integrity", "PII + privacy", "physical safety
+    in autonomous control"). This goes into the "What NOT to do" block.
 ```
+
+> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc`, `/professor`, and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific *content* like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
 
 ### Batch 8 — Confirmation before write
 
@@ -259,7 +270,16 @@ Copy `blueprint/templates/CLAUDE.md` and substitute every `{PLACEHOLDER}` from B
 
 If the user picked monorepo: include the per-project tables. If single project: drop them.
 
-If the user picked a character: write the section. If skipped: delete the section entirely.
+**The "## Your character" persona section is MANDATORY — you must write it.** From Batch 7:
+- If the user said "keep Jungche": keep the section verbatim, only adapting `{SACRED_GROUND}` (Batch 7 Q16), `{WHAT_THE_PROJECT_BUILDS}`, and `{YOUR_LANGUAGE}` placeholders to their domain. The "What NOT to do" first bullet must reference their sacred ground.
+- If the user said "rename": same as above, plus replace every "Jungche" with the new name. Keep the voice description verbatim.
+- If the user said "custom voice": keep the section's *shape* (heading, "MANDATORY" framing, "Core personality traits" bulleted list, "What NOT to do" block) but reshape the bullets using their tone keywords + vibe line. NEVER ship a CLAUDE.md without the persona section.
+
+After writing, verify: the file MUST contain a `## Your character — {NAME} (MANDATORY` heading. If it doesn't, you skipped a step — go back and write it.
+
+Also remove these install-only meta-comments from the body of CLAUDE.md before saving:
+- The `> **Rename if you want.**` admonition that prefaces the persona section in the template (it's an install instruction, not a runtime instruction).
+- Any `{INSTRUCTIONAL_COMMENT}` blocks in `< >` braces inside the template body.
 
 ### Step 3 — Per-project CLAUDE.md (if monorepo)
 
@@ -290,19 +310,29 @@ Copy from `blueprint/templates/commands/`:
 
 Add the `git` command (gitter gateway — see template).
 
-### Step 7 — Optional commands
+### Step 7 — Tier B commands (the user's opt-ins from Batch 6)
 
-For each command the user picked in Batch 6, scaffold a starter file under `.claude/commands/`. Each file should:
-- Define purpose in one paragraph
-- Define `$ARGUMENTS` parsing
-- List owned docs under `$CDOCS/{cmd}/`
-- Reference Freudche's example as inspiration but DO NOT copy domain-specific content
+For each Tier B command the user picked, copy `blueprint/templates/commands/{cmd}.md` to `.claude/commands/{cmd}.md`, then **substitute placeholders AND strip the install-only meta-block**.
 
-For each, also `mkdir -p docs/commands/{cmd}/{references,research,resources}`.
+The meta-block is the leading `>`-quoted block that begins with `**Tier B — Domain archetype.**` and ends with `**Skip if:** ...`. It exists in the template ONLY to brief you (the installer) on which placeholders need filling. It is install-time scaffolding, not runtime content. **DELETE IT IN THE EMITTED FILE.** A correctly-installed Tier B command starts with the H1 heading (e.g., `# Officer — Compliance & Privacy`) and goes straight to the `Handle this request: $ARGUMENTS` line — no leading `>` block, no "fill at install" bullets.
+
+For each command:
+
+1. Read the template at `blueprint/templates/commands/{cmd}.md`.
+2. Identify every backtick-quoted Freudche-domain placeholder in the body (e.g., `\`patient medical data\``, `\`Dutch GGZ market\``) and replace with the user's parameterized values from Batches 1, 2, and 6.
+3. **Delete the entire leading `>`-quoted meta-block** (from the line starting with `> **Tier B — Domain archetype.**` through the line starting with `> **Skip if:**` inclusive, plus any blank `>` lines between).
+4. Save to `.claude/commands/{cmd}.md`.
+5. `mkdir -p docs/commands/{cmd}/{references,research,resources}`.
+
+**Verification:** after each Tier B file is written, grep it for `fill at install`, `Skip if:`, `Required placeholders`, or `Tier B — Domain archetype` — if any of those strings remain, the meta-block leaked. Strip it before moving on.
 
 ### Step 8 — Scripts
 
 Copy `blueprint/templates/scripts/` to `.claude/scripts/`.
+
+### Step 8.5 — The Cast bible (ARCHETYPES.md)
+
+Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/ccm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
 
 Edit `worktree.sh`:
 - Replace the per-project install blocks (line marked `# === Per-project setup — EDIT FOR YOUR STACK ===`) with one block per subproject from Batch 2.
@@ -468,7 +498,7 @@ File a "doesn't work for stack X" issue if you hit something the installer didn'
 1. **Never assume.** Every project name, file path, command, and port comes from the user's answers — not your guesses.
 2. **Never overwrite without asking.** If `CLAUDE.md` or `.claude/` already exists, STOP and ask first.
 3. **Never install boutique commands the user didn't pick.** `/officer`, `/ckm`, etc. are domain-specific and should not be silently inherited from Freudche.
-4. **Never inject Freudche's character** unless the user explicitly chose "yes, like Jungche."
+4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Grok/LangChain mentions, Dutch healthcare specifics. The Jungche *voice* (Dr. House senior engineer) is universal and ships by default; what doesn't transfer is Freudche-specific *content*. Persona = mandatory; persona = "your project's flavor of Jungche", not "Freudche's flavor of Jungche".
 5. **Never run `git add` / `git commit`.** The installer only writes files. Committing is the user's call.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite. If you need to back something up, copy it to `tmp/` first.
 7. **Confirm before write.** Batch 8 ("type 'go'") is mandatory — even if the user seems eager, show the plan first.

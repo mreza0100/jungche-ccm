@@ -39,6 +39,65 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [0.3.0] — 2026-04-28
+
+### Fixed
+
+- Docs: `INSTALL.md` Batch 7 — persona is now MANDATORY (was "skip" option). Adopter must pick keep-Jungche / rename / custom-voice AND name a sacred-ground topic. Without this fix, fresh installs were silently emitting `CLAUDE.md` files with no persona section, producing tonal whiplash (vanilla orchestrator while `/jc`, `/professor`, `/council` kept their voices). The blueprint philosophy already said Tier A character ships by default; the install protocol disagreed. Now they agree. (breaking)
+- Docs: `INSTALL.md` Step 2 — adds explicit "the file MUST contain a `## Your character — {NAME} (MANDATORY` heading" verification before saving CLAUDE.md. Strips install-only `> Rename if you want.` admonition from the emitted file.
+- Docs: `INSTALL.md` Step 7 — Tier B command emission now strips the leading `>`-quoted "Required placeholders (fill at install)" meta-block from each emitted `.md` file. That block is installer scaffolding; in v0.1.0–v0.2.0 it leaked into runtime command files (officer.md, mentor.md, marketer.md, ckm.md, pm.md). Adds a verify grep (`fill at install` / `Skip if:` / `Required placeholders` / `Tier B — Domain archetype`) to catch leakage before moving on. (breaking)
+- Docs: `INSTALL.md` Hard Rule 4 — reframed from "never inject Freudche's character without explicit consent" to "never inject Freudche-specific *content*". Old wording contradicted the three-tier philosophy (Tier A persona is universal, ships by default; only Freudche-specific *content* — therapy/clinical/AVG/AssemblyAI/etc. — is forbidden).
+- Docs: `blueprint/SETUP.md` § 2 — interview-side mirror of Batch 7 fix: persona is non-skippable, sacred-ground prompt added.
+- Docs: `blueprint/SETUP.md` Phase 2 step 4 — interview-side mirror of Step 7 fix: notes the meta-block is stripped at emission, so adopters reading SETUP.md see the new behavior documented.
+
+### Added
+
+- Docs: `INSTALL.md` Step 8.5 (NEW) — copies `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` verbatim during install. Every fresh install now ships with the canonical Cast bible (was previously discoverable only by piecing together individual command files).
+- Docs: `blueprint/SETUP.md` Phase 2 step 7a — interview-side documentation of the ARCHETYPES.md copy.
+
+### Migration
+
+#### → For: `Docs: INSTALL.md Batch 7` (existing installs may be missing the persona section)
+
+If your installed `CLAUDE.md` does NOT contain a `## Your character — {NAME} (MANDATORY` heading, you hit the v0.1.0–v0.2.0 bug. Fix:
+
+1. Open your `CLAUDE.md`.
+2. Insert a `## Your character` section between the project intro and `## The GOAL`. Use `~/work/jungche-ccm/blueprint/templates/CLAUDE.md`'s persona section (lines 18–41) as a starting point.
+3. Adapt the "What NOT to do" first bullet to your project's sacred ground (the topic where Claude must drop the humor: PHI, user funds, physical safety, regulatory output, etc.).
+4. Add a `| **{NAME}** (you) | A | Orchestrator, in-character voice |` row at the top of your Cast table.
+
+If your `CLAUDE.md` already has a persona section, **`/ccm update`: skip — informational only.**
+
+#### → For: `Docs: INSTALL.md Step 7` (existing Tier B commands may have leaked meta-blocks)
+
+For each Tier B command you opted into (`/officer`, `/mentor`, `/marketer`, `/ckm`, `/pm`), check the top of `.claude/commands/{cmd}.md`. If the file starts with a `>`-quoted block containing `**Tier B — Domain archetype.**` and `**Required placeholders (fill at install):**`, you hit the leak. Fix per file:
+
+1. Delete the entire leading `>`-quoted block — from the line starting with `> **Tier B — Domain archetype.**` through the line starting with `> **Skip if:**` inclusive (plus any blank `>` lines between).
+2. The file should now start directly with the H1 heading (e.g., `# Officer — Compliance & Privacy`) followed by the `Handle this request: $ARGUMENTS` (or equivalent) line.
+3. Verify: `grep -lE "fill at install|Required placeholders|Tier B — Domain archetype" .claude/commands/*.md` should return nothing.
+
+#### → For: `Docs: INSTALL.md Step 8.5` (existing installs missing ARCHETYPES.md)
+
+If `.claude/ARCHETYPES.md` doesn't exist in your install, copy it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/blueprint/ARCHETYPES.md > .claude/ARCHETYPES.md
+```
+
+#### → For: `Docs: INSTALL.md Step 2` (installer-only verification step)
+
+**`/ccm update`: skip — informational only.** No adopter-side files are emitted from this rule directly; the persona-section migration above already covers existing-install impact.
+
+#### → For: `Docs: INSTALL.md Hard Rule 4` (installer-only framing)
+
+**`/ccm update`: skip — informational only.**
+
+#### → For: `blueprint/SETUP.md` § 2 + Phase 2 step 4 + step 7a
+
+**`/ccm update`: skip — informational only.** `SETUP.md` is the human-facing interview reference; no adopter-side files are derived from it. Behavior changes are enforced via `INSTALL.md` (above) which IS the executable install protocol.
+
+---
+
 ## [0.2.0] — 2026-04-28
 
 ### Added

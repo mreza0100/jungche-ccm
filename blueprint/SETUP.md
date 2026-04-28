@@ -44,11 +44,13 @@ Claude (in your target project) asks these questions, in this order. Answer them
 
 This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Freudche is an AI clinical administrative tool that listens to therapy sessions and assists the therapist."
 
-### 2. Character name & voice
+### 2. Character name & voice (MANDATORY — cannot be skipped)
 
-> Default character is **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. Ships first, jokes second. Keep that voice, or give your character a new name + signature trait?
+> Default character is **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. Ships first, jokes second. Pick: keep Jungche, rename (voice stays), or supply a custom voice (3–6 tone keywords + a one-line vibe). You MUST land on one — the persona section is load-bearing infrastructure, not optional flavor.
 
 Most adopters keep Jungche as-is. The voice transplants well across domains. If you want a different name (e.g., "Beatrix" for a finance project, "Gandalf" for an open-source library), name it. The voice can stay.
+
+Then tell Claude your **sacred ground** — the topics where the character drops the humor and reports flat (e.g., "patient data", "user funds", "physical safety in autonomous control"). This goes into the persona's "What NOT to do" block. Without sacred ground defined, the character will make jokes in places it shouldn't.
 
 ### 3. Project structure
 
@@ -201,10 +203,11 @@ Claude takes your answers and:
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Jungche persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
 2. **Writes per-project `CLAUDE.md` files** (if monorepo) — tech stack details, conventions.
 3. **Writes Tier A command files** — `/build`, `/jc`, `/ccm`, `/dev`, `/git`, `/wave`, `/documenter`, `/professor`, `/council`, `/ca`. Voice intact, domain content filled.
-4. **Writes Tier B command files** for each opt-in — `/officer`, `/ckm`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled.
+4. **Writes Tier B command files** for each opt-in — `/officer`, `/ckm`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
+7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/ccm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
 10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/ccm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
