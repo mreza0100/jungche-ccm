@@ -178,6 +178,23 @@ If a post-merge bug is reported: spawn a new `/jc` pipeline to fix it.
 
 ---
 
+## Step 9.5 — Pipeline audit (parallel, optional)
+
+After post-merge QA passes, run `/ca` (always) and `/officer` (only if Tier B `/officer` is opted in) in parallel:
+
+```
+Agent(general-purpose, parallel): "Run /ca on the changes from this pipeline. Output: $DOCS/8-code-audit.md."
+```
+
+```
+Agent(general-purpose, parallel, conditional on /officer being opted in):
+  "Run /officer audit on the changes from this pipeline. Output: $DOCS/8-officer-audit.md."
+```
+
+If either audit reports CRITICAL or BLOCKER findings: spawn a new `/jc` pipeline to address them BEFORE proceeding to documentation. CRITICAL/BLOCKER audit findings block doc-commit the same way QA blocks merge.
+
+---
+
 ## Step 10 — mono-documenter
 
 ```
@@ -221,5 +238,6 @@ Pipeline {PIPELINE} complete.
 | 7 | Pre-merge QA | child QAs (parallel) | `$DOCS/7-qa-{project}.md` |
 | 8 | Merge | gitter MERGE | merge commit on main |
 | 9 | Post-merge QA | child QAs POST-MERGE (parallel) | report or new `/jc` |
+| 9.5 | Pipeline audit | /ca (always) + /officer (if opted in) (parallel) | `$DOCS/8-code-audit.md` + `$DOCS/8-officer-audit.md` |
 | 10 | Documentation | mono-documenter | permanent doc edits + archive |
 | 11 | Docs commit | gitter DOCS-COMMIT | docs commit on main |
