@@ -42,6 +42,8 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Docs: `blueprint/templates/commands/ccm.md` Step 5 — full truth table covering pristine / safe-apply / preserve-user / real-conflict, plus edge cases (new files, deleted files, removed-upstream, pre-manifest installs).
 - Docs: `blueprint/templates/commands/ccm.md` Step 9 — manifest regeneration after a successful update so the new on-disk state becomes the next baseline.
 - Docs: `blueprint/RELEASE.md` — adopter version-tracking section now documents the manifest alongside `JUNGCHE_VERSION`.
+- Docs: `LLM_INSTALL.md` (NEW, repo root) — machine-to-machine install briefing for LLMs. Token-dense entry point with full cast table, three-tier model, install protocol, lazy-load URL map, and verification gate. The single URL another LLM fetches when a user types "install Jungche in this project" — bypasses README marketing copy and avoids fetching reference docs that aren't needed during install.
+- Docs: `README.md` Quick start — promotes the one-liner M2M handshake (`Read https://raw.githubusercontent.com/.../LLM_INSTALL.md and install Jungche`) above the clone-and-read path.
 
 ### Migration
 
@@ -112,6 +114,14 @@ Step 9 (regenerate manifest after update) is the FIRST thing `/ccm update` shoul
 #### → For: `Docs: RELEASE.md` (no action)
 
 Maintainer-side documentation only. **`/ccm update`: skip — adopters never read RELEASE.md.**
+
+#### → For: `Docs: LLM_INSTALL.md` (no action for existing installs)
+
+This file is for FRESH installs only — it's the entry point another LLM fetches before any local file exists. Existing installs already have everything it describes. **`/ccm update`: skip — informational only.**
+
+#### → For: `Docs: README.md Quick start` (no action)
+
+Public-facing README change. Adopters don't have a copy of the blueprint's README.md in their project. **`/ccm update`: skip — informational only.**
 
 ---
 
