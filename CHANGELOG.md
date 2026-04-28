@@ -29,6 +29,8 @@ Bullets MUST follow this shape:
 
 Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requires migration even outside a Breaking section, `(safe-auto)` to mark unconditional auto-apply.
 
+**Migration sub-headings (inside `### Migration`):** for each bullet that needs adopter-side action beyond the file copy, write a `#### → For: <bullet identifier>` sub-heading followed by numbered steps. `/ccm update` matches each `#### → For:` against the bullets above and runs the listed steps in order. If a bullet is informational only, write `**`/ccm update`: skip — informational only.**` so the update flow knows there's nothing to do.
+
 ---
 
 ## [Unreleased]
@@ -40,6 +42,80 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Docs: `blueprint/templates/commands/ccm.md` Step 5 — full truth table covering pristine / safe-apply / preserve-user / real-conflict, plus edge cases (new files, deleted files, removed-upstream, pre-manifest installs).
 - Docs: `blueprint/templates/commands/ccm.md` Step 9 — manifest regeneration after a successful update so the new on-disk state becomes the next baseline.
 - Docs: `blueprint/RELEASE.md` — adopter version-tracking section now documents the manifest alongside `JUNGCHE_VERSION`.
+
+### Migration
+
+Per-bullet upgrade instructions. `/ccm update` reads these and executes them in order. **All steps in this release are non-breaking and run automatically — no user prompts required for the migration itself, though file-by-file changes still go through the normal `/ccm update` apply flow.**
+
+#### → For: `Mechanics: .claude/JUNGCHE_MANIFEST.json` (bootstrap on first run)
+
+An existing v1.0.0 install does NOT have a manifest. Before doing anything else, `/ccm update` MUST bootstrap one from the current on-disk state, treating "what the user has right now" as their starting baseline.
+
+**Steps `/ccm update` runs automatically:**
+
+1. **Detect missing manifest:**
+   ```bash
+   if [ ! -f .claude/JUNGCHE_MANIFEST.json ]; then
+     echo "Pre-1.0.1 install detected — bootstrapping manifest from current state."
+   fi
+   ```
+2. **Identify Jungche-owned files** by intersecting the on-disk filesystem with the v1.0.0 blueprint's file list (fetched from `git show v1.0.0:blueprint/templates/...`):
+   - `CLAUDE.md` (root)
+   - `.claude/agents/*.md`
+   - `.claude/commands/*.md`
+   - `.claude/scripts/*.sh`
+   - Per-project `CLAUDE.md` and `.claude/agents/*.md` (if monorepo)
+3. **Hash each file in its current state** (NOT the original blueprint — the user may have customized since install):
+   ```bash
+   sha256sum {file} | awk '{print "sha256:" $1}'
+   ```
+4. **Write `.claude/JUNGCHE_MANIFEST.json`** with `version: "1.0.0"` (their actual install version, NOT the new version yet) and `installed_at: <bootstrap timestamp + note>`:
+   ```json
+   {
+     "version": "1.0.0",
+     "installed_at": "2026-04-28T14:32:00Z",
+     "bootstrapped": true,
+     "bootstrap_note": "Manifest reconstructed from on-disk state on first /ccm update — pre-1.0.1 install. Customization detection treats current state as baseline.",
+     "files": { "...": "sha256:..." }
+   }
+   ```
+5. **Warn the user** once, in the update report:
+   > "Your install predates the manifest (v1.0.0). I bootstrapped one from your current files. Customization detection going forward is reliable; for THIS update, files you customized between install and now will look pristine. Ask me to show diffs if you want to double-check anything."
+
+**Why this is safe:** the bootstrap conservatively treats current state as baseline. The downside is that customizations made between install and the first `/ccm update` won't be auto-detected as customizations — they'll be silently adopted as the new baseline. Acceptable tradeoff: any subsequent update has accurate detection, and the user gets a one-time warning.
+
+#### → For: `Docs: SETUP.md Step 11` (no action for existing installs)
+
+This change only affects FRESH installs. Existing installs get the same behavior via the bootstrap above. **`/ccm update`: skip — informational only.**
+
+#### → For: `Docs: ccm.md Step 5` (apply on update)
+
+The new `/ccm update` flow uses the truth table. The user gets the new behavior automatically the next time they run `/ccm update` AFTER this release lands — but THIS run is the transition. So:
+
+1. **Use the OLD behavior for this run only** (the pre-truth-table flow that was running when the user typed `/ccm update`). The new ccm.md gets applied as a normal `Docs:` change to `.claude/commands/ccm.md` during this run.
+2. **Inform the user** at end of run:
+   > "Heads up: starting next `/ccm update`, customization detection uses the new SHA-256 truth table. Your manifest is in place, so there's nothing to do — it just works better."
+
+#### → For: `Docs: ccm.md Step 9` (apply automatically at end of run)
+
+Step 9 (regenerate manifest after update) is the FIRST thing `/ccm update` should adopt — even on this transition run. After the user accepts/rejects each file change, the manifest gets rewritten to reflect the new on-disk reality:
+
+1. After all per-file decisions are committed to disk, regenerate:
+   ```bash
+   jq -n --arg v "$LATEST_VERSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+     '{version: $v, installed_at: $ts, files: {}}' > .claude/JUNGCHE_MANIFEST.json
+   # Append every Jungche-owned file with its new sha256
+   ```
+2. Drop the `bootstrapped: true` flag if it was present — after a clean update, the manifest is no longer a reconstruction.
+3. Update `.claude/JUNGCHE_VERSION` to the new version AFTER the manifest is written successfully (so a partial failure leaves a recoverable state).
+
+#### → For: `Docs: RELEASE.md` (no action)
+
+Maintainer-side documentation only. **`/ccm update`: skip — adopters never read RELEASE.md.**
+
+---
+
+**Migration safety net:** if any step above fails (disk full, permission denied, jq missing), `/ccm update` MUST roll back to the pre-update state — meaning the OLD `JUNGCHE_VERSION` and OLD manifest (or no manifest, if bootstrapping failed). Never leave the user in a half-updated state where the version says "1.0.1" but the manifest is missing or stale.
 
 ---
 
