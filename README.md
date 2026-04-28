@@ -1,78 +1,65 @@
 # Jungche CCM — Multi-Agent Claude Code Pipeline
 
-A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team** with worktree isolation, QA gates, and self-improvement at the source.
+A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character** — Jungche the senior architect, JC the panic-debugger, Professor the cross-disciplinary analyst, Council the debating roundtable, plus a full cast of optional domain archetypes — refitted to YOUR project at install time.
 
-> Distilled from a production multi-project codebase. **Technology-agnostic by design** — nothing in the templates names a language, framework, package manager, database, runtime, or cloud provider. The mechanics survive every stack; you bring the stack. Personality is optional.
+> Distilled from a production multi-project codebase. The pipeline mechanics survive every stack; the characters' voices survive every domain. **Personality is not decoration — it's load-bearing.** Strip it out and you're shipping a Confluence wiki with extra steps.
 
 ---
 
 ## What you get
 
-- **A pipeline that refuses cowboy coding** — every feature flows through `planner → architect → developer → QA → gitter merge`. QA gates block bad code from reaching `main`.
+- **The full cast** — Jungche, JC, Professor, Council, CCM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All shipped with full character; you parameterize the domain content at install.
+- **Pipeline that refuses cowboy coding** — every feature goes through `planner → architect → developer → QA → gitter merge`. QA gates block bad code from reaching `main`.
 - **Worktree isolation** — every `/build` invocation gets its own git worktree branch + unique port allocation. Run multiple parallel pipelines on the same repo without collisions.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` for surgical bug fixes that bypass the full pipeline but still go through QA + gitter.
-- **Self-improvement** — `/ccm` is the meta-agent that edits its own pipeline rules at the source. No "lessons learned" files that nobody reads.
-- **Path conventions** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths. Rename a directory once, every agent follows.
+- **Self-improvement at the source** — `/ccm` is the meta-agent that edits its own pipeline rules. No "lessons learned" files that nobody reads.
+- **Path conventions** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
 
 ---
 
 ## Quick start
 
-The blueprint is a set of templates + docs. The fastest install is to let Claude Code do it for you.
-
 ```bash
+# Clone the blueprint
+git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
+
+# Inside YOUR project
+cd ~/path/to/your-project
 claude
-> Clone https://github.com/mreza0100/jungche-ccm/ in /tmp and install here
+> Read every file in ~/work/jungche-ccm/blueprint/.
+> Follow SETUP.md to install Jungche in THIS project.
+> Conduct the interview before touching any files.
 ```
 
-Claude reads [`INSTALL.md`](./INSTALL.md), runs a pre-flight on your repo, then asks you 8 batched question groups (project identity, structure, commands, ports, domain & disciplines, optional commands, character, confirmation). Customizes a `/professor` agent specifically for your domain. Confirms before writing anything. First `/build` smoke-test reveals whatever the installer missed.
+Claude reads the blueprint, runs the install interview (~10 questions about your stack, character preferences, and domain), customizes every template before copying. First `/build` smoke-test reveals anything missed.
 
-For a manual / non-interactive install, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
+For the manual path, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
 
 ---
 
-## What's inside
+## The cast — Tier A (universal archetypes)
 
-```
-blueprint/
-├── README.md            # entry point + when to use
-├── BLUEPRINT.md         # philosophy, 7 core principles, architecture diagram
-├── SETUP.md             # step-by-step install
-├── ADAPTATION.md        # stack-by-stack customization (Node/Python/Rust/Go/mobile/etc.)
-└── templates/
-    ├── CLAUDE.md        # root project rules with {PLACEHOLDERS}
-    ├── agents/          # gitter, mono-{planner,architect,documenter}, planner, architect, developer, qa
-    ├── commands/        # /build, /jc, /ccm, /dev
-    └── scripts/         # worktree.sh, alloc-ports.sh, dev.sh
-```
+These ship with **full voice**. Only domain references inside (PhD disciplines, panel composition, example stack traces) parameterize per install.
 
-20 files. ~125 KB. No dependencies, no install script — copy what you need.
+- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice. Default name; rename freely.
+- **/jc** — "Jesus Christ but make it cool" panic-debug mode. Chill on the surface, holy at the core. Calls you "bro/dude/my guy/my child." Blesses files before editing them. The one command allowed to edit `main` directly.
+- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly polymath. **You pick the disciplines** — your biology + math + game theory team is the same archetype as Freudche's CS + clinical psychology team.
+- **/council** — roundtable debate, three rounds: opening / rebuttal / verdict. Panel adapts to the archetypes you opt into.
+- **/ccm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
+- **/ca** — code auditor. 8 categories of hygiene + 9 of security.
+- **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
 
----
+## Tier B (domain archetypes — opt-in at install)
 
-## The pipeline at a glance
+These ship as **archetype skeletons**. Identity, voice, and structure are universal; you fill in the placeholders at install time.
 
-```
-/build {feature} →
-  child planners (parallel codebase analysis) →
-    mono-planner (consolidates → routing decision) →
-      gitter SETUP (worktree, branch, ports) →
-        mono-architect (cross-project contracts) →
-          child architects (parallel — per project, with library research) →
-            child developers (parallel — implements code, writes happy-path tests) →
-              child QAs (parallel — adversarial tests, runs full suite) →
-                fix loop (developer fixes QA bugs until green) →
-                  gitter MERGE (squash to main) →
-                    POST-MERGE QA (catches merge-introduced bugs) →
-                      mono-documenter (updates permanent docs, archives pipeline) →
-                        gitter DOCS-COMMIT
-```
-
-Hotfix path: `/jc {bug}` → locate → diagnose → fix → test → gitter JC-COMMIT. Same safety, less ceremony.
-
-Meta path: `/ccm {pipeline change}` → edits the agent definitions at the source. Surgery, not journaling.
+- **/officer** — compliance enforcer. Pick your regulation(s) — GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, none.
+- **/ckm** — knowledge curator. Pick your knowledge domain.
+- **/pm** — user+product hybrid. Pick your user persona — therapist, neuropsychologist, gamer, surgeon, lawyer, developer.
+- **/mentor** — business advisor. Pick your market + jurisdiction.
+- **/marketer** — visibility strategist. Pick your channels + language.
 
 ---
 
@@ -95,6 +82,7 @@ These are the rules that make the system work. Touch anything else, but leave th
 - Single project with complex pipelines (planning → impl → QA → merge worth modeling)
 - Teams or solo devs who lose work to half-finished branches and forgotten state
 - Projects where "what was decided and why" matters as much as the code
+- Projects where you want your agents to have a voice, not just behaviors
 
 ⚠️ **Overkill for:**
 - A 200-line script
@@ -103,17 +91,17 @@ These are the rules that make the system work. Touch anything else, but leave th
 
 ---
 
-## Adaptation
+## The smell test
 
-The templates use `{PLACEHOLDER}` markers wherever stack-specific content goes. Editing for your stack is mostly find-and-replace plus filling in your test, lint, and build commands. See [`blueprint/ADAPTATION.md`](./blueprint/ADAPTATION.md) for the generic recipe — six questions to answer for each subproject, with no opinion on which tools you pick.
+Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of Jungche, Professor, and Council* — same archetypes, different content? **If yes, the blueprint is right. If anyone has to delete personality before using it, the blueprint failed.**
 
-The blueprint is the brain behind the brain. It hands you the discipline; you bring the stack.
+The mechanics survive every stack. The voices survive every domain. Personality is not decoration — it's load-bearing.
 
 ---
 
 ## Origin & maintenance
 
-This blueprint is **regenerated and published from the live Freudche repo** whenever its pipeline evolves. Each commit corresponds to a snapshot of a working production pipeline — not a theoretical design.
+This blueprint is **automatically regenerated and published** from the live Freudche repo whenever its pipeline evolves. Each commit here corresponds to a snapshot of a working production pipeline — not a theoretical design.
 
 Maintained by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome — but please open an issue first to discuss large changes, since the canonical source lives in Freudche and edits flow downstream from there.
 

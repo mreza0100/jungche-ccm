@@ -1,27 +1,52 @@
-# BLUEPRINT — The System
+# BLUEPRINT — The Philosophy
 
-The philosophy and architecture of the pipeline. Read this before installing it.
+The discipline + character of the pipeline. Read this before installing it.
 
-> **Technology-agnostic by design.** Nothing in this blueprint names a language, framework, package manager, database, runtime, build tool, or cloud provider. The pipeline shape, role boundaries, doc conventions, and merge rules are what matter — they survive every stack. You bring the stack.
+> **Personality is load-bearing.** Strip Jungche's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, councils, multi-PhD professor and all — refitted to your domain at install time.
 
 ---
 
-## Core principles
+## The three-tier framework
 
-### 1. The pipeline is mandatory, no exceptions
+Every command, agent, and rule sorts into one of three tiers:
 
-Every code change goes through one of two paths:
+| Tier | Description | What ships | What gets parameterized |
+|------|-------------|------------|-------------------------|
+| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value. | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (Professor's PhDs, Council panel composition, JC's example stack traces) |
+| **B — Domain archetypes** | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview |
+| **C — Pure mechanics** | Infrastructure agents and pipeline plumbing | Mechanics only — no character needed | Tech-specific commands (test runner, package manager, build tool) |
 
-- **`/build {feature}`** — full pipeline (planner → architect → developer → QA → gitter merge). For features.
-- **`/jc {bug}`** — hotfix mode (locate → fix → test → gitter commit on main). For bugs.
+### The cast (Tier A — universal)
 
-**Never edit code directly on `main`.** The only commits allowed on `main` are merge commits from `gitter` (after QA passes) or single-purpose commits from `/jc` (after tests pass). This rule exists because:
+- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice. Default name; rename freely.
+- **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
+- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. Disciplines parameterize per project.
+- **/council** — roundtable debate, three rounds: opening, rebuttal, verdict. Panel composition adapts to the archetypes you opt into.
+- **/ccm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
+- **/ca** — code auditor. 8 categories of hygiene + 9 of security.
+- **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
 
-- It forces you to articulate WHAT you're doing before writing code.
-- It creates a paper trail (pipeline docs) for every change.
-- It catches bugs at QA, not in production.
+### The optional cast (Tier B — opt-in at install)
 
-### 2. Only ONE agent touches git
+- **/officer** — compliance enforcer. Pick your regulation(s). (GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, none.)
+- **/ckm** — knowledge curator. Pick your knowledge domain.
+- **/pm** — user+product hybrid. Pick your user persona.
+- **/mentor** — business advisor. Pick your market + jurisdiction.
+- **/marketer** — visibility strategist. Pick your channels + language.
+
+### The plumbing (Tier C — invisible)
+
+- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter` — root agents. Role-defined, not character-defined.
+- `worktree.sh`, `alloc-ports.sh`, `dev.sh` — scripts.
+- Per-project agents (`planner`, `architect`, `developer`, `qa`) — role-defined.
+
+---
+
+## The five load-bearing walls
+
+Touch anything else, but leave these five alone. They are non-negotiable:
+
+### 1. Only `gitter` touches git
 
 The `gitter` agent is the **single git operator**. No other agent runs `git add`, `git commit`, `git merge`, `git push`. This isn't bureaucracy — it's safety:
 
@@ -31,21 +56,11 @@ The `gitter` agent is the **single git operator**. No other agent runs `git add`
 
 If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL.
 
-### 3. Worktree isolation per pipeline
-
-Every `/build` invocation creates:
-- A git branch: `pipeline/{name}`
-- A worktree checkout: `.worktrees/{name}/` (full repo)
-- A unique port allocation (whatever ports your stack needs)
-- Pipeline docs: `docs/dev/tasks/{name}/`
-
-This means you can run **multiple pipelines in parallel on the same machine** without port collisions or git state corruption. When the pipeline completes, gitter merges to main, the worktree is removed, and the docs are archived.
-
-### 4. QA gates everything
+### 2. QA gates the merge
 
 The pipeline runs QA on the worktree branch BEFORE merging to main. Test failures block the merge. Then it runs **post-merge QA on main** to verify the merge didn't break anything. Zero tolerance for "pre-existing failures" — if a test was broken before your pipeline, your pipeline fixes it. Every pipeline leaves main cleaner than it found it.
 
-### 5. Path variables, not hardcoded paths
+### 3. Path variables, not hardcoded paths
 
 Agents receive paths as variables:
 
@@ -57,25 +72,46 @@ Agents receive paths as variables:
 | `$WORKTREE` | Worktree directory | `.worktrees/{some-feature}` |
 | `$ARCHIVE` | Archive parent | `docs/dev/tasks/archive` |
 | `$CDOCS` | Command-owned docs root | `docs/commands` |
+| `$REFS` | Reference docs subdir | `references` |
+| `$RESEARCH` | Research docs subdir | `research` |
+| `$RESOURCES` | Static resources subdir | `resources` |
 
 Agents NEVER hardcode `docs/dev/tasks/...` — they use what `/build` passes them. Path conventions can change without rewriting every agent.
 
-### 6. Self-improvement at the source
+### 4. Worktree isolation per pipeline
+
+Every `/build` invocation creates:
+- A git branch: `pipeline/{name}`
+- A worktree checkout: `.worktrees/{name}/` (full repo)
+- A unique port allocation (whatever ports your stack needs)
+- Pipeline docs: `docs/dev/tasks/{name}/`
+
+This means you can run **multiple pipelines in parallel on the same machine** without port collisions or git state corruption. When the pipeline completes, gitter merges to main, the worktree is removed, and the docs are archived.
+
+### 5. Self-improvement at the source
 
 When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/ccm` (the meta-agent that owns the pipeline itself). CCM edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
 
-### 7. Documentation discipline
+---
 
-Two kinds of docs:
+## The non-negotiable rules baked into every install
 
-- **Pipeline docs** (`docs/dev/tasks/{name}/`) — temporary, archived after pipeline completes. Plans, architecture decisions, QA reports, runbooks.
-- **Permanent docs** (`docs/agents/`, `{project}/docs/`, etc.) — long-lived. Only the `documenter` agent writes here, and only after a pipeline merges.
+These rules appear in `CLAUDE.md` and are referenced by every agent. They are the contract:
 
-This prevents docs from rotting under speculative "we might do this someday" content.
+1. **No code on main except gitter merges and `/jc` commits.**
+2. **Only gitter runs git commands.**
+3. **Never commit broken code** — QA must pass first.
+4. **Never merge before QA passes** — both pre-merge and post-merge.
+5. **Never reuse pipeline names** — check `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `.worktrees/` first.
+6. **Never run destructive git commands** — no `--force`, no `reset --hard`, no `clean -fdx` without explicit user approval.
+7. **Never swallow exceptions silently** — every catch logs the full traceback. Silent failures hide bugs.
+8. **No mocking internal dependencies within 1 hop** — mock only external services (paid APIs, third-party SaaS, anything flaky and outside your trust boundary). Real DB, real queue, real internal services.
+9. **All failing tests are blocking** — no "pre-existing failure" excuse.
+10. **All infrastructure ops go through a single project-owned script** — never reach around it directly from agent code.
 
 ---
 
-## Architecture
+## Pipeline architecture
 
 ```
                               ┌──────────────┐
@@ -98,7 +134,7 @@ This prevents docs from rotting under speculative "we might do this someday" con
                                      ▼
                           ┌─────────────────────┐
                           │  mono-architect     │ → 3-architecture.md
-                          │  cross-project      │   (contracts, shared types)
+                          │  cross-project      │   (contracts, shared types, inline research)
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
@@ -130,7 +166,12 @@ This prevents docs from rotting under speculative "we might do this someday" con
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
-                          │  documenter         │ → updates permanent docs
+                          │  /ca + /officer     │ (parallel — code audit + compliance audit)
+                          │  (officer optional) │   if /officer is opted in
+                          └──────────┬──────────┘
+                                     ▼
+                          ┌─────────────────────┐
+                          │  mono-documenter    │ → updates permanent docs
                           │                     │   archives pipeline dir
                           └──────────┬──────────┘
                                      ▼
@@ -139,56 +180,19 @@ This prevents docs from rotting under speculative "we might do this someday" con
                           └─────────────────────┘
 ```
 
-### Agent roles
-
-**Root agents** (orchestration-level, project-agnostic):
-
-| Agent | Role |
-|-------|------|
-| `mono-planner` | Reads parallel codebase analysis from child planners, decides routing (which projects are affected), writes the cross-project plan |
-| `mono-architect` | Designs cross-project architecture (contracts, shared types) and runs library research inline |
-| `gitter` | The ONLY agent that runs git. Phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL |
-| `mono-documenter` | Merges pipeline decisions into permanent docs after merge passes; archives pipeline directory |
-
-**Child agents** (per-project, in `{project}/.claude/agents/`):
-
-| Agent | Role |
-|-------|------|
-| `planner` | Analyzes its project's codebase + translates the root plan into project-scoped tasks |
-| `architect` | Designs the project's architecture for this feature; researches libraries inline |
-| `developer` | Implements the code, writes happy-path tests, debugs QA-reported bugs |
-| `qa` | Writes adversarial tests (edge cases, unhappy paths), runs the full test suite, reports bugs |
-
-You can add stack-shaped specialists as the project warrants — e.g., a UI/UX agent for visual layers, a data-layer agent that owns schemas/migrations, an ops agent for deploy configs. The blueprint stays out of naming them. Rule of thumb: split by *concern*, not by *technology*.
-
-### Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/build {feature}` | Full pipeline for new features |
-| `/jc {bug}` | Hotfix mode — locate, fix, test, commit on main |
-| `/ccm {request}` | Update pipeline infrastructure (agents, commands, conventions) |
-| `/dev` | Start/stop/restart/status the local dev environment |
-| `/git push\|pull\|...` | Direct gateway to gitter for explicit git ops |
-
-### Scripts
-
-| Script | Purpose |
-|--------|---------|
-| `worktree.sh create\|remove\|list` | Manages git worktrees and bootstraps env (deps, env files, ports) |
-| `alloc-ports.sh alloc\|free\|list` | Reserves unique port slots per worktree (concurrency-safe via flock) |
-| `dev.sh` | Starts dev servers across all projects with the right env |
+Hotfix path: `/jc {bug}` → locate → diagnose → fix → test → gitter JC-COMMIT. Same safety, less ceremony.
+Meta path: `/ccm {request}` → edits the agent definitions at the source.
 
 ---
 
-## File layout
+## File layout (what you end up with after install)
 
 ```
 your-project/
-├── CLAUDE.md                          ← root rules, project structure, optional character
+├── CLAUDE.md                          ← root rules + Jungche persona
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /ccm, /dev (and any extras you add)
+│   ├── commands/                      ← /build, /jc, /ccm, /dev, /git, /wave, /documenter, /professor, /council, /ca + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh
 │   └── settings.json                  ← permissions, env vars, hooks
 ├── {project-a}/                       ← first subproject (you name it)
@@ -198,7 +202,7 @@ your-project/
 │   ├── CLAUDE.md
 │   └── .claude/agents/
 ├── docs/
-│   ├── agents/                        ← cross-project permanent docs (architecture, contracts, map)
+│   ├── agents/                        ← cross-project permanent docs (architecture, API, map, features)
 │   ├── commands/{cmd}/                ← command-owned docs ($CDOCS root)
 │   │   ├── references/                ← must-know
 │   │   ├── research/                  ← looked-up material
@@ -217,38 +221,52 @@ For a single-project repo, drop the `{project-a}/`, `{project-b}/` layer — age
 
 ---
 
-## Non-negotiable rules baked into the templates
+## What you get out of the box
 
-These rules appear in `CLAUDE.md` and are referenced by every agent. They are the contract:
+A `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-1. **No code on main except gitter merges and `/jc` commits.**
-2. **Only gitter runs git commands.**
-3. **Never commit broken code** — QA must pass first.
-4. **Never merge before QA passes** — both pre-merge and post-merge.
-5. **Never reuse pipeline names** — check `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `.worktrees/` first.
-6. **Never run destructive git commands** — no `--force`, no `reset --hard`, no `clean -fdx` without explicit user approval.
-7. **Never swallow exceptions silently** — every catch logs the full traceback. Silent failures hide bugs.
-8. **No mocking internal dependencies within 1 hop** — mock only external services (paid APIs, third-party SaaS, anything flaky and outside your trust boundary). Real DB, real queue, real internal services.
-9. **All failing tests are blocking** — no "pre-existing failure" excuse.
-10. **All infrastructure ops go through a single project-owned script** — never reach around it directly from agent code.
+- **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
+- **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`.
+- **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
+- **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
+- **A debating council** — `/council` runs five archetypes (Tier A + opted-in Tier B) in parallel on a topic, three rounds, then synthesizes a verdict.
+- **Cross-disciplinary analysis** — `/professor` brings 10+ PhDs of your choice to bear on architecture, design, and clinical/safety/correctness questions.
+- **Self-improvement** — `/ccm` is the meta-agent that edits its own pipeline rules at the source.
+- **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
+- **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
 
 ---
 
 ## What you adapt vs. what you keep
 
 **Keep verbatim:**
-- The `gitter` agent (with project list adjusted)
+- The `gitter` agent (with project list adjusted at install)
 - The `worktree.sh` and `alloc-ports.sh` scripts (with port ranges adjusted)
 - The pipeline flow in `/build`
 - The path variable conventions
+- The five load-bearing walls
 - The non-negotiable rules
+- **The character voices** — Jungche's Dr. House sarcasm, JC's panic energy, Professor's cross-disciplinary structure, Council's debate format, the Tier B archetype identities
 
-**Adapt:**
-- Project list (your subprojects, not example placeholders)
-- Stack-shaped descriptions in each project's `CLAUDE.md`
+**Adapt at install (via the SETUP interview):**
+- Project name + project list (your subprojects)
+- Tech stack descriptions in each project's `CLAUDE.md`
 - Test / lint / typecheck / build commands the agents run
 - Port ranges (whatever's free on your machine)
-- Optional character/personality in root `CLAUDE.md` (or remove entirely)
-- Domain-specific commands (you may want compliance, knowledge-curation, debate, or auditor commands — see `ADAPTATION.md` for the abstract pattern)
+- Professor's 10+ PhD disciplines (matched to your domain)
+- Council panel composition (which Tier B archetypes you opt in)
+- Tier B opt-ins (regulation, knowledge domain, user persona, market segment)
+- The character name (default: "Jungche") if you want a different persona
 
-See `ADAPTATION.md` for how to think through the customization without anyone telling you which tools to pick.
+See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md` for the full cast and adaptation examples. See `SETUP.md` for the install interview.
+
+---
+
+## The smell test
+
+**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of Jungche, Professor, and Council* — same archetypes, different content?**
+
+If yes, the blueprint is right.
+If anyone has to delete personality before using it, the blueprint failed.
+
+The mechanics survive every stack. The characters' voices survive every domain. Personality is not decoration — it's load-bearing. If you find yourself stripping voice to "make it generic," stop and parameterize the content instead.
