@@ -95,17 +95,14 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Mechanics: manifest regeneration after every successful update so the new on-disk state becomes the next baseline
 - Mechanics: rollback safety net — failed updates restore the prior `JUNGCHE_VERSION` + manifest rather than leaving a half-updated state
 
-**Machine-to-machine install**
-
-- Docs: `LLM_INSTALL.md` (repo root) — token-dense entry point another LLM fetches when a user types "install Jungche in this project". Contains identity, full cast roster, three-tier model, install protocol, lazy-load URL map, verification gate, and efficiency rules. Bypasses README marketing copy and avoids fetching reference docs that aren't needed during install.
-
 **Reference docs**
 
 - Docs: `BLUEPRINT.md` — three-tier framework, five load-bearing walls, pipeline architecture
 - Docs: `ARCHETYPES.md` — full cast catalog with voice samples, parameterization, adaptation examples across domains (therapy AI, neuropsych, game studio, FinTech, SCADA, open-source library)
 - Docs: `ADAPTATION.md` — archetype-by-archetype customization guide; voice-is-non-negotiable rule
 - Docs: `RELEASE.md` — versioning + maintainer release process; documents `JUNGCHE_VERSION` and `JUNGCHE_MANIFEST.json`
-- Docs: `README.md` — quick start leads with the M2M one-liner; "Staying current" section documents `/ccm update` apply modes; repo layout
+- Docs: `INSTALL.md` (repo root) — interactive installer protocol. Written FOR Claude in the adopter's project: pre-flight checks, 8 question batches (project identity, structure, test/build commands, ports, domain & disciplines, optional commands, character, confirmation), execution order, and hard rules ("never assume", "never overwrite without asking", "never inject Freudche's character"). Includes a Professor template that fills from the discipline-picker batch.
+- Docs: `README.md` — quick start hands Claude the `INSTALL.md` URL one-liner; "Staying current" section documents `/ccm update` apply modes; repo layout
 
 ### Migration
 

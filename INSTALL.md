@@ -127,16 +127,15 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 ### Batch 6 — Optional commands
 
 ```
-14. Beyond the core (/build, /jc, /ccm, /dev, /git, /blueprint, /professor, /ca), which
-    boutique commands do you want? Pick from the Freudche menu, request your own, or skip:
+14. Beyond the core Tier A + C (/build, /jc, /ccm, /dev, /git, /wave, /documenter,
+    /professor, /council, /ca), which Tier B archetypes do you want? Pick from the menu,
+    request your own, or skip:
 
-    - /officer — privacy/compliance auditor (GDPR, HIPAA, SOC2, etc.)
+    - /officer — privacy/compliance auditor (GDPR, HIPAA, SOC2, FDA, ISO 27001, MiFID, etc.)
     - /mentor — startup/business advisor
     - /marketer — visibility & growth strategist
-    - /tpm — product-manager perspective on features
-    - /council — multi-agent debate (calls 3–5 perspectives, synthesizes verdict)
+    - /pm — therapist-product-manager hybrid (or your own user-persona variant)
     - /ckm — domain knowledge curator (for projects with a knowledge base)
-    - /wave — batch /build runner (multiple features from a backlog file)
     - your own: ___ — describe purpose, scope, owns-which-docs
 
     For each you pick, I will need: scope, owned doc paths under $CDOCS, and one-line purpose.
@@ -246,7 +245,32 @@ Edit `dev.sh`:
 chmod +x .claude/scripts/*.sh
 ```
 
-### Step 9 — Smoke test
+### Step 9 — Record version + install manifest
+
+This is what `/ccm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
+
+1. Fetch the current blueprint version:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/VERSION > .claude/JUNGCHE_VERSION
+   ```
+2. Write `.claude/JUNGCHE_MANIFEST.json` — SHA-256 of every file you wrote in Steps 2–8, AFTER placeholder substitution but BEFORE the user has touched anything. Format:
+   ```json
+   {
+     "version": "<contents of VERSION>",
+     "installed_at": "<ISO 8601 UTC>",
+     "files": {
+       "CLAUDE.md": "sha256:...",
+       ".claude/agents/gitter.md": "sha256:...",
+       ".claude/commands/build.md": "sha256:...",
+       ...
+     }
+   }
+   ```
+3. Hashes are computed via `sha256sum {file} | awk '{print "sha256:" $1}'` per file. Include only files you wrote — not pre-existing project files.
+
+This is the baseline `/ccm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
+
+### Step 10 — Smoke test
 
 DO NOT run `/build` yet. First:
 
@@ -341,7 +365,7 @@ Parse `$ARGUMENTS`:
 
 ---
 
-## Final report (after Step 9)
+## Final report (after Step 10)
 
 End the install with a checklist back to the user:
 
