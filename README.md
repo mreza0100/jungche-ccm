@@ -1,5 +1,7 @@
 # Jungche CCM — Multi-Agent Claude Code Pipeline
 
+**Current version:** [v1.0.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v1.0.0) · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
+
 A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character** — Jungche the senior architect, JC the panic-debugger, Professor the cross-disciplinary analyst, Council the debating roundtable, plus a full cast of optional domain archetypes — refitted to YOUR project at install time.
 
 > Distilled from a production multi-project codebase. The pipeline mechanics survive every stack; the characters' voices survive every domain. **Personality is not decoration — it's load-bearing.** Strip it out and you're shipping a Confluence wiki with extra steps.
@@ -14,6 +16,7 @@ A portable, opinionated `.claude/` infrastructure that turns Claude Code from "a
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` for surgical bug fixes that bypass the full pipeline but still go through QA + gitter.
 - **Self-improvement at the source** — `/ccm` is the meta-agent that edits its own pipeline rules. No "lessons learned" files that nobody reads.
+- **Versioned updates that don't clobber your customizations** — `/ccm update` reads `CHANGELOG.md` between your version and the latest, walks you through changes interactively. Auto-applies mechanics, asks before character refinements, opt-in for new Tier B archetypes, explicit consent per step for breaking migrations. See [§ Staying current](#staying-current).
 - **Path conventions** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
 
@@ -96,6 +99,74 @@ These are the rules that make the system work. Touch anything else, but leave th
 Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of Jungche, Professor, and Council* — same archetypes, different content? **If yes, the blueprint is right. If anyone has to delete personality before using it, the blueprint failed.**
 
 The mechanics survive every stack. The voices survive every domain. Personality is not decoration — it's load-bearing.
+
+---
+
+## <a name="staying-current"></a>Staying current
+
+When new versions of Jungche are released, your install can pull updates without losing customizations:
+
+```
+/ccm update              # Walk through changes interactively
+/ccm update check        # Read-only — preview what would change
+/ccm update --to v1.2.0  # Pin to a specific version
+/ccm update --tier-b     # Only consider new Tier B archetypes
+```
+
+**How it works:**
+1. Reads `.claude/JUNGCHE_VERSION` (recorded at install)
+2. Fetches the latest blueprint from this repo
+3. Reads `CHANGELOG.md` entries between your version and the latest
+4. Walks you through changes per category:
+
+| Category | Apply mode |
+|----------|-----------|
+| **Mechanics** (build step, gitter phase, script fix) | Auto-applies with diff preview |
+| **Tier A** (Jungche / JC / Professor / Council voice refinement) | Shows diff, asks confirmation — preserves your customization by default |
+| **Tier B** (new domain archetype published) | Asks "want to opt in?" — if yes, runs the SETUP interview subset to fill placeholders |
+| **Breaking** (renames, removed commands, convention changes) | Interactive walkthrough, explicit consent per migration step |
+
+5. Updates `.claude/JUNGCHE_VERSION` on success.
+
+**Safety rails:**
+- Never overwrites user customizations without explicit consent
+- Never auto-applies MAJOR migrations
+- Never touches `.claude/settings.json` (hand-curated per project)
+- Never touches `docs/commands/{cmd}/` (command-owned content, not blueprint templates)
+- Never downgrades
+
+See [`blueprint/RELEASE.md`](./blueprint/RELEASE.md) for the maintainer-side release process and the precise semantics of each change category.
+
+---
+
+## Repo layout
+
+```
+jungche-ccm/
+├── VERSION              ← single-line semver — what's currently published
+├── CHANGELOG.md         ← Keep-A-Changelog format, parsed by /ccm update
+├── README.md            ← you are here
+├── INSTALL.md           ← legacy manual install path (still works)
+├── LICENSE              ← MIT
+└── blueprint/
+    ├── README.md        ← entry point + when to use
+    ├── BLUEPRINT.md     ← philosophy, three-tier framework, load-bearing walls
+    ├── ARCHETYPES.md    ← the cast — every character with voice + adaptation examples
+    ├── SETUP.md         ← interactive install interview Claude conducts
+    ├── ADAPTATION.md    ← archetype-by-archetype customization guide
+    ├── RELEASE.md       ← versioning + release process for maintainers
+    └── templates/
+        ├── CLAUDE.md            ← root rules + Jungche persona (non-deletable)
+        ├── agents/
+        │   ├── gitter.md
+        │   ├── mono-{planner,architect,documenter}.md
+        │   └── per-project/     ← child agents (planner, architect, developer, qa)
+        ├── commands/            ← Tier A always + Tier B opt-in
+        │   ├── build.md, jc.md, ccm.md, dev.md, git.md, wave.md, documenter.md
+        │   ├── professor.md, council.md, ca.md
+        │   └── officer.md, ckm.md, pm.md, mentor.md, marketer.md
+        └── scripts/             ← worktree.sh, alloc-ports.sh, dev.sh
+```
 
 ---
 
