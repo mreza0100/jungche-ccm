@@ -39,6 +39,33 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [0.2.0] — 2026-04-28
+
+### Added
+
+- Docs: `INSTALL.md` Pre-flight Step 7 — detects existing project markdown (THESIS, MENTOR_BRIEFING, COMPETITOR_LANDSCAPE, REGULATORY_LANDSCAPE, etc.) and surfaces them in findings before classification.
+- Docs: `INSTALL.md` Pre-flight Step 1 — non-git-repo handling now explicit. Asks user to `git init` first (preserves `git mv` history) or proceed without git. Never `git init` silently.
+- Docs: `INSTALL.md` Step 1.5 (NEW) — Re-home existing project docs with a deterministic classification rubric. Maps content type → destination: `docs/business/` for thesis/vision/strategy, `$CDOCS/mentor/` for GTM/buyer/primer/risk, `$CDOCS/marketer/` for competitor/positioning/channel, `$CDOCS/officer/` for regulatory/compliance, `$CDOCS/pm/` for persona/pain/workflow, `$CDOCS/ckm/` for knowledge primers, `docs/dev/research/` for research-log/open-questions/experiments. Includes `$REFS` vs `$RESEARCH` decision rule, fallback when archetype not opted in (ask to opt-in or place in `docs/dev/research/` and flag), and `git mv` vs plain `mv` per repo state.
+- Docs: `INSTALL.md` Step 1 — also creates `$CDOCS/<archetype>/{references,research,resources}` subtrees per opted-in Tier B.
+- Docs: `INSTALL.md` Batch 8 — confirmation step now shows proposed re-home moves and unclassified files alongside the file write list.
+
+### Changed
+
+- Docs: `INSTALL.md` — fixed `/tpm` → `/pm` (rename happened upstream); removed `/blueprint` from "core" list (it's the maintainer command in Freudche, not an adopter command); added Tier B framing.
+- Docs: `INSTALL.md` — execution Step 9 (record `JUNGCHE_VERSION` + `JUNGCHE_MANIFEST.json`) and Step 10 (smoke test, was Step 9). The manifest write-step was missing in v0.1.0's INSTALL.md.
+
+### Migration
+
+#### → For: `Docs: INSTALL.md Step 1.5` (no action for existing installs)
+
+This change only affects FRESH installs. Existing installs already chose where their docs live; re-running the rubric on a settled project would just churn paths. **`/ccm update`: skip — informational only.** If an existing user wants to re-home docs after the fact, they can ask `/ccm` to apply the rubric retroactively (one-shot operation, not part of `/ccm update`).
+
+#### → For: `Docs: INSTALL.md` Pre-flight + Batch 8 + Step 1 polish
+
+Same — fresh-install only. **`/ccm update`: skip — informational only.**
+
+---
+
 ## [0.1.0] — 2026-04-28
 
 **First public release.** The Jungche blueprint with the character-mandatory philosophy, the install-time manifest mechanism, and the LLM-first install protocol.
