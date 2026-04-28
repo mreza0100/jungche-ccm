@@ -1,6 +1,6 @@
 # Jungche CCM — Multi-Agent Claude Code Pipeline
 
-**Current version:** [v0.1.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v0.1.0) · _Pre-stable — public API still settling._ · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
+**Current version:** [v0.2.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v0.2.0) · _Pre-stable — public API still settling._ · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
 
 ```
 > /ccm update          # in your installed project, when a new version drops

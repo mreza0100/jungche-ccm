@@ -20,15 +20,22 @@ This installer's job: **ask, don't assume**.
 
 ## Pre-flight (Claude does this silently before asking the user anything)
 
-1. Confirm we are in a git repository (`git rev-parse --is-inside-work-tree`).
+1. Confirm we are in a git repository (`git rev-parse --is-inside-work-tree`). If NOT a git repo, ask the user whether to `git init` first (recommended — gives `git mv` history-preservation for any re-homing later) or proceed without git. Don't `git init` silently.
 2. Confirm `tmp/` and `.worktrees/` are absent or already gitignored. If present and ungitignored, flag it.
 3. Detect existing `CLAUDE.md` and `.claude/` — if present, **STOP** and ask the user whether to overwrite, merge, or abort.
 4. Run `git status` and warn if uncommitted work exists. Don't proceed without acknowledgment.
 5. Detect package manager hints (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `uv.lock`, `Cargo.toml`, `go.mod`, `requirements.txt`, `pyproject.toml`).
 6. Detect monorepo hints (multiple top-level dirs each with their own `package.json` / `pyproject.toml` / `Cargo.toml`).
+7. **Detect existing project documentation** — surface non-blueprint markdown that looks like research/strategy/onboarding artifacts. Run:
+   ```bash
+   find . -maxdepth 2 -type f -name "*.md" \
+     ! -name "README.md" ! -name "LICENSE*" ! -name "CHANGELOG*" ! -name "CONTRIBUTING*" \
+     ! -path "./node_modules/*" ! -path "./.git/*" ! -path "./.claude/*"
+   ```
+   These are existing material that needs re-homing into the Jungche taxonomy. **Do NOT classify yet** — classification depends on which Tier B archetypes the user opts into (Batch 6). Just list them in the findings paragraph.
 
 Report findings in one short paragraph BEFORE asking questions, e.g.:
-> "I see this is a Node + Python monorepo with `api/` (pnpm) and `worker/` (uv). No existing `.claude/` setup. Working tree is clean. Ready to ask questions."
+> "I see this is a Node + Python monorepo with `api/` (pnpm) and `worker/` (uv). No existing `.claude/` setup. Working tree is clean. I also see 17 root-level markdown files (THESIS, MENTOR_BRIEFING, COMPETITOR_LANDSCAPE, REGULATORY_LANDSCAPE, etc.) — those will need re-homing once we settle which Tier B archetypes you want. Ready to ask questions."
 
 ---
 
@@ -160,9 +167,11 @@ Before I touch any file, I'll show you:
 - The list of files I'll write (count + paths)
 - The customized /professor frontmatter
 - The customized /ca scope table
+- **Proposed re-home moves for existing project docs** (one row per file: source → destination, with the classification reason)
+- **Files I cannot classify** (will ask you per-file or default to docs/dev/research/)
 - Any questions where I'm still uncertain
 
-Type "go" to proceed, or correct anything that's wrong.
+Type "go" to proceed, or correct anything that's wrong (e.g., "move 03_THE_PAIN.md to docs/business/ instead").
 ```
 
 ---
@@ -178,6 +187,71 @@ mkdir -p .claude/{agents,commands,scripts}
 mkdir -p docs/{agents,commands,dev/tasks/archive,dev/waves,dev/research}
 echo -e ".worktrees/\ntmp/" >> .gitignore
 ```
+
+For each Tier B archetype the user opted into in Batch 6, also create its `$CDOCS` subtree:
+```bash
+# Example for /mentor opted in:
+mkdir -p docs/commands/mentor/{references,research,resources}
+# Repeat for /officer, /pm, /marketer, /ckm, etc. — only the ones picked.
+```
+
+### Step 1.5 — Re-home existing project docs
+
+For every file surfaced in Pre-flight Step 7, classify and move into the Jungche taxonomy. **Do NOT skip this — leaving research docs at the root means they get ignored by every command and the project loses context.**
+
+#### Classification rubric
+
+Apply rules in order. First match wins. Match BOTH on filename hints AND on a quick content scan (first 500 chars + headings).
+
+| Content signature | Destination | Notes |
+|---|---|---|
+| Names matching `THESIS`, `VISION`, `MISSION`, `STRATEGY`, `PARALLEL_PROJECTS`, `PRODUCT_VISION` | `docs/business/<slugified-name>.md` | Lowercase + hyphenate the name |
+| Names matching `GLOSSARY`, `TERMS`, `DICTIONARY` | `docs/business/glossary.md` | One canonical glossary per project |
+| Names matching `BUYER`, `MARKET`, `GTM`, `GO_TO_MARKET`, `BUSINESS_MODEL`, `PRIMER` (domain primer), `*MENTOR*`, `RISK*`, `INTERNATIONAL_*`, `FUNDING` | `$CDOCS/mentor/$REFS/<slug>.md` (if living must-know) or `$CDOCS/mentor/$RESEARCH/<slug>.md` (if looked-up analysis) | Only if `/mentor` opted in. If not, see fallback below. |
+| Names matching `COMPETITOR`, `INCUMBENT`, `POSITION`, `SEO`, `CHANNEL`, `CONTENT_GAP`, `BRAND_VOICE` | `$CDOCS/marketer/$REFS/` or `$CDOCS/marketer/$RESEARCH/` | Only if `/marketer` opted in |
+| Names matching `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `FDA`, `PRIVACY`, `LEGAL_LANDSCAPE`, `CERTIFICATION` | `$CDOCS/officer/$REFS/` or `$CDOCS/officer/$RESEARCH/` | Only if `/officer` opted in |
+| Names matching `PERSONA`, `USER_*`, `*_PAIN`, `*_PAIN_MAP`, `JOBS_TO_BE_DONE`, `USER_STORY`, `WORKFLOW`, `DAILY_LIFE` | `$CDOCS/pm/$REFS/` or `$CDOCS/pm/$RESEARCH/` | Only if `/pm` opted in |
+| Names matching `KNOWLEDGE`, `DOMAIN_PRIMER`, `PROTOCOL`, `METHODOLOGY`, `FRAMEWORK_<domain>` | `$CDOCS/ckm/$RESEARCH/` | Only if `/ckm` opted in |
+| Names matching `RESEARCH_LOG`, `OPEN_QUESTIONS`, `VALIDATION_LOG`, `EXPERIMENTS`, `SPIKE_*`, `INVESTIGATION` | `docs/dev/research/<slug>.md` | Always available — no archetype required |
+| Names matching `MENTOR_BRIEFING`, `INVESTOR_*`, `PITCH`, `ONE_PAGER`, `FOUNDER_STORY` | `$CDOCS/mentor/$REFS/<slug>.md` (if `/mentor`) OR `docs/business/<slug>.md` (fallback) | These are the "show to outsider" docs |
+| `README.md`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*` | **KEEP AT ROOT — DO NOT MOVE** | Standard repo conventions |
+| Anything else (no filename match, ambiguous content) | **ASK THE USER** before moving | Default proposal: `docs/dev/research/<slug>.md` |
+
+#### `$REFS` vs `$RESEARCH` decision
+
+Within an archetype's `$CDOCS/<cmd>/` directory:
+- **`$REFS`** = living must-know, loaded almost every invocation (regulatory framework, persona, GTM plan, briefing, primer)
+- **`$RESEARCH`** = looked-up analysis loaded on demand (competitor scan, risk deep-dive, market study)
+- **`$RESOURCES`** (some archetypes) = static assets loaded almost every time (playbook, templates)
+
+If the doc reads like "the rules / the canon / what every advisor needs to know," it's `$REFS`. If it reads like "I went and looked into X and here's what I found," it's `$RESEARCH`.
+
+#### Fallback when archetype not opted in
+
+If a file matches an archetype the user did NOT pick (e.g., `REGULATORY_LANDSCAPE.md` but no `/officer`), do this:
+
+1. **Ask the user** if they want to opt into that archetype now — the file's existence suggests they need it. Run a quick mini-interview if yes.
+2. **If still no**, place at `docs/dev/research/<slug>.md` and **flag in the final report** that the file wasn't ideally homed: "REGULATORY_LANDSCAPE.md is in `docs/dev/research/` because you skipped `/officer` — re-run install with `/officer` opted in to move it to `$CDOCS/officer/$REFS/`."
+
+#### Execution
+
+For each classified file:
+
+```bash
+# If git repo (preferred — preserves history):
+git mv <source> <destination>
+
+# If NOT a git repo:
+mv <source> <destination>
+```
+
+**Never** `cp` + delete — always `mv` so the file isn't accidentally duplicated.
+
+After moves are staged, do NOT commit — that's the user's call (per Hard Rule 5). Just leave the renames staged so `git status` shows the plan and the user can review before committing.
+
+#### What about subdirectories under `docs/` that already exist?
+
+If the user already has `docs/research/` or `docs/strategy/` (different from Jungche's `docs/dev/research/` and `docs/business/`), classify each file inside and propose re-homing into the Jungche structure. Don't preserve the user's old taxonomy if it conflicts with Jungche's — Jungche has one canonical layout per command's $CDOCS. But ASK before moving if uncertain.
 
 ### Step 2 — CLAUDE.md (root)
 
