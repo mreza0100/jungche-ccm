@@ -35,129 +35,85 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+*Pending changes for the next release will accumulate here.*
+
+---
+
+## [0.1.0] — 2026-04-28
+
+**First public release.** The Jungche blueprint with the character-mandatory philosophy, the install-time manifest mechanism, and the LLM-first install protocol.
+
+> **Versioning note:** this release replaces a briefly-published `v1.0.0` tag (live ~1 hour on 2026-04-28) that was yanked. `v0.1.0` reflects the project's actual maturity — pre-stable, evolving fast. `v1.0.0` will return when the public API (cast roster, install protocol, update mechanism, changelog format) is committed-to. No content was lost in the yank — `v1.0.0`'s contents are subsumed here.
+
 ### Added
 
-- Mechanics: `.claude/JUNGCHE_MANIFEST.json` — install-time SHA-256 manifest of every Jungche-owned file. Baseline for `/ccm update`'s three-way hash compare (installed vs. current vs. upstream-new) so customization detection is deterministic instead of best-effort diffing.
-- Docs: `blueprint/SETUP.md` Step 11 — install now writes the manifest after placeholder substitution.
-- Docs: `blueprint/templates/commands/ccm.md` Step 5 — full truth table covering pristine / safe-apply / preserve-user / real-conflict, plus edge cases (new files, deleted files, removed-upstream, pre-manifest installs).
-- Docs: `blueprint/templates/commands/ccm.md` Step 9 — manifest regeneration after a successful update so the new on-disk state becomes the next baseline.
-- Docs: `blueprint/RELEASE.md` — adopter version-tracking section now documents the manifest alongside `JUNGCHE_VERSION`.
-- Docs: `LLM_INSTALL.md` (NEW, repo root) — machine-to-machine install briefing for LLMs. Token-dense entry point with full cast table, three-tier model, install protocol, lazy-load URL map, and verification gate. The single URL another LLM fetches when a user types "install Jungche in this project" — bypasses README marketing copy and avoids fetching reference docs that aren't needed during install.
-- Docs: `README.md` Quick start — promotes the one-liner M2M handshake (`Read https://raw.githubusercontent.com/.../LLM_INSTALL.md and install Jungche`) above the clone-and-read path.
+**Philosophy & framework**
+
+- Three-tier model (Tier A universal archetypes / Tier B domain archetypes / Tier C pure mechanics) — character is mandatory, content is parameterized at install
+- Five load-bearing walls — only `gitter` touches git, QA gates the merge (pre AND post), path variables not hardcoded paths, worktree isolation per pipeline, self-improvement at the source (`/ccm` edits agent definitions; no journal files)
+
+**Tier A — universal archetypes (full character preserved)**
+
+- Tier A: Jungche persona — Dr. House senior engineer (sarcastic, witty, blunt, emoji-fluent); default name with rename-freely instruction
+- Tier A: `/jc` — "Jesus Christ but make it cool" panic-debug mode; the ONLY command allowed to edit `main` directly
+- Tier A: `/professor` — grandfatherly polymath with 10+ parameterized PhDs; intersection lens
+- Tier A: `/council` — three-round debate (opening / rebuttal / verdict); JC + Professor mandatory + 3 parameterized panel seats
+- Tier A: `/ccm` — meta-engineer that edits the pipeline at the source; ships `update` subcommand for adopter-side version pulls
+- Tier A: `/ca` — codebase hygiene + 9-category security audit; Jungche-in-janitor-mode voice
+
+**Tier B — domain archetypes (opt-in templates with documented placeholders)**
+
+- Tier B: `/officer` (opt-in) — compliance enforcer; `{REGULATION}`, `{ENFORCEMENT_AUTHORITY}`, `{DATA_SUBJECT_RIGHTS}`, `{INCIDENT_NOTIFICATION_TIMELINE}`, `{SACRED_GROUND_DATA}`
+- Tier B: `/ckm` (opt-in) — knowledge curator; `{KNOWLEDGE_DOMAIN}`, `{KNOWLEDGE_TAXONOMY}`, `{KNOWLEDGE_CONSUMERS}`, `{SOURCE_AUTHORITIES}`, `{KNOWLEDGE_ROOT}`
+- Tier B: `/pm` (opt-in) — user+product hybrid; `{USER_PERSONA}`, `{USER_PROFESSION}`, `{PRODUCT_DOMAIN}`, `{USER_DAILY_WORKFLOW}`, `{USER_PAIN_POINTS}`, `{PERSONA_VARIANTS}`; Love Meter framework
+- Tier B: `/mentor` (opt-in) — business advisor; `{MARKET_SEGMENT}`, `{JURISDICTION}`, `{LEGAL_ENTITY_TYPE}`, `{FUNDING_LANDSCAPE}`, `{REGULATORY_BODIES}`, `{TAX_INCENTIVES}`
+- Tier B: `/marketer` (opt-in) — anti-hype visibility strategist; `{CHANNEL_LANDSCAPE}`, `{TARGET_LANGUAGE}`, `{COMPETITIVE_LANDSCAPE}`, `{INDUSTRY_CONFERENCES}`, `{AUDIENCE_VOCABULARY}`
+
+**Tier C — pure mechanics**
+
+- Mechanics: `/build` — full pipeline orchestration (planner → architect → developer → QA → gitter merge → post-merge QA → pipeline audit → archive)
+- Mechanics: `/build` Step 9.5 — pipeline audit runs `/ca` (always) + `/officer` (when opted in) in parallel between post-merge QA and mono-documenter
+- Mechanics: `/dev`, `/git`, `/wave`, `/documenter` — pipeline plumbing with light Jungche voice in reports
+
+**Templates**
+
+- Templates: `templates/CLAUDE.md` — Jungche persona section non-deletable; `{SACRED_GROUND}` and `{USER_PERSONA}` placeholders; full cast table
+- Templates: `templates/agents/` — root agents (`gitter`, `mono-planner`, `mono-architect`, `mono-documenter`)
+- Templates: `templates/agents/per-project/` — child agents (`planner`, `architect`, `developer`, `qa`) for monorepo installs
+- Templates: `templates/scripts/` — `worktree.sh`, `alloc-ports.sh`, `dev.sh`
+
+**Install protocol**
+
+- Mechanics: `SETUP.md` — 10-question interactive interview (Claude in adopter project conducts it before any file write)
+- Mechanics: `.claude/JUNGCHE_VERSION` — single-line semver written at install for adopter version tracking
+- Mechanics: `.claude/JUNGCHE_MANIFEST.json` — install-time SHA-256 manifest of every Jungche-owned file (post-placeholder-substitution). Baseline for `/ccm update`'s three-way customization detection (installed vs. current vs. upstream-new). Format: `{ version, installed_at, files: { "<path>": "sha256:<hash>" } }`.
+
+**Update mechanism (`/ccm update`)**
+
+- Mechanics: truth-table-based customization detection — four cases (pristine / safe-apply / preserve-user / real-conflict) plus edge cases (new files, deleted files, removed-upstream, pre-manifest installs)
+- Mechanics: per-bullet migration sub-headings (`#### → For: <bullet>`) so changelog entries can specify exact upgrade steps per change
+- Mechanics: manifest regeneration after every successful update so the new on-disk state becomes the next baseline
+- Mechanics: rollback safety net — failed updates restore the prior `JUNGCHE_VERSION` + manifest rather than leaving a half-updated state
+
+**Machine-to-machine install**
+
+- Docs: `LLM_INSTALL.md` (repo root) — token-dense entry point another LLM fetches when a user types "install Jungche in this project". Contains identity, full cast roster, three-tier model, install protocol, lazy-load URL map, verification gate, and efficiency rules. Bypasses README marketing copy and avoids fetching reference docs that aren't needed during install.
+
+**Reference docs**
+
+- Docs: `BLUEPRINT.md` — three-tier framework, five load-bearing walls, pipeline architecture
+- Docs: `ARCHETYPES.md` — full cast catalog with voice samples, parameterization, adaptation examples across domains (therapy AI, neuropsych, game studio, FinTech, SCADA, open-source library)
+- Docs: `ADAPTATION.md` — archetype-by-archetype customization guide; voice-is-non-negotiable rule
+- Docs: `RELEASE.md` — versioning + maintainer release process; documents `JUNGCHE_VERSION` and `JUNGCHE_MANIFEST.json`
+- Docs: `README.md` — quick start leads with the M2M one-liner; "Staying current" section documents `/ccm update` apply modes; repo layout
 
 ### Migration
 
-Per-bullet upgrade instructions. `/ccm update` reads these and executes them in order. **All steps in this release are non-breaking and run automatically — no user prompts required for the migration itself, though file-by-file changes still go through the normal `/ccm update` apply flow.**
+This is the first public release. Adopters install via the M2M handshake (see `LLM_INSTALL.md`) or the manual `SETUP.md` flow. **No prior version exists to migrate from.**
 
-#### → For: `Mechanics: .claude/JUNGCHE_MANIFEST.json` (bootstrap on first run)
-
-An existing v1.0.0 install does NOT have a manifest. Before doing anything else, `/ccm update` MUST bootstrap one from the current on-disk state, treating "what the user has right now" as their starting baseline.
-
-**Steps `/ccm update` runs automatically:**
-
-1. **Detect missing manifest:**
-   ```bash
-   if [ ! -f .claude/JUNGCHE_MANIFEST.json ]; then
-     echo "Pre-1.0.1 install detected — bootstrapping manifest from current state."
-   fi
-   ```
-2. **Identify Jungche-owned files** by intersecting the on-disk filesystem with the v1.0.0 blueprint's file list (fetched from `git show v1.0.0:blueprint/templates/...`):
-   - `CLAUDE.md` (root)
-   - `.claude/agents/*.md`
-   - `.claude/commands/*.md`
-   - `.claude/scripts/*.sh`
-   - Per-project `CLAUDE.md` and `.claude/agents/*.md` (if monorepo)
-3. **Hash each file in its current state** (NOT the original blueprint — the user may have customized since install):
-   ```bash
-   sha256sum {file} | awk '{print "sha256:" $1}'
-   ```
-4. **Write `.claude/JUNGCHE_MANIFEST.json`** with `version: "1.0.0"` (their actual install version, NOT the new version yet) and `installed_at: <bootstrap timestamp + note>`:
-   ```json
-   {
-     "version": "1.0.0",
-     "installed_at": "2026-04-28T14:32:00Z",
-     "bootstrapped": true,
-     "bootstrap_note": "Manifest reconstructed from on-disk state on first /ccm update — pre-1.0.1 install. Customization detection treats current state as baseline.",
-     "files": { "...": "sha256:..." }
-   }
-   ```
-5. **Warn the user** once, in the update report:
-   > "Your install predates the manifest (v1.0.0). I bootstrapped one from your current files. Customization detection going forward is reliable; for THIS update, files you customized between install and now will look pristine. Ask me to show diffs if you want to double-check anything."
-
-**Why this is safe:** the bootstrap conservatively treats current state as baseline. The downside is that customizations made between install and the first `/ccm update` won't be auto-detected as customizations — they'll be silently adopted as the new baseline. Acceptable tradeoff: any subsequent update has accurate detection, and the user gets a one-time warning.
-
-#### → For: `Docs: SETUP.md Step 11` (no action for existing installs)
-
-This change only affects FRESH installs. Existing installs get the same behavior via the bootstrap above. **`/ccm update`: skip — informational only.**
-
-#### → For: `Docs: ccm.md Step 5` (apply on update)
-
-The new `/ccm update` flow uses the truth table. The user gets the new behavior automatically the next time they run `/ccm update` AFTER this release lands — but THIS run is the transition. So:
-
-1. **Use the OLD behavior for this run only** (the pre-truth-table flow that was running when the user typed `/ccm update`). The new ccm.md gets applied as a normal `Docs:` change to `.claude/commands/ccm.md` during this run.
-2. **Inform the user** at end of run:
-   > "Heads up: starting next `/ccm update`, customization detection uses the new SHA-256 truth table. Your manifest is in place, so there's nothing to do — it just works better."
-
-#### → For: `Docs: ccm.md Step 9` (apply automatically at end of run)
-
-Step 9 (regenerate manifest after update) is the FIRST thing `/ccm update` should adopt — even on this transition run. After the user accepts/rejects each file change, the manifest gets rewritten to reflect the new on-disk reality:
-
-1. After all per-file decisions are committed to disk, regenerate:
-   ```bash
-   jq -n --arg v "$LATEST_VERSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     '{version: $v, installed_at: $ts, files: {}}' > .claude/JUNGCHE_MANIFEST.json
-   # Append every Jungche-owned file with its new sha256
-   ```
-2. Drop the `bootstrapped: true` flag if it was present — after a clean update, the manifest is no longer a reconstruction.
-3. Update `.claude/JUNGCHE_VERSION` to the new version AFTER the manifest is written successfully (so a partial failure leaves a recoverable state).
-
-#### → For: `Docs: RELEASE.md` (no action)
-
-Maintainer-side documentation only. **`/ccm update`: skip — adopters never read RELEASE.md.**
-
-#### → For: `Docs: LLM_INSTALL.md` (no action for existing installs)
-
-This file is for FRESH installs only — it's the entry point another LLM fetches before any local file exists. Existing installs already have everything it describes. **`/ccm update`: skip — informational only.**
-
-#### → For: `Docs: README.md Quick start` (no action)
-
-Public-facing README change. Adopters don't have a copy of the blueprint's README.md in their project. **`/ccm update`: skip — informational only.**
-
----
-
-**Migration safety net:** if any step above fails (disk full, permission denied, jq missing), `/ccm update` MUST roll back to the pre-update state — meaning the OLD `JUNGCHE_VERSION` and OLD manifest (or no manifest, if bootstrapping failed). Never leave the user in a half-updated state where the version says "1.0.1" but the manifest is missing or stale.
-
----
-
-## [1.0.0] — 2026-04-28
-
-**Initial public release** of the Jungche blueprint with the character-mandatory philosophy.
-
-### Added
-
-- **Mechanics: `VERSION` + `CHANGELOG.md`** — release versioning + adopter-facing changelog
-- **Tier A: full cast of universal archetypes ship with character preserved** — Jungche, /jc, /professor, /council, /ccm, /ca
-- **Tier B: domain archetype skeletons ship as opt-in templates** — /officer, /pm, /mentor, /marketer, /ckm (each with documented placeholder list)
-- **Mechanics: pipeline command set** — /build, /dev, /git, /wave, /documenter
-- **Mechanics: pipeline audit step** — /build Step 9.5 runs /ca (always) + /officer (when opted in) in parallel between post-merge QA and mono-documenter
-- **Docs: `BLUEPRINT.md`** — three-tier framework (Universal / Domain / Mechanics), five load-bearing walls, pipeline architecture
-- **Docs: `ARCHETYPES.md`** (NEW) — full cast catalog with voice samples, parameterization, adaptation examples across multiple domains (therapy AI, neuropsych, game studio, FinTech, SCADA, open-source library)
-- **Docs: `ADAPTATION.md`** — archetype-by-archetype customization guide, voice-is-non-negotiable rule
-- **Docs: `SETUP.md`** — 10-question interactive install interview Claude conducts (Phase 1 interview → Phase 2 customization → Phase 3 smoke test)
-- **Templates: `templates/CLAUDE.md`** — Jungche persona section is **non-deletable**; `{SACRED_GROUND}` and `{USER_PERSONA}` placeholders; full cast table with Tier A always-on, Tier B conditional
-- **Templates: `templates/agents/per-project/`** — child agents (architect, developer, planner, qa) live under per-project/ to match BLUEPRINT.md file layout
-
-### Changed
-
-- **Philosophy: character is mandatory, content is parameterized** — replaces the previous "technology-agnostic + personality-optional" approach. The blueprint exports a transplantable nervous system, not a sanitized spec.
-- **Mechanics: `templates/commands/build.md`** — added Step 9.5 (pipeline audit), updated Pipeline Reference table
-
-### Removed
-
-- **Philosophy: "Character is OPTIONAL" rule** — explicitly forbidden. Tier A archetypes ship with full voice; the empty-template trap is forbidden.
-- **Philosophy: technology-agnostic gag rule** — replaced with parameterized-content rule (techs are still placeholders, but the install interview fills them in concretely)
+The `/ccm update` infrastructure ships IN this release so future releases (`v0.2.0+`) can use it. The first time a `v0.1.0`-installed adopter runs `/ccm update`, the manifest will be present (it was written at install) and the three-way compare works on the first invocation.
 
 ### Notes
 
-- The five load-bearing walls remain non-negotiable: only gitter touches git, QA gates the merge, path variables not hardcoded paths, worktree isolation per pipeline, self-improvement at the source.
-- The mock policy (external yes / internal-within-1-hop no) and zero-tolerance test policy are unchanged.
+- The yanked `v1.0.0` tag (briefly live ~1 hour on 2026-04-28) is superseded by `v0.1.0`. The pre-stable `0.x` versioning lets the project iterate the public API (cast roster, install protocol, update mechanism, changelog format) without semver violations until things settle.
+- The mock policy (external yes / internal-within-1-hop no) and zero-tolerance test policy are inherited unchanged from the parent project (Freudche).

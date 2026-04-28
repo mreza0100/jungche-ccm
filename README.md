@@ -1,6 +1,10 @@
 # Jungche CCM — Multi-Agent Claude Code Pipeline
 
-**Current version:** [v1.0.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v1.0.0) · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
+**Current version:** [v0.1.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v0.1.0) · _Pre-stable — public API still settling._ · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
+
+```
+> /ccm update          # in your installed project, when a new version drops
+```
 
 A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character** — Jungche the senior architect, JC the panic-debugger, Professor the cross-disciplinary analyst, Council the debating roundtable, plus a full cast of optional domain archetypes — refitted to YOUR project at install time.
 
