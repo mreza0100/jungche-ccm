@@ -15,6 +15,7 @@ You are the **brain maker of the brain**. You're responsible for keeping the ent
 | Subcommand | Trigger | Action |
 |------------|---------|--------|
 | `audit` | `$ARGUMENTS` starts with "audit" | Jump to **§ Audit — Pipeline Consistency Check** below |
+| `update` | `$ARGUMENTS` starts with "update" | Jump to **§ Update — Pull Jungche Blueprint Updates** below |
 | *(default)* | anything else | Continue to **§ How to process a change request** |
 
 ---
@@ -249,6 +250,174 @@ Run all applicable checks using Grep, Glob, and Read. Collect findings into a st
 ```
 
 After reporting, ask: "Want me to fix these issues? I'll run the normal CCM change pipeline for each one."
+
+---
+
+## Update — Pull Jungche Blueprint Updates
+
+When `$ARGUMENTS` starts with `update`, pull the latest Jungche blueprint from the public repo and walk the user through the changes since their last install.
+
+The blueprint lives at `https://github.com/mreza0100/jungche-ccm`. Each release is tagged (`v1.0.0`, `v1.1.0`, etc.) and ships a `CHANGELOG.md` that this command parses to apply changes.
+
+### Subcommand options
+
+| Option | Action |
+|--------|--------|
+| `update` | Default — fetch latest, walk through changes interactively |
+| `update check` | Read-only — show what would change, don't apply |
+| `update --to vX.Y.Z` | Update to a specific version (default: latest tag) |
+| `update --tier-b` | Only consider Tier B archetype additions; skip mechanics changes |
+| `update --force-mechanics` | Auto-apply ALL mechanics changes without per-change confirmation |
+
+### Step 1 — Read local version
+
+```bash
+LOCAL_VERSION=$(cat .claude/JUNGCHE_VERSION 2>/dev/null || echo "unknown")
+```
+
+If `.claude/JUNGCHE_VERSION` doesn't exist, the user installed before versioning was introduced. Ask them to confirm their install date and pick a starting version (typically `1.0.0` if they installed after 2026-04-28).
+
+### Step 2 — Fetch latest blueprint
+
+```bash
+BLUEPRINT_DIR="${HOME}/.cache/jungche-ccm-update"
+if [ ! -d "$BLUEPRINT_DIR/.git" ]; then
+  git clone https://github.com/mreza0100/jungche-ccm.git "$BLUEPRINT_DIR"
+else
+  (cd "$BLUEPRINT_DIR" && git fetch --tags origin && git pull --ff-only origin main)
+fi
+LATEST_VERSION=$(cat "$BLUEPRINT_DIR/VERSION")
+```
+
+If `--to vX.Y.Z` was passed, check out that tag:
+
+```bash
+(cd "$BLUEPRINT_DIR" && git checkout "vX.Y.Z")
+```
+
+### Step 3 — Compare versions
+
+```
+Local:  $LOCAL_VERSION
+Latest: $LATEST_VERSION
+```
+
+If `$LOCAL_VERSION == $LATEST_VERSION`: report "Already up to date 🎯" and exit.
+If `$LOCAL_VERSION > $LATEST_VERSION`: report and ask user — they're ahead of upstream somehow.
+If `$LOCAL_VERSION < $LATEST_VERSION`: continue.
+
+### Step 4 — Read CHANGELOG between versions
+
+Open `$BLUEPRINT_DIR/CHANGELOG.md`. Find all `## [x.y.z]` entries between (exclusive) the local version and (inclusive) the target version. Parse each section's bullets according to the prefix convention (see `RELEASE.md` and the CHANGELOG header).
+
+For each bullet, classify:
+
+| Prefix | Apply mode | Default action |
+|--------|-----------|----------------|
+| `Tier A:` (character) | Diff + confirm | Show, ask |
+| `Tier B:` (archetype) | Opt-in | Ask if user wants to add |
+| `Mechanics:` | Auto-apply | Show diff, apply if no `--check` |
+| `Docs:` | Auto-apply | Apply |
+| `Scripts:` | Auto-apply (unless customized) | Detect customization first |
+| Any with `(breaking)` tag | Interactive | Walk through migration steps |
+| Any with `(safe-auto)` tag | Auto-apply unconditionally | Apply |
+
+### Step 5 — Detect user customizations
+
+Before applying any change to a file, check if the user has customized it relative to the version they're upgrading FROM. The check:
+
+```bash
+# Did the user diverge from the blueprint version they installed?
+diff -q .claude/{file} "$BLUEPRINT_DIR/blueprint/templates/{file}@$LOCAL_VERSION"
+```
+
+If the user customized a file (e.g., they changed Jungche's voice, renamed an agent), the update flow:
+
+1. Shows the user the three-way picture: their version, the old blueprint, the new blueprint
+2. Asks: keep your customization, take the new blueprint, or merge interactively?
+3. Default for character files (CLAUDE.md persona, /jc, /professor, /council): keep user customization unless explicitly accepted
+
+### Step 6 — Walk the user through changes
+
+For each change, in dependency order (mechanics first, then character, then Tier B):
+
+```
+[N/M] {category} — {file} — {summary}
+
+Local file: .claude/commands/jc.md
+Blueprint change: {what changed semantically}
+
+Diff (preview):
+  + new lines
+  - removed lines
+
+Apply this change? [yes / skip / show full diff / merge interactively]
+```
+
+Honor the user's choice per change. Keep a running tally.
+
+### Step 7 — Tier B opt-ins
+
+If the new release adds a Tier B archetype the user hasn't opted into, ask:
+
+```
+New Tier B archetype available: /{archetype}
+Identity: {one-line from ARCHETYPES.md}
+Required placeholders: {list}
+
+Want to opt in? [yes / no / show full template]
+```
+
+If yes, run the relevant subset of the SETUP interview to fill placeholders, then copy the customized template to `.claude/commands/{archetype}.md`.
+
+### Step 8 — Breaking migrations
+
+For changes tagged `(breaking)` or under `### Breaking` headings, walk the user through the migration steps **explicitly per change**. The CHANGELOG entry must include `### Migration` instructions for any breaking change. Read those, present them, ask for explicit confirmation per step.
+
+### Step 9 — Update version + report
+
+After all changes are applied (or skipped):
+
+```bash
+echo "$LATEST_VERSION" > .claude/JUNGCHE_VERSION
+```
+
+Report:
+
+```
+🎯 Jungche updated: $LOCAL_VERSION → $LATEST_VERSION
+
+Changes applied:
+- {list}
+
+Changes skipped:
+- {list with reason}
+
+Tier B opt-ins added:
+- {list}
+
+Manual review needed:
+- {anything that requires user attention post-update}
+```
+
+### Step 10 — Smoke test
+
+Suggest the user run a quick `/build` or `/jc` to verify the install still works:
+
+```
+Want me to run a smoke test? I'll do a tiny /build with a no-op feature to verify the pipeline is healthy. [yes / no]
+```
+
+### Update mode rules
+
+- **Never overwrite user customizations without explicit consent** — if a file diverged from the blueprint, ask before changing
+- **Never auto-apply MAJOR version migrations** — always interactive per step
+- **Never touch `.claude/settings.json`** — hand-curated per project
+- **Never touch `docs/commands/{cmd}/`** — that's command-owned content, not blueprint templates
+- **Always update `.claude/JUNGCHE_VERSION`** after a successful run
+- **Cache the blueprint clone** at `~/.cache/jungche-ccm-update/` to avoid re-cloning on every run
+- **Stay in light Jungche voice during the walkthrough** — this is mechanics with personality
+- **Bail safely on conflicts** — if a merge gets gnarly, save the user's state and report rather than guessing
 
 ---
 
