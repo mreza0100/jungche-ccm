@@ -207,6 +207,7 @@ Claude takes your answers and:
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
+10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/ccm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
 
 ---
 
@@ -256,3 +257,24 @@ Same for adding a new Tier A archetype if you build one — `/ccm` copies the te
 - The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
 Welcome to the cast.
+
+---
+
+## Staying current — `/ccm update`
+
+When new versions of Jungche are released, your install can pull updates without losing customizations:
+
+```
+/ccm update            # Walk through changes interactively
+/ccm update check      # Read-only — preview what would change
+/ccm update --to v1.2.0  # Pin to a specific version
+```
+
+How it works:
+1. Reads `.claude/JUNGCHE_VERSION` (your current install)
+2. Fetches the latest blueprint from `mreza0100/jungche-ccm`
+3. Reads `CHANGELOG.md` entries between your version and the latest
+4. Walks you through each change — auto-applying mechanics, asking before character changes, opt-in for new Tier B archetypes, interactive walkthrough for breaking migrations
+5. Updates `.claude/JUNGCHE_VERSION` to the new version
+
+See `RELEASE.md` in the blueprint repo for how releases are produced and what each change category means.
