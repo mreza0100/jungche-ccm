@@ -28,30 +28,16 @@ A portable, opinionated `.claude/` infrastructure that turns Claude Code from "a
 
 ## Quick start
 
-**One-liner (recommended — machine-to-machine):**
-
 ```
 # Inside YOUR project
 cd ~/path/to/your-project
 claude
-> Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/LLM_INSTALL.md and install Jungche in this project.
+> Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/INSTALL.md and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
 ```
 
-That single fetch hands Claude a token-dense install briefing — identity, full cast roster, install protocol, lazy-load URL map, verification checklist. Claude lazy-loads templates only as it writes them, runs the 10-question interview from `SETUP.md`, generates files, records a SHA-256 manifest for future updates, and smoke-tests with `/build`. Designed to minimize round-trips and avoid pulling marketing-flavored docs during install.
+`INSTALL.md` is written FOR Claude as the installer — pre-flight checks, eight question batches (project identity, structure, test/build commands, ports, domain & disciplines, optional commands, character, confirmation), execution order, and hard rules. Claude conducts the interview, generates files, records a SHA-256 manifest for future updates, and smoke-tests with `/build`.
 
-See [`LLM_INSTALL.md`](./LLM_INSTALL.md) for the full M2M protocol — including efficiency rules, verification gate, and what NOT to fetch.
-
-**Manual path** (clone-and-read, for humans who want to inspect first):
-
-```bash
-git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
-cd ~/path/to/your-project
-claude
-> Read every file in ~/work/jungche-ccm/blueprint/.
-> Follow SETUP.md to install Jungche in THIS project.
-```
-
-For the full manual interview steps, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
+See [`INSTALL.md`](./INSTALL.md) for the full installer protocol, or [`blueprint/SETUP.md`](./blueprint/SETUP.md) for the maintainer-side reference of what gets written.
 
 ---
 
@@ -158,9 +144,8 @@ See [`blueprint/RELEASE.md`](./blueprint/RELEASE.md) for the maintainer-side rel
 jungche-ccm/
 ├── VERSION              ← single-line semver — what's currently published
 ├── CHANGELOG.md         ← Keep-A-Changelog format, parsed by /ccm update
-├── README.md            ← you are here (human-oriented)
-├── LLM_INSTALL.md       ← machine-to-machine install briefing (LLM-oriented)
-├── INSTALL.md           ← legacy manual install path (still works)
+├── README.md            ← you are here (human-oriented pitch)
+├── INSTALL.md           ← interactive installer protocol (Claude reads this when adopting Jungche)
 ├── LICENSE              ← MIT
 └── blueprint/
     ├── README.md        ← entry point + when to use
