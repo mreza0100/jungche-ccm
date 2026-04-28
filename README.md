@@ -24,21 +24,30 @@ A portable, opinionated `.claude/` infrastructure that turns Claude Code from "a
 
 ## Quick start
 
-```bash
-# Clone the blueprint
-git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
+**One-liner (recommended — machine-to-machine):**
 
+```
 # Inside YOUR project
+cd ~/path/to/your-project
+claude
+> Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/LLM_INSTALL.md and install Jungche in this project.
+```
+
+That single fetch hands Claude a token-dense install briefing — identity, full cast roster, install protocol, lazy-load URL map, verification checklist. Claude lazy-loads templates only as it writes them, runs the 10-question interview from `SETUP.md`, generates files, records a SHA-256 manifest for future updates, and smoke-tests with `/build`. Designed to minimize round-trips and avoid pulling marketing-flavored docs during install.
+
+See [`LLM_INSTALL.md`](./LLM_INSTALL.md) for the full M2M protocol — including efficiency rules, verification gate, and what NOT to fetch.
+
+**Manual path** (clone-and-read, for humans who want to inspect first):
+
+```bash
+git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
 cd ~/path/to/your-project
 claude
 > Read every file in ~/work/jungche-ccm/blueprint/.
 > Follow SETUP.md to install Jungche in THIS project.
-> Conduct the interview before touching any files.
 ```
 
-Claude reads the blueprint, runs the install interview (~10 questions about your stack, character preferences, and domain), customizes every template before copying. First `/build` smoke-test reveals anything missed.
-
-For the manual path, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
+For the full manual interview steps, see [`blueprint/SETUP.md`](./blueprint/SETUP.md).
 
 ---
 
@@ -145,7 +154,8 @@ See [`blueprint/RELEASE.md`](./blueprint/RELEASE.md) for the maintainer-side rel
 jungche-ccm/
 ├── VERSION              ← single-line semver — what's currently published
 ├── CHANGELOG.md         ← Keep-A-Changelog format, parsed by /ccm update
-├── README.md            ← you are here
+├── README.md            ← you are here (human-oriented)
+├── LLM_INSTALL.md       ← machine-to-machine install briefing (LLM-oriented)
 ├── INSTALL.md           ← legacy manual install path (still works)
 ├── LICENSE              ← MIT
 └── blueprint/
