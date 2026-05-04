@@ -31,7 +31,7 @@ The Council is a **parallel analysis + structured debate** between {N} of your s
 
 > **Install-time parameterization:** Replace `{PANEL_SEAT_N}` with the names of your opted-in Tier B archetypes. Common configurations:
 >
-> - **Therapy AI / health-tech:** Mentor + Officer + PM
+> - **Health-tech / therapy AI:** Mentor + Officer + PM
 > - **Game studio:** Mentor + PM + Marketer
 > - **Open-source library:** (no Tier B — JC + Professor + 1 specialty seat works fine)
 > - **Research project:** Officer (IRB/ethics) + PM (researcher persona)
@@ -149,7 +149,7 @@ Topic: '{debate-topic}'
 
 ## Step 2 — Round 2: Rebuttals (PARALLEL)
 
-Each member reads the other members' Opening Statements and writes targeted rebuttals.
+Each member reads the OTHER members' Opening Statements and writes targeted rebuttals.
 
 **Pattern (repeat per panel member):**
 
@@ -260,6 +260,7 @@ After the verdict, compile the entire debate into `{$DEBATE_DIR}/result.md`:
 - **Compliance blockers are hard stops** — if `/officer` (when on the panel) identifies a regulatory BLOCKER, it must be resolved before the recommended action proceeds.
 - **Debate artifacts are permanent** — do NOT delete files in `$CDOCS/council/$RESEARCH/{debateName}/`.
 - **No member runs git, edits code, or makes changes** — this is a DEBATE command, not an action command. Verdict only.
+- **Visual grounding** — when the debate topic touches UX or user-facing features, council agents SHOULD load available screenshots and design references to ground their analysis in what actually exists.
 
 ---
 
@@ -277,21 +278,143 @@ In this mode, the Council doesn't just debate — it **designs the best possible
 - Debate artifacts → `$CDOCS/council/$RESEARCH/{debateName}/` (same as standard)
 - Wave file → `docs/dev/waves/council/{debateName}.md` (NEW — `/wave`-consumable)
 
-**Round 1 prompts change:** Each member writes an **Implementation Proposal** (not just a position) — what to build, how it should work, what constraints apply, what tasks are needed. Each must end with "My recommended task list".
+---
 
-**Round 2 prompts change:** Add to each rebuttal — "pay special attention to TASK LIST CONFLICTS — overlaps, contradictions, priority disagreements".
+### Refinement Step 0 — Parse, frame, and set up
 
-**Round 3 produces TWO outputs:**
-1. **Verdict** at `{$DEBATE_DIR}/verdict.md` — same format
-2. **Wave file** at `docs/dev/waves/council/{debateName}.md` — Professor's wave.md format with numbered tasks, categorized by domain, with full specification depth (what / why / behaviors / architectural intent / boundaries / compliance flags / UX specs)
+Same as standard Step 0, but frame as a design challenge, not an analysis question.
 
-**Wave file MUST NOT include:** routing decisions (mono-planner decides), pipeline names (`/wave` decides), size estimates (planners estimate), code-level details (architects/developers decide).
+**Create both directories:**
+```bash
+mkdir -p docs/commands/council/research/{debateName}
+mkdir -p docs/dev/waves/council
+```
 
-**Refinement-specific rules:**
-- Implementation proposals replace position papers
-- Task convergence is signal — when 3+ members independently propose the same task, high confidence
-- The wave.md is the deliverable — every contested decision must be resolved IN the wave file
-- Compliance tasks (when `/officer` is on the panel) are never deferred — BLOCKERs ship in v1 or feature doesn't ship
-- PM's copy goes verbatim — when PM writes specific UI copy, it goes into task descriptions verbatim
-- Professor's boundaries are law — "this task does NOT include X" goes into the wave.md
-- Mentor's deferrals are respected — "defer to v2" with sound reasoning moves item to Deferred table
+---
+
+### Refinement Step 1 — Round 1: Implementation Proposals (PARALLEL)
+
+All panel members analyze the feature simultaneously and write **implementation proposals** — not just positions. Each proposal must answer: what to build, how it should work, what constraints apply from their lens, and what tasks are needed. Each must end with "My recommended task list".
+
+**CRITICAL:** Each agent MUST read the actual codebase and relevant docs. Every proposal must be grounded in what exists today.
+
+Launch all panel members in parallel using the same Agent pattern from Step 1, but with implementation-focused prompts per lens:
+
+- **JC (Technical):** What code changes are needed, what patterns to reuse, architecture decisions, cheap vs expensive, performance implications
+- **Professor (Academic):** Architecture quality, safety considerations, evidence-based design, what could go wrong
+- **Tier B seats:** Each applies their specific lens (business prioritization, compliance prerequisites, UX/product, etc.)
+
+**Wait for all members to complete before proceeding.**
+
+---
+
+### Refinement Step 2 — Round 2: Rebuttals (PARALLEL)
+
+Same as standard council Round 2, but add to each rebuttal prompt:
+
+```
+In your rebuttals, pay special attention to TASK LIST CONFLICTS — where your recommended tasks
+overlap, contradict, or have different priorities than the other members'. Call out:
+- Tasks that appear in multiple lists (good — convergence signal)
+- Tasks that one member recommends and another opposes (needs resolution)
+- Tasks missing from others' lists that you consider essential
+- Priority disagreements (one member says "v1 must-have", another says "defer to v2")
+```
+
+**Wait for all rebuttals to complete before proceeding.**
+
+---
+
+### Refinement Step 3 — Verdict + Wave File (Jungche synthesizes)
+
+Read all documents and produce TWO outputs:
+
+#### Output 1: Verdict (same format as standard council)
+
+Include task convergence analysis (which tasks appeared in 3+ lists = high confidence).
+
+#### Output 2: Wave file
+
+Synthesize all implementation proposals + rebuttals into a **single wave.md** at `docs/dev/waves/council/{debateName}.md`.
+
+**This wave file must:**
+1. Follow the Professor's wave.md format — numbered tasks, categorized by domain, with full specification depth
+2. Include tasks from ALL perspectives — technical work, compliance prerequisites, UX specs, architectural constraints, business prioritization
+3. Resolve all conflicts from the rebuttals — where members disagreed, Jungche picks the winner
+4. Include compliance flags from Officer (when on panel): `[WATCH: ...]`, `[BLOCKED: ...]`, `[FIXES GAP: ...]`
+5. Mark deferred items clearly: `[DEFERRED TO V2: reason]`
+6. Reference the council debate for traceability
+
+**Wave file format:**
+
+```markdown
+# Council Refinement: {feature title}
+
+**Source:** Council refinement `{debateName}` ({date})
+**Council:** {list of seats}
+**Verdict:** `$CDOCS/council/$RESEARCH/{debateName}/verdict.md`
+
+---
+
+## {Category 1} ({N} tasks)
+
+| # | Task |
+|---|------|
+| 1 | {title} — {what, why, behaviors, boundaries, architectural intent, compliance flags, UX specs} |
+| 2 | ... |
+
+## {Category 2} ({N} tasks)
+
+| # | Task |
+|---|------|
+| 3 | ... |
+
+---
+
+## Deferred to V2
+
+| # | Item | Reason | Champion |
+|---|------|--------|----------|
+| D1 | {feature} | {why deferred} | {which member proposed it} |
+```
+
+**The wave.md MUST NOT include:**
+- Routing decisions (mono-planner decides)
+- Pipeline names (`/wave` decides)
+- Size estimates (planners estimate)
+- Code-level details (architects/developers decide)
+
+**The wave.md MUST include (for every task):**
+1. What it does (concrete functionality)
+2. Why it matters (problem being solved)
+3. Key behaviors (success, failure, edge cases)
+4. Architectural intent (new service? extend existing? sync/async?)
+5. Boundaries (what this task does NOT include)
+6. Compliance flags (if applicable)
+7. UX specs (if applicable — copy, framing, interaction patterns)
+
+#### Output 3: Compiled result.md
+
+Same as standard council Step 4.
+
+**Then display the wave file path to the user:**
+```
+Council refinement complete. {N} tasks refined across {M} categories.
+Wave file: docs/dev/waves/council/{debateName}.md
+Debate record: docs/commands/council/research/{debateName}/result.md
+
+Run `/wave docs/dev/waves/council/{debateName}.md` to execute.
+```
+
+---
+
+### Refinement Rules (in addition to standard council rules)
+
+- **Implementation proposals replace position papers** — Round 1 agents write concrete task lists, not abstract positions. Every agent must produce a "recommended task list" section.
+- **Task convergence is signal** — when 3+ members independently propose the same task, high confidence. When only 1 proposes it and others don't mention it, Jungche evaluates whether it's a unique insight or an overreach.
+- **The wave.md is the deliverable** — every contested decision must be resolved IN the wave file, not left as "see verdict."
+- **Compliance tasks are never deferred** — if the Officer (when on panel) flags a BLOCKER, it becomes a prerequisite task, not a deferred item. BLOCKERs ship in v1 or the feature doesn't ship.
+- **PM's copy goes verbatim** — when PM (when on panel) writes specific UI copy, it goes into task descriptions verbatim. Developers should not rewrite user-facing copy.
+- **Professor's boundaries are law** — when the Professor says "this task does NOT include X," that boundary goes into the wave.md task description.
+- **Mentor's deferrals are respected** — when the Mentor (when on panel) says "defer to v2" with sound reasoning, the item moves to the Deferred table.
+- **Cross-project scope is expected** — refinement can produce tasks touching any project. The wave.md doesn't care about routing — `/wave` and mono-planner handle that downstream.
