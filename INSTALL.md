@@ -1,9 +1,9 @@
-# INSTALL — Interactive setup for Jungche CCM
+# INSTALL — Interactive setup for Jungche
 
 > This document is **instructions for Claude Code**, not for you to execute manually. To install Jungche on your project, open Claude Code in that project and paste:
 >
 > ```
-> Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/INSTALL.md (or your local clone) and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
+> Read https://raw.githubusercontent.com/mreza0100/jungche/main/INSTALL.md (or your local clone) and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
 > ```
 
 If you (Claude) are reading this: **you are the installer**. The user's input is the source of truth — never invent stack details, names, or domain assumptions. Ask the questions in this file, batch them in groups, wait for replies, then customize.
@@ -134,18 +134,24 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 ### Batch 6 — Optional commands
 
 ```
-14. Beyond the core Tier A + C (/build, /jc, /ccm, /dev, /git, /wave, /documenter,
+14. Beyond the core Tier A + C (/build, /jc, /jm, /dev, /git, /wave, /documenter,
     /professor, /council, /ca), which Tier B archetypes do you want? Pick from the menu,
     request your own, or skip:
 
     - /officer — privacy/compliance auditor (GDPR, HIPAA, SOC2, FDA, ISO 27001, MiFID, etc.)
     - /mentor — startup/business advisor
     - /marketer — visibility & growth strategist
-    - /pm — therapist-product-manager hybrid (or your own user-persona variant)
+    - /pm — user+product-manager hybrid (or your own user-persona variant)
     - /ckm — domain knowledge curator (for projects with a knowledge base)
     - your own: ___ — describe purpose, scope, owns-which-docs
 
     For each you pick, I will need: scope, owned doc paths under $CDOCS, and one-line purpose.
+
+15b. Do you also use OpenAI Codex? (OPTIONAL — everything works without it)
+     If yes: I'll create a `.codex/` layer that mirrors `.claude/` — same command manuals,
+     wrapped in .toml files for Codex's runtime. Also creates an `AGENTS.md` symlink to
+     `CLAUDE.md`. Division of labor: Claude orchestrates + QA, Codex implements (cheaper tokens).
+     If no: the Codex layer is skipped entirely. No impact on any pipeline operation.
 ```
 
 ### Batch 7 — Character (MANDATORY — choose name + sacred-ground)
@@ -305,7 +311,7 @@ Write `.claude/commands/professor.md` based on Batch 5 answers. Use the **Profes
 Copy from `blueprint/templates/commands/`:
 - `build.md` — substitute project list
 - `jc.md` — substitute project list
-- `ccm.md` — substitute project list
+- `jm.md` — substitute project list
 - `dev.md` — substitute per-project start/stop blocks
 
 Add the `git` command (gitter gateway — see template).
@@ -332,7 +338,7 @@ Copy `blueprint/templates/scripts/` to `.claude/scripts/`.
 
 ### Step 8.5 — The Cast bible (ARCHETYPES.md)
 
-Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/ccm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
+Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/jm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
 
 Edit `worktree.sh`:
 - Replace the per-project install blocks (line marked `# === Per-project setup — EDIT FOR YOUR STACK ===`) with one block per subproject from Batch 2.
@@ -349,13 +355,32 @@ Edit `dev.sh`:
 chmod +x .claude/scripts/*.sh
 ```
 
+### Step 8.7 — Codex integration (OPTIONAL — only if user opted in at Batch 6 Q15b)
+
+If the user said YES to Codex:
+
+1. Create `AGENTS.md` as a symlink to `CLAUDE.md`:
+   ```bash
+   ln -sf CLAUDE.md AGENTS.md
+   ```
+2. Copy `blueprint/templates/codex/config.toml` to `.codex/config.toml` and customize:
+   - Set project-relevant env vars in `[shell_environment_policy.set]`
+3. For each command in `.claude/commands/`, generate a `.codex/agents/{name}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/build.toml`. Each wrapper:
+   - Has `name`, `description`, `nickname_candidates`
+   - Points to the same `.claude/commands/{name}.md` as its role manual
+   - Adds Codex-specific instructions (git ownership when Codex orchestrates, Skill→Agent substitutions)
+4. For each per-project agent role (planner, architect, developer, qa), generate a `.codex/agents/{project}-{role}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/developer.toml`.
+5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/build/SKILL.md`.
+
+If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
+
 ### Step 9 — Record version + install manifest
 
-This is what `/ccm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
+This is what `/jm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
 
 1. Fetch the current blueprint version:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/VERSION > .claude/JUNGCHE_VERSION
+   curl -fsSL https://raw.githubusercontent.com/mreza0100/jungche/main/VERSION > .claude/JUNGCHE_VERSION
    ```
 2. Write `.claude/JUNGCHE_MANIFEST.json` — SHA-256 of every file you wrote in Steps 2–8, AFTER placeholder substitution but BEFORE the user has touched anything. Format:
    ```json
@@ -372,7 +397,7 @@ This is what `/ccm update` reads later to detect customizations and pull new rel
    ```
 3. Hashes are computed via `sha256sum {file} | awk '{print "sha256:" $1}'` per file. Include only files you wrote — not pre-existing project files.
 
-This is the baseline `/ccm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
+This is the baseline `/jm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
 
 ### Step 10 — Smoke test
 
@@ -390,7 +415,7 @@ If those work cleanly, try a tiny first build:
 /build add-readme-section
 ```
 
-The first run reveals anything I missed. When it does, tell me and I'll fix the source via /ccm-style edits.
+The first run reveals anything I missed. When it does, tell me and I'll fix the source via /jm-style edits.
 
 ---
 
@@ -474,20 +499,21 @@ Parse `$ARGUMENTS`:
 End the install with a checklist back to the user:
 
 ```
-Jungche installed.
+Jungche installed — your project's nervous system is live. 🧠
 
 Files written: {N}
 Customized for: {project name}
 /professor disciplines: {list}
 Optional commands installed: {list or "none"}
+Codex integration: {yes — .codex/ created | no — skipped}
 
 Suggested next actions:
 - Read CLAUDE.md and confirm the structure looks right
 - Try /dev status to make sure dev.sh works in your environment
 - Try /build add-readme-section as a smoke test
-- When something feels off, run /ccm with the issue — I edit the source, not patch with comments
+- When something feels off, run /jm with the issue — I edit the source, not patch with comments
 
-Public repo: https://github.com/mreza0100/jungche-ccm
+Public repo: https://github.com/mreza0100/jungche
 File a "doesn't work for stack X" issue if you hit something the installer didn't handle.
 ```
 

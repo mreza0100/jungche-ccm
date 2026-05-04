@@ -19,7 +19,7 @@ A **wave** is a batched series of `/build` pipelines driven by a single task fil
 **When NOT to use a wave:**
 - Single-feature work — use `/build` directly
 - Bug fixes — use `/jc`
-- Pipeline infrastructure changes — use `/ccm`
+- Pipeline infrastructure changes — use `/jm`
 - Ad-hoc exploration — use `/professor` or `/council` for analysis first
 
 ---
@@ -185,7 +185,7 @@ Light Jungche voice in the report — celebrate wins with 🎉, flag issues with
 ## Rules
 
 - **Never reuse wave names** — check `$WAVES/`, `$WAVES/archive/`, and `docs/dev/tasks/{archive,}/` first
-- **Wave file is read-only after Step 0** — once the wave starts, the task file is locked. Edits go through `/ccm` or a re-run.
+- **Wave file is read-only after Step 0** — once the wave starts, the task file is locked. Edits go through `/jm` or a re-run.
 - **Pipelines within a wave run in parallel** — they MUST be independent. If a pipeline depends on another, put it in the next wave.
 - **A failing pipeline pauses the wave** — surface the failure; don't auto-skip
 - **Archive on completion** — `$WAVE_DIR` → `$WAVE_ARCHIVE` keeps the active waves directory clean

@@ -2,7 +2,7 @@
 
 A portable, opinionated multi-agent development pipeline for Claude Code — **with a full cast of characters**. Adopt it in any codebase, single-project or multi-project, regardless of language, framework, or runtime. The mechanics survive every stack; the characters' voices survive every domain.
 
-This is the brain behind the brain: the pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
+This is the **transplantable nervous system** — not a config dump. Built by Jungche (the sarcastic architect who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
 
 ---
 
@@ -10,10 +10,10 @@ This is the brain behind the brain: the pipeline gives you the **discipline + pe
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — Jungche, JC, Professor, Council, CCM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All ship with full voice; you parameterize the domain content at install.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
-- **Self-improvement at the source** — a meta-agent (`/ccm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
+- **Self-improvement at the source** — a meta-agent (`/jm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths. Rename a directory once, every agent follows.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent writes to permanent project docs.
@@ -48,9 +48,10 @@ blueprint/
 └── templates/
     ├── CLAUDE.md          ← root project rules + Jungche persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, ccm, dev, git, wave, documenter, professor, council, ca
+    ├── commands/          ← Tier A: build, jc, jm, dev, git, wave, documenter, professor, council, ca
     │                         Tier B (opt-in): officer, ckm, pm, mentor, marketer
-    └── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
+    ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
+    └── codex/             ← (OPTIONAL) Codex dual-runtime templates
 ```
 
 ---
@@ -62,11 +63,11 @@ blueprint/
 3. **Run install via Claude:**
 
 ```bash
-git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
+git clone https://github.com/mreza0100/jungche.git ~/work/jungche
 
 cd ~/path/to/your-project
 claude
-> Read every file in ~/work/jungche-ccm/blueprint/.
+> Read every file in ~/work/jungche/blueprint/.
 > Follow SETUP.md to install Jungche in THIS project.
 > Conduct the interview before touching any files.
 ```
@@ -97,7 +98,7 @@ See `ARCHETYPES.md` for the catalog of every character, what's universal in thei
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
 - **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. You pick the disciplines.
 - **/council** — roundtable debate, three rounds: opening / rebuttal / verdict.
-- **/ccm** — meta-engineer. Edits pipeline rules at the source.
+- **/jm** — meta-engineer. Edits pipeline rules at the source.
 - **/ca** — code auditor. 8 categories of hygiene + 9 of security.
 - **/build, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice.
 
@@ -115,7 +116,7 @@ See `ARCHETYPES.md` for the catalog of every character, what's universal in thei
 
 The blueprint pins your test command, build command, package manager, etc. at install time via the interview. After install, the templates are filled in for your stack — no leftover placeholders. The templates do NOT prescribe a stack; the install interview asks for one.
 
-If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/ccm` to fix it locally.
+If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/jm` to fix it locally.
 
 ---
 

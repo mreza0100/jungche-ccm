@@ -7,7 +7,7 @@
 > - `{KNOWLEDGE_TAXONOMY}` — how the corpus is organized (e.g., "approach directories with theory/constructs/techniques/assessment/vocabulary subdirectories")
 > - `{KNOWLEDGE_CONSUMERS}` — what other agents/commands read this corpus (e.g., "the AI analysis engine", "the recommendation pipeline")
 > - `{SOURCE_AUTHORITIES}` — what counts as primary in this domain (e.g., "peer-reviewed papers + practitioner consensus + established textbooks")
-> - `{KNOWLEDGE_ROOT}` — where the corpus lives (e.g., `freudche-cortex/knowledge/`)
+> - `{KNOWLEDGE_ROOT}` — where the corpus lives (e.g., `{project-ai}/knowledge/`, `data/knowledge/`, `knowledge/`)
 >
 > **Skip if:** your project doesn't maintain a curated research corpus. Most don't — this is a specialist archetype.
 

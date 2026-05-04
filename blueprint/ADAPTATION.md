@@ -33,7 +33,7 @@ If your repo has only one project (no monorepo):
    - `qa.md`
 4. Drop `mono-planner.md` and `mono-architect.md` — there's no cross-project consolidation needed. The orchestrator goes straight from `planner` → `architect` → `developer` → `qa`.
 5. In `/build`, remove the parallel-fan-out steps. Keep the linear pipeline.
-6. The Tier A character commands (`/jc`, `/professor`, `/council`, `/ccm`, `/ca`) work unchanged — they don't require a monorepo.
+6. The Tier A character commands (`/jc`, `/professor`, `/council`, `/jm`, `/ca`) work unchanged — they don't require a monorepo.
 
 ---
 
@@ -114,9 +114,9 @@ Pick the 10 that span what your project needs to reason about.
 
 The default panel is JC + Professor + 3 Tier B seats. If you opt into all five Tier B archetypes (Officer, PM, Mentor, Marketer, CKM), pick the most relevant five for your typical debates. Most projects pick 4–5.
 
-### Adapting CCM, CA
+### Adapting JM, CA
 
-These are mostly universal. CCM's voice and discipline don't change; you just update the artifact tables (your subprojects, your commands). CA's categories don't change; you parameterize the "sacred-ground data" category and add tech-specific scanners.
+These are mostly universal. JM's voice and discipline don't change; you just update the artifact tables (your subprojects, your commands). CA's categories don't change; you parameterize the "sacred-ground data" category and add tech-specific scanners.
 
 ---
 
@@ -212,7 +212,7 @@ These are the load-bearing walls. Touch anything else, but leave these alone:
 - **The QA-before-merge gate.** Skipping QA is how broken code reaches main.
 - **Path variables.** Hardcoding `docs/dev/tasks/...` in agents means renaming the convention requires touching every agent.
 - **Worktree isolation.** Running pipelines on `main` or shared branches is how you lose work.
-- **Self-improvement at the source.** Don't replace `/ccm` with a "lessons learned" file — the file rots, the agents don't read it, the bugs come back.
+- **Self-improvement at the source.** Don't replace `/jm` with a "lessons learned" file — the file rots, the agents don't read it, the bugs come back.
 
 These five are non-negotiable. Touch anything else.
 
@@ -224,13 +224,13 @@ These five are non-negotiable. Touch anything else.
 
 After running a few real pipelines, you'll notice rough edges:
 
-- An agent always asks for the same clarification → add it to the agent definition (via `/ccm`).
-- A step always gets skipped → either remove it or make it conditional in `/build` (via `/ccm`).
-- A bug class keeps coming back → add a non-negotiable rule to the relevant CLAUDE.md (via `/ccm`).
-- Pipeline name collisions are common → adjust the naming convention or add automatic versioning (via `/ccm`).
-- A character feels off → describe what's missing to `/ccm` and let it edit the persona at the source.
+- An agent always asks for the same clarification → add it to the agent definition (via `/jm`).
+- A step always gets skipped → either remove it or make it conditional in `/build` (via `/jm`).
+- A bug class keeps coming back → add a non-negotiable rule to the relevant CLAUDE.md (via `/jm`).
+- Pipeline name collisions are common → adjust the naming convention or add automatic versioning (via `/jm`).
+- A character feels off → describe what's missing to `/jm` and let it edit the persona at the source.
 
-For each of these: invoke `/ccm`. Describe what you noticed. Let the meta-agent edit the source.
+For each of these: invoke `/jm`. Describe what you noticed. Let the meta-agent edit the source.
 
 The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 

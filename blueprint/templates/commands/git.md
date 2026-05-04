@@ -1,77 +1,92 @@
 # Git — Gitter Gateway
 
-> **Tier C with light Jungche voice.** Mechanics — direct gateway to the `gitter` agent. Universal across stacks.
-
-Talk to gitter directly: $ARGUMENTS
+Talk to gitter: $ARGUMENTS
 
 ---
 
 ## Overview
 
-`/git` is a thin gateway to the `gitter` agent. Use this when you need git ops outside a `/build` or `/jc` pipeline — pushing pending changes, pulling latest, or any other git request you'd otherwise hand to gitter manually.
+`/git` is the gateway to **gitter** — the only agent allowed to run git commands. Known subcommands get routed to specific gitter phases. Anything else gets forwarded to gitter as a freeform request — gitter figures it out.
 
-**Important:** the rule **only `gitter` touches git** still applies. `/git` doesn't bypass gitter — it just gives you a shorter path to invoking gitter without writing the full Agent invocation block.
+**Usage:** `/git <subcommand or freeform request>`
 
 ---
 
 ## Subcommand routing
 
-| Subcommand | Trigger | Action |
-|------------|---------|--------|
-| `push [message]` | `$ARGUMENTS` starts with `push` | Stage all changes, commit (with optional message), push to remote |
-| `pull` | `$ARGUMENTS` starts with `pull` | Pull latest from remote with `--ff-only` |
-| `status` | `$ARGUMENTS` is `status` | Show git status across the repo |
-| *(anything else)* | Freeform | Forward the full request to gitter as a freeform git operation |
+Parse `$ARGUMENTS` to determine if it matches a known subcommand:
+
+| Input pattern | Subcommand | Action |
+|---------------|-----------|--------|
+| starts with `push` | PUSH | Stage + commit + push everything (see below) |
+| starts with `pull` | PULL | Pull latest from remote (see below) |
+| anything else | FREEFORM | Forward to gitter as-is (see below) |
+| *(empty)* | FREEFORM | Forward empty request — gitter will ask what's needed |
 
 ---
 
-## Subcommand: `push [message]`
+## Subcommand: `push`
+
+**What it does:** Stage, commit, and push all changes.
+
+### Invoke gitter with Phase: PUSH
 
 ```
-Agent(gitter): "Phase: PUSH. Owner: /git invocation by user.
-  Stage all changes (excluding secrets, env files, .worktrees/, tmp/), commit with the message:
-  '{message or 'update: pending changes'}'
-  Push origin main (or current branch if a PR branch is checked out — fail loudly if push to a non-main, non-PR-branch)."
-```
+Agent(gitter): "Phase: PUSH.
+  Arguments: {any extra text after 'push' from $ARGUMENTS, or empty}
 
-The `gitter` agent is responsible for:
-- Scanning for accidentally-staged secrets (`.env`, credentials, keys)
-- Refusing destructive ops without explicit user confirmation
-- Reporting commit hashes and remote update status
+  Stage, commit, and push all changes.
+  Read gitter.md Phase 7: PUSH and follow every step.
+
+  If the user provided a commit message in the arguments, use it.
+  Otherwise, analyze the changes and generate a descriptive one."
+```
 
 ---
 
 ## Subcommand: `pull`
 
+**What it does:** Pull latest from remote.
+
+### Invoke gitter with Phase: PULL
+
 ```
-Agent(gitter): "Phase: PULL. Owner: /git invocation by user.
-  Run git fetch, then git pull --ff-only on the current branch.
-  If the pull cannot fast-forward (diverged history, merge needed), STOP and report — do not auto-merge."
+Agent(gitter): "Phase: PULL.
+
+  Pull latest from remote.
+  Read gitter.md Phase 8: PULL and follow every step."
 ```
 
 ---
 
-## Subcommand: `status`
+## Freeform: anything that isn't a known subcommand
 
-A lightweight read-only check — `gitter` can run `git status` and report. No staging, no commit, no push.
+If `$ARGUMENTS` doesn't match any known subcommand above, forward the entire request to gitter. Gitter is a git expert — it can handle status checks, branch operations, log queries, diff reviews, conflict resolution advice, and anything else git-related.
 
----
-
-## Freeform mode
-
-For anything else (`/git rebase`, `/git tag`, `/git stash`, etc.), forward the full request to gitter:
+### Invoke gitter as freeform
 
 ```
-Agent(gitter): "Phase: FREEFORM. Owner: /git invocation by user.
-  User request: '$ARGUMENTS'
-  Apply the requested git operation. Refuse destructive operations (force push, hard reset, branch delete on main) without explicit user confirmation. Report the result."
+Agent(gitter): "The user ran /git with the following request:
+
+  $ARGUMENTS
+
+  You are the git operations specialist. Handle this request using your expertise.
+  Read your full agent definition at .claude/agents/gitter.md for context on the monorepo structure.
+
+  If the request maps to one of your known phases (SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL),
+  follow that phase's protocol. Otherwise, use your git knowledge to fulfill the request directly.
+
+  Rules:
+  - You may run any git read commands (status, log, diff, branch, show, etc.) freely
+  - For write operations (commit, merge, push, reset, etc.), follow your safety protocols
+  - Report results clearly back to the user"
 ```
 
 ---
 
 ## Rules
 
-- **Only `gitter` touches git** — `/git` is a gateway, not a bypass. Never run git commands directly from this command.
-- **Refuse destructive ops without confirmation** — the gitter agent enforces this; this command echoes the rule
-- **Light Jungche voice in reports** — celebrate clean pushes with ✅, warn about diverged history with 🚩
-- After finishing: forward gitter's report verbatim, then add a one-line Jungche summary
+- **ALL git operations go through gitter** — this command NEVER runs git commands directly
+- **Known subcommands route to specific phases** — `push` → PUSH phase
+- **Unknown requests go freeform** — gitter is smart enough to handle anything git-related
+- **Pass user arguments through verbatim** — don't interpret or filter, let gitter decide

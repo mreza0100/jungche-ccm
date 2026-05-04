@@ -1,4 +1,4 @@
-# Claude-Code-Manager (CCM)
+# Jungche-Manager (JM)
 
 > **Tier A — Universal archetype.** Audit-driven, methodical, protective of load-bearing walls. Light Jungche voice in reports. Mostly universal — only the consistency-check tables (subproject names, command list) parameterize per install.
 
@@ -31,7 +31,7 @@ You are the **brain maker of the brain**. You're responsible for keeping the ent
 | Scripts | `.claude/scripts/*.sh` | worktree.sh, alloc-ports.sh, dev.sh |
 | Settings | `.claude/settings.json` | Permissions, env vars, hooks |
 | Project CLAUDE.md files | `{project}/CLAUDE.md` | Project conventions |
-| CCM reference docs | `$CDOCS/ccm/$REFS/` | Meta-engineering references (agent model tiers, audit findings) |
+| JM reference docs | `$CDOCS/jm/$REFS/` | Meta-engineering references (agent model tiers, audit findings) |
 
 ---
 
@@ -208,7 +208,7 @@ Run all applicable checks using Grep, Glob, and Read. Collect findings into a st
 ### Audit report format
 
 ```
-# CCM Audit Report — {date}
+# JM Audit Report — {date}
 
 ## Summary
 - Total checks: N
@@ -249,7 +249,7 @@ Run all applicable checks using Grep, Glob, and Read. Collect findings into a st
 {CLEAN — all checks passed | NEEDS ATTENTION — N issues found}
 ```
 
-After reporting, ask: "Want me to fix these issues? I'll run the normal CCM change pipeline for each one."
+After reporting, ask: "Want me to fix these issues? I'll run the normal JM change pipeline for each one."
 
 ---
 
@@ -257,7 +257,7 @@ After reporting, ask: "Want me to fix these issues? I'll run the normal CCM chan
 
 When `$ARGUMENTS` starts with `update`, pull the latest Jungche blueprint from the public repo and walk the user through the changes since their last install.
 
-The blueprint lives at `https://github.com/mreza0100/jungche-ccm`. Each release is tagged (`v1.0.0`, `v1.1.0`, etc.) and ships a `CHANGELOG.md` that this command parses to apply changes.
+The blueprint lives at `https://github.com/mreza0100/jungche`. Each release is tagged (`v1.0.0`, `v1.1.0`, etc.) and ships a `CHANGELOG.md` that this command parses to apply changes.
 
 ### Subcommand options
 
@@ -280,9 +280,9 @@ If `.claude/JUNGCHE_VERSION` doesn't exist, the user installed before versioning
 ### Step 2 — Fetch latest blueprint
 
 ```bash
-BLUEPRINT_DIR="${HOME}/.cache/jungche-ccm-update"
+BLUEPRINT_DIR="${HOME}/.cache/jungche-update"
 if [ ! -d "$BLUEPRINT_DIR/.git" ]; then
-  git clone https://github.com/mreza0100/jungche-ccm.git "$BLUEPRINT_DIR"
+  git clone https://github.com/mreza0100/jungche.git "$BLUEPRINT_DIR"
 else
   (cd "$BLUEPRINT_DIR" && git fetch --tags origin && git pull --ff-only origin main)
 fi
@@ -332,7 +332,7 @@ For every file the new release touches, compute three hashes and use the truth t
 |------|--------|------------------|
 | `installed_hash` | `.claude/JUNGCHE_MANIFEST.json` (written at install time) | What the file looked like the moment Jungche was installed, AFTER placeholder substitution. The user's "starting point." |
 | `current_hash` | `sha256sum .claude/{file}` (live on disk now) | What the file looks like RIGHT NOW. If this differs from `installed_hash`, the user (or another agent like /jc) has customized it. |
-| `upstream_new_hash` | `sha256sum ~/.cache/jungche-ccm-update/blueprint/templates/{file}` (fetched from the new release) | What the new release ships. If this differs from `installed_hash`, the blueprint changed this file between releases. |
+| `upstream_new_hash` | `sha256sum ~/.cache/jungche-update/blueprint/templates/{file}` (fetched from the new release) | What the new release ships. If this differs from `installed_hash`, the blueprint changed this file between releases. |
 
 **Why we don't need `upstream_old_hash`:** `installed_hash` already captures "what the user started from" — that IS the old upstream baseline (with placeholders filled in). Adding a fourth hash by reconstructing the old blueprint via `git show v{LOCAL}:...` would only matter if we wanted to distinguish "blueprint at v1.0.0 vs. v1.1.0" from "user's substituted v1.0.0 vs. v1.1.0," and we don't — the user only cares about THEIR file vs. THEIR file plus an upstream change.
 
@@ -361,7 +361,7 @@ For every file the new release touches, compute three hashes and use the truth t
 # Per file in the new release:
 INSTALLED=$(jq -r ".files[\"${FILE}\"]" .claude/JUNGCHE_MANIFEST.json | sed 's/sha256://')
 CURRENT=$(sha256sum ".claude/${FILE}" 2>/dev/null | awk '{print $1}')
-UPSTREAM_NEW=$(sha256sum "~/.cache/jungche-ccm-update/blueprint/templates/${FILE}" | awk '{print $1}')
+UPSTREAM_NEW=$(sha256sum "~/.cache/jungche-update/blueprint/templates/${FILE}" | awk '{print $1}')
 
 USER_CUSTOMIZED=$([ "$CURRENT" = "$INSTALLED" ] && echo "no" || echo "yes")
 UPSTREAM_CHANGED=$([ "$UPSTREAM_NEW" = "$INSTALLED" ] && echo "no" || echo "yes")
@@ -421,7 +421,7 @@ For changes tagged `(breaking)` or under `### Breaking` headings, walk the user 
 
 ### Step 9 — Update version + manifest + report
 
-After all changes are applied (or skipped), bump the version AND regenerate the manifest so the next `/ccm update` has a fresh baseline:
+After all changes are applied (or skipped), bump the version AND regenerate the manifest so the next `/jm update` has a fresh baseline:
 
 ```bash
 echo "$LATEST_VERSION" > .claude/JUNGCHE_VERSION
@@ -470,7 +470,7 @@ Want me to run a smoke test? I'll do a tiny /build with a no-op feature to verif
 - **Never touch `.claude/settings.json`** — hand-curated per project
 - **Never touch `docs/commands/{cmd}/`** — that's command-owned content, not blueprint templates
 - **Always update `.claude/JUNGCHE_VERSION`** after a successful run
-- **Cache the blueprint clone** at `~/.cache/jungche-ccm-update/` to avoid re-cloning on every run
+- **Cache the blueprint clone** at `~/.cache/jungche-update/` to avoid re-cloning on every run
 - **Stay in light Jungche voice during the walkthrough** — this is mechanics with personality
 - **Bail safely on conflicts** — if a merge gets gnarly, save the user's state and report rather than guessing
 

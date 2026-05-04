@@ -22,7 +22,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. Disciplines parameterize per project.
 - **/council** — roundtable debate, three rounds: opening, rebuttal, verdict. Panel composition adapts to the archetypes you opt into.
-- **/ccm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
+- **/jm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/ca** — code auditor. 8 categories of hygiene + 9 of security.
 - **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
 
@@ -90,7 +90,7 @@ This means you can run **multiple pipelines in parallel on the same machine** wi
 
 ### 5. Self-improvement at the source
 
-When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/ccm` (the meta-agent that owns the pipeline itself). CCM edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
+When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/jm` (the meta-agent that owns the pipeline itself). JM edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
 
 ---
 
@@ -181,7 +181,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 ```
 
 Hotfix path: `/jc {bug}` → locate → diagnose → fix → test → gitter JC-COMMIT. Same safety, less ceremony.
-Meta path: `/ccm {request}` → edits the agent definitions at the source.
+Meta path: `/jm {request}` → edits the agent definitions at the source.
 
 ---
 
@@ -189,12 +189,17 @@ Meta path: `/ccm {request}` → edits the agent definitions at the source.
 
 ```
 your-project/
-├── CLAUDE.md                          ← root rules + Jungche persona
+├── CLAUDE.md                          ← root rules + Jungche persona (the nervous system's brain)
+├── AGENTS.md                          ← (OPTIONAL) symlink → CLAUDE.md (Codex reads this)
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /ccm, /dev, /git, /wave, /documenter, /professor, /council, /ca + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /jm, /dev, /git, /wave, /documenter, /professor, /council, /ca + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh
 │   └── settings.json                  ← permissions, env vars, hooks
+├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
+│   ├── config.toml
+│   ├── agents/                        ← command wrappers + role agent wrappers
+│   └── skills/                        ← skill wrappers mirroring commands
 ├── {project-a}/                       ← first subproject (you name it)
 │   ├── CLAUDE.md                      ← project-specific rules
 │   └── .claude/agents/                ← project agents (planner, architect, developer, qa)
@@ -223,15 +228,16 @@ For a single-project repo, drop the `{project-a}/`, `{project-b}/` layer — age
 
 ## What you get out of the box
 
-A `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
+A `.claude/` infrastructure — a **transplantable nervous system** — that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**. Built by Jungche (that's me — the architect behind the glass).
 
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **A debating council** — `/council` runs five archetypes (Tier A + opted-in Tier B) in parallel on a topic, three rounds, then synthesizes a verdict.
-- **Cross-disciplinary analysis** — `/professor` brings 10+ PhDs of your choice to bear on architecture, design, and clinical/safety/correctness questions.
-- **Self-improvement** — `/ccm` is the meta-agent that edits its own pipeline rules at the source.
+- **Cross-disciplinary analysis** — `/professor` brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
+- **Self-improvement** — `/jm` is the meta-agent that edits its own pipeline rules at the source.
+- **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
 
@@ -259,6 +265,31 @@ A `.claude/` infrastructure that turns Claude Code from "an AI that writes code 
 - The character name (default: "Jungche") if you want a different persona
 
 See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md` for the full cast and adaptation examples. See `SETUP.md` for the install interview.
+
+---
+
+## Optional: Codex dual-runtime
+
+Jungche's nervous system can optionally span **two AI runtimes**: Claude Code (Anthropic) and Codex (OpenAI). Everything works with Claude alone — Codex adds a cheaper implementation layer.
+
+**How it works:**
+- `.claude/` is always the source of truth — command manuals, agent definitions, scripts
+- `.codex/` is a config layer: `.toml` wrappers that point to the same `.claude/commands/*.md` and `.claude/agents/*.md` manuals
+- `AGENTS.md` is a symlink → `CLAUDE.md` (Codex reads `AGENTS.md` by convention)
+- Claude orchestrates, plans, and does QA. Codex implements. When Codex runs a full pipeline (`$build`), it handles git work inline per `gitter.md`.
+
+**Division of labor:**
+
+| Task | Runtime | Why |
+|------|---------|-----|
+| Planning, architecture, research | Claude | Judgment-heavy, low token volume |
+| Heavy implementation | Codex | Cheaper per token |
+| QA / adversarial tests | Claude | Codex shouldn't grade itself |
+| Git operations | Either | Whoever orchestrates owns git for that run |
+
+**Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/`, `AGENTS.md`, and all `.toml` wrappers. If no, the entire layer is skipped. No pipeline operation requires Codex.
+
+See `templates/codex/README.md` for the full integration guide.
 
 ---
 

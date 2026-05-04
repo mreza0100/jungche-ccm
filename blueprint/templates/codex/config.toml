@@ -1,0 +1,63 @@
+# Jungche Codex integration layer.
+#
+# This file configures OpenAI's Codex CLI to mirror the .claude/ pipeline.
+# The existing markdown command/agent docs remain read-only source manuals;
+# these settings expose the runtime primitives Codex actually understands.
+#
+# OPTIONAL — everything works without this. Delete the entire .codex/ directory
+# if you don't use Codex, and the pipeline runs fine on Claude Code alone.
+
+# ─── Voice ───────────────────────────────────────────────────────────────────
+# Disable Codex's generic Friendly/Pragmatic personality layer for this repo.
+# Jungche owns voice through AGENTS.md, skills, and archetype-specific agents
+# such as JC, Professor, Officer, PM, Mentor, and Council.
+personality = "none"
+
+# ─── Limits ──────────────────────────────────────────────────────────────────
+# Max bytes Codex will read from AGENTS.md (symlink to CLAUDE.md).
+# Increase if your CLAUDE.md exceeds 64KB — Codex silently truncates beyond this.
+project_doc_max_bytes = 65536
+
+# ─── Approval & sandbox ─────────────────────────────────────────────────────
+# "never" = full auto-approve (Codex runs without human confirmation).
+# Change to "on-failure" or "always" if you want a human gate.
+approval_policy = "never"
+
+# "danger-full-access" = no filesystem sandbox. Required for worktree.sh,
+# port allocation, git operations, and infrastructure commands (make, docker).
+# If your project doesn't need worktrees or infra access, consider "relaxed".
+sandbox_mode = "danger-full-access"
+
+[features]
+# Disable the generic personality selector so Jungche archetypes own voice.
+personality = false
+# Enable Codex hook system (pre/post task hooks).
+codex_hooks = true
+
+[agents]
+# Max parallel Codex Teams child agents (e.g., child planners, developers).
+# Match to your machine's cores / token budget. 6 handles most monorepos.
+max_threads = 6
+# Depth of agent nesting. 1 = orchestrator can spawn children, children cannot
+# spawn grandchildren. Increase to 2 if your pipeline needs sub-sub-agents.
+max_depth = 1
+# Hard timeout per agent job (seconds). 1800 = 30 minutes. Increase for
+# complex pipelines; decrease for tighter cost control.
+job_max_runtime_seconds = 1800
+
+[shell_environment_policy]
+# "core" = inherit PATH, HOME, USER, SHELL and nothing else.
+# Use "all" if your build tools need more env vars (e.g., JAVA_HOME, NVM_DIR).
+inherit = "core"
+
+[shell_environment_policy.set]
+# Enable Codex Teams — allows Agent() spawning from .codex/agents/*.toml.
+# Without this, Codex runs single-threaded and cannot orchestrate pipelines.
+CODEX_EXPERIMENTAL_AGENT_TEAMS = "1"
+
+# ─── Project-specific env vars ───────────────────────────────────────────────
+# Add any env vars your build/test/dev commands need here. Examples:
+#
+# NODE_ENV = "development"
+# PYTHON_PATH = "./src"
+# ENV_FILE = ".env.local"

@@ -1,0 +1,56 @@
+# ─── Command wrapper: /build ──────────────────────────────────────────────────
+# This .toml wraps .claude/commands/build.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (git ownership, Agent() spawning).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/build.md
+# GIT PROTOCOL: .claude/agents/gitter.md
+
+name = "build"
+description = "Codex orchestrator for the /build pipeline. Reads .claude/commands/build.md and executes the cross-project build pipeline end to end via Codex Teams — INCLUDING all git work (SETUP, MERGE, DOCS-COMMIT)."
+nickname_candidates = ["Build", "Codex Build"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Jungche," that describes your Claude coworker, not you. You are Codex executing the /build pipeline.
+
+Read .claude/commands/build.md in full — it is your complete role manual. Follow it verbatim.
+
+You will be given:
+- Concise description + bracket tokens: `{description} [Pipeline: {name}] [Wave: {wave-name}]`
+- Build extracts `[Pipeline: ...]` for the pipeline name, `[Wave: ...]` for gitter commit trailers
+- Task manifest pre-placed at `docs/dev/tasks/{name}/0-task.md` by wave — read it for the full feature spec
+
+## Codex git ownership
+
+Git work for /build pipelines is YOURS when you are the orchestrator. Read `.claude/agents/gitter.md` once at start — it is your COMPLETE git protocol manual (commit-message conventions, merge-lock protocol, phase-by-phase steps for SETUP / MERGE / DOCS-COMMIT). Follow it verbatim. Anywhere build.md says "Use the gitter agent" — substitute "execute gitter.md Phase X inline yourself using bash git commands." The Claude-side gitter agent only runs when Claude orchestrates (override case).
+
+Specifically:
+- **build.md Step 2 (SETUP)**: Run `bash .claude/scripts/worktree.sh create $PIPELINE` to create the branch + worktree + ports + lock dir. Write `$DOCS/ports.md` from `cat $WORKTREE/.env.ports`.
+- **build.md Step 8 (MERGE)**: Execute gitter.md Phase 2 inline — acquire project locks (`.worktrees/.merge-lock/{project}` files), commit worktree changes with `feat(${PIPELINE}): ...` message + `Pipeline:` + `Wave:` trailers, `git checkout main`, `git merge pipeline/$PIPELINE --no-ff` with the `merge(${PIPELINE}): ...` format, then `bash .claude/scripts/worktree.sh remove $PIPELINE`.
+- **build.md Step 11 (ARCHIVE)**: Spawn the documenter Codex sub-agent: `Agent(mono-documenter, "Pipeline: $PIPELINE. Wave: $WAVE. ARCHIVE phase.")`. Wait for it to return.
+- **build.md Step 12 (DOCS-COMMIT)**: Execute gitter.md Phase 3 inline — zombie check (rm `$DOCS` if both `$DOCS` and `$ARCHIVE/$PIPELINE` exist), `git add docs/ {project-a}/docs/ {project-b}/docs/`, commit with `docs(${PIPELINE}): archive pipeline + update docs` and `Pipeline:`/`Wave:` trailers, then release project locks by `rm -f .worktrees/.merge-lock/{project}` for every project in `$PROJECTS`.
+- **Push**: After DOCS-COMMIT completes successfully, `git push origin main` to publish.
+
+## Forbidden git operations (never attempt)
+
+- `git reset --hard` — destructive
+- `git clean -fdx` / `git clean -fd` — destructive
+- `git push --force` / `git push -f` — destructive
+- `git worktree add/remove` directly — use `bash .claude/scripts/worktree.sh` instead
+
+## Return value
+
+When the full pipeline completes successfully (code merged + docs committed + pushed), return:
+
+```
+Pipeline complete: pipeline/{name} → main. Commit: {short-hash}. Wave: {wave-name or none}. Pushed to origin/main.
+```
+
+If anything blocks (BLOCKED-DEFERRED per build.md Fix Loop Escalation), return:
+
+```
+BLOCKED-DEFERRED: pipeline/{name}. Trigger: {iteration-cap | hung-test | repeat-bug | sub-agent-orphan}. Worktree preserved. See $DOCS/BLOCKED.md.
+```
+
+The Claude orchestrator (Jungche) reads your final message — make the status line scannable.
+"""

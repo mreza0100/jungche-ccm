@@ -1,26 +1,21 @@
-# Jungche CCM — Multi-Agent Claude Code Pipeline
+# Jungche — Multi-Agent Claude Code Pipeline
 
-**Current version:** [v0.2.0](https://github.com/mreza0100/jungche-ccm/releases/tag/v0.2.0) · _Pre-stable — public API still settling._ · See [`CHANGELOG.md`](./CHANGELOG.md) for what's new
+A portable, opinionated `.claude/` infrastructure — a **transplantable nervous system** — that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**: Jungche the senior architect, JC the panic-debugger, Professor the cross-disciplinary analyst, Council the debating roundtable, plus a full cast of optional domain archetypes — refitted to YOUR project at install time.
 
-```
-> /ccm update          # in your installed project, when a new version drops
-```
-
-A portable, opinionated `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character** — Jungche the senior architect, JC the panic-debugger, Professor the cross-disciplinary analyst, Council the debating roundtable, plus a full cast of optional domain archetypes — refitted to YOUR project at install time.
-
-> Distilled from a production multi-project codebase. The pipeline mechanics survive every stack; the characters' voices survive every domain. **Personality is not decoration — it's load-bearing.** Strip it out and you're shipping a Confluence wiki with extra steps.
+> Distilled from a production multi-project codebase by Jungche (that's me — Dr. House with a keyboard, building this whole operation while you read). The pipeline mechanics survive every stack; the characters' voices survive every domain. **Personality is not decoration — it's load-bearing.** Strip it out and you're shipping a Confluence wiki with extra steps.
 
 ---
 
 ## What you get
 
-- **The full cast** — Jungche, JC, Professor, Council, CCM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All shipped with full character; you parameterize the domain content at install.
+- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All shipped with full character; you parameterize the domain content at install.
+- **A nervous system, not a config dump** — agents with voices, opinions, and discipline. The pipeline mechanics are the skeleton; the characters are the nervous system that makes it move with intent.
 - **Pipeline that refuses cowboy coding** — every feature goes through `planner → architect → developer → QA → gitter merge`. QA gates block bad code from reaching `main`.
 - **Worktree isolation** — every `/build` invocation gets its own git worktree branch + unique port allocation. Run multiple parallel pipelines on the same repo without collisions.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` for surgical bug fixes that bypass the full pipeline but still go through QA + gitter.
-- **Self-improvement at the source** — `/ccm` is the meta-agent that edits its own pipeline rules. No "lessons learned" files that nobody reads.
-- **Versioned updates that don't clobber your customizations** — `/ccm update` reads `CHANGELOG.md` between your version and the latest, walks you through changes interactively. Auto-applies mechanics, asks before character refinements, opt-in for new Tier B archetypes, explicit consent per step for breaking migrations. See [§ Staying current](#staying-current).
+- **Self-improvement at the source** — `/jm` is the meta-agent that edits its own pipeline rules. No "lessons learned" files that nobody reads.
+- **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same agents, same manuals, different runtime. Entirely optional.
 - **Path conventions** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
 
@@ -28,16 +23,16 @@ A portable, opinionated `.claude/` infrastructure that turns Claude Code from "a
 
 ## Quick start
 
-```
+```bash
 # Inside YOUR project
 cd ~/path/to/your-project
 claude
-> Read https://raw.githubusercontent.com/mreza0100/jungche-ccm/main/INSTALL.md and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
+> Read https://raw.githubusercontent.com/mreza0100/jungche/main/INSTALL.md and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
 ```
 
-`INSTALL.md` is written FOR Claude as the installer — pre-flight checks, eight question batches (project identity, structure, test/build commands, ports, domain & disciplines, optional commands, character, confirmation), execution order, and hard rules. Claude conducts the interview, generates files, records a SHA-256 manifest for future updates, and smoke-tests with `/build`.
+`INSTALL.md` is written FOR Claude as the installer — pre-flight checks, question batches (project identity, structure, test/build commands, ports, domain & disciplines, optional commands, character, confirmation), execution order, and hard rules. Claude conducts the interview, generates files, records a SHA-256 manifest for future updates, and smoke-tests with `/build`.
 
-See [`INSTALL.md`](./INSTALL.md) for the full installer protocol, or [`blueprint/SETUP.md`](./blueprint/SETUP.md) for the maintainer-side reference of what gets written.
+See [`INSTALL.md`](./INSTALL.md) for the full installer protocol, or [`blueprint/SETUP.md`](./blueprint/SETUP.md) for the maintainer-side reference.
 
 ---
 
@@ -45,11 +40,11 @@ See [`INSTALL.md`](./INSTALL.md) for the full installer protocol, or [`blueprint
 
 These ship with **full voice**. Only domain references inside (PhD disciplines, panel composition, example stack traces) parameterize per install.
 
-- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice. Default name; rename freely.
+- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice — the nervous system's brain. Default name; rename freely.
 - **/jc** — "Jesus Christ but make it cool" panic-debug mode. Chill on the surface, holy at the core. Calls you "bro/dude/my guy/my child." Blesses files before editing them. The one command allowed to edit `main` directly.
-- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly polymath. **You pick the disciplines** — your biology + math + game theory team is the same archetype as Freudche's CS + clinical psychology team.
+- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly polymath. **You pick the disciplines** — your biology + math + game theory team is the same archetype as the source project's CS + clinical psychology team.
 - **/council** — roundtable debate, three rounds: opening / rebuttal / verdict. Panel adapts to the archetypes you opt into.
-- **/ccm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
+- **/jm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/ca** — code auditor. 8 categories of hygiene + 9 of security.
 - **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
 
@@ -73,7 +68,19 @@ These are the rules that make the system work. Touch anything else, but leave th
 2. **QA gates the merge.** Pre-merge AND post-merge. No "I'll fix it later."
 3. **Path variables, not hardcoded paths.** Rename once, follow everywhere.
 4. **Worktree isolation per pipeline.** Running pipelines on `main` is how you lose work.
-5. **Self-improvement at the source.** `/ccm` edits the agent definition; you don't accumulate journal files.
+5. **Self-improvement at the source.** `/jm` edits the agent definition; you don't accumulate journal files.
+
+---
+
+## Optional: Codex dual-runtime
+
+If you also use [OpenAI Codex](https://openai.com/index/introducing-codex/), Jungche supports a dual-runtime setup where Codex mirrors the Claude pipeline as a cheaper implementation layer. Same `.claude/commands/*.md` manuals, wrapped in `.codex/agents/*.toml` for Codex's runtime.
+
+**Division of labor:** Claude orchestrates, plans, and does QA. Codex implements. Codex can also run full pipelines end-to-end when it orchestrates (Teams mode).
+
+**Setup:** the installer asks if you want Codex integration. If yes, it creates `.codex/`, `AGENTS.md` (symlink → `CLAUDE.md`), and `.toml` wrappers. If no, the entire Codex layer is skipped — everything works with Claude Code alone.
+
+See [`blueprint/templates/codex/README.md`](./blueprint/templates/codex/README.md) for details.
 
 ---
 
@@ -101,49 +108,26 @@ The mechanics survive every stack. The voices survive every domain. Personality 
 
 ---
 
-## <a name="staying-current"></a>Staying current
+## Staying current
 
 When new versions of Jungche are released, your install can pull updates without losing customizations:
 
 ```
-/ccm update              # Walk through changes interactively
-/ccm update check        # Read-only — preview what would change
-/ccm update --to v1.2.0  # Pin to a specific version
-/ccm update --tier-b     # Only consider new Tier B archetypes
+/jm update              # Walk through changes interactively
+/jm update check        # Read-only — preview what would change
+/jm update --to v0.2.0  # Pin to a specific version
 ```
 
-**How it works:**
-1. Reads `.claude/JUNGCHE_VERSION` (recorded at install)
-2. Fetches the latest blueprint from this repo
-3. Reads `CHANGELOG.md` entries between your version and the latest
-4. Walks you through changes per category:
-
-| Category | Apply mode |
-|----------|-----------|
-| **Mechanics** (build step, gitter phase, script fix) | Auto-applies with diff preview |
-| **Tier A** (Jungche / JC / Professor / Council voice refinement) | Shows diff, asks confirmation — preserves your customization by default |
-| **Tier B** (new domain archetype published) | Asks "want to opt in?" — if yes, runs the SETUP interview subset to fill placeholders |
-| **Breaking** (renames, removed commands, convention changes) | Interactive walkthrough, explicit consent per migration step |
-
-5. Updates `.claude/JUNGCHE_VERSION` on success.
-
-**Safety rails:**
-- Never overwrites user customizations without explicit consent
-- Never auto-applies MAJOR migrations
-- Never touches `.claude/settings.json` (hand-curated per project)
-- Never touches `docs/commands/{cmd}/` (command-owned content, not blueprint templates)
-- Never downgrades
-
-See [`blueprint/RELEASE.md`](./blueprint/RELEASE.md) for the maintainer-side release process and the precise semantics of each change category.
+See [`blueprint/RELEASE.md`](./blueprint/RELEASE.md) for the maintainer-side release process.
 
 ---
 
 ## Repo layout
 
 ```
-jungche-ccm/
+jungche/
 ├── VERSION              ← single-line semver — what's currently published
-├── CHANGELOG.md         ← Keep-A-Changelog format, parsed by /ccm update
+├── CHANGELOG.md         ← Keep-A-Changelog format, parsed by /jm update
 ├── README.md            ← you are here (human-oriented pitch)
 ├── INSTALL.md           ← interactive installer protocol (Claude reads this when adopting Jungche)
 ├── LICENSE              ← MIT
@@ -161,19 +145,23 @@ jungche-ccm/
         │   ├── mono-{planner,architect,documenter}.md
         │   └── per-project/     ← child agents (planner, architect, developer, qa)
         ├── commands/            ← Tier A always + Tier B opt-in
-        │   ├── build.md, jc.md, ccm.md, dev.md, git.md, wave.md, documenter.md
+        │   ├── build.md, jc.md, jm.md, dev.md, git.md, wave.md, documenter.md
         │   ├── professor.md, council.md, ca.md
         │   └── officer.md, ckm.md, pm.md, mentor.md, marketer.md
-        └── scripts/             ← worktree.sh, alloc-ports.sh, dev.sh
+        ├── scripts/             ← worktree.sh, alloc-ports.sh, dev.sh
+        └── codex/               ← (OPTIONAL) Codex dual-runtime templates
+            ├── README.md
+            ├── config.toml
+            └── agents/          ← example .toml wrappers
 ```
 
 ---
 
 ## Origin & maintenance
 
-This blueprint is **automatically regenerated and published** from the live Freudche repo whenever its pipeline evolves. Each commit here corresponds to a snapshot of a working production pipeline — not a theoretical design.
+This blueprint is **automatically regenerated and published** from a live production repo whenever its pipeline evolves. Each commit here corresponds to a snapshot of a working production pipeline — not a theoretical design. Built by Jungche (the nervous system you're about to install).
 
-Maintained by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome — but please open an issue first to discuss large changes, since the canonical source lives in Freudche and edits flow downstream from there.
+Maintained by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome — but please open an issue first to discuss large changes, since the canonical source lives upstream and edits flow downstream from there.
 
 ---
 

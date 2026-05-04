@@ -18,12 +18,12 @@ Run inside your target project. Claude reads this file, conducts an interview, t
 
 ```bash
 # Clone the blueprint somewhere
-git clone https://github.com/mreza0100/jungche-ccm.git ~/work/jungche-ccm
+git clone https://github.com/mreza0100/jungche.git ~/work/jungche
 
 # Inside YOUR project
 cd ~/path/to/your-project
 claude
-> Read every file in ~/work/jungche-ccm/blueprint/.
+> Read every file in ~/work/jungche/blueprint/.
 > Follow SETUP.md to install Jungche in THIS project.
 > Conduct the interview before touching any files.
 ```
@@ -61,12 +61,12 @@ For each subproject, Claude needs:
 - One-line description
 - Tech: language, framework, package manager, test runner, build tool, dev server port
 
-Example (Freudche):
-- `freudche-be` — Express + GraphQL backend, pnpm, vitest, port 3000
-- `freudche-fe` — Expo React Native frontend, npm, jest, port 8081
-- `freudche-cortex` — Python AI engine, uv, pytest, no port (SQS consumer)
-- `freudche-infra` — Docker Compose for PostgreSQL + LocalStack
-- `freudche-web` — Next.js marketing site, npm, Vercel, port 3001
+Example:
+- `api` — Express + GraphQL backend, pnpm, vitest, port 3000
+- `web` — React frontend, npm, jest, port 5173
+- `worker` — Python processing service, uv, pytest, no port (queue consumer)
+- `infra` — Docker Compose for PostgreSQL + Redis
+- `marketing` — Next.js marketing site, npm, Vercel, port 3001
 
 ### 4. Tech stack details
 
@@ -172,6 +172,14 @@ If yes, fill in:
 
 If no, skip.
 
+### 7b. Codex dual-runtime (OPTIONAL)
+
+> Do you also use OpenAI Codex? (Everything works without it — this adds a second runtime for cheaper implementation.)
+
+If yes: the installer creates `.codex/` with `.toml` wrappers that mirror `.claude/`, plus an `AGENTS.md` symlink → `CLAUDE.md`. Claude orchestrates and does QA; Codex implements. Codex can also run full pipelines end-to-end in Teams mode.
+
+If no: skip — the entire Codex layer is omitted. No pipeline operation requires it.
+
 ### 8. Sacred ground
 
 > What does "do no harm" mean in your domain? Privacy, safety, correctness, financial integrity, narrative coherence, scientific reproducibility, security?
@@ -202,16 +210,17 @@ Claude takes your answers and:
 
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Jungche persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
 2. **Writes per-project `CLAUDE.md` files** (if monorepo) — tech stack details, conventions.
-3. **Writes Tier A command files** — `/build`, `/jc`, `/ccm`, `/dev`, `/git`, `/wave`, `/documenter`, `/professor`, `/council`, `/ca`. Voice intact, domain content filled.
+3. **Writes Tier A command files** — `/build`, `/jc`, `/jm`, `/dev`, `/git`, `/wave`, `/documenter`, `/professor`, `/council`, `/ca`. Voice intact, domain content filled.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/ckm`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
-7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/ccm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
+7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/jm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
+8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely.
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
-10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/ccm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
-11. **Writes install manifest** — generates `.claude/JUNGCHE_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/ccm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
+10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/jm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
+11. **Writes install manifest** — generates `.claude/JUNGCHE_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/jm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
     ```json
     {
       "version": "1.0.0",
@@ -235,7 +244,7 @@ After install, Claude runs a tiny `/build` to verify the pipeline works end-to-e
 /build add-readme-section
 ```
 
-Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/ccm` to fix it at the source.
+Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/jm` to fix it at the source.
 
 ---
 
@@ -250,7 +259,7 @@ claude
 
 Claude reads the blueprint's Tier B template for that archetype, runs the relevant subset of the interview, and copies + customizes the file. No reinstall needed.
 
-Same for adding a new Tier A archetype if you build one — `/ccm` copies the template, you parameterize the content, done.
+Same for adding a new Tier A archetype if you build one — `/jm` copies the template, you parameterize the content, done.
 
 ---
 
@@ -259,9 +268,9 @@ Same for adding a new Tier A archetype if you build one — `/ccm` copies the te
 1. **Worktree script can't find your tools.** Make sure your shell environment is loaded inside the script — `source ~/.zshrc`, use absolute paths, or pin tool versions in a script-local `PATH`.
 2. **Port allocation false positives.** `lsof -i :PORT` checks aren't always reliable across IPv4/IPv6 — adjust the script if you see false positives on your OS.
 3. **Gitter tries to merge with conflicts unresolved.** That's a gap in your gitter setup; the template handles it, but if you simplified, restore the conflict-detection block.
-4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/ccm` fix at the source agent.
+4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/jm` fix at the source agent.
 5. **`.worktrees/.ports` corrupted.** Manually edit; the format is one whitespace-separated line per pipeline.
-6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Re-read `ADAPTATION.md` § "What NOT to change" — voice is non-negotiable. Invoke `/ccm` and tell it which command lost its voice.
+6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Re-read `ADAPTATION.md` § "What NOT to change" — voice is non-negotiable. Invoke `/jm` and tell it which command lost its voice.
 
 ---
 
@@ -269,26 +278,26 @@ Same for adding a new Tier A archetype if you build one — `/ccm` copies the te
 
 - Read `ARCHETYPES.md` so you know the cast you just installed.
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
-- Run `/build` for new features. Run `/jc` for hotfixes. Run `/ccm` to evolve the pipeline. Run `/council` for hard decisions. Run `/professor` for cross-disciplinary analysis.
+- Run `/build` for new features. Run `/jc` for hotfixes. Run `/jm` to evolve the pipeline. Run `/council` for hard decisions. Run `/professor` for cross-disciplinary analysis.
 - The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
 Welcome to the cast.
 
 ---
 
-## Staying current — `/ccm update`
+## Staying current — `/jm update`
 
 When new versions of Jungche are released, your install can pull updates without losing customizations:
 
 ```
-/ccm update            # Walk through changes interactively
-/ccm update check      # Read-only — preview what would change
-/ccm update --to v1.2.0  # Pin to a specific version
+/jm update            # Walk through changes interactively
+/jm update check      # Read-only — preview what would change
+/jm update --to v1.2.0  # Pin to a specific version
 ```
 
 How it works:
 1. Reads `.claude/JUNGCHE_VERSION` (your current install)
-2. Fetches the latest blueprint from `mreza0100/jungche-ccm`
+2. Fetches the latest blueprint from `mreza0100/jungche`
 3. Reads `CHANGELOG.md` entries between your version and the latest
 4. Walks you through each change — auto-applying mechanics, asking before character changes, opt-in for new Tier B archetypes, interactive walkthrough for breaking migrations
 5. Updates `.claude/JUNGCHE_VERSION` to the new version

@@ -12,7 +12,7 @@ Think of yourself as a building inspector who's also a surgeon. You don't just s
 
 ## What you audit
 
-You scan the ACTUAL codebase — reading files, grepping patterns, checking imports. This is NOT a documentation review (that's `/documenter audit`), pipeline review (`/ccm audit`), or compliance review (`/officer audit` if opted in). This is about the **code itself**.
+You scan the ACTUAL codebase — reading files, grepping patterns, checking imports. This is NOT a documentation review (that's `/documenter audit`), pipeline review (`/jm audit`), or compliance review (`/officer audit` if opted in). This is about the **code itself**.
 
 ---
 
