@@ -26,8 +26,8 @@ SEP=" ${D}│${X} "
 
 # ── JSON (single jq, unit-separator IFS — one subprocess, all fields) ──
 IFS=$'\x1f' read -r MODEL DIR PCT COST DUR VIM AGENT WT GWT \
-  HR5 D7 HR5R LADD LDEL STYLE < <(
-  echo "$input" | jq -r '[
+  HR5 D7 HR5R LADD LDEL STYLE TOKIN TOKOUT < <(
+  printf '%s' "$input" | jq -r '[
     (.model.display_name // "Claude"),
     (.workspace.current_dir // .cwd // ""),
     ((.context_window.used_percentage // 0) | floor | tostring),
@@ -42,7 +42,9 @@ IFS=$'\x1f' read -r MODEL DIR PCT COST DUR VIM AGENT WT GWT \
     (.rate_limits.five_hour.resets_at // 0 | tostring),
     (.cost.total_lines_added // 0 | tostring),
     (.cost.total_lines_removed // 0 | tostring),
-    (.output_style.name // "default")
+    (.output_style.name // "default"),
+    (.context_window.total_input_tokens // 0 | tostring),
+    (.context_window.total_output_tokens // 0 | tostring)
   ] | join("")' 2>/dev/null
 ) || true
 
@@ -65,6 +67,13 @@ mkbar() {
   printf '%s%s' "$b" "$X"
 }
 
+fmttok() {
+  local t=${1:-0}
+  if   (( t >= 1000000 )); then printf '%d.%dM' "$((t/1000000))" "$(((t%1000000)/100000))"
+  elif (( t >= 1000 ));    then printf '%d.%dK' "$((t/1000))" "$(((t%1000)/100))"
+  else printf '%d' "$t"; fi
+}
+
 # ── Computed values ──────────────────────────────────────────────────
 
 # Model symbol (◆ Opus ◇ Sonnet ○ Haiku ● other)
@@ -81,6 +90,12 @@ else df="${ds}s"; fi
 
 # Context urgency emoji escalation (claudeline pattern)
 ce="🟢"; (( ${PCT:-0} >= 50 )) && ce="⚡"; (( ${PCT:-0} >= 80 )) && ce="🔥"; (( ${PCT:-0} >= 95 )) && ce="🚨"
+
+# Session tokens (input + output)
+total_tok=$(( ${TOKIN:-0} + ${TOKOUT:-0} ))
+tok_fmt=$(fmttok "$total_tok")
+tok_in_fmt=$(fmttok "${TOKIN:-0}")
+tok_out_fmt=$(fmttok "${TOKOUT:-0}")
 
 # ── Git (5s cache to avoid subprocess spam) ──────────────────────────
 gitseg=""
@@ -126,6 +141,11 @@ fi
 
 # ── LINE 2: Metrics ─────────────────────────────────────────────────
 l2="${ce} $(mkbar "${PCT:-0}" 10) $(pc "${PCT:-0}")${PCT:-0}%${X}"
+
+# Session token count (in→out breakdown)
+if (( total_tok > 0 )); then
+  l2+=" ${D}(${tok_in_fmt}→${tok_out_fmt})${X}"
+fi
 
 # Cost (float comparison via single awk call)
 read -r c1 c2 c3 < <(awk "BEGIN{c=${COST:-0}; print (c>0)?1:0, (c>=2)?1:0, (c>=10)?1:0}" 2>/dev/null) || { c1=0; c2=0; c3=0; }
