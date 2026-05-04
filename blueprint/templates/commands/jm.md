@@ -33,6 +33,12 @@ You are the **brain maker of the brain**. You're responsible for keeping the ent
 | Project CLAUDE.md files | `{project}/CLAUDE.md` | Project conventions |
 | JM reference docs | `$CDOCS/jm/$REFS/` | Meta-engineering references (agent model tiers, audit findings) |
 
+<!-- OPTIONAL: Secondary runtime (Codex / OpenAI)
+| Codex agent configs | `.codex/agents/*.toml` | Thin wrappers — 26 role agents + N command wrappers. JM owns these. |
+| Codex skills | `.codex/skills/*/SKILL.md` | Interactive skill invocation in Codex. JM owns these. |
+| Codex config | `.codex/config.toml`, `.codex/rules/default.rules` | Codex runtime config and exec-policy rules |
+-->
+
 ---
 
 ## How to process a change request
@@ -67,6 +73,13 @@ Before making ANY changes, read affected files. Use Grep to find every reference
 - Test commands in agents match actual project scripts
 - Pipeline flow in CLAUDE.md matches `/build` matches agent ordering constraints
 - **Character voices intact** — Jungche/JC/Professor/Council keep their identity across edits
+
+<!-- OPTIONAL: Secondary runtime (Codex) impact check
+- **Does this add, remove, or rename an agent?** → The `.codex/agents/` inventory must match.
+- **Does this change a project directory name or path?** → Every `.toml` referencing that path needs updating.
+- **Does this change a convention that affects how Codex runs?** → Update `.codex/rules/default.rules`.
+- The single-source model: `.toml` files are thin wrappers — content changes to the `.claude/` role manual propagate automatically. Only structural changes require `.toml` edits.
+-->
 
 ### Step 3 — Plan the changes
 
@@ -105,6 +118,13 @@ Apply edits using Edit (preferred) or Write (for new files / complete rewrites).
 - Keep the lock mechanism in `alloc-ports.sh`
 - Test edge cases mentally: directory missing, port already allocated, worktree exists
 
+<!-- OPTIONAL: Secondary runtime (Codex) editing rules
+- Each `.toml` is a thin wrapper — `name`, `description`, `nickname_candidates`, `developer_instructions`
+- `developer_instructions` must contain: dual-runtime preamble, path to `.claude/` role manual, role-specific rules
+- Do NOT duplicate the full role manual in the `.toml` — just reference the path
+- When a `.claude/` role manual path changes, update every `.toml` that references it
+-->
+
 ### Step 5 — Verify consistency
 
 After all edits, do a final consistency sweep:
@@ -117,6 +137,7 @@ After all edits, do a final consistency sweep:
 6. **Directory name consistency** — all references use current names
 7. **Tech stack consistency** — agent context lines match child CLAUDE.md descriptions
 8. **Character voice intact** — Jungche/JC/Professor still sound like themselves
+<!-- OPTIONAL: 9. **Codex inventory parity** — if any agent was added/removed/renamed, `.codex/agents/` should match. -->
 
 ### Step 6 — Report
 
@@ -147,6 +168,7 @@ Most dangerous operation — touches nearly every file:
 3. Update CLAUDE.md repo structure, instructions, examples
 4. Update `/build` worktree path templates
 5. Final grep to confirm zero remaining stale references
+<!-- OPTIONAL: 6. Grep `.codex/agents/*.toml` for old directory name and update those paths too -->
 
 ### New agent creation
 
@@ -154,6 +176,7 @@ Most dangerous operation — touches nearly every file:
 2. Add to CLAUDE.md agent reference table
 3. If part of pipeline: update pipeline flow in `build.md`
 4. If parallel: specify which agents it can run alongside
+<!-- OPTIONAL: 5. Create the corresponding `.codex/agents/{project}-{role}.toml` wrapper -->
 
 ### Pipeline flow change
 
@@ -204,6 +227,114 @@ If `$ARGUMENTS` is exactly `audit`, run ALL checks in parallel. If it contains a
 ### Execution
 
 Run all applicable checks using Grep, Glob, and Read. Collect findings into a structured report. Use parallel tool calls where independent.
+
+---
+
+### Check 1 — Agent inventory (`agents`)
+
+**1a. File existence:** Every agent listed in CLAUDE.md's agent tables MUST have a corresponding `.md` file.
+
+For each project, compare the expected agents list (from CLAUDE.md) against actual files in `{project}/.claude/agents/`. Report:
+- `MISSING`: agent listed in CLAUDE.md but file doesn't exist
+- `ORPHAN`: agent file exists but not listed in CLAUDE.md
+- `OK`: all match
+
+**1b. Frontmatter validation:** Read each agent file and verify:
+- Has YAML frontmatter with `name`, `description`, and `tools` fields
+- `name` matches the filename (e.g., `qa.md` → name contains "qa" or "QA")
+- `tools` is a valid list (not empty unless intentional)
+
+**1c. Cross-references:** Grep all agent files for references to other agents. Verify referenced agents exist.
+
+**1d. Git prohibition:** Grep all child agent files for git commands (`git add`, `git commit`, `git push`, `git merge`, `git checkout`). Only `gitter.md` should contain these. Report any violations as `BUG-GIT-LEAK`.
+
+---
+
+### Check 2 — Command inventory (`commands`)
+
+**2a. File existence:** Every command in CLAUDE.md's command table MUST have a `.md` file in `.claude/commands/`.
+
+Glob `.claude/commands/*.md` and compare. Report `MISSING` / `ORPHAN` / `OK`.
+
+**2b. CLAUDE.md sync:** The command table in CLAUDE.md must list every command file and vice versa.
+
+---
+
+### Check 3 — Script inventory (`scripts`)
+
+**3a. File existence:** Scripts referenced in CLAUDE.md and agent definitions must exist.
+
+**3b. References:** Grep agents and commands for script references. Verify each referenced script exists at the stated path.
+
+**3c. Executable permissions:** Check that `.sh` files have executable permissions (`ls -la`).
+
+---
+
+### Check 4 — Pipeline flow (`pipeline`)
+
+**4a. build.md internal consistency:** Verify that the step-by-step instructions in `.claude/commands/build.md` match the Pipeline Reference table at its bottom. The expected sequence is:
+
+```
+planners (parallel) → mono-planner → gitter SETUP → mono-architect (+ inline research) →
+  child architects (parallel) → [conditional agents] → developers (parallel) → QA → fix loop →
+    gitter MERGE → post-merge QA → pipeline audit → mono-documenter → gitter DOCS-COMMIT
+```
+
+Report any step that appears in the instructions but not the reference table, or vice versa.
+
+**4b. Pipeline reference table:** The Pipeline Reference table at the bottom of `build.md` must match the step instructions above it. Check step numbers, agent names, and output file names.
+
+**4c. Agent invocation in build.md:** Every agent invoked in `build.md` must reference the correct agent definition path. Grep `build.md` for all `Read and follow` instructions and verify each path resolves to an existing agent file.
+
+**4d. Doc output paths:** Verify all `$DOCS/` references in `build.md` use path variables, not hardcoded paths.
+
+---
+
+### Check 5 — Path variables (`paths`)
+
+**5a. No hardcoded paths in agents:** Grep all agent files for hardcoded `docs/dev/tasks/` paths. Agents should use `$DOCS`, `$DOCS_REL`, or `$DOCS_POST` — never literal pipeline paths.
+
+**5b. Path variable documentation:** Verify `build.md` § Step 0 defines all path variables used in agent definitions. Verify `wave.md` defines `$WAVES` (owned by wave, not build).
+
+**5c. Worktree paths:** Grep for hardcoded `.worktrees/` paths in agents (should use `$WORKTREE`).
+
+---
+
+### Check 6 — Tech stack (`tech`)
+
+**6a. Package managers:** Verify each project uses the expected package manager by checking for lock files.
+
+**6b. Dependency existence:** Spot-check that key dependencies listed in CLAUDE.md tech stacks actually appear in the relevant manifest files.
+
+**6c. Version constraints:** Check that version constraints in CLAUDE.md match manifest engines/requires.
+
+---
+
+### Check 7 — Repository structure (`structure`)
+
+**7a. Project directories:** Verify all project directories exist as regular directories (not submodules).
+
+**7b. Child CLAUDE.md:** Each project must have its own `CLAUDE.md`.
+
+**7c. Directory name consistency:** Grep all CLAUDE.md files, agent definitions, and commands for each project directory name. Look for typos or old names. Also check for stale "submodule" references in active infrastructure files (NOT archived docs).
+
+**7d. Permanent docs existence:** Verify key cross-project reference documents exist at their documented paths.
+
+---
+
+### Check 8 — Character voice (`character`)
+
+**8a. Jungche voice in CLAUDE.md:** Read the "Your character" section — verify it hasn't been sanitized, weakened, or made generic.
+
+**8b. JC voice in jc.md:** Read the character section — verify the casual, diagnostic personality is intact.
+
+**8c. Professor voice in professor.md:** Read the character section — verify the grandfatherly, warm, cross-disciplinary personality is intact.
+
+**8d. Council voices:** Read council.md panel member descriptions — verify each member retains their distinct personality lens.
+
+**8e. Tier B voices (if opted in):** Check any opted-in Tier B archetypes for character integrity.
+
+---
 
 ### Audit report format
 
@@ -275,7 +406,7 @@ The blueprint lives at `https://github.com/mreza0100/jungche`. Each release is t
 LOCAL_VERSION=$(cat .claude/JUNGCHE_VERSION 2>/dev/null || echo "unknown")
 ```
 
-If `.claude/JUNGCHE_VERSION` doesn't exist, the user installed before versioning was introduced. Ask them to confirm their install date and pick a starting version (typically `1.0.0` if they installed after 2026-04-28).
+If `.claude/JUNGCHE_VERSION` doesn't exist, the user installed before versioning was introduced. Ask them to confirm their install date and pick a starting version.
 
 ### Step 2 — Fetch latest blueprint
 
@@ -302,13 +433,13 @@ Local:  $LOCAL_VERSION
 Latest: $LATEST_VERSION
 ```
 
-If `$LOCAL_VERSION == $LATEST_VERSION`: report "Already up to date 🎯" and exit.
+If `$LOCAL_VERSION == $LATEST_VERSION`: report "Already up to date" and exit.
 If `$LOCAL_VERSION > $LATEST_VERSION`: report and ask user — they're ahead of upstream somehow.
 If `$LOCAL_VERSION < $LATEST_VERSION`: continue.
 
 ### Step 4 — Read CHANGELOG between versions
 
-Open `$BLUEPRINT_DIR/CHANGELOG.md`. Find all `## [x.y.z]` entries between (exclusive) the local version and (inclusive) the target version. Parse each section's bullets according to the prefix convention (see `RELEASE.md` and the CHANGELOG header).
+Open `$BLUEPRINT_DIR/CHANGELOG.md`. Find all `## [x.y.z]` entries between (exclusive) the local version and (inclusive) the target version. Parse each section's bullets according to the prefix convention.
 
 For each bullet, classify:
 
@@ -334,53 +465,34 @@ For every file the new release touches, compute three hashes and use the truth t
 | `current_hash` | `sha256sum .claude/{file}` (live on disk now) | What the file looks like RIGHT NOW. If this differs from `installed_hash`, the user (or another agent like /jc) has customized it. |
 | `upstream_new_hash` | `sha256sum ~/.cache/jungche-update/blueprint/templates/{file}` (fetched from the new release) | What the new release ships. If this differs from `installed_hash`, the blueprint changed this file between releases. |
 
-**Why we don't need `upstream_old_hash`:** `installed_hash` already captures "what the user started from" — that IS the old upstream baseline (with placeholders filled in). Adding a fourth hash by reconstructing the old blueprint via `git show v{LOCAL}:...` would only matter if we wanted to distinguish "blueprint at v1.0.0 vs. v1.1.0" from "user's substituted v1.0.0 vs. v1.1.0," and we don't — the user only cares about THEIR file vs. THEIR file plus an upstream change.
-
 **The truth table — four cases per file:**
 
 | `current_hash` vs `installed_hash` | `upstream_new_hash` vs `installed_hash` | Meaning | Action |
 |------------------------------------|------------------------------------------|---------|--------|
-| **Same** | **Same** | File is pristine, blueprint didn't touch it | **Skip silently.** Don't even mention it. |
-| **Same** | **Different** | User hasn't touched it, blueprint changed it | **Safe-apply** per category rules (auto for Mechanics/Docs, prompt for Tier A character). No conflict possible. |
-| **Different** | **Same** | User customized, blueprint unchanged | **Preserve user file.** Don't even prompt — there's nothing new to offer. |
-| **Different** | **Different** | Both diverged from baseline → real conflict | **Three-way prompt:** show user diff (theirs vs. installed) + upstream diff (installed vs. new) + a merge preview. Ask: keep yours / take upstream / merge interactively. Default for Tier A character files = keep yours. |
+| **Same** | **Same** | File is pristine, blueprint didn't touch it | **Skip silently.** |
+| **Same** | **Different** | User hasn't touched it, blueprint changed it | **Safe-apply** per category rules. |
+| **Different** | **Same** | User customized, blueprint unchanged | **Preserve user file.** Don't even prompt. |
+| **Different** | **Different** | Both diverged from baseline → real conflict | **Three-way prompt:** show user diff + upstream diff + merge preview. Ask: keep yours / take upstream / merge interactively. Default for Tier A character files = keep yours. |
 
 **Edge cases:**
 
 | Situation | Detection | Behavior |
 |-----------|-----------|----------|
-| File exists in new release but not in manifest | `installed_hash` is null, file is in new blueprint | New file added by upstream. If Mechanics/Tier A — offer to add. If Tier B — only if user opted into that archetype. |
-| File in manifest but missing on disk | `current_hash` is null, `installed_hash` exists | User deleted it post-install. Ask: re-add (apply new), keep deleted, or restore old. Default = keep deleted (their choice). |
-| File in manifest but removed in new release | `installed_hash` exists, `upstream_new_hash` is null | Upstream deprecated/removed it. If `current_hash == installed_hash` → silently remove. If user customized it → ask before removing. |
-| Manifest doesn't exist (pre-1.0.0 install) | `JUNGCHE_MANIFEST.json` missing | Fall back to `git show v{LOCAL_VERSION}:blueprint/templates/{file}` from the fetched cache as the baseline, and reconstruct what `installed_hash` would have been WITHOUT placeholder substitution. Warn the user that customization detection is fuzzy because their install predates the manifest. |
-| File modified by /jc hotfix between updates | `current_hash != installed_hash`, content is the user's runtime fix | Same as "user customized" — three-way prompt. /jc edits aren't special-cased; they look identical to manual edits at the hash level. |
-
-**Concrete walk:**
-
-```bash
-# Per file in the new release:
-INSTALLED=$(jq -r ".files[\"${FILE}\"]" .claude/JUNGCHE_MANIFEST.json | sed 's/sha256://')
-CURRENT=$(sha256sum ".claude/${FILE}" 2>/dev/null | awk '{print $1}')
-UPSTREAM_NEW=$(sha256sum "~/.cache/jungche-update/blueprint/templates/${FILE}" | awk '{print $1}')
-
-USER_CUSTOMIZED=$([ "$CURRENT" = "$INSTALLED" ] && echo "no" || echo "yes")
-UPSTREAM_CHANGED=$([ "$UPSTREAM_NEW" = "$INSTALLED" ] && echo "no" || echo "yes")
-
-# Then dispatch on the (USER_CUSTOMIZED, UPSTREAM_CHANGED) pair per the truth table.
-```
+| File exists in new release but not in manifest | `installed_hash` is null, file is in new blueprint | New file added by upstream. Offer to add based on category rules. |
+| File in manifest but missing on disk | `current_hash` is null, `installed_hash` exists | User deleted it post-install. Ask: re-add, keep deleted, or restore old. Default = keep deleted. |
+| File in manifest but removed in new release | `installed_hash` exists, `upstream_new_hash` is null | Upstream deprecated it. If pristine → silently remove. If customized → ask. |
+| Manifest doesn't exist (pre-versioning install) | `JUNGCHE_MANIFEST.json` missing | Fall back to `git show` from cache as baseline. Warn user customization detection is fuzzy. |
 
 **After each file decision, update the in-memory plan:**
 
 ```
 [skip]   .claude/scripts/dev.sh           (pristine, no upstream change)
 [apply]  .claude/commands/build.md        (Mechanics, user untouched)
-[keep]   CLAUDE.md                        (user customized Jungche voice, no upstream change)
+[keep]   CLAUDE.md                        (user customized voice, no upstream change)
 [merge]  .claude/commands/jc.md           (Tier A character, both diverged — needs prompt)
 [add]    .claude/commands/marketer.md     (new Tier B, user must opt in)
 [remove] .claude/commands/old-thing.md    (deprecated upstream, user untouched)
 ```
-
-This plan becomes the agenda for Step 6's interactive walk. Files in `[skip]` / `[apply]` / `[keep]` need no user input and resolve silently; only `[merge]` / `[add]` / `[remove-with-customization]` go through prompts.
 
 ### Step 6 — Walk the user through changes
 
@@ -417,30 +529,25 @@ If yes, run the relevant subset of the SETUP interview to fill placeholders, the
 
 ### Step 8 — Breaking migrations
 
-For changes tagged `(breaking)` or under `### Breaking` headings, walk the user through the migration steps **explicitly per change**. The CHANGELOG entry must include `### Migration` instructions for any breaking change. Read those, present them, ask for explicit confirmation per step.
+For changes tagged `(breaking)`, walk the user through migration steps explicitly per change. The CHANGELOG entry must include `### Migration` instructions. Read those, present them, ask for explicit confirmation per step.
 
 ### Step 9 — Update version + manifest + report
 
-After all changes are applied (or skipped), bump the version AND regenerate the manifest so the next `/jm update` has a fresh baseline:
+After all changes are applied (or skipped), bump the version AND regenerate the manifest:
 
 ```bash
 echo "$LATEST_VERSION" > .claude/JUNGCHE_VERSION
 
-# Rewrite the manifest from the post-update on-disk state — every file
-# Jungche owns gets a new sha256 entry. Files the user kept customized
-# get THEIR current hash recorded as the new baseline (so next update
-# sees them as "user-modified relative to v{LATEST}", not double-counted).
+# Rewrite the manifest from post-update on-disk state
 jq -n --arg v "$LATEST_VERSION" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{version: $v, installed_at: $ts, files: {}}' > .claude/JUNGCHE_MANIFEST.json
 # Then for every Jungche-owned file: append "{path}: sha256:{hash}" to .files
 ```
 
-Why we rewrite, not merge: if the user took an upstream change, the new hash IS the new baseline. If they kept their customization, their current file IS their new baseline going forward. Either way, "what's pristine" = "what's on disk right now."
-
 Report:
 
 ```
-🎯 Jungche updated: $LOCAL_VERSION → $LATEST_VERSION
+Jungche updated: $LOCAL_VERSION → $LATEST_VERSION
 
 Changes applied:
 - {list}
@@ -457,29 +564,25 @@ Manual review needed:
 
 ### Step 10 — Smoke test
 
-Suggest the user run a quick `/build` or `/jc` to verify the install still works:
-
-```
-Want me to run a smoke test? I'll do a tiny /build with a no-op feature to verify the pipeline is healthy. [yes / no]
-```
+Suggest the user run a quick `/build` or `/jc` to verify the install still works.
 
 ### Update mode rules
 
-- **Never overwrite user customizations without explicit consent** — if a file diverged from the blueprint, ask before changing
+- **Never overwrite user customizations without explicit consent**
 - **Never auto-apply MAJOR version migrations** — always interactive per step
 - **Never touch `.claude/settings.json`** — hand-curated per project
 - **Never touch `docs/commands/{cmd}/`** — that's command-owned content, not blueprint templates
 - **Always update `.claude/JUNGCHE_VERSION`** after a successful run
-- **Cache the blueprint clone** at `~/.cache/jungche-update/` to avoid re-cloning on every run
-- **Stay in light Jungche voice during the walkthrough** — this is mechanics with personality
-- **Bail safely on conflicts** — if a merge gets gnarly, save the user's state and report rather than guessing
+- **Cache the blueprint clone** at `~/.cache/jungche-update/` to avoid re-cloning
+- **Stay in light Jungche voice during the walkthrough** — mechanics with personality
+- **Bail safely on conflicts** — save user's state and report rather than guessing
 
 ---
 
 ## Rules
 
 - **Never break the pipeline** — atomic edits for related changes
-- **Never weaken non-negotiable rules** — five load-bearing walls are sacred
+- **Never weaken non-negotiable rules** — the load-bearing walls are sacred
 - **Never weaken character voices** — Jungche / JC / Professor / Council voices are non-negotiable. Adapting domain content is fine; sanitizing voice is not.
 - **Never remove safety checks** — QA gates, merge guards, worktree isolation exist for reasons
 - **Preserve agent autonomy** — each agent self-contained; don't create circular dependencies
@@ -489,3 +592,4 @@ Want me to run a smoke test? I'll do a tiny /build with a no-op feature to verif
 - **Always research before writing** — when adding regulatory/legal/technical/domain content, use a research agent (WebSearch, WebFetch, MCP) first
 - After finishing: "Infrastructure updated. N files changed."
 - Keep markdown clean — remove duplicates if you see them
+- **Never hardcode names that change with features** — table names, enum values, route paths, chain names, queue names change as the codebase evolves. Tell agents WHERE to discover these, not what they are.

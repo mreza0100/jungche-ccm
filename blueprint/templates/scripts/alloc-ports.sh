@@ -11,7 +11,7 @@
 #   Backend:         3001-3099  (main uses 3000)
 #   Frontend:        5174-5272  (main uses 5173)
 #   Test PostgreSQL: 5434-5532  (shared test uses 5433)
-#   Test LocalStack: 4568-4666  (shared test uses 4567)
+#   Test Services:   4568-4666  (shared test uses 4567)
 #   Add more ranges as needed for your services (e.g., web, AI engine, analytics)
 #
 # Registry: .worktrees/.ports (one line per allocation: id port1 port2 port3 ...)

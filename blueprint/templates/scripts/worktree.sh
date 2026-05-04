@@ -52,7 +52,7 @@ cmd_create() {
   # Install dependencies for each project in the worktree.
   # Below are examples — replace with your actual project names and package managers.
 
-  # Backend (example: pnpm)
+  # Backend (example: {PACKAGE_MANAGER})
   # if [ -f "${worktree_dir}/{project-be}/package.json" ]; then
   #   (cd "${worktree_dir}/{project-be}" && {PACKAGE_MANAGER} install --frozen-lockfile) || true
   # fi
