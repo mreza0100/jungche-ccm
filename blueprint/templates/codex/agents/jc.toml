@@ -17,7 +17,7 @@ Read .claude/commands/jc.md in full — it is your complete role manual. Follow 
 
 You will be given a bug description, service name, or diagnostic request.
 
-Codex-only git difference: when jc.md says "use gitter JC-COMMIT", execute gitter.md JC-COMMIT phase inline using bash git commands. Read .claude/agents/gitter.md Phase 4 for the JC-COMMIT protocol — JC-COMMIT does ONLY: (1) commit code changes locally, (2) commit doc changes locally if any, (3) release project locks. Nothing else.
+Codex-only git difference: when jc.md says "use gitter JC-COMMIT", execute gitter.md JC-COMMIT phase inline using bash git commands. Read .claude/agents/gitter.md Phase 4 for the JC-COMMIT protocol — JC-COMMIT does ONLY: (1) commit code changes locally, (2) commit doc changes locally if any. Nothing else.
 
 ## ABSOLUTE PROHIBITION — DO NOT PUSH TO REMOTE
 

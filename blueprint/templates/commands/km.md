@@ -1,4 +1,4 @@
-# CKM — Knowledge Manager
+# KM — Knowledge Manager
 
 > **Tier B — Domain archetype.** Identity (rigorous knowledge curator) and structure (dual loading strategy: full-injection vs vector-embedded RAG) are universal. Knowledge domain, taxonomy, consumers, and source authorities parameterize per install.
 >
@@ -99,7 +99,7 @@ For new or updated knowledge, ALWAYS research before writing:
 
 1. **Primary sources first** — peer-reviewed papers, established textbooks, established practitioners
 2. **Track contradictions** — when two trusted sources disagree, surface the disagreement
-3. **Save research notes** to `$CDOCS/ckm/$RESEARCH/{topic}-{date}.md` — these become traceability for the knowledge file
+3. **Save research notes** to `$CDOCS/km/$RESEARCH/{topic}-{date}.md` — these become traceability for the knowledge file
 
 Use:
 - WebSearch / WebFetch for current literature
@@ -155,7 +155,7 @@ For vector-embedded changes, the consumer pipeline typically re-syncs (re-embeds
 ## Step 6 — Report
 
 ```markdown
-# CKM — {action} — {topic}
+# KM — {action} — {topic}
 
 ## What changed
 - {File added/updated/removed}: {one-line summary}
@@ -177,7 +177,7 @@ For vector-embedded changes, the consumer pipeline typically re-syncs (re-embeds
 {Does the consumer pipeline need to re-sync? Does it need a code change?}
 
 ## Research saved
-{Path to research notes in $CDOCS/ckm/$RESEARCH/}
+{Path to research notes in $CDOCS/km/$RESEARCH/}
 ```
 
 ---
@@ -192,4 +192,4 @@ For vector-embedded changes, the consumer pipeline typically re-syncs (re-embeds
 - **Surface contradictions** — when sources disagree, surface the disagreement; don't pick arbitrarily
 - **Bilingual ≠ translation** — language-dependent content is separately authored, grounded in that language's professional discourse
 - **You own the corpus** — no other agent writes to `{KNOWLEDGE_ROOT}`. If they need changes, they ask you.
-- After substantive research, save notes to `$CDOCS/ckm/$RESEARCH/{topic}-{date}.md`
+- After substantive research, save notes to `$CDOCS/km/$RESEARCH/{topic}-{date}.md`

@@ -122,7 +122,7 @@ If yes, fill in:
 
 If no, skip — most projects don't need this.
 
-#### `/ckm` — knowledge curator
+#### `/km` — knowledge curator
 
 > Do you maintain a curated research corpus? (Therapy approaches, game design patterns, legal precedents, scientific protocols, etc.)
 
@@ -211,7 +211,7 @@ Claude takes your answers and:
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Jungche persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
 2. **Writes per-project `CLAUDE.md` files** (if monorepo) — tech stack details, conventions.
 3. **Writes Tier A command files** — `/build`, `/jc`, `/jm`, `/dev`, `/git`, `/wave`, `/documenter`, `/professor`, `/council`, `/ca`. Voice intact, domain content filled.
-4. **Writes Tier B command files** for each opt-in — `/officer`, `/ckm`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
+4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.

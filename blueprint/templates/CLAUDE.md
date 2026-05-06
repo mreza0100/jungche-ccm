@@ -96,7 +96,7 @@ The mission of Jungche is to make something `{USER_PERSONA}`s LOVE!
 - **Pipeline evolution → `/jm`** — surgical edits to the pipeline at the source.
 - **Never edit code directly on `main`** without going through `/build` or `/jc`.
 
-Both `/build` and `/jc` handle worktree isolation, port allocation, merge locks, and git operations automatically via gitter.
+Both `/build` and `/jc` handle worktree isolation, port allocation, and git operations automatically via gitter.
 
 ---
 
@@ -131,6 +131,7 @@ Both `/build` and `/jc` handle worktree isolation, port allocation, merge locks,
 - **Only mono-documenter writes to permanent docs** — `docs/agents/`, `{project}/docs/*.md`. All other agents write to pipeline docs (`docs/dev/tasks/{name}/`) only. Exceptions: command-owned docs are owned by their respective commands (`/officer` owns `$CDOCS/officer/`, `/pm` owns `$CDOCS/pm/`, etc.)
 - **NEVER run destructive git commands** — `git reset --hard`, `git push --force`, `git clean -fdx`, `rm -rf` on project dirs. There is always a safer alternative.
 - **NEVER reuse pipeline names** — check `docs/dev/tasks/`, `docs/dev/tasks/archive/`, and `.worktrees/` before naming. Append `-v2`, `-v3` if needed.
+- **Parallelize multi-task work** — when given multiple independent tasks, investigate all upfront (resolve ambiguity, read all affected files, surface questions), then spawn independent agents with exact per-task instructions. Serial execution wastes tokens and context. Think dispatch, not loop.
 
 ### Meta
 - ALWAYS think customer/user-first — the project exists for `{USER_PERSONA}`
@@ -207,7 +208,7 @@ All commands and agents MUST use these variables when referencing command-owned 
 | **/wave** | A (mechanics) | Task-runner for batched pipelines |
 | **/documenter** | A (mechanics) | Permanent doc updater |
 | **/officer** | B | {only if opted in — compliance enforcer for `{REGULATION}`} |
-| **/ckm** | B | {only if opted in — knowledge curator for `{KNOWLEDGE_DOMAIN}`} |
+| **/km** | B | {only if opted in — knowledge curator for `{KNOWLEDGE_DOMAIN}`} |
 | **/pm** | B | {only if opted in — user+product hybrid for `{USER_PERSONA}`} |
 | **/mentor** | B | {only if opted in — business advisor for `{MARKET_SEGMENT}`} |
 | **/marketer** | B | {only if opted in — visibility strategist for `{CHANNEL_LANDSCAPE}`} |
@@ -215,7 +216,7 @@ All commands and agents MUST use these variables when referencing command-owned 
 Root agents (no character — pure mechanics):
 - `mono-planner` — cross-project routing + plan consolidation
 - `mono-architect` — cross-project architecture + library research
-- `gitter` — single git operator (SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL)
+- `gitter` — single git operator (SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, PUSH, PULL)
 - `mono-documenter` — permanent docs maintainer
 
 Per-project agents (in each `{project}/.claude/agents/`):
@@ -223,6 +224,15 @@ Per-project agents (in each `{project}/.claude/agents/`):
 - `architect` — per-project architecture + library research
 - `developer` — implementation + happy-path tests
 - `qa` — adversarial tests + bug reports
+
+## Skills
+
+| Skill | Trigger |
+|-------|--------|
+| `rr` | "RR <topic>", "research and report", "research <topic>", "look into <topic>" — structured multi-batch research pipeline |
+| `rnd` | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution |
+
+Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them.
 
 ---
 

@@ -73,7 +73,7 @@ Agent(gitter): "The user ran /git with the following request:
   You are the git operations specialist. Handle this request using your expertise.
   Read your full agent definition at .claude/agents/gitter.md for context on the monorepo structure.
 
-  If the request maps to one of your known phases (SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL),
+  If the request maps to one of your known phases (SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, PUSH, PULL),
   follow that phase's protocol. Otherwise, use your git knowledge to fulfill the request directly.
 
   Rules:

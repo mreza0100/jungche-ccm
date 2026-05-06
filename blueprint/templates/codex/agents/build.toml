@@ -22,13 +22,13 @@ You will be given:
 
 ## Codex git ownership
 
-Git work for /build pipelines is YOURS when you are the orchestrator. Read `.claude/agents/gitter.md` once at start — it is your COMPLETE git protocol manual (commit-message conventions, merge-lock protocol, phase-by-phase steps for SETUP / MERGE / DOCS-COMMIT). Follow it verbatim. Anywhere build.md says "Use the gitter agent" — substitute "execute gitter.md Phase X inline yourself using bash git commands." The Claude-side gitter agent only runs when Claude orchestrates (override case).
+Git work for /build pipelines is YOURS when you are the orchestrator. Read `.claude/agents/gitter.md` once at start — it is your COMPLETE git protocol manual (commit-message conventions, conflict-awareness protocol, phase-by-phase steps for SETUP / MERGE / DOCS-COMMIT). Follow it verbatim. Anywhere build.md says "Use the gitter agent" — substitute "execute gitter.md Phase X inline yourself using bash git commands." The Claude-side gitter agent only runs when Claude orchestrates (override case).
 
 Specifically:
-- **build.md Step 2 (SETUP)**: Run `bash .claude/scripts/worktree.sh create $PIPELINE` to create the branch + worktree + ports + lock dir. Write `$DOCS/ports.md` from `cat $WORKTREE/.env.ports`.
-- **build.md Step 8 (MERGE)**: Execute gitter.md Phase 2 inline — acquire project locks (`.worktrees/.merge-lock/{project}` files), commit worktree changes with `feat(${PIPELINE}): ...` message + `Pipeline:` + `Wave:` trailers, `git checkout main`, `git merge pipeline/$PIPELINE --no-ff` with the `merge(${PIPELINE}): ...` format, then `bash .claude/scripts/worktree.sh remove $PIPELINE`.
+- **build.md Step 2 (SETUP)**: Run `bash .claude/scripts/worktree.sh create $PIPELINE` to create the branch + worktree + ports. Write `$DOCS/ports.md` from `cat $WORKTREE/.env.ports`.
+- **build.md Step 8 (MERGE)**: Execute gitter.md Phase 2 inline — commit worktree changes with `feat(${PIPELINE}): ...` message + `Pipeline:` + `Wave:` trailers, `git checkout main`, `git merge pipeline/$PIPELINE --no-ff` with the `merge(${PIPELINE}): ...` format, then `bash .claude/scripts/worktree.sh remove $PIPELINE`.
 - **build.md Step 11 (ARCHIVE)**: Spawn the documenter Codex sub-agent: `Agent(mono-documenter, "Pipeline: $PIPELINE. Wave: $WAVE. ARCHIVE phase.")`. Wait for it to return.
-- **build.md Step 12 (DOCS-COMMIT)**: Execute gitter.md Phase 3 inline — zombie check (rm `$DOCS` if both `$DOCS` and `$ARCHIVE/$PIPELINE` exist), `git add docs/ {project-a}/docs/ {project-b}/docs/`, commit with `docs(${PIPELINE}): archive pipeline + update docs` and `Pipeline:`/`Wave:` trailers, then release project locks by `rm -f .worktrees/.merge-lock/{project}` for every project in `$PROJECTS`.
+- **build.md Step 12 (DOCS-COMMIT)**: Execute gitter.md Phase 3 inline — zombie check (rm `$DOCS` if both `$DOCS` and `$ARCHIVE/$PIPELINE` exist), `git add docs/ {project-a}/docs/ {project-b}/docs/`, commit with `docs(${PIPELINE}): archive pipeline + update docs` and `Pipeline:`/`Wave:` trailers.
 - **Push**: After DOCS-COMMIT completes successfully, `git push origin main` to publish.
 
 ## Forbidden git operations (never attempt)

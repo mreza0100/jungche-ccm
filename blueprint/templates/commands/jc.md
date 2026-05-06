@@ -42,44 +42,13 @@ diagnosing system behavior, locating components, or any targeted work that needs
 **JC has full access:** read/edit code across all projects, start/stop/restart servers via `/dev`,
 run tests, inspect logs, hit endpoints, query the database — whatever it takes to diagnose and fix.
 
-**JC has `gh` CLI access** — GitHub Actions is JC's domain too. Trigger workflows, read run logs,
-diagnose deploy failures, fix the code, push via `/git push`, and re-trigger until it passes.
-The full CI/CD feedback loop lives here — no browser needed.
-
 **JC also has the diagnostic lens** — it can load the system map and reference docs to trace workflows,
 locate components, assess blast radius, and answer architectural questions. When the request is read-only
-(trace, locate, diagnose, compare, scope, status), JC skips merge lock and fix steps.
+(trace, locate, diagnose, compare, scope, status), JC skips fix steps.
 
 ---
 
-## Step 0 — Detect environment + classify + acquire merge lock
-
-### 0-pre. Detect ISO environment (ONLY when user explicitly requests it)
-
-JC works on `main` by default. **Do NOT scan for ISO environments automatically.**
-Only enter ISO mode when the user **explicitly tells you** to work on an ISO environment —
-e.g., "fix this in the ISO", "work on the demo worktree", "fix it in .worktrees/demo-test".
-
-**If the user explicitly requests ISO mode:**
-
-1. **Set `$ISO_ROOT`** to `.worktrees/{name}/` — ALL file reads, edits, and server commands use this root
-2. **Read `.worktrees/{name}/.dev-ports`** to get the port map (service ports, DB ports, etc.)
-3. **Read the ISO profile** from `.dev-ports` comment line
-4. **Adjust ALL investigation paths:**
-   - Source files: `$ISO_ROOT/{PROJECT_DIR}/src/...` instead of `{PROJECT_DIR}/src/...`
-   - Env files: `$ISO_ROOT/{PROJECT_DIR}/.env` (ISO env) instead of `{PROJECT_DIR}/.env.local`
-   - Logs: `$ISO_ROOT/tmp/dev/{service}.log` instead of `tmp/dev/{service}.log`
-   - Endpoints: `http://localhost:{ISO_PORT}` instead of default dev ports
-5. **Server management uses `/dev iso {name} {command}`** — NOT `/dev {command}`. The ISO dev script
-   reads `.dev-ports` for port/infra config automatically.
-6. **Code edits happen in `$ISO_ROOT` directly** — edit the worktree's files so hot-reload picks them
-   up immediately. Do NOT edit files on main — the ISO has its own working directory. Env files
-   inside the worktree are also local to that worktree.
-7. **No merge lock, no commit, no documenter** — ISO fixes are live experiments in an isolated sandbox.
-   Skip Steps 0b, 5, 6, 7, and 8 entirely. The user can bring a verified fix to main later via
-   a separate `/jc` invocation (without ISO context) or via `/build`.
-
-**If the user does NOT mention ISO:** proceed normally on `main` — do NOT scan `.worktrees/` or check for `.dev-ports`.
+## Step 0 — Detect environment + classify
 
 ### 0a. Classify the request
 
@@ -99,36 +68,15 @@ Parse `$ARGUMENTS` to determine the mode:
 | | Log request | "add debug logging to the auth flow" |
 | | Config fix | "worker can't connect to queue", "wrong DB URL in test env" |
 | | General fix | "fix the broken health check", "patch the migration" |
-| | CI/CD fix | "deploy is failing", "fix the GitHub Actions workflow", "CI broken" |
 
-**If diagnostic (read-only):** skip project locks, jump to **Step 0c — Load the map**, then **Step 1 — Investigate**.
+**If diagnostic (read-only):** jump to **Step 0b — Load the map**, then **Step 1 — Investigate**.
 After investigation, skip Steps 3-7 and go directly to **Step 8 — Report**.
 
-**If fix (read-write):** acquire project locks (Step 0b), then proceed through the full fix pipeline.
+**If fix (read-write):** proceed through the full fix pipeline.
 
-**If ambiguous:** start in diagnostic mode. If investigation reveals a fix is needed, acquire the lock at that point.
+**If ambiguous:** start in diagnostic mode. If investigation reveals a fix is needed, switch to fix mode at that point.
 
-### 0b. Acquire project locks (fix mode only — skip in ISO mode)
-
-**If ISO mode:** skip this step entirely — ISO worktrees are isolated sandboxes, no lock needed.
-
-Before touching ANY code on `main`, acquire project-scoped locks via gitter. Determine which project(s) will be modified based on the problem description:
-
-```
-Agent(gitter): "Phase: LOCK. Owner: jc. Projects: {comma-separated project keys}.
-  Acquire project locks for the specified projects. If any lock is blocked, wait until it's released."
-```
-
-**If blocked:** wait for the lock holder to finish. Do NOT proceed with editing until locks are acquired — a pipeline merge could change the files you're about to read.
-
-**If scope expands during investigation:** If you discover additional projects need changes, acquire the additional lock(s) before editing those projects:
-
-```
-Agent(gitter): "Phase: LOCK. Owner: jc. Projects: {additional project key}.
-  Acquire additional project lock. JC already holds locks for {existing projects}."
-```
-
-### 0c. Load the map (diagnostic mode, or when investigation needs system context)
+### 0b. Load the map (diagnostic mode, or when investigation needs system context)
 
 Read the system map and relevant reference docs to orient your investigation:
 
@@ -144,7 +92,7 @@ Read the system map and relevant reference docs to orient your investigation:
 - **Verify data shapes** — if the map describes a schema, read the actual schema file
 - **Flag discrepancies** — if the map is wrong, note it and say what's actually true
 
-### 0d. Understand the problem (fix mode)
+### 0c. Understand the problem (fix mode)
 
 If the problem is vague, start with investigation (Step 1). If it's specific, jump to the relevant service.
 
@@ -170,14 +118,14 @@ Use map-first investigation based on query type:
 
 **Status:** Read map summaries. Verify against source for current state.
 
-After investigation, present findings using the formats in **Step 8** and skip to report. If the diagnosis reveals a fix is needed, acquire the merge lock and continue to Step 2.
+After investigation, present findings using the formats in **Step 8** and skip to report. If the diagnosis reveals a fix is needed, switch to fix mode and continue to Step 2.
 
 ### For fix (read-write) queries
 
 **🩹 Hang / deadlock / mystery-failure path:** if the symptom is "process hung", "test never returns",
 "0% CPU but not exited", "intermittent failure", "passes alone but fails in suite", or "service crashes
-silently with no traceback" — apply **1h. Hang & deadlock playbook** below INSTEAD of 1a-1g. Steps
-1a-1g assume the failure mode is visible. When it isn't, instrument; don't guess.
+silently with no traceback" — apply **1g. Hang & deadlock playbook** below INSTEAD of 1a-1f. Steps
+1a-1f assume the failure mode is visible. When it isn't, instrument; don't guess.
 
 ### 1a. Check current state
 
@@ -216,55 +164,7 @@ make -C {INFRA_PROJECT} ps-local
 make -C {INFRA_PROJECT} health-local
 ```
 
-### 1g. CI/CD pipeline debugging (GitHub Actions)
-
-JC has full `gh` CLI access for GitHub Actions. Use this when the problem involves CI failures,
-deploy errors, workflow issues, or anything in `.github/workflows/`.
-
-**Investigate a failure:**
-
-```bash
-# List recent workflow runs
-gh run list --limit 10
-
-# View a specific run (get ID from the list above)
-gh run view <run-id>
-
-# View ONLY the failed step logs (most useful)
-gh run view <run-id> --log-failed
-
-# View full logs for a run
-gh run view <run-id> --log
-```
-
-**Trigger a workflow after fixing:**
-
-```bash
-gh workflow run <workflow>.yml
-```
-
-**Watch a run live:**
-
-```bash
-gh run watch <run-id>
-```
-
-**The CI/CD fix loop:**
-
-When a workflow fails, JC follows this cycle:
-
-1. **Read the logs** — `gh run view <id> --log-failed` to see exactly what broke
-2. **Diagnose** — trace the error to the source (workflow YAML, config, test, code)
-3. **Fix** — edit the relevant files on `main`
-4. **Push** — use `/git push` to push the fix (invokes gitter)
-5. **Re-trigger** — `gh workflow run <workflow>.yml` or wait for push-triggered CI
-6. **Verify** — `gh run watch <id>` or `gh run view <id>` to check the result
-7. **Repeat** — if it fails again, go back to step 1. Keep iterating until it passes.
-
-**Do NOT give up after one cycle.** CI/CD issues often have multiple layers (auth, bootstrap,
-permissions, config). Fix them one at a time, push, re-trigger, repeat.
-
-### 1h. Hang / deadlock / mystery-failure playbook
+### 1g. Hang / deadlock / mystery-failure playbook
 
 Use this when the failure mode isn't visible: hangs, deadlocks, "no output, no error", intermittent
 failures, "passes alone but fails in suite", silent crashes. The anti-pattern this prevents is
@@ -487,16 +387,16 @@ a config constant, modifies a data flow, or alters test patterns MUST go through
 
 ---
 
-## Step 7 — Commit all changes via gitter + release locks (skip in ISO mode)
+## Step 7 — Commit all changes via gitter (skip in ISO mode)
 
 **If ISO mode:** skip — ISO fixes live in the worktree only. Jump to **Step 8 — Report**.
 
-Invoke the `gitter` agent ONCE to commit both code and doc changes, then release locks:
+Invoke the `gitter` agent ONCE to commit both code and doc changes:
 
 ```
-Agent(gitter): "Phase: JC-COMMIT. Pipeline: jc. Projects: {comma-separated project keys held}.
+Agent(gitter): "Phase: JC-COMMIT. Pipeline: jc. Projects: {comma-separated project keys}.
 
-  Two commits on main, then release locks:
+  Two commits on main:
 
   1. CODE COMMIT — stage and commit the fix:
      - Code files changed: {list exact source files}
@@ -508,9 +408,6 @@ Agent(gitter): "Phase: JC-COMMIT. Pipeline: jc. Projects: {comma-separated proje
      - Commit message: 'docs: jc — {short description matching the fix}'
      - git add the specific doc files, then git commit
      - Skip this commit if no doc files changed.
-
-  3. UNLOCK — release all project locks: {comma-separated project keys}.
-
   Report both commit hashes (or just one if no doc changes)."
 ```
 
@@ -602,8 +499,8 @@ Docs updated: {list or "none — trivial fix"}
 
 ## Rules
 
-- **JC works on `main` (or ISO worktree)** — on main: full ceremony (lock -> fix -> test -> docs -> commit). On ISO: edit worktree directly, test, report — no lock, no commit, no docs
-- **Diagnostic mode is read-only** — never edit files during diagnostic queries. If a fix is needed, escalate to fix mode (acquire lock first)
+- **JC works on `main` (or ISO worktree)** — on main: full ceremony (fix -> test -> docs -> commit). On ISO: edit worktree directly, test, report — no commit, no docs
+- **Diagnostic mode is read-only** — never edit files during diagnostic queries. If a fix is needed, escalate to fix mode
 - **Map-first for diagnostics** — always start from the system map, then drill into source. Verify against actual code before reporting
 - **Cross-project tracing** — trace flows across all project boundaries, don't stop at one project
 - **Keep changes minimal** — fix the problem, nothing more
@@ -614,5 +511,4 @@ Docs updated: {list or "none — trivial fix"}
 - **No new dependencies** — if the fix requires a new library, flag it and use `/build` instead
 - **No architectural changes** — if the fix requires structural refactoring, use `/build` instead
 - **Iterate until fixed** — don't stop at Step 4 if the fix didn't work, loop back to Step 2
-- **CI/CD is JC's domain** — use `gh` CLI for GitHub Actions: read logs (`gh run view <id> --log-failed`), trigger workflows (`gh workflow run`), watch runs (`gh run watch`). For CI/CD fixes: diagnose from logs -> fix code -> `/git push` -> re-trigger -> verify -> repeat until green. Don't give up after one cycle
 - After finishing, say: "And... we're back. 😎 {summary}." (or "It is finished. ✝️" for gnarly resurrections)

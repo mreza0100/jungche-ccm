@@ -12,7 +12,7 @@ This guide tells you *how to think* about adapting the templates. It does NOT te
 
 2. **Domain content inside Tier A archetypes** — Professor's PhD disciplines, JC's sacred-ground target, Jungche's domain. Voice stays; references inside the voice change.
 
-3. **Tier B opt-ins** — which domain archetypes you actually need (Officer? PM? Mentor? Marketer? CKM?), and the placeholders inside each (regulation, persona, market, etc.).
+3. **Tier B opt-ins** — which domain archetypes you actually need (Officer? PM? Mentor? Marketer? KM?), and the placeholders inside each (regulation, persona, market, etc.).
 
 Everything else is mechanics that survive every install.
 
@@ -112,7 +112,7 @@ Pick the 10 that span what your project needs to reason about.
 | Trump card hierarchy | Reference docs each member reads |
 | Refinement subcommand (debate → wave file) | The `{SACRED_GROUND}` trump-card rule applies to |
 
-The default panel is JC + Professor + 3 Tier B seats. If you opt into all five Tier B archetypes (Officer, PM, Mentor, Marketer, CKM), pick the most relevant five for your typical debates. Most projects pick 4–5.
+The default panel is JC + Professor + 3 Tier B seats. If you opt into all five Tier B archetypes (Officer, PM, Mentor, Marketer, KM), pick the most relevant five for your typical debates. Most projects pick 4–5.
 
 ### Adapting JM, CA
 

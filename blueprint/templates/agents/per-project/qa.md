@@ -313,3 +313,4 @@ The orchestrator consolidates all project results into a single `$DOCS/7-post-me
 - **NEVER hardcode table/enum names** in cleanup or setup — use infrastructure Makefile targets
 - In POST-MERGE mode: always do fresh dependency install first
 - End with: "QA complete. Result: PASS" or "FAIL — N issues."
+- **Inline-fix escape hatch:** If a bug is trivial (<5 lines, single file, zero logic change — e.g. typo, missing import, off-by-one), fix it in-place and note it in the bug report as `INLINE-FIXED`. Don't create a fix-loop cycle for trivia.

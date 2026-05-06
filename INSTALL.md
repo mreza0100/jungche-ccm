@@ -142,7 +142,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     - /mentor — startup/business advisor
     - /marketer — visibility & growth strategist
     - /pm — user+product-manager hybrid (or your own user-persona variant)
-    - /ckm — domain knowledge curator (for projects with a knowledge base)
+    - /km — domain knowledge curator (for projects with a knowledge base)
     - your own: ___ — describe purpose, scope, owns-which-docs
 
     For each you pick, I will need: scope, owned doc paths under $CDOCS, and one-line purpose.
@@ -209,7 +209,7 @@ For each Tier B archetype the user opted into in Batch 6, also create its `$CDOC
 ```bash
 # Example for /mentor opted in:
 mkdir -p docs/commands/mentor/{references,research,resources}
-# Repeat for /officer, /pm, /marketer, /ckm, etc. — only the ones picked.
+# Repeat for /officer, /pm, /marketer, /km, etc. — only the ones picked.
 ```
 
 ### Step 1.5 — Re-home existing project docs
@@ -228,7 +228,7 @@ Apply rules in order. First match wins. Match BOTH on filename hints AND on a qu
 | Names matching `COMPETITOR`, `INCUMBENT`, `POSITION`, `SEO`, `CHANNEL`, `CONTENT_GAP`, `BRAND_VOICE` | `$CDOCS/marketer/$REFS/` or `$CDOCS/marketer/$RESEARCH/` | Only if `/marketer` opted in |
 | Names matching `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `FDA`, `PRIVACY`, `LEGAL_LANDSCAPE`, `CERTIFICATION` | `$CDOCS/officer/$REFS/` or `$CDOCS/officer/$RESEARCH/` | Only if `/officer` opted in |
 | Names matching `PERSONA`, `USER_*`, `*_PAIN`, `*_PAIN_MAP`, `JOBS_TO_BE_DONE`, `USER_STORY`, `WORKFLOW`, `DAILY_LIFE` | `$CDOCS/pm/$REFS/` or `$CDOCS/pm/$RESEARCH/` | Only if `/pm` opted in |
-| Names matching `KNOWLEDGE`, `DOMAIN_PRIMER`, `PROTOCOL`, `METHODOLOGY`, `FRAMEWORK_<domain>` | `$CDOCS/ckm/$RESEARCH/` | Only if `/ckm` opted in |
+| Names matching `KNOWLEDGE`, `DOMAIN_PRIMER`, `PROTOCOL`, `METHODOLOGY`, `FRAMEWORK_<domain>` | `$CDOCS/km/$RESEARCH/` | Only if `/km` opted in |
 | Names matching `RESEARCH_LOG`, `OPEN_QUESTIONS`, `VALIDATION_LOG`, `EXPERIMENTS`, `SPIKE_*`, `INVESTIGATION` | `docs/dev/research/<slug>.md` | Always available — no archetype required |
 | Names matching `MENTOR_BRIEFING`, `INVESTOR_*`, `PITCH`, `ONE_PAGER`, `FOUNDER_STORY` | `$CDOCS/mentor/$REFS/<slug>.md` (if `/mentor`) OR `docs/business/<slug>.md` (fallback) | These are the "show to outsider" docs |
 | `README.md`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*` | **KEEP AT ROOT — DO NOT MOVE** | Standard repo conventions |
@@ -523,7 +523,7 @@ File a "doesn't work for stack X" issue if you hit something the installer didn'
 
 1. **Never assume.** Every project name, file path, command, and port comes from the user's answers — not your guesses.
 2. **Never overwrite without asking.** If `CLAUDE.md` or `.claude/` already exists, STOP and ask first.
-3. **Never install boutique commands the user didn't pick.** `/officer`, `/ckm`, etc. are domain-specific and should not be silently inherited from Freudche.
+3. **Never install boutique commands the user didn't pick.** `/officer`, `/km`, etc. are domain-specific and should not be silently inherited from Freudche.
 4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Grok/LangChain mentions, Dutch healthcare specifics. The Jungche *voice* (Dr. House senior engineer) is universal and ships by default; what doesn't transfer is Freudche-specific *content*. Persona = mandatory; persona = "your project's flavor of Jungche", not "Freudche's flavor of Jungche".
 5. **Never run `git add` / `git commit`.** The installer only writes files. Committing is the user's call.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite. If you need to back something up, copy it to `tmp/` first.

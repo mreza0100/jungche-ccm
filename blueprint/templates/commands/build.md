@@ -467,8 +467,6 @@ Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git 
   - Include `web` if web worktree was used
   - Include `infra` if infrastructure worktree was used
 
-**Project locks:** Gitter acquires project-scoped locks for all routed projects at the start of MERGE. If another terminal (JC or another pipeline) holds a conflicting project lock, gitter will poll every 30s until it's released. Locks are held through post-merge QA, pipeline audit, and documenter, then auto-released when gitter DOCS-COMMIT completes in Step 12.
-
 ---
 
 ## Post-Merge Verification (MANDATORY after every merge)
@@ -601,7 +599,7 @@ All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent r
 Use the `gitter` agent in **DOCS-COMMIT** phase. **Model: sonnet** — structured git ops.
 - Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}."
 
-Gitter commits all doc changes the documenter made on main (including `$DOCS/8-audit.md`), then releases all project locks.
+Gitter commits all doc changes the documenter made on main (including `$DOCS/8-audit.md`).
 
 ---
 
@@ -623,7 +621,7 @@ Gitter commits all doc changes the documenter made on main (including `$DOCS/8-a
 | 9 | Post-merge QA | BE + FE + {AI_PROJECT_KEY_UPPER} + Web + Infra QA (POST-MERGE) | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results) | root |
 | 10 | Pipeline audit | code-auditor + officer (parallel) | `$DOCS/8-audit.md` (code hygiene + compliance findings) | root |
 | 11 | Document | mono-documenter | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/` | root |
-| 12 | Commit docs | gitter (DOCS-COMMIT) | Commits doc changes on main, releases project locks | root |
+| 12 | Commit docs | gitter (DOCS-COMMIT) | Commits doc changes on main | root |
 
 ---
 

@@ -8,7 +8,7 @@ A portable, opinionated `.claude/` infrastructure — a **transplantable nervous
 
 ## What you get
 
-- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All shipped with full character; you parameterize the domain content at install.
+- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All shipped with full character; you parameterize the domain content at install.
 - **A nervous system, not a config dump** — agents with voices, opinions, and discipline. The pipeline mechanics are the skeleton; the characters are the nervous system that makes it move with intent.
 - **Pipeline that refuses cowboy coding** — every feature goes through `planner → architect → developer → QA → gitter merge`. QA gates block bad code from reaching `main`.
 - **Worktree isolation** — every `/build` invocation gets its own git worktree branch + unique port allocation. Run multiple parallel pipelines on the same repo without collisions.
@@ -53,7 +53,7 @@ These ship with **full voice**. Only domain references inside (PhD disciplines, 
 These ship as **archetype skeletons**. Identity, voice, and structure are universal; you fill in the placeholders at install time.
 
 - **/officer** — compliance enforcer. Pick your regulation(s) — GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, none.
-- **/ckm** — knowledge curator. Pick your knowledge domain.
+- **/km** — knowledge curator. Pick your knowledge domain.
 - **/pm** — user+product hybrid. Pick your user persona — therapist, neuropsychologist, gamer, surgeon, lawyer, developer.
 - **/mentor** — business advisor. Pick your market + jurisdiction.
 - **/marketer** — visibility strategist. Pick your channels + language.
@@ -147,7 +147,7 @@ jungche/
         ├── commands/            ← Tier A always + Tier B opt-in
         │   ├── build.md, jc.md, jm.md, dev.md, git.md, wave.md, documenter.md
         │   ├── professor.md, council.md, ca.md
-        │   └── officer.md, ckm.md, pm.md, mentor.md, marketer.md
+        │   └── officer.md, km.md, pm.md, mentor.md, marketer.md
         ├── scripts/             ← worktree.sh, alloc-ports.sh, dev.sh
         └── codex/               ← (OPTIONAL) Codex dual-runtime templates
             ├── README.md

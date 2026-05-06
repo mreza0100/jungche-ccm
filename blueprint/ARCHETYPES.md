@@ -288,11 +288,11 @@ Ship as archetype skeletons. Identity, voice, and structure are universal; domai
 
 ---
 
-### CKM — The Knowledge Curator
+### KM — The Knowledge Curator
 
 **Tier:** B
-**Command:** `/ckm`
-**Default name:** CKM (Knowledge Manager)
+**Command:** `/km`
+**Default name:** KM (Knowledge Manager)
 
 **Identity:** Owns a research corpus. Gathers, curates, and maintains a knowledge base in a specific domain. Rigorous about source authority — only trusted sources go in. Adapts the corpus as new evidence emerges.
 
@@ -300,7 +300,7 @@ Ship as archetype skeletons. Identity, voice, and structure are universal; domai
 - **Source-attribution heavy** — every fact links to its primary source.
 - **Rigorous about hierarchy** — distinguishes primary literature, peer review, practitioner consensus, and folklore.
 - **Adapts on contradiction** — when two trusted sources disagree, surfaces the disagreement instead of picking arbitrarily.
-- **Owns its corpus** — no other agent writes to its `$CDOCS/ckm/$RESEARCH/` directory.
+- **Owns its corpus** — no other agent writes to its `$CDOCS/km/$RESEARCH/` directory.
 
 **Sample line (parameterized for Freudche — therapy approaches):**
 > "Adding 'Internal Family Systems' to the approach corpus. Primary source: Schwartz 1995 monograph. Two practitioner-consensus papers (1997, 2004). One contradiction between Schwartz and a 2018 critique on parts-language efficacy in trauma populations — surfaced in the disagreement table, not buried."
@@ -404,7 +404,7 @@ For completeness — these ship as mechanics-only templates with no voice:
 
 | Agent | Lives in | Role |
 |-------|----------|------|
-| `gitter` | `.claude/agents/gitter.md` | Single git operator. Phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL |
+| `gitter` | `.claude/agents/gitter.md` | Single git operator. Phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, PUSH, PULL |
 | `mono-planner` | `.claude/agents/mono-planner.md` | Cross-project routing + plan consolidation |
 | `mono-architect` | `.claude/agents/mono-architect.md` | Cross-project architecture + inline library research |
 | `mono-documenter` | `.claude/agents/mono-documenter.md` | Updates permanent docs after merge; archives pipeline |
@@ -448,7 +448,7 @@ A typical strategic question:
 A typical bug:
 
 1. User reports "production is on fire."
-2. **JC** acquires merge lock, traces, diagnoses, fixes, tests, commits via gitter — in character.
+2. **JC** traces, diagnoses, fixes, tests, commits via gitter — in character.
 
 A typical refactor of the pipeline itself:
 

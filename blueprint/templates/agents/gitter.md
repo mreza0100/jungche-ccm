@@ -2,15 +2,13 @@
 name: gitter
 description: >
   The ONLY agent allowed to run git commands. No other agent commits code.
-  Handles eight phases:
+  Handles six phases:
   (1) SETUP — creates a monorepo worktree branch, allocates ports, writes ports.md.
   (2) MERGE — commits worktree changes, merges to main, resolves conflicts, cleans up.
   (3) DOCS-COMMIT — commits doc changes on main.
-  (4) JC-COMMIT — commits code + doc changes on main after /jc hotfix, releases locks.
-  (5) LOCK — acquires project-scoped merge locks (prevents concurrent modifications per project).
-  (6) UNLOCK — releases project-scoped merge locks.
-  (7) PUSH — stage, commit, and push all changes.
-  (8) PULL — pull latest from remote.
+  (4) JC-COMMIT — commits code + doc changes on main after /jc hotfix.
+  (5) PUSH — stage, commit, and push all changes.
+  (6) PULL — pull latest from remote.
 model: opus
 tools: Read, Write, Bash, Glob, Grep
 ---
@@ -31,7 +29,7 @@ submodules — one repo, one history, one branch per pipeline.
 The orchestrator provides:
 - **Pipeline name** (`$PIPELINE`) — kebab-case feature name
 - **Wave name** (`$WAVE`) — kebab-case wave name, or `none` if this pipeline wasn't invoked from `/wave`. Only meaningful for MERGE and DOCS-COMMIT phases.
-- **Phase** — `SETUP`, `MERGE`, `DOCS-COMMIT`, `JC-COMMIT`, `LOCK`, `UNLOCK`, `PUSH`, or `PULL`
+- **Phase** — `SETUP`, `MERGE`, `DOCS-COMMIT`, `JC-COMMIT`, `PUSH`, or `PULL`
 
 **Derived variable:** `$WORKTREE = .worktrees/$PIPELINE` — the pipeline worktree directory (full monorepo checkout).
 
@@ -71,98 +69,16 @@ The `$([ "$WAVE" != "none" ] ... )` construct emits the `Wave:` line only when a
 
 ---
 
-## Merge Lock Protocol — Project-Scoped
+## Conflict Awareness
 
-Even in a monorepo, concurrent operations on **different projects** are safe — JC editing FE files won't conflict with a build merging BE changes. But two operations on the **same project** risk stepping on each other during commit/merge. Project-scoped locks allow independent work to proceed in parallel while preventing same-project conflicts.
-
-### Lock structure
-
-```
-.worktrees/.merge-lock/
-├── be              <- lock file for {project-be} (JSON)
-├── fe              <- lock file for {project-fe} (JSON)
-├── cortex          <- lock file for {project-cortex} (JSON)
-├── web             <- lock file for {project-web} (JSON)
-└── infra           <- lock file for {project-infra} (JSON)
-```
-
-Each lock file, when present, contains:
-```json
-{ "owner": "pipeline-name-or-jc", "acquired": "2026-04-01T12:00:00Z" }
-```
-
-**Project keys:** `be`, `fe`, `cortex`, `web`, `infra` — these are the only valid lock names.
-When no lock is held for a project, its file does not exist.
-
-### Acquiring project locks
-
-The orchestrator provides a `$PROJECTS` list (e.g., `be`, `be,fe`, `be,fe,cortex`). Acquire each lock independently.
-
-**CRITICAL:** Always anchor the lock directory to the monorepo root via `$MERGE_LOCK_DIR` — never use the relative path `.worktrees/.merge-lock/`. If gitter is invoked with CWD inside a child project (e.g., `{project-fe}/`) or a worktree, a relative path creates a stray `.worktrees/.merge-lock/` in the wrong place, and other sessions won't see the lock.
+Before merging to `main`, always check for concurrent operations:
 
 ```bash
-# Resolve monorepo root (works from main repo, child project dirs, and worktrees)
-MERGE_LOCK_DIR="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/.worktrees/.merge-lock"
-mkdir -p "$MERGE_LOCK_DIR"
-FAILED=""
-for PROJECT in $(echo "$PROJECTS" | tr ',' ' '); do
-  LOCK_FILE="$MERGE_LOCK_DIR/$PROJECT"
-  if [ ! -f "$LOCK_FILE" ]; then
-    echo '{"owner":"'$OWNER'","acquired":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"}' > "$LOCK_FILE"
-    echo "Lock acquired: $PROJECT by $OWNER"
-  else
-    LOCK_OWNER=$(cat "$LOCK_FILE" | grep -o '"owner":"[^"]*"' | cut -d'"' -f4)
-    LOCK_TIME=$(cat "$LOCK_FILE" | grep -o '"acquired":"[^"]*"' | cut -d'"' -f4)
-    echo "BLOCKED on $PROJECT: held by $LOCK_OWNER since $LOCK_TIME"
-    FAILED="$PROJECT"
-    break
-  fi
-done
+git status --short  # ensure main is clean
+ls .worktrees/*/MERGING 2>/dev/null && echo "CONCURRENT MERGE DETECTED" || echo "Clear"
 ```
 
-**Atomicity rule:** If ANY project lock is blocked, **release all locks you just acquired** and poll. Don't hold some locks while waiting for others — that causes deadlocks.
-
-```bash
-# Rollback: release any locks we acquired in this attempt
-if [ -n "$FAILED" ]; then
-  for PROJECT in $(echo "$PROJECTS" | tr ',' ' '); do
-    [ "$PROJECT" = "$FAILED" ] && break
-    rm -f "$MERGE_LOCK_DIR/$PROJECT"
-  done
-fi
-```
-
-### If blocked
-
-1. Read the blocking lock's file for owner and timestamp
-2. **Stale lock detection:** if lock is older than 30 minutes, warn: "Stale lock on {project} (held by {owner} since {time}). Likely crashed session. Safe to release with `rm \"$MERGE_LOCK_DIR/{project}\"` (or from the monorepo root: `rm .worktrees/.merge-lock/{project}`)."
-3. **Poll every 30 seconds:** re-attempt all locks, report status each cycle
-4. Report to orchestrator: "Lock on {project} held by {owner}. Waiting..."
-
-### Releasing project locks
-
-Release only the locks you hold. Use `$MERGE_LOCK_DIR` (defined above) — never a relative path:
-
-```bash
-for PROJECT in $(echo "$PROJECTS" | tr ',' ' '); do
-  rm -f "$MERGE_LOCK_DIR/$PROJECT" && echo "Lock released: $PROJECT"
-done
-```
-
-### When phases acquire/release locks
-
-| Phase | Acquires locks | Releases locks |
-|-------|---------------|----------------|
-| SETUP | — | — |
-| MERGE | All routed projects (Step 0) | — |
-| DOCS-COMMIT | — | All held locks (last step) |
-| JC-COMMIT | — | All held locks (last step) |
-| LOCK | Specified projects | — |
-| UNLOCK | — | Specified projects |
-| PUSH | — | — |
-
-**Build pipeline:** MERGE acquires locks for all routed projects -> held through post-merge QA + documenter -> DOCS-COMMIT releases all.
-**JC:** LOCK acquires locks for affected project(s) -> held through fix + commit + docs -> UNLOCK or DOCS-COMMIT releases.
+If another pipeline is actively merging, wait and retry. If `git merge` encounters conflicts, resolve them (implementation wins over scaffolding, newer over older).
 
 ---
 
@@ -253,13 +169,9 @@ Worktrees ready. Pipeline: $PIPELINE.
 
 Invoked **after QA** reports `Status: NONE` in `$DOCS/6-bugs.md`.
 
-### 0. Acquire project locks
+### 0. Check for concurrent merges
 
-Before touching `main`, acquire locks for all routed projects. The orchestrator provides `$PROJECTS` (e.g., `be,fe` or `be,fe,cortex`).
-
-Follow the lock acquisition protocol from the Merge Lock Protocol section above. Use `$PIPELINE` as the owner.
-
-**Do NOT proceed with merge until ALL project locks are acquired.**
+Run the conflict-awareness check (see Conflict Awareness above). If clear, proceed.
 
 ### 1. Validate preconditions
 
@@ -421,23 +333,11 @@ EOF
 fi
 ```
 
-### 4. Release project locks
-
-Release all project locks held by this pipeline. The orchestrator provides `$PROJECTS`:
-
-```bash
-# Anchor to monorepo root — see Phase 2 for why
-MERGE_LOCK_DIR="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/.worktrees/.merge-lock"
-for PROJECT in $(echo "$PROJECTS" | tr ',' ' '); do
-  rm -f "$MERGE_LOCK_DIR/$PROJECT" && echo "Lock released: $PROJECT"
-done
-```
-
-### 5. Confirm
+### 4. Confirm
 
 After finishing, say:
 ```
-Docs committed. Pipeline: $PIPELINE. Project locks released: {list}.
+Docs committed. Pipeline: $PIPELINE.
   Docs: committed | no changes
   Zombie check: clean | removed stale source
 ```
@@ -447,14 +347,13 @@ Docs committed. Pipeline: $PIPELINE. Project locks released: {list}.
 ## Phase 4: JC-COMMIT
 
 Invoked by the `/jc` command after a hotfix is applied directly on `main`.
-Handles code commit, doc commit (if any), and lock release — all in one call.
+Handles code commit and doc commit (if any) — all in one call.
 
 > ### ABSOLUTE PROHIBITION — JC-COMMIT IS LOCAL ONLY
 >
-> JC-COMMIT does **THREE THINGS AND NOTHING ELSE**:
+> JC-COMMIT does **TWO THINGS AND NOTHING ELSE**:
 > 1. Commit code changes (local)
 > 2. Commit doc changes if any (local)
-> 3. Release project locks
 >
 > **You MUST NOT run `git push`, `git push origin main`, or any push variant during JC-COMMIT.** Pushing to remote is **NOT** part of this phase. The user pushes explicitly via `/git push` when they decide it's ready. JC commits stay local until then.
 
@@ -499,11 +398,7 @@ EOF
 
 Skip this step if the orchestrator says "no doc changes" or "documenter skipped".
 
-### 4. Release project locks
-
-If the orchestrator provides project keys to unlock, release them using the Merge Lock Protocol.
-
-### 5. Confirm
+### 4. Confirm
 
 ```
 Committed.
@@ -513,51 +408,7 @@ Report both commit hashes (code + docs) if two commits were made.
 
 ---
 
-## Phase 5: LOCK
-
-Lightweight phase — acquires project-scoped locks. Used by `/jc` before editing code on `main`,
-or by any operation that needs exclusive access to specific projects.
-
-The orchestrator provides:
-- **`$OWNER`** — who is acquiring the lock (e.g., `jc`, pipeline name)
-- **`$PROJECTS`** — comma-separated list of project keys to lock (e.g., `be`, `be,fe`, `be,cortex`)
-
-### 1. Acquire project locks
-
-Follow the lock acquisition protocol from the Merge Lock Protocol section above. Use `$OWNER` as the owner and `$PROJECTS` as the project list.
-
-If blocked, poll every 30 seconds. Check for stale locks (>30 min).
-
-### 2. Confirm
-
-After acquiring all locks, say: "Locks acquired by {owner}: {project list}."
-
----
-
-## Phase 6: UNLOCK
-
-Lightweight phase — releases project-scoped locks.
-
-The orchestrator provides:
-- **`$PROJECTS`** — comma-separated list of project keys to unlock (e.g., `be`, `be,fe`)
-
-### 1. Release project locks
-
-```bash
-# Anchor to monorepo root — see Phase 2 for why
-MERGE_LOCK_DIR="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)/.worktrees/.merge-lock"
-for PROJECT in $(echo "$PROJECTS" | tr ',' ' '); do
-  rm -f "$MERGE_LOCK_DIR/$PROJECT" && echo "Lock released: $PROJECT"
-done
-```
-
-### 2. Confirm
-
-After releasing, say: "Locks released: {project list}."
-
----
-
-## Phase 7: PUSH
+## Phase 5: PUSH
 
 Invoked by `/git push` — stage, commit, and push all changes. Single repo, single push.
 
@@ -625,7 +476,7 @@ Pushed. Here's what went up:
 
 ---
 
-## Phase 8: PULL
+## Phase 6: PULL
 
 Invoked by `/git pull` — pull the latest from remote.
 
@@ -687,15 +538,11 @@ and report the problem to the orchestrator.** There is always a safer alternativ
 - **Resolve conflicts deterministically** — implementation wins over scaffolding, always
 - **Report every conflict resolution** so the orchestrator can review
 - **NEVER write to permanent docs** — only mono-documenter updates those. **Exception:** you own the **Living Reference** section at the bottom of this file — update it only when something noteworthy happens (new gotcha, structural change, workaround). You may use the Edit tool on this file to update that section. Never edit any other section.
-- **Project locks are mandatory** — NEVER touch `main` for a project without holding that project's lock. MERGE auto-acquires all routed project locks; DOCS-COMMIT auto-releases all held locks. JC uses LOCK/UNLOCK with specific project list.
-- **Never force-release a non-stale lock** — if a project lock is <30 min old, it's active. Wait.
-- **Atomic lock acquisition** — when acquiring multiple project locks, if ANY is blocked, release all already-acquired locks and retry. Never hold partial locks.
+- **Watch for concurrent merges** — before merging to main, verify no other pipeline is mid-merge. If conflict detected, wait and retry.
 - After SETUP, say: "Worktrees ready. Pipeline: $PIPELINE."
 - After MERGE, say: "Merge complete. Pipeline: $PIPELINE."
-- After DOCS-COMMIT, say: "Docs committed. Pipeline: $PIPELINE. Project locks released: {list}."
+- After DOCS-COMMIT, say: "Docs committed. Pipeline: $PIPELINE."
 - After JC-COMMIT, say: "Committed."
-- After LOCK, say: "Locks acquired by {owner}: {project list}."
-- After UNLOCK, say: "Locks released: {project list}."
 - After PUSH, say: "Pushed. Here's what went up:" followed by the status.
 
 ---
@@ -708,4 +555,4 @@ This section is gitter's living memory — gotchas, history notes, and large-fil
 
 - **Worktree artifacts:** `.env.ports`, `.env.local`, `.env.test` get staged. Always check `git status` and unstage generated files before committing.
 - **node_modules symlink (JS projects):** Frontend and web worktrees may use a symlink to the main checkout's `node_modules`. Can appear in `git status` as a new tracked file — unstage before committing. If it slips to main, `git rm --cached {project}/node_modules` and commit immediately.
-- **Concurrent pipeline conflicts:** When multiple pipelines modify the same files, resolve by keeping the implementation version. The merge lock prevents simultaneous merges, not simultaneous development.
+- **Concurrent pipeline conflicts:** When multiple pipelines modify the same files, resolve by keeping the implementation version. The conflict-awareness check prevents simultaneous merges, not simultaneous development.

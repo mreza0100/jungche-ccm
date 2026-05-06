@@ -10,7 +10,7 @@ This is the **transplantable nervous system** — not a config dump. Built by Ju
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, CKM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
 - **Self-improvement at the source** — a meta-agent (`/jm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
@@ -49,7 +49,7 @@ blueprint/
     ├── CLAUDE.md          ← root project rules + Jungche persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
     ├── commands/          ← Tier A: build, jc, jm, dev, git, wave, documenter, professor, council, ca
-    │                         Tier B (opt-in): officer, ckm, pm, mentor, marketer
+    │                         Tier B (opt-in): officer, km, pm, mentor, marketer
     ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
 ```
@@ -105,7 +105,7 @@ See `ARCHETYPES.md` for the catalog of every character, what's universal in thei
 **Tier B — opt-in domain archetypes:**
 
 - **/officer** — compliance enforcer. Pick your regulation(s).
-- **/ckm** — knowledge curator. Pick your knowledge domain.
+- **/km** — knowledge curator. Pick your knowledge domain.
 - **/pm** — user+product hybrid. Pick your user persona.
 - **/mentor** — business advisor. Pick your market + jurisdiction.
 - **/marketer** — visibility strategist. Pick your channels + language.

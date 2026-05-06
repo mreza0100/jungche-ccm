@@ -29,7 +29,7 @@ Every command, agent, and rule sorts into one of three tiers:
 ### The optional cast (Tier B — opt-in at install)
 
 - **/officer** — compliance enforcer. Pick your regulation(s). (GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, none.)
-- **/ckm** — knowledge curator. Pick your knowledge domain.
+- **/km** — knowledge curator. Pick your knowledge domain.
 - **/pm** — user+product hybrid. Pick your user persona.
 - **/mentor** — business advisor. Pick your market + jurisdiction.
 - **/marketer** — visibility strategist. Pick your channels + language.
@@ -54,7 +54,7 @@ The `gitter` agent is the **single git operator**. No other agent runs `git add`
 - Prevents agents from racing each other for the merge.
 - Makes "what got committed" auditable.
 
-If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, LOCK, UNLOCK, PUSH, PULL.
+If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, PUSH, PULL.
 
 ### 2. QA gates the merge
 
@@ -218,8 +218,7 @@ your-project/
 │       └── waves/                     ← wave runner artifacts
 └── .worktrees/                        ← git worktree checkouts (gitignored)
     ├── {pipeline}/                    ← per-pipeline checkout
-    ├── .ports                         ← port allocation registry
-    └── .merge-lock/                   ← project-scoped merge locks
+    └── .ports                         ← port allocation registry
 ```
 
 For a single-project repo, drop the `{project-a}/`, `{project-b}/` layer — agents live in `.claude/agents/` only, no child CLAUDE.md files.

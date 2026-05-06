@@ -31,6 +31,33 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [0.1.1] — 2026-05-07
+
+### Changed
+- Mechanics: gitter.md — replaced merge-lock protocol with lightweight conflict-awareness check (safe-auto)
+- Mechanics: gitter.md — reduced from 8 phases to 6 (removed LOCK, UNLOCK) (safe-auto)
+- Mechanics: build.md — removed project-lock paragraph and lock release from Step 12 (safe-auto)
+- Mechanics: jc.md — removed merge-lock acquisition/release steps, removed ISO environment detection (safe-auto)
+- Mechanics: git.md — removed LOCK/UNLOCK from known phases (safe-auto)
+- Mechanics: wave.md — removed merge-lock from cleanup checklist (safe-auto)
+- Tier A: CLAUDE.md — added parallelization rule to Process section (safe-auto)
+- Tier A: CLAUDE.md — added Skills section (rr, rnd) to cast reference (safe-auto)
+- Tier B: renamed `/ckm` → `/km` across all templates (safe-auto)
+
+### Added
+- Mechanics: skills/rr/SKILL.md — Research & Report dynamic pipeline skill (safe-auto)
+- Mechanics: skills/rnd/SKILL.md — Research & Develop iterative goal-seeker skill (safe-auto)
+- Mechanics: per-project/qa.md — inline-fix escape hatch for trivial bugs (safe-auto)
+
+### Removed
+- Mechanics: Entire merge-lock protocol removed from gitter, build, jc, git, wave (safe-auto)
+- Mechanics: ISO environment detection removed from jc (safe-auto)
+- Mechanics: `gh` CLI references removed from jc (project-specific, not universal) (safe-auto)
+
+### Migration
+
+No adopter-side migration needed. All changes are `safe-auto` — `/jm update` applies them without prompts.
+
 ## [Unreleased]
 
 *Pending changes for the next release will accumulate here.*

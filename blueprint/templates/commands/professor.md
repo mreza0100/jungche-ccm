@@ -349,7 +349,7 @@ For every task the user listed, ask yourself:
 | **Are tasks overlapping?** | Merge them into one clear task |
 | **Is the scope creep obvious?** | Tighten the boundaries — state what's NOT included |
 | **Does this cross a compliance line?** | Add compliance flags, or recommend scoping down |
-| **Is this executable by `/build`?** | Tag with `[CMD: /jc]`, `[CMD: /ckm]`, etc. if a different command is needed |
+| **Is this executable by `/build`?** | Tag with `[CMD: /jc]`, `[CMD: /km]`, etc. if a different command is needed |
 
 ### Step R2.5 — Get PM input (consultation, founder-gated)
 
@@ -416,7 +416,7 @@ For tasks that survive your review, rewrite them with full specification depth. 
 - Number tasks **sequentially** across all categories
 - Task column = enhanced title + dash + detailed functional description
 - Flag compliance: `[WATCH: ...]`, `[BLOCKED: ...]`, `[FIXES GAP: ...]`
-- **Flag command routing: `[CMD: /ckm]`, `[CMD: /jc]`** — tasks that require a command other than `/build`
+- **Flag command routing: `[CMD: /km]`, `[CMD: /jc]`** — tasks that require a command other than `/build`
 - **No routing column, no size column, no grouping section, no wave ordering**
 - **Never include non-actionable items** — "consider monitoring" is not a task
 
@@ -479,7 +479,7 @@ For each pipeline you can find, skim the plan and architecture docs to understan
 | **Grouping quality** | Were tasks grouped efficiently? Could fewer pipelines have handled the same work? |
 | **Pipeline success rate** | What percentage succeeded? For failures — were they avoidable? |
 | **QA health** | Did pipelines pass QA on first try? How many fix loops? Were bugs real issues or false positives? |
-| **Parallelism effectiveness** | Were independent pipelines actually run efficiently? Did merge locks cause unnecessary serialization? |
+| **Parallelism effectiveness** | Were independent pipelines actually run efficiently? Did conflicts cause unnecessary serialization? |
 | **Scope accuracy** | Did the original task descriptions match what was actually built? |
 | **Token efficiency** | Given the number of tasks, was the pipeline count reasonable? |
 | **Cross-project coordination** | For waves touching multiple projects — did routing make sense? Were there merge conflicts? |
