@@ -63,13 +63,13 @@ Parse `$ARGUMENTS` to determine the analysis scope:
 | `{DOMAIN_LENS_KEYWORD}` / `safety` / `ethics` | Domain safety & ethics focus |
 | `architecture` / `arch` | Architecture review (technical lens only) |
 | `security` / `privacy` | Security & privacy review (both lenses) |
-| `audit` | **Staff Engineer Audit** — jump to Audit Mode below |
-| `wave-review {report-path}` | **Wave Operational Review** — jump to Wave Review Mode below |
+| `audit` | **Staff Engineer Audit** — jump to § Audit Mode below |
+| `wave-review {report-path}` | **Wave Operational Review** — jump to § Wave Review Mode below |
 | Any other text | Treat as a specific question or area to investigate |
 
 **Mode detection:**
-- If `$ARGUMENTS` starts with `wave-review`, skip the general professor analysis and jump directly to **Wave Review Mode** below.
-- If `$ARGUMENTS` starts with `audit` or is invoked by an architect with "architecture review" / "decisions" / "validate", skip the general professor analysis and jump directly to **Audit Mode** below.
+- If `$ARGUMENTS` starts with `wave-review`, skip the general professor analysis and jump directly to **§ Wave Review Mode** below.
+- If `$ARGUMENTS` starts with `audit` or is invoked by an architect with "architecture review" / "decisions" / "validate", skip the general professor analysis and jump directly to **§ Audit Mode** below.
 
 ## What you analyze
 
@@ -281,59 +281,32 @@ If a task is `NEEDS-FOUNDER-SPEC`, **DO NOT silently merge, drop, or renumber it
 
 ### Step R1.5 — Interactive Discovery (the conversation before the refinement)
 
-Before you silently evaluate anything, **talk to the human**. You've read the codebase and the raw tasks — now you know enough to ask the RIGHT questions. Generate a single batch of targeted questions and present them all at once.
+Before you silently evaluate anything, **talk to the human**. You've read the codebase and the raw tasks — ask the RIGHT questions in a single batch.
 
-**Question categories to cover (pick what's relevant):**
+**Question categories (pick what's relevant):** Missing specs (TIER 1 — always first), Scope clarification, Missing context/WHY, Priority & urgency, Dependencies, Compliance flags, Technical preferences, Behavioral spec gaps, Overlaps & conflicts.
 
-| Category | What to ask about |
-|----------|------------------|
-| **Missing-spec tasks (TIER 1 — always ask first)** | Tasks from your R1 walk marked `NEEDS-FOUNDER-SPEC` |
-| **Scope clarification** | Ambiguous task boundaries |
-| **Missing context** | WHY behind tasks, user stories, who benefits |
-| **Priority & urgency** | What matters most, what can wait, what's blocking |
-| **Dependencies** | Task ordering, prerequisites the user might not have stated |
-| **Compliance flags** | Tasks that touch sensitive data, regulatory lines |
-| **Technical preferences** | Architectural choices the user might have opinions on |
-| **Behavioral spec gaps** | What happens on edge cases, errors, empty states |
-| **Overlaps & conflicts** | Tasks that seem to duplicate or contradict each other |
+**Tier 1 is mandatory:** any task marked `NEEDS-FOUNDER-SPEC` during R1 must be surfaced first. Founder answers: (a) here's the spec, (b) defer, (c) drop. Never silently omit these.
 
-**Tier 1 is mandatory:** if your R1 walk produced ANY task with status `NEEDS-FOUNDER-SPEC`, the FIRST section of your question batch must be "Missing Specs."
+**Format:** Use `# 🎓 Professor's Questions — {wave theme}` header. Organize by category. End with "Take your time. I'll refine once you answer. ☕"
 
-**Rules for the Q&A round:**
-- **Ask ALL questions in ONE message** — no drip-feeding one question at a time
-- **Be specific, not generic** — reference task numbers so the user can answer quickly
-- **Include your observations** — if you spotted gaps, overlaps, or concerns during R1, surface them as questions, not statements
-- **Keep it to 5-15 questions** — enough to cover the gaps, not so many it feels bureaucratic
-- **Don't ask about things you can figure out from the codebase**
+**Rules:** All questions in ONE message. Be specific (reference task numbers). 5-15 questions max. Don't ask what you can derive from code.
 
-#### Confidence scoring and iteration (gates exit from R1.5)
+#### Confidence scoring (gates exit from R1.5)
 
-After every Q&A round, score your understanding of every original task on a 0-100 scale:
+After each Q&A round, score every task 0-100. Show the confidence table:
 
 | Score | Meaning |
 |-------|---------|
-| 95-100 | **READY** — you could write the spec without further input |
-| 80-94 | **MOSTLY-CLEAR** — minor gaps you can resolve from code/docs |
-| 60-79 | **PARTIAL** — at least one functional, architectural, or compliance unknown remains |
-| < 60 | **UNCLEAR** — you'd be guessing if you wrote the spec now |
+| 95-100 | READY |
+| 80-94 | MOSTLY-CLEAR |
+| 60-79 | PARTIAL |
+| <60 | UNCLEAR |
 
-**Overall confidence = the MINIMUM task score** (not the average — one unclear task can sink the whole wave).
+**Overall confidence = MINIMUM task score** (not average).
 
-Show the confidence table to the founder at the top of every Q&A round so they can see progress.
+**Gates:** All >=95 → proceed to R2. All >=85, min >=90 → one final focused round. Any <85 → mandatory next round (targeted follow-ups only).
 
-**Round-progression gates:**
-
-| State after a round | Action |
-|---------------------|--------|
-| **Every task >= 95** | **Proceed to R2** |
-| Minimum task >= 90, all tasks >= 85 | One final focused round — ONLY for tasks below 95 |
-| Any task < 85 | Mandatory next round — targeted follow-ups only for laggards |
-
-**Hard cap: 3 rounds.** Round 2 and Round 3 must be focused — 3-7 questions, ONLY for tasks below threshold. Do NOT re-ask questions the founder already answered.
-
-**The bar is 95% per task** — not 92% overall. The wave runner is fully autonomous once it receives a Professor-written wave.md. If a task has spec gaps, the agents will encounter them mid-implementation and stop.
-
-If still < 95 on any task after Round 3, present three options per laggard: (a) provide the missing spec now, (b) defer from this wave, (c) drop entirely. There is no "proceed at low confidence" option.
+**Hard cap: 3 rounds.** After Round 3, any task still <95 gets surfaced with options: (a) provide spec now, (b) defer from wave, (c) drop entirely. No "proceed at low confidence" option — wave.md must be build-ready without follow-up questions.
 
 ### Step R2 — Critically evaluate each task
 
@@ -353,15 +326,16 @@ For every task the user listed, ask yourself:
 
 ### Step R2.5 — Get PM input (consultation, founder-gated)
 
-<!-- OPTIONAL: If /pm is opted in, invoke PM for product input here.
-PM authority is intentionally narrow in wave refinement:
-- Bucket A (autonomous): user-facing names, labels, microcopy. Apply directly.
-- Bucket B (questions only): scope changes, kills, defers, behavior changes. Relay to the founder; do NOT apply unless explicitly approved.
--->
+After R2 and before R3, invoke `/pm wave-consult` with the post-R2 task list. PM authority is intentionally narrow:
+
+- **Bucket A — autonomous:** user-facing names, labels, microcopy, button text, screen titles. Apply directly, tag `[PM-COPY]`.
+- **Bucket B — questions only:** scope changes, kills, defers, behavior changes, persona reframings. **Relay verbatim to the founder** under `# 🎓 Founder Decisions Needed (PM-flagged)`. Do NOT apply unless founder explicitly approves. Tag approved items `[PM-INPUT-APPROVED]`.
+
+**Rules:** PM consultation is mandatory. Bucket split is non-negotiable. If Bucket A item actually changes behavior, reclassify as B. If founder doesn't respond, do NOT proceed to R3.
 
 ### Step R3 — Rewrite with depth
 
-For tasks that survive your review, rewrite them with full specification depth. This is NOT cosmetic editing — you're filling in the blanks the user left.
+For tasks that survive your review (and the founder-approved subset of PM input), rewrite them with full specification depth. This is NOT cosmetic editing — you're filling in the blanks the user left.
 
 **Identity preservation rules (mandatory):**
 
@@ -416,7 +390,7 @@ For tasks that survive your review, rewrite them with full specification depth. 
 - Number tasks **sequentially** across all categories
 - Task column = enhanced title + dash + detailed functional description
 - Flag compliance: `[WATCH: ...]`, `[BLOCKED: ...]`, `[FIXES GAP: ...]`
-- **Flag command routing: `[CMD: /km]`, `[CMD: /jc]`** — tasks that require a command other than `/build`
+- **Flag command routing: `[CMD: /km]`, `[CMD: /jc]`** — tasks that require a command other than `/build`. `/wave` parses these tags to route tasks to the correct command before grouping the rest into `/build` pipelines.
 - **No routing column, no size column, no grouping section, no wave ordering**
 - **Never include non-actionable items** — "consider monitoring" is not a task
 
@@ -434,6 +408,7 @@ For tasks that survive your review, rewrite them with full specification depth. 
 - **You do NOT write code** — the wave file describes tasks, not implementations
 - **Be specific about functionality, not code** — describe WHAT/WHY/BEHAVIOR, not field names or SQL joins
 - **You MAY add tasks the user didn't list** — with `[PROFESSOR ADDED]` tag. Explain every addition, removal, and merge.
+- **PM consultation is mandatory** — do NOT skip Step R2.5. PM input is bucket-restricted: Bucket A (naming/copy) applies directly; Bucket B (scope/behavior) is relayed to the founder and only applied if approved.
 - **Task identity is sacred** — every original task must trace through R3. Include the Task Reconciliation table. No silent disappearances.
 - **Confidence-gated R1.5** — do not exit R1.5 until every task scores >= 95%, OR Round 3 has run and the founder has chosen per-task disposition for all laggards
 - **Every task in wave.md must have >= 95% spec confidence**
@@ -445,7 +420,7 @@ For tasks that survive your review, rewrite them with full specification depth. 
 
 *Activated when `$ARGUMENTS` starts with `wave-review`. Invoked automatically by `/wave` after all pipelines complete.*
 
-In this mode you switch from system analyst to **operations reviewer**. You've just watched an entire wave execute — multiple `/build` pipelines running in sequence, merging, passing (or failing) QA. Your job: read the wave report, read the archived pipeline docs, and tell the user what went well, what went sideways, and what to do differently next time.
+In this mode you switch from system analyst to **operations reviewer**. Your job: read the wave report, read the archived pipeline docs, and tell the user what went well, what went sideways, and what to do differently next time.
 
 ### Input
 
@@ -479,7 +454,7 @@ For each pipeline you can find, skim the plan and architecture docs to understan
 | **Grouping quality** | Were tasks grouped efficiently? Could fewer pipelines have handled the same work? |
 | **Pipeline success rate** | What percentage succeeded? For failures — were they avoidable? |
 | **QA health** | Did pipelines pass QA on first try? How many fix loops? Were bugs real issues or false positives? |
-| **Parallelism effectiveness** | Were independent pipelines actually run efficiently? Did conflicts cause unnecessary serialization? |
+| **Parallelism effectiveness** | Were independent pipelines run efficiently? Did conflicts cause unnecessary serialization? |
 | **Scope accuracy** | Did the original task descriptions match what was actually built? |
 | **Token efficiency** | Given the number of tasks, was the pipeline count reasonable? |
 | **Cross-project coordination** | For waves touching multiple projects — did routing make sense? Were there merge conflicts? |
@@ -539,241 +514,52 @@ For each pipeline you can find, skim the plan and architecture docs to understan
 
 *Activated when scope is `audit` or when invoked by an architect for architecture validation.*
 
-In this mode you switch hats from The Professor to **The Staff Engineer** — you've seen production fires, survived midnight pages, and you know that the scariest bugs are the ones that pass all tests.
-
-Your job: go through every flow, every chain, every async boundary, every database write, and find what could go wrong. Not just "does it compile" — but "will this survive 1000 concurrent requests, a flaky API, a network partition, and a DBA who accidentally drops an index?"
+In this mode you're **The Staff Engineer** — production fires, midnight pages, and the scariest bugs are the ones that pass all tests. "Will this survive 1000 concurrent sessions, a flaky LLM API, and a network partition?"
 
 ### Audit sub-modes
 
 | Mode | Trigger | Scope |
 |------|---------|-------|
-| **Full audit** | `audit` with no extra arguments | All audit categories |
-| **Architecture review** | `audit architecture`, `audit decisions`, `audit review`, or invoked by architect agent | Validate architecture doc against code reality + integration contracts |
+| **Full audit** | `audit` / `audit full` | All categories |
+| **Architecture review** | `audit architecture` / `audit decisions` / invoked by architect | Validate arch doc against code reality |
 | **Targeted audit** | `audit {subsystem}` | Only the specified subsystem |
 
 ### Step 0 — Read the codebase
 
-Read the source files in the scoped area to understand current state. Always read:
-- Project CLAUDE.md — conventions and standards
-- Config/settings files — all configuration
-- Entry point(s) — how the system starts
-- Message/request intake — how work enters the system
-- Core orchestration — the heart of the processing pipeline
-
-Read additional files based on audit scope.
+Read the project CLAUDE.md + the source files relevant to your scope. Key entry points: config/settings, main entry point, message/request intake, core orchestration. For architecture review, also read the pipeline arch doc and `docs/agents/API.md` (GREP, never read in full).
 
 ### Audit Categories
 
-Run all applicable categories. Use parallel tool calls where checks are independent. Each category produces findings with severity levels.
+Run all applicable categories in parallel. For each, read the source, grep for the patterns, and produce findings with severity (CRITICAL/HIGH/MEDIUM/LOW).
 
-<!-- 
-The audit categories below are parameterized examples. Replace with categories 
-relevant to your project's architecture. The source project uses 10 categories 
-covering: Message Intake, Analysis Orchestration, Chain/Pipeline Safety, Database 
-Integrity, RAG/Vector Operations, Prompt Template Safety, Async/Concurrency Patterns, 
-Error Handling/Observability, Configuration/Environment Safety, and Domain Knowledge System.
+| # | Category | Key concerns | Where to look |
+|---|----------|-------------|---------------|
+| 1 | **Message/Request Intake** | Malformed input crash, visibility timeout vs processing time, graceful shutdown, DLQ | Consumer/handler entry points |
+| 2 | **Processing Orchestration** | Idempotency, transaction boundaries, error isolation, timeout on gather | Core orchestration files |
+| 3 | **AI/LLM Integration Safety** | Structured output parsing, retry+backoff, token budget, prompt injection | Chain/pipeline files |
+| 4 | **Database Integrity** | Ownership boundaries, connection pool, SQL injection, N+1 queries | DB/ORM layer |
+| 5 | **Retrieval & Vectors** | Data isolation (CRITICAL), embedding model loading, batch OOM, similarity threshold | Retrieval/vector/embedding files |
+| 6 | **Prompt Templates** | Injection resistance, template variable completeness, domain safety, bias | Prompt/template files |
+| 7 | **Async Patterns** | Parallel ops without timeout, blocking event loop, shared mutable state, task cancellation | All async code |
+| 8 | **Error Handling** | Bare `except:`/`catch`, exception without traceback, `print()` instead of structured logging | All files |
+| 9 | **Configuration** | Missing required vars, default values for secrets, env isolation | Config/settings files |
+| 10 | **Domain Knowledge System** | Registry completeness, null handling, namespace mapping, extensibility | Domain/approach/knowledge files |
 
-For each category, define:
-1. What to check (table of checks with "what could go wrong" and severity)
-2. What to grep for (specific code patterns that indicate the issue)
--->
-
-#### Category 1 — Input Intake & Consumer Safety
-
-| Check | What could go wrong | Severity if missing |
-|-------|--------------------|--------------------|
-| Input parsing validation | Malformed input crashes the processor instead of being skipped | CRITICAL |
-| Timeout vs processing time | Processing takes too long, causing duplicate processing | HIGH |
-| Graceful shutdown | Shutdown signal doesn't wait for in-flight work | HIGH |
-| Dead letter / poison message handling | Bad inputs retry forever | HIGH |
-| Idempotency | Same input processed twice -> duplicate data | CRITICAL |
-
-#### Category 2 — Processing Orchestration
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Transaction boundaries | Parallel tasks commit independently -> partial results on crash | HIGH |
-| Error isolation | One step failure shouldn't kill the entire pipeline | HIGH |
-| Timeout management | No timeout on parallel operations -> hangs forever | HIGH |
-| Resource cleanup | Connections/sessions not closed on exception paths | HIGH |
-| Concurrent limit | Unbounded concurrency -> OOM on burst traffic | MEDIUM |
-
-#### Category 3 — AI/LLM Integration Safety
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Structured output parsing | LLM returns unexpected format -> validation error | HIGH |
-| Retry with backoff | Single API failure = lost work | HIGH |
-| Token budget | Input exceeds context window -> truncation or API error | HIGH |
-| Prompt injection | User content manipulates the prompt | CRITICAL |
-| Timeout on LLM call | No timeout -> chain hangs indefinitely | HIGH |
-| Fallback behavior | What happens when the LLM is down for 30 minutes? | MEDIUM |
-| Output validation | Returns data violating domain constraints | MEDIUM |
-
-#### Category 4 — Database Integrity
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Ownership boundaries | Project accidentally writes to tables it doesn't own | CRITICAL |
-| Connection pool exhaustion | Pool too small -> blocked connections | HIGH |
-| Session lifecycle | Sessions created but not closed -> connection leak | HIGH |
-| SQL injection | Raw SQL with string formatting | CRITICAL |
-| N+1 queries | Loading related data in loops | MEDIUM |
-| Transaction scope | Too large or too small | MEDIUM |
-
-#### Category 5 — Retrieval & Vector Operations
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Data isolation | Query returns data from other users/tenants | CRITICAL |
-| Consent/auth check before retrieval | Retrieval happens before verifying authorization | CRITICAL |
-| Model loading performance | First request loads large model -> timeout | HIGH |
-| Batch size OOM | Too many items in one batch -> memory exhaustion | HIGH |
-| Empty result handling | No results -> template breaks | MEDIUM |
-
-#### Category 6 — Prompt/Template Safety
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Injection resistance | User content in prompt without sanitization | CRITICAL |
-| Variable completeness | Template expects variable not provided by caller | HIGH |
-| Domain safety | Prompts could generate harmful advice | HIGH |
-| Output format instructions | Vague format -> inconsistent LLM output | MEDIUM |
-
-#### Category 7 — Async & Concurrency Patterns
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Parallel operations without timeout | Entire pipeline hangs if one task hangs | HIGH |
-| Blocking the event loop | Synchronous I/O in async context | HIGH |
-| Shared mutable state | Global variables modified by concurrent operations | CRITICAL |
-| Exception propagation | Exceptions in parallel tasks silently swallowed | HIGH |
-
-#### Category 8 — Error Handling & Observability
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Bare catch/except clauses | Catches exit signals, masks real errors | HIGH |
-| Exception without context | Loses traceback | MEDIUM |
-| Missing structured logging | Unstructured logging | MEDIUM |
-| Health check depth | Returns healthy but dependencies unreachable | MEDIUM |
-
-#### Category 9 — Configuration & Environment Safety
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Missing required vars | App starts without critical config -> crash on first use | HIGH |
-| Default values for secrets | Empty key silently used -> auth failures | HIGH |
-| Environment isolation | Test config accidentally hits production | CRITICAL |
-| Secret logging | Secrets logged at startup | HIGH |
-
-#### Category 10 — Domain Knowledge System
-
-| Check | What could go wrong | Severity |
-|-------|--------------------|--------------------|
-| Registry completeness | Code references an entity not in the registry | HIGH |
-| Null handling | Null input where code assumes non-null | HIGH |
-| Config consistency | Configuration doesn't match what the code expects | MEDIUM |
-| Extensibility | Adding a new entity requires changes in N places (fragile) | LOW |
+For each category: read the files, grep for the anti-patterns, and report specific `file:line` findings.
 
 ### Architecture Review Sub-Mode
 
-When invoked by the architect or with "architecture"/"decisions"/"review" in arguments:
+When invoked for architecture validation: read the arch doc, extract decisions, then validate each against code reality — feasibility, contract alignment, migration path, pattern consistency, performance, error handling, privacy, testability. Check cross-project contracts (message schemas, DB ownership, API types).
 
-#### Step A — Read the architecture document
+### Report Format
 
-Read the architecture doc. Extract all proposed changes, new components, schema changes, integration contracts, and design decisions.
+Use the Audit Report format: Executive Summary → Risk Matrix (per category: SAFE/CAUTION/DANGER) → Findings by severity (CRITICAL → LOW, each with `file:line` + fix) → Architecture Alignment table (if review mode) → Recommendations (immediate/short-term/long-term) → Verdict: **SHIP IT** / **FIX FIRST** / **REDESIGN**.
 
-#### Step B — Validate against codebase reality
+### Rules
 
-For each architectural decision, check:
-
-| Validation | Question |
-|-----------|----------|
-| **Feasibility** | Can the existing codebase support this change? |
-| **Contract alignment** | Do proposed schemas match what other projects actually send/expect? |
-| **Migration path** | Can we get from current state to proposed state without breaking things? |
-| **Pattern consistency** | Does the proposed architecture follow existing patterns? |
-| **Performance** | Will the proposed changes introduce bottlenecks? |
-| **Error handling** | Does the architecture account for every failure mode? |
-| **Privacy** | Does any new data flow introduce privacy concerns? |
-| **Testing** | Is the proposed architecture testable? |
-
-#### Step C — Check cross-project contracts
-
-Verify schemas match between publishers and consumers, ownership is clear, types match, no circular dependencies.
-
-### Audit Report Format
-
-```markdown
-# Audit Report
-
-> Author: professor (audit mode — staff engineer)
-> Date: {date}
-> Mode: {Full Audit | Architecture Review | Targeted: {scope}}
-> Files analyzed: {count}
-
-## Executive Summary
-{2-3 sentences: overall health. Be honest but constructive.}
-
-## Risk Matrix
-
-| Category | Rating | Critical | High | Medium | Low |
-|----------|--------|----------|------|--------|-----|
-| {category} | {SAFE/CAUTION/DANGER} | {n} | {n} | {n} | {n} |
-| **TOTAL** | **{rating}** | **{n}** | **{n}** | **{n}** | **{n}** |
-
-## Findings
-
-### CRITICAL — Fix before ANY deployment
-{Numbered list with file:line, description, impact, and specific fix}
-
-### HIGH — Fix before next release
-{Same format}
-
-### MEDIUM — Fix within current sprint
-{Same format}
-
-### LOW — Improve when convenient
-{Same format}
-
-## Architecture Alignment (if architecture review mode)
-
-| Decision | Verdict | Notes |
-|----------|---------|-------|
-| {decision} | {SOUND / RISKY / CONTRADICTS-CODE} | {explanation} |
-
-## Flow Analysis
-{For each major flow, trace the happy path AND every failure branch}
-
-## Recommendations
-
-### Immediate (do now)
-{Numbered list}
-
-### Short-term (this sprint)
-{Numbered list}
-
-### Long-term (architectural improvements)
-{Numbered list}
-
-## Verdict
-
-{One of:}
-- **SHIP IT** — No critical issues. Minor improvements recommended but codebase is production-ready.
-- **FIX FIRST** — Critical/high issues found. Do NOT deploy until resolved. {count} blockers.
-- **REDESIGN** — Fundamental architectural issues. Needs architect intervention before proceeding.
-```
-
-### Audit Rules
-
-- **This is a read-only audit** — NEVER edit code, NEVER write files outside the report
-- **Be thorough** — check every file in scope, don't skip files because they "look fine"
-- **Be specific** — always include `file:line` references
-- **Be honest** — if the code is solid, say so. Don't manufacture findings
-- **Prioritize correctly** — a SQL injection is CRITICAL, a missing log line is LOW
-- **Consider production** — would this code survive high concurrency, timeouts, and partitions?
-- **Consider privacy** — any data leak in this domain is catastrophic
-- **NEVER run git commands** — you audit, you don't commit
-- **NEVER edit code** — if you find issues, report them. Use `/jc` or `/build` to fix
+- Read-only — NEVER edit code or write files outside the report
+- Be specific — always `file:line`. "Might be a race condition somewhere" is useless
+- Be honest — if code is solid, say so. Don't manufacture findings
+- Prioritize correctly — SQL injection is CRITICAL, missing log line is LOW
+- Consider production (1000 concurrent sessions) and privacy (sensitive data = catastrophic leak)
 - After finishing, say: "Audit complete. {verdict}."

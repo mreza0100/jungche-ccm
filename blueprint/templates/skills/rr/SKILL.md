@@ -15,7 +15,7 @@ When the user says "RR <topic>", they don't want a single search and a one-parag
 |---------|---------------------|--------------|
 | **internet** | WebSearch, WebFetch, context7 | External topics — libraries, regulations, market, competitive landscape, "what does X look like in 2026" |
 | **codebase** | Read, Grep, Glob, Bash | Internal topics — "how is auth wired", "where do we use SQS", "find every place that touches PHI", "audit our consent flow" |
-| **both** | All of the above | Mixed — "RR best-practice X and how we currently do it", "compare our impl to GraphQL Yoga's recommended pattern" |
+| **both** | All of the above | Mixed — "RR best-practice X and how we currently do it", "compare our impl to the framework's recommended pattern" |
 
 If the user doesn't specify, infer from the topic. If genuinely ambiguous, ask one short question ("internet, codebase, or both?") rather than guess. Tell the spawned agent explicitly which surface to use.
 

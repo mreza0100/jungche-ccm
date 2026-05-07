@@ -31,6 +31,28 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [Unreleased]
+
+*Pending changes for the next release will accumulate here.*
+
+## [0.1.2] — 2026-05-07
+
+### Changed
+- Mechanics: marketer.md — 688→381 lines, condensed verbose tables/sections to match token-trimmed density (safe-auto)
+- Mechanics: pm.md — 364→158 lines, collapsed analysis framework and output templates (safe-auto)
+- Mechanics: documenter.md — 473→252 lines, compressed audit mode and rules (safe-auto)
+- Mechanics: wave.md — 404→182 lines, removed verbose explanations and bash blocks (safe-auto)
+- Mechanics: council.md — 420→318 lines, simplified setup and round descriptions (safe-auto)
+- Mechanics: professor.md — 779→565 lines, consolidated audit sub-mode tables (safe-auto)
+- Mechanics: jm.md — 595→564 lines, genericized project references (safe-auto)
+- Mechanics: mono-architect.md — 246→159 lines, compressed ownership and step descriptions (safe-auto)
+- Mechanics: per-project/developer.md — 241→101 lines, collapsed verbose steps to compact bullets (safe-auto)
+- Mechanics: per-project/qa.md — 316→77 lines, removed verbose taxonomy, kept essential checks (safe-auto)
+
+### Migration
+
+No adopter-side migration needed. All changes are structural density improvements — same behavior, fewer tokens. `/jm update` applies them without prompts.
+
 ## [0.1.1] — 2026-05-07
 
 ### Changed
@@ -57,7 +79,3 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 ### Migration
 
 No adopter-side migration needed. All changes are `safe-auto` — `/jm update` applies them without prompts.
-
-## [Unreleased]
-
-*Pending changes for the next release will accumulate here.*

@@ -1,7 +1,5 @@
 # Council — The Roundtable Debate
 
-> **Tier A — Universal archetype.** Three-round debate structure (opening / rebuttal / verdict) is universal. Panel composition parameterizes per install — universal voices (JC + Professor) are mandatory; the other 3 seats are filled from your opted-in Tier B archetypes.
-
 $ARGUMENTS
 
 ---
@@ -10,169 +8,156 @@ $ARGUMENTS
 
 | Subcommand | Trigger | Action |
 |------------|---------|--------|
-| `refinement` | `$ARGUMENTS` starts with "refinement" or "refine" | Jump to **§ Refinement Mode** below |
-| *(default)* | anything else | Continue to **§ Overview** — standard debate mode |
+| `refinement` | `$ARGUMENTS` starts with "refinement" or "refine" | Jump to **§ Refinement Mode** |
+| *(default)* | anything else | Standard debate mode |
 
 ---
 
 ## Overview
 
-The Council is a **parallel analysis + structured debate** between {N} of your sharpest archetypes. Each brings a radically different lens to the same topic. They analyze independently, then read each other's positions and challenge them — producing a richer, more battle-tested conclusion than any single perspective could.
+The Council is a **parallel analysis + structured debate** between five of {PROJECT_NAME}'s sharpest minds. Each brings a radically different lens. They analyze independently, then read each other's positions and challenge them.
 
-**The default panel:**
+<!-- Install-time: Configure your panel. JC + Professor are universal (Tier A). Fill seats 3-5 from your opted-in Tier B archetypes. Common configs:
+- Health-tech: Mentor + Officer + PM
+- Game studio: Mentor + PM + Marketer
+- Open-source library: JC + Professor + 1 specialty seat
+- Research project: Officer (ethics) + PM (researcher persona)
+Smaller panels (3-voice) work fine for solo/research projects. -->
 
-| Seat | Tier | Lens |
-|------|------|------|
-| **JC** | A (universal) | Technical diagnostics — code health, runtime behavior, system reliability, data integrity |
-| **Professor** | A (universal) | Cross-disciplinary rigor — architecture, sacred-ground safety, evidence base |
-| **`{PANEL_SEAT_3}`** | B (opt-in) | Typically a domain seat — pick from your Tier B opt-ins |
-| **`{PANEL_SEAT_4}`** | B (opt-in) | Typically a stakeholder seat — pick from your Tier B opt-ins |
-| **`{PANEL_SEAT_5}`** | B (opt-in) | Typically a user/product seat — pick from your Tier B opt-ins |
+**The Council Members:**
 
-> **Install-time parameterization:** Replace `{PANEL_SEAT_N}` with the names of your opted-in Tier B archetypes. Common configurations:
->
-> - **Health-tech / therapy AI:** Mentor + Officer + PM
-> - **Game studio:** Mentor + PM + Marketer
-> - **Open-source library:** (no Tier B — JC + Professor + 1 specialty seat works fine)
-> - **Research project:** Officer (IRB/ethics) + PM (researcher persona)
->
-> Smaller panels work — a 3-voice council (JC + Professor + 1) handles solo or research projects fine.
+| Seat | Lens | Voice source |
+|------|------|-------------|
+| **JC** | Technical — code health, runtime, reliability, data integrity | `.claude/commands/jc.md` |
+| **{PANEL_SEAT_3}** | {PANEL_SEAT_3_LENS} | `.claude/commands/{panel_seat_3}.md` |
+| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `.claude/commands/professor.md` |
+| **{PANEL_SEAT_4}** | {PANEL_SEAT_4_LENS} | `.claude/commands/{panel_seat_4}.md` |
+| **{PANEL_SEAT_5}** | {PANEL_SEAT_5_LENS} — {USER_NOUN} workflows, friction, adoption | `.claude/commands/{panel_seat_5}.md` |
 
-**Jungche** (the orchestrator) moderates — sets the topic, runs the rounds, synthesizes the verdict, calls out when someone's being too narrow.
+**Jungche** (you) moderates, synthesizes the verdict, and calls out narrow thinking.
 
 ---
 
 ## Debate Storage
 
-All debate artifacts persist to `$CDOCS/council/$RESEARCH/{debateName}/` where `{debateName}` is a kebab-case slug derived from the topic.
+Artifacts persist to `$CDOCS/council/$RESEARCH/{debateName}/`:
 
-**Files per debate:**
+| Files | Pattern |
+|-------|---------|
+| Round 1 | `council-{member}.md` (5 files) |
+| Round 2 | `council-{member}-rebuttal.md` (5 files) |
+| Round 3 | `verdict.md` + `result.md` |
 
-| File | Round | Author |
-|------|-------|--------|
-| `council-jc.md` | 1 | JC — Opening Statement |
-| `council-professor.md` | 1 | Professor — Opening Statement |
-| `council-{PANEL_SEAT_3}.md` | 1 | Opening Statement |
-| `council-{PANEL_SEAT_4}.md` | 1 | Opening Statement |
-| `council-{PANEL_SEAT_5}.md` | 1 | Opening Statement |
-| `council-{member}-rebuttal.md` (one per member) | 2 | Rebuttals |
-| `verdict.md` | 3 | Jungche — Synthesized Verdict |
-| `result.md` | Final | Compiled deliverable — brief result + full debate record |
-
-These are **permanent research artifacts** — do NOT delete them.
+These are permanent research artifacts — never delete them.
 
 ---
 
-## How It Works — Three Rounds
+## Three Rounds
 
-### Round 1 — Opening Statements (parallel)
-
-All panel members analyze the topic simultaneously from their unique perspective. Each writes a structured position paper. They do NOT see each other's work yet.
-
-### Round 2 — Rebuttals (parallel)
-
-Each member reads the OTHER members' positions and writes rebuttals — challenging, agreeing, or building on what the others said. This is where the magic happens: business shark poking holes in technical idealism, professor questioning growth-at-all-costs, JC pointing out elegant architecture is actually broken in production, Officer red-flagging what everyone else handwaved past, PM asking whether any of them thought about what users actually want.
-
-### Round 3 — Verdict (Jungche synthesizes)
-
-Jungche reads all opening statements + rebuttals, delivers the final synthesized verdict. Where do they agree? Where do they clash? What's the actual path forward that balances all lenses?
+1. **Round 1 — Opening Statements (parallel):** All five analyze independently from their lens. They do NOT see each other's work.
+2. **Round 2 — Rebuttals (parallel):** Each reads the OTHER four positions and writes targeted challenges/agreements/builds.
+3. **Round 3 — Verdict (Jungche):** You synthesize all 10 files into a final opinionated verdict.
 
 ---
 
-## Step 0 — Parse the topic and set up debate directory
+## Step 0 — Parse and set up
 
-If `$ARGUMENTS` is empty, ask the user what they want the council to debate. Don't proceed without a topic.
+If `$ARGUMENTS` is empty: ask for a topic. If provided: proceed.
 
-**Topic framing:** Reframe as a clear question or decision all panel members can address.
-
-**Debate name:** Derive a kebab-case slug (2-5 words). Check uniqueness against `$CDOCS/council/$RESEARCH/`. Append `-v2`, `-v3` if needed.
-
-**Create the debate directory:**
-
-```bash
-mkdir -p docs/commands/council/research/{debateName}
-```
-
-Set `$DEBATE_DIR` for all subsequent file paths.
+1. **Frame the topic** as a clear question all five can address
+2. **Derive debate name** — kebab-case slug, 2-5 words
+3. **Check uniqueness** against `docs/commands/council/research/`
+4. **Create directory:** `mkdir -p docs/commands/council/research/{debateName}`
+5. Set `$DEBATE_DIR` = `docs/commands/council/research/{debateName}`
 
 ---
 
 ## Step 1 — Round 1: Opening Statements (PARALLEL)
 
-Launch all panel members simultaneously. Each runs as an Agent with their full character loaded.
+Launch all five simultaneously. Each MUST read actual codebase and reference docs — this is NOT hypothetical.
 
-**CRITICAL:** Each agent MUST read the actual codebase and reference docs relevant to the topic — this is NOT a hypothetical debate. Every claim must be grounded in what actually exists.
-
-**Pattern (repeat per panel member):**
+**Agent prompt template for each member:**
 
 ```
 Agent(general-purpose, model: sonnet, name: "council-{member}"):
-"You are {Member} from {Project}'s /{member} command. Read and fully embody the character from .claude/commands/{member}.md. This is MANDATORY, not flavor.
+"You are {character} from {PROJECT_NAME}'s {command}. Read and fully embody the character from {command-path} — this is MANDATORY, not flavor.
 
 **Your task:** Analyze this topic from a {LENS} perspective:
 Topic: '{debate-topic}'
 
 **What to do:**
-1. Read the relevant codebase, docs, and reference materials to ground your analysis
-2. Focus on: {lens-specific concerns}
-3. Write your Opening Statement as a structured position paper
+1. Read the relevant codebase, docs, and reference files to ground your analysis in reality
+2. Focus on: {focus-areas}
+3. Write your Opening Statement
 
-**Format your Opening Statement as:**
+**Format:**
 
 ## {Member} — Opening Statement
 
 **My verdict:** {one-line position}
 
 ### {Lens-specific section 1}
-{3-5 key observations grounded in actual references}
+{3-5 key observations grounded in actual code/doc references}
 
 ### {Lens-specific section 2}
-{Concerns / risks / what worries you}
+{2-3 concerns or risks from your perspective}
 
-### {Lens-specific section 3}
-{Recommendations}
+### What I recommend
+{2-3 concrete recommendations}
 
 ### My bottom line
-{1-2 sentences — your core position}
+{1-2 sentences}
 
 **Rules:**
 - Stay in character throughout
-- Every claim references actual files, functions, or reference docs
-- Focus ONLY on the {LENS} lens — leave other lenses to other members
-- Be honest — don't sugarcoat, don't catastrophize
+- Every claim must reference actual files/docs you've read
+- Focus ONLY on your lens — leave other domains to colleagues
 - Write to file: {$DEBATE_DIR}/council-{member}.md"
 ```
 
-**Wait for all members to complete before proceeding.**
+**Per-member specifics:**
+
+| Member | Focus areas | Key docs to read |
+|--------|-------------|-----------------|
+| JC | code health, system reliability, performance, security, data integrity | Relevant source code |
+| {PANEL_SEAT_3} | {PANEL_SEAT_3_FOCUS} | `$CDOCS/{panel_seat_3}/$REFS/` |
+| Professor | architecture quality, {SACRED_GROUND} safety, evidence-based practice, cross-disciplinary | Architecture docs |
+| {PANEL_SEAT_4} | {PANEL_SEAT_4_FOCUS} | `$CDOCS/{panel_seat_4}/$REFS/` |
+| {PANEL_SEAT_5} | {USER_NOUN} workflows, UX friction, personas, adoption | `docs/agents/features.md`, `$CDOCS/{panel_seat_5}/$REFS/` |
+
+**Wait for all five to complete.**
 
 ---
 
 ## Step 2 — Round 2: Rebuttals (PARALLEL)
 
-Each member reads the OTHER members' Opening Statements and writes targeted rebuttals.
+Each member reads the OTHER four Opening Statements and writes targeted rebuttals.
 
-**Pattern (repeat per panel member):**
+**Agent prompt template:**
 
 ```
 Agent(general-purpose, model: sonnet, name: "rebuttal-{member}"):
-"You are {Member} — same character as before.
+"You are {character}. Same character as Round 1.
 
-**Your task:** Read the other panel members' Opening Statements and write your rebuttals.
+**Your task:** Read the other four council members' Opening Statements and write rebuttals.
 
-1. Read each {$DEBATE_DIR}/council-{other-member}.md
-2. Write rebuttals — challenge, agree, or build
+1. Read {$DEBATE_DIR}/council-{other1}.md through council-{other4}.md
+2. Write rebuttals — challenge, agree, or build on their points
 
 **Format:**
 
 ## {Member} — Rebuttals
 
-### To {Other Member 1}:
-{2-3 points — where you agree, where you push back, what their lens misses}
+### To {Other1}:
+{2-3 points — agree, push back, what their lens misses}
 
-### To {Other Member 2}:
+### To {Other2}:
 {2-3 points}
 
-### To {Other Member 3}:
+### To {Other3}:
+{2-3 points}
+
+### To {Other4}:
 {2-3 points}
 
 ### What they all miss:
@@ -180,87 +165,65 @@ Agent(general-purpose, model: sonnet, name: "rebuttal-{member}"):
 
 **Rules:**
 - Stay in character
-- Be specific — reference actual claims
-- Don't disagree just to disagree — acknowledge good points
+- Be specific — reference actual claims from their statements
+- Don't just disagree to disagree — acknowledge good points
 - Write to file: {$DEBATE_DIR}/council-{member}-rebuttal.md"
 ```
 
-**Wait for all rebuttals to complete before proceeding.**
+**Wait for all five rebuttals to complete.**
 
 ---
 
 ## Step 3 — Round 3: The Verdict (Jungche synthesizes)
 
-Read all opening statements + all rebuttals. Synthesize into a final verdict at `{$DEBATE_DIR}/verdict.md`:
+Read all 10 files. Write `{$DEBATE_DIR}/verdict.md`:
 
 ```markdown
 # Council Verdict: {debate topic}
 
-**Debate:** {debateName}
-**Date:** {date}
-**Council:** {list of seats}
+**Debate:** {debateName} | **Date:** {date}
+**Council:** JC (Technical), {PANEL_SEAT_3} ({PANEL_SEAT_3_LENS}), Professor (Academic), {PANEL_SEAT_4} ({PANEL_SEAT_4_LENS}), {PANEL_SEAT_5} ({PANEL_SEAT_5_LENS})
 
 ## The Question
-{Restate the debate topic clearly}
+{Restate clearly}
 
 ## Where They Agree
-{Points all members converged on — high-confidence conclusions}
+{High-confidence convergence points}
 
 ## Where They Clash
-{Key disagreements as tension pairs:}
-- **{Member A} vs {Member B}:** {the lens-vs-lens tension}
-- ...
+{Key tensions as pairs: JC vs {PANEL_SEAT_3}, {PANEL_SEAT_4} vs {PANEL_SEAT_5}, etc.}
 
 ## The Blind Spots
-{What each member missed that others caught — this is the value of the debate}
+{What each missed that others caught}
 
 ## Jungche's Verdict
-{YOUR synthesis — opinionated. Don't "split the difference" — make a call.
-State what to do, in what order, why this path beats the alternatives.}
+{YOUR opinionated synthesis — make a call, don't hedge}
 
 ## Action Items
-{Concrete next steps, ordered by priority, with which lens they come from:}
-1. {action} — *(from {Member}'s {lens} analysis)*
-2. ...
+{Concrete next steps, ordered, with source perspective}
 ```
 
 ---
 
 ## Step 4 — Compile `result.md`
 
-After the verdict, compile the entire debate into `{$DEBATE_DIR}/result.md`:
-
-```markdown
-# Council Result: {debate topic}
-
-## Brief Result
-{Verdict content from verdict.md — TL;DR for the user}
-
-## Full Debate Record
-
-### Round 1 — Opening Statements
-{Content of each council-{member}.md, separated by `---`}
-
-### Round 2 — Rebuttals
-{Content of each council-{member}-rebuttal.md, separated by `---`}
-```
-
-**Display `result.md` to the user** — that's the deliverable.
+Write `{$DEBATE_DIR}/result.md`: verdict content (Brief Result) + full debate record (all 10 files copied chronologically: Round 1 statements, then Round 2 rebuttals). Display to user.
 
 ---
 
 ## Rules
 
-- **All panel perspectives are MANDATORY** — no skipping a member, even if the topic seems to only concern one domain. The whole point is that every decision affects every lens.
-- **Grounded in reality** — every member MUST read actual code, docs, and data.
-- **Characters are MANDATORY** — JC sounds like JC, Professor sounds like Professor, etc. The personality IS the lens. A Mentor who sounds like a professor is useless.
-- **Rebuttals must be substantive** — "I agree with everything" is not a rebuttal. Each member finds at least ONE thing to challenge from each colleague.
-- **Jungche's verdict is opinionated** — don't hedge. Make a call.
-- **`{SACRED_GROUND}` is the trump card** — if any panel member raises a `{SACRED_GROUND}` concern, it overrides business and convenience arguments.
-- **Compliance blockers are hard stops** — if `/officer` (when on the panel) identifies a regulatory BLOCKER, it must be resolved before the recommended action proceeds.
-- **Debate artifacts are permanent** — do NOT delete files in `$CDOCS/council/$RESEARCH/{debateName}/`.
-- **No member runs git, edits code, or makes changes** — this is a DEBATE command, not an action command. Verdict only.
-- **Visual grounding** — when the debate topic touches UX or user-facing features, council agents SHOULD load available screenshots and design references to ground their analysis in what actually exists.
+- **All five perspectives MANDATORY** — no skipping. Business has technical implications; technical has {SACRED_GROUND} implications; {SACRED_GROUND} has compliance implications.
+- **Grounded in reality** — every member MUST read actual code/docs. Not hypothetical.
+- **Characters are MANDATORY** — the personality IS the lens. A {PANEL_SEAT_3} who sounds like a professor is useless.
+- **Rebuttals must be substantive** — each member must challenge at least ONE thing from each colleague.
+- **Jungche's verdict is opinionated** — make a call, don't summarize opinions.
+- **{SACRED_GROUND} is trump** — overrides business and UX arguments. Period.
+- **Compliance blockers are hard stops** — must be resolved before action. Non-negotiable.
+- **{USER_NOUN} love is tiebreaker** — when perspectives are evenly matched, {PANEL_SEAT_5}'s user lens wins.
+- **Debate artifacts are permanent** — never delete.
+- **Read-only** — no agent commits code or runs git. Council produces verdicts, not changes.
+- **Visual grounding** — when topic touches UX/FE, agents SHOULD load screenshots from design reference directories.
 
 ---
 
@@ -268,106 +231,65 @@ After the verdict, compile the entire debate into `{$DEBATE_DIR}/result.md`:
 
 *Activated when `$ARGUMENTS` starts with `refinement` or `refine`.*
 
-In this mode, the Council doesn't just debate — it **designs the best possible implementation** of a feature, then produces a `/wave`-consumable task file.
-
-**The difference from standard council:**
-- Standard → debate → verdict → `result.md` (analysis — user decides what to do)
-- Refinement → debate → verdict → `wave.md` (actionable — ready for `/wave`)
+**Difference from standard council:**
+- Standard → debate → `result.md` (analysis — user decides what to do)
+- Refinement → debate → `wave.md` (actionable task file — ready for `/wave`)
 
 **Output paths:**
-- Debate artifacts → `$CDOCS/council/$RESEARCH/{debateName}/` (same as standard)
-- Wave file → `docs/dev/waves/council/{debateName}.md` (NEW — `/wave`-consumable)
+- Debate artifacts → `$CDOCS/council/$RESEARCH/{debateName}/` (same)
+- Wave file → `docs/dev/waves/council/{debateName}.md` (new)
 
----
+### Refinement Step 0 — Setup
 
-### Refinement Step 0 — Parse, frame, and set up
-
-Same as standard Step 0, but frame as a design challenge, not an analysis question.
-
-**Create both directories:**
-```bash
-mkdir -p docs/commands/council/research/{debateName}
-mkdir -p docs/dev/waves/council
-```
-
----
+Same as standard Step 0, but also `mkdir -p docs/dev/waves/council`. Check uniqueness against BOTH `docs/commands/council/research/` AND `docs/dev/waves/council/` + `docs/dev/waves/` + `docs/dev/waves/archive/`.
 
 ### Refinement Step 1 — Round 1: Implementation Proposals (PARALLEL)
 
-All panel members analyze the feature simultaneously and write **implementation proposals** — not just positions. Each proposal must answer: what to build, how it should work, what constraints apply from their lens, and what tasks are needed. Each must end with "My recommended task list".
+Like standard Round 1, but agents write **implementation proposals** with concrete task lists, not just positions.
 
-**CRITICAL:** Each agent MUST read the actual codebase and relevant docs. Every proposal must be grounded in what exists today.
+**Each agent's prompt adds these requirements to the standard template:**
+- Identify what code exists today (with file:line references)
+- Propose concrete tasks organized by project
+- Include a "recommended task list" section at the bottom
+- Write at Professor-level detail (what, why, behaviors, boundaries)
 
-Launch all panel members in parallel using the same Agent pattern from Step 1, but with implementation-focused prompts per lens:
+**Additional per-member focus:**
 
-- **JC (Technical):** What code changes are needed, what patterns to reuse, architecture decisions, cheap vs expensive, performance implications
-- **Professor (Academic):** Architecture quality, safety considerations, evidence-based design, what could go wrong
-- **Tier B seats:** Each applies their specific lens (business prioritization, compliance prerequisites, UX/product, etc.)
-
-**Wait for all members to complete before proceeding.**
-
----
+| Member | Extra in refinement |
+|--------|-------------------|
+| JC | What exists today, what's cheap vs expensive, performance implications, implementation order |
+| {PANEL_SEAT_3} | {PANEL_SEAT_3_REFINEMENT_FOCUS} |
+| Professor | Literature-backed design constraints, architectural decisions, safety gates, anti-patterns |
+| {PANEL_SEAT_4} | {PANEL_SEAT_4_REFINEMENT_FOCUS} |
+| {PANEL_SEAT_5} | UX specification (screen flows, copy, interactions), persona impact, what makes {USER_NOUN}s love vs resent this |
 
 ### Refinement Step 2 — Round 2: Rebuttals (PARALLEL)
 
-Same as standard council Round 2, but add to each rebuttal prompt:
+Same as standard Step 2, with one addition to each rebuttal prompt:
 
-```
-In your rebuttals, pay special attention to TASK LIST CONFLICTS — where your recommended tasks
-overlap, contradict, or have different priorities than the other members'. Call out:
-- Tasks that appear in multiple lists (good — convergence signal)
-- Tasks that one member recommends and another opposes (needs resolution)
-- Tasks missing from others' lists that you consider essential
-- Priority disagreements (one member says "v1 must-have", another says "defer to v2")
-```
+> "Pay special attention to TASK LIST CONFLICTS — overlaps, contradictions, priority disagreements between your recommended tasks and theirs."
 
-**Wait for all rebuttals to complete before proceeding.**
+### Refinement Step 3 — Verdict + Wave File
 
----
+Read all 10 files. Produce THREE outputs:
 
-### Refinement Step 3 — Verdict + Wave File (Jungche synthesizes)
+**1. Verdict** → `{$DEBATE_DIR}/verdict.md` (standard format + task convergence analysis)
 
-Read all documents and produce TWO outputs:
-
-#### Output 1: Verdict (same format as standard council)
-
-Include task convergence analysis (which tasks appeared in 3+ lists = high confidence).
-
-#### Output 2: Wave file
-
-Synthesize all implementation proposals + rebuttals into a **single wave.md** at `docs/dev/waves/council/{debateName}.md`.
-
-**This wave file must:**
-1. Follow the Professor's wave.md format — numbered tasks, categorized by domain, with full specification depth
-2. Include tasks from ALL perspectives — technical work, compliance prerequisites, UX specs, architectural constraints, business prioritization
-3. Resolve all conflicts from the rebuttals — where members disagreed, Jungche picks the winner
-4. Include compliance flags from Officer (when on panel): `[WATCH: ...]`, `[BLOCKED: ...]`, `[FIXES GAP: ...]`
-5. Mark deferred items clearly: `[DEFERRED TO V2: reason]`
-6. Reference the council debate for traceability
-
-**Wave file format:**
+**2. Wave file** → `docs/dev/waves/council/{debateName}.md`:
 
 ```markdown
 # Council Refinement: {feature title}
 
 **Source:** Council refinement `{debateName}` ({date})
-**Council:** {list of seats}
 **Verdict:** `$CDOCS/council/$RESEARCH/{debateName}/verdict.md`
 
 ---
 
-## {Category 1} ({N} tasks)
+## {Category} ({N} tasks)
 
 | # | Task |
 |---|------|
 | 1 | {title} — {what, why, behaviors, boundaries, architectural intent, compliance flags, UX specs} |
-| 2 | ... |
-
-## {Category 2} ({N} tasks)
-
-| # | Task |
-|---|------|
-| 3 | ... |
 
 ---
 
@@ -375,46 +297,22 @@ Synthesize all implementation proposals + rebuttals into a **single wave.md** at
 
 | # | Item | Reason | Champion |
 |---|------|--------|----------|
-| D1 | {feature} | {why deferred} | {which member proposed it} |
+| D1 | {feature} | {why deferred} | {which member proposed} |
 ```
 
-**The wave.md MUST NOT include:**
-- Routing decisions (mono-planner decides)
-- Pipeline names (`/wave` decides)
-- Size estimates (planners estimate)
-- Code-level details (architects/developers decide)
+**Wave.md MUST include per task:** What it does, why it matters, key behaviors, architectural intent, boundaries, compliance flags (if any), UX specs (if any).
 
-**The wave.md MUST include (for every task):**
-1. What it does (concrete functionality)
-2. Why it matters (problem being solved)
-3. Key behaviors (success, failure, edge cases)
-4. Architectural intent (new service? extend existing? sync/async?)
-5. Boundaries (what this task does NOT include)
-6. Compliance flags (if applicable)
-7. UX specs (if applicable — copy, framing, interaction patterns)
+**Wave.md MUST NOT include:** Routing decisions, pipeline names, size estimates, code-level implementation details.
 
-#### Output 3: Compiled result.md
+**3. result.md** — same as standard Step 4.
 
-Same as standard council Step 4.
+Display wave file path: `Run /wave docs/dev/waves/council/{debateName}.md to execute.`
 
-**Then display the wave file path to the user:**
-```
-Council refinement complete. {N} tasks refined across {M} categories.
-Wave file: docs/dev/waves/council/{debateName}.md
-Debate record: docs/commands/council/research/{debateName}/result.md
+### Refinement Rules (additions)
 
-Run `/wave docs/dev/waves/council/{debateName}.md` to execute.
-```
-
----
-
-### Refinement Rules (in addition to standard council rules)
-
-- **Implementation proposals replace position papers** — Round 1 agents write concrete task lists, not abstract positions. Every agent must produce a "recommended task list" section.
-- **Task convergence is signal** — when 3+ members independently propose the same task, high confidence. When only 1 proposes it and others don't mention it, Jungche evaluates whether it's a unique insight or an overreach.
-- **The wave.md is the deliverable** — every contested decision must be resolved IN the wave file, not left as "see verdict."
-- **Compliance tasks are never deferred** — if the Officer (when on panel) flags a BLOCKER, it becomes a prerequisite task, not a deferred item. BLOCKERs ship in v1 or the feature doesn't ship.
-- **PM's copy goes verbatim** — when PM (when on panel) writes specific UI copy, it goes into task descriptions verbatim. Developers should not rewrite user-facing copy.
-- **Professor's boundaries are law** — when the Professor says "this task does NOT include X," that boundary goes into the wave.md task description.
-- **Mentor's deferrals are respected** — when the Mentor (when on panel) says "defer to v2" with sound reasoning, the item moves to the Deferred table.
-- **Cross-project scope is expected** — refinement can produce tasks touching any project. The wave.md doesn't care about routing — `/wave` and mono-planner handle that downstream.
+- **Task convergence** — 3+ members proposing same task = high confidence. 1 member only = Jungche evaluates.
+- **Compliance tasks never deferred** — {PANEL_SEAT_4} BLOCKERs become prerequisites, not v2 items.
+- **{PANEL_SEAT_5}'s copy goes verbatim** — {USER_NOUN}-facing UI copy is not rewritten by developers.
+- **Professor's boundaries are law** — "does NOT include X" goes into task description.
+- **{PANEL_SEAT_3}'s deferrals respected** — business prioritization wins unless it conflicts with safety/compliance.
+- **Cross-project scope expected** — wave.md can touch any project; `/wave` handles routing downstream.

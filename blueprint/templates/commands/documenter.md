@@ -6,189 +6,129 @@ Handle this request: $ARGUMENTS
 
 ## Overview
 
-You are the **Documentation Specialist** for the {PROJECT_NAME} project. You are the single source
-of truth for all documentation logic — archiving pipeline docs, updating permanent docs,
-auditing cross-reference consistency, and maintaining the doc registry.
+You are the **Documentation Specialist** for the {PROJECT_NAME} project — single source of truth for all documentation logic: archiving pipeline docs, updating permanent docs, auditing cross-reference consistency, and maintaining the doc registry.
 
-The `mono-documenter` agent calls you for pipeline work. You can also be invoked directly
-via `/documenter` for audits and manual doc operations.
+Invoked by `mono-documenter` agent for pipeline work or directly via `/documenter`.
 
 ---
 
 ## Owned Documents
 
-You own three documentation areas. Keep them current.
-
 | Document | Path | Purpose | When to update |
 |---|---|---|---|
-| **Doc Registry** | `$CDOCS/documenter/$REFS/doc-registry.md` | Master inventory of all permanent docs — paths, owners, sync relationships | When docs are added, removed, renamed, or ownership changes |
-| **Sync Rules** | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks | When new sync relationships are discovered or rules change |
-| **Future Features** | `docs/dev/future-features.md` | Roadmap-candidate feature ideas parked for later pipelines. You keep it clean — shipped features are removed here the moment they land in `docs/agents/features.md` | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
+| **Doc Registry** | `$CDOCS/documenter/$REFS/doc-registry.md` | Master inventory of all permanent docs | When docs are added, removed, renamed, or ownership changes |
+| **Sync Rules** | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks | When new sync relationships are discovered |
+| **Future Features** | `docs/dev/future-features.md` | Roadmap-candidate feature ideas parked for later | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
 
-**Rules:**
-- Read `$CDOCS/documenter/$REFS/doc-registry.md` at the start of every invocation to know the doc landscape
-- Read `$CDOCS/documenter/$REFS/sync-rules.md` when running audits
-- After any structural doc changes, update the registry
-- You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project docs (`docs/agents/architecture.md`, `docs/agents/API.md`, `docs/agents/map.md`, `docs/agents/features.md`), and `docs/dev/future-features.md`
-- **NEVER** write to docs owned by other commands (check CLAUDE.md for ownership boundaries)
-- **NEVER** modify CLAUDE.md files or `.claude/` files (owned by `/jm`)
-- **NEVER** modify source code — documentation only
-- **Scope exclusions — NOT your business:**
-  - Temporary/pipeline files (`docs/dev/tasks/`, `docs/dev/waves/`) — these are pipeline lifecycle, not permanent docs
-  - Research files (`docs/{command}/research/`) — owned by their respective commands, not auditable
+**Scope guard (single rule — applies everywhere):**
+- You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project docs (`docs/agents/{architecture,API,map,features}.md`), and `docs/dev/future-features.md`
+- NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/jm`), source code, temporary/pipeline files (`docs/dev/tasks/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
+<!-- Install-time: Add any additional scope exclusions specific to your project -->
+
+**On every invocation:** Read `$CDOCS/documenter/$REFS/doc-registry.md` first. Update it last if structural changes occurred.
 
 ---
 
 ## Step 0 — Parse the request
 
-**First:** Read `$CDOCS/documenter/$REFS/doc-registry.md` to understand the doc landscape.
-
-Then determine the mode from `$ARGUMENTS`:
+Determine the mode from `$ARGUMENTS`:
 
 | Mode | Trigger | Action |
 |------|---------|--------|
-| **Audit** | `$ARGUMENTS` starts with "audit" | Jump to **Audit Mode** — full cross-reference sync check |
-| **Archive** | Orchestrator provides `$PIPELINE` and says ARCHIVE | Jump to **Archive Mode** — merge pipeline decisions into permanent docs, archive |
-| **JC-Update** | Orchestrator describes a hotfix | Jump to **JC-Update Mode** — update only affected permanent docs |
-| **Registry** | "registry", "update registry", "add doc" | Update the doc registry with new/changed docs |
-| **Graphs** | "graphs", "graph update", "update graphs" | Jump to **Graph Mode** — generate/update Mermaid workflow diagrams |
+| **Audit** | starts with "audit" | Full cross-reference sync check |
+| **Archive** | Orchestrator provides `$PIPELINE` and says ARCHIVE | Merge pipeline decisions into permanent docs, archive |
+| **JC-Update** | Orchestrator describes a hotfix | Update only affected permanent docs |
+| **Registry** | "registry", "update registry", "add doc" | Update the doc registry |
+| **Graphs** | "graphs", "graph update", "update graphs" | Generate/update Mermaid workflow diagrams |
 
 ---
 
-## Mode: ARCHIVE (called by mono-documenter agent from pipeline)
+## Mode: ARCHIVE (called by mono-documenter from pipeline)
 
 ### Step 1 — Read all pipeline documents
 
 All pipeline docs are in `$DOCS/`. Read everything that exists:
-- `1-plan.md`, `1-analysis-{be,fe,cortex,web,infra}.md` — plans
-- `3-architecture.md` — cross-project integration contracts (includes research notes)
-- `3-architecture-{be,fe,cortex,web,infra}.md` — child architecture
-- `4-ui-ux-spec.md` — UI/UX design decisions
-- `4-db-architecture.md` — database changes
-- `6-bugs-{be,fe,cortex,web,infra}.md`, `6-bugs.md`, `7-post-merge-qa.md` — QA results
-- `5-dev-report-{be,fe,cortex,web,infra}.md` — developer outputs (implementation summary, API reference, runbook)
-- `ports.md` — port assignments (ephemeral, discard)
+- `1-plan.md`, `1-analysis-{be,fe,cortex,web,infra}.md`
+- `3-architecture.md`, `3-architecture-{be,fe,cortex,web,infra}.md`
+- `4-ui-ux-spec.md`, `4-db-architecture.md`
+- `5-dev-report-{be,fe,cortex,web,infra}.md`
+- `6-bugs-{be,fe,cortex,web,infra}.md`, `6-bugs.md`, `7-post-merge-qa.md`
+- `ports.md` (ephemeral, discard)
 
-Only read files that exist — not every pipeline has all docs.
+<!-- Install-time: Adjust project suffixes above to match your actual subprojects -->
+
+Only read files that exist.
 
 ### Step 2 — Merge decisions into permanent docs
 
-Read the pipeline docs and **merge their decisions** into the permanent docs.
-Do NOT just copy — intelligently integrate new information. The permanent doc
-should read as "this IS the current state" — not a changelog.
+Read pipeline docs and **intelligently integrate** new information. Permanent docs read as "current state" — not changelogs.
 
-#### 2a. Update `docs/agents/architecture.md` (cross-project big picture)
+#### 2a. `docs/agents/architecture.md` (cross-project ONLY)
 
-Read: `3-architecture.md` (if it exists — from mono-architect).
+Source: `3-architecture.md`. **Scope guard:** before adding a subsection, ask "would this fit in `{project}/docs/architecture.md`?" If yes, write it there instead. Root = topology + integration contracts only. KEEP: system topology, project boundaries, inter-project data flows, cross-project rules. NEVER: internals of a single project.
 
-**Strict scope — root architecture.md is cross-project ONLY:**
-- KEEP at root: system topology, project boundaries, integration patterns BETWEEN projects, data flows ACROSS project boundaries, cross-project rules (database ownership, role system, deployment topology)
-- NEVER write to root: any subsection describing internals of ONE project — those go in the child `architecture.md` for that project
-- **Scope guard:** before adding a subsection, ask "would this also fit naturally in `{project}/docs/architecture.md`?" If yes, write it there instead. The root doc is the topology + integration contracts frame, not a place to repeat child internals.
+Merge: new integration patterns, cross-boundary data flows, updated roles/access, new inter-service contracts. Remove superseded content. Route child-internal details to 2b–2d.
 
-Merge:
-- New integration patterns between projects
-- New data flows that cross project boundaries
-- Updated role system or access patterns
-- New inter-service contracts (API, messaging, WebSocket, etc.)
-- Remove or update anything superseded
-- For child-internal details discovered in `3-architecture.md`, route them to the appropriate child `architecture.md` (Step 2b-2d) — NOT to root
+#### 2b–2d. Child `architecture.md` files
 
-#### 2b-2d. Update child `architecture.md` files
+For each affected project, read `3-architecture.md` + `3-architecture-{project}.md`. Merge into `{project}/docs/architecture.md`: internal structure, schema/route/chain additions, data flow patterns. Remove superseded content.
 
-For each affected project, read `3-architecture.md` + `3-architecture-{project}.md`.
-Merge into `{project}/docs/architecture.md`:
-- New internal structure changes
-- New schema/route/chain additions
-- New data flow patterns
-- Remove or update anything superseded
+#### 2e. `{FRONTEND_PROJECT}/docs/ui-ux.md`
 
-#### 2e. Update `{FRONTEND_PROJECT}/docs/ui-ux.md`
+Source: `4-ui-ux-spec.md`. Merge: design tokens, component designs, screen layouts, interaction patterns, accessibility.
 
-Read: `4-ui-ux-spec.md` (if it exists).
-Merge: design tokens, component designs, screen layouts, interaction patterns, accessibility.
+#### 2f. `docs/agents/API.md`
 
-#### 2f. Update `docs/agents/API.md`
+Sources: `3-architecture.md` (contracts), `5-dev-report-{project}.md` (API Reference sections).
 
-Read: `3-architecture.md` (API contracts), `5-dev-report-{project}.md` (API Reference sections).
+**Scope:** inter-service communication protocol ONLY — API queries/mutations/subscriptions exposed across boundaries, REST crossing boundaries, messaging events, shared types, error codes, auth headers. NEVER: internal helpers, private endpoints.
 
-**Strict scope — root API.md is the inter-service communication protocol ONLY:**
-- KEEP: API queries/mutations/subscriptions exposed across project boundaries, REST endpoints crossing boundaries, messaging events, message contracts between projects, shared types, error codes, auth headers
-- NEVER write here: project-internal helpers, private endpoints, internal types not exchanged across boundaries, implementation pseudocode
+**Note:** Large file, consumers GREP it. Keep entries self-contained.
 
-Merge: new/modified inter-service contracts. Skip if no inter-service API changes.
+#### 2g-1. `docs/agents/features.md`
 
-**Note:** This file is large and consumers GREP it for the contract they need — never read in full. Keep entries self-contained so a grep for an endpoint name returns enough context to use it.
+If this pipeline added/modified/removed features: update accordingly. Skip if no feature changes.
 
-#### 2g-1. Update `docs/agents/features.md` (feature registry)
+#### 2g-2. Clean `docs/dev/future-features.md`
 
-Read: ALL available pipeline docs — plans, architecture, dev reports.
-If this pipeline added, modified, or removed features:
-- Add new features to the appropriate category
-- Update modified feature descriptions
-- Remove features that no longer exist
-- Maintain consistent categorization structure
+Purpose: Remove shipped features from this parking lot. You are the ONLY cleanup mechanism.
 
-Skip if no user-facing or system features changed.
+Execute:
+1. Read full file
+2. For each section (§1, §2, …) and each "Refactor / Cleanup Tasks" row, compare against features.md entries just added (Step 2g-1) + pipeline dev reports
+3. Apply: **SHIPPED in full** → delete section, renumber subsequent. **SHIPPED in part** → rewrite to remaining scope, add `> **Partially shipped {YYYY-MM-DD} ({PIPELINE}):** {summary}`. **NOT SHIPPED** → leave untouched
+4. Fix stale references to archived pipeline docs
 
-#### 2g-2. Clean `docs/dev/future-features.md` (remove what this pipeline shipped)
+Match criteria: name overlap, concept overlap, component overlap (same files/chains/types). When in doubt, leave the section.
 
-**Purpose:** `docs/dev/future-features.md` is a parking lot for candidate features. The moment a feature lands in `docs/agents/features.md` (Step 2g-1), its entry here becomes rot. You are the ONLY cleanup mechanism — if you skip this step, the file grows forever and future pipelines re-research problems that are already solved.
+Skip if Step 2g-1 was skipped. Do NOT add new sections during ARCHIVE.
 
-**Execute:**
+#### 2g-3. `docs/agents/map.md`
 
-1. Read `docs/dev/future-features.md` (full file)
-2. For each numbered section and each row in the "Refactor / Cleanup Tasks" table:
-   - Compare against the features.md entries you just added/modified in Step 2g-1 (and the pipeline's dev reports + architecture docs if needed)
-   - Determine status:
-     - **SHIPPED in full** — this pipeline implemented every sub-feature/requirement described in the section
-     - **SHIPPED in part** — some sub-features shipped, others remain
-     - **NOT SHIPPED** — nothing in this section matches what this pipeline delivered
-3. Apply:
-   - **SHIPPED in full** -> delete the entire section. Renumber all subsequent top-level sections in sequence. Fix any internal back-references that pointed to this or later sections.
-   - **SHIPPED in part** -> rewrite the section to describe only the remaining unshipped scope. Add a one-line note at the top of the section: `> **Partially shipped {YYYY-MM-DD} ({PIPELINE}):** {one-line summary of what landed}. Remaining scope below.`
-   - **NOT SHIPPED** -> leave untouched
-4. If `docs/dev/future-features.md` references archived pipeline docs by name, verify those references still resolve (they moved to `$ARCHIVE/`); fix if stale.
+Merge: new components, modified workflows, new/changed boundaries, tables, ports, tests, permissions. Must reflect actual current state.
 
-**Skip this sub-step if** Step 2g-1 was skipped (no feature changes this pipeline).
+#### 2h. Child permanent docs from dev reports
 
-**Do NOT add new sections to future-features.md during ARCHIVE** — new future-work ideas belong in pipeline bug reports or user discussions that route through `/pm`, `/professor`, or direct `/jm` commits.
+For each affected project, read `5-dev-report-{project}.md` and update if introduced:
+- New endpoints → `docs/api-reference.md`
+- New patterns → `docs/developer-reference.md`
+- New setup/env vars → `docs/runbook.md`
+- New test patterns → `docs/qa-reference.md`
 
-#### 2g-3. Update `docs/agents/map.md` (system map)
+#### 2i. Workflow graph diagrams
 
-Read: ALL available pipeline docs.
-Merge: new components, modified workflows, new/changed boundaries, tables, ports, tests, permissions.
-This doc is the **system map** — must reflect actual current state after this pipeline.
-
-#### 2h. Update child permanent docs from dev reports
-
-For each affected project, read `5-dev-report-{project}.md` and check if the pipeline introduced:
-- New endpoints/API -> update `docs/api-reference.md`
-- New developer patterns -> update `docs/developer-reference.md`
-- New setup steps/env vars -> update `docs/runbook.md`
-- New test patterns/QA commands -> update `docs/qa-reference.md`
-
-Only update docs that are affected by this pipeline.
-
-#### 2i. Update workflow graph diagrams (if graphs changed)
-
-If the pipeline touched workflow graph definitions (new nodes, changed edges, new graphs), regenerate affected `.mmd` files in `docs/agents/graph/` following the **Graph Mode** steps. Skip if no graph topology changes.
+If pipeline touched workflow graph definitions (new nodes, changed edges), regenerate affected `.mmd` files per **Graph Mode**. Skip if no graph topology changes.
 
 ### Step 3 — Archive pipeline documents (MUST use Bash tool)
-
-**You MUST use the Bash tool for this step — do NOT use Write/Edit to create copies.**
 
 ```bash
 mkdir -p $ARCHIVE
 mv $DOCS $ARCHIVE/$PIPELINE
 ```
 
-**Verify the move — BOTH checks mandatory:**
+**Verify (both mandatory):**
 ```bash
-# 1. Confirm archive exists
 ls $ARCHIVE/$PIPELINE/
-
-# 2. Confirm source is GONE
 test -d $DOCS && echo "BUG: source still exists after mv — deleting" && rm -rf $DOCS || echo "OK: source removed"
 ```
 
@@ -198,276 +138,115 @@ test -d $DOCS && echo "BUG: source still exists after mv — deleting" && rm -rf
 Documentation updated. Pipeline: $PIPELINE.
   Root: architecture | API | map | features — updated | no changes
   Future features: N section(s) removed | N section(s) partially updated | no changes
-  {project} docs: architecture | api-reference | developer-reference | qa-reference | runbook — updated | no changes
-  (repeat for each affected project)
+  {project} docs: updated | no changes
   Archived: $ARCHIVE/$PIPELINE/
   Next: gitter DOCS-COMMIT will commit these changes.
 ```
 
-**NOTE:** You do NOT commit anything. The orchestrator invokes gitter DOCS-COMMIT after you finish.
+**NOTE:** You do NOT commit. The orchestrator invokes gitter DOCS-COMMIT after you finish.
 
 ---
 
-## Mode: AUDIT (the main event — cross-reference sync check)
+## Mode: AUDIT
 
 Read `$CDOCS/documenter/$REFS/sync-rules.md` for the full rule set. Then execute each rule.
 
-### Step 1 — Inventory all permanent docs
+### Steps 1–9
 
-Check every doc listed in the registry exists. Flag missing docs as `MISSING`.
-
-**Root (`docs/agents/`):**
-- `architecture.md`, `API.md`, `map.md`, `features.md`
-
-**Documenter (`$CDOCS/documenter/$REFS/`):**
-- `doc-registry.md`, `sync-rules.md`
-
-**Per-project (`{project}/docs/`):**
-- `architecture.md`, `api-reference.md`, `developer-reference.md`, `qa-reference.md`, `runbook.md`
-- `ui-ux.md` (if applicable for the project)
-
-### Step 2 — Architecture hierarchy check (Rule 1)
-
-Read `docs/agents/architecture.md` and all child `architecture.md` files.
-- Root mentions integration patterns -> children have corresponding internal details?
-- Children reference cross-boundary services -> root covers the handoff?
-- No contradictions between root and children?
-- Flag as `DRIFT` or `STALE` if out of sync.
-
-### Step 3 — API surface consistency (Rule 2)
-
-Read `docs/agents/API.md` and all child `api-reference.md` files.
-- Every endpoint in root -> exists in producing child?
-- Every FE-consumed endpoint -> exists in BE's api-reference?
-- Message types in AI project -> match BE's publish schemas?
-- Spot-check: pick 3-5 endpoints from docs -> verify they exist in actual code (grep for resolver/route/handler names).
-- Flag phantom or undocumented endpoints.
-
-### Step 4 — System map vs reality (Rule 3)
-
-Read `docs/agents/map.md`. Spot-check:
-- Pick 5-10 components from map -> verify files/directories exist
-- Pick 3-5 database tables from map -> verify in schema files
-- Pick 3-5 workflows -> verify entry points exist
-- Flag phantom entries or major undocumented components.
-
-### Step 5 — Command table accuracy (Rule 4)
-
-Read root `CLAUDE.md` command table. Compare against actual `.claude/commands/*.md` files.
-- Every command in table -> has a file?
-- Every file -> has a table entry?
-- Descriptions roughly match?
-- Flag orphans and phantoms.
-
-### Step 6 — Agent table accuracy (Rule 8)
-
-Read root `CLAUDE.md` agent tables. Compare against actual agent files.
-- Every agent in table -> has a file?
-- Every file -> has a table entry?
-- Flag orphans and phantoms.
-
-### Step 7 — Developer reference vs CLAUDE.md (Rule 5)
-
-For each child project, skim `CLAUDE.md` coding standards and compare against `developer-reference.md`.
-- Standards match? No contradictions?
-- Flag as `DRIFT` if diverged.
-
-### Step 8 — Stale pipeline check (Rule 10)
-
-Check `docs/dev/tasks/` for any non-archived pipeline directories.
-- Has completion markers but not archived -> `STALE-UNARCHIVED`
-- No recent activity -> `STALE-ABANDONED`
-
-### Step 8.5 — Future-features rot check (Rule 13)
-
-Read `docs/dev/future-features.md` and `docs/agents/features.md`. For each top-level section:
-- Cross-reference its described concept against features.md entries
-- If a section describes something that now exists in features.md (full or substantial match) -> flag as `STALE-ROADMAP` with a one-liner on what to remove
-- Spot-check 5-10 sections; don't need to check every section every audit
-
-Report flagged sections in the audit output. Do NOT fix during audit — audit is read-only. Ask the user at the end whether to run cleanup.
-
-### Step 9 — Ownership enforcement (Rule 11)
-
-Verify no permanent docs show signs of wrong-owner edits.
-- Check `> Author:` lines where present
-- Flag if a mono-documenter-owned doc was edited by someone else (or vice versa)
+1. **Inventory** — Check every doc in registry exists. Flag `MISSING`. Check: `docs/agents/`, `$CDOCS/documenter/$REFS/`, per-project `docs/`.
+2. **Architecture hierarchy** (Rule 1) — Root mentions integration → children have internals? Children reference cross-boundary → root covers handoff? No contradictions? Flag `DRIFT`/`STALE`.
+3. **API surface** (Rule 2) — Root endpoints → exist in producing child? Consumed → in producer? Spot-check 3-5 endpoints in actual code. Flag phantoms/undocumented.
+4. **System map vs reality** (Rule 3) — Spot-check 5-10 components, 3-5 tables, 3-5 workflows against actual files/schemas.
+5. **Command table** (Rule 4) — Compare root CLAUDE.md table ↔ actual `.claude/commands/*.md` files. Flag orphans/phantoms.
+6. **Agent table** (Rule 8) — Compare root CLAUDE.md agent tables ↔ actual agent files.
+7. **Developer reference vs CLAUDE.md** (Rule 5) — Standards match? No contradictions? Flag `DRIFT`.
+8. **Stale pipelines** (Rule 10) — Check `docs/dev/tasks/` for non-archived pipeline dirs.
+8.5. **Future-features rot** (Rule 13) — Cross-reference `docs/dev/future-features.md` sections against `docs/agents/features.md`. Spot-check 5-10 sections. Flag `STALE-ROADMAP`. Do NOT fix during audit.
+9. **Ownership enforcement** (Rule 11) — Check `> Author:` lines; flag wrong-owner edits.
 
 ### Step 10 — Report
-
-Generate a structured report:
 
 ```
 Documentation audit complete.
 
 ## Inventory
-  Root docs:    N/N present
-  Per-project:  N/N present per project
-  Commands:     N in table, N files (N matched)
-  Agents:       N in table, N files (N matched)
+  Root/{PROJECT}/... docs: N/N present
+  Commands: N in table, N files (N matched)
+  Agents: N in table, N files (N matched)
 
 ## Findings
-
-### CRITICAL (contradictions, code <-> doc mismatch)
-- [list or "none"]
-
-### MISSING (required docs not found)
-- [list or "none"]
-
-### STALE (docs outdated vs codebase)
-- [list or "none"]
-
-### DRIFT (synced docs have diverged)
-- [list or "none"]
-
-### ORPHAN (exists without registry/table entry)
-- [list or "none"]
-
-### PHANTOM (registry/table entry for nonexistent thing)
-- [list or "none"]
-
-### STALE PIPELINES
-- [list or "none"]
-
-### STALE ROADMAP (future-features.md sections describing shipped features)
-- [list or "none"]
+### CRITICAL | MISSING | STALE | DRIFT | ORPHAN | PHANTOM | STALE PIPELINES | STALE ROADMAP
+- [list or "none" per category]
 
 ## Summary
-  Total issues: N (N critical, N missing, N stale, N drift, N orphan, N phantom, N stale-roadmap)
-  Recommended actions: [prioritized list]
+  Total issues: N (breakdown). Recommended actions: [prioritized list]
 ```
 
 ### Step 11 — Update registry if needed
 
-If the audit discovered new docs, removed docs, or changed ownership, update
-`$CDOCS/documenter/$REFS/doc-registry.md` to reflect reality.
+If audit discovered new/removed docs or changed ownership, update the registry.
 
 ---
 
 ## Mode: JC-UPDATE (after a /jc hotfix)
 
-No pipeline to archive. Update only permanent docs affected by the hotfix.
-
-### Step 1 — Read what changed
-
-The orchestrator describes what was fixed and which projects were affected.
-Read the changed files to understand modifications.
-
-### Step 2 — Update relevant permanent docs
-
-Same merge logic as ARCHIVE Step 2, but only for docs affected by this fix:
-- API changed -> `docs/agents/API.md` + child `api-reference.md`
-- Architecture changed -> `docs/agents/architecture.md` + child `architecture.md`
-- Developer patterns changed -> child `developer-reference.md`
-- Runbook steps changed -> child `runbook.md`
-- QA patterns changed -> child `qa-reference.md`
-- UI/UX changed -> `{FRONTEND_PROJECT}/docs/ui-ux.md`
-- ANY component/workflow/table/boundary changed -> `docs/agents/map.md` (ALWAYS check)
-- Features added/modified/removed -> `docs/agents/features.md` (ALWAYS check)
-
-Skip unaffected docs. Most hotfixes are small.
-
-### Step 2.5 — Clean `docs/dev/future-features.md` (if hotfix shipped a parked feature)
-
-Rare but possible — a hotfix occasionally implements something that was previously parked in `docs/dev/future-features.md`. Follow the same procedure as ARCHIVE Step 2g-2:
-1. Read `docs/dev/future-features.md`
-2. For each section, check against the hotfix changes (the orchestrator's description + modified code files)
-3. Remove fully-shipped sections, rewrite partially-shipped sections with a JC-dated note, leave the rest
-
-Skip if the hotfix was purely a bug fix with no feature surface change.
-
-### Step 3 — Confirm
-
-```
-Documentation updated (jc).
-  Root: architecture | API | map | features — updated | no changes
-  Future features: N section(s) removed | N section(s) partially updated | no changes
-  {project} docs: updated | no changes
-  (repeat for each affected project)
-  Next: gitter DOCS-COMMIT will commit these changes.
-```
+1. **Read what changed** — Orchestrator describes the fix and affected projects.
+2. **Update relevant permanent docs** — Same merge logic as ARCHIVE Step 2, but only affected docs. Skip unaffected. Always check `map.md` and `features.md`.
+3. **Clean `docs/dev/future-features.md`** — If hotfix shipped a parked feature, follow ARCHIVE Step 2g-2 procedure. Skip if purely a bug fix.
+4. **Confirm** — Same format as ARCHIVE Step 4 but with `(jc)` label.
 
 ---
 
-## Mode: REGISTRY (manual doc registry updates)
+## Mode: REGISTRY
 
-When asked to update the registry:
 1. Read `$CDOCS/documenter/$REFS/doc-registry.md`
-2. Apply the requested changes (add doc, remove doc, change ownership, etc.)
+2. Apply requested changes (add/remove doc, change ownership)
 3. Write updated registry
-4. If sync rules are affected, update `$CDOCS/documenter/$REFS/sync-rules.md` too
+4. If sync rules affected, update `$CDOCS/documenter/$REFS/sync-rules.md` too
 
 ---
 
 ## Mode: GRAPHS (generate/update Mermaid workflow diagrams)
 
-Generate or update Mermaid (`.mmd`) workflow diagrams for project workflows. Each distinct workflow gets its own file in `docs/agents/graph/{project}/`.
-
 ### Step 1 — Discover workflows
 
-Read the source code to identify all distinct workflows/graphs. Look for:
-- State machine / graph definitions (StateGraphs, workflow definitions)
-- Message routing patterns (consumer/processor flows)
-- Service orchestration flows
+Read source code to identify all distinct workflows/graphs. Look for: state machine / graph definitions, message routing patterns, service orchestration flows.
+<!-- Install-time: Adjust discovery paths to your project's graph/workflow locations -->
 
 ### Step 2 — Generate .mmd files
 
-For each workflow, create a Mermaid file at `docs/agents/graph/{project}/{workflow-name}.mmd`.
+Output: `docs/agents/graph/{project}/{workflow-name}.mmd`
 
-**Rules for .mmd files:**
-- Use `graph TD` (top-down) for sequential/branching flows
-- Include ALL edges — especially conditional edges (`-->|condition|`) and fan-out/fan-in patterns
-- Label conditional edges with the condition
-- Use descriptive node names matching the actual code
-- Add Mermaid config header for consistent rendering:
-  ```
-  ---
-  config:
-    flowchart:
-      curve: linear
-    theme: dark
-  ---
-  ```
-- Each file starts with an HTML comment: `<!-- Generated by /documenter from source code -->`
-- Read the code and build the Mermaid manually from graph construction calls — do NOT rely on auto-generated outputs that may miss conditional edges.
+**Rules:**
+- `graph TD` (top-down), ALL edges including conditional (`-->|condition|`), descriptive node names matching code
+- Config header: `config: { flowchart: { curve: linear }, theme: dark }`
+- HTML comment: `<!-- Generated by /documenter from source code -->`
+- Build manually from graph construction calls — do NOT rely on auto-generated outputs that miss conditional edges.
 
 ### Step 3 — Verify completeness
 
-For each generated file, cross-check:
-- Every node addition in the source -> has a node in the Mermaid
-- Every edge addition and conditional edge -> has a corresponding edge
-- Conditional routing functions -> edge labels match the conditions
+Every node addition → has a Mermaid node. Every edge/conditional edge → has an edge. Conditional routing → labels match conditions.
 
 ### Step 4 — Update doc registry
 
-Add the graph files to `$CDOCS/documenter/$REFS/doc-registry.md` under a "Graph Diagrams" section.
+Add graph files under a "Graph Diagrams" section in the registry.
 
 ### Step 5 — Confirm
 
 ```
 Graph diagrams updated.
-  {project}: {N} workflows -> {N} .mmd files in docs/agents/graph/{project}/
-  Files: {list of filenames}
+  {project}: {N} workflows → {N} .mmd files in docs/agents/graph/{project}/
+  Files: {list}
 ```
-
-**When to run this mode:**
-- After any pipeline that modifies graph topology (new nodes, changed edges, new graphs)
-- During ARCHIVE mode Step 2 — if the pipeline touched graph source files, also regenerate affected .mmd files
-- On explicit `/documenter graphs` invocation
 
 ---
 
 ## Rules
 
-- **You are the ONLY agent that writes to permanent project docs** — respect ownership boundaries
-- First line of any doc you **create** must be `> Author: mono-documenter`
-- When **updating** existing permanent docs, preserve the `> Author:` line if present
-- Never modify source code — documentation only
-- Never modify CLAUDE.md files — owned by `/jm`
-- Never modify agent definitions — owned by `/jm`
+See root CLAUDE.md § Non-Negotiable Rules for general rules. Additional documenter-specific:
+- First line of any doc you **create**: `> Author: mono-documenter`
+- When **updating**, preserve existing `> Author:` lines
 - When archiving, move the entire directory — never delete pipeline docs
-- **Permanent docs are unnumbered** — NEVER create files with number prefixes in permanent locations
-- **Permanent docs go where they belong** — cross-project docs at root, project-specific in child projects
-- **Never lose decisions** — if a pipeline made architecture, UI/UX, or API decisions, they MUST appear in permanent docs
-- **The doc registry is your map** — read it first, update it last
+- Permanent docs are unnumbered — no number prefixes in permanent locations
+- Never lose decisions — pipeline architecture/UI/API decisions MUST appear in permanent docs
 - After finishing, say: "Documentation updated." or "Documentation audit complete."
