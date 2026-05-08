@@ -96,7 +96,8 @@ root `CLAUDE.md`, and child CLAUDE.md files.
 - **Does this change an agent's fundamental role or Codex-specific rules?** → Update that agent's `developer_instructions` in its `.toml`.
 - **Does this change a project directory name or path?** → Every `.toml` that references that path in `developer_instructions` needs updating.
 - **Does this change a convention that affects how Codex runs?** → Update `.codex/rules/default.rules`.
-- The single-source model: `.toml` files are thin wrappers — content changes to the `.claude/` role manual propagate automatically. Only structural changes require `.toml` edits. Reference: `$CDOCS/jm/$REFS/codex-integration.md`.
+- **Does this add, remove, or rename a skill?** → Skills are ALWAYS directory symlinks: `.codex/skills/{name} -> ../../.claude/skills/{name}/`. NEVER create actual files/directories in `.codex/skills/` for research/thinking skills — Codex reads from `.claude/skills/` via the symlink.
+- The single-source model: `.toml` files are thin wrappers, skills are directory symlinks. Content changes propagate automatically. Only structural changes (add/rename/delete agent or skill, path changes, Codex-specific rule changes) require edits. Reference: `$CDOCS/jm/$REFS/codex-integration.md`.
 -->
 
 ### Step 3 — Plan the changes
@@ -157,7 +158,7 @@ After all edits, do a final consistency sweep:
 6. **Directory name consistency** — all references to project dirs use the current names everywhere
 7. **Tech stack consistency** — agent tech context lines match child CLAUDE.md descriptions
 8. **Character voice intact** — Jungche/JC/Professor still sound like themselves
-<!-- OPTIONAL: 9. **Codex inventory parity** — if any agent was added/removed/renamed, `.codex/agents/` should have a corresponding entry. -->
+<!-- OPTIONAL: 9. **Codex inventory parity** — if any agent was added/removed/renamed, `.codex/agents/` should have a corresponding entry. If any skill was added/removed/renamed, `.codex/skills/` should show a symlink for each `.claude/skills/*/` directory — never actual files. -->
 
 ### Step 6 — Report
 
@@ -199,6 +200,13 @@ Most dangerous operation — touches nearly every file:
 4. If parallel: specify which agents it can run alongside
 5. Update the `subagent_type` description if agent is invoked via `Agent()` tool
 <!-- OPTIONAL: 6. Create the corresponding `.codex/agents/{project}-{role}.toml` wrapper -->
+
+### New skill creation
+
+1. Create `.claude/skills/{name}/SKILL.md` with frontmatter (name, description) and protocol content
+2. Add to CLAUDE.md Skills table
+3. If the skill is used by agents (e.g., 360° used by QA and Professor): update those agent definitions to reference the skill
+<!-- OPTIONAL: 4. Create Codex symlink: `ln -sf ../../.claude/skills/{name} .codex/skills/{name}` — NEVER copy content into `.codex/` -->
 
 ### Pipeline flow change
 

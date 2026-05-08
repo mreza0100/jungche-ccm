@@ -51,6 +51,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
     #### For adopters:
     Replace `.claude/skills/rr/SKILL.md` with `blueprint/templates/skills/rr/SKILL.md`. The change is behavioral — agents produce the same final file, but no intermediate files are created during the pipeline.
 
+- Mechanics: `commands/jm.md` — added Codex skill symlink rule to impact check, "New skill creation" special operation, and skill parity to verification step. JM now guards against duplicating skill content across runtimes. (safe-auto)
 - Docs: `CLAUDE.md` template — added `360` to the Skills table (safe-auto)
 - Docs: `ARCHETYPES.md` — added "Skills — Thinking Protocols" section with 360° entry between Tier A and Tier B (safe-auto)
 - Docs: `BLUEPRINT.md` — added 360° to the Tier A cast list (safe-auto)
