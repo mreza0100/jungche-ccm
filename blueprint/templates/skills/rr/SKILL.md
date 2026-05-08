@@ -70,7 +70,7 @@ This first run is the **scout batch**. Its job is to map the landscape and surfa
 
 **State the research surface explicitly.** "Research surface: internet only / codebase only / both." For codebase work, give the agent enough orientation to start (key directories, the project's `CLAUDE.md` path, anything specific the user mentioned). For internet work, name the time horizon ("prefer 2025–2026 sources").
 
-**Include the storage path in the RRP.** Tell the scout: *"Write a scout-batch note to `{full path}.scout.md` using the Write tool. Include: (1) **Prompt** verbatim, (2) **Goal**, (3) **Scout batch** — what you searched/grepped and what you learned with sources, (4) **Sub-questions for fan-out** — the 2-6 questions to send to parallel agents, each with a one-line rationale. In your final chat reply, return ONLY the sub-questions list and a one-line headline of what the scout found."*
+**No file output from the scout.** Tell the scout: *"Do NOT write any files. In your final chat reply, return: (1) a landscape summary — what you searched and what you found, with sources/URLs, (2) a list of 2-6 sub-questions for parallel fan-out, each with a one-line rationale. Be comprehensive — your chat reply is the only record of this batch."*
 
 **(Pre-identification shortcut.)** If during Step 1 the goal is already structured (e.g., "compare A, B, C" or "audit auth, authz, transport, secrets"), you can pre-decide the sub-questions and skip the scout — go straight to fan-out at Step 4. Use the scout when the topic is open-ended; skip it when it isn't.
 
@@ -83,29 +83,28 @@ When the scout returns (or immediately, if you pre-identified the sub-questions 
 Each fan-out RRP:
 - Targets exactly one sub-question (not the full goal)
 - Is self-contained — inline the relevant scout findings each agent needs to start
-- Includes its own storage path: `{base path}.{sub-question-slug}.md`
-- Requires the same file structure (Prompt, Goal, Pipeline run, Findings, Plan, Open questions) and terse chat reply
+- **Does NOT write any files** — all findings returned in chat reply
+- Tells the agent: *"Do NOT write any files. Return your FULL findings in your chat reply — comprehensive enough for aggregation into a final report. Include: what you searched/fetched, key findings with sources/URLs, your assessment, and any open questions. Be thorough — your reply is the only record."*
 - Specifies the surface (internet / codebase / both)
 - Passes `model: "sonnet"`
 
 Tell the user one sentence — "Fanning out N parallel research agents." — and end your turn. Each agent runs its own dynamic batch pipeline and pressure-test pass before reporting.
 
-### Step 4.5 — Aggregate into ONE file and clean up
+### Step 4.5 — Write the ONE aggregate file
 
-When all fan-out agents have returned, synthesize everything into a **single file**:
+When all fan-out agents have returned, write a **single file** from their chat results. No intermediate files exist — the agents returned everything in chat.
 
-1. Read each sub-report file to get the full detail (don't rely only on the chat summaries).
-2. Write the **aggregate report** to the original storage path `{full path}` (the un-suffixed file from Step 2). This file is the **complete, self-contained record** — no appendix trail, no cross-links to external files. Embed ALL content inline:
-   - **(1) Prompt** — the original RR request and the refined goal
-   - **(2) Fan-out plan** — the sub-questions and which agent took each
-   - **(3) Scout findings** — what the scout batch found (landscape, key sources, what shaped the fan-out)
-   - **(4) Per-sub-question Findings** — the **full substantive findings** from each fan-out agent, with citations. Do NOT summarize and cross-link — copy the meat of each sub-report directly into this section. One heading per sub-question.
-   - **(5) Verdict** — your synthesis across all sub-reports
-   - **(6) Plan** — the action recommendation
-   - **(7) Open questions** — anything still unresolved
-3. After the aggregate file is written and verified, **delete all intermediate files**: `.scout.md` and every `.{slug}.md`. The aggregate file is the ONE record; the intermediates are scaffolding and must not litter the research directory.
+Write the **aggregate report** to the storage path from Step 2 (`{full path}`). This file is the **complete, self-contained record**:
 
-The chat output stays terse — Verdict + key Findings + Plan + path to the single aggregate file. The full trail lives in that one file, not scattered across a directory.
+- **(1) Prompt** — the original RR request and the refined goal
+- **(2) Fan-out plan** — the sub-questions and which agent took each
+- **(3) Scout findings** — what the scout batch found (landscape, key sources, what shaped the fan-out)
+- **(4) Per-sub-question Findings** — the **full substantive findings** from each fan-out agent, with citations. One heading per sub-question. Copy the substance from each agent's chat result — don't over-summarize.
+- **(5) Verdict** — your synthesis across all sub-reports
+- **(6) Plan** — the action recommendation
+- **(7) Open questions** — anything still unresolved
+
+**This is the ONLY file the entire RR pipeline produces.** No scout files, no per-agent files, no intermediates. One research run = one file.
 
 ### Step 5 — Deliver the aggregate report
 
@@ -188,8 +187,8 @@ When writing an RRP, paste a compact version of the protocol so the executor kno
 - **Spam the chat with the batch trail.** The user-facing reply is Verdict + Findings + Plan + file path. The batch-by-batch trail goes in the file. If you find yourself writing "Batch 1 — searched X, found Y" in the chat, stop — that's file content.
 - **For both RR and RRP: assume the executor has context.** They don't — neither the spawned agent (RR) nor the user's other chat (RRP). Inline everything that matters.
 - **Predicting the agent's findings while it runs.** Once the RR agent is spawned, you know nothing about what it found until it returns. Don't fabricate or summarize in advance.
-- **Skipping the file write.** Every RR run produces a research file in the caller's research directory. The file MUST contain the original prompt, the full pipeline run, and the report. If the agent returns findings only in chat, the work isn't persisted — future conversations can't reference it. The file is the canonical record; the chat reply is the courtesy summary.
-- **Leaving multiple files behind.** The final state must be ONE aggregate file. Leaving `.scout.md` and `.{slug}.md` files in the research directory after aggregation is a failure — delete the intermediates once the aggregate is written. A research directory full of partial files is confusing and the user should never have to hunt across them to piece together the full answer.
+- **Skipping the file write.** Every RR run produces exactly ONE research file in the caller's research directory. The orchestrator writes it in Step 4.5 from the agents' chat results. If no file is written, the work isn't persisted — future conversations can't reference it. The file is the canonical record; the chat reply is the courtesy summary.
+- **Agents writing files.** Fan-out agents and scouts must NOT write files. They return findings in chat. The orchestrator is the ONLY one that writes a file — one file, at the end, in Step 4.5. If you find yourself telling an agent to "write to {path}", stop — that's the old pattern.
 
 ---
 

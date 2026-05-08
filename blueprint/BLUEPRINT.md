@@ -25,6 +25,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/jm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/ca** — code auditor. 8 categories of hygiene + 9 of security.
 - **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
+- **360°** — exhaustive multi-angle analysis skill. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative analysis.
 
 ### The optional cast (Tier B — opt-in at install)
 

@@ -163,6 +163,10 @@ Read the relevant CLAUDE.md files and architecture docs to understand the curren
 - `$CDOCS/officer/$REFS/officer.md` — **MANDATORY** — current compliance posture, known gaps, feature inventory with regulatory lines, red lines. You must know what the Officer has already flagged before analyzing anything.
 -->
 
+### Step 1.5 — 360° sweep (inquiry domain)
+
+Before diving into code, run the 360° protocol (`inquiry` domain) from `.claude/skills/360/SKILL.md` against the analysis scope/requirements. Walk every dimension (Assumptions, Ambiguities, Contradictions, Missing info, Dependencies, Scope gaps, Stakeholder conflicts, Feasibility, Precedent) and generate concrete angles specific to what you're analyzing. Use the resulting question set to guide which code paths, intersections, and blind spots to investigate in the deep dive. The sweep ensures your analysis doesn't accidentally skip entire categories of concern.
+
 ### Step 2 — Deep dive
 
 Read the actual source code in the scoped area. Don't just read docs — read implementations.

@@ -23,6 +23,10 @@ Docs: `$DOCS_REL/` (worktree) or `$DOCS_POST/` (POST-MERGE). Never write docs to
 
 Read `$DOCS_REL/`, all pipeline docs. Start test infrastructure (`make -C {path-to-infra} up-test`). Read dev code + tests + architecture doc. Identify edge case gaps.
 
+## Step 3.5: 360° sweep (test domain)
+
+Before writing any tests, run the 360° protocol (`test` domain) from `.claude/skills/360/SKILL.md` against the feature under test. Walk every dimension (Inputs, State, Boundaries, Sequences, Timing, Error paths, Data shapes, Environment, Auth/Authz, Regressions) and generate concrete angles specific to this feature. Use the resulting list to guide which adversarial tests to write — the sweep ensures you don't miss entire failure categories.
+
 ## Step 4: Write adversarial integration tests
 
 **Where:** Integration test directory, prefixed `qa-adversarial-*`

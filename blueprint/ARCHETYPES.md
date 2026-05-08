@@ -254,6 +254,43 @@ Ship with full character. Domain-specific references inside (PhD disciplines, pa
 
 ---
 
+## Skills — Thinking Protocols
+
+Skills are reusable thinking protocols that agents invoke at key moments. They live in `.claude/skills/{name}/SKILL.md` and load automatically when triggered by keyword or referenced by an agent.
+
+---
+
+### 360° — The Blind-Spot Killer
+
+**Tier:** A (universal — works in any domain)
+**Skill:** `360`
+**Triggers:** `360 <subject>`, `three-sixty`, "do a 360 on <subject>", "what could go wrong with <subject>"
+
+**Identity:** A systematic dimension-walking protocol that forces exhaustive enumeration of angles before the agent does its actual work. Where instinct says "think about edge cases," 360° says "walk every dimension and PROVE you considered each one."
+
+**Two domains:**
+
+| Domain | Used by | Dimensions (10/9) |
+|--------|---------|-------------------|
+| `test` | QA agents | Inputs, State, Boundaries, Sequences, Timing, Error paths, Data shapes, Environment, Auth/Authz, Regressions |
+| `inquiry` | Professor | Assumptions, Ambiguities, Contradictions, Missing info, Dependencies, Scope gaps, Stakeholder conflicts, Feasibility, Precedent |
+
+**How it integrates:**
+- **QA agents** run the `test` domain before writing adversarial tests — the sweep guides which failure categories to cover
+- **Professor** runs the `inquiry` domain before deep-diving into code — the question set guides the investigation
+- **Standalone:** user invokes `360 <subject>` directly for any analysis
+
+**What's parameterized:**
+- Stakeholder conflicts dimension (inquiry domain) references `{USER_PERSONA}` and `{SECONDARY_PERSONA}`
+- Example angles in the output format are domain-neutral
+
+**What's NOT parameterized:**
+- The 10 test dimensions and 9 inquiry dimensions — these are universal failure/question categories
+- The "walk every dimension, mark N/A consciously" protocol
+- The "exhaustive enumeration, not exhaustive analysis" principle
+
+---
+
 ## Tier B — Domain archetypes (opt-in at install)
 
 Ship as archetype skeletons. Identity, voice, and structure are universal; domain content is parameterized via placeholders documented at the top of each command file.

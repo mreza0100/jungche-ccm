@@ -340,6 +340,15 @@ Copy `blueprint/templates/scripts/` to `.claude/scripts/`.
 
 Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/jm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
 
+### Step 8.6 — Skills (thinking protocols)
+
+Copy the following skills from `blueprint/templates/skills/` to `.claude/skills/`:
+- `rr/SKILL.md` — research-and-report pipeline (universal, no parameterization)
+- `rnd/SKILL.md` — goal-driven iterative execution (universal, no parameterization)
+- `360/SKILL.md` — exhaustive multi-angle analysis (replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with the user's persona terms from Batch 5)
+
+These are Tier A thinking protocols that agents reference at key moments. QA agents call the 360° `test` domain before writing adversarial tests. Professor calls the 360° `inquiry` domain before deep-diving into code.
+
 Edit `worktree.sh`:
 - Replace the per-project install blocks (line marked `# === Per-project setup — EDIT FOR YOUR STACK ===`) with one block per subproject from Batch 2.
 - Replace the env-file rewriting blocks with one per subproject's actual env vars.

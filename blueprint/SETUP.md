@@ -216,6 +216,7 @@ Claude takes your answers and:
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
 7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/jm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
+7b. **Writes skills** — `rr`, `rnd`, `360` into `.claude/skills/{name}/SKILL.md`. These are universal thinking protocols (Tier A) — no parameterization needed except stakeholder names in 360°'s inquiry domain.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely.
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.

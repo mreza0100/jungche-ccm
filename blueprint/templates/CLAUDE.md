@@ -231,6 +231,7 @@ Per-project agents (in each `{project}/.claude/agents/`):
 |-------|--------|
 | `rr` | "RR <topic>", "research and report", "research <topic>", "look into <topic>" — structured multi-batch research pipeline |
 | `rnd` | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution |
+| `360` | "360 <subject>", "three-sixty" — exhaustive multi-angle analysis (test + inquiry domains), used by QA and Professor |
 
 Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them.
 

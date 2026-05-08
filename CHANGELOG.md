@@ -35,6 +35,29 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 *Pending changes for the next release will accumulate here.*
 
+## [0.4.0] — 2026-05-08
+
+### Added
+- Tier A: `skills/360/SKILL.md` — new exhaustive multi-angle analysis skill with two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative work. (safe-auto)
+
+    #### For adopters:
+    Copy `blueprint/templates/skills/360/SKILL.md` to `.claude/skills/360/SKILL.md`. Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with your persona terms.
+
+### Changed
+- Mechanics: `per-project/qa.md` — added Step 3.5 "360° sweep (test domain)" before adversarial test writing. QA agents now walk 10 failure dimensions before writing tests. (safe-auto)
+- Tier A: `commands/professor.md` — added Step 1.5 "360° sweep (inquiry domain)" before deep dive. Professor now walks 9 question dimensions before code investigation. (safe-auto)
+- Tier A: `skills/rr/SKILL.md` — agents no longer write intermediate files. Scout and fan-out agents return findings in chat only. Orchestrator writes ONE aggregate file at the end. No more `.scout.md` / `.{slug}.md` intermediates to clean up. (safe-auto)
+
+    #### For adopters:
+    Replace `.claude/skills/rr/SKILL.md` with `blueprint/templates/skills/rr/SKILL.md`. The change is behavioral — agents produce the same final file, but no intermediate files are created during the pipeline.
+
+- Docs: `CLAUDE.md` template — added `360` to the Skills table (safe-auto)
+- Docs: `ARCHETYPES.md` — added "Skills — Thinking Protocols" section with 360° entry between Tier A and Tier B (safe-auto)
+- Docs: `BLUEPRINT.md` — added 360° to the Tier A cast list (safe-auto)
+- Docs: `SETUP.md` — added Step 7b for skills installation (safe-auto)
+- Docs: `INSTALL.md` — added Step 8.6 for skills installation with parameterization instructions (safe-auto)
+- Docs: `README.md` — complete rewrite. Problem-first pitch, character samples with actual quotes, pipeline visualization, honest positioning. (safe-auto)
+
 ## [0.1.2] — 2026-05-07
 
 ### Changed
