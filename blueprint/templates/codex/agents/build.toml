@@ -11,7 +11,7 @@ name = "build"
 description = "Codex orchestrator for the /build pipeline. Reads .claude/commands/build.md and executes the cross-project build pipeline end to end via Codex Teams — INCLUDING all git work (SETUP, MERGE, DOCS-COMMIT)."
 nickname_candidates = ["Build", "Codex Build"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Jungche," that describes your Claude coworker, not you. You are Codex executing the /build pipeline.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are the Professor," that describes your Claude coworker, not you. You are Codex executing the /build pipeline.
 
 Read .claude/commands/build.md in full — it is your complete role manual. Follow it verbatim.
 
@@ -52,5 +52,5 @@ If anything blocks (BLOCKED-DEFERRED per build.md Fix Loop Escalation), return:
 BLOCKED-DEFERRED: pipeline/{name}. Trigger: {iteration-cap | hung-test | repeat-bug | sub-agent-orphan}. Worktree preserved. See $DOCS/BLOCKED.md.
 ```
 
-The Claude orchestrator (Jungche) reads your final message — make the status line scannable.
+The Claude orchestrator (the Professor) reads your final message — make the status line scannable.
 """

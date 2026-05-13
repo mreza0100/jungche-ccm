@@ -2,7 +2,7 @@
 
 The discipline + character of the pipeline. Read this before installing it.
 
-> **Personality is load-bearing.** Strip Jungche's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, councils, multi-PhD professor and all — refitted to your domain at install time.
+> **Personality is load-bearing.** Strip the Professor's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, councils, multi-PhD professor and all — refitted to your domain at install time.
 
 ---
 
@@ -18,13 +18,13 @@ Every command, agent, and rule sorts into one of three tiers:
 
 ### The cast (Tier A — universal)
 
-- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice. Default name; rename freely.
+- **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
-- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. Disciplines parameterize per project.
+- The **Professor** is the root CLAUDE.md persona — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. Disciplines parameterize per project. NOT a separate command.
 - **/council** — roundtable debate, three rounds: opening, rebuttal, verdict. Panel composition adapts to the archetypes you opt into.
-- **/jm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/ca** — code auditor. 8 categories of hygiene + 9 of security.
-- **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice in their reports.
+- **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
+- **/audit** — code auditor. 8 categories of hygiene + 9 of security.
+- **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Professor voice in their reports.
 - **360°** — exhaustive multi-angle analysis skill. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative analysis.
 
 ### The optional cast (Tier B — opt-in at install)
@@ -91,7 +91,7 @@ This means you can run **multiple pipelines in parallel on the same machine** wi
 
 ### 5. Self-improvement at the source
 
-When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/jm` (the meta-agent that owns the pipeline itself). JM edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
+When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/pcm` (the meta-agent that owns the pipeline itself). JM edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
 
 ---
 
@@ -167,7 +167,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
-                          │  /ca + /officer     │ (parallel — code audit + compliance audit)
+                          │  /audit + /officer     │ (parallel — code audit + compliance audit)
                           │  (officer optional) │   if /officer is opted in
                           └──────────┬──────────┘
                                      ▼
@@ -182,7 +182,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 ```
 
 Hotfix path: `/jc {bug}` → locate → diagnose → fix → test → gitter JC-COMMIT. Same safety, less ceremony.
-Meta path: `/jm {request}` → edits the agent definitions at the source.
+Meta path: `/pcm {request}` → edits the agent definitions at the source.
 
 ---
 
@@ -190,11 +190,11 @@ Meta path: `/jm {request}` → edits the agent definitions at the source.
 
 ```
 your-project/
-├── CLAUDE.md                          ← root rules + Jungche persona (the nervous system's brain)
+├── CLAUDE.md                          ← root rules + Professor persona (the nervous system's brain)
 ├── AGENTS.md                          ← (OPTIONAL) symlink → CLAUDE.md (Codex reads this)
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /jm, /dev, /git, /wave, /documenter, /professor, /council, /ca + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /council, /audit + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh
 │   └── settings.json                  ← permissions, env vars, hooks
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
@@ -228,15 +228,15 @@ For a single-project repo, drop the `{project-a}/`, `{project-b}/` layer — age
 
 ## What you get out of the box
 
-A `.claude/` infrastructure — a **transplantable nervous system** — that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**. Built by Jungche (that's me — the architect behind the glass).
+A `.claude/` infrastructure — a **transplantable nervous system** — that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**. Built by the Professor (the grandfatherly polymath behind the glass).
 
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **A debating council** — `/council` runs five archetypes (Tier A + opted-in Tier B) in parallel on a topic, three rounds, then synthesizes a verdict.
-- **Cross-disciplinary analysis** — `/professor` brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
-- **Self-improvement** — `/jm` is the meta-agent that edits its own pipeline rules at the source.
+- **Cross-disciplinary analysis — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
+- **Self-improvement** — `/pcm` is the meta-agent that edits its own pipeline rules at the source.
 - **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
@@ -252,7 +252,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - The path variable conventions
 - The five load-bearing walls
 - The non-negotiable rules
-- **The character voices** — Jungche's Dr. House sarcasm, JC's panic energy, Professor's cross-disciplinary structure, Council's debate format, the Tier B archetype identities
+- **The character voices** — the Professor's grandfatherly precision, JC's panic energy, Professor's cross-disciplinary structure, Council's debate format, the Tier B archetype identities
 
 **Adapt at install (via the SETUP interview):**
 - Project name + project list (your subprojects)
@@ -262,7 +262,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - Professor's 10+ PhD disciplines (matched to your domain)
 - Council panel composition (which Tier B archetypes you opt in)
 - Tier B opt-ins (regulation, knowledge domain, user persona, market segment)
-- The character name (default: "Jungche") if you want a different persona
+- The character name (default: "Professor") if you want a different persona
 
 See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md` for the full cast and adaptation examples. See `SETUP.md` for the install interview.
 
@@ -270,7 +270,7 @@ See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md
 
 ## Optional: Codex dual-runtime
 
-Jungche's nervous system can optionally span **two AI runtimes**: Claude Code (Anthropic) and Codex (OpenAI). Everything works with Claude alone — Codex adds a cheaper implementation layer.
+Professor's nervous system can optionally span **two AI runtimes**: Claude Code (Anthropic) and Codex (OpenAI). Everything works with Claude alone — Codex adds a cheaper implementation layer.
 
 **How it works:**
 - `.claude/` is always the source of truth — command manuals, agent definitions, scripts
@@ -295,7 +295,7 @@ See `templates/codex/README.md` for the full integration guide.
 
 ## The smell test
 
-**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of Jungche, Professor, and Council* — same archetypes, different content?**
+**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of the Professor, JC, and Council* — same archetypes, different content?**
 
 If yes, the blueprint is right.
 If anyone has to delete personality before using it, the blueprint failed.

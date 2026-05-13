@@ -78,51 +78,35 @@ If ANY discrepancy found:
 
 **Do NOT rewrite the entire script** — surgical edits only.
 
+### 0e. What to do when a new service appears
+
+If a runbook or project directory exists that the script doesn't handle:
+1. Add it to the `cmd_up()` server start section
+2. Add its port variable (skip for non-HTTP services like SQS consumers)
+3. Add it to `cmd_kill()` kill patterns
+4. Add its health check to the health checks section
+5. Add its log file to the log archival and log reading functions
+6. Add its port to `clean_ports()`
+
 ---
 
-## Mode: UP (default)
+## Canonical Report Template
 
-### Step 1 — Run Script Maintenance (Step 0 above)
+All modes assemble from these blocks. `{COMMAND FOOTER}` is always shown last.
 
-### Step 2 — Run the script
+**HEADER** — mode-specific one-liner (defined per mode below).
 
-```bash
-./.claude/scripts/dev.sh up 2>&1
+**INFRA BLOCK** (DROP/FRESH only): Infrastructure status — containers, DB readiness, migrations.
+
+**SERVICE TABLE** (UP/RESTART/DROP-with-restart/FRESH):
+`| Service | Status | URL |` — one row per service. Status: GREEN=running, RED=down, YELLOW=bundling/compiling.
+
+**STATUS TABLE** (STATUS mode only): Same services but columns are `| Service | PID | Port | Status |`.
+
+**CREDENTIALS** — always show if available. Table: `| Role | Email | Password |`. If MISSING: warn appropriately.
+
+**COMMAND FOOTER:**
 ```
-
-Timeout: 120 seconds (infra + deps + migrations can be slow).
-
-### Step 3 — Parse the output
-
-The script outputs structured markers between `---REPORT---` and `---END---`:
-- `{PROJECT}_STATUS=GREEN|RED|YELLOW` per service
-- `CREDENTIALS_FILE=<path>|MISSING`
-- `ERRORS=none|<error details>`
-- `ALREADY_RUNNING=true` — if servers are already running, ask the user to kill first
-
-### Step 4 — Read credentials
-
-If `CREDENTIALS_FILE` is not `MISSING`, read the JSON file and parse the credentials.
-
-### Step 5 — Report
-
-**ALWAYS show login credentials in the report — every time, no exceptions.**
-
-```
-Dev environment is up!
-
-| Service  | Status | URL |
-|----------|--------|-----|
-| {Service A} | {[GREEN] running / [RED] down} | http://localhost:{PORT} |
-| {Service B} | {[GREEN] running / [RED] down / [YELLOW] bundling} | http://localhost:{PORT} |
-| ... | ... | ... |
-
-Login credentials:
-
-| Role | Email | Password |
-|------|-------|----------|
-| {ROLE} | {email} | {password} |
-
 Commands:
   /dev           Start dev environment
   /dev kill      Stop all servers
@@ -130,109 +114,116 @@ Commands:
   /dev drop      Nuke containers + rebuild from scratch
   /dev fresh     Kill + drop + start — full clean slate
   /dev status    Show what's running
-  /dev log       Show recent logs
+  /dev log       Show recent logs (all or /dev log {service})
   /dev cl        Clear all logs
   /dev snapshot  Snapshot DB → seed-data
 ```
 
-### Step 6 — Auto-heal with JC (if errors detected)
+If `ERRORS` is not `none`, add "Errors detected" section with details.
 
-**Skip if `DEV_NO_AUTOHEAL=1` is set** — prevents infinite loops.
+---
+
+## Auto-Heal Escalation (applies to: UP, RESTART, DROP-with-restart, FRESH)
+
+**Skip if `DEV_NO_AUTOHEAL=1` is set** — prevents infinite loops when JC restarts via `/dev`.
 
 After showing the report, check if any service has RED status or `ERRORS` is not `none`. If so:
 
 1. Tell the user: "One or more services came up unhealthy — calling JC to diagnose and fix."
-2. Collect error context: which services are RED, the ERRORS value, last 30 lines of log files for RED services
+2. Collect error context:
+   - Which services are RED
+   - The `ERRORS` value from the report
+   - Read the last 30 lines of log files for RED services
 3. Invoke `/jc` with the error context
 
 **When NOT to escalate:**
-- Service is YELLOW — still bundling/compiling, not broken
+- Service is YELLOW — just bundling/compiling, not broken
 - `ALREADY_RUNNING=true` — servers were already up, not an error
-- All GREEN but `CREDENTIALS_FILE` is MISSING — a warning, not a startup failure
+- All services are GREEN but `CREDENTIALS_FILE` is MISSING — warning, not failure
 
-**Loop prevention:** When JC restarts a service, use `DEV_NO_AUTOHEAL=1` to prevent re-trigger.
+**Loop prevention:** When JC fixes a service and needs to restart it, JC should either:
+- Restart the individual service directly
+- Or run the dev script with `DEV_NO_AUTOHEAL=1 ./.claude/scripts/dev.sh up` so auto-heal doesn't re-trigger
+
+---
+
+## Mode: UP (default)
+
+1. Run Script Maintenance (Step 0)
+2. Run: `./.claude/scripts/dev.sh up 2>&1` (timeout: 120s)
+3. Parse structured output between `---REPORT---` / `---END---`:
+   - `{SERVICE}_STATUS=GREEN|RED|YELLOW` per service
+   - `CREDENTIALS_FILE=<path>|MISSING`, `ERRORS=none|<details>`
+   - `ALREADY_RUNNING=true` → ask user: "Dev servers appear to be running. Kill them first with `/dev kill`?"
+4. Read credentials if not MISSING (parse JSON: `role`, `email`, `password`)
+5. Report using Canonical Template with header: "Dev environment is up!"
+6. Auto-heal if needed
 
 ---
 
 ## Mode: KILL
 
-```bash
-./.claude/scripts/dev.sh kill 2>&1
-```
-
-Report which processes were killed, ports freed.
+1. Run: `./.claude/scripts/dev.sh kill 2>&1` (no maintenance needed)
+2. Report which processes were killed, ports freed, registry cleared.
 
 ---
 
 ## Mode: RESTART
 
 1. Run Script Maintenance (Step 0)
-2. Run `./.claude/scripts/dev.sh restart 2>&1`
-3. Parse and report (same as UP)
+2. Run: `./.claude/scripts/dev.sh restart 2>&1`
+3. Parse and report using Canonical Template with header: "Dev environment restarted."
 4. Auto-heal if needed
 
 ---
 
-## Mode: DROP
+## Mode: DROP / FRESH (nuke + rebuild)
 
-```bash
-./.claude/scripts/dev.sh drop 2>&1
-```
+Both modes nuke Docker containers and rebuild infrastructure from scratch.
 
-Timeout: 180 seconds (nuke + rebuild + deps + migrations + servers).
+**Difference:** DROP only restarts servers if they were already running. FRESH always starts servers (kill + drop + start).
 
-Nukes Docker containers, rebuilds from scratch. If servers were running before drop, restarts them. If servers were NOT running, only rebuilds infrastructure.
-
----
-
-## Mode: FRESH
-
-```bash
-./.claude/scripts/dev.sh fresh 2>&1
-```
-
-Timeout: 180 seconds. Kill + drop + start — full clean slate. Always starts servers.
+1. Run (no maintenance needed):
+   - DROP: `./.claude/scripts/dev.sh drop 2>&1` (timeout: 180s)
+   - FRESH: `./.claude/scripts/dev.sh fresh 2>&1` (timeout: 180s)
+2. Parse structured output — `NUKE_RESULT`, `INFRA_RESULT`, server markers (same as UP)
+3. Read credentials if servers were (re)started and `CREDENTIALS_FILE` is not MISSING
+4. Report using Canonical Template (always include infrastructure section)
+5. Auto-heal if servers were (re)started and any is RED or has errors
 
 ---
 
 ## Mode: STATUS
 
-```bash
-./.claude/scripts/dev.sh status 2>&1
-```
-
-Report each service's PID, port, and health status. Include credentials if available.
+1. Run: `./.claude/scripts/dev.sh status 2>&1` (no maintenance needed)
+2. Parse output:
+   - If `NO_SERVERS=true`: report "No dev servers running."
+   - Otherwise parse `SVC=...|PID=...|PORT=...|ALIVE=...|RESPONDING=...` lines and health check results
+3. Read credentials if not MISSING
+4. Report using Canonical Template (STATUS variant with PID/Port table)
 
 ---
 
 ## Mode: LOG
 
-Parse arguments for service filter and line count:
-- `/dev log` — all services, 50 lines
-- `/dev log {project}` — specific project only
-- `/dev log {project} N` — specific project, N lines
-
-```bash
-./.claude/scripts/dev.sh log [service] [N] 2>&1
-```
+1. Parse args: `/dev log [service] [N]` — defaults: all services, 50 lines.
+2. Run: `./.claude/scripts/dev.sh log [service] [N] 2>&1` (no maintenance)
+3. Display output directly (script formats with headers + error summary).
 
 ---
 
 ## Mode: CLEAR-LOGS
 
-```bash
-./.claude/scripts/dev.sh clear-logs 2>&1
-```
+1. Run: `./.claude/scripts/dev.sh clear-logs 2>&1` (no maintenance)
+2. Report: "Logs cleared." + `{COMMAND FOOTER}`. If 0 cleared: "No logs to clear."
 
 ---
 
 ## Mode: SNAPSHOT
 
-```bash
-./.claude/scripts/dev.sh snapshot 2>&1
-```
-
-Dumps live DB state to seed-data files. Reports table counts, row counts, output directory.
+1. Run: `./.claude/scripts/dev.sh snapshot 2>&1` (no maintenance)
+2. Parse: `SNAPSHOT_FILES=N`, `SNAPSHOT_ROWS=N`, `SNAPSHOT_DIR=<path>`
+3. Report: table with files/rows/dir. If `SNAPSHOT_FILES=0`: "Nothing to snapshot — all tables empty."
 
 ---
 

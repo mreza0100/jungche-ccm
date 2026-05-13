@@ -34,29 +34,29 @@ The key distinction: **RND requires a testable goal and iterative execution.** I
 
 ```
 Goal
-  │
-  ▼
+  |
+  v
 Phase 1 — PLAN
-  │  List N approaches (ordered by confidence / cost)
-  │  Each approach has: what to try, how to evaluate
-  │
-  ▼
+  |  List N approaches (ordered by confidence / cost)
+  |  Each approach has: what to try, how to evaluate
+  |
+  v
 Phase 2 — EXECUTE (loop)
-  ┌─────────────────────────────────────┐
-  │  Pick next approach                 │
-  │  Execute it                         │
-  │  Evaluate: does it satisfy the goal?│
-  │  Track best result so far           │
-  │  Adapt remaining approaches if      │
-  │    this attempt revealed new info   │
-  └───────────────────┬─────────────────┘
-                      │
-         ┌────────────┴────────────┐
-         │ satisfied AND confident  │   loop exhausted OR
-         │ this is the best?        │   early-exit threshold met
-         └────────────┬────────────┘
-                      │
-                      ▼
+  +-------------------------------------+
+  |  Pick next approach                 |
+  |  Execute it                         |
+  |  Evaluate: does it satisfy the goal?|
+  |  Track best result so far           |
+  |  Adapt remaining approaches if      |
+  |    this attempt revealed new info   |
+  +-------------------+-----------------+
+                      |
+         +------------+------------+
+         | satisfied AND confident  |   loop exhausted OR
+         | this is the best?        |   early-exit threshold met
+         +------------+------------+
+                      |
+                      v
 Phase 3 — DELIVER
   Best result + rationale
 ```
@@ -95,26 +95,54 @@ Output the plan to the user before executing. This gives them a chance to redire
 
 ## Phase 2 — EXECUTE (the loop)
 
+### The depth mandate — non-negotiable
+
+RND's value comes from actually stressing solutions against reality, not from confirming they look reasonable in markdown. Every execution MUST follow these rules:
+
+1. **Use real-world-sized inputs.** If the goal involves processing transcripts, use large transcripts (hundreds of segments, multi-speaker, 45+ minutes of session content). If it involves database queries, use realistic row counts. If it involves LLM chains, use inputs that match production length and complexity. Toy fixtures prove toy things — they tell you the plumbing connects, not whether the building survives an earthquake.
+
+2. **Design adversarial inputs.** For every approach, actively try to break it. Malformed data, boundary values, missing fields, contradictory inputs, Unicode edge cases, empty-but-valid, valid-but-pathological. The goal is to find where the solution fails, not to confirm it works on the happy path.
+
+3. **Use actual execution paths.** For LLM/AI chains: call the real LLM (via `get_llm()` or equivalent) with real-sized prompts. For database queries: run against real schemas with realistic data shapes. For API endpoints: hit the actual endpoint. Mocking the thing you're testing is not testing — it's writing a letter to yourself and feeling validated when you agree with it.
+
+4. **Write results to `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts go in a sandbox folder. Never modify real project files during RND. Clean up `__pycache__` and build artifacts before reporting.
+
+### 360° integration — systematic blind-spot sweep on failure
+
+When an approach **fails** or scores **partial**, spawn a 360° sweep before iterating:
+
+```
+Agent(general-purpose): "Read .claude/skills/360/SKILL.md and execute the 360° protocol.
+Subject: {one-sentence description of what the failed approach was trying to achieve}
+Domain: test
+Output the full 360° angle list grouped by dimension."
+```
+
+Feed the returned angles into your next iteration — they reveal blind spots your approach missed. This is mandatory for failed approaches, optional for passing ones. The 360° agent runs in a clean context (no prior RND findings) to avoid confirmation bias.
+
 ### Per-approach execution
 
 For each approach in order:
 
-1. **Execute** — actually do the thing. Run code, write the prompt, call the API, read the files, compute the result. Don't describe what you'd do — do it.
+1. **Execute at scale** — actually do the thing with real-world-sized inputs. Run code, write the prompt, call the API, read the files, compute the result. Don't describe what you'd do — do it. Don't test with 3 items when production handles 300.
 
-2. **Evaluate** — apply the success criterion defined in the plan. Be explicit: "This approach achieves X but not Y. Score: partial / full / fail."
+2. **Stress-test** — after the happy path works, try to break it. Feed adversarial inputs, boundary values, concurrent scenarios, malformed data. If it survives, note what you threw at it. If it breaks, that's the most valuable data point in the loop.
 
-3. **Track best** — compare to the current best result. Update if this is better.
+3. **Evaluate** — apply the success criterion defined in the plan. Be explicit: "This approach achieves X but not Y. Score: partial / full / fail." Include what adversarial inputs it survived and which ones broke it.
 
-4. **Adapt remaining plan** — this is the most important step. What did this attempt teach you?
+4. **Track best** — compare to the current best result. Update if this is better.
+
+5. **Adapt remaining plan** — this is the most important step. What did this attempt teach you?
    - Did it reveal that a later approach is a dead end? Remove it.
    - Did it suggest a better variation? Swap the next approach.
    - Did it partially work in a way that suggests a combination approach? Add it.
    - Was it a total surprise? Reorder remaining approaches.
+   - **Did it fail?** Run 360° (see above) and let the angles inform the next approach.
    
    Show the user the updated approach list if it changed significantly.
 
-5. **Early exit conditions:**
-   - **Clear winner:** The result fully satisfies the goal AND is demonstrably better than any remaining approach could be. Stop.
+6. **Early exit conditions:**
+   - **Clear winner:** The result fully satisfies the goal AND survives adversarial testing AND is demonstrably better than any remaining approach could be. Stop.
    - **Diminishing returns:** All remaining approaches are variations of a failing pattern. Stop.
    - **User abort:** User signals "good enough." Stop.
 
@@ -122,16 +150,17 @@ For each approach in order:
 
 RND is domain-agnostic. Execution depends on the goal:
 
-| Goal type | Execution method |
-|-----------|-----------------|
-| Prompt engineering | Write the prompt, call the LLM, evaluate the output |
-| Algorithm / code | Implement it, run it (Bash), measure the result |
-| Research question | Search/read/grep, synthesize, evaluate completeness |
-| UI/UX pattern | Describe or prototype the pattern, evaluate usability criteria |
-| Data query | Write the query, run it, evaluate the output shape |
-| Architecture decision | Reason through the tradeoffs, evaluate against constraints |
+| Goal type | Execution method | Scale requirement |
+|-----------|-----------------|-------------------|
+| Prompt engineering | Write the prompt, call the real LLM, evaluate the output | Use production-length inputs, not 2-sentence toy prompts |
+| Algorithm / code | Implement it, run it (Bash), measure the result | Test with realistic data volumes (hundreds of items, not 3) |
+| LLM/AI chains | Import and invoke the actual chain with `get_llm()` | Real model, real-sized transcripts/inputs, real structured output parsing |
+| Research question | Search/read/grep, synthesize, evaluate completeness | — |
+| UI/UX pattern | Describe or prototype the pattern, evaluate usability criteria | — |
+| Data query | Write the query, run it, evaluate the output shape | Against realistic data shapes and row counts |
+| Architecture decision | Reason through the tradeoffs, evaluate against constraints | — |
 
-For code/command approaches: **run them**. Don't just reason about whether they'd work — actually execute and observe.
+For code/command approaches: **run them at scale**. Don't just reason about whether they'd work — actually execute, observe, and then try to break the result with adversarial inputs.
 
 ### Loop discipline
 
@@ -156,9 +185,13 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
+**Stress-tested with:** {what adversarial/large inputs it survived — e.g., "500-segment transcript, malformed character JSON, empty goals array, concurrent session state"}
+
 **Approaches tried:** {table or list — name, outcome, what it taught you}
 
 **Discarded approaches:** {any that were planned but removed, and why}
+
+**360° angles triggered:** {which failed approaches triggered 360° sweeps, and what blind spots those revealed}
 ```
 
 If the loop exhausted without full satisfaction:
@@ -191,7 +224,11 @@ The key invariant: **the goal stays fixed, the approaches evolve.** Never let th
 
 ## Common failure modes
 
+- **Testing with toy inputs and claiming victory.** A 3-item fixture passing does not prove the solution works at production scale. If you tested with small inputs, you validated the wiring — not the system. Scale up or don't claim confidence.
 - **Executing approaches in your head instead of running them.** "This would work because..." is analysis, not execution. RND requires actually doing the thing and observing what happens.
+- **Not stress-testing after the happy path passes.** The happy path passing is the START of evaluation, not the end. Feed adversarial inputs. Try to break it. If you can't break it, you've earned confidence. If you didn't try, you haven't.
+- **Skipping 360° after a failure.** When an approach fails, you have a blind spot. 360° exists to find it systematically. Skipping it means your next approach inherits the same blind spot.
+- **Mocking the thing you're testing.** If you're validating an LLM chain, calling a fake LLM proves nothing about the chain's real behavior. Use actual execution paths.
 - **Not adapting the plan after each attempt.** If you run approach 1, learn something, then run approach 2 exactly as originally planned without considering what approach 1 revealed — you've broken the loop.
 - **Setting an unevaluable success criterion.** "Find the best prompt" without defining what "best" means makes the loop aimless. Pin down the criterion in Phase 1.
 - **Running too many approaches without checking in.** 5 approaches with no solution is a signal the goal framing is wrong, not a signal to try approaches 6-10 blindly.

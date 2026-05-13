@@ -1,5 +1,7 @@
 ---
 name: rr
+version: "1.1.0"
+repo: "https://github.com/mreza0100/rr"
 description: Reza's Research-and-Report protocol. Research can target the **internet, the local codebase, or both** — RR detects this from the topic and tells the agent which sources to use. Two modes — RR (build an RRP, spawn a research agent to execute the dynamic multi-batch pipeline, deliver the agent's report) and RRP (write a self-contained prompt for the user to run in another chat). Triggered when the user says "RR", "research and report", "RRP", "RR-prompt", "research <topic>", "look into <topic>", or "find out <topic>". Use this skill INSTEAD of jumping straight to web search OR straight to grep — RR is a structured pipeline executed by a delegated agent, not a single query.
 ---
 
@@ -43,24 +45,11 @@ Restate the refined goal to yourself. If the refinement materially changes the s
 
 ### Step 2 — Determine the storage path
 
-Every RR run produces a research file. **The path depends on which command invoked RR.** Pick from this table based on the active command in the conversation:
+Every RR run produces a research file. **All research output goes to a single centralized directory regardless of which command invoked RR:**
 
-| Caller context | Storage directory |
-| -------------- | ----------------- |
-| `/mentor`      | `docs/commands/mentor/research/` |
-| `/officer`     | `docs/commands/officer/research/` |
-| `/pm`          | `docs/commands/pm/research/` |
-| `/marketer`    | `docs/commands/marketer/research/` |
-| `/professor`   | `docs/commands/professor/research/` |
-| `/council`     | `docs/commands/council/research/{debateName}/` (if inside a debate) |
-| `/{DOMAIN_COMMAND}`         | `docs/commands/{DOMAIN_COMMAND}/research/` |
-| Other / no command active | `docs/dev/research/` |
+**Storage directory:** `docs/dev/research/`
 
-**Filename convention:** `{topic-slug}-{YYYY-MM-DD}.md` (e.g., `vector-db-comparison-2026-04-30.md`). Use today's date from the environment context.
-
-**How to detect the caller:** Look at the active slash-command context. If the user invoked `/mentor` and inside that flow asked for an RR, the caller is `/mentor`. If RR was triggered standalone (no command running, just "RR <topic>" at the top level), use `docs/dev/research/`. When in doubt, ask the user one short question: "Which research bucket — mentor / officer / pm / dev?"
-
-If the directory doesn't exist, the spawned agent will create it.
+**Filename convention:** `{caller}-{topic-slug}-{YYYY-MM-DD}.md` where `{caller}` is the command or agent that triggered the RR (e.g., `mentor-funding-landscape-2026-05-10.md`, `professor-eu-llm-providers-2026-05-10.md`). If RR was triggered standalone (no command active), use `dev` as the caller prefix. Use today's date from the environment context.
 
 ### Step 3 — Build the **scout** RRP and spawn a single agent
 

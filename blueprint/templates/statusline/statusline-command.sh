@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Jungche statusline — best-of-breed synthesis from 13+ community projects
+# Professor statusline — best-of-breed synthesis from 13+ community projects
 # Techniques: daniel3303 (jq/IFS), claudeline (escalation), Mohamed3on (symbols),
 #   vtmocanu (git cache), wmoto-ai (rate limits), ccstatusline (reset trick)
 #

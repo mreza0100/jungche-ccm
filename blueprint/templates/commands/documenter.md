@@ -22,7 +22,7 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 
 **Scope guard (single rule — applies everywhere):**
 - You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project docs (`docs/agents/{architecture,API,map,features}.md`), and `docs/dev/future-features.md`
-- NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/jm`), source code, temporary/pipeline files (`docs/dev/tasks/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
+- NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
 <!-- Install-time: Add any additional scope exclusions specific to your project -->
 
 **On every invocation:** Read `$CDOCS/documenter/$REFS/doc-registry.md` first. Update it last if structural changes occurred.
@@ -121,14 +121,41 @@ If pipeline touched workflow graph definitions (new nodes, changed edges), regen
 
 ### Step 3 — Archive pipeline documents (MUST use Bash tool)
 
+**Wave-ownership guard (MANDATORY check before archiving):**
 ```bash
-mkdir -p $ARCHIVE
-mv $DOCS $ARCHIVE/$PIPELINE
+grep -rl "$PIPELINE" docs/dev/waves/*/report.md 2>/dev/null
+```
+If any match → this build belongs to an active wave. **Do NOT archive it.** Print `SKIP-ARCHIVE: $PIPELINE belongs to active wave — wave will archive its builds when it completes.` and proceed directly to Step 4 (confirm without archival). The wave's Step 4 handles archiving all its builds together.
+
+**Standalone builds only (no wave owner) — numbered rolling archive (max 10):**
+
+Each archived pipeline gets a 3-digit counter prefix. When the archive exceeds 10 items, the oldest is evicted to `tmp/archive/builds/` (gitignored cold storage).
+
+```bash
+mkdir -p $ARCHIVE tmp/archive/builds
+
+# Read and increment counter
+COUNTER=$(cat $ARCHIVE/.counter 2>/dev/null || echo "0")
+NEXT=$((COUNTER + 1))
+PADDED=$(printf "%03d" $NEXT)
+
+# Archive with numbered prefix
+mv $DOCS $ARCHIVE/${PADDED}-${PIPELINE}
+echo "$NEXT" > $ARCHIVE/.counter
+
+# Evict oldest if more than 10
+ARCHIVE_COUNT=$(find $ARCHIVE -maxdepth 1 -type d | wc -l)
+# subtract 1 for the archive dir itself
+ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
+if [ "$ARCHIVE_COUNT" -gt 10 ]; then
+  OLDEST=$(ls -d $ARCHIVE/[0-9]*/ | head -1)
+  mv "$OLDEST" tmp/archive/builds/
+fi
 ```
 
 **Verify (both mandatory):**
 ```bash
-ls $ARCHIVE/$PIPELINE/
+ls $ARCHIVE/${PADDED}-${PIPELINE}/
 test -d $DOCS && echo "BUG: source still exists after mv — deleting" && rm -rf $DOCS || echo "OK: source removed"
 ```
 
@@ -139,7 +166,7 @@ Documentation updated. Pipeline: $PIPELINE.
   Root: architecture | API | map | features — updated | no changes
   Future features: N section(s) removed | N section(s) partially updated | no changes
   {project} docs: updated | no changes
-  Archived: $ARCHIVE/$PIPELINE/
+  Archived: $ARCHIVE/${PADDED}-${PIPELINE}/
   Next: gitter DOCS-COMMIT will commit these changes.
 ```
 
@@ -160,7 +187,7 @@ Read `$CDOCS/documenter/$REFS/sync-rules.md` for the full rule set. Then execute
 5. **Command table** (Rule 4) — Compare root CLAUDE.md table ↔ actual `.claude/commands/*.md` files. Flag orphans/phantoms.
 6. **Agent table** (Rule 8) — Compare root CLAUDE.md agent tables ↔ actual agent files.
 7. **Developer reference vs CLAUDE.md** (Rule 5) — Standards match? No contradictions? Flag `DRIFT`.
-8. **Stale pipelines** (Rule 10) — Check `docs/dev/tasks/` for non-archived pipeline dirs.
+8. **Stale pipelines** (Rule 10) — Check `docs/dev/builds/` for non-archived pipeline dirs.
 8.5. **Future-features rot** (Rule 13) — Cross-reference `docs/dev/future-features.md` sections against `docs/agents/features.md`. Spot-check 5-10 sections. Flag `STALE-ROADMAP`. Do NOT fix during audit.
 9. **Ownership enforcement** (Rule 11) — Check `> Author:` lines; flag wrong-owner edits.
 

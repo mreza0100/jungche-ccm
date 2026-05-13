@@ -11,7 +11,7 @@ tools: Read, Write, Edit, Bash, Glob, Grep
 
 # Mono-Documenter Agent
 
-You are the documentation specialist for the {PROJECT_NAME} project.
+You are the documentation specialist for {PROJECT_NAME}.
 
 **Your source of truth is `.claude/commands/documenter.md`.** Read it and follow its instructions exactly.
 
@@ -28,9 +28,9 @@ The orchestrator provides:
 1. Read `.claude/commands/documenter.md`
 2. Read `$CDOCS/documenter/$REFS/doc-registry.md` (your map of all docs)
 3. Execute the appropriate mode based on the phase you were given:
-   - `ARCHIVE` -> follow Archive mode instructions
-   - `AUDIT` -> follow Audit mode instructions
-   - `JC-UPDATE` -> follow JC-Update mode instructions
+   - `ARCHIVE` → follow Archive mode instructions
+   - `AUDIT` → follow Audit mode instructions
+   - `JC-UPDATE` → follow JC-Update mode instructions
 
 The command file has all the detailed steps. Follow them exactly.
 

@@ -1,8 +1,8 @@
-# Jungche Pipeline Blueprint
+# Professor Pipeline Blueprint
 
 A portable, opinionated multi-agent development pipeline for Claude Code — **with a full cast of characters**. Adopt it in any codebase, single-project or multi-project, regardless of language, framework, or runtime. The mechanics survive every stack; the characters' voices survive every domain.
 
-This is the **transplantable nervous system** — not a config dump. Built by Jungche (the sarcastic architect who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
+This is the **transplantable nervous system** — not a config dump. Built by the Professor (the grandfatherly polymath who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
 
 ---
 
@@ -10,10 +10,10 @@ This is the **transplantable nervous system** — not a config dump. Built by Ju
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — Jungche, JC, Professor, Council, JM, CA, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — The Professor (orchestrator), JC, Council, PCM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
-- **Self-improvement at the source** — a meta-agent (`/jm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
+- **Self-improvement at the source** — a meta-agent (`/pcm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths. Rename a directory once, every agent follows.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent writes to permanent project docs.
@@ -46,9 +46,9 @@ blueprint/
 ├── SETUP.md               ← interactive install interview (Claude conducts it)
 ├── ADAPTATION.md          ← archetype-by-archetype customization guide
 └── templates/
-    ├── CLAUDE.md          ← root project rules + Jungche persona
+    ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, jm, dev, git, wave, documenter, professor, council, ca
+    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, council, audit
     │                         Tier B (opt-in): officer, km, pm, mentor, marketer
     ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
@@ -63,12 +63,12 @@ blueprint/
 3. **Run install via Claude:**
 
 ```bash
-git clone https://github.com/mreza0100/jungche.git ~/work/jungche
+git clone https://github.com/mreza0100/professor.git ~/work/professor
 
 cd ~/path/to/your-project
 claude
-> Read every file in ~/work/jungche/blueprint/.
-> Follow SETUP.md to install Jungche in THIS project.
+> Read every file in ~/work/professor/blueprint/.
+> Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
 
@@ -94,13 +94,12 @@ See `ARCHETYPES.md` for the catalog of every character, what's universal in thei
 
 **Tier A — universal archetypes (ship with character):**
 
-- **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. The orchestrator voice.
+- **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command. You pick the disciplines at install.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
-- **/professor** — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. You pick the disciplines.
 - **/council** — roundtable debate, three rounds: opening / rebuttal / verdict.
-- **/jm** — meta-engineer. Edits pipeline rules at the source.
-- **/ca** — code auditor. 8 categories of hygiene + 9 of security.
-- **/build, /dev, /git, /wave, /documenter** — pipeline mechanics with light Jungche voice.
+- **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
+- **/audit** — code auditor. 8 categories of hygiene + 9 of security.
+- **/build, /dev, /git, /wave, /documenter** — pipeline mechanics with light Professor voice.
 
 **Tier B — opt-in domain archetypes:**
 
@@ -116,13 +115,13 @@ See `ARCHETYPES.md` for the catalog of every character, what's universal in thei
 
 The blueprint pins your test command, build command, package manager, etc. at install time via the interview. After install, the templates are filled in for your stack — no leftover placeholders. The templates do NOT prescribe a stack; the install interview asks for one.
 
-If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/jm` to fix it locally.
+If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/pcm` to fix it locally.
 
 ---
 
 ## A note on character
 
-**Personality is load-bearing, not decoration.** Strip Jungche's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic.
+**Personality is load-bearing, not decoration.** Strip the Professor's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic.
 
 The blueprint deliberately does NOT offer a "no character" mode. If you want sterile agents, this isn't the blueprint for you. If you want agents with voice, identity, and signature traits — refitted to your domain — read on.
 

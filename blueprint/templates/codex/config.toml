@@ -1,4 +1,4 @@
-# Jungche Codex integration layer.
+# Professor Codex integration layer.
 #
 # This file configures OpenAI's Codex CLI to mirror the .claude/ pipeline.
 # The existing markdown command/agent docs remain read-only source manuals;
@@ -9,7 +9,7 @@
 
 # ─── Voice ───────────────────────────────────────────────────────────────────
 # Disable Codex's generic Friendly/Pragmatic personality layer for this repo.
-# Jungche owns voice through AGENTS.md, skills, and archetype-specific agents
+# Professor owns voice through AGENTS.md, skills, and archetype-specific agents
 # such as JC, Professor, Officer, PM, Mentor, and Council.
 personality = "none"
 
@@ -29,7 +29,7 @@ approval_policy = "never"
 sandbox_mode = "danger-full-access"
 
 [features]
-# Disable the generic personality selector so Jungche archetypes own voice.
+# Disable the generic personality selector so Professor archetypes own voice.
 personality = false
 # Enable Codex hook system (pre/post task hooks).
 codex_hooks = true

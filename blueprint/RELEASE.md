@@ -1,6 +1,6 @@
 # RELEASE — How updates flow from Freudche to adopters
 
-This blueprint is regenerated and published from the live Freudche repo. This doc explains the release process so adopters can reliably consume updates via `/jm update`.
+This blueprint is regenerated and published from the live Freudche repo. This doc explains the release process so adopters can reliably consume updates via `/pcm update`.
 
 ---
 
@@ -10,9 +10,9 @@ The blueprint follows [Semantic Versioning](https://semver.org/):
 
 | Bump | When | Adopter impact |
 |------|------|----------------|
-| **PATCH** (e.g., 1.0.0 → 1.0.1) | Bug fixes, doc clarifications, mechanic tweaks that don't change interfaces | `/jm update` auto-applies with diff preview |
-| **MINOR** (e.g., 1.0.0 → 1.1.0) | Added Tier B archetype, new mechanics command, new pipeline step, character refinement | `/jm update` walks through additions; auto-applies mechanics; asks before adding Tier B |
-| **MAJOR** (e.g., 1.x.x → 2.0.0) | Breaking rename, removed command, changed core convention | `/jm update` requires explicit consent for each migration step |
+| **PATCH** (e.g., 1.0.0 → 1.0.1) | Bug fixes, doc clarifications, mechanic tweaks that don't change interfaces | `/pcm update` auto-applies with diff preview |
+| **MINOR** (e.g., 1.0.0 → 1.1.0) | Added Tier B archetype, new mechanics command, new pipeline step, character refinement | `/pcm update` walks through additions; auto-applies mechanics; asks before adding Tier B |
+| **MAJOR** (e.g., 1.x.x → 2.0.0) | Breaking rename, removed command, changed core convention | `/pcm update` requires explicit consent for each migration step |
 
 The version is stored in:
 - `VERSION` at the repo root — single-line semver
@@ -23,24 +23,24 @@ The version is stored in:
 
 ## Adopter version tracking
 
-When a user installs Jungche via `SETUP.md`, the install records:
+When a user installs Professor via `SETUP.md`, the install records:
 
-- `.claude/JUNGCHE_VERSION` — single-line semver matching the blueprint version at install time
-- `.claude/JUNGCHE_MANIFEST.json` — SHA-256 hash of every Jungche-owned file as installed (post-placeholder-substitution). This is the baseline `/jm update` uses to detect which files the user has customized vs. left pristine, via a three-way hash compare (installed vs. current-on-disk vs. new-upstream). See `templates/commands/jm.md` § "Step 5 — Detect what changed" for the truth table. The manifest is regenerated after every successful `/jm update` so the new on-disk state becomes the next baseline.
+- `.claude/PROFESSOR_VERSION` — single-line semver matching the blueprint version at install time
+- `.claude/PROFESSOR_MANIFEST.json` — SHA-256 hash of every Professor-owned file as installed (post-placeholder-substitution). This is the baseline `/pcm update` uses to detect which files the user has customized vs. left pristine, via a three-way hash compare (installed vs. current-on-disk vs. new-upstream). See `templates/commands/pcm.md` § "Step 5 — Detect what changed" for the truth table. The manifest is regenerated after every successful `/pcm update` so the new on-disk state becomes the next baseline.
 
-When the user runs `/jm update`, the update flow:
+When the user runs `/pcm update`, the update flow:
 
-1. Reads `.claude/JUNGCHE_VERSION` (the user's currently-installed version)
-2. Fetches the latest from `mreza0100/jungche`
+1. Reads `.claude/PROFESSOR_VERSION` (the user's currently-installed version)
+2. Fetches the latest from `mreza0100/professor`
 3. Reads the new blueprint's `VERSION`
 4. Reads `CHANGELOG.md` entries between the two versions (using the `## [x.y.z]` headings as boundaries)
 5. Walks the user through each change interactively
 6. Applies accepted changes
-7. Updates `.claude/JUNGCHE_VERSION` to the new version
+7. Updates `.claude/PROFESSOR_VERSION` to the new version
 
 ---
 
-## Change categories `/jm update` understands
+## Change categories `/pcm update` understands
 
 Bullets in `CHANGELOG.md` follow this shape:
 
@@ -75,7 +75,7 @@ Done from inside the Freudche repo via the `/blueprint release` subcommand:
 
 What it does:
 
-1. **Refresh** — runs `/blueprint refresh` to mirror current Freudche state to `~/work/jungche/blueprint/`
+1. **Refresh** — runs `/blueprint refresh` to mirror current Freudche state to `~/work/professor/blueprint/`
 2. **Bump VERSION** — increments according to the bump type
 3. **Update CHANGELOG.md** — moves `[Unreleased]` content into a new dated `[x.y.z]` section, prepends a fresh `[Unreleased]` skeleton
 4. **Prompt for changelog content** — if `[Unreleased]` is empty, asks the maintainer to fill in the categories (Added/Changed/Fixed/Removed/Breaking)
@@ -100,10 +100,10 @@ Before running `/blueprint release`:
 
 ---
 
-## What `/jm update` does NOT do
+## What `/pcm update` does NOT do
 
 - It does NOT touch `.claude/settings.json` — that's hand-curated per project
-- It does NOT touch `CLAUDE.md` Jungche persona section without explicit confirmation — your character may have drifted
+- It does NOT touch `CLAUDE.md` Professor persona section without explicit confirmation — your character may have drifted
 - It does NOT touch any file under `docs/commands/{cmd}/` — those are command-owned content, not blueprint templates
 - It does NOT auto-apply MAJOR version migrations — those always require explicit consent per step
-- It does NOT downgrade — if your local `JUNGCHE_VERSION` is somehow ahead, it reports and asks
+- It does NOT downgrade — if your local `PROFESSOR_VERSION` is somehow ahead, it reports and asks

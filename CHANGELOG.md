@@ -1,14 +1,14 @@
 # Changelog
 
-All notable changes to the Jungche blueprint will be documented in this file.
+All notable changes to the Professor blueprint will be documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-**For adopters:** run `/jm update` in your installed project to apply changes between your local version and the latest release. The update command parses this file to walk you through changes interactively.
+**For adopters:** run `/pcm update` in your installed project to apply changes between your local version and the latest release. The update command parses this file to walk you through changes interactively.
 
 ---
 
-## How `/jm update` reads this file
+## How `/pcm update` reads this file
 
 Each release section uses categorized headings the update flow understands:
 
@@ -31,9 +31,57 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
-## [Unreleased]
+## [0.5.0] — 2026-05-13
 
-*Pending changes for the next release will accumulate here.*
+### Breaking
+- Tier A: `commands/professor.md` **deleted** — the Professor is no longer a separate command. Professor IS `CLAUDE.md`. Cross-disciplinary analysis, routing, and verdict format are embedded in the root persona. Migration: move any customizations from `.claude/commands/professor.md` into your root `CLAUDE.md`'s Character section and Cross-Disciplinary System Analysis section.
+- Tier A: `commands/ca.md` renamed to `commands/audit.md` — `/ca` is now `/audit`. Cortex audit mode removed (handled by Professor directly). Migration: rename `.claude/commands/ca.md` → `audit.md`, update CLAUDE.md command table.
+- Tier A: `commands/jm.md` renamed to `commands/pcm.md` — `/jm` is now `/pcm` (Professor Change Manager). Dr. House character enriched. Migration: rename `.claude/commands/jm.md` → `pcm.md`, update CLAUDE.md command table.
+
+### Added
+- Tier A: `CLAUDE.md` template — **Professor identity architecture**. 10+ configurable PhDs with `*Think:*` prompts, Cross-Disciplinary System Analysis section (3 simultaneous lenses), mandatory Verdict format on every response, Context Isolation rule (spawn sub-agents when context accumulates). Professor now routes ALL requests — analytical ones handled directly, others dispatched to commands. (breaking)
+- Tier A: `CLAUDE.md` template — **Epics system**. Initiative-level persistent context via `docs/epics/{name}/manifest.md`. Lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED). Professor creates/loads/updates epics; `/documenter` auto-appends pipeline progress. Cross-conversation context that doesn't fit in memory.
+- Tier A: `skills/ghostwriter/SKILL.md` — new writing style capture skill. Analyzes 20+ voice samples to extract mechanical fingerprints (sentence rhythm, punctuation habits, vocabulary tier, paragraph architecture), then generates text in that voice. (safe-auto)
+- Tier A: `commands/pcm.md` — enriched Dr. House character. Diagnostic obsession, "everybody lies" verification ethos, sarcastic surgical voice. The Professor's backbone underneath the snark.
+- Tier A: `commands/audit.md` — lean two-mode auditor (code hygiene, security) with mandatory reference file loading.
+
+### Changed
+- Tier A: `CLAUDE.md` template — complete rewrite (267→370 lines). Professor is now the root identity with warm grandfatherly character, 10 configurable PhDs, cross-disciplinary analysis built in, verdict format, context isolation rule. Routing table clearly separates "Professor handles directly" from "route to commands". (breaking)
+- Tier A: `commands/build.md` — `docs/dev/tasks` → `docs/dev/builds`, wave-ownership guard in Step 0a, numbered rolling archive (max 10, 3-digit counter). (safe-auto)
+- Tier A: `commands/jc.md` — global renames, added `gh` CLI access, CI/CD fix mode. (safe-auto)
+- Tier A: `commands/wave.md` — `docs/dev/tasks` → `docs/dev/builds`, manifest copy step, execution plan display, proactive status emission, Professor review before archive, numbered rolling archive. (safe-auto)
+- Tier A: `commands/dev.md` — canonical report template, auto-heal escalation with loop prevention, new service detection, detailed mode specs for all 9 modes. (safe-auto)
+- Tier A: `commands/documenter.md` — `/jm` → `/pcm`, `docs/dev/tasks` → `docs/dev/builds`, wave-ownership guard, numbered rolling archive. (safe-auto)
+- Tier A: `commands/council.md` — Professor voice source changed from `commands/professor.md` to `CLAUDE.md (root)`. (safe-auto)
+- Tier B: `commands/pm.md` — added wave-post-review mode, 360 sweep in pre-flight. (safe-auto)
+- Tier B: `commands/km.md` — added Step 4.5 Compliance Review Loop. (safe-auto)
+- Tier B: `commands/mentor.md` — added Ghostwriter section for external-facing deliverables. (safe-auto)
+- Tier B: `commands/marketer.md` — added Ghostwriter section for human voice, profile selection guide. (safe-auto)
+- Mechanics: `agents/gitter.md` — compressed 559→375 lines. Same behavior, fewer tokens. (safe-auto)
+- Mechanics: `agents/mono-architect.md` — minor wording updates. (safe-auto)
+- Mechanics: `agents/mono-documenter.md` — minor wording updates. (safe-auto)
+- Mechanics: `skills/360/SKILL.md` — updated for sub-agent delegation pattern. (safe-auto)
+- Mechanics: `skills/rr/SKILL.md` — minor updates. (safe-auto)
+- Mechanics: `skills/rnd/SKILL.md` — minor updates. (safe-auto)
+- Mechanics: Codex templates — global renames, updated cross-references. (safe-auto)
+- Docs: `README.md` — complete rewrite reflecting Professor identity architecture. (safe-auto)
+- Docs: `BLUEPRINT.md`, `SETUP.md`, `ARCHETYPES.md`, `RELEASE.md`, `INSTALL.md` — global renames (/jm→/pcm, /ca→/audit, Jungche→Professor), Epics system added. (safe-auto)
+
+### Removed
+- `commands/professor.md` — Professor merged into CLAUDE.md. No separate command.
+- `commands/ca.md` — replaced by `audit.md`.
+- `commands/jm.md` — replaced by `pcm.md`.
+- Cortex audit mode from `/audit` — now handled by Professor directly via `$CDOCS/professor/$REFS/cortex-audit.md`.
+
+### Migration
+
+**This is a major release.** Adopters should run `/pcm update` which will walk through each breaking change interactively. Key manual steps:
+
+1. **Professor identity:** Your `CLAUDE.md` needs the new Cross-Disciplinary System Analysis section and Verdict format. `/pcm update` will show the diff and let you merge.
+2. **Command renames:** Rename `ca.md` → `audit.md`, `jm.md` → `pcm.md`. Delete `professor.md`. Update your CLAUDE.md command table.
+3. **Cortex audit:** If you used `/ca cortex`, that mode is now accessed by asking the Professor directly (who loads `$CDOCS/professor/$REFS/cortex-audit.md`).
+4. **Epics:** New feature — add the Epics section to your CLAUDE.md if you want cross-conversation context persistence.
+5. **Ghostwriter:** New skill — copy `skills/ghostwriter/SKILL.md` to `.claude/skills/ghostwriter/SKILL.md` if desired.
 
 ## [0.4.0] — 2026-05-08
 
@@ -75,7 +123,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ### Migration
 
-No adopter-side migration needed. All changes are structural density improvements — same behavior, fewer tokens. `/jm update` applies them without prompts.
+No adopter-side migration needed. All changes are structural density improvements — same behavior, fewer tokens. `/pcm update` applies them without prompts.
 
 ## [0.1.1] — 2026-05-07
 
@@ -102,4 +150,4 @@ No adopter-side migration needed. All changes are structural density improvement
 
 ### Migration
 
-No adopter-side migration needed. All changes are `safe-auto` — `/jm update` applies them without prompts.
+No adopter-side migration needed. All changes are `safe-auto` — `/pcm update` applies them without prompts.

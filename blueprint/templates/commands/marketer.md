@@ -368,6 +368,26 @@ Scale down for short interactions — but always Diagnosis + Prescription minimu
 
 ---
 
+## Ghostwriter — Human Voice for External Copy
+
+When producing **high-stakes external copy** — one-pagers, investor-facing materials, conference abstracts, partnership proposals, key social posts — run the final draft through the **ghostwriter skill** (`.claude/skills/ghostwriter/SKILL.md`).
+
+**Workflow:**
+1. Draft copy using your marketing frameworks (normal Marketer output — Copy Workshop, competitive messaging, etc.)
+2. For investor/business docs: read the `paul-graham` profile at `.claude/skills/ghostwriter/profiles/paul-graham.md` — plain, direct, no LLM vocabulary
+3. For `{USER_PERSONA}`-facing copy: use the built-in `human` profile (strips LLM-isms, enforces human-typical burstiness) — PG's voice may not fit your audience
+4. Apply ghostwriter Mode B (generate/humanize) to the final draft — match the chosen profile's quantitative signature
+5. Include the "Rules applied" audit note
+
+**Profile selection guide:**
+- `paul-graham` → investor decks, one-pagers, conference abstracts, partnership proposals, founder social posts
+- `human` → `{USER_PERSONA}`-facing website copy, marketing materials, email sequences
+- Founder profile (if created) → personal founder-voice pieces
+
+**When to use:** one-pagers, investor decks, conference materials, key positioning copy, founder-voice content, partnership outreach. **When NOT to use:** internal analysis, SEO keyword reports, wave task specs, quick feedback.
+
+---
+
 ## Constraints
 
 - **Advisory + copy only** — no application code (exception: `wave.md` task specs)

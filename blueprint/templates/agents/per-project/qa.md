@@ -25,7 +25,7 @@ Read `$DOCS_REL/`, all pipeline docs. Start test infrastructure (`make -C {path-
 
 ## Step 3.5: 360° sweep (test domain)
 
-Before writing any tests, run the 360° protocol (`test` domain) from `.claude/skills/360/SKILL.md` against the feature under test. Walk every dimension (Inputs, State, Boundaries, Sequences, Timing, Error paths, Data shapes, Environment, Auth/Authz, Regressions) and generate concrete angles specific to this feature. Use the resulting list to guide which adversarial tests to write — the sweep ensures you don't miss entire failure categories.
+Before writing any tests, **spawn a separate agent** for the 360° sweep — it must run with a clean context to avoid bias. Use `Agent(subagent_type: "general-purpose")` with a prompt containing ONLY: the subject (one sentence describing the feature under test), the domain (`test`), and an instruction to read `.claude/skills/360/SKILL.md` and execute the protocol. Do NOT include any of your own analysis or findings in the prompt. Use the returned angle list to guide which adversarial tests to write.
 
 ## Step 4: Write adversarial integration tests
 

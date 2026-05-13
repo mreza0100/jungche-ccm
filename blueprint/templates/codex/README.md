@@ -1,12 +1,12 @@
 # Codex Integration Layer
 
-Optional dual-runtime setup for the Jungche pipeline. Everything in `.codex/` is a config layer that points to `.claude/` as the single source of truth. Delete this entire directory and the pipeline runs fine on Claude Code alone.
+Optional dual-runtime setup for the Professor pipeline. Everything in `.codex/` is a config layer that points to `.claude/` as the single source of truth. Delete this entire directory and the pipeline runs fine on Claude Code alone.
 
 ---
 
 ## What this is
 
-OpenAI's Codex CLI can mirror the same Jungche pipeline that Claude Code runs. The `.codex/` directory contains:
+OpenAI's Codex CLI can mirror the same Professor pipeline that Claude Code runs. The `.codex/` directory contains:
 
 - **`config.toml`** — global Codex settings (personality override, sandbox, Teams enablement)
 - **`agents/*.toml`** — wrappers that tell Codex "read this `.claude/` manual and follow it"
@@ -84,7 +84,7 @@ Create `.codex/agents/` with one `.toml` per command and per role agent. Three t
 
 #### Type 1: Command wrappers
 
-One per `/command` (build, jc, wave, dev, git, jm, professor, council, ca, documenter, plus any Tier B commands you opted into).
+One per `/command` (build, jc, wave, dev, git, pcm, council, audit, documenter, plus any Tier B commands you opted into).
 
 Pattern:
 ```toml
@@ -213,8 +213,8 @@ The key Codex-specific difference is **who owns git**:
 
 - **Don't make Codex a requirement** — every pipeline operation must work with Claude Code alone
 - **Don't duplicate logic in .toml files** — they point to `.claude/` manuals, not restate them
-- **Don't let Codex edit `.claude/` or `CLAUDE.md`** — those are the source of truth, edited only by `/jm`
-- **Don't let Claude edit `.codex/`** — it's Codex's config layer, co-owned by `/jm`
+- **Don't let Codex edit `.claude/` or `CLAUDE.md`** — those are the source of truth, edited only by `/pcm`
+- **Don't let Claude edit `.codex/`** — it's Codex's config layer, co-owned by `/pcm`
 - **Don't use loose parenthetical lists in developer_instructions** — Codex can misread `"(commit, lock, push)"` as authorization to perform all listed actions. Be explicit about what is and isn't allowed.
 - **Don't put pipeline logic in .toml files** — if you find yourself writing more than ~30 lines of developer_instructions, the logic belongs in the `.claude/` manual, not the wrapper.
 

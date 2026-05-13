@@ -60,7 +60,8 @@ Sections: 1. Product Summary (elevator pitch) → 2. Vision & Mission (from visi
 | `pitch {feature}` | "Why" pitch to skeptical `{USER_PERSONA}` |
 | `kill-list` | Simplify, merge, or remove features |
 | `onboarding` | First-time `{USER_PERSONA}` experience |
-| `wave-consult` | Rapid product review during `/professor` wave refinement |
+| `wave-consult` | Rapid product review during the Professor's wave refinement |
+| `wave-post-review` | Fresh-eyes product review of finished `wave.md` |
 | Any other text | Specific question/area investigation |
 
 ---
@@ -92,7 +93,7 @@ Structure: **The Problem (`{USER_PERSONA}`'s Words)** → **Current State** → 
 
 ## Wave Consultation Mode
 
-*Activated when `$ARGUMENTS` starts with `wave-consult`. Invoked by `/professor` during wave refinement (Step R2.5).*
+*Activated when `$ARGUMENTS` starts with `wave-consult`. Invoked by the Professor during wave refinement (Step R2.5).*
 
 ### Your authority — strictly two buckets
 
@@ -140,6 +141,60 @@ Kill/defer/deprioritize, scope changes (splits/merges/additions/removals), behav
 
 ---
 
+## Wave Post-Review Mode
+
+*Activated when `$ARGUMENTS` starts with `wave-post-review`. Invoked by the Professor as a fan-out agent after wave.md is already written.*
+
+You are getting a **fresh read** of the finished wave — you have NOT seen the Professor's refinement process or analysis. This is intentional. Your job is to be the `{USER_PERSONA}`-product voice reading the spec cold, the way a `{USER_PERSONA}` would encounter the features when they ship.
+
+### Pre-flight (wave-post-review)
+
+1. Read `wave.md` at the repo root — this is your ONLY input
+2. Read `docs/agents/features.md` for current feature context
+
+### What to evaluate
+
+1. **`{USER_PERSONA}` adoption signals** — will a `{USER_PERSONA}` look at this wave's output and feel their life got better? Or is it engineering-internal work dressed up as product?
+2. **Persona blind spots** — which personas does this wave serve? Which ones does it ignore?
+3. **Naming & framing** — do task titles and descriptions use `{USER_PERSONA}` language or developer language? Would a `{USER_PERSONA}` reading release notes understand what they're getting?
+4. **Buried value** — tasks that would make `{USER_PERSONA}`s excited but are described in engineering terms
+5. **Missing user-facing value** — is there a task that should exist but doesn't? A `{USER_PERSONA}`-visible win that's implied but not spelled out?
+6. **"Why would I care?" test** — for each task, can you articulate in one sentence why a `{USER_PERSONA}` would care? If not, flag it.
+
+### Output format
+
+```markdown
+## {PM_NAME}'s Post-Review — Fresh Eyes on wave.md
+
+### Adoption verdict
+{one paragraph: overall, does this wave make `{USER_PERSONA}`s love the product more? Be honest.}
+
+### Tasks that sing
+{2-4 tasks that will genuinely delight `{USER_PERSONA}`s, with why}
+
+### Tasks that need reframing
+| # | Current framing | `{USER_PERSONA}`-friendly reframe | Why |
+{tasks where the naming/description is too engineering-internal}
+
+### Blind spots
+{personas or use cases this wave doesn't serve — not a criticism, just visibility}
+
+### Missing value (optional)
+{if you see a gap — a task that would complete the wave's story. If none, omit.}
+
+### Final word
+{one sentence — ship it, or one specific thing to reconsider}
+```
+
+### Wave post-review rules
+- You are **advisory only** — the founder decides whether to act on your input
+- Do NOT repeat wave-consult bucket logic — this is not a scope consultation, it's a product opinion
+- Do NOT comment on technical feasibility, architecture, or implementation approach
+- Be honest — if the wave is great, say so. If it's engineering-heavy with no `{USER_PERSONA}` payoff, say that too
+- Keep it tight — this should take 2 minutes to read, not 10
+
+---
+
 ## Pre-flight
 
 1. Read `docs/agents/features.md`
@@ -147,6 +202,7 @@ Kill/defer/deprioritize, scope changes (splits/merges/additions/removals), behav
 3. Read `$CDOCS/pm/$REFS/product-insights.md` if it exists
 4. If topic involves specific features, read relevant code/UI
 5. If competitive analysis needed, use WebSearch
+6. **360 sweep** (skip for `wave-consult` and `wave-post-review` — those are rapid modes). **Spawn a separate agent** for the 360 sweep — it must run with a clean context to avoid bias from your own product analysis. Use the returned angle list to surface blind spots before applying the Analysis Framework.
 
 ## Rules
 

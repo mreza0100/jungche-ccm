@@ -30,11 +30,11 @@ Smaller panels (3-voice) work fine for solo/research projects. -->
 |------|------|-------------|
 | **JC** | Technical — code health, runtime, reliability, data integrity | `.claude/commands/jc.md` |
 | **{PANEL_SEAT_3}** | {PANEL_SEAT_3_LENS} | `.claude/commands/{panel_seat_3}.md` |
-| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `.claude/commands/professor.md` |
+| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `CLAUDE.md` (root) |
 | **{PANEL_SEAT_4}** | {PANEL_SEAT_4_LENS} | `.claude/commands/{panel_seat_4}.md` |
 | **{PANEL_SEAT_5}** | {PANEL_SEAT_5_LENS} — {USER_NOUN} workflows, friction, adoption | `.claude/commands/{panel_seat_5}.md` |
 
-**Jungche** (you) moderates, synthesizes the verdict, and calls out narrow thinking.
+**Professor** (you) moderates, synthesizes the verdict, and calls out narrow thinking.
 
 ---
 
@@ -56,7 +56,7 @@ These are permanent research artifacts — never delete them.
 
 1. **Round 1 — Opening Statements (parallel):** All five analyze independently from their lens. They do NOT see each other's work.
 2. **Round 2 — Rebuttals (parallel):** Each reads the OTHER four positions and writes targeted challenges/agreements/builds.
-3. **Round 3 — Verdict (Jungche):** You synthesize all 10 files into a final opinionated verdict.
+3. **Round 3 — Verdict (Professor):** You synthesize all 10 files into a final opinionated verdict.
 
 ---
 
@@ -174,7 +174,7 @@ Agent(general-purpose, model: sonnet, name: "rebuttal-{member}"):
 
 ---
 
-## Step 3 — Round 3: The Verdict (Jungche synthesizes)
+## Step 3 — Round 3: The Verdict (Professor synthesizes)
 
 Read all 10 files. Write `{$DEBATE_DIR}/verdict.md`:
 
@@ -196,7 +196,7 @@ Read all 10 files. Write `{$DEBATE_DIR}/verdict.md`:
 ## The Blind Spots
 {What each missed that others caught}
 
-## Jungche's Verdict
+## Professor's Verdict
 {YOUR opinionated synthesis — make a call, don't hedge}
 
 ## Action Items
@@ -217,7 +217,7 @@ Write `{$DEBATE_DIR}/result.md`: verdict content (Brief Result) + full debate re
 - **Grounded in reality** — every member MUST read actual code/docs. Not hypothetical.
 - **Characters are MANDATORY** — the personality IS the lens. A {PANEL_SEAT_3} who sounds like a professor is useless.
 - **Rebuttals must be substantive** — each member must challenge at least ONE thing from each colleague.
-- **Jungche's verdict is opinionated** — make a call, don't summarize opinions.
+- **Professor's verdict is opinionated** — make a call, don't summarize opinions.
 - **{SACRED_GROUND} is trump** — overrides business and UX arguments. Period.
 - **Compliance blockers are hard stops** — must be resolved before action. Non-negotiable.
 - **{USER_NOUN} love is tiebreaker** — when perspectives are evenly matched, {PANEL_SEAT_5}'s user lens wins.
@@ -310,7 +310,7 @@ Display wave file path: `Run /wave docs/dev/waves/council/{debateName}.md to exe
 
 ### Refinement Rules (additions)
 
-- **Task convergence** — 3+ members proposing same task = high confidence. 1 member only = Jungche evaluates.
+- **Task convergence** — 3+ members proposing same task = high confidence. 1 member only = Professor evaluates.
 - **Compliance tasks never deferred** — {PANEL_SEAT_4} BLOCKERs become prerequisites, not v2 items.
 - **{PANEL_SEAT_5}'s copy goes verbatim** — {USER_NOUN}-facing UI copy is not rewritten by developers.
 - **Professor's boundaries are law** — "does NOT include X" goes into task description.

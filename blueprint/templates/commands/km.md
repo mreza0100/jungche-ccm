@@ -144,6 +144,29 @@ After writing:
 
 ---
 
+## Step 4.5 — Compliance Review Loop (when applicable)
+
+<!-- INSTALL NOTE: If your project has regulatory constraints on knowledge content (e.g., clinical safety, financial compliance, export control), add a mandatory compliance gate here. The Officer command reviews each file before it's committed. Skip this step if your knowledge corpus has no regulatory implications. -->
+
+If your knowledge files feed into a pipeline that produces regulated output (clinical analysis, financial recommendations, safety assessments), every knowledge file must pass a compliance review before being committed.
+
+### Compliance loop flow
+
+```
+km writes/edits file
+  -> invoke /officer to review (compliance check)
+    -> PASS: proceed to commit
+    -> FAIL: km fixes issues -> re-submit to /officer -> repeat until PASS
+```
+
+**Submit with context:** File path + note on how the file is consumed (RAG/injection) + ask Officer to check for forbidden terminology, content that could lead the LLM to produce non-compliant output, red line violations.
+
+**Fix strategy for FAIL:** Replace forbidden terminology with compliant alternatives. Remove content that crosses regulatory boundaries. Preserve accuracy — if you can't describe accurately within compliance boundaries, flag to user. Re-run Step 4 after fixes.
+
+**Typical:** 1-2 iterations. If 3+, reconsider whether the content belongs in the corpus at all.
+
+---
+
 ## Step 5 — Update the index
 
 If your corpus has an index/manifest file (often required by full-injection consumers), update it after every change.

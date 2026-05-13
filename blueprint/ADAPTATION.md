@@ -10,7 +10,7 @@ This guide tells you *how to think* about adapting the templates. It does NOT te
 
 1. **Tech stack** — for each subproject, pin the test command, lint command, build command, dev server command, dependency install command, and any env-file convention. The pipeline doesn't need to know what your stack IS — only what to RUN.
 
-2. **Domain content inside Tier A archetypes** — Professor's PhD disciplines, JC's sacred-ground target, Jungche's domain. Voice stays; references inside the voice change.
+2. **Domain content inside Tier A archetypes** — Professor's PhD disciplines, JC's sacred-ground target, the Professor's domain. Voice stays; references inside the voice change.
 
 3. **Tier B opt-ins** — which domain archetypes you actually need (Officer? PM? Mentor? Marketer? KM?), and the placeholders inside each (regulation, persona, market, etc.).
 
@@ -33,7 +33,7 @@ If your repo has only one project (no monorepo):
    - `qa.md`
 4. Drop `mono-planner.md` and `mono-architect.md` — there's no cross-project consolidation needed. The orchestrator goes straight from `planner` → `architect` → `developer` → `qa`.
 5. In `/build`, remove the parallel-fan-out steps. Keep the linear pipeline.
-6. The Tier A character commands (`/jc`, `/professor`, `/council`, `/jm`, `/ca`) work unchanged — they don't require a monorepo.
+6. The Tier A character commands (`/jc`, `/council`, `/pcm`, `/audit`) work unchanged — they don't require a monorepo.
 
 ---
 
@@ -54,17 +54,17 @@ If you have more than 6 projects, the pipeline still works, but `/build` invocat
 
 The voice is universal. Only the content references inside the voice change.
 
-### Adapting Jungche (root CLAUDE.md persona)
+### Adapting the Professor (root CLAUDE.md persona)
 
 | What stays | What changes |
 |------------|--------------|
-| Dr. House voice | The `{DOMAIN}` Jungche operates in |
+| Dr. House voice | The `{DOMAIN}` the Professor operates in |
 | Witty/sarcastic/blunt-but-helpful | The `{PROJECT_NAME}` and `{PROJECT_PITCH}` |
 | Emoji-fluency | The `{SACRED_GROUND}` (privacy, safety, correctness, financial integrity) |
 | The "ship first, joke second" priority | Tech-stack vocabulary (so jokes about queries land for your stack) |
-| The "don't joke about data loss" rule | The `{USER_NOUN}` Jungche occasionally references |
+| The "don't joke about data loss" rule | The `{USER_NOUN}` the Professor occasionally references |
 
-Concretely: open the installed `CLAUDE.md`, search for `{PLACEHOLDER}` markers, fill them in. The Jungche persona section keeps its structure; you fill in WHAT Jungche is building (your project) and WHO it's for (your user).
+Concretely: open the installed `CLAUDE.md`, search for `{PLACEHOLDER}` markers, fill them in. The Professor persona section keeps its structure; you fill in WHAT the Professor is building (your project) and WHO it's for (your user).
 
 ### Adapting JC (`/jc` command)
 
@@ -79,7 +79,7 @@ Concretely: open the installed `CLAUDE.md`, search for `{PLACEHOLDER}` markers, 
 
 Concretely: JC's debugging steps are universal (check state, check logs, hit endpoints, check DB, check infra, CI/CD diagnostics, hang playbook). You fill in YOUR commands for each step.
 
-### Adapting Professor (`/professor` command)
+### Adapting the Professor (CLAUDE.md persona)
 
 The biggest variable in Tier A. Professor's whole identity revolves around its 10+ disciplines.
 
@@ -114,9 +114,9 @@ Pick the 10 that span what your project needs to reason about.
 
 The default panel is JC + Professor + 3 Tier B seats. If you opt into all five Tier B archetypes (Officer, PM, Mentor, Marketer, KM), pick the most relevant five for your typical debates. Most projects pick 4–5.
 
-### Adapting JM, CA
+### Adapting PCM, Audit
 
-These are mostly universal. JM's voice and discipline don't change; you just update the artifact tables (your subprojects, your commands). CA's categories don't change; you parameterize the "sacred-ground data" category and add tech-specific scanners.
+These are mostly universal. PCM's voice and discipline don't change; you just update the artifact tables (your subprojects, your commands). Audit's categories don't change; you parameterize the "sacred-ground data" category and add tech-specific scanners.
 
 ---
 
@@ -212,11 +212,11 @@ These are the load-bearing walls. Touch anything else, but leave these alone:
 - **The QA-before-merge gate.** Skipping QA is how broken code reaches main.
 - **Path variables.** Hardcoding `docs/dev/tasks/...` in agents means renaming the convention requires touching every agent.
 - **Worktree isolation.** Running pipelines on `main` or shared branches is how you lose work.
-- **Self-improvement at the source.** Don't replace `/jm` with a "lessons learned" file — the file rots, the agents don't read it, the bugs come back.
+- **Self-improvement at the source.** Don't replace `/pcm` with a "lessons learned" file — the file rots, the agents don't read it, the bugs come back.
 
 These five are non-negotiable. Touch anything else.
 
-**Also non-negotiable: voice.** Don't strip Jungche to "professional," don't sanitize JC to "calm and helpful," don't make Professor "concise." The personalities are the value. Adapt content; preserve voice. If you find yourself stripping voice to "make it generic," stop and parameterize the content instead.
+**Also non-negotiable: voice.** Don't strip the Professor to "professional," don't sanitize JC to "calm and helpful," don't make Professor "concise." The personalities are the value. Adapt content; preserve voice. If you find yourself stripping voice to "make it generic," stop and parameterize the content instead.
 
 ---
 
@@ -224,13 +224,13 @@ These five are non-negotiable. Touch anything else.
 
 After running a few real pipelines, you'll notice rough edges:
 
-- An agent always asks for the same clarification → add it to the agent definition (via `/jm`).
-- A step always gets skipped → either remove it or make it conditional in `/build` (via `/jm`).
-- A bug class keeps coming back → add a non-negotiable rule to the relevant CLAUDE.md (via `/jm`).
-- Pipeline name collisions are common → adjust the naming convention or add automatic versioning (via `/jm`).
-- A character feels off → describe what's missing to `/jm` and let it edit the persona at the source.
+- An agent always asks for the same clarification → add it to the agent definition (via `/pcm`).
+- A step always gets skipped → either remove it or make it conditional in `/build` (via `/pcm`).
+- A bug class keeps coming back → add a non-negotiable rule to the relevant CLAUDE.md (via `/pcm`).
+- Pipeline name collisions are common → adjust the naming convention or add automatic versioning (via `/pcm`).
+- A character feels off → describe what's missing to `/pcm` and let it edit the persona at the source.
 
-For each of these: invoke `/jm`. Describe what you noticed. Let the meta-agent edit the source.
+For each of these: invoke `/pcm`. Describe what you noticed. Let the meta-agent edit the source.
 
 The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
@@ -239,4 +239,4 @@ The pipeline is supposed to evolve. Static configurations rot — evolving ones 
 ## Memory & character
 
 - **Auto-memory** — handled by Claude Code itself. The repo doesn't need to manage it; agents can read it if it exists.
-- **Character** — defined in your root `CLAUDE.md`'s Jungche persona section. Default voice is Dr. House senior engineer. Rename and reshape if you want, but **do not delete the section**. Mechanics + character together is the contract; mechanics alone is a Confluence wiki.
+- **Character** — defined in your root `CLAUDE.md`'s Professor persona section. Default voice is Dr. House senior engineer. Rename and reshape if you want, but **do not delete the section**. Mechanics + character together is the contract; mechanics alone is a Confluence wiki.

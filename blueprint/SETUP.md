@@ -1,4 +1,4 @@
-# SETUP — Installing Jungche
+# SETUP — Installing Professor
 
 Run inside your target project. Claude reads this file, conducts an interview, then customizes every template before copying into your repo. Result: a `.claude/` that reads like it was written for your project, because it was.
 
@@ -18,13 +18,13 @@ Run inside your target project. Claude reads this file, conducts an interview, t
 
 ```bash
 # Clone the blueprint somewhere
-git clone https://github.com/mreza0100/jungche.git ~/work/jungche
+git clone https://github.com/mreza0100/professor.git ~/work/professor
 
 # Inside YOUR project
 cd ~/path/to/your-project
 claude
-> Read every file in ~/work/jungche/blueprint/.
-> Follow SETUP.md to install Jungche in THIS project.
+> Read every file in ~/work/professor/blueprint/.
+> Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
 
@@ -46,9 +46,9 @@ This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Freudche is an AI
 
 ### 2. Character name & voice (MANDATORY — cannot be skipped)
 
-> Default character is **Jungche** — Dr. House senior engineer. Sarcastic, witty, blunt-but-helpful, emoji-fluent. Ships first, jokes second. Pick: keep Jungche, rename (voice stays), or supply a custom voice (3–6 tone keywords + a one-line vibe). You MUST land on one — the persona section is load-bearing infrastructure, not optional flavor.
+> Default character is **Professor** — grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. Cross-disciplinary lens. Takes life easy but not too easy. Pick: keep Professor, rename (voice stays), or supply a custom voice (3–6 tone keywords + a one-line vibe). You MUST land on one — the persona section is load-bearing infrastructure, not optional flavor.
 
-Most adopters keep Jungche as-is. The voice transplants well across domains. If you want a different name (e.g., "Beatrix" for a finance project, "Gandalf" for an open-source library), name it. The voice can stay.
+Most adopters keep Professor as-is. The voice transplants well across domains. If you want a different name (e.g., "Beatrix" for a finance project, "Gandalf" for an open-source library), name it. The voice can stay.
 
 Then tell Claude your **sacred ground** — the topics where the character drops the humor and reports flat (e.g., "patient data", "user funds", "physical safety in autonomous control"). This goes into the persona's "What NOT to do" block. Without sacred ground defined, the character will make jokes in places it shouldn't.
 
@@ -185,7 +185,7 @@ If no: skip — the entire Codex layer is omitted. No pipeline operation require
 > What does "do no harm" mean in your domain? Privacy, safety, correctness, financial integrity, narrative coherence, scientific reproducibility, security?
 
 This becomes `{SACRED_GROUND}` and is referenced by:
-- Jungche (the "don't joke about X" rule)
+- The Professor (the "sacred ground" rule where humor disappears)
 - JC (the trigger that escalates from chill to temple-flipping)
 - Officer (if opted in — the protected category)
 - Council (the trump card in verdicts)
@@ -208,27 +208,27 @@ Claude shows you a summary of all answers + a list of files that will be written
 
 Claude takes your answers and:
 
-1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Jungche persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
+1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
 2. **Writes per-project `CLAUDE.md` files** (if monorepo) — tech stack details, conventions.
-3. **Writes Tier A command files** — `/build`, `/jc`, `/jm`, `/dev`, `/git`, `/wave`, `/documenter`, `/professor`, `/council`, `/ca`. Voice intact, domain content filled.
+3. **Writes Tier A command files** — `/build`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave`, `/documenter`, `/council`, `/audit`. Voice intact, domain content filled.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
-7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/jm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
+7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/pcm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
 7b. **Writes skills** — `rr`, `rnd`, `360` into `.claude/skills/{name}/SKILL.md`. These are universal thinking protocols (Tier A) — no parameterization needed except stakeholder names in 360°'s inquiry domain.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely.
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
-10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/JUNGCHE_VERSION`. This is what `/jm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
-11. **Writes install manifest** — generates `.claude/JUNGCHE_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/jm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
+10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/PROFESSOR_VERSION`. This is what `/pcm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
+11. **Writes install manifest** — generates `.claude/PROFESSOR_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/pcm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
     ```json
     {
       "version": "1.0.0",
       "installed_at": "2026-04-28T14:32:00Z",
       "files": {
         ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
-        ".claude/commands/professor.md": "sha256:2c26b46b68ff...",
+        ".claude/commands/pcm.md": "sha256:2c26b46b68ff...",
         "CLAUDE.md": "sha256:fa7b1ba7e0f3..."
       }
     }
@@ -245,7 +245,7 @@ After install, Claude runs a tiny `/build` to verify the pipeline works end-to-e
 /build add-readme-section
 ```
 
-Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/jm` to fix it at the source.
+Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pcm` to fix it at the source.
 
 ---
 
@@ -255,12 +255,12 @@ You can opt in any Tier B archetype after install:
 
 ```
 claude
-> Add /officer to my Jungche install. We're now subject to {REGULATION}.
+> Add /officer to my Professor install. We're now subject to {REGULATION}.
 ```
 
 Claude reads the blueprint's Tier B template for that archetype, runs the relevant subset of the interview, and copies + customizes the file. No reinstall needed.
 
-Same for adding a new Tier A archetype if you build one — `/jm` copies the template, you parameterize the content, done.
+Same for adding a new Tier A archetype if you build one — `/pcm` copies the template, you parameterize the content, done.
 
 ---
 
@@ -269,9 +269,9 @@ Same for adding a new Tier A archetype if you build one — `/jm` copies the tem
 1. **Worktree script can't find your tools.** Make sure your shell environment is loaded inside the script — `source ~/.zshrc`, use absolute paths, or pin tool versions in a script-local `PATH`.
 2. **Port allocation false positives.** `lsof -i :PORT` checks aren't always reliable across IPv4/IPv6 — adjust the script if you see false positives on your OS.
 3. **Gitter tries to merge with conflicts unresolved.** That's a gap in your gitter setup; the template handles it, but if you simplified, restore the conflict-detection block.
-4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/jm` fix at the source agent.
+4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/pcm` fix at the source agent.
 5. **`.worktrees/.ports` corrupted.** Manually edit; the format is one whitespace-separated line per pipeline.
-6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Re-read `ADAPTATION.md` § "What NOT to change" — voice is non-negotiable. Invoke `/jm` and tell it which command lost its voice.
+6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Re-read `ADAPTATION.md` § "What NOT to change" — voice is non-negotiable. Invoke `/pcm` and tell it which command lost its voice.
 
 ---
 
@@ -279,28 +279,28 @@ Same for adding a new Tier A archetype if you build one — `/jm` copies the tem
 
 - Read `ARCHETYPES.md` so you know the cast you just installed.
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
-- Run `/build` for new features. Run `/jc` for hotfixes. Run `/jm` to evolve the pipeline. Run `/council` for hard decisions. Run `/professor` for cross-disciplinary analysis.
+- Run `/build` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run `/council` for hard decisions. Run the Professor analysis for cross-disciplinary analysis.
 - The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
 Welcome to the cast.
 
 ---
 
-## Staying current — `/jm update`
+## Staying current — `/pcm update`
 
-When new versions of Jungche are released, your install can pull updates without losing customizations:
+When new versions of Professor are released, your install can pull updates without losing customizations:
 
 ```
-/jm update            # Walk through changes interactively
-/jm update check      # Read-only — preview what would change
-/jm update --to v1.2.0  # Pin to a specific version
+/pcm update            # Walk through changes interactively
+/pcm update check      # Read-only — preview what would change
+/pcm update --to v1.2.0  # Pin to a specific version
 ```
 
 How it works:
-1. Reads `.claude/JUNGCHE_VERSION` (your current install)
-2. Fetches the latest blueprint from `mreza0100/jungche`
+1. Reads `.claude/PROFESSOR_VERSION` (your current install)
+2. Fetches the latest blueprint from `mreza0100/professor`
 3. Reads `CHANGELOG.md` entries between your version and the latest
 4. Walks you through each change — auto-applying mechanics, asking before character changes, opt-in for new Tier B archetypes, interactive walkthrough for breaking migrations
-5. Updates `.claude/JUNGCHE_VERSION` to the new version
+5. Updates `.claude/PROFESSOR_VERSION` to the new version
 
 See `RELEASE.md` in the blueprint repo for how releases are produced and what each change category means.

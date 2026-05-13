@@ -24,7 +24,7 @@ $ARGUMENTS
 
 **Wave naming:** Choose a short descriptive kebab-case name (2-4 words) capturing the theme. Defines `$WAVES/{wave-name}/`.
 
-**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/`, `$WAVES/`, `docs/dev/tasks/archive/`, `docs/dev/tasks/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
+**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/`, `$WAVES/`, `docs/dev/builds/archive/`, `docs/dev/builds/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
 
 ---
 
@@ -94,9 +94,10 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 **Setup steps:**
 1. Organize groups into waves (wave boundaries enforce dependency ordering only)
-2. Pre-place manifests: `mkdir -p docs/dev/tasks/{pipeline-name}` then Write `docs/dev/tasks/{pipeline-name}/0-task.md` with the pipeline-specific task subset
-3. Write refined task spec to `$WAVES/{wave-name}/wave.md`
-4. Create `$WAVES/{wave-name}/report.md` with initial plan:
+2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` with the pipeline-specific task subset
+3. Copy the original Professor-refined task file to `$WAVES/{wave-name}/manifest.md` — this preserves the full task spec (all detailed descriptions, compliance flags, architectural intent) as a permanent record of what was requested
+4. Write grouping/execution plan to `$WAVES/{wave-name}/wave.md`
+5. Create `$WAVES/{wave-name}/report.md` with initial plan:
 
 ```markdown
 # Wave Report: {wave-name}
@@ -114,9 +115,42 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 ---
 
+## Step 0e — Present execution plan
+
+**Before launching any pipeline, display the full execution plan as a table.** This gives the user a clear picture of what is about to happen.
+
+Output format:
+
+```
+## Execution Plan
+
+| # | Wave | Pipeline | Tasks | Routing | Description |
+|---|------|----------|-------|---------|-------------|
+| 1 | 1    | {name}   | N     | FE-ONLY | {one-liner} |
+| 2 | 1    | {name}   | N     | CROSS   | {one-liner} |
+| 3 | 2    | {name}   | N     | BE-ONLY | {one-liner} |
+
+**Sequence:** Wave 1 pipelines run sequentially, then Wave 2 begins.
+**Estimated pipelines:** {total} | **JC pre-handled:** {j} | **KM pre-handled:** {k}
+```
+
+After displaying, proceed immediately to execution — this is informational, not a gate.
+
+---
+
 ## Step 1 — Execute waves
 
 For each wave, sequentially launch pipelines via `Skill("build", "...")`. NEVER delegate Skill calls to sub-agents.
+
+**Proactive status emission (MANDATORY):** Before launching each pipeline, emit a one-liner to the user:
+```
+"Pipeline {current}/{total}: `{pipeline-name}` — starting ({routing}, {task-count} tasks)"
+```
+After each pipeline completes, emit:
+```
+"Pipeline {current}/{total}: `{pipeline-name}` — {DONE | FAILED | BLOCKED-DEFERRED}"
+```
+The user should never have to ask "how much is left?" — the wave runner tells them proactively.
 
 Log each result in report:
 - Success: `- [x] \`{pipeline}\` — **DONE** ✓`
@@ -139,32 +173,58 @@ Update report with:
 
 ---
 
-## Step 3 — Archive (NON-OPTIONAL — execute BEFORE Professor review)
-
-**Blocking requirement. If context is low, archive FIRST, skip Professor review — never the reverse.**
-
-```bash
-mkdir -p $WAVES/archive
-rm -rf $WAVES/archive/{wave-name}  # remove partial from previous failed attempt
-mv $WAVES/{wave-name} $WAVES/archive/{wave-name}
-```
-
-Remove original task file only if NOT `wave.md` at repo root. Verify:
-```bash
-test ! -d $WAVES/{wave-name} && test -d $WAVES/archive/{wave-name} && echo "ARCHIVE_OK" || echo "ARCHIVE_FAILED"
-```
-
-Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Archived to $WAVES/archive/{wave-name}/."`
-
----
-
-## Step 4 — Professor Review (best-effort — skip if context critically low)
+## Step 3 — Professor Review (NON-OPTIONAL)
 
 ```
-Skill("professor", "wave-review $WAVES/archive/{wave-name}/report.md")
+Skill("professor", "wave-review $WAVES/{wave-name}/report.md")
 ```
 
 Append review to report under `## Professor's Wave Review`. Present to user.
+
+**This step is mandatory.** The Professor reads the report, runs a 360 blind-spot sweep, and writes its operational review directly into the report file. No wave is complete without the Professor's verdict. The review becomes part of the archived artifact.
+
+---
+
+## Step 4 — Archive (NON-OPTIONAL — execute AFTER Professor review)
+
+### 4a. Verify and archive straggler builds
+
+Each `/build` pipeline archives itself via the documenter (Step 11 of build.md). The wave's job is to **verify** all its pipelines made it to archive, and catch any stragglers.
+
+### 4b. Archive the wave itself
+
+**Numbered rolling archive (max 10).** Each archived wave gets a 3-digit counter prefix. When the archive exceeds 10 items, the oldest is evicted to `tmp/archive/waves/` (gitignored cold storage).
+
+```bash
+mkdir -p $WAVES/archive tmp/archive/waves
+
+# Read and increment counter
+COUNTER=$(cat $WAVES/archive/.counter 2>/dev/null || echo "0")
+NEXT=$((COUNTER + 1))
+PADDED=$(printf "%03d" $NEXT)
+
+# Archive with numbered prefix
+rm -rf $WAVES/archive/${PADDED}-{wave-name}  # remove partial from previous failed attempt
+mv $WAVES/{wave-name} $WAVES/archive/${PADDED}-{wave-name}
+echo "$NEXT" > $WAVES/archive/.counter
+
+# Evict oldest if more than 10
+ARCHIVE_COUNT=$(find $WAVES/archive -maxdepth 1 -type d | wc -l)
+ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
+if [ "$ARCHIVE_COUNT" -gt 10 ]; then
+  OLDEST=$(ls -d $WAVES/archive/[0-9]*/ | head -1)
+  mv "$OLDEST" tmp/archive/waves/
+fi
+```
+
+### 4c. Cleanup and verify
+
+Remove original task file only if NOT `wave.md` at repo root. Verify:
+```bash
+test ! -d $WAVES/{wave-name} && test -d $WAVES/archive/${PADDED}-{wave-name} && echo "WAVE_ARCHIVE_OK" || echo "WAVE_ARCHIVE_FAILED"
+```
+
+Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Builds + wave archived together."`
 
 ---
 
@@ -178,5 +238,5 @@ Append review to report under `## Professor's Wave Review`. Present to user.
 - **If a pipeline fails**, log it, continue with remaining pipelines.
 - **BLOCKED-DEFERRED** → wave continues; downstream assessed per dependency rules. Worktrees preserved intentionally.
 - **Re-group freely** — ignore user's section headings, group by routing/similarity.
-- **Archive is NON-NEGOTIABLE** — runs before Professor review. Unarchived wave in `$WAVES/` with Final Summary = bug.
+- **Professor review then archive** — Professor writes its review into the report FIRST, then the complete artifact (with review) gets archived. Unarchived wave in `$WAVES/` with Final Summary = bug.
 - **Clean up** — verify no orphaned worktrees/branches at monorepo root after completion. Exception: BLOCKED-DEFERRED worktrees with matching `BLOCKED.md`.

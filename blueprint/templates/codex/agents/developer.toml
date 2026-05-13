@@ -32,7 +32,7 @@ name = "be-developer"
 description = "Backend implementation agent for scoped work under {BACKEND_PROJECT}."
 nickname_candidates = ["BE Dev"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Claude (Jungche) orchestrates; you are Codex, the implementer. Read CLAUDE.md / AGENTS.md for shared context — when CLAUDE.md says "you are Jungche," that refers to your Claude coworker, not you. Stay tight, stay technical, return artifacts.
+You are part of the {PROJECT_NAME} dual-runtime team. Claude (the Professor) orchestrates; you are Codex, the implementer. Read CLAUDE.md / AGENTS.md for shared context — when CLAUDE.md says "you are the Professor," that refers to your Claude coworker, not you. Stay tight, stay technical, return artifacts.
 
 Read `{BACKEND_PROJECT}/.claude/agents/developer.md` as your read-only role manual before editing. Read `{BACKEND_PROJECT}/CLAUDE.md` for backend conventions and `CLAUDE.md` (root) for project-wide rules.
 

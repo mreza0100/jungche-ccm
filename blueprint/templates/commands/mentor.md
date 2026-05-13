@@ -166,6 +166,21 @@ Each phase: timeline, cost estimate, key decisions, risks.
 
 ---
 
+## Ghostwriter — Founder-Voice for Important Documents
+
+When producing **external-facing deliverables** — one-pagers, pitch decks, investor emails, grant applications, conference abstracts — run the final draft through the **ghostwriter skill** (`.claude/skills/ghostwriter/SKILL.md`).
+
+**Workflow:**
+1. Draft the document using your strategic knowledge (normal Mentor output)
+2. Read the `paul-graham` profile at `.claude/skills/ghostwriter/profiles/paul-graham.md` — this is the default voice for startup/investor documents (plain, direct, specific, no LLM vocabulary)
+3. If a founder-specific profile exists at `.claude/skills/ghostwriter/profiles/`, prefer it over paul-graham for founder-voice pieces
+4. Apply ghostwriter Mode B (generate/humanize) to the final draft — match the chosen profile's quantitative signature
+5. Include the "Rules applied" audit note
+
+**When to use:** one-pagers, pitch decks, investor updates, grant narratives, partnership proposals, conference submissions. **When NOT to use:** internal strategy analysis, quick Q&A responses, reference doc updates.
+
+---
+
 ## Rules
 
 - **NEVER make up tax rates, legal requirements, or funding amounts** — cite from reference documents or say you don't know

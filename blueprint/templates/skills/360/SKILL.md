@@ -1,5 +1,7 @@
 ---
 name: 360
+version: "1.1.0"
+repo: "https://github.com/mreza0100/360"
 description: "360° exhaustive multi-angle analysis. Systematically generates ALL angles on a subject — questions, risks, edge cases, blind spots — organized by dimension. Two domains: 'test' (for QA) and 'inquiry' (for Professor). Triggered by '360 <subject>', 'three-sixty', or referenced by agents at key analysis moments. The consumer decides what to act on — 360° just ensures nothing gets skipped."
 ---
 
@@ -21,6 +23,8 @@ This is a **thinking protocol**, not a task runner. It produces an exhaustive li
 **Embedded invocation** (agents reference the protocol at key moments):
 - QA agents run the **test** domain before writing adversarial tests
 - Professor runs the **inquiry** domain before deep-diving into code
+- PM runs the **inquiry** domain before feature reviews and refinements
+- Audit runs the **test** domain before category scans (+ **inquiry** for targeted investigations)
 
 Do NOT load for:
 - One-shot implementation ("fix X") — that's `/jc` or `/build`
@@ -139,10 +143,21 @@ The standalone output stays in the conversation — no file is written unless th
 
 ## Embedded invocation (agent integration)
 
-When an agent references the 360° protocol, the agent runs the protocol **internally as a thinking step** — it doesn't spawn a sub-agent or write a separate file. The agent:
+**360° MUST always run in a separate agent with a clean context.** An agent that already has opinions about the subject will unconsciously skip angles that don't fit its mental model — defeating the entire purpose of blind-spot detection. The calling agent spawns a fresh agent that receives ONLY the subject and domain, with zero prior analysis context.
 
-1. Mentally walks each dimension for the subject at hand
-2. Uses the resulting angle list to guide its actual work (test writing, question generation, etc.)
-3. The 360° output is implicit in the agent's work product — it doesn't appear as a separate artifact
+The calling agent MUST:
 
-This is a thinking tool, not a reporting tool. The value is in the systematic coverage, not in a formatted list.
+1. **Spawn a separate Agent** with `subagent_type: "general-purpose"` and a self-contained prompt
+2. **Include in the prompt:** the subject description, the domain (`test` or `inquiry`), and an instruction to read `.claude/skills/360/SKILL.md` and execute the protocol
+3. **Exclude from the prompt:** any analysis, opinions, findings, or context the calling agent has already developed — the 360° agent must approach the subject cold
+4. **Receive the angle list** back from the spawned agent and use it to guide subsequent work
+
+Prompt template for spawning:
+```
+Read `.claude/skills/360/SKILL.md` and execute the 360° protocol.
+Subject: {one-sentence description of what's being analyzed}
+Domain: {test | inquiry}
+Output the full 360° angle list grouped by dimension.
+```
+
+The returned angle list feeds into the calling agent's work — it doesn't become a separate artifact unless the caller decides otherwise.

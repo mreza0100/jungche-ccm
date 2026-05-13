@@ -1,9 +1,9 @@
-# INSTALL — Interactive setup for Jungche
+# INSTALL — Interactive setup for Professor
 
-> This document is **instructions for Claude Code**, not for you to execute manually. To install Jungche on your project, open Claude Code in that project and paste:
+> This document is **instructions for Claude Code**, not for you to execute manually. To install Professor on your project, open Claude Code in that project and paste:
 >
 > ```
-> Read https://raw.githubusercontent.com/mreza0100/jungche/main/INSTALL.md (or your local clone) and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
+> Read https://raw.githubusercontent.com/mreza0100/professor/main/INSTALL.md (or your local clone) and walk me through the interactive install. Ask me each section's questions one at a time and wait for my answers before proceeding. Do not assume — confirm everything.
 > ```
 
 If you (Claude) are reading this: **you are the installer**. The user's input is the source of truth — never invent stack details, names, or domain assumptions. Ask the questions in this file, batch them in groups, wait for replies, then customize.
@@ -32,7 +32,7 @@ This installer's job: **ask, don't assume**.
      ! -name "README.md" ! -name "LICENSE*" ! -name "CHANGELOG*" ! -name "CONTRIBUTING*" \
      ! -path "./node_modules/*" ! -path "./.git/*" ! -path "./.claude/*"
    ```
-   These are existing material that needs re-homing into the Jungche taxonomy. **Do NOT classify yet** — classification depends on which Tier B archetypes the user opts into (Batch 6). Just list them in the findings paragraph.
+   These are existing material that needs re-homing into the Professor taxonomy. **Do NOT classify yet** — classification depends on which Tier B archetypes the user opts into (Batch 6). Just list them in the findings paragraph.
 
 Report findings in one short paragraph BEFORE asking questions, e.g.:
 > "I see this is a Node + Python monorepo with `api/` (pnpm) and `worker/` (uv). No existing `.claude/` setup. Working tree is clean. I also see 17 root-level markdown files (THESIS, MENTOR_BRIEFING, COMPETITOR_LANDSCAPE, REGULATORY_LANDSCAPE, etc.) — those will need re-homing once we settle which Tier B archetypes you want. Ready to ask questions."
@@ -97,16 +97,16 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 9. Any ports I should AVOID? (other tools, system services, conflicts you've hit)
 ```
 
-### Batch 5 — Domain & disciplines (this drives /professor customization)
+### Batch 5 — Domain & disciplines (this drives the Professor persona in CLAUDE.md)
 
 ```
 10. What's the project's domain in one phrase?
     (e.g., "B2B SaaS for legal firms", "consumer mobile game", "internal data platform",
      "developer tooling", "fintech payments", "clinical AI assistant")
 
-11. /professor is your cross-disciplinary system analyst. The default version pairs Computer
+11. The Professor persona is your cross-disciplinary system analyst. The default version pairs Computer
     Science with one or more domain disciplines. For YOUR project, which disciplines should
-    /professor draw on? Pick 1–3 from this menu, or name your own:
+    the Professor draw on? Pick 1–3 from this menu, or name your own:
 
     - Psychology (clinical, behavioral, UX)
     - Medicine (clinical safety, diagnosis, regulatory)
@@ -122,20 +122,20 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     - Music / audio
     - Other: ___
 
-12. What are the FAILURE modes /professor should specifically watch for?
+12. What are the FAILURE modes the Professor should specifically watch for?
     (e.g., "data leakage between tenants", "race conditions during checkout",
      "hallucinated medical advice", "regression in player engagement")
-    These become the dimensions /professor scores against.
+    These become the dimensions the Professor scores against.
 
-13. Read-only or also-suggests-changes? Default is read-only — /professor produces analysis,
+13. Read-only or also-suggests-changes? Default is read-only — the Professor produces analysis,
     not code. Override if you want.
 ```
 
 ### Batch 6 — Optional commands
 
 ```
-14. Beyond the core Tier A + C (/build, /jc, /jm, /dev, /git, /wave, /documenter,
-    /professor, /council, /ca), which Tier B archetypes do you want? Pick from the menu,
+14. Beyond the core Tier A + C (/build, /jc, /pcm, /dev, /git, /wave, /documenter,
+    /council, /audit), which Tier B archetypes do you want? Pick from the menu,
     request your own, or skip:
 
     - /officer — privacy/compliance auditor (GDPR, HIPAA, SOC2, FDA, ISO 27001, MiFID, etc.)
@@ -157,11 +157,11 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 ### Batch 7 — Character (MANDATORY — choose name + sacred-ground)
 
 ```
-15. Your orchestrator persona — Jungche by default (sarcastic, witty, blunt-but-helpful Dr.
-    House senior engineer; emoji-fluent; ships first, jokes second). The voice is universal
-    and load-bearing — it ships with every Jungche install. You CANNOT skip it. You can:
+15. Your orchestrator persona — Professor by default (grandfatherly, warm, precise, cross-disciplinary
+    polymath; emoji-warm; takes life easy but not too easy). The voice is universal
+    and load-bearing — it ships with every Professor install. You CANNOT skip it. You can:
 
-    - "keep Jungche" → keep the name + voice as-is, I'll just adapt the
+    - "keep Professor" → keep the name + voice as-is, I'll just adapt the
       "what NOT to joke about" bullet to your domain
     - "rename" → keep the voice, change the name (e.g., "Beatrix" for fintech,
       "Gandalf" for an OSS library) — give me the new name
@@ -174,7 +174,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     in autonomous control"). This goes into the "What NOT to do" block.
 ```
 
-> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc`, `/professor`, and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific *content* like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
+> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific *content* like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
 
 ### Batch 8 — Confirmation before write
 
@@ -182,8 +182,8 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 Before I touch any file, I'll show you:
 - The directory layout I'll create
 - The list of files I'll write (count + paths)
-- The customized /professor frontmatter
-- The customized /ca scope table
+- The customized Professor character frontmatter
+- The customized /audit scope table
 - **Proposed re-home moves for existing project docs** (one row per file: source → destination, with the classification reason)
 - **Files I cannot classify** (will ask you per-file or default to docs/dev/research/)
 - Any questions where I'm still uncertain
@@ -214,7 +214,7 @@ mkdir -p docs/commands/mentor/{references,research,resources}
 
 ### Step 1.5 — Re-home existing project docs
 
-For every file surfaced in Pre-flight Step 7, classify and move into the Jungche taxonomy. **Do NOT skip this — leaving research docs at the root means they get ignored by every command and the project loses context.**
+For every file surfaced in Pre-flight Step 7, classify and move into the Professor taxonomy. **Do NOT skip this — leaving research docs at the root means they get ignored by every command and the project loses context.**
 
 #### Classification rubric
 
@@ -268,7 +268,7 @@ After moves are staged, do NOT commit — that's the user's call (per Hard Rule 
 
 #### What about subdirectories under `docs/` that already exist?
 
-If the user already has `docs/research/` or `docs/strategy/` (different from Jungche's `docs/dev/research/` and `docs/business/`), classify each file inside and propose re-homing into the Jungche structure. Don't preserve the user's old taxonomy if it conflicts with Jungche's — Jungche has one canonical layout per command's $CDOCS. But ASK before moving if uncertain.
+If the user already has `docs/research/` or `docs/strategy/` (different from Professor's `docs/dev/research/` and `docs/business/`), classify each file inside and propose re-homing into the Professor structure. Don't preserve the user's old taxonomy if it conflicts with Professor's — Professor has one canonical layout per command's $CDOCS. But ASK before moving if uncertain.
 
 ### Step 2 — CLAUDE.md (root)
 
@@ -277,8 +277,8 @@ Copy `blueprint/templates/CLAUDE.md` and substitute every `{PLACEHOLDER}` from B
 If the user picked monorepo: include the per-project tables. If single project: drop them.
 
 **The "## Your character" persona section is MANDATORY — you must write it.** From Batch 7:
-- If the user said "keep Jungche": keep the section verbatim, only adapting `{SACRED_GROUND}` (Batch 7 Q16), `{WHAT_THE_PROJECT_BUILDS}`, and `{YOUR_LANGUAGE}` placeholders to their domain. The "What NOT to do" first bullet must reference their sacred ground.
-- If the user said "rename": same as above, plus replace every "Jungche" with the new name. Keep the voice description verbatim.
+- If the user said "keep Professor": keep the section verbatim, only adapting `{SACRED_GROUND}` (Batch 7 Q16), `{WHAT_THE_PROJECT_BUILDS}`, and `{YOUR_LANGUAGE}` placeholders to their domain. The "What NOT to do" first bullet must reference their sacred ground.
+- If the user said "rename": same as above, plus replace every "Professor" with the new name. Keep the voice description verbatim.
 - If the user said "custom voice": keep the section's *shape* (heading, "MANDATORY" framing, "Core personality traits" bulleted list, "What NOT to do" block) but reshape the bullets using their tone keywords + vibe line. NEVER ship a CLAUDE.md without the persona section.
 
 After writing, verify: the file MUST contain a `## Your character — {NAME} (MANDATORY` heading. If it doesn't, you skipped a step — go back and write it.
@@ -302,16 +302,16 @@ If monorepo: also copy `planner.md`, `architect.md`, `developer.md`, `qa.md` int
 
 If single project: only the root `.claude/agents/` set is needed. Skip `mono-planner.md` and `mono-architect.md` — they're only useful when there are cross-project contracts to consolidate. The orchestrator goes straight `planner → architect → developer → qa`.
 
-### Step 5 — Customize /professor
+### Step 5 — Customize the Professor persona in CLAUDE.md
 
-Write `.claude/commands/professor.md` based on Batch 5 answers. Use the **Professor template** below — replace placeholders with the user's answers.
+Write the Professor persona section in root `CLAUDE.md` based on Batch 5 answers. The Professor's disciplines, failure modes, and analysis scope are embedded in the Character section and the Cross-Disciplinary System Analysis section of CLAUDE.md — not a separate command file.
 
 ### Step 6 — Copy core commands
 
 Copy from `blueprint/templates/commands/`:
 - `build.md` — substitute project list
 - `jc.md` — substitute project list
-- `jm.md` — substitute project list
+- `pcm.md` — substitute project list
 - `dev.md` — substitute per-project start/stop blocks
 
 Add the `git` command (gitter gateway — see template).
@@ -338,7 +338,7 @@ Copy `blueprint/templates/scripts/` to `.claude/scripts/`.
 
 ### Step 8.5 — The Cast bible (ARCHETYPES.md)
 
-Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/jm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
+Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/pcm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
 
 ### Step 8.6 — Skills (thinking protocols)
 
@@ -385,13 +385,13 @@ If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md
 
 ### Step 9 — Record version + install manifest
 
-This is what `/jm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
+This is what `/pcm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
 
 1. Fetch the current blueprint version:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/mreza0100/jungche/main/VERSION > .claude/JUNGCHE_VERSION
+   curl -fsSL https://raw.githubusercontent.com/mreza0100/professor/main/VERSION > .claude/PROFESSOR_VERSION
    ```
-2. Write `.claude/JUNGCHE_MANIFEST.json` — SHA-256 of every file you wrote in Steps 2–8, AFTER placeholder substitution but BEFORE the user has touched anything. Format:
+2. Write `.claude/PROFESSOR_MANIFEST.json` — SHA-256 of every file you wrote in Steps 2–8, AFTER placeholder substitution but BEFORE the user has touched anything. Format:
    ```json
    {
      "version": "<contents of VERSION>",
@@ -406,7 +406,7 @@ This is what `/jm update` reads later to detect customizations and pull new rele
    ```
 3. Hashes are computed via `sha256sum {file} | awk '{print "sha256:" $1}'` per file. Include only files you wrote — not pre-existing project files.
 
-This is the baseline `/jm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
+This is the baseline `/pcm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
 
 ### Step 10 — Smoke test
 
@@ -424,13 +424,13 @@ If those work cleanly, try a tiny first build:
 /build add-readme-section
 ```
 
-The first run reveals anything I missed. When it does, tell me and I'll fix the source via /jm-style edits.
+The first run reveals anything I missed. When it does, tell me and I'll fix the source via /pcm-style edits.
 
 ---
 
-## /professor template — fill from Batch 5
+## Professor analysis section — fill from Batch 5
 
-Place at `.claude/commands/professor.md`.
+Embed in the root `CLAUDE.md` under the "Cross-Disciplinary System Analysis" section.
 
 ```markdown
 # Professor — {DOMAIN_PHRASE} System Analysis
@@ -496,7 +496,7 @@ Parse `$ARGUMENTS`:
 ## Hard rules
 
 - Read-only. Never edit code, never run git commands, never write outside `$CDOCS/professor/`.
-- One discipline + CS minimum. Pure CS is what `/ca` does — don't duplicate it.
+- One discipline + CS minimum. Pure CS is what `/audit` does — don't duplicate it.
 - Be honest about uncertainty. If the analysis depends on assumptions about runtime behavior, say so.
 - Cite file:line for every finding. No vague "the auth layer might have issues."
 ```
@@ -508,11 +508,11 @@ Parse `$ARGUMENTS`:
 End the install with a checklist back to the user:
 
 ```
-Jungche installed — your project's nervous system is live. 🧠
+Professor installed — your project's nervous system is live. 🧠
 
 Files written: {N}
 Customized for: {project name}
-/professor disciplines: {list}
+Professor disciplines: {list}
 Optional commands installed: {list or "none"}
 Codex integration: {yes — .codex/ created | no — skipped}
 
@@ -520,9 +520,9 @@ Suggested next actions:
 - Read CLAUDE.md and confirm the structure looks right
 - Try /dev status to make sure dev.sh works in your environment
 - Try /build add-readme-section as a smoke test
-- When something feels off, run /jm with the issue — I edit the source, not patch with comments
+- When something feels off, run /pcm with the issue — I edit the source, not patch with comments
 
-Public repo: https://github.com/mreza0100/jungche
+Public repo: https://github.com/mreza0100/professor
 File a "doesn't work for stack X" issue if you hit something the installer didn't handle.
 ```
 
@@ -533,7 +533,7 @@ File a "doesn't work for stack X" issue if you hit something the installer didn'
 1. **Never assume.** Every project name, file path, command, and port comes from the user's answers — not your guesses.
 2. **Never overwrite without asking.** If `CLAUDE.md` or `.claude/` already exists, STOP and ask first.
 3. **Never install boutique commands the user didn't pick.** `/officer`, `/km`, etc. are domain-specific and should not be silently inherited from Freudche.
-4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Grok/LangChain mentions, Dutch healthcare specifics. The Jungche *voice* (Dr. House senior engineer) is universal and ships by default; what doesn't transfer is Freudche-specific *content*. Persona = mandatory; persona = "your project's flavor of Jungche", not "Freudche's flavor of Jungche".
+4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Gemini/LangChain mentions, Dutch healthcare specifics. The Professor *voice* (grandfatherly polymath) is universal and ships by default; what doesn't transfer is Freudche-specific *content*. Persona = mandatory; persona = "your project's flavor of Professor", not "Freudche's flavor of Professor".
 5. **Never run `git add` / `git commit`.** The installer only writes files. Committing is the user's call.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite. If you need to back something up, copy it to `tmp/` first.
 7. **Confirm before write.** Batch 8 ("type 'go'") is mandatory — even if the user seems eager, show the plan first.

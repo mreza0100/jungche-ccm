@@ -1,6 +1,6 @@
-# Jungche Statusline
+# Professor Statusline
 
-A two-line Claude Code statusline synthesized from 13+ community projects. Ships as part of the Jungche pipeline — universal, no domain placeholders needed.
+A two-line Claude Code statusline synthesized from 13+ community projects. Ships as part of the Professor pipeline — universal, no domain placeholders needed.
 
 ## What it shows
 

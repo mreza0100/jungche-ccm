@@ -29,11 +29,11 @@ Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline
 
 ### 0a. Stale pipeline cleanup (MANDATORY pre-flight)
 
-Before doing anything, check for abandoned pipeline directories in `docs/dev/tasks/` (excluding `archive/`).
+Before doing anything, check for abandoned pipeline directories in `docs/dev/builds/` (excluding `archive/`).
 A pipeline directory is **stale** if it has NO corresponding active worktree in `.worktrees/`:
 
 ```bash
-for dir in docs/dev/tasks/*/; do
+for dir in docs/dev/builds/*/; do
   name=$(basename "$dir")
   [ "$name" = "archive" ] && continue
   if [ ! -d ".worktrees/$name" ]; then
@@ -44,43 +44,61 @@ done
 
 **For each stale directory found:**
 - If it contains a `BLOCKED.md` → it is intentionally preserved (deferred for `/jc` resolution — see § Fix Loop Escalation). **SKIP cleanup.** Do NOT archive, do NOT delete. Print `PRESERVED: $dir (BLOCKED-DEFERRED, awaiting resume)` and move on.
-- If it contains a `7-post-merge-qa.md` → it completed but wasn't archived. Archive it: `mv docs/dev/tasks/$name docs/dev/tasks/archive/$name`
-- If it has NO completion markers (no `7-*` file, no `BLOCKED.md`) → it was abandoned mid-pipeline. Archive it with an `ABANDONED.md` marker:
+- **If it belongs to an active wave** → **SKIP.** Wave-owned builds are NEVER archived individually — they archive together when the wave archives. Detection: `grep -rl "$name" docs/dev/waves/*/report.md 2>/dev/null`. If any match, print `WAVE-OWNED: $dir (belongs to active wave, skipping)` and move on.
+- If it contains a `7-post-merge-qa.md` → it completed but wasn't archived. Archive it using the numbered rolling system (see below). **Only for standalone builds (no wave owner).**
+- If it has NO completion markers (no `7-*` file, no `BLOCKED.md`) → it was abandoned mid-pipeline. Add an `ABANDONED.md` marker, then archive. **Only for standalone builds (no wave owner).**
 
 ```bash
-echo "Pipeline abandoned — archived during /build pre-flight cleanup on $(date -I)" > docs/dev/tasks/$name/ABANDONED.md
-mv docs/dev/tasks/$name docs/dev/tasks/archive/$name
+echo "Pipeline abandoned — archived during /build pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
 ```
 
-**Empty directories** (zero files) → just remove them: `rmdir docs/dev/tasks/$name`
+**Numbered archive (for standalone builds only — NEVER for wave-owned builds):**
+```bash
+mkdir -p docs/dev/builds/archive tmp/archive/builds
+COUNTER=$(cat docs/dev/builds/archive/.counter 2>/dev/null || echo "0")
+NEXT=$((COUNTER + 1))
+PADDED=$(printf "%03d" $NEXT)
+mv docs/dev/builds/$name docs/dev/builds/archive/${PADDED}-${name}
+echo "$NEXT" > docs/dev/builds/archive/.counter
+# Evict oldest if more than 10
+ARCHIVE_COUNT=$(find docs/dev/builds/archive -maxdepth 1 -type d | wc -l)
+ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
+if [ "$ARCHIVE_COUNT" -gt 10 ]; then
+  OLDEST=$(ls -d docs/dev/builds/archive/[0-9]*/ | head -1)
+  mv "$OLDEST" tmp/archive/builds/
+fi
+```
+
+**Empty directories** (zero files) → just remove them: `rmdir docs/dev/builds/$name`
 
 This prevents stale pipeline dirs from accumulating across sessions.
 
 ### 0b. Name the pipeline
 
-**If `$ARGUMENTS` contains `[Pipeline: {name}]`:** Extract and use that name — the wave runner pre-assigned it, pre-placed the task manifest at `docs/dev/tasks/{name}/0-task.md`, and already ran uniqueness checks. Skip name generation and uniqueness check below; proceed directly to path variable resolution.
+**If `$ARGUMENTS` contains `[Pipeline: {name}]`:** Extract and use that name — the wave runner pre-assigned it, pre-placed the task manifest at `docs/dev/builds/{name}/0-task.md`, and already ran uniqueness checks. Skip name generation and uniqueness check below; proceed directly to path variable resolution.
 
 **Otherwise (standalone invocation):** Choose a short, descriptive kebab-case name based on the feature (e.g., `session-notes`, `audio-streaming`).
 
 **Name uniqueness check (standalone only — skip when `[Pipeline: ...]` is present):** Before proceeding, verify the chosen name does NOT already exist in:
-- `docs/dev/tasks/archive/` — archived pipelines
-- `docs/dev/tasks/` — active pipelines
+- `docs/dev/builds/archive/` — archived pipelines
+- `docs/dev/builds/` — active pipelines
 - `.worktrees/` — active worktrees
 
 ```bash
-ls docs/dev/tasks/archive/ docs/dev/tasks/ .worktrees/ 2>/dev/null | grep -x "{name}"
+ls docs/dev/builds/archive/ | sed 's/^[0-9]*-//' | grep -x "{name}"
+ls docs/dev/builds/ .worktrees/ 2>/dev/null | grep -x "{name}"
 ```
 
-If the name exists, append a version suffix (e.g., `session-notes-v2`, `audio-streaming-v3`) or choose a more specific name. **NEVER reuse an archived pipeline name** — it causes doc conflicts and breaks traceability.
+The first `ls` strips counter prefixes (e.g., `003-radar-surfaces` → `radar-surfaces`) before matching. If the name exists anywhere, append a version suffix (e.g., `session-notes-v2`, `audio-streaming-v3`) or choose a more specific name. Also check `tmp/archive/builds/` for evicted archives. **NEVER reuse an archived pipeline name** — it causes doc conflicts and breaks traceability.
 
 Resolve path variables:
 - **`$PIPELINE`** = `{name}` — the pipeline name (kebab-case, unique across active + archived). Extracted from `[Pipeline: {name}]` in `$ARGUMENTS` when present (wave-invoked), otherwise chosen by build (standalone).
 - **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `docs/dev/waves/archive/{wave}/`.
-- **`$DOCS`** = `docs/dev/tasks/{name}` — pipeline docs from repo root
-- **`$DOCS_REL`** = `../../../docs/dev/tasks/{name}` — pipeline docs from worktree
-- **`$DOCS_POST`** = `../docs/dev/tasks/{name}` — pipeline docs from project subdir (POST-MERGE)
+- **`$DOCS`** = `docs/dev/builds/{name}` — pipeline docs from repo root
+- **`$DOCS_REL`** = `../../../docs/dev/builds/{name}` — pipeline docs from worktree
+- **`$DOCS_POST`** = `../docs/dev/builds/{name}` — pipeline docs from project subdir (POST-MERGE)
 - **`$WORKTREE`** = `.worktrees/{name}` — pipeline worktree directory (full monorepo checkout)
-- **`$ARCHIVE`** = `docs/dev/tasks/archive` — archive parent directory
+- **`$ARCHIVE`** = `docs/dev/builds/archive` — archive parent directory
 - **`$PROJECTS`** = list of affected projects (e.g., `be`, `fe`, `{AI_PROJECT_KEY}`, `infra`) — set by mono-planner routing
 - **Pipeline branch:** `pipeline/{name}` (single branch for all projects)
 - **Backend in worktree:** `$WORKTREE/{project-be}`
@@ -90,12 +108,12 @@ Resolve path variables:
 - **Infrastructure in worktree:** `$WORKTREE/{project-infra}`
 
 ```bash
-mkdir -p docs/dev/tasks/{name}
+mkdir -p docs/dev/builds/{name}
 ```
 
 **Write the task manifest** — idempotent, wave runner pre-places this when invoked from `/wave`:
 ```bash
-[ -f docs/dev/tasks/{name}/0-task.md ] && echo "manifest exists — wave pre-placed it" || echo "manifest missing — standalone build"
+[ -f docs/dev/builds/{name}/0-task.md ] && echo "manifest exists — wave pre-placed it" || echo "manifest missing — standalone build"
 ```
 - **Exists** → read it as-is, do NOT overwrite. Wave wrote the pipeline-specific task spec here.
 - **Missing** (standalone build only) → write it now:
@@ -282,7 +300,7 @@ Agent(general-purpose, model: "sonnet"): "You are the backend developer. Read an
   Worktree: $WORKTREE/{project-be}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-be}/, $DOCS_REL = ../../../docs/dev/tasks/{name}/.
+  Example: from $WORKTREE/{project-be}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-be.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   Backend port: {be_port}.
   NEVER run git commands — gitter handles all commits."
@@ -293,7 +311,7 @@ Agent(general-purpose, model: "sonnet"): "You are the frontend developer. Read a
   Worktree: $WORKTREE/{project-fe}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-fe}/, $DOCS_REL = ../../../docs/dev/tasks/{name}/.
+  Example: from $WORKTREE/{project-fe}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-fe.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   Frontend port: {fe_port}, backend port: {be_port}.
   NEVER run git commands — gitter handles all commits."
@@ -304,7 +322,7 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} {AI_DEV
   Worktree: $WORKTREE/{project-cortex}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-cortex}/, $DOCS_REL = ../../../docs/dev/tasks/{name}/.
+  Example: from $WORKTREE/{project-cortex}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-{AI_PROJECT_KEY}.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   NEVER run git commands — gitter handles all commits."
 
@@ -314,7 +332,7 @@ Agent(general-purpose, model: "sonnet"): "You are the web developer. Read and fo
   Worktree: $WORKTREE/{project-web}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-web}/, $DOCS_REL = ../../../docs/dev/tasks/{name}/.
+  Example: from $WORKTREE/{project-web}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-web.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   NEVER run git commands — gitter handles all commits."
 
@@ -324,7 +342,7 @@ Agent(general-purpose, model: "sonnet"): "You are the infrastructure DevOps engi
   Worktree: $WORKTREE/{project-infra}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-infra}/, $DOCS_REL = ../../../docs/dev/tasks/{name}/.
+  Example: from $WORKTREE/{project-infra}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-infra.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   If you get permission-blocked on worktree file edits, use Bash with append/write commands as fallback.
   NEVER run git commands — gitter handles all commits."
@@ -532,7 +550,7 @@ Run a focused code hygiene + compliance audit on the merged code. This catches d
 Spawn TWO agents **in parallel** (single message):
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the code auditor. Read and follow .claude/commands/ca.md.
+Agent(general-purpose, model: "sonnet"): "You are the code auditor. Read and follow .claude/commands/audit.md.
   This is a PIPELINE audit — scope to the projects affected by pipeline {name}: {comma-separated project scopes based on routing, e.g. 'be', 'fe', '{AI_PROJECT_KEY}'}.
   Focus on security (category 8) and code quality (categories 1-7) for the changed code.
   Skip lint/format checks — QA already validated those.
