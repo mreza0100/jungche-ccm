@@ -249,7 +249,7 @@ Claude takes your answers and:
             "hooks": [
               {
                 "type": "command",
-                "command": "bash .claude/scripts/format-md.sh"
+                "command": "/absolute/path/to/your-project/.claude/scripts/format-md.sh"
               }
             ]
           }

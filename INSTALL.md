@@ -415,7 +415,7 @@ Wire `format-md.sh` into Claude Code's `PostToolUse` event via `.claude/settings
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/scripts/format-md.sh"
+            "command": "/absolute/path/to/your-project/.claude/scripts/format-md.sh"
           }
         ]
       }
