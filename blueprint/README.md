@@ -23,6 +23,7 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 ## When to use it
 
 ✅ **Good fit:**
+
 - Multi-project monorepos where features cross boundaries
 - Single project with complex pipelines (planning → impl → QA → merge worth modeling)
 - Team or solo dev who keeps losing work to half-finished branches and forgotten state
@@ -30,6 +31,7 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 - Projects where you want your agents to have a voice, not just behaviors
 
 ⚠️ **Overkill for:**
+
 - A 200-line script
 - Throwaway prototypes
 - Anything where you genuinely don't care if `main` breaks
@@ -63,14 +65,17 @@ blueprint/
 3. **Run install via Claude:**
 
 ```bash
-git clone https://github.com/mreza0100/professor.git ~/work/professor
+# Clone to any directory you like
+git clone --branch v0.5.0 https://github.com/mreza0100/professor.git /path/to/professor
 
-cd ~/path/to/your-project
+cd /path/to/your-project
 claude
-> Read every file in ~/work/professor/blueprint/.
+> Read every file in /path/to/professor/blueprint/.
 > Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
+
+> Replace `/path/to/professor` with wherever you cloned the repo. Keep it around for future updates, or delete it — `/pcm update` can re-fetch from git tags.
 
 Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/build` smoke-test reveals anything missed.
 

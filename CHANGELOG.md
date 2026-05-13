@@ -12,14 +12,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 Each release section uses categorized headings the update flow understands:
 
-| Heading | Apply how |
-|---------|-----------|
-| `### Added` | Auto-apply mechanics changes; ask before adding Tier B archetypes |
-| `### Changed` | Auto-apply mechanics; show diff + ask for character changes |
-| `### Fixed` | Auto-apply (bug fixes don't touch customization) |
-| `### Removed` | Walk through interactively — never auto-delete |
-| `### Breaking` | **Interactive walkthrough required.** Each change has explicit migration steps. |
-| `### Migration` | Step-by-step transformation instructions for adopters |
+| Heading         | Apply how                                                                       |
+| --------------- | ------------------------------------------------------------------------------- |
+| `### Added`     | Auto-apply mechanics changes; ask before adding Tier B archetypes               |
+| `### Changed`   | Auto-apply mechanics; show diff + ask for character changes                     |
+| `### Fixed`     | Auto-apply (bug fixes don't touch customization)                                |
+| `### Removed`   | Walk through interactively — never auto-delete                                  |
+| `### Breaking`  | **Interactive walkthrough required.** Each change has explicit migration steps. |
+| `### Migration` | Step-by-step transformation instructions for adopters                           |
 
 Bullets MUST follow this shape:
 
@@ -31,14 +31,41 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Mechanics: `commands/pcm.md` § "Update Protocol" — full `/pcm update` implementation with manifest-driven replay, git tag version pinning, three-way hash comparison, three-bucket diff (auto-apply / review / manual). (safe-auto)
+- Mechanics: `.professor/` directory — replaces `.claude/PROFESSOR_*` files. Contains `VERSION`, `manifest.json` (interview replay seed + file hashes), and `decisions.md` (human-readable customization log). (breaking)
+- Scripts: `format-md.sh` — PostToolUse hook that auto-formats Professor-owned `.md` files after Edit/Write. Wired via `.claude/settings.json`. (safe-auto)
+
+### Changed
+
+- Docs: `SETUP.md` — manifest format expanded with `interview` field, `installed_from_tag`, `schema` version. Install pins to git tag. "Staying current" section rewritten. `.professor/` directory replaces `.claude/PROFESSOR_*`.
+- Docs: `INSTALL.md` — Step 9 rewritten for `.professor/` directory with decisions.md. Added Step 8.3 for format-md.sh hook.
+- Docs: `RELEASE.md` — git tag convention, expanded adopter version tracking with manifest + three-way flow.
+- Docs: `BLUEPRINT.md` — added "Staying current" section, `.professor/` in file layout, format-md.sh in scripts.
+- Docs: `README.md` (blueprint + root) — "Staying current" rewritten for manifest-driven updates. Generic clone paths.
+- Docs: All blueprint docs — `~/work/professor` → `/path/to/professor` (no hardcoded local paths).
+
+### Migration
+
+#### For `.professor/` directory (replaces `.claude/PROFESSOR_*`)
+
+Adopters on v0.5.0 have `.claude/PROFESSOR_VERSION` and `.claude/PROFESSOR_MANIFEST.json`. First `/pcm update` migrates these into `.professor/VERSION` and `.professor/manifest.json`, creates `.professor/decisions.md`, and removes the old files. The missing `interview` field triggers a one-time re-interview to populate the manifest.
+
+---
+
 ## [0.5.0] — 2026-05-13
 
 ### Breaking
+
 - Tier A: `commands/professor.md` **deleted** — the Professor is no longer a separate command. Professor IS `CLAUDE.md`. Cross-disciplinary analysis, routing, and verdict format are embedded in the root persona. Migration: move any customizations from `.claude/commands/professor.md` into your root `CLAUDE.md`'s Character section and Cross-Disciplinary System Analysis section.
 - Tier A: `commands/ca.md` renamed to `commands/audit.md` — `/ca` is now `/audit`. Cortex audit mode removed (handled by Professor directly). Migration: rename `.claude/commands/ca.md` → `audit.md`, update CLAUDE.md command table.
 - Tier A: `commands/jm.md` renamed to `commands/pcm.md` — `/jm` is now `/pcm` (Professor Change Manager). Dr. House character enriched. Migration: rename `.claude/commands/jm.md` → `pcm.md`, update CLAUDE.md command table.
 
 ### Added
+
 - Tier A: `CLAUDE.md` template — **Professor identity architecture**. 10+ configurable PhDs with `*Think:*` prompts, Cross-Disciplinary System Analysis section (3 simultaneous lenses), mandatory Verdict format on every response, Context Isolation rule (spawn sub-agents when context accumulates). Professor now routes ALL requests — analytical ones handled directly, others dispatched to commands. (breaking)
 - Tier A: `CLAUDE.md` template — **Epics system**. Initiative-level persistent context via `docs/epics/{name}/manifest.md`. Lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED). Professor creates/loads/updates epics; `/documenter` auto-appends pipeline progress. Cross-conversation context that doesn't fit in memory.
 - Tier A: `skills/ghostwriter/SKILL.md` — new writing style capture skill. Analyzes 20+ voice samples to extract mechanical fingerprints (sentence rhythm, punctuation habits, vocabulary tier, paragraph architecture), then generates text in that voice. (safe-auto)
@@ -46,6 +73,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Tier A: `commands/audit.md` — lean two-mode auditor (code hygiene, security) with mandatory reference file loading.
 
 ### Changed
+
 - Tier A: `CLAUDE.md` template — complete rewrite (267→370 lines). Professor is now the root identity with warm grandfatherly character, 10 configurable PhDs, cross-disciplinary analysis built in, verdict format, context isolation rule. Routing table clearly separates "Professor handles directly" from "route to commands". (breaking)
 - Tier A: `commands/build.md` — `docs/dev/tasks` → `docs/dev/builds`, wave-ownership guard in Step 0a, numbered rolling archive (max 10, 3-digit counter). (safe-auto)
 - Tier A: `commands/jc.md` — global renames, added `gh` CLI access, CI/CD fix mode. (safe-auto)
@@ -68,6 +96,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Docs: `BLUEPRINT.md`, `SETUP.md`, `ARCHETYPES.md`, `RELEASE.md`, `INSTALL.md` — global renames (/jm→/pcm, /ca→/audit, Jungche→Professor), Epics system added. (safe-auto)
 
 ### Removed
+
 - `commands/professor.md` — Professor merged into CLAUDE.md. No separate command.
 - `commands/ca.md` — replaced by `audit.md`.
 - `commands/jm.md` — replaced by `pcm.md`.
@@ -86,18 +115,22 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 ## [0.4.0] — 2026-05-08
 
 ### Added
+
 - Tier A: `skills/360/SKILL.md` — new exhaustive multi-angle analysis skill with two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative work. (safe-auto)
 
-    #### For adopters:
-    Copy `blueprint/templates/skills/360/SKILL.md` to `.claude/skills/360/SKILL.md`. Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with your persona terms.
+  #### For adopters:
+
+  Copy `blueprint/templates/skills/360/SKILL.md` to `.claude/skills/360/SKILL.md`. Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with your persona terms.
 
 ### Changed
+
 - Mechanics: `per-project/qa.md` — added Step 3.5 "360° sweep (test domain)" before adversarial test writing. QA agents now walk 10 failure dimensions before writing tests. (safe-auto)
 - Tier A: `commands/professor.md` — added Step 1.5 "360° sweep (inquiry domain)" before deep dive. Professor now walks 9 question dimensions before code investigation. (safe-auto)
 - Tier A: `skills/rr/SKILL.md` — agents no longer write intermediate files. Scout and fan-out agents return findings in chat only. Orchestrator writes ONE aggregate file at the end. No more `.scout.md` / `.{slug}.md` intermediates to clean up. (safe-auto)
 
-    #### For adopters:
-    Replace `.claude/skills/rr/SKILL.md` with `blueprint/templates/skills/rr/SKILL.md`. The change is behavioral — agents produce the same final file, but no intermediate files are created during the pipeline.
+  #### For adopters:
+
+  Replace `.claude/skills/rr/SKILL.md` with `blueprint/templates/skills/rr/SKILL.md`. The change is behavioral — agents produce the same final file, but no intermediate files are created during the pipeline.
 
 - Mechanics: `commands/jm.md` — added Codex skill symlink rule to impact check, "New skill creation" special operation, and skill parity to verification step. JM now guards against duplicating skill content across runtimes. (safe-auto)
 - Docs: `CLAUDE.md` template — added `360` to the Skills table (safe-auto)
@@ -110,6 +143,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 ## [0.1.2] — 2026-05-07
 
 ### Changed
+
 - Mechanics: marketer.md — 688→381 lines, condensed verbose tables/sections to match token-trimmed density (safe-auto)
 - Mechanics: pm.md — 364→158 lines, collapsed analysis framework and output templates (safe-auto)
 - Mechanics: documenter.md — 473→252 lines, compressed audit mode and rules (safe-auto)
@@ -128,6 +162,7 @@ No adopter-side migration needed. All changes are structural density improvement
 ## [0.1.1] — 2026-05-07
 
 ### Changed
+
 - Mechanics: gitter.md — replaced merge-lock protocol with lightweight conflict-awareness check (safe-auto)
 - Mechanics: gitter.md — reduced from 8 phases to 6 (removed LOCK, UNLOCK) (safe-auto)
 - Mechanics: build.md — removed project-lock paragraph and lock release from Step 12 (safe-auto)
@@ -139,11 +174,13 @@ No adopter-side migration needed. All changes are structural density improvement
 - Tier B: renamed `/ckm` → `/km` across all templates (safe-auto)
 
 ### Added
+
 - Mechanics: skills/rr/SKILL.md — Research & Report dynamic pipeline skill (safe-auto)
 - Mechanics: skills/rnd/SKILL.md — Research & Develop iterative goal-seeker skill (safe-auto)
 - Mechanics: per-project/qa.md — inline-fix escape hatch for trivial bugs (safe-auto)
 
 ### Removed
+
 - Mechanics: Entire merge-lock protocol removed from gitter, build, jc, git, wave (safe-auto)
 - Mechanics: ISO environment detection removed from jc (safe-auto)
 - Mechanics: `gh` CLI references removed from jc (project-specific, not universal) (safe-auto)

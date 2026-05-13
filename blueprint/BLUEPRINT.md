@@ -10,11 +10,11 @@ The discipline + character of the pipeline. Read this before installing it.
 
 Every command, agent, and rule sorts into one of three tiers:
 
-| Tier | Description | What ships | What gets parameterized |
-|------|-------------|------------|-------------------------|
-| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value. | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (Professor's PhDs, Council panel composition, JC's example stack traces) |
-| **B — Domain archetypes** | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview |
-| **C — Pure mechanics** | Infrastructure agents and pipeline plumbing | Mechanics only — no character needed | Tech-specific commands (test runner, package manager, build tool) |
+| Tier                         | Description                                                             | What ships                                                             | What gets parameterized                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value.          | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (Professor's PhDs, Council panel composition, JC's example stack traces) |
+| **B — Domain archetypes**    | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview                        |
+| **C — Pure mechanics**       | Infrastructure agents and pipeline plumbing                             | Mechanics only — no character needed                                   | Tech-specific commands (test runner, package manager, build tool)                                                        |
 
 ### The cast (Tier A — universal)
 
@@ -65,23 +65,24 @@ The pipeline runs QA on the worktree branch BEFORE merging to main. Test failure
 
 Agents receive paths as variables:
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `$PIPELINE` | Pipeline name (kebab-case, unique) | `{some-feature}` |
-| `$DOCS` | Pipeline docs from repo root | `docs/dev/tasks/{some-feature}` |
-| `$DOCS_REL` | Pipeline docs from worktree | `../../../docs/dev/tasks/{some-feature}` |
-| `$WORKTREE` | Worktree directory | `.worktrees/{some-feature}` |
-| `$ARCHIVE` | Archive parent | `docs/dev/tasks/archive` |
-| `$CDOCS` | Command-owned docs root | `docs/commands` |
-| `$REFS` | Reference docs subdir | `references` |
-| `$RESEARCH` | Research docs subdir | `research` |
-| `$RESOURCES` | Static resources subdir | `resources` |
+| Variable     | Purpose                            | Example                                  |
+| ------------ | ---------------------------------- | ---------------------------------------- |
+| `$PIPELINE`  | Pipeline name (kebab-case, unique) | `{some-feature}`                         |
+| `$DOCS`      | Pipeline docs from repo root       | `docs/dev/tasks/{some-feature}`          |
+| `$DOCS_REL`  | Pipeline docs from worktree        | `../../../docs/dev/tasks/{some-feature}` |
+| `$WORKTREE`  | Worktree directory                 | `.worktrees/{some-feature}`              |
+| `$ARCHIVE`   | Archive parent                     | `docs/dev/tasks/archive`                 |
+| `$CDOCS`     | Command-owned docs root            | `docs/commands`                          |
+| `$REFS`      | Reference docs subdir              | `references`                             |
+| `$RESEARCH`  | Research docs subdir               | `research`                               |
+| `$RESOURCES` | Static resources subdir            | `resources`                              |
 
 Agents NEVER hardcode `docs/dev/tasks/...` — they use what `/build` passes them. Path conventions can change without rewriting every agent.
 
 ### 4. Worktree isolation per pipeline
 
 Every `/build` invocation creates:
+
 - A git branch: `pipeline/{name}`
 - A worktree checkout: `.worktrees/{name}/` (full repo)
 - A unique port allocation (whatever ports your stack needs)
@@ -192,12 +193,16 @@ Meta path: `/pcm {request}` → edits the agent definitions at the source.
 your-project/
 ├── CLAUDE.md                          ← root rules + Professor persona (the nervous system's brain)
 ├── AGENTS.md                          ← (OPTIONAL) symlink → CLAUDE.md (Codex reads this)
+├── .professor/
+│   ├── VERSION                        ← installed blueprint version (e.g., 0.5.0)
+│   ├── manifest.json                  ← interview answers + file hashes (machine-readable replay seed)
+│   └── decisions.md                   ← what's different from vanilla Professor (human-readable)
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
 │   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /council, /audit + opt-in Tier B
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
 │   ├── skills/                        ← cloned from public repos (rr, 360, ghostwriter) + bundled (rnd)
-│   └── settings.json                  ← permissions, env vars, hooks (notify.sh + statusline wired here)
+│   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
 │   ├── agents/                        ← command wrappers + role agent wrappers
@@ -236,7 +241,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **A debating council** — `/council` runs five archetypes (Tier A + opted-in Tier B) in parallel on a topic, three rounds, then synthesizes a verdict.
-- **Cross-disciplinary analysis — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
+- \*\*Cross-disciplinary analysis — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
 - **Self-improvement** — `/pcm` is the meta-agent that edits its own pipeline rules at the source.
 - **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
@@ -247,6 +252,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 ## What you adapt vs. what you keep
 
 **Keep verbatim:**
+
 - The `gitter` agent (with project list adjusted at install)
 - The `worktree.sh` and `alloc-ports.sh` scripts (with port ranges adjusted)
 - The pipeline flow in `/build`
@@ -256,6 +262,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - **The character voices** — the Professor's grandfatherly precision, JC's panic energy, Professor's cross-disciplinary structure, Council's debate format, the Tier B archetype identities
 
 **Adapt at install (via the SETUP interview):**
+
 - Project name + project list (your subprojects)
 - Tech stack descriptions in each project's `CLAUDE.md`
 - Test / lint / typecheck / build commands the agents run
@@ -274,6 +281,7 @@ See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md
 Professor's nervous system can optionally span **two AI runtimes**: Claude Code (Anthropic) and Codex (OpenAI). Everything works with Claude alone — Codex adds a cheaper implementation layer.
 
 **How it works:**
+
 - `.claude/` is always the source of truth — command manuals, agent definitions, scripts
 - `.codex/` is a config layer: `.toml` wrappers that point to the same `.claude/commands/*.md` and `.claude/agents/*.md` manuals
 - `AGENTS.md` is a symlink → `CLAUDE.md` (Codex reads `AGENTS.md` by convention)
@@ -281,12 +289,12 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 **Division of labor:**
 
-| Task | Runtime | Why |
-|------|---------|-----|
-| Planning, architecture, research | Claude | Judgment-heavy, low token volume |
-| Heavy implementation | Codex | Cheaper per token |
-| QA / adversarial tests | Claude | Codex shouldn't grade itself |
-| Git operations | Either | Whoever orchestrates owns git for that run |
+| Task                             | Runtime | Why                                        |
+| -------------------------------- | ------- | ------------------------------------------ |
+| Planning, architecture, research | Claude  | Judgment-heavy, low token volume           |
+| Heavy implementation             | Codex   | Cheaper per token                          |
+| QA / adversarial tests           | Claude  | Codex shouldn't grade itself               |
+| Git operations                   | Either  | Whoever orchestrates owns git for that run |
 
 **Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/`, `AGENTS.md`, and all `.toml` wrappers. If no, the entire layer is skipped. No pipeline operation requires Codex.
 
@@ -294,9 +302,52 @@ See `templates/codex/README.md` for the full integration guide.
 
 ---
 
+## Staying current — the update mechanism
+
+The blueprint evolves. Releases ship as **git tags** (`v0.5.0`, `v0.6.0`, etc.) on `mreza0100/professor`. Adopters don't track `main` — they hop between tagged releases via `/pcm update`.
+
+### How it works
+
+At install time, SETUP.md creates a `.professor/` directory at the repo root containing:
+
+1. **`VERSION`** — the release tag you installed from
+2. **`manifest.json`** — all interview answers (replay seed) + SHA-256 hashes of every Professor-owned file
+3. **`decisions.md`** — human-readable record of what makes your install different from vanilla Professor
+
+When you run `/pcm update`, the update protocol:
+
+1. Fetches available git tags from the public repo
+2. Clones the target tag into temp
+3. **Replays your interview answers** against the new templates (same substitution as install)
+4. **Three-way hash comparison** per file: installed baseline vs. current on-disk vs. re-parameterized upstream
+5. Classifies changes into three buckets: **auto-apply** (upstream changed, you didn't touch), **review** (conflict or character change), **manual** (breaking migration, new interview questions)
+6. Applies accepted changes, regenerates the manifest
+7. Appends to `decisions.md` — records version jump, which files you kept over upstream, new opt-ins
+
+The interview manifest is the key innovation — it means updates don't require re-answering the install interview. Your answers are the replay seed. Only genuinely new questions (new template placeholders) trigger a mini re-interview.
+
+### Version semantics
+
+| Bump      | Adopter impact                                         |
+| --------- | ------------------------------------------------------ |
+| **Patch** | Bug fixes — mostly auto-apply                          |
+| **Minor** | New features/commands — mix of auto + interactive      |
+| **Major** | Breaking changes — full walkthrough, no silent applies |
+
+### What it never overwrites silently
+
+- Your persona section in CLAUDE.md (you may have evolved the voice intentionally)
+- Files you've customized post-install (detected via hash mismatch)
+- Command-owned docs under `docs/commands/` (your content, not templates)
+- `.claude/settings.json` (hand-curated per project)
+
+See `SETUP.md` § "Staying current" for user-facing docs. See `templates/commands/pcm.md` § "Update Protocol" for the full implementation.
+
+---
+
 ## The smell test
 
-**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see *their version of the Professor, JC, and Council* — same archetypes, different content?**
+**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see _their version of the Professor, JC, and Council_ — same archetypes, different content?**
 
 If yes, the blueprint is right.
 If anyone has to delete personality before using it, the blueprint failed.

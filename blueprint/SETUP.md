@@ -17,16 +17,18 @@ Run inside your target project. Claude reads this file, conducts an interview, t
 **The fastest path:** let Claude conduct the interview.
 
 ```bash
-# Clone the blueprint somewhere
-git clone https://github.com/mreza0100/professor.git ~/work/professor
+# Clone the blueprint at a specific release tag (put it anywhere you like)
+git clone --branch v0.5.0 https://github.com/mreza0100/professor.git /path/to/professor
 
 # Inside YOUR project
-cd ~/path/to/your-project
+cd /path/to/your-project
 claude
-> Read every file in ~/work/professor/blueprint/.
+> Read every file in /path/to/professor/blueprint/.
 > Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
+
+> **Note:** `/path/to/professor` is wherever you cloned the repo — `~/tools/professor`, `~/repos/professor`, `/tmp/professor`, anywhere. The blueprint reads from there during install; afterwards you can keep it around for future `/pcm update` or delete it (updates can re-fetch via git tags).
 
 Claude runs Phase 1 (interview), then Phase 2 (customization), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
 
@@ -57,11 +59,13 @@ Then tell Claude your **sacred ground** — the topics where the character drops
 > Single project, or monorepo? If monorepo, how many subprojects, and what does each do?
 
 For each subproject, Claude needs:
+
 - Directory name (you choose)
 - One-line description
 - Tech: language, framework, package manager, test runner, build tool, dev server port
 
 Example:
+
 - `api` — Express + GraphQL backend, pnpm, vitest, port 3000
 - `web` — React frontend, npm, jest, port 5173
 - `worker` — Python processing service, uv, pytest, no port (queue consumer)
@@ -71,6 +75,7 @@ Example:
 ### 4. Tech stack details
 
 For each subproject, Claude pins these into the agents and scripts:
+
 - Test command (`pnpm test`, `pytest`, `cargo test`, etc.)
 - Lint command
 - Typecheck command (if applicable)
@@ -86,12 +91,12 @@ These go into `worktree.sh`, `dev.sh`, and the developer + qa agent files.
 
 Examples:
 
-| Project type | 10 disciplines |
-|--------------|----------------|
-| Therapy AI | CS, Clinical Psych, AI/ML, HCI, Statistics, Linguistics, Privacy/Security, UX, Software Architecture, Therapy Methodology |
-| Neuropsych research | Neuroscience, Cognitive Science, Computational Modeling, Statistics, Clinical Methodology, Software Engineering, Information Theory, Linguistics, Philosophy of Mind, Research Methods |
-| Game studio | Game Design, Narrative Theory, Probability, Behavioral Economics, UX, Mathematics, Art Direction, Audio Design, Software Engineering, Player Psychology |
-| FinTech trading | Financial Engineering, Statistics, ML, Distributed Systems, Securities Law, Game Theory, Microeconomics, Software Engineering, Cybersecurity, Behavioral Finance |
+| Project type        | 10 disciplines                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Therapy AI          | CS, Clinical Psych, AI/ML, HCI, Statistics, Linguistics, Privacy/Security, UX, Software Architecture, Therapy Methodology                                                                        |
+| Neuropsych research | Neuroscience, Cognitive Science, Computational Modeling, Statistics, Clinical Methodology, Software Engineering, Information Theory, Linguistics, Philosophy of Mind, Research Methods           |
+| Game studio         | Game Design, Narrative Theory, Probability, Behavioral Economics, UX, Mathematics, Art Direction, Audio Design, Software Engineering, Player Psychology                                          |
+| FinTech trading     | Financial Engineering, Statistics, ML, Distributed Systems, Securities Law, Game Theory, Microeconomics, Software Engineering, Cybersecurity, Behavioral Finance                                 |
 | Open-source library | Software Engineering, Programming Language Theory, Distributed Systems, Cryptography, Type Theory, Compiler Design, Operating Systems, Performance Engineering, API Design, Documentation Theory |
 
 Pick the 10 that span what your project needs to reason about. Claude embeds them into the Professor command file.
@@ -115,6 +120,7 @@ For each Tier B archetype, opt in or skip. For each opt-in, fill in the placehol
 > Do you have regulatory exposure? GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, export controls, supply-chain rules, financial reporting?
 
 If yes, fill in:
+
 - `{REGULATION}` — the framework name(s)
 - `{ENFORCEMENT_AUTHORITY}` — the body that enforces
 - `{DATA_SUBJECT_RIGHTS}` — the rights framework
@@ -127,6 +133,7 @@ If no, skip — most projects don't need this.
 > Do you maintain a curated research corpus? (Therapy approaches, game design patterns, legal precedents, scientific protocols, etc.)
 
 If yes, fill in:
+
 - `{KNOWLEDGE_DOMAIN}` — what's in the corpus
 - `{KNOWLEDGE_TAXONOMY}` — how it's organized
 - `{KNOWLEDGE_CONSUMERS}` — what reads from it
@@ -139,6 +146,7 @@ If no, skip.
 > Do you have an end-user persona that should shape product decisions?
 
 If yes, fill in:
+
 - `{USER_PERSONA}` — primary user (therapist, gamer, surgeon, lawyer, developer, etc.)
 - `{PRODUCT_DOMAIN}` — what the product does
 - `{USER_DAILY_WORKFLOW}` — what a typical day looks like
@@ -152,6 +160,7 @@ If no (e.g., pure infrastructure library), skip.
 > Is this a commercial venture? Do you need NL/US/UK/etc. company formation, funding, GTM, regulatory cost/benefit advice?
 
 If yes, fill in:
+
 - `{MARKET_SEGMENT}` — your market
 - `{JURISDICTION}` — country + regions
 - `{LEGAL_ENTITY_TYPE}` — local entity type (BV, LLC, GmbH, Ltd, etc.)
@@ -165,6 +174,7 @@ If no (open-source, research, hobby), skip.
 > Do you market this product, write content, attend conferences, or run sales/SEO?
 
 If yes, fill in:
+
 - `{CHANNEL_LANDSCAPE}` — channels your audience uses
 - `{TARGET_LANGUAGE}` — primary marketing language (en, nl, de, ja, etc.)
 - `{COMPETITIVE_LANDSCAPE}` — named competitors
@@ -185,6 +195,7 @@ If no: skip — the entire Codex layer is omitted. No pipeline operation require
 > What does "do no harm" mean in your domain? Privacy, safety, correctness, financial integrity, narrative coherence, scientific reproducibility, security?
 
 This becomes `{SACRED_GROUND}` and is referenced by:
+
 - The Professor (the "sacred ground" rule where humor disappears)
 - JC (the trigger that escalates from chill to temple-flipping)
 - Officer (if opted in — the protected category)
@@ -215,34 +226,84 @@ Claude takes your answers and:
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
-7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/pcm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
-7b. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
+   7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/pcm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
+   7b. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
 
-| Skill | Repo | Parameterization |
-|-------|------|-----------------|
-| `rr` | https://github.com/mreza0100/rr | None |
-| `360` | https://github.com/mreza0100/360 | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `ghostwriter` | https://github.com/mreza0100/ghost-writer | None |
-| `rnd` | Bundled in `blueprint/templates/skills/rnd/` | None |
+| Skill         | Repo                                         | Parameterization                                                     |
+| ------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| `rr`          | https://github.com/mreza0100/rr              | None                                                                 |
+| `360`         | https://github.com/mreza0100/360             | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `ghostwriter` | https://github.com/mreza0100/ghost-writer    | None                                                                 |
+| `rnd`         | Bundled in `blueprint/templates/skills/rnd/` | None                                                                 |
+
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
 7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `~/.claude/settings.json` hooks. Sends a macOS notification when a turn takes 30+ seconds. Character name is parameterized from Batch 7.
-8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
-8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely.
-9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
-10. **Records install version** — writes the blueprint's current `VERSION` to `.claude/PROFESSOR_VERSION`. This is what `/pcm update` reads later to determine which CHANGELOG entries apply when pulling future updates.
-11. **Writes install manifest** — generates `.claude/PROFESSOR_MANIFEST.json` mapping every installed blueprint-derived file (CLAUDE.md, agents, commands, scripts) to its SHA-256 hash AS COPIED — i.e., after placeholders were filled but before the user has touched anything. This is the baseline `/pcm update` uses to detect which files the user has since customized vs. which are still pristine. Format:
+7e. **Configures markdown auto-formatter** — `format-md.sh` hooks into Claude Code's `PostToolUse` event for `Edit` and `Write` tools. When Claude edits a Professor-owned `.md` file (CLAUDE.md, `.claude/`, `docs/commands/`, `docs/agents/`, `docs/epics/`, `docs/dev/`, `docs/business/`, or child project CLAUDE.md files), prettier auto-formats it. Non-Professor files are ignored. Add to `.claude/settings.json`:
+
     ```json
     {
-      "version": "1.0.0",
-      "installed_at": "2026-04-28T14:32:00Z",
-      "files": {
-        ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
-        ".claude/commands/pcm.md": "sha256:2c26b46b68ff...",
-        "CLAUDE.md": "sha256:fa7b1ba7e0f3..."
+      "hooks": {
+        "PostToolUse": [
+          {
+            "matcher": "Edit|Write",
+            "hooks": [
+              {
+                "type": "command",
+                "command": "bash .claude/scripts/format-md.sh"
+              }
+            ]
+          }
+        ]
       }
     }
     ```
-    Hashes are computed AFTER placeholder substitution so they reflect the actual on-disk state — a hash mismatch later means the user (or another agent) edited the file post-install.
+
+    Requires `jq` and `prettier` (`npx prettier` — works if prettier is a project devDependency or globally installed). Fails silently if either is missing. 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
+
+8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), and `decisions.md` (human-readable record of what's different from vanilla Professor). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
+`json
+    {
+      "schema": 1,
+      "version": "0.5.0",
+      "installed_from_tag": "v0.5.0",
+      "installed_at": "2026-04-28T14:32:00Z",
+      "updated_at": null,
+      "interview": {
+        "project_name": "neurolab",
+        "project_pitch": "AI-assisted neuropsychological assessment platform",
+        "character_name": "Professor",
+        "character_voice": "keep",
+        "sacred_ground": "patient cognitive assessment data and diagnostic accuracy",
+        "structure": "monorepo",
+        "subprojects": [
+          { "dir": "api", "desc": "Express GraphQL backend", "pkg": "pnpm" },
+          { "dir": "web", "desc": "React frontend", "pkg": "npm" }
+        ],
+        "tech_commands": {
+          "api": { "test": "pnpm test", "lint": "pnpm lint", "typecheck": "pnpm tsc --noEmit", "build": "pnpm build", "dev": "pnpm dev" },
+          "web": { "test": "npm test", "lint": "npm run lint", "typecheck": "skip", "build": "npm run build", "dev": "npm run dev" }
+        },
+        "disciplines": ["Neuroscience", "Cognitive Science", "Computational Modeling", "Statistics", "Clinical Methodology", "Software Engineering", "Information Theory", "Linguistics", "Philosophy of Mind", "Research Methods"],
+        "intersection_lens": "Neuroscience × Computational Modeling",
+        "council_panel": ["Officer", "PM", "Mentor"],
+        "tier_b": {
+          "officer": { "enabled": true, "regulation": "HIPAA", "authority": "HHS OCR", "rights": "HIPAA Privacy Rule", "notification": "60 days" },
+          "km": { "enabled": false },
+          "pm": { "enabled": true, "persona": "clinical neuropsychologist", "domain": "cognitive assessment", "workflow": "patient intake → battery selection → administration → scoring → report", "pain_points": "manual scoring, report writing time" },
+          "mentor": { "enabled": true, "market": "clinical neuropsych SaaS", "jurisdiction": "US", "entity": "LLC", "funding": "NIH SBIR, health-tech VCs", "bodies": "FDA (if SaMD), state licensing boards" },
+          "marketer": { "enabled": false }
+        },
+        "codex": false,
+        "ports": { "api": 3000, "web": 5173, "db": 5432 }
+      },
+      "files": {
+        "CLAUDE.md": "sha256:fa7b1ba7e0f3...",
+        ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
+        ".claude/commands/pcm.md": "sha256:2c26b46b68ff..."
+      }
+    }
+    `
+The `interview` field is the replay seed — `/pcm update` re-applies these answers to new upstream templates, then compares hashes to detect conflicts vs safe auto-applies. The `files` field is SHA-256 of every installed file AFTER placeholder substitution (a mismatch means the user edited post-install). The `installed_from_tag` records which git tag was used, enabling `/pcm update` to `git clone --branch` the exact version for diffing.
 
 ---
 
@@ -299,19 +360,46 @@ Welcome to the cast.
 
 ## Staying current — `/pcm update`
 
-When new versions of Professor are released, your install can pull updates without losing customizations:
+When new versions of Professor are released (as git tags on `mreza0100/professor`), your install can pull updates without losing customizations:
 
 ```
-/pcm update            # Walk through changes interactively
-/pcm update check      # Read-only — preview what would change
-/pcm update --to v1.2.0  # Pin to a specific version
+/pcm update              # Full interactive update to latest release tag
+/pcm update check        # Read-only — preview what would change
+/pcm update --to v1.2.0  # Pin to a specific version tag
+/pcm update --force      # Re-apply manifest (repair mode)
+/pcm update --re-interview 5  # Re-answer interview question 5
 ```
 
-How it works:
-1. Reads `.claude/PROFESSOR_VERSION` (your current install)
-2. Fetches the latest blueprint from `mreza0100/professor`
-3. Reads `CHANGELOG.md` entries between your version and the latest
-4. Walks you through each change — auto-applying mechanics, asking before character changes, opt-in for new Tier B archetypes, interactive walkthrough for breaking migrations
-5. Updates `.claude/PROFESSOR_VERSION` to the new version
+### How it works
 
-See `RELEASE.md` in the blueprint repo for how releases are produced and what each change category means.
+1. Reads `.professor/VERSION` + `.professor/manifest.json` (your installed version, interview answers, file hashes)
+2. Fetches available git tags from `mreza0100/professor` via `git ls-remote`
+3. Clones the target tag into temp, reads `CHANGELOG.md` entries between your version and target
+4. **Replays your interview answers** against new templates → computes re-parameterized upstream hashes
+5. **Three-way hash comparison** per file (installed baseline vs current on-disk vs upstream new):
+   - Upstream changed + you didn't touch → **auto-apply**
+   - You customized + upstream didn't change → **keep yours**
+   - Both changed → **conflict** — shows diff, you decide
+   - New file from upstream → **auto-add** (mechanics) or **ask** (Tier A/B)
+6. Presents changes in three buckets: auto-apply, review, manual
+7. Applies accepted changes, regenerates manifest with new hashes + updated version
+8. Appends to `.professor/decisions.md` — records which files you kept over upstream, new opt-ins, re-interview changes
+
+### Version semantics
+
+Releases follow semver via git tags (`v0.5.0`, `v0.6.0`, `v1.0.0`):
+
+| Bump      | What it means for you                                  |
+| --------- | ------------------------------------------------------ |
+| **Patch** | Bug fixes, doc tweaks — mostly auto-apply              |
+| **Minor** | New features/commands — mix of auto + interactive      |
+| **Major** | Breaking changes — full walkthrough, no silent applies |
+
+### What it never touches without asking
+
+- Your `CLAUDE.md` persona section (character voice may have drifted intentionally)
+- Files under `docs/commands/{cmd}/` (command-owned content, not templates)
+- `.claude/settings.json` (hand-curated per project)
+- Any file you've customized post-install (detected via hash mismatch)
+
+See `RELEASE.md` for how releases are produced. See `pcm.md` § "Update Protocol" for the full implementation.

@@ -35,6 +35,7 @@ This installer's job: **ask, don't assume**.
    These are existing material that needs re-homing into the Professor taxonomy. **Do NOT classify yet** — classification depends on which Tier B archetypes the user opts into (Batch 6). Just list them in the findings paragraph.
 
 Report findings in one short paragraph BEFORE asking questions, e.g.:
+
 > "I see this is a Node + Python monorepo with `api/` (pnpm) and `worker/` (uv). No existing `.claude/` setup. Working tree is clean. I also see 17 root-level markdown files (THESIS, MENTOR_BRIEFING, COMPETITOR_LANDSCAPE, REGULATORY_LANDSCAPE, etc.) — those will need re-homing once we settle which Tier B archetypes you want. Ready to ask questions."
 
 ---
@@ -174,7 +175,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     in autonomous control"). This goes into the "What NOT to do" block.
 ```
 
-> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific *content* like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
+> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific _content_ like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
 
 ### Batch 8 — Confirmation before write
 
@@ -206,6 +207,7 @@ echo -e ".worktrees/\ntmp/" >> .gitignore
 ```
 
 For each Tier B archetype the user opted into in Batch 6, also create its `$CDOCS` subtree:
+
 ```bash
 # Example for /mentor opted in:
 mkdir -p docs/commands/mentor/{references,research,resources}
@@ -220,23 +222,24 @@ For every file surfaced in Pre-flight Step 7, classify and move into the Profess
 
 Apply rules in order. First match wins. Match BOTH on filename hints AND on a quick content scan (first 500 chars + headings).
 
-| Content signature | Destination | Notes |
-|---|---|---|
-| Names matching `THESIS`, `VISION`, `MISSION`, `STRATEGY`, `PARALLEL_PROJECTS`, `PRODUCT_VISION` | `docs/business/<slugified-name>.md` | Lowercase + hyphenate the name |
-| Names matching `GLOSSARY`, `TERMS`, `DICTIONARY` | `docs/business/glossary.md` | One canonical glossary per project |
+| Content signature                                                                                                                                      | Destination                                                                                                          | Notes                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Names matching `THESIS`, `VISION`, `MISSION`, `STRATEGY`, `PARALLEL_PROJECTS`, `PRODUCT_VISION`                                                        | `docs/business/<slugified-name>.md`                                                                                  | Lowercase + hyphenate the name                          |
+| Names matching `GLOSSARY`, `TERMS`, `DICTIONARY`                                                                                                       | `docs/business/glossary.md`                                                                                          | One canonical glossary per project                      |
 | Names matching `BUYER`, `MARKET`, `GTM`, `GO_TO_MARKET`, `BUSINESS_MODEL`, `PRIMER` (domain primer), `*MENTOR*`, `RISK*`, `INTERNATIONAL_*`, `FUNDING` | `$CDOCS/mentor/$REFS/<slug>.md` (if living must-know) or `$CDOCS/mentor/$RESEARCH/<slug>.md` (if looked-up analysis) | Only if `/mentor` opted in. If not, see fallback below. |
-| Names matching `COMPETITOR`, `INCUMBENT`, `POSITION`, `SEO`, `CHANNEL`, `CONTENT_GAP`, `BRAND_VOICE` | `$CDOCS/marketer/$REFS/` or `$CDOCS/marketer/$RESEARCH/` | Only if `/marketer` opted in |
-| Names matching `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `FDA`, `PRIVACY`, `LEGAL_LANDSCAPE`, `CERTIFICATION` | `$CDOCS/officer/$REFS/` or `$CDOCS/officer/$RESEARCH/` | Only if `/officer` opted in |
-| Names matching `PERSONA`, `USER_*`, `*_PAIN`, `*_PAIN_MAP`, `JOBS_TO_BE_DONE`, `USER_STORY`, `WORKFLOW`, `DAILY_LIFE` | `$CDOCS/pm/$REFS/` or `$CDOCS/pm/$RESEARCH/` | Only if `/pm` opted in |
-| Names matching `KNOWLEDGE`, `DOMAIN_PRIMER`, `PROTOCOL`, `METHODOLOGY`, `FRAMEWORK_<domain>` | `$CDOCS/km/$RESEARCH/` | Only if `/km` opted in |
-| Names matching `RESEARCH_LOG`, `OPEN_QUESTIONS`, `VALIDATION_LOG`, `EXPERIMENTS`, `SPIKE_*`, `INVESTIGATION` | `docs/dev/research/<slug>.md` | Always available — no archetype required |
-| Names matching `MENTOR_BRIEFING`, `INVESTOR_*`, `PITCH`, `ONE_PAGER`, `FOUNDER_STORY` | `$CDOCS/mentor/$REFS/<slug>.md` (if `/mentor`) OR `docs/business/<slug>.md` (fallback) | These are the "show to outsider" docs |
-| `README.md`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*` | **KEEP AT ROOT — DO NOT MOVE** | Standard repo conventions |
-| Anything else (no filename match, ambiguous content) | **ASK THE USER** before moving | Default proposal: `docs/dev/research/<slug>.md` |
+| Names matching `COMPETITOR`, `INCUMBENT`, `POSITION`, `SEO`, `CHANNEL`, `CONTENT_GAP`, `BRAND_VOICE`                                                   | `$CDOCS/marketer/$REFS/` or `$CDOCS/marketer/$RESEARCH/`                                                             | Only if `/marketer` opted in                            |
+| Names matching `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `FDA`, `PRIVACY`, `LEGAL_LANDSCAPE`, `CERTIFICATION`                                       | `$CDOCS/officer/$REFS/` or `$CDOCS/officer/$RESEARCH/`                                                               | Only if `/officer` opted in                             |
+| Names matching `PERSONA`, `USER_*`, `*_PAIN`, `*_PAIN_MAP`, `JOBS_TO_BE_DONE`, `USER_STORY`, `WORKFLOW`, `DAILY_LIFE`                                  | `$CDOCS/pm/$REFS/` or `$CDOCS/pm/$RESEARCH/`                                                                         | Only if `/pm` opted in                                  |
+| Names matching `KNOWLEDGE`, `DOMAIN_PRIMER`, `PROTOCOL`, `METHODOLOGY`, `FRAMEWORK_<domain>`                                                           | `$CDOCS/km/$RESEARCH/`                                                                                               | Only if `/km` opted in                                  |
+| Names matching `RESEARCH_LOG`, `OPEN_QUESTIONS`, `VALIDATION_LOG`, `EXPERIMENTS`, `SPIKE_*`, `INVESTIGATION`                                           | `docs/dev/research/<slug>.md`                                                                                        | Always available — no archetype required                |
+| Names matching `MENTOR_BRIEFING`, `INVESTOR_*`, `PITCH`, `ONE_PAGER`, `FOUNDER_STORY`                                                                  | `$CDOCS/mentor/$REFS/<slug>.md` (if `/mentor`) OR `docs/business/<slug>.md` (fallback)                               | These are the "show to outsider" docs                   |
+| `README.md`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`                                                                             | **KEEP AT ROOT — DO NOT MOVE**                                                                                       | Standard repo conventions                               |
+| Anything else (no filename match, ambiguous content)                                                                                                   | **ASK THE USER** before moving                                                                                       | Default proposal: `docs/dev/research/<slug>.md`         |
 
 #### `$REFS` vs `$RESEARCH` decision
 
 Within an archetype's `$CDOCS/<cmd>/` directory:
+
 - **`$REFS`** = living must-know, loaded almost every invocation (regulatory framework, persona, GTM plan, briefing, primer)
 - **`$RESEARCH`** = looked-up analysis loaded on demand (competitor scan, risk deep-dive, market study)
 - **`$RESOURCES`** (some archetypes) = static assets loaded almost every time (playbook, templates)
@@ -277,19 +280,22 @@ Copy `blueprint/templates/CLAUDE.md` and substitute every `{PLACEHOLDER}` from B
 If the user picked monorepo: include the per-project tables. If single project: drop them.
 
 **The "## Your character" persona section is MANDATORY — you must write it.** From Batch 7:
+
 - If the user said "keep Professor": keep the section verbatim, only adapting `{SACRED_GROUND}` (Batch 7 Q16), `{WHAT_THE_PROJECT_BUILDS}`, and `{YOUR_LANGUAGE}` placeholders to their domain. The "What NOT to do" first bullet must reference their sacred ground.
 - If the user said "rename": same as above, plus replace every "Professor" with the new name. Keep the voice description verbatim.
-- If the user said "custom voice": keep the section's *shape* (heading, "MANDATORY" framing, "Core personality traits" bulleted list, "What NOT to do" block) but reshape the bullets using their tone keywords + vibe line. NEVER ship a CLAUDE.md without the persona section.
+- If the user said "custom voice": keep the section's _shape_ (heading, "MANDATORY" framing, "Core personality traits" bulleted list, "What NOT to do" block) but reshape the bullets using their tone keywords + vibe line. NEVER ship a CLAUDE.md without the persona section.
 
 After writing, verify: the file MUST contain a `## Your character — {NAME} (MANDATORY` heading. If it doesn't, you skipped a step — go back and write it.
 
 Also remove these install-only meta-comments from the body of CLAUDE.md before saving:
+
 - The `> **Rename if you want.**` admonition that prefaces the persona section in the template (it's an install instruction, not a runtime instruction).
 - Any `{INSTRUCTIONAL_COMMENT}` blocks in `< >` braces inside the template body.
 
 ### Step 3 — Per-project CLAUDE.md (if monorepo)
 
 For each subproject, write `{project}/CLAUDE.md` with:
+
 - Tech stack (from Batch 2/3)
 - Test/lint/typecheck/build commands (from Batch 3)
 - Project-specific rules (start with the universal ones, ask the user if they want to add more)
@@ -309,6 +315,7 @@ Write the Professor persona section in root `CLAUDE.md` based on Batch 5 answers
 ### Step 6 — Copy core commands
 
 Copy from `blueprint/templates/commands/`:
+
 - `build.md` — substitute project list
 - `jc.md` — substitute project list
 - `pcm.md` — substitute project list
@@ -334,7 +341,7 @@ For each command:
 
 ### Step 8 — Scripts
 
-Copy `blueprint/templates/scripts/` to `.claude/scripts/` (includes `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`).
+Copy `blueprint/templates/scripts/` to `.claude/scripts/` (includes `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`, `format-md.sh`).
 
 For `notify.sh`: replace `{CHARACTER_NAME}` with the character name from Batch 7 (default: "Professor"), and `{CHARACTER_NAME_LOWER}` with its lowercase form (default: "professor").
 
@@ -395,6 +402,30 @@ This sends a macOS notification ("Professor is done — your turn") when a turn 
 
 **Platform note:** `notify.sh` uses `osascript` (macOS). On Linux, replace the `osascript` line with `notify-send "{CHARACTER_NAME} is done — your turn"`. On Windows/WSL, use `powershell.exe -Command "New-BurntToastNotification ..."` or skip.
 
+### Step 8.3 — Markdown auto-formatter hook
+
+Wire `format-md.sh` into Claude Code's `PostToolUse` event via `.claude/settings.json` (project-level, merge into existing hooks):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/format-md.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This auto-formats Professor-owned `.md` files (CLAUDE.md, `.claude/`, `docs/commands/`, `docs/agents/`, `docs/epics/`, `docs/dev/`, `docs/business/`, child project CLAUDE.md) after every Edit or Write. Non-Professor files are silently ignored. Requires `jq` and `prettier` (via `npx`). Fails silently if either is missing.
+
 ### Step 8.5 — The Cast bible (ARCHETYPES.md)
 
 Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/pcm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
@@ -420,13 +451,16 @@ cp -r blueprint/templates/skills/rnd .claude/skills/rnd
 These are Tier A thinking protocols that agents reference at key moments. QA agents call the 360° `test` domain before writing adversarial tests. Professor calls the 360° `inquiry` domain before deep-diving into code. Ghostwriter captures and reproduces a writer's mechanical fingerprint for external-facing deliverables.
 
 Edit `worktree.sh`:
+
 - Replace the per-project install blocks (line marked `# === Per-project setup — EDIT FOR YOUR STACK ===`) with one block per subproject from Batch 2.
 - Replace the env-file rewriting blocks with one per subproject's actual env vars.
 
 Edit `alloc-ports.sh`:
+
 - Set `PORT_FIELDS` and `PORT_BASES` arrays based on Batch 4 answers (one entry per service that needs port isolation per worktree).
 
 Edit `dev.sh`:
+
 - Replace `start_project` / `stop_project` calls with one per subproject from Batches 2 + 3.
 - Replace `start_infrastructure` / `stop_infrastructure` if user has Docker / DB containers.
 
@@ -453,30 +487,97 @@ If the user said YES to Codex:
 
 If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
 
-### Step 9 — Record version + install manifest
+### Step 9 — Create `.professor/` directory
 
-This is what `/pcm update` reads later to detect customizations and pull new releases without clobbering the user's edits.
+Create the `.professor/` directory at the repo root. This is Professor's own state — version tracking, install manifest, and a human-readable decisions log.
 
-1. Fetch the current blueprint version:
+```bash
+mkdir -p .professor
+```
+
+1. Write `.professor/VERSION` — the blueprint version installed from:
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/mreza0100/professor/main/VERSION > .claude/PROFESSOR_VERSION
+   curl -fsSL https://raw.githubusercontent.com/mreza0100/professor/main/VERSION > .professor/VERSION
    ```
-2. Write `.claude/PROFESSOR_MANIFEST.json` — SHA-256 of every file you wrote in Steps 2–8, AFTER placeholder substitution but BEFORE the user has touched anything. Format:
+2. Write `.professor/manifest.json` — the manifest stores three things: (a) version + git tag info, (b) all interview answers as a replay seed, (c) SHA-256 hashes of every Professor-owned file post-substitution. Format:
    ```json
    {
+     "schema": 1,
      "version": "<contents of VERSION>",
+     "installed_from_tag": "v<contents of VERSION>",
      "installed_at": "<ISO 8601 UTC>",
+     "updated_at": null,
+     "interview": {
+       "project_name": "<Batch 1 Q1>",
+       "project_pitch": "<Batch 1 Q2>",
+       "character_name": "<Batch 7 Q15>",
+       "character_voice": "keep|rename|custom",
+       "sacred_ground": "<Batch 7 Q16>",
+       "structure": "single|monorepo",
+       "subprojects": [{ "dir": "...", "desc": "...", "pkg": "..." }],
+       "tech_commands": {
+         "<dir>": {
+           "test": "...",
+           "lint": "...",
+           "typecheck": "...",
+           "build": "...",
+           "dev": "..."
+         }
+       },
+       "disciplines": ["<Batch 5 Q11 answers>"],
+       "intersection_lens": "<Batch 5 Q11 follow-up>",
+       "council_panel": ["<Batch 6 Q14 answers>"],
+       "tier_b": {
+         "officer": { "enabled": true, "regulation": "..." },
+         "...": {}
+       },
+       "codex": false,
+       "ports": { "<service>": "<port>" }
+     },
      "files": {
        "CLAUDE.md": "sha256:...",
        ".claude/agents/gitter.md": "sha256:...",
-       ".claude/commands/build.md": "sha256:...",
-       ...
+       ".claude/commands/build.md": "sha256:..."
      }
    }
    ```
 3. Hashes are computed via `sha256sum {file} | awk '{print "sha256:" $1}'` per file. Include only files you wrote — not pre-existing project files.
+4. The `interview` field captures every Batch answer. `/pcm update` replays these against new upstream templates to produce re-parameterized files for three-way comparison. Only genuinely new interview questions (new placeholders in newer templates) trigger a mini re-interview.
 
-This is the baseline `/pcm update`'s three-way customization detection uses (installed vs. current vs. upstream-new). Without it, future updates fall back to a less reliable on-the-fly bootstrap.
+This manifest is the baseline for `/pcm update`'s three-way detection (installed vs. current-on-disk vs. re-parameterized-upstream). Without it, updates fall back to a one-time re-interview to bootstrap the manifest.
+
+5. Write `.professor/decisions.md` — human-readable record of what makes this install different from vanilla Professor. Format:
+
+   ```markdown
+   # Professor Decisions
+
+   What makes this install different from the upstream blueprint. Machine state lives in `manifest.json`; this file is for humans. Updated at install and by `/pcm update`.
+
+   ## Install profile
+
+   - **Project:** {project_name} — {project_pitch}
+   - **Character:** {character_name} ({character_voice})
+   - **Structure:** {structure}
+   - **Disciplines:** {comma-separated list}
+   - **Intersection lens:** {intersection_lens}
+   - **Sacred ground:** {sacred_ground}
+   - **Council panel:** {comma-separated list}
+   - **Tier B:** {list of opted-in archetypes with key params, or "none"}
+   - **Codex:** {yes/no}
+   - **Installed from:** v{version} on {date}
+
+   ## Post-install customizations
+
+   _None yet. `/pcm update` appends here when you diverge from upstream._
+
+   ## Update history
+
+   | Date           | From | To         | Notes           |
+   | -------------- | ---- | ---------- | --------------- |
+   | {install_date} | —    | v{version} | Initial install |
+   ```
+
+   This file is the "institutional memory" of your Professor install. When you keep your version of a file during an update, or opt into a new Tier B archetype, or change a discipline — `/pcm update` records it here. Future you (or a teammate) can read this to understand why your install looks the way it does.
 
 ### Step 10 — Smoke test
 
@@ -512,31 +613,32 @@ You analyze the {PROJECT_NAME} system through the combined lens of these discipl
 ## Your disciplines
 
 For each discipline the user picked, write a 1–3 sentence summary of WHAT IT BRINGS to system analysis here. Examples:
+
 - **Psychology** — UX friction, cognitive load, behavioral nudges, error-recovery flows.
 - **Cryptography** — protocol analysis, key management hygiene, threat-model coverage.
 - **Distributed systems** — consensus failures, partitioning behavior, replication lag handling.
-{etc.}
+  {etc.}
 
 ## Failure modes you specifically watch for
 
 (From Batch 5 question 12 — list the user's exact answers as bullets, then GROUP them by which discipline catches each one.)
 
-| Failure mode | Caught by | What to look for |
-|--------------|-----------|------------------|
+| Failure mode                   | Caught by         | What to look for              |
+| ------------------------------ | ----------------- | ----------------------------- |
 | {user-supplied failure mode 1} | CS + {discipline} | {Claude infers the signature} |
-| ... | ... | ... |
+| ...                            | ...               | ...                           |
 
 ## Scopes
 
 Parse `$ARGUMENTS`:
 
-| Input | Scope |
-|-------|-------|
-| *(empty / "all")* | Full analysis across all disciplines and projects |
-| Project name (e.g., `api`, `web`) | Scope to one subproject |
-| Discipline name | Scope to one discipline's lens only |
-| `audit` | Tighter, deeper review with explicit findings + severity |
-| Any other text | Targeted investigation — search for that thing |
+| Input                             | Scope                                                    |
+| --------------------------------- | -------------------------------------------------------- |
+| _(empty / "all")_                 | Full analysis across all disciplines and projects        |
+| Project name (e.g., `api`, `web`) | Scope to one subproject                                  |
+| Discipline name                   | Scope to one discipline's lens only                      |
+| `audit`                           | Tighter, deeper review with explicit findings + severity |
+| Any other text                    | Targeted investigation — search for that thing           |
 
 ## Process
 
@@ -546,21 +648,24 @@ Parse `$ARGUMENTS`:
 4. Write findings to `$CDOCS/professor/$RESEARCH/{date}-{topic}.md`.
 
 ## Output format
-
 ```
+
 # Professor analysis — {topic} — {date}
 
 ## Disciplines applied
+
 - CS — {what was looked at}
 - {discipline} — {what was looked at}
 
 ## Findings
 
 ### {severity: critical | major | minor | observation}: {one-line title}
+
 - **Failure mode:** {which one from the table}
 - **Where:** file:line evidence
 - **Why this matters in {discipline} terms:** ...
 - **Recommended action:** {if user wants suggestions}
+
 ```
 
 ## Hard rules
@@ -603,7 +708,7 @@ File a "doesn't work for stack X" issue if you hit something the installer didn'
 1. **Never assume.** Every project name, file path, command, and port comes from the user's answers — not your guesses.
 2. **Never overwrite without asking.** If `CLAUDE.md` or `.claude/` already exists, STOP and ask first.
 3. **Never install boutique commands the user didn't pick.** `/officer`, `/km`, etc. are domain-specific and should not be silently inherited from Freudche.
-4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Gemini/LangChain mentions, Dutch healthcare specifics. The Professor *voice* (grandfatherly polymath) is universal and ships by default; what doesn't transfer is Freudche-specific *content*. Persona = mandatory; persona = "your project's flavor of Professor", not "Freudche's flavor of Professor".
+4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Gemini/LangChain mentions, Dutch healthcare specifics. The Professor _voice_ (grandfatherly polymath) is universal and ships by default; what doesn't transfer is Freudche-specific _content_. Persona = mandatory; persona = "your project's flavor of Professor", not "Freudche's flavor of Professor".
 5. **Never run `git add` / `git commit`.** The installer only writes files. Committing is the user's call.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite. If you need to back something up, copy it to `tmp/` first.
 7. **Confirm before write.** Batch 8 ("type 'go'") is mandatory — even if the user seems eager, show the plan first.

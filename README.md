@@ -6,7 +6,7 @@ You're one person. You have a vision, a codebase, and a deadline. Claude Code is
 
 Drop a `.claude/` directory into your project and Claude Code stops being "an AI that writes code" and becomes a **cross-disciplinary engineering team** — with a pipeline, with QA gates, with memory, and with a personality sharp enough to refuse your bad ideas to your face.
 
-> *"Ah, your error handling... you know, I once had a student who also believed exceptions would simply handle themselves. Lovely optimism. Didn't survive production, but lovely."* ☕
+> _"Ah, your error handling... you know, I once had a student who also believed exceptions would simply handle themselves. Lovely optimism. Didn't survive production, but lovely."_ ☕
 
 ---
 
@@ -38,6 +38,7 @@ One person, shipping like a team. That's the pitch. That's what it actually does
 cd ~/your-project
 claude
 ```
+
 ```
 Read https://raw.githubusercontent.com/mreza0100/professor/main/INSTALL.md and walk me through
 the interactive install. Ask me each section's questions one at a time and wait for my answers
@@ -58,7 +59,7 @@ The root persona. A grandfatherly polymath with **10+ PhDs — you pick the disc
 
 The Professor IS `CLAUDE.md`. Not a command you invoke — the identity that runs everything. When you ask a question, the Professor analyzes it through all disciplines at once, routes it to the right command, or handles it directly with a cross-disciplinary deep dive. Every response ends with a **Verdict** — no hand-waving, no "it depends."
 
-> *"This reminds me of what my colleague in Delft used to say about distributed systems: 'Everything works until the second server.' Your WebSocket reconnection is dropping messages like a tired postman. Let's talk about that."*
+> _"This reminds me of what my colleague in Delft used to say about distributed systems: 'Everything works until the second server.' Your WebSocket reconnection is dropping messages like a tired postman. Let's talk about that."_
 
 ### /build — the pipeline
 
@@ -68,7 +69,7 @@ Full development pipeline — planning, architecture, implementation, QA, merge.
 
 The one command allowed to touch `main` directly. Diagnoses, fixes, tests, commits — still gated by QA. Has a character (Jesus Christ, but cool) because even hotfixes deserve discipline.
 
-> *"Peace be upon this codebase. Let me lay hands on this database connection... ah, I see the sin."*
+> _"Peace be upon this codebase. Let me lay hands on this database connection... ah, I see the sin."_
 
 ### /pcm — the meta-engineer
 
@@ -188,6 +189,7 @@ Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any l
 ## When to use it
 
 **Good fit:**
+
 - Projects where `main` breaking costs real time
 - Monorepos with cross-project features
 - Solo devs who want team-level discipline
@@ -195,6 +197,7 @@ Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any l
 - Projects with domain complexity that needs more than "write code"
 
 **Overkill for:**
+
 - A 200-line script
 - Throwaway prototypes
 - Projects where you genuinely don't care if `main` breaks
@@ -203,12 +206,19 @@ Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any l
 
 ## Staying current
 
+Releases ship as **git tags** (`v0.5.0`, `v0.6.0`, etc.). Your install records a manifest with your interview answers + file hashes. Updates replay your answers against new templates and show a three-bucket diff:
+
 ```
-/pcm update              # walk through changes interactively
+/pcm update              # interactive update to latest git tag
 /pcm update check        # preview what would change (read-only)
+/pcm update --to v1.2.0  # pin to a specific release
 ```
 
-Updates pull new pipeline improvements without overwriting your customizations. See [`CHANGELOG.md`](./CHANGELOG.md).
+- **Auto-apply:** upstream changed, you didn't touch the file
+- **Review:** both sides changed — shows diff, you pick
+- **Manual:** breaking migration or new interview question
+
+No re-interview needed for standard updates — your manifest is the replay seed. See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
