@@ -214,9 +214,18 @@ Claude takes your answers and:
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
-7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh` with your tech stack's setup logic and port ranges.
+7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
 7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/pcm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
-7b. **Writes skills** — `rr`, `rnd`, `360` into `.claude/skills/{name}/SKILL.md`. These are universal thinking protocols (Tier A) — no parameterization needed except stakeholder names in 360°'s inquiry domain.
+7b. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
+
+| Skill | Repo | Parameterization |
+|-------|------|-----------------|
+| `rr` | https://github.com/mreza0100/rr | None |
+| `360` | https://github.com/mreza0100/360 | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `ghostwriter` | https://github.com/mreza0100/ghost-writer | None |
+| `rnd` | Bundled in `blueprint/templates/skills/rnd/` | None |
+7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
+7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `~/.claude/settings.json` hooks. Sends a macOS notification when a turn takes 30+ seconds. Character name is parameterized from Batch 7.
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, skill wrappers mirroring commands. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely.
 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`.
@@ -279,6 +288,8 @@ Same for adding a new Tier A archetype if you build one — `/pcm` copies the te
 
 - Read `ARCHETYPES.md` so you know the cast you just installed.
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
+- Verify the statusline shows in your terminal (you should see model, context %, git branch). If not, check `~/.claude/settings.json` has the statusLine config and `jq` is installed.
+- Verify notifications work — start a task that takes 30+ seconds and check you get the macOS notification when the turn completes.
 - Run `/build` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run `/council` for hard decisions. Run the Professor analysis for cross-disciplinary analysis.
 - The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 

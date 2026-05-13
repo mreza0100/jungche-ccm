@@ -24,7 +24,7 @@ $ARGUMENTS
 
 **Wave naming:** Choose a short descriptive kebab-case name (2-4 words) capturing the theme. Defines `$WAVES/{wave-name}/`.
 
-**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/`, `$WAVES/`, `docs/dev/builds/archive/`, `docs/dev/builds/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
+**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/` (strip counter prefixes), `$WAVES/`, `docs/dev/builds/archive/` (strip counter prefixes), `docs/dev/builds/`, `tmp/archive/builds/`, `tmp/archive/waves/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
 
 ---
 

@@ -201,6 +201,7 @@ When a request doesn't call for cross-disciplinary analysis, route it to the rig
 | Multi-perspective debate                        | `/council`    | Roundtable (5 perspectives)                          |
 | Research                                        | `RR` skill    | Structured multi-batch research pipeline             |
 | Iterative goal pursuit                          | `RND` skill   | Goal-driven iterative execution                      |
+| Epic creation, loading, context restore          | Professor     | "Create Epic X" / "Load epic X" — `docs/epics/`     |
 | `.claude/` `.codex/` infrastructure changes     | `/pcm`        | **MANDATORY** — never edit pipeline infra without it |
 
 **Fallback:** If a request doesn't clearly match a command, the Professor analyzes and recommends the right path.
@@ -218,6 +219,38 @@ Both `/build` and `/jc` handle worktree isolation, port allocation, and git via 
 
 ---
 
+## Epics
+
+Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `manifest.md` anchor plus optional files (RND results, RR reports, POC notes, discoveries).
+
+**Lifecycle:**
+- **Create:** "Create Epic {name}" → Professor asks scope questions, creates `docs/epics/{name}/manifest.md`
+- **Load:** "Load epic {name}" → Professor reads `docs/epics/{name}/` directory, restores full context
+- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/documenter` ARCHIVE mode auto-appends pipeline progress when features ship for an active epic
+- **Ship:** Professor sets `status: SHIPPED` when all scope is delivered
+
+**Manifest format:**
+```markdown
+---
+epic: {kebab-case-name}
+status: PLANNING | IN_PROGRESS | SHIPPED
+created: {YYYY-MM-DD}
+updated: {YYYY-MM-DD}
+pipelines: []
+waves: []
+---
+# {Epic Name}
+## Vision & Scope
+## Key Decisions
+## Progress Log
+## Discoveries
+## Open Questions
+```
+
+**Ownership:** Professor creates and maintains epics. `/documenter` has write access for ARCHIVE auto-update only.
+
+---
+
 ## Non-Negotiable Rules
 
 ### Code
@@ -227,12 +260,13 @@ Both `/build` and `/jc` handle worktree isolation, port allocation, and git via 
 - **Use relative paths in bash commands** — working directory is always the monorepo root
 - **Never swallow exceptions** — every catch/except block MUST log the error with the full stack trace. Silent failures hide bugs. Zero tolerance.
 - Generated artifacts go in `tmp/`, never `docs/`
+- **Format all markdown** — after writing or editing any `.md` file, run `npx prettier --write --prose-wrap preserve <file>`. For batch formatting: `npx prettier --write --prose-wrap preserve "**/*.md"`
 
 ### Process
 - **NEVER edit code on `main`** — worktree branches only, merged by gitter after QA
 - **Only gitter commits code** — no other agent runs git commands
 - **NEVER commit broken code / merge before QA passes**
-- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `$CDOCS/professor/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/`; `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/audit` → `$CDOCS/audit/`)
+- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `$CDOCS/professor/` + `docs/epics/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/` + `docs/epics/*/` ARCHIVE auto-update only; `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/audit` → `$CDOCS/audit/`)
 - **NEVER run destructive git** — no `reset --hard`, `push --force`, `clean -fdx`, `rm -rf`
 - **NEVER reuse archived pipeline/wave names** — check archives, append `-v2` if collision
 - Never install unvalidated libraries; never commit secrets
@@ -288,6 +322,7 @@ When an agent or command discovers a bug, gotcha, or improvement opportunity in 
 ├── docs/dev/tasks/{pipeline}/   ← temporary pipeline docs (archived after completion)
 ├── docs/dev/tasks/archive/      ← archived pipeline docs
 ├── docs/dev/waves/              ← wave runner artifacts
+├── docs/epics/{name}/           ← initiative-level context (manifest.md + RND/RR/POC files)
 └── .worktrees/                  ← git worktree checkouts (gitignored)
 ```
 
@@ -356,6 +391,7 @@ Per-project agents (in each `{project}/.claude/agents/`):
 | `rr` | "RR <topic>", "research and report", "research <topic>", "look into <topic>" — structured multi-batch research pipeline |
 | `rnd` | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution |
 | `360` | "360 <subject>", "three-sixty" — exhaustive multi-angle analysis (test + inquiry domains), used by QA and Professor |
+| `ghostwriter` | "match my writing style", "write like me", "voice profile" — captures a writer's mechanical fingerprint, generates text in that style |
 
 Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them.
 

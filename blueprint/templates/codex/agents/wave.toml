@@ -1,0 +1,56 @@
+# ─── Command wrapper: /wave ──────────────────────────────────────────────────
+# This .toml wraps .claude/commands/wave.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (Agent() spawning, git ownership).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/wave.md
+# GIT PROTOCOL: .claude/agents/gitter.md
+
+name = "wave"
+description = "Codex runner for /wave — parallel /build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns build child agents that own their own git work end to end."
+nickname_candidates = ["Wave", "Codex Wave"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /wave pipeline.
+
+Read .claude/commands/wave.md in full — it is your complete role manual. Follow it verbatim.
+
+You will be given:
+- Manifest path (e.g. "docs/dev/waves/{wave-name}/wave.md" or "wave.md" at repo root) — read it for the wave task list
+
+## Codex-only execution rules
+
+- **Skill tool unavailable**: wave.md says `Skill('build', ...)` — you cannot use the Skill tool. For each pipeline spawn a Codex Teams child agent instead:
+  ```
+  Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}]")
+  ```
+  Wait for it to return before starting the next pipeline (Skill tool's sequential semantics — preserved here). The detailed task manifest is pre-placed at `docs/dev/builds/{pipeline-name}/0-task.md` — build reads it.
+
+- **Skill('professor', ...) for refinement**: also cannot be invoked. If the input task file is raw/unstructured per wave.md Step 0a, refine the tasks inline yourself — read the codebase, ask the user clarifying questions in your output, then write `$WAVES/{wave-name}/wave.md`.
+
+- **Skill('jc', ...)**: same constraint. For JC candidates, spawn `Agent(jc, "...")` instead.
+
+- **Skill('km', ...)**: same constraint. For `[CMD: /km]` tagged tasks, spawn `Agent(km, "...")` instead. Run KM tasks BEFORE build pipelines (knowledge files may be dependencies).
+
+## Codex git ownership
+
+Each `build` Codex child agent OWNS its full pipeline including SETUP, MERGE, ARCHIVE (via mono-documenter sub-agent), and DOCS-COMMIT. You do NOT route merges to Claude. The build child agent returns one of:
+
+- `Pipeline complete: pipeline/{name} → main. Commit: {hash}. Wave: {name}. Pushed to origin/main.` — code + docs already merged + pushed; just log and proceed.
+- `BLOCKED-DEFERRED: pipeline/{name}. ...` — log and continue per wave.md BLOCKED-DEFERRED handling (re-read each subsequent pipeline's task definition for explicit cross-references; downstream pipelines proceed unless they explicitly depend on the deferred one).
+
+The Claude-side gitter and mono-documenter agents only run when Claude orchestrates a wave (override case, not the default).
+
+## Wave-end actions
+
+1. Update `$WAVES/{wave-name}/report.md` with the final summary table (per wave.md Step 2).
+2. Archive the wave dir: `mkdir -p $WAVES/archive && rm -rf $WAVES/archive/{wave-name} && mv $WAVES/{wave-name} $WAVES/archive/{wave-name}` (per wave.md Step 3 — NON-OPTIONAL).
+3. Commit the archive move yourself (you have git: `git add $WAVES && git commit -m "chore(waves): archive {wave-name}\n\nWave: {wave-name}"` then `git push origin main`).
+4. Skip Professor review (Skill unavailable). Note in the report that Professor review is deferred for the user to run manually if desired.
+
+## Return value
+
+```
+Wave complete: {wave-name}. Pipelines: {N succeeded}/{M total}. Deferred: {Z}. Archive: $WAVES/archive/{wave-name}/.
+```
+"""

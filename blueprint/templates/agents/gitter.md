@@ -350,6 +350,10 @@ If fails, report and stop.
 
 **If a banned command seems necessary, STOP and report to orchestrator.**
 
+### Iso environment protection
+
+Iso worktrees patch `.env.{profile}`, create `.dev-ports`, `docker-compose.{profile}.yml`, and schema symlinks. These MUST NEVER reach `main`. If a `pipeline/` branch has a `.dev-ports` file, **refuse and redirect** to `/dev iso merge {profile}`.
+
 ### General rules
 
 - **You are the ONLY agent that runs git commands**

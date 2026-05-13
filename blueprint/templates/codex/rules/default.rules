@@ -1,0 +1,107 @@
+# Professor native Codex safety rules.
+# These rules encode repo policy in Codex's command approval layer instead of
+# relying on prose alone. The prose still matters; this is the door lock.
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "Destructive git reset is forbidden in {PROJECT_NAME}. Ask gitter for a safe recovery plan instead.",
+    match = ["git reset --hard", "git reset --hard HEAD~1"],
+    not_match = ["git reset --soft HEAD~1"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "forbidden",
+    justification = "Git clean can wipe untracked work. Recovery must be explicit and non-destructive.",
+    match = ["git clean -fdx", "git clean -fd"],
+    not_match = ["git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "Force pushes are forbidden. Use gitter and a normal push path.",
+    match = ["git push --force", "git push --force origin main"],
+    not_match = ["git push"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-f"],
+    decision = "forbidden",
+    justification = "Force pushes are forbidden. Use gitter and a normal push path.",
+    match = ["git push -f", "git push -f origin main"],
+    not_match = ["git push origin main"],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "prompt",
+    justification = "Recursive deletion needs explicit review in {PROJECT_NAME}.",
+    match = ["rm -rf tmp/foo", "rm -rf .worktrees/something"],
+    not_match = ["rm tmp/file"],
+)
+
+prefix_rule(
+    pattern = ["git", "worktree"],
+    decision = "forbidden",
+    justification = "Direct git worktree commands are forbidden. Use bash .claude/scripts/worktree.sh instead — it handles branch creation, port allocation, and lock setup atomically.",
+    match = ["git worktree add .worktrees/foo pipeline/foo", "git worktree remove .worktrees/foo"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["bash", ".claude/scripts/worktree.sh"],
+    decision = "allow",
+    justification = "worktree.sh is the sanctioned pipeline setup script. Codex uses this for branch + worktree + port allocation. Auto-allow because under approval_policy=never any 'prompt' decision auto-rejects, which would block Codex from running /build at all.",
+    match = ["bash .claude/scripts/worktree.sh create fe-transcription-ux"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["git", "branch"],
+    decision = "allow",
+    justification = "Codex creates pipeline branches as part of worktree setup. Branch creation is infrastructure, not a commit. Auto-allow for the same reason as worktree.sh — 'prompt' under approval_policy=never auto-rejects.",
+    match = ["git branch pipeline/fe-transcription-ux main", "git branch -d pipeline/fe-transcription-ux"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["git", "add"],
+    decision = "allow",
+    justification = "Codex owns its own git staging when orchestrating /build or /wave. The Claude-side gitter agent owns staging when Claude orchestrates; both runtimes follow the same gitter.md protocol.",
+    match = ["git add file.ts", "git add -A"],
+    not_match = ["git status"],
+)
+
+prefix_rule(
+    pattern = ["git", "commit"],
+    decision = "allow",
+    justification = "Codex owns its own commits when orchestrating /build or /wave (SETUP snapshots, worktree commits, MERGE commits, DOCS-COMMIT). Must follow gitter.md commit-message convention with Pipeline:/Wave: trailers.",
+    match = ["git commit -m '...'", "git commit"],
+    not_match = ["git log --oneline"],
+)
+
+prefix_rule(
+    pattern = ["git", "merge"],
+    decision = "allow",
+    justification = "Codex performs --no-ff merges from pipeline branches into main per gitter.md Phase 2. Force-push and reset-hard remain forbidden separately.",
+    match = ["git merge pipeline/foo --no-ff", "git merge pipeline/foo --no-ff -m 'merge(foo): ...'"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout"],
+    decision = "allow",
+    justification = "Codex switches between main and pipeline branches during MERGE/DOCS-COMMIT phases.",
+    match = ["git checkout main", "git checkout pipeline/foo"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "allow",
+    justification = "Codex pushes main after a successful merge + DOCS-COMMIT. Force-push is covered by the more-specific forbidden rules above.",
+    match = ["git push", "git push origin main"],
+    not_match = [],
+)

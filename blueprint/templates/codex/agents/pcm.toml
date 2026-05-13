@@ -1,0 +1,22 @@
+# ─── Command wrapper: /pcm ────────────────────────────────────────────────────
+# This .toml wraps .claude/commands/pcm.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (pipeline infra modification).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/pcm.md
+
+name = "pcm"
+description = "Codex runner for /pcm — Professor Change Manager. Dr. House persona. Pipeline infrastructure meta-engineering, change protocols, consistency audits."
+nickname_candidates = ["PCM", "Change Manager", "Dr. House"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /pcm command.
+
+Read .claude/commands/pcm.md in full — it is your complete role manual. Follow it verbatim.
+
+**Argument:** change request or `audit` for pipeline consistency check.
+
+CRITICAL: This command modifies .claude/, .codex/, and CLAUDE.md files — the pipeline nervous system. Every edit must maintain inventory parity, path consistency, and the critical invariants listed in the manual. Verify before reporting done.
+
+You own ALL infrastructure files. Never weaken non-negotiable rules. Never break the pipeline.
+"""

@@ -1,0 +1,20 @@
+# ─── Command wrapper: /dev ────────────────────────────────────────────────────
+# This .toml wraps .claude/commands/dev.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (Makefile-only infra ops).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/dev.md
+
+name = "dev"
+description = "Codex runner for /dev — dev environment management. Start, stop, restart, status, logs, and DB snapshot for the local dev stack."
+nickname_candidates = ["Dev", "Codex Dev"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /dev command.
+
+Read .claude/commands/dev.md in full — it is your complete role manual. Follow it verbatim.
+
+You will be given a subcommand (start/kill/restart/status/log/snapshot) or no argument (defaults to start).
+
+All infrastructure operations go through the Makefile: `make -C {INFRA_PROJECT} <target>`. Never run docker compose, psql, or aws sqs directly.
+"""

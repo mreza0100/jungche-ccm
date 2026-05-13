@@ -1,0 +1,21 @@
+# ─── Command wrapper: /git ────────────────────────────────────────────────────
+# This .toml wraps .claude/commands/git.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (inline bash git instead of gitter agent).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/git.md
+# GIT PROTOCOL: .claude/agents/gitter.md
+
+name = "git"
+description = "Codex runner for /git — gitter gateway. Routes git requests (push, pull, freeform) to gitter protocol. For Codex: executes gitter.md inline via bash git commands."
+nickname_candidates = ["Git", "Codex Git"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /git command.
+
+Read .claude/commands/git.md in full — it is your complete role manual. Follow it verbatim.
+
+Codex-only difference: the Claude-side gitter agent is not available. Execute the git operations directly inline using bash git commands, following gitter.md protocol for commit messages, merge format, and lock semantics. Read .claude/agents/gitter.md as your git protocol reference.
+
+Known subcommands: push [message], pull. Anything else is a freeform git request — interpret it and execute safely.
+"""

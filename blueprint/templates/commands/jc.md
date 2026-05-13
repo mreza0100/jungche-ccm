@@ -129,8 +129,8 @@ After investigation, present findings using the formats in **Step 8** and skip t
 
 **🩹 Hang / deadlock / mystery-failure path:** if the symptom is "process hung", "test never returns",
 "0% CPU but not exited", "intermittent failure", "passes alone but fails in suite", or "service crashes
-silently with no traceback" — apply **1g. Hang & deadlock playbook** below INSTEAD of 1a-1f. Steps
-1a-1f assume the failure mode is visible. When it isn't, instrument; don't guess.
+silently with no traceback" — apply **§ 1h. Hang & deadlock playbook** below INSTEAD of 1a-1g. Steps
+1a-1g assume the failure mode is visible. When it isn't, instrument; don't guess.
 
 ### 1a. Check current state
 
@@ -169,7 +169,62 @@ make -C {INFRA_PROJECT} ps-local
 make -C {INFRA_PROJECT} health-local
 ```
 
-### 1g. Hang / deadlock / mystery-failure playbook
+### 1g. CI/CD pipeline debugging (GitHub Actions)
+
+JC has full `gh` CLI access for GitHub Actions. Use this when the problem involves CI failures,
+deploy errors, workflow issues, or anything in `.github/workflows/`.
+
+**Investigate a failure:**
+
+```bash
+# List recent workflow runs
+gh run list --limit 10
+
+# View a specific run (get ID from the list above)
+gh run view <run-id>
+
+# View ONLY the failed step logs (most useful)
+gh run view <run-id> --log-failed
+
+# View full logs for a run
+gh run view <run-id> --log
+
+# View logs for a specific job within a run
+gh run view <run-id> --log --job=<job-id>
+```
+
+**Trigger a workflow after fixing:**
+
+```bash
+# Trigger a specific workflow
+gh workflow run {workflow}.yml
+
+# Or just push — most CI runs on push
+```
+
+**Watch a run live:**
+
+```bash
+# Watch a running workflow (blocks until complete)
+gh run watch <run-id>
+```
+
+**The CI/CD fix loop:**
+
+When a workflow fails, JC follows this cycle:
+
+1. **Read the logs** — `gh run view <id> --log-failed` to see exactly what broke
+2. **Diagnose** — trace the error to the source (workflow YAML, build config, test, dependency)
+3. **Fix** — edit the relevant files on `main`
+4. **Push** — use `/git push` to push the fix (invokes gitter)
+5. **Re-trigger** — `gh workflow run <workflow>.yml` or wait for push-triggered CI
+6. **Verify** — `gh run watch <id>` or `gh run view <id>` to check the result
+7. **Repeat** — if it fails again, go back to step 1. Keep iterating until it passes.
+
+**Do NOT give up after one cycle.** CI/CD issues often have multiple layers (auth, bootstrap,
+permissions, config). Fix them one at a time, push, re-trigger, repeat.
+
+### 1h. Hang / deadlock / mystery-failure playbook
 
 Use this when the failure mode isn't visible: hangs, deadlocks, "no output, no error", intermittent
 failures, "passes alone but fails in suite", silent crashes. The anti-pattern this prevents is
@@ -516,4 +571,5 @@ Docs updated: {list or "none — trivial fix"}
 - **No new dependencies** — if the fix requires a new library, flag it and use `/build` instead
 - **No architectural changes** — if the fix requires structural refactoring, use `/build` instead
 - **Iterate until fixed** — don't stop at Step 4 if the fix didn't work, loop back to Step 2
+- **CI/CD is JC's domain** — use `gh` CLI for GitHub Actions: read logs (`gh run view <id> --log-failed`), trigger workflows (`gh workflow run`), watch runs (`gh run watch`). For CI/CD fixes: diagnose from logs → fix code → `/git push` → re-trigger → verify → repeat until green. Don't give up after one cycle
 - After finishing, say: "And... we're back. 😎 {summary}." (or "It is finished. ✝️" for gnarly resurrections)

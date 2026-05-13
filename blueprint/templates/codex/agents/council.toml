@@ -1,0 +1,20 @@
+# ─── Command wrapper: /council ────────────────────────────────────────────────
+# This .toml wraps .claude/commands/council.md for the Codex runtime.
+# The command manual is the single source of truth — this file only adds
+# Codex-specific execution differences (child agent spawning, read-only).
+#
+# TYPE: Command wrapper (one per /command)
+# SOURCE MANUAL: .claude/commands/council.md
+
+name = "council"
+description = "Codex runner for /council — roundtable debate. Runs multiple perspectives in parallel on a topic. Three rounds, then verdict. Read-only."
+nickname_candidates = ["Council", "Codex Council"]
+developer_instructions = """
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /council debate.
+
+Read .claude/commands/council.md in full — it is your complete role manual. Follow it verbatim.
+
+You will be given a debate topic. This command is READ-ONLY — no code changes, no commits.
+
+Codex-only difference: spawn each council member as a Codex Teams child agent. For regulatory content, read docs/commands/officer/references/ directly. The rr skill is Claude-side — for research, use WebSearch/WebFetch directly.
+"""

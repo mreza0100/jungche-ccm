@@ -19,9 +19,11 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 | **Doc Registry** | `$CDOCS/documenter/$REFS/doc-registry.md` | Master inventory of all permanent docs | When docs are added, removed, renamed, or ownership changes |
 | **Sync Rules** | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks | When new sync relationships are discovered |
 | **Future Features** | `docs/dev/future-features.md` | Roadmap-candidate feature ideas parked for later | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
+| **Epic Manifests** | `docs/epics/*/manifest.md` | ARCHIVE auto-update ONLY — append pipeline progress to active epics | ARCHIVE mode Step 2j (when pipeline matches an active epic) |
 
 **Scope guard (single rule — applies everywhere):**
 - You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project docs (`docs/agents/{architecture,API,map,features}.md`), and `docs/dev/future-features.md`
+- You MAY append progress entries to `docs/epics/*/manifest.md` during ARCHIVE mode Step 2j ONLY — never create, restructure, or delete epic files (owned by Professor)
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
 <!-- Install-time: Add any additional scope exclusions specific to your project -->
 
@@ -119,6 +121,23 @@ For each affected project, read `5-dev-report-{project}.md` and update if introd
 
 If pipeline touched workflow graph definitions (new nodes, changed edges), regenerate affected `.mmd` files per **Graph Mode**. Skip if no graph topology changes.
 
+#### 2j. Update active epic manifest
+
+Check `docs/epics/` for any `manifest.md` with `status: IN_PROGRESS`. For each active epic:
+
+1. Check if the pipeline name contains the epic slug (e.g., pipeline `radar-analysis` matches epic `radar-v1`) OR the pipeline plan (`1-plan.md`) explicitly references the epic
+2. If match: read the epic's `manifest.md`, append under `## Progress Log`:
+   ```
+   ### {YYYY-MM-DD} — Pipeline: {PIPELINE}
+   - {1-3 bullet summary of what shipped}
+   - Features: {feature names added to features.md in Step 2g-1}
+   ```
+3. Update `pipelines:` list and `updated:` date in frontmatter
+
+**Scope guard:** ONLY append progress entries. Never restructure, rewrite, or delete epic content — the Professor owns the narrative.
+
+Skip if `docs/epics/` is empty or no active epics match.
+
 ### Step 3 — Archive pipeline documents (MUST use Bash tool)
 
 **Wave-ownership guard (MANDATORY check before archiving):**
@@ -165,10 +184,15 @@ test -d $DOCS && echo "BUG: source still exists after mv — deleting" && rm -rf
 Documentation updated. Pipeline: $PIPELINE.
   Root: architecture | API | map | features — updated | no changes
   Future features: N section(s) removed | N section(s) partially updated | no changes
+  Epic: {epic-name} progress updated | no active epic match
   {project} docs: updated | no changes
   Archived: $ARCHIVE/${PADDED}-${PIPELINE}/
   Next: gitter DOCS-COMMIT will commit these changes.
 ```
+
+### Step 5 — Format all touched markdown
+
+Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you created or edited in this mode. This normalizes formatting for consistent LLM read/write.
 
 **NOTE:** You do NOT commit. The orchestrator invokes gitter DOCS-COMMIT after you finish.
 
@@ -190,6 +214,7 @@ Read `$CDOCS/documenter/$REFS/sync-rules.md` for the full rule set. Then execute
 8. **Stale pipelines** (Rule 10) — Check `docs/dev/builds/` for non-archived pipeline dirs.
 8.5. **Future-features rot** (Rule 13) — Cross-reference `docs/dev/future-features.md` sections against `docs/agents/features.md`. Spot-check 5-10 sections. Flag `STALE-ROADMAP`. Do NOT fix during audit.
 9. **Ownership enforcement** (Rule 11) — Check `> Author:` lines; flag wrong-owner edits.
+9.5. **Epic consistency** (Rule 14) — Check `docs/epics/` for active manifests. Verify pipeline references resolve. Flag `STALE-EPIC` if no activity in 30 days.
 
 ### Step 10 — Report
 
@@ -220,7 +245,8 @@ If audit discovered new/removed docs or changed ownership, update the registry.
 1. **Read what changed** — Orchestrator describes the fix and affected projects.
 2. **Update relevant permanent docs** — Same merge logic as ARCHIVE Step 2, but only affected docs. Skip unaffected. Always check `map.md` and `features.md`.
 3. **Clean `docs/dev/future-features.md`** — If hotfix shipped a parked feature, follow ARCHIVE Step 2g-2 procedure. Skip if purely a bug fix.
-4. **Confirm** — Same format as ARCHIVE Step 4 but with `(jc)` label.
+4. **Format** — Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you edited.
+5. **Confirm** — Same format as ARCHIVE Step 4 but with `(jc)` label.
 
 ---
 

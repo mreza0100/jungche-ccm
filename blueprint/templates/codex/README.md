@@ -170,11 +170,13 @@ See `skills/build/SKILL.md` for the example.
 
 ### 5. Add research/utility skills (optional)
 
-If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `rnd`, `regulatory-knowledge`), you can symlink them into `.codex/skills/` so Codex can use them too:
+If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `rnd`, `360`, `ghostwriter`), symlink them into `.codex/skills/` so Codex can use them too. These skills share the same `SKILL.md` across both runtimes — no Codex-specific wrapper needed:
 
 ```bash
 ln -s ../../.claude/skills/rr .codex/skills/rr
 ln -s ../../.claude/skills/rnd .codex/skills/rnd
+ln -s ../../.claude/skills/360 .codex/skills/360
+ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 ```
 
 ---
@@ -233,6 +235,8 @@ your-project/
 │   └── skills/                  ← Claude skills + shared research skills
 ├── .codex/                      ← OPTIONAL Codex config layer
 │   ├── config.toml              ← global Codex settings
+│   ├── rules/                   ← safety rules (git protection, destructive ops)
+│   │   └── default.rules        ← prefix_rule() definitions
 │   ├── agents/                  ← .toml wrappers pointing to .claude/ manuals
 │   │   ├── build.toml           ← command wrapper
 │   │   ├── jc.toml              ← command wrapper
@@ -262,7 +266,12 @@ The example `.toml` files in this template use placeholders:
 |-------------|-------------|
 | `{PROJECT_NAME}` | Your project's display name (e.g., "Acme Platform") |
 | `{BACKEND_PROJECT}` | Your backend subproject directory (e.g., "acme-api") |
+| `{INFRA_PROJECT}` | Your infra subproject directory (e.g., "acme-infra") |
+| `{KNOWLEDGE_ROOT}` | Where domain knowledge lives (e.g., "acme-ai/knowledge/") |
 | `{LANGUAGE_AND_CONVENTIONS}` | Your stack's code rules (e.g., "TypeScript strict mode, ESM") |
+| `{USER_PERSONA}` | Your primary user persona (e.g., "therapist", "analyst", "operator") |
+| `{MARKET_SEGMENT}` | Your target market (e.g., "GGZ", "fintech", "edtech") |
+| `{REGULATION}` | Applicable regulations (e.g., "GDPR, EU AI Act, HIPAA") |
 | `{project-a}`, `{project-b}` | Your actual subproject directory names |
 
 For a project with N subprojects and M roles per subproject, you need:

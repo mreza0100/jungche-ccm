@@ -48,6 +48,10 @@ Add to `~/.claude/settings.json`:
 
 Requires `jq` and `git`.
 
+## Related: Notifications (`notify.sh`)
+
+The statusline shows real-time state while you're watching. For when you're NOT watching, `scripts/notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events to send a macOS notification when a turn takes 30+ seconds. Both are installed together — see `INSTALL.md` Steps 8.1 and 8.2.
+
 ## Research
 
 Built from analysis of: daniel3303/ClaudeCodeStatusLine, fredrikaverpil/claudeline, sirmalloc/ccstatusline, Owloops/claude-powerline, vtmocanu/cc-statusline, Mohamed3on gist, jtbr gist, wmoto-ai gist, Oh My Posh Claude segment, plus Starship/Powerlevel10k/Oh My Posh design patterns and 13 Claude Code GitHub issues on rendering constraints.

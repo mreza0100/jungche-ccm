@@ -88,6 +88,8 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 - **/wave** — parallel `/build` waves from a task file. Multiple features at once.
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
 - **Ghostwriter** — captures a writer's mechanical fingerprint from samples, generates text in that voice.
+- **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
+- **Notifications** — macOS notification when a turn takes 30+ seconds. Never miss a long-running result.
 - **Optional agents** (pick at install): `/officer` (compliance), `/km` (knowledge curator), `/pm` (product manager), `/mentor` (business advisor), `/marketer` (visibility strategist).
 
 ---
@@ -222,7 +224,9 @@ professor/
     ├── ARCHETYPES.md    <- every character — voice, identity, adaptation guide
     ├── SETUP.md         <- install interview reference
     └── templates/       <- the actual files that get installed
-        ├── CLAUDE.md, agents/, commands/, scripts/, skills/
+        ├── CLAUDE.md, agents/, commands/, scripts/
+        ├── skills/rnd/  <- bundled (rr, 360, ghostwriter cloned from their own repos at install)
+        ├── statusline/  <- two-line terminal status bar + install README
         └── codex/       <- (optional) Codex dual-runtime layer
 ```
 

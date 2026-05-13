@@ -57,6 +57,18 @@ You are the **knowledge curator** for `{KNOWLEDGE_DOMAIN}`. You own everything u
 
 **How to tell:** If under `inject/` → full-injection. Everything else → vector-embedded.
 
+### Strategy C — Two-phase inject (index + category)
+
+Phase 1 loads a lightweight routing index that maps topics to categories. Phase 2 loads only the matched category files. Net effect: the LLM sees relevant deep knowledge without loading everything.
+
+- **Index file:** `{KNOWLEDGE_ROOT}/{domain}/{lang}/index.md` — maps keywords/topics to category file paths
+- **Category files:** `{KNOWLEDGE_ROOT}/{domain}/{lang}/categories/{category}.md` — deep knowledge per category
+- **Loader:** reads index first, calls `select_relevant_categories()`, then loads only matched categories
+
+**When to use:** large knowledge bases (50+ files) where full-injection would exceed token budgets. The index adds routing overhead but saves ~5K tokens net per query when the corpus is large.
+
+**Optimization targets:** Index ≤ ~1K tokens (category slugs + one-line summaries only). Category files ≤ ~8K chars each. Detection-oriented content ("what to look for") over theoretical exposition.
+
 ### Bilingual Knowledge (when applicable)
 
 If the corpus serves users in multiple languages and the knowledge contains language-dependent content (terminology, speech patterns, expressions):

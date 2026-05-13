@@ -334,7 +334,66 @@ For each command:
 
 ### Step 8 — Scripts
 
-Copy `blueprint/templates/scripts/` to `.claude/scripts/`.
+Copy `blueprint/templates/scripts/` to `.claude/scripts/` (includes `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`).
+
+For `notify.sh`: replace `{CHARACTER_NAME}` with the character name from Batch 7 (default: "Professor"), and `{CHARACTER_NAME_LOWER}` with its lowercase form (default: "professor").
+
+### Step 8.1 — Statusline
+
+Copy `blueprint/templates/statusline/statusline-command.sh` to `~/.claude/statusline-command.sh`.
+
+Then add the statusline config to `~/.claude/settings.json` (create if absent, merge if exists):
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh",
+    "padding": 0,
+    "refreshInterval": 10,
+    "hideVimModeIndicator": true
+  }
+}
+```
+
+Requires `jq` and `git`. If `jq` is not installed, warn the user and suggest `brew install jq` / `apt install jq`.
+
+### Step 8.2 — Notification hooks
+
+Wire `notify.sh` into Claude Code's event hooks via `~/.claude/settings.json` (merge into the same file from Step 8.1):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/notify.sh start"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/scripts/notify.sh stop"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This sends a macOS notification ("Professor is done — your turn") when a turn takes 30+ seconds. The notification uses the character name from Batch 7.
+
+**Platform note:** `notify.sh` uses `osascript` (macOS). On Linux, replace the `osascript` line with `notify-send "{CHARACTER_NAME} is done — your turn"`. On Windows/WSL, use `powershell.exe -Command "New-BurntToastNotification ..."` or skip.
 
 ### Step 8.5 — The Cast bible (ARCHETYPES.md)
 
@@ -342,12 +401,23 @@ Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no subst
 
 ### Step 8.6 — Skills (thinking protocols)
 
-Copy the following skills from `blueprint/templates/skills/` to `.claude/skills/`:
-- `rr/SKILL.md` — research-and-report pipeline (universal, no parameterization)
-- `rnd/SKILL.md` — goal-driven iterative execution (universal, no parameterization)
-- `360/SKILL.md` — exhaustive multi-angle analysis (replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with the user's persona terms from Batch 5)
+Skills are maintained as standalone public repos. Clone each into `.claude/skills/{name}/`, strip the `.git/` directory, and parameterize where needed.
 
-These are Tier A thinking protocols that agents reference at key moments. QA agents call the 360° `test` domain before writing adversarial tests. Professor calls the 360° `inquiry` domain before deep-diving into code.
+```bash
+# Clone from public repos
+git clone https://github.com/mreza0100/rr.git .claude/skills/rr && rm -rf .claude/skills/rr/.git
+git clone https://github.com/mreza0100/360.git .claude/skills/360 && rm -rf .claude/skills/360/.git
+git clone https://github.com/mreza0100/ghost-writer.git .claude/skills/ghostwriter && rm -rf .claude/skills/ghostwriter/.git
+
+# rnd has no standalone repo yet — copy from blueprint
+cp -r blueprint/templates/skills/rnd .claude/skills/rnd
+```
+
+**Parameterize 360°:** Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with the user's persona terms from Batch 5.
+
+**Why repos, not bundled copies:** Skills evolve independently of the Professor pipeline. When a skill ships a new version, adopters can `cd .claude/skills/rr && git init && git remote add origin https://github.com/mreza0100/rr.git && git fetch && git checkout origin/main -- SKILL.md` to pull updates without touching the rest of their install. The blueprint's `templates/skills/` directory exists only as a fallback for `rnd` (which has no standalone repo yet).
+
+These are Tier A thinking protocols that agents reference at key moments. QA agents call the 360° `test` domain before writing adversarial tests. Professor calls the 360° `inquiry` domain before deep-diving into code. Ghostwriter captures and reproduces a writer's mechanical fingerprint for external-facing deliverables.
 
 Edit `worktree.sh`:
 - Replace the per-project install blocks (line marked `# === Per-project setup — EDIT FOR YOUR STACK ===`) with one block per subproject from Batch 2.

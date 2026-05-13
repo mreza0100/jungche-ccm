@@ -18,9 +18,8 @@ Every command, agent, and rule sorts into one of three tiers:
 
 ### The cast (Tier A — universal)
 
-- **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md.
+- **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
-- The **Professor** is the root CLAUDE.md persona — 10+ PhDs cross-disciplinary analyst. Grandfatherly, warm, precise. Disciplines parameterize per project. NOT a separate command.
 - **/council** — roundtable debate, three rounds: opening, rebuttal, verdict. Panel composition adapts to the archetypes you opt into.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/audit** — code auditor. 8 categories of hygiene + 9 of security.
@@ -38,7 +37,8 @@ Every command, agent, and rule sorts into one of three tiers:
 ### The plumbing (Tier C — invisible)
 
 - `mono-planner`, `mono-architect`, `mono-documenter`, `gitter` — root agents. Role-defined, not character-defined.
-- `worktree.sh`, `alloc-ports.sh`, `dev.sh` — scripts.
+- `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
+- `statusline-command.sh` — two-line status bar (model, context, git, cost, rate limits). Installed to `~/.claude/`.
 - Per-project agents (`planner`, `architect`, `developer`, `qa`) — role-defined.
 
 ---
@@ -195,8 +195,9 @@ your-project/
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
 │   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /council, /audit + opt-in Tier B
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh
-│   └── settings.json                  ← permissions, env vars, hooks
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh
+│   ├── skills/                        ← cloned from public repos (rr, 360, ghostwriter) + bundled (rnd)
+│   └── settings.json                  ← permissions, env vars, hooks (notify.sh + statusline wired here)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
 │   ├── agents/                        ← command wrappers + role agent wrappers

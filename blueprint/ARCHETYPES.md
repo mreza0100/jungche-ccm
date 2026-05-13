@@ -452,6 +452,16 @@ For completeness — these ship as mechanics-only templates with no voice:
 
 These are role-defined, not character-defined. They report cleanly and stay out of the spotlight.
 
+### Scripts & utilities
+
+| Script | Lives in | Purpose |
+|--------|----------|---------|
+| `worktree.sh` | `.claude/scripts/` | Creates/destroys worktree checkouts with per-project setup |
+| `alloc-ports.sh` | `.claude/scripts/` | Allocates unique port ranges per pipeline |
+| `dev.sh` | `.claude/scripts/` | Starts/stops/restarts dev environment services |
+| `notify.sh` | `.claude/scripts/` | macOS notification when a turn takes 30+ seconds (hooks into `PreToolUse` + `Stop`) |
+| `statusline-command.sh` | `~/.claude/` | Two-line terminal status bar: model, context %, git, cost, rate limits, token I/O |
+
 ---
 
 ## How the cast works together
@@ -490,6 +500,6 @@ A typical bug:
 A typical refactor of the pipeline itself:
 
 1. User says "the architects are spending too long on research; cap them at 3 sources."
-2. **JM** edits the architect agent definition at the source. Done.
+2. **PCM** edits the architect agent definition at the source. Done.
 
 The cast composes. The discipline persists. The voices stay.
