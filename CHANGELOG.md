@@ -33,11 +33,16 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] — 2026-05-13
+
 ### Added
 
 - Mechanics: `commands/pcm.md` § "Update Protocol" — full `/pcm update` implementation with manifest-driven replay, git tag version pinning, three-way hash comparison, three-bucket diff (auto-apply / review / manual). (safe-auto)
 - Mechanics: `.professor/` directory — replaces `.claude/PROFESSOR_*` files. Contains `VERSION`, `manifest.json` (interview replay seed + file hashes), and `decisions.md` (human-readable customization log). (breaking)
 - Scripts: `format-md.sh` — PostToolUse hook that auto-formats Professor-owned `.md` files after Edit/Write. Wired via `.claude/settings.json`. (safe-auto)
+- Tier A: `commands/pcm.md` § "Pipeline Consistency Audit" — deep-walk fan-out architecture. Spawns one Explore agent per scope in parallel, each reading every file and following every reference. Replaces surface-level existence checks with semantic consistency verification. New `cross-refs` scope catches inter-domain inconsistencies. Severity classification (CRITICAL/WARNING/INFO). (safe-auto)
 
 ### Changed
 
@@ -47,6 +52,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 - Docs: `BLUEPRINT.md` — added "Staying current" section, `.professor/` in file layout, format-md.sh in scripts.
 - Docs: `README.md` (blueprint + root) — "Staying current" rewritten for manifest-driven updates. Generic clone paths.
 - Docs: All blueprint docs — `~/work/professor` → `/path/to/professor` (no hardcoded local paths).
+- Tier A: `commands/pcm.md` § audit scopes — `paths` and `tech` scopes removed (folded into deep checks of `agents`, `commands`, `pipeline`, `structure`). 8 scopes retained, all deepened.
 
 ### Migration
 

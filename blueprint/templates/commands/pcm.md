@@ -196,38 +196,121 @@ Manual verification needed: [list or "none"]
 
 ## Pipeline Consistency Audit
 
-Run when `$ARGUMENTS` starts with `audit`. Read-only — reports problems, does NOT fix them.
+Run when `$ARGUMENTS` starts with `audit`. **Read-only** — reports problems, does NOT fix them.
 
-### Scopes
+### Execution model — fan-out agents
 
-| Scope       | What it checks                                                                                             |
-| ----------- | ---------------------------------------------------------------------------------------------------------- |
-| `agents`    | File existence vs CLAUDE.md tables, frontmatter validity, cross-refs, git prohibition in non-gitter agents |
-| `commands`  | File existence vs CLAUDE.md command table, bidirectional sync                                              |
-| `scripts`   | Existence, references from agents/commands, executable permissions                                         |
-| `pipeline`  | build.md internal consistency, step-reference table match, agent paths resolve, path variables used        |
-| `paths`     | No hardcoded pipeline or worktree paths in agents                                                          |
-| `tech`      | Package managers match, key deps exist in manifests                                                        |
-| `structure` | Project dirs exist, child CLAUDE.md files exist, no stale names, permanent docs exist                      |
-| _(all)_     | Run ALL above in parallel                                                                                  |
+Spawn **one Agent per scope in parallel** (subagent_type: `Explore`, search breadth: `very thorough`). Each agent deep-reads its entire domain — follows every reference, reads every file, verifies semantic consistency. PCM aggregates results after all agents return.
 
-<!-- OPTIONAL: Secondary runtime audit scope
-| `codex` | Wrapper for every agent, symlink for every skill, no stale path refs in wrappers |
+**Scope selection:** `audit` or `audit all` → ALL scopes in parallel. `audit {scope}` → single scope.
+
+**Agent brief template** (adapt per scope):
+
+> You are auditing the Professor framework's **{SCOPE}**. Read every file listed. For each check, report one line: `PASS: {detail}` or `FAIL: {detail}` or `WARN: {detail}`. Do NOT fix anything — report only. Follow every reference, read every file, verify every claim. The project root is `{cwd}`.
+
+### Scopes & deep checks
+
+#### `agents` — Walk every agent file
+
+Files: `.claude/agents/*.md`, `{project-*}/.claude/agents/*.md`
+
+- **Frontmatter validity:** every agent has `name`, `description`, `tools` — all non-empty, YAML parses cleanly
+- **Path references:** extract every file path in each agent body → verify each exists on disk
+- **Delegation chains:** if agent says "spawn", "Read and follow", or references another agent → verify target exists
+- **Gitter monopoly:** grep ALL agents for `git add`, `git commit`, `git push`, `git checkout`, `git merge` → ONLY `gitter.md` should contain these
+- **Size limit:** no agent file >15KB
+- **Table sync:** every agent file ↔ CLAUDE.md table entry (root or child), bidirectional
+- **Frontmatter ↔ behavior:** `tools` field lists tools the agent actually uses in its instructions
+
+#### `commands` — Walk every command file
+
+Files: `.claude/commands/*.md`
+
+- **Agent references:** every agent name/path referenced in the command → verify agent file exists
+- **Doc path references:** every `$CDOCS`, `$REFS`, `docs/` path → verify target exists on disk
+- **Subcommand structure:** if command defines subcommands via table/args, verify each is handled in the body
+- **Route-to validity:** CLAUDE.md routing table entry for this command → matches what the command actually handles
+- **Size limit:** no command file >35KB
+- **Table sync:** every command file ↔ CLAUDE.md Commands table entry, bidirectional
+
+#### `skills` — Walk every SKILL.md
+
+Files: `.claude/skills/*/SKILL.md`
+
+- **Structure:** SKILL.md exists in each skill dir, has identifiable trigger patterns
+- **Table sync:** CLAUDE.md Skills table ↔ actual skill dirs, bidirectional
+- **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
+
+<!-- OPTIONAL: Secondary runtime skill check
+- **Symlink:** secondary runtime skills dir has symlink for each `.claude/skills/*/`
 -->
 
-### Checks to run per scope
+#### `pipeline` — Walk build.md end-to-end
 
-**Agents:** Glob each project's `.claude/agents/` → compare to CLAUDE.md table → report MISSING/ORPHAN/OK. Read frontmatter of each agent → validate `name`, `description`, `tools`. Grep all child agents for `git add`/`git commit`/`git push` → only gitter should have these.
+Files: `.claude/commands/build.md` (primary), all agents it references
 
-**Commands:** Glob `.claude/commands/*.md` → compare to CLAUDE.md command table → report MISSING/ORPHAN/OK.
+- **Reference resolution:** every "Read and follow" path → target file exists
+- **Agent spawn validity:** every `subagent_type` referenced → matches a registered agent name/description in `.claude/agents/` or child agents
+- **Path variables:** `$DOCS`, `$DOCS_REL`, `$DOCS_POST` used — no hardcoded pipeline or worktree paths
+- **Step ↔ table match:** step numbers in instructions match the Pipeline Reference table
+- **Script references:** worktree.sh, alloc-ports.sh paths → files exist and are executable
+- **Flow integrity:** planner → architect → developer → QA → gitter ordering maintained — no step references an agent from a later phase
 
-**Scripts:** Verify scripts exist in `.claude/scripts/`. Check executable permissions. Grep agents/commands for script references → verify paths resolve.
+#### `scripts` — Walk each script
 
-**Pipeline:** Read build.md → verify step instructions match reference table. Grep `Read and follow` paths → verify each resolves to an existing agent file. Verify `$DOCS/` variables used, not hardcoded paths.
+Files: `.claude/scripts/*.sh`
 
-**Tech:** Check for expected lock files per project. Spot-check key deps in manifests.
+- **Existence & permissions:** each script exists and is executable (`+x`)
+- **Referential integrity:** grep agents/commands for each script name → paths used to call it are correct
+- **Safety headers:** `set -euo pipefail` present at top
+- **No hardcoded paths:** no absolute paths or project-specific paths that should be variables
 
-**Structure:** Verify all project dirs exist. Verify child CLAUDE.md files exist. Grep for typos/old names across all CLAUDE.md files and agents. Verify permanent docs exist.
+#### `structure` — Walk repo skeleton
+
+Files: project dirs, CLAUDE.md files, permanent docs, lock files
+
+- **Project dirs:** all expected project directories exist
+- **Child CLAUDE.md:** each project dir has a `CLAUDE.md`
+- **Child agents:** each project's `.claude/agents/` has expected agent count
+- **Permanent docs:** `docs/agents/`, `docs/commands/` dirs exist with expected subdirs
+- **Stale names:** grep all CLAUDE.md files and agents for old/renamed project names or typos
+- **Package managers:** expected lock files present per project
+
+<!-- OPTIONAL: Secondary runtime audit scope
+#### `codex` — Walk every wrapper and symlink
+
+Files: `.codex/agents/*.toml`, `.codex/skills/` symlinks
+
+- **Agent parity:** every `.claude/agents/*.md` (root) + every child project agent → has a wrapper
+- **Path validity:** each wrapper's instructions reference `.claude/` paths that exist on disk
+- **Skill parity:** every `.claude/skills/*/` → has a symlink that resolves correctly
+- **Stale refs:** grep wrappers for file paths that no longer exist
+-->
+
+#### `cross-refs` — The glue between domains
+
+Catches what no single-domain audit can see. Reads across ALL domains simultaneously.
+
+- **Routing ↔ commands:** every entry in CLAUDE.md "Request Routing" table → command file exists and handles claimed scope
+- **Agent counts ↔ reality:** CLAUDE.md agent count claims → match actual file counts per project
+- **Command count ↔ reality:** CLAUDE.md Commands table row count → matches `ls .claude/commands/*.md`
+- **Skill count ↔ reality:** CLAUDE.md Skills table → matches `ls .claude/skills/`
+- **Frontmatter ↔ tables:** agent `name`/`description` in frontmatter → consistent with CLAUDE.md table descriptions
+- **Doc ownership:** CLAUDE.md doc ownership claims → claimed paths exist
+- **Invariant spot-check:** sample 3 critical invariants from § Critical invariants → verify they hold in the actual files
+
+<!-- OPTIONAL: Secondary runtime cross-ref
+- **Secondary ↔ primary:** wrapper inventory → 1:1 with `.claude/agents/` + all child agents
+-->
+
+### Aggregation
+
+After all scope agents return:
+
+1. Merge per-scope findings into a single report
+2. Deduplicate findings that appear in multiple scopes
+3. Assign severity: **CRITICAL** (broken reference, missing file, invariant violation), **WARNING** (stale name, size approaching limit, weak inconsistency), **INFO** (style nit, non-blocking)
+4. Count totals per severity
 
 ### Report format
 
@@ -235,17 +318,18 @@ Run when `$ARGUMENTS` starts with `audit`. Read-only — reports problems, does 
 # Pipeline Audit Report — {date}
 
 ## Summary
-- Total checks: N / Passed: N / Failed: N / Warnings: N
+- Scopes audited: {N} / Agents fanned: {N}
+- Total checks: N / Passed: N / Critical: N / Warnings: N / Info: N
 
 ## Results
-### {Scope} — {PASS/FAIL}
-{one line per finding}
+### {Scope} — {PASS/FAIL/WARN}
+{one line per finding, prefixed PASS/FAIL/WARN}
 
 ## Issues Found
-{numbered list with severity and suggested fix}
+{numbered list with severity badge and suggested fix}
 
 ## Verdict
-{CLEAN | NEEDS ATTENTION — N issues}
+{CLEAN | NEEDS ATTENTION — N critical, M warnings}
 ```
 
 Ask: "Want me to fix these issues?"
