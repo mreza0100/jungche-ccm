@@ -48,7 +48,7 @@ CLAUDE.md (Professor persona + request routing)
 
 <!-- OPTIONAL: Secondary runtime (Codex / OpenAI)
 .codex/agents/*.toml  → thin wrappers referencing .claude/agents/*.md (dual-runtime preamble)
-.codex/skills/        → directory symlinks → ../../.claude/skills/*/
+.codex/skills/        → thin skill wrappers or symlinks pointing back to `.claude/skills/*/`
 .codex/config.toml    → runtime settings
 .codex/rules/default.rules → exec-policy safety rules
 -->
@@ -59,7 +59,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 
 ### Critical invariants
 
-1. **Single-source model** — if using dual runtime, wrapper files are thin pointers to `.claude/` content. Skills are directory symlinks. Content changes propagate automatically. Only structural changes (add/rename/delete) need edits.
+1. **Single-source model** — if using dual runtime, wrapper files are thin pointers to `.claude/` content. Skills are directory symlinks or thin wrappers that read the `.claude/skills/*/SKILL.md` source manual. Content changes propagate automatically for symlinks; thin wrappers must preserve protocol semantics and be checked during Codex audits.
 2. **Gitter monopoly** — only gitter runs git commands. All other agents delegate.
 3. **Path variables** — agents use `$DOCS`, `$DOCS_REL`, `$DOCS_POST`, never hardcoded paths. Defined in `build.md` Step 0.
 4. **Pipeline flow lives in build.md** — CLAUDE.md just redirects. Don't duplicate.
@@ -70,7 +70,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 9. **Never hardcode names that change** — table names, enum values, chain names evolve. Tell agents WHERE to discover, not WHAT the names are.
 
 <!-- OPTIONAL: Dual-runtime invariant
-10. **Secondary runtime inventory parity** — every `.claude/agents/*.md` has a corresponding wrapper. Every `.claude/skills/*/` has a symlink.
+10. **Secondary runtime inventory parity** — every `.claude/agents/*.md` has a corresponding wrapper. Every shared `.claude/skills/*/` has a Codex wrapper or symlink that preserves the same protocol.
 -->
 
 ### Inventory counts (verify before reporting)
@@ -99,7 +99,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 
 <!-- OPTIONAL: Secondary runtime artifacts
 | Codex agents | `.codex/agents/*.toml` |
-| Codex skills | `.codex/skills/` (symlinks) |
+| Codex skills | `.codex/skills/` wrappers or symlinks |
 | Codex config | `.codex/config.toml`, `.codex/rules/default.rules` |
 -->
 
@@ -242,7 +242,8 @@ Files: `.claude/skills/*/SKILL.md`
 - **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
 
 <!-- OPTIONAL: Secondary runtime skill check
-- **Symlink:** secondary runtime skills dir has symlink for each `.claude/skills/*/`
+- **Codex skill parity:** secondary runtime skills dir has a wrapper or symlink for each shared `.claude/skills/*/`
+- **Research contract:** RR-triggered Codex skill wrappers preserve scout/fan-out/aggregate behavior instead of inline WebSearch/WebFetch
 -->
 
 #### `pipeline` — Walk build.md end-to-end
@@ -279,11 +280,12 @@ Files: project dirs, CLAUDE.md files, permanent docs, lock files
 <!-- OPTIONAL: Secondary runtime audit scope
 #### `codex` — Walk every wrapper and symlink
 
-Files: `.codex/agents/*.toml`, `.codex/skills/` symlinks
+Files: `.codex/agents/*.toml`, `.codex/skills/` wrappers/symlinks
 
 - **Agent parity:** every `.claude/agents/*.md` (root) + every child project agent → has a wrapper
 - **Path validity:** each wrapper's instructions reference `.claude/` paths that exist on disk
-- **Skill parity:** every `.claude/skills/*/` → has a symlink that resolves correctly
+- **Skill parity:** every shared `.claude/skills/*/` → has a `.codex/skills/{name}/SKILL.md` wrapper or symlink that resolves correctly
+- **Research contract parity:** run `.claude/scripts/check-codex-research-contract.sh`; FAIL if any Codex wrapper says to replace RR with direct WebSearch/WebFetch
 - **Stale refs:** grep wrappers for file paths that no longer exist
 -->
 
@@ -350,7 +352,7 @@ Ask: "Want me to fix these issues?"
 
 <!-- OPTIONAL: Dual-runtime special operations
 **New agent (dual):** Also create `.codex/agents/{project}-{role}.toml` with dual-runtime preamble.
-**New skill (dual):** Also `ln -sf ../../.claude/skills/{name} .codex/skills/{name}`.
+**New skill (dual):** Also create `.codex/skills/{name}/SKILL.md` as a thin wrapper, or `ln -sf ../../.claude/skills/{name} .codex/skills/{name}` when symlinks are supported.
 -->
 
 ---

@@ -151,7 +151,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 15b. Do you also use OpenAI Codex? (OPTIONAL — everything works without it)
      If yes: I'll create a `.codex/` layer that mirrors `.claude/` — same command manuals,
      wrapped in .toml files for Codex's runtime. Also creates an `AGENTS.md` symlink to
-     `CLAUDE.md`. Division of labor: Claude orchestrates + QA, Codex implements (cheaper tokens).
+     `CLAUDE.md`. Claude and Codex read the same Professor contract; runtime wrappers translate mechanics, not identity.
      If no: the Codex layer is skipped entirely. No impact on any pipeline operation.
 ```
 
@@ -323,6 +323,8 @@ Copy from `blueprint/templates/commands/`:
 
 Add the `git` command (gitter gateway — see template).
 
+**Critical build.md adaptation:** `/build` MUST be generated from the actual project roster captured in Batches 2-3. Delete every planner/architect/developer/QA/db/devops block for projects that do not exist. Do not map a missing archetype to a different project just to satisfy a placeholder. After writing `build.md`, fail if any `{OPTIONAL_*}` placeholder remains, grep every referenced `*/.claude/agents/*.md` path, and fail the install if any path does not exist. Also fail if report lists mention project keys that are not in the installed roster.
+
 ### Step 7 — Tier B commands (the user's opt-ins from Batch 6)
 
 For each Tier B command the user picked, copy `blueprint/templates/commands/{cmd}.md` to `.claude/commands/{cmd}.md`, then **substitute placeholders AND strip the install-only meta-block**.
@@ -484,6 +486,8 @@ If the user said YES to Codex:
    - Adds Codex-specific instructions (git ownership when Codex orchestrates, Skill→Agent substitutions)
 4. For each per-project agent role (planner, architect, developer, qa), generate a `.codex/agents/{project}-{role}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/developer.toml`.
 5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/build/SKILL.md`.
+6. For each shared `.claude/skills/{360,rr,rnd,ghostwriter}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch.
+7. Copy `blueprint/templates/scripts/check-codex-research-contract.sh` to `.claude/scripts/check-codex-research-contract.sh`, make it executable, and run it before reporting Codex setup complete.
 
 If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
 

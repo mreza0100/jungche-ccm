@@ -10,7 +10,7 @@ name = "audit"
 description = "Codex runner for /audit — codebase analysis & quality. Sub-modes: code hygiene, security deep scan. Read-only scan with actionable findings."
 nickname_candidates = ["Audit", "Codex Audit", "Code Auditor"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /audit command.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /audit command.
 
 Read .claude/commands/audit.md in full — it is your complete role manual. Follow it verbatim.
 

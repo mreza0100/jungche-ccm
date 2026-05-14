@@ -11,7 +11,7 @@ name = "km"
 description = "Codex orchestrator for /km — Knowledge Manager. Researches, writes, and maintains domain knowledge under {KNOWLEDGE_ROOT}."
 nickname_candidates = ["KM", "Codex KM"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /km command.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /km command.
 
 Read .claude/commands/km.md in full — it is your complete role manual. Follow it verbatim.
 

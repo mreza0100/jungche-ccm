@@ -10,11 +10,11 @@ name = "council"
 description = "Codex runner for /council — roundtable debate. Runs multiple perspectives in parallel on a topic. Three rounds, then verdict. Read-only."
 nickname_candidates = ["Council", "Codex Council"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /council debate.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /council debate.
 
 Read .claude/commands/council.md in full — it is your complete role manual. Follow it verbatim.
 
 You will be given a debate topic. This command is READ-ONLY — no code changes, no commits.
 
-Codex-only difference: spawn each council member as a Codex Teams child agent. For regulatory content, read docs/commands/officer/references/ directly. The rr skill is Claude-side — for research, use WebSearch/WebFetch directly.
+Codex-only difference: spawn each council member as a Codex Teams child agent. For regulatory content, read docs/commands/officer/references/ directly. The shared rr protocol lives at .claude/skills/rr/SKILL.md and is exposed through .codex/skills/rr/SKILL.md. If the topic includes RR, RRP, "research and report", "competitors", "landscape", or another broad research dependency, run the RR-compatible research pipeline first, then feed the aggregate findings into the council. Do not let council-member debate substitute for RR evidence gathering. Use WebSearch/WebFetch directly only for narrow fact checks inside a non-RR council run.
 """

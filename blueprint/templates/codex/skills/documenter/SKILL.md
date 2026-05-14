@@ -9,4 +9,4 @@ Read `.claude/commands/documenter.md` in full — it is your complete role manua
 
 ## Codex-only differences
 
-- DOCS-COMMIT: execute gitter.md Phase 3 inline via bash instead of spawning the Claude-side gitter agent.
+- DOCS-COMMIT: execute gitter.md Phase 3 inline via bash instead of spawning a separate gitter agent.

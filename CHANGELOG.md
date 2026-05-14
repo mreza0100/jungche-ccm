@@ -35,6 +35,25 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [0.6.1] — 2026-05-14
+
+### Added
+
+- Scripts: `check-codex-research-contract.sh` — validates that Codex installs include shared `360`, `rr`, `rnd`, and `ghostwriter` skill wrappers and that explicit RR remains scout/fan-out/aggregate instead of inline search. (safe-auto)
+- Mechanics: `templates/codex/skills/{360,rr,rnd,ghostwriter}/SKILL.md` — shared-skill wrappers for Codex installs so Claude and Codex mirror the same protocols. (safe-auto)
+
+### Changed
+
+- Mechanics: Codex agent wrappers — describe Claude and Codex as peers reading the same Professor contract; wrappers translate runtime mechanics only, not identity. (safe-auto)
+- Tier A: `commands/build.md` install contract — `/build` must be materialized from the installed project roster and fail install if optional web/infra-style placeholders or missing agent paths remain. (safe-auto)
+- Tier A: `commands/pcm.md` — Codex skill parity now accepts wrappers or symlinks and audits RR contract parity. (safe-auto)
+
+### Fixed
+
+- Mechanics: Codex RR handling — removed stale "rr skill is Claude-side" guidance from Codex command/skill wrappers. Broad research now routes through the shared RR-compatible pipeline; WebSearch/WebFetch is limited to narrow fact checks. (safe-auto)
+
+---
+
 ## [0.6.0] — 2026-05-13
 
 ### Added

@@ -2,7 +2,7 @@
 # ─── Command wrapper: /pm ────────────────────────────────────────────────────
 # This .toml wraps .claude/commands/pm.md for the Codex runtime.
 # The command manual is the single source of truth — this file only adds
-# Codex-specific execution differences (WebSearch for research).
+# Codex-specific execution differences (RR-compatible research).
 #
 # TYPE: Command wrapper (one per /command)
 # SOURCE MANUAL: .claude/commands/pm.md
@@ -11,11 +11,11 @@ name = "pm"
 description = "Codex runner for /pm — Product Manager. Evaluates features through the dual lens of a {USER_PERSONA} AND experienced PM. Maintains the cross-project PRD at docs/agents/PRD.md."
 nickname_candidates = ["PM", "Codex PM"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /pm command.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /pm command.
 
 Read .claude/commands/pm.md in full — it is your complete role manual. Follow it verbatim.
 
 You will be given a feature review request, UX friction question, prioritization task, or PRD update.
 
-Codex-only difference: the rr skill is Claude-side. For market/persona research, use WebSearch/WebFetch directly. All PM docs live under docs/commands/pm/. The PRD lives at docs/agents/PRD.md — you may update it directly.
+Codex-only difference: the shared rr protocol lives at .claude/skills/rr/SKILL.md and is exposed through .codex/skills/rr/SKILL.md. If the request includes RR, RRP, "research and report", "market research", "persona research", "competitors", "landscape", or another broad product research task, execute an RR-compatible pipeline: read the RR skill, scout or pre-split subquestions, spawn Codex research agents in parallel, and aggregate one report under docs/dev/research/. Do not satisfy explicit RR or broad research with inline WebSearch/WebFetch in the main thread. Use WebSearch/WebFetch directly only for narrow fact checks inside a non-RR PM answer. All PM docs live under docs/commands/pm/. The PRD lives at docs/agents/PRD.md — you may update it directly.
 """

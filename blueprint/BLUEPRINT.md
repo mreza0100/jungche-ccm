@@ -282,10 +282,10 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 **How it works:**
 
-- `.claude/` is always the source of truth — command manuals, agent definitions, scripts
-- `.codex/` is a config layer: `.toml` wrappers that point to the same `.claude/commands/*.md` and `.claude/agents/*.md` manuals
+- `.claude/` is always the source of truth — command manuals, agent definitions, scripts, shared skills
+- `.codex/` is a runtime adapter layer: `.toml` wrappers point to the same `.claude/commands/*.md` and `.claude/agents/*.md` manuals; shared skill wrappers/symlinks point back to `.claude/skills/*/SKILL.md`
 - `AGENTS.md` is a symlink → `CLAUDE.md` (Codex reads `AGENTS.md` by convention)
-- Claude orchestrates, plans, and does QA. Codex implements. When Codex runs a full pipeline (`$build`), it handles git work inline per `gitter.md`.
+- Claude and Codex mirror the same Professor contract. Runtime wrappers translate mechanics (slash commands, agent spawning, git execution), not identity or protocol. When Codex runs a full pipeline (`$build`), it handles git work inline per `gitter.md`.
 
 **Division of labor:**
 
@@ -296,7 +296,7 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 | QA / adversarial tests           | Claude  | Codex shouldn't grade itself               |
 | Git operations                   | Either  | Whoever orchestrates owns git for that run |
 
-**Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/`, `AGENTS.md`, and all `.toml` wrappers. If no, the entire layer is skipped. No pipeline operation requires Codex.
+**Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/`, `AGENTS.md`, all `.toml` wrappers, command skill wrappers, shared skill wrappers/symlinks, and the Codex research-contract check. If no, the entire layer is skipped. No pipeline operation requires Codex.
 
 See `templates/codex/README.md` for the full integration guide.
 

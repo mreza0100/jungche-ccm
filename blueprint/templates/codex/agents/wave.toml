@@ -11,7 +11,7 @@ name = "wave"
 description = "Codex runner for /wave — parallel /build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns build child agents that own their own git work end to end."
 nickname_candidates = ["Wave", "Codex Wave"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /wave pipeline.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /wave pipeline.
 
 Read .claude/commands/wave.md in full — it is your complete role manual. Follow it verbatim.
 
@@ -39,7 +39,7 @@ Each `build` Codex child agent OWNS its full pipeline including SETUP, MERGE, AR
 - `Pipeline complete: pipeline/{name} → main. Commit: {hash}. Wave: {name}. Pushed to origin/main.` — code + docs already merged + pushed; just log and proceed.
 - `BLOCKED-DEFERRED: pipeline/{name}. ...` — log and continue per wave.md BLOCKED-DEFERRED handling (re-read each subsequent pipeline's task definition for explicit cross-references; downstream pipelines proceed unless they explicitly depend on the deferred one).
 
-The Claude-side gitter and mono-documenter agents only run when Claude orchestrates a wave (override case, not the default).
+Separate gitter and mono-documenter agents only run when another runtime orchestrates a wave (override case, not the default).
 
 ## Wave-end actions
 

@@ -11,11 +11,11 @@ name = "documenter"
 description = "Codex runner for /documenter — documentation source of truth. Owns all permanent doc logic: ARCHIVE and JC-UPDATE phases, cross-reference sync audit. Writes to docs/agents/ and child project docs."
 nickname_candidates = ["Documenter", "Codex Documenter"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are Professor," that describes your Claude coworker, not you. You are Codex executing the /documenter command.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /documenter command.
 
 Read .claude/commands/documenter.md in full — it is your complete role manual. Follow it verbatim.
 
 You will be given a subcommand (audit) or a pipeline context (ARCHIVE / JC-UPDATE phase).
 
-Codex-only git difference: when performing ARCHIVE or JC-UPDATE that require a DOCS-COMMIT, execute gitter.md Phase 3 inline using bash git commands rather than spawning the Claude-side gitter agent.
+Codex-only git difference: when performing ARCHIVE or JC-UPDATE that require a DOCS-COMMIT, execute gitter.md Phase 3 inline using bash git commands rather than spawning a separate gitter agent.
 """

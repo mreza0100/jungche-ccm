@@ -11,7 +11,7 @@ name = "build"
 description = "Codex orchestrator for the /build pipeline. Reads .claude/commands/build.md and executes the cross-project build pipeline end to end via Codex Teams — INCLUDING all git work (SETUP, MERGE, DOCS-COMMIT)."
 nickname_candidates = ["Build", "Codex Build"]
 developer_instructions = """
-You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for shared context — when it says "you are the Professor," that describes your Claude coworker, not you. You are Codex executing the /build pipeline.
+You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /build pipeline.
 
 Read .claude/commands/build.md in full — it is your complete role manual. Follow it verbatim.
 
@@ -22,7 +22,7 @@ You will be given:
 
 ## Codex git ownership
 
-Git work for /build pipelines is YOURS when you are the orchestrator. Read `.claude/agents/gitter.md` once at start — it is your COMPLETE git protocol manual (commit-message conventions, conflict-awareness protocol, phase-by-phase steps for SETUP / MERGE / DOCS-COMMIT). Follow it verbatim. Anywhere build.md says "Use the gitter agent" — substitute "execute gitter.md Phase X inline yourself using bash git commands." The Claude-side gitter agent only runs when Claude orchestrates (override case).
+Git work for /build pipelines is YOURS when you are the orchestrator. Read `.claude/agents/gitter.md` once at start — it is your COMPLETE git protocol manual (commit-message conventions, conflict-awareness protocol, phase-by-phase steps for SETUP / MERGE / DOCS-COMMIT). Follow it verbatim. Anywhere build.md says "Use the gitter agent" — substitute "execute gitter.md Phase X inline yourself using bash git commands." The separate gitter agent only runs when another runtime orchestrates (override case).
 
 Specifically:
 - **build.md Step 2 (SETUP)**: Run `bash .claude/scripts/worktree.sh create $PIPELINE` to create the branch + worktree + ports. Write `$DOCS/ports.md` from `cat $WORKTREE/.env.ports`.

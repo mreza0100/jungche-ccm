@@ -6,50 +6,54 @@ Optional dual-runtime setup for the Professor pipeline. Everything in `.codex/` 
 
 ## What this is
 
-OpenAI's Codex CLI can mirror the same Professor pipeline that Claude Code runs. The `.codex/` directory contains:
+OpenAI's Codex CLI mirrors the same Professor pipeline contract that Claude Code runs. The `.codex/` directory contains runtime adapters, not a second personality:
 
 - **`config.toml`** — global Codex settings (personality override, sandbox, Teams enablement)
 - **`agents/*.toml`** — wrappers that tell Codex "read this `.claude/` manual and follow it"
 - **`skills/`** — interactive `$name` invocations (Codex's equivalent of Claude's `/name` slash commands)
 - **`AGENTS.md`** (at repo root) — a symlink to `CLAUDE.md` so Codex reads the same root instructions
 
-Codex never gets its own copy of pipeline logic. Every `.toml` file says "read `.claude/commands/X.md`" or "read `.claude/agents/X.md`" — the markdown manual is always the source of truth.
+Codex never gets its own copy of pipeline logic or identity. Every `.toml` file says "read `.claude/commands/X.md`" or "read `.claude/agents/X.md`" — the markdown manual is always the source of truth. `AGENTS.md` is the same root contract as `CLAUDE.md`.
 
 ---
 
 ## Why it's optional
 
-Claude Code runs the full pipeline alone: `/build`, `/wave`, `/jc`, all root agents, all child agents, all git operations via gitter. Codex adds one thing: **cheaper implementation tokens.** If your pipeline is small or your budget is unconstrained, skip this.
+Claude Code can run the full pipeline alone: `/build`, `/wave`, `/jc`, all root agents, all child agents, all git operations via gitter. Codex is optional because the pipeline must not require a second runtime, not because Codex is subordinate. When enabled, Codex mirrors the same contract with Codex-specific mechanics.
 
 The value proposition:
 
-| What | Claude Code alone | Claude + Codex |
-|------|-------------------|----------------|
-| Orchestration, planning, architecture | Claude | Claude |
-| Implementation (developer/engineer slots) | Claude | Codex (cheaper per token) |
-| QA / adversarial testing | Claude | Claude (Codex shouldn't grade itself) |
-| Git operations | Claude (via gitter agent) | Either runtime (Codex owns git when it orchestrates) |
-| Documentation | Claude (mono-documenter) | Claude |
+| What                                      | Single runtime      | Dual runtime                                        |
+| ----------------------------------------- | ------------------- | --------------------------------------------------- |
+| Shared contract/persona                   | Professor contract  | Same Professor contract                             |
+| Orchestration, planning, architecture     | Current runtime     | Either runtime when invoked                         |
+| Implementation (developer/engineer slots) | Current runtime     | Either runtime by assignment                        |
+| QA / adversarial tests                    | Current runtime     | Separate assigned QA agent; do not self-grade       |
+| Git operations                            | Gitter protocol     | Whoever orchestrates follows the same gitter manual |
+| Documentation                             | Documenter protocol | Same documenter protocol                            |
 
 ---
 
 ## Division of labor
 
-When **Claude orchestrates** (the default):
-- Claude spawns child agents for every pipeline step
-- Claude's gitter agent handles all git operations
-- Codex is not involved at all
+When **one runtime orchestrates**:
 
-When **Codex orchestrates** (opt-in — e.g., `$build`, `$wave`):
+- It spawns child agents for every pipeline step
+- It follows the same `.claude/commands/*.md` manuals
+- It owns git through the same `.claude/agents/gitter.md` protocol
+
+When **Codex orchestrates** (e.g., `$build`, `$wave`):
+
 - Codex reads the same `.claude/commands/*.md` manuals
 - Codex spawns child agents via Codex Teams (`Agent(role, "...")`)
 - Codex owns git inline (reads `.claude/agents/gitter.md` protocol, executes bash git commands)
-- Claude's gitter agent is NOT involved — Codex is self-contained
+- The separate gitter agent is NOT involved — Codex is self-contained
 
-When **Claude delegates to Codex** (legacy single-task mode):
-- Claude writes a spec, launches Codex on a scoped task
-- Codex works in a worktree, completes the task, returns
-- Claude QAs and merges via gitter
+When **one runtime delegates to the other**:
+
+- The delegating runtime writes a scoped, self-contained brief
+- The receiving runtime executes within that scope
+- QA and git ownership remain explicit in the parent workflow
 
 ---
 
@@ -63,7 +67,7 @@ At your repo root:
 ln -s CLAUDE.md AGENTS.md
 ```
 
-Codex reads `AGENTS.md` as its project doc. The symlink ensures both runtimes read the same file. In your `CLAUDE.md`, add a "runtime identification" section so each runtime knows which one it is (see the blueprint's `CLAUDE.md` template for the exact pattern).
+Codex reads `AGENTS.md` as its project doc. The symlink ensures both runtimes read the same file. In your `CLAUDE.md`, add a dual-runtime section that says both runtimes mirror the same Professor contract and that wrappers translate mechanics only.
 
 ### 2. Copy config.toml
 
@@ -73,6 +77,7 @@ cp templates/codex/config.toml .codex/config.toml
 ```
 
 Review and adjust:
+
 - `approval_policy` — `"never"` for full auto, `"on-failure"` for a human gate
 - `sandbox_mode` — `"danger-full-access"` for worktrees + infra, `"relaxed"` for simpler setups
 - `job_max_runtime_seconds` — increase for complex pipelines
@@ -87,6 +92,7 @@ Create `.codex/agents/` with one `.toml` per command and per role agent. Three t
 One per `/command` (build, jc, wave, dev, git, pcm, council, audit, documenter, plus any Tier B commands you opted into).
 
 Pattern:
+
 ```toml
 name = "{command-name}"
 description = "Codex runner for /{command-name} — {one-line purpose}."
@@ -107,6 +113,7 @@ See `agents/build.toml` and `agents/jc.toml` for examples.
 One per role per subproject (e.g., `be-developer.toml`, `fe-planner.toml`, `worker-ai-engineer.toml`).
 
 Pattern:
+
 ```toml
 name = "{prefix}-{role}"
 description = "{Role} agent for scoped work under {project-dir}."
@@ -151,7 +158,7 @@ Each `SKILL.md` follows the same pattern:
 
 ```markdown
 ---
-name: {command-name}
+name: { command-name }
 description: "{one-line description}. Invoked as ${command-name} <args>."
 ---
 
@@ -183,11 +190,11 @@ ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 
 ## The three .toml types at a glance
 
-| Type | Example | Count | Points to | Git access |
-|------|---------|-------|-----------|------------|
-| Command wrapper | `build.toml`, `jc.toml`, `wave.toml` | ~15 (one per command) | `.claude/commands/{name}.md` | Yes (when orchestrating) |
-| Role agent wrapper | `be-developer.toml`, `fe-qa.toml` | ~4 per subproject | `{project}/.claude/agents/{role}.md` | No (sandbox blocks `.git/`) |
-| Git operator | `gitter.toml` | 1 | `.claude/agents/gitter.md` | Yes (phase-based) |
+| Type               | Example                              | Count                 | Points to                            | Git access                  |
+| ------------------ | ------------------------------------ | --------------------- | ------------------------------------ | --------------------------- |
+| Command wrapper    | `build.toml`, `jc.toml`, `wave.toml` | ~15 (one per command) | `.claude/commands/{name}.md`         | Yes (when orchestrating)    |
+| Role agent wrapper | `be-developer.toml`, `fe-qa.toml`    | ~4 per subproject     | `{project}/.claude/agents/{role}.md` | No (sandbox blocks `.git/`) |
+| Git operator       | `gitter.toml`                        | 1                     | `.claude/agents/gitter.md`           | Yes (phase-based)           |
 
 ---
 
@@ -196,16 +203,19 @@ ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 The key Codex-specific difference is **who owns git**:
 
 **When Codex orchestrates a full pipeline** (`$build`, `$wave`):
+
 - Codex reads `.claude/agents/gitter.md` as its git protocol manual
 - Codex executes gitter phases inline via bash git commands
 - Anywhere the command manual says "Use the gitter agent" → "Execute gitter.md Phase X inline"
-- The Claude-side gitter agent is NOT involved
+- The separate gitter agent is NOT involved
 
 **When Codex runs as a scoped implementer** (role agent, delegated task):
+
 - Codex has NO git access — the sandbox blocks `.git/` writes
 - Only the orchestrating runtime (Claude or the parent Codex agent) handles git
 
 **When Codex runs `/jc`** (hotfix mode):
+
 - Codex executes gitter.md Phase 4 (JC-COMMIT) inline — LOCAL commits only
 - **Codex MUST NOT push** — JC-COMMIT is local. Push is a separate explicit action.
 
@@ -262,19 +272,20 @@ your-project/
 
 The example `.toml` files in this template use placeholders:
 
-| Placeholder | Replace with |
-|-------------|-------------|
-| `{PROJECT_NAME}` | Your project's display name (e.g., "Acme Platform") |
-| `{BACKEND_PROJECT}` | Your backend subproject directory (e.g., "acme-api") |
-| `{INFRA_PROJECT}` | Your infra subproject directory (e.g., "acme-infra") |
-| `{KNOWLEDGE_ROOT}` | Where domain knowledge lives (e.g., "acme-ai/knowledge/") |
-| `{LANGUAGE_AND_CONVENTIONS}` | Your stack's code rules (e.g., "TypeScript strict mode, ESM") |
-| `{USER_PERSONA}` | Your primary user persona (e.g., "therapist", "analyst", "operator") |
-| `{MARKET_SEGMENT}` | Your target market (e.g., "GGZ", "fintech", "edtech") |
-| `{REGULATION}` | Applicable regulations (e.g., "GDPR, EU AI Act, HIPAA") |
-| `{project-a}`, `{project-b}` | Your actual subproject directory names |
+| Placeholder                  | Replace with                                                         |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `{PROJECT_NAME}`             | Your project's display name (e.g., "Acme Platform")                  |
+| `{BACKEND_PROJECT}`          | Your backend subproject directory (e.g., "acme-api")                 |
+| `{INFRA_PROJECT}`            | Your infra subproject directory (e.g., "acme-infra")                 |
+| `{KNOWLEDGE_ROOT}`           | Where domain knowledge lives (e.g., "acme-ai/knowledge/")            |
+| `{LANGUAGE_AND_CONVENTIONS}` | Your stack's code rules (e.g., "TypeScript strict mode, ESM")        |
+| `{USER_PERSONA}`             | Your primary user persona (e.g., "therapist", "analyst", "operator") |
+| `{MARKET_SEGMENT}`           | Your target market (e.g., "GGZ", "fintech", "edtech")                |
+| `{REGULATION}`               | Applicable regulations (e.g., "GDPR, EU AI Act, HIPAA")              |
+| `{project-a}`, `{project-b}` | Your actual subproject directory names                               |
 
 For a project with N subprojects and M roles per subproject, you need:
+
 - ~15 command wrapper `.toml` files (one per command)
 - N x M role agent `.toml` files (one per role per subproject)
 - 1 gitter `.toml` file

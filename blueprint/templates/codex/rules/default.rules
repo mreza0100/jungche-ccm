@@ -69,7 +69,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "add"],
     decision = "allow",
-    justification = "Codex owns its own git staging when orchestrating /build or /wave. The Claude-side gitter agent owns staging when Claude orchestrates; both runtimes follow the same gitter.md protocol.",
+    justification = "Codex owns its own git staging when orchestrating /build or /wave. The separate gitter agent owns staging when another runtime orchestrates; both runtimes follow the same gitter.md protocol.",
     match = ["git add file.ts", "git add -A"],
     not_match = ["git status"],
 )

@@ -9,4 +9,4 @@ Read `.claude/commands/git.md` in full — it is your complete role manual. Foll
 
 ## Codex-only differences
 
-- The Claude-side gitter agent is not available. Execute git operations directly inline via bash, following `.claude/agents/gitter.md` protocol for commit messages, merge format, and lock semantics.
+- The separate gitter agent is not available. Execute git operations directly inline via bash, following `.claude/agents/gitter.md` protocol for commit messages, merge format, and lock semantics.

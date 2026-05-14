@@ -43,6 +43,7 @@ done
 ```
 
 **For each stale directory found:**
+
 - If it contains a `BLOCKED.md` → it is intentionally preserved (deferred for `/jc` resolution — see § Fix Loop Escalation). **SKIP cleanup.** Do NOT archive, do NOT delete. Print `PRESERVED: $dir (BLOCKED-DEFERRED, awaiting resume)` and move on.
 - **If it belongs to an active wave** → **SKIP.** Wave-owned builds are NEVER archived individually — they archive together when the wave archives. Detection: `grep -rl "$name" docs/dev/waves/*/report.md 2>/dev/null`. If any match, print `WAVE-OWNED: $dir (belongs to active wave, skipping)` and move on.
 - If it contains a `7-post-merge-qa.md` → it completed but wasn't archived. Archive it using the numbered rolling system (see below). **Only for standalone builds (no wave owner).**
@@ -53,6 +54,7 @@ echo "Pipeline abandoned — archived during /build pre-flight cleanup on $(date
 ```
 
 **Numbered archive (for standalone builds only — NEVER for wave-owned builds):**
+
 ```bash
 mkdir -p docs/dev/builds/archive tmp/archive/builds
 COUNTER=$(cat docs/dev/builds/archive/.counter 2>/dev/null || echo "0")
@@ -80,6 +82,7 @@ This prevents stale pipeline dirs from accumulating across sessions.
 **Otherwise (standalone invocation):** Choose a short, descriptive kebab-case name based on the feature (e.g., `session-notes`, `audio-streaming`).
 
 **Name uniqueness check (standalone only — skip when `[Pipeline: ...]` is present):** Before proceeding, verify the chosen name does NOT already exist in:
+
 - `docs/dev/builds/archive/` — archived pipelines
 - `docs/dev/builds/` — active pipelines
 - `.worktrees/` — active worktrees
@@ -92,6 +95,7 @@ ls docs/dev/builds/ .worktrees/ 2>/dev/null | grep -x "{name}"
 The first `ls` strips counter prefixes (e.g., `003-radar-surfaces` → `radar-surfaces`) before matching. If the name exists anywhere, append a version suffix (e.g., `session-notes-v2`, `audio-streaming-v3`) or choose a more specific name. Also check `tmp/archive/builds/` for evicted archives. **NEVER reuse an archived pipeline name** — it causes doc conflicts and breaks traceability.
 
 Resolve path variables:
+
 - **`$PIPELINE`** = `{name}` — the pipeline name (kebab-case, unique across active + archived). Extracted from `[Pipeline: {name}]` in `$ARGUMENTS` when present (wave-invoked), otherwise chosen by build (standalone).
 - **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `docs/dev/waves/archive/{wave}/`.
 - **`$DOCS`** = `docs/dev/builds/{name}` — pipeline docs from repo root
@@ -104,19 +108,32 @@ Resolve path variables:
 - **Backend in worktree:** `$WORKTREE/{project-be}`
 - **Frontend in worktree:** `$WORKTREE/{project-fe}`
 - **{AI_PROJECT_LABEL} in worktree:** `$WORKTREE/{project-cortex}`
-- **Web in worktree:** `$WORKTREE/{project-web}`
-- **Infrastructure in worktree:** `$WORKTREE/{project-infra}`
+- **Installed project worktrees:** `{INSTALLED_PROJECT_WORKTREE_LIST}`
+
+<!-- INSTALLER:
+Materialize this command from the actual project roster. Delete every planner,
+architect, developer, QA, db-admin, and devops block for projects that do not
+exist in the target repo. Do not map missing web/infra placeholders onto another
+project. After writing, grep every referenced `*/.claude/agents/*.md` path and
+fail install if any path is missing.
+If a project archetype is absent, delete its entire optional block and every
+report-list/table reference to that project. `{OPTIONAL_*}` placeholders are
+install-time scaffolding and MUST NOT survive into an installed repo.
+-->
 
 ```bash
 mkdir -p docs/dev/builds/{name}
 ```
 
 **Write the task manifest** — idempotent, wave runner pre-places this when invoked from `/wave`:
+
 ```bash
 [ -f docs/dev/builds/{name}/0-task.md ] && echo "manifest exists — wave pre-placed it" || echo "manifest missing — standalone build"
 ```
+
 - **Exists** → read it as-is, do NOT overwrite. Wave wrote the pipeline-specific task spec here.
 - **Missing** (standalone build only) → write it now:
+
   ```markdown
   # Task: {name}
 
@@ -131,7 +148,7 @@ mkdir -p docs/dev/builds/{name}
 
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
-Spawn ALL FIVE child planners **in parallel** (single message, five Agent calls).
+Spawn ALL INSTALLED child planners **in parallel** (single message, one Agent call per installed project).
 **Model: sonnet** — child planners do structured analysis, not strategic decisions.
 
 ```
@@ -147,26 +164,27 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} planner
   Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
   Analyze the {project-cortex}/ codebase and write $DOCS/1-analysis-{AI_PROJECT_KEY}.md."
 
-Agent(general-purpose, model: "sonnet"): "You are the web planner. Read and follow {project-web}/.claude/agents/planner.md.
+Agent(general-purpose, model: "sonnet"): "You are the web planner. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/planner.md.
   Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {project-web}/ codebase and write $DOCS/1-analysis-web.md."
+  Analyze the {OPTIONAL_WEB_PROJECT_DIR}/ codebase and write $DOCS/1-analysis-web.md."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure planner. Read and follow {project-infra}/.claude/agents/planner.md.
+Agent(general-purpose, model: "sonnet"): "You are the infrastructure planner. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/planner.md.
   Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {project-infra}/ codebase and write $DOCS/1-analysis-infra.md."
+  Analyze the {OPTIONAL_INFRA_PROJECT_DIR}/ codebase and write $DOCS/1-analysis-infra.md."
 ```
 
-**All five MUST be launched in a single message for true parallelism.** Wait for all to complete.
+**All installed planners MUST be launched in a single message for true parallelism.** Wait for all to complete.
 
-**Idempotency guard:** Before spawning, check which analysis reports already exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners for projects whose `1-analysis-{project}.md` does NOT yet exist. If all 5 reports already exist, skip Step 1a entirely and proceed to Step 1b. This prevents duplicate planner launches if Step 1a is re-entered after a partial execution.
+**Idempotency guard:** Before spawning, check which analysis reports already exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners for projects whose `1-analysis-{project}.md` does NOT yet exist. If all installed project reports already exist, skip Step 1a entirely and proceed to Step 1b. This prevents duplicate planner launches if Step 1a is re-entered after a partial execution.
 
 ---
 
 ## Step 1b — Consolidation (mono-planner agent)
 
 Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing decisions.
-- Tell it: "Pipeline: {name}. Feature: {feature request}. Read the five analysis reports at $DOCS/1-analysis-{be,fe,{AI_PROJECT_KEY},web,infra}.md and consolidate into $DOCS/1-plan.md."
-- It reads the parallel analysis reports, decides routing (BE-ONLY, FE-ONLY, {AI_PROJECT_KEY_UPPER}-ONLY, WEB-ONLY, INFRA-ONLY, CROSS), and writes `$DOCS/1-plan.md`.
+
+- Tell it: "Pipeline: {name}. Feature: {feature request}. Read the installed project analysis reports at {PROJECT_ANALYSIS_REPORT_LIST} and consolidate into $DOCS/1-plan.md."
+- It reads the parallel analysis reports, decides routing ({PROJECT_ROUTING_OPTIONS}, CROSS), and writes `$DOCS/1-plan.md`.
 - Wait for completion. Read the plan to get the routing decision before proceeding.
 
 ---
@@ -174,6 +192,7 @@ Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing d
 ## Step 2 — Git Setup (worktrees + ports)
 
 Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git ops.
+
 - Tell it: "Pipeline: {name}. Phase: SETUP."
 - Creates a single monorepo worktree with all projects (one branch: `pipeline/{name}`)
 - Developers work in their respective subdirs within the same worktree
@@ -184,6 +203,7 @@ Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git 
 ## Step 3 — Cross-Project Architecture (mono-architect)
 
 Use the `mono-architect` agent. **Model: claude-opus-4-6** — critical cross-project architecture decisions + inline research.
+
 - Tell it: "Pipeline: {name}. Read $DOCS/1-plan.md. Write $DOCS/3-architecture.md."
 - It designs API contracts, shared types, and integration patterns — but makes NO code-level decisions or TODO stubs.
 - Skip if routing is single-project-only (BE-ONLY, FE-ONLY, {AI_PROJECT_KEY_UPPER}-ONLY) with no integration changes.
@@ -220,14 +240,14 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} archite
   You produce the architecture doc ONLY — no code stubs. The {AI_DEVELOPER_ROLE} derives their work queue from your doc.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the web architect. Read and follow the instructions in {project-web}/.claude/agents/architect.md.
+Agent(general-purpose, model: "sonnet"): "You are the web architect. Read and follow the instructions in {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/architect.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
   Write your architecture doc to $DOCS/3-architecture-web.md.
   You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure architect. Read and follow the instructions in {project-infra}/.claude/agents/architect.md.
+Agent(general-purpose, model: "sonnet"): "You are the infrastructure architect. Read and follow the instructions in {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/architect.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
   Write your architecture doc to $DOCS/3-architecture-infra.md.
@@ -269,10 +289,10 @@ The orchestrator's "judgment call" is not reliable enough — use keyword detect
 If schema signals are found, spawn the db-admin agent:
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and follow {project-infra}/.claude/agents/db-admin.md.
+Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/db-admin.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
-  BE worktree: $WORKTREE/{project-be}. {AI_PROJECT_LABEL} worktree: $WORKTREE/{project-cortex}. Infra worktree: $WORKTREE/{project-infra}.
+  BE worktree: $WORKTREE/{project-be}. {AI_PROJECT_LABEL} worktree: $WORKTREE/{project-cortex}. Infra worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}.
   Read architecture docs at $DOCS/ and implement schema changes.
   CRITICAL: Every column in the schema MUST have a corresponding SQL migration — either in a CREATE TABLE
   statement or an ALTER TABLE ADD COLUMN statement. This applies to NEW TABLES ({SCHEMA_DEFINITION}) AND new columns
@@ -291,7 +311,7 @@ Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and f
 Read ports from `$DOCS/ports.md`, then launch agents for the relevant projects.
 **Model: sonnet** — developers implement specs, they don't design them.
 
-**Trivial infra tasks (env var additions, config tweaks):** If the infra scope is only adding env vars to non-infra project files (e.g., adding vars to `{project-cortex}/.env.local`), the orchestrator MAY handle it directly instead of spawning a full DevOps agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
+**Trivial infrastructure/config tasks:** If the target repo has no dedicated infra project/agent and the scope is only adding env vars or config to normal project files (e.g., adding vars to `{project-cortex}/.env.local`), the orchestrator MAY handle it directly instead of spawning a DevOps agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
 
 ```
 Agent(general-purpose, model: "sonnet"): "You are the backend developer. Read and follow {project-be}/.claude/agents/developer.md.
@@ -326,23 +346,23 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} {AI_DEV
   Write to $DOCS_REL/5-dev-report-{AI_PROJECT_KEY}.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the web developer. Read and follow {project-web}/.claude/agents/developer.md.
+Agent(general-purpose, model: "sonnet"): "You are the web developer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/developer.md.
 
   Pipeline: {name}.
-  Worktree: $WORKTREE/{project-web}. Branch: pipeline/{name}.
+  Worktree: $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-web}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
+  Example: from $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-web.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure DevOps engineer. Read and follow {project-infra}/.claude/agents/devops.md.
+Agent(general-purpose, model: "sonnet"): "You are the infrastructure DevOps engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/devops.md.
 
   Pipeline: {name}.
-  Worktree: $WORKTREE/{project-infra}. Branch: pipeline/{name}.
+  Worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-infra}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
+  Example: from $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
   Write to $DOCS_REL/5-dev-report-infra.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
   If you get permission-blocked on worktree file edits, use Bash with append/write commands as fallback.
   NEVER run git commands — gitter handles all commits."
@@ -381,25 +401,27 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} QA engi
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
 
-Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {project-web}/.claude/agents/qa.md.
+Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
 
   Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project-web}.
+  Worktree: $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {project-infra}/.claude/agents/qa.md.
+Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
 
   Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project-infra}.
+  Worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
 ```
 
 Spawn QA agents only for relevant projects. Each agent writes:
-- `$DOCS/6-bugs-{be,fe,{AI_PROJECT_KEY},web,infra}.md` — bug list per project
+
+- `{PROJECT_BUG_REPORT_LIST}` — bug list per installed project
 
 After all QA agents complete, **consolidate** the per-project bug files into a single `$DOCS/6-bugs.md`:
+
 - If ALL per-project bug files have `Status: NONE` → write `$DOCS/6-bugs.md` with `Status: NONE`
 - If ANY per-project bug file has `Status: OPEN` → write `$DOCS/6-bugs.md` with `Status: OPEN` and list all open bugs from all projects
 
@@ -446,15 +468,18 @@ When any condition triggers:
    **Date:** {YYYY-MM-DD}
 
    ## Root cause
+
    {Specific reason — file:line of hung test, bug ID that wouldn't fix, or sub-agent that died.}
 
    ## State preserved
+
    - Worktree: `.worktrees/{pipeline-name}/` (NOT torn down)
    - Pipeline docs: `$DOCS/` (all artifacts intact)
    - Ports: still allocated in `.worktrees/.ports`
    - Branch on main: NOT MERGED
 
    ## Resume protocol
+
    1. `/jc` the underlying bug on main first (if hung test or stubborn bug). Note the fix commit SHA here: `_______________`
    2. `cd .worktrees/{pipeline-name} && git rebase main` to pick up the fix.
    3. Re-spawn QA agents — skip planners/architects/devs (their work is in the worktree).
@@ -475,6 +500,7 @@ This is intentionally conservative — a deferred pipeline preserves all work do
 ### Step 8 — Git Merge + Cleanup
 
 Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git ops.
+
 - Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: MERGE. Projects: {comma-separated project keys based on routing}."
   - BE-ONLY → `Projects: be`
   - FE-ONLY → `Projects: fe`
@@ -516,15 +542,15 @@ Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} QA engi
   Follow the runbook at {project-cortex}/docs/runbook.md.
   Return results inline — do NOT write a per-project report file."
 
-Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {project-web}/.claude/agents/qa.md.
+Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
 
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project-web}/ on main.
+  Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_WEB_PROJECT_DIR}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
   Return results inline — do NOT write a per-project report file."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {project-infra}/.claude/agents/qa.md.
+Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
 
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project-infra}/ on main.
+  Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_INFRA_PROJECT_DIR}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
   Return results inline — do NOT write a per-project report file."
 ```
@@ -536,6 +562,7 @@ After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-
 ### If Post-Merge QA fails
 
 Spawn a new fix pipeline `{name}-postmerge-fix`:
+
 1. Start a new pipeline named `{name}-postmerge-fix` (creates `$DOCS` for the new name) and write a plan scoped to the bugs found
 2. Run the full pipeline cycle: gitter SETUP → architects → developers → QA → fix loop → gitter MERGE
 3. Run Post-Merge QA again
@@ -575,21 +602,26 @@ After both complete, **write a single** `$DOCS/8-audit.md` consolidating both re
 # Pipeline Audit — $PIPELINE
 
 ## Code Audit Findings
+
 {inline results from code auditor}
 
 ## Compliance Audit Findings
+
 {inline results from officer}
 
 ## Verdict: CLEAN | WARNINGS | BLOCKING
 
 ### Blocking Issues (if any)
+
 {security vulnerabilities, compliance violations — MUST be fixed before continuing}
 
 ### Warnings (if any)
+
 {code quality findings — documented for future cleanup, do NOT block the pipeline}
 ```
 
 **If `Verdict: BLOCKING`** — spawn a new fix pipeline `{name}-audit-fix`:
+
 1. Start a new pipeline scoped to the blocking findings
 2. Run the full pipeline cycle: gitter SETUP → developers → QA → fix loop → gitter MERGE → post-merge QA → pipeline audit again
 3. Repeat until audit is CLEAN or WARNINGS only
@@ -601,9 +633,11 @@ After both complete, **write a single** `$DOCS/8-audit.md` consolidating both re
 ### Step 11 — Documentation & Aggregation (MANDATORY after pipeline audit passes)
 
 Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
+
 - Tell it: "Pipeline: {name}. Phase: ARCHIVE. Docs: $DOCS. Archive: $ARCHIVE. Pipeline dir to archive: $DOCS → $ARCHIVE/{name}."
 
 The documenter:
+
 1. **Merges** pipeline decisions into permanent docs (`docs/agents/architecture.md`, `docs/agents/API.md`, child `architecture.md`, `ui-ux.md`, etc.)
 2. **Updates** child project docs (`{project-be}/docs/`, `{project-fe}/docs/`, `{project-cortex}/docs/`) with new details
 3. **Archives** `$DOCS/` to `$ARCHIVE/{name}/`
@@ -615,6 +649,7 @@ All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent r
 ### Step 12 — Commit Docs (MANDATORY after documenter finishes)
 
 Use the `gitter` agent in **DOCS-COMMIT** phase. **Model: sonnet** — structured git ops.
+
 - Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}."
 
 Gitter commits all doc changes the documenter made on main (including `$DOCS/8-audit.md`).
@@ -623,23 +658,23 @@ Gitter commits all doc changes the documenter made on main (including `$DOCS/8-a
 
 ## Pipeline Reference
 
-| # | Step | Who | Produces | Location |
-|---|------|-----|----------|----------|
-| 1a | Parallel analysis | BE + FE + {AI_PROJECT_KEY_UPPER} + Web + Infra planners | `$DOCS/1-analysis-{be,fe,{AI_PROJECT_KEY},web,infra}.md` | root |
-| 1b | Consolidate plan | mono-planner | `$DOCS/1-plan.md` | root |
-| 2 | Git setup | gitter (SETUP) | Worktrees, ports, `$DOCS/ports.md` | root |
-| 3 | Cross-project arch + research | mono-architect | `$DOCS/3-architecture.md` (integration contracts + research notes) | root |
-| 4 | Child arch + research | BE + FE + {AI_PROJECT_KEY_UPPER} + Web + Infra architects | `$DOCS/3-architecture-{be,fe,{AI_PROJECT_KEY},web,infra}.md` (docs only, no code stubs, inline research) | root |
-| 5a | UI/UX *(conditional)* | ui-ux | `$DOCS/4-ui-ux-spec.md` | root |
-| 5b | DB Architecture *(conditional)* | db-admin | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees | root (docs) + worktrees (schema) |
-| 6 | Develop | BE + FE + Web developers + {AI_PROJECT_KEY_UPPER} {AI_DEVELOPER_ROLE} + Infra devops | Working code in worktrees + `$DOCS/5-dev-report-{be,fe,{AI_PROJECT_KEY},web,infra}.md` | worktrees (code) + root (docs) |
-| 7 | QA | BE + FE + {AI_PROJECT_KEY_UPPER} + Web + Infra QA | Adversarial tests in worktrees + `$DOCS/6-bugs-{be,fe,{AI_PROJECT_KEY},web,infra}.md` → consolidated `$DOCS/6-bugs.md` | root |
-| - | Fix loop | developers → QA | Repeat until `$DOCS/6-bugs.md` = NONE | |
-| 8 | Merge | gitter (MERGE) | Commits + merges to main | |
-| 9 | Post-merge QA | BE + FE + {AI_PROJECT_KEY_UPPER} + Web + Infra QA (POST-MERGE) | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results) | root |
-| 10 | Pipeline audit | code-auditor + officer (parallel) | `$DOCS/8-audit.md` (code hygiene + compliance findings) | root |
-| 11 | Document | mono-documenter | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/` | root |
-| 12 | Commit docs | gitter (DOCS-COMMIT) | Commits doc changes on main | root |
+| #   | Step                            | Who                                                           | Produces                                                                                      | Location                         |
+| --- | ------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| 1a  | Parallel analysis               | Installed project planners: {PROJECT_PLANNER_ROSTER}          | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                              | root                             |
+| 1b  | Consolidate plan                | mono-planner                                                  | `$DOCS/1-plan.md`                                                                             | root                             |
+| 2   | Git setup                       | gitter (SETUP)                                                | Worktrees, ports, `$DOCS/ports.md`                                                            | root                             |
+| 3   | Cross-project arch + research   | mono-architect                                                | `$DOCS/3-architecture.md` (integration contracts + research notes)                            | root                             |
+| 4   | Child arch + research           | Installed project architects: {PROJECT_ARCHITECT_ROSTER}      | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)              | root                             |
+| 5a  | UI/UX _(conditional)_           | ui-ux                                                         | `$DOCS/4-ui-ux-spec.md`                                                                       | root                             |
+| 5b  | DB Architecture _(conditional)_ | db-admin                                                      | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                          | root (docs) + worktrees (schema) |
+| 6   | Develop                         | Installed project developers: {PROJECT_DEVELOPER_ROSTER}      | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
+| 7   | QA                              | Installed project QA agents: {PROJECT_QA_ROSTER}              | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
+| -   | Fix loop                        | developers → QA                                               | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
+| 8   | Merge                           | gitter (MERGE)                                                | Commits + merges to main                                                                      |                                  |
+| 9   | Post-merge QA                   | Installed project QA agents (POST-MERGE): {PROJECT_QA_ROSTER} | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
+| 10  | Pipeline audit                  | code-auditor + officer (parallel)                             | `$DOCS/8-audit.md` (code hygiene + compliance findings)                                       | root                             |
+| 11  | Document                        | mono-documenter                                               | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
+| 12  | Commit docs                     | gitter (DOCS-COMMIT)                                          | Commits doc changes on main                                                                   | root                             |
 
 ---
 
