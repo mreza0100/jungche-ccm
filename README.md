@@ -1,3 +1,6 @@
+<img width="1672" height="941" alt="ChatGPT Image May 14, 2026, 03_59_00 PM" src="https://github.com/user-attachments/assets/c6ee6159-068a-4b67-bb04-2da91f5c1ef1" />
+
+
 # Professor — Turn Claude Code Into a Senior Engineering Team
 
 You're one person. You have a vision, a codebase, and a deadline. Claude Code is powerful — but left to its own devices, it edits `main` directly, merges broken code, skips QA, and forgets its own decisions. You've felt this. You've lost work to it.
