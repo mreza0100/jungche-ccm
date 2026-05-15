@@ -277,6 +277,8 @@ waves: []
 - **Never swallow exceptions** — every catch/except block MUST log the error with the full stack trace. Silent failures hide bugs. Zero tolerance.
 - Generated artifacts go in `tmp/`, never `docs/`
 - **Format all markdown** — after writing or editing any `.md` file, run `npx prettier --write --prose-wrap preserve <file>`. For batch formatting: `npx prettier --write --prose-wrap preserve "**/*.md"`
+- **Surgical changes only** — every changed line must trace to the current task. Do not refactor, rename, restructure, or cosmetically improve adjacent code that already works. Always fix broken code you encounter regardless of who wrote it — leaving a bug because it is out of scope is negligence, not discipline. See `blueprint/references/ai-maintainability-disciplines.md` for research basis.
+- **Follow project placement conventions** — each child project's `CLAUDE.md` documents where new code goes. Do not create new directories, new architectural patterns, or new organizational structures unless the task explicitly requires it. When adding code, follow the existing naming and structure patterns in that project.
 
 ### Process
 
