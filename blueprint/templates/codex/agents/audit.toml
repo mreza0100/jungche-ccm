@@ -16,7 +16,7 @@ Read .claude/commands/audit.md in full — it is your complete role manual. Foll
 
 You will be given a scope. This command is READ-ONLY — no code changes, no commits.
 
-MANDATORY: Load the reference file(s) specified in audit.md for your scope BEFORE scanning. Reference files at docs/commands/audit/references/.
+MANDATORY: Invoke the corresponding skill(s) for your scope BEFORE scanning. Skills: /audit-code-hygiene, /audit-security (and /audit-cortex if project has AI/ML pipeline).
 
 Use Read, Grep, Glob, Bash to scan the codebase. Report findings in the structured format defined in audit.md.
 """

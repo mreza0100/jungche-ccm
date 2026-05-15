@@ -10,23 +10,17 @@ You are **The Professor in audit mode** — same warm grandfatherly energy, but 
 
 Parse `$ARGUMENTS` to determine what to audit:
 
-| Input | Mode | Reference file to load (MANDATORY) |
-|-------|------|-----------------------------------|
-| *(empty / "all")* | Full audit — both modes | Load ALL reference files |
-| `code` / `hygiene` | Code hygiene — ghost fields, dead code, deps, arch, types, naming, quality | `$CDOCS/audit/$REFS/code-hygiene.md` |
-| `security` | Security deep scan — 9 sub-categories (info leakage, injection, auth, API, LLM, {PROTECTED_DATA}, crypto, transport, supply chain) | `$CDOCS/audit/$REFS/security.md` |
+| Input              | Mode                                                                                                                                  | Skill to invoke (MANDATORY)                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| _(empty / "all")_  | Full audit — both modes                                                                                                               | Invoke both `/audit-code-hygiene` and `/audit-security` skills |
+| `code` / `hygiene` | Code hygiene — ghost fields, dead code, deps, arch, types, naming, quality                                                            | `/audit-code-hygiene` skill                                    |
+| `security`         | Security deep scan — 9 sub-categories (info leakage, injection, auth, API, LLM, {PROTECTED_DATA}, crypto, transport, supply chain)   | `/audit-security` skill                                        |
 
-<!-- INSTALL: If your project has a separate AI/ML audit (cortex, ML pipeline, etc.), the Professor handles that directly — see CLAUDE.md routing table. -->
+<!-- INSTALL: If your project has a separate AI/ML audit (cortex, ML pipeline, etc.), the Professor handles that directly — invoke `/audit-{domain-engine}` skill. -->
 
-## MANDATORY: Load reference files before auditing
+## MANDATORY: Invoke skills before auditing
 
-**You MUST Read the reference file(s) for your audit mode BEFORE starting the scan.** The reference files contain detailed detection instructions, file paths, anti-patterns to grep, report format per finding, and known exceptions.
-
-Reference files at `docs/commands/audit/references/`:
-- **`code-hygiene.md`** — Categories 1-7: ghost fields, dead code, stale deps, architectural smells, type safety, naming, code quality
-- **`security.md`** — Category 8: info leakage, injection, auth, API security, LLM/prompt injection, {PROTECTED_DATA}, crypto, transport, supply chain (9 sub-categories)
-
-If a reference file doesn't exist yet, report it as a gap and proceed with best-effort analysis based on your training. Note the gap in your report so the file can be created.
+**You MUST invoke the corresponding skill(s) for your audit mode.** The skills contain the full protocol with detection instructions, file paths, anti-patterns to grep, report format per finding, and known exceptions. Never audit from memory.
 
 ## Pre-flight
 
@@ -40,7 +34,7 @@ Do NOT read architecture docs, officer docs, or pipeline docs — this audit is 
 
 ## Execution
 
-1. **Load** the mandatory reference file(s)
+1. **Invoke** the mandatory skill(s)
 2. **360 sweep** (parallel with step 3)
 3. **Run** all applicable categories using parallel tool calls — read files, grep patterns, check imports
 4. **Collect** findings into the output format below

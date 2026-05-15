@@ -156,14 +156,14 @@ The intersections are where you earn your keep:
 - Tracks patterns across {DOMAIN_SESSIONS} (CS) + longitudinal profiling (Compliance) = **regulatory flag**
 - {DOMAIN_FORBIDDEN_INTERSECTION_EXAMPLE} = **FORBIDDEN**
 
-When deep analysis is needed, load the protocol:
+When deep analysis is needed, invoke the skill — **NEVER execute these protocols from memory:**
 
-| Scope                                                          | Reference file                                    |
-| -------------------------------------------------------------- | ------------------------------------------------- |
-| System analysis, architecture review                           | `$CDOCS/professor/$REFS/analysis.md`              |
-| {DOMAIN_ENGINE} audit (chains, DB, prompts, async, validation) | `$CDOCS/professor/$REFS/{domain-engine}-audit.md` |
-| Wave task refinement (writing wave.md)                         | `$CDOCS/professor/$REFS/refinement.md`            |
-| Wave operational review                                        | `$CDOCS/professor/$REFS/wave-review.md`           |
+| Scope                                                          | Skill                    |
+| -------------------------------------------------------------- | ------------------------ |
+| System analysis, architecture review                           | `/professor-analyze`     |
+| {DOMAIN_ENGINE} audit (chains, DB, prompts, async, validation) | `/audit-{domain-engine}` |
+| Wave task refinement (writing wave.md)                         | `/professor-refine`      |
+| Wave operational review                                        | `/professor-wave-review` |
 
 Because you see all dimensions simultaneously, you know exactly where each request belongs — handle it yourself, or route to the right command.
 
@@ -187,25 +187,29 @@ When a request doesn't call for cross-disciplinary analysis, route it to the rig
 
 ### Route to commands
 
-| Request type                                | Route to      | Notes                                                |
-| ------------------------------------------- | ------------- | ---------------------------------------------------- |
-| Bug fix, error, broken feature              | `/jc`         | Diagnose, fix, test, commit on `main`                |
-| New feature, enhancement                    | `/build`      | Full pipeline — worktrees, QA, merge                 |
-| Parallel feature batch                      | `/wave`       | Multiple `/build` pipelines from task file           |
-| Codebase audit (code hygiene, security)     | `/audit`      | `/audit` inherits the Professor personality          |
-| Privacy, {REGULATION}, compliance           | `/officer`    | Regulatory assessment and compliance docs            |
-| Dev environment, start/stop services        | `/dev`        | Docker, ports, DB snapshots                          |
-| Git operations, push, pull                  | `/git`        | Gitter gateway                                       |
-| {KNOWLEDGE_DOMAIN} knowledge curation       | `/km`         | {KNOWLEDGE_DOMAIN} directories, knowledge files      |
-| Documentation updates                       | `/documenter` | Source of truth for permanent docs                   |
-| Product decisions, {USER_NOUN} UX           | `/pm`         | {USER_PERSONA}-Product-Manager                       |
-| Business, startup, investors                | `/mentor`     | Startup & business consultant                        |
-| Marketing, positioning, SEO                 | `/marketer`   | Visibility & growth strategy                         |
-| Multi-perspective debate                    | `/council`    | Roundtable (5 perspectives)                          |
-| Research                                    | `RR` skill    | Structured multi-batch research pipeline             |
-| Iterative goal pursuit                      | `RND` skill   | Goal-driven iterative execution                      |
-| Epic creation, loading, context restore     | Professor     | "Create Epic X" / "Load epic X" — `docs/epics/`      |
-| `.claude/` `.codex/` infrastructure changes | `/pcm`        | **MANDATORY** — never edit pipeline infra without it |
+| Request type                                | Route to                 | Notes                                                |
+| ------------------------------------------- | ------------------------ | ---------------------------------------------------- |
+| Bug fix, error, broken feature              | `/jc`                    | Diagnose, fix, test, commit on `main`                |
+| New feature, enhancement                    | `/build`                 | Full pipeline — worktrees, QA, merge                 |
+| Parallel feature batch                      | `/wave`                  | Multiple `/build` pipelines from task file           |
+| Codebase audit (code hygiene, security)     | `/audit`                 | `/audit` inherits the Professor personality          |
+| Privacy, {REGULATION}, compliance           | `/officer`               | Regulatory assessment and compliance docs            |
+| Dev environment, start/stop services        | `/dev`                   | Docker, ports, DB snapshots                          |
+| Git operations, push, pull                  | `/git`                   | Gitter gateway                                       |
+| {KNOWLEDGE_DOMAIN} knowledge curation       | `/km`                    | {KNOWLEDGE_DOMAIN} directories, knowledge files      |
+| Documentation updates                       | `/documenter`            | Source of truth for permanent docs                   |
+| Product decisions, {USER_NOUN} UX           | `/pm`                    | {USER_PERSONA}-Product-Manager                       |
+| Business, startup, investors                | `/mentor`                | Startup & business consultant                        |
+| Marketing, positioning, SEO                 | `/marketer`              | Visibility & growth strategy                         |
+| Multi-perspective debate                    | `/council`               | Roundtable (5 perspectives)                          |
+| System analysis, architecture review        | `/professor-analyze`     | **Skill** — loads protocol, never from memory        |
+| {DOMAIN_ENGINE} audit                       | `/audit-{domain-engine}` | **Skill** — Staff Engineer mode                      |
+| Wave task refinement                        | `/professor-refine`      | **Skill** — R1-R3.5 protocol, produces wave.md       |
+| Wave operational review                     | `/professor-wave-review` | **Skill** — post-wave ops review                     |
+| Research                                    | `RR` skill               | Structured multi-batch research pipeline             |
+| Iterative goal pursuit                      | `RND` skill              | Goal-driven iterative execution                      |
+| Epic creation, loading, context restore     | Professor                | "Create Epic X" / "Load epic X" — `docs/epics/`      |
+| `.claude/` `.codex/` infrastructure changes | `/pcm`                   | **MANDATORY** — never edit pipeline infra without it |
 
 **Fallback:** If a request doesn't clearly match a command, the Professor analyzes and recommends the right path.
 
@@ -402,14 +406,20 @@ Per-project agents (in each `{project}/.claude/agents/`):
 
 ## Skills
 
-| Skill         | Trigger                                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `rr`          | "RR <topic>", "research and report", "research <topic>", "look into <topic>" — structured multi-batch research pipeline               |
-| `rnd`         | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution                                           |
-| `360`         | "360 <subject>", "three-sixty" — exhaustive multi-angle analysis (test + inquiry domains), used by QA and Professor                   |
-| `ghostwriter` | "match my writing style", "write like me", "voice profile" — captures a writer's mechanical fingerprint, generates text in that style |
+| Skill                   | Trigger                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `rr`                    | "RR <topic>", "research and report", "research <topic>", "look into <topic>" — structured multi-batch research pipeline               |
+| `rnd`                   | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution                                           |
+| `360`                   | "360 <subject>", "three-sixty" — exhaustive multi-angle analysis (test + inquiry domains), used by QA and Professor                   |
+| `ghostwriter`           | "match my writing style", "write like me", "voice profile" — captures a writer's mechanical fingerprint, generates text in that style |
+| `professor-analyze`     | "analyze <subject>", "system analysis", "architecture review" — cross-disciplinary analysis                                           |
+| `audit-{domain-engine}` | "audit-{domain-engine}", "audit {domain-engine}" — Staff Engineer audit of {DOMAIN_ENGINE} subproject                                 |
+| `professor-refine`      | "refine <tasks>", "write wave.md" — critically evaluates task list through R1-R3.5, produces wave.md                                  |
+| `professor-wave-review` | "wave-review <report>" — post-wave operational review, invoked by `/wave` after pipelines complete                                    |
+| `audit-code-hygiene`    | "code-hygiene <scope>" — ghost fields, dead code, deps, arch, types, naming, quality                                                  |
+| `audit-security`        | "security <scope>" — injection, auth, API, LLM/prompt, {PROTECTED_DATA}, crypto, transport, supply-chain                              |
 
-Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them.
+Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them. Domain-hydrated skills (`professor-analyze`, `audit-*`) ship as empty shells and are filled by RR at setup time — see SETUP.md Phase 2.5.
 
 ---
 

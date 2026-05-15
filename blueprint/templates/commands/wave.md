@@ -176,7 +176,7 @@ Update report with:
 ## Step 3 — Professor Review (NON-OPTIONAL)
 
 ```
-Skill("professor", "wave-review $WAVES/{wave-name}/report.md")
+Skill("professor-wave-review", "$WAVES/{wave-name}/report.md")
 ```
 
 Append review to report under `## Professor's Wave Review`. Present to user.

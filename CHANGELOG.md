@@ -31,7 +31,59 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
-## [Unreleased]
+## [0.7.0] — 2026-05-15
+
+### Breaking
+
+- Tier A: Reference files (`$CDOCS/professor/$REFS/`, `$CDOCS/audit/$REFS/`) replaced by standalone skills. Protocols now live in `.claude/skills/{name}/SKILL.md` instead of `docs/commands/{cmd}/references/`. Migration: move protocol content from reference files into skills; delete reference files; update all `$CDOCS/$REFS` pointers to skill invocations. (breaking)
+
+#### For adopters:
+
+1. Create `.claude/skills/` directories for: `professor-analyze`, `professor-refine`, `professor-wave-review`, `audit-code-hygiene`, `audit-security` (and `audit-cortex` if your project has an AI/ML pipeline)
+2. Move protocol content from reference files into the new SKILL.md files
+3. Delete the original reference files and empty `references/` directories
+4. Update CLAUDE.md protocol table, routing table, and skills table
+5. Create Codex symlinks: `ln -s ../../../.claude/skills/{name}/SKILL.md .codex/skills/{name}/SKILL.md`
+
+### Added
+
+- Tier A: `skills/professor-analyze/SKILL.md` — cross-disciplinary analysis protocol as standalone skill. Domain-hydrated: CS lens ships universal, domain + compliance lenses filled by RR at install time. (breaking)
+- Tier A: `skills/professor-refine/SKILL.md` — wave task refinement protocol (R1-R3.5) as standalone universal skill. Ships as-is. (safe-auto)
+- Tier A: `skills/professor-wave-review/SKILL.md` — post-wave operational review protocol (W1-W3) as standalone universal skill. Ships as-is. (safe-auto)
+- Tier A: `skills/audit-code-hygiene/SKILL.md` — 7-category code hygiene audit as standalone skill. Domain-hydrated: category structure ships universal, detection patterns filled by RR at install time. (breaking)
+- Tier A: `skills/audit-security/SKILL.md` — 9-subcategory (8A-8I) security deep scan as standalone skill. Domain-hydrated: OWASP structure ships universal, detection patterns filled by RR at install time. (breaking)
+- Mechanics: `codex/skills/{professor-analyze,professor-refine,professor-wave-review,audit-cortex,audit-code-hygiene,audit-security}/SKILL.md` — Codex wrappers for all 6 new skills. (safe-auto)
+- Docs: `SETUP.md` Phase 2.5 — Skill Knowledge Hydration protocol. Domain-hydrated skills (professor-analyze, audit-code-hygiene, audit-security) get their knowledge bases filled via RR at install time. Empty skills loop with "knowledge base is empty" message until user provides specification. (breaking)
+
+### Changed
+
+- Tier A: `CLAUDE.md` template — protocol table now references skills (`/professor-analyze`, `/professor-refine`, etc.) instead of reference file paths. Routing table adds 4 new skill rows. Skills table adds 6 new entries with `(domain-hydrated)` markers. (breaking)
+- Tier A: `commands/audit.md` — reference file loading replaced with mandatory skill invocation (`/audit-code-hygiene`, `/audit-security`). Cortex audit routes to `/audit-cortex` skill. (breaking)
+- Tier A: `commands/wave.md` — Professor review invokes `Skill("professor-wave-review", ...)` instead of `Skill("professor", "wave-review ...")`. (safe-auto)
+- Tier A: `commands/council.md` — Professor seat references `/professor-analyze` skill instead of `$CDOCS/professor/$REFS/analysis.md`. (safe-auto)
+- Tier A: `commands/blueprint.md` (Freudche-only) — skills split into `universal/` and `domain-hydrated/` in output structure. Phase 2.5 Skill Knowledge Hydration added. Codex symlink instructions explicit. (safe-auto)
+
+### Removed
+
+- Tier A: `docs/commands/professor/references/` — analysis.md, cortex-audit.md, refinement.md, wave-review.md moved to standalone skills.
+- Tier A: `docs/commands/audit/references/` — code-hygiene.md, security.md moved to standalone skills.
+
+### Migration
+
+#### For reference-to-skill migration
+
+The core change: protocols that lived in `docs/commands/{cmd}/references/` are now standalone skills in `.claude/skills/`. This is a structural move — the protocol content is identical, but the invocation pattern changes from "read this reference file" to "invoke this skill."
+
+**Two skill tiers:**
+
+| Tier                | Skills                                                | Ships                                                | Install action                 |
+| ------------------- | ----------------------------------------------------- | ---------------------------------------------------- | ------------------------------ |
+| **Universal**       | professor-refine, professor-wave-review               | Full protocol, ready to use                          | Copy as-is                     |
+| **Domain-hydrated** | professor-analyze, audit-code-hygiene, audit-security | Universal structure + `KNOWLEDGE BASE EMPTY` markers | Run RR to fill knowledge bases |
+
+`audit-cortex` has no template — it's entirely project-specific and only created if the project has an AI/ML pipeline subproject.
+
+**`/pcm update` handles:** creating skill directories, copying universal skills, placing domain-hydrated shells, creating Codex symlinks, updating CLAUDE.md references. Domain-hydrated skills require user-driven RR hydration after install.
 
 ---
 
