@@ -234,7 +234,6 @@ professor/
 ├── VERSION              <- 0.5.0
 └── blueprint/
     ├── BLUEPRINT.md     <- philosophy + design principles
-    ├── ARCHETYPES.md    <- every character — voice, identity, adaptation guide
     ├── SETUP.md         <- install interview reference
     └── templates/       <- the actual files that get installed
         ├── CLAUDE.md, agents/, commands/, scripts/

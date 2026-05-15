@@ -428,11 +428,7 @@ Wire `format-md.sh` into Claude Code's `PostToolUse` event via `.claude/settings
 
 This auto-formats Professor-owned `.md` files (CLAUDE.md, `.claude/`, `docs/commands/`, `docs/agents/`, `docs/epics/`, `docs/dev/`, `docs/business/`, child project CLAUDE.md) after every Edit or Write. Non-Professor files are silently ignored. Requires `jq` and `prettier` (via `npx`). Fails silently if either is missing.
 
-### Step 8.5 — The Cast bible (ARCHETYPES.md)
-
-Copy `blueprint/ARCHETYPES.md` to `.claude/ARCHETYPES.md` (verbatim — no substitutions needed; it's a meta-document about the cast that applies to every install). This gives the orchestrator one consolidated reference for who's who and what voice each archetype carries, so future `/pcm` and `/council` work has a canonical bible to point to. Do NOT delete the entries for archetypes the user skipped — leaving the full cast visible makes opt-in obvious later.
-
-### Step 8.6 — Skills (thinking protocols)
+### Step 8.5 — Skills (thinking protocols)
 
 Skills are maintained as standalone public repos. Clone each into `.claude/skills/{name}/`, strip the `.git/` directory, and parameterize where needed.
 

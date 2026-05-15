@@ -272,7 +272,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - Tier B opt-ins (regulation, knowledge domain, user persona, market segment)
 - The character name (default: "Professor") if you want a different persona
 
-See `ADAPTATION.md` for archetype-by-archetype customization. See `ARCHETYPES.md` for the full cast and adaptation examples. See `SETUP.md` for the install interview.
+See `SETUP.md` for the install interview and adaptation guidance.
 
 ---
 

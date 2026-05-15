@@ -44,9 +44,7 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 blueprint/
 ├── README.md              ← you are here
 ├── BLUEPRINT.md           ← philosophy, three-tier framework, load-bearing walls
-├── ARCHETYPES.md          ← the cast — every character with voice + adaptation examples
 ├── SETUP.md               ← interactive install interview (Claude conducts it)
-├── ADAPTATION.md          ← archetype-by-archetype customization guide
 └── templates/
     ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
@@ -61,8 +59,7 @@ blueprint/
 ## Quick start
 
 1. **Read `BLUEPRINT.md`** — understand the three-tier framework and the five load-bearing walls.
-2. **Read `ARCHETYPES.md`** — meet the cast.
-3. **Run install via Claude:**
+2. **Run install via Claude:**
 
 ```bash
 # Clone to any directory you like
@@ -91,7 +88,7 @@ Every command, agent, and rule in this blueprint sorts into one of three tiers:
 - **Tier B — Domain archetypes** ship as ARCHETYPE SKELETONS with placeholders. You fill in regulation, user persona, market, knowledge domain — the voice and structure are universal.
 - **Tier C — Pure mechanics** ship as INFRASTRUCTURE. No character; just role-defined plumbing.
 
-See `ARCHETYPES.md` for the catalog of every character, what's universal in their voice, what you parameterize, and adaptation examples across multiple domains.
+See `SETUP.md` for the install interview and adaptation guidance.
 
 ---
 

@@ -32,7 +32,7 @@ claude
 
 Claude runs Phase 1 (interview), then Phase 2 (customization), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
 
-**The manual path:** read `BLUEPRINT.md`, `ARCHETYPES.md`, `ADAPTATION.md`, copy templates manually, replace placeholders by hand. Slower but doable.
+**The manual path:** read `BLUEPRINT.md`, copy templates manually, replace placeholders by hand. Slower but doable.
 
 ---
 
@@ -58,6 +58,10 @@ Then tell Claude your **sacred ground** — the topics where the character drops
 
 > Single project, or monorepo? If monorepo, how many subprojects, and what does each do?
 
+**Single-project repos:** skip child CLAUDE.md files, skip `mono-planner` and `mono-architect` (no cross-project consolidation). All agents live flat at `.claude/agents/`. The orchestrator goes `planner → architect → developer → qa` directly. `/build` drops the parallel fan-out steps.
+
+**Monorepo (2-6 projects):** keep `mono-planner` and `mono-architect`. For each project, create `{project}/CLAUDE.md` and `{project}/.claude/agents/`.
+
 For each subproject, Claude needs:
 
 - Directory name (you choose)
@@ -71,6 +75,17 @@ Example:
 - `worker` — Python processing service, uv, pytest, no port (queue consumer)
 - `infra` — Docker Compose for PostgreSQL + Redis
 - `marketing` — Next.js marketing site, npm, Vercel, port 3001
+
+**Specialist agents:** beyond the standard four (`planner`, `architect`, `developer`, `qa`), add a specialist when a narrow concern justifies it:
+
+| When to add one | What it owns |
+|-----------------|-------------|
+| Visual/interaction layer is non-trivial | Colors, typography, spacing, layout (`ui-ux`) |
+| Schema/migration changes are risky | Data layer, migrations, seeding (`db-admin`) |
+| Deployment configs are real code | Infra configs, environment promotion (`devops`) |
+| Prompt engineering is its own discipline | Prompts, evals, knowledge ingestion (`ai-engineer`) |
+
+Slot specialists into `/build` between architect and QA.
 
 ### 4. Tech stack details
 
@@ -226,8 +241,7 @@ Claude takes your answers and:
 5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
 6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
-   7a. **Copies the Cast bible** — `blueprint/ARCHETYPES.md` lands at `.claude/ARCHETYPES.md` verbatim, so future `/pcm`, `/council`, and `/wave` work has one canonical reference for who's who and what voice each archetype carries.
-   7b. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
+   7a. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
 
 | Skill         | Repo                                         | Parameterization                                                     |
 | ------------- | -------------------------------------------- | -------------------------------------------------------------------- |
@@ -373,20 +387,25 @@ Same for adding a new Tier A archetype if you build one — `/pcm` copies the te
 3. **Gitter tries to merge with conflicts unresolved.** That's a gap in your gitter setup; the template handles it, but if you simplified, restore the conflict-detection block.
 4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/pcm` fix at the source agent.
 5. **`.worktrees/.ports` corrupted.** Manually edit; the format is one whitespace-separated line per pipeline.
-6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Re-read `ADAPTATION.md` § "What NOT to change" — voice is non-negotiable. Invoke `/pcm` and tell it which command lost its voice.
+6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Voice is non-negotiable — adapt content, preserve character. Invoke `/pcm` and tell it which command lost its voice.
 
 ---
 
 ## After install
 
-- Read `ARCHETYPES.md` so you know the cast you just installed.
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
 - Verify the statusline shows in your terminal (you should see model, context %, git branch). If not, check `~/.claude/settings.json` has the statusLine config and `jq` is installed.
 - Verify notifications work — start a task that takes 30+ seconds and check you get the macOS notification when the turn completes.
 - Run `/build` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run `/council` for hard decisions. Run the Professor analysis for cross-disciplinary analysis.
-- The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
-Welcome to the cast.
+**When something feels wrong** after a few real pipelines:
+
+- An agent always asks the same clarification → add it to the agent definition (via `/pcm`).
+- A step always gets skipped → remove it or make it conditional (via `/pcm`).
+- A bug class keeps recurring → add a non-negotiable rule to the relevant CLAUDE.md (via `/pcm`).
+- A character feels off → describe what's missing to `/pcm` and let it edit the persona at the source.
+
+The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
 ---
 
