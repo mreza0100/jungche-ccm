@@ -101,7 +101,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "push"],
     decision = "allow",
-    justification = "Codex pushes main after a successful merge + DOCS-COMMIT. Force-push is covered by the more-specific forbidden rules above.",
+    justification = "Plain git push is tool-allowed only for gitter Phase PUSH after an explicit current user request to push or publish. Automatic push after build/wave/jc/commit is forbidden by protocol. Force-push is covered by the more-specific forbidden rules above.",
     match = ["git push", "git push origin main"],
     not_match = [],
 )

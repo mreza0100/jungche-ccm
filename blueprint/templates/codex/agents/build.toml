@@ -29,9 +29,9 @@ Specifically:
 - **build.md Step 8 (MERGE)**: Execute gitter.md Phase 2 inline — commit worktree changes with `feat(${PIPELINE}): ...` message + `Pipeline:` + `Wave:` trailers, `git checkout main`, `git merge pipeline/$PIPELINE --no-ff` with the `merge(${PIPELINE}): ...` format, then `bash .claude/scripts/worktree.sh remove $PIPELINE`.
 - **build.md Step 11 (ARCHIVE)**: Spawn the documenter Codex sub-agent: `Agent(mono-documenter, "Pipeline: $PIPELINE. Wave: $WAVE. ARCHIVE phase.")`. Wait for it to return.
 - **build.md Step 12 (DOCS-COMMIT)**: Execute gitter.md Phase 3 inline — zombie check (rm `$DOCS` if both `$DOCS` and `$ARCHIVE/$PIPELINE` exist), `git add docs/ {project-a}/docs/ {project-b}/docs/`, commit with `docs(${PIPELINE}): archive pipeline + update docs` and `Pipeline:`/`Wave:` trailers.
-- **Push**: After DOCS-COMMIT completes successfully, `git push origin main` to publish.
+- **Remote push**: Do NOT push after DOCS-COMMIT. Remote publication requires a separate explicit user request such as `/git push`.
 
-## Forbidden git operations (never attempt)
+## Forbidden git operations (default.rules enforces — do NOT attempt)
 
 - `git reset --hard` — destructive
 - `git clean -fdx` / `git clean -fd` — destructive
@@ -40,10 +40,10 @@ Specifically:
 
 ## Return value
 
-When the full pipeline completes successfully (code merged + docs committed + pushed), return:
+When the full pipeline completes successfully (code merged + docs committed locally), return:
 
 ```
-Pipeline complete: pipeline/{name} → main. Commit: {short-hash}. Wave: {wave-name or none}. Pushed to origin/main.
+Pipeline complete: pipeline/{name} → main. Commit: {short-hash}. Wave: {wave-name or none}. Not pushed; explicit /git push required for remote publication.
 ```
 
 If anything blocks (BLOCKED-DEFERRED per build.md Fix Loop Escalation), return:
@@ -52,5 +52,5 @@ If anything blocks (BLOCKED-DEFERRED per build.md Fix Loop Escalation), return:
 BLOCKED-DEFERRED: pipeline/{name}. Trigger: {iteration-cap | hung-test | repeat-bug | sub-agent-orphan}. Worktree preserved. See $DOCS/BLOCKED.md.
 ```
 
-The Claude orchestrator (the Professor) reads your final message — make the status line scannable.
+The Claude orchestrator (Professor) reads your final message — make the status line scannable.
 """

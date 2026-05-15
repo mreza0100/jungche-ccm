@@ -88,5 +88,6 @@ Agent(gitter): "The user ran /git with the following request:
 
 - **ALL git operations go through gitter** — this command NEVER runs git commands directly
 - **Known subcommands route to specific phases** — `push` → PUSH phase
+- **Remote publication requires explicit user request** — only `push` or a direct user request to push/publish may invoke PUSH
 - **Unknown requests go freeform** — gitter is smart enough to handle anything git-related
 - **Pass user arguments through verbatim** — don't interpret or filter, let gitter decide

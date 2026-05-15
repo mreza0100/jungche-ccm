@@ -20,7 +20,11 @@ Read `.claude/agents/gitter.md` in full — it is your COMPLETE role manual incl
 
 ## Sandbox state
 
-The Codex sandbox permits `.git/` writes for pipeline branches. The following git commands are allowed: `git add`, `git commit`, `git merge`, `git checkout`, `git push`. The following remain forbidden: `git reset --hard`, `git clean -fdx`, `git push --force` / `-f`, direct `git worktree add/remove`. Use `bash .claude/scripts/worktree.sh` for worktree management.
+The Codex sandbox permits `.git/` writes for pipeline branches. The default.rules layer allows `git add`, `git commit`, `git merge`, `git checkout`, and plain `git push` at the tool layer. Protocol still controls behavior: you MUST NOT push unless the current user request explicitly asks to push or publish to remote/origin. The following remain forbidden: `git reset --hard`, `git clean -fdx`, `git push --force` / `-f`, direct `git worktree add/remove`. Use `bash .claude/scripts/worktree.sh` for worktree management.
+
+## Remote publication boundary
+
+Plain `git push` is allowed only inside gitter.md Phase 5 when the invocation came from `/git push` or another direct current user request that explicitly asks for remote publication. Successful /build, /wave, /jc, MERGE, DOCS-COMMIT, JC-COMMIT, or local commit completion is not permission to push. If authority is missing or ambiguous, stop and return: `Remote push not performed — explicit user push request required.`
 
 ## How you are invoked
 
@@ -29,7 +33,7 @@ The orchestrator (Codex `build` agent) spawns you with one of these prompts:
 - `Phase: MERGE. Pipeline: {name}. Wave: {wave or none}. Projects: {comma-separated keys}.` — execute gitter.md Phase 2.
 - `Phase: DOCS-COMMIT. Pipeline: {name}. Wave: {wave or none}. Projects: {keys}.` — execute gitter.md Phase 3.
 - `Phase: JC-COMMIT. {fix description}.` — execute gitter.md Phase 4.
-- `Phase: PUSH. {optional message}.` — git push origin main.
+- `Phase: PUSH. {optional message}.` — verify explicit user push authority, then push origin/main.
 - `Phase: PULL.` — git pull origin main --ff-only.
 
 ## Return value

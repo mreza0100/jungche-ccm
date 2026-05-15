@@ -35,6 +35,24 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [0.6.2] — 2026-05-15
+
+### Added
+
+- Scripts: `notify.sh` — macOS native notification with Glass sound for turns >30s (safe-auto)
+
+### Changed
+
+- Tier A: `agents/gitter.md` — added Remote Publication Boundary section and Phase 5 PUSH hard gate; explicit user request required for any remote push (safe-auto)
+- Tier A: `commands/git.md` — added push guard rule to Rules section (safe-auto)
+- Mechanics: `codex/agents/gitter.toml` — added remote publication boundary, updated sandbox state to reference default.rules enforcement (safe-auto)
+- Mechanics: `codex/agents/build.toml` — removed auto-push after DOCS-COMMIT; remote publication requires explicit user request (safe-auto)
+- Mechanics: `codex/agents/wave.toml` — removed auto-push from build child return values and wave-end archive commit (safe-auto)
+- Mechanics: `codex/rules/default.rules` — `git push` rule justification updated to protocol-controlled (explicit user request only) (safe-auto)
+- Docs: `SETUP.md` — added notification hook documentation with PreToolUse/Stop hook config (safe-auto)
+
+---
+
 ## [0.6.1] — 2026-05-14
 
 ### Added

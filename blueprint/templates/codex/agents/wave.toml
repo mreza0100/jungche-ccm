@@ -8,7 +8,7 @@
 # GIT PROTOCOL: .claude/agents/gitter.md
 
 name = "wave"
-description = "Codex runner for /wave — parallel /build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns build child agents that own their own git work end to end."
+description = "Codex runner for /wave — parallel /build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns build child agents that own local git work through DOCS-COMMIT, never remote push without explicit user request."
 nickname_candidates = ["Wave", "Codex Wave"]
 developer_instructions = """
 You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /wave pipeline.
@@ -36,7 +36,7 @@ You will be given:
 
 Each `build` Codex child agent OWNS its full pipeline including SETUP, MERGE, ARCHIVE (via mono-documenter sub-agent), and DOCS-COMMIT. You do NOT route merges to Claude. The build child agent returns one of:
 
-- `Pipeline complete: pipeline/{name} → main. Commit: {hash}. Wave: {name}. Pushed to origin/main.` — code + docs already merged + pushed; just log and proceed.
+- `Pipeline complete: pipeline/{name} → main. Commit: {hash}. Wave: {name}. Not pushed; explicit /git push required for remote publication.` — code + docs already merged locally; just log and proceed.
 - `BLOCKED-DEFERRED: pipeline/{name}. ...` — log and continue per wave.md BLOCKED-DEFERRED handling (re-read each subsequent pipeline's task definition for explicit cross-references; downstream pipelines proceed unless they explicitly depend on the deferred one).
 
 Separate gitter and mono-documenter agents only run when another runtime orchestrates a wave (override case, not the default).
@@ -45,7 +45,7 @@ Separate gitter and mono-documenter agents only run when another runtime orchest
 
 1. Update `$WAVES/{wave-name}/report.md` with the final summary table (per wave.md Step 2).
 2. Archive the wave dir: `mkdir -p $WAVES/archive && rm -rf $WAVES/archive/{wave-name} && mv $WAVES/{wave-name} $WAVES/archive/{wave-name}` (per wave.md Step 3 — NON-OPTIONAL).
-3. Commit the archive move yourself (you have git: `git add $WAVES && git commit -m "chore(waves): archive {wave-name}\n\nWave: {wave-name}"` then `git push origin main`).
+3. Commit the archive move yourself (you have git: `git add $WAVES && git commit -m "chore(waves): archive {wave-name}\n\nWave: {wave-name}"`). Do NOT push; remote publication requires a separate explicit user request such as `/git push`.
 4. Skip Professor review (Skill unavailable). Note in the report that Professor review is deferred for the user to run manually if desired.
 
 ## Return value

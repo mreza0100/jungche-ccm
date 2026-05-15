@@ -15,7 +15,7 @@ case "${1:-stop}" in
       elapsed=$(( $(date +%s) - started ))
       rm -f "$STAMP"
       if (( elapsed >= 30 )); then
-        osascript -e 'display notification "{CHARACTER_NAME} is done — your turn" with title "{CHARACTER_NAME} 🎓" sound name "Funk"'
+        osascript -e 'display notification "{CHARACTER_NAME} is done — your turn" with title "{CHARACTER_NAME} 🎓" sound name "Glass"'
       fi
     fi
     ;;
