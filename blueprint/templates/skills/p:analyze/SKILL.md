@@ -1,5 +1,5 @@
 ---
-name: professor-analyze
+name: p:analyze
 version: "1.0.0"
 description: "Cross-disciplinary system analysis (CS + {DOMAIN_LENS} + Compliance). Triggered by 'analyze <subject>', 'system analysis', 'architecture review', or when Professor needs structured analysis."
 ---
@@ -25,7 +25,7 @@ description: "Cross-disciplinary system analysis (CS + {DOMAIN_LENS} + Complianc
 ### {DOMAIN_LENS} lens
 
 > **KNOWLEDGE BASE EMPTY** — This section needs project-specific domain analysis categories.
-> Run `/professor-analyze` or ask the Professor to hydrate after the codebase has enough code to analyze.
+> Run `/p:analyze` or ask the Professor to hydrate after the codebase has enough code to analyze.
 > The Professor will surface this gap: "Knowledge base is empty, waiting for user specification to fill it in."
 
 <!-- At install time, Phase 2.5 Skill Knowledge Hydration runs RR against the project's codebase

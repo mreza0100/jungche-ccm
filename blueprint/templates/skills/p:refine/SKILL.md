@@ -1,5 +1,5 @@
 ---
-name: professor-refine
+name: p:refine
 version: "1.0.0"
 description: "Wave task refinement — critically evaluates a task list through R1-R3.5 protocol, produces wave.md. Interactive discovery, PM consultation, confidence scoring."
 ---

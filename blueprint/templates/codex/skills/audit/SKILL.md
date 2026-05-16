@@ -9,4 +9,4 @@ Read `.claude/commands/audit.md` in full — it is your complete role manual. Fo
 
 This command is READ-ONLY — no code changes, no commits.
 
-**MANDATORY:** Invoke the corresponding skill(s) for your scope BEFORE scanning: `/audit-code-hygiene`, `/audit-security` (and `/audit-cortex` if project has AI/ML pipeline).
+**MANDATORY:** Invoke the corresponding skill(s) for your scope BEFORE scanning: `/audit:code-hygiene`, `/audit:security` (and `/audit:cortex` if project has AI/ML pipeline).

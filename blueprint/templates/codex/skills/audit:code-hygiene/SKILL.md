@@ -1,9 +1,9 @@
 ---
-name: audit-code-hygiene
+name: audit:code-hygiene
 description: Code hygiene audit — ghost fields, dead code, deps, arch, types, naming, quality. Domain-hydrated at install time.
 ---
 
-Read `.claude/skills/audit-code-hygiene/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/audit:code-hygiene/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

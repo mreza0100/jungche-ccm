@@ -30,7 +30,7 @@ Smaller panels (3-voice) work fine for solo/research projects. -->
 |------|------|-------------|
 | **JC** | Technical — code health, runtime, reliability, data integrity | `.claude/commands/jc.md` |
 | **{PANEL_SEAT_3}** | {PANEL_SEAT_3_LENS} | `.claude/commands/{panel_seat_3}.md` |
-| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `CLAUDE.md` (root) + `/professor-analyze` skill |
+| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `CLAUDE.md` (root) + `/p:analyze` skill |
 | **{PANEL_SEAT_4}** | {PANEL_SEAT_4_LENS} | `.claude/commands/{panel_seat_4}.md` |
 | **{PANEL_SEAT_5}** | {PANEL_SEAT_5_LENS} — {USER_NOUN} workflows, friction, adoption | `.claude/commands/{panel_seat_5}.md` |
 
@@ -121,7 +121,7 @@ Topic: '{debate-topic}'
 |--------|-------------|-----------------|
 | JC | code health, system reliability, performance, security, data integrity | Relevant source code |
 | {PANEL_SEAT_3} | {PANEL_SEAT_3_FOCUS} | `$CDOCS/{panel_seat_3}/$REFS/` |
-| Professor | architecture quality, {SACRED_GROUND} safety, evidence-based practice, cross-disciplinary | Architecture docs + `/professor-analyze` skill |
+| Professor | architecture quality, {SACRED_GROUND} safety, evidence-based practice, cross-disciplinary | Architecture docs + `/p:analyze` skill |
 | {PANEL_SEAT_4} | {PANEL_SEAT_4_FOCUS} | `$CDOCS/{panel_seat_4}/$REFS/` |
 | {PANEL_SEAT_5} | {USER_NOUN} workflows, UX friction, personas, adoption | `docs/agents/features.md`, `$CDOCS/{panel_seat_5}/$REFS/` |
 

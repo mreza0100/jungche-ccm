@@ -1,5 +1,5 @@
 ---
-name: professor-wave-review
+name: p:wave-review
 version: "1.0.0"
 description: "Post-wave operational review — reads wave report and pipeline docs, evaluates grouping, QA health, parallelism, token efficiency. Invoked by /wave after all pipelines complete."
 ---

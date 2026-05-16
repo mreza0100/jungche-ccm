@@ -1,5 +1,5 @@
 ---
-name: audit-security
+name: audit:security
 version: "1.0.0"
 description: "Security deep scan — injection, auth, API attack surface, LLM/prompt, sensitive data, crypto, transport, supply-chain. {SACRED_GROUND} data is sacred."
 ---

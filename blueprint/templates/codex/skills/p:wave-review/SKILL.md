@@ -1,9 +1,9 @@
 ---
-name: professor-wave-review
+name: p:wave-review
 description: Post-wave operational review — reads wave report, evaluates grouping, QA health, parallelism, token efficiency.
 ---
 
-Read `.claude/skills/professor-wave-review/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/p:wave-review/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

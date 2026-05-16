@@ -1,5 +1,5 @@
 ---
-name: audit-code-hygiene
+name: audit:code-hygiene
 version: "1.0.0"
 description: "Code hygiene audit — ghost fields, dead code, deps, arch, types, naming, quality. Scopes: all, ghosts, dead, deps, arch, types, naming, quality, or per-project."
 ---

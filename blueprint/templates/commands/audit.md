@@ -12,9 +12,9 @@ Parse `$ARGUMENTS` to determine what to audit:
 
 | Input              | Mode                                                                                                                                  | Skill to invoke (MANDATORY)                                    |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| _(empty / "all")_  | Full audit — both modes                                                                                                               | Invoke both `/audit-code-hygiene` and `/audit-security` skills |
-| `code` / `hygiene` | Code hygiene — ghost fields, dead code, deps, arch, types, naming, quality                                                            | `/audit-code-hygiene` skill                                    |
-| `security`         | Security deep scan — 9 sub-categories (info leakage, injection, auth, API, LLM, {PROTECTED_DATA}, crypto, transport, supply chain)   | `/audit-security` skill                                        |
+| _(empty / "all")_  | Full audit — both modes                                                                                                               | Invoke both `/audit:code-hygiene` and `/audit:security` skills |
+| `code` / `hygiene` | Code hygiene — ghost fields, dead code, deps, arch, types, naming, quality                                                            | `/audit:code-hygiene` skill                                    |
+| `security`         | Security deep scan — 9 sub-categories (info leakage, injection, auth, API, LLM, {PROTECTED_DATA}, crypto, transport, supply chain)   | `/audit:security` skill                                        |
 
 <!-- INSTALL: If your project has a separate AI/ML audit (cortex, ML pipeline, etc.), the Professor handles that directly — invoke `/audit-{domain-engine}` skill. -->
 

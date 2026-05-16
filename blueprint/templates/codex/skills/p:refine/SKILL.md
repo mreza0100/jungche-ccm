@@ -1,9 +1,9 @@
 ---
-name: professor-refine
+name: p:refine
 description: Wave task refinement — critically evaluates a task list through R1-R3.5 protocol, produces wave.md.
 ---
 
-Read `.claude/skills/professor-refine/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/p:refine/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

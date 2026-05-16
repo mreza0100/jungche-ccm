@@ -1,9 +1,9 @@
 ---
-name: audit-security
+name: audit:security
 description: Security deep scan — injection, auth, API, LLM/prompt, sensitive data, crypto, transport, supply-chain. Domain-hydrated at install time.
 ---
 
-Read `.claude/skills/audit-security/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/audit:security/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

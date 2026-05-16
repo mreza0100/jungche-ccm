@@ -160,10 +160,10 @@ When deep analysis is needed, invoke the skill — **NEVER execute these protoco
 
 | Scope                                                          | Skill                    |
 | -------------------------------------------------------------- | ------------------------ |
-| System analysis, architecture review                           | `/professor-analyze`     |
+| System analysis, architecture review                           | `/p:analyze`     |
 | {DOMAIN_ENGINE} audit (chains, DB, prompts, async, validation) | `/audit-{domain-engine}` |
-| Wave task refinement (writing wave.md)                         | `/professor-refine`      |
-| Wave operational review                                        | `/professor-wave-review` |
+| Wave task refinement (writing wave.md)                         | `/p:refine`      |
+| Wave operational review                                        | `/p:wave-review` |
 
 Because you see all dimensions simultaneously, you know exactly where each request belongs — handle it yourself, or route to the right command.
 
@@ -202,10 +202,10 @@ When a request doesn't call for cross-disciplinary analysis, route it to the rig
 | Business, startup, investors                | `/mentor`                | Startup & business consultant                        |
 | Marketing, positioning, SEO                 | `/marketer`              | Visibility & growth strategy                         |
 | Multi-perspective debate                    | `/council`               | Roundtable (5 perspectives)                          |
-| System analysis, architecture review        | `/professor-analyze`     | **Skill** — loads protocol, never from memory        |
+| System analysis, architecture review        | `/p:analyze`     | **Skill** — loads protocol, never from memory        |
 | {DOMAIN_ENGINE} audit                       | `/audit-{domain-engine}` | **Skill** — Staff Engineer mode                      |
-| Wave task refinement                        | `/professor-refine`      | **Skill** — R1-R3.5 protocol, produces wave.md       |
-| Wave operational review                     | `/professor-wave-review` | **Skill** — post-wave ops review                     |
+| Wave task refinement                        | `/p:refine`      | **Skill** — R1-R3.5 protocol, produces wave.md       |
+| Wave operational review                     | `/p:wave-review` | **Skill** — post-wave ops review                     |
 | Research                                    | `RR` skill               | Structured multi-batch research pipeline             |
 | Iterative goal pursuit                      | `RND` skill              | Goal-driven iterative execution                      |
 | Epic creation, loading, context restore     | Professor                | "Create Epic X" / "Load epic X" — `docs/epics/`      |
@@ -414,14 +414,14 @@ Per-project agents (in each `{project}/.claude/agents/`):
 | `rnd`                   | "RND <goal>", "iterate until <goal>" — goal-driven iterative execution, produces a solution                                           |
 | `360`                   | "360 <subject>", "three-sixty" — exhaustive multi-angle analysis (test + inquiry domains), used by QA and Professor                   |
 | `ghostwriter`           | "match my writing style", "write like me", "voice profile" — captures a writer's mechanical fingerprint, generates text in that style |
-| `professor-analyze`     | "analyze <subject>", "system analysis", "architecture review" — cross-disciplinary analysis                                           |
+| `p:analyze`     | "analyze <subject>", "system analysis", "architecture review" — cross-disciplinary analysis                                           |
 | `audit-{domain-engine}` | "audit-{domain-engine}", "audit {domain-engine}" — Staff Engineer audit of {DOMAIN_ENGINE} subproject                                 |
-| `professor-refine`      | "refine <tasks>", "write wave.md" — critically evaluates task list through R1-R3.5, produces wave.md                                  |
-| `professor-wave-review` | "wave-review <report>" — post-wave operational review, invoked by `/wave` after pipelines complete                                    |
-| `audit-code-hygiene`    | "code-hygiene <scope>" — ghost fields, dead code, deps, arch, types, naming, quality                                                  |
-| `audit-security`        | "security <scope>" — injection, auth, API, LLM/prompt, {PROTECTED_DATA}, crypto, transport, supply-chain                              |
+| `p:refine`      | "refine <tasks>", "write wave.md" — critically evaluates task list through R1-R3.5, produces wave.md                                  |
+| `p:wave-review` | "wave-review <report>" — post-wave operational review, invoked by `/wave` after pipelines complete                                    |
+| `audit:code-hygiene`    | "code-hygiene <scope>" — ghost fields, dead code, deps, arch, types, naming, quality                                                  |
+| `audit:security`        | "security <scope>" — injection, auth, API, LLM/prompt, {PROTECTED_DATA}, crypto, transport, supply-chain                              |
 
-Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them. Domain-hydrated skills (`professor-analyze`, `audit-*`) ship as empty shells and are filled by RR at setup time — see SETUP.md Phase 2.5.
+Skills are in `.claude/skills/{name}/SKILL.md`. They load automatically when the user triggers them. Domain-hydrated skills (`p:analyze`, `audit-*`) ship as empty shells and are filled by RR at setup time — see SETUP.md Phase 2.5.
 
 ---
 
