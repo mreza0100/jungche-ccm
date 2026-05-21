@@ -33,6 +33,12 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-05-21
+
+### Fixed
+
+- Scripts: `scripts/worktree.sh` · `commands/build.md` — Orphaned-worktree prune. New `worktree.sh prune` subcommand reclaims `.worktrees/{name}` directories left by failed or abandoned pipelines (not a registered git worktree, no active pipeline docs); `/build` pre-flight (Step 0a) now runs it — making the worktree→docs sweep symmetric with the existing docs→worktree one. Registered-but-inactive worktrees are reported for inspection, never auto-removed (they may hold uncommitted work). (safe-auto)
+
 ## [0.9.0] — 2026-05-21
 
 ### Added

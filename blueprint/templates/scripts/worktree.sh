@@ -153,6 +153,41 @@ cmd_remove() {
   echo "Pipeline cleaned up: $pipeline"
 }
 
+cmd_prune() {
+  # Remove ORPHANED worktree directories: present on disk but not a registered
+  # git worktree AND with no active pipeline docs. Registered-but-inactive
+  # worktrees are reported, never auto-removed (may hold uncommitted work).
+  git -C "$ROOT" worktree prune 2>/dev/null || true  # drop git records for vanished dirs
+
+  local registered
+  registered="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"
+
+  local pruned=0
+  for d in "${ROOT}/.worktrees"/*/; do
+    [ -d "$d" ] || continue
+    local name
+    name="$(basename "$d")"
+    [[ "$name" == .* ]] && continue
+    local abs="${ROOT}/.worktrees/${name}"
+
+    if printf '%s\n' "$registered" | grep -qx "$abs"; then
+      [ -d "${ROOT}/docs/dev/builds/${name}" ] || echo "REGISTERED-NO-DOCS: $name (registered worktree, no active pipeline — inspect; not auto-removed)"
+      continue
+    fi
+
+    if [ -d "${ROOT}/docs/dev/builds/${name}" ]; then
+      echo "SKIP: $name (unregistered but has pipeline docs — inspect manually)"
+      continue
+    fi
+
+    rm -rf "$d"
+    "$ALLOC" free "$name" 2>/dev/null || true
+    echo "PRUNED: $name (orphaned worktree dir)"
+    pruned=$((pruned + 1))
+  done
+  echo "Prune complete: $pruned orphaned worktree(s) removed."
+}
+
 cmd_list() {
   local pipeline="${1:-}"
 
@@ -192,8 +227,9 @@ case "${1:-help}" in
   create)  cmd_create "${2:?pipeline required}" ;;
   remove)  cmd_remove "${2:?pipeline required}" ;;
   list)    cmd_list   "${2:-}" ;;
+  prune)   cmd_prune ;;
   *)
-    echo "Usage: $0 {create|remove|list} <pipeline>"
+    echo "Usage: $0 {create|remove|list|prune} <pipeline>"
     exit 1
     ;;
 esac

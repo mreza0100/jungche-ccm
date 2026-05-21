@@ -30,7 +30,15 @@ Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline
 
 ### 0a. Stale pipeline cleanup (MANDATORY pre-flight)
 
-Before doing anything, check for abandoned pipeline directories in `docs/dev/builds/` (excluding `archive/`).
+**First, prune orphaned worktrees** — `.worktrees/{name}` directories left by failed or abandoned pipelines that no agent otherwise reclaims (the inverse of the doc-dir sweep below):
+
+```bash
+bash .claude/scripts/worktree.sh prune
+```
+
+It removes `.worktrees/` dirs that are not registered git worktrees and have no active pipeline docs; registered-but-inactive worktrees are reported for inspection, never auto-removed (they may hold uncommitted work).
+
+Then check for abandoned pipeline directories in `docs/dev/builds/` (excluding `archive/`).
 A pipeline directory is **stale** if it has NO corresponding active worktree in `.worktrees/`:
 
 ```bash
