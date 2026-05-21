@@ -159,8 +159,14 @@ cmd_prune() {
   # worktrees are reported, never auto-removed (may hold uncommitted work).
   git -C "$ROOT" worktree prune 2>/dev/null || true  # drop git records for vanished dirs
 
+  # Registered worktree BASENAMES — matched by name, not full path, so a symlinked or
+  # canonicalized repo path can't misclassify a live worktree as orphaned.
+  # Fail-safe: if git can't list worktrees, prune nothing rather than risk a live one.
   local registered
-  registered="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')"
+  if ! registered="$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | awk '/^worktree /{n=split($2,a,"/"); print a[n]}')"; then
+    echo "Prune skipped: could not list git worktrees."
+    return 0
+  fi
 
   local pruned=0
   for d in "${ROOT}/.worktrees"/*/; do
@@ -168,9 +174,8 @@ cmd_prune() {
     local name
     name="$(basename "$d")"
     [[ "$name" == .* ]] && continue
-    local abs="${ROOT}/.worktrees/${name}"
 
-    if printf '%s\n' "$registered" | grep -qx "$abs"; then
+    if printf '%s\n' "$registered" | grep -qx "$name"; then
       [ -d "${ROOT}/docs/dev/builds/${name}" ] || echo "REGISTERED-NO-DOCS: $name (registered worktree, no active pipeline — inspect; not auto-removed)"
       continue
     fi

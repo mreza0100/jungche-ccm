@@ -33,6 +33,12 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-05-21
+
+### Fixed
+
+- Scripts: `scripts/worktree.sh` — Harden `prune` worktree detection. Registered worktrees are matched by **basename** rather than full path, so a symlinked or canonicalized repo path can no longer misclassify a live worktree as orphaned and `rm -rf` it; added a fail-safe that prunes nothing if git can't list worktrees. Hardens the v0.9.1 prune against data loss at non-canonical install paths. (safe-auto)
+
 ## [0.9.1] — 2026-05-21
 
 ### Fixed
