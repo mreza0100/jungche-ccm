@@ -19,11 +19,11 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 | **Doc Registry** | `$CDOCS/documenter/$REFS/doc-registry.md` | Master inventory of all permanent docs | When docs are added, removed, renamed, or ownership changes |
 | **Sync Rules** | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks | When new sync relationships are discovered |
 | **Future Features** | `docs/dev/future-features.md` | Roadmap-candidate feature ideas parked for later | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
-| **Epic Manifests** | `docs/epics/*/manifest.md` | ARCHIVE auto-update ONLY — append pipeline progress to active epics | ARCHIVE mode Step 2j (when pipeline matches an active epic) |
+| **Epic Updates** | `docs/epics/*/update.md` + `docs/epics/*/manifest.md` | ARCHIVE auto-update ONLY — append pipeline progress to active epics | ARCHIVE mode Step 2j (when pipeline matches an active epic) |
 
 **Scope guard (single rule — applies everywhere):**
 - You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project docs (`docs/agents/{architecture,API,map,features}.md`), and `docs/dev/future-features.md`
-- You MAY append progress entries to `docs/epics/*/manifest.md` during ARCHIVE mode Step 2j ONLY — never create, restructure, or delete epic files (owned by Professor)
+- You MAY append progress entries to `docs/epics/*/update.md` (create if absent) and `docs/epics/*/manifest.md` during ARCHIVE mode Step 2j ONLY — never restructure or delete other epic files (owned by Professor)
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
 <!-- Install-time: Add any additional scope exclusions specific to your project -->
 
@@ -121,22 +121,23 @@ For each affected project, read `5-dev-report-{project}.md` and update if introd
 
 If pipeline touched workflow graph definitions (new nodes, changed edges), regenerate affected `.mmd` files per **Graph Mode**. Skip if no graph topology changes.
 
-#### 2j. Update active epic manifest
+#### 2j. Update active epic (standalone builds only)
 
-Check `docs/epics/` for any `manifest.md` with `status: IN_PROGRESS`. For each active epic:
+**Wave-owned builds skip this.** If `grep -rl "$PIPELINE" docs/dev/waves/*/report.md` matches, the wave consolidates its own epic update (wave.md Step 3.5). Print `SKIP-EPIC: $PIPELINE belongs to active wave` and move on.
 
-1. Check if the pipeline name contains the epic slug (e.g., pipeline `radar-analysis` matches epic `radar-v1`) OR the pipeline plan (`1-plan.md`) explicitly references the epic
-2. If match: read the epic's `manifest.md`, append under `## Progress Log`:
+Resolve the epic: use the `Epic:` value from your invocation (build Step 11 passes `$EPIC`) when it names an epic; otherwise (`none`/absent) match a `docs/epics/*/manifest.md` (`status: IN_PROGRESS`) whose slug the pipeline name contains. Skip only if no epic resolves either way.
+
+For the matched epic `{name}`:
+
+1. Append a dated entry to `docs/epics/{name}/update.md` (create the file if absent):
    ```
-   ### {YYYY-MM-DD} — Pipeline: {PIPELINE}
+   ### {YYYY-MM-DD} — {PIPELINE}
    - {1-3 bullet summary of what shipped}
-   - Features: {feature names added to features.md in Step 2g-1}
+   - Features: {names added to features.md in Step 2g-1}
    ```
-3. Update `pipelines:` list and `updated:` date in frontmatter
+2. In `manifest.md`: append the same entry under `## Progress Log`; append new architectural/scope decisions from `$DOCS/1-plan.md` and `3-architecture.md` under `## Key Decisions` (deduped against existing entries); add `{PIPELINE}` to `pipelines:`; bump `updated:`.
 
-**Scope guard:** ONLY append progress entries. Never restructure, rewrite, or delete epic content — the Professor owns the narrative.
-
-Skip if `docs/epics/` is empty or no active epics match.
+**Scope guard:** append only. Leave `## Vision & Scope`, `## Open Questions`, and `## Discoveries` untouched, and never set `status: SHIPPED` — the Professor owns the narrative and the lifecycle.
 
 ### Step 3 — Archive pipeline documents (MUST use Bash tool)
 

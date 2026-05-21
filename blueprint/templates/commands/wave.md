@@ -22,6 +22,8 @@ $ARGUMENTS
 - **File path:** Read that file.
 - **Description (not a path):** Parse directly as inline tasks.
 
+**Epic:** extract `**Epic:** {name}` from the task file → `{epic-name}` (`none` if absent). Forward it to every `/build` and write the wave's consolidated epic update in Step 3.5.
+
 **Wave naming:** Choose a short descriptive kebab-case name (2-4 words) capturing the theme. Defines `$WAVES/{wave-name}/`.
 
 **Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/` (strip counter prefixes), `$WAVES/`, `docs/dev/builds/archive/` (strip counter prefixes), `docs/dev/builds/`, `tmp/archive/builds/`, `tmp/archive/waves/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
@@ -31,9 +33,9 @@ $ARGUMENTS
 ## Runtime
 
 Wave runs on whatever runtime invokes it. Each runtime invokes `/build` in its own way:
-- **Claude:** `Skill("build", "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}]")`
+- **Claude:** `Skill("build", "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
 <!-- OPTIONAL: If using a secondary runtime (e.g., Codex), add its invocation pattern here:
-- **{SECONDARY_RUNTIME}:** `Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}]")`
+- **{SECONDARY_RUNTIME}:** `Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
 -->
 
 Pipelines run sequentially (Skill tool can't be delegated to sub-agents). Your job: grouping, sequencing, reporting.
@@ -56,6 +58,7 @@ Two forms:
 2. **Conflict detection** — incompatible changes to same target across tasks → fatal.
 3. **Routing feasibility** — every task must be classifiable as FE/BE/{AI_PROJECT_SHORT}/Infra/CROSS/Web. Too vague → fatal.
 4. **Dependency ordering** — tasks depending on another's output must have that dependency earlier or already in codebase.
+5. **Uncommitted work on main** — read-only `git status --porcelain`. If non-empty, warn the founder (list the files) and ask once (this gate is the only place to ask): **commit & carry** main's WIP into the wave's pipelines, or **leave on main**. Set `{carry-wip}` (`commit` | `leave`) and forward it to every `/build`. With `commit`, the first pipeline's SETUP commits the WIP and the rest inherit a clean, committed main; nothing is lost. Clean tree → `leave`, no prompt.
 
 | Result | Action |
 |--------|--------|
@@ -182,6 +185,21 @@ Skill("p:wave-review", "$WAVES/{wave-name}/report.md")
 Append review to report under `## Professor's Wave Review`. Present to user.
 
 **This step is mandatory.** The Professor reads the report, runs a 360 blind-spot sweep, and writes its operational review directly into the report file. No wave is complete without the Professor's verdict. The review becomes part of the archived artifact.
+
+---
+
+## Step 3.5 — Epic update (epic-tied waves only)
+
+Skip if `{epic-name}` is `none`. Otherwise write ONE consolidated entry for the whole wave — per-build documenters skip epic writes for wave-owned builds, so the wave is the sole writer here:
+
+1. Append to `docs/epics/{epic-name}/update.md` (create if absent):
+   ```
+   ### {YYYY-MM-DD} — Wave: {wave-name}
+   - {1-3 bullet summary across the wave's pipelines}
+   ```
+2. In `docs/epics/{epic-name}/manifest.md`: append the same under `## Progress Log`; append new decisions surfaced across the wave under `## Key Decisions` (deduped); add `{wave-name}` to `waves:`; bump `updated:`.
+
+Append only — leave Vision & Scope, Open Questions, Discoveries, and `status` to the Professor.
 
 ---
 

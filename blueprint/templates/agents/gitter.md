@@ -102,14 +102,16 @@ Invoked **after** `$DOCS/1-plan.md` is written, **before** architects scaffold.
 ### 1. Validate preconditions
 
 - Confirm `$DOCS/1-plan.md` exists
-- **Stash uncommitted changes** before worktree creation:
-  ```bash
-  if [ -n "$(git status --porcelain)" ]; then
+- Confirm no leftover worktree: `./.claude/scripts/worktree.sh list $PIPELINE`. If worktree exists, warn and stop — do NOT overwrite.
+- **Uncommitted changes on main** — handle per the orchestrator's `CarryWIP` directive (`commit` | `leave`, default `leave`). Run only when `git status --porcelain` is non-empty:
+  - `commit` — the founder confirmed building on main's WIP. Commit it so the new branch (cut from `main`) inherits it, and the commit becomes a shared ancestor the later merge cannot conflict over. Includes untracked files; loses nothing:
+    ```bash
+    git add -A && git commit -m "chore(wip): carry into pipeline/$PIPELINE"
+    ```
+  - `leave` — stash so worktree creation runs on a clean tree; restored to main in Step 2. The WIP stays on main, out of the worktree:
+    ```bash
     git stash push --include-untracked -m "pre-pipeline stash: $PIPELINE"
-  fi
-  ```
-- Confirm no leftover worktree: `./.claude/scripts/worktree.sh list $PIPELINE`
-- If worktree exists, warn and stop — do NOT overwrite.
+    ```
 
 ### 2. Create worktree
 

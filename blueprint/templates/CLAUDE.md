@@ -218,12 +218,12 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 
 - **Create:** "Create Epic {name}" → Professor asks scope questions, creates `docs/epics/{name}/manifest.md`
 - **Load:** "Load epic {name}" → Professor reads `docs/epics/{name}/` directory, restores full context
-- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/documenter` ARCHIVE mode auto-appends pipeline progress when features ship for an active epic
+- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/p:refine` stamps the target epic in `wave.md`. Shipping work for an active epic auto-writes `docs/epics/{name}/update.md` and appends the manifest's `## Progress Log`, `## Key Decisions`, and `pipelines:`/`waves:` lists — `/documenter` does this for a standalone build, `/wave` for a wave
 - **Ship:** Professor sets `status: SHIPPED` when all scope is delivered
 
 **Manifest format:** see `docs/epics/TEMPLATE.md`.
 
-**Ownership:** Professor creates and maintains epics. `/documenter` has write access for ARCHIVE auto-update only.
+**Ownership:** Professor creates and maintains epics, and owns Vision & Scope, Open Questions, Discoveries, and `status`. `/documenter` (standalone builds) and `/wave` (waves) are append-only to `update.md` + manifest Progress Log / Key Decisions / pipelines·waves.
 
 ---
 
@@ -246,7 +246,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 - **NEVER edit code on `main`** — worktree branches only, merged by gitter after QA
 - **Only gitter commits code** — no other agent runs git commands
 - **NEVER commit broken code / merge before QA passes**
-- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `$CDOCS/professor/` + `docs/epics/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/` + `docs/epics/*/` ARCHIVE auto-update only; `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/audit` → `$CDOCS/audit/`)
+- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `$CDOCS/professor/` + `docs/epics/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/` + `docs/epics/*/update.md` + manifest append (ARCHIVE auto-update only); `/wave` → `docs/epics/*/update.md` + manifest append (wave epic update only); `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/audit` → `$CDOCS/audit/`)
 - **NEVER run destructive git** — no `reset --hard`, `push --force`, `clean -fdx`, `rm -rf`
 - **NEVER reuse archived pipeline/wave names** — check archives, append `-v2` if collision
 - Never install unvalidated libraries; never commit secrets

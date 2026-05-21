@@ -111,6 +111,8 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 ```markdown
 # Tasks
 
+**Epic:** {kebab-name | `none`}
+
 ## Task Reconciliation
 
 | Original | Disposition | New # | Notes |
@@ -142,6 +144,7 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 ### Constraints
 
 - You MAY write `wave.md` at repo root — the ONLY file you create
+- Stamp the target epic at the top of `wave.md` (`**Epic:** {name}`) so `/wave` routes its progress to `docs/epics/{name}/`. Determine it during R1.5 when unclear; write `none` if the work isn't epic-tied
 - You do NOT write code
 - PM consultation is mandatory (twice) — R2.5 and R3.5
 - Task identity is sacred — reconciliation table required

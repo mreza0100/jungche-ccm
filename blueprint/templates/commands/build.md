@@ -14,6 +14,7 @@ Check `$ARGUMENTS` for fatal unrunnability before creating any directory or allo
 
 - **Coherence:** Is the description specific enough to route? A bare "fix things" or "improve stuff" with zero context cannot be planned. → `PRE-FLIGHT FAILED: Description too vague — what specifically needs to change? No pipeline started.`
 - **Self-consistency:** Does the description contradict itself? → Stop with the contradiction noted.
+- **Uncommitted work on main:** read-only `git status --porcelain`. If non-empty AND no `[CarryWIP: ...]` was passed (standalone), warn the founder — list the files — and ask: **commit & carry** main's WIP into this pipeline (gitter commits it to main; the branch builds on it and merges back cleanly as a shared base, losing nothing) or **leave on main** (excluded from the build). Set `$CARRYWIP`. Allowed here because pre-flight precedes all work; never asked once the pipeline is running.
 
 If pre-flight fails: STOP. Return the diagnostic. Do NOT proceed.
 
@@ -98,6 +99,8 @@ Resolve path variables:
 
 - **`$PIPELINE`** = `{name}` — the pipeline name (kebab-case, unique across active + archived). Extracted from `[Pipeline: {name}]` in `$ARGUMENTS` when present (wave-invoked), otherwise chosen by build (standalone).
 - **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `docs/dev/waves/archive/{wave}/`.
+- **`$EPIC`** = epic name extracted from `[Epic: {epic-name}]` in `$ARGUMENTS`, otherwise `none`. Forwarded to the documenter (Step 11) so a standalone build routes its progress to `docs/epics/{name}/`. Wave-owned builds inherit it but skip the epic write — the wave consolidates it.
+- **`$CARRYWIP`** = `commit` or `leave` from `[CarryWIP: ...]` in `$ARGUMENTS` (passed by `/wave`), otherwise `ask`. Governs whether main's uncommitted work is carried into this pipeline's worktree (Step 2).
 - **`$DOCS`** = `docs/dev/builds/{name}` — pipeline docs from repo root
 - **`$DOCS_REL`** = `../../../docs/dev/builds/{name}` — pipeline docs from worktree
 - **`$DOCS_POST`** = `../docs/dev/builds/{name}` — pipeline docs from project subdir (POST-MERGE)
@@ -191,9 +194,11 @@ Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing d
 
 ## Step 2 — Git Setup (worktrees + ports)
 
+`$CARRYWIP` was resolved at pre-flight (`commit` → gitter commits main's WIP so the branch builds on it and merges back as a shared base; `leave` → WIP stays on main, out of the worktree). Pass it through.
+
 Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git ops.
 
-- Tell it: "Pipeline: {name}. Phase: SETUP."
+- Tell it: "Pipeline: {name}. Phase: SETUP. CarryWIP: $CARRYWIP."
 - Creates a single monorepo worktree with all projects (one branch: `pipeline/{name}`)
 - Developers work in their respective subdirs within the same worktree
 - Wait for confirmation before proceeding.
@@ -634,7 +639,7 @@ After both complete, **write a single** `$DOCS/8-audit.md` consolidating both re
 
 Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
 
-- Tell it: "Pipeline: {name}. Phase: ARCHIVE. Docs: $DOCS. Archive: $ARCHIVE. Pipeline dir to archive: $DOCS → $ARCHIVE/{name}."
+- Tell it: "Pipeline: {name}. Phase: ARCHIVE. Epic: $EPIC. Docs: $DOCS. Archive: $ARCHIVE. Pipeline dir to archive: $DOCS → $ARCHIVE/{name}."
 
 The documenter:
 
