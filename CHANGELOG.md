@@ -31,6 +31,30 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ---
 
+## [Unreleased]
+
+## [0.8.0] — 2026-05-21
+
+### Added
+
+- Tier A: `.claude/skills/prompt-quality/` — Anthropic prompt-discipline rubric (cut test, line/size thresholds, anti-patterns, per-file-type structural conventions); loaded before any prompt-file edit. (safe-auto)
+- Tier B: `.claude/skills/vision-factory/` — Paul Graham–grounded startup-vision forge (CREATE / RESEARCH / STRESS-TEST modes). (opt-in)
+- Mechanics: `templates/epics/TEMPLATE.md` — epic manifest template; the blueprint previously shipped no `epics/` template dir. (safe-auto)
+
+### Changed
+
+- Tier A: `commands/pcm.md` — now mandates loading `prompt-quality` before editing CLAUDE.md, agents, commands, or skills.
+- Tier B: `commands/km.md` — now loads `prompt-quality` before editing knowledge files.
+- Tier A: `templates/CLAUDE.md` — trimmed for token efficiency: dropped the duplicate Commands table (Request Routing is canonical), replaced the Skills table with a one-line pointer, moved the epic manifest format to `epics/TEMPLATE.md`, removed the redundant Communication Standard section and Voice examples bank.
+
+### Breaking
+
+- Tier A: skill `p:analyze` → `p:analysis` (Claude + Codex), matching upstream. (breaking)
+
+#### For adopters: on ≤ v0.7.0
+
+Rename `.claude/skills/p:analyze/` → `.claude/skills/p:analysis/` and the Codex wrapper `.codex/skills/p:analyze/` → `.codex/skills/p:analysis/`. Update the `name:` frontmatter in the renamed `SKILL.md` and any references in `CLAUDE.md` and `commands/council.md`. `/pcm update` applies this automatically via the three-way diff.
+
 ## [0.7.0] — 2026-05-15
 
 ### Breaking

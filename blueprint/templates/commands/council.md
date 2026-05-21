@@ -6,10 +6,10 @@ $ARGUMENTS
 
 ## Subcommand Routing
 
-| Subcommand | Trigger | Action |
-|------------|---------|--------|
+| Subcommand   | Trigger                                           | Action                        |
+| ------------ | ------------------------------------------------- | ----------------------------- |
 | `refinement` | `$ARGUMENTS` starts with "refinement" or "refine" | Jump to **§ Refinement Mode** |
-| *(default)* | anything else | Standard debate mode |
+| _(default)_  | anything else                                     | Standard debate mode          |
 
 ---
 
@@ -26,13 +26,13 @@ Smaller panels (3-voice) work fine for solo/research projects. -->
 
 **The Council Members:**
 
-| Seat | Lens | Voice source |
-|------|------|-------------|
-| **JC** | Technical — code health, runtime, reliability, data integrity | `.claude/commands/jc.md` |
-| **{PANEL_SEAT_3}** | {PANEL_SEAT_3_LENS} | `.claude/commands/{panel_seat_3}.md` |
-| **Professor** | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `CLAUDE.md` (root) + `/p:analyze` skill |
-| **{PANEL_SEAT_4}** | {PANEL_SEAT_4_LENS} | `.claude/commands/{panel_seat_4}.md` |
-| **{PANEL_SEAT_5}** | {PANEL_SEAT_5_LENS} — {USER_NOUN} workflows, friction, adoption | `.claude/commands/{panel_seat_5}.md` |
+| Seat               | Lens                                                                                        | Voice source                             |
+| ------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **JC**             | Technical — code health, runtime, reliability, data integrity                               | `.claude/commands/jc.md`                 |
+| **{PANEL_SEAT_3}** | {PANEL_SEAT_3_LENS}                                                                         | `.claude/commands/{panel_seat_3}.md`     |
+| **Professor**      | Academic — architecture quality, {SACRED_GROUND} safety, evidence-based, cross-disciplinary | `CLAUDE.md` (root) + `/p:analysis` skill |
+| **{PANEL_SEAT_4}** | {PANEL_SEAT_4_LENS}                                                                         | `.claude/commands/{panel_seat_4}.md`     |
+| **{PANEL_SEAT_5}** | {PANEL_SEAT_5_LENS} — {USER_NOUN} workflows, friction, adoption                             | `.claude/commands/{panel_seat_5}.md`     |
 
 **Professor** (you) moderates, synthesizes the verdict, and calls out narrow thinking.
 
@@ -42,11 +42,11 @@ Smaller panels (3-voice) work fine for solo/research projects. -->
 
 Artifacts persist to `$CDOCS/council/$RESEARCH/{debateName}/`:
 
-| Files | Pattern |
-|-------|---------|
-| Round 1 | `council-{member}.md` (5 files) |
+| Files   | Pattern                                  |
+| ------- | ---------------------------------------- |
+| Round 1 | `council-{member}.md` (5 files)          |
 | Round 2 | `council-{member}-rebuttal.md` (5 files) |
-| Round 3 | `verdict.md` + `result.md` |
+| Round 3 | `verdict.md` + `result.md`               |
 
 These are permanent research artifacts — never delete them.
 
@@ -117,13 +117,13 @@ Topic: '{debate-topic}'
 
 **Per-member specifics:**
 
-| Member | Focus areas | Key docs to read |
-|--------|-------------|-----------------|
-| JC | code health, system reliability, performance, security, data integrity | Relevant source code |
-| {PANEL_SEAT_3} | {PANEL_SEAT_3_FOCUS} | `$CDOCS/{panel_seat_3}/$REFS/` |
-| Professor | architecture quality, {SACRED_GROUND} safety, evidence-based practice, cross-disciplinary | Architecture docs + `/p:analyze` skill |
-| {PANEL_SEAT_4} | {PANEL_SEAT_4_FOCUS} | `$CDOCS/{panel_seat_4}/$REFS/` |
-| {PANEL_SEAT_5} | {USER_NOUN} workflows, UX friction, personas, adoption | `docs/agents/features.md`, `$CDOCS/{panel_seat_5}/$REFS/` |
+| Member         | Focus areas                                                                               | Key docs to read                                          |
+| -------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| JC             | code health, system reliability, performance, security, data integrity                    | Relevant source code                                      |
+| {PANEL_SEAT_3} | {PANEL_SEAT_3_FOCUS}                                                                      | `$CDOCS/{panel_seat_3}/$REFS/`                            |
+| Professor      | architecture quality, {SACRED_GROUND} safety, evidence-based practice, cross-disciplinary | Architecture docs + `/p:analysis` skill                   |
+| {PANEL_SEAT_4} | {PANEL_SEAT_4_FOCUS}                                                                      | `$CDOCS/{panel_seat_4}/$REFS/`                            |
+| {PANEL_SEAT_5} | {USER_NOUN} workflows, UX friction, personas, adoption                                    | `docs/agents/features.md`, `$CDOCS/{panel_seat_5}/$REFS/` |
 
 **Wait for all five to complete.**
 
@@ -185,21 +185,27 @@ Read all 10 files. Write `{$DEBATE_DIR}/verdict.md`:
 **Council:** JC (Technical), {PANEL_SEAT_3} ({PANEL_SEAT_3_LENS}), Professor (Academic), {PANEL_SEAT_4} ({PANEL_SEAT_4_LENS}), {PANEL_SEAT_5} ({PANEL_SEAT_5_LENS})
 
 ## The Question
+
 {Restate clearly}
 
 ## Where They Agree
+
 {High-confidence convergence points}
 
 ## Where They Clash
+
 {Key tensions as pairs: JC vs {PANEL_SEAT_3}, {PANEL_SEAT_4} vs {PANEL_SEAT_5}, etc.}
 
 ## The Blind Spots
+
 {What each missed that others caught}
 
 ## Professor's Verdict
+
 {YOUR opinionated synthesis — make a call, don't hedge}
 
 ## Action Items
+
 {Concrete next steps, ordered, with source perspective}
 ```
 
@@ -229,13 +235,15 @@ Write `{$DEBATE_DIR}/result.md`: verdict content (Brief Result) + full debate re
 
 ## Refinement Mode
 
-*Activated when `$ARGUMENTS` starts with `refinement` or `refine`.*
+_Activated when `$ARGUMENTS` starts with `refinement` or `refine`._
 
 **Difference from standard council:**
+
 - Standard → debate → `result.md` (analysis — user decides what to do)
 - Refinement → debate → `wave.md` (actionable task file — ready for `/wave`)
 
 **Output paths:**
+
 - Debate artifacts → `$CDOCS/council/$RESEARCH/{debateName}/` (same)
 - Wave file → `docs/dev/waves/council/{debateName}.md` (new)
 
@@ -248,6 +256,7 @@ Same as standard Step 0, but also `mkdir -p docs/dev/waves/council`. Check uniqu
 Like standard Round 1, but agents write **implementation proposals** with concrete task lists, not just positions.
 
 **Each agent's prompt adds these requirements to the standard template:**
+
 - Identify what code exists today (with file:line references)
 - Propose concrete tasks organized by project
 - Include a "recommended task list" section at the bottom
@@ -255,12 +264,12 @@ Like standard Round 1, but agents write **implementation proposals** with concre
 
 **Additional per-member focus:**
 
-| Member | Extra in refinement |
-|--------|-------------------|
-| JC | What exists today, what's cheap vs expensive, performance implications, implementation order |
-| {PANEL_SEAT_3} | {PANEL_SEAT_3_REFINEMENT_FOCUS} |
-| Professor | Literature-backed design constraints, architectural decisions, safety gates, anti-patterns |
-| {PANEL_SEAT_4} | {PANEL_SEAT_4_REFINEMENT_FOCUS} |
+| Member         | Extra in refinement                                                                                              |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| JC             | What exists today, what's cheap vs expensive, performance implications, implementation order                     |
+| {PANEL_SEAT_3} | {PANEL_SEAT_3_REFINEMENT_FOCUS}                                                                                  |
+| Professor      | Literature-backed design constraints, architectural decisions, safety gates, anti-patterns                       |
+| {PANEL_SEAT_4} | {PANEL_SEAT_4_REFINEMENT_FOCUS}                                                                                  |
 | {PANEL_SEAT_5} | UX specification (screen flows, copy, interactions), persona impact, what makes {USER_NOUN}s love vs resent this |
 
 ### Refinement Step 2 — Round 2: Rebuttals (PARALLEL)
@@ -287,17 +296,17 @@ Read all 10 files. Produce THREE outputs:
 
 ## {Category} ({N} tasks)
 
-| # | Task |
-|---|------|
-| 1 | {title} — {what, why, behaviors, boundaries, architectural intent, compliance flags, UX specs} |
+| #   | Task                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------- |
+| 1   | {title} — {what, why, behaviors, boundaries, architectural intent, compliance flags, UX specs} |
 
 ---
 
 ## Deferred to V2
 
-| # | Item | Reason | Champion |
-|---|------|--------|----------|
-| D1 | {feature} | {why deferred} | {which member proposed} |
+| #   | Item      | Reason         | Champion                |
+| --- | --------- | -------------- | ----------------------- |
+| D1  | {feature} | {why deferred} | {which member proposed} |
 ```
 
 **Wave.md MUST include per task:** What it does, why it matters, key behaviors, architectural intent, boundaries, compliance flags (if any), UX specs (if any).

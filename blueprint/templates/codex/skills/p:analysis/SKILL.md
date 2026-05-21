@@ -1,9 +1,9 @@
 ---
-name: p:analyze
+name: p:analysis
 description: Cross-disciplinary system analysis (CS + domain + compliance). Invoked by `analyze <subject>`, `system analysis`, `architecture review`.
 ---
 
-Read `.claude/skills/p:analyze/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/p:analysis/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

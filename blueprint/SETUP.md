@@ -78,11 +78,11 @@ Example:
 
 **Specialist agents:** beyond the standard four (`planner`, `architect`, `developer`, `qa`), add a specialist when a narrow concern justifies it:
 
-| When to add one | What it owns |
-|-----------------|-------------|
-| Visual/interaction layer is non-trivial | Colors, typography, spacing, layout (`ui-ux`) |
-| Schema/migration changes are risky | Data layer, migrations, seeding (`db-admin`) |
-| Deployment configs are real code | Infra configs, environment promotion (`devops`) |
+| When to add one                          | What it owns                                        |
+| ---------------------------------------- | --------------------------------------------------- |
+| Visual/interaction layer is non-trivial  | Colors, typography, spacing, layout (`ui-ux`)       |
+| Schema/migration changes are risky       | Data layer, migrations, seeding (`db-admin`)        |
+| Deployment configs are real code         | Infra configs, environment promotion (`devops`)     |
 | Prompt engineering is its own discipline | Prompts, evals, knowledge ingestion (`ai-engineer`) |
 
 Slot specialists into `/build` between architect and QA.
@@ -243,12 +243,14 @@ Claude takes your answers and:
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
    7a. **Installs skills** — clones skills from their public repos into `.claude/skills/{name}/`. These are universal thinking protocols (Tier A) maintained as standalone repos. The installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project.
 
-| Skill         | Repo                                         | Parameterization                                                     |
-| ------------- | -------------------------------------------- | -------------------------------------------------------------------- |
-| `rr`          | https://github.com/mreza0100/rr              | None                                                                 |
-| `360`         | https://github.com/mreza0100/360             | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `ghostwriter` | https://github.com/mreza0100/ghost-writer    | None                                                                 |
-| `rnd`         | Bundled in `blueprint/templates/skills/rnd/` | None                                                                 |
+| Skill            | Repo                                                    | Parameterization                                                     |
+| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `rr`             | https://github.com/mreza0100/rr                         | None                                                                 |
+| `360`            | https://github.com/mreza0100/360                        | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `ghostwriter`    | https://github.com/mreza0100/ghost-writer               | None                                                                 |
+| `rnd`            | Bundled in `blueprint/templates/skills/rnd/`            | None                                                                 |
+| `prompt-quality` | Bundled in `blueprint/templates/skills/prompt-quality/` | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
+| `vision-factory` | Bundled in `blueprint/templates/skills/vision-factory/` | Replace `{USER_NOUN}` in claim examples                              |
 
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
 7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `.claude/settings.json` hooks. Sends a macOS native notification with Glass sound when a turn takes 30+ seconds. Character name and project root path are parameterized at install. Add to `.claude/settings.json`:
@@ -304,7 +306,7 @@ Claude takes your answers and:
 
     Requires `jq` and `prettier` (`npx prettier` — works if prettier is a project devDependency or globally installed). Fails silently if either is missing. 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 
-8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, command skill wrappers, and shared skill wrappers/symlinks for `360`, `rr`, `rnd`, and `ghostwriter`. Creates `AGENTS.md` symlink → `CLAUDE.md`. Runs `.claude/scripts/check-codex-research-contract.sh` so Codex cannot silently replace RR fan-out with inline search. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), and `decisions.md` (human-readable record of what's different from vanilla Professor). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
+8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, command skill wrappers, and shared skill wrappers/symlinks for `360`, `rr`, `rnd`, `ghostwriter`, `prompt-quality`, and `vision-factory`. Creates `AGENTS.md` symlink → `CLAUDE.md`. Runs `.claude/scripts/check-codex-research-contract.sh` so Codex cannot silently replace RR fan-out with inline search. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), and `decisions.md` (human-readable record of what's different from vanilla Professor). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
 
 **Build roster validation:** `/build` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
 `json
