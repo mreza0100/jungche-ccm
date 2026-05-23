@@ -58,7 +58,7 @@ Two forms:
 2. **Conflict detection** — incompatible changes to same target across tasks → fatal.
 3. **Routing feasibility** — every task must be classifiable as FE/BE/{AI_PROJECT_SHORT}/Infra/CROSS/Web. Too vague → fatal.
 4. **Dependency ordering** — tasks depending on another's output must have that dependency earlier or already in codebase.
-5. **Uncommitted work on main** — read-only `git status --porcelain`. If non-empty, warn the founder (list the files) and ask once (this gate is the only place to ask): **commit & carry** main's WIP into the wave's pipelines, or **leave on main**. Set `{carry-wip}` (`commit` | `leave`) and forward it to every `/build`. With `commit`, the first pipeline's SETUP commits the WIP and the rest inherit a clean, committed main; nothing is lost. Clean tree → `leave`, no prompt.
+5. **Uncommitted work on main** — a wave may launch with a dirty `main`; that's fine, no prompt. Default to `leave` (WIP stays on `main`, excluded from the pipelines) and forward `[CarryWIP: leave]` to every `/build`. Gitter watches for overlap when each pipeline merges back (gitter Phase 2 § Merge to main) and pauses the wave only if the WIP cannot be cleanly restored after a merge — a critical overlap that must be committed first.
 
 | Result | Action |
 |--------|--------|

@@ -25,9 +25,8 @@ The orchestrator provides:
 
 ## What to do
 
-1. Read `.claude/commands/documenter.md`
-2. Read `$CDOCS/documenter/$REFS/doc-registry.md` (your map of all docs)
-3. Execute the appropriate mode based on the phase you were given:
+1. Read `.claude/commands/documenter.md` — it includes the Document Registry, your map of all docs
+2. Execute the appropriate mode based on the phase you were given:
    - `ARCHIVE` → follow Archive mode instructions
    - `AUDIT` → follow Audit mode instructions
    - `JC-UPDATE` → follow JC-Update mode instructions

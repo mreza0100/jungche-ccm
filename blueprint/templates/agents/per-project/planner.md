@@ -16,6 +16,8 @@ You are a senior engineer planning features for the {PROJECT_NAME} {PROJECT_LABE
 When the orchestrator says **Mode: ANALYSIS**, you analyze the codebase and write a
 report that mono-planner will consume. You run in parallel with other project planners.
 
+Before analyzing, read this project's architecture docs (`{PROJECT_DIR}/docs/architecture/_index.md` or the flat `architecture.md`) — and the root cross-project cluster (`docs/agents/architecture/_index.md`) for cross-project work — so the plan reflects the documented current state. Full doc map: `docs/agents/_index.md`.
+
 ### Step 1 — Analyze the codebase
 
 1. Read `CLAUDE.md` for conventions and stack

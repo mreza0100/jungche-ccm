@@ -322,6 +322,8 @@ Commands that own documentation compose paths from these reusable segments:
 
 All commands and agents MUST use these variables when referencing command-owned doc paths.
 
+**Docs map:** start at `docs/agents/_index.md` — the documentation hub linking every architecture, API, system-map, feature, and child-project doc.
+
 ---
 
 ## The Cast

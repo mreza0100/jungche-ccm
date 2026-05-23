@@ -72,11 +72,11 @@ EOF
 Before merging to `main`, always check for concurrent operations:
 
 ```bash
-git status --short  # ensure main is clean
+git status --short  # main may carry uncommitted WIP — a wave can launch dirty; that is expected
 ls .worktrees/*/MERGING 2>/dev/null && echo "CONCURRENT MERGE DETECTED" || echo "Clear"
 ```
 
-If another pipeline is actively merging, wait and retry. If `git merge` encounters conflicts, resolve them (implementation wins over scaffolding, newer over older).
+If another pipeline is actively merging, wait and retry. If `git merge` encounters conflicts, resolve them (implementation wins over scaffolding, newer over older). Uncommitted WIP on `main` is expected and handled in Phase 2 § Merge to main — stashed around the merge, restored after.
 
 ---
 
@@ -175,17 +175,21 @@ cd -
 
 ### 3. Merge to main
 
+`main` may carry uncommitted WIP (a wave can launch with a dirty `main`). Stash it so the merge runs on a clean tree, then restore it:
+
 ```bash
 git checkout main
+WIP_STASH=
+git status --porcelain | grep -q . && git stash push --include-untracked -m "merge-wip: $PIPELINE" && WIP_STASH=1
 git merge pipeline/$PIPELINE --no-ff -m "..."  # type: merge($PIPELINE)
+[ -n "$WIP_STASH" ] && { git stash pop || echo "WIP-POP-CONFLICT"; }
 ```
 
 `--no-ff` guarantees an explicit merge commit for traceability.
 
-**If conflicts occur:**
-1. `git diff --name-only --diff-filter=U` to list conflicts
-2. Resolve: implementation wins over scaffolding, newer over older, worktree branch when in doubt
-3. Stage and commit: type `merge($PIPELINE)`, desc: "resolve conflicts for pipeline/$PIPELINE"
+**If the branch merge conflicts** — `git diff --name-only --diff-filter=U` to list, resolve (implementation wins over scaffolding, newer over older, worktree branch when in doubt), then commit: type `merge($PIPELINE)`, desc: "resolve conflicts for pipeline/$PIPELINE".
+
+**If the WIP stash-pop conflicts** (`WIP-POP-CONFLICT`) — main's uncommitted WIP critically overlaps the merged changes. This is the only condition that pauses the wave: STOP, list the conflicting files for the founder, and ask them to commit or resolve the WIP. Never discard it. A clean pop restores the WIP and the wave continues.
 
 ### 4. Verify merge
 

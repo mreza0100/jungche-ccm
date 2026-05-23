@@ -16,7 +16,7 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 
 | Document | Path | Purpose | When to update |
 |---|---|---|---|
-| **Doc Registry** | `$CDOCS/documenter/$REFS/doc-registry.md` | Master inventory of all permanent docs | When docs are added, removed, renamed, or ownership changes |
+| **Doc Registry** | § Document Registry below | Master inventory of all permanent docs | When docs are added, removed, renamed, or ownership changes |
 | **Sync Rules** | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks | When new sync relationships are discovered |
 | **Future Features** | `docs/dev/future-features.md` | Roadmap-candidate feature ideas parked for later | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
 | **Epic Updates** | `docs/epics/*/update.md` + `docs/epics/*/manifest.md` | ARCHIVE auto-update ONLY — append pipeline progress to active epics | ARCHIVE mode Step 2j (when pipeline matches an active epic) |
@@ -27,7 +27,23 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/{command}/research/`)
 <!-- Install-time: Add any additional scope exclusions specific to your project -->
 
-**On every invocation:** Read `$CDOCS/documenter/$REFS/doc-registry.md` first. Update it last if structural changes occurred.
+**On every invocation:** Read the **Document Registry** below first. Update it last if structural changes occurred.
+
+---
+
+## Document Registry
+
+Map of permanent doc surfaces and owners. **Read first on every invocation; update last when docs are added, removed, renamed, or ownership changes.** Owner is `mono-documenter` unless noted.
+
+<!-- Install-time: rewrite this registry from your actual `docs/` tree. List every permanent doc surface (root cross-project docs + each subproject's `docs/`), each cluster's `_index.md`, and the non-`mono-documenter` owners (`/pm`, `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories; gitter owns its Living Reference; the Professor owns `docs/epics/`). Keep `.claude/` and `.codex/` instruction surfaces OUT — they are pipeline infrastructure, not registry entries. -->
+
+**Root (`docs/agents/`):** the cross-project permanent docs — `architecture`, `API`, `map`, `features` (flat files or clusters with an `_index.md` + topic files). `PRD` → `/pm`.
+
+**Command-owned (`docs/commands/{cmd}/`):** `documenter/references/sync-rules.md` → `/documenter`; `pcm/references/` → `/pcm`; each opted-in Tier B command owns its `references/`/`research/` directory.
+
+**Child projects:** each subproject's `docs/` — `architecture`, `developer-reference`, `api-reference`, `qa-reference`, `runbook` (flat files or clusters per project size).
+
+**Ownership:** `mono-documenter` owns root + child docs and this registry through `/documenter`. Tier B commands own their reference/research directories. `.claude/` and `.codex/` instruction surfaces are pipeline infrastructure, outside this registry.
 
 ---
 
@@ -63,7 +79,7 @@ Only read files that exist.
 
 ### Step 2 — Merge decisions into permanent docs
 
-Read pipeline docs and **intelligently integrate** new information. Permanent docs read as "current state" — not changelogs.
+Read pipeline docs and **intelligently integrate** new information. Permanent docs read as "current state" — not changelogs: every step below both adds what the pipeline introduced and deletes or rewrites what it removed, renamed, or superseded. A removed endpoint, component, or feature vanishes from its doc — it does not linger.
 
 #### 2a. `docs/agents/architecture.md` (cross-project ONLY)
 
@@ -111,11 +127,12 @@ Merge: new components, modified workflows, new/changed boundaries, tables, ports
 
 #### 2h. Child permanent docs from dev reports
 
-For each affected project, read `5-dev-report-{project}.md` and update if introduced:
+For each affected project, read `5-dev-report-{project}.md` and update for what it introduced or removed:
 - New endpoints → `docs/api-reference.md`
 - New patterns → `docs/developer-reference.md`
 - New setup/env vars → `docs/runbook.md`
 - New test patterns → `docs/qa-reference.md`
+- Removed/renamed endpoint, pattern, or env var → delete or rewrite its entry in the same doc
 
 #### 2i. Workflow graph diagrams
 
@@ -253,9 +270,9 @@ If audit discovered new/removed docs or changed ownership, update the registry.
 
 ## Mode: REGISTRY
 
-1. Read `$CDOCS/documenter/$REFS/doc-registry.md`
+1. Read the **Document Registry** section in this file
 2. Apply requested changes (add/remove doc, change ownership)
-3. Write updated registry
+3. Update the registry section in place
 4. If sync rules affected, update `$CDOCS/documenter/$REFS/sync-rules.md` too
 
 ---

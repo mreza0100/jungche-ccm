@@ -33,6 +33,16 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-05-23
+
+### Changed
+
+- Tier A (`/wave`): launch — a wave may start with an uncommitted main (default leave, no prompt); WIP stays on main, excluded from pipelines. (safe-auto)
+- Tier A (gitter): MERGE — stashes main's uncommitted WIP around the branch merge and restores it; pauses only on a WIP stash-pop conflict that must be committed first. (safe-auto)
+- Tier A (`/documenter`): registry inlined into the command; ARCHIVE now deletes/rewrites superseded entries, not only appends. (safe-auto)
+- Tier C (per-project planner/architect): read the project's architecture docs before planning/designing. (safe-auto)
+- Tier A (CLAUDE.md): docs-map signpost directs every agent to the documentation hub. (safe-auto)
+
 ## [0.9.2] — 2026-05-21
 
 ### Fixed
