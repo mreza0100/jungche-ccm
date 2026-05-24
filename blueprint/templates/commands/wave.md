@@ -10,8 +10,8 @@ $ARGUMENTS
 
 ## Path variables
 
-| Variable | Value |
-|----------|-------|
+| Variable | Value            |
+| -------- | ---------------- |
 | `$WAVES` | `docs/dev/waves` |
 
 ---
@@ -33,10 +33,11 @@ $ARGUMENTS
 ## Runtime
 
 Wave runs on whatever runtime invokes it. Each runtime invokes `/build` in its own way:
-- **Claude:** `Skill("build", "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
+
+- **Claude:** `Skill("build", "{concise-description} [Pipeline: {pipeline-name}] [Build: {n}/{total}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
 <!-- OPTIONAL: If using a secondary runtime (e.g., Codex), add its invocation pattern here:
-- **{SECONDARY_RUNTIME}:** `Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
--->
+- **{SECONDARY_RUNTIME}:** `Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Build: {n}/{total}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
+  -->
 
 Pipelines run sequentially (Skill tool can't be delegated to sub-agents). Your job: grouping, sequencing, reporting.
 
@@ -47,6 +48,7 @@ Pipelines run sequentially (Skill tool can't be delegated to sub-agents). Your j
 ### Step 0a — Read the task file
 
 Two forms:
+
 - **Professor-refined** — already has critically evaluated tasks with refined scope, functional requirements, compliance flags, architectural intent. Use as-is → proceed to 0b.
 - **Raw/unstructured** — invoke Professor for interactive refinement: `Skill("professor", "Write the following tasks to wave.md with interactive refinement:\n{raw content}")`. Re-read after Professor finishes → proceed to 0b.
 
@@ -56,15 +58,15 @@ Two forms:
 
 1. **Existence checks** — grep for named entities each task references (components, tables, endpoints, files). Fatal if referenced entity doesn't exist.
 2. **Conflict detection** — incompatible changes to same target across tasks → fatal.
-3. **Routing feasibility** — every task must be classifiable as FE/BE/{AI_PROJECT_SHORT}/Infra/CROSS/Web. Too vague → fatal.
+3. **Routing present** — a ZERO-GAP wave.md declares each task's `**Routing:**` (which projects). Read it; never re-classify. Fatal only if a task lacks a routing declaration and is too vague to classify (an unrefined task file).
 4. **Dependency ordering** — tasks depending on another's output must have that dependency earlier or already in codebase.
 5. **Uncommitted work on main** — a wave may launch with a dirty `main`; that's fine, no prompt. Default to `leave` (WIP stays on `main`, excluded from the pipelines) and forward `[CarryWIP: leave]` to every `/build`. Gitter watches for overlap when each pipeline merges back (gitter Phase 2 § Merge to main) and pauses the wave only if the WIP cannot be cleanly restored after a merge — a critical overlap that must be committed first.
 
-| Result | Action |
-|--------|--------|
-| All pass | Proceed to 0c |
-| Minor ambiguity | Correct inline, log, proceed |
-| **Fatal** | **STOP** — no wave dir, no pipelines. Print diagnostic and exit. |
+| Result          | Action                                                           |
+| --------------- | ---------------------------------------------------------------- |
+| All pass        | Proceed to 0c                                                    |
+| Minor ambiguity | Correct inline, log, proceed                                     |
+| **Fatal**       | **STOP** — no wave dir, no pipelines. Print diagnostic and exit. |
 
 ### Step 0c — Command routing triage
 
@@ -83,6 +85,7 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 ### Step 0d — Group, plan, and set up
 
 **Grouping algorithm (the key step):**
+
 - Same-project, same-scope tasks → ONE pipeline
 - Same-routing tasks (same set of projects) → ONE pipeline
 - Cross-project with no conflicts/overlaps → prefer ONE CROSS pipeline (shares all overhead: planner, architect, QA, merge)
@@ -91,11 +94,13 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 - **When in doubt, group more aggressively.** One pipeline with 5 tasks is far cheaper than 5 pipelines.
 
 **Combined `/build` descriptions:** Keep `$ARGUMENTS` concise — detailed specs live in pre-placed manifest:
+
 ```
 "FE polish: fix alignment, update errors, add spinner [Pipeline: fe-polish] [Wave: {wave-name}]"
 ```
 
 **Setup steps:**
+
 1. Organize groups into waves (wave boundaries enforce dependency ordering only)
 2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` with the pipeline-specific task subset
 3. Copy the original Professor-refined task file to `$WAVES/{wave-name}/manifest.md` — this preserves the full task spec (all detailed descriptions, compliance flags, architectural intent) as a permanent record of what was requested
@@ -109,10 +114,13 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 **Total tasks:** N → J via /jc + M pipelines | **Waves:** W
 
 ## Grouping Summary
+
 | Pipeline | Tasks included | Routing |
 
 ## Execution Plan
+
 ### Wave N (parallel)
+
 - [ ] `{pipeline}` — description (N tasks)
 ```
 
@@ -145,17 +153,16 @@ After displaying, proceed immediately to execution — this is informational, no
 
 For each wave, sequentially launch pipelines via `Skill("build", "...")`. NEVER delegate Skill calls to sub-agents.
 
-**Proactive status emission (MANDATORY):** Before launching each pipeline, emit a one-liner to the user:
+**Status emission (MANDATORY):** Each `/build` prints its own header, phase lines, and footer (`build.md` § Status Emission) from the `[Build: {n}/{total}]` token you pass. After each build returns, add the running tally — only the wave runner knows it:
+
 ```
-"Pipeline {current}/{total}: `{pipeline-name}` — starting ({routing}, {task-count} tasks)"
+Wave {wave-name}: {done}/{total} done · {failed} failed · {deferred} deferred
 ```
-After each pipeline completes, emit:
-```
-"Pipeline {current}/{total}: `{pipeline-name}` — {DONE | FAILED | BLOCKED-DEFERRED}"
-```
-The user should never have to ask "how much is left?" — the wave runner tells them proactively.
+
+The user should never have to ask "how much is left?" — the stream tells them.
 
 Log each result in report:
+
 - Success: `- [x] \`{pipeline}\` — **DONE** ✓`
 - Failure: `- [x] \`{pipeline}\` — **FAILED** ✗ — {reason}`
 - Deferred: `- [ ] \`{pipeline}\` — **BLOCKED-DEFERRED** ⚠️` (trigger, worktree path, resume note, next action)
@@ -167,8 +174,10 @@ Log each result in report:
 ## Step 2 — Final report
 
 Update report with:
+
 ```markdown
 ## Final Summary
+
 **Completed:** {timestamp} | **Pipelines:** X succeeded, Y failed, Z deferred
 
 | Pipeline | Tasks | Status | Notes |
@@ -185,6 +194,33 @@ Skill("p:wave-review", "$WAVES/{wave-name}/report.md")
 Append review to report under `## Professor's Wave Review`. Present to user.
 
 **This step is mandatory.** The Professor reads the report, runs a 360 blind-spot sweep, and writes its operational review directly into the report file. No wave is complete without the Professor's verdict. The review becomes part of the archived artifact.
+
+---
+
+## Step 3.4 — Auto-remediate review findings (/jc)
+
+The reviewer (Step 3) is read-only — it names `/jc` candidates under `## /jc Action Items` but cannot run them (sub-agents have no Skill tool). The wave runner closes the loop: actionable findings get fixed on `main` now, not abandoned in the archive.
+
+Read `## /jc Action Items` from the returned review:
+
+- **"None"** → proceed to Step 3.5.
+- **One or more** → group related items by project/area into as few `/jc` calls as sensible, then run each from your own context (never delegate Skill to a sub-agent):
+
+  ```
+  Skill("jc", "{finding + file location, verbatim from the action item}")
+  ```
+
+  `/jc` diagnoses, fixes, tests, and commits each on `main`. Append the outcomes to the report:
+
+  ```markdown
+  ## Review Remediation
+
+  | Finding | Result                   | Commit            |
+  | ------- | ------------------------ | ----------------- |
+  | {item}  | FIXED / NO-OP / DEFERRED | {short-hash or —} |
+  ```
+
+If `/jc` judges an item too large for a hotfix (needs a feature, not a fix), it logs `DEFERRED` with the reason — never block the wave on it.
 
 ---
 
@@ -238,6 +274,7 @@ fi
 ### 4c. Cleanup and verify
 
 Remove original task file only if NOT `wave.md` at repo root. Verify:
+
 ```bash
 test ! -d $WAVES/{wave-name} && test -d $WAVES/archive/${PADDED}-{wave-name} && echo "WAVE_ARCHIVE_OK" || echo "WAVE_ARCHIVE_FAILED"
 ```

@@ -44,6 +44,7 @@ The orchestrator provides `$PIPELINE`. All docs go to `$DOCS/`.
 **When NOT to:** Libraries already in use, established codebase patterns.
 
 **How:**
+
 1. `context7` first (resolve library ID → query docs)
 2. `WebSearch` fallback for newer libs, comparisons, community sentiment
 3. Research **2+ candidates** for every new cross-boundary library choice
@@ -56,10 +57,10 @@ The orchestrator provides `$PIPELINE`. All docs go to `$DOCS/`.
 
 Scan `$DOCS/1-plan.md` for language implying parity/reuse ("mirrors X", "same as Y", "reuses Z", "extend X with..."). For every such claim:
 
-| Step | Action |
-|------|--------|
-| 1. Locate anchor | Find the named component/endpoint/service/chain. If unnamed → spec defective, return to planner. |
-| 2. Trace in code | Read top-to-bottom including validation, branches, invariants. |
+| Step              | Action                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Locate anchor  | Find the named component/endpoint/service/chain. If unnamed → spec defective, return to planner.                                        |
+| 2. Trace in code  | Read top-to-bottom including validation, branches, invariants.                                                                          |
 | 3. Assign verdict | `REUSE-AS-IS` / `REUSE-WITH-DELTA` (record exact delta) / `FORK-REQUIRED` (flag back, do NOT silently fork) / `CLAIM-FALSE` (flag back) |
 
 Output a `## Parity & Reuse` section in the architecture doc. Child architects consume this as ground truth — they do NOT re-verify.
@@ -67,6 +68,7 @@ Output a `## Parity & Reuse` section in the architecture doc. Child architects c
 ## Step 2 — Design integration contracts
 
 For every Integration Task in the plan, define:
+
 - **API Schema Changes** — new/modified types (schema definitions), input types with validation, response types
 - **Auth Requirements** — which ops need auth, role-based access, token handling
 - **Error Contract** — expected error codes/shapes, frontend handling
@@ -80,19 +82,21 @@ For every Integration Task in the plan, define:
 # Cross-Project Architecture — $PIPELINE
 
 ## Overview
+
 What this enables and key design decisions.
 
 ## Parity & Reuse
 
-| Claim (from plan) | Anchor | Verdict | Delta | Verification |
-|-------------------|--------|---------|-------|--------------|
-| {quote} | {file:line} | REUSE-AS-IS / WITH-DELTA / FORK / FALSE | {change or "—"} | {one-line proof} |
+| Claim (from plan) | Anchor      | Verdict                                 | Delta           | Verification     |
+| ----------------- | ----------- | --------------------------------------- | --------------- | ---------------- |
+| {quote}           | {file:line} | REUSE-AS-IS / WITH-DELTA / FORK / FALSE | {change or "—"} | {one-line proof} |
 
 Child architects implement against verdicts — no re-verification. FORK-REQUIRED/CLAIM-FALSE rows block until spec fix.
 
 ## API Contracts
 
 ### [Operation Name] (Query | Mutation | Subscription)
+
 **Schema:**
 \`\`\`
 type/input/query definition
@@ -102,16 +106,19 @@ type/input/query definition
 **Frontend consumption:** how the client should call this
 
 ## Data Flow
+
 Step-by-step: user action → FE → API → BE → service → DB → response → cache → UI
 Async: BE → queue → {AI_ENGINE_LABEL} → chain → DB → queue result
 
 ## Integration Patterns
+
 - Polling vs subscription decisions
 - Optimistic updates, cache invalidation, error/retry strategy
 
 ## Message Queue Contracts (BE ↔ {AI_ENGINE_LABEL})
 
 ### [Message Type]
+
 \`\`\`json
 { "type": "...", "requestId": "uuid", "payload": { ... } }
 \`\`\`
@@ -120,12 +127,13 @@ Async: BE → queue → {AI_ENGINE_LABEL} → chain → DB → queue result
 ## Standards Check
 
 | Standard (§) | How this design respects it |
-|--------------|------------------------------|
-| § X.X | {explanation} |
+| ------------ | --------------------------- |
+| § X.X        | {explanation}               |
 
 Conflicts documented in Open Questions and flagged back to planner.
 
 ## Constraints for Child Architects
+
 - BE MUST implement exact API types; FE MUST consume exact operations; {AI_ENGINE_LABEL} MUST implement exact message handlers
 - Parity & Reuse verdicts are binding — no re-verification, no designing around
 - Standards Check is binding — child architects honor every row, do their own for project-internal rules
@@ -134,21 +142,25 @@ Conflicts documented in Open Questions and flagged back to planner.
 ## Research Notes
 
 ### [Topic]
-| Criteria | Candidate A | Candidate B |
-|----------|-------------|-------------|
-| downloads | ... | ... |
-| Last commit | ... | ... |
-| Cross-project compat | ... | ... |
+
+| Criteria             | Candidate A | Candidate B |
+| -------------------- | ----------- | ----------- |
+| downloads            | ...         | ...         |
+| Last commit          | ...         | ...         |
+| Cross-project compat | ...         | ...         |
+
 **Decision:** ... — [reason]
 **Risk:** ...
 
 ## Open Questions
+
 Anything needing resolution during implementation.
 ```
 
 ## Rules
 
 - First line must be `> Author: mono-architect`
+- **ZERO GAP:** when the plan/manifest carries a `/p:refine` ZERO-GAP spec (data model, contracts, file plan already decided), transcribe and validate it into `3-architecture.md` — do not re-design, re-decide routing, or re-scope. Flag a genuine flaw back to the orchestrator; never design around it silently.
 - Be **exact** with schema definitions — child architects copy verbatim
 - Do NOT make code-level decisions or create TODO stubs
 - Focus on the **boundary** between projects

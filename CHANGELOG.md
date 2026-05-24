@@ -33,6 +33,33 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-05-24
+
+### Added
+
+- Tier A (`skills/p:refine/SKILL.md`): new R1→R4 ZERO-GAP protocol — the refined task file becomes a COMPLETE technical spec (routing, data model, contracts, file plan, signatures, mermaid technical-flow diagram per task) that delegates no decision to `/wave` or `/build`; the founder approves a visual + summary at a new R4 gate. (safe-auto)
+- Tier A (`commands/build.md`): pre-merge Code Review gate — a code-hygiene audit on the pipeline diff → architect → developer fix loop (cap 2) runs before merge; added fixed-format stdout Status Emission (header, per-phase lines, footer). Pipeline step table renumbered (post-merge audit dropped; documenter → Step 10, commit-docs → Step 11). (safe-auto)
+- Tier A (`commands/wave.md`): auto-remediation of post-wave review findings via the hotfix command (new Step 3.4); structured status + per-build index token (`[Build: {n}/{total}]`) + running tally; routing now read from the refined spec, while grouping/ordering/parallelism stay wave-owned. (safe-auto)
+
+### Changed
+
+- Tier C (`agents/mono-architect.md`): honors the ZERO-GAP spec — transcribe/validate the decided design into `3-architecture.md`, never re-design, re-route, or re-scope. (safe-auto)
+- Tier B (officer): the compliance archetype is now advisory-only — invoked as a separate clean agent at refinement (`p:refine` R2.6), removed from the build pipeline and the wave. **`/pcm update`: skip — informational only.**
+
+### Migration
+
+#### For: adopters who customized `/p:refine`
+
+Re-read `p:refine`. The task-file per-task format gained `**Routing:**`, `**Data model:**`, `**Contracts:**`, `**File plan:**`, and `**Technical flow:**` (mermaid) sections, plus the R4 founder-approval gate (wave-level mermaid + decision summary). The skill now runs R1→R4 (was R1-R3.5).
+
+#### For: adopters who customized `/build`
+
+Adopt the new pre-merge Code Review phase (`audit:code-hygiene` on the diff → architect → developer, cap 2, residual logged not blocked) and the § Status Emission section (header at end of Step 0, per-phase lines, footer after the final step). The pipeline step table is renumbered: the post-merge audit step is gone; documenter is Step 10 and commit-docs is Step 11.
+
+#### For: adopters who customized `/wave`
+
+Adopt Step 3.4 (auto-remediate the reviewer's `## /jc Action Items` via the hotfix command, append a `## Review Remediation` table); pass the `[Build: {n}/{total}]` token to every `/build` and emit the running tally after each build; read each task's `**Routing:**` from the refined spec in Step 0b instead of re-classifying.
+
 ## [0.9.3] — 2026-05-23
 
 ### Changed
@@ -139,9 +166,9 @@ The core change: protocols that lived in `docs/commands/{cmd}/references/` are n
 
 **Two skill tiers:**
 
-| Tier                | Skills                                                | Ships                                                | Install action                 |
-| ------------------- | ----------------------------------------------------- | ---------------------------------------------------- | ------------------------------ |
-| **Universal**       | p:refine, p:wave-review               | Full protocol, ready to use                          | Copy as-is                     |
+| Tier                | Skills                                        | Ships                                                | Install action                 |
+| ------------------- | --------------------------------------------- | ---------------------------------------------------- | ------------------------------ |
+| **Universal**       | p:refine, p:wave-review                       | Full protocol, ready to use                          | Copy as-is                     |
 | **Domain-hydrated** | p:analyze, audit:code-hygiene, audit:security | Universal structure + `KNOWLEDGE BASE EMPTY` markers | Run RR to fill knowledge bases |
 
 `audit:cortex` has no template — it's entirely project-specific and only created if the project has an AI/ML pipeline subproject.

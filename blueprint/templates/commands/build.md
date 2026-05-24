@@ -26,6 +26,31 @@ Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline
 
 ---
 
+## Status Emission
+
+Print fixed-format status to stdout so a watching operator never has to ask "where are we" — every runtime emits identically. `$BUILD_IDX` = `[Build: {n}/{total}]` from `$ARGUMENTS` when wave-invoked, else empty (standalone).
+
+**Header** (once, at the end of Step 0 — `Wave $WAVE · Build $BUILD_IDX` only when wave-invoked, else just the name):
+
+```
+═══ Wave $WAVE · Build $BUILD_IDX $PIPELINE ═══
+Objective: {one line from 0-task.md}
+Tasks:     {count}
+════════════════════════════════════════
+```
+
+**Phase lines** — as each major phase completes, emit `▸ {phase} … {result}`:
+Analysis→done · Plan→{routing} · Architecture→done · UI/UX→done · Database→done · Develop→done · QA→`PASS · {n} fix loop(s)` · Code Review→`{CLEAN / FINDINGS→fixed / N residual}` · Merge→`{commit sha}` · Post-merge QA→`{PASS / FIX}` · Docs→archived. Omit the UI/UX and Database lines when those conditional steps did not run.
+
+**Footer** (once, after Step 11 — or on BLOCKED-DEFERRED, appending the trigger and the `$DOCS/BLOCKED.md` resume hint):
+
+```
+────────────────────────────────────────
+{✓ DONE | ✗ FAILED | ⚠ BLOCKED-DEFERRED} Build $BUILD_IDX $PIPELINE · {elapsed}m
+```
+
+---
+
 ## Step 0 — Name the pipeline, clean up stale dirs, and resolve paths
 
 ### 0a. Stale pipeline cleanup (MANDATORY pre-flight)
@@ -107,8 +132,9 @@ Resolve path variables:
 
 - **`$PIPELINE`** = `{name}` — the pipeline name (kebab-case, unique across active + archived). Extracted from `[Pipeline: {name}]` in `$ARGUMENTS` when present (wave-invoked), otherwise chosen by build (standalone).
 - **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `docs/dev/waves/archive/{wave}/`.
-- **`$EPIC`** = epic name extracted from `[Epic: {epic-name}]` in `$ARGUMENTS`, otherwise `none`. Forwarded to the documenter (Step 11) so a standalone build routes its progress to `docs/epics/{name}/`. Wave-owned builds inherit it but skip the epic write — the wave consolidates it.
+- **`$EPIC`** = epic name extracted from `[Epic: {epic-name}]` in `$ARGUMENTS`, otherwise `none`. Forwarded to the documenter (Step 10) so a standalone build routes its progress to `docs/epics/{name}/`. Wave-owned builds inherit it but skip the epic write — the wave consolidates it.
 - **`$CARRYWIP`** = `commit` or `leave` from `[CarryWIP: ...]` in `$ARGUMENTS` (passed by `/wave`), otherwise `ask`. Governs whether main's uncommitted work is carried into this pipeline's worktree (Step 2).
+- **`$BUILD_IDX`** = `{n}/{total}` from `[Build: {n}/{total}]` in `$ARGUMENTS` (passed by `/wave`), otherwise empty (standalone). Used only by § Status Emission to frame stdout status.
 - **`$DOCS`** = `docs/dev/builds/{name}` — pipeline docs from repo root
 - **`$DOCS_REL`** = `../../../docs/dev/builds/{name}` — pipeline docs from worktree
 - **`$DOCS_POST`** = `../docs/dev/builds/{name}` — pipeline docs from project subdir (POST-MERGE)
@@ -154,6 +180,8 @@ mkdir -p docs/dev/builds/{name}
   ```
 
 **Pass `$PIPELINE`, `$DOCS`, `$DOCS_REL`, and `$WORKTREE` to every agent invocation.** Agents should never hardcode doc or worktree paths — they use what you give them.
+
+Capture `START=$(date +%s)` (for the footer's elapsed time), then emit the § Status Emission header.
 
 ---
 
@@ -496,7 +524,7 @@ When any condition triggers:
    1. `/jc` the underlying bug on main first (if hung test or stubborn bug). Note the fix commit SHA here: `_______________`
    2. `cd .worktrees/{pipeline-name} && git rebase main` to pick up the fix.
    3. Re-spawn QA agents — skip planners/architects/devs (their work is in the worktree).
-   4. If QA passes → gitter MERGE → post-merge QA → audit → documenter (normal pipeline tail).
+   4. If QA passes → code review → gitter MERGE → post-merge QA → documenter (normal pipeline tail).
    5. If QA still fails → ONE more fix-loop iteration max, then re-defer.
    ```
 
@@ -508,7 +536,32 @@ This is intentionally conservative — a deferred pipeline preserves all work do
 
 ---
 
-## Merge Phase (only after QA passes with Status: NONE)
+## Code Review (BEFORE merge — pre-merge hygiene gate, capped at 2 iterations)
+
+The last gate before the worktree reaches `main`: a hygiene pass on the pipeline's own diff, fixed in place. QA proved the code works; this proves it's clean. Runs only after the Fix Loop converges (`$DOCS/6-bugs.md` = `Status: NONE`).
+
+### Hygiene audit on the diff
+
+Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --name-only main...pipeline/{name}`. Read `.claude/skills/audit:code-hygiene/SKILL.md` and execute it inline with scope `diff` over that set — the Duplication category first. Write findings to `$DOCS/6-code-review.md`, ending with a verdict line: `CLEAN` or `FINDINGS`.
+
+- `CLEAN` → proceed to Merge Phase.
+- `FINDINGS` → run the fix loop below.
+
+### Code-Review Fix Loop (architect → developer, cap 2)
+
+1. **Architect plans the fixes.** Spawn the child architect(s) for the affected projects (same spawn pattern as Step 4, model: sonnet): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
+
+2. **Developer applies the fixes.** Spawn the developer(s) for the affected projects (same spawn pattern as Step 6, model: sonnet): "Pipeline: {name}. Worktree: $WORKTREE/{PROJECT_DIR}. Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
+
+3. **Re-run the hygiene audit** on the updated diff and overwrite the verdict line.
+
+4. Repeat until `CLEAN` or 2 iterations pass.
+
+**After 2 iterations with findings remaining:** these are quality nits, not correctness bugs (QA already passed). Log them under `## Residual` in `$DOCS/6-code-review.md` and proceed to merge — never block shipping on hygiene perfection. A standalone build surfaces the residual to the founder; a wave-owned build leaves it in the merged code for `/p:wave-review` to catch and route through `/jc`.
+
+---
+
+## Merge Phase (only after QA passes and Code Review completes)
 
 ### Step 8 — Git Merge + Cleanup
 
@@ -583,67 +636,7 @@ Spawn a new fix pipeline `{name}-postmerge-fix`:
 
 ---
 
-### Step 10 — Pipeline Audit (parallel, after post-merge QA passes)
-
-Run a focused code hygiene + compliance audit on the merged code. This catches deeper issues that lint/format don't — security vulnerabilities, compliance violations, dead code, architectural smells, {DOMAIN_DATA_LABEL} exposure, etc.
-
-Spawn TWO agents **in parallel** (single message):
-
-```
-Agent(general-purpose, model: "sonnet"): "You are the code auditor. Read and follow .claude/commands/audit.md.
-  This is a PIPELINE audit — scope to the projects affected by pipeline {name}: {comma-separated project scopes based on routing, e.g. 'be', 'fe', '{AI_PROJECT_KEY}'}.
-  Focus on security (category 8) and code quality (categories 1-7) for the changed code.
-  Skip lint/format checks — QA already validated those.
-  Read $DOCS/7-post-merge-qa.md for context on what was built.
-  Return findings inline — do NOT write to permanent docs."
-
-Agent(general-purpose, model: "sonnet"): "You are the compliance officer. Read and follow .claude/commands/officer.md.
-  Mode: audit codebase.
-  This is a PIPELINE audit — focus on the code changes from pipeline {name}.
-  Scope: the projects affected by this pipeline ({comma-separated project scopes}).
-  Check for: PII in logs, missing auth on new endpoints, encryption gaps, {DOMAIN_CONSENT_LABEL} implementation gaps, data handling violations.
-  CRITICAL: Read docs/commands/officer/references/todo-ignore.md FIRST — items there are founder-acknowledged and must be
-  downgraded to WARNING/INFO per the Todo-Ignore Matching rules in your instructions. Only NEW findings (not in
-  todo-ignore.md) can be BLOCKING. Known-deferred items are NON-BLOCKING in pipeline mode.
-  Read $DOCS/7-post-merge-qa.md for context on what was built.
-  Return findings inline — do NOT update officer reference docs (this is a pipeline check, not a full audit)."
-```
-
-After both complete, **write a single** `$DOCS/8-audit.md` consolidating both reports:
-
-```markdown
-# Pipeline Audit — $PIPELINE
-
-## Code Audit Findings
-
-{inline results from code auditor}
-
-## Compliance Audit Findings
-
-{inline results from officer}
-
-## Verdict: CLEAN | WARNINGS | BLOCKING
-
-### Blocking Issues (if any)
-
-{security vulnerabilities, compliance violations — MUST be fixed before continuing}
-
-### Warnings (if any)
-
-{code quality findings — documented for future cleanup, do NOT block the pipeline}
-```
-
-**If `Verdict: BLOCKING`** — spawn a new fix pipeline `{name}-audit-fix`:
-
-1. Start a new pipeline scoped to the blocking findings
-2. Run the full pipeline cycle: gitter SETUP → developers → QA → fix loop → gitter MERGE → post-merge QA → pipeline audit again
-3. Repeat until audit is CLEAN or WARNINGS only
-
-**If `Verdict: CLEAN` or `WARNINGS`** — proceed to Step 11.
-
----
-
-### Step 11 — Documentation & Aggregation (MANDATORY after pipeline audit passes)
+### Step 10 — Documentation & Aggregation (after post-merge QA passes)
 
 Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
 
@@ -659,13 +652,13 @@ All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent r
 
 ---
 
-### Step 12 — Commit Docs (MANDATORY after documenter finishes)
+### Step 11 — Commit Docs (MANDATORY after documenter finishes)
 
 Use the `gitter` agent in **DOCS-COMMIT** phase. **Model: sonnet** — structured git ops.
 
 - Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}."
 
-Gitter commits all doc changes the documenter made on main (including `$DOCS/8-audit.md`).
+Gitter commits all doc changes the documenter made on main.
 
 ---
 
@@ -683,14 +676,14 @@ Gitter commits all doc changes the documenter made on main (including `$DOCS/8-a
 | 6   | Develop                         | Installed project developers: {PROJECT_DEVELOPER_ROSTER}      | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
 | 7   | QA                              | Installed project QA agents: {PROJECT_QA_ROSTER}              | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
 | -   | Fix loop                        | developers → QA                                               | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
+| -   | Code review _(pre-merge gate)_  | audit:code-hygiene (diff) → architects → developers           | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
 | 8   | Merge                           | gitter (MERGE)                                                | Commits + merges to main                                                                      |                                  |
 | 9   | Post-merge QA                   | Installed project QA agents (POST-MERGE): {PROJECT_QA_ROSTER} | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
-| 10  | Pipeline audit                  | code-auditor + officer (parallel)                             | `$DOCS/8-audit.md` (code hygiene + compliance findings)                                       | root                             |
-| 11  | Document                        | mono-documenter                                               | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
-| 12  | Commit docs                     | gitter (DOCS-COMMIT)                                          | Commits doc changes on main                                                                   | root                             |
+| 10  | Document                        | mono-documenter                                               | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
+| 11  | Commit docs                     | gitter (DOCS-COMMIT)                                          | Commits doc changes on main                                                                   | root                             |
 
 ---
 
 ## Done
 
-When pipeline audit passes, documentation is archived, and doc changes are committed, say: "Build complete ({name}). All tests pass on main. Audit clean. Docs archived and committed."
+When post-merge QA passes, documentation is archived, and doc changes are committed, say: "Build complete ({name}). All tests pass on main. Code review clean. Docs archived and committed."
