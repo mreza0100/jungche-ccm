@@ -182,7 +182,11 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 7. Wrapper for every agent, symlink for every skill
 -->
 
-### Step 6 — Report
+### Step 6 — Log the decision
+
+If `.professor/decisions.md` exists (a blueprint install), append an entry under "## Post-install customizations": `- **{date}** — {what changed, which files} — {why}`. No `.professor/` directory means there is nothing to log.
+
+### Step 7 — Report
 
 ```
 Infrastructure updated. N files changed.

@@ -551,7 +551,7 @@ This manifest is the baseline for `/pcm update`'s three-way detection (installed
    ```markdown
    # Professor Decisions
 
-   What makes this install different from the upstream blueprint. Machine state lives in `manifest.json`; this file is for humans. Updated at install and by `/pcm update`.
+   What makes this install different from the upstream blueprint. Machine state lives in `manifest.json`; this file is for humans. Updated at install and on every `/pcm` change.
 
    ## Install profile
 
@@ -568,7 +568,7 @@ This manifest is the baseline for `/pcm update`'s three-way detection (installed
 
    ## Post-install customizations
 
-   _None yet. `/pcm update` appends here when you diverge from upstream._
+   _None yet. `/pcm` appends here whenever it changes your pipeline._
 
    ## Update history
 
@@ -577,7 +577,7 @@ This manifest is the baseline for `/pcm update`'s three-way detection (installed
    | {install_date} | —    | v{version} | Initial install |
    ```
 
-   This file is the "institutional memory" of your Professor install. When you keep your version of a file during an update, or opt into a new Tier B archetype, or change a discipline — `/pcm update` records it here. Future you (or a teammate) can read this to understand why your install looks the way it does.
+   This file is the "institutional memory" of your Professor install. When `/pcm` changes your pipeline — or you keep your version of a file during an update, opt into a new Tier B archetype, or change a discipline — it records the reason here. Future you (or a teammate) can read this to understand why your install looks the way it does.
 
 ### Step 10 — Smoke test
 

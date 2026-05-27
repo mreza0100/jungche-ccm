@@ -33,6 +33,13 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-05-27
+
+### Changed
+
+- Tier A (`commands/pcm.md`): `/pcm` now logs every infrastructure change to `.professor/decisions.md` under "Post-install customizations", not only on `/pcm update` — keeps the human-readable institutional memory current on every pipeline edit. (safe-auto)
+- Docs (`INSTALL.md`): decisions.md header and placeholder now state that every `/pcm` change appends, not only `/pcm update`. (safe-auto)
+
 ## [0.10.0] — 2026-05-24
 
 ### Added
