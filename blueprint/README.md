@@ -17,6 +17,7 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths. Rename a directory once, every agent follows.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent writes to permanent project docs.
+- **Memory backup (opt-in)** — a `SessionEnd` hook auto-syncs Claude's persistent project memory to a private repo on session end, so a machine wipe or new machine doesn't lose what Claude learned. Plain git, zero tokens.
 
 ---
 

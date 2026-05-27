@@ -33,6 +33,18 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-05-27
+
+### Added
+
+- Scripts: `scripts/memory-sync.sh` · `references/memory-backup.md` · `SETUP.md` (Phase 4) — Claude memory auto-backup. A `SessionEnd` hook syncs Claude Code's persistent project memory (`~/.claude/projects/<key>/memory`) to a private git repo via a symlink + plain-git push script (self-healing on a cut-off push, headless `gh` auth, zero tokens). New optional install phase explains it and asks to opt in; full architecture, 12 tips/pitfalls, and new-machine restore in the reference doc. (opt-in)
+
+### Migration
+
+#### For: all adopters
+
+Opt-in only — nothing changes unless you enable it. To turn it on, follow `SETUP.md` Phase 4 (create a private memory vault, symlink the live memory dir, install the `SessionEnd` hook). Adopters who don't opt in are unaffected. **`/pcm update`: ask before installing — opt-in capability.**
+
 ## [0.11.0] — 2026-05-27
 
 ### Changed

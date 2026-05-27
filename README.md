@@ -1,6 +1,5 @@
 <img width="1672" height="941" alt="ChatGPT Image May 14, 2026, 03_59_00 PM" src="https://github.com/user-attachments/assets/c6ee6159-068a-4b67-bb04-2da91f5c1ef1" />
 
-
 # Professor — Turn Claude Code Into a Senior Engineering Team
 
 You're one person. You have a vision, a codebase, and a deadline. Claude Code is powerful — but left to its own devices, it edits `main` directly, merges broken code, skips QA, and forgets its own decisions. You've felt this. You've lost work to it.
@@ -94,6 +93,7 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 - **Ghostwriter** — captures a writer's mechanical fingerprint from samples, generates text in that voice.
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
 - **Notifications** — macOS notification when a turn takes 30+ seconds. Never miss a long-running result.
+- **Memory backup (opt-in)** — a `SessionEnd` hook auto-syncs Claude's persistent project memory to a private repo, so a machine wipe never loses what Claude learned. Plain git, zero tokens.
 - **Optional agents** (pick at install): `/officer` (compliance), `/km` (knowledge curator), `/pm` (product manager), `/mentor` (business advisor), `/marketer` (visibility strategist).
 
 ---
