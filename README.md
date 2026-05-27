@@ -92,6 +92,7 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
 - **Ghostwriter** — captures a writer's mechanical fingerprint from samples, generates text in that voice.
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
+- **VSCode tmux launcher** — new VSCode terminals open straight into tmux + Claude; `/exit` drops you back to your shell. Ships a companion tmux config (mouse scroll + click-to-copy).
 - **Notifications** — macOS notification when a turn takes 30+ seconds. Never miss a long-running result.
 - **Memory backup (opt-in)** — a `SessionEnd` hook auto-syncs Claude's persistent project memory to a private repo, so a machine wipe never loses what Claude learned. Plain git, zero tokens.
 - **Optional agents** (pick at install): `/officer` (compliance), `/km` (knowledge curator), `/pm` (product manager), `/mentor` (business advisor), `/marketer` (visibility strategist).
@@ -239,6 +240,7 @@ professor/
         ├── CLAUDE.md, agents/, commands/, scripts/
         ├── skills/rnd/  <- bundled (rr, 360, ghostwriter cloned from their own repos at install)
         ├── statusline/  <- two-line terminal status bar + install README
+        ├── vscode/      <- terminals open into tmux + Claude (+ tmux clipboard config)
         └── codex/       <- (optional) Codex dual-runtime layer
 ```
 

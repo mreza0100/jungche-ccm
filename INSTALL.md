@@ -428,6 +428,26 @@ Wire `format-md.sh` into Claude Code's `PostToolUse` event via `.claude/settings
 
 This auto-formats Professor-owned `.md` files (CLAUDE.md, `.claude/`, `docs/commands/`, `docs/agents/`, `docs/epics/`, `docs/dev/`, `docs/business/`, child project CLAUDE.md) after every Edit or Write. Non-Professor files are silently ignored. Requires `jq` and `prettier` (via `npx`). Fails silently if either is missing.
 
+### Step 8.4 — VSCode tmux launcher (opt-in)
+
+Make every new VSCode terminal open straight into tmux + Claude Code, returning to a normal shell on `/exit`. This edits the user's **global** editor + shell config, so ask before applying.
+
+**1.** Merge the two keys from `blueprint/templates/vscode/terminal-profile.json` into the VSCode user `settings.json` (`Cmd+Shift+P -> Preferences: Open User Settings (JSON)`). On Linux/Windows, replace `osx` with `linux`/`windows`.
+
+**2.** Append the shell snippet:
+
+```bash
+cat blueprint/templates/vscode/zshrc-cc.snippet.sh >> ~/.zshrc
+```
+
+**3.** Copy the tmux config (mouse scroll + click-to-copy to the system clipboard):
+
+```bash
+cp blueprint/templates/vscode/tmux.conf ~/.tmux.conf   # or merge into an existing one
+```
+
+Open a new terminal to verify. Requires `tmux` and the `claude` CLI on `PATH`. The `cc` function is `typeset -f`-guarded, so an existing `cc` is left untouched. On Linux/Windows, swap `pbcopy` in `tmux.conf` for your platform's clipboard command.
+
 ### Step 8.5 — Skills (thinking protocols)
 
 Skills are maintained as standalone public repos. Clone each into `.claude/skills/{name}/`, strip the `.git/` directory, and parameterize where needed.

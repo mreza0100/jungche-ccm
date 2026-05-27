@@ -1,0 +1,11 @@
+{
+  "//": "Professor — VSCode tmux launcher. Merge these two keys into your VSCode user settings.json (Cmd+Shift+P -> 'Preferences: Open User Settings (JSON)'). macOS keys shown; on Linux/Windows replace 'osx' with 'linux'/'windows'. Pairs with zshrc-cc.snippet.sh. See README.md in this folder.",
+  "terminal.integrated.profiles.osx": {
+    "tmux + claude": {
+      "path": "/bin/zsh",
+      "args": ["-l"],
+      "env": { "VSCODE_AUTO_CC": "1" }
+    }
+  },
+  "terminal.integrated.defaultProfile.osx": "tmux + claude"
+}

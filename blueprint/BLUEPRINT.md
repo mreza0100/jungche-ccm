@@ -39,6 +39,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - `mono-planner`, `mono-architect`, `mono-documenter`, `gitter` — root agents. Role-defined, not character-defined.
 - `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
 - `statusline-command.sh` — two-line status bar (model, context, git, cost, rate limits). Installed to `~/.claude/`.
+- `vscode/` — VSCode tmux launcher: new terminals open into tmux + Claude, `/exit` → shell. Ships a companion `tmux.conf` (mouse + clipboard). Opt-in; edits user `settings.json` + shell rc + `~/.tmux.conf`.
 - Per-project agents (`planner`, `architect`, `developer`, `qa`) — role-defined.
 
 ---
