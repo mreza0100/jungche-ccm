@@ -33,6 +33,16 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+### Added
+
+- Mechanics: `templates/vscode/` · `INSTALL.md` · `SETUP.md` · `BLUEPRINT.md` · `README.md` — VSCode tmux launcher. New `vscode/` template dir ships `terminal-profile.json`, `zshrc-cc.snippet.sh`, `tmux.conf`, and a `README.md`; new VSCode terminals open straight into `tmux + cc` (Claude Code inside a tmux session), and on `/exit` the tmux session ends and the terminal falls back to a normal shell — it never closes on you. The `cc` shell function is `typeset -f`-guarded so it never clobbers an existing `cc`. Includes mouse scroll + click-to-copy tmux comfort defaults (macOS `pbcopy`; swap for `xclip`/`wl-copy`/`clip.exe` on Linux/Windows). (opt-in)
+
+### Migration
+
+#### For: all adopters
+
+Opt-in only — nothing changes unless you enable it. To turn it on, follow `SETUP.md` Phase 5 (merge `terminal-profile.json` into VSCode user `settings.json`, append `zshrc-cc.snippet.sh` to your shell rc, copy `tmux.conf` to `~/.tmux.conf`). Touches your **global** VSCode settings and shell rc — adopters who don't opt in are unaffected. **`/pcm update`: ask before installing — opt-in capability.**
+
 ## [0.12.0] — 2026-05-27
 
 ### Added
