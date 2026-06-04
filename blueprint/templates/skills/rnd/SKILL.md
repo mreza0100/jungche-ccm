@@ -5,9 +5,13 @@ description: RND (Research & Develop) — goal-driven iterative skill. Takes a g
 
 # RND — Research & Develop
 
-> The iterative goal-seeker. Where RR maps the landscape and reports, RND *builds* something — trying approaches in sequence, learning from each attempt, and delivering the best result that satisfies the goal.
+> The iterative goal-seeker. Where RR maps the landscape and reports, RND _proves out_ a solution — trying approaches in sequence, learning from each attempt, and delivering the best validated result that satisfies the goal.
 
 The user gives you a **goal** — not a topic to survey, but an **outcome to achieve**. Your job is to reach that outcome through structured iteration, adapting your approach as you learn.
+
+## NEVER touch real code (the one inviolable boundary)
+
+RND works ONLY inside its `RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/build`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
 
 ---
 
@@ -22,6 +26,7 @@ Load when the user's message includes:
 - "try different ways to <goal>"
 
 Do NOT load for:
+
 - `RR <topic>` — that's the research-and-report skill (knowledge-seeking, not goal-seeking)
 - One-shot implementation requests ("implement X") — those go to `/build` or `/jc`
 - Pure research questions with no execution ("how does X work?") — use RR or inline answer
@@ -34,29 +39,29 @@ The key distinction: **RND requires a testable goal and iterative execution.** I
 
 ```
 Goal
-  |
-  v
+  │
+  ▼
 Phase 1 — PLAN
-  |  List N approaches (ordered by confidence / cost)
-  |  Each approach has: what to try, how to evaluate
-  |
-  v
+  │  List N approaches (ordered by confidence / cost)
+  │  Each approach has: what to try, how to evaluate
+  │
+  ▼
 Phase 2 — EXECUTE (loop)
-  +-------------------------------------+
-  |  Pick next approach                 |
-  |  Execute it                         |
-  |  Evaluate: does it satisfy the goal?|
-  |  Track best result so far           |
-  |  Adapt remaining approaches if      |
-  |    this attempt revealed new info   |
-  +-------------------+-----------------+
-                      |
-         +------------+------------+
-         | satisfied AND confident  |   loop exhausted OR
-         | this is the best?        |   early-exit threshold met
-         +------------+------------+
-                      |
-                      v
+  ┌─────────────────────────────────────┐
+  │  Pick next approach                 │
+  │  Execute it                         │
+  │  Evaluate: does it satisfy the goal?│
+  │  Track best result so far           │
+  │  Adapt remaining approaches if      │
+  │    this attempt revealed new info   │
+  └───────────────────┬─────────────────┘
+                      │
+         ┌────────────┴────────────┐
+         │ satisfied AND confident  │   loop exhausted OR
+         │ this is the best?        │   early-exit threshold met
+         └────────────┬────────────┘
+                      │
+                      ▼
 Phase 3 — DELIVER
   Best result + rationale
 ```
@@ -78,6 +83,7 @@ If the user's goal is vague, resolve it in your reasoning. If it's ambiguous in 
 ### Step 2 — List approaches
 
 Generate 2-5 approaches ordered from most-promising to least. For each:
+
 - **Name** — a short label
 - **Hypothesis** — why this approach might work
 - **Method** — what you will actually do (concrete, executable)
@@ -86,6 +92,7 @@ Generate 2-5 approaches ordered from most-promising to least. For each:
 Output the plan to the user before executing. This gives them a chance to redirect before you invest effort.
 
 **Approach ordering principles:**
+
 - Lead with the simplest thing that might work (cheap to try, easy to learn from)
 - Put high-confidence approaches first, speculative ones last
 - If approaches are mutually exclusive (different architectures), order by implementation cost
@@ -95,17 +102,25 @@ Output the plan to the user before executing. This gives them a chance to redire
 
 ## Phase 2 — EXECUTE (the loop)
 
+### Step 0 — Reproduce the baseline first (gate)
+
+Before trying any improvement approach, reproduce the current result. Run the exact thing you intend to improve — the production {AI_SERVICE_NAME} chain, query, or system, invoked verbatim per the depth mandate below — and confirm your harness produces the same output it produces today. Only after the baseline reproduces do you attempt to make it better.
+
+If your reproduction diverges from the target's current behavior, fix the harness until they match — never start improving against a baseline you can't reproduce. A delta measured against a harness that doesn't match production measures your harness's drift, not a real gain.
+
 ### The depth mandate — non-negotiable
 
 RND's value comes from actually stressing solutions against reality, not from confirming they look reasonable in markdown. Every execution MUST follow these rules:
 
-1. **Use real-world-sized inputs.** If the goal involves processing transcripts, use large transcripts (hundreds of segments, multi-speaker, 45+ minutes of session content). If it involves database queries, use realistic row counts. If it involves LLM chains, use inputs that match production length and complexity. Toy fixtures prove toy things — they tell you the plumbing connects, not whether the building survives an earthquake.
+1. **Use real-world-sized inputs.** If the goal involves processing transcripts, use large transcripts (hundreds of segments, multi-speaker, 45+ minutes of {SESSION_NOUN} content). If it involves database queries, use realistic row counts. If it involves LLM chains, use inputs that match production length and complexity. Toy fixtures prove toy things — they tell you the plumbing connects, not whether the building survives an earthquake.
 
 2. **Design adversarial inputs.** For every approach, actively try to break it. Malformed data, boundary values, missing fields, contradictory inputs, Unicode edge cases, empty-but-valid, valid-but-pathological. The goal is to find where the solution fails, not to confirm it works on the happy path.
 
-3. **Use actual execution paths.** For LLM/AI chains: call the real LLM (via `get_llm()` or equivalent) with real-sized prompts. For database queries: run against real schemas with realistic data shapes. For API endpoints: hit the actual endpoint. Mocking the thing you're testing is not testing — it's writing a letter to yourself and feeling validated when you agree with it.
+3. **Use production code paths verbatim.** For LLM/AI chains: load the production prompt templates (e.g., `{AI_PROJECT}/knowledge/prompts/` via `loader.py`), invoke the production chain orchestrator, and run the production output parsers and post-filters end-to-end. Calling the real LLM with a hand-written prompt that "looks like" production is an approximation — load production's, character-for-character. For database queries: run against real schemas with realistic data shapes. For API endpoints: hit the actual endpoint. If a step is genuinely too expensive to run, document the omission and lower confidence; never silently substitute. Mocking or approximating the thing you're testing is not testing — it's writing a letter to yourself and feeling validated when you agree with it.
 
-4. **Write results to `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts go in a sandbox folder. Never modify real project files during RND. Clean up `__pycache__` and build artifacts before reporting.
+4. **Test the artifact you intend to ship.** If the RND's deliverable is a code change, validate the real fix in-process: import the production module and monkey-patch the target function or attribute at runtime from the sandbox, then run it. A sandbox copy that "behaves like" the proposed patch validates your understanding of the fix, not the fix — a `# simulates the fixed version` comment documents that shortcut, it does not absolve it. Validate by in-process patch, never by editing a real project file.
+
+5. **Work only inside `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts live in the sandbox folder. Never modify a real project file, and never create a git branch or worktree — RND does not use `isolation: "worktree"` agents. RND ships its deliverable as a `PROPOSED_DIFF.md`; the actual code change lands later through `/jc` or `/build`. Clean up `__pycache__` and build artifacts before reporting.
 
 ### 360° integration — systematic blind-spot sweep on failure
 
@@ -138,7 +153,7 @@ For each approach in order:
    - Did it partially work in a way that suggests a combination approach? Add it.
    - Was it a total surprise? Reorder remaining approaches.
    - **Did it fail?** Run 360° (see above) and let the angles inform the next approach.
-   
+
    Show the user the updated approach list if it changed significantly.
 
 6. **Early exit conditions:**
@@ -150,15 +165,15 @@ For each approach in order:
 
 RND is domain-agnostic. Execution depends on the goal:
 
-| Goal type | Execution method | Scale requirement |
-|-----------|-----------------|-------------------|
-| Prompt engineering | Write the prompt, call the real LLM, evaluate the output | Use production-length inputs, not 2-sentence toy prompts |
-| Algorithm / code | Implement it, run it (Bash), measure the result | Test with realistic data volumes (hundreds of items, not 3) |
-| LLM/AI chains | Import and invoke the actual chain with `get_llm()` | Real model, real-sized transcripts/inputs, real structured output parsing |
-| Research question | Search/read/grep, synthesize, evaluate completeness | — |
-| UI/UX pattern | Describe or prototype the pattern, evaluate usability criteria | — |
-| Data query | Write the query, run it, evaluate the output shape | Against realistic data shapes and row counts |
-| Architecture decision | Reason through the tradeoffs, evaluate against constraints | — |
+| Goal type             | Execution method                                                       | Scale requirement                                                         |
+| --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Prompt engineering    | Draft the candidate prompt in the sandbox, call the real LLM, evaluate | Use production-length inputs, not 2-sentence toy prompts                  |
+| Algorithm / code      | Implement it in the sandbox, run it (Bash), measure the result         | Test with realistic data volumes (hundreds of items, not 3)               |
+| LLM/AI chains         | Import and invoke the actual chain with `get_llm()`                    | Real model, real-sized transcripts/inputs, real structured output parsing |
+| Research question     | Search/read/grep, synthesize, evaluate completeness                    | —                                                                         |
+| UI/UX pattern         | Describe or prototype the pattern, evaluate usability criteria         | —                                                                         |
+| Data query            | Write the query, run it, evaluate the output shape                     | Against realistic data shapes and row counts                              |
+| Architecture decision | Reason through the tradeoffs, evaluate against constraints             | —                                                                         |
 
 For code/command approaches: **run them at scale**. Don't just reason about whether they'd work — actually execute, observe, and then try to break the result with adversarial inputs.
 
@@ -181,7 +196,7 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Winner:** {approach name}
 
-**Result:** {the actual output — code, prompt, answer, decision, etc.}
+**Result:** the validated fix, written to `RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/build`) lands it.
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
@@ -229,6 +244,8 @@ The key invariant: **the goal stays fixed, the approaches evolve.** Never let th
 - **Not stress-testing after the happy path passes.** The happy path passing is the START of evaluation, not the end. Feed adversarial inputs. Try to break it. If you can't break it, you've earned confidence. If you didn't try, you haven't.
 - **Skipping 360° after a failure.** When an approach fails, you have a blind spot. 360° exists to find it systematically. Skipping it means your next approach inherits the same blind spot.
 - **Mocking the thing you're testing.** If you're validating an LLM chain, calling a fake LLM proves nothing about the chain's real behavior. Use actual execution paths.
+- **Approximating production prompts or chain wiring.** Calling the real LLM with a hand-written prompt that resembles the production one is a sketch, not a simulation. Load the actual templates from `{AI_PROJECT}/knowledge/prompts/` and invoke the actual chain orchestrator. If you can't, lower confidence and say so.
+- **Snapshot caching between approaches.** When approach N depends on approach M's output, run M live in the same execution and pipe the result. Hardcoded Python literals of prior LLM emissions (e.g. `APPROACH_1_OUTPUT = [...]`) are unreproducible — the model is non-deterministic — and silently rot the moment the upstream prompt or seed changes. No static lists where a live function call belongs.
 - **Not adapting the plan after each attempt.** If you run approach 1, learn something, then run approach 2 exactly as originally planned without considering what approach 1 revealed — you've broken the loop.
 - **Setting an unevaluable success criterion.** "Find the best prompt" without defining what "best" means makes the loop aimless. Pin down the criterion in Phase 1.
 - **Running too many approaches without checking in.** 5 approaches with no solution is a signal the goal framing is wrong, not a signal to try approaches 6-10 blindly.

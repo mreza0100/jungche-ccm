@@ -81,10 +81,10 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 
 ### Inventory counts (verify before reporting)
 
-<!-- INSTALL: Fill in your actual project list, agent counts, etc. -->
+<!-- INSTALL: Fill in your actual project list, agent counts, etc. Use ONE consistent {N}-agents figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
 
-- **N projects:** {project-a} ({PACKAGE_MANAGER}), {project-b} ({PACKAGE_MANAGER}), etc.
-- **N agents:** N root + N per-project
+- **{N} projects:** {project-a} ({PACKAGE_MANAGER}), {project-b} ({PACKAGE_MANAGER}), etc.
+- **{N} agents:** {R} root + {N} per-project. Root is only the mono orchestrators (mono-planner, mono-architect, gitter, mono-documenter); all child agents — incl. the {AI_PROJECT_LABEL} architect/{AI_DEVELOPER_ROLE} and post-merge QA — are spawned via general-purpose + `model: "opus"` reading their child file, no root wrappers
 - Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts
 
 ---
@@ -295,7 +295,7 @@ Files: `.codex/agents/*.toml`, `.codex/skills/` wrappers/symlinks
 - **Agent parity:** every `.claude/agents/*.md` (root) + every child project agent → has a wrapper
 - **Path validity:** each wrapper's instructions reference `.claude/` paths that exist on disk
 - **Skill parity:** every shared `.claude/skills/*/` → has a `.codex/skills/{name}/SKILL.md` wrapper or symlink that resolves correctly
-- **Research contract parity:** run `.claude/scripts/check-codex-research-contract.sh`; FAIL if any Codex wrapper says to replace RR with direct WebSearch/WebFetch
+- **Research contract parity:** grep the Codex skill wrappers for `rr`/`360` — FAIL if any wrapper says to replace RR fan-out with direct WebSearch/WebFetch (it must preserve scout → fan-out → verify)
 - **Stale refs:** grep wrappers for file paths that no longer exist
 -->
 

@@ -10,7 +10,7 @@
 # ─── Voice ───────────────────────────────────────────────────────────────────
 # Disable Codex's generic Friendly/Pragmatic personality layer for this repo.
 # Professor owns voice through AGENTS.md, skills, and archetype-specific agents
-# such as JC, Professor, Officer, PM, Mentor, and Council.
+# such as JC, Professor, Officer, PM, and Mentor.
 personality = "none"
 
 # ─── Limits ──────────────────────────────────────────────────────────────────

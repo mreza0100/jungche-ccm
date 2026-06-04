@@ -22,9 +22,10 @@ Run **R1 → R4 in order**. Every gate is blocking — never skip a step or move
 
 Read:
 
-- `CLAUDE.md` ({ROOT}) — system overview, current state
+- `CLAUDE.md` (root) — system overview, current state
 - `docs/agents/architecture/` cluster — how the projects connect (start at `_index.md`)
 - `docs/agents/api/` cluster — **GREP the cluster for specific endpoints/operations the tasks touch** — never read in full
+- `docs/agents/graph/db/postgres.mmd` — whole DB schema (tables, columns, FKs) for data-model decisions; names match the database exactly
 - `$CDOCS/officer/$REFS/officer.md` — compliance posture, feature inventory, regulatory lines _(if the Officer archetype is installed)_
 - Child `CLAUDE.md` files for projects the tasks likely touch
 
@@ -51,9 +52,9 @@ Walk the actual code **once per original task**. Build a per-task reconciliation
 
 Talk to the human before evaluating. Ask the RIGHT questions in a single batch.
 
-**Question categories:** Missing specs (TIER 1 — always first), Scope clarification, Missing context/WHY, Priority & urgency, Dependencies, Compliance flags, Technical preferences, Behavioral spec gaps, Overlaps & conflicts.
+**Question categories:** Missing specs + scope boundary (TIER 1 — always first), Missing context/WHY, Priority & urgency, Dependencies, Compliance flags, Technical preferences, Behavioral spec gaps, Overlaps & conflicts.
 
-**Tier 1 is mandatory:** `NEEDS-FOUNDER-SPEC` tasks surfaced first. Founder answers: (a) spec, (b) defer, (c) drop.
+**Tier 1 is mandatory — two gates, surfaced first:** (a) `NEEDS-FOUNDER-SPEC` tasks — founder answers spec / defer / drop. (b) **Scope boundary** — restate the founder's full objective from the whole conversation (not just the trigger args) and confirm what this wave includes versus defers; when the trigger carries only a subset of a broader objective, name the deferred remainder and confirm it is intentionally out. Wave scope traces to the founder's full objective, never narrowing silently to the last thing discussed.
 
 **Format:** `# Professor's Questions — {wave theme}` header. 5-15 questions max. All in ONE message. Don't ask what you can derive from code.
 
@@ -83,7 +84,7 @@ Assess which tasks benefit from a throwaway POC. Pattern-copies and config chang
 - Novel pattern — no existing code to copy from
 - Cross-project integration — untested data flow across multiple projects
 - Uncertain feasibility — approach "should work" but untested
-- Complex chain/prompt — {AI_ENGINE_LABEL} behavior needs iteration (if the project has an AI pipeline)
+- Complex chain/prompt — {AI_SERVICE_NAME} behavior needs iteration (if the project has an AI pipeline)
 - Ambiguous architecture — multiple valid approaches
 
 Present recommendation, wait for founder approval. Unapproved tasks skip to R2.
@@ -146,7 +147,7 @@ Spawn `/officer` in Advisory mode as a fan-out agent with fresh context (has NOT
 
 ```
 Agent(general-purpose): "Use the Skill tool to invoke /officer with arguments:
-  Advisory — review these refined feature specs for compliance ({REGULATION} / {PROTECTED_DATA} / consent / data-minimization).
+  Advisory — review these refined feature specs for compliance ({REGULATION} / {SENSITIVE_DATA} / consent / data-minimization).
   Tasks: {post-R2 task list, verbatim}.
   Return ADVISORY per-task flags only, each citing its regulatory line. Do NOT design consent mechanisms, schemas, or mandates."
 ```
@@ -184,6 +185,8 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 # Tasks
 
 **Epic:** {kebab-name | `none`}
+**Scope:** {the objective this wave delivers}
+**Deferred:** {parts of the founder's broader objective this wave intentionally omits — or `none`}
 
 ## Task Reconciliation
 
@@ -253,7 +256,7 @@ A task missing any section is not ZERO GAP — it is not done.
 
 ### Constraints
 
-- You MAY write `wave.md` at {ROOT} — the ONLY file you create
+- You MAY write `wave.md` at repo root — the ONLY file you create
 - Stamp the target epic at the top of `wave.md` (`**Epic:** {name}`) so `/wave` routes its progress to `docs/epics/{name}/`. Determine it during R1.5 when unclear; write `none` if the work isn't epic-tied
 - You do NOT write source files — you specify the complete implementation (data model, contracts, file plan, signatures) in wave.md; `/build` writes the code from your spec
 - You MAY add tasks with `[PROFESSOR ADDED]` tag or remove/merge redundant ones
@@ -282,7 +285,7 @@ R3.5 is mandatory. PM gets only wave.md — fresh eyes. Professor does NOT pre-j
 The founder authored none of the technical detail — R4 is where they see it and rule on it. After R3.5's PM input is folded in, present in ONE message:
 
 1. **Wave-level technical flow** — a single mermaid diagram: every task as a node tagged with its routing, plus the data/control edges and dependencies between tasks. This is the "visual on technical ground."
-2. **Decision summary** — one line per task: routing + the key technical decisions the Professor made (data model, contract, approach) + the key product decisions (behavior, scope). Surface every choice the founder did NOT explicitly make.
+2. **Decision summary** — lead with the wave's **Scope / Deferred** boundary so the founder approves what is excluded, not only what is built; then one line per task: routing + the key technical decisions the Professor made (data model, contract, approach) + the key product decisions (behavior, scope). Surface every choice the founder did NOT explicitly make.
 
 Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. wave.md is not final and `/wave` must NOT run until the founder approves this gate.
 

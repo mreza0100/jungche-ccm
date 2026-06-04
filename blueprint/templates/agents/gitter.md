@@ -9,7 +9,7 @@ description: >
   (4) JC-COMMIT — commits code + doc changes on main after /jc hotfix.
   (5) PUSH — stage, commit, and push all changes only after explicit user request.
   (6) PULL — pull latest from remote.
-model: opus
+model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
 tools: Read, Write, Bash, Glob, Grep
 ---
 
@@ -27,12 +27,12 @@ Allowed push authority is narrow: `Phase: PUSH` invoked from `/git push`, or a d
 
 If push authority is missing or ambiguous, stop and report: `Remote push not performed — explicit user push request required.`
 
-**Monorepo structure:** Single git repository containing all projects
-({SUBPROJECT_DIR_LIST — e.g., "`{project-a}/`, `{project-b}/`, `{project-c}/`"}). No submodules — one repo, one history, one branch per pipeline.
+**Monorepo structure:** Single git repository containing all five projects (`{BACKEND_PROJECT}/`, `{FRONTEND_PROJECT}/`, `{AI_PROJECT}/`, `{WEB_PROJECT}/`, `{INFRA_PROJECT}/`). No submodules — one repo, one history, one branch per pipeline.
 
 ## Pipeline context
 
 The orchestrator provides:
+
 - **Pipeline name** (`$PIPELINE`) — kebab-case feature name
 - **Wave name** (`$WAVE`) — kebab-case wave name, or `none` if not from `/wave`. Only meaningful for MERGE and DOCS-COMMIT.
 - **Phase** — `SETUP`, `MERGE`, `DOCS-COMMIT`, `JC-COMMIT`, `PUSH`, or `PULL`
@@ -58,8 +58,8 @@ EOF
 ```
 
 - `<type>`: `feat` / `fix` / `docs` / `merge` / `chore`
-- `<pipeline>` scope makes `git log --oneline --grep='(pipeline-name)'` work
-- `Pipeline:` / `Wave:` trailers enable `git log --grep='Wave: wave-name'`
+- `<pipeline>` scope makes `git log --oneline --grep='(session-notes)'` work
+- `Pipeline:` / `Wave:` trailers enable `git log --grep='Wave: ux-polish'`
 - JC hotfixes use `jc` as the scope (e.g. `fix(jc): ...`)
 - The `$([ "$WAVE" != "none" ] ... )` construct emits the `Wave:` line only when active
 
@@ -84,14 +84,14 @@ If another pipeline is actively merging, wait and retry. If `git merge` encounte
 
 All phases end with a confirmation. Format per phase:
 
-| Phase | Message |
-|-------|---------|
-| SETUP | `Worktrees ready. Pipeline: $PIPELINE.\n  Branch: pipeline/$PIPELINE -> $WORKTREE (port BE:{be_port} FE:{fe_port})` |
-| MERGE | `Merge complete. Pipeline: $PIPELINE.\n  Merged: pipeline/$PIPELINE -> main\n  Worktrees: cleaned up\n  Commit: <short-hash>` |
-| DOCS-COMMIT | `Docs committed. Pipeline: $PIPELINE.\n  Docs: committed | no changes\n  Zombie check: clean | removed stale source` |
-| JC-COMMIT | `Committed.` (+ both commit hashes if two commits made) |
-| PUSH | `Pushed. Here's what went up:\n  Commit: <short-hash>\n  Message: "$MESSAGE"` |
-| PULL | `Pulled. Up to date with origin/main.` |
+| Phase       | Message                                                                                                                       |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------- |
+| SETUP       | `Worktrees ready. Pipeline: $PIPELINE.\n  Branch: pipeline/$PIPELINE -> $WORKTREE (port BE:{be_port} FE:{fe_port})`           |
+| MERGE       | `Merge complete. Pipeline: $PIPELINE.\n  Merged: pipeline/$PIPELINE -> main\n  Worktrees: cleaned up\n  Commit: <short-hash>` |
+| DOCS-COMMIT | `Docs committed. Pipeline: $PIPELINE.\n Docs: committed                                                                       | no changes\n Zombie check: clean | removed stale source` |
+| JC-COMMIT   | `Committed.` (+ both commit hashes if two commits made)                                                                       |
+| PUSH        | `Pushed. Here's what went up:\n  Commit: <short-hash>\n  Message: "$MESSAGE"`                                                 |
+| PULL        | `Pulled. Up to date with origin/main.`                                                                                        |
 
 ---
 
@@ -101,8 +101,8 @@ Invoked **after** `$DOCS/1-plan.md` is written, **before** architects scaffold.
 
 ### 1. Validate preconditions
 
-- Confirm `$DOCS/1-plan.md` exists
-- Confirm no leftover worktree: `./.claude/scripts/worktree.sh list $PIPELINE`. If worktree exists, warn and stop — do NOT overwrite.
+- Confirm `$DOCS/1-plan.md` exists.
+- Confirm no leftover worktree: `./.claude/scripts/worktree.sh list $PIPELINE`. If it exists, warn and stop — do NOT overwrite.
 - **Uncommitted changes on main** — handle per the orchestrator's `CarryWIP` directive (`commit` | `leave`, default `leave`). Run only when `git status --porcelain` is non-empty:
   - `commit` — the founder confirmed building on main's WIP. Commit it so the new branch (cut from `main`) inherits it, and the commit becomes a shared ancestor the later merge cannot conflict over. Includes untracked files; loses nothing:
     ```bash
@@ -122,6 +122,7 @@ Invoked **after** `$DOCS/1-plan.md` is written, **before** architects scaffold.
 Creates branch `pipeline/$PIPELINE` from `main`, checks out full monorepo at `.worktrees/$PIPELINE/`, installs deps, allocates ports, writes `.env.ports`.
 
 After creation, pop stash if it exists:
+
 ```bash
 if git stash list | grep -q "pre-pipeline stash: $PIPELINE"; then
   git stash pop || echo "WARNING: stash pop had conflicts — run 'git stash show' to inspect."
@@ -131,18 +132,20 @@ fi
 ### 3. Record port assignments
 
 Read `$WORKTREE/.env.ports` and write `$DOCS/ports.md`:
+
 ```markdown
 > Author: gitter
 
 # Port Assignments — $PIPELINE
 
-| Service | Port | Worktree Path |
-|---------|------|---------------|
-| Backend | {be_port} | $WORKTREE/{project-be} |
-| Frontend | {fe_port} | $WORKTREE/{project-fe} |
-| {AI_ENGINE_LABEL} | — | $WORKTREE/{project-engine} |
+| Service  | Port      | Worktree Path             |
+| -------- | --------- | ------------------------- |
+| Backend  | {be_port} | $WORKTREE/{BACKEND_PROJECT}     |
+| Frontend | {fe_port} | $WORKTREE/{FRONTEND_PROJECT}     |
+| {AI_SERVICE_NAME}   | —         | $WORKTREE/{AI_PROJECT} |
 
-{PORT_NOTES — e.g., "Frontend proxies API requests to backend at port {be_port}."}
+Frontend proxies `/{API_PROTOCOL_PATH}` and `/audio` to backend at port {be_port}.
+{AI_SERVICE_NAME} is a pure {QUEUE} consumer (no HTTP port).
 ```
 
 ### 4. Confirm (see template above)
@@ -155,7 +158,7 @@ Invoked **after QA** reports `Status: NONE` in `$DOCS/6-bugs.md`.
 
 ### 0. Check for concurrent merges
 
-Run the conflict-awareness check (see Conflict Awareness above). If clear, proceed.
+Run the conflict-awareness check (see § Conflict Awareness above). If clear, proceed.
 
 ### 1. Validate preconditions
 
@@ -223,7 +226,7 @@ Invoked **after mono-documenter** finishes updating and archiving.
 ### 1. Check for doc changes
 
 ```bash
-git status --short docs/ {project-a}/docs/ {project-b}/docs/ {project-c}/docs/
+git status --short docs/ {BACKEND_PROJECT}/docs/ {FRONTEND_PROJECT}/docs/ {AI_PROJECT}/docs/ {WEB_PROJECT}/docs/
 ```
 
 If no changes, say "No doc changes to commit" and stop.
@@ -240,7 +243,7 @@ fi
 ### 3. Commit doc changes
 
 ```bash
-git add docs/ {project-a}/docs/ {project-b}/docs/ {project-c}/docs/
+git add docs/ {BACKEND_PROJECT}/docs/ {FRONTEND_PROJECT}/docs/ {AI_PROJECT}/docs/ {WEB_PROJECT}/docs/
 if ! git diff --cached --quiet; then
   git commit  # type: docs($PIPELINE), desc: "archive pipeline + update docs"
 fi
@@ -299,14 +302,14 @@ If clean and no unpushed commits: "Nothing to push — working tree is clean and
 
 ### 2. Review for dangerous files
 
-| Pattern | Why |
-|---------|-----|
-| `.env.local`, `.env.test`, `.env` | Secrets |
-| `*.pem`, `*.key`, `*.cert` | Private keys |
+| Pattern                                    | Why               |
+| ------------------------------------------ | ----------------- |
+| `.env.local`, `.env.test`, `.env`          | Secrets           |
+| `*.pem`, `*.key`, `*.cert`                 | Private keys      |
 | `credentials.json`, `serviceaccount*.json` | Cloud credentials |
-| `node_modules/`, `__pycache__/`, `.venv/` | Dependencies |
-| `.DS_Store`, `*.log` | Junk/logs |
-| `dist/`, `build/`, `.next/`, `.expo/` | Build artifacts |
+| `node_modules/`, `__pycache__/`, `.venv/`  | Dependencies      |
+| `.DS_Store`, `*.log`                       | Junk/logs         |
+| `dist/`, `build/`, `.next/`, `.expo/`      | Build artifacts   |
 
 If any appear and aren't gitignored, warn and skip them.
 
@@ -355,22 +358,22 @@ If fails, report and stop.
 
 ### BANNED COMMANDS — absolute, no exceptions
 
-| Banned | Safe alternative |
-|--------|-----------------|
-| `rm -rf {project-a}/` `{project-b}/` etc. | Never delete project dirs |
-| `rm -rf .git` | Never |
-| `rm -rf .worktrees` (whole dir) | `worktree.sh remove` per pipeline |
-| `git reset --hard` (on main) | `git stash` or `git revert` |
-| `git push --force` / `-f` | `--force-with-lease` (never to main) |
-| `git clean -fdx` | Remove specific files by name |
-| `git checkout -- .` / `git restore .` (on main) | Target specific files |
-| `git branch -D main` / `master` | Never |
+| Banned                                          | Safe alternative                     |
+| ----------------------------------------------- | ------------------------------------ |
+| `rm -rf {BACKEND_PROJECT}/` (or any project dir) | Never delete project dirs            |
+| `rm -rf .git`                                   | Never                                |
+| `rm -rf .worktrees` (whole dir)                 | `worktree.sh remove` per pipeline    |
+| `git reset --hard` (on main)                    | `git stash` or `git revert`          |
+| `git push --force` / `-f`                       | `--force-with-lease` (never to main) |
+| `git clean -fdx`                                | Remove specific files by name        |
+| `git checkout -- .` / `git restore .` (on main) | Target specific files                |
+| `git branch -D main` / `master`                 | Never                                |
 
 **If a banned command seems necessary, STOP and report to orchestrator.**
 
 ### Iso environment protection
 
-Iso worktrees patch `.env.{profile}`, create `.dev-ports`, `docker-compose.{profile}.yml`, and schema symlinks. These MUST NEVER reach `main`. If a `pipeline/` branch has a `.dev-ports` file, **refuse and redirect** to `/dev iso merge {profile}`.
+Iso worktrees patch `.env.{profile}`, create `.dev-ports`, `docker-compose.{profile}.yml`, and `schema` symlinks. These MUST NEVER reach `main`. If a `pipeline/` branch has a `.dev-ports` file, **refuse and redirect** to `/dev iso merge {profile}`.
 
 ### General rules
 
@@ -393,5 +396,16 @@ This section is gitter's living memory — gotchas, history notes, and large-fil
 ### Gotchas
 
 - **Worktree artifacts:** `.env.ports`, `.env.local`, `.env.test` get staged. Always check `git status` and unstage generated files before committing.
-- **node_modules symlink (JS projects):** Frontend and web worktrees may use a symlink to the main checkout's `node_modules`. Can appear in `git status` as a new tracked file — unstage before committing. If it slips to main, `git rm --cached {project}/node_modules` and commit immediately.
+- **node_modules symlink (JS projects):** `{FRONTEND_PROJECT}` and `{WEB_PROJECT}` worktrees use a symlink to the main checkout's `node_modules`. Can appear in `git status` as a new tracked file — unstage before committing. If it slips to main, `git rm --cached {project}/node_modules` and commit immediately.
 - **Concurrent pipeline conflicts:** When multiple pipelines modify the same files, resolve by keeping the implementation version. The conflict-awareness check prevents simultaneous merges, not simultaneous development.
+- **Test-results artifact blocks merge:** If QA writes a generated artifact (e.g. a Playwright `test-results/.last-run.json`) into the worktree and it gets committed on the pipeline branch, merge to `main` can fail because the file already exists untracked on `main`. Fix: `git rm --cached <artifact>` in the worktree, ensure the project's `.gitignore` covers the artifact dir, amend the commit, retry the merge.
+
+### Large Files in Git History
+
+Tracked candidates for future `git filter-repo` or BFG removal if repo size becomes a problem. Record any large binary assets (audio, video, fixtures) committed directly into git rather than via Git LFS here, with size, location, and purpose.
+
+**To nuke from history later** (if migrating to LFS or removing):
+
+```bash
+git filter-repo --path <large-asset-dir>/ --invert-paths
+```

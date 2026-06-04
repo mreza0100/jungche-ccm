@@ -89,7 +89,7 @@ Create `.codex/agents/` with one `.toml` per command and per role agent. Three t
 
 #### Type 1: Command wrappers
 
-One per `/command` (build, jc, wave, dev, git, pcm, council, audit, documenter, plus any Tier B commands you opted into).
+One per `/command` (build, jc, wave, dev, git, pcm, audit, documenter, plus any Tier B commands you opted into).
 
 Pattern:
 
@@ -150,7 +150,6 @@ Skills are Codex's interactive invocation mechanism — the equivalent of Claude
 ├── dev/SKILL.md        ← $dev
 ├── git/SKILL.md        ← $git
 ├── professor/SKILL.md  ← $professor
-├── council/SKILL.md    ← $council
 └── ...                 ← one per command
 ```
 

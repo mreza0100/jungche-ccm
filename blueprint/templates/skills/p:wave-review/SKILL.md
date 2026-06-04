@@ -1,106 +1,162 @@
 ---
 name: p:wave-review
-version: "1.0.0"
-description: "Post-wave operational review — reads wave report and pipeline docs, evaluates grouping, QA health, parallelism, token efficiency. Invoked by /wave after all pipelines complete."
+version: "2.0.0"
+description: "Post-wave review — fans out one agent per thread (feature flow, integration seam, data field, schema/DB, invariant) to walk the wave's merged code end-to-end and confirm it functionally works, then a synthesizer folds in the operational review (grouping, QA, parallelism) and writes the verdict. Auto-invoked by /wave after all pipelines complete."
 ---
 
-# Wave Review — Post-Wave Operations Review
+# Wave Review — Fan-Out Thread Walk + Operations Review
 
-> The Professor switches from analyst to operations reviewer. How did the wave run?
+The Professor walks the wave's merged code by fanning out one agent per thread, then reviews how the wave ran. Runs BEFORE archive.
 
-_Invoked automatically by `/wave` after all pipelines complete, BEFORE archive._
+Each thread is walked **end-to-end, step by step**, by its own fresh agent — the seams where a wave's real bugs hide (a happy path that never reached its COMPLETED state, a field plumbed through three layers and fed by none, a partial index masquerading as a lock) are exactly the seams a focused per-thread walk catches and a single-pass read does not.
 
-**Trigger:** `wave-review <report-path>`, or invoked automatically by `/wave` after all pipelines complete.
+**Read-only.** Static trace only — `git log`/`show`/`diff`, `Read`, `Grep`. No code runs, no DB writes, no edits. Confirming live behavior is `/qa`'s job; this confirms the code is wired to behave correctly.
 
-## Input
+## Entry points
 
-`$ARGUMENTS` format: `wave-review {report-path}`
+- **Auto (`/wave` Step 3):** the wave runner executes § Orchestration directly.
+- **Manual (`wave-review {report-path}`):** the Professor executes § Orchestration himself.
 
-Extract the report path. This is the wave's `report.md` file containing execution plan, progress log, and final summary.
+Both the wave runner and the Professor are pure dispatchers here — they spawn fresh agents and pass structured data between them, forming no judgments in their own (bloated) context. Every act of cognition — enumerate, walk, synthesize — happens in a clean spawned context. Spawned agents are leaf nodes: they do not spawn further.
 
-## Step W1 — Read the wave report
+## § Orchestration (run by the dispatcher)
 
-Read the report file. Extract:
+Input: the wave's `report.md` (grouping, results, merge SHAs, JC pre-flight). Spawn every agent `general-purpose`, `model: "opus"`.
 
-1. Wave name and task count
-2. How tasks were grouped into pipelines
-3. Pipeline results (succeeded, failed, notes)
-4. Total original tasks vs grouped pipelines (grouping efficiency)
+**Phase A — Scout (1 agent).** Spawn one agent to enumerate the threads:
 
-## Step W2 — Read pipeline docs
+> Read `CLAUDE.md` (Professor persona + standards) and `.claude/skills/p:wave-review/SKILL.md` § Role: Scout. Enumerate the wave's threads from `{report-path}`. Return the thread manifest only.
 
-Check for archived pipeline docs:
+**Phase B — Walk (N agents, in parallel).** For each thread in the manifest, spawn one walker — all in a single message so they run concurrently:
 
-- `docs/dev/builds/archive/{pipeline-name}/`
-- `docs/dev/builds/{pipeline-name}/`
+> Read `CLAUDE.md` and `.claude/skills/p:wave-review/SKILL.md` § Role: Walker. Walk this thread end-to-end and return your findings: `{thread spec, verbatim from the manifest}`.
 
-Skim plan (`1-plan.md`) and architecture (`3-architecture.md`) — focus on routing decisions, QA pass/fail, notable architectural choices.
+**Phase C — Synthesize (1 agent).** Spawn one agent with the report path and all walker findings:
 
-## Step W2.5 — 360 blind-spot sweep
+> Read `CLAUDE.md` and `.claude/skills/p:wave-review/SKILL.md` § Role: Synthesizer. Given the report at `{report-path}` and these thread-walk findings `{all walker outputs}`, run the operational review, aggregate the walks, and write the review into the report under `## Professor's Wave Review` per the Report Format. Return the review.
 
-Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "general-purpose")` with: subject ("wave {wave-name} execution — {N} tasks across {M} pipelines"), domain (`inquiry`), instruction to read `.claude/skills/360/SKILL.md` and execute. Do NOT include your own findings.
+Present the returned review to the user.
 
-Feed returned angles into W3. Any angle revealing a real problem becomes a bullet or recommendation.
+## § Role: Scout
 
-## Step W3 — Analyze and produce the review
+Enumerate the threads to walk from the wave's actual diff. Aim for **at least 4**; right-size to the wave — one thread per feature flow, plus a thread for each seam, field, schema change, or invariant that the diff puts at risk. Merge trivial threads; never split for the sake of count.
 
-Evaluate across these dimensions:
+1. From the report's Final Summary / Grouping Summary / `## JC Pre-flight`: list SUCCEEDED pipeline merge SHAs and any JC commits. Note FAILED/DEFERRED pipelines as not-merged.
+2. `git diff {merge}^1 {merge}` per pipeline (`git show {sha}` for a JC fix) → build the changed-and-generated file set.
+3. Read `.claude/skills/360/SKILL.md` and run it inline, domain `inquiry`, subject "wave {name} — {N} tasks across {M} pipelines", to surface blind-spot dimensions (sequences, contradictions, missing info, state, auth). Each dimension that touches the diff must be covered by a thread.
 
-| Dimension                      | What to assess                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------- |
-| **Grouping quality**           | Efficient grouping? Unnecessary splits? Cross-project consolidation?            |
-| **Pipeline success rate**      | Percentage succeeded? Avoidable failures?                                       |
-| **QA health**                  | First-try pass rate? Fix loop count? Real issues or false positives?            |
-| **Parallelism**                | Independent pipelines run in parallel? Conflicts causing serialization?         |
-| **Scope accuracy**             | Task descriptions match what was built? Scope creep or under-delivery?          |
-| **Token efficiency**           | Pipeline count reasonable? 3-8 small tasks = ONE pipeline.                      |
-| **Cross-project coordination** | Routing make sense? Merge conflicts? Parallel pipelines stepping on each other? |
+**Thread taxonomy** — every thread is one of:
+
+| Type             | Walk path                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| **Feature flow** | a user-facing capability — entry (UI/handler) → each hop → terminal state                                        |
+| **Seam**         | a cross-project contract ({API_PROTOCOL} field, {REALTIME_PROTOCOL} channel, {QUEUE} message) — both sides agree |
+| **Field**        | a new/changed persisted field — producer → transport → persist → read → surface                                  |
+| **Schema/DB**    | migrations + constraints — migration ↔ schema ↔ app-layer enforcement                                            |
+| **Invariant**    | a sacred {DOMAIN_ADJ}/safety rule — every enforcement point holds                                                |
+
+Output **only** the manifest — one entry per thread:
+
+```
+- id: T1
+  type: feature flow | seam | field | schema/db | invariant
+  name: {short name}
+  scope: {one line — what this thread covers}
+  files: {key paths the walker should start from}
+  verify: {what "works" means for this thread — the terminal state or contract to confirm}
+```
+
+## § Role: Walker
+
+Walk your one assigned thread end-to-end and confirm it is wired to behave as the spec intends. Read-only: `git log`/`show`/`diff`, `Read`, `Grep`.
+
+1. Read the thread spec, then the `files` it names.
+2. **Trace it step by step** across every layer it crosses — feature flow: entry → each hop → terminal state; field: producer → transport → persist → read → surface; seam: emit side ↔ consume side; schema/db: migration ↔ schema ↔ app enforcement; invariant: each enforcement point.
+3. At **every** step ask: does this step produce what the next step needs, and is the `verify` terminal state actually reached? Flag any break — a step the chain never calls (a `finish` handler with zero callers), a field nothing feeds, a contract the two sides disagree on, an enforcement gap.
+4. Run the hygiene lens on the thread's files: read `.claude/skills/audit:code-hygiene/SKILL.md` and apply its scope-`diff` protocol (duplication & missed reuse first, then hallucinated imports/APIs, over-engineering, dead code, weak types, shallow error handling, naming).
+
+Output:
+
+```
+## Thread {id} — {name} ({type})
+**Flow:** INTACT | AT-RISK | BROKEN
+**Trace:** {step → step → … , marking where it breaks}
+**Defects:** {each as: {what} — {file:line} — `/jc {one-line fix}`; or "none"}
+**Duplication:** {file:line ↔ file:line; or "none"}
+**Notes:** {anything the synthesizer should weigh}
+```
+
+## § Role: Synthesizer
+
+You receive the report and every walker's findings. Produce the consolidated review.
+
+1. **Operational review** across these dimensions: grouping quality (efficient? unnecessary splits? cross-project consolidation?), pipeline success rate, QA health (first-try pass rate, fix-loop count, real vs false), parallelism (independent pipelines parallel? conflicts serializing?), scope accuracy (built matches tasked?), token efficiency (3–8 small tasks = ONE pipeline), cross-project coordination.
+2. **Aggregate the walks** — collect every walker defect into `### /jc Action Items`, dedup across threads, merge duplication findings.
+3. The verdict weighs code quality (the walks) alongside operations — a smooth-running wave that merged a broken flow is not SMOOTH SAILING.
+4. Write the review into the report under `## Professor's Wave Review` using the Report Format.
 
 ## Report Format
 
 ```markdown
-# Professor's Wave Review
+## Professor's Wave Review
 
-**Wave:** {wave-name}
-**Date:** {date}
+**Wave:** {name} · **Date:** {date}
 **Verdict:** {SMOOTH SAILING | MOSTLY GOOD | ROUGH SEAS | SHIPWRECK}
 
-## Executive Summary
+### Executive Summary
 
 {2-3 sentences}
 
-## What Went Well
+### What Went Well / What Could Improve
 
-{Bullet points}
+{Bullets each}
 
-## What Could Improve
+### Thread Walk
 
-{Bullet points}
+| Thread | Type | Flow                    | Defects | Notes       |
+| ------ | ---- | ----------------------- | ------- | ----------- |
+| {name} | {t}  | {INTACT/AT-RISK/BROKEN} | {n}     | {one-liner} |
 
-## Pipeline-by-Pipeline
+**Duplication:** {`file:line ↔ file:line`, or "none"}
 
-| Pipeline | Tasks | Routing | QA  | Verdict | Notes |
-| -------- | ----- | ------- | --- | ------- | ----- |
+### Pipeline-by-Pipeline
 
-## Operational Metrics
+| Pipeline | Tasks | Routing | QA                   | Verdict | Notes       |
+| -------- | ----- | ------- | -------------------- | ------- | ----------- |
+| `{name}` | {n}   | {route} | {PASS/FIX-LOOP/FAIL} | {v}     | {one-liner} |
 
-| Metric | Value | Assessment |
-| ------ | ----- | ---------- |
+### /jc Action Items
 
-## Recommendations for Next Wave
+{Numbered — each a `/jc {fix}` candidate with file location. "None" if clean.}
 
-{Numbered list of actionable improvements}
+### Operational Metrics
 
-## Final Thought
+| Metric             | Value      | Assessment                                  |
+| ------------------ | ---------- | ------------------------------------------- |
+| Tasks to Pipelines | {N} to {M} | {EFFICIENT / COULD-GROUP-MORE / OVER-SPLIT} |
+| Success rate       | {X}/{M}    | {percentage}                                |
+| First-pass QA rate | {Y}/{M}    | {percentage}                                |
+| Fix loops needed   | {count}    | {NONE / MINIMAL / EXCESSIVE}                |
+
+### Recommendations for Next Wave
+
+{Numbered, actionable}
+
+### Final Thought
 
 {One warm, professorial sentence}
 ```
 
+Every fixable code defect lands in `### /jc Action Items` — `/wave` Step 3.4 drains only that section, so a defect parked in a prose aside is orphaned forever. "Deferred" is reserved for non-code owners — copy/product → `/pm`, erasure/consent → `/officer`, tooling/deps → founder — each tagged with its owner. A finding that contradicts a settled spec decision still lists here with a one-line "reconcile against spec first" note; the dispatcher decides, you never silently drop it.
+
 ## Rules
 
-- **Read-only** — no code edits, no pipelines, no builds
-- **Be honest** — disaster? Say so kindly. Clean? Celebrate it
-- **Be constructive** — every criticism comes with a suggestion
-- **Be concise** — highlights, not a novel
-- **Focus on operational patterns** — HOW the wave ran, not WHAT was built
+- **Read-only** — git inspection only (`log`/`show`/`diff`); suggest `/jc` candidates, never run them.
+- **No orphaned defects** — every fixable code defect lands in `### /jc Action Items`. "Deferred" is owner-tagged non-code work only.
+- **Scope to the wave's own diff** — a full-codebase sweep is `/audit`.
+- **Honest and constructive** — disaster? say so kindly; clean? celebrate it; every criticism carries a suggestion.
 - After finishing: "Wave review complete. {verdict}."
+
+```
+
+```

@@ -4,7 +4,7 @@ $ARGUMENTS
 
 ---
 
-**Autonomous execution contract:** Once `/wave` starts, it runs to completion without stopping for questions. Pre-flight (Step 0b) is the only gate — fail fast or go all the way. Ambiguity mid-run → decide from codebase context, log the decision.
+**Autonomous execution contract:** Once `/wave` starts, it runs to completion without stopping for questions. Pre-flight (Step 0b) is the only gate — fail fast or go all the way. Ambiguity mid-run → decide from codebase context, log the decision. Inventing any other stop — a mid-wave "founder decision needed" pause — or re-scoping the wave to avoid one is a contract violation. A task being costly, external, or production-affecting is not a stop; raise only a true blocker, as a pre-flight fail-fast.
 
 ---
 
@@ -38,6 +38,8 @@ Wave runs on whatever runtime invokes it. Each runtime invokes `/build` in its o
 <!-- OPTIONAL: If using a secondary runtime (e.g., Codex), add its invocation pattern here:
 - **{SECONDARY_RUNTIME}:** `Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Build: {n}/{total}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")`
   -->
+
+`{n}/{total}` = this pipeline's index across the whole wave (e.g. `2/6`); `build.md`'s § Status Emission renders the per-build header, phase lines, and footer from it.
 
 Pipelines run sequentially (Skill tool can't be delegated to sub-agents). Your job: grouping, sequencing, reporting.
 
@@ -84,13 +86,12 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 ### Step 0d — Group, plan, and set up
 
-**Grouping algorithm (the key step):**
+**Grouping algorithm (the key step) — owned by `/wave`, not refinement.** Objective: the **fewest pipelines** that still respect dependencies. Each pipeline carries heavy fixed overhead (planners, mono-planner/architect, QA, code review, merge, post-merge QA, documenter), so pipeline count is the dominant token lever. Group by each task's declared `**Routing:**` (ZERO-GAP wave.md states it — never re-classify):
 
-- Same-project, same-scope tasks → ONE pipeline
-- Same-routing tasks (same set of projects) → ONE pipeline
-- Cross-project with no conflicts/overlaps → prefer ONE CROSS pipeline (shares all overhead: planner, architect, QA, merge)
-- Only separate when: real dependencies (B needs A's output), conflicting files, or tasks large enough to warrant own pipeline
-- Merge single-pipeline sequential waves touching same project into ONE pipeline (one developer modifying a file once < two developers in sequence)
+- Same-routing tasks (same project set) → ONE pipeline
+- Cross-project with no conflicts/overlaps → ONE CROSS pipeline (shares all overhead)
+- Only separate when: real dependencies (B needs A's output), conflicting files, or a task large enough to warrant its own pipeline
+- Merge sequential same-project tasks into ONE pipeline (one developer touching a file once < two in sequence)
 - **When in doubt, group more aggressively.** One pipeline with 5 tasks is far cheaper than 5 pipelines.
 
 **Combined `/build` descriptions:** Keep `$ARGUMENTS` concise — detailed specs live in pre-placed manifest:
@@ -103,7 +104,7 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 1. Organize groups into waves (wave boundaries enforce dependency ordering only)
 2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` with the pipeline-specific task subset
-3. Copy the original Professor-refined task file to `$WAVES/{wave-name}/manifest.md` — this preserves the full task spec (all detailed descriptions, compliance flags, architectural intent) as a permanent record of what was requested
+3. Copy the task file to `$WAVES/{wave-name}/manifest.md` (the permanent record of the full spec — descriptions, compliance flags, architectural intent). Then, **if the task file is the root `wave.md`, immediately overwrite it with the `# Tasks` stub** — copy-to-manifest and clear are one atomic step `/wave` owns, so the consumed spec never lingers in `wave.md`. After a wave, any content in root `wave.md` is a fresh next-wave draft (often uncommitted) — never clear it outside this step.
 4. Write grouping/execution plan to `$WAVES/{wave-name}/wave.md`
 5. Create `$WAVES/{wave-name}/report.md` with initial plan:
 
@@ -187,21 +188,19 @@ Update report with:
 
 ## Step 3 — Professor Review (NON-OPTIONAL)
 
-```
-Skill("p:wave-review", "$WAVES/{wave-name}/report.md")
-```
+Read `.claude/skills/p:wave-review/SKILL.md` and execute its **§ Orchestration** against `$WAVES/{wave-name}/report.md`. You are the dispatcher: spawn the scout, then one walker per thread in parallel, then the synthesizer — fresh `general-purpose` agents, `model: "opus"` — and form no judgments in your own bloated context. The synthesizer writes the review into the report under `## Professor's Wave Review` and returns it.
 
-Append review to report under `## Professor's Wave Review`. Present to user.
+Present the returned review to the user.
 
-**This step is mandatory.** The Professor reads the report, runs a 360 blind-spot sweep, and writes its operational review directly into the report file. No wave is complete without the Professor's verdict. The review becomes part of the archived artifact.
+**This step is mandatory.** The fan-out walks every thread of the wave's merged code end-to-end and the synthesizer folds in the operational review. No wave is complete without the Professor's verdict. The review becomes part of the archived artifact.
 
 ---
 
 ## Step 3.4 — Auto-remediate review findings (/jc)
 
-The reviewer (Step 3) is read-only — it names `/jc` candidates under `## /jc Action Items` but cannot run them (sub-agents have no Skill tool). The wave runner closes the loop: actionable findings get fixed on `main` now, not abandoned in the archive.
+The Step 3 review is read-only — it names `/jc` candidates under `### /jc Action Items` but never runs them. The wave runner closes the loop: actionable findings get fixed on `main` now, not abandoned in the archive.
 
-Read `## /jc Action Items` from the returned review:
+Read `### /jc Action Items` from the returned review:
 
 - **"None"** → proceed to Step 3.5.
 - **One or more** → group related items by project/area into as few `/jc` calls as sensible, then run each from your own context (never delegate Skill to a sub-agent):
@@ -221,6 +220,8 @@ Read `## /jc Action Items` from the returned review:
   ```
 
 If `/jc` judges an item too large for a hotfix (needs a feature, not a fix), it logs `DEFERRED` with the reason — never block the wave on it.
+
+Then copy the review's owner-tagged deferrals (the non-code items it routed to other command owners or the founder) into the same `## Review Remediation` table with their owner, so they surface to the founder instead of dying in the archived review. The reviewer is forbidden from parking a fixable code defect as "deferred" (see `p:wave-review`), so anything here genuinely needs a non-code owner's call.
 
 ---
 
@@ -243,7 +244,26 @@ Append only — leave Vision & Scope, Open Questions, Discoveries, and `status` 
 
 ### 4a. Verify and archive straggler builds
 
-Each `/build` pipeline archives itself via the documenter (Step 11 of build.md). The wave's job is to **verify** all its pipelines made it to archive, and catch any stragglers.
+Each `/build` pipeline archives itself via the documenter (Step 11 of build.md). The wave's job is to **verify** all its pipelines made it to archive, and catch any stragglers that the documenter missed (compaction, timeout, agent error).
+
+For each pipeline that belonged to this wave (listed in the report's Grouping Summary table):
+
+```bash
+mkdir -p docs/dev/builds/archive
+
+for pipeline in {list of pipeline names from report}; do
+  # Skip if already archived (documenter handled it)
+  if ls docs/dev/builds/archive/*-${pipeline} 1>/dev/null 2>&1 || [ -d "docs/dev/builds/archive/${pipeline}" ]; then
+    echo "ALREADY_ARCHIVED: $pipeline"
+    continue
+  fi
+  # Catch straggler — documenter missed it
+  if [ -d "docs/dev/builds/$pipeline" ]; then
+    echo "STRAGGLER: $pipeline — archiving now"
+    mv "docs/dev/builds/$pipeline" "docs/dev/builds/archive/$pipeline"
+  fi
+done
+```
 
 ### 4b. Archive the wave itself
 
@@ -273,7 +293,7 @@ fi
 
 ### 4c. Cleanup and verify
 
-Remove original task file only if NOT `wave.md` at repo root. Verify:
+Remove a custom (non-root) task file now; the root `wave.md` was already reset to its stub at Step 0d-3. Verify:
 
 ```bash
 test ! -d $WAVES/{wave-name} && test -d $WAVES/archive/${PADDED}-{wave-name} && echo "WAVE_ARCHIVE_OK" || echo "WAVE_ARCHIVE_FAILED"

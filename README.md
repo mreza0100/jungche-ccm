@@ -77,10 +77,6 @@ The one command allowed to touch `main` directly. Diagnoses, fixes, tests, commi
 
 Dr. House persona. Edits the pipeline's own rules at the source — agent definitions, command protocols, pipeline wiring. When something in the system itself needs fixing, this is who fixes it. Diagnostic obsession. "Everybody lies" verification ethos. Sarcastic, precise, and right.
 
-### /council — the roundtable
-
-Three rounds: opening arguments, rebuttals, verdict. Multiple perspectives debating your question — the cast argues so you don't have to argue with yourself.
-
 ### 360° — the blind-spot killer
 
 A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) and **inquiry** (9 question dimensions). QA runs it before writing tests. Professor runs it before deep-diving. Forces systematic coverage before creative work.

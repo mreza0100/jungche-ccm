@@ -1,11 +1,11 @@
 ---
-name: prompt-quality
+name: quality:prompt
 description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {KNOWLEDGE_ROOT}. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
 ---
 
 # Prompt Quality
 
-You are about to edit a prompt file that Claude Code loads at runtime (or, for `/km` knowledge files, that the knowledge-consuming LLM loads). Every line is paid for on every invocation. Apply the rules below at write-time.
+You are about to edit a prompt file that Claude Code loads at runtime (or, for `/km` knowledge files, that the {AI_SERVICE_NAME} LLM loads). Every line is paid for on every invocation. Apply the rules below at write-time.
 
 **When to load:** `/pcm` loads this before editing any infrastructure prompt file; `/km` loads this before editing knowledge files. Also load it yourself before hand-editing any CLAUDE.md, agent, command, or skill.
 
@@ -33,8 +33,8 @@ Above threshold = split into a referenced file (one level deep, with a Table of 
 - **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
 - **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer". Root CLAUDE.md owns voice; agents/skills/commands inherit it.
 - **"Why this exists:" / "Why:" paragraphs that just rephrase the rule.** The rule's purpose lives in the rule's wording.
-- **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SACRED_GROUND}, secrets).
-- **Aggressive emphasis ("CRITICAL", "YOU MUST", "MANDATORY") on non-sacred rules.** Recent models overtrigger on it. Plain language for ordinary rules; reserve emphasis for invariants.
+- **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SENSITIVE_DATA}, {DOMAIN_ADJ} safety, secrets).
+- **Aggressive emphasis ("CRITICAL", "YOU MUST", "MANDATORY") on non-sacred rules.** {MODEL_TIER} overtriggers on it. Plain language for ordinary rules; reserve emphasis for invariants.
 - **Inconsistent terminology** — mixing "endpoint / URL / route", "field / box / element", "extract / pull / get". One canonical term per concept, used everywhere.
 - **Cross-references that say nothing new** ("See § X above" two paragraphs up). If the reference matters, summarize the takeaway inline.
 - **Inline cross-file restatement** — child CLAUDE.md files restating workspace rules already in root CLAUDE.md. Child files keep ONLY the project-specific delta.
@@ -80,7 +80,7 @@ disable-model-invocation: true  # if has side effects
 {Numbered procedure — or markdown body if non-procedural}
 ```
 
-`$ARGUMENTS` / `$1` / `$N` substitute at invocation. `` !`shell` `` injects live shell output before Claude sees the prompt.
+`$ARGUMENTS` / `$1` / `$N` substitute at invocation. Prefixing a backticked command with a bang (!\`cmd\`) injects live shell output before Claude sees the prompt.
 
 ### Skills (`.claude/skills/*/SKILL.md`)
 
@@ -158,11 +158,11 @@ Provide feedback organized by priority:
 
 Wrong (in the prompt):
 
-> The secondary-runtime wrappers list git verbs in a parenthetical — "(commit, lock, push)". The runtime once read that parenthetical as authorization and auto-pushed a `/jc` fix to origin. Never do this again.
+> The seed script once published the analysis request before registering the result waiter, so the seed hung to its full timeout. Never publish before registering again.
 
 Right (in the prompt):
 
-> Runtime wrappers state git authority in explicit sentences, never loose parenthetical verb lists. Gitter pushes only on explicit user request.
+> Register the result waiter before publishing the analysis request.
 
 The incident narration moves to the commit message / epic manifest. The rule stays sharp.
 
@@ -189,7 +189,7 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 | Incident narratives ("on 2026-XX-XX...")            | Commit message / epic manifest (`docs/epics/{name}/`) | Prompt files                                      |
 | Architectural decisions / why-this-design           | Epic manifest or `docs/commands/{cmd}/references/`    | Prompt files (encode the rule, not the rationale) |
 | Voice / character flavor                            | Root CLAUDE.md only                                   | Agents, commands, skills (they inherit)           |
-| Project-specific tooling                            | Child CLAUDE.md only                                  | Per-project agents (already inherit via parent)   |
+| Project-specific tooling                            | Child CLAUDE.md only                                   | Per-project agents (already inherit via parent)   |
 | Cross-cutting templates (report format, plan shape) | One canonical reference file                          | Duplicated per-project                            |
 
 ## Hooks vs prompts
@@ -208,4 +208,4 @@ If the failure is recurring and structural, consider a hook instead.
 
 ## /km knowledge files are prompts too
 
-`/km` writes `{KNOWLEDGE_DOMAIN}` knowledge files under `{KNOWLEDGE_ROOT}` that get injected into the knowledge-consuming LLM's context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules (model bias control, schema fidelity, compliance) — load both: prompt-quality for the structural discipline, `/km`'s Sacred Ground for the domain layer.
+`/km` writes domain knowledge files under `{KNOWLEDGE_ROOT}` that get injected verbatim into the {AI_SERVICE_NAME} LLM context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules ({LLM_PROVIDER} bias control, schema fidelity, {REGULATION} compliance) — load both: quality:prompt for the structural discipline, `/km`'s Sacred Ground for the domain layer.

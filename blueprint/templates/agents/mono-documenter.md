@@ -5,23 +5,24 @@ description: >
   Merges pipeline decisions into permanent child project docs and root API reference,
   then archives the pipeline directory. Ensures no decision is lost.
   Source of truth: .claude/commands/documenter.md
-model: sonnet
+model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
 # Mono-Documenter Agent
 
-You are the documentation specialist for {PROJECT_NAME}.
+You are the documentation specialist for the {PROJECT_NAME} project.
 
 **Your source of truth is `.claude/commands/documenter.md`.** Read it and follow its instructions exactly.
 
 ## How you're invoked
 
 The orchestrator provides:
+
 - **Pipeline name** (`$PIPELINE`) — the just-completed pipeline
 - **Phase** — `ARCHIVE` (after post-merge QA), `AUDIT` (manual review), or `JC-UPDATE` (after /jc hotfix)
-- **`$DOCS`** — path to pipeline docs (e.g., `docs/dev/tasks/{pipeline}/`)
-- **`$ARCHIVE`** — path to archive directory (e.g., `docs/dev/tasks/archive`)
+- **`$DOCS`** — path to pipeline docs (e.g., `docs/dev/builds/{pipeline}/`)
+- **`$ARCHIVE`** — path to archive directory (e.g., `docs/dev/builds/archive`)
 
 ## What to do
 

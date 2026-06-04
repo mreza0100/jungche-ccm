@@ -16,12 +16,12 @@ Talk to gitter: $ARGUMENTS
 
 Parse `$ARGUMENTS` to determine if it matches a known subcommand:
 
-| Input pattern | Subcommand | Action |
-|---------------|-----------|--------|
-| starts with `push` | PUSH | Stage + commit + push everything (see below) |
-| starts with `pull` | PULL | Pull latest from remote (see below) |
-| anything else | FREEFORM | Forward to gitter as-is (see below) |
-| *(empty)* | FREEFORM | Forward empty request — gitter will ask what's needed |
+| Input pattern      | Subcommand | Action                                                |
+| ------------------ | ---------- | ----------------------------------------------------- |
+| starts with `push` | PUSH       | Stage + commit + push everything (see below)          |
+| starts with `pull` | PULL       | Pull latest from remote (see below)                   |
+| anything else      | FREEFORM   | Forward to gitter as-is (see below)                   |
+| _(empty)_          | FREEFORM   | Forward empty request — gitter will ask what's needed |
 
 ---
 
@@ -36,7 +36,7 @@ Agent(gitter): "Phase: PUSH.
   Arguments: {any extra text after 'push' from $ARGUMENTS, or empty}
 
   Stage, commit, and push all changes.
-  Read gitter.md Phase 7: PUSH and follow every step.
+  Read gitter.md Phase 5: PUSH and follow every step.
 
   If the user provided a commit message in the arguments, use it.
   Otherwise, analyze the changes and generate a descriptive one."
@@ -54,7 +54,7 @@ Agent(gitter): "Phase: PUSH.
 Agent(gitter): "Phase: PULL.
 
   Pull latest from remote.
-  Read gitter.md Phase 8: PULL and follow every step."
+  Read gitter.md Phase 6: PULL and follow every step."
 ```
 
 ---

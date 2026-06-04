@@ -4,7 +4,11 @@ Run the full {PROJECT_NAME} pipeline for: $ARGUMENTS
 
 **All feature requests MUST go through this pipeline.** No cowboy coding.
 **All development happens from this root — there are no child build commands.**
-**Autonomous execution contract: once started, `/build` never stops mid-run to ask questions or wait for approval. Pre-flight validation runs before any pipeline work. If validation passes, the pipeline runs to completion. The only defined stop points are: pre-flight failure (before any work starts) and Fix Loop Escalation → BLOCKED-DEFERRED (preserves work for `/jc` resolution).**
+**Autonomous execution contract: once started, `/build` never stops mid-run to ask questions or wait for approval. Pre-flight validation runs before any pipeline work. If validation passes, the pipeline runs to completion. The only defined stop points are: pre-flight failure (before any work starts) and Fix Loop Escalation → BLOCKED-DEFERRED (preserves work for `/jc` resolution). Inventing any other stop — a "needs-a-decision" pause, a "this looks risky" halt — is a contract violation, not caution. A costly, external, or production-affecting action a task requires (paid API call, live deploy) is not a stop: decide from context, take the safest reversible path, and log it. Raise a true blocker as a pre-flight fail-fast, never mid-run.**
+
+**ZERO GAP contract: when the task manifest (`$DOCS/0-task.md`) is a `/p:refine` ZERO-GAP spec — routing, data model, contracts, file plan, and signatures all present — every pipeline agent (planner, architects, developers) IMPLEMENTS and VALIDATES it; none re-decides routing, re-designs the data model or contracts, or re-scopes. Thread this into every agent spawn. Surface a genuine spec flaw (flag to the orchestrator / BLOCKED-DEFERRED), never silently change it. A standalone build given a bare description: agents design as normal.**
+
+**Doc-awareness — thread into every agent spawn:** to understand existing code, consult the grep-true doc clusters — read the project's `docs/architecture/_index.md`, then `grep` the cluster for the exact symbol; the whole DB schema (real {DATABASE} names) is `docs/agents/graph/db/postgres.mmd`. Doc identifiers match code/DB names verbatim.
 
 ---
 
@@ -21,7 +25,7 @@ If pre-flight fails: STOP. Return the diagnostic. Do NOT proceed.
 ---
 
 <!-- OPTIONAL: Dual-runtime support
-Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline natively — there is no cross-runtime routing. {SECONDARY_RUNTIME}-specific adaptations (git ownership, Skill→Agent translation) live in the corresponding adapter config.
+Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline natively — there is no cross-runtime routing. {SECONDARY_RUNTIME}-specific adaptations (git ownership, Skill→Agent translation) live in the corresponding adapter config (`.codex/agents/build.toml`).
 -->
 
 ---
@@ -274,7 +278,7 @@ Agent(general-purpose, model: "sonnet"): "You are the frontend architect. Read a
   You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} architect. Read and follow the instructions in {project-cortex}/.claude/agents/architect.md.
+Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} architect. Read and follow the instructions in {project-cortex}/.claude/agents/architect.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
   Write your architecture doc to $DOCS/3-architecture-{AI_PROJECT_KEY}.md.
@@ -297,6 +301,8 @@ Agent(general-purpose, model: "sonnet"): "You are the infrastructure architect. 
 ```
 
 Spawn only the relevant architects based on routing. Wait for completion.
+
+The {AI_PROJECT_LABEL} architect runs on `model: "opus"` — {DOMAIN_ADJ} chain design is the highest-stakes architecture in the pipeline, and the post-merge QA tier (Step 9) matches it.
 
 ---
 
@@ -377,7 +383,7 @@ Agent(general-purpose, model: "sonnet"): "You are the frontend developer. Read a
   Frontend port: {fe_port}, backend port: {be_port}.
   NEVER run git commands — gitter handles all commits."
 
-Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE}. Read and follow {project-cortex}/.claude/agents/{AI_DEVELOPER_AGENT}.md.
+Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE}. Read and follow {project-cortex}/.claude/agents/{AI_DEVELOPER_AGENT}.md.
 
   Pipeline: {name}.
   Worktree: $WORKTREE/{project-cortex}. Branch: pipeline/{name}.
@@ -410,6 +416,8 @@ Agent(general-purpose, model: "sonnet"): "You are the infrastructure DevOps engi
 ```
 
 Launch only the relevant developers/engineers/DevOps based on routing. Wait for completion.
+
+The {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE} runs on `model: "opus"` — LLM-chain implementation carries the highest correctness risk in the pipeline.
 
 ---
 
@@ -549,9 +557,9 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 ### Code-Review Fix Loop (architect → developer, cap 2)
 
-1. **Architect plans the fixes.** Spawn the child architect(s) for the affected projects (same spawn pattern as Step 4, model: sonnet): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
+1. **Architect plans the fixes.** Spawn the child architect(s) for the affected projects (same spawn pattern as Step 4 — sonnet via general-purpose for BE/FE/web/infra, `model: "opus"` via general-purpose for {AI_PROJECT_KEY}): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
 
-2. **Developer applies the fixes.** Spawn the developer(s) for the affected projects (same spawn pattern as Step 6, model: sonnet): "Pipeline: {name}. Worktree: $WORKTREE/{PROJECT_DIR}. Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
+2. **Developer applies the fixes.** Spawn the developer(s)/{AI_DEVELOPER_ROLE} for the affected projects (same spawn pattern as Step 6 — sonnet via general-purpose for BE/FE/web/infra, `model: "opus"` via general-purpose for {AI_PROJECT_KEY}): "Pipeline: {name}. Worktree: $WORKTREE/{PROJECT_DIR}. Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
 
 3. **Re-run the hygiene audit** on the updated diff and overwrite the verdict line.
 
@@ -584,41 +592,31 @@ Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git 
 ### Step 9 — Post-Merge QA (on main)
 
 Spawn QA agents for post-merge validation. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
-**Model: sonnet** — structured validation checklists.
+**Model: `opus`** — post-merge bug-catch quality matters more than token cost; pre-merge QA stays on Sonnet. Each project's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the backend QA engineer. Read and follow {project-be}/.claude/agents/qa.md.
-
+Agent(general-purpose, model: "opus"): "You are the backend QA engineer. Read and follow {project-be}/.claude/agents/qa.md.
   Mode: POST-MERGE. Pipeline: {name}. Run against {project-be}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-be}/docs/runbook.md.
-  Return results inline — do NOT write a per-project report file."
+  Follow the runbook at {project-be}/docs/runbook/_index.md."
 
-Agent(general-purpose, model: "sonnet"): "You are the frontend QA engineer. Read and follow {project-fe}/.claude/agents/qa.md.
-
+Agent(general-purpose, model: "opus"): "You are the frontend QA engineer. Read and follow {project-fe}/.claude/agents/qa.md.
   Mode: POST-MERGE. Pipeline: {name}. Run against {project-fe}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-fe}/docs/runbook.md.
-  Return results inline — do NOT write a per-project report file."
+  Follow the runbook at {project-fe}/docs/runbook.md."
 
-Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} QA engineer. Read and follow {project-cortex}/.claude/agents/qa.md.
-
+Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} QA engineer. Read and follow {project-cortex}/.claude/agents/qa.md.
   Mode: POST-MERGE. Pipeline: {name}. Run against {project-cortex}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-cortex}/docs/runbook.md.
-  Return results inline — do NOT write a per-project report file."
+  Follow the runbook at {project-cortex}/docs/runbook/_index.md."
 
-Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
-
+Agent(general-purpose, model: "opus"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
   Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_WEB_PROJECT_DIR}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Return results inline — do NOT write a per-project report file."
+  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/."
 
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
-
+Agent(general-purpose, model: "opus"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
   Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_INFRA_PROJECT_DIR}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Return results inline — do NOT write a per-project report file."
+  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/."
 ```
 
 Spawn only QA agents for projects that were part of this pipeline.
@@ -644,7 +642,7 @@ Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
 
 The documenter:
 
-1. **Merges** pipeline decisions into permanent docs (`docs/agents/architecture.md`, `docs/agents/API.md`, child `architecture.md`, `ui-ux.md`, etc.)
+1. **Merges** pipeline decisions into permanent docs (`docs/agents/architecture/`, `docs/agents/api/`, child `architecture/`, `ui-ux/` clusters, etc.)
 2. **Updates** child project docs (`{project-be}/docs/`, `{project-fe}/docs/`, `{project-cortex}/docs/`) with new details
 3. **Archives** `$DOCS/` to `$ARCHIVE/{name}/`
 

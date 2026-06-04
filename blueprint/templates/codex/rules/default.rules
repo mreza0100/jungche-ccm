@@ -105,3 +105,27 @@ prefix_rule(
     match = ["git push", "git push origin main"],
     not_match = [],
 )
+
+prefix_rule(
+    pattern = ["docker"],
+    decision = "prompt",
+    justification = "Direct docker exec/run/compose bypasses the infra make targets. Prefer make -C {INFRA_PROJECT} <target> — it owns container lifecycle, DB setup/reset, and queue ops. Review before running docker directly.",
+    match = ["docker exec ...", "docker run ...", "docker compose up"],
+    not_match = ["docker ps"],
+)
+
+prefix_rule(
+    pattern = ["make", "-C", "{INFRA_PROJECT}"],
+    decision = "allow",
+    justification = "make -C {INFRA_PROJECT} is the sanctioned path for all infrastructure ops (up/down, db-setup, db-reset, sqs-purge, nuke). Auto-allow so Codex can run the dev/test environment under approval_policy=never.",
+    match = ["make -C {INFRA_PROJECT} up-local", "make -C {INFRA_PROJECT} db-reset-test"],
+    not_match = [],
+)
+
+prefix_rule(
+    pattern = ["edit", "{AI_PROJECT}/knowledge"],
+    decision = "prompt",
+    justification = "Files under {AI_PROJECT}/knowledge/ ARE the {AI_SERVICE_NAME} prompts, injected verbatim into the LLM. Human-driven knowledge work routes via /km (loads the quality:prompt skill first). Review before editing directly.",
+    match = ["edit {AI_PROJECT}/knowledge/REGISTRY.json", "edit {AI_PROJECT}/knowledge/prompts/foo.md"],
+    not_match = [],
+)

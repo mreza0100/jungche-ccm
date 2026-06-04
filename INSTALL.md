@@ -502,8 +502,7 @@ If the user said YES to Codex:
    - Adds Codex-specific instructions (git ownership when Codex orchestrates, Skill→Agent substitutions)
 4. For each per-project agent role (planner, architect, developer, qa), generate a `.codex/agents/{project}-{role}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/developer.toml`.
 5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/build/SKILL.md`.
-6. For each shared `.claude/skills/{360,rr,rnd,ghostwriter}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch.
-7. Copy `blueprint/templates/scripts/check-codex-research-contract.sh` to `.claude/scripts/check-codex-research-contract.sh`, make it executable, and run it before reporting Codex setup complete.
+6. For each shared `.claude/skills/{360,rr,rnd,ghostwriter,vision-factory,quality:prompt,quality:doc}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch — verify this by grepping the wrappers before reporting Codex setup complete.
 
 If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
 

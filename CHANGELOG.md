@@ -33,15 +33,43 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-06-04
+
+Full re-mine from the live source after 250 upstream commits. Every command, skill, agent, and script template was regenerated at **high fidelity** — verbatim source with only customized values swapped for placeholders (governed by the new `PLACEHOLDERS.md`), replacing the old abstracted skeletons. The Codex layer is **kept** (blueprint stays dual-runtime) and synced to the new roster; universal skills moved to **source-fetch**.
+
 ### Added
 
+- Mechanics: `templates/skills/sources.json` + `SETUP.md` §7a — **skills-from-source**. `rr`, `360`, `ghostwriter`, and `vision-factory` are no longer vendored in the blueprint; SETUP clones each from its canonical public repo at install, so they are always latest and can never drift. (safe-auto)
+- Tier A: `skills/quality:doc/` — reference-doc authoring standard (≤500-line topic target, grep-true naming, 8-check Approval gate); successor to the removed `doc-format` skill. (safe-auto)
+- Mechanics: `blueprint/PLACEHOLDERS.md` — canonical placeholder map governing every template's regeneration. (safe-auto)
 - Mechanics: `templates/vscode/` · `INSTALL.md` · `SETUP.md` · `BLUEPRINT.md` · `README.md` — VSCode tmux launcher. New `vscode/` template dir ships `terminal-profile.json`, `zshrc-cc.snippet.sh`, `tmux.conf`, and a `README.md`; new VSCode terminals open straight into `tmux + cc` (Claude Code inside a tmux session), and on `/exit` the tmux session ends and the terminal falls back to a normal shell — it never closes on you. The `cc` shell function is `typeset -f`-guarded so it never clobbers an existing `cc`. Includes mouse scroll + click-to-copy tmux comfort defaults (macOS `pbcopy`; swap for `xclip`/`wl-copy`/`clip.exe` on Linux/Windows). (opt-in)
+
+### Changed
+
+- Tier A (all command/skill/agent/script templates): re-mined at high fidelity, absorbing 250 commits of drift — doc-cluster maturation (`_index.md` clusters, `quality:doc`, `backlog.md`, all-project flow diagrams), model re-tiering (post-merge QA + AI architect/engineer → opus, gitter → sonnet), LLM-provider abstraction (`{LLM_PROVIDER}`), `p:wave-review` 2.0 fan-out thread-walk, `rr` 1.2 Workflow pipeline, `p:refine` Tier-1 scope-boundary gate, atomic `wave.md` clear. (safe-auto; character changes show diff)
+- Tier A (root `CLAUDE.md`): Verdict tightened (≤25 words, only-sanctioned-trailing-line, anti-recap), new "Show gaps as Expected vs Got" rule, "Cleverly funny" trait, docs-map cluster model; blueprint-only scaffolding sections dropped to mirror source. (show diff)
+- Mechanics (Codex layer): kept (blueprint stays dual-runtime) and synced to the new roster — `format-md.sh` keeps `AGENTS.md`; the six codex-touched files retain their Codex content while adopting all other upstream improvements. (safe-auto)
+
+### Removed
+
+- Tier A: `/council` (roundtable debate) and `/reddit` commands + their Codex wrappers — retired upstream. (interactive)
+- Mechanics: `scripts/check-codex-research-contract.sh` — retired; research-contract parity is now a grep check inside `/pcm`. (interactive)
+- Mechanics: vendored copies of `rr`/`360`/`ghostwriter`/`vision-factory` — replaced by source-fetch (see Added). (safe-auto)
 
 ### Migration
 
 #### For: all adopters
 
-Opt-in only — nothing changes unless you enable it. To turn it on, follow `SETUP.md` Phase 5 (merge `terminal-profile.json` into VSCode user `settings.json`, append `zshrc-cc.snippet.sh` to your shell rc, copy `tmux.conf` to `~/.tmux.conf`). Touches your **global** VSCode settings and shell rc — adopters who don't opt in are unaffected. **`/pcm update`: ask before installing — opt-in capability.**
+- **Skill rename** `prompt-quality` → `quality:prompt`: rename your `.claude/skills/prompt-quality/` directory and update references. `/pcm update` walks this.
+- **Skills-from-source**: `rr`/`360`/`ghostwriter`/`vision-factory` now install from their public repos via `sources.json`. Re-run skill install (or `/pcm update`) to switch from a vendored copy to the source-fetched one.
+
+#### For: adopters who customized `/council` or `/reddit`
+
+Removed upstream. Keep your local copy if you still use it, or retire it — `/pcm update` will not delete it automatically.
+
+#### For: the VSCode tmux launcher
+
+Opt-in only — nothing changes unless you enable it. Follow `SETUP.md` Phase 5 (merge `terminal-profile.json` into VSCode user `settings.json`, append `zshrc-cc.snippet.sh` to your shell rc, copy `tmux.conf` to `~/.tmux.conf`). Touches your **global** VSCode settings and shell rc. **`/pcm update`: ask before installing — opt-in capability.**
 
 ## [0.12.0] — 2026-05-27
 

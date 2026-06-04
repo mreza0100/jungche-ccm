@@ -1,18 +1,20 @@
 ---
 name: audit:code-hygiene
-version: "1.0.0"
-description: "Code hygiene audit — ghost fields, dead code, deps, arch, types, naming, quality. Scopes: all, ghosts, dead, deps, arch, types, naming, quality, or per-project."
+version: '1.0.0'
+description: 'Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, {be}, {fe}, {ai}, {web}, {infra}.'
 ---
 
 # Code Hygiene — Audit Sub-Mode
 
-> Systematic code hygiene scan across the codebase.
+> Systematic code hygiene scan across the monorepo.
 
 **Trigger:** `code-hygiene`, `code-hygiene <scope>`, or when `/audit` routes to code hygiene scopes.
 
-**Scopes:** `all`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, or per-project scopes matching your subproject names.
+**Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, `{be}`, `{fe}`, `{ai}`, `{web}`, `{infra}`.
 
-Each category is independent — run only applicable ones based on scope.
+Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/p:wave-review`.
+
+**This codebase is largely AI-authored — weight the checks accordingly.** LLM-written code fails in characteristic ways: it regenerates logic instead of importing what already exists (duplication is the top signal), over-builds simple tasks, leaves stubs and dead branches when it pivots, imports packages that may not exist, and reaches for `any`/broad types and swallowed errors. Before accepting any new function, component, or util, grep for the existing one it should have called.
 
 ---
 
@@ -22,19 +24,26 @@ Fields, columns, or properties that exist in multiple places for the same concep
 
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Run `/audit code` or ask the Professor to hydrate after the codebase has enough code to analyze.
-> The Professor will surface this gap: "Knowledge base is empty, waiting for user specification to fill it in."
+1. **DB schema dual-writes:** Grep for cases where the same logical value is written to multiple columns or tables. Look for patterns like:
+   - Two UPDATE statements in the same function writing similar data
+   - Fields with similar names on different tables (e.g., `{domainStyle}` + `{domainApproach}`)
+   - {AI_SERVICE_NAME} writing to {BACKEND_PROJECT}-owned columns (cross-boundary writes)
 
-<!-- Detection patterns filled by RR at install time. Examples of what RR discovers:
-     - DB schema dual-writes: grep patterns for your ORM (Drizzle, Prisma, SQLAlchemy, etc.)
-     - API/DB mismatches: compare API schema fields against DB columns
-     - FE fallback chains: ?? or || patterns reading same value from multiple sources
-     - Enum duplication: same values defined in multiple layers -->
+2. **{API_PROTOCOL}/DB mismatches:** Compare {API_PROTOCOL} schema fields against DB schema columns. Look for:
+   - {API_PROTOCOL} fields that don't map to any DB column (computed? stale?)
+   - DB columns with no corresponding {API_PROTOCOL} field (dead storage?)
+   - Fields that exist on both the {API_PROTOCOL} type AND as a nested resolver
+
+3. **{FRONTEND_PROJECT} fallback chains:** Grep the frontend for `??` or `||` fallback patterns that read the same value from multiple sources (e.g., `user?.fieldA ?? user?.fieldB`). These indicate a ghost field that should have been consolidated.
+
+4. **Enum duplication:** Check if the same enum values are defined in multiple places (DB enum, {API_PROTOCOL} enum, TypeScript enum, Python enum) and whether they're in sync.
 
 **Files to check:**
 
-<!-- Filled by RR: schema files, API definitions, FE state management, enum definitions -->
+- `{BACKEND_PROJECT}/src/infrastructure/persistence/drizzle/schema.ts` — all DB columns
+- `{BACKEND_PROJECT}/src/infrastructure/graphql/schema.ts` — all {API_PROTOCOL} types
+- `{AI_PROJECT}/src/.../db/` — all {AI_SERVICE_NAME} DB writes
+- `{FRONTEND_PROJECT}/src/` — fallback chains, dual reads
 
 **Report format per finding:**
 
@@ -52,17 +61,41 @@ GHOST: {field_name}
 
 Code that is never called, never imported, or commented out and left to rot.
 
+> **Automated by linters:** Unused imports/vars are caught by `@typescript-eslint/no-unused-vars` (error) in {be}/{fe}/{web} and Ruff `F401` in {ai}. Commented-out code is caught by Ruff `ERA001` in {ai}. `noUnusedLocals`/`noUnusedParameters` in tsconfig catch dead locals at compile time. This category focuses on what linters CANNOT catch: unused exports, orphaned files, unreachable branches, dead call chains, and unused {fe} state.
+
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify your linter coverage (what's already caught) and focus on what linters CANNOT catch.
+1. **Unused exports:** For each project, identify exported functions/classes/constants and grep for their usage. An export with zero imports outside its own file is likely dead. Focus on:
+   - Service methods that no resolver calls
+   - Utility functions that nothing imports
+   - Types/interfaces defined but never referenced
+   - Constants defined but never used
 
-<!-- Detection patterns filled by RR. Categories to discover:
-     - What your linters already catch (unused imports, vars, etc.) — document to SKIP
-     - Unused exports: exported functions/classes with zero imports outside own file
-     - Commented-out code blocks (if not caught by linter)
-     - Unreachable branches, orphaned files, unused state
-     - Per-project chain: which layer calls which — dead ends in the call chain -->
+2. **Commented-out code blocks (TS projects only):** Grep for large commented-out sections (3+ consecutive lines starting with `//`). {AI_SERVICE_NAME} is handled by Ruff `ERA001`.
+
+3. **Unreachable branches:** Look for:
+   - `if (false)` or `if (true)` guards
+   - Switch cases that can never match
+   - Functions that always return early before reaching later code
+   - Error handlers for errors that can't occur
+
+4. **Orphaned files:** Files that nothing imports or references. Check:
+   - `.ts` files in `src/` with no import statement pointing to them
+   - `.py` files with no import and not in `__init__.py`
+   - Test files for modules that no longer exist
+   - Stale migration files or seed data files
+
+5. **Unused state ({fe}-specific):** Grep for `useState` calls where the setter is never called elsewhere in the component, or the state value is never read.
+
+6. **TODO/FIXME archaeology:** Grep for `TODO`, `FIXME`, `HACK`, `XXX` comments. Check if the referenced work was ever completed elsewhere.
+
+7. **Placeholder stubs (LLM artifact):** Functions left unfinished by AI generation — `throw new Error("not implemented")`, `raise NotImplementedError`, a lone `...` as a TS function body, bare `pass` in a non-empty class method, `// rest of implementation here`. Grep for these and confirm whether the real implementation landed elsewhere or the stub shipped.
+
+**Scope-specific checks:**
+
+- **{be}:** Check resolvers -> services -> repositories chain. If a repo method exists but no service calls it, and no resolver calls that service method — it's dead.
+- **{fe}:** Check components. If a component file exists but is never imported in any route, screen, or parent component — it's dead.
+- **{ai}:** Check chains. If a chain function exists but `analysis.py` never calls it — it's dead. Check prompt templates not referenced by any chain.
 
 **Report format:**
 
@@ -81,20 +114,28 @@ Packages installed but never imported, or imported but outdated/deprecated.
 
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify your package managers, dependency files, and config-only dependencies to exclude.
+1. **Installed but unused:** For each dependency in `package.json` / `pyproject.toml`:
+   - Grep the project's `src/` directory for any import of that package
+   - If zero imports found, it's a stale dependency
+   - Exception: babel plugins, webpack loaders, jest transformers, pytest plugins — these are used by config, not imports. Check config files before flagging.
 
-<!-- Detection patterns filled by RR:
-     - Package manager(s) and dependency file(s) to scan
-     - Config-only dependencies to exclude (babel plugins, webpack loaders, pytest plugins, etc.)
-     - DevDependencies leaking into production imports
-     - Duplicate functionality packages -->
+2. **DevDependencies in production:** Check if any `devDependencies` are imported in `src/` code.
+
+3. **Duplicate functionality:** Multiple packages that do the same thing (e.g., both `axios` and `node-fetch` for HTTP).
+
+4. **Phantom / hallucinated imports (LLM artifact):** An import naming a package NOT in `package.json` / `pyproject.toml`. AI confidently imports packages that don't exist — a supply-chain (slopsquatting) risk. Cross-check every imported package name against the manifest; flag any that resolve to nothing.
+
+**Files to check:**
+
+- `{BACKEND_PROJECT}/package.json` — deps vs actual imports in `{BACKEND_PROJECT}/src/`
+- `{FRONTEND_PROJECT}/package.json` — deps vs actual imports in `{FRONTEND_PROJECT}/src/`
+- `{AI_PROJECT}/pyproject.toml` — deps vs actual imports in `{AI_PROJECT}/src/`
 
 **Report format:**
 
 ```
 STALE-DEP: {package_name} in {project}
-  Listed in: {dependency file}
+  Listed in: {dependencies | devDependencies | pyproject.toml}
   Imports found: {0 | N (list files)}
   Verdict: {remove | keep (used by config) | investigate}
 ```
@@ -105,18 +146,29 @@ STALE-DEP: {package_name} in {project}
 
 Patterns that work but are structurally wrong — they'll cause pain as the codebase grows.
 
+> **Partially automated:** Bare `except Exception:` is caught by Ruff `BLE001`. Unused function args are caught by Ruff `ARG`. God files, god functions, deep nesting, and complexity are NOT in ESLint — they live here because they need semantic context.
+
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify your architecture layers, boundaries, and known anti-patterns.
+1. **Cross-boundary writes:** {AI_SERVICE_NAME} should only write to {ai}-owned tables. Grep {ai} DB code for INSERT/UPDATE to tables owned by {BACKEND_PROJECT} (`{session_table}`, `{subject_table}`, `users`, `appointments`, `{org_table}`). `{session_table}.name` and `{session_table}.summary` are known exceptions — flag them anyway as they should be migrated.
 
-<!-- Detection patterns filled by RR:
-     - Cross-boundary writes (which project owns which tables/resources)
-     - God classes/modules (project-specific thresholds and known offenders)
-     - Circular dependencies
-     - Wrong-layer violations (e.g., SQL in service layer, business logic in resolvers)
-     - N+1 query patterns specific to your API layer
-     - Copy-pasted logic hotspots -->
+2. **God classes/modules:** Classes or modules with too many methods (>15) or mixed responsibilities. Known patterns:
+   - **{ai}:** Repository classes that combine step-status updates, insight saves, and multiple per-feature saves in one class
+   - **{ai}:** Settings/config models with 30+ fields that should be grouped into nested sub-models
+
+3. **Circular dependencies:** Module A imports from B, B imports from A.
+
+4. **Shallow or unsafe error handling (LLM-prone):** AI optimizes for the happy path. Flag: silent swallowing (`except.*:\s*pass`, empty `catch {}`); over-broad catches (`except Exception`, bare `except:`, `catch (e)`) that neither re-raise nor log the stack trace; resource acquisition (DB connection, cursor, file) with no `finally`/`with` to release on error paths; retry loops with no backoff. Same problem handled differently across files is also a smell.
+
+5. **Missing abstractions / wrong layer:**
+   - SQL strings in service layer (should be in repository)
+   - Business logic in resolvers (should be in services)
+   - **{be}:** Resolvers with inline Promise.all() doing parallel DB queries
+   - **{fe}:** Components doing {API_PROTOCOL} queries directly instead of through custom hooks
+
+6. **N+1 query patterns:** {API_PROTOCOL} resolvers that trigger a DB query per item in a list.
+
+7. **Over-engineering / speculative generality (LLM-prone):** AI defaults to over-built "enterprise" shapes for simple tasks. Flag an interface/`Protocol`/abstract base class with exactly one implementor or subclass, a factory/builder that always returns one concrete type, a wrapper class that only delegates to one member, a config object passed through layers but with most fields never read, or generics parameterized at a single call site. Only flag when no second consumer is foreseeable. (Duplication itself → Category 8.)
 
 **Report format:**
 
@@ -132,19 +184,23 @@ SMELL: {pattern_name}
 
 ## Category 5 — Type Safety Gaps
 
-Places where type strictness is bypassed or types are structurally weak.
+Places where TypeScript strict mode or Python type hints are bypassed, or where types are structurally weak.
+
+> **Automated by linters:** `@typescript-eslint/no-explicit-any` (warn), `@typescript-eslint/consistent-type-assertions` (warn), `@typescript-eslint/no-non-null-assertion` (warn), `@typescript-eslint/ban-ts-comment` (error, 10 char min). Ruff `PGH` catches `# type: ignore` without error code. This category focuses on what linters CANNOT catch.
 
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify your type system(s), linter rules already covering this, and gaps linters miss.
+1. **`Any` usage (Python):** Grep for `: Any`, `-> Any` in {AI_SERVICE_NAME} source files. Must have justification comment per CLAUDE.md rules.
 
-<!-- Detection patterns filled by RR:
-     - Language-specific: `any` (TS), `Any` (Python), etc.
-     - Type ignore comments without justification
-     - Duplicate type definitions across files
-     - Overly broad types (string for known sets, object for structured data)
-     - Framework-specific type gaps -->
+2. **`# type: ignore` without justification (Python):** Each should have a comment explaining WHY.
+
+3. **Duplicate type definitions:** Same interface/type defined independently in multiple files with different shapes. Grep for identical interface/type names across files.
+
+4. **Overly broad types:** `string` for known sets (should be union/enum), `object` or `{}` for typed data, `dict[str, Any]` for structured data that should be TypedDict/Pydantic.
+
+5. **Double `as any` (TS):** Grep for `as any) as any` — indicates the developer gave up on typing entirely.
+
+6. **Hallucinated API calls (LLM artifact):** AI calls methods/attributes that don't exist or passes wrong argument shapes — confident, plausible, and sometimes type-checking against loose types. Run `tsc --noEmit` and grep its output for "Property … does not exist"; for {AI_SERVICE_NAME} run `mypy`/`pyright` and look for missing-attribute errors. Pay special attention to recently changed or low-frequency third-party APIs.
 
 **Report format:**
 
@@ -163,15 +219,21 @@ Same concept with different names across projects, or naming that doesn't follow
 
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify your naming conventions, domain terminology, and cross-project consistency rules.
+1. **Cross-project naming:** Same domain concept should have the same name everywhere. Check key domain terms across {be}, {ai}, and {fe}.
 
-<!-- Detection patterns filled by RR:
-     - Cross-project naming for key domain terms
-     - Method prefix conventions (find/get/list/create/update/delete)
-     - Domain terminology drift
-     - File naming convention per project/language
-     - Snake_case leaking into camelCase contexts (or vice versa) -->
+2. **Service method prefix inconsistency ({be}):** `find*` for read-by-criteria (repo), `get*` for read-by-id (service), `list*` for read-all/paginated, `create*`/`add*` for inserts, `update*` for modifications, `delete*`/`remove*` for deletions.
+
+3. **Domain terminology drift ({fe}):** "{SESSION_NOUN}" vs "appointment", "{Entity}" vs "Person" vs "People", etc.
+
+4. **File naming convention violations:** {be}: `kebab-case.ts`. {fe}: `PascalCase.tsx` for components, `camelCase.ts` for utilities. {ai}: `snake_case.py`.
+
+5. **Snake_case leaking into TypeScript:** When TS types mirror DB columns, snake_case field names leak in.
+
+6. **Inconsistent error code naming ({be}):** Error constants that don't match the actual entity.
+
+7. **Boolean parameter naming:** Bare `consent: boolean` or `force: boolean` — ambiguous at call sites.
+
+8. **Scope-dishonest destructive names:** a delete/erase/clear/reset op named for a broader scope than it performs — `delete{Subject}` that removes only {subject}-level rows (not the {subject} record or {session}-level data), `clearCache` that clears one key. Name it for what it actually touches (`delete{Subject}AnalysisData`). Highest-risk on erasure / {REGULATION} Art. {N} paths: a partial delete behind a total-sounding name is a compliance trap a future caller wires straight to.
 
 **Report format:**
 
@@ -188,17 +250,25 @@ NAMING: {the inconsistency}
 
 Readability, maintainability, and design patterns. These issues don't cause bugs today — they cause bugs tomorrow.
 
+> **Automated by linters:** Nested ternaries (`no-nested-ternary` error), `console.*` (`no-console` error), `print()` (Ruff `T20`), line length (`max-len: 120` warn / Ruff `E501`). This category focuses on what linters CANNOT catch.
+
 **How to detect:**
 
-> **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Identify what your linters already catch and focus on semantic quality issues they miss.
+1. **Magic strings & numbers:** Literal values used directly in logic instead of named constants.
+   - **Domain value-set comparisons:** role/status/type literals compared as raw strings (`=== '{ROLE_USER}'`, `=== "{STATUS_LITERAL}"`) — a fixed value-set must be a typed enum referenced everywhere, never a string retyped per site. A value-set with no enum at all (grep the same literals across many files) is the root finding, not a per-site nit.
+   - **Hardcoded hex colors ({fe}):** `#[0-9a-fA-F]{3,8}` in `.tsx` files — should use theme classes
+   - **Magic numbers:** Timeout values, retry counts, buffer sizes without named constants
 
-<!-- Detection patterns filled by RR:
-     - Magic strings & numbers (status comparisons, hardcoded values)
-     - i18n violations (if applicable)
-     - Framework-specific component design violations
-     - Overly complex expressions
-     - Project-specific quality patterns -->
+2. **Hardcoded i18n strings ({fe}):** user-visible string literals in JSX that bypass `t()` — `<Text>` children, ternary copy (`cond ? 'one' : 'other'`), `accessibilityLabel`. Grep the changed `.tsx` set for these; plurals must use i18next `_one`/`_other`, never an inline ternary. This is recall-prone in prose review (a hardcoded `episode`/`episodes` plural once shipped past both this audit and {fe} QA) — the durable backstop is an ESLint guard (`react/jsx-no-literals` scoped to text components); flag its absence rather than relying on the human eye.
+
+3. **{fe} component design violations:**
+   - **Inline sub-components:** Function/const component declarations inside another component — re-create on every render
+   - **Data fetching in presentation components:** `useQuery`/`useMutation` inside modals/leaf components
+   - **Missing memoization on expensive callbacks:** Callbacks passed as props without `useCallback`
+
+4. **Python `__init__.py` hygiene ({ai}):** Empty when they should export, or stuffed with logic when they should be thin.
+
+5. **Overly complex expressions:** Chained optional access >3 levels, long boolean conditions that should be extracted.
 
 **Report format:**
 
@@ -208,4 +278,38 @@ QUALITY: {issue_type}
   What: {description}
   Impact: {readability | maintainability | correctness risk}
   Fix: {specific improvement}
+```
+
+---
+
+## Category 8 — Duplication & Missed Reuse (DRY)
+
+The top failure mode of AI-authored code: it regenerates logic instead of importing what already exists, so the same function, component, hook, type, or query fragment gets written many times instead of once-and-called. Clones carry their source's bugs to every copy and drift apart over time. Highest-yield category — run it first.
+
+**How to detect:**
+
+1. **Reinvented helpers (the core check):** For each new or changed function/util, grep the codebase for an existing export that already does the job. AI writes a fresh `formatDate`/`validateEmail`/`apiClient` because it never searched for the one in `utils/`. Signal: inline logic (date formatting, HTTP calls, validation, DB session creation) appearing outside the project's designated `utils/`/`services/`/`hooks/`/repository location.
+
+2. **Near-duplicate components ({fe}):** Two `.tsx` files exporting components with near-identical import lists and JSX structure (e.g., `UserCard` vs `{Role}Card`) — should be one parametric component with a `variant`/`role` prop.
+
+3. **Duplicated hooks ({fe}):** The same `[data, loading, error]` async-state body repeated across components instead of one shared `useAsync`/`useResource` hook. Grep for repeated `useState(false)` + `useState(null)` + fetch patterns outside `hooks/`.
+
+4. **Repeated query fragments:** The same {ORM} `.where(eq(...))` or SQLAlchemy `.filter(...)` clause at ≥3 call sites — extract a shared query helper.
+
+5. **Duplicate definitions:** Same Pydantic model, {API_PROTOCOL} type, {AI_FRAMEWORK} chain `description=`, tool signature, constant, or `beforeEach` test-setup body defined in multiple files. Grep symbol/description names for cross-file duplicates.
+
+6. **Near-duplicate-with-variation:** Copies that look identical now but will drift — flag them before one gets fixed and the others don't.
+
+7. **Repeated membership/permission predicates:** the same multi-value test (`role === '{ROLE_USER}' || role === '{ROLE_SUPER}'`, status-set checks) written at ≥2 sites — extract one named predicate (`canRecord{Session}(role)`) so the policy lives in one place and call sites read intent, not values. Divergent copies of the "same" check are an authorization-drift bug, not just duplication.
+
+**Detection aids (use what's installed; fall back to grep):** `jscpd --min-lines 5 --pattern "**/*.{ts,tsx}"` for TS/React; `pylint --enable=duplicate-code` or PMD CPD for Python. A git add/delete ratio above ~2.5 over recent history signals new code piling up instead of replacing old.
+
+**Report format:**
+
+```
+DUP: {what is duplicated}
+  Copies: {file:line} ↔ {file:line} [↔ ...]
+  Existing original: {file:line if one already existed, else "none — N parallel copies"}
+  Drift risk: {what breaks when one copy changes and the others don't}
+  Fix: {extract to {location}, call it from each site}
 ```

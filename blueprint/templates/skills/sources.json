@@ -1,0 +1,21 @@
+{
+  "_comment": "Universal skills the blueprint does NOT vendor. SETUP fetches each from its canonical public repo at install (always latest). Single source of truth — the blueprint never holds a copy that can silently drift. Refresh/export MUST NOT re-vendor these; it only maintains this list. The remaining skills under templates/skills/ are blueprint-owned (rnd, p:refine, p:wave-review, quality:prompt, quality:doc) or domain-hydrated shells (p:analysis, audit:code-hygiene, audit:security) and ship bundled.",
+  "source_fetched": {
+    "rr": {
+      "repo": "https://github.com/mreza0100/rr",
+      "parameterize": []
+    },
+    "360": {
+      "repo": "https://github.com/mreza0100/360",
+      "parameterize": ["{USER_PERSONA}", "{SECONDARY_PERSONA}"]
+    },
+    "ghostwriter": {
+      "repo": "https://github.com/mreza0100/ghost-writer",
+      "parameterize": []
+    },
+    "vision-factory": {
+      "repo": "https://github.com/mreza0100/vision-factory",
+      "parameterize": []
+    }
+  }
+}
