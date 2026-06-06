@@ -33,6 +33,20 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-06-06
+
+### Added
+
+- Tier A (skill): `skills/p:refine/` — new `poc <goal>` **Refine-to-Prototype** subcommand (P1–P4). Interrogates a proof-of-concept into an airtight spec, then hands it to `/build` or `/wave` to build a working, disposable prototype under `RND/POC/`. Distinct from RND (iterates a metric to convergence) and from the in-flow R-POC validation step — here the moat is the refinement, the build is delegated. (safe-auto)
+- Mechanics: `SETUP.md` §7g — **host-tooling probe (git-host bridge)**. Install detects `gh`/`glab` (`command -v`) and writes a one-file `host-{gh,glab}` index skill into `.claude/skills/`, recording which CLI is present so the Professor drives the right host for fork/PR/release — GitLab adopters via `glab`, GitHub via `gh`. Machine-specific; regenerated per install, never shipped as a template. (safe-auto)
+
+### Migration
+
+#### For: all adopters
+
+- `/p:refine poc <goal>` is available as soon as `/pcm update` re-applies the `p:refine` skill — no manual action.
+- Host-tooling bridge: re-run `SETUP.md` §7g (or the installer) on **each machine** to generate its `host-gh`/`host-glab` skill. It is a per-machine fact, so `/pcm update` does not carry it across machines.
+
 ## [0.13.0] — 2026-06-04
 
 Full re-mine from the live source after 250 upstream commits. Every command, skill, agent, and script template was regenerated at **high fidelity** — verbatim source with only customized values swapped for placeholders (governed by the new `PLACEHOLDERS.md`), replacing the old abstracted skeletons. The Codex layer is **kept** (blueprint stays dual-runtime) and synced to the new roster; universal skills moved to **source-fetch**.

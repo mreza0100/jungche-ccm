@@ -1,7 +1,7 @@
 ---
 name: p:refine
 version: "1.0.0"
-description: "Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave.md (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave or /build. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate."
+description: "Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave.md (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave or /build. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /build or /wave to build a working prototype under RND/POC/."
 ---
 
 # Refine — Wave Task Refinement
@@ -9,6 +9,8 @@ description: "Wave task refinement — critically evaluates a task list through 
 > Critically refine the task list — question, reshape, and strengthen every work item until each is specified completely enough that pipeline agents implement it without making a single decision.
 
 **Trigger:** `refine <tasks>`, `refine this`, `write wave.md`, or when preparing tasks for `/wave`.
+
+**Subcommand:** `refine poc <goal>` runs the **Refine-to-Prototype** flow (§ Subcommand: `poc`) — skip R1–R4. Bare `refine <tasks>` runs R1–R4 below.
 
 ## ZERO GAP — the contract (read first)
 
@@ -290,3 +292,41 @@ The founder authored none of the technical detail — R4 is where they see it an
 Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. wave.md is not final and `/wave` must NOT run until the founder approves this gate.
 
 After R4 approval: "Wave file written to `wave.md` with {N} refined tasks (ZERO GAP). Reconciliation: {counts}. R1.5 confidence: {%} in {N} round(s). Compliance (R2.6): {N} WATCH flags. PM input: {counts}. Founder approved the flow + summary at R4. Run `/wave` to execute."
+
+---
+
+## Subcommand: `poc <goal>` — Refine-to-Prototype
+
+`refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/build` (or `/wave`) to build a working prototype under `RND/POC/{name}/`.
+
+**POC vs RND:** RND _develops_ — it iterates on a metric until it converges. This _refines_ — it asks the right questions until the spec leaves nothing vague, then delegates the build. The moat is the refinement: a POC proves the right thing only when the spec did.
+
+**POC vs the main flow:** R1–R4 writes root `wave.md` for the real projects (worktrees, merge-to-main). A POC is a self-contained, disposable prototype that lives under `RND/POC/` and exists only to answer "does this approach work?"
+
+**Not the in-flow R-POC step:** § R-POC spawns RND agents to _validate_ a wave task mid-refinement. This subcommand is the whole job — refine a standalone POC, then build it.
+
+Run P1 → P4 in order; every gate blocks.
+
+### P1 — Scope the walk
+
+Read only the code the POC exercises or stubs — the patterns, contracts, or chains it borrows. A POC reuses real anchors where cheap and fakes the rest; decide which is which.
+
+### P2 — Interactive discovery
+
+Ask the founder one focused batch (`# POC Questions — {goal}`):
+
+- **What must it prove?** The single question the POC answers — feasibility, UX, LLM behavior, or integration.
+- **Success criteria** — the observable signal that says "it works."
+- **Real vs faked** — what must be genuine to prove the point; what may be stubbed.
+- **Scope boundary** — what the POC deliberately does NOT do.
+- **Stack** — which real projects/libraries it borrows from, or whether it stands alone.
+
+Score the spec on the same scale as § Confidence scoring. Loop until it reaches >= 95 or the founder accepts a lower bar. Hard cap 3 rounds.
+
+### P3 — Write the POC spec
+
+Write `RND/POC/{name}/spec.md` — the ONLY file you create. At the same ZERO-GAP bar as wave.md but scoped to the prototype, it carries: **Goal**, **Proves**, **Success criteria**, **Real vs faked**, **Build plan** (every file to create under `RND/POC/{name}/`, each with what it does and its signatures), **How to run it**, **Boundaries**.
+
+### P4 — Hand off
+
+Recommend the builder — one self-contained probe → `/build`; several parallel probes → `/wave` — with the build target pinned to `RND/POC/{name}/`. Give the founder the exact command; the founder runs it.
