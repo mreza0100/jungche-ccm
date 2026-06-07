@@ -33,6 +33,8 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.16.1] — 2026-06-07
+
 ### Changed
 
 - Docs: SETUP §7h now links the theme repo's "match your terminal background" guide (VS Code `terminal.background` / terminal-emulator profile background) so adopters can paint the terminal canvas to match the theme. (safe-auto)
