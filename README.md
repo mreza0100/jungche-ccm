@@ -222,6 +222,16 @@ No re-interview needed for standard updates — your manifest is the replay seed
 
 ---
 
+## Optional: Tokyo Night theme
+
+A high-saturation dark theme for Claude Code — source-fetched at install (never vendored) from [claude-code-tokyo-night](https://github.com/mreza0100/claude-code-tokyo-night). SETUP pulls it into `~/.claude/themes/`; activate with `/theme` → "Tokyo Night".
+
+![Tokyo Night theme](https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/preview.png)
+
+![Tokyo Night theme in a live session](https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/preview-2.png)
+
+---
+
 ## Repo layout
 
 ```

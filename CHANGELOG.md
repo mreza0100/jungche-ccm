@@ -33,6 +33,10 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+### Added
+
+- Mechanics: `blueprint/templates/themes/sources.json` — Claude Code themes are now source-fetched at install (not vendored), mirroring the skills `sources.json` single-source-of-truth pattern. First theme: `tokyo-night`, fetched from `https://github.com/mreza0100/claude-code-tokyo-night` into `~/.claude/themes/`. SETUP.md §7h installs it; activate with `/theme`. (safe-auto)
+
 ## [0.15.0] — 2026-06-07
 
 The `/blueprint` command is now **self-hosting**: it ships as a parameterized Tier A template, so every adopter installs the same full-fidelity export/release command instead of hand-rolling a thin one. The whole published output was also scrubbed of project identity — an orphaned former brand name, founder PII, owner handles inside templates, and stack-as-fact references.
