@@ -40,12 +40,12 @@ cmd_create() {
   # Install dependencies for each project
   # Backend ({BE_PKG_MGR})
   if [ -f "${worktree_dir}/{BACKEND_PROJECT}/package.json" ]; then
-    (cd "${worktree_dir}/{BACKEND_PROJECT}" && pnpm install --frozen-lockfile) || true
+    (cd "${worktree_dir}/{BACKEND_PROJECT}" && {BE_PKG_MGR} install --frozen-lockfile) || true
   fi
 
   # {AI_SERVICE_NAME} ({AI_PKG_MGR})
   if [ -f "${worktree_dir}/{AI_PROJECT}/pyproject.toml" ]; then
-    (cd "${worktree_dir}/{AI_PROJECT}" && uv sync 2>/dev/null) || true
+    (cd "${worktree_dir}/{AI_PROJECT}" && {AI_PKG_MGR} sync 2>/dev/null) || true
   fi
 
   # Frontend (symlink node_modules from main checkout)

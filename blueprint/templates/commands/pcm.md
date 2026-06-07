@@ -391,7 +391,7 @@ When `$ARGUMENTS` starts with `update`, you pull changes from the upstream Profe
 
 ```bash
 # List all release tags
-git ls-remote --tags https://github.com/mreza0100/professor.git 'refs/tags/v*'
+git ls-remote --tags https://github.com/{BLUEPRINT_REPO}.git 'refs/tags/v*'
 ```
 
 Determine target:
@@ -403,7 +403,7 @@ Determine target:
 Fetch target version into temp:
 
 ```bash
-git clone --branch v{TARGET} --depth 1 https://github.com/mreza0100/professor.git /tmp/professor-update-{TARGET}
+git clone --branch v{TARGET} --depth 1 https://github.com/{BLUEPRINT_REPO}.git /tmp/professor-update-{TARGET}
 ```
 
 ### Step 3 — Parse CHANGELOG between versions

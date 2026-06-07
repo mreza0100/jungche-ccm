@@ -1,7 +1,7 @@
 ---
 name: audit:code-hygiene
-version: '1.0.0'
-description: 'Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, {be}, {fe}, {ai}, {web}, {infra}.'
+version: "1.0.0"
+description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, {be}, {fe}, {ai}, {web}, {infra}."
 ---
 
 # Code Hygiene — Audit Sub-Mode
@@ -40,7 +40,7 @@ Fields, columns, or properties that exist in multiple places for the same concep
 
 **Files to check:**
 
-- `{BACKEND_PROJECT}/src/infrastructure/persistence/drizzle/schema.ts` — all DB columns
+- `{BACKEND_PROJECT}/src/infrastructure/persistence/{ORM}/schema.ts` — all DB columns
 - `{BACKEND_PROJECT}/src/infrastructure/graphql/schema.ts` — all {API_PROTOCOL} types
 - `{AI_PROJECT}/src/.../db/` — all {AI_SERVICE_NAME} DB writes
 - `{FRONTEND_PROJECT}/src/` — fallback chains, dual reads
@@ -294,7 +294,7 @@ The top failure mode of AI-authored code: it regenerates logic instead of import
 
 3. **Duplicated hooks ({fe}):** The same `[data, loading, error]` async-state body repeated across components instead of one shared `useAsync`/`useResource` hook. Grep for repeated `useState(false)` + `useState(null)` + fetch patterns outside `hooks/`.
 
-4. **Repeated query fragments:** The same {ORM} `.where(eq(...))` or SQLAlchemy `.filter(...)` clause at ≥3 call sites — extract a shared query helper.
+4. **Repeated query fragments:** The same {ORM} `.where(eq(...))` or {AI_FRAMEWORK} `.filter(...)` clause at ≥3 call sites — extract a shared query helper.
 
 5. **Duplicate definitions:** Same Pydantic model, {API_PROTOCOL} type, {AI_FRAMEWORK} chain `description=`, tool signature, constant, or `beforeEach` test-setup body defined in multiple files. Grep symbol/description names for cross-file duplicates.
 

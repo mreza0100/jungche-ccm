@@ -33,6 +33,25 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.15.0] — 2026-06-07
+
+The `/blueprint` command is now **self-hosting**: it ships as a parameterized Tier A template, so every adopter installs the same full-fidelity export/release command instead of hand-rolling a thin one. The whole published output was also scrubbed of project identity — an orphaned former brand name, founder PII, owner handles inside templates, and stack-as-fact references.
+
+### Added
+
+- Tier A: `commands/blueprint.md` — now ships as a self-hosting template. `/blueprint` is registered in the Tier A roster and the `refresh` export manifest, so adopters get the complete `refresh`/`export`/`release`/`status` command (worktree-isolated, full tier system, SETUP-interview maintenance), parameterized to their own project. Previously origin-only; every adopter had to improvise a thin shim. (safe-auto)
+- Mechanics: `blueprint/PLACEHOLDERS.md` — new `{BLUEPRINT_REPO}`, `{GH_USER}`, `{BLUEPRINT_CLONE_PATH}` tokens. Blueprint self-references resolve at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork. (safe-auto)
+
+### Fixed
+
+- Mechanics: whole published output — scrubbed all project-identity leaks (an orphaned former brand name across docs/templates/the canonical map, founder PII, owner handles hardcoded inside `templates/`, and stack-as-fact references). `commands/blueprint.md` and `PLACEHOLDERS.md` now mandate scrubbing the project's **former** brand too — a rename orphans the old name in the source, which is how it leaked. (safe-auto)
+
+### Migration
+
+#### For: adopters who hand-rolled a `/blueprint`
+
+- `/pcm update` replaces your local `blueprint.md` with the canonical self-hosting template, re-parameterized to your project. Review the diff if you added custom subcommands (e.g. a `contribute` flow) — fold them back in after applying.
+
 ## [0.14.0] — 2026-06-06
 
 ### Added
@@ -222,7 +241,7 @@ Rename `.claude/skills/p:analyze/` → `.claude/skills/p:analysis/` and the Code
 - Tier A: `commands/audit.md` — reference file loading replaced with mandatory skill invocation (`/audit:code-hygiene`, `/audit:security`). Cortex audit routes to `/audit:cortex` skill. (breaking)
 - Tier A: `commands/wave.md` — Professor review invokes `Skill("p:wave-review", ...)` instead of `Skill("professor", "wave-review ...")`. (safe-auto)
 - Tier A: `commands/council.md` — Professor seat references `/p:analyze` skill instead of `$CDOCS/professor/$REFS/analysis.md`. (safe-auto)
-- Tier A: `commands/blueprint.md` (Freudche-only) — skills split into `universal/` and `domain-hydrated/` in output structure. Phase 2.5 Skill Knowledge Hydration added. Codex symlink instructions explicit. (safe-auto)
+- Tier A: `commands/blueprint.md` (origin-only) — skills split into `universal/` and `domain-hydrated/` in output structure. Phase 2.5 Skill Knowledge Hydration added. Codex symlink instructions explicit. (safe-auto)
 
 ### Removed
 

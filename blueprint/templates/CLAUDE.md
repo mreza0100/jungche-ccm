@@ -1,6 +1,6 @@
 # {PROJECT_NAME} — {PROJECT_TAGLINE}
 
-> **Domain Scope (optional):** Add domain-specific scope/safety disclaimers here, or delete the block. _Example (Freudche):_ "Documentation and analysis assistant only. No diagnoses, no treatment recommendations. {USER_NOUN} retains full {DOMAIN_ADJ} responsibility."
+> **Domain Scope (optional):** Add domain-specific scope/safety disclaimers here, or delete the block. _Example:_ "Documentation and analysis assistant only. No diagnoses, no treatment recommendations. {USER_NOUN} retains full {DOMAIN_ADJ} responsibility."
 
 **Architecture:** five projects sharing {API_PROTOCOL}, {REALTIME_PROTOCOL}, and {QUEUE} boundaries.
 

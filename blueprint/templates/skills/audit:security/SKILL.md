@@ -1,7 +1,7 @@
 ---
 name: audit:security
-version: '1.0.0'
-description: 'Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. {DOMAIN_ADJ} data is sacred.'
+version: "1.0.0"
+description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. {DOMAIN_ADJ} data is sacred."
 ---
 
 # Security — Deep Scan
@@ -42,13 +42,13 @@ Internal system details leaking to end users through error messages, headers, or
 
 1. **Internal error details exposed to users:** Grep for `type(e).__name__` or `str(e)` stored in user-visible fields, `e.message` or raw exception strings in {API_PROTOCOL} error responses, Python/Node exception class names in any {fe}-visible field, `stack`/`stackTrace` in API responses.
 
-2. **Technology stack disclosure:** `sqlalche.me` URLs, `asyncpg`/`drizzle`/`openai`/`langchain` in user-visible strings, Express `X-Powered-By`, {API_PROTOCOL} error `extensions` with internal paths.
+2. **Technology stack disclosure:** {ORM}/{AI_FRAMEWORK} driver or library names (e.g. ORM connection URLs, DB driver names, LLM SDK names) in user-visible strings, {API_FRAMEWORK} server-identity headers, {API_PROTOCOL} error `extensions` with internal paths.
 
 3. **Debug/development artifacts in production:** `breakpoint()` in {AI_SERVICE_NAME}, `TODO`/`FIXME` describing security workarounds, commented-out auth checks, `NODE_ENV === 'development'` blocks disabling security.
 
 4. **Verbose {API_PROTOCOL} errors:** Check `maskedErrors` configuration, custom error formatting, `extensions` field leaking resolver paths.
 
-**Files to check:** Express error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, {AI_SERVICE_NAME} exception handlers.
+**Files to check:** {API_FRAMEWORK} error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, {AI_SERVICE_NAME} exception handlers.
 
 ---
 
@@ -56,7 +56,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, {AI_SERVICE_NAME} `text(` or `execute(` with f-strings/.format() in SQLAlchemy.
+1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, {AI_SERVICE_NAME} `text(` or `execute(` with f-strings/.format() in {AI_FRAMEWORK}.
 
 2. **Command injection:** `child_process.exec(` with string args containing variables, `subprocess.run(`/`os.system(` in Python.
 
@@ -204,13 +204,13 @@ Internal system details leaking to end users through error messages, headers, or
 
 4. **Insecure deserialization:** Python `pickle.load`/`yaml.load` without SafeLoader, `node-serialize`.
 
-5. **Rate limiting:** Check for `express-rate-limit`. Login endpoint must be rate-limited. {API_PROTOCOL} mutations per-user limited.
+5. **Rate limiting:** Check for {API_FRAMEWORK} rate-limit middleware. Login endpoint must be rate-limited. {API_PROTOCOL} mutations per-user limited.
 
 6. **{REALTIME_PROTOCOL} security:** Auth on connect, message schema validation, connection limits per user.
 
 7. **Debug mode in production:** `NODE_ENV` checks disabling security, source maps served in prod builds.
 
-**Files to check:** Express middleware stack, CORS config, HTTP client usage, {REALTIME_PROTOCOL} config, rate limiting, environment config branching.
+**Files to check:** {API_FRAMEWORK} middleware stack, CORS config, HTTP client usage, {REALTIME_PROTOCOL} config, rate limiting, environment config branching.
 
 ---
 

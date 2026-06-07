@@ -44,7 +44,7 @@ Claude (in your target project) asks these questions, in this order. Answer them
 
 > What does your project do, in one sentence?
 
-This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Freudche is an AI clinical administrative tool that listens to therapy sessions and assists the therapist."
+This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Acme is a developer-tooling platform that watches CI runs and assists the engineer."
 
 ### 2. Character name & voice (MANDATORY — cannot be skipped)
 
@@ -116,7 +116,7 @@ Examples:
 
 Pick the 10 that span what your project needs to reason about. Claude embeds them into the Professor command file.
 
-Also: identify the **intersection lens** — which two disciplines, when combined, produce your Professor's unique superpower? (Freudche: CS × Clinical Psychology. Neuropsych: Neuroscience × Computational Modeling. Game studio: Game Design × Player Psychology.)
+Also: identify the **intersection lens** — which two disciplines, when combined, produce your Professor's unique superpower? (Neuropsych: Neuroscience × Computational Modeling. Game studio: Game Design × Player Psychology. FinTech: Financial Engineering × Distributed Systems.)
 
 ### 6. Council panel
 

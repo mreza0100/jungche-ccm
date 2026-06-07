@@ -132,9 +132,9 @@ The blueprint deliberately does NOT offer a "no character" mode. If you want ste
 
 ## Origin & maintenance
 
-This blueprint is **regenerated and published** from the live Freudche repo whenever its pipeline evolves. Each commit corresponds to a snapshot of a working production pipeline — not a theoretical design.
+This blueprint is **regenerated and published** from the live upstream source whenever its pipeline evolves. Each commit corresponds to a snapshot of a working production pipeline — not a theoretical design.
 
-Maintained by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome — but please open an issue first to discuss large changes, since the canonical source lives in Freudche and edits flow downstream from there.
+Maintained by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome — but please open an issue first to discuss large changes, since the canonical source lives in the upstream project and edits flow downstream from there.
 
 ---
 

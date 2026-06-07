@@ -93,7 +93,7 @@ archive_logs() {
 
 check_prereqs() {
   local missing=0
-  for cmd in node pnpm python3 uv docker; do
+  for cmd in node {BE_PKG_MGR} python3 {AI_PKG_MGR} docker; do
     if ! command -v "$cmd" &>/dev/null; then
       fail "Missing: $cmd"
       missing=1
@@ -168,7 +168,7 @@ clean_ports() {
   # IMPORTANT: main's ROOT is a prefix of ISO's ROOT (.worktrees/local/),
   # so we must EXCLUDE .worktrees/ matches when running from main.
   local pids
-  pids=$(pgrep -f "{AI_PROCESS_PATTERN}|pnpm run dev|tsx.*src/index|uv run python|expo start|next dev" 2>/dev/null || true)
+  pids=$(pgrep -f "{AI_PROCESS_PATTERN}|{BE_PKG_MGR} run dev|tsx.*src/index|expo start|next dev" 2>/dev/null || true)
   for pid in $pids; do
     local cmdline
     cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
@@ -337,7 +337,7 @@ cmd_up() {
         case "$dead_name" in
           backend)
             start_detached "backend" "$BE_PORT" "$ROOT/{BACKEND_PROJECT}" "$DEV_DIR/be.log" \
-              "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" pnpm run dev" "resurrected"
+              "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" {BE_PKG_MGR} run dev" "resurrected"
             ;;
           cortex)
             start_detached "cortex" "$CORTEX_PORT" "$ROOT/{AI_PROJECT}" "$DEV_DIR/cortex.log" \
@@ -475,11 +475,11 @@ cmd_up() {
   header "Dependencies"
   local dep_pids=()
 
-  (cd "$ROOT/{BACKEND_PROJECT}" && pnpm install --prefer-offline 2>&1 | tail -1 && echo "BE_DEPS=ok") &
+  (cd "$ROOT/{BACKEND_PROJECT}" && {BE_PKG_MGR} install --prefer-offline 2>&1 | tail -1 && echo "BE_DEPS=ok") &
   dep_pids+=($!)
   (cd "$ROOT/{FRONTEND_PROJECT}" && npm install --legacy-peer-deps 2>&1 | tail -1 && echo "FE_DEPS=ok") &
   dep_pids+=($!)
-  (cd "$ROOT/{AI_PROJECT}" && uv sync --group dev 2>&1 | tail -1 && echo "CORTEX_DEPS=ok") &
+  (cd "$ROOT/{AI_PROJECT}" && {AI_PKG_MGR} sync --group dev 2>&1 | tail -1 && echo "CORTEX_DEPS=ok") &
   dep_pids+=($!)
   (cd "$ROOT/{WEB_PROJECT}" && npm install 2>&1 | tail -1 && echo "WEB_DEPS=ok") &
   dep_pids+=($!)
@@ -553,7 +553,7 @@ EOF
 
   # Backend
   start_detached "backend" "$BE_PORT" "$ROOT/{BACKEND_PROJECT}" "$DEV_DIR/be.log" \
-    "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" pnpm run dev"
+    "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" {BE_PKG_MGR} run dev"
 
   # {AI_SERVICE_NAME}
   start_detached "cortex" "$CORTEX_PORT" "$ROOT/{AI_PROJECT}" "$DEV_DIR/cortex.log" \
@@ -852,11 +852,11 @@ try:
     analyzed = sp.get('totalAnalyzed', 0)
     expected = sp.get('totalExpected', 0)
     remaining = sp.get('totalRemaining', 0)
-    subjects = sp.get('patients', [])
+    subjects = sp.get('{SUBJECT_NOUN_PLURAL}', [])
     parts = []
     for p in subjects:
         mark = '✓' if p.get('done') else f\"{p.get('analyzed',0)}/{p.get('total',0)}\"
-        parts.append(f\"{p.get('patient','?')}={mark}\")
+        parts.append(f\"{p.get('{SUBJECT_NOUN}','?')}={mark}\")
     detail = ', '.join(parts) if parts else ''
     print(f'SEED_STATUS={status}|SEED_INSERTED={inserted}|SEED_ANALYZED={analyzed}|SEED_EXPECTED={expected}|SEED_REMAINING={remaining}|SEED_DETAIL={detail}')
 except Exception:

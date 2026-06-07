@@ -175,7 +175,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     in autonomous control"). This goes into the "What NOT to do" block.
 ```
 
-> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import Freudche-specific _content_ like therapy/clinical references"). Domain content gets parameterized; the orchestrator persona always lands.
+> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import source-project-specific _content_ like domain references"). Domain content gets parameterized; the orchestrator persona always lands.
 
 ### Batch 8 — Confirmation before write
 
@@ -334,7 +334,7 @@ The meta-block is the leading `>`-quoted block that begins with `**Tier B — Do
 For each command:
 
 1. Read the template at `blueprint/templates/commands/{cmd}.md`.
-2. Identify every backtick-quoted Freudche-domain placeholder in the body (e.g., `\`patient medical data\``, `\`Dutch GGZ market\``) and replace with the user's parameterized values from Batches 1, 2, and 6.
+2. Identify every backtick-quoted source-domain placeholder in the body (e.g., `\`sensitive customer data\``, `\`your target market\``) and replace with the user's parameterized values from Batches 1, 2, and 6.
 3. **Delete the entire leading `>`-quoted meta-block** (from the line starting with `> **Tier B — Domain archetype.**` through the line starting with `> **Skip if:**` inclusive, plus any blank `>` lines between).
 4. Save to `.claude/commands/{cmd}.md`.
 5. `mkdir -p docs/commands/{cmd}/{references,research,resources}`.
@@ -726,8 +726,8 @@ File a "doesn't work for stack X" issue if you hit something the installer didn'
 
 1. **Never assume.** Every project name, file path, command, and port comes from the user's answers — not your guesses.
 2. **Never overwrite without asking.** If `CLAUDE.md` or `.claude/` already exists, STOP and ask first.
-3. **Never install boutique commands the user didn't pick.** `/officer`, `/km`, etc. are domain-specific and should not be silently inherited from Freudche.
-4. **Never inject Freudche's domain content** — therapy/clinical/GGZ/AVG references, AssemblyAI/Gemini/LangChain mentions, Dutch healthcare specifics. The Professor _voice_ (grandfatherly polymath) is universal and ships by default; what doesn't transfer is Freudche-specific _content_. Persona = mandatory; persona = "your project's flavor of Professor", not "Freudche's flavor of Professor".
+3. **Never install boutique commands the user didn't pick.** `/officer`, `/km`, etc. are domain-specific and should not be silently inherited from the source project.
+4. **Never inject the source project's domain content** — domain-specific references, named external-vendor/SDK mentions, jurisdiction-specific specifics. The Professor _voice_ (grandfatherly polymath) is universal and ships by default; what doesn't transfer is source-project-specific _content_. Persona = mandatory; persona = "your project's flavor of Professor", not "the source project's flavor of Professor".
 5. **Never run `git add` / `git commit`.** The installer only writes files. Committing is the user's call.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite. If you need to back something up, copy it to `tmp/` first.
 7. **Confirm before write.** Batch 8 ("type 'go'") is mandatory — even if the user seems eager, show the plan first.

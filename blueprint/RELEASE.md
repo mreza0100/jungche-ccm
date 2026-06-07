@@ -1,6 +1,6 @@
-# RELEASE — How updates flow from Freudche to adopters
+# RELEASE — How updates flow from upstream to adopters
 
-This blueprint is regenerated and published from the live Freudche repo. This doc explains the release process so adopters can reliably consume updates via `/pcm update`.
+This blueprint is regenerated and published from the live upstream source. This doc explains the release process so adopters can reliably consume updates via `/pcm update`.
 
 ---
 
@@ -96,7 +96,7 @@ Optional trailing tags refine behavior:
 
 ## How to release a new version (maintainer)
 
-Done from inside the Freudche repo via the `/blueprint release` subcommand:
+Done from inside the upstream source repo via the `/blueprint release` subcommand:
 
 ```
 /blueprint release {patch|minor|major} "{summary}"
@@ -121,11 +121,11 @@ If a maintainer wants to add changelog entries between releases (without bumping
 
 Before running `/blueprint release`:
 
-- [ ] All Freudche changes that should be in the release are merged to main
+- [ ] All upstream source changes that should be in the release are merged to main
 - [ ] `/blueprint status` shows no unexpected drift
 - [ ] CHANGELOG `[Unreleased]` accurately reflects what's shipping (or you'll be prompted to fill it in during release)
 - [ ] No secrets staged in the blueprint clone
-- [ ] No Freudche-specific identifiers leaked into templates (smell-test in `BLUEPRINT.md`: would a neuropsych team see themselves?)
+- [ ] No project-specific identifiers leaked into templates (smell-test in `BLUEPRINT.md`: would a neuropsych team see themselves?)
 
 ---
 
