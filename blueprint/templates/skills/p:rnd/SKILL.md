@@ -1,5 +1,5 @@
 ---
-name: rnd
+name: p:rnd
 description: RND (Research & Develop) — goal-driven iterative skill. Takes a goal, plans multiple approaches, executes them one by one evaluating each result, and adapts the remaining plan as knowledge grows. Stops when the goal is satisfied with the best result found. Triggered when the user says "RND <goal>", "research and develop", "iterate until <goal>", or "find the best approach for".
 ---
 
@@ -127,7 +127,7 @@ RND's value comes from actually stressing solutions against reality, not from co
 When an approach **fails** or scores **partial**, spawn a 360° sweep before iterating:
 
 ```
-Agent(general-purpose): "Read .claude/skills/360/SKILL.md and execute the 360° protocol.
+Agent(general-purpose): "Read .claude/skills/p:360/SKILL.md and execute the 360° protocol.
 Subject: {one-sentence description of what the failed approach was trying to achieve}
 Domain: test
 Output the full 360° angle list grouped by dimension."

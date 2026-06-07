@@ -550,7 +550,7 @@ The last gate before the worktree reaches `main`: a hygiene pass on the pipeline
 
 ### Hygiene audit on the diff
 
-Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --name-only main...pipeline/{name}`. Read `.claude/skills/audit:code-hygiene/SKILL.md` and execute it inline with scope `diff` over that set — the Duplication category first. Write findings to `$DOCS/6-code-review.md`, ending with a verdict line: `CLEAN` or `FINDINGS`.
+Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --name-only main...pipeline/{name}`. Read `.claude/skills/p:audit:code-hygiene/SKILL.md` and execute it inline with scope `diff` over that set — the Duplication category first. Write findings to `$DOCS/6-code-review.md`, ending with a verdict line: `CLEAN` or `FINDINGS`.
 
 - `CLEAN` → proceed to Merge Phase.
 - `FINDINGS` → run the fix loop below.
@@ -674,7 +674,7 @@ Gitter commits all doc changes the documenter made on main.
 | 6   | Develop                         | Installed project developers: {PROJECT_DEVELOPER_ROSTER}      | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
 | 7   | QA                              | Installed project QA agents: {PROJECT_QA_ROSTER}              | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
 | -   | Fix loop                        | developers → QA                                               | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
-| -   | Code review _(pre-merge gate)_  | audit:code-hygiene (diff) → architects → developers           | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
+| -   | Code review _(pre-merge gate)_  | p:audit:code-hygiene (diff) → architects → developers         | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
 | 8   | Merge                           | gitter (MERGE)                                                | Commits + merges to main                                                                      |                                  |
 | 9   | Post-merge QA                   | Installed project QA agents (POST-MERGE): {PROJECT_QA_ROSTER} | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
 | 10  | Document                        | mono-documenter                                               | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |

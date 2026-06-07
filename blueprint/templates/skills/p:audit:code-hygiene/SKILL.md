@@ -1,5 +1,5 @@
 ---
-name: audit:code-hygiene
+name: p:audit:code-hygiene
 version: "1.0.0"
 description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, {be}, {fe}, {ai}, {web}, {infra}."
 ---

@@ -111,6 +111,17 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 
 ---
 
+## Logging every change — `drift.md` vs `release.md`
+
+Every infra change `/pcm` makes is recorded as the final step of the work, in exactly **one** `.professor/` ledger:
+
+- **`drift.md`** — local customizations that diverge from the blueprint and must **stay local** (the update merge's forced KEEP-LOCAL set). Also holds the local update history.
+- **`release.md`** — framework changes that belong upstream, **pending push/sync**. `/blueprint release` consumes this file to build the CHANGELOG, then clears it.
+
+The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the user — never guess.** One line per change: `- {Tier/scope} — {what changed}`.
+
+---
+
 ## How to process a change request
 
 ### Step 1 — Understand
@@ -182,11 +193,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 7. Wrapper for every agent, symlink for every skill
 -->
 
-### Step 6 — Log the decision
-
-If `.professor/decisions.md` exists (a blueprint install), append an entry under "## Post-install customizations": `- **{date}** — {what changed, which files} — {why}`. No `.professor/` directory means there is nothing to log.
-
-### Step 7 — Report
+### Step 6 — Report
 
 ```
 Infrastructure updated. N files changed.
@@ -199,8 +206,12 @@ Consistency verified:
 - [pipeline flow: valid]
 - [agent definitions: consistent]
 
+Logged to: [drift.md | release.md] — [one-line entry]
+
 Manual verification needed: [list or "none"]
 ```
+
+Record the logging line (§ Logging) before reporting — no change ships unlogged.
 
 ---
 
@@ -295,7 +306,7 @@ Files: `.codex/agents/*.toml`, `.codex/skills/` wrappers/symlinks
 - **Agent parity:** every `.claude/agents/*.md` (root) + every child project agent → has a wrapper
 - **Path validity:** each wrapper's instructions reference `.claude/` paths that exist on disk
 - **Skill parity:** every shared `.claude/skills/*/` → has a `.codex/skills/{name}/SKILL.md` wrapper or symlink that resolves correctly
-- **Research contract parity:** grep the Codex skill wrappers for `rr`/`360` — FAIL if any wrapper says to replace RR fan-out with direct WebSearch/WebFetch (it must preserve scout → fan-out → verify)
+- **Research contract parity:** grep the Codex skill wrappers for `rr`/`p:360` — FAIL if any wrapper says to replace RR fan-out with direct WebSearch/WebFetch (it must preserve scout → fan-out → verify)
 - **Stale refs:** grep wrappers for file paths that no longer exist
 -->
 
@@ -425,6 +436,8 @@ Parse each bullet:
 
 ### Step 5 — Three-way hash comparison
 
+> **Rebase-first — never overwrite blindly:** always re-hash the on-disk files fresh (never trust the manifest's cached hash — a local edit since the last update must register as "Current"), and re-read `.professor/drift.md`. Every divergence the ledger records is a **forced KEEP LOCAL** that overrides any auto-apply the hash table would otherwise suggest — a ledger-marked customization is never silently overwritten.
+
 Re-apply interview answers from manifest to upstream templates → compute "parameterized upstream" hashes. Then compare three hashes per file:
 
 | Installed (manifest) | Current (on-disk) | Upstream (re-parameterized) | Action                                                    |
@@ -473,7 +486,7 @@ For `update check`: show all three buckets, write nothing.
    - `updated_at` → ISO 8601 UTC now
    - `interview` → updated with any new answers from Step 5
    - `files` → fresh SHA-256 of every Professor-owned file as it now exists on disk
-6. Append to `.professor/decisions.md` under "## Update history":
+6. Append to `.professor/drift.md` under "## Update history":
    - Version change row: `| {date} | v{OLD} | v{TARGET} | {summary of choices made} |`
    - Under "## Post-install customizations": any files where user chose to keep their version over upstream (Bucket 2 "kept" decisions), any new Tier B opt-ins or opt-outs, any re-interview answers that changed
 
@@ -496,6 +509,10 @@ Manifest regenerated. Version: {TARGET}
 Changelog highlights:
 {key bullets from CHANGELOG between versions}
 ```
+
+### Step 9 — Offer to sync upstream
+
+If `.professor/release.md` is non-empty (framework changes are queued), or the update surfaced local improvements worth sharing, ask the user: **sync to `/blueprint`?** A peer both consumes and publishes — offer `/blueprint refresh` (preview) or `/blueprint release` (publish, which consumes and clears `release.md`). Never auto-publish — the user confirms, since it pushes to a public repo.
 
 ---
 

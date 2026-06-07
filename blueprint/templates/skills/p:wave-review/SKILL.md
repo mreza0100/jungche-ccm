@@ -43,7 +43,7 @@ Enumerate the threads to walk from the wave's actual diff. Aim for **at least 4*
 
 1. From the report's Final Summary / Grouping Summary / `## JC Pre-flight`: list SUCCEEDED pipeline merge SHAs and any JC commits. Note FAILED/DEFERRED pipelines as not-merged.
 2. `git diff {merge}^1 {merge}` per pipeline (`git show {sha}` for a JC fix) → build the changed-and-generated file set.
-3. Read `.claude/skills/360/SKILL.md` and run it inline, domain `inquiry`, subject "wave {name} — {N} tasks across {M} pipelines", to surface blind-spot dimensions (sequences, contradictions, missing info, state, auth). Each dimension that touches the diff must be covered by a thread.
+3. Read `.claude/skills/p:360/SKILL.md` and run it inline, domain `inquiry`, subject "wave {name} — {N} tasks across {M} pipelines", to surface blind-spot dimensions (sequences, contradictions, missing info, state, auth). Each dimension that touches the diff must be covered by a thread.
 
 **Thread taxonomy** — every thread is one of:
 
@@ -73,7 +73,7 @@ Walk your one assigned thread end-to-end and confirm it is wired to behave as th
 1. Read the thread spec, then the `files` it names.
 2. **Trace it step by step** across every layer it crosses — feature flow: entry → each hop → terminal state; field: producer → transport → persist → read → surface; seam: emit side ↔ consume side; schema/db: migration ↔ schema ↔ app enforcement; invariant: each enforcement point.
 3. At **every** step ask: does this step produce what the next step needs, and is the `verify` terminal state actually reached? Flag any break — a step the chain never calls (a `finish` handler with zero callers), a field nothing feeds, a contract the two sides disagree on, an enforcement gap.
-4. Run the hygiene lens on the thread's files: read `.claude/skills/audit:code-hygiene/SKILL.md` and apply its scope-`diff` protocol (duplication & missed reuse first, then hallucinated imports/APIs, over-engineering, dead code, weak types, shallow error handling, naming).
+4. Run the hygiene lens on the thread's files: read `.claude/skills/p:audit:code-hygiene/SKILL.md` and apply its scope-`diff` protocol (duplication & missed reuse first, then hallucinated imports/APIs, over-engineering, dead code, weak types, shallow error handling, naming).
 
 Output:
 

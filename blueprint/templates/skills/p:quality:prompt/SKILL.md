@@ -1,5 +1,5 @@
 ---
-name: quality:prompt
+name: p:quality:prompt
 description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {KNOWLEDGE_ROOT}. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
 ---
 
@@ -15,6 +15,10 @@ You are about to edit a prompt file that Claude Code loads at runtime (or, for `
 
 If no — delete it. Bloat dilutes the rules that matter; the model "may start forgetting earlier instructions or making more mistakes" as the file grows.
 
+## The prompt stream — audit in context, not in isolation
+
+A prompt rarely loads alone. In the Claude Code harness the LLM reads one concatenated context: root `CLAUDE.md`, the auto-loaded skill descriptions, the active command or agent, and every skill loaded this session — all at once. Audit a prompt against that whole stream, not just the file in front of you: a rule may already live in a co-loaded file (duplication), contradict one (conflict), or push the combined context past what the model holds well (budget). Follow the stream the target LLM actually reads, end to end, before judging any single file.
+
 ## Hard thresholds (Anthropic-published)
 
 | File type                       | Limit                                                     | Source                           |
@@ -29,6 +33,7 @@ Above threshold = split into a referenced file (one level deep, with a Table of 
 ## Anti-patterns — cut on sight
 
 - **Time-sensitive narration.** "On 2026-05-19...", "after the X incident", "before August 2025". Encode the rule that resulted; the incident goes in the commit message or the relevant epic manifest, not the prompt.
+- **Dates of change.** Changelog-style "changed 2026-06-07" lines or update-history dates inside a prompt or `.professor/` ledger are the same antipattern — version control already timestamps every change. State the current rule, never when it changed.
 - **Restating one rule multiple ways.** Two phrasings cause Claude to "pick one arbitrarily." Pick the sharper version, delete the rest.
 - **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
 - **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer". Root CLAUDE.md owns voice; agents/skills/commands inherit it.
@@ -189,7 +194,7 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 | Incident narratives ("on 2026-XX-XX...")            | Commit message / epic manifest (`docs/epics/{name}/`) | Prompt files                                      |
 | Architectural decisions / why-this-design           | Epic manifest or `docs/commands/{cmd}/references/`    | Prompt files (encode the rule, not the rationale) |
 | Voice / character flavor                            | Root CLAUDE.md only                                   | Agents, commands, skills (they inherit)           |
-| Project-specific tooling                            | Child CLAUDE.md only                                   | Per-project agents (already inherit via parent)   |
+| Project-specific tooling                            | Child CLAUDE.md only                                  | Per-project agents (already inherit via parent)   |
 | Cross-cutting templates (report format, plan shape) | One canonical reference file                          | Duplicated per-project                            |
 
 ## Hooks vs prompts
@@ -208,4 +213,4 @@ If the failure is recurring and structural, consider a hook instead.
 
 ## /km knowledge files are prompts too
 
-`/km` writes domain knowledge files under `{KNOWLEDGE_ROOT}` that get injected verbatim into the {AI_SERVICE_NAME} LLM context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules ({LLM_PROVIDER} bias control, schema fidelity, {REGULATION} compliance) — load both: quality:prompt for the structural discipline, `/km`'s Sacred Ground for the domain layer.
+`/km` writes domain knowledge files under `{KNOWLEDGE_ROOT}` that get injected verbatim into the {AI_SERVICE_NAME} LLM context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules ({LLM_PROVIDER} bias control, schema fidelity, {REGULATION} compliance) — load both: p:quality:prompt for the structural discipline, `/km`'s Sacred Ground for the domain layer.

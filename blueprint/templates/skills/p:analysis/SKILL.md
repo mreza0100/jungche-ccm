@@ -1,6 +1,6 @@
 ---
 name: p:analysis
-version: '2.0.0'
+version: "2.0.0"
 description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) with {AI_SERVICE_NAME} Staff Engineer audit mode. Triggered by 'analyze <subject>', 'system analysis', 'architecture review', '{ai} audit', 'audit {ai}', or '{ai} <subsystem>'."
 ---
 
@@ -14,12 +14,12 @@ description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) wi
 
 ## Mode Selection
 
-| Input                                      | Mode                        | What happens                                                         |
-| ------------------------------------------ | --------------------------- | -------------------------------------------------------------------- |
-| `analyze <subject>`                        | **Cross-disciplinary**      | Three-lens analysis (CS + {DOMAIN} + Compliance)                    |
-| `{ai}` / `{ai} full`                       | **{AI_SERVICE_NAME} audit (full)**     | Staff Engineer mode — all 10 audit categories            |
-| `{ai} architecture` / `{ai} decisions`     | **{AI_SERVICE_NAME} audit (arch)**     | Validate arch doc against code reality                    |
-| `{ai} {subsystem}`                         | **{AI_SERVICE_NAME} audit (targeted)** | Only: chains, consumers, db, prompts, rag, embedding      |
+| Input                                  | Mode                                   | What happens                                         |
+| -------------------------------------- | -------------------------------------- | ---------------------------------------------------- |
+| `analyze <subject>`                    | **Cross-disciplinary**                 | Three-lens analysis (CS + {DOMAIN} + Compliance)     |
+| `{ai}` / `{ai} full`                   | **{AI_SERVICE_NAME} audit (full)**     | Staff Engineer mode — all 10 audit categories        |
+| `{ai} architecture` / `{ai} decisions` | **{AI_SERVICE_NAME} audit (arch)**     | Validate arch doc against code reality               |
+| `{ai} {subsystem}`                     | **{AI_SERVICE_NAME} audit (targeted)** | Only: chains, consumers, db, prompts, rag, embedding |
 
 ---
 
@@ -69,7 +69,7 @@ Read:
 
 #### Step 1.5 — 360 sweep (inquiry domain)
 
-Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "general-purpose")` with: subject (one sentence), domain (`inquiry`), instruction to read `.claude/skills/360/SKILL.md` and execute. Do NOT include your own findings. Use returned angles to guide the deep dive.
+Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "general-purpose")` with: subject (one sentence), domain (`inquiry`), instruction to read `.claude/skills/p:360/SKILL.md` and execute. Do NOT include your own findings. Use returned angles to guide the deep dive.
 
 #### Step 2 — Deep dive
 
@@ -149,18 +149,18 @@ Read `{AI_PROJECT}/CLAUDE.md` + the source files relevant to your scope. Key ent
 
 Run all applicable categories in parallel. For each, read the source, grep for the patterns, and produce findings with severity (CRITICAL/HIGH/MEDIUM/LOW).
 
-| #   | Category                   | Key concerns                                                                                      | Where to look                                 |
-| --- | -------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| 1   | **Message Intake**         | Malformed JSON crash, visibility timeout vs processing time, graceful shutdown, DLQ               | `{queue}_consumer.py`, `__main__.py`         |
-| 2   | **Analysis Orchestration** | Idempotency, transaction boundaries, error isolation, timeout on gather                           | `analysis.py`                                 |
-| 3   | **Chain Safety**           | Structured output parsing, retry+backoff, token budget, prompt injection                          | `chains/*.py`                                 |
+| #   | Category                   | Key concerns                                                                                                                | Where to look                                 |
+| --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1   | **Message Intake**         | Malformed JSON crash, visibility timeout vs processing time, graceful shutdown, DLQ                                         | `{queue}_consumer.py`, `__main__.py`          |
+| 2   | **Analysis Orchestration** | Idempotency, transaction boundaries, error isolation, timeout on gather                                                     | `analysis.py`                                 |
+| 3   | **Chain Safety**           | Structured output parsing, retry+backoff, token budget, prompt injection                                                    | `chains/*.py`                                 |
 | 4   | **Database Integrity**     | Read-only boundary ({AI_SERVICE_NAME} must not write {BACKEND_PROJECT} tables), connection pool, ON CONFLICT, SQL injection | `db/*.py`                                     |
-| 5   | **RAG & Vectors**          | {SUBJECT_NOUN} data isolation (CRITICAL), embedding model loading, batch OOM, similarity threshold | `retrieval.py`, `vector_*.py`, `embedding.py` |
-| 6   | **Prompt Templates**       | Injection resistance, template variable completeness, {DOMAIN_ADJ} safety, bias                   | `prompts/`                                    |
-| 7   | **Async Patterns**         | gather without timeout, blocking event loop, shared mutable state, task cancellation              | all async code                                |
-| 8   | **Error Handling**         | Bare `except:`, exception without traceback, `print()` instead of structured logging              | all files                                     |
-| 9   | **Configuration**          | Missing required vars, default values for secrets, env isolation                                  | `settings.py`                                 |
-| 10  | **Approaches**             | Registry completeness, null approach handling, namespace mapping                                  | `approaches/*.py`                             |
+| 5   | **RAG & Vectors**          | {SUBJECT_NOUN} data isolation (CRITICAL), embedding model loading, batch OOM, similarity threshold                          | `retrieval.py`, `vector_*.py`, `embedding.py` |
+| 6   | **Prompt Templates**       | Injection resistance, template variable completeness, {DOMAIN_ADJ} safety, bias                                             | `prompts/`                                    |
+| 7   | **Async Patterns**         | gather without timeout, blocking event loop, shared mutable state, task cancellation                                        | all async code                                |
+| 8   | **Error Handling**         | Bare `except:`, exception without traceback, `print()` instead of structured logging                                        | all files                                     |
+| 9   | **Configuration**          | Missing required vars, default values for secrets, env isolation                                                            | `settings.py`                                 |
+| 10  | **Approaches**             | Registry completeness, null approach handling, namespace mapping                                                            | `approaches/*.py`                             |
 
 For each category: read the files, grep for the anti-patterns (e.g., `except:` bare, `text(` with f-strings, `asyncio.gather` without timeout), and report specific `file:line` findings.
 
@@ -240,7 +240,7 @@ When invoked for architecture validation: read the arch doc, extract decisions, 
 
 ## Solution Validation — RND delegation
 
-When analysis identifies solutions needing stress-testing, delegate to the RND skill (`.claude/skills/rnd/SKILL.md`). Do NOT improvise ad-hoc validation agents.
+When analysis identifies solutions needing stress-testing, delegate to the RND skill (`.claude/skills/p:rnd/SKILL.md`). Do NOT improvise ad-hoc validation agents.
 
 **Delegate when:** proposed fix needs verification, architecture needs feasibility validation, multiple solutions compete.
 

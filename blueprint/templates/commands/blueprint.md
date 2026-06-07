@@ -29,7 +29,7 @@ If `{BLUEPRINT_CLONE_PATH}` missing, export clones it (or creates repo first if 
 
 The blueprint exports a **transplantable nervous system**. An adopter gets the same characters, ranks, and swagger — refitted via interview. A neuropsych lab, RPG studio, and SCADA team all see _their version_ of the same archetypes. **The character IS the pipeline** — strip it and you ship a Confluence wiki. Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
 
-**Update mechanism:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), and `decisions.md` (human-readable customization log that every `/pcm` change appends to). When upstream releases new tags, `/pcm update` replays interview answers against new templates, runs a three-way hash comparison, presents changes in three buckets (auto-apply / review / manual), and appends decisions to `decisions.md`. The update protocol lives in `templates/commands/pcm.md` § "Update Protocol".
+**Update mechanism:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, `/pcm update` replays interview answers against new templates, runs a three-way hash comparison, presents changes in three buckets (auto-apply / review / manual), and appends to `drift.md`. The update protocol lives in `templates/commands/pcm.md` § "Update Protocol".
 
 ---
 
@@ -72,7 +72,7 @@ Re-derive blueprint from CURRENT `.claude/` and `CLAUDE.md` state. Edit files di
 From `{PROJECT_NAME}` repo:
 
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
-- **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
+- **Source-fetched skills** (`rr`, `p:360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
 - One representative project's child agents + CLAUDE.md (e.g., `{BACKEND_PROJECT}/`) as per-project template
 
@@ -102,9 +102,9 @@ From `{PROJECT_NAME}` repo:
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
         ├── commands/ (blueprint, build, jc, dev, git, wave, documenter, pcm, audit, officer, km, pm, mentor, marketer)
         ├── skills/
-        │   ├── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
-        │   ├── {rnd, p:refine, p:wave-review, quality:prompt, quality:doc}/ — bundled, ship as-is
-        │   └── {p:analysis, audit:code-hygiene, audit:security}/ — domain-hydrated shells, filled by RR at setup
+        │   ├── sources.json — source-fetched skills (rr, p:360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
+        │   ├── {p:rnd, p:refine, p:wave-review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is
+        │   └── {p:analysis, p:audit:code-hygiene, p:audit:security}/ — domain-hydrated shells, filled by RR at setup
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
         ├── statusline/statusline-command.sh
@@ -183,11 +183,11 @@ Exports an interview Claude conducts before touching files. Structure:
 
 Four skills ship as **empty shells** because their content is project-specific — the structure (frontmatter, headings, report format) is universal, but the audit categories, detection patterns, file paths, and domain concerns must be researched per project.
 
-| Skill                | What's universal (ships)                                                                                  | What's project-specific (hydrated by RR)                                                                                                                                                  |
-| -------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `p:analysis`         | Three-lens protocol (CS + domain + compliance), step sequence, report format, Cortex audit mode structure | Domain lens content (replaces Psychology lens), compliance framework, cross-disciplinary intersections, AI/ML audit categories + anti-patterns (if project has an AI pipeline subproject) |
-| `audit:code-hygiene` | Category structure (ghost fields, dead code, stale deps, arch smells, type safety, naming, quality)       | Per-category detection patterns, file paths, known hotspots, linter coverage gaps, project-specific report examples                                                                       |
-| `audit:security`     | OWASP category structure (8A-8I), severity guide, report format                                           | Domain-specific PHI/data sensitivity rules, external API checks, framework-specific vulnerabilities, compliance-driven sub-categories                                                     |
+| Skill                  | What's universal (ships)                                                                                  | What's project-specific (hydrated by RR)                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `p:analysis`           | Three-lens protocol (CS + domain + compliance), step sequence, report format, Cortex audit mode structure | Domain lens content (replaces Psychology lens), compliance framework, cross-disciplinary intersections, AI/ML audit categories + anti-patterns (if project has an AI pipeline subproject) |
+| `p:audit:code-hygiene` | Category structure (ghost fields, dead code, stale deps, arch smells, type safety, naming, quality)       | Per-category detection patterns, file paths, known hotspots, linter coverage gaps, project-specific report examples                                                                       |
+| `p:audit:security`     | OWASP category structure (8A-8I), severity guide, report format                                           | Domain-specific PHI/data sensitivity rules, external API checks, framework-specific vulnerabilities, compliance-driven sub-categories                                                     |
 
 **Hydration process:**
 
@@ -199,13 +199,13 @@ Four skills ship as **empty shells** because their content is project-specific �
 ## Category N — {category name}
 
 > **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Run `/p:analysis` or `/audit:code-hygiene` after the codebase has enough code to analyze.
+> Run `/p:analysis` or `/p:audit:code-hygiene` after the codebase has enough code to analyze.
 > The Professor will surface this gap: "Knowledge base is empty, waiting for user specification to fill it in."
 ```
 
 4. **Professor behavior with empty skills:** When a domain-hydrated skill is invoked and its knowledge base sections are empty, the Professor MUST NOT improvise. Instead: state which sections are empty, ask the user to either (a) provide the specification now, (b) point to code/docs to RR against, or (c) defer. The Professor stays in this loop until the skill is filled — never proceeds with best-effort guessing on an empty knowledge base.
 
-5. **Re-hydration:** User can re-run hydration at any time: "fill `/audit:security`" or "hydrate skills" → triggers RR against current codebase to fill/update empty sections.
+5. **Re-hydration:** User can re-run hydration at any time: "fill `/p:audit:security`" or "hydrate skills" → triggers RR against current codebase to fill/update empty sections.
 
 **Phase 2.6 — Host tooling probe (git-host bridge):** Check the install machine for `gh` and `glab` (`command -v`). For each present, write a one-file index skill at `.claude/skills/host-{gh|glab}/SKILL.md` whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: an adopter on GitLab forks + releases professor through `glab`, a GitHub adopter through `gh`, and `/blueprint release` and `/git` read this marker to target the right host. Absent tools get no skill. Then resolve the blueprint repo target: if the user has push access to the canonical repo, set `{BLUEPRINT_REPO}`/`{GH_USER}`/`{BLUEPRINT_CLONE_PATH}` to it; otherwise have them fork it and use the fork.
 
@@ -265,8 +265,8 @@ Ready to /blueprint export.
 
 3. Read VERSION, compute new version
 
-4. Validate CHANGELOG [Unreleased]:
-   if empty → prompt maintainer for bullets (format: "- {Tier}: {scope} — {semantic change}")
+4. Build CHANGELOG bullets from `.professor/release.md` — the pending-sync queue is the source of what ships (format: "- {Tier}: {scope} — {semantic change}").
+   if release.md empty → prompt maintainer for bullets
    Per-bullet migration sub-headings (#### → For:) required for adopter-side action
    Informational-only bullets marked: **`/pcm update`: skip — informational only.**
 
@@ -281,7 +281,9 @@ Ready to /blueprint export.
    git tag -a "v{NEW_VERSION}" -m "v{NEW_VERSION}"   # annotated — --follow-tags skips lightweight tags
    git push origin main --follow-tags (STOP if fails, NEVER force-push)
 
-8. Report: tag URL, commit, source SHA, changelog bullets
+8. Clear `.professor/release.md` — its entries shipped in this release; empty the pending list, keep the header.
+
+9. Report: tag URL, commit, source SHA, changelog bullets
 ```
 
 ### Pre-release checklist

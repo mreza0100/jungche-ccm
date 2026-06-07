@@ -176,12 +176,12 @@ See `skills/build/SKILL.md` for the example.
 
 ### 5. Add research/utility skills (optional)
 
-If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `rnd`, `360`, `ghostwriter`), symlink them into `.codex/skills/` so Codex can use them too. These skills share the same `SKILL.md` across both runtimes — no Codex-specific wrapper needed:
+If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `p:rnd`, `p:360`, `ghostwriter`), symlink them into `.codex/skills/` so Codex can use them too. These skills share the same `SKILL.md` across both runtimes — no Codex-specific wrapper needed:
 
 ```bash
 ln -s ../../.claude/skills/rr .codex/skills/rr
 ln -s ../../.claude/skills/rnd .codex/skills/rnd
-ln -s ../../.claude/skills/360 .codex/skills/360
+ln -s ../../.claude/skills/p:360 .codex/skills/p:360
 ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 ```
 

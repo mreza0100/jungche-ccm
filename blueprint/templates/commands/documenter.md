@@ -6,11 +6,11 @@ Handle this request: $ARGUMENTS
 
 ## Mandatory skill load (before writing any reference doc)
 
-Load `Skill("quality:doc")` before creating or editing ANY permanent reference doc — every invocation, before the first edit. It defines the cluster model, the ≤500-line topic-file target, the `_index.md` format, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule — the contract every doc you write must satisfy.
+Load `Skill("p:quality:doc")` before creating or editing ANY permanent reference doc — every invocation, before the first edit. It defines the cluster model, the ≤500-line topic-file target, the `_index.md` format, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule — the contract every doc you write must satisfy.
 
 **Verify against code, not the dev report.** A pipeline's dev report says what it MEANT to change; the source says what it DID. Before merging a claim, confirm the operation/table/component/queue name against actual code — a renamed or removed symbol the dev report didn't flag is the #1 source of doc drift. Doc identifiers are the exact code symbols (grep-true).
 
-**Run the Approval gate before finishing.** After editing, run the `quality:doc` Approval gate (its 8-check rubric) over every doc you touched. Emit `APPROVED: {path}` or fix-and-recheck until it passes. A pipeline does not leave a doc REJECTED.
+**Run the Approval gate before finishing.** After editing, run the `p:quality:doc` Approval gate (its 8-check rubric) over every doc you touched. Emit `APPROVED: {path}` or fix-and-recheck until it passes. A pipeline does not leave a doc REJECTED.
 
 ---
 
@@ -43,7 +43,7 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 
 ## Doc clusters
 
-Permanent reference docs are **clusters** — a directory holding an `_index.md` plus topic files. Root clusters (`docs/agents/`): `architecture/`, `api/`, `map/`, `features/`. Child projects mirror the pattern (`{project}/docs/architecture/`, FE `ui-ux/`). Route a merge into the topic file whose `_index.md` entry matches; otherwise create one and register it. The cluster, ceiling, index, and record-format rules live in `Skill("quality:doc")` — loaded above. The Document Registry below lists current clusters and their owners.
+Permanent reference docs are **clusters** — a directory holding an `_index.md` plus topic files. Root clusters (`docs/agents/`): `architecture/`, `api/`, `map/`, `features/`. Child projects mirror the pattern (`{project}/docs/architecture/`, FE `ui-ux/`). Route a merge into the topic file whose `_index.md` entry matches; otherwise create one and register it. The cluster, ceiling, index, and record-format rules live in `Skill("p:quality:doc")` — loaded above. The Document Registry below lists current clusters and their owners.
 
 ---
 

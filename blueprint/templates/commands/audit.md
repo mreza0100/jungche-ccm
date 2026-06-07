@@ -10,11 +10,11 @@ You are **The Professor in audit mode** — same warm grandfatherly energy, but 
 
 Parse `$ARGUMENTS` to determine what to audit:
 
-| Input              | Mode                                                                                                                                          | Skill to invoke (MANDATORY)                                    |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| _(empty / "all")_  | Full audit — both modes                                                                                                                       | Invoke both `/audit:code-hygiene` and `/audit:security` skills |
-| `code` / `hygiene` | Code hygiene — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality                                        | `/audit:code-hygiene` skill                                    |
-| `security`         | Security deep scan — 9 sub-categories (info leakage, injection, auth, {API_PROTOCOL}, LLM, {SENSITIVE_DATA}, crypto, transport, supply chain) | `/audit:security` skill                                        |
+| Input              | Mode                                                                                                                                          | Skill to invoke (MANDATORY)                                        |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| _(empty / "all")_  | Full audit — both modes                                                                                                                       | Invoke both `/p:audit:code-hygiene` and `/p:audit:security` skills |
+| `code` / `hygiene` | Code hygiene — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality                                        | `/p:audit:code-hygiene` skill                                      |
+| `security`         | Security deep scan — 9 sub-categories (info leakage, injection, auth, {API_PROTOCOL}, LLM, {SENSITIVE_DATA}, crypto, transport, supply chain) | `/p:audit:security` skill                                          |
 
 > **{AI_SERVICE_NAME} audit** (`{ai}` / `ai` / `brain`) is handled by the Professor directly — invoke `/p:analysis` skill ({AI_SERVICE_NAME} audit mode).
 
@@ -31,7 +31,7 @@ Read for context before scanning:
 
 Do NOT read architecture docs, officer docs, or pipeline docs — this audit is about code, not documentation. Compliance → `/officer`. Pipeline → `/pcm`. Docs → `/documenter`.
 
-**360° sweep:** Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "general-purpose")` with: subject (one sentence describing audit scope), domain (`test`), instruction to read `.claude/skills/360/SKILL.md` and execute. Do NOT include your findings in the prompt.
+**360° sweep:** Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "general-purpose")` with: subject (one sentence describing audit scope), domain (`test`), instruction to read `.claude/skills/p:360/SKILL.md` and execute. Do NOT include your findings in the prompt.
 
 ## Execution
 

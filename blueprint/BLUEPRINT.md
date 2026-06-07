@@ -197,12 +197,13 @@ your-project/
 ├── .professor/
 │   ├── VERSION                        ← installed blueprint version (e.g., 0.5.0)
 │   ├── manifest.json                  ← interview answers + file hashes (machine-readable replay seed)
-│   └── decisions.md                   ← what's different from vanilla Professor (human-readable)
+│   ├── drift.md                       ← local customizations the merge keeps (human-readable)
+│   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
 │   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /council, /audit + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
-│   ├── skills/                        ← cloned from public repos (rr, 360, ghostwriter) + bundled (rnd)
+│   ├── skills/                        ← cloned from public repos (rr, p:360, ghostwriter) + bundled (p:rnd)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
@@ -314,7 +315,8 @@ At install time, SETUP.md creates a `.professor/` directory at the repo root con
 
 1. **`VERSION`** — the release tag you installed from
 2. **`manifest.json`** — all interview answers (replay seed) + SHA-256 hashes of every Professor-owned file
-3. **`decisions.md`** — human-readable record of what makes your install different from vanilla Professor
+3. **`drift.md`** — local customizations the merge keeps (what makes your install different from vanilla Professor)
+4. **`release.md`** — framework changes pending upstream sync; `/blueprint release` consumes and clears it
 
 When you run `/pcm update`, the update protocol:
 
@@ -324,7 +326,7 @@ When you run `/pcm update`, the update protocol:
 4. **Three-way hash comparison** per file: installed baseline vs. current on-disk vs. re-parameterized upstream
 5. Classifies changes into three buckets: **auto-apply** (upstream changed, you didn't touch), **review** (conflict or character change), **manual** (breaking migration, new interview questions)
 6. Applies accepted changes, regenerates the manifest
-7. Appends to `decisions.md` — records version jump, which files you kept over upstream, new opt-ins
+7. Appends to `drift.md` — records version jump, which files you kept over upstream, new opt-ins
 
 The interview manifest is the key innovation — it means updates don't require re-answering the install interview. Your answers are the replay seed. Only genuinely new questions (new template placeholders) trigger a mini re-interview.
 

@@ -33,6 +33,27 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-06-07
+
+Professor-native skills consolidated into the `p:*` namespace, and `/pcm` gains a two-ledger system (`drift.md` for local customizations, `release.md` for changes pending upstream) plus a rebase-first, ask-to-sync Update Protocol.
+
+### Changed
+
+- Tier A (skills): professor-native skills consolidated into the `p:*` family — `quality:doc`→`p:quality:doc`, `quality:prompt`→`p:quality:prompt`, `rnd`→`p:rnd`, `360`→`p:360`, `audit:code-hygiene`→`p:audit:code-hygiene`, `audit:security`→`p:audit:security`. All mandatory-load refs, bundled lists, and `sources.json` keys updated. (breaking)
+- Tier A: `commands/pcm.md` Update Protocol — Step 5 **rebase-first** (re-hash on-disk fresh + `drift.md` ledger as forced KEEP-LOCAL, never overwrite blindly); Step 9 **offer to sync upstream** (after consuming, ask whether to publish via `/blueprint`). (safe-auto)
+
+### Added
+
+- Mechanics: **two-ledger `.professor/` system** — `decisions.md` renamed to `drift.md` (local customizations the merge keeps); new `release.md` (framework changes pending upstream sync). `/pcm` logs every infra change to exactly one — improvement to existing infra → `release.md`, project-specific → `drift.md`, unsure → ask. `/blueprint release` builds its CHANGELOG from `release.md` and clears it. (safe-auto)
+- Tier A: `skills/p:quality:prompt` — audit the **whole prompt stream** an LLM reads (CLAUDE.md + co-loaded skill descriptions + active command/agent), not a file in isolation; dates-of-change in prompt files flagged as an explicit antipattern. (safe-auto)
+
+### Migration
+
+#### For: all adopters
+
+- The skill renames apply via `/pcm update` (old dirs removed, `p:*` added, mandatory-load refs rewritten). Update any custom references to the `p:*` names. `360` is source-fetched: its `sources.json` key is now `p:360` — for full resolution the canonical `360` repo's own `SKILL.md` must read `name: p:360`.
+- `.professor/decisions.md` is renamed to `drift.md`, and a new `release.md` is added. `/pcm update` performs the rename; customization history is preserved.
+
 ## [0.16.1] — 2026-06-07
 
 ### Changed

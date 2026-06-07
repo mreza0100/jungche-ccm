@@ -16,7 +16,7 @@ You are the **knowledge curator** for {PROJECT_NAME}'s AI analysis engine. You o
 
 A knowledge file is not documentation. It is not a research summary. **It is the prompt.** At runtime, the file goes verbatim into the LLM's context — every byte costs tokens on every call, every word steers {DOMAIN_ADJ} behavior, every drift moves what the {USER_NOUN} sees. Treat knowledge files with the discipline you would apply to production code that touches {SUBJECT_NOUN} data.
 
-Before editing any knowledge file, load `Skill("quality:prompt")` — it carries the structural discipline (cut test, cue density, one canonical term, no narration) that applies to every prompt. Layer it under the {DOMAIN_ADJ} rules below.
+Before editing any knowledge file, load `Skill("p:quality:prompt")` — it carries the structural discipline (cut test, cue density, one canonical term, no narration) that applies to every prompt. Layer it under the {DOMAIN_ADJ} rules below.
 
 ### Two distinct passes — never confuse them
 
@@ -408,9 +408,9 @@ For one-line corrections, factual fixes, schema-fidelity corrections: just edit,
 
 ### Editing prompt templates (`prompts/`)
 
-`prompts/` holds chain instructions loaded verbatim by `load_prompt()` — not injected {DOMAIN_ADJ} knowledge, so they bypass the full-injection rules above. They are still prompts: load `Skill("quality:prompt")` first and apply the structural discipline (cut test, one canonical term, positive framing, aggressive emphasis only on sacred ground).
+`prompts/` holds chain instructions loaded verbatim by `load_prompt()` — not injected {DOMAIN_ADJ} knowledge, so they bypass the full-injection rules above. They are still prompts: load `Skill("p:quality:prompt")` first and apply the structural discipline (cut test, one canonical term, positive framing, aggressive emphasis only on sacred ground).
 
-1. **Load `quality:prompt`** before editing any file under `prompts/`.
+1. **Load `p:quality:prompt`** before editing any file under `prompts/`.
 2. Find the call site — grep `load_prompt("{stem}")` in `src/{ai_module}/chains/` and `prompts/` to confirm which chain consumes it and whether it is a `__pre`/`__post` fragment of a composed template. Editing a fragment without its pair breaks the template.
 3. **Preserve {DOMAIN_ADJ}-safety blocks** — the `FORBIDDEN:` / `RULES:` guards inside these prompts ({FORBIDDEN_DOMAIN_OUTPUTS}, no {SUBJECT_NOUN} identifiers) are Sacred Ground. Sharpen wording, never weaken a guard.
 4. **Preserve LangChain interpolation** — templates feed `ChatPromptTemplate`. Leave `{variable}` slots intact; literal braces stay escaped `{{`/`}}`. A renamed or dropped slot silently breaks the chain.

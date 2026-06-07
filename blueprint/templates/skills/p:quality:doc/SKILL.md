@@ -1,5 +1,5 @@
 ---
-name: quality:doc
+name: p:quality:doc
 description: Use BEFORE writing or restructuring any permanent reference doc under docs/ (architecture, api, map, features, child-project docs). Defines how to shape reference docs for LLM Read/grep consumption — the cluster model, the ~500-line topic-file target (~80 KB hard cap), navigation indexes, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule. Mandatory load for /documenter; load it yourself before any large reference-doc edit.
 ---
 
@@ -90,7 +90,7 @@ Every identifier in a reference doc is the exact code/DB name, verbatim: a table
 
 ## Why these rules hold (grounded)
 
-- **Prettier force-pads tables.** It aligns every column to the widest cell, with no config option to disable it, and {PROJECT_NAME} runs `prettier --write` on all markdown. So a "compact unpadded table" is a mirage — it re-bloats on the next save. The real choice is _padded table_ vs _sections_. ([prettier#12074](https://github.com/prettier/prettier/issues/12074))
+- **Prettier force-pads tables.** It aligns every column to the widest cell, with no config option to disable it, and {PROJECT*NAME} runs `prettier --write` on all markdown. So a "compact unpadded table" is a mirage — it re-bloats on the next save. The real choice is \_padded table* vs _sections_. ([prettier#12074](https://github.com/prettier/prettier/issues/12074))
 - **Padding is real token waste.** In the pre-section `features` cluster, 45.9% of all table-row bytes were alignment spaces; the worst file hit 71.8%. Whitespace is ~10–24% of input tokens in formatting studies — BPE merging softens it but never makes it free. ([arXiv:2508.13666](https://arxiv.org/html/2508.13666v1))
 - **Format ≠ comprehension for frontier models** (p=0.484 across 9,649 experiments; capability dominates by 21 points), which is why the rules above optimize mechanics, not "readability." ([arXiv:2602.05447](https://arxiv.org/abs/2602.05447))
 - **Heading-per-record matches retrieval evidence.** Heading-based chunking improves retrieval ~35% over unstructured text, and a key:value/heading layout beat flat tables on field retrieval in head-to-head benchmarks (60.7% vs 51.9%) — the gap widens precisely when one field is long. Anthropic's own long-context guidance wraps each record as its own labeled block.

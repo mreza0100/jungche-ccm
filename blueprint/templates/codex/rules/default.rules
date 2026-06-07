@@ -125,7 +125,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["edit", "{AI_PROJECT}/knowledge"],
     decision = "prompt",
-    justification = "Files under {AI_PROJECT}/knowledge/ ARE the {AI_SERVICE_NAME} prompts, injected verbatim into the LLM. Human-driven knowledge work routes via /km (loads the quality:prompt skill first). Review before editing directly.",
+    justification = "Files under {AI_PROJECT}/knowledge/ ARE the {AI_SERVICE_NAME} prompts, injected verbatim into the LLM. Human-driven knowledge work routes via /km (loads the p:quality:prompt skill first). Review before editing directly.",
     match = ["edit {AI_PROJECT}/knowledge/REGISTRY.json", "edit {AI_PROJECT}/knowledge/prompts/foo.md"],
     not_match = [],
 )

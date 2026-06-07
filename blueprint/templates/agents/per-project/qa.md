@@ -37,7 +37,7 @@ Read `$DOCS_REL/`, all pipeline docs. Read dev code + tests + architecture doc. 
 
 ## Step 3.5: 360° sweep (test domain)
 
-Before writing any tests, **spawn a separate agent** for the 360° sweep — it must run with a clean context to avoid bias. Use `Agent(subagent_type: "general-purpose")` with a prompt containing ONLY: the subject (one sentence describing the feature under test), the domain (`test`), and an instruction to read `.claude/skills/360/SKILL.md` and execute the protocol. Do NOT include any of your own analysis or findings in the prompt. Use the returned angle list to guide which adversarial tests to write.
+Before writing any tests, **spawn a separate agent** for the 360° sweep — it must run with a clean context to avoid bias. Use `Agent(subagent_type: "general-purpose")` with a prompt containing ONLY: the subject (one sentence describing the feature under test), the domain (`test`), and an instruction to read `.claude/skills/p:360/SKILL.md` and execute the protocol. Do NOT include any of your own analysis or findings in the prompt. Use the returned angle list to guide which adversarial tests to write.
 
 ## Step 4: Write adversarial integration tests
 

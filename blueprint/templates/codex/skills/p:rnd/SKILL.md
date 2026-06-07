@@ -1,9 +1,9 @@
 ---
-name: rnd
+name: p:rnd
 description: RND goal-driven iteration. Invoked by `RND`, `research and develop`, `iterate until`, or "find the best approach for" a testable outcome.
 ---
 
-Read `.claude/skills/rnd/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
+Read `.claude/skills/p:rnd/SKILL.md` in full — it is the source-of-truth protocol. Follow it verbatim.
 
 ## Codex-only execution mapping
 

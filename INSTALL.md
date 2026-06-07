@@ -458,13 +458,13 @@ git clone https://github.com/mreza0100/rr.git .claude/skills/rr && rm -rf .claud
 git clone https://github.com/mreza0100/360.git .claude/skills/360 && rm -rf .claude/skills/360/.git
 git clone https://github.com/mreza0100/ghost-writer.git .claude/skills/ghostwriter && rm -rf .claude/skills/ghostwriter/.git
 
-# rnd has no standalone repo yet — copy from blueprint
-cp -r blueprint/templates/skills/rnd .claude/skills/rnd
+# p:rnd has no standalone repo yet — copy from blueprint
+cp -r blueprint/templates/skills/p:rnd .claude/skills/p:rnd
 ```
 
 **Parameterize 360°:** Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in the inquiry domain's Stakeholder conflicts dimension with the user's persona terms from Batch 5.
 
-**Why repos, not bundled copies:** Skills evolve independently of the Professor pipeline. When a skill ships a new version, adopters can `cd .claude/skills/rr && git init && git remote add origin https://github.com/mreza0100/rr.git && git fetch && git checkout origin/main -- SKILL.md` to pull updates without touching the rest of their install. The blueprint's `templates/skills/` directory exists only as a fallback for `rnd` (which has no standalone repo yet).
+**Why repos, not bundled copies:** Skills evolve independently of the Professor pipeline. When a skill ships a new version, adopters can `cd .claude/skills/rr && git init && git remote add origin https://github.com/mreza0100/rr.git && git fetch && git checkout origin/main -- SKILL.md` to pull updates without touching the rest of their install. The blueprint's `templates/skills/` directory exists only as a fallback for `p:rnd` (which has no standalone repo yet).
 
 These are Tier A thinking protocols that agents reference at key moments. QA agents call the 360° `test` domain before writing adversarial tests. Professor calls the 360° `inquiry` domain before deep-diving into code. Ghostwriter captures and reproduces a writer's mechanical fingerprint for external-facing deliverables.
 
@@ -502,7 +502,7 @@ If the user said YES to Codex:
    - Adds Codex-specific instructions (git ownership when Codex orchestrates, Skill→Agent substitutions)
 4. For each per-project agent role (planner, architect, developer, qa), generate a `.codex/agents/{project}-{role}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/developer.toml`.
 5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/build/SKILL.md`.
-6. For each shared `.claude/skills/{360,rr,rnd,ghostwriter,vision-factory,quality:prompt,quality:doc}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch — verify this by grepping the wrappers before reporting Codex setup complete.
+6. For each shared `.claude/skills/{360,rr,p:rnd,ghostwriter,vision-factory,p:quality:prompt,p:quality:doc}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch — verify this by grepping the wrappers before reporting Codex setup complete.
 
 If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
 

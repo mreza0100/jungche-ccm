@@ -243,20 +243,20 @@ Claude takes your answers and:
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
    7a. **Installs skills.** Two kinds: **source-fetched** skills are cloned from their canonical public repos (listed in `blueprint/templates/skills/sources.json`) into `.claude/skills/{name}/` — the blueprint never vendors a copy of these, so they can't drift; the installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project. **Bundled** skills ship inside `blueprint/templates/skills/` (blueprint-owned protocols + domain-hydrated shells) and are copied + parameterized in place.
 
-| Skill                | Source                                                          | Parameterization                                                     |
-| -------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `rr`                 | repo (sources.json) https://github.com/mreza0100/rr             | None                                                                 |
-| `360`                | repo (sources.json) https://github.com/mreza0100/360            | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `ghostwriter`        | repo (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
-| `vision-factory`     | repo (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
-| `rnd`                | Bundled in `blueprint/templates/skills/rnd/`                    | None                                                                 |
-| `p:refine`           | Bundled in `blueprint/templates/skills/p:refine/`               | None (pipeline-coupled)                                              |
-| `p:wave-review`      | Bundled in `blueprint/templates/skills/p:wave-review/`          | None (pipeline-coupled)                                              |
-| `quality:prompt`     | Bundled in `blueprint/templates/skills/quality:prompt/`         | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
-| `quality:doc`        | Bundled in `blueprint/templates/skills/quality:doc/`            | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
-| `p:analysis`         | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
-| `audit:code-hygiene` | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
-| `audit:security`     | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
+| Skill                  | Source                                                          | Parameterization                                                     |
+| ---------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `rr`                   | repo (sources.json) https://github.com/mreza0100/rr             | None                                                                 |
+| `p:360`                | repo (sources.json) https://github.com/mreza0100/360            | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `ghostwriter`          | repo (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
+| `vision-factory`       | repo (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
+| `p:rnd`                | Bundled in `blueprint/templates/skills/p:rnd/`                  | None                                                                 |
+| `p:refine`             | Bundled in `blueprint/templates/skills/p:refine/`               | None (pipeline-coupled)                                              |
+| `p:wave-review`        | Bundled in `blueprint/templates/skills/p:wave-review/`          | None (pipeline-coupled)                                              |
+| `p:quality:prompt`     | Bundled in `blueprint/templates/skills/p:quality:prompt/`       | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
+| `p:quality:doc`        | Bundled in `blueprint/templates/skills/p:quality:doc/`          | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
+| `p:analysis`           | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
+| `p:audit:code-hygiene` | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
+| `p:audit:security`     | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
 
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
 7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `.claude/settings.json` hooks. Sends a macOS native notification with Glass sound when a turn takes 30+ seconds. Character name and project root path are parameterized at install. Add to `.claude/settings.json`:
@@ -320,7 +320,7 @@ Claude takes your answers and:
 
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 
-8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, command skill wrappers, and shared skill wrappers/symlinks for `360`, `rr`, `rnd`, `ghostwriter`, `vision-factory`, `quality:prompt`, and `quality:doc`. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), and `decisions.md` (human-readable record of what's different from vanilla Professor). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
+8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, command skill wrappers, and shared skill wrappers/symlinks for `p:360`, `rr`, `p:rnd`, `ghostwriter`, `vision-factory`, `p:quality:prompt`, and `p:quality:doc`. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), `drift.md` (human-readable record of what's different from vanilla Professor — the merge keeps these local), and `release.md` (framework changes pending upstream sync). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
 
 **Build roster validation:** `/build` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
 `json
@@ -496,7 +496,7 @@ When new versions of Professor are released (as git tags on `mreza0100/professor
    - New file from upstream → **auto-add** (mechanics) or **ask** (Tier A/B)
 6. Presents changes in three buckets: auto-apply, review, manual
 7. Applies accepted changes, regenerates manifest with new hashes + updated version
-8. Appends to `.professor/decisions.md` — records which files you kept over upstream, new opt-ins, re-interview changes
+8. Appends to `.professor/drift.md` — records which files you kept over upstream, new opt-ins, re-interview changes
 
 ### Version semantics
 
