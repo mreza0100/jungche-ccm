@@ -9,13 +9,50 @@
 #
 # <pipeline> is the kebab-case pipeline name (e.g., "session-notes")
 #
-# Monorepo: each pipeline gets a SINGLE worktree of the entire repo at
-# .worktrees/<pipeline>/. One branch, one checkout, all projects included.
+# Each pipeline gets a SINGLE worktree of the entire repo at .worktrees/<pipeline>/.
+# One branch, one checkout, every project in the roster included. At roster size 1
+# the worktree IS the repo root (no per-project subdir).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ALLOC="${ROOT}/.claude/scripts/alloc-ports.sh"
+
+# ─── Project roster ───────────────────────────────────────────────
+# SETUP fills this from the install interview — one entry per project, in order.
+# Each entry is a pipe-delimited record:
+#
+#   dir | install_kind | install_cmd | env_files
+#
+#   dir          — project directory relative to repo root. "." for a single-project
+#                  repo (the worktree root IS the project; no subdir).
+#   install_kind — how deps are provisioned in the worktree:
+#                    install  — run install_cmd inside the worktree
+#                    symlink  — symlink node_modules from the main checkout
+#                               (falls back to install_cmd if main has none)
+#                    none     — nothing to install (e.g. an infra project)
+#   install_cmd  — the command run in the project dir to install deps
+#                  (e.g. "pnpm install --frozen-lockfile", "uv sync", "npm install")
+#   env_files    — space-separated env filenames to copy from main into the worktree
+#                  with this project's port substituted (".env.local .env.test"),
+#                  or "-" for none.
+#
+# Single-project collapse: a roster of one entry with dir "." targets the repo root.
+PROJECTS=(
+  # {PROJECT_ROSTER} — SETUP expands one line per roster entry, e.g.:
+  # "{project}|{INSTALL_KIND}|{PROJECT_INSTALL_CMD}|{PROJECT_ENV_FILES}"
+)
+
+# Resolve a project's path inside a target tree. At roster size 1 the entry's dir
+# is ".", so the path collapses to the tree root with no trailing subdir.
+proj_path() {
+  local base="$1" dir="$2"
+  if [ "$dir" = "." ]; then
+    echo "$base"
+  else
+    echo "${base}/${dir}"
+  fi
+}
 
 cmd_create() {
   local pipeline="$1"
@@ -34,35 +71,32 @@ cmd_create() {
     git branch "$branch" main
   fi
 
-  # Create worktree — full monorepo checkout
+  # Create worktree — full repo checkout
   git worktree add "$worktree_dir" "$branch"
 
-  # Install dependencies for each project
-  # Backend ({BE_PKG_MGR})
-  if [ -f "${worktree_dir}/{BACKEND_PROJECT}/package.json" ]; then
-    (cd "${worktree_dir}/{BACKEND_PROJECT}" && {BE_PKG_MGR} install --frozen-lockfile) || true
-  fi
-
-  # {AI_SERVICE_NAME} ({AI_PKG_MGR})
-  if [ -f "${worktree_dir}/{AI_PROJECT}/pyproject.toml" ]; then
-    (cd "${worktree_dir}/{AI_PROJECT}" && {AI_PKG_MGR} sync 2>/dev/null) || true
-  fi
-
-  # Frontend (symlink node_modules from main checkout)
-  if [ -d "${ROOT}/{FRONTEND_PROJECT}/node_modules" ]; then
-    ln -sfn "${ROOT}/{FRONTEND_PROJECT}/node_modules" "${worktree_dir}/{FRONTEND_PROJECT}/node_modules"
-  fi
-
-  # Web (npm — marketing site)
-  if [ -f "${worktree_dir}/{WEB_PROJECT}/package.json" ]; then
-    if [ -d "${ROOT}/{WEB_PROJECT}/node_modules" ]; then
-      ln -sfn "${ROOT}/{WEB_PROJECT}/node_modules" "${worktree_dir}/{WEB_PROJECT}/node_modules"
-    else
-      (cd "${worktree_dir}/{WEB_PROJECT}" && npm install) || true
-    fi
-  fi
-
-  # Infrastructure: nothing to install
+  # Install dependencies for each project in the roster
+  local entry dir install_kind install_cmd env_files src_path dst_path
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r dir install_kind install_cmd env_files <<< "$entry"
+    src_path="$(proj_path "$ROOT" "$dir")"
+    dst_path="$(proj_path "$worktree_dir" "$dir")"
+    case "$install_kind" in
+      install)
+        if [ -n "$install_cmd" ]; then
+          (cd "$dst_path" && eval "$install_cmd" 2>/dev/null) || true
+        fi
+        ;;
+      symlink)
+        # Reuse main's node_modules when present; otherwise install fresh.
+        if [ -d "${src_path}/node_modules" ]; then
+          ln -sfn "${src_path}/node_modules" "${dst_path}/node_modules"
+        elif [ -n "$install_cmd" ]; then
+          (cd "$dst_path" && eval "$install_cmd") || true
+        fi
+        ;;
+      none) : ;;  # nothing to install
+    esac
+  done
 
   # Allocate unique ports (one allocation per pipeline)
   local ports
@@ -97,45 +131,11 @@ WEB_PORT=${web_port}
 CORTEX_PORT=${cortex_port}
 ENVEOF
 
-  # Copy .env.local for web (standalone — reads public env vars at build time)
-  if [ -f "${ROOT}/{WEB_PROJECT}/.env.local" ]; then
-    cp "${ROOT}/{WEB_PROJECT}/.env.local" "${worktree_dir}/{WEB_PROJECT}/.env.local"
-  fi
-
-  # Copy and override .env.local/.env.test for backend
-  if [ -f "${ROOT}/{BACKEND_PROJECT}/.env.local" ]; then
-    sed "s/^PORT=.*/PORT=${be_port}/" "${ROOT}/{BACKEND_PROJECT}/.env.local" > "${worktree_dir}/{BACKEND_PROJECT}/.env.local"
-  fi
-  if [ -f "${ROOT}/{BACKEND_PROJECT}/.env.test" ]; then
-    sed \
-      -e "s|postgresql://postgres@localhost:[0-9]*/{PROJECT_NAME_LOWER}_test|postgresql://postgres@localhost:${test_pg_port}/{PROJECT_NAME_LOWER}_test|" \
-      -e "s/^PORT=.*/PORT=${be_port}/" \
-      "${ROOT}/{BACKEND_PROJECT}/.env.test" > "${worktree_dir}/{BACKEND_PROJECT}/.env.test"
-  fi
-
-  # Copy .env.local for {AI_SERVICE_NAME} — inject CORTEX_PORT for HTTP server
-  if [ -f "${ROOT}/{AI_PROJECT}/.env.local" ]; then
-    if grep -q "^CORTEX_PORT=" "${ROOT}/{AI_PROJECT}/.env.local"; then
-      sed "s/^CORTEX_PORT=.*/CORTEX_PORT=${cortex_port}/" "${ROOT}/{AI_PROJECT}/.env.local" > "${worktree_dir}/{AI_PROJECT}/.env.local"
-    else
-      cp "${ROOT}/{AI_PROJECT}/.env.local" "${worktree_dir}/{AI_PROJECT}/.env.local"
-      echo "CORTEX_PORT=${cortex_port}" >> "${worktree_dir}/{AI_PROJECT}/.env.local"
-    fi
-  fi
-  if [ -f "${ROOT}/{AI_PROJECT}/.env.test" ]; then
-    local cortex_env_test="${worktree_dir}/{AI_PROJECT}/.env.test"
-    sed \
-      -e "s|postgresql+asyncpg://postgres:postgres@localhost:[0-9]*/{PROJECT_NAME_LOWER}_test|postgresql+asyncpg://postgres:postgres@localhost:${test_pg_port}/{PROJECT_NAME_LOWER}_test|" \
-      -e "s|http://localhost:[0-9]*/|http://localhost:${test_ls_port}/|g" \
-      -e "s|localhost\.localstack\.cloud:[0-9]*/|localhost.localstack.cloud:${test_ls_port}/|g" \
-      "${ROOT}/{AI_PROJECT}/.env.test" > "$cortex_env_test"
-    # Inject or override CORTEX_PORT
-    if grep -q "^CORTEX_PORT=" "$cortex_env_test"; then
-      sed -i '' "s/^CORTEX_PORT=.*/CORTEX_PORT=${cortex_port}/" "$cortex_env_test"
-    else
-      echo "CORTEX_PORT=${cortex_port}" >> "$cortex_env_test"
-    fi
-  fi
+  # Copy per-project env files, substituting allocated ports.
+  # SETUP expands one block per roster entry that declares env_files — the port
+  # substitution rules are project-specific, so they materialize per entry rather
+  # than from the array. A single-project repo gets one block targeting the root.
+  # {ENV_FILE_PROVISION} — SETUP fills this from the roster's env_files + port map.
 
   echo "Worktree ready: $worktree_dir"
   echo "Branch: $branch"
@@ -165,8 +165,11 @@ cmd_remove() {
   # Free port allocation
   "$ALLOC" free "$pipeline"
 
-  # Tear down the pipeline's docker test stack (containers + volumes)
-  make -C "${ROOT}/{INFRA_PROJECT}" {INFRA_NUKE_TARGET} PIPELINE="$pipeline" 2>/dev/null || true
+  # Tear down the pipeline's docker test stack (containers + volumes).
+  # No-op when the roster has no infra project ({INFRA_PROJECT} = "-").
+  if [ "{INFRA_PROJECT}" != "-" ]; then
+    make -C "${ROOT}/{INFRA_PROJECT}" {INFRA_NUKE_TARGET} PIPELINE="$pipeline" 2>/dev/null || true
+  fi
 
   echo "Pipeline cleaned up: $pipeline"
 }
@@ -207,7 +210,9 @@ cmd_prune() {
 
     rm -rf "$d"
     "$ALLOC" free "$name" 2>/dev/null || true
-    make -C "${ROOT}/{INFRA_PROJECT}" {INFRA_NUKE_TARGET} PIPELINE="$name" 2>/dev/null || true
+    if [ "{INFRA_PROJECT}" != "-" ]; then
+      make -C "${ROOT}/{INFRA_PROJECT}" {INFRA_NUKE_TARGET} PIPELINE="$name" 2>/dev/null || true
+    fi
     echo "PRUNED: $name (orphaned worktree dir)"
     pruned=$((pruned + 1))
   done

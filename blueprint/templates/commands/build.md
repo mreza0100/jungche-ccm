@@ -4,11 +4,25 @@ Run the full {PROJECT_NAME} pipeline for: $ARGUMENTS
 
 **All feature requests MUST go through this pipeline.** No cowboy coding.
 **All development happens from this root — there are no child build commands.**
+
+<!-- ROSTER MODEL (read before editing this file)
+The per-project pipeline stages (analysis, architecture, development, QA) are written ONCE as a
+generic `{project}` PATTERN block — not as N hardcoded role sections. Each block is marked with a
+`PATTERN: per-project` HTML comment and uses the roster tokens: `{project}` (directory),
+`{PROJECT_ROLE}` (role label), `{PROJECT_STACK}`, `{PROJECT_PKG_MGR}`, `{PROJECT_TEST_RUNNER}`,
+`{PROJECT_PORT}`, and `{ROLE}` (the routing key, e.g. `{ROLE}-ONLY`). At install, SETUP expands
+each PATTERN block ONCE PER `{PROJECT_ROSTER}` entry, substituting that entry's fields — so a
+1-project repo and a 7-project monorepo get a correctly-sized command from the same template.
+Cross-project / integration steps (mono-planner consolidation, mono-architect, the DB-architecture
+seam, post-merge integration) are gated on `{PROJECT_ROSTER}` size > 1 and are SKIPPED for a
+single-project repo, where the worktree IS the repo root and routing is trivially that one project.
+-->
+
 **Autonomous execution contract: once started, `/build` never stops mid-run to ask questions or wait for approval. Pre-flight validation runs before any pipeline work. If validation passes, the pipeline runs to completion. The only defined stop points are: pre-flight failure (before any work starts) and Fix Loop Escalation → BLOCKED-DEFERRED (preserves work for `/jc` resolution). Inventing any other stop — a "needs-a-decision" pause, a "this looks risky" halt — is a contract violation, not caution. A costly, external, or production-affecting action a task requires (paid API call, live deploy) is not a stop: decide from context, take the safest reversible path, and log it. Raise a true blocker as a pre-flight fail-fast, never mid-run.**
 
 **ZERO GAP contract: when the task manifest (`$DOCS/0-task.md`) is a `/p:refine` ZERO-GAP spec — routing, data model, contracts, file plan, and signatures all present — every pipeline agent (planner, architects, developers) IMPLEMENTS and VALIDATES it; none re-decides routing, re-designs the data model or contracts, or re-scopes. Thread this into every agent spawn. Surface a genuine spec flaw (flag to the orchestrator / BLOCKED-DEFERRED), never silently change it. A standalone build given a bare description: agents design as normal.**
 
-**Doc-awareness — thread into every agent spawn:** to understand existing code, consult the grep-true doc clusters — read the project's `docs/architecture/_index.md`, then `grep` the cluster for the exact symbol; the whole DB schema (real {DATABASE} names) is `docs/agents/graph/db/postgres.mmd`. Doc identifiers match code/DB names verbatim.
+**Doc-awareness — thread into every agent spawn:** to understand existing code, consult the grep-true doc clusters — read the project's `docs/architecture/_index.md`, then `grep` the cluster for the exact symbol; the whole {DATABASE} schema (real {DATABASE} names) is `docs/agents/graph/db/postgres.mmd`. Doc identifiers match code/DB names verbatim.
 
 ---
 
@@ -142,24 +156,23 @@ Resolve path variables:
 - **`$DOCS`** = `docs/dev/builds/{name}` — pipeline docs from repo root
 - **`$DOCS_REL`** = `../../../docs/dev/builds/{name}` — pipeline docs from worktree
 - **`$DOCS_POST`** = `../docs/dev/builds/{name}` — pipeline docs from project subdir (POST-MERGE)
-- **`$WORKTREE`** = `.worktrees/{name}` — pipeline worktree directory (full monorepo checkout)
+- **`$WORKTREE`** = `.worktrees/{name}` — pipeline worktree directory (full checkout of the whole roster)
 - **`$ARCHIVE`** = `docs/dev/builds/archive` — archive parent directory
-- **`$PROJECTS`** = list of affected projects (e.g., `be`, `fe`, `{AI_PROJECT_KEY}`, `infra`) — set by mono-planner routing
-- **Pipeline branch:** `pipeline/{name}` (single branch for all projects)
-- **Backend in worktree:** `$WORKTREE/{project-be}`
-- **Frontend in worktree:** `$WORKTREE/{project-fe}`
-- **{AI_PROJECT_LABEL} in worktree:** `$WORKTREE/{project-cortex}`
-- **Installed project worktrees:** `{INSTALLED_PROJECT_WORKTREE_LIST}`
+- **`$PROJECTS`** = list of affected projects from `{PROJECT_ROSTER}` (e.g. one `{ROLE}` per affected roster entry) — set by routing. A single-project roster makes this trivially the one project.
+- **Pipeline branch:** `pipeline/{name}` (single branch for the whole worktree)
+- **`$WORKTREE` layout:** one worktree holds the roster. **Multi-project roster:** each roster entry lives in its subdir `$WORKTREE/{project}`. **Single-project roster:** the worktree IS the repo root — there is no per-project subdir, so `$WORKTREE/{project}` collapses to `$WORKTREE`.
 
 <!-- INSTALLER:
-Materialize this command from the actual project roster. Delete every planner,
-architect, developer, QA, db-admin, and devops block for projects that do not
-exist in the target repo. Do not map missing web/infra placeholders onto another
-project. After writing, grep every referenced `*/.claude/agents/*.md` path and
-fail install if any path is missing.
-If a project archetype is absent, delete its entire optional block and every
-report-list/table reference to that project. `{OPTIONAL_*}` placeholders are
-install-time scaffolding and MUST NOT survive into an installed repo.
+Materialize this command from the actual `{PROJECT_ROSTER}`. Each block marked
+`<!-- PATTERN: per-project -->` is written once with generic `{project}`/`{PROJECT_ROLE}`/`{ROLE}`
+
+tokens — EXPAND it once per roster entry, substituting that entry's directory, role label, stack,
+package manager, test runner, and port. Spawn an agent only for roster entries that actually have
+the corresponding `{project}/.claude/agents/*.md` file.
+For a SINGLE-PROJECT roster: emit exactly one expansion of each PATTERN block, drop every step
+gated `(roster size > 1)`, and resolve `$WORKTREE/{project}` to `$WORKTREE` (repo root).
+After writing, grep every referenced `{project}/.claude/agents/*.md` path and fail install if any
+path is missing. No `{project}` / `{ROLE}` / `{PROJECT_*}` placeholder may survive into an installed repo.
 -->
 
 ```bash
@@ -191,43 +204,31 @@ Capture `START=$(date +%s)` (for the footer's elapsed time), then emit the § St
 
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
-Spawn ALL INSTALLED child planners **in parallel** (single message, one Agent call per installed project).
+Spawn the child planner for EVERY roster entry **in parallel** (single message, one Agent call per roster entry). A single-project roster spawns exactly one planner.
 **Model: sonnet** — child planners do structured analysis, not strategic decisions.
 
+<!-- PATTERN: per-project — SETUP expands once per {PROJECT_ROSTER} entry -->
+
 ```
-Agent(general-purpose, model: "sonnet"): "You are the backend planner. Read and follow {project-be}/.claude/agents/planner.md.
+Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} planner. Read and follow {project}/.claude/agents/planner.md.
   Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {project-be}/ codebase and write $DOCS/1-analysis-be.md."
-
-Agent(general-purpose, model: "sonnet"): "You are the frontend planner. Read and follow {project-fe}/.claude/agents/planner.md.
-  Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {project-fe}/ codebase and write $DOCS/1-analysis-fe.md."
-
-Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} planner. Read and follow {project-cortex}/.claude/agents/planner.md.
-  Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {project-cortex}/ codebase and write $DOCS/1-analysis-{AI_PROJECT_KEY}.md."
-
-Agent(general-purpose, model: "sonnet"): "You are the web planner. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/planner.md.
-  Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {OPTIONAL_WEB_PROJECT_DIR}/ codebase and write $DOCS/1-analysis-web.md."
-
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure planner. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/planner.md.
-  Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
-  Analyze the {OPTIONAL_INFRA_PROJECT_DIR}/ codebase and write $DOCS/1-analysis-infra.md."
+  Analyze the {project}/ codebase and write $DOCS/1-analysis-{ROLE}.md."
 ```
 
-**All installed planners MUST be launched in a single message for true parallelism.** Wait for all to complete.
+**All roster planners MUST be launched in a single message for true parallelism.** Wait for all to complete.
 
-**Idempotency guard:** Before spawning, check which analysis reports already exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners for projects whose `1-analysis-{project}.md` does NOT yet exist. If all installed project reports already exist, skip Step 1a entirely and proceed to Step 1b. This prevents duplicate planner launches if Step 1a is re-entered after a partial execution.
+**Idempotency guard:** Before spawning, check which analysis reports already exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners for roster entries whose `1-analysis-{ROLE}.md` does NOT yet exist. If all roster reports already exist, skip Step 1a entirely and proceed to Step 1b. This prevents duplicate planner launches if Step 1a is re-entered after a partial execution.
 
 ---
 
 ## Step 1b — Consolidation (mono-planner agent)
 
-Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing decisions.
+**Single-project roster:** skip the mono-planner — there is nothing cross-project to consolidate or route. Promote the single `$DOCS/1-analysis-{ROLE}.md` to the plan: copy it to `$DOCS/1-plan.md` (routing is trivially `{ROLE}-ONLY`). Then proceed to Step 2.
 
-- Tell it: "Pipeline: {name}. Feature: {feature request}. Read the installed project analysis reports at {PROJECT_ANALYSIS_REPORT_LIST} and consolidate into $DOCS/1-plan.md."
-- It reads the parallel analysis reports, decides routing ({PROJECT_ROUTING_OPTIONS}, CROSS), and writes `$DOCS/1-plan.md`.
+**Multi-project roster (size > 1):** Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing decisions.
+
+- Tell it: "Pipeline: {name}. Feature: {feature request}. Read the roster analysis reports at `$DOCS/1-analysis-*.md` and consolidate into $DOCS/1-plan.md."
+- It reads the parallel analysis reports, decides routing (one `{ROLE}-ONLY` per roster entry, or `CROSS` when more than one project is touched), and writes `$DOCS/1-plan.md`.
 - Wait for completion. Read the plan to get the routing decision before proceeding.
 
 ---
@@ -239,70 +240,46 @@ Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing d
 Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git ops.
 
 - Tell it: "Pipeline: {name}. Phase: SETUP. CarryWIP: $CARRYWIP."
-- Creates a single monorepo worktree with all projects (one branch: `pipeline/{name}`)
-- Developers work in their respective subdirs within the same worktree
+- Creates one worktree holding the roster — the repo root when the roster is size 1, one branch: `pipeline/{name}`
+- With a multi-project roster, developers work in their respective `{project}/` subdirs within the same worktree; with a single-project roster, the developer works at the worktree root
 - Wait for confirmation before proceeding.
 
 ---
 
-## Step 3 — Cross-Project Architecture (mono-architect)
+## Step 3 — Cross-Project Architecture (mono-architect) — _(roster size > 1)_
 
-Use the `mono-architect` agent. **Model: claude-opus-4-6** — critical cross-project architecture decisions + inline research.
+**Single-project roster:** skip entirely — there is no cross-project seam to design. Proceed to Step 4.
+
+**Multi-project roster (size > 1):** Use the `mono-architect` agent. **Model: claude-opus-4-6** — critical cross-project architecture decisions + inline research.
 
 - Tell it: "Pipeline: {name}. Read $DOCS/1-plan.md. Write $DOCS/3-architecture.md."
 - It designs API contracts, shared types, and integration patterns — but makes NO code-level decisions or TODO stubs.
-- Skip if routing is single-project-only (BE-ONLY, FE-ONLY, {AI_PROJECT_KEY_UPPER}-ONLY) with no integration changes.
+- Skip if routing touches a single project only (any one `{ROLE}-ONLY`) with no integration changes.
 - Wait for completion.
 
 ---
 
-## Step 4 — Child Architecture (parallel if CROSS)
+## Step 4 — Child Architecture (parallel if more than one project is routed)
 
-Spawn child architect agents. They read mono-architect's integration contracts and write
+Spawn the child architect for each routed roster entry. They read mono-architect's integration contracts (when present) and write
 project-specific architecture docs to `$DOCS/`. Architects produce docs only — no code stubs in worktrees.
 Developers derive their work queue from the architecture docs directly.
 **Model: sonnet** — child architects follow mono-architect's spec.
 
+<!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry -->
+
 ```
-Agent(general-purpose, model: "sonnet"): "You are the backend architect. Read and follow the instructions in {project-be}/.claude/agents/architect.md.
+Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} architect. Read and follow the instructions in {project}/.claude/agents/architect.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
-  Write your architecture doc to $DOCS/3-architecture-be.md.
+  Write your architecture doc to $DOCS/3-architecture-{ROLE}.md.
   You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the frontend architect. Read and follow the instructions in {project-fe}/.claude/agents/architect.md.
-  Pipeline: {name}.
-  All pipeline docs: $DOCS/.
-  Write your architecture doc to $DOCS/3-architecture-fe.md.
-  You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} architect. Read and follow the instructions in {project-cortex}/.claude/agents/architect.md.
-  Pipeline: {name}.
-  All pipeline docs: $DOCS/.
-  Write your architecture doc to $DOCS/3-architecture-{AI_PROJECT_KEY}.md.
-  You produce the architecture doc ONLY — no code stubs. The {AI_DEVELOPER_ROLE} derives their work queue from your doc.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the web architect. Read and follow the instructions in {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/architect.md.
-  Pipeline: {name}.
-  All pipeline docs: $DOCS/.
-  Write your architecture doc to $DOCS/3-architecture-web.md.
-  You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure architect. Read and follow the instructions in {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/architect.md.
-  Pipeline: {name}.
-  All pipeline docs: $DOCS/.
-  Write your architecture doc to $DOCS/3-architecture-infra.md.
-  You design the big picture blueprint — the DevOps engineer implements from your doc.
   NEVER run git commands — gitter handles all commits."
 ```
 
-Spawn only the relevant architects based on routing. Wait for completion.
+Spawn only the architects for routed roster entries. Wait for completion.
 
-The {AI_PROJECT_LABEL} architect runs on `model: "opus"` — {DOMAIN_ADJ} chain design is the highest-stakes architecture in the pipeline, and the post-merge QA tier (Step 9) matches it.
+A roster entry may carry a `{MODEL_TIER}` override — the domain-critical project (the one whose code carries the highest correctness/safety stakes, e.g. an `{AI_FRAMEWORK}` chain) runs its architect on `model: "opus"`, matching the post-merge QA tier (Step 9). SETUP stamps that override on the relevant roster entry's expansion; a single-project roster runs its one architect on `model: "opus"` if it is that project.
 
 ---
 
@@ -311,18 +288,20 @@ The {AI_PROJECT_LABEL} architect runs on `model: "opus"` — {DOMAIN_ADJ} chain 
 Check `$DOCS/1-plan.md` for frontend visual tasks AND schema changes.
 Spawn both agents in a single message if both are needed (they're independent):
 
-### Step 5a — UI/UX Design (conditional)
+### Step 5a — UI/UX Design (conditional — requires a roster entry with a UI role + a `ui-ux.md` agent)
 
-**If FE visual work is needed:**
+**If visual work is needed on a roster entry that has a `{project}/.claude/agents/ui-ux.md`:**
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the UI/UX designer. Read and follow {project-fe}/.claude/agents/ui-ux.md.
+Agent(general-purpose, model: "sonnet"): "You are the UI/UX designer. Read and follow {project-ui}/.claude/agents/ui-ux.md.
   Pipeline: {name}. All pipeline docs: $DOCS/.
-  Read $DOCS/3-architecture.md and $DOCS/3-architecture-fe.md.
+  Read $DOCS/3-architecture.md (if present) and $DOCS/3-architecture-{ROLE-ui}.md.
   Write your spec to $DOCS/4-ui-ux-spec.md."
 ```
 
-**If no FE visual work**, skip.
+`{project-ui}` / `{ROLE-ui}` = the roster entry whose role owns the user interface; SETUP binds it from the roster (or deletes Step 5a if no roster entry ships a `ui-ux.md`).
+
+**If no visual work, or no UI roster entry exists**, skip.
 
 ### Step 5b — Database Architecture (conditional — but CHECK EXPLICITLY)
 
@@ -333,17 +312,17 @@ architecture docs for ANY of these signals: `table`, `schema`, `column`, `index`
 **This check exists because pipelines have shipped new tables without migration files.
 The orchestrator's "judgment call" is not reliable enough — use keyword detection.**
 
-If schema signals are found, spawn the db-admin agent:
+If schema signals are found, spawn the db-admin agent. `{project-db}` = the roster entry that owns the schema/migrations (the one holding `{MIGRATIONS_DIR}`); SETUP binds it from the roster, or deletes Step 5b entirely if no roster entry ships a `db-admin.md`.
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/db-admin.md.
+Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and follow {project-db}/.claude/agents/db-admin.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
-  BE worktree: $WORKTREE/{project-be}. {AI_PROJECT_LABEL} worktree: $WORKTREE/{project-cortex}. Infra worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}.
+  Worktree(s): $WORKTREE/{project} for each routed roster entry that touches the schema (single-project roster: $WORKTREE root).
   Read architecture docs at $DOCS/ and implement schema changes.
   CRITICAL: Every column in the schema MUST have a corresponding SQL migration — either in a CREATE TABLE
   statement or an ALTER TABLE ADD COLUMN statement. This applies to NEW TABLES ({SCHEMA_DEFINITION}) AND new columns
-  on existing tables. Count existing files in $WORKTREE/{project-be}/{MIGRATIONS_DIR}/ to determine the next
+  on existing tables. Count existing files in $WORKTREE/{project-db}/{MIGRATIONS_DIR}/ to determine the next
   migration number. Run your column-level completeness check before finishing — it is BLOCKING.
   Write your database architecture doc to $DOCS/4-db-architecture.md.
   NEVER run git commands — gitter handles all commits."
@@ -355,69 +334,35 @@ Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and f
 
 ## Step 6 — Parallel Development (on named worktrees)
 
-Read ports from `$DOCS/ports.md`, then launch agents for the relevant projects.
+Read ports from `$DOCS/ports.md`, then launch the developer for each routed roster entry.
 **Model: sonnet** — developers implement specs, they don't design them.
 
-**Trivial infrastructure/config tasks:** If the target repo has no dedicated infra project/agent and the scope is only adding env vars or config to normal project files (e.g., adding vars to `{project-cortex}/.env.local`), the orchestrator MAY handle it directly instead of spawning a DevOps agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
+**Trivial infrastructure/config tasks:** If the scope is only adding env vars or config to normal project files (e.g., adding vars to a `{project}/.env.local`) and no roster entry ships a dedicated DevOps agent, the orchestrator MAY handle it directly instead of spawning a sub-agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
+
+<!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
+A roster entry's developer agent is whatever that entry declares — `developer.md` for a normal
+project, `devops.md` for an infra-shaped entry; SETUP substitutes the right agent filename and role
+label. The domain-critical entry (highest correctness/safety stakes) carries a `model: "opus"`
+override. For a single-project roster, $WORKTREE/{project} resolves to $WORKTREE (repo root) and
+$DOCS_REL is ../../docs/dev/builds/{name}/ (one level shallower than a per-project subdir). -->
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the backend developer. Read and follow {project-be}/.claude/agents/developer.md.
+Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
 
   Pipeline: {name}.
-  Worktree: $WORKTREE/{project-be}. Branch: pipeline/{name}.
+  Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-be}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-be.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
-  Backend port: {be_port}.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the frontend developer. Read and follow {project-fe}/.claude/agents/developer.md.
-
-  Pipeline: {name}.
-  Worktree: $WORKTREE/{project-fe}. Branch: pipeline/{name}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-fe}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-fe.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
-  Frontend port: {fe_port}, backend port: {be_port}.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE}. Read and follow {project-cortex}/.claude/agents/{AI_DEVELOPER_AGENT}.md.
-
-  Pipeline: {name}.
-  Worktree: $WORKTREE/{project-cortex}. Branch: pipeline/{name}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project-cortex}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-{AI_PROJECT_KEY}.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the web developer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/developer.md.
-
-  Pipeline: {name}.
-  Worktree: $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}. Branch: pipeline/{name}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-web.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
-  NEVER run git commands — gitter handles all commits."
-
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure DevOps engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/devops.md.
-
-  Pipeline: {name}.
-  Worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}. Branch: pipeline/{name}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-infra.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
+  Example: from $WORKTREE/{project}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
+  Write to $DOCS_REL/5-dev-report-{ROLE}.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
+  Your dev port: {PROJECT_PORT} (and the ports of any peer roster entries you call, from $DOCS/ports.md).
   If you get permission-blocked on worktree file edits, use Bash with append/write commands as fallback.
   NEVER run git commands — gitter handles all commits."
 ```
 
-Launch only the relevant developers/engineers/DevOps based on routing. Wait for completion.
+Launch only the developers for routed roster entries. Wait for completion.
 
-The {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE} runs on `model: "opus"` — LLM-chain implementation carries the highest correctness risk in the pipeline.
+The domain-critical roster entry's developer runs on `model: "opus"` — its implementation (e.g. an `{AI_FRAMEWORK}` chain) carries the highest correctness/safety risk in the pipeline; SETUP stamps the override on that entry's expansion.
 
 ---
 
@@ -425,54 +370,27 @@ The {AI_PROJECT_LABEL} {AI_DEVELOPER_ROLE} runs on `model: "opus"` — LLM-chain
 
 **CRITICAL: QA runs against the worktree branches, NOT main.**
 
-Spawn QA agents for the relevant projects.
+Spawn the QA engineer for each routed roster entry.
 **Model: sonnet** — QA runs structured validation checklists.
 
+<!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
+Single-project roster: $WORKTREE/{project} resolves to $WORKTREE (repo root). -->
+
 ```
-Agent(general-purpose, model: "sonnet"): "You are the backend QA engineer. Read and follow {project-be}/.claude/agents/qa.md.
+Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
 
   Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project-be}. Port: {be_port}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
-
-Agent(general-purpose, model: "sonnet"): "You are the frontend QA engineer. Read and follow {project-fe}/.claude/agents/qa.md.
-
-  Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project-fe}. Ports: FE {fe_port}, BE {be_port}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
-
-Agent(general-purpose, model: "sonnet"): "You are the {AI_PROJECT_LABEL} QA engineer. Read and follow {project-cortex}/.claude/agents/qa.md.
-
-  Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project-cortex}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
-
-Agent(general-purpose, model: "sonnet"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
-
-  Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{OPTIONAL_WEB_PROJECT_DIR}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
-
-Agent(general-purpose, model: "sonnet"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
-
-  Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{OPTIONAL_INFRA_PROJECT_DIR}.
+  Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT} (plus any peer roster ports it must reach, from $DOCS/ports.md).
   ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
   Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
 ```
 
-Spawn QA agents only for relevant projects. Each agent writes:
+Spawn QA agents only for routed roster entries. Each agent writes its own `6-bugs-{ROLE}.md` bug list (one per routed roster entry).
 
-- `{PROJECT_BUG_REPORT_LIST}` — bug list per installed project
-
-After all QA agents complete, **consolidate** the per-project bug files into a single `$DOCS/6-bugs.md`:
+After all QA agents complete, **consolidate** the per-project bug files into a single `$DOCS/6-bugs.md` (trivial at roster size 1 — one file becomes the consolidated file):
 
 - If ALL per-project bug files have `Status: NONE` → write `$DOCS/6-bugs.md` with `Status: NONE`
-- If ANY per-project bug file has `Status: OPEN` → write `$DOCS/6-bugs.md` with `Status: OPEN` and list all open bugs from all projects
+- If ANY per-project bug file has `Status: OPEN` → write `$DOCS/6-bugs.md` with `Status: OPEN` and list all open bugs from all roster entries
 
 ---
 
@@ -482,7 +400,7 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 **Iteration cap: 3 maximum.** Never run more than 3 fix-loop iterations per pipeline. After iteration 3 fails, escalate to BLOCKED-DEFERRED (see § Fix Loop Escalation below) — do NOT keep looping. Past incidents show runaway fix loops eat orders of magnitude more wall-time than the work they purport to fix.
 
-**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation). Agent definitions enforce this — see `{project-*}/.claude/agents/{qa,developer,{AI_DEVELOPER_AGENT},devops}.md`. The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
+**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation). Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
 
 **Hung-process detection.** If any test process sits at 0% CPU for >2 minutes (deadlocked, not slow) the running agent must `kill` it and report `BUG-HUNG-TEST` with the file:line of the hanging test. A hung test is NOT a fix-loop bug — it is a code bug that requires `/jc` on main.
 
@@ -557,9 +475,9 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 ### Code-Review Fix Loop (architect → developer, cap 2)
 
-1. **Architect plans the fixes.** Spawn the child architect(s) for the affected projects (same spawn pattern as Step 4 — sonnet via general-purpose for BE/FE/web/infra, `model: "opus"` via general-purpose for {AI_PROJECT_KEY}): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
+1. **Architect plans the fixes.** Spawn the child architect for each affected roster entry (same spawn pattern as Step 4 — sonnet via general-purpose, `model: "opus"` for the domain-critical entry): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
 
-2. **Developer applies the fixes.** Spawn the developer(s)/{AI_DEVELOPER_ROLE} for the affected projects (same spawn pattern as Step 6 — sonnet via general-purpose for BE/FE/web/infra, `model: "opus"` via general-purpose for {AI_PROJECT_KEY}): "Pipeline: {name}. Worktree: $WORKTREE/{PROJECT_DIR}. Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
+2. **Developer applies the fixes.** Spawn the developer for each affected roster entry (same spawn pattern as Step 6 — sonnet via general-purpose, `model: "opus"` for the domain-critical entry): "Pipeline: {name}. Worktree: $WORKTREE/{project} (the worktree root for a single-project roster). Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
 
 3. **Re-run the hygiene audit** on the updated diff and overwrite the verdict line.
 
@@ -575,15 +493,10 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git ops.
 
-- Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: MERGE. Projects: {comma-separated project keys based on routing}."
-  - BE-ONLY → `Projects: be`
-  - FE-ONLY → `Projects: fe`
-  - {AI_PROJECT_KEY_UPPER}-ONLY → `Projects: {AI_PROJECT_KEY}`
-  - WEB-ONLY → `Projects: web`
-  - CROSS (BE+FE) → `Projects: be,fe`
-  - CROSS (BE+FE+{AI_PROJECT_KEY_UPPER}) → `Projects: be,fe,{AI_PROJECT_KEY}`
-  - Include `web` if web worktree was used
-  - Include `infra` if infrastructure worktree was used
+- Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: MERGE. Projects: {comma-separated `{ROLE}` keys based on routing}."
+  - `{ROLE}-ONLY` (any single roster entry) → `Projects: {ROLE}` (e.g. one project's key)
+  - `CROSS` (more than one roster entry) → `Projects: {ROLE1},{ROLE2},…` for every routed entry
+  - Single-project roster → always `Projects: {ROLE}` (its one key)
 
 ---
 
@@ -591,35 +504,21 @@ Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git 
 
 ### Step 9 — Post-Merge QA (on main)
 
-Spawn QA agents for post-merge validation. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
-**Model: `opus`** — post-merge bug-catch quality matters more than token cost; pre-merge QA stays on Sonnet. Each project's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
+Spawn the post-merge QA engineer for each routed roster entry. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
+**Model: `opus`** — post-merge bug-catch quality matters more than token cost; pre-merge QA stays on Sonnet. Each entry's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
+
+<!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
+Single-project roster: {project}/ on main IS the repo root. SETUP binds each entry's runbook path
+(`{project}/docs/runbook/_index.md` or `{project}/docs/runbook.md`, whichever that entry ships). -->
 
 ```
-Agent(general-purpose, model: "opus"): "You are the backend QA engineer. Read and follow {project-be}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project-be}/ on main.
+Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
+  Mode: POST-MERGE. Pipeline: {name}. Run against {project}/ on main.
   Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-be}/docs/runbook/_index.md."
-
-Agent(general-purpose, model: "opus"): "You are the frontend QA engineer. Read and follow {project-fe}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project-fe}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-fe}/docs/runbook.md."
-
-Agent(general-purpose, model: "opus"): "You are the {AI_PROJECT_LABEL} QA engineer. Read and follow {project-cortex}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project-cortex}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {project-cortex}/docs/runbook/_index.md."
-
-Agent(general-purpose, model: "opus"): "You are the web QA engineer. Read and follow {OPTIONAL_WEB_PROJECT_DIR}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_WEB_PROJECT_DIR}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/."
-
-Agent(general-purpose, model: "opus"): "You are the infrastructure QA engineer. Read and follow {OPTIONAL_INFRA_PROJECT_DIR}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {OPTIONAL_INFRA_PROJECT_DIR}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/."
+  Follow the runbook at {PROJECT_RUNBOOK} (this entry's runbook, if it ships one)."
 ```
 
-Spawn only QA agents for projects that were part of this pipeline.
+Spawn only QA agents for routed roster entries.
 
 After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents.
 
@@ -643,7 +542,7 @@ Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
 The documenter:
 
 1. **Merges** pipeline decisions into permanent docs (`docs/agents/architecture/`, `docs/agents/api/`, child `architecture/`, `ui-ux/` clusters, etc.)
-2. **Updates** child project docs (`{project-be}/docs/`, `{project-fe}/docs/`, `{project-cortex}/docs/`) with new details
+2. **Updates** each routed roster entry's docs (`{project}/docs/` per entry; the repo-root `docs/` for a single-project roster) with new details
 3. **Archives** `$DOCS/` to `$ARCHIVE/{name}/`
 
 All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent root docs accumulate all decisions. Child project docs get updated with project-specific details.
@@ -662,23 +561,23 @@ Gitter commits all doc changes the documenter made on main.
 
 ## Pipeline Reference
 
-| #   | Step                            | Who                                                           | Produces                                                                                      | Location                         |
-| --- | ------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| 1a  | Parallel analysis               | Installed project planners: {PROJECT_PLANNER_ROSTER}          | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                              | root                             |
-| 1b  | Consolidate plan                | mono-planner                                                  | `$DOCS/1-plan.md`                                                                             | root                             |
-| 2   | Git setup                       | gitter (SETUP)                                                | Worktrees, ports, `$DOCS/ports.md`                                                            | root                             |
-| 3   | Cross-project arch + research   | mono-architect                                                | `$DOCS/3-architecture.md` (integration contracts + research notes)                            | root                             |
-| 4   | Child arch + research           | Installed project architects: {PROJECT_ARCHITECT_ROSTER}      | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)              | root                             |
-| 5a  | UI/UX _(conditional)_           | ui-ux                                                         | `$DOCS/4-ui-ux-spec.md`                                                                       | root                             |
-| 5b  | DB Architecture _(conditional)_ | db-admin                                                      | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                          | root (docs) + worktrees (schema) |
-| 6   | Develop                         | Installed project developers: {PROJECT_DEVELOPER_ROSTER}      | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
-| 7   | QA                              | Installed project QA agents: {PROJECT_QA_ROSTER}              | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
-| -   | Fix loop                        | developers → QA                                               | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
-| -   | Code review _(pre-merge gate)_  | p:audit:code-hygiene (diff) → architects → developers         | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
-| 8   | Merge                           | gitter (MERGE)                                                | Commits + merges to main                                                                      |                                  |
-| 9   | Post-merge QA                   | Installed project QA agents (POST-MERGE): {PROJECT_QA_ROSTER} | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
-| 10  | Document                        | mono-documenter                                               | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
-| 11  | Commit docs                     | gitter (DOCS-COMMIT)                                          | Commits doc changes on main                                                                   | root                             |
+| #   | Step                              | Who                                                       | Produces                                                                                      | Location                         |
+| --- | --------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
+| 1a  | Parallel analysis                 | Per-roster planners: {PROJECT_PLANNER_ROSTER}             | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                              | root                             |
+| 1b  | Consolidate plan _(roster > 1)_   | mono-planner _(single-project: promote the one analysis)_ | `$DOCS/1-plan.md`                                                                             | root                             |
+| 2   | Git setup                         | gitter (SETUP)                                            | Worktree(s), ports, `$DOCS/ports.md`                                                          | root                             |
+| 3   | Cross-project arch _(roster > 1)_ | mono-architect _(skipped single-project)_                 | `$DOCS/3-architecture.md` (integration contracts + research notes)                            | root                             |
+| 4   | Child arch + research             | Per-roster architects: {PROJECT_ARCHITECT_ROSTER}         | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)              | root                             |
+| 5a  | UI/UX _(conditional)_             | ui-ux                                                     | `$DOCS/4-ui-ux-spec.md`                                                                       | root                             |
+| 5b  | DB Architecture _(conditional)_   | db-admin                                                  | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                          | root (docs) + worktrees (schema) |
+| 6   | Develop                           | Per-roster developers: {PROJECT_DEVELOPER_ROSTER}         | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
+| 7   | QA                                | Per-roster QA agents: {PROJECT_QA_ROSTER}                 | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
+| -   | Fix loop                          | developers → QA                                           | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
+| -   | Code review _(pre-merge gate)_    | p:audit:code-hygiene (diff) → architects → developers     | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
+| 8   | Merge                             | gitter (MERGE)                                            | Commits + merges to main                                                                      |                                  |
+| 9   | Post-merge QA                     | Per-roster QA agents (POST-MERGE): {PROJECT_QA_ROSTER}    | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
+| 10  | Document                          | mono-documenter                                           | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
+| 11  | Commit docs                       | gitter (DOCS-COMMIT)                                      | Commits doc changes on main                                                                   | root                             |
 
 ---
 

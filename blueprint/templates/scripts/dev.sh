@@ -30,6 +30,38 @@ ARCHIVE_DIR="${DEV_DIR}/archive"
 # with it. View / attach dev sessions with:  tmux -L {PROJECT_NAME_LOWER}-dev ls
 DEV_TMUX_SOCKET="{PROJECT_NAME_LOWER}-dev"
 
+# ─── Project roster ───────────────────────────────────────────────
+# SETUP fills this from the install interview — one server entry per project that
+# runs a dev process. Infra-only projects (no long-running server) are omitted;
+# they come up via the make targets in the Infrastructure step instead.
+#
+# Each entry is a pipe-delimited record:
+#
+#   key | label | dir | log | port_var | install_cmd | run_cmd | health
+#
+#   key         — short id used in the PID file, log filenames, and `log <svc>`
+#                 (e.g. backend, cortex, frontend, web). Must be unique.
+#   label       — human label for report lines (e.g. "Backend", "{AI_SERVICE_NAME}").
+#   dir         — project dir relative to repo root; "." for a single-project repo.
+#   log         — log basename under tmp/dev/ (e.g. be.log, cortex.log).
+#   port_var    — name of the port variable this server binds (BE_PORT, FE_PORT,
+#                 WEB_PORT, CORTEX_PORT). Resolved indirectly at runtime.
+#   install_cmd — dependency install command run in the project dir before start.
+#                 "-" to skip.
+#   run_cmd     — the dev-server command. ${PORT} expands to this server's port and
+#                 ${PROFILE} to the active ISO profile (empty in main mode).
+#   health      — how to probe readiness:
+#                   http:/path  — HTTP 200 at http://localhost:${PORT}/path GREEN,
+#                                 503 YELLOW (degraded/warming), else RED
+#                   tcp         — any response on http://localhost:${PORT} = GREEN
+#                   proc        — alive process is GREEN (no HTTP surface)
+#
+# Single-project collapse: a roster of one entry with dir "." runs at the repo root.
+PROJECTS=(
+  # {PROJECT_ROSTER} — SETUP expands one line per server-bearing roster entry, e.g.:
+  # "{key}|{label}|{project}|{LOG_FILE}|{PORT_VAR}|{PROJECT_INSTALL_CMD}|{PROJECT_RUN_CMD}|{HEALTH_PROBE}"
+)
+
 # Port discovery: if .dev-ports exists at project root, source it (isolated env).
 # Otherwise use defaults (normal local dev).
 DEV_PORTS_FILE="${ROOT}/.dev-ports"
@@ -40,14 +72,32 @@ if [ -f "$DEV_PORTS_FILE" ]; then
   # Read profile from .dev-ports comment (e.g., "# Profile: demo")
   ISO_PROFILE=$(grep "^# Profile:" "$DEV_PORTS_FILE" | sed 's/# Profile: //' | tr -d '[:space:]')
 else
-  # Defaults (main local dev — {AI_SERVICE_NAME} HTTP on 3500, BE on {BACKEND_PORT}, FE on 8081, Web on {WEB_PORT})
-  BE_PORT={BACKEND_PORT}
-  FE_PORT=8081
-  WEB_PORT={WEB_PORT}
-  CORTEX_PORT=3500
+  # Defaults (main local dev). SETUP fills the per-project port defaults below from
+  # the roster — one `: "${PORT_VAR:=default}"` per server entry.
+  # {PORT_DEFAULTS} — e.g. BE_PORT={BACKEND_PORT}, FE_PORT=8081, WEB_PORT={WEB_PORT}, CORTEX_PORT=3500
   ISO_MODE=false
   ISO_PROFILE=""
 fi
+
+# Resolve a project's path. At roster size 1 the entry dir is ".", collapsing to ROOT.
+proj_path() {
+  local dir="$1"
+  if [ "$dir" = "." ]; then echo "$ROOT"; else echo "${ROOT}/${dir}"; fi
+}
+
+# Indirect port lookup: port_of BE_PORT → value of $BE_PORT.
+port_of() {
+  echo "${!1}"
+}
+
+# All bound ports across the roster — used by clean_ports / kill verification.
+all_ports() {
+  local entry port_var
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r _ _ _ _ port_var _ _ _ <<< "$entry"
+    port_of "$port_var"
+  done
+}
 
 # Colors
 RED='\033[0;31m'
@@ -82,7 +132,10 @@ archive_logs() {
   done
   local seq_pad
   seq_pad=$(printf "%03d" "$next_seq")
-  for log in "$DEV_DIR"/be.log "$DEV_DIR"/cortex.log "$DEV_DIR"/fe.log "$DEV_DIR"/web.log; do
+  local entry log_name
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r _ _ _ log_name _ _ _ _ <<< "$entry"
+    local log="$DEV_DIR/$log_name"
     if [ -f "$log" ] && [ -s "$log" ]; then
       local base
       base=$(basename "$log" .log)
@@ -93,7 +146,9 @@ archive_logs() {
 
 check_prereqs() {
   local missing=0
-  for cmd in node {BE_PKG_MGR} python3 {AI_PKG_MGR} docker; do
+  # SETUP fills the prereq list from the roster's toolchains (node, package
+  # managers, language runtimes, docker).
+  for cmd in {DEV_PREREQS}; do
     if ! command -v "$cmd" &>/dev/null; then
       fail "Missing: $cmd"
       missing=1
@@ -160,15 +215,18 @@ is_ancestor() {
 }
 
 clean_ports() {
-  for port in $BE_PORT $FE_PORT $WEB_PORT $CORTEX_PORT; do
+  local port
+  for port in $(all_ports); do
+    [ -n "$port" ] || continue
     lsof -ti :"$port" 2>/dev/null | xargs kill -9 2>/dev/null || true
   done
   # Kill {PROJECT_NAME_LOWER} processes scoped to THIS environment's directory.
   # Uses $ROOT to ensure main's kill doesn't murder ISO processes and vice versa.
   # IMPORTANT: main's ROOT is a prefix of ISO's ROOT (.worktrees/local/),
   # so we must EXCLUDE .worktrees/ matches when running from main.
+  # {DEV_PROCESS_PATTERN} — SETUP fills the pgrep pattern from the roster's run commands.
   local pids
-  pids=$(pgrep -f "{AI_PROCESS_PATTERN}|{BE_PKG_MGR} run dev|tsx.*src/index|expo start|next dev" 2>/dev/null || true)
+  pids=$(pgrep -f "{DEV_PROCESS_PATTERN}" 2>/dev/null || true)
   for pid in $pids; do
     local cmdline
     cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
@@ -187,7 +245,7 @@ clean_ports() {
 }
 
 start_detached() {
-  local name="$1" port="$2" workdir="$3" logfile="$4" cmd="$5" verb="${6:-starting}"
+  local name="$1" port="$2" workdir="$3" logfile="$4" cmd="$5" verb="${6:-starting}" label="${7:-$1}"
   local pid
   if command -v tmux &>/dev/null; then
     local session="{PROJECT_NAME_LOWER}-dev-${name}-${port}"
@@ -201,12 +259,99 @@ start_detached() {
     pid=$!
   fi
   echo "$name $pid $port" >> "$PID_FILE"
-  case "$name" in
-    backend)  info "Backend $verb (PID $pid, port $port)" ;;
-    cortex)   info "{AI_SERVICE_NAME} $verb (PID $pid, port $port)" ;;
-    frontend) info "Frontend $verb (PID $pid, port $port)" ;;
-    web)      info "Web $verb (PID $pid, port $port)" ;;
-  esac
+  info "$label $verb (PID $pid, port $port)"
+}
+
+# Expand ${PORT} and ${PROFILE} in a roster run_cmd for a given server.
+build_run_cmd() {
+  local raw="$1" port="$2"
+  local profile="${ISO_PROFILE:-}"
+  raw="${raw//\$\{PORT\}/$port}"
+  raw="${raw//\$\{PROFILE\}/$profile}"
+  echo "$raw"
+}
+
+# Start one roster server by key. Looks the entry up, installs if needed, launches.
+start_server() {
+  local want="$1" verb="${2:-starting}"
+  local entry key label dir log_name port_var install_cmd run_cmd health
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key label dir log_name port_var install_cmd run_cmd health <<< "$entry"
+    [ "$key" = "$want" ] || continue
+    local port workdir logfile cmd
+    port="$(port_of "$port_var")"
+    workdir="$(proj_path "$dir")"
+    logfile="$DEV_DIR/$log_name"
+    cmd="$(build_run_cmd "$run_cmd" "$port")"
+    start_detached "$key" "$port" "$workdir" "$logfile" "$cmd" "$verb" "$label"
+    return 0
+  done
+}
+
+# Health-probe one roster server by key. Echoes GREEN | YELLOW | RED and logs.
+probe_health() {
+  local want="$1"
+  local entry key label dir log_name port_var install_cmd run_cmd health
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key label dir log_name port_var install_cmd run_cmd health <<< "$entry"
+    [ "$key" = "$want" ] || continue
+    local port
+    port="$(port_of "$port_var")"
+    case "$health" in
+      http:*)
+        local path="${health#http:}"
+        local code
+        code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}${path}" 2>/dev/null || echo "000")
+        if [ "$code" = "200" ]; then
+          ok "$label healthy"; echo "GREEN"
+        elif [ "$code" = "503" ]; then
+          warn "$label degraded (warming up — self-heals in ~30s)"; echo "YELLOW"
+        else
+          # Process alive but not serving yet = YELLOW; truly dead = RED.
+          local pid
+          pid=$(awk -v k="$key" '$1==k {print $2}' "$PID_FILE" 2>/dev/null | tail -1)
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            warn "$label process alive but HTTP not yet responding (port $port)"; echo "YELLOW"
+          else
+            fail "$label health check failed (HTTP $code)"; echo "RED"
+          fi
+        fi
+        ;;
+      tcp)
+        if curl -sf "http://localhost:$port" -o /dev/null 2>/dev/null; then
+          ok "$label responding"; echo "GREEN"
+        else
+          sleep 3
+          if curl -sf "http://localhost:$port" -o /dev/null 2>/dev/null; then
+            ok "$label responding"; echo "GREEN"
+          else
+            warn "$label not yet responding (may still be bundling)"; echo "YELLOW"
+          fi
+        fi
+        ;;
+      proc|*)
+        local pid
+        pid=$(awk -v k="$key" '$1==k {print $2}' "$PID_FILE" 2>/dev/null | tail -1)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+          ok "$label alive"; echo "GREEN"
+        else
+          fail "$label process dead"; echo "RED"
+        fi
+        ;;
+    esac
+    return 0
+  done
+}
+
+# Emit per-server STATUS lines into the ---REPORT--- block.
+report_statuses() {
+  local entry key label dir log_name port_var rest
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key label dir log_name port_var rest <<< "$entry"
+    local status
+    status="$(probe_health "$key" | tail -1)"
+    echo "$(echo "$key" | tr '[:lower:]' '[:upper:]')_STATUS=$status"
+  done
 }
 
 # ─── MODE: KILL ───────────────────────────────────────────────────
@@ -243,7 +388,9 @@ cmd_kill() {
 
   # Verify
   local all_clean=true
-  for port in $BE_PORT $FE_PORT $WEB_PORT $CORTEX_PORT; do
+  local port
+  for port in $(all_ports); do
+    [ -n "$port" ] || continue
     if lsof -ti :"$port" &>/dev/null; then
       warn "Port $port still occupied"
       all_clean=false
@@ -284,30 +431,27 @@ cmd_up() {
       return 0
     elif [ "$alive_count" -gt 0 ] && [ "$dead_count" -gt 0 ]; then
       # Partial failure — some alive, some dead. Resurrect the fallen.
-      # Deduplicate dead names (e.g., two stale cortex entries → one resurrection)
+      # Deduplicate dead names (e.g., two stale entries → one resurrection)
       dead_names=$(echo "$dead_names" | tr ' ' '\n' | sort -u | tr '\n' ' ')
       warn "Partial failure detected: dead:${dead_names}"
 
       # Kill zombies for dead services — port-scoped only (safe for ISO coexistence)
       for dead_name in $dead_names; do
-        case "$dead_name" in
-          backend) lsof -ti :$BE_PORT 2>/dev/null | xargs kill -9 2>/dev/null || true ;;
-          cortex)  # Kill {AI_SERVICE_NAME} by port first, then by process name scoped to $ROOT
-                   lsof -ti :"$CORTEX_PORT" 2>/dev/null | xargs kill -9 2>/dev/null || true
-                   local cpids
-                   cpids=$(pgrep -f "{AI_PROCESS_PATTERN}" 2>/dev/null || true)
-                   for cpid in $cpids; do
-                     local ccmd
-                     ccmd=$(ps -p "$cpid" -o args= 2>/dev/null || true)
-                     if $ISO_MODE; then
-                       echo "$ccmd" | grep -qF "$ROOT" && kill -9 "$cpid" 2>/dev/null || true
-                     else
-                       echo "$ccmd" | grep -qF "$ROOT" && ! echo "$ccmd" | grep -qF ".worktrees/" && kill -9 "$cpid" 2>/dev/null || true
-                     fi
-                   done ;;
-          frontend) lsof -ti :$FE_PORT 2>/dev/null | xargs kill -9 2>/dev/null || true ;;
-          web)     lsof -ti :$WEB_PORT 2>/dev/null | xargs kill -9 2>/dev/null || true ;;
-        esac
+        local dport
+        dport="$(server_port "$dead_name")"
+        [ -n "$dport" ] && lsof -ti :"$dport" 2>/dev/null | xargs kill -9 2>/dev/null || true
+      done
+      # Sweep any remaining matching processes scoped to this ROOT.
+      local zpids
+      zpids=$(pgrep -f "{DEV_PROCESS_PATTERN}" 2>/dev/null || true)
+      for zpid in $zpids; do
+        local zcmd
+        zcmd=$(ps -p "$zpid" -o args= 2>/dev/null || true)
+        if $ISO_MODE; then
+          echo "$zcmd" | grep -qF "$ROOT" && kill -9 "$zpid" 2>/dev/null || true
+        else
+          echo "$zcmd" | grep -qF "$ROOT" && ! echo "$zcmd" | grep -qF ".worktrees/" && kill -9 "$zpid" 2>/dev/null || true
+        fi
       done
       sleep 1
 
@@ -316,13 +460,8 @@ cmd_up() {
 
       # Archive the dead service's log before overwriting
       for dead_name in $dead_names; do
-        local dead_log=""
-        case "$dead_name" in
-          backend) dead_log="$DEV_DIR/be.log" ;;
-          cortex)  dead_log="$DEV_DIR/cortex.log" ;;
-          frontend) dead_log="$DEV_DIR/fe.log" ;;
-          web)      dead_log="$DEV_DIR/web.log" ;;
-        esac
+        local dead_log
+        dead_log="$(server_log "$dead_name")"
         if [ -n "$dead_log" ] && [ -f "$dead_log" ] && [ -s "$dead_log" ]; then
           local seq_pad
           seq_pad=$(printf "%03d" "$(( $(ls "$ARCHIVE_DIR"/*.log 2>/dev/null | wc -l | tr -d ' ') + 1 ))")
@@ -334,25 +473,7 @@ cmd_up() {
 
       # Restart only dead services
       for dead_name in $dead_names; do
-        case "$dead_name" in
-          backend)
-            start_detached "backend" "$BE_PORT" "$ROOT/{BACKEND_PROJECT}" "$DEV_DIR/be.log" \
-              "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" {BE_PKG_MGR} run dev" "resurrected"
-            ;;
-          cortex)
-            start_detached "cortex" "$CORTEX_PORT" "$ROOT/{AI_PROJECT}" "$DEV_DIR/cortex.log" \
-              "env NO_COLOR=1 ${ISO_PROFILE:+ENV_FILE=.env.$ISO_PROFILE} {AI_RUN_CMD}" \
-              "resurrected"
-            ;;
-          frontend)
-            start_detached "frontend" "$FE_PORT" "$ROOT/{FRONTEND_PROJECT}" "$DEV_DIR/fe.log" \
-              "env NO_COLOR=1 FORCE_COLOR=0 npx expo start --web --port \"$FE_PORT\"" "resurrected"
-            ;;
-          web)
-            start_detached "web" "$WEB_PORT" "$ROOT/{WEB_PROJECT}" "$DEV_DIR/web.log" \
-              "env NO_COLOR=1 npx next dev --port \"$WEB_PORT\"" "resurrected"
-            ;;
-        esac
+        start_server "$dead_name" "resurrected"
       done
 
       echo "PARTIAL_RESURRECT=true"
@@ -361,78 +482,10 @@ cmd_up() {
       sleep 4
 
       # Run health checks on all services (same as fresh start)
-      # 503 = degraded ({AI_SERVICE_NAME} warming up) = YELLOW; no response = RED
-      local be_status="RED"
-      local be_http_code
-      be_http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$BE_PORT/health" 2>/dev/null || echo "000")
-      if [ "$be_http_code" = "200" ]; then
-        be_status="GREEN"
-        ok "Backend healthy"
-      elif [ "$be_http_code" = "503" ]; then
-        be_status="YELLOW"
-        warn "Backend degraded ({AI_SERVICE_NAME} still warming up — self-heals in ~30s)"
-      else
-        fail "Backend health check failed (HTTP $be_http_code)"
-      fi
-
-      local cortex_status="RED"
-      local cortex_http_code
-      cortex_http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$CORTEX_PORT/health" 2>/dev/null || echo "000")
-      local cortex_pid_check
-      cortex_pid_check=$(awk '/^cortex/ {print $2}' "$PID_FILE" | tail -1)
-      if [ "$cortex_http_code" = "200" ]; then
-        cortex_status="GREEN"
-        ok "{AI_SERVICE_NAME} HTTP healthy (port $CORTEX_PORT)"
-      elif [ -n "$cortex_pid_check" ] && kill -0 "$cortex_pid_check" 2>/dev/null; then
-        cortex_status="YELLOW"
-        warn "{AI_SERVICE_NAME} process alive but HTTP not yet responding (port $CORTEX_PORT)"
-      else
-        cortex_status="RED"
-        fail "{AI_SERVICE_NAME} process dead"
-      fi
-
-      local fe_status="RED"
-      if curl -sf http://localhost:$FE_PORT -o /dev/null 2>/dev/null; then
-        fe_status="GREEN"
-        ok "Frontend responding"
-      else
-        sleep 3
-        if curl -sf http://localhost:$FE_PORT -o /dev/null 2>/dev/null; then
-          fe_status="GREEN"
-          ok "Frontend responding"
-        else
-          warn "Frontend not yet responding (may still be bundling)"
-          fe_status="YELLOW"
-        fi
-      fi
-
-      local web_status="RED"
-      if curl -sf http://localhost:$WEB_PORT -o /dev/null 2>/dev/null; then
-        web_status="GREEN"
-        ok "Web responding"
-      else
-        sleep 3
-        if curl -sf http://localhost:$WEB_PORT -o /dev/null 2>/dev/null; then
-          web_status="GREEN"
-          ok "Web responding"
-        else
-          warn "Web not yet responding (may still be compiling)"
-          web_status="YELLOW"
-        fi
-      fi
-
       echo ""
       echo "---REPORT---"
-      echo "BE_STATUS=$be_status"
-      echo "CORTEX_STATUS=$cortex_status"
-      echo "FE_STATUS=$fe_status"
-      echo "WEB_STATUS=$web_status"
-      local _seed_dir="${ISO_PROFILE:-local}"
-      if [ -f "$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json" ]; then
-        echo "CREDENTIALS_FILE=$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json"
-      else
-        echo "CREDENTIALS_FILE=MISSING"
-      fi
+      report_statuses
+      emit_credentials
       echo "ERRORS=none"
       echo "---END---"
       return 0
@@ -446,43 +499,46 @@ cmd_up() {
   check_prereqs
 
   # ── Step 1: Infrastructure ──
-  header "Infrastructure"
-  if $ISO_MODE; then
-    info "Isolated mode — checking existing containers..."
-    local infra_ok=true
-    wait_for "{DATABASE} (${PG_PORT:-{DB_PORT}})" "docker exec ${DOCKER_PG_CONTAINER:-{PROJECT_NAME_LOWER}-postgres} pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-{PROJECT_NAME_LOWER}}" 10 || infra_ok=false
-    wait_for "{QUEUE} (${LS_PORT:-{QUEUE_PORT}})" "curl -sf http://localhost:${LS_PORT:-{QUEUE_PORT}}/_localstack/health" 10 || infra_ok=false
-    if ! $infra_ok; then
-      fail "Isolated infrastructure not running — run '/dev iso init' first"
-      exit 1
-    fi
-  else
-    info "Starting {DATABASE} + {QUEUE}..."
-    make -C "$ROOT/{INFRA_PROJECT}" up-local 2>&1 | tail -3
+  # No-op when the roster has no infra project ({INFRA_PROJECT} = "-").
+  if [ "{INFRA_PROJECT}" != "-" ]; then
+    header "Infrastructure"
+    if $ISO_MODE; then
+      info "Isolated mode — checking existing containers..."
+      local infra_ok=true
+      wait_for "{DATABASE} (${PG_PORT:-{DB_PORT}})" "docker exec ${DOCKER_PG_CONTAINER:-{PROJECT_NAME_LOWER}-postgres} pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-{PROJECT_NAME_LOWER}}" 10 || infra_ok=false
+      wait_for "{QUEUE} (${LS_PORT:-{QUEUE_PORT}})" "curl -sf http://localhost:${LS_PORT:-{QUEUE_PORT}}/_localstack/health" 10 || infra_ok=false
+      if ! $infra_ok; then
+        fail "Isolated infrastructure not running — run '/dev iso init' first"
+        exit 1
+      fi
+    else
+      info "Starting {DATABASE} + {QUEUE}..."
+      make -C "$ROOT/{INFRA_PROJECT}" up-local 2>&1 | tail -3
 
-    local infra_ok=true
-    wait_for "{DATABASE} ({DB_PORT})" "make -C '$ROOT/{INFRA_PROJECT}' pg-ready-local" 20 || infra_ok=false
-    wait_for "{QUEUE} ({QUEUE_PORT})" "make -C '$ROOT/{INFRA_PROJECT}' ls-ready-local" 20 || infra_ok=false
+      local infra_ok=true
+      wait_for "{DATABASE} ({DB_PORT})" "make -C '$ROOT/{INFRA_PROJECT}' pg-ready-local" 20 || infra_ok=false
+      wait_for "{QUEUE} ({QUEUE_PORT})" "make -C '$ROOT/{INFRA_PROJECT}' ls-ready-local" 20 || infra_ok=false
 
-    if ! $infra_ok; then
-      fail "Infrastructure not ready — aborting"
-      make -C "$ROOT/{INFRA_PROJECT}" ps-local
-      exit 1
+      if ! $infra_ok; then
+        fail "Infrastructure not ready — aborting"
+        make -C "$ROOT/{INFRA_PROJECT}" ps-local
+        exit 1
+      fi
     fi
   fi
 
   # ── Step 2: Dependencies (parallel) ──
   header "Dependencies"
   local dep_pids=()
-
-  (cd "$ROOT/{BACKEND_PROJECT}" && {BE_PKG_MGR} install --prefer-offline 2>&1 | tail -1 && echo "BE_DEPS=ok") &
-  dep_pids+=($!)
-  (cd "$ROOT/{FRONTEND_PROJECT}" && npm install --legacy-peer-deps 2>&1 | tail -1 && echo "FE_DEPS=ok") &
-  dep_pids+=($!)
-  (cd "$ROOT/{AI_PROJECT}" && {AI_PKG_MGR} sync --group dev 2>&1 | tail -1 && echo "CORTEX_DEPS=ok") &
-  dep_pids+=($!)
-  (cd "$ROOT/{WEB_PROJECT}" && npm install 2>&1 | tail -1 && echo "WEB_DEPS=ok") &
-  dep_pids+=($!)
+  local entry key dir install_cmd
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ dir _ _ install_cmd _ _ <<< "$entry"
+    [ "$install_cmd" = "-" ] && continue
+    local workdir
+    workdir="$(proj_path "$dir")"
+    (cd "$workdir" && eval "$install_cmd" 2>&1 | tail -1 && echo "${key}_DEPS=ok") &
+    dep_pids+=($!)
+  done
 
   local deps_ok=true
   for pid in "${dep_pids[@]}"; do
@@ -497,52 +553,29 @@ cmd_up() {
     warn "Some dependency installs had issues — continuing"
   fi
 
-  # ── Step 2b: FE node_modules integrity check ──
-  # npm on Node 24 can silently drop transitive deps during install.
-  # Spot-check critical files and clean-reinstall if corrupted.
-  local fe_nm="$ROOT/{FRONTEND_PROJECT}/node_modules"
-  if [ ! -f "$fe_nm/hermes-parser/dist/generated/ParserVisitorKeys.js" ] || \
-     [ ! -f "$fe_nm/ms/package.json" ] || \
-     [ ! -f "$fe_nm/@babel/runtime/helpers/objectWithoutPropertiesLoose.js" ]; then
-    warn "Corrupted FE node_modules detected — clean reinstalling"
-    rm -rf "$fe_nm" "$ROOT/{FRONTEND_PROJECT}/.expo"
-    (cd "$ROOT/{FRONTEND_PROJECT}" && npm ci --legacy-peer-deps 2>&1 | tail -1)
-    ok "FE dependencies reinstalled (clean)"
-  fi
+  # ── Step 2b: Post-install integrity hooks ──
+  # SETUP fills any project-specific post-install fixups here (e.g. an FE
+  # node_modules spot-check + clean reinstall, watchman reset). "-" / empty if none.
+  # {POST_INSTALL_HOOKS}
 
-  # Reset Watchman to prevent stale file index after any install
-  if command -v watchman &>/dev/null; then
-    watchman watch-del "$ROOT/{FRONTEND_PROJECT}" &>/dev/null || true
-    watchman shutdown-server &>/dev/null || true
-  fi
-
-  # ── Step 3: Backend env file ──
-  if ! $ISO_MODE; then
-    if [ ! -f "$ROOT/{BACKEND_PROJECT}/.env.local" ]; then
-      warn "Creating default {BACKEND_PROJECT}/.env.local"
-      cat > "$ROOT/{BACKEND_PROJECT}/.env.local" << 'EOF'
-DATABASE_URL=postgresql://postgres@localhost:{DB_PORT}/{PROJECT_NAME_LOWER}
-JWT_SECRET=dev-secret-change-me
-PORT={BACKEND_PORT}
-EOF
-      warn "Update API keys ({TRANSCRIPTION_API_KEY}) in .env.local for full functionality"
-    fi
-  fi
+  # ── Step 3: Per-project env bootstrap ──
+  # SETUP fills any project-specific default-env-file creation here (e.g. writing a
+  # default backend .env.local with DB URL + port). "-" / empty if none.
+  # {ENV_BOOTSTRAP}
 
   # ── Step 4: Database ──
-  if $ISO_MODE; then
-    header "Database"
-    ok "ISO mode — schema applied during init (skipping migrations)"
-  else
-    header "Database"
-    info "Checking schema + migrations..."
-
-    # Create DB if needed (ignore error if exists)
-    make -C "$ROOT/{INFRA_PROJECT}" db-create-local
-
-    # Apply any pending migrations (non-interactive, file-based)
-    make -C "$ROOT/{INFRA_PROJECT}" db-migrate-local 2>&1 | tail -2
-    ok "Database ready (seeding handled by BE on boot)"
+  # No-op when the roster has no infra project ({INFRA_PROJECT} = "-").
+  if [ "{INFRA_PROJECT}" != "-" ]; then
+    if $ISO_MODE; then
+      header "Database"
+      ok "ISO mode — schema applied during init (skipping migrations)"
+    else
+      header "Database"
+      info "Checking schema + migrations..."
+      make -C "$ROOT/{INFRA_PROJECT}" db-create-local
+      make -C "$ROOT/{INFRA_PROJECT}" db-migrate-local 2>&1 | tail -2
+      ok "Database ready (seeding handled on boot)"
+    fi
   fi
 
   # ── Step 5: Start servers ──
@@ -551,114 +584,33 @@ EOF
   # Write PID file atomically — truncate first to prevent stale entries
   : > "$PID_FILE"
 
-  # Backend
-  start_detached "backend" "$BE_PORT" "$ROOT/{BACKEND_PROJECT}" "$DEV_DIR/be.log" \
-    "env NO_COLOR=1 NODE_ENV=\"${ISO_PROFILE:-}\" {BE_PKG_MGR} run dev"
-
-  # {AI_SERVICE_NAME}
-  start_detached "cortex" "$CORTEX_PORT" "$ROOT/{AI_PROJECT}" "$DEV_DIR/cortex.log" \
-    "env NO_COLOR=1 ${ISO_PROFILE:+ENV_FILE=.env.$ISO_PROFILE} {AI_RUN_CMD}"
-
-  # Frontend
-  start_detached "frontend" "$FE_PORT" "$ROOT/{FRONTEND_PROJECT}" "$DEV_DIR/fe.log" \
-    "env NO_COLOR=1 FORCE_COLOR=0 npx expo start --web --port \"$FE_PORT\""
-
-  # Web (marketing site)
-  start_detached "web" "$WEB_PORT" "$ROOT/{WEB_PROJECT}" "$DEV_DIR/web.log" \
-    "env NO_COLOR=1 npx next dev --port \"$WEB_PORT\""
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+    start_server "$key"
+  done
 
   # ── Step 6: Health checks ──
   header "Health checks"
   sleep 4
 
-  # 503 = degraded ({AI_SERVICE_NAME} warming up) = YELLOW; no response = RED
-  local be_status="RED"
-  local be_http_code
-  be_http_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$BE_PORT/health" 2>/dev/null || echo "000")
-  if [ "$be_http_code" = "200" ]; then
-    be_status="GREEN"
-    ok "Backend healthy"
-  elif [ "$be_http_code" = "503" ]; then
-    be_status="YELLOW"
-    warn "Backend degraded ({AI_SERVICE_NAME} still warming up — self-heals in ~30s)"
-  else
-    fail "Backend health check failed (HTTP $be_http_code)"
-  fi
-
-  local cortex_status="RED"
-  local cortex_http_code_fresh
-  cortex_http_code_fresh=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$CORTEX_PORT/health" 2>/dev/null || echo "000")
-  local cortex_pid
-  cortex_pid=$(awk '/^cortex/ {print $2}' "$PID_FILE" | tail -1)
-  if [ "$cortex_http_code_fresh" = "200" ]; then
-    cortex_status="GREEN"
-    ok "{AI_SERVICE_NAME} HTTP healthy (port $CORTEX_PORT)"
-  elif [ -n "$cortex_pid" ] && kill -0 "$cortex_pid" 2>/dev/null; then
-    cortex_status="YELLOW"
-    warn "{AI_SERVICE_NAME} process alive but HTTP not yet responding (port $CORTEX_PORT)"
-  else
-    cortex_status="RED"
-    fail "{AI_SERVICE_NAME} process dead"
-  fi
-
-  local fe_status="RED"
-  if curl -sf http://localhost:$FE_PORT -o /dev/null 2>/dev/null; then
-    fe_status="GREEN"
-    ok "Frontend responding"
-  else
-    # Frontend can take longer
-    sleep 3
-    if curl -sf http://localhost:$FE_PORT -o /dev/null 2>/dev/null; then
-      fe_status="GREEN"
-      ok "Frontend responding"
-    else
-      warn "Frontend not yet responding (may still be bundling)"
-      fe_status="YELLOW"
-    fi
-  fi
-
-  local web_status="RED"
-  if curl -sf http://localhost:$WEB_PORT -o /dev/null 2>/dev/null; then
-    web_status="GREEN"
-    ok "Web responding"
-  else
-    sleep 3
-    if curl -sf http://localhost:$WEB_PORT -o /dev/null 2>/dev/null; then
-      web_status="GREEN"
-      ok "Web responding"
-    else
-      warn "Web not yet responding (may still be compiling)"
-      web_status="YELLOW"
-    fi
-  fi
+  echo ""
+  echo "---REPORT---"
+  report_statuses
+  emit_credentials
 
   # ── Step 7: Scan logs for errors ──
-  local errors=""
-  for svc in be cortex fe web; do
-    local logfile="$DEV_DIR/${svc}.log"
+  local errors="" entry2 log_name2
+  for entry2 in "${PROJECTS[@]}"; do
+    IFS='|' read -r key2 _ _ log_name2 _ _ _ _ <<< "$entry2"
+    local logfile="$DEV_DIR/$log_name2"
     if [ -f "$logfile" ]; then
       local svc_errors
       svc_errors=$(grep -a -iE '(ERR|Error|FATAL|Exception|Traceback|ECONNREFUSED|EADDRINUSE|ModuleNotFoundError|Cannot find module)' "$logfile" 2>/dev/null | grep -v "^Binary file" | grep -viE '(WARN.*swallowing|Warning:|DeprecationWarning|ExperimentalWarning)' | head -3 || true)
       if [ -n "$svc_errors" ]; then
-        errors="${errors}\n  ${svc}: $(echo "$svc_errors" | head -1)"
+        errors="${errors}\n  ${key2}: $(echo "$svc_errors" | head -1)"
       fi
     fi
   done
-
-  # ── Step 8: Output JSON-ish report for Claude to parse ──
-  echo ""
-  echo "---REPORT---"
-  echo "BE_STATUS=$be_status"
-  echo "CORTEX_STATUS=$cortex_status"
-  echo "FE_STATUS=$fe_status"
-  echo "WEB_STATUS=$web_status"
-
-  local _seed_dir="${ISO_PROFILE:-local}"
-  if [ -f "$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json" ]; then
-    echo "CREDENTIALS_FILE=$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json"
-  else
-    echo "CREDENTIALS_FILE=MISSING"
-  fi
 
   if [ -n "$errors" ]; then
     echo -e "ERRORS=$errors"
@@ -666,6 +618,35 @@ EOF
     echo "ERRORS=none"
   fi
   echo "---END---"
+}
+
+# Resolve a server's port / log by key (used by partial-resurrect path).
+server_port() {
+  local want="$1" entry key port_var
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ _ port_var _ _ _ <<< "$entry"
+    [ "$key" = "$want" ] && { port_of "$port_var"; return 0; }
+  done
+}
+server_log() {
+  local want="$1" entry key log_name
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ log_name _ _ _ _ <<< "$entry"
+    [ "$key" = "$want" ] && { echo "$DEV_DIR/$log_name"; return 0; }
+  done
+}
+
+# Emit CREDENTIALS_FILE line if the seeding passwords file exists.
+# {SEED_PROJECT} = the project dir holding seeding/ (or "-" if none).
+emit_credentials() {
+  [ "{SEED_PROJECT}" = "-" ] && { echo "CREDENTIALS_FILE=N/A"; return 0; }
+  local _seed_dir="${ISO_PROFILE:-local}"
+  local pw="$ROOT/{SEED_PROJECT}/seeding/$_seed_dir/passwords.json"
+  if [ -f "$pw" ]; then
+    echo "CREDENTIALS_FILE=$pw"
+  else
+    echo "CREDENTIALS_FILE=MISSING"
+  fi
 }
 
 # ─── MODE: DROP ──────────────────────────────────────────────────
@@ -692,7 +673,16 @@ cmd_drop() {
     echo ""
   fi
 
-  # Step 2: Nuke Docker containers + volumes
+  # Step 2: Nuke Docker containers + volumes (skip if no infra project)
+  if [ "{INFRA_PROJECT}" = "-" ]; then
+    echo "---REPORT---"
+    echo "WERE_RUNNING=$were_running"
+    echo "NUKE_RESULT=skipped (no infra project)"
+    echo "---END---"
+    $were_running && { header "Restarting servers"; cmd_up; }
+    return 0
+  fi
+
   header "Nuking Docker containers"
   if make -C "$ROOT/{INFRA_PROJECT}" nuke-local 2>&1 | tail -5; then
     ok "Docker containers nuked"
@@ -757,7 +747,13 @@ cmd_fresh() {
   cmd_kill
   echo ""
 
-  # Step 2: Nuke Docker containers + volumes
+  # Step 2: Nuke Docker containers + volumes (skip if no infra project)
+  if [ "{INFRA_PROJECT}" = "-" ]; then
+    header "Starting servers"
+    cmd_up
+    return 0
+  fi
+
   header "Nuking Docker containers"
   if make -C "$ROOT/{INFRA_PROJECT}" nuke-local 2>&1 | tail -5; then
     ok "Docker containers nuked"
@@ -823,54 +819,20 @@ cmd_status() {
     echo "SVC=${name}|PID=${pid}|PORT=${port}|ALIVE=${alive}|RESPONDING=${responding}"
   done <<< "$_deduped"
 
-  # Health checks
-  local be_health="fail" gql_health="fail" fe_health="fail" web_health="fail"
-  local health_json=""
-  health_json=$(curl -s --max-time 15 http://localhost:$BE_PORT/health 2>/dev/null || echo "")
-  if [ -n "$health_json" ]; then
-    be_health="ok"
-  fi
-  curl -sf http://localhost:$BE_PORT/graphql -H 'Content-Type: application/json' -d '{"query":"{ __typename }"}' &>/dev/null && gql_health="ok"
-  curl -sf http://localhost:$FE_PORT -o /dev/null &>/dev/null && fe_health="ok"
-  curl -sf http://localhost:$WEB_PORT -o /dev/null &>/dev/null && web_health="ok"
+  # Health checks — per roster server via its declared probe.
+  local entry key
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+    local h
+    h="$(probe_health "$key" | tail -1)"
+    echo "$(echo "$key" | tr '[:lower:]' '[:upper:]')_HEALTH=$h"
+  done
 
-  echo "BE_HEALTH=$be_health"
-  echo "GQL_HEALTH=$gql_health"
-  echo "FE_HEALTH=$fe_health"
-  echo "WEB_HEALTH=$web_health"
+  # API-surface probe + seed progress are project-specific. SETUP fills any extra
+  # health probes (e.g. a GraphQL __typename ping, a seed-progress JSON parse) here.
+  # {STATUS_EXTRA_PROBES}
 
-  # Seed progress (extracted from health JSON)
-  if [ -n "$health_json" ] && command -v python3 &>/dev/null; then
-    local seed_line
-    seed_line=$(python3 -c "
-import json, sys
-try:
-    d = json.loads(sys.argv[1])
-    sp = d.get('seedProgress', {})
-    status = sp.get('status', 'unknown')
-    inserted = sp.get('totalInserted', 0)
-    analyzed = sp.get('totalAnalyzed', 0)
-    expected = sp.get('totalExpected', 0)
-    remaining = sp.get('totalRemaining', 0)
-    subjects = sp.get('{SUBJECT_NOUN_PLURAL}', [])
-    parts = []
-    for p in subjects:
-        mark = '✓' if p.get('done') else f\"{p.get('analyzed',0)}/{p.get('total',0)}\"
-        parts.append(f\"{p.get('{SUBJECT_NOUN}','?')}={mark}\")
-    detail = ', '.join(parts) if parts else ''
-    print(f'SEED_STATUS={status}|SEED_INSERTED={inserted}|SEED_ANALYZED={analyzed}|SEED_EXPECTED={expected}|SEED_REMAINING={remaining}|SEED_DETAIL={detail}')
-except Exception:
-    print('SEED_STATUS=unknown')
-" "$health_json" 2>/dev/null || echo "SEED_STATUS=unknown")
-    echo "$seed_line"
-  fi
-
-  local _seed_dir="${ISO_PROFILE:-local}"
-  if [ -f "$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json" ]; then
-    echo "CREDENTIALS_FILE=$ROOT/{BACKEND_PROJECT}/seeding/$_seed_dir/passwords.json"
-  else
-    echo "CREDENTIALS_FILE=MISSING"
-  fi
+  emit_credentials
   echo "---END---"
 }
 
@@ -891,24 +853,26 @@ cmd_log() {
     lines="$2"
   fi
 
-  local services=()
-  case "$service" in
-    be|backend)  services=(be) ;;
-    cortex) services=(cortex) ;;
-    fe|frontend) services=(fe) ;;
-    web)         services=(web) ;;
-    all|*)       services=(be cortex fe web) ;;
-  esac
+  # Build the list of service keys to show.
+  local keys=()
+  if [ "$service" = "all" ]; then
+    local entry key
+    for entry in "${PROJECTS[@]}"; do
+      IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+      keys+=("$key")
+    done
+  else
+    keys=("$service")
+  fi
 
-  for svc in "${services[@]}"; do
-    local logfile="$DEV_DIR/${svc}.log"
-    local label
-    case $svc in
-      be)    label="Backend" ;;
-      cortex) label="{AI_SERVICE_NAME}" ;;
-      fe)    label="Frontend" ;;
-      web)   label="Web" ;;
-    esac
+  # Map a key → label/logfile from the roster.
+  log_label() { local w="$1" e k l; for e in "${PROJECTS[@]}"; do IFS='|' read -r k l _ _ _ _ _ _ <<< "$e"; [ "$k" = "$w" ] && { echo "$l"; return; }; done; echo "$w"; }
+  log_file()  { local w="$1" e k ln; for e in "${PROJECTS[@]}"; do IFS='|' read -r k _ _ ln _ _ _ _ <<< "$e"; [ "$k" = "$w" ] && { echo "$DEV_DIR/$ln"; return; }; done; echo "$DEV_DIR/$w.log"; }
+
+  for svc in "${keys[@]}"; do
+    local logfile label
+    logfile="$(log_file "$svc")"
+    label="$(log_label "$svc")"
     echo "━━━ $label ($logfile) ━━━ [last $lines lines]"
     if [ -f "$logfile" ] && [ -s "$logfile" ]; then
       tail -n "$lines" "$logfile"
@@ -920,15 +884,10 @@ cmd_log() {
 
   # Error summary
   echo "Error summary:"
-  for svc in "${services[@]}"; do
-    local logfile="$DEV_DIR/${svc}.log"
-    local label
-    case $svc in
-      be)    label="Backend" ;;
-      cortex) label="{AI_SERVICE_NAME}" ;;
-      fe)    label="Frontend" ;;
-      web)   label="Web" ;;
-    esac
+  for svc in "${keys[@]}"; do
+    local logfile label
+    logfile="$(log_file "$svc")"
+    label="$(log_label "$svc")"
     if [ -f "$logfile" ]; then
       local count
       count=$(grep -ciE '(ERR|Error|FATAL|Exception|Traceback)' "$logfile" 2>/dev/null || true)
@@ -949,8 +908,10 @@ cmd_log() {
 # ─── MODE: LOG-CLEAR ─────────────────────────────────────────────
 
 cmd_log_clear() {
-  local cleared=0
-  for f in "$DEV_DIR"/be.log "$DEV_DIR"/cortex.log "$DEV_DIR"/fe.log "$DEV_DIR"/web.log; do
+  local cleared=0 entry log_name
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r _ _ _ log_name _ _ _ _ <<< "$entry"
+    local f="$DEV_DIR/$log_name"
     [ -f "$f" ] && rm -f "$f" && cleared=$((cleared + 1))
   done
   local archived
@@ -962,26 +923,34 @@ cmd_log_clear() {
 }
 
 # ─── MODE: EXPORT ──────────────────────────────────────────────
+# Seed export is project-specific (needs the seeding-owning project + its export
+# command). No-op when the roster has no seed project ({SEED_PROJECT} = "-").
 
 cmd_export() {
+  if [ "{SEED_PROJECT}" = "-" ]; then
+    echo "No seed project configured — nothing to export."
+    return 0
+  fi
   header "Exporting seed data"
 
-  local env_file="$ROOT/{BACKEND_PROJECT}/.env.local"
+  local env_file="$ROOT/{SEED_PROJECT}/.env.local"
   local seeding_name
   seeding_name=$(grep '^SEEDING_NAME=' "$env_file" 2>/dev/null | cut -d= -f2 | tr -d '"'"'" | head -1)
   seeding_name="${seeding_name:-local}"
 
-  local export_dir="$ROOT/{BACKEND_PROJECT}/seeding/$seeding_name"
-
-  SEEDING_NAME="$seeding_name" cd "$ROOT/{BACKEND_PROJECT}" && SEEDING_NAME="$seeding_name" {DB_EXPORT_CMD}
+  SEEDING_NAME="$seeding_name" cd "$ROOT/{SEED_PROJECT}" && SEEDING_NAME="$seeding_name" {DB_EXPORT_CMD}
 }
 
 # ─── MODE: PROMOTE-DEMO ──────────────────────────────────────────────
 
 cmd_promote_demo() {
+  if [ "{SEED_PROJECT}" = "-" ]; then
+    echo "No seed project configured — nothing to promote."
+    return 0
+  fi
   header "Promoting local → demo dataset"
-  local src="$ROOT/{BACKEND_PROJECT}/seeding/local"
-  local dest="$ROOT/{BACKEND_PROJECT}/seeding/demo"
+  local src="$ROOT/{SEED_PROJECT}/seeding/local"
+  local dest="$ROOT/{SEED_PROJECT}/seeding/demo"
 
   # Copy all JSON files (overwrites demo — developer reviews passwords.json after)
   cp "$src"/*.json "$dest/"

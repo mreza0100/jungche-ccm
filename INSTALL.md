@@ -136,7 +136,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 
 ```
 14. Beyond the core Tier A + C (/build, /jc, /pcm, /dev, /git, /wave, /documenter,
-    /council, /audit), which Tier B archetypes do you want? Pick from the menu,
+    /audit, /blueprint), which Tier B archetypes do you want? Pick from the menu,
     request your own, or skip:
 
     - /officer — privacy/compliance auditor (GDPR, HIPAA, SOC2, FDA, ISO 27001, MiFID, etc.)
@@ -175,7 +175,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
     in autonomous control"). This goes into the "What NOT to do" block.
 ```
 
-> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/council` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import source-project-specific _content_ like domain references"). Domain content gets parameterized; the orchestrator persona always lands.
+> **Why this is mandatory:** the blueprint philosophy treats character as load-bearing infrastructure. Strip the persona section and Claude defaults to vanilla assistant tone in every interactive turn while `/jc` and `/pcm` keep their voices — producing tonal whiplash. Tier A characters ship with full voice. Adopters can rename freely (Hard Rule 4 is not "ask permission to give it character" — it's "don't import source-project-specific _content_ like domain references"). Domain content gets parameterized; the orchestrator persona always lands.
 
 ### Batch 8 — Confirmation before write
 
@@ -545,7 +545,6 @@ mkdir -p .professor
        },
        "disciplines": ["<Batch 5 Q11 answers>"],
        "intersection_lens": "<Batch 5 Q11 follow-up>",
-       "council_panel": ["<Batch 6 Q14 answers>"],
        "tier_b": {
          "officer": { "enabled": true, "regulation": "..." },
          "...": {}
@@ -580,7 +579,6 @@ This manifest is the baseline for `/pcm update`'s three-way detection (installed
    - **Disciplines:** {comma-separated list}
    - **Intersection lens:** {intersection_lens}
    - **Sacred ground:** {sacred_ground}
-   - **Council panel:** {comma-separated list}
    - **Tier B:** {list of opted-in archetypes with key params, or "none"}
    - **Codex:** {yes/no}
    - **Installed from:** v{version} on {date}

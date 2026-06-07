@@ -112,7 +112,7 @@ If your reproduction diverges from the target's current behavior, fix the harnes
 
 RND's value comes from actually stressing solutions against reality, not from confirming they look reasonable in markdown. Every execution MUST follow these rules:
 
-1. **Use real-world-sized inputs.** If the goal involves processing transcripts, use large transcripts (hundreds of segments, multi-speaker, 45+ minutes of {SESSION_NOUN} content). If it involves database queries, use realistic row counts. If it involves LLM chains, use inputs that match production length and complexity. Toy fixtures prove toy things — they tell you the plumbing connects, not whether the building survives an earthquake.
+1. **Use real-world-sized inputs.** If the goal involves processing long documents, use large ones (hundreds of segments, production-length, multi-source). If it involves database queries, use realistic row counts. If it involves LLM chains, use inputs that match production length and complexity. Toy fixtures prove toy things — they tell you the plumbing connects, not whether the building survives an earthquake.
 
 2. **Design adversarial inputs.** For every approach, actively try to break it. Malformed data, boundary values, missing fields, contradictory inputs, Unicode edge cases, empty-but-valid, valid-but-pathological. The goal is to find where the solution fails, not to confirm it works on the happy path.
 
@@ -165,15 +165,15 @@ For each approach in order:
 
 RND is domain-agnostic. Execution depends on the goal:
 
-| Goal type             | Execution method                                                       | Scale requirement                                                         |
-| --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Prompt engineering    | Draft the candidate prompt in the sandbox, call the real LLM, evaluate | Use production-length inputs, not 2-sentence toy prompts                  |
-| Algorithm / code      | Implement it in the sandbox, run it (Bash), measure the result         | Test with realistic data volumes (hundreds of items, not 3)               |
-| LLM/AI chains         | Import and invoke the actual chain with `get_llm()`                    | Real model, real-sized transcripts/inputs, real structured output parsing |
-| Research question     | Search/read/grep, synthesize, evaluate completeness                    | —                                                                         |
-| UI/UX pattern         | Describe or prototype the pattern, evaluate usability criteria         | —                                                                         |
-| Data query            | Write the query, run it, evaluate the output shape                     | Against realistic data shapes and row counts                              |
-| Architecture decision | Reason through the tradeoffs, evaluate against constraints             | —                                                                         |
+| Goal type             | Execution method                                                       | Scale requirement                                             |
+| --------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Prompt engineering    | Draft the candidate prompt in the sandbox, call the real LLM, evaluate | Use production-length inputs, not 2-sentence toy prompts      |
+| Algorithm / code      | Implement it in the sandbox, run it (Bash), measure the result         | Test with realistic data volumes (hundreds of items, not 3)   |
+| LLM/AI chains         | Import and invoke the actual chain with `get_llm()`                    | Real model, real-sized inputs, real structured output parsing |
+| Research question     | Search/read/grep, synthesize, evaluate completeness                    | —                                                             |
+| UI/UX pattern         | Describe or prototype the pattern, evaluate usability criteria         | —                                                             |
+| Data query            | Write the query, run it, evaluate the output shape                     | Against realistic data shapes and row counts                  |
+| Architecture decision | Reason through the tradeoffs, evaluate against constraints             | —                                                             |
 
 For code/command approaches: **run them at scale**. Don't just reason about whether they'd work — actually execute, observe, and then try to break the result with adversarial inputs.
 
@@ -200,7 +200,7 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
-**Stress-tested with:** {what adversarial/large inputs it survived — e.g., "500-segment transcript, malformed character JSON, empty goals array, concurrent session state"}
+**Stress-tested with:** {what adversarial/large inputs it survived — e.g., "500-segment document, malformed JSON, empty input array, concurrent state"}
 
 **Approaches tried:** {table or list — name, outcome, what it taught you}
 

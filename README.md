@@ -6,7 +6,7 @@ You're one person. You have a vision, a codebase, and a deadline. Claude Code is
 
 **Professor changes what one person can build.**
 
-Drop a `.claude/` directory into your project and Claude Code stops being "an AI that writes code" and becomes a **cross-disciplinary engineering team** — with a pipeline, with QA gates, with memory, and with a personality sharp enough to refuse your bad ideas to your face.
+Drop it into any repo — a single-project app or an N-project monorepo — and Claude Code stops being "an AI that writes code" and becomes a **cross-disciplinary engineering team** — with a pipeline, with QA gates, with memory, and with a personality sharp enough to refuse your bad ideas to your face. At install you describe your structure as a **roster** of 1..N projects; every template is sized to fit. A single-project repo is a roster of one — first-class, not a stripped path. A seven-project monorepo gets per-project agents and cross-project routing. Same pipeline, same characters, sized to you.
 
 > _"Ah, your error handling... you know, I once had a student who also believed exceptions would simply handle themselves. Lovely optimism. Didn't survive production, but lovely."_ ☕
 
@@ -77,16 +77,17 @@ The one command allowed to touch `main` directly. Diagnoses, fixes, tests, commi
 
 Dr. House persona. Edits the pipeline's own rules at the source — agent definitions, command protocols, pipeline wiring. When something in the system itself needs fixing, this is who fixes it. Diagnostic obsession. "Everybody lies" verification ethos. Sarcastic, precise, and right.
 
-### 360° — the blind-spot killer
+### p:360 — the blind-spot killer
 
-A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) and **inquiry** (9 question dimensions). QA runs it before writing tests. Professor runs it before deep-diving. Forces systematic coverage before creative work.
+A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) and **inquiry** (9 question dimensions). QA runs it before writing tests. Professor runs it before deep-diving. Forces systematic coverage before creative work. Source-fetched at install from its own public repo (not vendored).
 
 ### And more
 
 - **/audit** — code auditor. Hygiene + security categories with mandatory reference files.
 - **/wave** — parallel `/build` waves from a task file. Multiple features at once.
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
-- **Ghostwriter** — captures a writer's mechanical fingerprint from samples, generates text in that voice.
+- **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:analysis`, `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+- **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `p:360` (blind-spot killer), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
 - **VSCode tmux launcher** — new VSCode terminals open straight into tmux + Claude; `/exit` drops you back to your shell. Ships a companion tmux config (mouse scroll + click-to-copy).
 - **Notifications** — macOS notification when a turn takes 30+ seconds. Never miss a long-running result.
@@ -102,7 +103,7 @@ You say: /build add-user-search
 
   planners (parallel)         <- each project analyzes its codebase
        |
-  mono-planner                <- consolidates, routes (BE-only? FE-only? cross-project?)
+  mono-planner                <- consolidates, routes (single-project? cross-project?)
        |
   gitter SETUP                <- creates worktree branch + allocates ports
        |
@@ -176,11 +177,16 @@ Five rules that make the whole system hold together:
 
 ---
 
-## Works with any stack
+## Stack-independent, structure-agnostic
 
-The characters and pipeline are **domain-independent**. At install, you tell Claude your stack, your structure, your domain — and every template gets parameterized. The Professor who analyzes a therapy AI with CS + clinical psychology PhDs is the same archetype as the Professor who analyzes a game engine with graphics + physics + audio PhDs.
+The characters and pipeline are **domain-independent and structure-agnostic**. At install, you tell Claude your stack, your structure, your domain — and every template gets parameterized. The Professor who analyzes a therapy AI with CS + clinical psychology PhDs is the same archetype as the Professor who analyzes a game engine with graphics + physics + audio PhDs.
 
-Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any language Claude Code supports.
+Structure is captured as a **roster** — an ordered list of 1..N projects, each with its own directory, stack, package manager, test runner, and ports. Install expands the pipeline once per roster entry, so a one-project repo and a seven-project monorepo get correctly-sized files from the same templates:
+
+- **Single project (roster of one)** — first-class. The worktree is the repo root, routing is trivial, cross-project steps drop out, and the framing reads as "the project," not "the monorepo." Full pipeline, full character — just no per-project layer it doesn't need.
+- **Multi-project monorepo** — per-project agents (planner / architect / developer / QA per entry) and cross-project routing light up automatically. The shape it was extracted from, but no longer the shape it assumes.
+
+Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any language Claude Code supports, at any repo size.
 
 **Optional: Codex dual-runtime.** If you use [OpenAI Codex](https://openai.com/index/introducing-codex/), Professor supports a setup where Claude orchestrates and Codex implements — same manuals, different runtime. Entirely optional.
 
@@ -190,8 +196,9 @@ Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any l
 
 **Good fit:**
 
+- Single-project apps that deserve team-level discipline — a roster of one, first-class
+- Multi-project monorepos with cross-project features — per-project agents and routing light up
 - Projects where `main` breaking costs real time
-- Monorepos with cross-project features
 - Solo devs who want team-level discipline
 - Anyone who's lost work to AI's cowboy tendencies
 - Projects with domain complexity that needs more than "write code"
@@ -206,12 +213,12 @@ Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any l
 
 ## Staying current
 
-Releases ship as **git tags** (`v0.5.0`, `v0.6.0`, etc.). Your install records a manifest with your interview answers + file hashes. Updates replay your answers against new templates and show a three-bucket diff:
+Releases ship as **git tags** (`vX.Y.Z`). Your install records a manifest with your interview answers + file hashes. Updates replay your answers against new templates and show a three-bucket diff:
 
 ```
-/pcm update              # interactive update to latest git tag
+/pcm update              # interactive update to the latest release tag
 /pcm update check        # preview what would change (read-only)
-/pcm update --to v1.2.0  # pin to a specific release
+/pcm update --to vX.Y.Z  # pin to a specific release
 ```
 
 - **Auto-apply:** upstream changed, you didn't touch the file
@@ -238,13 +245,14 @@ A high-saturation dark theme for Claude Code — source-fetched at install (neve
 professor/
 ├── INSTALL.md           <- Claude reads this to install Professor into your project
 ├── CHANGELOG.md         <- release notes, parsed by /pcm update
-├── VERSION              <- 0.5.0
+├── VERSION              <- current release (e.g. vX.Y.Z)
 └── blueprint/
     ├── BLUEPRINT.md     <- philosophy + design principles
     ├── SETUP.md         <- install interview reference
     └── templates/       <- the actual files that get installed
         ├── CLAUDE.md, agents/, commands/, scripts/
-        ├── skills/rnd/  <- bundled (rr, 360, ghostwriter cloned from their own repos at install)
+        ├── skills/      <- bundled p:* skills; rr/p:360/ghostwriter/vision-factory source-fetched at install (sources.json)
+        ├── themes/      <- tokyo-night theme, source-fetched at install (sources.json)
         ├── statusline/  <- two-line terminal status bar + install README
         ├── vscode/      <- terminals open into tmux + Claude (+ tmux clipboard config)
         └── codex/       <- (optional) Codex dual-runtime layer

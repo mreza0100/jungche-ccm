@@ -60,7 +60,7 @@ Two forms:
 
 1. **Existence checks** — grep for named entities each task references (components, tables, endpoints, files). Fatal if referenced entity doesn't exist.
 2. **Conflict detection** — incompatible changes to same target across tasks → fatal.
-3. **Routing present** — a ZERO-GAP wave.md declares each task's `**Routing:**` (which projects). Read it; never re-classify. Fatal only if a task lacks a routing declaration and is too vague to classify (an unrefined task file).
+3. **Routing present** — a ZERO-GAP wave.md declares each task's `**Routing:**` (which roster entries — one `{ROLE}` or `CROSS`). Read it; never re-classify. A single-project roster makes routing trivially that one project. Fatal only if a task lacks a routing declaration and is too vague to classify (an unrefined task file).
 4. **Dependency ordering** — tasks depending on another's output must have that dependency earlier or already in codebase.
 5. **Uncommitted work on main** — a wave may launch with a dirty `main`; that's fine, no prompt. Default to `leave` (WIP stays on `main`, excluded from the pipelines) and forward `[CarryWIP: leave]` to every `/build`. Gitter watches for overlap when each pipeline merges back (gitter Phase 2 § Merge to main) and pauses the wave only if the WIP cannot be cleanly restored after a merge — a critical overlap that must be committed first.
 
@@ -88,8 +88,8 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 **Grouping algorithm (the key step) — owned by `/wave`, not refinement.** Objective: the **fewest pipelines** that still respect dependencies. Each pipeline carries heavy fixed overhead (planners, mono-planner/architect, QA, code review, merge, post-merge QA, documenter), so pipeline count is the dominant token lever. Group by each task's declared `**Routing:**` (ZERO-GAP wave.md states it — never re-classify):
 
-- Same-routing tasks (same project set) → ONE pipeline
-- Cross-project with no conflicts/overlaps → ONE CROSS pipeline (shares all overhead)
+- Same-routing tasks (same roster-entry set) → ONE pipeline
+- More than one roster entry, no conflicts/overlaps → ONE CROSS pipeline (shares all overhead). On a single-project roster every task shares one routing, so they collapse into the fewest pipelines by dependency alone — CROSS never applies.
 - Only separate when: real dependencies (B needs A's output), conflicting files, or a task large enough to warrant its own pipeline
 - Merge sequential same-project tasks into ONE pipeline (one developer touching a file once < two in sequence)
 - **When in doubt, group more aggressively.** One pipeline with 5 tasks is far cheaper than 5 pipelines.
@@ -136,11 +136,11 @@ Output format:
 ```
 ## Execution Plan
 
-| # | Wave | Pipeline | Tasks | Routing | Description |
-|---|------|----------|-------|---------|-------------|
-| 1 | 1    | {name}   | N     | FE-ONLY | {one-liner} |
-| 2 | 1    | {name}   | N     | CROSS   | {one-liner} |
-| 3 | 2    | {name}   | N     | BE-ONLY | {one-liner} |
+| # | Wave | Pipeline | Tasks | Routing      | Description |
+|---|------|----------|-------|--------------|-------------|
+| 1 | 1    | {name}   | N     | {ROLE}-ONLY  | {one-liner} |
+| 2 | 1    | {name}   | N     | CROSS        | {one-liner} |
+| 3 | 2    | {name}   | N     | {ROLE}-ONLY  | {one-liner} |
 
 **Sequence:** Wave 1 pipelines run sequentially, then Wave 2 begins.
 **Estimated pipelines:** {total} | **JC pre-handled:** {j} | **KM pre-handled:** {k}
@@ -305,7 +305,7 @@ Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Builds + wave archiv
 
 ## Rules
 
-- **Group aggressively** — grouping IS the optimization. Never spawn 5 pipelines for 5 small tasks that could be one. Prefer ONE cross-project pipeline over separate single-project pipelines when no conflicts.
+- **Group aggressively** — grouping IS the optimization. Never spawn 5 pipelines for 5 small tasks that could be one. Prefer ONE multi-roster (CROSS) pipeline over separate single-entry pipelines when no conflicts.
 - **NEVER delegate Skill calls to sub-agents** — sub-agents lack access to the Skill tool. Always invoke directly.
 - **Each pipeline is a full `/build` run** — no shortcuts, no skipping QA.
 - **Document every step** — report updated after each pipeline completes.
@@ -314,4 +314,4 @@ Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Builds + wave archiv
 - **BLOCKED-DEFERRED** → wave continues; downstream assessed per dependency rules. Worktrees preserved intentionally.
 - **Re-group freely** — ignore user's section headings, group by routing/similarity.
 - **Professor review then archive** — Professor writes its review into the report FIRST, then the complete artifact (with review) gets archived. Unarchived wave in `$WAVES/` with Final Summary = bug.
-- **Clean up** — verify no orphaned worktrees/branches at monorepo root after completion. Exception: BLOCKED-DEFERRED worktrees with matching `BLOCKED.md`.
+- **Clean up** — verify no orphaned worktrees/branches at the repo root after completion. Exception: BLOCKED-DEFERRED worktrees with matching `BLOCKED.md`.

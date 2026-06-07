@@ -54,27 +54,30 @@ Most adopters keep Professor as-is. The voice transplants well across domains. I
 
 Then tell Claude your **sacred ground** — the topics where the character drops the humor and reports flat (e.g., "patient data", "user funds", "physical safety in autonomous control"). This goes into the persona's "What NOT to do" block. Without sacred ground defined, the character will make jokes in places it shouldn't.
 
-### 3. Project structure
+### 3. Project roster
 
-> Single project, or monorepo? If monorepo, how many subprojects, and what does each do?
+> How many projects does this repo hold, and what is each one? **One project is valid and first-class** — a single-project repo is a roster of one, not a stripped-down path. For each project, give: directory, role (what it does), tech stack, package manager, test runner, build tool, and dev server port(s).
 
-**Single-project repos:** skip child CLAUDE.md files, skip `mono-planner` and `mono-architect` (no cross-project consolidation). All agents live flat at `.claude/agents/`. The orchestrator goes `planner → architect → developer → qa` directly. `/build` drops the parallel fan-out steps.
+This becomes the **roster** — the ordered list of 1..N projects that drives the whole install. Templates carry generic per-project PATTERN blocks; Phase 2 expands each block once per roster entry (see "Materialization" below), so a 1-project and a 7-project repo get correctly-sized files from the same source. **The blueprint assumes no fixed project count** — whatever you list here is the truth.
 
-**Monorepo (2-6 projects):** keep `mono-planner` and `mono-architect`. For each project, create `{project}/CLAUDE.md` and `{project}/.claude/agents/`.
+For each roster entry, Claude needs:
 
-For each subproject, Claude needs:
+- Directory name (you choose; for a roster of one this is the repo root itself)
+- Role label (your own words — "backend", "ingest worker", "the library", anything)
+- Tech: language, framework, package manager, test runner, build tool, dev server port(s)
+- Whether it owns shared infra/orchestration (DB, queue, containers) — at most one entry usually does
 
-- Directory name (you choose)
-- One-line description
-- Tech: language, framework, package manager, test runner, build tool, dev server port
+**Single-project repo (roster of one):** the worktree is the repo root (no per-project subdir), there are no cross-project/integration steps, routing is trivially that one project, and the "monorepo" framing collapses to "the project." Skip child `CLAUDE.md` files, skip `mono-planner` and `mono-architect` (nothing to consolidate). All agents live flat at `.claude/agents/`; the orchestrator runs `planner → architect → developer → qa` directly; `/build` drops the parallel fan-out.
 
-Example:
+**Multi-project repo (roster of 2+):** keep `mono-planner` and `mono-architect` for cross-project consolidation. For each entry, create `{project}/CLAUDE.md` and `{project}/.claude/agents/`.
 
-- `api` — Express + GraphQL backend, pnpm, vitest, port 3000
-- `web` — React frontend, npm, jest, port 5173
-- `worker` — Python processing service, uv, pytest, no port (queue consumer)
-- `infra` — Docker Compose for PostgreSQL + Redis
-- `marketing` — Next.js marketing site, npm, Vercel, port 3001
+Example roster (one possible shape — yours may have one entry or seven):
+
+- `api` — backend: Express + GraphQL, pnpm, vitest, port 3000
+- `web` — frontend: React, npm, jest, port 5173
+- `worker` — ingest worker: Python, uv, pytest, no port (queue consumer)
+- `infra` — owns shared infra: Docker Compose for PostgreSQL + Redis
+- `marketing` — marketing site: Next.js, npm, port 3001
 
 **Specialist agents:** beyond the standard four (`planner`, `architect`, `developer`, `qa`), add a specialist when a narrow concern justifies it:
 
@@ -232,15 +235,17 @@ Claude shows you a summary of all answers + a list of files that will be written
 
 ## Phase 2 — Customization
 
+> **Materialization — how the roster expands.** Several templates carry per-project **PATTERN blocks**, written once with generic `{project}` tokens: the per-project pipeline stages in `build.md`/`wave.md`, the per-project agent files under `{project}/.claude/agents/{planner,architect,developer,qa}.md` (plus any specialists), and the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh`. For each roster entry, Claude **expands every pattern block once**, substituting that entry's directory, role, stack, package manager, test runner, and port — then fills the `PROJECTS=()` arrays so the scripts iterate the real roster. A roster of one expands each block once; a roster of seven expands it seven times. **Never carry a pattern block for a project the roster does not list** — `/build` must not reference a planner/architect/dev/qa agent or pipeline stage for a project that does not exist, and no `{project}` placeholder may remain unexpanded. **Single-project install:** the worktree is the repo root, the `PROJECTS=()` array holds the single entry (or the scripts drop the loop entirely), cross-project consolidation steps are omitted, and `mono-planner`/`mono-architect` are not installed.
+
 Claude takes your answers and:
 
-1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, the project structure tree, the non-negotiable rules. Strict-mode rules adapted to your stack.
-2. **Writes per-project `CLAUDE.md` files** (if monorepo) — tech stack details, conventions.
+1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, and the non-negotiable rules. Emits `{PROJECT_ROSTER}` (one Architecture bullet per roster entry) and `{PROJECT_AGENT_ROSTER}` (one Agents line per entry, listing only that project's installed agents); a single-project install collapses the monorepo framing to "the project." Strict-typing and infra rules emitted per roster entry (one typing rule per typed stack; infra rules only if a project owns infra).
+2. **Writes per-project `CLAUDE.md` files** (roster of 2+) — one per entry, with that entry's tech stack and conventions. A roster of one has no child CLAUDE.md.
 3. **Writes Tier A command files** — `/build`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave`, `/documenter`, `/council`, `/audit`. Voice intact, domain content filled.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
-5. **Writes root agents** — `gitter`, `mono-planner`, `mono-architect`, `mono-documenter` with your project list pinned.
-6. **Writes per-project agents** (if monorepo) — `planner`, `architect`, `developer`, `qa` per project, with your test/lint/build commands pinned.
-7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` with your tech stack's setup logic and port ranges.
+5. **Writes root agents** — `gitter` and `mono-documenter` always; `mono-planner` + `mono-architect` only for a roster of 2+, each with the roster pinned. A single-project install omits the two `mono-` consolidators.
+6. **Writes per-project agents** — for each roster entry, instantiates that project's `planner`, `architect`, `developer`, `qa` (plus any specialists from Q3) under `{project}/.claude/agents/`, with its test/lint/build commands pinned. One set per entry; none for projects not in the roster.
+7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`. Fills the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh` from the roster so they iterate the real entries, with each entry's setup logic and port ranges pinned. A single-project roster fills the array with one entry (or drops the loop).
    7a. **Installs skills.** Two kinds: **source-fetched** skills are cloned from their canonical public repos (listed in `blueprint/templates/skills/sources.json`) into `.claude/skills/{name}/` — the blueprint never vendors a copy of these, so they can't drift; the installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project. **Bundled** skills ship inside `blueprint/templates/skills/` (blueprint-owned protocols + domain-hydrated shells) and are copied + parameterized in place.
 
 | Skill                  | Source                                                          | Parameterization                                                     |

@@ -27,7 +27,7 @@ Cleanup is deletion. Sharpening is replacement. Cleanup does not imply sharpenin
 
 ### One LLM call = one self-contained prompt
 
-A chain's prompt lives in ONE place. Inline static {DOMAIN_ADJ} knowledge directly into the prompt that uses it — the `prompts/` template (e.g. `ccrt_extraction_prompt.md`, `rose_scoring_prompt.md`), or, for couple chains, the chain's `.py` prompt constant. Never split a single chain's prompt across a template plus a separately-injected knowledge file: the same knowledge then drifts to different lengths on disk, in the DB, and at runtime.
+A chain's prompt lives in ONE place. Inline static {DOMAIN_ADJ} knowledge directly into the prompt that uses it — the `prompts/` template (illustrative source-instance examples: `ccrt_extraction_prompt.md`, `rose_scoring_prompt.md`), or, where a chain holds its prompt in code, the chain's `.py` prompt constant. Never split a single chain's prompt across a template plus a separately-injected knowledge file: the same knowledge then drifts to different lengths on disk, in the DB, and at runtime.
 
 The only legitimate template + fragment composition is a **runtime-selected** fragment — `note-formats/` (one format chosen per note) and `insights/` (two-phase category selection). Even then, the LLM receives exactly one assembled prompt.
 
@@ -35,13 +35,13 @@ The only legitimate template + fragment composition is a **runtime-selected** fr
 
 When the prompt's input carries a stable locator for each unit — a segment index, message id, timestamp — the prompt asks the LLM to return the LOCATOR (e.g. `segment_index`), and the code derives the verbatim text from it. Asking the LLM to retype text already present in its input makes it fabricate and stitch (CCRT fabricated few-shot-example quotes; Gottman retyped excerpts); returning a locator makes fabrication structurally impossible and cuts output tokens (~41% on Gottman). Reserve verbatim-return only for inputs with no locator.
 
-Ownership: the four Gottman couple prompts are `.py` constants (code, not `/km`). CCRT and Rose prompt text live in `prompts/` and stay `/km`-owned.
+Ownership (source-instance example): some chain prompts live as `.py` constants (code, not `/km`); the `prompts/`-resident templates (e.g. CCRT, Rose) stay `/km`-owned.
 
 ### Forbidden in any injected knowledge file (cleanup targets — strip on sight)
 
 - **References to `knowledge/bias/llm-biases.md`** — that file is engineering-only, documenting {LLM_PROVIDER} biases for the human author of bias-control headers. NEVER seen by the runtime LLM.
 - **Etymology / "Methodology Notes" / "{PROJECT_NAME}-specific conventions"** — Wiggins-vs-Leary naming history, "this scale is a {PROJECT_NAME} normalization," "published instruments use Likert" — the LLM scores the construct; disciplinary lineage lives in README.
-- **"Terminology note" {PROJECT_NAME}-vs-published label mappings** — "Softening is a {PROJECT_NAME} label for Gottman's 'I Feel' category." Etymology lives in README or commit history, not the prompt.
+- **"Terminology note" {PROJECT_NAME}-vs-published label mappings** — e.g. "{X} is a {PROJECT_NAME} label for the published '{Y}' category." Etymology lives in README or commit history, not the prompt.
 - **"Note for UI alignment" / UI behavior** — the LLM is not the UI.
 - **Schema-conditional clauses for fields that do not exist** — "if the schema supports `bid_intensity`, use it" when no such field exists invites the LLM to emit unsupported shapes.
 - **Pointers to other knowledge files** — the LLM never opens them. Dead reference.
@@ -55,7 +55,7 @@ Ownership: the four Gottman couple prompts are `.py` constants (code, not `/km`)
 
 ### Schema fidelity — don't contradict the code
 
-A knowledge file MUST NOT invite the LLM to produce output shapes the runtime schema rejects. Before authoring partial-state allowances, grep the corresponding Pydantic enum / post-processor.
+A knowledge file MUST NOT invite the LLM to produce output shapes the runtime schema rejects. Before authoring partial-state allowances, grep the corresponding schema enum / post-processor (Pydantic in the source instance).
 
 ### Wiring verification — don't author for nobody
 
@@ -89,7 +89,7 @@ If ANY answer is no, the file is **ORPHANED**. Flag and ask before authoring —
 ├── note-formats/                     ← FULL-INJECTION — {DOMAIN_ADJ} note format specs (one file per format)
 │   ├── soap.md, dap.md, birp.md, ... (~20 formats)
 │   └── README.md                     ← engineering doc — NOT injected
-├── insights/                         ← TWO-PHASE INJECT — insight analysis knowledge (11 approaches × en/{lang2})
+├── insights/                         ← TWO-PHASE INJECT — insight analysis knowledge ({N} approaches × en/{lang2})
 │   ├── {approach}/{lang}/index.md          ← Phase 1: routing (category titles + one-liners)
 │   └── {approach}/{lang}/categories/*.md   ← Phase 2: per-category content (kebab-case)
 ├── prompts/                          ← PROMPT TEMPLATES — chain instructions, NOT injected {DOMAIN_ADJ} content
@@ -132,9 +132,11 @@ Each approach under `insights/` maps 1:1 to `knowledge_namespace` in `ApproachCo
 
 ---
 
-## Bilingual Knowledge Architecture
+## Multilingual Knowledge Architecture
 
-{PROJECT_NAME} serves {JURISDICTION}-speaking {USER_NOUN}s. Insight knowledge is bilingual by language directory:
+> If your product is single-language, collapse this section to one language directory and drop the second-language requirement throughout. The bilingual setup below is the source instance — a primary plus one {SECONDARY_LANG} locale.
+
+{PROJECT_NAME} serves {USER_NOUN}s in more than one language. Insight knowledge is organized by language directory:
 
 - `insights/{approach}/en/` — English routing and category files.
 - `insights/{approach}/{lang2}/` — {SECONDARY_LANG} routing and category files, with authentic {SECONDARY_LANG} {SUBJECT_NOUN} speech rather than translations.
@@ -143,16 +145,18 @@ Full-injection namespaces are language-neutral unless a live chain explicitly as
 
 ### Supported languages
 
-| Code      | Language         | Status                                    |
-| --------- | ---------------- | ----------------------------------------- |
-| `en`      | English          | Primary — always exists                   |
-| `{lang2}` | {SECONDARY_LANG} | Required — must be created alongside `en` |
+| Code      | Language         | Status                                                  |
+| --------- | ---------------- | ------------------------------------------------------- |
+| `en`      | English          | Primary — always exists                                 |
+| `{lang2}` | {SECONDARY_LANG} | Source-instance second locale — drop if single-language |
 
 ---
 
 ## Supported approaches
 
-11 {DOMAIN_NOUN} approaches with insight categories defined in `src/{ai_module}/approaches/*.py`:
+> **Illustrative taxonomy ({DOMAIN_FRAMEWORKS}).** The table below is the source instance's worked example — its {DOMAIN_NOUN} approaches, namespaces, and categories. Replace it wholesale with your own knowledge taxonomy; keep the table shape (Approach | Namespace | Categories) and the 1:1 mapping rule below.
+
+{N} {DOMAIN_NOUN} approaches with insight categories defined in `src/{ai_module}/approaches/*.py`:
 
 | Approach       | Namespace        | Categories                                                                                                                                              |
 | -------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -432,7 +436,7 @@ For one-line corrections, factual fixes, schema-fidelity corrections: just edit,
 
 Present as THREE tables:
 
-**Table 1: Insight knowledge (two-phase inject)** — 11 approaches x 2 languages:
+**Table 1: Insight knowledge (two-phase inject)** — {N} approaches x supported languages:
 
 | Approach | EN index | EN categories | {SECONDARY_LANG} index | {SECONDARY_LANG} categories | Status |
 | -------- | -------- | ------------- | ---------------------- | --------------------------- | ------ |
@@ -448,7 +452,7 @@ Present as THREE tables:
 When you create a new category that didn't exist before:
 
 1. Create insight files for both languages (`en` + `{lang2}`) after verifying the category is registered in code
-2. Update `docs/dev/research/km-therapy-approaches-plan.md`
+2. Update `docs/dev/research/km-approaches-plan.md`
 3. Note if category is relevant to other approaches
 
 When adding a new approach entirely: flag the required code wiring first. KM creates insight files only after `ApproachConfig` exposes the approach and categories.
@@ -474,7 +478,7 @@ Accept new category requests as research prompts. If the category is {DOMAIN_ADJ
 - **Verify wiring before authoring** — see Sacred Ground "Wiring verification." Orphaned-file authoring is theatre.
 - **`knowledge/bias/llm-biases.md` is engineering-only** — never cite from any injected file.
 - **Cleanup ≠ Sharpen** — distinct passes. Cleanup is deletion; sharpening is replacement. Never interleave.
-- **Schema fidelity** — knowledge files MUST NOT invite output shapes the runtime schema rejects. Grep the corresponding Pydantic enum / post-processor before authoring partial-state allowances.
+- **Schema fidelity** — knowledge files MUST NOT invite output shapes the runtime schema rejects. Grep the corresponding schema enum / post-processor (Pydantic in the source instance) before authoring partial-state allowances.
 - **READMEs are engineering-only** — validation history, source authority, scope divergences live in `{namespace}/README.md`, NEVER in the injected file.
 - **ONE category at a time** — research deep, write well, move on
 - **Quality over quantity** — 1500 precise words beats 5000-word dump

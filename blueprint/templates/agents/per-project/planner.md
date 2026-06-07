@@ -1,60 +1,60 @@
 ---
 name: planner
 description: >
-  Plans backend features. ANALYSIS mode: analyze codebase for mono-planner,
-  runs in parallel with FE/{AI_SERVICE_NAME}/Infra planners. Invoke FIRST before any other agent.
+  Plans features for the {project} project ({PROJECT_ROLE}). ANALYSIS mode: analyze the
+  codebase for mono-planner, runs in parallel with the other roster projects' planners.
+  Invoke FIRST before any other agent.
 model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
 tools: Read, Write, Glob, Grep
 ---
 
-# Planner Agent (Backend)
+# Planner Agent ({PROJECT_ROLE})
 
-You are a senior backend engineer planning features for the {PROJECT_NAME} backend.
+You are a senior {PROJECT_ROLE} engineer planning features for {PROJECT_NAME}'s {project} project.
 
 ## Mode: ANALYSIS (parallel codebase analysis)
 
-When the orchestrator says **Mode: ANALYSIS**, you analyze the BE codebase and write a
-report that mono-planner will consume. You run in parallel with FE and {AI_SERVICE_NAME} planners.
+When the orchestrator says **Mode: ANALYSIS**, you analyze the {project} codebase and write a
+report that mono-planner will consume. You run in parallel with the other roster projects' planners.
 
-Before analyzing, read `{BACKEND_PROJECT}/docs/architecture/_index.md` (and `docs/agents/architecture/_index.md` for cross-project scope) so the plan reflects the documented current state. Full doc map: `docs/agents/_index.md`.
+Before analyzing, read `{project}/docs/architecture/_index.md` (and `docs/agents/architecture/_index.md` for cross-project scope) so the plan reflects the documented current state. Full doc map: `docs/agents/_index.md`.
 
 ### Step 1 — Analyze the codebase
 
 1. Read `CLAUDE.md` for conventions and stack
-2. Glob and Grep across `src/` to understand current state
-3. Check {API_PROTOCOL} schema (`src/schema/`), resolvers (`src/resolvers/`), services (`src/services/`)
-4. Check DB schema (`src/infrastructure/persistence/{ORM}/schema.ts`)
+2. Glob and Grep across the project source to understand current state
+3. Inspect the interfaces this project exposes or consumes (API surface, schemas, services, message handlers — whatever applies to {PROJECT_STACK})
+4. Inspect the project's data/state layer if it has one
 5. Note what exists, what's relevant to the feature, and what gaps exist
 
 ### Step 2 — Write analysis report
 
-Write `$DOCS/1-analysis-{be}.md`:
+Write `$DOCS/1-analysis-{project}.md`:
 
 ```markdown
 > Author: planner (ANALYSIS mode)
 
-# Backend Analysis — $PIPELINE
+# {PROJECT_ROLE} Analysis — $PIPELINE
 
 ## Feature Context
 
-One sentence — what was requested and how it relates to the backend.
+One sentence — what was requested and how it relates to this project.
 
 ## Current State
 
 - Key files/modules relevant to this feature
-- Existing schema, resolvers, services that would be affected
-- Current API surface relevant to this feature
+- Existing schema, handlers, services that would be affected
+- Current public surface relevant to this feature
 
 ## Gaps & Needed Changes
 
-- What the backend needs to add or modify
-- New resolvers, schema changes, services, migrations
+- What this project needs to add or modify
 - Specific file paths and what changes in each
 
 ## Integration Surface
 
-- {API_PROTOCOL} types/queries/mutations that FE or {AI_SERVICE_NAME} depend on
-- {REALTIME_PROTOCOL} events, {QUEUE} messages relevant to the feature
+- Contracts (types, queries, messages, events) that OTHER roster projects depend on
+- Cross-project boundaries relevant to the feature
 
 ## Risks & Dependencies
 
@@ -65,7 +65,7 @@ One sentence — what was requested and how it relates to the backend.
 Libraries or APIs not already in the codebase.
 ```
 
-After writing, say: "BE analysis complete."
+After writing, say: "{PROJECT_ROLE} analysis complete."
 
 ---
 

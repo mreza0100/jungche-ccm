@@ -6,7 +6,7 @@ description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt
 
 # Security — Deep Scan
 
-> {PROJECT_NAME} handles {SESSION_NOUN} audio, transcripts, {DOMAIN_ADJ} observations, and {SUBJECT_NOUN} records — among the most sensitive data categories that exist. A security breach here doesn't just leak emails; it exposes someone's deepest vulnerabilities to a {USER_NOUN}. This is not a checkbox — it's a fortress inspection.
+> {PROJECT_NAME} handles {SESSION_NOUN} records, {SUBJECT_NOUN} data, and {DOMAIN_ADJ} observations — among the most sensitive data categories in this domain. A security breach here doesn't just leak emails; it exposes someone's most private information to whoever should never see it. This is not a checkbox — it's a fortress inspection. {DOMAIN_SAFETY}
 
 **Trigger:** `security`, `security <scope>`, or when `/audit` routes to security scopes.
 
@@ -40,15 +40,15 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **Internal error details exposed to users:** Grep for `type(e).__name__` or `str(e)` stored in user-visible fields, `e.message` or raw exception strings in {API_PROTOCOL} error responses, Python/Node exception class names in any {fe}-visible field, `stack`/`stackTrace` in API responses.
+1. **Internal error details exposed to users:** Grep for `type(e).__name__` or `str(e)` stored in user-visible fields, `e.message` or raw exception strings in {API_PROTOCOL} error responses, Python/Node exception class names in any client-visible field, `stack`/`stackTrace` in API responses.
 
 2. **Technology stack disclosure:** {ORM}/{AI_FRAMEWORK} driver or library names (e.g. ORM connection URLs, DB driver names, LLM SDK names) in user-visible strings, {API_FRAMEWORK} server-identity headers, {API_PROTOCOL} error `extensions` with internal paths.
 
-3. **Debug/development artifacts in production:** `breakpoint()` in {AI_SERVICE_NAME}, `TODO`/`FIXME` describing security workarounds, commented-out auth checks, `NODE_ENV === 'development'` blocks disabling security.
+3. **Debug/development artifacts in production:** `breakpoint()` in Python projects, `TODO`/`FIXME` describing security workarounds, commented-out auth checks, `NODE_ENV === 'development'` blocks disabling security.
 
 4. **Verbose {API_PROTOCOL} errors:** Check `maskedErrors` configuration, custom error formatting, `extensions` field leaking resolver paths.
 
-**Files to check:** {API_FRAMEWORK} error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, {AI_SERVICE_NAME} exception handlers.
+**Files to check:** {API_FRAMEWORK} error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, AI/pipeline-project exception handlers (if the roster has one).
 
 ---
 
@@ -56,11 +56,11 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, {AI_SERVICE_NAME} `text(` or `execute(` with f-strings/.format() in {AI_FRAMEWORK}.
+1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, Python `text(` or `execute(` with f-strings/.format() (e.g. in {AI_FRAMEWORK}).
 
 2. **Command injection:** `child_process.exec(` with string args containing variables, `subprocess.run(`/`os.system(` in Python.
 
-3. **XSS:** `dangerouslySetInnerHTML` in {fe}, `innerHTML` assignments, LLM-generated content rendered without sanitization.
+3. **XSS:** `dangerouslySetInnerHTML` in UI projects, `innerHTML` assignments, LLM-generated content rendered without sanitization.
 
 4. **Template injection:** `vm.runInContext(` with user/LLM content, Python `eval(`/`exec(`/`compile(` with variable args.
 
@@ -68,7 +68,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 6. **Prototype pollution:** `Object.assign({}, userInput)`, vulnerable lodash versions (<4.17.21), missing `__proto__`/`constructor` filtering.
 
-**Files to check:** Resolver input handling, {AI_SERVICE_NAME} DB query code, shell command construction, {fe} components rendering AI content.
+**Files to check:** Resolver input handling, AI/pipeline-project DB query code, shell command construction, UI components rendering AI content.
 
 ---
 
@@ -88,7 +88,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 6. **Magic login bypass:** `MAGIC_LOGIN_EMAIL` must check `FEATURE_FLAG_MAGIC_LOGIN=true`. Not enabled in `.env.local` (only `.env.demo`).
 
-**Files to check:** JWT middleware, resolver auth patterns, auth service, feature flag config, token storage in {fe}, env files.
+**Files to check:** JWT middleware, resolver auth patterns, auth service, feature flag config, token storage in UI/client projects, env files.
 
 ---
 
@@ -102,7 +102,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 3. **Batching attacks:** Check batch size limits — 1000 login mutations in one request = brute force.
 
-4. **Mass assignment:** Input types accepting `role`, `isAdmin`, `{orgId}`, `createdAt`.
+4. **Mass assignment:** Input types accepting privilege or ownership fields (`role`, `isAdmin`, an `{ORG_UNIT}` id, `createdAt`).
 
 5. **Subscription/{REALTIME_PROTOCOL} security:** Auth on {REALTIME_PROTOCOL} connect, subscription resolver auth checks, connection limits.
 
@@ -118,9 +118,9 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **Direct prompt injection:** f-strings/`.format()` in prompt construction with user data, `HumanMessage(content=` with raw transcript.
+1. **Direct prompt injection:** f-strings/`.format()` in prompt construction with user data, `HumanMessage(content=` with raw user/source text.
 
-2. **Indirect prompt injection:** Transcript text containing "Ignore previous instructions..." flowing to LLM without hardening. Check system prompt instructs LLM to treat transcript as DATA.
+2. **Indirect prompt injection:** Source text containing "Ignore previous instructions..." flowing to LLM without hardening. Check system prompt instructs LLM to treat source text as DATA.
 
 3. **Prompt leaking:** System prompts in user-accessible files/responses, raw LLM responses returned unfiltered, prompts logged at INFO level.
 
@@ -134,9 +134,9 @@ Internal system details leaking to end users through error messages, headers, or
 
 8. **{AI_FRAMEWORK} vulnerabilities:** Check the framework's published CVE advisories and pin to a patched version. Check for `verbose=True`, tracing with {SENSITIVE_DATA}, `PythonREPL`/`ShellTool`/`BashProcess` imports.
 
-9. **Data poisoning via vector store:** Transcript text not scanned before embedding, no knowledge file integrity verification.
+9. **Data poisoning via vector store:** Source text not scanned before embedding, no knowledge file integrity verification.
 
-**Files to check:** Chain definitions, prompt templates, {AI_FRAMEWORK} agent/tool definitions, LLM response processing, {QUEUE} consumer, {fe} rendering of AI content, `pyproject.toml` for the {AI_FRAMEWORK} version.
+**Files to check:** Chain definitions, prompt templates, {AI_FRAMEWORK} agent/tool definitions, LLM response processing, {QUEUE} consumer, UI rendering of AI content, `pyproject.toml` for the {AI_FRAMEWORK} version.
 
 ---
 
@@ -146,7 +146,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 1. **{SUBJECT_NOUN} data in logs:** `logger.*` calls with {SENSITIVE_DATA} fields, `JSON.stringify({subject})`/`str(result)` without filtering. NEVER log {SENSITIVE_DATA} — only anonymized IDs.
 
-2. **{SENSITIVE_DATA} in error messages/API responses:** Error strings interpolating {subject}/{session} data, {AI_SERVICE_NAME} step status `reason` with transcript excerpts.
+2. **{SENSITIVE_DATA} in error messages/API responses:** Error strings interpolating {subject}/{session} data, AI/pipeline-project step status `reason` with raw source excerpts.
 
 3. **{SENSITIVE_DATA} in URLs/query params/headers:** {SUBJECT_NOUN} names in URL construction — URLs are logged by proxies, stored in browser history.
 
@@ -168,7 +168,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 12. **Consent management:** Consent flags verified before audio recording, AI analysis, vector embedding, external service calls. Check at every data processing boundary.
 
-**Files to check:** All log statements, error handlers, {TRANSCRIPTION_SERVICE} integration, LLM prompt construction, {fe} storage, audio handling, URL construction, `package.json` for analytics SDKs, marketing site for tracking pixels, notes resolver access control, consent flag checks.
+**Files to check:** All log statements, error handlers, {TRANSCRIPTION_SERVICE} integration, LLM prompt construction, UI/client storage, media handling, URL construction, `package.json` for analytics SDKs, marketing site for tracking pixels, notes resolver access control, consent flag checks.
 
 ---
 
@@ -218,7 +218,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **Lock file integrity:** Verify the {be} lock file ({BE_PKG_MGR}), {fe} lock file ({FE_PKG_MGR}), and {ai} lock file ({AI_PKG_MGR}) exist.
+1. **Lock file integrity:** Verify each roster project has its package manager's lock file committed (one per `{project}`).
 
 2. **Known vulnerabilities:** Check for `node-serialize` (RCE), `lodash` < 4.17.21 (prototype pollution), `jsonwebtoken` < 9.0.0 (algorithm confusion), `express` < 4.19.2 (open redirect).
 

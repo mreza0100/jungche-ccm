@@ -45,9 +45,9 @@ Sections instead:
 ```markdown
 ### Save {Feature}
 
-**Projects:** {BE}, {FE} — **Status:** Active
+**Projects:** {project}, {project} — **Status:** Active
 
-{USER_NOUN} writes and saves {Feature} post-{session} in a plain textarea. `editContent`
+{USER_NOUN} writes and saves {Feature} after a {SESSION_NOUN} in a plain textarea. `editContent`
 seeded from `editedContent` on first non-null arrival.
 ```
 

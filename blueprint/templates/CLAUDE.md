@@ -2,15 +2,15 @@
 
 > **Domain Scope (optional):** Add domain-specific scope/safety disclaimers here, or delete the block. _Example:_ "Documentation and analysis assistant only. No diagnoses, no treatment recommendations. {USER_NOUN} retains full {DOMAIN_ADJ} responsibility."
 
-**Architecture:** five projects sharing {API_PROTOCOL}, {REALTIME_PROTOCOL}, and {QUEUE} boundaries.
+**Architecture:** {PROJECT_NAME} is a roster of 1..N projects connected by {the project's integration boundaries, if any}.
 
-- `{BACKEND_PROJECT}/` — {BACKEND_STACK}
-- `{FRONTEND_PROJECT}/` — {FRONTEND_STACK}
-- `{AI_PROJECT}/` — {AI_STACK}
-- `{INFRA_PROJECT}/` — {INFRA_STACK}
-- `{WEB_PROJECT}/` — {WEB_STACK} — marketing site ({PROJECT_DOMAIN})
+<!-- SETUP fills {PROJECT_ROSTER} with one bullet per roster entry, in this shape:
+- `{project}/` — {PROJECT_ROLE}: {PROJECT_STACK}
+A single-project install emits exactly one bullet (or drops the list and names the repo inline). A multi-project install emits one bullet per entry. Do NOT hard-code a project count anywhere. -->
 
-Each subproject has its own `CLAUDE.md` and `.claude/` with agents and skills.
+{PROJECT_ROSTER}
+
+Each project with its own `.claude/` carries a `CLAUDE.md`, agents, and skills. A single-project install (roster of one) is the repo root itself — no per-project subdirectories, no cross-project boundaries.
 
 <!-- DELETE THIS SECTION if you are NOT using Codex (OpenAI). If you ARE using Codex, fill in the details and remove this comment. -->
 
@@ -233,11 +233,13 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 
 ### Code
 
-- TypeScript strict, ESM-only — no `any` without justification ({be}/{fe})
-- {AI_STACK_LANG} strict type hints — no `Any` without justification ({AI_SERVICE_NAME})
+<!-- SETUP emits one strict-typing rule per roster entry whose stack has a type system, naming that project's stack and its discipline (e.g. "TypeScript strict, ESM-only — no `any` without justification"; "Python 3.12+ strict type hints — no `Any` without justification"). One rule per language present in the roster; skip the line for an untyped stack. -->
+
+{PROJECT_TYPING_RULES}
+
 - No secrets in code — keys in `.env.local` / `.env.test`
 - **Never swallow exceptions** — every `catch`/`except` MUST log full stack trace
-- **Use relative paths** from monorepo root in bash commands
+- **Use relative paths** from the repo root in bash commands
 - Generated artifacts go in `tmp/`, never `docs/`
 - **Format all markdown** — after writing or editing any `.md` file, run `npx prettier --write --prose-wrap preserve <file>`. For batch formatting: `npx prettier --write --prose-wrap preserve "**/*.md"`
 - **Surgical changes only** — every changed line must trace to the current task. Do not refactor, rename, restructure, or cosmetically improve adjacent code that already works. Always fix broken code you encounter regardless of who wrote it — leaving a bug because it is out of scope is negligence, not discipline.
@@ -254,13 +256,17 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 - **NEVER run destructive git** — no `reset --hard`, `push --force`, `clean -fdx`, `rm -rf`
 - **NEVER reuse archived pipeline/wave names** — check archives, append `-v2` if collision
 - Never install unvalidated libraries; never commit secrets
-- **All infra ops via `make -C {INFRA_PROJECT}`** — never direct `docker exec` / `psql` / `aws sqs`
+<!-- KEEP the next rule only if the roster has a project that owns infra/orchestration; drop it (and adapt the Testing & Environment infra lines below) for a roster with no such project. -->
+
+- **All infra ops via `make -C {INFRA_PROJECT}`** — never direct `docker exec` / `psql` / queue CLIs
 - **Execute explicit instructions as given** — when the founder delegates a defined task ("run it", "finish it"), carry it to completion; never silently narrow, drop, or substitute scope, nor override the instruction with your own caution. Delegation authorizes the actions the task requires. Surface a genuine concern before starting — as a question or a fail-fast — never as a silent exclusion or a mid-run pause.
 - **Parallelize multi-task work** — when given multiple independent tasks, investigate all upfront (resolve ambiguity, read all affected files, surface questions), then spawn independent agents with exact per-task instructions. Serial execution wastes tokens and context. Think dispatch, not loop.
 - **Context isolation (MANDATORY)** — when the conversation already has context from prior work (edits, analysis, research), NEVER execute new requests inline. ALWAYS spawn fresh sub-agents. Your accumulated context is a liability — it creates bias, confusion, and burns tokens re-processing stale information. A clean agent with a precise briefing is faster, cheaper, and more accurate than you doing it yourself in a bloated context. Write each agent prompt as a complete briefing: what to do, which files to read/edit, what changed recently, what the goal is. If the task has independent parts, spawn multiple agents in parallel. The Professor orchestrates — he doesn't do surgery with tired hands.
 - **Infrastructure guard** — before modifying ANY `.claude/`, `.codex/`, or root `CLAUDE.md` files, ALWAYS run `/pcm` first. It contains the system wiring knowledge and change protocols. Skipping it risks breaking the pipeline.
 
 ### Testing & Environment
+
+<!-- The infra-dependent lines below assume the roster has a project that owns local services (DB, queue, etc.) reached through `make -C {INFRA_PROJECT}`. If the roster has no such project, keep the Mock Policy and Zero-Tolerance rules and drop or adapt the env/setup/teardown specifics to however this project runs its tests. -->
 
 - **Two environments:** `.env.local` (dev, port {DB_PORT}/{QUEUE_PORT}) and `.env.test` (test, port {DB_PORT_TEST}/{QUEUE_PORT_TEST}). Start infra: `make -C {INFRA_PROJECT} up-local` / `up-test`
 - **Mock Policy:** Mock ALL external deps (LLM, {TRANSCRIPTION_SERVICE}, {EMAIL_SERVICE}). NEVER mock internal deps within 1 hop. The boundary is external vs internal.
@@ -279,7 +285,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 
 ## Repository Structure
 
-Five projects — `{BACKEND_PROJECT}/`, `{FRONTEND_PROJECT}/`, `{AI_PROJECT}/`, `{INFRA_PROJECT}/`, `{WEB_PROJECT}/` — plus `.claude/`, `.codex/`, `docs/`, and `.worktrees/`. Full layout is discoverable via `ls`.
+The roster projects (see Architecture above) — plus `.claude/`, `.codex/`, `docs/`, and `.worktrees/`. (A single-project install is just the repo root plus those framework directories.) Full layout is discoverable via `ls`.
 
 **Docs map:** start at `docs/agents/_index.md` — the hub linking every architecture, API, system-map, feature, and child-project doc. Reference docs are **clusters**: read the cluster `_index.md`, then `grep` it for the exact code/DB symbol and open the matching topic file. Doc identifiers match code verbatim, so a code symbol greps straight to its doc. The whole database — every table, column, and FK under its real {DATABASE} name — is one diagram: `docs/agents/graph/db/postgres.mmd`.
 
@@ -294,12 +300,15 @@ Five projects — `{BACKEND_PROJECT}/`, `{FRONTEND_PROJECT}/`, `{AI_PROJECT}/`, 
 
 ## Agents
 
-**Root (4):** mono-planner, mono-architect, gitter, mono-documenter — `.claude/agents/`. Every child agent (incl. {AI_SERVICE_NAME} architect/ai-engineer and all post-merge QA) is spawned by `/build` via general-purpose + "read and follow" its child file — none live at root.
-**{BACKEND} (4):** planner, architect, developer, qa — `{BACKEND_PROJECT}/.claude/agents/`
-**{FRONTEND} (5):** planner, architect, ui-ux, developer, qa — `{FRONTEND_PROJECT}/.claude/agents/`
-**{AI_SERVICE_NAME} (4):** planner, architect, ai-engineer, qa — `{AI_PROJECT}/.claude/agents/`
-**{INFRA} (5):** planner, architect, db-admin, devops, qa — `{INFRA_PROJECT}/.claude/agents/`
-**{WEB} (9):** planner, architect, developer, qa; researcher, writer, officer, reviewer, seo (`/contentor`) — `{WEB_PROJECT}/.claude/agents/`
+**Root (4):** mono-planner, mono-architect, gitter, mono-documenter — `.claude/agents/`. Every child agent is spawned by `/build` via general-purpose + "read and follow" its child file — none live at root. (A single-project install drops mono-planner and mono-architect — there is nothing to consolidate across — and the orchestrator runs planner → architect → developer → qa directly.)
+
+Each roster project carries its own agents under `{project}/.claude/agents/` — the standard four (planner, architect, developer, qa) plus any specialists that project's concerns justify (e.g. ui-ux, db-admin, devops, ai-engineer):
+
+<!-- SETUP emits one line per roster entry, in this shape:
+**{PROJECT_ROLE} (N):** planner, architect, [specialists…], developer, qa — `{project}/.claude/agents/`
+Only list the agents actually installed for that project. Do NOT carry agents for projects the adopter does not have. -->
+
+{PROJECT_AGENT_ROSTER}
 
 Model tiers: `docs/commands/pcm/references/agent-models.md`
 

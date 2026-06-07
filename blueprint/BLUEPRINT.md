@@ -2,7 +2,7 @@
 
 The discipline + character of the pipeline. Read this before installing it.
 
-> **Personality is load-bearing.** Strip the Professor's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, councils, multi-PhD professor and all — refitted to your domain at install time.
+> **Personality is load-bearing.** Strip the Professor's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, multi-PhD professor and all — refitted to your domain at install time. It drops into **any Claude Code project at any repo size**: structure is captured at install as a **roster** of 1..N projects, so a single-project repo (roster of one — first-class) and a multi-project monorepo get correctly-sized files from the same templates.
 
 ---
 
@@ -10,21 +10,35 @@ The discipline + character of the pipeline. Read this before installing it.
 
 Every command, agent, and rule sorts into one of three tiers:
 
-| Tier                         | Description                                                             | What ships                                                             | What gets parameterized                                                                                                  |
-| ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value.          | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (Professor's PhDs, Council panel composition, JC's example stack traces) |
-| **B — Domain archetypes**    | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview                        |
-| **C — Pure mechanics**       | Infrastructure agents and pipeline plumbing                             | Mechanics only — no character needed                                   | Tech-specific commands (test runner, package manager, build tool)                                                        |
+| Tier                         | Description                                                             | What ships                                                             | What gets parameterized                                                                           |
+| ---------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **A — Universal archetypes** | Personalities that work in any domain. The voice IS the value.          | Full character, voice, structure, signature traits, archetype identity | Domain-specific REFERENCES inside the character (Professor's PhDs, JC's example stack traces)     |
+| **B — Domain archetypes**    | Roles every serious project needs, but content is heavily domain-shaped | Archetype skeleton: identity, voice, charter, mode list, doc structure | Regulation name, knowledge domain, user persona, market segment — filled at install via interview |
+| **C — Pure mechanics**       | Infrastructure agents and pipeline plumbing                             | Mechanics only — no character needed                                   | Tech-specific commands (test runner, package manager, build tool)                                 |
 
 ### The cast (Tier A — universal)
 
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
-- **/council** — roundtable debate, three rounds: opening, rebuttal, verdict. Panel composition adapts to the archetypes you opt into.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/audit** — code auditor. 8 categories of hygiene + 9 of security.
-- **/build, /jc, /dev, /git, /wave, /documenter** — pipeline mechanics with light Professor voice in their reports.
-- **360°** — exhaustive multi-angle analysis skill. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative analysis.
+- **/audit** — code auditor. Hygiene + security categories.
+- **/build, /jc, /dev, /git, /wave, /documenter, /blueprint** — pipeline mechanics with light Professor voice in their reports.
+
+**Bundled skills (`p:*` namespace, ship with the blueprint):**
+
+- **p:analysis** — cross-disciplinary system analysis (CS + domain + compliance lenses).
+- **p:refine** — wave task refinement into a zero-gap spec.
+- **p:wave-review** — post-wave end-to-end functional review.
+- **p:rnd** — goal-driven iterative research-and-develop loop.
+- **p:quality:doc** / **p:quality:prompt** — doc-shaping and prompt-quality gates.
+- **p:audit:code-hygiene** / **p:audit:security** — the audit scopes `/audit` routes to.
+
+**Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
+
+- **rr** — Research-and-Report protocol.
+- **p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). The blind-spot killer — forces systematic coverage before creative analysis.
+- **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
+- **vision-factory** — forge, validate, and stress-test a startup vision.
 
 ### The optional cast (Tier B — opt-in at install)
 
@@ -195,15 +209,15 @@ your-project/
 ├── CLAUDE.md                          ← root rules + Professor persona (the nervous system's brain)
 ├── AGENTS.md                          ← (OPTIONAL) symlink → CLAUDE.md (Codex reads this)
 ├── .professor/
-│   ├── VERSION                        ← installed blueprint version (e.g., 0.5.0)
+│   ├── VERSION                        ← installed blueprint version (e.g., vX.Y.Z)
 │   ├── manifest.json                  ← interview answers + file hashes (machine-readable replay seed)
 │   ├── drift.md                       ← local customizations the merge keeps (human-readable)
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /council, /audit + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /blueprint + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
-│   ├── skills/                        ← cloned from public repos (rr, p:360, ghostwriter) + bundled (p:rnd)
+│   ├── skills/                        ← bundled p:* (p:rnd, p:refine, p:wave-review, p:analysis, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
@@ -242,8 +256,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
-- **A debating council** — `/council` runs five archetypes (Tier A + opted-in Tier B) in parallel on a topic, three rounds, then synthesizes a verdict.
-- \*\*Cross-disciplinary analysis — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions.
+- **Cross-disciplinary analysis** — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions (via the bundled `p:analysis` skill).
 - **Self-improvement** — `/pcm` is the meta-agent that edits its own pipeline rules at the source.
 - **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
@@ -262,7 +275,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - The path variable conventions
 - The five load-bearing walls
 - The non-negotiable rules
-- **The character voices** — the Professor's grandfatherly precision, JC's panic energy, Professor's cross-disciplinary structure, Council's debate format, the Tier B archetype identities
+- **The character voices** — the Professor's grandfatherly precision, JC's panic energy, Professor's cross-disciplinary structure, the Tier B archetype identities
 
 **Adapt at install (via the SETUP interview):**
 
@@ -271,8 +284,8 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - Test / lint / typecheck / build commands the agents run
 - Port ranges (whatever's free on your machine)
 - Professor's 10+ PhD disciplines (matched to your domain)
-- Council panel composition (which Tier B archetypes you opt in)
-- Tier B opt-ins (regulation, knowledge domain, user persona, market segment)
+- The project roster (your 1..N projects — directories, stacks, package managers, test runners, ports)
+- Tier B opt-ins (which optional archetypes you enable — regulation, knowledge domain, user persona, market segment)
 - The character name (default: "Professor") if you want a different persona
 
 See `SETUP.md` for the install interview and adaptation guidance.
@@ -307,7 +320,7 @@ See `templates/codex/README.md` for the full integration guide.
 
 ## Staying current — the update mechanism
 
-The blueprint evolves. Releases ship as **git tags** (`v0.5.0`, `v0.6.0`, etc.) on `mreza0100/professor`. Adopters don't track `main` — they hop between tagged releases via `/pcm update`.
+The blueprint evolves. Releases ship as **git tags** (`vX.Y.Z`) on `mreza0100/professor`. Adopters don't track `main` — they hop between tagged releases via `/pcm update`.
 
 ### How it works
 
@@ -351,7 +364,7 @@ See `SETUP.md` § "Staying current" for user-facing docs. See `templates/command
 
 ## The smell test
 
-**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see _their version of the Professor, JC, and Council_ — same archetypes, different content?**
+**Could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team all read this blueprint and see _their version of the Professor, JC, and the audit cast_ — same archetypes, different content?**
 
 If yes, the blueprint is right.
 If anyone has to delete personality before using it, the blueprint failed.

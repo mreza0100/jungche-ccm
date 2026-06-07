@@ -74,7 +74,7 @@ From `{PROJECT_NAME}` repo:
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
 - **Source-fetched skills** (`rr`, `p:360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
-- One representative project's child agents + CLAUDE.md (e.g., `{BACKEND_PROJECT}/`) as per-project template
+- The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project, e.g. `{BACKEND_PROJECT}/`, as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
 
 ### 2. Tier-aware transformations
 
@@ -270,9 +270,9 @@ Ready to /blueprint export.
    Per-bullet migration sub-headings (#### → For:) required for adopter-side action
    Informational-only bullets marked: **`/pcm update`: skip — informational only.**
 
-5. Finalize CHANGELOG:
-   [Unreleased] → [{NEW_VERSION}] — {YYYY-MM-DD}
-   Insert fresh empty [Unreleased] above
+5. Write release notes as a NEW per-release file `{BLUEPRINT_CLONE_PATH}releases/v{NEW_VERSION}.md` (title `# v{NEW_VERSION} — {YYYY-MM-DD}` + bullets grouped under `## Added/Changed/Fixed/Removed/Breaking/Migration`). Then prepend one line to the `## Releases` index in `CHANGELOG.md`: `- [v{NEW_VERSION}](releases/v{NEW_VERSION}.md) — {summary}`. CHANGELOG.md stays a slim index — full notes live in `releases/`, one file per version, so adopters read one release at a time.
+
+5b. Reconcile hand-curated docs against the shipped templates: `README.md` + `blueprint/BLUEPRINT.md` cast/command/skill lists must match `templates/`, and version references stay current (prefer version-neutral phrasing). The README's universal "any repo / any stack" promise is the CONTRACT — keep it; fix drifted templates up to it, never downgrade the README to match drift.
 
 6. echo "{NEW_VERSION}" > {BLUEPRINT_CLONE_PATH}VERSION
 

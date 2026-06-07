@@ -1,7 +1,7 @@
 ---
 name: p:analysis
 version: "2.0.0"
-description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) with {AI_SERVICE_NAME} Staff Engineer audit mode. Triggered by 'analyze <subject>', 'system analysis', 'architecture review', '{ai} audit', 'audit {ai}', or '{ai} <subsystem>'."
+description: "Cross-disciplinary system analysis (CS + {DOMAIN_NOUN} + Compliance) with {AI_SERVICE_NAME} Staff Engineer audit mode. Triggered by 'analyze <subject>', 'system analysis', 'architecture review', '{ai} audit', 'audit {ai}', or '{ai} <subsystem>'."
 ---
 
 # Analyze — Cross-Disciplinary System Analysis
@@ -14,12 +14,12 @@ description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) wi
 
 ## Mode Selection
 
-| Input                                  | Mode                                   | What happens                                         |
-| -------------------------------------- | -------------------------------------- | ---------------------------------------------------- |
-| `analyze <subject>`                    | **Cross-disciplinary**                 | Three-lens analysis (CS + {DOMAIN} + Compliance)     |
-| `{ai}` / `{ai} full`                   | **{AI_SERVICE_NAME} audit (full)**     | Staff Engineer mode — all 10 audit categories        |
-| `{ai} architecture` / `{ai} decisions` | **{AI_SERVICE_NAME} audit (arch)**     | Validate arch doc against code reality               |
-| `{ai} {subsystem}`                     | **{AI_SERVICE_NAME} audit (targeted)** | Only: chains, consumers, db, prompts, rag, embedding |
+| Input                                  | Mode                                   | What happens                                          |
+| -------------------------------------- | -------------------------------------- | ----------------------------------------------------- |
+| `analyze <subject>`                    | **Cross-disciplinary**                 | Three-lens analysis (CS + {DOMAIN_NOUN} + Compliance) |
+| `{ai}` / `{ai} full`                   | **{AI_SERVICE_NAME} audit (full)**     | Staff Engineer mode — all 10 audit categories         |
+| `{ai} architecture` / `{ai} decisions` | **{AI_SERVICE_NAME} audit (arch)**     | Validate arch doc against code reality                |
+| `{ai} {subsystem}`                     | **{AI_SERVICE_NAME} audit (targeted)** | Only: chains, consumers, db, prompts, rag, embedding  |
 
 ---
 
@@ -39,13 +39,13 @@ description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) wi
 
 5. **Scalability & Future-Proofing** — bottlenecks under load, data growth, multi-tenancy readiness, API versioning, technical debt
 
-#### {DOMAIN} lens
+#### {DOMAIN_NOUN} lens
 
 > Replace the five sub-points below with the adopter's domain expertise during the interview. The five slots below are the {PROJECT_NAME} originals, kept as a worked example of the depth this lens expects.
 
 1. **Domain Safety & Ethics** — AI assistant role boundaries, safeguards against harmful suggestions, crisis detection/escalation, informed consent, {DOMAIN_ADJ} alliance impact
 
-2. **{USER_NOUN} UX & Cognitive Load** _({DOMAIN} lens only)_ — cognitive burden during {SESSION_NOUN}s, interruption patterns, trust calibration. **Defer to `/pm`** for product UX. Flag UX-adjacent findings as `[PM-REVIEW]`.
+2. **{USER_NOUN} UX & Cognitive Load** _({DOMAIN_NOUN} lens only)_ — cognitive burden during {SESSION_NOUN}s, interruption patterns, trust calibration. **Defer to `/pm`** for product UX. Flag UX-adjacent findings as `[PM-REVIEW]`.
 
 3. **Domain Data Integrity** — {SESSION_NOUN} note accuracy, transcription reliability, sentiment/emotion analysis validity, progress tracking, plan coherence
 
@@ -60,12 +60,12 @@ description: "Cross-disciplinary system analysis (CS + {DOMAIN} + Compliance) wi
 Read:
 
 - `CLAUDE.md` (root) — system overview, pipeline, rules
-- `docs/agents/architecture/` cluster — cross-project architecture (start at `_index.md`)
+- `docs/agents/architecture/` cluster — the roster's cross-project architecture, or the single project's internal structure (start at `_index.md`)
 - `docs/agents/api/` cluster — **GREP the cluster, never read in full**
-- `$CDOCS/officer/$REFS/officer.md` — **MANDATORY** — compliance posture, known gaps, feature inventory, red lines
-- Child CLAUDE.md files for relevant subprojects
+- `$CDOCS/officer/$REFS/officer.md` — **MANDATORY** _(if the Officer archetype is installed)_ — compliance posture, known gaps, feature inventory, red lines
+- Child CLAUDE.md files for whichever roster projects the analysis touches (a single-project repo has only the root CLAUDE.md)
 
-**Officer sync:** Read `$CDOCS/officer/$REFS/officer.md` at the START of every analysis. The Officer owns the regulatory posture; you own the technical and domain analysis.
+**Officer sync:** Read `$CDOCS/officer/$REFS/officer.md` at the START of every analysis _(if the Officer archetype is installed)_. The Officer owns the regulatory posture; you own the technical and domain analysis.
 
 #### Step 1.5 — 360 sweep (inquiry domain)
 
@@ -75,14 +75,14 @@ Spawn a separate agent for clean-context analysis. `Agent(subagent_type: "genera
 
 Read actual source code. Don't just read docs — read implementations. Look at: key modules and interactions, test files (tested vs NOT tested), configuration, error handling patterns, data flow from input to storage to output.
 
-#### Step 3 — Cross-reference (CS + {DOMAIN} + Compliance)
+#### Step 3 — Cross-reference (CS + {DOMAIN_NOUN} + Compliance)
 
 Apply all three lenses simultaneously. The magic is in the intersections:
 
-- Slow query (CS) + loads during live {SESSION_NOUN} ({DOMAIN}) = **critical priority**
-- No guardrails (CS) + could suggest untrained interventions ({DOMAIN}) = **safety risk**
+- Slow query (CS) + loads during live {SESSION_NOUN} ({DOMAIN_NOUN}) = **critical priority**
+- No guardrails (CS) + could suggest untrained interventions ({DOMAIN_NOUN}) = **safety risk**
 - Tracks patterns across {SESSION_NOUN}s (CS) + longitudinal profiling (Compliance) = **regulatory blocker**
-- Outputs {FORBIDDEN_DOMAIN_OUTPUTS} (CS) + diagnosis-adjacent clustering (Compliance) + pathologizes normal behavior ({DOMAIN}) = **FORBIDDEN**
+- Outputs {FORBIDDEN_DOMAIN_OUTPUTS} (CS) + diagnosis-adjacent clustering (Compliance) + pathologizes normal behavior ({DOMAIN_NOUN}) = **FORBIDDEN**
 
 For every finding, check the Officer's feature inventory. For genuine regulatory ambiguity, invoke `/officer` in advisory mode — sparingly.
 
@@ -105,7 +105,7 @@ For every finding, check the Officer's feature inventory. For genuine regulatory
 
 #### Critical / Important / Suggestions
 
-### {DOMAIN} Findings
+### {DOMAIN_NOUN} Findings
 
 #### Critical / Important / Suggestions
 
@@ -143,39 +143,39 @@ Compliance column: `OK` / `LINE-N` / `GAP` / `BLOCKER`
 
 ### Step 0 — Read the Codebase
 
-Read `{AI_PROJECT}/CLAUDE.md` + the source files relevant to your scope. Key entry points: `settings.py`, `__main__.py`, `{queue}_consumer.py`, `analysis.py`. For architecture review, also read the pipeline arch doc and the `docs/agents/api/` cluster (GREP the cluster, never read in full).
+Read the AI/pipeline project's `CLAUDE.md` + the source files relevant to your scope. Key entry points: `settings.py`, `__main__.py`, `{queue}_consumer.py`, `analysis.py`. For architecture review, also read the pipeline arch doc and the `docs/agents/api/` cluster (GREP the cluster, never read in full).
 
 ### Audit Categories
 
 Run all applicable categories in parallel. For each, read the source, grep for the patterns, and produce findings with severity (CRITICAL/HIGH/MEDIUM/LOW).
 
-| #   | Category                   | Key concerns                                                                                                                | Where to look                                 |
-| --- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| 1   | **Message Intake**         | Malformed JSON crash, visibility timeout vs processing time, graceful shutdown, DLQ                                         | `{queue}_consumer.py`, `__main__.py`          |
-| 2   | **Analysis Orchestration** | Idempotency, transaction boundaries, error isolation, timeout on gather                                                     | `analysis.py`                                 |
-| 3   | **Chain Safety**           | Structured output parsing, retry+backoff, token budget, prompt injection                                                    | `chains/*.py`                                 |
-| 4   | **Database Integrity**     | Read-only boundary ({AI_SERVICE_NAME} must not write {BACKEND_PROJECT} tables), connection pool, ON CONFLICT, SQL injection | `db/*.py`                                     |
-| 5   | **RAG & Vectors**          | {SUBJECT_NOUN} data isolation (CRITICAL), embedding model loading, batch OOM, similarity threshold                          | `retrieval.py`, `vector_*.py`, `embedding.py` |
-| 6   | **Prompt Templates**       | Injection resistance, template variable completeness, {DOMAIN_ADJ} safety, bias                                             | `prompts/`                                    |
-| 7   | **Async Patterns**         | gather without timeout, blocking event loop, shared mutable state, task cancellation                                        | all async code                                |
-| 8   | **Error Handling**         | Bare `except:`, exception without traceback, `print()` instead of structured logging                                        | all files                                     |
-| 9   | **Configuration**          | Missing required vars, default values for secrets, env isolation                                                            | `settings.py`                                 |
-| 10  | **Approaches**             | Registry completeness, null approach handling, namespace mapping                                                            | `approaches/*.py`                             |
+| #   | Category                   | Key concerns                                                                                                        | Where to look                                 |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| 1   | **Message Intake**         | Malformed JSON crash, visibility timeout vs processing time, graceful shutdown, DLQ                                 | `{queue}_consumer.py`, `__main__.py`          |
+| 2   | **Analysis Orchestration** | Idempotency, transaction boundaries, error isolation, timeout on gather                                             | `analysis.py`                                 |
+| 3   | **Chain Safety**           | Structured output parsing, retry+backoff, token budget, prompt injection                                            | `chains/*.py`                                 |
+| 4   | **Database Integrity**     | Read-only boundary (a project must not write another project's tables), connection pool, ON CONFLICT, SQL injection | `db/*.py`                                     |
+| 5   | **RAG & Vectors**          | {SUBJECT_NOUN} data isolation (CRITICAL), embedding model loading, batch OOM, similarity threshold                  | `retrieval.py`, `vector_*.py`, `embedding.py` |
+| 6   | **Prompt Templates**       | Injection resistance, template variable completeness, {DOMAIN_ADJ} safety, bias                                     | `prompts/`                                    |
+| 7   | **Async Patterns**         | gather without timeout, blocking event loop, shared mutable state, task cancellation                                | all async code                                |
+| 8   | **Error Handling**         | Bare `except:`, exception without traceback, `print()` instead of structured logging                                | all files                                     |
+| 9   | **Configuration**          | Missing required vars, default values for secrets, env isolation                                                    | `settings.py`                                 |
+| 10  | **Approaches**             | Registry completeness, null approach handling, namespace mapping                                                    | `approaches/*.py`                             |
 
 For each category: read the files, grep for the anti-patterns (e.g., `except:` bare, `text(` with f-strings, `asyncio.gather` without timeout), and report specific `file:line` findings.
 
 ### Domain Output Audit
 
-For domain output validation (e.g., faithfulness of stored {AI_SERVICE_NAME}-generated records against the source transcript and the code + prompts), run a dedicated three-angle audit: DB-stored output vs source input vs code+prompts. Spawn one agent per output section across all subjects, then judge the aggregate — never inline-audit from biased context.
+For domain output validation (e.g., faithfulness of stored {AI_SERVICE_NAME}-generated records against the source input and the code + prompts), run a dedicated three-angle audit: DB-stored output vs source input vs code+prompts. Spawn one agent per output section across all subjects, then judge the aggregate — never inline-audit from biased context.
 
 ### Wave History Lookup
 
 When auditing {AI_SERVICE_NAME} and you need to understand what changes were made and when:
 
-1. **Check recent builds:** `ls docs/dev/builds/` — look for pipelines with `{ai}` in the routing
+1. **Check recent builds:** `ls docs/dev/builds/` — look for pipelines routed to the AI/pipeline project
 2. **Check wave archives:** `ls docs/dev/waves/archive/` — completed wave files document what tasks ran
 3. **Check active waves:** `ls docs/dev/waves/` — in-progress wave files
-4. **Git history:** `git log --oneline -- {AI_PROJECT}/` — commits touching {AI_SERVICE_NAME}, with pipeline names in commit messages
+4. **Git history:** `git log --oneline -- {project}/` (the AI/pipeline project's directory) — commits touching {AI_SERVICE_NAME}, with pipeline names in commit messages
 5. **Pipeline docs:** each pipeline writes `{$DOCS}/1-plan.md` through `{$DOCS}/7-post-merge-qa.md` — read these for the full decision trail
 
 ### Architecture Review Sub-Mode

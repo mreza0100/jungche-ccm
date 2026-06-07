@@ -1,6 +1,6 @@
 ---
 name: p:quality:prompt
-description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {KNOWLEDGE_ROOT}. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
+description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {AI_PROJECT}/knowledge/. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
 ---
 
 # Prompt Quality
@@ -213,4 +213,4 @@ If the failure is recurring and structural, consider a hook instead.
 
 ## /km knowledge files are prompts too
 
-`/km` writes domain knowledge files under `{KNOWLEDGE_ROOT}` that get injected verbatim into the {AI_SERVICE_NAME} LLM context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules ({LLM_PROVIDER} bias control, schema fidelity, {REGULATION} compliance) — load both: p:quality:prompt for the structural discipline, `/km`'s Sacred Ground for the domain layer.
+`/km` writes domain knowledge files under `{AI_PROJECT}/knowledge/` that get injected verbatim into the {AI_SERVICE_NAME} LLM context. Every rule above applies: cut test, cue density, one canonical term, no narration. `/km` carries additional domain-specific rules ({LLM_PROVIDER} bias control, schema fidelity, {REGULATION} compliance) — load both: p:quality:prompt for the structural discipline, `/km`'s Sacred Ground for the domain layer.

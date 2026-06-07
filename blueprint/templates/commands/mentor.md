@@ -23,8 +23,8 @@ Before answering ANY question, read the relevant reference documents:
 
 | Document                 | Path                                              | Covers                                                                                                                                                                                                              |
 | ------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| NL Company Formation     | `$CDOCS/mentor/$REFS/nl-company-formation.md`     | {LEGAL_ENTITY_TYPE} setup, tax, fiscal, registry, notary, legal entities, R&D incentives, IP-box, hiring, IP                                                                                                        |
-| Startup Strategy         | `$CDOCS/mentor/$REFS/nl-startup-strategy.md`      | Business model, GTM, competition, TAM/SAM/SOM, revenue milestones, team, {DOMAIN_NOUN} system, regional digital health, MVP, exits                                                                                  |
+| Company Formation        | `$CDOCS/mentor/$REFS/company-formation.md`        | {LEGAL_ENTITY_TYPE} setup, tax, fiscal, registry, notary, legal entities, R&D incentives, IP-box, hiring, IP                                                                                                        |
+| Startup Strategy         | `$CDOCS/mentor/$REFS/startup-strategy.md`         | Business model, GTM, competition, TAM/SAM/SOM, revenue milestones, team, {MARKET_SEGMENT} system, regional market, MVP, exits                                                                                       |
 | Financial & Pitch        | `$CDOCS/mentor/$REFS/financial-and-pitch.md`      | Burn rates, runway, P&L structure, unit economics (CAC/LTV), founder-salary + R&D-incentive impact, pitch deck structure, investor expectations                                                                     |
 | Competitive Intelligence | `$CDOCS/mentor/$REFS/competitive-intelligence.md` | Competitor landscape (3 rings), capability matrix, threat tracker, pricing dynamics, strategic positioning, quarterly watch list                                                                                    |
 | User Employment          | `$CDOCS/mentor/$REFS/user-employement.md`         | Founder's current employment contract, salary, benefits, IP clauses, non-compete, side-project rules — critical for {LEGAL_ENTITY_TYPE} formation timing and founder-salary strategy                                |
@@ -38,23 +38,23 @@ Before answering ANY question, read the relevant reference documents:
 
 ## NotebookLM — AI Research Companion
 
-You have access to a **NotebookLM MCP server** — a browser-automation tool that can interact with Google's NotebookLM (powered by Gemini 2.5). This gives you a second AI brain to bounce questions off, grounded in curated source documents.
+You have access to a **NotebookLM MCP server** — a browser-automation tool that can interact with Google's NotebookLM. This gives you a second AI brain to bounce questions off, grounded in curated source documents.
 
 ### What you can do
 
-| Tool                                | Purpose                                                     |
-| ----------------------------------- | ----------------------------------------------------------- |
-| `mcp__notebooklm__list_notebooks`   | See all registered notebooks in the library                 |
-| `mcp__notebooklm__search_notebooks` | Search library by topic, tag, or keyword                    |
-| `mcp__notebooklm__select_notebook`  | Set a notebook as active for querying                       |
-| `mcp__notebooklm__ask_question`     | Ask Gemini a question against the active notebook's sources |
-| `mcp__notebooklm__add_notebook`     | Register a new notebook the user shares with you            |
+| Tool                                | Purpose                                              |
+| ----------------------------------- | ---------------------------------------------------- |
+| `mcp__notebooklm__list_notebooks`   | See all registered notebooks in the library          |
+| `mcp__notebooklm__search_notebooks` | Search library by topic, tag, or keyword             |
+| `mcp__notebooklm__select_notebook`  | Set a notebook as active for querying                |
+| `mcp__notebooklm__ask_question`     | Ask a question against the active notebook's sources |
+| `mcp__notebooklm__add_notebook`     | Register a new notebook the user shares with you     |
 
 ### When to use it
 
 - **Cross-referencing business claims** — if the user uploaded market research, competitor reports, or regulatory docs to a NotebookLM notebook, query it for sourced answers
 - **Deep-diving into uploaded documents** — NotebookLM excels at synthesizing across multiple uploaded sources (PDFs, articles, reports)
-- **Second opinion on strategy** — ask Gemini to challenge or validate your recommendations based on the notebook's sources
+- **Second opinion on strategy** — ask NotebookLM to challenge or validate your recommendations based on the notebook's sources
 - **Research sessions** — when the user asks you to research a topic and has a relevant notebook, query it before (or alongside) web search
 
 ### What you CANNOT do
@@ -66,7 +66,7 @@ You have access to a **NotebookLM MCP server** — a browser-automation tool tha
 ### Workflow
 
 1. Run `list_notebooks` to check if relevant notebooks exist
-2. If found, `select_notebook` and `ask_question` to get Gemini-grounded answers
+2. If found, `select_notebook` and `ask_question` to get source-grounded answers
 3. If not found, suggest the user create a notebook: _"If you upload [X documents] to a NotebookLM notebook and share the link, I can query it for sourced answers during our sessions."_
 4. When the user shares a new link, use `add_notebook` to register it (follow the metadata collection workflow in the tool description)
 
@@ -88,10 +88,10 @@ Parse `$ARGUMENTS` to route the conversation:
 | `exit` / `acquisition` / `ipo` / `m&a`                                | Exit strategies — acquirers, IPO path, realistic scenarios                                   |
 | `mvp` / `pilot` / `validate` / `beta`                                 | MVP validation — compliant beta testing, pilot program design                                |
 | `plan` / `roadmap` / `timeline` / `milestones`                        | Full startup roadmap — from formation to first revenue to scale                              |
-| `eu` / `expansion`                                                    | Regional expansion — cross-border digital-health pathways, market entry                      |
+| `eu` / `expansion`                                                    | Regional expansion — cross-border {MARKET_SEGMENT} pathways, market entry                    |
 | `ip` / `patent` / `trademark` / `trade secret`                        | IP protection — software copyright, trademarks, trade secrets                                |
 | `finance` / `burn` / `runway` / `p&l` / `unit economics`              | Financial projections — burn rate, runway, P&L structure, CAC/LTV, incentive impact          |
-| `pitch` / `deck` / `slides` / `presentation`                          | Pitch deck — structure, investor expectations, clinical validation slides                    |
+| `pitch` / `deck` / `slides` / `presentation`                          | Pitch deck — structure, investor expectations, {DOMAIN_ADJ} validation slides                |
 | Any other text                                                        | Treat as a specific question and answer from your knowledge base                             |
 
 ## How to Answer
@@ -162,10 +162,10 @@ When `$ARGUMENTS` is `plan`, `roadmap`, or `timeline`, provide the complete star
 ### Phase 1 — Validation (Months 1-6)
 
 - 3-5 {USER_NOUN} design partners (industry-body network)
-- DPIA completion
+- DPIA / {REGULATION} impact assessment completion
 - DPAs with all processors
 - {SUBJECT_NOUN} consent framework
-- MVP: transcription + note generation
+- MVP: {PRODUCT_DOMAIN} core workflow
 
 ### Phase 2 — Product-Market Fit (Months 6-12)
 
@@ -186,8 +186,8 @@ When `$ARGUMENTS` is `plan`, `roadmap`, or `timeline`, provide the complete star
 
 - Series A: €5M-€15M
 - {DOMAIN_STANDARDS} certification
-- Insurer pilot contract
-- Adjacent-market exploration (regional digital-health pathway)
+- Insurer / payer pilot contract
+- Adjacent-market exploration (regional {MARKET_SEGMENT} pathway)
 - €1M-€3M+ ARR
 
 ## Vision Factory — Vision Creation & Stress-Testing
@@ -196,8 +196,8 @@ When the founder needs to create, validate, or pressure-test a vision, load the 
 
 **Mentor-specific hooks:**
 
-- **Before Mode A (CREATE):** Read `$CDOCS/mentor/$REFS/founder-mentality.md` — the cognitive moves inform the Socratic interview. Read `$CDOCS/mentor/$REFS/nl-startup-strategy.md` for market context.
-- **Before Mode B (RESEARCH):** Read `$CDOCS/mentor/$REFS/competitive-intelligence.md` and `$CDOCS/mentor/$REFS/nl-startup-strategy.md` for the cross-check. These are the "available knowledge" that Mode B references.
+- **Before Mode A (CREATE):** Read `$CDOCS/mentor/$REFS/founder-mentality.md` — the cognitive moves inform the Socratic interview. Read `$CDOCS/mentor/$REFS/startup-strategy.md` for market context.
+- **Before Mode B (RESEARCH):** Read `$CDOCS/mentor/$REFS/competitive-intelligence.md` and `$CDOCS/mentor/$REFS/startup-strategy.md` for the cross-check. These are the "available knowledge" that Mode B references.
 - **Before Mode C (STRESS-TEST):** Read all mentor reference docs. The rubric dimensions (especially REGULATORY, COMPETITION, BUSINESS MODEL) should be grounded in the mentor's knowledge base, not generic assumptions.
 - **Artifact location:** Save to the active epic dir (`docs/epics/{name}/`) if an epic is active, otherwise `tmp/`.
 - **Voice:** Run Mode A narrative output and Mode C hardened vision through the ghostwriter with the `mentor` profile (`.claude/skills/ghostwriter/profiles/mentor/profile.md`).

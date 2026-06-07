@@ -1,16 +1,16 @@
 ---
 name: p:audit:code-hygiene
 version: "1.0.0"
-description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, {be}, {fe}, {ai}, {web}, {infra}."
+description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, plus one per project in the roster ({project})."
 ---
 
 # Code Hygiene — Audit Sub-Mode
 
-> Systematic code hygiene scan across the monorepo.
+> Systematic code hygiene scan across every project in the roster (one project, or many).
 
 **Trigger:** `code-hygiene`, `code-hygiene <scope>`, or when `/audit` routes to code hygiene scopes.
 
-**Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, `{be}`, `{fe}`, `{ai}`, `{web}`, `{infra}`.
+**Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, plus a per-project scope for each `{project}` in the roster (a single-project repo has just one).
 
 Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/p:wave-review`.
 
@@ -26,24 +26,24 @@ Fields, columns, or properties that exist in multiple places for the same concep
 
 1. **DB schema dual-writes:** Grep for cases where the same logical value is written to multiple columns or tables. Look for patterns like:
    - Two UPDATE statements in the same function writing similar data
-   - Fields with similar names on different tables (e.g., `{domainStyle}` + `{domainApproach}`)
-   - {AI_SERVICE_NAME} writing to {BACKEND_PROJECT}-owned columns (cross-boundary writes)
+   - Fields with similar names on different tables (e.g., two columns for the same concept)
+   - One roster project writing to another project's owned columns (cross-boundary writes)
 
 2. **{API_PROTOCOL}/DB mismatches:** Compare {API_PROTOCOL} schema fields against DB schema columns. Look for:
    - {API_PROTOCOL} fields that don't map to any DB column (computed? stale?)
    - DB columns with no corresponding {API_PROTOCOL} field (dead storage?)
    - Fields that exist on both the {API_PROTOCOL} type AND as a nested resolver
 
-3. **{FRONTEND_PROJECT} fallback chains:** Grep the frontend for `??` or `||` fallback patterns that read the same value from multiple sources (e.g., `user?.fieldA ?? user?.fieldB`). These indicate a ghost field that should have been consolidated.
+3. **Client-side fallback chains:** Grep UI/client projects for `??` or `||` fallback patterns that read the same value from multiple sources (e.g., `user?.fieldA ?? user?.fieldB`). These indicate a ghost field that should have been consolidated.
 
 4. **Enum duplication:** Check if the same enum values are defined in multiple places (DB enum, {API_PROTOCOL} enum, TypeScript enum, Python enum) and whether they're in sync.
 
-**Files to check:**
+**Files to check (per roster project that applies):**
 
-- `{BACKEND_PROJECT}/src/infrastructure/persistence/{ORM}/schema.ts` — all DB columns
-- `{BACKEND_PROJECT}/src/infrastructure/graphql/schema.ts` — all {API_PROTOCOL} types
-- `{AI_PROJECT}/src/.../db/` — all {AI_SERVICE_NAME} DB writes
-- `{FRONTEND_PROJECT}/src/` — fallback chains, dual reads
+- the {ORM}/schema definition — all DB columns
+- the {API_PROTOCOL} schema — all {API_PROTOCOL} types
+- any project's DB-write layer — cross-boundary writes
+- UI/client source — fallback chains, dual reads
 
 **Report format per finding:**
 
@@ -61,7 +61,7 @@ GHOST: {field_name}
 
 Code that is never called, never imported, or commented out and left to rot.
 
-> **Automated by linters:** Unused imports/vars are caught by `@typescript-eslint/no-unused-vars` (error) in {be}/{fe}/{web} and Ruff `F401` in {ai}. Commented-out code is caught by Ruff `ERA001` in {ai}. `noUnusedLocals`/`noUnusedParameters` in tsconfig catch dead locals at compile time. This category focuses on what linters CANNOT catch: unused exports, orphaned files, unreachable branches, dead call chains, and unused {fe} state.
+> **Automated by linters:** unused imports/vars and commented-out code are caught by each project's linter (e.g. `@typescript-eslint/no-unused-vars` in TS projects, Ruff `F401`/`ERA001` in Python; `noUnusedLocals`/`noUnusedParameters` in tsconfig catch dead locals at compile time). This category focuses on what linters CANNOT catch: unused exports, orphaned files, unreachable branches, dead call chains, and unused UI state.
 
 **How to detect:**
 
@@ -71,7 +71,7 @@ Code that is never called, never imported, or commented out and left to rot.
    - Types/interfaces defined but never referenced
    - Constants defined but never used
 
-2. **Commented-out code blocks (TS projects only):** Grep for large commented-out sections (3+ consecutive lines starting with `//`). {AI_SERVICE_NAME} is handled by Ruff `ERA001`.
+2. **Commented-out code blocks (TS projects only):** Grep for large commented-out sections (3+ consecutive lines starting with `//`). Python projects are handled by Ruff `ERA001`.
 
 3. **Unreachable branches:** Look for:
    - `if (false)` or `if (true)` guards
@@ -85,17 +85,17 @@ Code that is never called, never imported, or commented out and left to rot.
    - Test files for modules that no longer exist
    - Stale migration files or seed data files
 
-5. **Unused state ({fe}-specific):** Grep for `useState` calls where the setter is never called elsewhere in the component, or the state value is never read.
+5. **Unused state (UI-project-specific):** Grep for component state (e.g. `useState`) where the setter is never called elsewhere in the component, or the state value is never read.
 
 6. **TODO/FIXME archaeology:** Grep for `TODO`, `FIXME`, `HACK`, `XXX` comments. Check if the referenced work was ever completed elsewhere.
 
 7. **Placeholder stubs (LLM artifact):** Functions left unfinished by AI generation — `throw new Error("not implemented")`, `raise NotImplementedError`, a lone `...` as a TS function body, bare `pass` in a non-empty class method, `// rest of implementation here`. Grep for these and confirm whether the real implementation landed elsewhere or the stub shipped.
 
-**Scope-specific checks:**
+**Scope-specific checks (apply to whichever roster project fits the role):**
 
-- **{be}:** Check resolvers -> services -> repositories chain. If a repo method exists but no service calls it, and no resolver calls that service method — it's dead.
-- **{fe}:** Check components. If a component file exists but is never imported in any route, screen, or parent component — it's dead.
-- **{ai}:** Check chains. If a chain function exists but `analysis.py` never calls it — it's dead. Check prompt templates not referenced by any chain.
+- **API/service projects:** Check resolvers -> services -> repositories chain. If a repo method exists but no service calls it, and no resolver calls that service method — it's dead.
+- **UI/client projects:** Check components. If a component file exists but is never imported in any route, screen, or parent component — it's dead.
+- **AI/pipeline projects (if the roster has one):** Check chains. If a chain function exists but the orchestrator never calls it — it's dead. Check prompt templates not referenced by any chain.
 
 **Report format:**
 
@@ -125,11 +125,9 @@ Packages installed but never imported, or imported but outdated/deprecated.
 
 4. **Phantom / hallucinated imports (LLM artifact):** An import naming a package NOT in `package.json` / `pyproject.toml`. AI confidently imports packages that don't exist — a supply-chain (slopsquatting) risk. Cross-check every imported package name against the manifest; flag any that resolve to nothing.
 
-**Files to check:**
+**Files to check (per roster project):**
 
-- `{BACKEND_PROJECT}/package.json` — deps vs actual imports in `{BACKEND_PROJECT}/src/`
-- `{FRONTEND_PROJECT}/package.json` — deps vs actual imports in `{FRONTEND_PROJECT}/src/`
-- `{AI_PROJECT}/pyproject.toml` — deps vs actual imports in `{AI_PROJECT}/src/`
+- each project's manifest (`package.json` / `pyproject.toml` / etc.) — declared deps vs actual imports in that project's `src/`
 
 **Report format:**
 
@@ -150,11 +148,11 @@ Patterns that work but are structurally wrong — they'll cause pain as the code
 
 **How to detect:**
 
-1. **Cross-boundary writes:** {AI_SERVICE_NAME} should only write to {ai}-owned tables. Grep {ai} DB code for INSERT/UPDATE to tables owned by {BACKEND_PROJECT} (`{session_table}`, `{subject_table}`, `users`, `appointments`, `{org_table}`). `{session_table}.name` and `{session_table}.summary` are known exceptions — flag them anyway as they should be migrated.
+1. **Cross-boundary writes:** each roster project should only write to the tables it owns. Grep one project's DB code for INSERT/UPDATE to tables owned by another project. Any documented exception (a project writing one or two columns it does not own) should still be flagged as it should be migrated.
 
 2. **God classes/modules:** Classes or modules with too many methods (>15) or mixed responsibilities. Known patterns:
-   - **{ai}:** Repository classes that combine step-status updates, insight saves, and multiple per-feature saves in one class
-   - **{ai}:** Settings/config models with 30+ fields that should be grouped into nested sub-models
+   - Repository classes that combine step-status updates, record saves, and multiple per-feature saves in one class
+   - Settings/config models with 30+ fields that should be grouped into nested sub-models
 
 3. **Circular dependencies:** Module A imports from B, B imports from A.
 
@@ -163,8 +161,8 @@ Patterns that work but are structurally wrong — they'll cause pain as the code
 5. **Missing abstractions / wrong layer:**
    - SQL strings in service layer (should be in repository)
    - Business logic in resolvers (should be in services)
-   - **{be}:** Resolvers with inline Promise.all() doing parallel DB queries
-   - **{fe}:** Components doing {API_PROTOCOL} queries directly instead of through custom hooks
+   - **API/service projects:** Resolvers with inline parallel-fan-out (e.g. `Promise.all()`) doing parallel DB queries
+   - **UI/client projects:** Components doing {API_PROTOCOL} queries directly instead of through custom hooks
 
 6. **N+1 query patterns:** {API_PROTOCOL} resolvers that trigger a DB query per item in a list.
 
@@ -190,7 +188,7 @@ Places where TypeScript strict mode or Python type hints are bypassed, or where 
 
 **How to detect:**
 
-1. **`Any` usage (Python):** Grep for `: Any`, `-> Any` in {AI_SERVICE_NAME} source files. Must have justification comment per CLAUDE.md rules.
+1. **`Any` usage (Python):** Grep for `: Any`, `-> Any` in Python project source files. Must have justification comment per CLAUDE.md rules.
 
 2. **`# type: ignore` without justification (Python):** Each should have a comment explaining WHY.
 
@@ -200,7 +198,7 @@ Places where TypeScript strict mode or Python type hints are bypassed, or where 
 
 5. **Double `as any` (TS):** Grep for `as any) as any` — indicates the developer gave up on typing entirely.
 
-6. **Hallucinated API calls (LLM artifact):** AI calls methods/attributes that don't exist or passes wrong argument shapes — confident, plausible, and sometimes type-checking against loose types. Run `tsc --noEmit` and grep its output for "Property … does not exist"; for {AI_SERVICE_NAME} run `mypy`/`pyright` and look for missing-attribute errors. Pay special attention to recently changed or low-frequency third-party APIs.
+6. **Hallucinated API calls (LLM artifact):** AI calls methods/attributes that don't exist or passes wrong argument shapes — confident, plausible, and sometimes type-checking against loose types. Run `tsc --noEmit` and grep its output for "Property … does not exist"; for Python projects run `mypy`/`pyright` and look for missing-attribute errors. Pay special attention to recently changed or low-frequency third-party APIs.
 
 **Report format:**
 
@@ -219,17 +217,17 @@ Same concept with different names across projects, or naming that doesn't follow
 
 **How to detect:**
 
-1. **Cross-project naming:** Same domain concept should have the same name everywhere. Check key domain terms across {be}, {ai}, and {fe}.
+1. **Cross-project naming:** Same domain concept should have the same name everywhere. Check key domain terms across every project in the roster.
 
-2. **Service method prefix inconsistency ({be}):** `find*` for read-by-criteria (repo), `get*` for read-by-id (service), `list*` for read-all/paginated, `create*`/`add*` for inserts, `update*` for modifications, `delete*`/`remove*` for deletions.
+2. **Service method prefix inconsistency (API/service projects):** `find*` for read-by-criteria (repo), `get*` for read-by-id (service), `list*` for read-all/paginated, `create*`/`add*` for inserts, `update*` for modifications, `delete*`/`remove*` for deletions.
 
-3. **Domain terminology drift ({fe}):** "{SESSION_NOUN}" vs "appointment", "{Entity}" vs "Person" vs "People", etc.
+3. **Domain terminology drift (UI/client projects):** "{SESSION_NOUN}" vs "appointment", "{Entity}" vs "Person" vs "People", etc.
 
-4. **File naming convention violations:** {be}: `kebab-case.ts`. {fe}: `PascalCase.tsx` for components, `camelCase.ts` for utilities. {ai}: `snake_case.py`.
+4. **File naming convention violations:** follow each project's own convention (e.g. TS API projects `kebab-case.ts`; TS UI projects `PascalCase.tsx` for components, `camelCase.ts` for utilities; Python projects `snake_case.py`).
 
 5. **Snake_case leaking into TypeScript:** When TS types mirror DB columns, snake_case field names leak in.
 
-6. **Inconsistent error code naming ({be}):** Error constants that don't match the actual entity.
+6. **Inconsistent error code naming (API/service projects):** Error constants that don't match the actual entity.
 
 7. **Boolean parameter naming:** Bare `consent: boolean` or `force: boolean` — ambiguous at call sites.
 
@@ -256,17 +254,17 @@ Readability, maintainability, and design patterns. These issues don't cause bugs
 
 1. **Magic strings & numbers:** Literal values used directly in logic instead of named constants.
    - **Domain value-set comparisons:** role/status/type literals compared as raw strings (`=== '{ROLE_USER}'`, `=== "{STATUS_LITERAL}"`) — a fixed value-set must be a typed enum referenced everywhere, never a string retyped per site. A value-set with no enum at all (grep the same literals across many files) is the root finding, not a per-site nit.
-   - **Hardcoded hex colors ({fe}):** `#[0-9a-fA-F]{3,8}` in `.tsx` files — should use theme classes
+   - **Hardcoded hex colors (UI projects):** `#[0-9a-fA-F]{3,8}` in component files — should use theme classes
    - **Magic numbers:** Timeout values, retry counts, buffer sizes without named constants
 
-2. **Hardcoded i18n strings ({fe}):** user-visible string literals in JSX that bypass `t()` — `<Text>` children, ternary copy (`cond ? 'one' : 'other'`), `accessibilityLabel`. Grep the changed `.tsx` set for these; plurals must use i18next `_one`/`_other`, never an inline ternary. This is recall-prone in prose review (a hardcoded `episode`/`episodes` plural once shipped past both this audit and {fe} QA) — the durable backstop is an ESLint guard (`react/jsx-no-literals` scoped to text components); flag its absence rather than relying on the human eye.
+2. **Hardcoded i18n strings (UI projects):** user-visible string literals in markup that bypass the translation function (e.g. `t()`) — text-element children, ternary copy (`cond ? 'one' : 'other'`), accessibility labels. Grep the changed UI set for these; plurals must use the i18n library's plural keys (e.g. `_one`/`_other`), never an inline ternary. This is recall-prone in prose review (a hardcoded singular/plural pair once shipped past both this audit and UI QA) — the durable backstop is a lint guard (e.g. `react/jsx-no-literals` scoped to text components); flag its absence rather than relying on the human eye.
 
-3. **{fe} component design violations:**
+3. **UI component design violations:**
    - **Inline sub-components:** Function/const component declarations inside another component — re-create on every render
-   - **Data fetching in presentation components:** `useQuery`/`useMutation` inside modals/leaf components
-   - **Missing memoization on expensive callbacks:** Callbacks passed as props without `useCallback`
+   - **Data fetching in presentation components:** queries/mutations inside modals/leaf components
+   - **Missing memoization on expensive callbacks:** Callbacks passed as props without `useCallback` (or the framework equivalent)
 
-4. **Python `__init__.py` hygiene ({ai}):** Empty when they should export, or stuffed with logic when they should be thin.
+4. **Python `__init__.py` hygiene (Python projects):** Empty when they should export, or stuffed with logic when they should be thin.
 
 5. **Overly complex expressions:** Chained optional access >3 levels, long boolean conditions that should be extracted.
 
@@ -290,9 +288,9 @@ The top failure mode of AI-authored code: it regenerates logic instead of import
 
 1. **Reinvented helpers (the core check):** For each new or changed function/util, grep the codebase for an existing export that already does the job. AI writes a fresh `formatDate`/`validateEmail`/`apiClient` because it never searched for the one in `utils/`. Signal: inline logic (date formatting, HTTP calls, validation, DB session creation) appearing outside the project's designated `utils/`/`services/`/`hooks/`/repository location.
 
-2. **Near-duplicate components ({fe}):** Two `.tsx` files exporting components with near-identical import lists and JSX structure (e.g., `UserCard` vs `{Role}Card`) — should be one parametric component with a `variant`/`role` prop.
+2. **Near-duplicate components (UI projects):** Two component files with near-identical import lists and markup structure (e.g., `UserCard` vs `{Role}Card`) — should be one parametric component with a `variant`/`role` prop.
 
-3. **Duplicated hooks ({fe}):** The same `[data, loading, error]` async-state body repeated across components instead of one shared `useAsync`/`useResource` hook. Grep for repeated `useState(false)` + `useState(null)` + fetch patterns outside `hooks/`.
+3. **Duplicated hooks (UI projects):** The same `[data, loading, error]` async-state body repeated across components instead of one shared `useAsync`/`useResource` hook. Grep for repeated async-state + fetch patterns outside `hooks/`.
 
 4. **Repeated query fragments:** The same {ORM} `.where(eq(...))` or {AI_FRAMEWORK} `.filter(...)` clause at ≥3 call sites — extract a shared query helper.
 

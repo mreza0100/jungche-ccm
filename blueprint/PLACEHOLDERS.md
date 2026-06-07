@@ -19,18 +19,66 @@ Every regeneration agent reads this file and applies it uniformly. One canonical
 
 > Blueprint self-references resolve at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork.
 
-## Sub-projects (role-named, stable)
+## Project roster — structure-agnostic (N projects, single-project first-class)
 
-| Source dir                               | Placeholder                                             |
-| ---------------------------------------- | ------------------------------------------------------- |
-| the backend project dir                  | `{BACKEND_PROJECT}`                                     |
-| the frontend project dir                 | `{FRONTEND_PROJECT}`                                    |
-| the AI project dir                       | `{AI_PROJECT}`                                          |
-| the infra project dir                    | `{INFRA_PROJECT}`                                       |
-| the web project dir                      | `{WEB_PROJECT}`                                         |
-| the AI service name in prose             | `{AI_SERVICE_NAME}`                                     |
-| project keys `be/fe/cortex/web/infra`    | `{be}/{fe}/{ai}/{web}/{infra}` (lowercase role keys)    |
-| routing keys `BE-ONLY/CORTEX-ONLY/CROSS` | `{BACKEND}-ONLY` / `{AI}-ONLY` / `CROSS` (keep `CROSS`) |
+The blueprint does NOT assume a fixed set of sub-projects. Structure is a **roster**: an ordered list of 1..N projects captured from the SETUP interview. A single-project repo is a roster of **one** — first-class, not a stripped path. The source this was mined from happens to have several projects; that is an _instance_ of the roster, never baked into the templates.
+
+Each roster entry has: directory, role label, tech stack, package manager, test runner, dev port(s). Templates reference the roster with generic per-entry tokens — never the source's concrete role names:
+
+| Concept                       | Placeholder             | Notes                                                         |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------- |
+| the project roster (the list) | `{PROJECT_ROSTER}`      | 1..N entries; SETUP fills from the interview                  |
+| one entry's directory         | `{project}`             | generic — used inside per-project PATTERN blocks              |
+| one entry's role label        | `{PROJECT_ROLE}`        | the adopter's own labels, not `backend/frontend/ai/infra/web` |
+| one entry's stack             | `{PROJECT_STACK}`       | lang / framework / ORM / UI etc. for that entry               |
+| one entry's package manager   | `{PROJECT_PKG_MGR}`     |                                                               |
+| one entry's test runner       | `{PROJECT_TEST_RUNNER}` |                                                               |
+| one entry's dev port(s)       | `{PROJECT_PORT}`        |                                                               |
+| routing key for an entry      | `{ROLE}-ONLY`           | per-roster; keep `CROSS` for multi-project changes            |
+
+### Materialization (how SETUP expands the roster)
+
+Templates carry per-project **PATTERN blocks** written once with the generic `{project}` tokens. At install SETUP **expands each pattern block once per roster entry**, substituting that entry's fields — so a 1-project and a 7-project adopter get correctly-sized files from the same template. Pattern sites: `build.md`/`wave.md` per-project pipeline stages, `agents/per-project/{planner,architect,developer,qa}.md` (instantiated per entry), and `worktree.sh`/`dev.sh` (which hold a `PROJECTS=(…)` array SETUP fills and iterate it).
+
+### Single-project collapse
+
+When the roster has one entry: the worktree is the repo root (no per-project subdir), cross-project/integration steps are skipped, routing is trivially that one project, and "monorepo" framing drops to "the project." A template must read correctly at roster size 1 — never assume more than one.
+
+### Materialization-expansion tokens (SETUP renders these per roster entry)
+
+These are **NOT hand-filled.** SETUP renders them by expanding the per-project PATTERN blocks once per roster entry (roster size 1 = a single expansion). Each token below is an expansion product, not an interview answer.
+
+| Token                                | Concept                                                            |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| `{PROJECT_AGENT_ROSTER}`             | rendered list of every per-project agent across the roster         |
+| `{PROJECT_PLANNER_ROSTER}`           | per-roster list of planner agents                                  |
+| `{PROJECT_ARCHITECT_ROSTER}`         | per-roster list of architect agents                                |
+| `{PROJECT_DEVELOPER_ROSTER}`         | per-roster list of developer agents                                |
+| `{PROJECT_QA_ROSTER}`                | per-roster list of QA agents                                       |
+| `{PROJECT_ANALYSIS_REPORT_LIST}`     | per-roster analysis-report paths                                   |
+| `{PROJECT_ARCHITECTURE_REPORT_LIST}` | per-roster architecture-report paths                               |
+| `{PROJECT_DEV_REPORT_LIST}`          | per-roster dev-report paths                                        |
+| `{PROJECT_BUG_REPORT_LIST}`          | per-roster bug-report paths                                        |
+| `{ROSTER_DOC_PATHS}`                 | space-joined roster doc directories                                |
+| `{PROJECT_TYPING_RULES}`             | per-stack typing block (one per roster entry's language)           |
+| `{PROJECT_TYPECHECK}`                | per-project typecheck command                                      |
+| `{PROJECT_FORMAT}`                   | per-project format command                                         |
+| `{PROJECT_LINT}`                     | per-project lint command                                           |
+| `{PROJECT_INSTALL_CMD}`              | per-project install command                                        |
+| `{PROJECT_RUN_CMD}`                  | per-project run command                                            |
+| `{PROJECT_ENV_FILES}`                | per-project env-file set                                           |
+| `{HEALTH_PROBE}`                     | per-roster health-probe script block SETUP expands                 |
+| `{ENV_FILE_PROVISION}`               | per-roster env-file provisioning block                             |
+| `{ENV_BOOTSTRAP}`                    | per-roster env-bootstrap block                                     |
+| `{POST_INSTALL_HOOKS}`               | per-roster post-install hook block                                 |
+| `{STATUS_EXTRA_PROBES}`              | per-roster extra status probes                                     |
+| `{DEV_PROCESS_PATTERN}`              | per-roster dev-process pattern block                               |
+| `{DEV_PREREQS}`                      | per-roster dev prerequisites                                       |
+| `{PORT_DEFAULTS}`                    | per-roster port-default assignments                                |
+| `{SEED_PROJECT}`                     | optional-role marker — seed project (`"-"` sentinel when absent)   |
+| `{INFRA_PROJECT}`                    | optional-role marker — infra project (`"-"` sentinel when absent)  |
+| `{AI_PROJECT}`                       | optional-role marker — AI project (`"-"` sentinel when absent)     |
+| `{MIGRATIONS_DIR}`                   | optional-role marker — migrations dir (`"-"` sentinel when absent) |
 
 ## Tech stack (per role — keep the mechanics, swap the names)
 
@@ -65,16 +113,17 @@ Every regeneration agent reads this file and applies it uniformly. One canonical
 
 ## Domain nouns (the `{DOMAIN_NOUN}` family)
 
-| Source value                                                              | Placeholder                                                                         |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| therapist                                                                 | `{USER_NOUN}`                                                                       |
-| patient / client                                                          | `{SUBJECT_NOUN}`                                                                    |
-| therapy session                                                           | `{SESSION_NOUN}`                                                                    |
-| clinical / therapeutic (adj)                                              | `{DOMAIN_ADJ}`                                                                      |
-| therapy / clinical practice (the field)                                   | `{DOMAIN_NOUN}`                                                                     |
-| DSM-5, diagnoses, treatment recommendations, diagnostic labels            | `{FORBIDDEN_DOMAIN_OUTPUTS}` — **Sacred Ground**; keep the guard, swap the examples |
-| CBT/DBT/psychodynamic, Jung/Rogers/Freudian, Gottman, CCRT, Rose of Leary | `{DOMAIN_FRAMEWORKS}` — keep one illustrative slot                                  |
-| clinic / SUPERVISOR / THERAPIST roles                                     | `{ORG_UNIT}` / `{ROLE_SUPER}` / `{ROLE_USER}`                                       |
+| Source value                                                              | Placeholder                                                                                                      |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| therapist                                                                 | `{USER_NOUN}`                                                                                                    |
+| patient / client                                                          | `{SUBJECT_NOUN}`                                                                                                 |
+| therapy session                                                           | `{SESSION_NOUN}`                                                                                                 |
+| clinical / therapeutic (adj)                                              | `{DOMAIN_ADJ}`                                                                                                   |
+| therapy / clinical practice (the field)                                   | `{DOMAIN_NOUN}`                                                                                                  |
+| the domain's "sacred ground" / do-no-harm frame                           | `{DOMAIN_SAFETY}` — every domain has a hard "never do this" line; keep the frame, swap the specifics             |
+| DSM-5, diagnoses, treatment recommendations, diagnostic labels            | `{FORBIDDEN_DOMAIN_OUTPUTS}` — the `{DOMAIN_SAFETY}` examples for this domain; keep the guard, swap the examples |
+| CBT/DBT/psychodynamic, Jung/Rogers/Freudian, Gottman, CCRT, Rose of Leary | `{DOMAIN_FRAMEWORKS}` — keep one illustrative slot                                                               |
+| clinic / SUPERVISOR / THERAPIST roles                                     | `{ORG_UNIT}` / `{ROLE_SUPER}` / `{ROLE_USER}`                                                                    |
 
 ## The 10 PhDs (root CLAUDE.md persona)
 

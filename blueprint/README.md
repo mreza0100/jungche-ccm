@@ -1,6 +1,6 @@
 # Professor Pipeline Blueprint
 
-A portable, opinionated multi-agent development pipeline for Claude Code — **with a full cast of characters**. Adopt it in any codebase, single-project or multi-project, regardless of language, framework, or runtime. The mechanics survive every stack; the characters' voices survive every domain.
+An opinionated multi-agent development pipeline for Claude Code — **with a full cast of characters**. It drops into **any Claude Code project, at any repo size**, regardless of language, framework, or runtime. Structure is captured at install as a **roster** of 1..N projects: a single-project repo is a roster of one (first-class — the worktree is the repo root, routing is trivial, cross-project steps drop out), and a multi-project monorepo lights up per-project agents and cross-project routing. The mechanics survive every stack; the characters' voices survive every domain.
 
 This is the **transplantable nervous system** — not a config dump. Built by the Professor (the grandfatherly polymath who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
 
@@ -10,7 +10,7 @@ This is the **transplantable nervous system** — not a config dump. Built by th
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — The Professor (orchestrator), JC, Council, PCM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — The Professor (orchestrator), JC, PCM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
 - **Self-improvement at the source** — a meta-agent (`/pcm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
@@ -25,8 +25,8 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 
 ✅ **Good fit:**
 
-- Multi-project monorepos where features cross boundaries
-- Single project with complex pipelines (planning → impl → QA → merge worth modeling)
+- Single-project apps — a roster of one, first-class (worktree is the repo root, routing trivial)
+- Multi-project monorepos where features cross boundaries — per-project agents and routing light up
 - Team or solo dev who keeps losing work to half-finished branches and forgotten state
 - Project where "what was decided and why" matters as much as the code
 - Projects where you want your agents to have a voice, not just behaviors
@@ -49,8 +49,10 @@ blueprint/
 └── templates/
     ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, council, audit
+    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, audit, blueprint
     │                         Tier B (opt-in): officer, km, pm, mentor, marketer
+    ├── skills/            ← bundled p:* skills (+ rr/p:360/ghostwriter/vision-factory source-fetched via sources.json)
+    ├── themes/            ← tokyo-night theme, source-fetched via sources.json
     ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
 ```
@@ -63,8 +65,8 @@ blueprint/
 2. **Run install via Claude:**
 
 ```bash
-# Clone to any directory you like
-git clone --branch v0.5.0 https://github.com/mreza0100/professor.git /path/to/professor
+# Clone to any directory you like (use the latest release tag)
+git clone --branch vX.Y.Z https://github.com/mreza0100/professor.git /path/to/professor
 
 cd /path/to/your-project
 claude
@@ -85,7 +87,7 @@ For the manual path, see `SETUP.md`.
 
 Every command, agent, and rule in this blueprint sorts into one of three tiers:
 
-- **Tier A — Universal archetypes** ship with FULL CHARACTER. Domain references inside (Professor's PhDs, Council panel, JC's example stack traces) parameterize per install.
+- **Tier A — Universal archetypes** ship with FULL CHARACTER. Domain references inside (Professor's PhDs, the opted-in Tier B cast, JC's example stack traces) parameterize per install.
 - **Tier B — Domain archetypes** ship as ARCHETYPE SKELETONS with placeholders. You fill in regulation, user persona, market, knowledge domain — the voice and structure are universal.
 - **Tier C — Pure mechanics** ship as INFRASTRUCTURE. No character; just role-defined plumbing.
 
@@ -99,10 +101,13 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command. You pick the disciplines at install.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
-- **/council** — roundtable debate, three rounds: opening / rebuttal / verdict.
 - **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
-- **/audit** — code auditor. 8 categories of hygiene + 9 of security.
-- **/build, /dev, /git, /wave, /documenter** — pipeline mechanics with light Professor voice.
+- **/audit** — code auditor. Hygiene + security categories.
+- **/build, /dev, /git, /wave, /documenter, /blueprint** — pipeline mechanics with light Professor voice.
+
+**Bundled skills (`p:*` namespace, ship with the blueprint):** `p:analysis`, `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+
+**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `rr`, `p:360`, `ghostwriter`, `vision-factory`.
 
 **Tier B — opt-in domain archetypes:**
 

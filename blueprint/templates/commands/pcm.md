@@ -6,7 +6,7 @@ $ARGUMENTS
 
 ## Mandatory skill load (before any prompt-file edit)
 
-Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — load `Skill("prompt-quality")`. It carries Anthropic's prompt-quality rules (cut test, thresholds, anti-patterns, structural conventions) that govern every edit you make here.
+Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — load `Skill("p:quality:prompt")`. It carries Anthropic's prompt-quality rules (cut test, thresholds, anti-patterns, structural conventions) that govern every edit you make here.
 
 ---
 
@@ -81,11 +81,11 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 
 ### Inventory counts (verify before reporting)
 
-<!-- INSTALL: Fill in your actual project list, agent counts, etc. Use ONE consistent {N}-agents figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
+<!-- INSTALL: Fill in your actual roster + agent counts. All counts are install-derived from the roster — never hardcode a total in prose. Use ONE consistent agent figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
 
-- **{N} projects:** {project-a} ({PACKAGE_MANAGER}), {project-b} ({PACKAGE_MANAGER}), etc.
-- **{N} agents:** {R} root + {N} per-project. Root is only the mono orchestrators (mono-planner, mono-architect, gitter, mono-documenter); all child agents — incl. the {AI_PROJECT_LABEL} architect/{AI_DEVELOPER_ROLE} and post-merge QA — are spawned via general-purpose + `model: "opus"` reading their child file, no root wrappers
-- Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts
+- **Projects:** one entry per roster project — `{project}` ({PROJECT_PKG_MGR}), repeated for the whole roster (a single-project install lists exactly one)
+- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root is only the mono orchestrators (mono-planner, mono-architect, gitter, mono-documenter); all child agents — incl. each project's architect/developer and post-merge QA — are spawned via general-purpose + `model: "opus"` reading their child file, no root wrappers
+- Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts; the project/agent counts derive from the roster, not a fixed number
 
 ---
 
@@ -419,7 +419,7 @@ git clone --branch v{TARGET} --depth 1 https://github.com/{BLUEPRINT_REPO}.git /
 
 ### Step 3 — Parse CHANGELOG between versions
 
-Read upstream `CHANGELOG.md`. Extract entries between `## [{INSTALLED}]` and `## [{TARGET}]`. Group by heading (Added/Changed/Fixed/Removed/Breaking/Migration).
+Read the per-release files `releases/v*.md` for every version `> {INSTALLED}` and `<= {TARGET}` (`CHANGELOG.md` is just the index — full notes live one-file-per-version in `releases/`). Each file is one release's full notes; group its bullets by heading (Added/Changed/Fixed/Removed/Breaking/Migration).
 
 Parse each bullet:
 

@@ -33,7 +33,7 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 
 **Scope guard (single rule — applies everywhere):**
 
-- You are the ONLY agent that writes to permanent child project docs (`{BACKEND_PROJECT}/docs/*.md`, `{FRONTEND_PROJECT}/docs/*.md`, `{AI_PROJECT}/docs/*.md`), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog.md`
+- You are the ONLY agent that writes to permanent child project docs (`{project}/docs/*.md` for every roster entry), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog.md`
 - You MAY append progress entries to `docs/epics/*/update.md` (create if absent) and `docs/epics/*/manifest.md` during ARCHIVE mode Step 2j ONLY — never create, restructure, or delete epic files (owned by Professor)
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `docs/dev/research/`)
 
@@ -57,7 +57,7 @@ Map of permanent doc surfaces and owners. **Read first on every invocation; upda
 
 **Command-owned (`docs/commands/{cmd}/`):** `documenter/references/sync-rules.md` → `/documenter`; `pcm/references/` → `/pcm`; each opted-in Tier B command owns its `references/`/`research/` directory.
 
-**Child projects:** each subproject's `docs/` — `architecture/` + `developer-reference/` + `runbook/` clusters, `api-reference`, `qa-reference` (flat files or clusters per project size). FE adds a `ui-ux/` cluster.
+**Child projects:** each roster project's `docs/` — `architecture/` + `developer-reference/` + `runbook/` clusters, `api-reference`, `qa-reference` (flat files or clusters per project size). A UI-owning project adds a `ui-ux/` cluster.
 
 **Ownership:** `mono-documenter` owns root + child docs and this registry through `/documenter`. Tier B commands own their reference/research directories. `.claude/` and `.codex/` instruction surfaces are pipeline infrastructure, outside this registry.
 
@@ -81,16 +81,16 @@ Determine the mode from `$ARGUMENTS`:
 
 ### Step 1 — Read all pipeline documents
 
-All pipeline docs are in `$DOCS/`. Read everything that exists:
+All pipeline docs are in `$DOCS/`. Read everything that exists (`{project}` ranges over the roster's per-project suffixes):
 
-- `1-plan.md`, `1-analysis-{be,fe,cortex,web,infra}.md`
-- `3-architecture.md`, `3-architecture-{be,fe,cortex,web,infra}.md`
+- `1-plan.md`, `1-analysis-{project}.md`
+- `3-architecture.md`, `3-architecture-{project}.md`
 - `4-ui-ux-spec.md`, `4-db-architecture.md`
-- `5-dev-report-{be,fe,cortex,web,infra}.md`
-- `6-bugs-{be,fe,cortex,web,infra}.md`, `6-bugs.md`, `7-post-merge-qa.md`
+- `5-dev-report-{project}.md`
+- `6-bugs-{project}.md`, `6-bugs.md`, `7-post-merge-qa.md`
 - `ports.md` (ephemeral, discard)
 
-<!-- Install-time: Adjust project suffixes above to match your actual subprojects -->
+<!-- Install-time: the `{project}` suffix expands to one file per roster entry; a single-project install has just one suffix (or none). -->
 
 Only read files that exist.
 
@@ -108,13 +108,13 @@ Merge into the matching topic file (`overview.md`, `integration-contracts.md`, o
 
 For each affected project, read `3-architecture.md` + `3-architecture-{project}.md`. Merge into the matching topic file under `{project}/docs/architecture/` (see the cluster `_index.md`): internal structure, schema/route/chain additions, data flow patterns. Remove superseded content.
 
-#### 2e. `{FRONTEND_PROJECT}/docs/ui-ux/` cluster
+#### 2e. UI project's `docs/ui-ux/` cluster (skip if no roster entry has a UI)
 
-Source: `4-ui-ux-spec.md`. Merge into the matching topic file (see the cluster `_index.md`): design tokens, component designs, screen layouts, interaction patterns, accessibility.
+Source: `4-ui-ux-spec.md`. Merge into the matching topic file under the UI-owning project's `docs/ui-ux/` (see the cluster `_index.md`): design tokens, component designs, screen layouts, interaction patterns, accessibility.
 
 #### 2f. `docs/agents/api/` cluster
 
-Sources: `3-architecture.md` (contracts), `5-dev-report-{be,fe,cortex}.md` (API Reference sections).
+Sources: `3-architecture.md` (contracts), the `5-dev-report-{project}.md` files whose projects expose an API (API Reference sections).
 
 **Scope:** inter-service communication protocol ONLY — API queries/mutations/subscriptions exposed across boundaries, REST crossing boundaries, messaging events, queue contracts, shared types, error codes, auth headers. NEVER: internal helpers, private endpoints.
 
@@ -310,15 +310,15 @@ Diagrams live under `docs/agents/graph/{project}/`, registered in `docs/agents/g
 
 ### Step 1 — Discover workflows (fan out one agent per affected project)
 
-A diagram-worthy flow has real branching, fan-out/fan-in, a multi-step pipeline, or a state machine — not trivial CRUD. Spawn one read-only agent per project to discover them from source. Each project exposes its own flow surfaces:
+A diagram-worthy flow has real branching, fan-out/fan-in, a multi-step pipeline, or a state machine — not trivial CRUD. Spawn one read-only agent per roster project to discover them from source. Each project exposes its own flow surfaces — for example:
 
-- **{AI_PROJECT_LABEL}** — graph/state-machine builders + node factories (read the construction code, not an auto-`draw` export, which drops conditional edges), queue routing, services, intake/orchestration modules
-- **Backend** — resolvers, services, WebSocket handlers, queue consumers/publishers, session state machine
-- **Frontend** — router tree, stateful components/hooks (live session, intake, workspace)
-- **Infra** — compose files, make targets, queue/object-store init, deploy workflow
-- **Web** — router pages, middleware/i18n, content pipeline, SEO generation
+- **An {ai}/graph project** — graph/state-machine builders + node factories (read the construction code, not an auto-`draw` export, which drops conditional edges), queue routing, services, orchestration modules
+- **A server/API project** — resolvers, services, {REALTIME_PROTOCOL} handlers, queue consumers/publishers, the {SESSION_NOUN} state machine
+- **A client/UI project** — router tree, stateful components/hooks
+- **An infra project** — compose files, make targets, queue/object-store init, deploy workflow
+- **A content/web project** — router pages, middleware/i18n, content pipeline, SEO generation
 
-<!-- Install-time: replace the surfaces above with your project's actual graph/workflow locations -->
+<!-- Install-time: keep only the surfaces that match your roster, and adjust each to your project's actual graph/workflow locations. -->
 
 ### Step 2 — Generate .mmd files
 

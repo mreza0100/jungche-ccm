@@ -25,7 +25,7 @@ Run **R1 → R4 in order**. Every gate is blocking — never skip a step or move
 Read:
 
 - `CLAUDE.md` (root) — system overview, current state
-- `docs/agents/architecture/` cluster — how the projects connect (start at `_index.md`)
+- `docs/agents/architecture/` cluster — how the roster's projects connect, or the single project's internal structure (start at `_index.md`)
 - `docs/agents/api/` cluster — **GREP the cluster for specific endpoints/operations the tasks touch** — never read in full
 - `docs/agents/graph/db/postgres.mmd` — whole DB schema (tables, columns, FKs) for data-model decisions; names match the database exactly
 - `$CDOCS/officer/$REFS/officer.md` — compliance posture, feature inventory, regulatory lines _(if the Officer archetype is installed)_

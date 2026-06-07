@@ -85,7 +85,7 @@ Then determine the mode from `$ARGUMENTS`:
 | {REGULATION} Core     | Legal basis, consent, rights, breach notification, DPO, transfers                |
 | {DOMAIN_NOUN} Privacy | {SESSION_NOUN} recording, {SUBJECT_NOUN} consent, professional ethics, retention |
 | {AI_REGULATION}       | Classification, conformity, transparency, human oversight                        |
-| Regulated-Device      | Device classification, market authorization, software-as-a-service               |
+| Regulated-Product     | Product classification, market authorization, software-as-a-service              |
 | Technical Security    | Encryption, access control, audit logging, infrastructure                        |
 | Certifications        | {DOMAIN_STANDARDS}                                                               |
 | Contracts & ToS       | DPAs, privacy policies, ToS, liability, data law, IP, AUP                        |
@@ -132,11 +132,11 @@ When `$ARGUMENTS` starts with "audit", perform systematic compliance checks.
 
 ### A. Data Flow Audit
 
-Map every path:
+Map every path personal data takes through the system. The map below is the **illustrative example** from the source instance — a capture → transcription → AI-analysis pipeline. Replace it with your own product's actual data path; keep the "trace every hop, flag every external transfer" discipline.
 
 ```
-{SUBJECT_NOUN} → Mic → {REALTIME_PROTOCOL} (secure?) → {BACKEND_PROJECT} → {TRANSCRIPTION_SERVICE} (US?) →
-  Transcript → {DATABASE} (encrypted?) → {QUEUE} → {AI_SERVICE_NAME} → {LLM_PROVIDER} ({DATA_REGION}) →
+{SUBJECT_NOUN} → capture → {REALTIME_PROTOCOL} (secure?) → {BACKEND_PROJECT} → {TRANSCRIPTION_SERVICE} (cross-border?) →
+  raw input → {DATABASE} (encrypted?) → {QUEUE} → {AI_SERVICE_NAME} → {LLM_PROVIDER} ({DATA_REGION}) →
     Analysis → {DATABASE} → {API_PROTOCOL} → {FRONTEND_PROJECT} → {USER_NOUN}
 ```
 
@@ -144,7 +144,7 @@ Check:
 
 - [ ] All connections use TLS 1.3 / secure {REALTIME_PROTOCOL}
 - [ ] Data pseudonymized before external API calls
-- [ ] Raw audio deleted after transcription (or retained with consent + 7-day max + AES-256 + audit logging)
+- [ ] Raw captured input deleted after processing (or retained with consent + bounded retention + AES-256 + audit logging)
 - [ ] No {SENSITIVE_DATA} in {QUEUE} payloads (or {QUEUE} encrypted)
 - [ ] Database {SENSITIVE_DATA} columns encrypted
 - [ ] {API_PROTOCOL} resolvers enforce authorization
@@ -168,7 +168,7 @@ Check:
 
 **Consent:** Check consent stored with timestamp/purpose/method, withdrawal triggers cessation, separate consent per purpose.
 
-**Retention:** Check automated deletion jobs exist, raw audio deleted after transcription, retention periods match schedule.
+**Retention:** Check automated deletion jobs exist, raw captured input deleted after processing, retention periods match schedule.
 
 **{AI_SERVICE_NAME}-generated data:**
 
@@ -177,7 +177,7 @@ Discover {AI_SERVICE_NAME} tables dynamically — DO NOT use hardcoded table lis
 1. Read the {AI_PROJECT} ORM models
 2. Grep the {AI_PROJECT} db layer for table references
 3. Read the {BACKEND_PROJECT} ORM schema
-4. For EACH {AI_SERVICE_NAME}-written table check: {SENSITIVE_DATA} in stored data, LLM round-trip {SENSITIVE_DATA}, third-party data, automated profiling scores, plaintext {DOMAIN_ADJ} data, cascade delete path, retention enforcement, regulated-device boundary
+4. For EACH {AI_SERVICE_NAME}-written table check: {SENSITIVE_DATA} in stored data, LLM round-trip {SENSITIVE_DATA}, third-party data, automated profiling scores, plaintext {DOMAIN_ADJ} data, cascade delete path, retention enforcement, {DOMAIN_STANDARDS} regulated-product boundary
 
 **Third-party leakage:** No analytics/tracking on {DOMAIN_ADJ} pages, no data to third parties without DPA, external APIs use minimal data, no {SENSITIVE_DATA} in URLs.
 
@@ -205,19 +205,19 @@ Discover {AI_SERVICE_NAME} tables dynamically — DO NOT use hardcoded table lis
 
 ### E. Documentation Audit
 
-| Document                 | Required                                   | Check existence |
-| ------------------------ | ------------------------------------------ | --------------- |
-| Privacy Policy           | YES (Art. 13-14)                           |                 |
-| Terms of Service         | YES ({JURISDICTION} + data law)            |                 |
-| DPA                      | YES (Art. 28)                              |                 |
-| Instructions for Use     | YES ({AI_REGULATION} Art. 13, by deadline) |                 |
-| SLA                      | YES (Art. 32 availability)                 |                 |
-| Sub-Processor List       | YES (Art. 28(2))                           |                 |
-| DPIA                     | YES (Art. 35)                              |                 |
-| ROPA                     | YES (Art. 30)                              |                 |
-| Breach Response Plan     | YES (Art. 33-34)                           |                 |
-| DPAs with sub-processors | YES (Art. 28(4))                           |                 |
-| Data Retention Policy    | YES (Art. 5(1)(e))                         |                 |
+| Document                 | Required                                                | Check existence |
+| ------------------------ | ------------------------------------------------------- | --------------- |
+| Privacy Policy           | YES (Art. 13-14)                                        |                 |
+| Terms of Service         | YES ({JURISDICTION} + data law)                         |                 |
+| DPA                      | YES (Art. 28)                                           |                 |
+| Instructions for Use     | If {DOMAIN_STANDARDS} applies ({AI_REGULATION} Art. 13) |                 |
+| SLA                      | YES (Art. 32 availability)                              |                 |
+| Sub-Processor List       | YES (Art. 28(2))                                        |                 |
+| DPIA                     | YES (Art. 35)                                           |                 |
+| ROPA                     | YES (Art. 30)                                           |                 |
+| Breach Response Plan     | YES (Art. 33-34)                                        |                 |
+| DPAs with sub-processors | YES (Art. 28(4))                                        |                 |
+| Data Retention Policy    | YES (Art. 5(1)(e))                                      |                 |
 
 ### Todo-Ignore Matching (MANDATORY for audits)
 
@@ -292,7 +292,7 @@ These are founder-stated, non-negotiable architectural facts about {PROJECT_NAME
 
 ### Invariant 1 — Universal Up-Front Consent
 
-Every user of {PROJECT_NAME} ({USER_NOUN}, {SUBJECT_NOUN}, partner) MUST give consent to EVERYTHING as a signup precondition. No account exists without full consent. Consent is the **signup gate**, not a per-feature runtime flag.
+Every user of {PROJECT_NAME} ({USER_NOUN}, {SUBJECT_NOUN}, any additional party) MUST give consent to EVERYTHING as a signup precondition. No account exists without full consent. Consent is the **signup gate**, not a per-feature runtime flag.
 
 **Do NOT flag:**
 
@@ -315,7 +315,7 @@ If in doubt, re-read `$CDOCS/officer/$REFS/officer.md` § "Consent Architecture"
 
 ## Red Lines (NEVER cross)
 
-- Never store raw audio beyond transcription needs (without separate consent + time box)
+- Never store raw captured input beyond processing needs (without separate consent + time box)
 - Never send unpseudonymized {SUBJECT_NOUN} data to external AI services
 - Never log {SESSION_NOUN} content
 - Never use tracking pixels or analytics on {DOMAIN_ADJ} pages
@@ -326,18 +326,17 @@ If in doubt, re-read `$CDOCS/officer/$REFS/officer.md` § "Consent Architecture"
 - Never disable audit logging
 - Never use {SUBJECT_NOUN} data for AI training without consent + ethics review
 - Never output {FORBIDDEN_DOMAIN_OUTPUTS}
-- Never suggest screening tools or {DOMAIN_ADJ} actions (Line 5+)
-- Never score or quantify {DOMAIN_ADJ} risk levels (Line 5+)
+- Never cross the {DOMAIN_SAFETY} line (in the source instance: never suggest screening tools or {DOMAIN_ADJ} actions, never score or quantify {DOMAIN_ADJ} risk levels — the high end of the regulatory spectrum)
 
 ---
 
 ## {PROJECT_NAME} Architecture — Privacy-Critical Decisions
 
-1. **Audio streams:** secure {REALTIME_PROTOCOL} only. Delete raw audio after transcription. Replay opt-in: 7-day max, AES-256, audit-logged.
+1. **Captured input streams:** secure {REALTIME_PROTOCOL} only. Delete raw input after processing. Replay/retention opt-in: bounded retention, AES-256, audit-logged.
 2. **{TRANSCRIPTION_SERVICE} transfers:** SCCs + pseudonymization + encryption in transit. Evaluate {DATA_REGION}-hosted alternatives.
 3. **{LLM_PROVIDER} transfers:** Never send identifying data. Pseudonymize before sending. {DATA_REGION}-resident; covered by the provider DPA.
 4. **Database:** Column-level encryption for {DOMAIN_ADJ} data. Row-level security for multi-tenancy.
 5. **{QUEUE}:** Encrypt message bodies. No {SENSITIVE_DATA} in attributes.
-6. **Frontend:** secure store for tokens. No transcript caching.
-7. **Logging:** Structured with {SENSITIVE_DATA} redaction. Never log transcript content, {SUBJECT_NOUN} names, {SESSION_NOUN} details.
+6. **Frontend:** secure store for tokens. No {SENSITIVE_DATA} caching.
+7. **Logging:** Structured with {SENSITIVE_DATA} redaction. Never log {SESSION_NOUN} content, {SUBJECT_NOUN} names, {SESSION_NOUN} details.
 8. **{API_PROTOCOL}:** Disable introspection in production. Field-level auth. Query complexity limits. Rate limiting.
