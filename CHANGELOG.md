@@ -33,6 +33,8 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-06-07
+
 ### Added
 
 - Mechanics: `blueprint/templates/themes/sources.json` — Claude Code themes are now source-fetched at install (not vendored), mirroring the skills `sources.json` single-source-of-truth pattern. First theme: `tokyo-night`, fetched from `https://github.com/mreza0100/claude-code-tokyo-night` into `~/.claude/themes/`. SETUP.md §7h installs it; activate with `/theme`. (safe-auto)
