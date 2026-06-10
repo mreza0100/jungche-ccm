@@ -81,13 +81,12 @@ bash .claude/scripts/worktree.sh prune
 
 It removes `.worktrees/` dirs that are not registered git worktrees and have no active pipeline docs; registered-but-inactive worktrees are reported for inspection, never auto-removed (they may hold uncommitted work).
 
-Then check for abandoned pipeline directories in `docs/dev/builds/` (excluding `archive/`).
+Then check for abandoned pipeline directories in `docs/dev/builds/`.
 A pipeline directory is **stale** if it has NO corresponding active worktree in `.worktrees/`:
 
 ```bash
 for dir in docs/dev/builds/*/; do
   name=$(basename "$dir")
-  [ "$name" = "archive" ] && continue
   if [ ! -d ".worktrees/$name" ]; then
     echo "STALE: $dir (no active worktree)"
   fi
@@ -98,30 +97,21 @@ done
 
 - If it contains a `BLOCKED.md` → it is intentionally preserved (deferred for `/jc` resolution — see § Fix Loop Escalation). **SKIP cleanup.** Do NOT archive, do NOT delete. Print `PRESERVED: $dir (BLOCKED-DEFERRED, awaiting resume)` and move on.
 - **If it belongs to an active wave** → **SKIP.** Wave-owned builds are NEVER archived individually — they archive together when the wave archives. Detection: `grep -rl "$name" docs/dev/waves/*/report.md 2>/dev/null`. If any match, print `WAVE-OWNED: $dir (belongs to active wave, skipping)` and move on.
-- If it contains a `7-post-merge-qa.md` → it completed but wasn't archived. Archive it using the numbered rolling system (see below). **Only for standalone builds (no wave owner).**
+- If it contains a `7-post-merge-qa.md` → it completed but wasn't archived. Archive it to cold storage (see below). **Only for standalone builds (no wave owner).**
 - If it has NO completion markers (no `7-*` file, no `BLOCKED.md`) → it was abandoned mid-pipeline. Add an `ABANDONED.md` marker, then archive. **Only for standalone builds (no wave owner).**
 
 ```bash
 echo "Pipeline abandoned — archived during /build pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
 ```
 
-**Numbered archive (for standalone builds only — NEVER for wave-owned builds):**
+**Archive to cold storage (for standalone builds only — NEVER for wave-owned builds):**
 
 ```bash
-mkdir -p docs/dev/builds/archive tmp/archive/builds
-COUNTER=$(cat docs/dev/builds/archive/.counter 2>/dev/null || echo "0")
-NEXT=$((COUNTER + 1))
-PADDED=$(printf "%03d" $NEXT)
-mv docs/dev/builds/$name docs/dev/builds/archive/${PADDED}-${name}
-echo "$NEXT" > docs/dev/builds/archive/.counter
-# Evict oldest if more than 10
-ARCHIVE_COUNT=$(find docs/dev/builds/archive -maxdepth 1 -type d | wc -l)
-ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
-if [ "$ARCHIVE_COUNT" -gt 10 ]; then
-  OLDEST=$(ls -d docs/dev/builds/archive/[0-9]*/ | head -1)
-  mv "$OLDEST" tmp/archive/builds/
-fi
+mkdir -p tmp/dev/archive/builds
+mv docs/dev/builds/$name tmp/dev/archive/builds/
 ```
+
+`tmp/` is gitignored. Files the pipeline already committed stay in git history; if the swept dir was tracked, the next gitter DOCS-COMMIT picks up the deletions.
 
 **Empty directories** (zero files) → just remove them: `rmdir docs/dev/builds/$name`
 
@@ -135,21 +125,21 @@ This prevents stale pipeline dirs from accumulating across sessions.
 
 **Name uniqueness check (standalone only — skip when `[Pipeline: ...]` is present):** Before proceeding, verify the chosen name does NOT already exist in:
 
-- `docs/dev/builds/archive/` — archived pipelines
+- `tmp/dev/archive/builds/` — archived pipelines (gitignored cold storage)
 - `docs/dev/builds/` — active pipelines
 - `.worktrees/` — active worktrees
 
 ```bash
-ls docs/dev/builds/archive/ | sed 's/^[0-9]*-//' | grep -x "{name}"
+ls tmp/dev/archive/builds/ 2>/dev/null | sed 's/^[0-9]*-//' | grep -x "{name}"
 ls docs/dev/builds/ .worktrees/ 2>/dev/null | grep -x "{name}"
 ```
 
-The first `ls` strips counter prefixes (e.g., `003-radar-surfaces` → `radar-surfaces`) before matching. If the name exists anywhere, append a version suffix (e.g., `session-notes-v2`, `audio-streaming-v3`) or choose a more specific name. Also check `tmp/archive/builds/` for evicted archives. **NEVER reuse an archived pipeline name** — it causes doc conflicts and breaks traceability.
+The first `ls` strips legacy counter prefixes (e.g., `003-radar-surfaces` → `radar-surfaces`) before matching. If the name exists anywhere, append a version suffix (e.g., `session-notes-v2`, `audio-streaming-v3`) or choose a more specific name. **NEVER reuse an archived pipeline name** — it causes doc conflicts and breaks traceability.
 
 Resolve path variables:
 
 - **`$PIPELINE`** = `{name}` — the pipeline name (kebab-case, unique across active + archived). Extracted from `[Pipeline: {name}]` in `$ARGUMENTS` when present (wave-invoked), otherwise chosen by build (standalone).
-- **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `docs/dev/waves/archive/{wave}/`.
+- **`$WAVE`** = wave name extracted from `[Wave: {wave-name}]` in `$ARGUMENTS`, otherwise `none`. This value is forwarded to gitter so merge + docs commits carry a `Wave:` trailer for git-history traceability back to `tmp/dev/archive/waves/{wave}/`.
 - **`$EPIC`** = epic name extracted from `[Epic: {epic-name}]` in `$ARGUMENTS`, otherwise `none`. Forwarded to the documenter (Step 10) so a standalone build routes its progress to `docs/epics/{name}/`. Wave-owned builds inherit it but skip the epic write — the wave consolidates it.
 - **`$CARRYWIP`** = `commit` or `leave` from `[CarryWIP: ...]` in `$ARGUMENTS` (passed by `/wave`), otherwise `ask`. Governs whether main's uncommitted work is carried into this pipeline's worktree (Step 2).
 - **`$BUILD_IDX`** = `{n}/{total}` from `[Build: {n}/{total}]` in `$ARGUMENTS` (passed by `/wave`), otherwise empty (standalone). Used only by § Status Emission to frame stdout status.
@@ -157,7 +147,6 @@ Resolve path variables:
 - **`$DOCS_REL`** = `../../../docs/dev/builds/{name}` — pipeline docs from worktree
 - **`$DOCS_POST`** = `../docs/dev/builds/{name}` — pipeline docs from project subdir (POST-MERGE)
 - **`$WORKTREE`** = `.worktrees/{name}` — pipeline worktree directory (full checkout of the whole roster)
-- **`$ARCHIVE`** = `docs/dev/builds/archive` — archive parent directory
 - **`$PROJECTS`** = list of affected projects from `{PROJECT_ROSTER}` (e.g. one `{ROLE}` per affected roster entry) — set by routing. A single-project roster makes this trivially the one project.
 - **Pipeline branch:** `pipeline/{name}` (single branch for the whole worktree)
 - **`$WORKTREE` layout:** one worktree holds the roster. **Multi-project roster:** each roster entry lives in its subdir `$WORKTREE/{project}`. **Single-project roster:** the worktree IS the repo root — there is no per-project subdir, so `$WORKTREE/{project}` collapses to `$WORKTREE`.
@@ -205,12 +194,12 @@ Capture `START=$(date +%s)` (for the footer's elapsed time), then emit the § St
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
 Spawn the child planner for EVERY roster entry **in parallel** (single message, one Agent call per roster entry). A single-project roster spawns exactly one planner.
-**Model: sonnet** — child planners do structured analysis, not strategic decisions.
+**Model: opus** — every build child agent does real work.
 
 <!-- PATTERN: per-project — SETUP expands once per {PROJECT_ROSTER} entry -->
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} planner. Read and follow {project}/.claude/agents/planner.md.
+Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} planner. Read and follow {project}/.claude/agents/planner.md.
   Mode: ANALYSIS. Pipeline: {name}. Feature: {feature request}.
   Analyze the {project}/ codebase and write $DOCS/1-analysis-{ROLE}.md."
 ```
@@ -225,7 +214,7 @@ Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} planner. Re
 
 **Single-project roster:** skip the mono-planner — there is nothing cross-project to consolidate or route. Promote the single `$DOCS/1-analysis-{ROLE}.md` to the plan: copy it to `$DOCS/1-plan.md` (routing is trivially `{ROLE}-ONLY`). Then proceed to Step 2.
 
-**Multi-project roster (size > 1):** Use the `mono-planner` agent. **Model: claude-opus-4-6** — strategic routing decisions.
+**Multi-project roster (size > 1):** Use the `mono-planner` agent. **Model: claude-opus-4-8** (pinned in its frontmatter) — strategic routing decisions.
 
 - Tell it: "Pipeline: {name}. Feature: {feature request}. Read the roster analysis reports at `$DOCS/1-analysis-*.md` and consolidate into $DOCS/1-plan.md."
 - It reads the parallel analysis reports, decides routing (one `{ROLE}-ONLY` per roster entry, or `CROSS` when more than one project is touched), and writes `$DOCS/1-plan.md`.
@@ -250,7 +239,7 @@ Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git 
 
 **Single-project roster:** skip entirely — there is no cross-project seam to design. Proceed to Step 4.
 
-**Multi-project roster (size > 1):** Use the `mono-architect` agent. **Model: claude-opus-4-6** — critical cross-project architecture decisions + inline research.
+**Multi-project roster (size > 1):** Use the `mono-architect` agent. **Model: claude-opus-4-8** (pinned in its frontmatter) — critical cross-project architecture decisions + inline research.
 
 - Tell it: "Pipeline: {name}. Read $DOCS/1-plan.md. Write $DOCS/3-architecture.md."
 - It designs API contracts, shared types, and integration patterns — but makes NO code-level decisions or TODO stubs.
@@ -264,12 +253,12 @@ Use the `gitter` agent in **SETUP** phase. **Model: sonnet** — structured git 
 Spawn the child architect for each routed roster entry. They read mono-architect's integration contracts (when present) and write
 project-specific architecture docs to `$DOCS/`. Architects produce docs only — no code stubs in worktrees.
 Developers derive their work queue from the architecture docs directly.
-**Model: sonnet** — child architects follow mono-architect's spec.
+**Model: opus** — every build child agent does real work.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry -->
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} architect. Read and follow the instructions in {project}/.claude/agents/architect.md.
+Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} architect. Read and follow the instructions in {project}/.claude/agents/architect.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
   Write your architecture doc to $DOCS/3-architecture-{ROLE}.md.
@@ -278,8 +267,6 @@ Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} architect. 
 ```
 
 Spawn only the architects for routed roster entries. Wait for completion.
-
-A roster entry may carry a `{MODEL_TIER}` override — the domain-critical project (the one whose code carries the highest correctness/safety stakes, e.g. an `{AI_FRAMEWORK}` chain) runs its architect on `model: "opus"`, matching the post-merge QA tier (Step 9). SETUP stamps that override on the relevant roster entry's expansion; a single-project roster runs its one architect on `model: "opus"` if it is that project.
 
 ---
 
@@ -293,7 +280,7 @@ Spawn both agents in a single message if both are needed (they're independent):
 **If visual work is needed on a roster entry that has a `{project}/.claude/agents/ui-ux.md`:**
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the UI/UX designer. Read and follow {project-ui}/.claude/agents/ui-ux.md.
+Agent(general-purpose, model: "opus"): "You are the UI/UX designer. Read and follow {project-ui}/.claude/agents/ui-ux.md.
   Pipeline: {name}. All pipeline docs: $DOCS/.
   Read $DOCS/3-architecture.md (if present) and $DOCS/3-architecture-{ROLE-ui}.md.
   Write your spec to $DOCS/4-ui-ux-spec.md."
@@ -315,7 +302,7 @@ The orchestrator's "judgment call" is not reliable enough — use keyword detect
 If schema signals are found, spawn the db-admin agent. `{project-db}` = the roster entry that owns the schema/migrations (the one holding `{MIGRATIONS_DIR}`); SETUP binds it from the roster, or deletes Step 5b entirely if no roster entry ships a `db-admin.md`.
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and follow {project-db}/.claude/agents/db-admin.md.
+Agent(general-purpose, model: "opus"): "You are the database admin. Read and follow {project-db}/.claude/agents/db-admin.md.
   Pipeline: {name}.
   All pipeline docs: $DOCS/.
   Worktree(s): $WORKTREE/{project} for each routed roster entry that touches the schema (single-project roster: $WORKTREE root).
@@ -335,19 +322,18 @@ Agent(general-purpose, model: "sonnet"): "You are the database admin. Read and f
 ## Step 6 — Parallel Development (on named worktrees)
 
 Read ports from `$DOCS/ports.md`, then launch the developer for each routed roster entry.
-**Model: sonnet** — developers implement specs, they don't design them.
+**Model: opus** — every build child agent does real work.
 
 **Trivial infrastructure/config tasks:** If the scope is only adding env vars or config to normal project files (e.g., adding vars to a `{project}/.env.local`) and no roster entry ships a dedicated DevOps agent, the orchestrator MAY handle it directly instead of spawning a sub-agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
 A roster entry's developer agent is whatever that entry declares — `developer.md` for a normal
 project, `devops.md` for an infra-shaped entry; SETUP substitutes the right agent filename and role
-label. The domain-critical entry (highest correctness/safety stakes) carries a `model: "opus"`
-override. For a single-project roster, $WORKTREE/{project} resolves to $WORKTREE (repo root) and
+label. For a single-project roster, $WORKTREE/{project} resolves to $WORKTREE (repo root) and
 $DOCS_REL is ../../docs/dev/builds/{name}/ (one level shallower than a per-project subdir). -->
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
+Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
 
   Pipeline: {name}.
   Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
@@ -362,8 +348,6 @@ Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} developer. 
 
 Launch only the developers for routed roster entries. Wait for completion.
 
-The domain-critical roster entry's developer runs on `model: "opus"` — its implementation (e.g. an `{AI_FRAMEWORK}` chain) carries the highest correctness/safety risk in the pipeline; SETUP stamps the override on that entry's expansion.
-
 ---
 
 ## Step 7 — QA (BEFORE merge)
@@ -371,13 +355,13 @@ The domain-critical roster entry's developer runs on `model: "opus"` — its imp
 **CRITICAL: QA runs against the worktree branches, NOT main.**
 
 Spawn the QA engineer for each routed roster entry.
-**Model: sonnet** — QA runs structured validation checklists.
+**Model: opus** — every build child agent does real work.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
 Single-project roster: $WORKTREE/{project} resolves to $WORKTREE (repo root). -->
 
 ```
-Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
+Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
 
   Mode: PRE-MERGE. Pipeline: {name}.
   Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT} (plus any peer roster ports it must reach, from $DOCS/ports.md).
@@ -406,9 +390,9 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 If `$DOCS/6-bugs.md` has `Status: OPEN`:
 
-1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: sonnet). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
+1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: opus). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
 
-2. **Re-run QA** (same as Step 7, model: sonnet)
+2. **Re-run QA** (same as Step 7, model: opus)
 
 3. Repeat until `$DOCS/6-bugs.md` has `Status: NONE` OR iteration count reaches 3 OR an escalation trigger fires.
 
@@ -475,9 +459,9 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 ### Code-Review Fix Loop (architect → developer, cap 2)
 
-1. **Architect plans the fixes.** Spawn the child architect for each affected roster entry (same spawn pattern as Step 4 — sonnet via general-purpose, `model: "opus"` for the domain-critical entry): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
+1. **Architect plans the fixes.** Spawn the child architect for each affected roster entry (same spawn pattern as Step 4 — general-purpose, `model: "opus"`): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
 
-2. **Developer applies the fixes.** Spawn the developer for each affected roster entry (same spawn pattern as Step 6 — sonnet via general-purpose, `model: "opus"` for the domain-critical entry): "Pipeline: {name}. Worktree: $WORKTREE/{project} (the worktree root for a single-project roster). Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
+2. **Developer applies the fixes.** Spawn the developer for each affected roster entry (same spawn pattern as Step 6 — general-purpose, `model: "opus"`): "Pipeline: {name}. Worktree: $WORKTREE/{project} (the worktree root for a single-project roster). Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
 
 3. **Re-run the hygiene audit** on the updated diff and overwrite the verdict line.
 
@@ -505,7 +489,7 @@ Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git 
 ### Step 9 — Post-Merge QA (on main)
 
 Spawn the post-merge QA engineer for each routed roster entry. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
-**Model: `opus`** — post-merge bug-catch quality matters more than token cost; pre-merge QA stays on Sonnet. Each entry's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
+**Model: `opus`.** Each entry's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
 Single-project roster: {project}/ on main IS the repo root. SETUP binds each entry's runbook path
@@ -537,50 +521,50 @@ Spawn a new fix pipeline `{name}-postmerge-fix`:
 
 Use the `mono-documenter` agent. **Model: sonnet** — structured doc merging.
 
-- Tell it: "Pipeline: {name}. Phase: ARCHIVE. Epic: $EPIC. Docs: $DOCS. Archive: $ARCHIVE. Pipeline dir to archive: $DOCS → $ARCHIVE/{name}."
+- Tell it: "Pipeline: {name}. Phase: ARCHIVE. Epic: $EPIC. Docs: $DOCS."
 
 The documenter:
 
 1. **Merges** pipeline decisions into permanent docs (`docs/agents/architecture/`, `docs/agents/api/`, child `architecture/`, `ui-ux/` clusters, etc.)
 2. **Updates** each routed roster entry's docs (`{project}/docs/` per entry; the repo-root `docs/` for a single-project roster) with new details
-3. **Archives** `$DOCS/` to `$ARCHIVE/{name}/`
+3. **Leaves** `$DOCS/` in place — Step 11 commits it into git history, then archives it
 
 All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent root docs accumulate all decisions. Child project docs get updated with project-specific details.
 
 ---
 
-### Step 11 — Commit Docs (MANDATORY after documenter finishes)
+### Step 11 — Commit Docs + Archive (MANDATORY after documenter finishes)
 
 Use the `gitter` agent in **DOCS-COMMIT** phase. **Model: sonnet** — structured git ops.
 
-- Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}."
+- Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}. Archive: {$DOCS when $WAVE is none, else 'none'}."
 
-Gitter commits all doc changes the documenter made on main.
+Gitter commits all doc changes including `$DOCS/` (git history is the permanent archive), then moves `$DOCS` to `tmp/dev/archive/builds/` and commits the removal. Wave-owned builds pass `Archive: none` — the wave archives all its dirs together at wave end.
 
 ---
 
 ## Pipeline Reference
 
-| #   | Step                              | Who                                                       | Produces                                                                                      | Location                         |
-| --- | --------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------- |
-| 1a  | Parallel analysis                 | Per-roster planners: {PROJECT_PLANNER_ROSTER}             | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                              | root                             |
-| 1b  | Consolidate plan _(roster > 1)_   | mono-planner _(single-project: promote the one analysis)_ | `$DOCS/1-plan.md`                                                                             | root                             |
-| 2   | Git setup                         | gitter (SETUP)                                            | Worktree(s), ports, `$DOCS/ports.md`                                                          | root                             |
-| 3   | Cross-project arch _(roster > 1)_ | mono-architect _(skipped single-project)_                 | `$DOCS/3-architecture.md` (integration contracts + research notes)                            | root                             |
-| 4   | Child arch + research             | Per-roster architects: {PROJECT_ARCHITECT_ROSTER}         | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)              | root                             |
-| 5a  | UI/UX _(conditional)_             | ui-ux                                                     | `$DOCS/4-ui-ux-spec.md`                                                                       | root                             |
-| 5b  | DB Architecture _(conditional)_   | db-admin                                                  | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                          | root (docs) + worktrees (schema) |
-| 6   | Develop                           | Per-roster developers: {PROJECT_DEVELOPER_ROSTER}         | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                       | worktrees (code) + root (docs)   |
-| 7   | QA                                | Per-roster QA agents: {PROJECT_QA_ROSTER}                 | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md` | root                             |
-| -   | Fix loop                          | developers → QA                                           | Repeat until `$DOCS/6-bugs.md` = NONE                                                         |                                  |
-| -   | Code review _(pre-merge gate)_    | p:audit:code-hygiene (diff) → architects → developers     | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                           | worktrees (code) + root (docs)   |
-| 8   | Merge                             | gitter (MERGE)                                            | Commits + merges to main                                                                      |                                  |
-| 9   | Post-merge QA                     | Per-roster QA agents (POST-MERGE): {PROJECT_QA_ROSTER}    | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                     | root                             |
-| 10  | Document                          | mono-documenter                                           | Merges into permanent docs, archives pipeline to `$ARCHIVE/{name}/`                           | root                             |
-| 11  | Commit docs                       | gitter (DOCS-COMMIT)                                      | Commits doc changes on main                                                                   | root                             |
+| #   | Step                              | Who                                                       | Produces                                                                                         | Location                         |
+| --- | --------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------- |
+| 1a  | Parallel analysis                 | Per-roster planners: {PROJECT_PLANNER_ROSTER}             | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                                 | root                             |
+| 1b  | Consolidate plan _(roster > 1)_   | mono-planner _(single-project: promote the one analysis)_ | `$DOCS/1-plan.md`                                                                                | root                             |
+| 2   | Git setup                         | gitter (SETUP)                                            | Worktree(s), ports, `$DOCS/ports.md`                                                             | root                             |
+| 3   | Cross-project arch _(roster > 1)_ | mono-architect _(skipped single-project)_                 | `$DOCS/3-architecture.md` (integration contracts + research notes)                               | root                             |
+| 4   | Child arch + research             | Per-roster architects: {PROJECT_ARCHITECT_ROSTER}         | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)                 | root                             |
+| 5a  | UI/UX _(conditional)_             | ui-ux                                                     | `$DOCS/4-ui-ux-spec.md`                                                                          | root                             |
+| 5b  | DB Architecture _(conditional)_   | db-admin                                                  | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                             | root (docs) + worktrees (schema) |
+| 6   | Develop                           | Per-roster developers: {PROJECT_DEVELOPER_ROSTER}         | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                          | worktrees (code) + root (docs)   |
+| 7   | QA                                | Per-roster QA agents: {PROJECT_QA_ROSTER}                 | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md`    | root                             |
+| -   | Fix loop                          | developers → QA                                           | Repeat until `$DOCS/6-bugs.md` = NONE                                                            |                                  |
+| -   | Code review _(pre-merge gate)_    | p:audit:code-hygiene (diff) → architects → developers     | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                              | worktrees (code) + root (docs)   |
+| 8   | Merge                             | gitter (MERGE)                                            | Commits + merges to main                                                                         |                                  |
+| 9   | Post-merge QA                     | Per-roster QA agents (POST-MERGE): {PROJECT_QA_ROSTER}    | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                        | root                             |
+| 10  | Document                          | mono-documenter                                           | Merges into permanent docs; `$DOCS/` stays in place                                              | root                             |
+| 11  | Commit docs + archive             | gitter (DOCS-COMMIT)                                      | Commits docs incl. `$DOCS/`, moves it to `tmp/dev/archive/builds/`, commits removal (standalone) | root                             |
 
 ---
 
 ## Done
 
-When post-merge QA passes, documentation is archived, and doc changes are committed, say: "Build complete ({name}). All tests pass on main. Code review clean. Docs archived and committed."
+When post-merge QA passes and gitter has committed + archived, say: "Build complete ({name}). All tests pass on main. Code review clean. Docs committed; pipeline archived to tmp (git history keeps the record)."

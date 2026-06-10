@@ -44,13 +44,12 @@ Separate gitter and mono-documenter agents only run when another runtime orchest
 ## Wave-end actions
 
 1. Update `$WAVES/{wave-name}/report.md` with the final summary table (per wave.md Step 2).
-2. Archive the wave dir: `mkdir -p $WAVES/archive && rm -rf $WAVES/archive/{wave-name} && mv $WAVES/{wave-name} $WAVES/archive/{wave-name}` (per wave.md Step 3 — NON-OPTIONAL).
-3. Commit the archive move yourself (you have git: `git add $WAVES && git commit -m "chore(waves): archive {wave-name}\n\nWave: {wave-name}"`). Do NOT push; remote publication requires a separate explicit user request such as `/git push`.
-4. Skip Professor review (Skill unavailable). Note in the report that Professor review is deferred for the user to run manually if desired.
+2. Commit + archive (per wave.md Step 4 — NON-OPTIONAL). First commit the wave dir and any wave-owned build dirs into git history (`git add docs/ && git commit -m "docs({wave-name}): archive wave + builds\n\nWave: {wave-name}"`). Then move them to gitignored cold storage: `mkdir -p tmp/dev/archive/waves tmp/dev/archive/builds`, move each wave-owned build dir to `tmp/dev/archive/builds/` and the wave dir to `tmp/dev/archive/waves/{wave-name}`, and commit the removals (`docs({wave-name}): move archived wave docs to tmp`). Do NOT push; remote publication requires a separate explicit user request such as `/git push`.
+3. Skip Professor review (Skill unavailable). Note in the report that Professor review is deferred for the user to run manually if desired.
 
 ## Return value
 
 ```
-Wave complete: {wave-name}. Pipelines: {N succeeded}/{M total}. Deferred: {Z}. Archive: $WAVES/archive/{wave-name}/.
+Wave complete: {wave-name}. Pipelines: {N succeeded}/{M total}. Deferred: {Z}. Builds + wave committed to history and archived to tmp/dev/archive/waves/{wave-name}/.
 ```
 """

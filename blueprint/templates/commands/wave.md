@@ -26,7 +26,7 @@ $ARGUMENTS
 
 **Wave naming:** Choose a short descriptive kebab-case name (2-4 words) capturing the theme. Defines `$WAVES/{wave-name}/`.
 
-**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/archive/` (strip counter prefixes), `$WAVES/`, `docs/dev/builds/archive/` (strip counter prefixes), `docs/dev/builds/`, `tmp/archive/builds/`, `tmp/archive/waves/`. If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
+**Name uniqueness (MANDATORY):** Verify name AND all pipeline names don't exist in `$WAVES/`, `docs/dev/builds/`, `tmp/dev/archive/builds/`, `tmp/dev/archive/waves/` (strip legacy counter prefixes when matching). If collision → append `-v2` or choose more specific name. Then: `mkdir -p docs/dev/waves/{wave-name}`.
 
 ---
 
@@ -240,66 +240,37 @@ Append only — leave Vision & Scope, Open Questions, Discoveries, and `status` 
 
 ---
 
-## Step 4 — Archive (NON-OPTIONAL — execute AFTER Professor review)
+## Step 4 — Commit & Archive (NON-OPTIONAL — execute AFTER Professor review)
 
-### 4a. Verify and archive straggler builds
+Everything goes into git history first, then to gitignored cold storage under `tmp/` — no archive stays in `docs/`.
 
-Each `/build` pipeline archives itself via the documenter (Step 11 of build.md). The wave's job is to **verify** all its pipelines made it to archive, and catch any stragglers that the documenter missed (compaction, timeout, agent error).
+### 4a. Inventory the wave's dirs
 
-For each pipeline that belonged to this wave (listed in the report's Grouping Summary table):
+Wave-owned builds are never archived individually, so every pipeline dir from the report's Grouping Summary should still be at `docs/dev/builds/{pipeline}`:
 
 ```bash
-mkdir -p docs/dev/builds/archive
-
 for pipeline in {list of pipeline names from report}; do
-  # Skip if already archived (documenter handled it)
-  if ls docs/dev/builds/archive/*-${pipeline} 1>/dev/null 2>&1 || [ -d "docs/dev/builds/archive/${pipeline}" ]; then
-    echo "ALREADY_ARCHIVED: $pipeline"
-    continue
-  fi
-  # Catch straggler — documenter missed it
-  if [ -d "docs/dev/builds/$pipeline" ]; then
-    echo "STRAGGLER: $pipeline — archiving now"
-    mv "docs/dev/builds/$pipeline" "docs/dev/builds/archive/$pipeline"
-  fi
+  [ -d "docs/dev/builds/$pipeline" ] && echo "PRESENT: $pipeline" || echo "MISSING: $pipeline — already moved, skipping"
 done
 ```
 
-### 4b. Archive the wave itself
+Collect the present dirs plus `$WAVES/{wave-name}` as the archive list. Exception: leave a `BLOCKED.md` (deferred) pipeline dir in place — it archives when resumed.
 
-**Numbered rolling archive (max 10).** Each archived wave gets a 3-digit counter prefix. When the archive exceeds 10 items, the oldest is evicted to `tmp/archive/waves/` (gitignored cold storage).
+### 4b. Gitter commit + archive
 
-```bash
-mkdir -p $WAVES/archive tmp/archive/waves
+Invoke the `gitter` agent: "Pipeline: {wave-name}. Wave: {wave-name}. Phase: DOCS-COMMIT. Archive: {archive list from 4a}."
 
-# Read and increment counter
-COUNTER=$(cat $WAVES/archive/.counter 2>/dev/null || echo "0")
-NEXT=$((COUNTER + 1))
-PADDED=$(printf "%03d" $NEXT)
-
-# Archive with numbered prefix
-rm -rf $WAVES/archive/${PADDED}-{wave-name}  # remove partial from previous failed attempt
-mv $WAVES/{wave-name} $WAVES/archive/${PADDED}-{wave-name}
-echo "$NEXT" > $WAVES/archive/.counter
-
-# Evict oldest if more than 10
-ARCHIVE_COUNT=$(find $WAVES/archive -maxdepth 1 -type d | wc -l)
-ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
-if [ "$ARCHIVE_COUNT" -gt 10 ]; then
-  OLDEST=$(ls -d $WAVES/archive/[0-9]*/ | head -1)
-  mv "$OLDEST" tmp/archive/waves/
-fi
-```
+Gitter commits all doc changes (report with review, remediation, epic updates, build dirs) into git history, moves the build dirs to `tmp/dev/archive/builds/` and the wave dir to `tmp/dev/archive/waves/`, then commits the removals.
 
 ### 4c. Cleanup and verify
 
 Remove a custom (non-root) task file now; the root `wave.md` was already reset to its stub at Step 0d-3. Verify:
 
 ```bash
-test ! -d $WAVES/{wave-name} && test -d $WAVES/archive/${PADDED}-{wave-name} && echo "WAVE_ARCHIVE_OK" || echo "WAVE_ARCHIVE_FAILED"
+test ! -d $WAVES/{wave-name} && test -d tmp/dev/archive/waves/{wave-name} && echo "WAVE_ARCHIVE_OK" || echo "WAVE_ARCHIVE_FAILED"
 ```
 
-Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Builds + wave archived together."`
+Announce: `"Wave complete ({wave-name}). {X}/{N} succeeded. Builds + wave committed to history and archived to tmp."`
 
 ---
 

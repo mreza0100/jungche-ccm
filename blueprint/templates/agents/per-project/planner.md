@@ -4,7 +4,7 @@ description: >
   Plans features for the {project} project ({PROJECT_ROLE}). ANALYSIS mode: analyze the
   codebase for mono-planner, runs in parallel with the other roster projects' planners.
   Invoke FIRST before any other agent.
-model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
+model: opus # {MODEL_TIER} — records tier intent (/build's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Glob, Grep
 ---
 

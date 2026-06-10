@@ -2,8 +2,8 @@
   "_comment": "Claude Code themes the blueprint does NOT vendor. SETUP fetches each from its canonical public repo at install into ~/.claude/themes/ (always latest). Single source of truth — the blueprint never holds a copy that can drift. Activate with /theme. Themes install to the user's home, not the project, so they are shared across all the user's projects.",
   "source_fetched": {
     "tokyo-night": {
-      "repo": "https://github.com/mreza0100/claude-code-tokyo-night",
-      "raw": "https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/tokyo-night.json",
+      "repo": "https://github.com/{GH_USER}/claude-code-tokyo-night",
+      "raw": "https://raw.githubusercontent.com/{GH_USER}/claude-code-tokyo-night/main/tokyo-night.json",
       "target": "~/.claude/themes/tokyo-night.json",
       "activate": "/theme → \"Tokyo Night\"",
       "requires": "Claude Code v2.1.118+"

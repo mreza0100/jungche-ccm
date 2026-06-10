@@ -173,7 +173,7 @@ For domain output validation (e.g., faithfulness of stored {AI_SERVICE_NAME}-gen
 When auditing {AI_SERVICE_NAME} and you need to understand what changes were made and when:
 
 1. **Check recent builds:** `ls docs/dev/builds/` — look for pipelines routed to the AI/pipeline project
-2. **Check wave archives:** `ls docs/dev/waves/archive/` — completed wave files document what tasks ran
+2. **Check wave archives:** `ls tmp/dev/archive/waves/` — completed wave files document what tasks ran (git history keeps the committed record)
 3. **Check active waves:** `ls docs/dev/waves/` — in-progress wave files
 4. **Git history:** `git log --oneline -- {project}/` (the AI/pipeline project's directory) — commits touching {AI_SERVICE_NAME}, with pipeline names in commit messages
 5. **Pipeline docs:** each pipeline writes `{$DOCS}/1-plan.md` through `{$DOCS}/7-post-merge-qa.md` — read these for the full decision trail

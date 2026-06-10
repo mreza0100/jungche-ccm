@@ -1,35 +1,10 @@
-# Blueprint — Export Pipeline Infrastructure
+# The Refresh Pass — Re-derive the Blueprint from Live Source
 
-Maintain and publish a portable blueprint of `.claude/` so any Claude Code project can adopt the full Professor experience — characters, multi-PhD professor — refitted to their domain at install time.
+Executed inside `release` (step 3). Re-derives the blueprint from the CURRENT `.claude/` and `CLAUDE.md` state. Edit files directly inside `{BLUEPRINT_CLONE_PATH}blueprint/`.
 
-Argument: `$ARGUMENTS` — subcommand (defaults to `export` if blank).
+**Update mechanism context:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, `p:blueprint update` (entry: `/pcm update`) replays interview answers against new templates, runs a three-way hash comparison, and presents changes in three buckets. The protocol ships in `templates/skills/p:blueprint/`.
 
-| Subcommand                                  | Action                                                                      |
-| ------------------------------------------- | --------------------------------------------------------------------------- |
-| `export` _(default)_                        | Regenerate blueprint files, commit, push to public `professor` repo         |
-| `refresh`                                   | Regenerate blueprint files locally — no commit, no push                     |
-| `status`                                    | Show what would change if `refresh` ran now (no writes)                     |
-| `release {patch\|minor\|major} "{summary}"` | Bump VERSION, finalize CHANGELOG, commit + tag + push (calls refresh first) |
-
----
-
-## Constants
-
-- **Public repo:** `{BLUEPRINT_REPO}` (public GitHub)
-- **Local clone:** `{BLUEPRINT_CLONE_PATH}` — the ONLY working copy
-- **Blueprint tree:** `{BLUEPRINT_CLONE_PATH}blueprint/`
-- **Public README:** `{BLUEPRINT_CLONE_PATH}README.md` — hand-curated, repo root
-- **GH user:** `{GH_USER}`
-
-If `{BLUEPRINT_CLONE_PATH}` missing, export clones it (or creates repo first if missing on GitHub).
-
----
-
-## Philosophy
-
-The blueprint exports a **transplantable nervous system**. An adopter gets the same characters, ranks, and swagger — refitted via interview. A neuropsych lab, RPG studio, and SCADA team all see _their version_ of the same archetypes. **The character IS the pipeline** — strip it and you ship a Confluence wiki. Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
-
-**Update mechanism:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, `/pcm update` replays interview answers against new templates, runs a three-way hash comparison, presents changes in three buckets (auto-apply / review / manual), and appends to `drift.md`. The update protocol lives in `templates/commands/pcm.md` § "Update Protocol".
+Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
 
 ---
 
@@ -43,7 +18,7 @@ The blueprint exports a **transplantable nervous system**. An adopter gets the s
 
 ### Tier assignments
 
-**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/audit`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `/blueprint`
+**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/audit`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `p:blueprint`
 **Tier B** — `/officer` `{REGULATION}`, `/km` `{KNOWLEDGE_DOMAIN}`, `/pm` `{USER_PERSONA}`, `/mentor` `{MARKET_SEGMENT}`, `/marketer` `{CHANNEL_LANDSCAPE}`
 **Tier C** — root agents (mono-planner, mono-architect, mono-documenter, gitter), scripts (worktree.sh, alloc-ports.sh, dev.sh), per-project agents (planner, architect, developer, qa, ui-ux, db-admin, devops, ai-engineer)
 
@@ -56,29 +31,30 @@ The blueprint exports a **transplantable nervous system**. An adopter gets the s
 
 ### Placeholders (project-specific → generic at refresh)
 
-- Read `{BLUEPRINT_CLONE_PATH}blueprint/PLACEHOLDERS.md` — the canonical value→token map, cloned during refresh — and apply it uniformly, using one canonical token per concept. Never invent a synonym for a concept the map already names.
-- Blueprint self-references (`{BLUEPRINT_REPO}`, `{GH_USER}`, `{BLUEPRINT_CLONE_PATH}`) → `{BLUEPRINT_REPO}`, `{GH_USER}`, `{BLUEPRINT_CLONE_PATH}` — resolved at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork
+- `{PROJECT_NAME}` (and any former brand the repo was renamed from — a rename orphans the old name in the blueprint source, so scrub both), per-project directories → `{PROJECT_NAME}`, `{project-a}` etc.
+- `Professor` → keep with "rename if you want" comment
+- domain/user nouns (the project's subject matter, its users, its work units) → `{DOMAIN_NOUN}`, `{USER_NOUN}`
+- the project's regulatory frame, jurisdiction, and legal-entity type → `{REGULATION}`, `{JURISDICTION}`, `{LEGAL_ENTITY_TYPE}`
+- All tech specifics (transcription/AI providers, frameworks, ORMs, mobile/web stacks, API layers, databases, infra/cloud/hosting) → `{TECH_STACK_PLACEHOLDER}` per role
+- Ports → `{PORT_A}`, `{PORT_B}`; package managers/test runners → `{PACKAGE_MANAGER}`, `{TEST_RUNNER}`
+- Blueprint self-references (`{BLUEPRINT_REPO}`, `{GH_USER}`, `{BLUEPRINT_CLONE_PATH}`) → resolved at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork
 
 Character names (Professor, JC, etc.) ship as **default names with "rename if you want" instruction**. Concrete beats abstract.
 
 ---
 
-## Subcommand: `refresh`
+## 1. Source files to mine
 
-Re-derive blueprint from CURRENT `.claude/` and `CLAUDE.md` state. Edit files directly inside `{BLUEPRINT_CLONE_PATH}blueprint/`.
-
-### 1. Source files to mine
-
-From `{PROJECT_NAME}` repo:
+From the project repo:
 
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
-- **Source-fetched skills** (`rr`, `p:360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
+- **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
-- The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project, e.g. `{BACKEND_PROJECT}/`, as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
+- The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
 
-### 2. Tier-aware transformations
+## 2. Tier-aware transformations
 
-**Tier A:** KEEP voice/tone/structure/character/pipeline mechanics. REPLACE `{PROJECT_NAME}` identifiers + tech specifics + Professor's disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`. KEEP Epics section structure (manifest format, lifecycle, ownership rules) — it is domain-agnostic.
+**Tier A:** KEEP voice/tone/structure/character/pipeline mechanics. REPLACE project identifiers + tech specifics + Professor's disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`. KEEP Epics section structure (manifest format, lifecycle, ownership rules) — it is domain-agnostic.
 
 **Tier B:** KEEP archetype skeleton. REPLACE domain content with named placeholders:
 
@@ -90,7 +66,7 @@ From `{PROJECT_NAME}` repo:
 
 **Tier C:** Strip tech specifics, keep structure, no character.
 
-### 3. Output structure
+## 3. Output structure
 
 ```
 {BLUEPRINT_CLONE_PATH}
@@ -100,10 +76,10 @@ From `{PROJECT_NAME}` repo:
     └── templates/
         ├── CLAUDE.md
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (blueprint, build, jc, dev, git, wave, documenter, pcm, audit, officer, km, pm, mentor, marketer)
+        ├── commands/ (build, jc, dev, git, wave, documenter, pcm, audit, officer, km, pm, mentor, marketer)
         ├── skills/
-        │   ├── sources.json — source-fetched skills (rr, p:360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
-        │   ├── {p:rnd, p:refine, p:wave-review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is
+        │   ├── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
+        │   ├── {p:blueprint, p:rnd, p:refine, p:wave-review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is
         │   └── {p:analysis, p:audit:code-hygiene, p:audit:security}/ — domain-hydrated shells, filled by RR at setup
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
@@ -163,7 +139,7 @@ bind -T copy-mode    TripleClick1Pane send-keys -X select-line \; send-keys -X c
 bind -T copy-mode-vi TripleClick1Pane send-keys -X select-line \; send-keys -X copy-pipe-and-cancel "pbcopy"
 ```
 
-### 4. SETUP.md — interactive install interview
+## 4. SETUP.md — interactive install interview
 
 Exports an interview Claude conducts before touching files. Structure:
 
@@ -181,7 +157,7 @@ Exports an interview Claude conducts before touching files. Structure:
 
 **Phase 2.5 — Skill Knowledge Hydration (domain-hydrated skills):**
 
-Four skills ship as **empty shells** because their content is project-specific — the structure (frontmatter, headings, report format) is universal, but the audit categories, detection patterns, file paths, and domain concerns must be researched per project.
+Skills ship as **empty shells** when their content is project-specific — the structure (frontmatter, headings, report format) is universal, but the audit categories, detection patterns, file paths, and domain concerns must be researched per project.
 
 | Skill                  | What's universal (ships)                                                                                  | What's project-specific (hydrated by RR)                                                                                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -207,124 +183,15 @@ Four skills ship as **empty shells** because their content is project-specific �
 
 5. **Re-hydration:** User can re-run hydration at any time: "fill `/p:audit:security`" or "hydrate skills" → triggers RR against current codebase to fill/update empty sections.
 
-**Phase 2.6 — Host tooling probe (git-host bridge):** Check the install machine for `gh` and `glab` (`command -v`). For each present, write a one-file index skill at `.claude/skills/host-{gh|glab}/SKILL.md` whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: an adopter on GitLab forks + releases professor through `glab`, a GitHub adopter through `gh`, and `/blueprint release` and `/git` read this marker to target the right host. Absent tools get no skill. Then resolve the blueprint repo target: if the user has push access to the canonical repo, set `{BLUEPRINT_REPO}`/`{GH_USER}`/`{BLUEPRINT_CLONE_PATH}` to it; otherwise have them fork it and use the fork.
+**Phase 2.6 — Host tooling probe (git-host bridge):** Check the install machine for `gh` and `glab` (`command -v`). For each present, write a one-file index skill at `.claude/skills/host-{gh|glab}/SKILL.md` whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: an adopter on GitLab forks + releases professor through `glab`, a GitHub adopter through `gh`, and `p:blueprint release` and `/git` read this marker to target the right host. Absent tools get no skill. Then resolve the blueprint repo target: if the user has push access to the canonical repo, set `{BLUEPRINT_REPO}`/`{GH_USER}`/`{BLUEPRINT_CLONE_PATH}` to it; otherwise have them fork it and use the fork.
 
 **Phase 3 — Smoke test:** Run `/build` with a tiny test feature to verify end-to-end.
 
-### 5. Process
+## 5. Public README
 
-- `{BLUEPRINT_CLONE_PATH}` is the ONE source of truth. Before editing: `git fetch origin && git pull --ff-only origin main`.
-- Use `Edit` for surgical updates, `Write` for new files/full rewrites.
-- Preserve manually-curated commentary unless it contradicts current state.
-- Do NOT delete `INSTALL.md`, `LICENSE`, or hand-curated root files.
+If `{BLUEPRINT_CLONE_PATH}README.md` is missing → write it from the template below. If it exists → diff against the template; overwrite only if the template changed.
 
-### 8. Report after refresh
-
-```
-Blueprint refreshed in {BLUEPRINT_CLONE_PATH}blueprint/. {N} files updated, {M} unchanged.
-Tier A: {count} | Tier B: {count} | Tier C: {count}
-Sources mined: {list}
-Generalizations: identifiers→placeholders {count}, tech→placeholders {count}, domain→slots {count}
-Character preservation: Professor ✓, JC ✓
-Ready to /blueprint export.
-```
-
----
-
-## Subcommand: `export` (refresh + push)
-
-```pseudo
-1. Ensure clone exists + up-to-date:
-   if !exists {BLUEPRINT_CLONE_PATH}.git → create repo on GH if needed → clone
-   else → fetch + pull --ff-only (STOP if fails)
-
-2. Run refresh subcommand (bail on failure)
-
-3. Update public README.md:
-   if missing → write from § Public README template below
-   if exists → diff against template; overwrite only if template changed
-
-4. Commit + push:
-   git add -A
-   exit if no staged changes
-   commit: "update: blueprint refresh from {PROJECT_NAME}\nSource: {{PROJECT_NAME}-sha-short}\nCo-Authored-By: Professor <noreply@anthropic.com>"
-   git push origin main
-
-5. Report: URL, commit sha, files changed, source SHA
-```
-
----
-
-## Subcommand: `release {patch|minor|major} "{summary}"`
-
-```pseudo
-1. Validate args (bump type + summary required, bail if missing)
-   patch = bug fixes/doc tweaks | minor = new archetype/command/step | major = breaking/migration
-
-2. Run refresh (STOP if fails)
-
-3. Read VERSION, compute new version
-
-4. Build CHANGELOG bullets from `.professor/release.md` — the pending-sync queue is the source of what ships (format: "- {Tier}: {scope} — {semantic change}").
-   if release.md empty → prompt maintainer for bullets
-   Per-bullet migration sub-headings (#### → For:) required for adopter-side action
-   Informational-only bullets marked: **`/pcm update`: skip — informational only.**
-
-5. Write release notes as a NEW per-release file `{BLUEPRINT_CLONE_PATH}releases/v{NEW_VERSION}.md` (title `# v{NEW_VERSION} — {YYYY-MM-DD}` + bullets grouped under `## Added/Changed/Fixed/Removed/Breaking/Migration`). Then prepend one line to the `## Releases` index in `CHANGELOG.md`: `- [v{NEW_VERSION}](releases/v{NEW_VERSION}.md) — {summary}`. CHANGELOG.md stays a slim index — full notes live in `releases/`, one file per version, so adopters read one release at a time.
-
-5b. Reconcile hand-curated docs against the shipped templates: `README.md` + `blueprint/BLUEPRINT.md` cast/command/skill lists must match `templates/`, and version references stay current (prefer version-neutral phrasing). The README's universal "any repo / any stack" promise is the CONTRACT — keep it; fix drifted templates up to it, never downgrade the README to match drift.
-
-6. echo "{NEW_VERSION}" > {BLUEPRINT_CLONE_PATH}VERSION
-
-7. Commit + tag + push:
-   commit: "release: v{NEW_VERSION} — {summary}\nSource: {sha}\nCo-Authored-By: Professor <noreply@anthropic.com>"
-   git tag -a "v{NEW_VERSION}" -m "v{NEW_VERSION}"   # annotated — --follow-tags skips lightweight tags
-   git push origin main --follow-tags (STOP if fails, NEVER force-push)
-
-8. Clear `.professor/release.md` — its entries shipped in this release; empty the pending list, keep the header.
-
-9. Report: tag URL, commit, source SHA, changelog bullets
-```
-
-### Pre-release checklist
-
-- `gh auth status` authenticated as `{GH_USER}`
-- Refresh succeeded
-- `[Unreleased]` non-empty
-- No secrets in staged diff
-- Staged templates grep clean (0 hits) for the project brand (current AND former name), founder name, and `/Users/` machine paths — refresh swaps the brand for `{PROJECT_NAME}`, so a single leftover is a refresh bug, not an exception
-- New version > local version
-
----
-
-## Subcommand: `status`
-
-1. In `{BLUEPRINT_CLONE_PATH}`: `git fetch origin && git status && git diff --stat origin/main...HEAD`
-2. Spot-check key `{PROJECT_NAME}` sources against current blueprint contents
-3. Report stale files + local uncommitted state. No writes, no pushes.
-
----
-
-## Hard rules
-
-**NEVER:** push secrets, commit project-specific identifiers (the project's own brand name — current AND former — founder PII, internal URLs, machine-absolute `/Users/` paths), force-push, ship Tier A characters with empty placeholders, strip archetype identity to abstraction, auto-bump README version without re-checking template, stage in `tmp/` or anywhere outside `{BLUEPRINT_CLONE_PATH}`. **Repo is PUBLIC — every export is world-visible on push.**
-
----
-
-## Pre-flight checks (before any subcommand)
-
-1. `gh auth status` — must be `{GH_USER}`
-2. `git status` in `{PROJECT_NAME}` — note uncommitted state (don't fail)
-3. `{BLUEPRINT_CLONE_PATH}` — if missing AND command is `export`/`refresh`, clone/create per above
-4. Inside clone: confirm clean or only in-progress refresh edits (bail on unrelated dirty state)
-
----
-
-## Public README template
-
-> When writing/refreshing `{BLUEPRINT_CLONE_PATH}README.md`, expand this structural outline into the full README. Keep it terse, opinionated, pitch-forward.
-
-**Structure (expand at runtime):**
+> Expand this structural outline into the full README. Keep it terse, opinionated, pitch-forward.
 
 ```
 # Professor — Multi-Agent Claude Code Pipeline
@@ -365,18 +232,26 @@ Professor, /jc, /pcm, /audit, /build, /dev, /git, /wave, /documenter
 ⚠️ Overkill for: 200-line scripts, throwaway prototypes, projects where main can break
 
 ## Origin & maintenance
-Auto-regenerated from live {PROJECT_NAME} repo. Maintained by @{GH_USER}. Issues/PRs welcome (open issue first for large changes).
+Auto-regenerated from the live upstream repo. Maintained by @{GH_USER}. Issues/PRs welcome (open issue first for large changes).
 
 ## License
 MIT
 ```
 
----
+## 6. Process rules
 
-## Reporting
+- `{BLUEPRINT_CLONE_PATH}` is the ONE source of truth. Before editing: `git fetch origin && git pull --ff-only origin main`.
+- Use `Edit` for surgical updates, `Write` for new files/full rewrites.
+- Preserve manually-curated commentary unless it contradicts current state.
+- Do NOT delete `INSTALL.md`, `LICENSE`, or hand-curated root files.
 
-Always end with one of:
+## 7. Report after the refresh pass
 
-- `Blueprint exported. URL: https://github.com/{BLUEPRINT_REPO}/commit/{sha}`
-- `Blueprint refreshed in {BLUEPRINT_CLONE_PATH}. Run /blueprint export to publish.`
-- `Blueprint status: {N} files would change. Run /blueprint refresh or /blueprint export.`
+```
+Refresh pass complete in {BLUEPRINT_CLONE_PATH}blueprint/. {N} files updated, {M} unchanged.
+Tier A: {count} | Tier B: {count} | Tier C: {count}
+Sources mined: {list}
+Generalizations: identifiers→placeholders {count}, tech→placeholders {count}, domain→slots {count}
+Character preservation: Professor ✓, JC ✓
+Continuing release.
+```

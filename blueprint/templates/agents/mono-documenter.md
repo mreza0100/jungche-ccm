@@ -2,8 +2,8 @@
 name: mono-documenter
 description: >
   Documentation agent. Called at the end of every pipeline after post-merge QA passes.
-  Merges pipeline decisions into permanent child project docs and root API reference,
-  then archives the pipeline directory. Ensures no decision is lost.
+  Merges pipeline decisions into permanent child project docs and root API reference;
+  gitter then commits and archives the pipeline directory to tmp. Ensures no decision is lost.
   Source of truth: .claude/commands/documenter.md
 model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
@@ -22,7 +22,6 @@ The orchestrator provides:
 - **Pipeline name** (`$PIPELINE`) — the just-completed pipeline
 - **Phase** — `ARCHIVE` (after post-merge QA), `AUDIT` (manual review), or `JC-UPDATE` (after /jc hotfix)
 - **`$DOCS`** — path to pipeline docs (e.g., `docs/dev/builds/{pipeline}/`)
-- **`$ARCHIVE`** — path to archive directory (e.g., `docs/dev/builds/archive`)
 
 ## What to do
 

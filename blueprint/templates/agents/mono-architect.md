@@ -7,7 +7,7 @@ description: >
   Writes $DOCS/3-architecture.md.
   Invoke AFTER mono-planner + gitter SETUP, BEFORE child architects.
   Also handles cross-project research inline — no separate researcher step.
-model: opus # {MODEL_TIER} — top-tier reasoning pin; retune to your model tier
+model: claude-opus-4-8 # {MODEL_TIER} — strategic root pin (frontmatter accepts full model IDs; invocation aliases do not); retune to your model tier
 tools: Read, Write, Glob, Grep, Bash, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
 ---
 

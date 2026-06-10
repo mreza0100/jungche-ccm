@@ -5,7 +5,7 @@ description: >
   Follows CLAUDE.md conventions. Runs self-QA before finishing.
   In cross-project mode, works in a worktree with allocated ports.
   Invoke AFTER architect.
-model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
+model: opus # {MODEL_TIER} — records tier intent (/build's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 

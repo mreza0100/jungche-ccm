@@ -22,7 +22,7 @@ The version is stored in three places (all must agree):
 
 ### Git tag convention
 
-Every release creates a tag `v{MAJOR}.{MINOR}.{PATCH}` on the release commit. Tags are **immutable** — never delete or move a tag after push. The `/blueprint release` subcommand handles tag creation automatically.
+Every release creates a tag `v{MAJOR}.{MINOR}.{PATCH}` on the release commit. Tags are **immutable** — never delete or move a tag after push. The `p:blueprint release` subcommand handles tag creation automatically.
 
 Adopters install by cloning at a specific tag:
 
@@ -96,15 +96,15 @@ Optional trailing tags refine behavior:
 
 ## How to release a new version (maintainer)
 
-Done from inside the upstream source repo via the `/blueprint release` subcommand:
+Done from inside the upstream source repo via the `p:blueprint release` subcommand (entry: `/pcm release`):
 
 ```
-/blueprint release {patch|minor|major} "{summary}"
+/pcm release {patch|minor|major} "{summary}"
 ```
 
 What it does:
 
-1. **Refresh** — runs `/blueprint refresh` to mirror current source-project state to the local professor clone's `blueprint/` directory
+1. **Refresh** — runs the refresh pass to mirror current source-project state to the local professor clone's `blueprint/` directory
 2. **Bump VERSION** — increments according to the bump type
 3. **Update CHANGELOG.md** — moves `[Unreleased]` content into a new dated `[x.y.z]` section, prepends a fresh `[Unreleased]` skeleton
 4. **Prompt for changelog content** — if `[Unreleased]` is empty, asks the maintainer to fill in the categories (Added/Changed/Fixed/Removed/Breaking)
@@ -119,10 +119,10 @@ If a maintainer wants to add changelog entries between releases (without bumping
 
 ## Pre-release checklist
 
-Before running `/blueprint release`:
+Before running `p:blueprint release` (entry: `/pcm release`):
 
 - [ ] All upstream source changes that should be in the release are merged to main
-- [ ] `/blueprint status` shows no unexpected drift
+- [ ] `/pcm update check` shows no unexpected drift
 - [ ] CHANGELOG `[Unreleased]` accurately reflects what's shipping (or you'll be prompted to fill it in during release)
 - [ ] No secrets staged in the blueprint clone
 - [ ] No project-specific identifiers leaked into templates (smell-test in `BLUEPRINT.md`: would a neuropsych team see themselves?)

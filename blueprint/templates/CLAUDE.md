@@ -172,30 +172,30 @@ When a request doesn't call for cross-disciplinary analysis, route it to the rig
 
 ### Route to commands
 
-| Request type                                                  | Route to         | Notes                                                                       |
-| ------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
-| Bug fix, error, broken feature                                | `/jc`            | Diagnose, fix, test, commit on `main`                                       |
-| New feature, enhancement                                      | `/build`         | Full pipeline — worktrees, QA, merge                                        |
-| Parallel feature batch                                        | `/wave`          | Multiple `/build` pipelines from task file                                  |
-| Codebase audit (code hygiene, security)                       | `/audit`         | `/audit` inherits the Professor personality                                 |
-| Live full-UI feature QA (real DB + real LLM)                  | `/qa`            | Walks the dev frontend feature-by-feature in a real browser, no mocks       |
-| Privacy, {REGULATION}, compliance                             | `/officer`       | Regulatory assessment and compliance docs                                   |
-| Dev environment, start/stop services                          | `/dev`           | Docker, ports, DB snapshots                                                 |
-| Git operations, push, pull                                    | `/git`           | Gitter gateway                                                              |
-| {DOMAIN_NOUN} knowledge + {AI_SERVICE_NAME} prompt templates  | `/km`            | Owns all of `{AI_PROJECT}/knowledge/` — {DOMAIN_ADJ} knowledge + `prompts/` |
-| Documentation updates                                         | `/documenter`    | Source of truth for permanent docs                                          |
-| Product decisions, {USER_NOUN} UX                             | `/pm`            | {USER_PERSONA}-Product-Manager                                              |
-| Business, startup, investors                                  | `/mentor`        | Startup & business consultant                                               |
-| Marketing, positioning, SEO                                   | `/marketer`      | Visibility & growth strategy                                                |
-| Research-hub blog article (bilingual, voiced)                 | `/contentor`     | Research → write → legal → review → fact-check → SEO → publish live to web  |
-| System analysis, architecture review, {AI_SERVICE_NAME} audit | `/p:analysis`    | **Skill** — loads protocol, never from memory                               |
-| Wave task refinement                                          | `/p:refine`      | **Skill** — R1-R3.5 protocol, produces wave.md                              |
-| Wave review — code walk + ops                                 | `/p:wave-review` | **Skill** — fan-out thread-walk + ops; auto-runs after the wave             |
-| Research                                                      | `RR` skill       | Structured multi-batch research pipeline                                    |
-| Iterative goal pursuit                                        | `RND` skill      | Goal-driven iterative execution                                             |
-| Epic creation, loading, context restore                       | Professor        | "Create Epic X" / "Load epic X" — `docs/epics/`                             |
-| `.claude/` `.codex/` infrastructure changes                   | `/pcm`           | **MANDATORY** — never edit pipeline infra without it                        |
-| Export pipeline as portable blueprint                         | `/blueprint`     | Export infra for other projects                                             |
+| Request type                                                  | Route to                       | Notes                                                                       |
+| ------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
+| Bug fix, error, broken feature                                | `/jc`                          | Diagnose, fix, test, commit on `main`                                       |
+| New feature, enhancement                                      | `/build`                       | Full pipeline — worktrees, QA, merge                                        |
+| Parallel feature batch                                        | `/wave`                        | Multiple `/build` pipelines from task file                                  |
+| Codebase audit (code hygiene, security)                       | `/audit`                       | `/audit` inherits the Professor personality                                 |
+| Live full-UI feature QA (real DB + real LLM)                  | `/qa`                          | Walks the dev frontend feature-by-feature in a real browser, no mocks       |
+| Privacy, {REGULATION}, compliance                             | `/officer`                     | Regulatory assessment and compliance docs                                   |
+| Dev environment, start/stop services                          | `/dev`                         | Docker, ports, DB snapshots                                                 |
+| Git operations, push, pull                                    | `/git`                         | Gitter gateway                                                              |
+| {DOMAIN_NOUN} knowledge + {AI_SERVICE_NAME} prompt templates  | `/km`                          | Owns all of `{AI_PROJECT}/knowledge/` — {DOMAIN_ADJ} knowledge + `prompts/` |
+| Documentation updates                                         | `/documenter`                  | Source of truth for permanent docs                                          |
+| Product decisions, {USER_NOUN} UX                             | `/pm`                          | {USER_PERSONA}-Product-Manager                                              |
+| Business, startup, investors                                  | `/mentor`                      | Startup & business consultant                                               |
+| Marketing, positioning, SEO                                   | `/marketer`                    | Visibility & growth strategy                                                |
+| Research-hub blog article (bilingual, voiced)                 | `/contentor`                   | Research → write → legal → review → fact-check → SEO → publish live to web  |
+| System analysis, architecture review, {AI_SERVICE_NAME} audit | `/p:analysis`                  | **Skill** — loads protocol, never from memory                               |
+| Wave task refinement                                          | `/p:refine`                    | **Skill** — R1-R3.5 protocol, produces wave.md                              |
+| Wave review — code walk + ops                                 | `/p:wave-review`               | **Skill** — fan-out thread-walk + ops; auto-runs after the wave             |
+| Research                                                      | `RR` skill                     | Structured multi-batch research pipeline                                    |
+| Iterative goal pursuit                                        | `RND` skill                    | Goal-driven iterative execution                                             |
+| Epic creation, loading, context restore                       | Professor                      | "Create Epic X" / "Load epic X" — `docs/epics/`                             |
+| `.claude/` `.codex/` infrastructure changes                   | `/pcm`                         | **MANDATORY** — never edit pipeline infra without it                        |
+| Consume or publish blueprint framework changes                | `/pcm update` · `/pcm release` | Routes to the `p:blueprint` skill (the framework bus)                       |
 
 **Fallback:** If a request doesn't clearly match a command, the Professor analyzes and recommends the right path.
 

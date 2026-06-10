@@ -18,6 +18,8 @@ wave.md is the single source of truth. It leaves **zero decisions** — technica
 
 Division of labor: the **founder** answers the main questions (R1.5) and approves the final visual + summary (R4). The **Professor** supplies all technical detail from the codebase walk — the founder is never asked to hand-specify fields or signatures.
 
+**Founder interaction:** every founder question in this skill — R1.5 discovery, R-POC approval, R2.5 Bucket B relay, R3.5, the R4 gate, P2 — goes through the `AskUserQuestion` tool, preceded by a brief prose explanation of the context (what the walk found, why these need the founder). Batch large sets into consecutive calls, ≤4 questions per call, each with concrete options; free-form answers arrive via the built-in "Other".
+
 Run **R1 → R4 in order**. Every gate is blocking — never skip a step or move past a gate until its exit condition is met.
 
 ## Step R1 — Read the codebase first
@@ -58,7 +60,7 @@ Talk to the human before evaluating. Ask the RIGHT questions in a single batch.
 
 **Tier 1 is mandatory — two gates, surfaced first:** (a) `NEEDS-FOUNDER-SPEC` tasks — founder answers spec / defer / drop. (b) **Scope boundary** — restate the founder's full objective from the whole conversation (not just the trigger args) and confirm what this wave includes versus defers; when the trigger carries only a subset of a broader objective, name the deferred remainder and confirm it is intentionally out. Wave scope traces to the founder's full objective, never narrowing silently to the last thing discussed.
 
-**Format:** `# Professor's Questions — {wave theme}` header. 5-15 questions max. All in ONE message. Don't ask what you can derive from code.
+**Format:** open with a brief `# Professor's Questions — {wave theme}` explanation of what the walk found, then ask via `AskUserQuestion` batches (Tier 1 first). 5-15 questions max. Don't ask what you can derive from code.
 
 ### Confidence scoring (gates exit from R1.5)
 

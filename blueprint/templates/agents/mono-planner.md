@@ -5,7 +5,7 @@ description: >
   cross-project plan. Decides routing (a single `{ROLE}-ONLY` key per roster project, or CROSS)
   and writes $DOCS/1-plan.md.
   Invoke AFTER child planners have written their analysis reports.
-model: opus # {MODEL_TIER} — top-tier reasoning pin; retune to your model tier
+model: claude-opus-4-8 # {MODEL_TIER} — strategic root pin (frontmatter accepts full model IDs; invocation aliases do not); retune to your model tier
 tools: Read, Write, Glob, Grep
 ---
 

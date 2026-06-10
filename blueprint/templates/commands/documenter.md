@@ -179,48 +179,9 @@ For the matched epic `{name}`:
 
 **Scope guard:** append only. Leave `## Vision & Scope`, `## Open Questions`, and `## Discoveries` untouched, and never set `status: SHIPPED` — the Professor owns the narrative and the lifecycle.
 
-### Step 3 — Archive pipeline documents (MUST use Bash tool)
+### Step 3 — Leave the pipeline directory in place
 
-**Wave-ownership guard (MANDATORY check before archiving):**
-
-```bash
-grep -rl "$PIPELINE" docs/dev/waves/*/report.md 2>/dev/null
-```
-
-If any match → this build belongs to an active wave. **Do NOT archive it.** Print `SKIP-ARCHIVE: $PIPELINE belongs to active wave — wave will archive its builds when it completes.` and proceed directly to Step 4 (confirm without archival). The wave's Step 4 handles archiving all its builds together.
-
-**Standalone builds only (no wave owner) — numbered rolling archive (max 10):**
-
-Each archived pipeline gets a 3-digit counter prefix. When the archive exceeds 10 items, the oldest is evicted to `tmp/archive/builds/` (gitignored cold storage).
-
-```bash
-mkdir -p $ARCHIVE tmp/archive/builds
-
-# Read and increment counter
-COUNTER=$(cat $ARCHIVE/.counter 2>/dev/null || echo "0")
-NEXT=$((COUNTER + 1))
-PADDED=$(printf "%03d" $NEXT)
-
-# Archive with numbered prefix
-mv $DOCS $ARCHIVE/${PADDED}-${PIPELINE}
-echo "$NEXT" > $ARCHIVE/.counter
-
-# Evict oldest if more than 10
-ARCHIVE_COUNT=$(find $ARCHIVE -maxdepth 1 -type d | wc -l)
-# subtract 1 for the archive dir itself
-ARCHIVE_COUNT=$((ARCHIVE_COUNT - 1))
-if [ "$ARCHIVE_COUNT" -gt 10 ]; then
-  OLDEST=$(ls -d $ARCHIVE/[0-9]*/ | head -1)
-  mv "$OLDEST" tmp/archive/builds/
-fi
-```
-
-**Verify (both mandatory):**
-
-```bash
-ls $ARCHIVE/${PADDED}-${PIPELINE}/
-test -d $DOCS && echo "BUG: source still exists after mv — deleting" && rm -rf $DOCS || echo "OK: source removed"
-```
+You do not move, archive, or delete `$DOCS/`. The orchestrator invokes gitter DOCS-COMMIT next: it commits all docs — including `$DOCS/` — into git history, then moves the directory to `tmp/dev/archive/builds/` (standalone builds) or leaves it for the wave to archive with all its builds together (wave-owned).
 
 ### Step 4 — Confirm
 
@@ -231,8 +192,7 @@ Documentation updated. Pipeline: $PIPELINE.
   Epic: {epic-name} progress updated | no active epic match
   {project} docs: updated | no changes
   Flow diagrams: updated | no changes
-  Archived: $ARCHIVE/${PADDED}-${PIPELINE}/
-  Next: gitter DOCS-COMMIT will commit these changes.
+  Next: gitter DOCS-COMMIT commits these changes and archives $DOCS to tmp/dev/archive/builds/.
 ```
 
 ### Step 5 — Format all touched markdown
@@ -351,7 +311,7 @@ Graph diagrams updated.
 
 See root CLAUDE.md § Non-Negotiable Rules for general rules. Additional documenter-specific:
 
-- When archiving, move the entire directory — never delete pipeline docs
+- Leave `$DOCS/` in place — gitter commits it to git history, then archives it to `tmp/dev/archive/builds/`
 - Permanent docs are unnumbered — no number prefixes in permanent locations
 - Never lose decisions — pipeline architecture/UI/API decisions MUST appear in permanent docs
 - After finishing, say: "Documentation updated." or "Documentation audit complete."

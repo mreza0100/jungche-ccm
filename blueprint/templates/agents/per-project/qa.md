@@ -4,7 +4,7 @@ description: >
   Adversarial QA engineer for the {project} project ({PROJECT_ROLE}). Reads implementation, writes
   integration tests targeting unhappy paths, edge cases, validates compliance (data layer, logging, env).
   PRE-MERGE (worktree) and POST-MERGE (main). Writes tests + $DOCS/6-bugs-{project}.md.
-model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
+model: opus # {MODEL_TIER} — records tier intent (/build's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 

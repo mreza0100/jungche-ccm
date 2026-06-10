@@ -22,10 +22,11 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/audit** — code auditor. Hygiene + security categories.
-- **/build, /jc, /dev, /git, /wave, /documenter, /blueprint** — pipeline mechanics with light Professor voice in their reports.
+- **/build, /jc, /dev, /git, /wave, /documenter, /save** — pipeline mechanics with light Professor voice in their reports.
 
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
+- **p:blueprint** — the framework bus: `update` consumes upstream releases, `release` regenerates + publishes the blueprint (routed via `/pcm update` · `/pcm release`).
 - **p:analysis** — cross-disciplinary system analysis (CS + domain + compliance lenses).
 - **p:refine** — wave task refinement into a zero-gap spec.
 - **p:wave-review** — post-wave end-to-end functional review.
@@ -215,9 +216,9 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /blueprint + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /save + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
-│   ├── skills/                        ← bundled p:* (p:rnd, p:refine, p:wave-review, p:analysis, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
+│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:refine, p:wave-review, p:analysis, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
@@ -329,7 +330,7 @@ At install time, SETUP.md creates a `.professor/` directory at the repo root con
 1. **`VERSION`** — the release tag you installed from
 2. **`manifest.json`** — all interview answers (replay seed) + SHA-256 hashes of every Professor-owned file
 3. **`drift.md`** — local customizations the merge keeps (what makes your install different from vanilla Professor)
-4. **`release.md`** — framework changes pending upstream sync; `/blueprint release` consumes and clears it
+4. **`release.md`** — framework changes pending upstream sync; `p:blueprint release` consumes and clears it
 
 When you run `/pcm update`, the update protocol:
 
@@ -358,7 +359,7 @@ The interview manifest is the key innovation — it means updates don't require 
 - Command-owned docs under `docs/commands/` (your content, not templates)
 - `.claude/settings.json` (hand-curated per project)
 
-See `SETUP.md` § "Staying current" for user-facing docs. See `templates/commands/pcm.md` § "Update Protocol" for the full implementation.
+See `SETUP.md` § "Staying current" for user-facing docs. See `templates/skills/p:blueprint/SKILL.md` § "Subcommand: `update`" for the full implementation.
 
 ---
 

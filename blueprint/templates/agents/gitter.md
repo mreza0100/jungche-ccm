@@ -36,8 +36,9 @@ The orchestrator provides:
 - **Pipeline name** (`$PIPELINE`) — kebab-case feature name
 - **Wave name** (`$WAVE`) — kebab-case wave name, or `none` if not from `/wave`. Only meaningful for MERGE and DOCS-COMMIT.
 - **Phase** — `SETUP`, `MERGE`, `DOCS-COMMIT`, `JC-COMMIT`, `PUSH`, or `PULL`
+- **Archive list** (`Archive:`) — DOCS-COMMIT only: pipeline/wave dirs to move to tmp cold storage after committing, or `none` (wave-owned builds — the wave archives all its dirs together at wave end)
 
-**Derived variable:** `$WORKTREE = .worktrees/$PIPELINE`
+**Derived variables:** `$WORKTREE = .worktrees/$PIPELINE` · `$DOCS = docs/dev/builds/$PIPELINE`
 
 ---
 
@@ -85,10 +86,10 @@ If another pipeline is actively merging, wait and retry. If `git merge` encounte
 All phases end with a confirmation. Format per phase:
 
 | Phase       | Message                                                                                                                       |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | --------------------- |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | SETUP       | `Worktrees ready. Pipeline: $PIPELINE.\n  Branch: pipeline/$PIPELINE -> $WORKTREE (ports: one per roster server)`             |
 | MERGE       | `Merge complete. Pipeline: $PIPELINE.\n  Merged: pipeline/$PIPELINE -> main\n  Worktrees: cleaned up\n  Commit: <short-hash>` |
-| DOCS-COMMIT | `Docs committed. Pipeline: $PIPELINE.\n Docs: committed                                                                       | no changes\n Zombie check: clean | removed stale source` |
+| DOCS-COMMIT | `Docs committed. Pipeline: $PIPELINE.\n Docs: committed or no changes\n Archived to tmp: {paths or none}`                     |
 | JC-COMMIT   | `Committed.` (+ both commit hashes if two commits made)                                                                       |
 | PUSH        | `Pushed. Here's what went up:\n  Commit: <short-hash>\n  Message: "$MESSAGE"`                                                 |
 | PULL        | `Pulled. Up to date with origin/main.`                                                                                        |
@@ -219,7 +220,7 @@ Only update if: new gotcha discovered, git structure changed, or workaround need
 
 ## Phase 3: DOCS-COMMIT
 
-Invoked **after mono-documenter** finishes updating and archiving.
+Invoked **after mono-documenter** finishes merging. The orchestrator passes `Archive:` — the pipeline/wave dirs to archive after committing, or `none`.
 
 ### 1. Check for doc changes
 
@@ -231,18 +232,11 @@ git status --short docs/ {ROSTER_DOC_PATHS}
 
 `{ROSTER_DOC_PATHS}` — SETUP expands to `{project}/docs/` for each roster project (at roster size 1 this is just the root's `docs/`, already covered, so the per-project list may be empty).
 
-If no changes, say "No doc changes to commit" and stop.
+If no changes AND `Archive: none`, say "No doc changes to commit" and stop.
 
-### 2. Safety check — verify pipeline archived
+### 2. Commit doc changes — pipeline files enter git history
 
-```bash
-if [ -d "$DOCS" ] && [ -d "$ARCHIVE/$PIPELINE" ]; then
-  echo "ZOMBIE DETECTED: $DOCS still exists after archival — removing source"
-  rm -rf "$DOCS"
-fi
-```
-
-### 3. Commit doc changes
+The pipeline/wave dirs under `docs/dev/` are committed here too: git history is their permanent archive.
 
 ```bash
 git add docs/ {ROSTER_DOC_PATHS}
@@ -251,7 +245,27 @@ if ! git diff --cached --quiet; then
 fi
 ```
 
-### 4. Confirm (see template above)
+### 3. Move archived dirs to tmp cold storage
+
+Skip if `Archive: none`. For each dir in the list: `docs/dev/builds/*` → `tmp/dev/archive/builds/`, `docs/dev/waves/*` → `tmp/dev/archive/waves/`.
+
+```bash
+mkdir -p tmp/dev/archive/builds tmp/dev/archive/waves
+mv {dir} tmp/dev/archive/{builds|waves}/
+```
+
+`tmp/` is gitignored — the dirs stay browseable there while git history keeps the committed record. No archive remains under `docs/`.
+
+### 4. Commit the removals
+
+```bash
+git add -A docs/dev/builds/ docs/dev/waves/
+if ! git diff --cached --quiet; then
+  git commit  # type: docs($PIPELINE), desc: "move archived pipeline docs to tmp"
+fi
+```
+
+### 5. Confirm (see template above)
 
 ---
 

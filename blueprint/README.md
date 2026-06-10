@@ -49,7 +49,7 @@ blueprint/
 └── templates/
     ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, audit, blueprint
+    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, audit, save
     │                         Tier B (opt-in): officer, km, pm, mentor, marketer
     ├── skills/            ← bundled p:* skills (+ rr/p:360/ghostwriter/vision-factory source-fetched via sources.json)
     ├── themes/            ← tokyo-night theme, source-fetched via sources.json
@@ -103,9 +103,9 @@ See `SETUP.md` for the install interview and adaptation guidance.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
 - **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
 - **/audit** — code auditor. Hygiene + security categories.
-- **/build, /dev, /git, /wave, /documenter, /blueprint** — pipeline mechanics with light Professor voice.
+- **/build, /dev, /git, /wave, /documenter, /save** — pipeline mechanics with light Professor voice.
 
-**Bundled skills (`p:*` namespace, ship with the blueprint):** `p:analysis`, `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+**Bundled skills (`p:*` namespace, ship with the blueprint):** `p:blueprint`, `p:analysis`, `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
 
 **Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `rr`, `p:360`, `ghostwriter`, `vision-factory`.
 
