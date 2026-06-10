@@ -95,9 +95,11 @@ Present recommendation, wait for founder approval. Unapproved tasks skip to R2.
 
 For each approved POC, spawn an RND agent in `RND/{poc-name}/`. Run independent POCs in parallel.
 
-### R-POC output — embed findings in wave.md
+### R-POC output — embed RND findings in wave.md
 
-RND findings are NOT just internal notes — they are **mandatory implementation constraints** for build agents. After RND completes, write a dedicated section in wave.md BEFORE the task list:
+Applies to ANY wave built from RND work — POCs spawned at R-POC above, or a pre-existing `RND/` run the tasks originate from. During the walk, study the RND output itself: the result, the iteration trail, and the exact prompts it converged on.
+
+RND findings are NOT just internal notes — they are **mandatory implementation constraints** for build agents. Write a dedicated section in wave.md BEFORE the task list:
 
 ```markdown
 ## RND-Validated Mandatory Rules (ALL tasks MUST follow)
@@ -106,12 +108,20 @@ RND findings are NOT just internal notes — they are **mandatory implementation
 
 **Rule N — {concise rule title}.**
 {What to do + why it matters. Include failure mode: "Without this, the model returns X instead of Y."}
+
+**Validated prompt — {name / where it runs}:**
+
+\`\`\`text
+{the prompt EXACTLY as RND validated it — full text, byte-identical}
+\`\`\`
+
+_Why this wording works: {the behavior it produces; what failed without it}._
 ```
 
 **What to capture in this section:**
 
+- Every prompt RND validated, EXACTLY as it is — full text in a fenced block, byte-identical, never paraphrased, trimmed, or "improved" — each with the reason that wording works. The wave is the only carrier; build agents reconstruct nothing, and a rewritten prompt is an unvalidated prompt
 - Every technique that made the difference between success and failure
-- Exact prompt language that worked (copy verbatim — build agents won't have RND context)
 - Failure modes with numbers (e.g., "positional array → 163/190, indexed → 190/190")
 - Non-obvious constraints the model exhibited (skipping, hallucinating, losing count)
 - Token/time/cost measurements that inform config choices (max_output_tokens, retries)

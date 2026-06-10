@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.20.0](releases/v0.20.0.md) — `p:refine` carries RND-validated prompts into waves verbatim (byte-identical, with the reason each works) for any RND-sourced wave.
 - [v0.19.0](releases/v0.19.0.md) — Archive flow rework (git history + tmp, no `docs/` archives), AskUserQuestion refinement gates, `/blueprint` becomes the `p:blueprint` skill (breaking), two-tier model policy, new `/save` context-dump command, `notify.sh` origin context.
 - [v0.18.0](releases/v0.18.0.md) — Templates generalized to a **roster model** (1..N projects, single-project first-class) honoring the "any repo/any stack" promise; release notes split into per-version files; README/BLUEPRINT drift fixed.
 - [v0.17.0](releases/v0.17.0.md) — Professor-native skills consolidated into the `p:*` namespace; `/pcm` gains a two-ledger system (`drift.md` + `release.md`) and a rebase-first, ask-to-sync Update Protocol.
