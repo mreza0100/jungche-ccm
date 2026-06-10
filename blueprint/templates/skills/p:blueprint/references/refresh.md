@@ -18,7 +18,7 @@ Cross-conversation context persists via **Epics** — initiative-level manifest 
 
 ### Tier assignments
 
-**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/audit`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `p:blueprint`
+**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/audit`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `/slow-burn`, `p:blueprint`
 **Tier B** — `/officer` `{REGULATION}`, `/km` `{KNOWLEDGE_DOMAIN}`, `/pm` `{USER_PERSONA}`, `/mentor` `{MARKET_SEGMENT}`, `/marketer` `{CHANNEL_LANDSCAPE}`
 **Tier C** — root agents (mono-planner, mono-architect, mono-documenter, gitter), scripts (worktree.sh, alloc-ports.sh, dev.sh), per-project agents (planner, architect, developer, qa, ui-ux, db-admin, devops, ai-engineer)
 
@@ -77,7 +77,7 @@ From the project repo:
     └── templates/
         ├── CLAUDE.md
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (build, jc, dev, git, wave, documenter, pcm, audit, officer, km, pm, mentor, marketer)
+        ├── commands/ (build, jc, dev, git, wave, documenter, pcm, audit, slow-burn, officer, km, pm, mentor, marketer)
         ├── skills/
         │   ├── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
         │   ├── {p:blueprint, p:rnd, p:refine, p:wave-review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is

@@ -22,7 +22,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/audit** — code auditor. Hygiene + security categories.
-- **/build, /jc, /dev, /git, /wave, /documenter, /save** — pipeline mechanics with light Professor voice in their reports.
+- **/build, /jc, /dev, /git, /wave, /documenter, /save, /slow-burn** — pipeline mechanics with light Professor voice in their reports.
 
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
@@ -216,7 +216,7 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /save + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /save, /slow-burn + opt-in Tier B
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
 │   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:refine, p:wave-review, p:analysis, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
