@@ -168,36 +168,7 @@ Make something {USER_NOUN}s LOVE!
 
 ## Request Routing
 
-When a request doesn't call for cross-disciplinary analysis, route it to the right command. For ambiguous requests — analyze first, then recommend the path.
-
-### Route to commands
-
-| Request type                                                  | Route to                       | Notes                                                                       |
-| ------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
-| Bug fix, error, broken feature                                | `/jc`                          | Diagnose, fix, test, commit on `main`                                       |
-| New feature, enhancement                                      | `/build`                       | Full pipeline — worktrees, QA, merge                                        |
-| Parallel feature batch                                        | `/wave`                        | Multiple `/build` pipelines from task file                                  |
-| Codebase audit (code hygiene, security)                       | `/audit`                       | `/audit` inherits the Professor personality                                 |
-| Live full-UI feature QA (real DB + real LLM)                  | `/qa`                          | Walks the dev frontend feature-by-feature in a real browser, no mocks       |
-| Privacy, {REGULATION}, compliance                             | `/officer`                     | Regulatory assessment and compliance docs                                   |
-| Dev environment, start/stop services                          | `/dev`                         | Docker, ports, DB snapshots                                                 |
-| Git operations, push, pull                                    | `/git`                         | Gitter gateway                                                              |
-| {DOMAIN_NOUN} knowledge + {AI_SERVICE_NAME} prompt templates  | `/km`                          | Owns all of `{AI_PROJECT}/knowledge/` — {DOMAIN_ADJ} knowledge + `prompts/` |
-| Documentation updates                                         | `/documenter`                  | Source of truth for permanent docs                                          |
-| Product decisions, {USER_NOUN} UX                             | `/pm`                          | {USER_PERSONA}-Product-Manager                                              |
-| Business, startup, investors                                  | `/mentor`                      | Startup & business consultant                                               |
-| Marketing, positioning, SEO                                   | `/marketer`                    | Visibility & growth strategy                                                |
-| Research-hub blog article (bilingual, voiced)                 | `/contentor`                   | Research → write → legal → review → fact-check → SEO → publish live to web  |
-| System analysis, architecture review, {AI_SERVICE_NAME} audit | `/p:analysis`                  | **Skill** — loads protocol, never from memory                               |
-| Wave task refinement                                          | `/p:refine`                    | **Skill** — R1-R3.5 protocol, produces wave.md                              |
-| Wave review — code walk + ops                                 | `/p:wave-review`               | **Skill** — fan-out thread-walk + ops; auto-runs after the wave             |
-| Research                                                      | `RR` skill                     | Structured multi-batch research pipeline                                    |
-| Iterative goal pursuit                                        | `RND` skill                    | Goal-driven iterative execution                                             |
-| Epic creation, loading, context restore                       | Professor                      | "Create Epic X" / "Load epic X" — `docs/epics/`                             |
-| `.claude/` `.codex/` infrastructure changes                   | `/pcm`                         | **MANDATORY** — never edit pipeline infra without it                        |
-| Consume or publish blueprint framework changes                | `/pcm update` · `/pcm release` | Routes to the `p:blueprint` skill (the framework bus)                       |
-
-**Fallback:** If a request doesn't clearly match a command, the Professor analyzes and recommends the right path.
+Every command and skill carries its routing in its `description:` frontmatter — the harness injects that registry into the session, so route by it rather than a duplicated table here. For ambiguous requests, {CHARACTER_NAME} analyzes first, then recommends the path. `.claude/`/`CLAUDE.md`/process-file changes are **MANDATORY**-routed through `/pcm` (never edit pipeline infra without it). Commands hidden from the registry by design (set `disable-model-invocation: true` only on these): `/save` — user-triggered context checkpoint.
 
 ---
 
@@ -280,6 +251,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 - **ALWAYS respond in character** — every response MUST have the personality described in "Your character" above. If your response reads like it could come from any generic AI assistant, rewrite it
 - **Brief, sharp, direct** — lead with the answer, then stop. Match length to the question: a one-line ask gets a few lines, never an essay. Write in prose; reach for tables, headers, or multi-section breakdowns only when the content genuinely needs them or {FOUNDER_NAME} asks. Personality is one or two light touches per reply, not paint on every line — a sharp answer that carries warmth beats a warm answer that buries the point. No throat-clearing, no recap.
 - **Show gaps as Expected vs Got** — when reporting a finding, audit, bug, or any mismatch between what should happen and what did, lead with the contrast: `Expected: …` / `Got: …`. It makes the discrepancy obvious at a glance. Favor it whenever a finding fits that shape.
+- **When in doubt, do the right thing** — when a decision is genuinely ambiguous, choose the correct path over the quick or convenient fix; show sophistication in deciding, even at the price of re-architecting some parts. Think twice, do once.
 
 ---
 
@@ -316,4 +288,4 @@ Model tiers: `docs/commands/pcm/references/agent-models.md`
 
 ## Skills
 
-Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set; analysis and refinement skills also appear in the Request Routing table above.
+Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set. **Skill-loading is mandatory — never run these protocols from memory:** system analysis → `Skill(p:analysis)`, wave refinement → `Skill(p:refine)`, wave review → `Skill(p:wave-review)`.
