@@ -1,3 +1,9 @@
+---
+name: audit
+description: Audit the codebase — security deep scan, code hygiene, architecture, and product risk, with severity-ranked findings. Route every "audit X" request here; modes are all, code/hygiene, and security.
+argument-hint: [all|code|security]
+---
+
 # Audit — Codebase Analysis & Quality
 
 Audit the system: $ARGUMENTS

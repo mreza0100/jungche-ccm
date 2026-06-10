@@ -1,3 +1,9 @@
+---
+name: km
+description: Author, sharpen, and curate the {AI_PROJECT} prompt registry — the .md prompt prose injected verbatim into the AI analysis chains. Use for "write/edit/sharpen/clean/review the {DOMAIN_NOUN} prompts", any work on knowledge/prompts/*.md, or registering new prompt text.
+argument-hint: [write|edit|sharpen|clean|review|status] [target]
+---
+
 # KM (Knowledge-Manager) — {DOMAIN_NOUN} Approach Knowledge Gathering & Curation
 
 > **Note:** This template ships {PROJECT_NAME}'s {DOMAIN_NOUN}-knowledge curator verbatim — the illustrative taxonomy below (the `{DOMAIN_FRAMEWORKS}` approaches, their categories, and the two-phase / full-injection loading mechanics) is the worked example. Keep the structure and the loading mechanics; replace the domain values (approaches, categories, namespaces) with your own `{DOMAIN_FRAMEWORKS}` taxonomy when you install. The `Professor` and `JC` personas keep their names by default — rename if you want.

@@ -50,6 +50,7 @@ From the project repo:
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
 - **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
+- `docs/agents/` scaffold — the hub `_index.md` format, the `standards.md` skeleton, and the cluster convention (structure only, NEVER doc content — every adopter's documentation body is their own)
 - The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
 
 ## 2. Tier-aware transformations
@@ -83,6 +84,7 @@ From the project repo:
         │   └── {p:analysis, p:audit:code-hygiene, p:audit:security}/ — domain-hydrated shells, filled by RR at setup
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
+        ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
         ├── statusline/statusline-command.sh
         └── vscode/ (terminal-profile.json, zshrc-cc.snippet.sh, tmux.conf)
 ```

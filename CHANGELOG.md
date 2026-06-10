@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.22.0](releases/v0.22.0.md) — Registry-over-tables completes: all 14 command templates gain routing frontmatter and `/pcm` audits the registry, not tables; `templates/docs-agents/` scaffold + SETUP Phase 2.7 end dangling hub references; standalone `sources.json` skills release from their own repos (release 5b / update 8b); `p:refine` R4 approves the spec, not `/wave` execution.
 - [v0.21.0](releases/v0.21.0.md) — `notify.sh` turn-done banner gains project/session/last-prompt/duration context, an osascript-first engine, and a per-session-id stamp race fix; `CLAUDE.md` adds a decision-integrity rule and drops the routing table for frontmatter routing.
 - [v0.20.0](releases/v0.20.0.md) — `p:refine` carries RND-validated prompts into waves verbatim (byte-identical, with the reason each works) for any RND-sourced wave.
 - [v0.19.0](releases/v0.19.0.md) — Archive flow rework (git history + tmp, no `docs/` archives), AskUserQuestion refinement gates, `/blueprint` becomes the `p:blueprint` skill (breaking), two-tier model policy, new `/save` context-dump command, `notify.sh` origin context.

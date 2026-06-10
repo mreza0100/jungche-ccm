@@ -1,3 +1,9 @@
+---
+name: wave
+description: Wave task runner — executes a batch of /build pipelines from a wave task file with dependency grouping, QA, archive, and post-wave review. Route parallel feature batches here; specs come from /p:refine.
+argument-hint: [task file|inline tasks]
+---
+
 # Wave Task Runner
 
 $ARGUMENTS

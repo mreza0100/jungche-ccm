@@ -1,3 +1,9 @@
+---
+name: pcm
+description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (audit) and upstream updates (update).
+argument-hint: [change request|audit|update]
+---
+
 # PCM — Professor Change Manager
 
 $ARGUMENTS
@@ -71,7 +77,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 4. **Pipeline flow lives in build.md** — CLAUDE.md just redirects. Don't duplicate.
 5. **Non-negotiable rules in CLAUDE.md are sacred** — ethics, privacy, code quality cannot be weakened.
 6. **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
-7. **Tables match files** — CLAUDE.md command/skill/agent tables must match actual files and vice versa.
+7. **Registry over tables** — every command/skill carries its routing in `description:` frontmatter (the harness injects that registry into the session); CLAUDE.md keeps no command/skill catalog — only the agent inventory, which must match actual files. `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands.
 8. **No command >35KB, no agent >15KB** — token consciousness.
 9. **Never hardcode names that change** — table names, enum values, chain names evolve. Tell agents WHERE to discover, not WHAT the names are.
 
@@ -119,6 +125,8 @@ Every infra change `/pcm` makes is recorded as the final step of the work, in ex
 - **`release.md`** — framework changes that belong upstream, **pending push/sync**. `p:blueprint release` consumes this file to build the CHANGELOG, then clears it.
 
 The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the user — never guess.** One line per change: `- {Tier/scope} — {what changed}`.
+
+**Standalone skills are a special case.** Skills listed in `.claude/skills/sources.json` (rr, p:360, ghostwriter, vision-factory) are fetched from their own public repos at install — the blueprint never vendors them, so a fix to one does NOT ship through a Professor release. When you change one: bump its `version:` frontmatter (and the README version line), then log a `release.md` entry that carries only the version bump for the Professor changelog and flags the real action — replicate the change in the skill's own repo (the `repo` in `sources.json`), bump its version, and cut a release there. The substance lives in the skill repo's changelog; Professor's changelog carries the version bump alone.
 
 ---
 
@@ -240,7 +248,7 @@ Files: `.claude/agents/*.md`, `{project-*}/.claude/agents/*.md`
 - **Delegation chains:** if agent says "spawn", "Read and follow", or references another agent → verify target exists
 - **Gitter monopoly:** grep ALL agents for `git add`, `git commit`, `git push`, `git checkout`, `git merge` → ONLY `gitter.md` should contain these
 - **Size limit:** no agent file >15KB
-- **Table sync:** every agent file ↔ CLAUDE.md table entry (root or child), bidirectional
+- **Inventory sync:** every agent file ↔ CLAUDE.md Agents inventory entry (root or child), bidirectional
 - **Frontmatter ↔ behavior:** `tools` field lists tools the agent actually uses in its instructions
 
 #### `commands` — Walk every command file
@@ -250,17 +258,17 @@ Files: `.claude/commands/*.md`
 - **Agent references:** every agent name/path referenced in the command → verify agent file exists
 - **Doc path references:** every `$CDOCS`, `$REFS`, `docs/` path → verify target exists on disk
 - **Subcommand structure:** if command defines subcommands via table/args, verify each is handled in the body
-- **Route-to validity:** CLAUDE.md routing table entry for this command → matches what the command actually handles
+- **Description validity:** frontmatter `description:` carries the routing signal and matches what the command body actually handles
 - **Size limit:** no command file >35KB
-- **Table sync:** every command file ↔ CLAUDE.md Commands table entry, bidirectional
+- **Registry coverage:** every command has `name:` + `description:` frontmatter; `disable-model-invocation: true` only on user-triggered-by-design commands (it hides the description from the model's registry)
 
 #### `skills` — Walk every SKILL.md
 
 Files: `.claude/skills/*/SKILL.md`
 
 - **Structure:** SKILL.md exists in each skill dir, has identifiable trigger patterns
-- **Table sync:** CLAUDE.md Skills table ↔ actual skill dirs, bidirectional
-- **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
+- **Registry coverage:** every skill dir's SKILL.md has `description:` triggers
+- **Mandatory-load wiring:** every skill CLAUDE.md marks mandatory-load exists under `.claude/skills/` with a matching name
 
 <!-- OPTIONAL: Secondary runtime skill check
 - **Codex skill parity:** secondary runtime skills dir has a wrapper or symlink for each shared `.claude/skills/*/`
@@ -314,11 +322,9 @@ Files: `.codex/agents/*.toml`, `.codex/skills/` wrappers/symlinks
 
 Catches what no single-domain audit can see. Reads across ALL domains simultaneously.
 
-- **Routing ↔ commands:** every entry in CLAUDE.md "Request Routing" table → command file exists and handles claimed scope
+- **Registry ↔ files:** no CLAUDE.md table re-lists commands or skills (registry-duplication anti-pattern); every command/skill file carries routing frontmatter instead
 - **Agent counts ↔ reality:** CLAUDE.md agent count claims → match actual file counts per project
-- **Command count ↔ reality:** CLAUDE.md Commands table row count → matches `ls .claude/commands/*.md`
-- **Skill count ↔ reality:** CLAUDE.md Skills table → matches `ls .claude/skills/`
-- **Frontmatter ↔ tables:** agent `name`/`description` in frontmatter → consistent with CLAUDE.md table descriptions
+- **Frontmatter ↔ inventory:** agent `name` in frontmatter → consistent with the CLAUDE.md Agents inventory
 - **Doc ownership:** CLAUDE.md doc ownership claims → claimed paths exist
 - **Invariant spot-check:** sample 3 critical invariants from § Critical invariants → verify they hold in the actual files
 
@@ -365,11 +371,11 @@ Ask: "Want me to fix these issues?"
 
 **Version pin at install:** SETUP.md instructs `git clone --branch v{VERSION}` — adopters pin to a tag, not floating `main`.
 
-**New agent:** Create `.claude/agents/{name}.md` → add to CLAUDE.md table → update pipeline if needed.
+**New agent:** Create `.claude/agents/{name}.md` → add to the CLAUDE.md Agents inventory → update pipeline if needed.
 
-**New skill:** Create `.claude/skills/{name}/SKILL.md` → add to CLAUDE.md Skills table.
+**New skill:** Create `.claude/skills/{name}/SKILL.md` — its `description:` frontmatter is the routing; CLAUDE.md needs no entry.
 
-**New command:** Create `.claude/commands/{name}.md` → add to CLAUDE.md Commands table.
+**New command:** Create `.claude/commands/{name}.md` with frontmatter (`name`, `description` carrying the routing signal, `argument-hint`).
 
 <!-- OPTIONAL: Dual-runtime special operations
 **New agent (dual):** Also create `.codex/agents/{project}-{role}.toml` with dual-runtime preamble.

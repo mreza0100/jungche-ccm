@@ -1,3 +1,9 @@
+---
+name: dev
+description: Manage the {PROJECT_NAME} local dev environment via dev.sh — app and infra lifecycle, health, ports, seeds, logs. Route dev-environment, port, and local/test-mode requests here; fresh wipes the DB volume (destructive).
+argument-hint: [status|start|stop|restart|fresh|infra|snapshot|logs]
+---
+
 # Dev Environment Setup
 
 Manage the {PROJECT_NAME} development environment: $ARGUMENTS

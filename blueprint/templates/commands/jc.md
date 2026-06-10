@@ -1,3 +1,9 @@
+---
+name: jc
+description: Live debug, diagnose, and fix any {PROJECT_NAME} service directly on main — JC traces the full stack, fixes surgically, tests locally, and commits via gitter. Route every bug, error, or broken behavior here; features go to /build.
+argument-hint: [bug or symptom]
+---
+
 # JC — Live Debug, Diagnose & Fix
 
 Debug, diagnose, trace, and fix any {PROJECT_NAME} project live on `main`: $ARGUMENTS

@@ -1,3 +1,9 @@
+---
+name: build
+description: Run the build pipeline — full feature delivery in an isolated worktree with planning, architecture, development, QA gates, merge, and docs. Route every new feature or enhancement here; bug fixes go to /jc.
+argument-hint: [feature description]
+---
+
 # Cross-Project Build Pipeline
 
 Run the full {PROJECT_NAME} pipeline for: $ARGUMENTS

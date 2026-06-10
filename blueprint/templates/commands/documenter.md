@@ -1,3 +1,9 @@
+---
+name: documenter
+description: Documentation source of truth — archives pipeline docs, merges shipped decisions into the docs/agents/ hub and clusters, audits cross-references, and bootstraps missing docs. Route permanent documentation updates here.
+argument-hint: [request]
+---
+
 # Documenter — Documentation Source of Truth
 
 Handle this request: $ARGUMENTS

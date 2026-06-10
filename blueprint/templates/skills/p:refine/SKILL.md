@@ -301,9 +301,9 @@ The founder authored none of the technical detail — R4 is where they see it an
 1. **Wave-level technical flow** — a single mermaid diagram: every task as a node tagged with its routing, plus the data/control edges and dependencies between tasks. This is the "visual on technical ground."
 2. **Decision summary** — lead with the wave's **Scope / Deferred** boundary so the founder approves what is excluded, not only what is built; then one line per task: routing + the key technical decisions the Professor made (data model, contract, approach) + the key product decisions (behavior, scope). Surface every choice the founder did NOT explicitly make.
 
-Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. wave.md is not final and `/wave` must NOT run until the founder approves this gate.
+Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. This gate approves the **wave.md spec** — not the execution of `/wave`. Refine's job ends when the wave is written; running `/wave` is the founder's separate decision, after and apart from this gate. wave.md is not final until the founder approves this gate.
 
-After R4 approval: "Wave file written to `wave.md` with {N} refined tasks (ZERO GAP). Reconciliation: {counts}. R1.5 confidence: {%} in {N} round(s). Compliance (R2.6): {N} WATCH flags. PM input: {counts}. Founder approved the flow + summary at R4. Run `/wave` to execute."
+After R4 approval, refine is complete — the wave is written and approved. Report: "Wave file written to `wave.md` with {N} refined tasks (ZERO GAP). Reconciliation: {counts}. R1.5 confidence: {%} in {N} round(s). Compliance (R2.6): {N} WATCH flags. PM input: {counts}. Founder approved the wave at R4."
 
 ---
 

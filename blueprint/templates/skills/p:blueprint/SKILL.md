@@ -132,6 +132,10 @@ Manifest regenerated. Version: {TARGET}
 Changelog highlights: {key bullets between versions}
 ```
 
+### Step 8b — Refresh standalone skills
+
+The blueprint update covers only blueprint-owned files. Skills in `.claude/skills/sources.json` are fetched from their own repos, so check them separately: for each entry, compare the installed `.claude/skills/{name}/SKILL.md` `version:` against the latest version/tag in its `repo`. For any repo that is newer, offer to re-fetch it (SETUP fetches latest at install; update keeps it current). Never downgrade a skill whose installed `version:` is ahead of its repo — that marks an unreleased local fix pending push to the skill repo.
+
 ### Step 9 — Offer to sync upstream
 
 If `.professor/release.md` is non-empty (framework changes are queued), or the update surfaced local improvements worth sharing, ask the founder: **publish via `release`?** A peer both consumes and publishes. Never auto-publish — the founder confirms, since it pushes to a public repo.
@@ -161,6 +165,12 @@ If `.professor/release.md` is non-empty (framework changes are queued), or the u
    if release.md empty → prompt maintainer for bullets
    Per-bullet migration sub-headings (#### → For:) required for adopter-side action
    Informational-only bullets marked: **`update`: skip — informational only.**
+
+5b. Standalone-skill entries (a release.md bullet naming a `sources.json` skill) are informational
+   version-bump lines only — the blueprint does not vendor these skills, so their fixes ship from
+   their own repos, not this release. Mark each **`update`: skip — informational only.** and, before
+   finishing, remind the maintainer to push the change to the skill's `repo` and cut a release there.
+   The refresh pass already excludes these skills from `templates/`.
 
 6. Write release notes as a NEW per-release file `{BLUEPRINT_CLONE_PATH}releases/v{NEW_VERSION}.md`
    (title `# v{NEW_VERSION} — {YYYY-MM-DD}` + bullets grouped under

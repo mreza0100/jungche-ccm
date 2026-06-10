@@ -372,6 +372,14 @@ Claude takes your answers and:
     `
 The `interview` field is the replay seed — `/pcm update` re-applies these answers to new upstream templates, then compares hashes to detect conflicts vs safe auto-applies. The `files` field is SHA-256 of every installed file AFTER placeholder substitution (a mismatch means the user edited post-install). The `installed_from_tag` records which git tag was used, enabling `/pcm update` to `git clone --branch` the exact version for diffing.
 
+### 2.7 Documentation scaffold (`docs/agents/`)
+
+`/documenter` and every architect read a documentation hub that must exist on disk, or their references dangle. Seed it from the shipped skeletons:
+
+1. Copy `templates/docs-agents/_index.md` → `docs/agents/_index.md` and `templates/docs-agents/standards.md` → `docs/agents/standards.md`, substituting `{PROJECT_NAME}` and roster tokens like every other template.
+2. **If the project has enough code to document** → run `/documenter bootstrap` to build the clusters (architecture, api, map, features) from the codebase, each with its own `_index.md`.
+3. **If the project is too new** (no code yet, or the adopter skipped stack details) → defer, mirroring the empty-skill hydration pattern: keep the seeded hub + standards skeleton, leave the cluster rows pointing at to-be-created indexes, and note that `/documenter bootstrap` fills them when the codebase exists. The hub must never reference a cluster file that is absent without marking it deferred.
+
 ---
 
 ## Phase 3 — Smoke test

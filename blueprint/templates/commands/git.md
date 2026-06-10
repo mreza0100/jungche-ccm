@@ -1,3 +1,9 @@
+---
+name: git
+description: Gateway to gitter, the only agent allowed to run git commands — routes push/pull to gitter phases and forwards anything else git-related as freeform. Route ALL git operations here; nothing runs git directly.
+argument-hint: [push|pull|freeform request]
+---
+
 # Git — Gitter Gateway
 
 Talk to gitter: $ARGUMENTS
