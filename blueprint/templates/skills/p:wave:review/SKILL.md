@@ -1,14 +1,14 @@
 ---
-name: p:wave-review
+name: p:wave:review
 version: "2.0.0"
-description: "Post-wave review — fans out one agent per thread (feature flow, integration seam, data field, schema/DB, invariant) to walk the wave's merged code end-to-end and confirm it functionally works, then a synthesizer folds in the operational review (grouping, QA, parallelism) and writes the verdict. Auto-invoked by /wave after all pipelines complete."
+description: "Post-wave review — fans out one agent per thread (feature flow, integration seam, data field, schema/DB, invariant) to walk the wave's merged code end-to-end and confirm it functionally works, then a synthesizer folds in the operational review (grouping, QA, parallelism) and writes the verdict. Auto-invoked by /wave after all pipelines complete. Triggers: \"wave review\", \"p:wave-review\", \"/p:wave-review\", \"p:wave:review\", \"/p:wave:review\"."
 ---
 
 # Wave Review — Fan-Out Thread Walk + Operations Review
 
 The Professor walks the wave's merged code by fanning out one agent per thread, then reviews how the wave ran. Runs BEFORE archive.
 
-Each thread is walked **end-to-end, step by step**, by its own fresh agent — the seams where a wave's real bugs hide (a happy path that never reached its COMPLETED state, a field plumbed through three layers and fed by none, a partial index masquerading as a lock) are exactly the seams a focused per-thread walk catches and a single-pass read does not.
+Each thread is walked **end-to-end, step by step**, by its own fresh agent — the seams where a wave's real bugs hide (a happy path that never reached its terminal state, a field plumbed through three layers and fed by none, a partial index masquerading as a lock) are exactly the seams a focused per-thread walk catches and a single-pass read does not.
 
 **Read-only.** Static trace only — `git log`/`show`/`diff`, `Read`, `Grep`. No code runs, no DB writes, no edits. Confirming live behavior is `/qa`'s job; this confirms the code is wired to behave correctly.
 
@@ -25,15 +25,15 @@ Input: the wave's `report.md` (grouping, results, merge SHAs, JC pre-flight). Sp
 
 **Phase A — Scout (1 agent).** Spawn one agent to enumerate the threads:
 
-> Read `CLAUDE.md` (Professor persona + standards) and `.claude/skills/p:wave-review/SKILL.md` § Role: Scout. Enumerate the wave's threads from `{report-path}`. Return the thread manifest only.
+> Read `CLAUDE.md` (Professor persona + standards) and `.claude/skills/p:wave:review/SKILL.md` § Role: Scout. Enumerate the wave's threads from `{report-path}`. Return the thread manifest only.
 
 **Phase B — Walk (N agents, in parallel).** For each thread in the manifest, spawn one walker — all in a single message so they run concurrently:
 
-> Read `CLAUDE.md` and `.claude/skills/p:wave-review/SKILL.md` § Role: Walker. Walk this thread end-to-end and return your findings: `{thread spec, verbatim from the manifest}`.
+> Read `CLAUDE.md` and `.claude/skills/p:wave:review/SKILL.md` § Role: Walker. Walk this thread end-to-end and return your findings: `{thread spec, verbatim from the manifest}`.
 
 **Phase C — Synthesize (1 agent).** Spawn one agent with the report path and all walker findings:
 
-> Read `CLAUDE.md` and `.claude/skills/p:wave-review/SKILL.md` § Role: Synthesizer. Given the report at `{report-path}` and these thread-walk findings `{all walker outputs}`, run the operational review, aggregate the walks, and write the review into the report under `## Professor's Wave Review` per the Report Format. Return the review.
+> Read `CLAUDE.md` and `.claude/skills/p:wave:review/SKILL.md` § Role: Synthesizer. Given the report at `{report-path}` and these thread-walk findings `{all walker outputs}`, run the operational review, aggregate the walks, and write the review into the report under `## Professor's Wave Review` per the Report Format. Return the review.
 
 Present the returned review to the user.
 
@@ -72,7 +72,7 @@ Walk your one assigned thread end-to-end and confirm it is wired to behave as th
 
 1. Read the thread spec, then the `files` it names.
 2. **Trace it step by step** across every layer it crosses — feature flow: entry → each hop → terminal state; field: producer → transport → persist → read → surface; seam: emit side ↔ consume side; schema/db: migration ↔ schema ↔ app enforcement; invariant: each enforcement point.
-3. At **every** step ask: does this step produce what the next step needs, and is the `verify` terminal state actually reached? Flag any break — a step the chain never calls (a `finish` handler with zero callers), a field nothing feeds, a contract the two sides disagree on, an enforcement gap.
+3. At **every** step ask: does this step produce what the next step needs, and is the `verify` terminal state actually reached? Flag any break — a step the chain never calls (a handler with zero callers), a field nothing feeds, a contract the two sides disagree on, an enforcement gap.
 4. Run the hygiene lens on the thread's files: read `.claude/skills/p:audit:code-hygiene/SKILL.md` and apply its scope-`diff` protocol (duplication & missed reuse first, then hallucinated imports/APIs, over-engineering, dead code, weak types, shallow error handling, naming).
 
 Output:
@@ -153,7 +153,7 @@ Every fixable code defect lands in `### /jc Action Items` — `/wave` Step 3.4 d
 
 - **Read-only** — git inspection only (`log`/`show`/`diff`); suggest `/jc` candidates, never run them.
 - **No orphaned defects** — every fixable code defect lands in `### /jc Action Items`. "Deferred" is owner-tagged non-code work only.
-- **Scope to the wave's own diff** — a full-codebase sweep is `/audit`.
+- **Scope to the wave's own diff** — a full-codebase sweep is the `p:audit:code-hygiene` / `p:audit:security` skills.
 - **Honest and constructive** — disaster? say so kindly; clean? celebrate it; every criticism carries a suggestion.
 - After finishing: "Wave review complete. {verdict}."
 

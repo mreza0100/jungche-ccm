@@ -8,11 +8,11 @@ description: "Code hygiene audit — duplication & missed reuse, ghost fields, d
 
 > Systematic code hygiene scan across every project in the roster (one project, or many).
 
-**Trigger:** `code-hygiene`, `code-hygiene <scope>`, or when `/audit` routes to code hygiene scopes.
+**Trigger:** `code-hygiene`, `code-hygiene <scope>`.
 
 **Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, plus a per-project scope for each `{project}` in the roster (a single-project repo has just one).
 
-Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/p:wave-review`.
+Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/p:wave:review`.
 
 **This codebase is largely AI-authored — weight the checks accordingly.** LLM-written code fails in characteristic ways: it regenerates logic instead of importing what already exists (duplication is the top signal), over-builds simple tasks, leaves stubs and dead branches when it pivots, imports packages that may not exist, and reaches for `any`/broad types and swallowed errors. Before accepting any new function, component, or util, grep for the existing one it should have called.
 

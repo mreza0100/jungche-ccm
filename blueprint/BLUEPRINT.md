@@ -26,8 +26,8 @@ Every command, agent, and rule sorts into one of three tiers:
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
 - **p:blueprint** — the framework bus: `update` consumes upstream releases, `release` regenerates + publishes the blueprint (routed via `/pcm update` · `/pcm release`).
-- **p:refine** — wave task refinement into a zero-gap spec.
-- **p:wave-review** — post-wave end-to-end functional review.
+- **p:wave:refine** — wave task refinement into a zero-gap spec.
+- **p:wave:review** — post-wave end-to-end functional review.
 - **p:rnd** — goal-driven iterative research-and-develop loop.
 - **p:quality:doc** / **p:quality:prompt** — doc-shaping and prompt-quality gates.
 - **p:audit:code-hygiene** / **p:audit:security** — code-hygiene and security audit scopes, each carrying their own 360-sweep pre-step.
@@ -214,10 +214,11 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /save, /slow-burn + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /save, /slow-burn, /animate + opt-in Tier B
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh
-│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:refine, p:wave-review, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
+│   ├── workflows/                     ← saved Workflow scripts (wave-pipelines — the /wave execution engine)
+│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:wave:refine, p:wave:review, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml

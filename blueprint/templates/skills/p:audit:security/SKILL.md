@@ -8,7 +8,7 @@ description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt
 
 > {PROJECT_NAME} handles {SESSION_NOUN} records, {SUBJECT_NOUN} data, and {DOMAIN_ADJ} observations — among the most sensitive data categories in this domain. A security breach here doesn't just leak emails; it exposes someone's most private information to whoever should never see it. This is not a checkbox — it's a fortress inspection. {DOMAIN_SAFETY}
 
-**Trigger:** `security`, `security <scope>`, or when `/audit` routes to security scopes.
+**Trigger:** `security`, `security <scope>`.
 
 **Scopes:** `security` (all), `injection`, `auth`, `graphql`, `llm`, `prompt`, `phi`, `health`, `crypto`, `secrets`, `transport`, `supply-chain`.
 

@@ -25,7 +25,7 @@ single-project repo, where the worktree IS the repo root and routing is triviall
 
 **Autonomous execution contract:** once started, `/build` runs to completion without stopping to ask questions or wait for approval. The only defined stops are pre-flight failure (before any work) and Fix Loop Escalation → BLOCKED-DEFERRED. Any other mid-run stop is a contract violation. A costly/external/production action a task requires (paid API call, live deploy) is not a stop: take the safest reversible path and log it. Raise a true blocker as a pre-flight fail-fast.
 
-**ZERO GAP & doc-awareness** bind every agent — both are stated in the § Common spawn contract and carried by every spawn block. The orchestrator distinction: when `$DOCS/0-task.md` is a `/p:refine` spec, agents implement and validate it; a standalone build given a bare description has agents design as normal.
+**ZERO GAP & doc-awareness** bind every agent — both are stated in the § Common spawn contract and carried by every spawn block. The orchestrator distinction: when `$DOCS/0-task.md` is a `/p:wave:refine` spec, agents implement and validate it; a standalone build given a bare description has agents design as normal.
 
 ---
 
@@ -200,7 +200,7 @@ Every spawned agent inherits these. Each spawn block carries only its role, work
 
 - **NEVER run git** — gitter owns every commit; no other agent runs git commands.
 - **Write reports to root docs, never inside the worktree.** From a worktree, `$DOCS_REL` resolves to the ROOT docs directory (`docs/dev/builds/{name}/`), NOT to `docs/` inside the worktree. NEVER write to `.worktrees/{name}/docs/` — it is inside the worktree and will be lost.
-- **ZERO GAP** — when `$DOCS/0-task.md` is a `/p:refine` spec, IMPLEMENT and VALIDATE it; never re-decide routing, data model, or contracts. Surface a genuine spec flaw to the orchestrator; never silently change it.
+- **ZERO GAP** — when `$DOCS/0-task.md` is a `/p:wave:refine` spec, IMPLEMENT and VALIDATE it; never re-decide routing, data model, or contracts. Surface a genuine spec flaw to the orchestrator; never silently change it.
 - **Doc-awareness** — consult the grep-true doc clusters: read the project's `docs/architecture/_index.md`, then `grep` for the exact symbol; the full DB schema is `docs/agents/graph/db/{DATABASE}.mmd`.
 
 **Per-role doc reads** (each role reads only what it needs from `$DOCS/`):
@@ -214,7 +214,7 @@ Every spawned agent inherits these. Each spawn block carries only its role, work
 
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
-**Routing-gated fan-out.** Parse the `**Routing:**` declaration in `$DOCS/0-task.md` (a `/p:refine` spec declares it). Spawn child planners **in parallel** (single message) ONLY for the declared projects. When NO routing is declared (bare standalone description), fall back to spawning all roster planners. mono-planner (Step 1b) may demand a missing project's planner when it spots an undeclared seam — spawn that one then.
+**Routing-gated fan-out.** Parse the `**Routing:**` declaration in `$DOCS/0-task.md` (a `/p:wave:refine` spec declares it). Spawn child planners **in parallel** (single message) ONLY for the declared projects. When NO routing is declared (bare standalone description), fall back to spawning all roster planners. mono-planner (Step 1b) may demand a missing project's planner when it spots an undeclared seam — spawn that one then.
 **Model: opus.** Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); the literals below are declared copies.
 
 <!-- PATTERN: per-project — SETUP expands once per {PROJECT_ROSTER} entry -->
@@ -476,7 +476,7 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 4. Repeat until `CLEAN` or 2 iterations pass.
 
-**After 2 iterations with findings remaining:** these are quality nits, not correctness bugs (QA already passed). Log them under `## Residual` in `$DOCS/6-code-review.md` and proceed to merge — never block shipping on hygiene perfection. A standalone build surfaces the residual to the founder; a wave-owned build leaves it in the merged code for `/p:wave-review` to catch and route through `/jc`.
+**After 2 iterations with findings remaining:** these are quality nits, not correctness bugs (QA already passed). Log them under `## Residual` in `$DOCS/6-code-review.md` and proceed to merge — never block shipping on hygiene perfection. A standalone build surfaces the residual to the founder; a wave-owned build leaves it in the merged code for `/p:wave:review` to catch and route through `/jc`.
 
 ---
 
@@ -555,6 +555,21 @@ Gitter commits all doc changes including `$DOCS/` (git history is the permanent 
 ## Pipeline Reference
 
 At-a-glance step map (who/produces/location for every step): `docs/commands/build/references/build-reference.md` § Pipeline step map.
+
+---
+
+## Wave workflow mode
+
+Wave-invoked pipelines execute through the saved workflow `.claude/workflows/wave-pipelines.js` (launched by `/wave` Step 1). Workflow sub-agents cannot spawn nested agents, so the script schedules every spawn in this file's step order directly — there is no per-pipeline orchestrator agent. The script's flow graph and spawn briefs are declared copies of Steps 1a–11: when a step, spawn brief, loop cap, or escalation trigger changes here, update the script in the same change.
+
+Wave-mode deltas (the script owns them):
+
+- Step 0a runs once for the whole wave (`/wave` Step 0d) and Step 0's naming/manifest work is pre-done by the wave — pipelines start at Step 1a.
+- Cross-pipeline locks: gitter SETUP, the Step 7 QA + Fix Loop + Code Review block (shared test infra), and Steps 8–11 (single `main`) serialize across pipelines; Steps 1a–1b and 3–6 run in parallel across a group.
+- § Status Emission's header/phase/footer lines are replaced by the workflow's phase/log stream; the workflow journal plus the script's per-pipeline STATE.md appends are the wave-mode audit trail (checkpoint events are standalone-orchestrator mode).
+- A role agent that dies mid-task is respawned once with a continuation brief (resume from its report's Continuation section) before orphan-escalation to BLOCKED-DEFERRED.
+- Decisions the orchestrator reads from files here (routing, schema signals, bug status, review verdict) return to the script as structured output instead, including a `flags` channel for carry-forward items (/jc candidates, SPEC-CONFLICTs, pre-existing defects) that `/wave` feeds into remediation.
+- A post-merge QA failure returns `POSTMERGE-FIX-NEEDED` to `/wave`, which runs § If Post-Merge QA fails after the wave workflow completes.
 
 ---
 

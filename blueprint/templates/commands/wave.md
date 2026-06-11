@@ -1,6 +1,6 @@
 ---
 name: wave
-description: Wave task runner — executes a batch of /build pipelines from a wave task file with dependency grouping, QA, archive, and post-wave review. Route parallel feature batches here; specs come from /p:refine.
+description: Wave task runner — executes a batch of /build pipelines from a wave task file with dependency grouping, QA, archive, and post-wave review. Route parallel feature batches here; specs come from /p:wave:refine.
 argument-hint: [task file|inline tasks]
 ---
 
@@ -108,11 +108,32 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 **Setup steps:**
 
-1. Organize groups into waves (wave boundaries enforce dependency ordering only)
-2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` carrying ONLY this pipeline's exact task slice plus a thin shared-rules header. The header carries genuinely shared rules and contracts this pipeline's tasks depend on (cross-cutting compliance flags, shared types/API contracts, conventions). It must NOT carry other pipelines' task bodies, their adjudications, or the full wave manifest / reconciliation table — cite that section by name instead of inlining it. Cross-pipeline content in a `0-task.md` is leakage; keep each slice clean.
-3. Copy the task file to `$WAVES/{wave-name}/manifest.md` (the permanent record of the full spec — descriptions, compliance flags, architectural intent). Then, **if the task file is the root `wave.md`, immediately overwrite it with the `# Tasks` stub** — copy-to-manifest and clear are one atomic step `/wave` owns, so the consumed spec never lingers in `wave.md`. After a wave, any content in root `wave.md` is a fresh next-wave draft (often uncommitted) — never clear it outside this step.
-4. Write grouping/execution plan to `$WAVES/{wave-name}/wave.md`
-5. Create `$WAVES/{wave-name}/STATE.md` — delta-structured so transitions append instead of rewriting the whole file:
+1. Organize groups into waves (wave boundaries enforce dependency ordering only). Record each pipeline's `dependsOn` — the pipeline names whose merged output it needs; Step 1 forwards it so the workflow skips dependents of a deferred pipeline.
+2. Run the stale sweep once for the whole wave: read and execute `docs/commands/build/references/build-reference.md` § 0a (wave-mode pipelines skip their per-build Step 0a).
+3. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` carrying ONLY this pipeline's exact task slice plus a thin shared-rules header. The header carries genuinely shared rules and contracts this pipeline's tasks depend on (cross-cutting compliance flags, shared types/API contracts, conventions). It must NOT carry other pipelines' task bodies, their adjudications, or the full wave manifest / reconciliation table — cite that section by name instead of inlining it. Cross-pipeline content in a `0-task.md` is leakage; keep each slice clean. After pre-placing, verify the slices are real slices — distinct file hashes across the wave's pipelines; identical manifests mean the full wave spec leaked into every pipeline.
+4. Copy the task file to `$WAVES/{wave-name}/manifest.md` (the permanent record of the full spec — descriptions, compliance flags, architectural intent). Then, **if the task file is the root `wave.md`, immediately overwrite it with the `# Tasks` stub** — copy-to-manifest and clear are one atomic step `/wave` owns, so the consumed spec never lingers in `wave.md`. After a wave, any content in root `wave.md` is a fresh next-wave draft (often uncommitted) — never clear it outside this step.
+5. Write the grouping rationale to `$WAVES/{wave-name}/wave.md`, and the executable payload to `$WAVES/{wave-name}/workflow.json` — Step 1 executes exactly this file, never an ad-hoc reconstruction:
+
+   ```json
+   {
+     "waveName": "{wave-name}",
+     "epicName": "{epic-name or none}",
+     "carryWip": "leave",
+     "timestamp": "{YYYY-MM-DD}",
+     "total": 3,
+     "groups": [
+       [
+         { "pipelineName": "task-a", "idx": 1, "description": "Task A: short description", "routing": ["{project}"], "dependsOn": [] },
+         { "pipelineName": "task-b", "idx": 2, "description": "Task B: short description", "routing": ["{project-x}", "{project-y}"], "dependsOn": [] }
+       ],
+       [{ "pipelineName": "task-c", "idx": 3, "description": "Task C: depends on B output", "routing": ["{project}"], "dependsOn": ["task-b"] }]
+     ]
+   }
+   ```
+
+   Every field is required. `groups` = one inner array per execution wave, in dependency order; `idx` numbers pipelines across the whole wave; `routing` = declared project keys; `dependsOn` = pipeline names whose merged output this one needs — the workflow skips dependents of a deferred pipeline and marks them `SKIPPED-DEPENDENCY`.
+
+6. Create `$WAVES/{wave-name}/STATE.md` — delta-structured so transitions append instead of rewriting the whole file:
 
    - **TOP (rewritten every transition):** a live resume brief for a cold session, then a `## Next` block — what runs next and why.
    - **A marker line** exactly: `<!-- APPEND-ONLY BELOW — never rewrite -->`.
@@ -120,7 +141,7 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
    Seed the top brief and `## Next` from the round plan; seed the archive with refinement's locked decisions/adjudications.
 
-6. Create `$WAVES/{wave-name}/report.md` with initial plan:
+7. Create `$WAVES/{wave-name}/report.md` with initial plan:
 
 ```markdown
 # Wave Report: {wave-name}
@@ -143,20 +164,20 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 
 ## Step 0e — Present execution plan
 
-**Before launching any pipeline, display the full execution plan as a table.** This gives the user a clear picture of what is about to happen.
+**Before launching any pipeline, display the full execution plan as a table.** This gives the user a clear picture of what's about to happen.
 
 Output format:
 
 ```
 ## Execution Plan
 
-| # | Wave | Pipeline | Tasks | Routing      | Description |
-|---|------|----------|-------|--------------|-------------|
-| 1 | 1    | {name}   | N     | {ROLE}-ONLY  | {one-liner} |
-| 2 | 1    | {name}   | N     | CROSS        | {one-liner} |
-| 3 | 2    | {name}   | N     | {ROLE}-ONLY  | {one-liner} |
+| # | Wave | Pipeline | Tasks | Routing | Description |
+|---|------|----------|-------|---------|-------------|
+| 1 | 1    | {name}   | N     | {ROLE}-ONLY | {one-liner} |
+| 2 | 1    | {name}   | N     | CROSS   | {one-liner} |
+| 3 | 2    | {name}   | N     | {ROLE}-ONLY | {one-liner} |
 
-**Sequence:** Wave 1 pipelines run sequentially, then Wave 2 begins.
+**Sequence:** Wave 1 pipelines run concurrently (SETUP, QA, and merge serialized), then Wave 2 begins.
 **Estimated pipelines:** {total} | **JC pre-handled:** {j} | **KM pre-handled:** {k}
 ```
 
@@ -166,25 +187,33 @@ After displaying, proceed immediately to execution — this is informational, no
 
 ## Step 1 — Execute waves
 
-For each wave, sequentially launch pipelines via `Skill("build", "...")`. NEVER delegate Skill calls to sub-agents.
+Read `$WAVES/{wave-name}/workflow.json` (written at Step 0d — the single execution source of truth) and launch the saved workflow with its contents verbatim — it owns pipeline execution, group sequencing, and the cross-pipeline locks (`build.md` § Wave workflow mode):
 
-**Status emission (MANDATORY):** Each `/build` prints its own header, phase lines, and footer (`build.md` § Status Emission) from the `[Build: {n}/{total}]` token you pass. After each build returns, add the running tally — only the wave runner knows it:
+`Workflow({name: "wave-pipelines", args: <workflow.json contents>})`
+
+Record the returned `runId` in STATE.md's TOP brief. The workflow runs in the background (`/workflows` shows live per-pipeline progress) — wait for its completion notification, do not poll.
+
+**Resume:** same session — relaunch with `resumeFromRunId: {runId from STATE.md}`; completed agents return cached. New session — the run cache is unavailable: edit `workflow.json` to drop pipelines STATE.md's appended outcome lines already mark DONE, then launch fresh from it; BLOCKED-DEFERRED pipelines resume per their `BLOCKED.md` protocol instead.
+
+**Pause & amend:** a founder pause = `TaskStop` on the workflow task; resume per the rules above. Mid-wave spec amendments land only in NOT-yet-started pipelines' `0-task.md` (agents read it at spawn) — a running pipeline is never re-scoped mid-flight.
+
+Each result's `flags` (carry-forward /jc candidates, SPEC-CONFLICTs, pre-existing defects — also scribed into STATE.md as pipelines land) feed Step 3.4 remediation alongside the review's action items.
+
+When the workflow returns, map each result into the report and emit the tally:
 
 ```
 Wave {wave-name}: {done}/{total} done · {failed} failed · {deferred} deferred
 ```
 
-The user should never have to ask "how much is left?" — the stream tells them.
+- `DONE` → `- [x] \`{pipeline}\` — **DONE** ✓`
+- `FAILED` / `MERGE-FAILED` → `- [x] \`{pipeline}\` — **FAILED** ✗ — {reason}`
+- `BLOCKED-DEFERRED` → `- [ ] \`{pipeline}\` — **BLOCKED-DEFERRED** ⚠️` (trigger, worktree path, resume note, next action)
+- `SKIPPED-DEPENDENCY` → `- [ ] \`{pipeline}\` — **SKIPPED** (depends on {deferred pipeline})`
+- `POSTMERGE-FIX-NEEDED` → run `build.md` § If Post-Merge QA fails for that pipeline now, then update its row
 
-After each build returns, update `$WAVES/{wave-name}/STATE.md`: rewrite the TOP brief and `## Next` block for the new position; append any fresh decisions/facts under the append-only marker. Never rewrite the append-only section.
+Then update `$WAVES/{wave-name}/STATE.md` once: rewrite the TOP brief and `## Next` block for the post-wave position; append fresh decisions/facts under the append-only marker. Never rewrite the append-only section.
 
-Log each result in report:
-
-- Success: `- [x] \`{pipeline}\` — **DONE** ✓`
-- Failure: `- [x] \`{pipeline}\` — **FAILED** ✗ — {reason}`
-- Deferred: `- [ ] \`{pipeline}\` — **BLOCKED-DEFERRED** ⚠️` (trigger, worktree path, resume note, next action)
-
-**BLOCKED-DEFERRED handling:** The wave continues. Check downstream pipelines for explicit dependency on deferred pipeline's output. No dependency → run normally. Explicit dependency → also defer. Ambiguous → default to running (safer). Log decision.
+**Fallback (transitional):** when the Workflow tool is unavailable in the session, run the sequential path — for each wave in order, `Skill("build", "{description} [Pipeline: {name}] [Build: {n}/{total}] [Wave: {wave-name}] [Epic: {epic-name}] [CarryWIP: {carry-wip}]")` directly (never via a sub-agent), logging results and STATE.md updates after each build returns.
 
 ---
 
@@ -204,7 +233,7 @@ Update report with:
 
 ## Step 3 — Professor Review (NON-OPTIONAL)
 
-Read `.claude/skills/p:wave-review/SKILL.md` and execute its **§ Orchestration** against `$WAVES/{wave-name}/report.md`. You are the dispatcher: spawn the scout, then one walker per thread in parallel, then the synthesizer — fresh `general-purpose` agents, `model: "opus"` — and form no judgments in your own bloated context. The synthesizer writes the review into the report under `## Professor's Wave Review` and returns it.
+Read `.claude/skills/p:wave:review/SKILL.md` and execute its **§ Orchestration** against `$WAVES/{wave-name}/report.md`. You are the dispatcher: spawn the scout, then one walker per thread in parallel, then the synthesizer — fresh `general-purpose` agents, `model: "opus"` — and form no judgments in your own bloated context. The synthesizer writes the review into the report under `## Professor's Wave Review` and returns it.
 
 Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); literals here are declared copies.
 
@@ -239,7 +268,7 @@ Read `### /jc Action Items` from the returned review:
 
 If `/jc` judges an item too large for a hotfix (needs a feature, not a fix), it logs `DEFERRED` with the reason — never block the wave on it.
 
-Then copy the review's owner-tagged deferrals (the non-code items it routed to other command owners or the founder) into the same `## Review Remediation` table with their owner, so they surface to the founder instead of dying in the archived review. The reviewer is forbidden from parking a fixable code defect as "deferred" (see `p:wave-review`), so anything here genuinely needs a non-code owner's call.
+Then copy the review's owner-tagged deferrals (the non-code items it routed to other command owners or the founder) into the same `## Review Remediation` table with their owner, so they surface to the founder instead of dying in the archived review. The reviewer is forbidden from parking a fixable code defect as "deferred" (see `p:wave:review`), so anything here genuinely needs a non-code owner's call.
 
 ---
 

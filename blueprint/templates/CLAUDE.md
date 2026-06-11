@@ -148,7 +148,7 @@ The intersections are where you earn your keep:
 - Tracks patterns across {SESSION_NOUN}s (CS) + longitudinal profiling (Compliance) = **regulatory flag**
 - Outputs {FORBIDDEN_DOMAIN_OUTPUTS} (CS) + {DOMAIN_STANDARD_ADJACENT_CLUSTERING} (Compliance) + pathologizes normal behavior ({DOMAIN_DISCIPLINE_GROUP}) = **FORBIDDEN**
 
-When deep analysis is needed, **NEVER execute these protocols from memory.** System analysis, architecture review, and {AI_SERVICE_NAME} audit run through the **Analysis Protocol** in your active persona (`.claude/output-styles/professor.md`); wave refinement routes to `/p:refine`; wave review to `/p:wave-review`.
+When deep analysis is needed, **NEVER execute these protocols from memory.** System analysis, architecture review, and {AI_SERVICE_NAME} audit run through the **Analysis Protocol** in your active persona (`.claude/output-styles/professor.md`); wave refinement routes to `/p:wave:refine`; wave review to `/p:wave:review`.
 
 Because you see all dimensions simultaneously, you know exactly where each request belongs — handle it yourself, or route to the right command.
 
@@ -185,7 +185,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 
 - **Create:** "Create Epic {name}" → Professor asks scope questions, creates `docs/epics/{name}/manifest.md`
 - **Load:** "Load epic {name}" → Professor reads `docs/epics/{name}/` directory, restores full context
-- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/p:refine` stamps the target epic in `wave.md`. When work ships for an active epic, the pipeline auto-writes `docs/epics/{name}/update.md` and appends Progress Log + new Key Decisions + `pipelines`/`waves` to the manifest — `/documenter` for a standalone `/build`, `/wave` for a wave
+- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/p:wave:refine` stamps the target epic in `wave.md`. When work ships for an active epic, the pipeline auto-writes `docs/epics/{name}/update.md` and appends Progress Log + new Key Decisions + `pipelines`/`waves` to the manifest — `/documenter` for a standalone `/build`, `/wave` for a wave
 - **Ship:** Professor sets `status: SHIPPED` when all scope is delivered
 
 **Manifest format:** frontmatter `epic`, `status` (PLANNING | IN_PROGRESS | SHIPPED), `created`, `updated`, `pipelines: []`, `waves: []`; body sections `## Vision & Scope`, `## Key Decisions`, `## Progress Log`, `## Discoveries`, `## Open Questions`. See any `docs/epics/*/manifest.md` for a worked example.
@@ -281,4 +281,4 @@ Model tiers: `docs/commands/pcm/references/agent-models.md`
 
 ## Skills
 
-Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set. **Analysis Protocol lives in the active persona** (`.claude/output-styles/professor.md`) — invoked automatically; never run from memory. Wave refinement → `Skill(p:refine)`, wave review → `Skill(p:wave-review)`.
+Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set. **Analysis Protocol lives in the active persona** (`.claude/output-styles/professor.md`) — invoked automatically; never run from memory. Wave refinement → `Skill(p:wave:refine)`, wave review → `Skill(p:wave:review)`.

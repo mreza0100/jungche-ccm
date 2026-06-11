@@ -18,7 +18,7 @@ Cross-conversation context persists via **Epics** — initiative-level manifest 
 
 ### Tier assignments
 
-**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/audit`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `/slow-burn`, `p:blueprint`
+**Tier A** — `Professor` (persona), `/jc`, `/pcm`, `/build`, `/dev`, `/git`, `/wave`, `/documenter`, `/slow-burn`, `p:blueprint`
 **Tier B** — `/officer` `{REGULATION}`, `/km` `{KNOWLEDGE_DOMAIN}`, `/pm` `{USER_PERSONA}`, `/mentor` `{MARKET_SEGMENT}`, `/marketer` `{CHANNEL_LANDSCAPE}`
 **Tier C** — root agents (mono-planner, mono-architect, mono-documenter, gitter), scripts (worktree.sh, alloc-ports.sh, dev.sh), per-project agents (planner, architect, developer, qa, ui-ux, db-admin, devops, ai-engineer)
 
@@ -77,11 +77,12 @@ From the project repo:
     └── templates/
         ├── CLAUDE.md
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (build, jc, dev, git, wave, documenter, pcm, audit, slow-burn, officer, km, pm, mentor, marketer)
+        ├── commands/ (build, jc, dev, git, wave, documenter, pcm, slow-burn, officer, km, pm, mentor, marketer)
         ├── skills/
         │   ├── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here
-        │   ├── {p:blueprint, p:rnd, p:refine, p:wave-review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is
-        │   └── {p:analysis, p:audit:code-hygiene, p:audit:security}/ — domain-hydrated shells, filled by RR at setup
+        │   ├── {p:blueprint, p:rnd, p:wave:refine, p:wave:review, p:quality:prompt, p:quality:doc}/ — bundled, ship as-is
+        │   └── {p:audit:code-hygiene, p:audit:security}/ — domain-hydrated shells, filled by RR at setup
+        ├── workflows/ (wave-pipelines — the /wave execution engine)
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
         ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
@@ -163,7 +164,7 @@ Skills ship as **empty shells** when their content is project-specific — the s
 
 | Skill                  | What's universal (ships)                                                                                  | What's project-specific (hydrated by RR)                                                                                                                                                  |
 | ---------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `p:analysis`           | Three-lens protocol (CS + domain + compliance), step sequence, report format, Cortex audit mode structure | Domain lens content (replaces Psychology lens), compliance framework, cross-disciplinary intersections, AI/ML audit categories + anti-patterns (if project has an AI pipeline subproject) |
+| Analysis Protocol (in the Professor persona output style) | Three-lens protocol (CS + domain + compliance), step sequence, report format, AI/ML audit mode structure | Domain lens content (replaces Psychology lens), compliance framework, cross-disciplinary intersections, AI/ML audit categories + anti-patterns (if project has an AI pipeline subproject) — the refresh interview hydrates this lens directly in the persona output style |
 | `p:audit:code-hygiene` | Category structure (ghost fields, dead code, stale deps, arch smells, type safety, naming, quality)       | Per-category detection patterns, file paths, known hotspots, linter coverage gaps, project-specific report examples                                                                       |
 | `p:audit:security`     | OWASP category structure (8A-8I), severity guide, report format                                           | Domain-specific PHI/data sensitivity rules, external API checks, framework-specific vulnerabilities, compliance-driven sub-categories                                                     |
 
@@ -177,7 +178,7 @@ Skills ship as **empty shells** when their content is project-specific — the s
 ## Category N — {category name}
 
 > **KNOWLEDGE BASE EMPTY** — This section needs project-specific detection patterns.
-> Run `/p:analysis` or `/p:audit:code-hygiene` after the codebase has enough code to analyze.
+> Run the Professor's Analysis Protocol or `/p:audit:code-hygiene` after the codebase has enough code to analyze.
 > The Professor will surface this gap: "Knowledge base is empty, waiting for user specification to fill it in."
 ```
 
@@ -217,7 +218,7 @@ One-paragraph pitch: portable .claude/ that turns Claude Code into a self-discip
 git clone, cd your-project, claude → read blueprint → follow SETUP.md → interview → customize → smoke test
 
 ## The cast — Tier A
-Professor, /jc, /pcm, /audit, /build, /dev, /git, /wave, /documenter
+Professor, /jc, /pcm, /build, /dev, /git, /wave, /documenter
 
 ## Tier B (opt-in)
 /officer, /km, /pm, /mentor, /marketer

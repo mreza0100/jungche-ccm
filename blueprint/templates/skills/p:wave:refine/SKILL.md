@@ -1,7 +1,7 @@
 ---
-name: p:refine
+name: p:wave:refine
 version: "1.0.0"
-description: "Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave.md (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave or /build. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /build or /wave to build a working prototype under RND/POC/."
+description: "Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave.md (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave or /build. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /build or /wave to build a working prototype under RND/POC/. Triggers: \"refine\", \"/p:refine\", \"p:wave:refine\", \"/p:wave:refine\", \"write wave.md\", \"refine tasks\", \"refine poc\"."
 ---
 
 # Refine — Wave Task Refinement
@@ -29,7 +29,7 @@ Read:
 - `CLAUDE.md` (root) — system overview, current state
 - `docs/agents/architecture/` cluster — how the roster's projects connect, or the single project's internal structure (start at `_index.md`)
 - `docs/agents/api/` cluster — **GREP the cluster for specific endpoints/operations the tasks touch** — never read in full
-- `docs/agents/graph/db/postgres.mmd` — whole DB schema (tables, columns, FKs) for data-model decisions; names match the database exactly
+- `docs/agents/graph/db/{DATABASE}.mmd` — whole DB schema (tables, columns, FKs) for data-model decisions; names match the database exactly
 - `$CDOCS/officer/$REFS/officer.md` — compliance posture, feature inventory, regulatory lines _(if the Officer archetype is installed)_
 - Child `CLAUDE.md` files for projects the tasks likely touch
 
@@ -84,9 +84,9 @@ Assess which tasks benefit from a throwaway POC. Pattern-copies and config chang
 **Recommend POC when:**
 
 - Novel pattern — no existing code to copy from
-- Cross-project integration — untested data flow across multiple projects
+- Cross-project integration — untested data flow across 3+ projects
 - Uncertain feasibility — approach "should work" but untested
-- Complex chain/prompt — {AI_SERVICE_NAME} behavior needs iteration (if the project has an AI pipeline)
+- Complex chain/prompt — LLM behavior needs iteration (if the project has an AI pipeline)
 - Ambiguous architecture — multiple valid approaches
 
 Present recommendation, wait for founder approval. Unapproved tasks skip to R2.
@@ -121,7 +121,7 @@ _Why this wording works: {the behavior it produces; what failed without it}._
 - Every prompt RND validated, EXACTLY as it is — full text in a fenced block, byte-identical, never paraphrased, trimmed, or "improved" — each with the reason that wording works. The wave is the only carrier; build agents reconstruct nothing, and a rewritten prompt is an unvalidated prompt
 - Every technique that made the difference between success and failure
 - Failure modes with numbers (e.g., "positional array → 163/190, indexed → 190/190")
-- Non-obvious constraints the model exhibited (skipping, hallucinating, losing count)
+- Non-obvious constraints the LLM exhibited (skipping, hallucinating, losing count)
 - Token/time/cost measurements that inform config choices (max_output_tokens, retries)
 
 **What NOT to capture:** internal RND iteration details, discarded approaches, tooling quirks. Only validated production-relevant findings.
@@ -141,7 +141,7 @@ For every task, ask:
 | **Obvious gaps?**                      | Add missing task with `[PROFESSOR ADDED]` tag  |
 | **Overlapping?**                       | Merge into one clear task                      |
 | **Scope creep?**                       | Tighten boundaries — state what's NOT included |
-| **Compliance line?**                   | Add compliance flags or scope down             |
+| **Compliance line?**                   | Add compliance flags or scope down to {REGULATION} boundary |
 | **Executable by `/build`?**            | Tag `[CMD: /km]`, `[CMD: /jc]`, etc.           |
 
 ## Step R2.5 — PM consultation (founder-gated)
@@ -163,6 +163,7 @@ Agent(general-purpose): "Use the Skill tool to invoke /officer with arguments:
   Tasks: {post-R2 task list, verbatim}.
   Return ADVISORY per-task flags only, each citing its regulatory line. Do NOT design consent mechanisms, schemas, or mandates."
 ```
+_(Only if the Officer archetype is installed.)_
 
 Officer is **advisory** — it returns compliance flags, never requirements:
 
@@ -181,9 +182,9 @@ Officer is **advisory** — it returns compliance flags, never requirements:
 
 Decide and write down, per task — leaving nothing for `/build` or `/wave` to judge:
 
-- **Routing** — exact set of projects the task touches.
+- **Routing** — exact set of roster projects the task touches.
 - **Data model** — every new or changed table, column (with exact type), index, enum, constraint.
-- **Contracts** — exact API schema (types, inputs, mutations/queries with arg + return types), resolver/handler signatures, message-queue schemas, socket/event payloads.
+- **Contracts** — exact API schema (types, inputs, operations with arg + return types), resolver/handler signatures, message-queue schemas, realtime event payloads.
 - **File plan** — every file to create or edit, each with the functions/exports/components it gains and their signatures.
 - **Product** — behavior (success/failure/edge), UX, copy, scope.
 
@@ -218,7 +219,7 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 
 **Why:** {problem or value}
 
-**Routing:** {exact project set}
+**Routing:** {exact roster project set}
 
 **Key behaviors:**
 
@@ -228,14 +229,14 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 
 **Data model:** {new/changed tables, columns with exact types, indexes, enums, constraints — or "none"}
 
-**Contracts:** {API schema (types/inputs/mutations/queries with arg + return types), resolver/handler signatures, message-queue schemas, socket/event payloads — or "none"}
+**Contracts:** {API schema (types/inputs/operations with arg + return types), resolver/handler signatures, message-queue schemas, realtime event payloads — or "none"}
 
 **File plan:** {every file to create or edit, each with the functions/exports/components it gains and their signatures}
 
 **Technical flow:**
 
 \`\`\`mermaid
-{flowchart of the data/control path through the stack — e.g. UI component → API op → backend resolver → service → DB / queue → worker chain → DB → socket → UI}
+{flowchart of the data/control path through the stack — e.g. UI component → {API_PROTOCOL} op → backend resolver → service → DB / {QUEUE} → worker chain → DB → {REALTIME_PROTOCOL} → UI}
 \`\`\`
 
 **Boundaries:** {what's NOT included}
@@ -296,7 +297,7 @@ After R4 approval, refine is complete — the wave is written and approved. Repo
 
 `refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/build` (or `/wave`) to build a working prototype under `RND/POC/{name}/`.
 
-This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which writes root `wave.md` for the real projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `RND/POC/` that exists only to answer "does this approach work?"
+This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which writes root `wave.md` for the roster projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `RND/POC/` that exists only to answer "does this approach work?"
 
 Run P1 → P4 in order; every gate blocks.
 

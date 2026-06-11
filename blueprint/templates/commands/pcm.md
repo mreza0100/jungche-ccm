@@ -37,6 +37,7 @@ CLAUDE.md (Professor persona + request routing)
 .claude/skills/*/SKILL.md → reusable skills
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-pipelines — the /wave execution engine)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions
@@ -58,6 +59,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 9. **Frontmatter features need registration** — `hooks:`/`model:`/`effort:` load ONLY when an agent is spawned as a registered type via its `subagent_type`; a protocol file read by a general-purpose agent never loads frontmatter. A child agent needing frontmatter features needs a thin root wrapper (the `qa-{proj}` pattern: registration shell at root, protocol stays in the child file).
 10. **Registries read at session start** — agent types, settings.json hooks, and the output style load at session start; mid-session file changes land at natural boundaries (next spawn, next pipeline, next session). When a long-running session will consume an edited orchestrator file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
 11. **Voice lives in `.claude/output-styles/`** — one active session style + per-command overlay files loaded by a one-line adopt pointer at invocation; personas ≤~10 lines may stay inline in their command.
+12. **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()`; `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change.
 
 ### Inventory counts (verify before reporting)
 
@@ -80,6 +82,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 | Skills             | `.claude/skills/*/SKILL.md`       |
 | Output styles      | `.claude/output-styles/*.md`      |
 | Scripts            | `.claude/scripts/*.sh`            |
+| Workflows          | `.claude/workflows/*.js`          |
 | Settings           | `.claude/settings.json`           |
 | Child CLAUDE.md    | `{project-*}/CLAUDE.md`           |
 | PCM reference docs | `docs/commands/pcm/references/`   |
