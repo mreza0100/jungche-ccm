@@ -1,4 +1,6 @@
-<img width="1672" height="941" alt="ChatGPT Image May 14, 2026, 03_59_00 PM" src="https://github.com/user-attachments/assets/c6ee6159-068a-4b67-bb04-2da91f5c1ef1" />
+[![Professor — from idea to shipped: the full pipeline, animated](./docs/pipeline-animation.gif)](https://htmlpreview.github.io/?https://github.com/mreza0100/professor/blob/main/docs/pipeline-animation.html)
+
+<p align="center"><em>▶ click the animation for the interactive version — 1:45, four acts, from refine to shipped</em></p>
 
 # Professor — Turn Claude Code Into a Senior Engineering Team
 
