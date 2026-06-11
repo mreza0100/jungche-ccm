@@ -8,8 +8,7 @@ argument-hint: [feature description]
 
 Run the full {PROJECT_NAME} pipeline for: $ARGUMENTS
 
-**All feature requests MUST go through this pipeline.** No cowboy coding.
-**All development happens from this root — there are no child build commands.**
+**All feature requests go through this pipeline — there are no child build commands.**
 
 <!-- ROSTER MODEL (read before editing this file)
 The per-project pipeline stages (analysis, architecture, development, QA) are written ONCE as a
@@ -24,11 +23,9 @@ seam, post-merge integration) are gated on `{PROJECT_ROSTER}` size > 1 and are S
 single-project repo, where the worktree IS the repo root and routing is trivially that one project.
 -->
 
-**Autonomous execution contract: once started, `/build` never stops mid-run to ask questions or wait for approval. Pre-flight validation runs before any pipeline work. If validation passes, the pipeline runs to completion. The only defined stop points are: pre-flight failure (before any work starts) and Fix Loop Escalation → BLOCKED-DEFERRED (preserves work for `/jc` resolution). Inventing any other stop — a "needs-a-decision" pause, a "this looks risky" halt — is a contract violation, not caution. A costly, external, or production-affecting action a task requires (paid API call, live deploy) is not a stop: decide from context, take the safest reversible path, and log it. Raise a true blocker as a pre-flight fail-fast, never mid-run.**
+**Autonomous execution contract:** once started, `/build` runs to completion without stopping to ask questions or wait for approval. The only defined stops are pre-flight failure (before any work) and Fix Loop Escalation → BLOCKED-DEFERRED. Any other mid-run stop is a contract violation. A costly/external/production action a task requires (paid API call, live deploy) is not a stop: take the safest reversible path and log it. Raise a true blocker as a pre-flight fail-fast.
 
-**ZERO GAP contract: when the task manifest (`$DOCS/0-task.md`) is a `/p:refine` ZERO-GAP spec — routing, data model, contracts, file plan, and signatures all present — every pipeline agent (planner, architects, developers) IMPLEMENTS and VALIDATES it; none re-decides routing, re-designs the data model or contracts, or re-scopes. Thread this into every agent spawn. Surface a genuine spec flaw (flag to the orchestrator / BLOCKED-DEFERRED), never silently change it. A standalone build given a bare description: agents design as normal.**
-
-**Doc-awareness — thread into every agent spawn:** to understand existing code, consult the grep-true doc clusters — read the project's `docs/architecture/_index.md`, then `grep` the cluster for the exact symbol; the whole {DATABASE} schema (real {DATABASE} names) is `docs/agents/graph/db/postgres.mmd`. Doc identifiers match code/DB names verbatim.
+**ZERO GAP & doc-awareness** bind every agent — both are stated in the § Common spawn contract and carried by every spawn block. The orchestrator distinction: when `$DOCS/0-task.md` is a `/p:refine` spec, agents implement and validate it; a standalone build given a bare description has agents design as normal.
 
 ---
 
@@ -191,16 +188,34 @@ mkdir -p docs/dev/builds/{name}
   Wave: {$WAVE or none}
   ```
 
-**Pass `$PIPELINE`, `$DOCS`, `$DOCS_REL`, and `$WORKTREE` to every agent invocation.** Agents should never hardcode doc or worktree paths — they use what you give them.
+Pass `$PIPELINE`, `$DOCS`, `$DOCS_REL`, and `$WORKTREE` to every agent — agents use what you give them, never hardcoding paths.
 
 Capture `START=$(date +%s)` (for the footer's elapsed time), then emit the § Status Emission header.
 
 ---
 
+## Common spawn contract
+
+Every spawned agent inherits these. Each spawn block carries only its role, worktree path, report file, ports, and role-specific additions, plus "follow the Common spawn contract."
+
+- **NEVER run git** — gitter owns every commit; no other agent runs git commands.
+- **Write reports to root docs, never inside the worktree.** From a worktree, `$DOCS_REL` resolves to the ROOT docs directory (`docs/dev/builds/{name}/`), NOT to `docs/` inside the worktree. NEVER write to `.worktrees/{name}/docs/` — it is inside the worktree and will be lost.
+- **ZERO GAP** — when `$DOCS/0-task.md` is a `/p:refine` spec, IMPLEMENT and VALIDATE it; never re-decide routing, data model, or contracts. Surface a genuine spec flaw to the orchestrator; never silently change it.
+- **Doc-awareness** — consult the grep-true doc clusters: read the project's `docs/architecture/_index.md`, then `grep` for the exact symbol; the full DB schema is `docs/agents/graph/db/{DATABASE}.mmd`.
+
+**Per-role doc reads** (each role reads only what it needs from `$DOCS/`):
+
+- **Child architects** → `1-plan.md` + `3-architecture.md` + own `1-analysis-{ROLE}.md`
+- **Developers / engineers** → `1-plan.md` + `3-architecture.md` + `3-architecture-{ROLE}.md` + `4-db-architecture.md` (if present) + `4-ui-ux-spec.md` (UI role only) + `ports.md`
+- **Pre-merge QA** → `3-architecture-{ROLE}.md` + `5-dev-report-{ROLE}.md` + `6-bugs.md`
+- **Post-merge QA** → `3-architecture-{ROLE}.md` + `5-dev-report-{ROLE}.md` + `6-bugs.md` + project runbook
+
+---
+
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
-Spawn the child planner for EVERY roster entry **in parallel** (single message, one Agent call per roster entry). A single-project roster spawns exactly one planner.
-**Model: opus** — every build child agent does real work.
+**Routing-gated fan-out.** Parse the `**Routing:**` declaration in `$DOCS/0-task.md` (a `/p:refine` spec declares it). Spawn child planners **in parallel** (single message) ONLY for the declared projects. When NO routing is declared (bare standalone description), fall back to spawning all roster planners. mono-planner (Step 1b) may demand a missing project's planner when it spots an undeclared seam — spawn that one then.
+**Model: opus.** Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); the literals below are declared copies.
 
 <!-- PATTERN: per-project — SETUP expands once per {PROJECT_ROSTER} entry -->
 
@@ -210,9 +225,9 @@ Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} planner. Read
   Analyze the {project}/ codebase and write $DOCS/1-analysis-{ROLE}.md."
 ```
 
-**All roster planners MUST be launched in a single message for true parallelism.** Wait for all to complete.
+Wait for all to complete.
 
-**Idempotency guard:** Before spawning, check which analysis reports already exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners for roster entries whose `1-analysis-{ROLE}.md` does NOT yet exist. If all roster reports already exist, skip Step 1a entirely and proceed to Step 1b. This prevents duplicate planner launches if Step 1a is re-entered after a partial execution.
+**Idempotency guard:** Before spawning, check which reports exist: `ls $DOCS/1-analysis-*.md 2>/dev/null`. Only spawn planners whose `1-analysis-{ROLE}.md` does NOT yet exist. If every routed planner's report exists, skip Step 1a and proceed to Step 1b.
 
 ---
 
@@ -265,11 +280,9 @@ Developers derive their work queue from the architecture docs directly.
 
 ```
 Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} architect. Read and follow the instructions in {project}/.claude/agents/architect.md.
-  Pipeline: {name}.
-  All pipeline docs: $DOCS/.
+  Pipeline: {name}. Follow the Common spawn contract (child-architect doc reads).
   Write your architecture doc to $DOCS/3-architecture-{ROLE}.md.
-  You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc.
-  NEVER run git commands — gitter handles all commits."
+  You produce the architecture doc ONLY — no code stubs. The developer derives their work queue from your doc."
 ```
 
 Spawn only the architects for routed roster entries. Wait for completion.
@@ -340,16 +353,9 @@ $DOCS_REL is ../../docs/dev/builds/{name}/ (one level shallower than a per-proje
 
 ```
 Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
-
-  Pipeline: {name}.
+  Pipeline: {name}. Follow the Common spawn contract (developer doc reads).
   Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  IMPORTANT — $DOCS_REL resolves to the ROOT docs directory, NOT to docs/ inside your worktree.
-  Example: from $WORKTREE/{project}/, $DOCS_REL = ../../../docs/dev/builds/{name}/.
-  Write to $DOCS_REL/5-dev-report-{ROLE}.md. NEVER write to .worktrees/{name}/docs/ — that's inside the worktree and will be lost.
-  Your dev port: {PROJECT_PORT} (and the ports of any peer roster entries you call, from $DOCS/ports.md).
-  If you get permission-blocked on worktree file edits, use Bash with append/write commands as fallback.
-  NEVER run git commands — gitter handles all commits."
+  Write to $DOCS_REL/5-dev-report-{ROLE}.md. {PROJECT_ROLE} port: {PROJECT_PORT}."
 ```
 
 Launch only the developers for routed roster entries. Wait for completion.
@@ -364,23 +370,20 @@ Spawn the QA engineer for each routed roster entry.
 **Model: opus** — every build child agent does real work.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
+Spawn as the registered `qa-{project}` wrapper type (model governed by frontmatter; no override needed).
 Single-project roster: $WORKTREE/{project} resolves to $WORKTREE (repo root). -->
 
 ```
-Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
-
-  Mode: PRE-MERGE. Pipeline: {name}.
-  Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT} (plus any peer roster ports it must reach, from $DOCS/ports.md).
-  ALL pipeline docs: $DOCS/ (at root). From your worktree: $DOCS_REL/.
-  Write bug report to $DOCS_REL/ — NEVER to docs/ inside the worktree."
+Agent(qa-{project}): "Mode: PRE-MERGE. Pipeline: {name}. Follow the Common spawn contract (pre-merge QA doc reads).
+  Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT}.
+  Write findings into $DOCS_REL/6-bugs.md under a `## {PROJECT_ROLE}` section (create the file if absent)."
 ```
 
-Spawn QA agents only for routed roster entries. Each agent writes its own `6-bugs-{ROLE}.md` bug list (one per routed roster entry).
+If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the filter hook simply won't fire.
 
-After all QA agents complete, **consolidate** the per-project bug files into a single `$DOCS/6-bugs.md` (trivial at roster size 1 — one file becomes the consolidated file):
+Spawn QA agents only for relevant roster entries. Each QA agent owns exactly its own `## {PROJECT_ROLE}` section in the consolidated `$DOCS/6-bugs.md` — it writes only that section, never touching another's. There are no per-project bug files.
 
-- If ALL per-project bug files have `Status: NONE` → write `$DOCS/6-bugs.md` with `Status: NONE`
-- If ANY per-project bug file has `Status: OPEN` → write `$DOCS/6-bugs.md` with `Status: OPEN` and list all open bugs from all roster entries
+After all QA agents complete, **verify** `$DOCS/6-bugs.md` carries a `## {PROJECT_ROLE}` section for every QA'd project (an absent section means that agent failed — re-spawn it). Then set the file-level status at the top: `Status: OPEN` if any section lists an open bug, else `Status: NONE`.
 
 ---
 
@@ -498,17 +501,17 @@ Spawn the post-merge QA engineer for each routed roster entry. Since these run f
 **Model: `opus`.** Each entry's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
-Single-project roster: {project}/ on main IS the repo root. SETUP binds each entry's runbook path
-(`{project}/docs/runbook/_index.md` or `{project}/docs/runbook.md`, whichever that entry ships). -->
+Spawn as the registered `qa-{project}` wrapper type. Single-project roster: {project}/ on main IS the repo root.
+SETUP binds each entry's runbook path. -->
 
 ```
-Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} QA engineer. Read and follow {project}/.claude/agents/qa.md.
-  Mode: POST-MERGE. Pipeline: {name}. Run against {project}/ on main.
-  Pipeline docs from project dir: $DOCS_POST/. Pipeline docs from root: $DOCS/.
-  Follow the runbook at {PROJECT_RUNBOOK} (this entry's runbook, if it ships one)."
+Agent(qa-{project}): "Mode: POST-MERGE. Pipeline: {name}. Run against {project}/ on main. Follow the Common spawn contract (post-merge QA doc reads), reading docs via $DOCS_POST/ from the project dir.
+  Runbook: {PROJECT_RUNBOOK}."
 ```
 
-Spawn only QA agents for routed roster entries.
+If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the filter hook simply won't fire.
+
+Spawn only QA agents for projects that were part of this pipeline.
 
 After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents.
 
@@ -551,23 +554,7 @@ Gitter commits all doc changes including `$DOCS/` (git history is the permanent 
 
 ## Pipeline Reference
 
-| #   | Step                              | Who                                                       | Produces                                                                                         | Location                         |
-| --- | --------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------- |
-| 1a  | Parallel analysis                 | Per-roster planners: {PROJECT_PLANNER_ROSTER}             | `{PROJECT_ANALYSIS_REPORT_LIST}`                                                                 | root                             |
-| 1b  | Consolidate plan _(roster > 1)_   | mono-planner _(single-project: promote the one analysis)_ | `$DOCS/1-plan.md`                                                                                | root                             |
-| 2   | Git setup                         | gitter (SETUP)                                            | Worktree(s), ports, `$DOCS/ports.md`                                                             | root                             |
-| 3   | Cross-project arch _(roster > 1)_ | mono-architect _(skipped single-project)_                 | `$DOCS/3-architecture.md` (integration contracts + research notes)                               | root                             |
-| 4   | Child arch + research             | Per-roster architects: {PROJECT_ARCHITECT_ROSTER}         | `{PROJECT_ARCHITECTURE_REPORT_LIST}` (docs only, no code stubs, inline research)                 | root                             |
-| 5a  | UI/UX _(conditional)_             | ui-ux                                                     | `$DOCS/4-ui-ux-spec.md`                                                                          | root                             |
-| 5b  | DB Architecture _(conditional)_   | db-admin                                                  | `$DOCS/4-db-architecture.md` + schema/migration changes in worktrees                             | root (docs) + worktrees (schema) |
-| 6   | Develop                           | Per-roster developers: {PROJECT_DEVELOPER_ROSTER}         | Working code in worktrees + `{PROJECT_DEV_REPORT_LIST}`                                          | worktrees (code) + root (docs)   |
-| 7   | QA                                | Per-roster QA agents: {PROJECT_QA_ROSTER}                 | Adversarial tests in worktrees + `{PROJECT_BUG_REPORT_LIST}` → consolidated `$DOCS/6-bugs.md`    | root                             |
-| -   | Fix loop                          | developers → QA                                           | Repeat until `$DOCS/6-bugs.md` = NONE                                                            |                                  |
-| -   | Code review _(pre-merge gate)_    | p:audit:code-hygiene (diff) → architects → developers     | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                              | worktrees (code) + root (docs)   |
-| 8   | Merge                             | gitter (MERGE)                                            | Commits + merges to main                                                                         |                                  |
-| 9   | Post-merge QA                     | Per-roster QA agents (POST-MERGE): {PROJECT_QA_ROSTER}    | `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results)                        | root                             |
-| 10  | Document                          | mono-documenter                                           | Merges into permanent docs; `$DOCS/` stays in place                                              | root                             |
-| 11  | Commit docs + archive             | gitter (DOCS-COMMIT)                                      | Commits docs incl. `$DOCS/`, moves it to `tmp/dev/archive/builds/`, commits removal (standalone) | root                             |
+At-a-glance step map (who/produces/location for every step): `docs/commands/build/references/build-reference.md` § Pipeline step map.
 
 ---
 

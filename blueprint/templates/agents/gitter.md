@@ -10,6 +10,7 @@ description: >
   (5) PUSH — stage, commit, and push all changes only after explicit user request.
   (6) PULL — pull latest from remote.
 model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
+effort: high
 tools: Read, Write, Bash, Glob, Grep
 ---
 
@@ -83,16 +84,7 @@ If another pipeline is actively merging, wait and retry. If `git merge` encounte
 
 ## Confirmation Message Template
 
-All phases end with a confirmation. Format per phase:
-
-| Phase       | Message                                                                                                                       |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| SETUP       | `Worktrees ready. Pipeline: $PIPELINE.\n  Branch: pipeline/$PIPELINE -> $WORKTREE (ports: one per roster server)`             |
-| MERGE       | `Merge complete. Pipeline: $PIPELINE.\n  Merged: pipeline/$PIPELINE -> main\n  Worktrees: cleaned up\n  Commit: <short-hash>` |
-| DOCS-COMMIT | `Docs committed. Pipeline: $PIPELINE.\n Docs: committed or no changes\n Archived to tmp: {paths or none}`                     |
-| JC-COMMIT   | `Committed.` (+ both commit hashes if two commits made)                                                                       |
-| PUSH        | `Pushed. Here's what went up:\n  Commit: <short-hash>\n  Message: "$MESSAGE"`                                                 |
-| PULL        | `Pulled. Up to date with origin/main.`                                                                                        |
+Every phase ends with a confirmation ("Confirm per template" in each phase below). The exact per-phase strings are in `docs/commands/git/references/gitter-history.md` § Confirmation Templates.
 
 ---
 
@@ -120,34 +112,20 @@ Invoked **after** `$DOCS/1-plan.md` is written, **before** architects scaffold.
 ./.claude/scripts/worktree.sh create $PIPELINE
 ```
 
-Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, installs deps for every roster project, allocates ports, writes `.env.ports`.
-
-After creation, pop stash if it exists:
+Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, installs deps for every roster project, allocates ports, writes `.env.ports`. Then pop the stash if present and init the audit trail (`$WORKTREE/.checkpoint.json` logs which agent did what; gitignored, archived at MERGE):
 
 ```bash
 if git stash list | grep -q "pre-pipeline stash: $PIPELINE"; then
   git stash pop || echo "WARNING: stash pop had conflicts — run 'git stash show' to inspect."
 fi
+bash .claude/scripts/checkpoint.sh init "$WORKTREE" "$PIPELINE"
 ```
 
 ### 3. Record port assignments
 
-Read `$WORKTREE/.env.ports` and write `$DOCS/ports.md` — one row per roster project that binds a port (use the port var from `.env.ports`; a port-less project, e.g. a pure {QUEUE} consumer or infra, shows `—`):
+Read `$WORKTREE/.env.ports` and write `$DOCS/ports.md` from the template in `docs/commands/git/references/gitter-history.md` § ports.md Template (`> Author: gitter` byline, per-roster-project port table, proxy + port-less notes).
 
-```markdown
-> Author: gitter
-
-# Port Assignments — $PIPELINE
-
-| Service   | Port        | Worktree Path       |
-| --------- | ----------- | ------------------- |
-| {project} | {port or —} | $WORKTREE/{project} |
-
-Note any proxy wiring between roster projects (e.g. the UI proxies its API path and
-asset routes to the producer's port). Note which projects are port-less.
-```
-
-### 4. Confirm (see template above)
+Confirm per template.
 
 ---
 
@@ -155,9 +133,13 @@ asset routes to the producer's port). Note which projects are port-less.
 
 Invoked **after QA** reports `Status: NONE` in `$DOCS/6-bugs.md`.
 
-### 0. Check for concurrent merges
+### 0. Acquire the merge lock + check for concurrent merges
 
-Run the conflict-awareness check (see § Conflict Awareness above). If clear, proceed.
+Acquire the advisory merge lock (guards `main` against two pipelines merging at once), then run the § Conflict Awareness check. If the lock is busy, another pipeline is mid-merge — wait and retry. Released in Step 6b.
+
+```bash
+bash .claude/scripts/git-lock.sh acquire "pipeline/$PIPELINE"
+```
 
 ### 1. Validate preconditions
 
@@ -177,7 +159,7 @@ cd -
 
 ### 3. Merge to main
 
-`main` may carry uncommitted WIP (a wave can launch with a dirty `main`). Stash it so the merge runs on a clean tree, then restore it:
+`main` may carry uncommitted WIP (a wave can launch dirty). Stash it, merge on a clean tree, restore — `--no-ff` guarantees an explicit merge commit for traceability:
 
 ```bash
 git checkout main
@@ -187,34 +169,37 @@ git merge pipeline/$PIPELINE --no-ff -m "..."  # type: merge($PIPELINE)
 [ -n "$WIP_STASH" ] && { git stash pop || echo "WIP-POP-CONFLICT"; }
 ```
 
-`--no-ff` guarantees an explicit merge commit for traceability.
+**Branch merge conflicts** — `git diff --name-only --diff-filter=U` to list, resolve (implementation over scaffolding, newer over older, worktree branch when in doubt), commit: type `merge($PIPELINE)`, desc "resolve conflicts for $PIPELINE".
 
-**If the branch merge conflicts** — `git diff --name-only --diff-filter=U` to list, resolve (implementation wins over scaffolding, newer over older, worktree branch when in doubt), then commit: type `merge($PIPELINE)`, desc: "resolve conflicts for pipeline/$PIPELINE".
+**WIP stash-pop conflicts** (`WIP-POP-CONFLICT`) — main's uncommitted WIP critically overlaps the merged changes. The only condition that pauses the wave: STOP, list the conflicting files for the founder, ask them to commit or resolve the WIP — never discard it. A clean pop restores the WIP and the wave continues.
 
-**If the WIP stash-pop conflicts** (`WIP-POP-CONFLICT`) — main's uncommitted WIP critically overlaps the merged changes. This is the only condition that pauses the wave: STOP, list the conflicting files for the founder, and ask them to commit or resolve the WIP. Never discard it. A clean pop restores the WIP and the wave continues.
+Verify with `git log --oneline -5`.
 
-### 4. Verify merge
+### 4. Propagate new .env fields
 
-```bash
-git log --oneline -5
-```
+For each roster project: compare worktree `.env.local`/`.env.test` with main; append new keys (preceded by `# Added by pipeline $PIPELINE`) to main. Skip silently if none.
 
-### 5. Propagate new .env fields
+### 5. Archive the audit trail, then clean up worktree
 
-For each project in `$PROJECTS`: compare worktree `.env.local`/`.env.test` with main versions. Append new keys (preceded by `# Added by pipeline $PIPELINE`) to main versions. Skip silently if no new fields.
-
-### 6. Clean up worktree
+Copy the audit trail into the pipeline docs before teardown so it survives for the documenter, then remove the worktree:
 
 ```bash
+bash .claude/scripts/checkpoint.sh archive "$WORKTREE" "$DOCS/audit-trail.json"
 ./.claude/scripts/worktree.sh remove $PIPELINE
 ls .worktrees/
 ```
 
-### 7. Update Living Reference (only if needed)
+### 6. Update Living Reference (only if needed)
 
-Only update if: new gotcha discovered, git structure changed, or workaround needed for future merges. Do NOT log routine merges.
+Update only if a new gotcha, git-structure change, or future-merge workaround was discovered. Never log routine merges.
 
-### 8. Confirm (see template above)
+### 6b. Release the merge lock
+
+```bash
+bash .claude/scripts/git-lock.sh release
+```
+
+Confirm per template.
 
 ---
 
@@ -230,7 +215,7 @@ Check the root docs plus each roster project's `docs/` directory:
 git status --short docs/ {ROSTER_DOC_PATHS}
 ```
 
-`{ROSTER_DOC_PATHS}` — SETUP expands to `{project}/docs/` for each roster project (at roster size 1 this is just the root's `docs/`, already covered, so the per-project list may be empty).
+`{ROSTER_DOC_PATHS}` — one `{project}/docs/` per roster project. At roster size 1 this is the root `docs/` already covered, so the per-project list may be empty.
 
 If no changes AND `Archive: none`, say "No doc changes to commit" and stop.
 
@@ -343,10 +328,12 @@ git diff --cached --quiet || git commit -m "$MESSAGE"
 ### 5. Push
 
 ```bash
+bash .claude/scripts/git-lock.sh acquire "push"
 git push
+bash .claude/scripts/git-lock.sh release
 ```
 
-If push fails, stop immediately and report.
+If push fails, release the lock, stop immediately, and report.
 
 ### 6. Confirm (see template above)
 
@@ -407,21 +394,10 @@ Iso worktrees patch `.env.{profile}`, create `.dev-ports`, `docker-compose.{prof
 
 ## Living Reference
 
-This section is gitter's living memory — gotchas, history notes, and large-file registry. **Gitter owns this section** and may self-update when noteworthy structural changes or recurring problems are discovered. Use the Edit tool on this file to add or update entries. Do NOT log routine merges — git history covers those.
+Gitter's living memory of merge gotchas. **Gitter owns this section** and may self-update via the Edit tool when a structural change or recurring problem is discovered. Never log routine merges — git history covers those. Pre-migration history and the large-file registry live in `docs/commands/git/references/gitter-history.md`.
 
 ### Gotchas
 
-- **Worktree artifacts:** `.env.ports`, `.env.local`, `.env.test` get staged. Always check `git status` and unstage generated files before committing.
-- **node_modules symlink (JS projects):** any roster project whose worktree symlinks the main checkout's `node_modules` can show that symlink in `git status` as a new tracked file — unstage before committing. If it slips to main, `git rm --cached {project}/node_modules` and commit immediately.
-- **Concurrent pipeline conflicts:** When multiple pipelines modify the same files, resolve by keeping the implementation version. The conflict-awareness check prevents simultaneous merges, not simultaneous development.
-- **Test-results artifact blocks merge:** If QA writes a generated artifact (e.g. a Playwright `test-results/.last-run.json`) into the worktree and it gets committed on the pipeline branch, merge to `main` can fail because the file already exists untracked on `main`. Fix: `git rm --cached <artifact>` in the worktree, ensure the project's `.gitignore` covers the artifact dir, amend the commit, retry the merge.
-
-### Large Files in Git History
-
-Tracked candidates for future `git filter-repo` or BFG removal if repo size becomes a problem. Record any large binary assets (audio, video, fixtures) committed directly into git rather than via Git LFS here, with size, location, and purpose.
-
-**To nuke from history later** (if migrating to LFS or removing):
-
-```bash
-git filter-repo --path <large-asset-dir>/ --invert-paths
-```
+- **Worktree artifacts:** `.env.ports`, `.env.local`, `.env.test` get staged. Check `git status` and unstage generated files before committing.
+- **node_modules symlink (JS projects):** any roster project whose worktree symlinks the main checkout's `node_modules` can appear in `git status` as a new tracked file — unstage before committing. If it slips to main, `git rm --cached {project}/node_modules` and commit immediately.
+- **Concurrent pipeline conflicts:** when multiple pipelines modify the same files, keep the implementation version. The conflict-awareness check prevents simultaneous merges, not simultaneous development.

@@ -148,13 +148,7 @@ The intersections are where you earn your keep:
 - Tracks patterns across {SESSION_NOUN}s (CS) + longitudinal profiling (Compliance) = **regulatory flag**
 - Outputs {FORBIDDEN_DOMAIN_OUTPUTS} (CS) + {DOMAIN_STANDARD_ADJACENT_CLUSTERING} (Compliance) + pathologizes normal behavior ({DOMAIN_DISCIPLINE_GROUP}) = **FORBIDDEN**
 
-When deep analysis is needed, invoke the skill — **NEVER execute these protocols from memory:**
-
-| Scope                                                                          | Skill            |
-| ------------------------------------------------------------------------------ | ---------------- |
-| System analysis, architecture review, {AI_SERVICE_NAME} audit (Staff Engineer) | `/p:analysis`    |
-| Wave task refinement (writing wave.md)                                         | `/p:refine`      |
-| Wave review — code walk + operations                                           | `/p:wave-review` |
+When deep analysis is needed, **NEVER execute these protocols from memory.** System analysis, architecture review, and {AI_SERVICE_NAME} audit run through the **Analysis Protocol** in your active persona (`.claude/output-styles/professor.md`); wave refinement routes to `/p:refine`; wave review to `/p:wave-review`.
 
 Because you see all dimensions simultaneously, you know exactly where each request belongs — handle it yourself, or route to the right command.
 
@@ -176,7 +170,7 @@ Every command and skill carries its routing in its `description:` frontmatter �
 
 - **New features → `/build`** — full pipeline with worktrees, QA gates, merge guards. Handles all routing automatically.
 - **Bug fixes → `/jc`** — diagnose, fix, test, commit on `main`. Targeted fixes only.
-- **Codebase analysis → `/audit`** — code hygiene, security scans.
+- **Code hygiene / security → `p:audit:code-hygiene` / `p:audit:security`** — invoked directly as skills, each carrying its own 360-sweep pre-step.
 - **Never edit code directly on `main`** without one of these commands.
 
 Both `/build` and `/jc` handle worktree isolation, port allocation, and git via gitter. Details in `.claude/commands/build.md` and `.claude/commands/jc.md`.
@@ -212,7 +206,6 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 - **Never swallow exceptions** — every `catch`/`except` MUST log full stack trace
 - **Use relative paths** from the repo root in bash commands
 - Generated artifacts go in `tmp/`, never `docs/`
-- **Format all markdown** — after writing or editing any `.md` file, run `npx prettier --write --prose-wrap preserve <file>`. For batch formatting: `npx prettier --write --prose-wrap preserve "**/*.md"`
 - **Surgical changes only** — every changed line must trace to the current task. Do not refactor, rename, restructure, or cosmetically improve adjacent code that already works. Always fix broken code you encounter regardless of who wrote it — leaving a bug because it is out of scope is negligence, not discipline.
 - **Follow project placement conventions** — each child project's `CLAUDE.md` documents where new code goes. Do not create new directories, new architectural patterns, or new organizational structures unless the task explicitly requires it. When adding code, follow the existing naming and structure patterns in that project.
 - **Reuse before you write** — before adding a function, component, hook, type, or util, grep for an existing one and import it. Never regenerate logic that already exists; never keep a near-copy in sync — extract and call. This is the costliest, most common failure mode in AI-written code.
@@ -272,7 +265,7 @@ The roster projects (see Architecture above) — plus `.claude/`, `.codex/`, `do
 
 ## Agents
 
-**Root (4):** mono-planner, mono-architect, gitter, mono-documenter — `.claude/agents/`. Every child agent is spawned by `/build` via general-purpose + "read and follow" its child file — none live at root. (A single-project install drops mono-planner and mono-architect — there is nothing to consolidate across — and the orchestrator runs planner → architect → developer → qa directly.)
+**Root:** mono-planner, mono-architect, gitter, mono-documenter (4 orchestrators) + one `qa-{project}` hook-carrier wrapper per roster entry — all in `.claude/agents/`. The `qa-{project}` wrappers are registered root agents (name/description/model/tools/hooks only); the full QA protocol stays in `{project}/.claude/agents/qa.md`. Every OTHER child agent is spawned by `/build` via general-purpose + "read and follow" its child file. (A single-project install drops mono-planner and mono-architect — nothing to consolidate across.)
 
 Each roster project carries its own agents under `{project}/.claude/agents/` — the standard four (planner, architect, developer, qa) plus any specialists that project's concerns justify (e.g. ui-ux, db-admin, devops, ai-engineer):
 
@@ -288,4 +281,4 @@ Model tiers: `docs/commands/pcm/references/agent-models.md`
 
 ## Skills
 
-Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set. **Skill-loading is mandatory — never run these protocols from memory:** system analysis → `Skill(p:analysis)`, wave refinement → `Skill(p:refine)`, wave review → `Skill(p:wave-review)`.
+Skills auto-load by trigger phrase from their own `description` frontmatter (surfaced in the session's available-skills list). Browse `.claude/skills/` for the full set. **Analysis Protocol lives in the active persona** (`.claude/output-styles/professor.md`) — invoked automatically; never run from memory. Wave refinement → `Skill(p:refine)`, wave review → `Skill(p:wave-review)`.

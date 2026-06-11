@@ -10,7 +10,7 @@ $ARGUMENTS
 
 ---
 
-**Autonomous execution contract:** Once `/wave` starts, it runs to completion without stopping for questions. Pre-flight (Step 0b) is the only gate — fail fast or go all the way. Ambiguity mid-run → decide from codebase context, log the decision. Inventing any other stop — a mid-wave "founder decision needed" pause — or re-scoping the wave to avoid one is a contract violation. A task being costly, external, or production-affecting is not a stop; raise only a true blocker, as a pre-flight fail-fast.
+**Autonomous execution contract:** Same contract as `/build`. Wave-specific deltas: pre-flight (Step 0b) is the wave's only gate; once it passes, the wave runs every pipeline to completion. A mid-wave "founder decision needed" pause, or re-scoping the wave to dodge one, is a contract violation — surface a true blocker only at pre-flight as a fail-fast.
 
 ---
 
@@ -109,10 +109,18 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
 **Setup steps:**
 
 1. Organize groups into waves (wave boundaries enforce dependency ordering only)
-2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` with the pipeline-specific task subset
+2. Pre-place manifests: `mkdir -p docs/dev/builds/{pipeline-name}` then Write `docs/dev/builds/{pipeline-name}/0-task.md` carrying ONLY this pipeline's exact task slice plus a thin shared-rules header. The header carries genuinely shared rules and contracts this pipeline's tasks depend on (cross-cutting compliance flags, shared types/API contracts, conventions). It must NOT carry other pipelines' task bodies, their adjudications, or the full wave manifest / reconciliation table — cite that section by name instead of inlining it. Cross-pipeline content in a `0-task.md` is leakage; keep each slice clean.
 3. Copy the task file to `$WAVES/{wave-name}/manifest.md` (the permanent record of the full spec — descriptions, compliance flags, architectural intent). Then, **if the task file is the root `wave.md`, immediately overwrite it with the `# Tasks` stub** — copy-to-manifest and clear are one atomic step `/wave` owns, so the consumed spec never lingers in `wave.md`. After a wave, any content in root `wave.md` is a fresh next-wave draft (often uncommitted) — never clear it outside this step.
 4. Write grouping/execution plan to `$WAVES/{wave-name}/wave.md`
-5. Create `$WAVES/{wave-name}/report.md` with initial plan:
+5. Create `$WAVES/{wave-name}/STATE.md` — delta-structured so transitions append instead of rewriting the whole file:
+
+   - **TOP (rewritten every transition):** a live resume brief for a cold session, then a `## Next` block — what runs next and why.
+   - **A marker line** exactly: `<!-- APPEND-ONLY BELOW — never rewrite -->`.
+   - **BELOW the marker (append-only, NEVER rewritten):** an adjudication/decision archive — locked decisions and adjudications carried from refinement, then discovered facts as they surface. Only ever append to this section.
+
+   Seed the top brief and `## Next` from the round plan; seed the archive with refinement's locked decisions/adjudications.
+
+6. Create `$WAVES/{wave-name}/report.md` with initial plan:
 
 ```markdown
 # Wave Report: {wave-name}
@@ -168,6 +176,8 @@ Wave {wave-name}: {done}/{total} done · {failed} failed · {deferred} deferred
 
 The user should never have to ask "how much is left?" — the stream tells them.
 
+After each build returns, update `$WAVES/{wave-name}/STATE.md`: rewrite the TOP brief and `## Next` block for the new position; append any fresh decisions/facts under the append-only marker. Never rewrite the append-only section.
+
 Log each result in report:
 
 - Success: `- [x] \`{pipeline}\` — **DONE** ✓`
@@ -195,6 +205,8 @@ Update report with:
 ## Step 3 — Professor Review (NON-OPTIONAL)
 
 Read `.claude/skills/p:wave-review/SKILL.md` and execute its **§ Orchestration** against `$WAVES/{wave-name}/report.md`. You are the dispatcher: spawn the scout, then one walker per thread in parallel, then the synthesizer — fresh `general-purpose` agents, `model: "opus"` — and form no judgments in your own bloated context. The synthesizer writes the review into the report under `## Professor's Wave Review` and returns it.
+
+Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); literals here are declared copies.
 
 Present the returned review to the user.
 

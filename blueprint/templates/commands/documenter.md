@@ -215,7 +215,7 @@ Read `$CDOCS/documenter/$REFS/sync-rules.md` for the full rule set. Then execute
 
 ### Steps 1–9
 
-1. **Inventory** — Check every doc the registry lists exists on disk, and that every cluster has an `_index.md` whose table covers its topic files. Flag `MISSING`.
+1. **Inventory** — Check every doc the registry lists exists on disk, and that every cluster has an `_index.md` whose table covers its topic files. Flag `MISSING`. Mechanical existence checks (registry-listed doc exists, `_index.md` present, named symbols grep-true in code) MAY run as an `Explore` child against the explicit list; all DRIFT/STALE/contradiction judgment stays with the documenter.
 2. **Architecture hierarchy** (Rule 1) — Root mentions integration → children have internals? Children reference cross-boundary → root covers handoff? No contradictions? Flag `DRIFT`/`STALE`.
 3. **API surface** (Rule 2) — Root endpoints → exist in producing child? Consumed → in producer? Spot-check 3-5 endpoints in actual code. Flag phantoms/undocumented.
 4. **System map vs reality** (Rule 3) — Spot-check 5-10 components, 3-5 tables, 3-5 workflows against actual files/schemas.

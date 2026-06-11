@@ -50,8 +50,6 @@ Walk the actual code **once per original task**. Build a per-task reconciliation
 
 `NEEDS-FOUNDER-SPEC` tasks **must** surface as Tier-1 questions in R1.5. Never silently merge, drop, or renumber them.
 
-**Why the walk matters:** a wave once shipped with a named task silently replaced by an unrelated step after refinement renumbered tasks. The reconciliation walk prevents this — every original task number must trace through R3 with identity intact.
-
 ## Step R1.5 — Interactive Discovery
 
 Talk to the human before evaluating. Ask the RIGHT questions in a single batch.
@@ -253,20 +251,7 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 - Flag command routing: `[CMD: /km]`, `[CMD: /jc]` — mandatory for non-`/build` tasks
 - Tables are ONLY for the reconciliation section (short, fixed-width cells)
 
-**Detail quality bar (ZERO GAP) — EVERY task MUST include all of:**
-
-1. What it does — one-line summary
-2. Why it matters — `**Why:**`
-3. Routing — `**Routing:**` (exact project set)
-4. Key behaviors — `**Key behaviors:**` lettered (a), (b), (c)...
-5. Data model — `**Data model:**` (exact tables/columns/types, or "none")
-6. Contracts — `**Contracts:**` (exact schema / signatures / queue / events, or "none")
-7. File plan — `**File plan:**` (every file + functions/exports + signatures)
-8. Technical flow — `**Technical flow:**` mermaid diagram
-9. Boundaries — `**Boundaries:**`
-10. Named anchors — `**Named anchors:**`
-
-A task missing any section is not ZERO GAP — it is not done.
+Every task MUST contain all 10 sections shown in the template above (summary, Why, Routing, Key behaviors, Data model, Contracts, File plan, Technical flow, Boundaries, Named anchors); missing any = not ZERO GAP.
 
 ### Constraints
 
@@ -311,11 +296,7 @@ After R4 approval, refine is complete — the wave is written and approved. Repo
 
 `refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/build` (or `/wave`) to build a working prototype under `RND/POC/{name}/`.
 
-**POC vs RND:** RND _develops_ — it iterates on a metric until it converges. This _refines_ — it asks the right questions until the spec leaves nothing vague, then delegates the build. The moat is the refinement: a POC proves the right thing only when the spec did.
-
-**POC vs the main flow:** R1–R4 writes root `wave.md` for the real projects (worktrees, merge-to-main). A POC is a self-contained, disposable prototype that lives under `RND/POC/` and exists only to answer "does this approach work?"
-
-**Not the in-flow R-POC step:** § R-POC spawns RND agents to _validate_ a wave task mid-refinement. This subcommand is the whole job — refine a standalone POC, then build it.
+This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which writes root `wave.md` for the real projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `RND/POC/` that exists only to answer "does this approach work?"
 
 Run P1 → P4 in order; every gate blocks.
 

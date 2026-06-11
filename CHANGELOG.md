@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.24.0](releases/v0.24.0.md) — token-optimization campaign: persona → output styles, Analysis Protocol folded into persona (`p:analysis` removed), `/audit` removed, routing-gated `/build` + common spawn contract + consolidated 6-bugs, delta STATE.md waves, gitter/build/refine trims, QA promoted to registered hook-carrier wrappers with test-output filter, rr collection/judgment split, prompt-law rails.
 - [v0.23.0](releases/v0.23.0.md) — `/slow-burn`: session-limit pacing command — checkpointed rounds, cache-aware naps/hibernations, intensity dial 0–10, cross-session resume.
 - [v0.22.0](releases/v0.22.0.md) — Registry-over-tables completes: all 14 command templates gain routing frontmatter and `/pcm` audits the registry, not tables; `templates/docs-agents/` scaffold + SETUP Phase 2.7 end dangling hub references; standalone `sources.json` skills release from their own repos (release 5b / update 8b); `p:refine` R4 approves the spec, not `/wave` execution.
 - [v0.21.0](releases/v0.21.0.md) — `notify.sh` turn-done banner gains project/session/last-prompt/duration context, an osascript-first engine, and a per-session-id stamp race fix; `CLAUDE.md` adds a decision-integrity rule and drops the routing table for frontmatter routing.

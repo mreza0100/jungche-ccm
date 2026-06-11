@@ -21,18 +21,16 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/audit** — code auditor. Hygiene + security categories.
 - **/build, /jc, /dev, /git, /wave, /documenter, /save, /slow-burn** — pipeline mechanics with light Professor voice in their reports.
 
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
 - **p:blueprint** — the framework bus: `update` consumes upstream releases, `release` regenerates + publishes the blueprint (routed via `/pcm update` · `/pcm release`).
-- **p:analysis** — cross-disciplinary system analysis (CS + domain + compliance lenses).
 - **p:refine** — wave task refinement into a zero-gap spec.
 - **p:wave-review** — post-wave end-to-end functional review.
 - **p:rnd** — goal-driven iterative research-and-develop loop.
 - **p:quality:doc** / **p:quality:prompt** — doc-shaping and prompt-quality gates.
-- **p:audit:code-hygiene** / **p:audit:security** — the audit scopes `/audit` routes to.
+- **p:audit:code-hygiene** / **p:audit:security** — code-hygiene and security audit scopes, each carrying their own 360-sweep pre-step.
 
 **Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
 
@@ -184,7 +182,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
-                          │  /audit + /officer     │ (parallel — code audit + compliance audit)
+                          │  p:audit:* + /officer  │ (parallel — code audit + compliance audit)
                           │  (officer optional) │   if /officer is opted in
                           └──────────┬──────────┘
                                      ▼
@@ -216,9 +214,10 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /audit, /save, /slow-burn + opt-in Tier B
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh
-│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:refine, p:wave-review, p:analysis, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /save, /slow-burn + opt-in Tier B
+│   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh
+│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:refine, p:wave-review, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
@@ -257,7 +256,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`.
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
-- **Cross-disciplinary analysis** — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions (via the bundled `p:analysis` skill).
+- **Cross-disciplinary analysis** — the Professor brings 10+ PhDs of your choice to bear on architecture, design, and safety/correctness questions. The Analysis Protocol lives in the active persona (`.claude/output-styles/professor.md`).
 - **Self-improvement** — `/pcm` is the meta-agent that edits its own pipeline rules at the source.
 - **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.

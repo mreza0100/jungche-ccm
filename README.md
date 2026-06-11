@@ -83,12 +83,11 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 
 ### And more
 
-- **/audit** — code auditor. Hygiene + security categories with mandatory reference files.
 - **/wave** — parallel `/build` waves from a task file. Multiple features at once.
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
 - **/save** — dumps the session's complete working context into a continuation briefing before `/compact` or a fresh chat (or into the active epic via `/save epic`).
 - **/slow-burn** — session-limit pacing for long marathons: checkpointed rounds, cache-aware naps/hibernations, an intensity dial 0–10 (`/slow-burn N` mid-run; 0 removes pacing), and cross-session resume so a hard cutoff loses nothing.
-- **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:blueprint` (the framework bus — `/pcm update` · `/pcm release`), `p:analysis`, `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+- **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:blueprint` (the framework bus — `/pcm update` · `/pcm release`), `p:refine`, `p:wave-review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
 - **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `p:360` (blind-spot killer), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
 - **VSCode tmux launcher** — new VSCode terminals open straight into tmux + Claude; `/exit` drops you back to your shell. Ships a companion tmux config (mouse scroll + click-to-copy).

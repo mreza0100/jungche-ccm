@@ -6,6 +6,7 @@ description: >
   gitter then commits and archives the pipeline directory to tmp. Ensures no decision is lost.
   Source of truth: .claude/commands/documenter.md
 model: sonnet # {MODEL_TIER} — ships as the default pin; retune to your model tier
+effort: medium
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 
