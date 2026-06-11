@@ -99,6 +99,10 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 
 ## How the pipeline works
 
+[<img src="./docs/pipeline-animation-act3.png" alt="Animated pipeline — Act III: the 11-step build machine" />](https://htmlpreview.github.io/?https://github.com/mreza0100/professor/blob/main/docs/pipeline-animation.html)
+
+> 🎬 **[Watch the full animation](https://htmlpreview.github.io/?https://github.com/mreza0100/professor/blob/main/docs/pipeline-animation.html)** — 1:45, four acts, from "refine my tasks" to shipped: the founder speaks exactly twice, the only backward arrows are the QA fix loop and the code-review gate, and bugs take a side door to `/jc`. Or open [`docs/pipeline-animation.html`](./docs/pipeline-animation.html) locally — one self-contained file, zero network. (Recorded from the source project's install.)
+
 ```
 You say: /build add-user-search
 
