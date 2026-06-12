@@ -37,7 +37,7 @@ CLAUDE.md (Professor persona + request routing)
 .claude/skills/*/SKILL.md → reusable skills
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
-.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-pipelines — the /wave execution engine)
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-pipelines — the /wave execution engine); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions

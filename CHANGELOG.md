@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.26.0](releases/v0.26.0.md) — rr v1.3.0: committed judge-steered research engine (research → judge → research, pressure-test saturation, tiered models) released in its canonical repo; skill-embedded workflow-engine pattern recorded in /pcm wiring.
 - [v0.25.0](releases/v0.25.0.md) — wave-as-workflow execution engine (saved workflow + workflow.json + forensics hardening), new /animate command (educational flow animations, dual accuracy gates), p:wave skill namespace renames, docs-commands install fix, opt-in host multi-account swap.
 - [v0.24.0](releases/v0.24.0.md) — token-optimization campaign: persona → output styles, Analysis Protocol folded into persona (`p:analysis` removed), `/audit` removed, routing-gated `/build` + common spawn contract + consolidated 6-bugs, delta STATE.md waves, gitter/build/refine trims, QA promoted to registered hook-carrier wrappers with test-output filter, rr collection/judgment split, prompt-law rails.
 - [v0.23.0](releases/v0.23.0.md) — `/slow-burn`: session-limit pacing command — checkpointed rounds, cache-aware naps/hibernations, intensity dial 0–10, cross-session resume.
