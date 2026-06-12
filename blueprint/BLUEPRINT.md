@@ -21,7 +21,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/build, /jc, /dev, /git, /wave, /documenter, /save, /slow-burn** — pipeline mechanics with light Professor voice in their reports.
+- **/build, /jc, /dev, /git, /wave, /documenter, /chat:save, /chat:load, /goal-definer, /slow-burn** — pipeline mechanics with light Professor voice in their reports.
 
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
@@ -214,7 +214,7 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /save, /slow-burn, /animate + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /chat:save, /chat:load, /goal-definer, /slow-burn, /animate + opt-in Tier B
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh
 │   ├── workflows/                     ← saved Workflow scripts (wave-pipelines — the /wave execution engine)

@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.28.0](releases/v0.28.0.md) — /save → /chat:save (script-dumped transcripts, 5-section header) + new /chat:load (resume a past chat from a pasted excerpt) and /goal-definer (compile a super-goal into a fresh-session prompt); MIGRATION: /save renamed, three new scripts.
 - [v0.27.1](releases/v0.27.1.md) — /save loses its epic redirect; epic saves live solely in /documenter epic.
 - [v0.27.0](releases/v0.27.0.md) — epic system redesign: current-state epics (update.md work doc, one-line milestones, Files index, archive/) + /documenter epic session-save mode + Epic consolidation contract; MIGRATION: downstream installs refactor their existing epics to the new design.
 - [v0.26.0](releases/v0.26.0.md) — rr v1.3.0: committed judge-steered research engine (research → judge → research, pressure-test saturation, tiered models) released in its canonical repo; skill-embedded workflow-engine pattern recorded in /pcm wiring.
