@@ -9,8 +9,6 @@ Save everything this session knows about: $ARGUMENTS
 
 You are about to be compacted or replaced. The file you write now is the ONLY thing the next session gets — anything you leave out is lost. **Completeness beats brevity everywhere in this command.** When in doubt, include it.
 
-**Dispatch:** if `$ARGUMENTS` starts with `epic`, invoke `Skill("documenter")` with args `epic {remainder of $ARGUMENTS}` and stop — the epic subcommand lives in `/documenter epic`. Otherwise run Steps 1-4 below.
-
 ## Step 1 — Name and create the file
 
 Derive `{name}` as kebab-case from `$ARGUMENTS` (e.g., "blueprint release flow" → `blueprint-release-flow`). If `$ARGUMENTS` is empty, derive it from the session's dominant topic.
