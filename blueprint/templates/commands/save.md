@@ -1,6 +1,6 @@
 ---
 name: save
-description: Dump the session's complete working context into tmp/prompt-saves/{name}.md as a self-contained continuation briefing. Invoked mid-chat before /compact (which may lose detail) or when handing work to a fresh chat. Subcommand `epic` routes the same dump into the active epic (docs/epics/{name}/ + manifest update) for "Load epic" continuation. Trigger — /save {description} or /save epic {epic-name?}.
+description: Dump the session's complete working context into tmp/prompt-saves/{name}.md as a self-contained continuation briefing. Invoked mid-chat before /compact (which may lose detail) or when handing work to a fresh chat. Epic saves are handled by /documenter epic, not here. Trigger — /save {description}.
 ---
 
 # Save — Full Context Dump for Continuation
@@ -9,7 +9,7 @@ Save everything this session knows about: $ARGUMENTS
 
 You are about to be compacted or replaced. The file you write now is the ONLY thing the next session gets — anything you leave out is lost. **Completeness beats brevity everywhere in this command.** When in doubt, include it.
 
-**Dispatch:** if `$ARGUMENTS` starts with `epic`, run § Subcommand: `epic` (same dump, different destination). Otherwise run Steps 1-4 below.
+**Dispatch:** if `$ARGUMENTS` starts with `epic`, invoke `Skill("documenter")` with args `epic {remainder of $ARGUMENTS}` and stop — the epic subcommand lives in `/documenter epic`. Otherwise run Steps 1-4 below.
 
 ## Step 1 — Name and create the file
 
@@ -88,19 +88,4 @@ Re-scan the conversation from the top one more time and ask of every exchange: "
 Saved: tmp/prompt-saves/{name}.md ({N} lines)
 Continue in a new chat with:
   Read tmp/prompt-saves/{name}.md and continue the work it describes.
-```
-
-## Subcommand: `epic` — save into the epic instead
-
-`/save epic {epic-name?}` routes the same dump into the epic's persistent context (`docs/epics/{name}/`) so a fresh chat continues via "Load epic {name}" instead of a tmp file.
-
-1. **Resolve the epic:** explicit `{epic-name}` if given; otherwise the `docs/epics/*/manifest.md` with `status: IN_PROGRESS` whose scope matches the session's work. No unambiguous match → list candidates and ask the founder.
-2. **Write the dump** — all sections from Step 2 in the same order (Next steps stays the footer), same completeness bar, same Step 3 pass — to `docs/epics/{name}/save-{topic}.md` (`{topic}` kebab-cased from `$ARGUMENTS` after the `epic` token, or from the session's dominant topic).
-3. **Update `manifest.md`:** append a dated session summary under `## Progress Log`; fold new decisions into `## Key Decisions` (deduped) and new gotchas into `## Discoveries`; add unanswered items to `## Open Questions`; bump `updated:`.
-4. **Report:**
-
-```
-Saved into epic {name}: docs/epics/{name}/save-{topic}.md + manifest updated.
-Continue in a new chat with:
-  Load epic {name}
 ```

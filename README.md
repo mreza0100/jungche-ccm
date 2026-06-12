@@ -88,7 +88,7 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 - **/wave** — parallel `/build` waves from a task file. Multiple features at once. Now executes through a saved workflow — group parallelism with serialized QA/merge locks.
 - **/animate** — research-grounded educational HTML animation of any flow or structure: cited fact sheet → storyboard → single-file HTML, browser-verified for both behavior and accuracy. The animated hero at the top of this README is the kind of thing it produces.
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
-- **/save** — dumps the session's complete working context into a continuation briefing before `/compact` or a fresh chat (or into the active epic via `/save epic`).
+- **/save** — dumps the session's complete working context into a continuation briefing before `/compact` or a fresh chat (to consolidate a session into the active epic instead, use `/documenter epic`).
 - **/slow-burn** — session-limit pacing for long marathons: checkpointed rounds, cache-aware naps/hibernations, an intensity dial 0–10 (`/slow-burn N` mid-run; 0 removes pacing), and cross-session resume so a hard cutoff loses nothing.
 - **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:blueprint` (the framework bus — `/pcm update` · `/pcm release`), `p:wave:refine`, `p:wave:review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
 - **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `p:360` (blind-spot killer), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
@@ -162,7 +162,7 @@ Conversations end. Context evaporates. You start over.
 "Load epic add-user-search"       -> Professor reads everything, restores full context
 ```
 
-RND results, RR reports, POC notes, key decisions — all filed under the epic. `/documenter` auto-appends pipeline progress when features ship. Next conversation, you say "load epic X" and the Professor picks up exactly where you left off.
+RND results, RR reports, POC notes, key decisions — all filed under the epic. When features ship, `/documenter` consolidates the progress into the epic's current-state work doc. Next conversation, you say "load epic X" and the Professor picks up exactly where you left off.
 
 ---
 

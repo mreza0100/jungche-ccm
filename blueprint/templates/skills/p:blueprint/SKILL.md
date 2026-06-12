@@ -132,9 +132,9 @@ Manifest regenerated. Version: {TARGET}
 Changelog highlights: {key bullets between versions}
 ```
 
-### Step 8b — Refresh standalone skills
+### Step 8b — Refresh source-fetched skills
 
-The blueprint update covers only blueprint-owned files. Skills in `.claude/skills/sources.json` are fetched from their own repos, so check them separately: for each entry, compare the installed `.claude/skills/{name}/SKILL.md` `version:` against the latest version/tag in its `repo`. For any repo that is newer, offer to re-fetch it (SETUP fetches latest at install; update keeps it current). Never downgrade a skill whose installed `version:` is ahead of its repo — that marks an unreleased local fix pending push to the skill repo.
+The blueprint update covers only blueprint-owned files. For each `sources.json` entry, compare the installed `.claude/skills/{name}/SKILL.md` `version:` frontmatter against the latest tag in its `repo`; when the repo is newer, offer a re-fetch of the skill's files. Never downgrade a skill whose installed version is ahead of its repo — that marks an unreleased local fix pending `release` step 5b.
 
 ### Step 9 — Offer to sync upstream
 
@@ -166,11 +166,17 @@ If `.professor/release.md` is non-empty (framework changes are queued), or the u
    Per-bullet migration sub-headings (#### → For:) required for adopter-side action
    Informational-only bullets marked: **`update`: skip — informational only.**
 
-5b. Standalone-skill entries (a release.md bullet naming a `sources.json` skill) are informational
-   version-bump lines only — the blueprint does not vendor these skills, so their fixes ship from
-   their own repos, not this release. Mark each **`update`: skip — informational only.** and, before
-   finishing, remind the maintainer to push the change to the skill's `repo` and cut a release there.
-   The refresh pass already excludes these skills from `templates/`.
+5b. Source-fetched skill release — for each pending bullet naming a `sources.json` skill, ship
+    the substance to the skill's OWN public repo first (the blueprint never vendors it):
+    clone/pull the canonical repo → rebase-first against its current state (both-changed is the
+    A→B→C conflict — keep the richer, never blast-overwrite) → genericize project identifiers in
+    the public copy (brand current AND former, internal role/example names), then sync the live
+    `.claude/skills/{name}/` to byte-identical (zero standing drift) → bump the skill's `version:`
+    frontmatter (semver by change nature) + repo README version refs → leak-grep the staged diff
+    (brand names, founder PII, `/Users/` paths) → commit + annotated tag v{X.Y.Z} + push to the
+    skill repo. Then rewrite the professor bullet as a version pointer marked
+    **`update`: skip — informational only** with a `#### → For:` re-pull note — update Step 8b
+    and fresh installs (sources.json) consume it.
 
 6. Write release notes as a NEW per-release file `{BLUEPRINT_CLONE_PATH}releases/v{NEW_VERSION}.md`
    (title `# v{NEW_VERSION} — {YYYY-MM-DD}` + bullets grouped under
@@ -202,6 +208,7 @@ If `.professor/release.md` is non-empty (framework changes are queued), or the u
 - `.professor/release.md` non-empty (or maintainer provided bullets)
 - No secrets in staged diff
 - Staged templates grep clean (0 hits) for the project brand (current AND former name), founder name, and `/Users/` machine paths — the refresh pass swaps the brand for `{PROJECT_NAME}`, so a single leftover is a refresh bug, not an exception
+- Every pending `sources.json`-skill bullet shipped via step 5b (skill repo tagged + pushed); the professor diff vendors none of their files
 - New version > local version
 
 ---

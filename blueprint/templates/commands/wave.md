@@ -123,10 +123,30 @@ Tasks tagged `[CMD: /km]` are knowledge curation (`{AI_PROJECT}/knowledge/`) tha
      "total": 3,
      "groups": [
        [
-         { "pipelineName": "task-a", "idx": 1, "description": "Task A: short description", "routing": ["{project}"], "dependsOn": [] },
-         { "pipelineName": "task-b", "idx": 2, "description": "Task B: short description", "routing": ["{project-x}", "{project-y}"], "dependsOn": [] }
+         {
+           "pipelineName": "task-a",
+           "idx": 1,
+           "description": "Task A: short description",
+           "routing": ["{project}"],
+           "dependsOn": []
+         },
+         {
+           "pipelineName": "task-b",
+           "idx": 2,
+           "description": "Task B: short description",
+           "routing": ["{project-x}", "{project-y}"],
+           "dependsOn": []
+         }
        ],
-       [{ "pipelineName": "task-c", "idx": 3, "description": "Task C: depends on B output", "routing": ["{project}"], "dependsOn": ["task-b"] }]
+       [
+         {
+           "pipelineName": "task-c",
+           "idx": 3,
+           "description": "Task C: depends on B output",
+           "routing": ["{project}"],
+           "dependsOn": ["task-b"]
+         }
+       ]
      ]
    }
    ```
@@ -274,16 +294,7 @@ Then copy the review's owner-tagged deferrals (the non-code items it routed to o
 
 ## Step 3.5 — Epic update (epic-tied waves only)
 
-Skip if `{epic-name}` is `none`. Otherwise write ONE consolidated entry for the whole wave — per-build documenters skip epic writes for wave-owned builds, so the wave is the sole writer here:
-
-1. Append to `docs/epics/{epic-name}/update.md` (create if absent):
-   ```
-   ### {YYYY-MM-DD} — Wave: {wave-name}
-   - {1-3 bullet summary across the wave's pipelines}
-   ```
-2. In `docs/epics/{epic-name}/manifest.md`: append the same under `## Progress Log`; append new decisions surfaced across the wave under `## Key Decisions` (deduped); add `{wave-name}` to `waves:`; bump `updated:`.
-
-Append only — leave Vision & Scope, Open Questions, Discoveries, and `status` to the Professor.
+Skip if `{epic-name}` is `none`. Otherwise consolidate ONE entry for the whole wave — per-build documenters skip epic writes for wave-owned builds, so the wave is the sole writer here. Apply the Epic consolidation contract (`.claude/commands/documenter.md` § Epic consolidation contract) to `docs/epics/{epic-name}/`: merge the wave's shipped work into `update.md` (`## Delivered` per area, `## State of work` refreshed); fold decisions surfaced across the wave into `## Key Decisions` (deduped); add one `## Progress Log` line; add `{wave-name}` to `waves:`; bump `updated:`. `## Vision & Scope`, `## Discoveries`, `## Open Questions`, and `status` stay the Professor's.
 
 ---
 

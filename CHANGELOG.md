@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.27.0](releases/v0.27.0.md) — epic system redesign: current-state epics (update.md work doc, one-line milestones, Files index, archive/) + /documenter epic session-save mode + Epic consolidation contract; MIGRATION: downstream installs refactor their existing epics to the new design.
 - [v0.26.0](releases/v0.26.0.md) — rr v1.3.0: committed judge-steered research engine (research → judge → research, pressure-test saturation, tiered models) released in its canonical repo; skill-embedded workflow-engine pattern recorded in /pcm wiring.
 - [v0.25.0](releases/v0.25.0.md) — wave-as-workflow execution engine (saved workflow + workflow.json + forensics hardening), new /animate command (educational flow animations, dual accuracy gates), p:wave skill namespace renames, docs-commands install fix, opt-in host multi-account swap.
 - [v0.24.0](releases/v0.24.0.md) — token-optimization campaign: persona → output styles, Analysis Protocol folded into persona (`p:analysis` removed), `/audit` removed, routing-gated `/build` + common spawn contract + consolidated 6-bugs, delta STATE.md waves, gitter/build/refine trims, QA promoted to registered hook-carrier wrappers with test-output filter, rr collection/judgment split, prompt-law rails.

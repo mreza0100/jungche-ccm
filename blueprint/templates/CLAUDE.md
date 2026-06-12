@@ -179,18 +179,18 @@ Both `/build` and `/jc` handle worktree isolation, port allocation, and git via 
 
 ## Epics
 
-Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `manifest.md` anchor plus optional files (RND results, RR reports, POC notes, discoveries).
+Initiative-level persistent context at `docs/epics/{name}/`. Structure: `manifest.md` (anchor), `update.md` (work doc — `## State of work` rewritten each update + `## Delivered` per-area current-state), optional topic files (RND results, RR reports, POC notes) indexed in the manifest's `## Files`, and `archive/` for superseded material (cold — never auto-loaded).
 
 **Lifecycle:**
 
 - **Create:** "Create Epic {name}" → Professor asks scope questions, creates `docs/epics/{name}/manifest.md`
-- **Load:** "Load epic {name}" → Professor reads `docs/epics/{name}/` directory, restores full context
-- **Update:** Professor adds files during work (discoveries, RND/RR/POC outputs). `/p:wave:refine` stamps the target epic in `wave.md`. When work ships for an active epic, the pipeline auto-writes `docs/epics/{name}/update.md` and appends Progress Log + new Key Decisions + `pipelines`/`waves` to the manifest — `/documenter` for a standalone `/build`, `/wave` for a wave
+- **Load:** "Load epic {name}" → Professor reads `manifest.md` + `update.md`, then opens topic files from `## Files` (fall back to `ls`) only as the task requires — never `archive/`
+- **Update:** Professor adds topic files during work (registering each in `## Files`). `/p:wave:refine` stamps the target epic in `wave.md`. When work ships or a session saves, the writer consolidates into the epic per the Epic consolidation contract (`documenter.md`) — `/documenter` for a standalone `/build`, `/wave` for a wave, `/documenter epic` for a session save. Epic files are current-state merges, never append-only logs
 - **Ship:** Professor sets `status: SHIPPED` when all scope is delivered
 
-**Manifest format:** frontmatter `epic`, `status` (PLANNING | IN_PROGRESS | SHIPPED), `created`, `updated`, `pipelines: []`, `waves: []`; body sections `## Vision & Scope`, `## Key Decisions`, `## Progress Log`, `## Discoveries`, `## Open Questions`. See any `docs/epics/*/manifest.md` for a worked example.
+**Manifest format:** frontmatter `epic`, `status` (PLANNING | IN_PROGRESS | SHIPPED), `created`, `updated`, `pipelines: []`, `waves: []`; body sections `## Vision & Scope`, `## Key Decisions` (deduped, each with its why), `## Progress Log` (one line per milestone — substance lives in `update.md`), `## Discoveries`, `## Open Questions`, `## Files` (one-line hook per topic file).
 
-**Ownership:** Professor creates and maintains epics (manifest, Vision/Scope, Open Questions, Discoveries, `status`). `/documenter` (standalone builds) and `/wave` (waves) are append-only to `update.md` + the manifest's Progress Log / Key Decisions / `pipelines` / `waves`.
+**Ownership:** Professor owns the lifecycle and narrative (`## Vision & Scope`, `status`, topic files). `/documenter` (standalone builds + `/documenter epic`) and `/wave` (waves) consolidate work into `update.md` + the manifest's working sections per the contract in `documenter.md`.
 
 ---
 
@@ -216,7 +216,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Each epic has a `ma
 - **NEVER edit code on `main`** — worktree branches only, merged by gitter after QA
 - **Only gitter commits code** — no other agent runs git commands
 - **NEVER commit broken code / merge before QA passes**
-- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `docs/epics/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/` + `docs/epics/*/update.md` + manifest append (standalone builds); `/wave` → `docs/epics/*/update.md` + manifest append (waves); `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/km` → all of `{AI_PROJECT}/knowledge/`, both {DOMAIN_ADJ} knowledge and the `prompts/` templates loaded by `{AI_PROJECT}/src/.../prompts/loader.py`)
+- **Only mono-documenter writes permanent docs** (exceptions: gitter owns its Living Reference; Professor → `docs/epics/`; `/officer` → `$CDOCS/officer/`; `/documenter` → `$CDOCS/documenter/$REFS/` + `docs/epics/*/` consolidation (standalone builds + `/documenter epic` session saves); `/wave` → `docs/epics/*/` consolidation (waves); `/mentor` → `$CDOCS/mentor/`; `/pm` → `$CDOCS/pm/`; `/marketer` → `$CDOCS/marketer/`; `/km` → all of `{AI_PROJECT}/knowledge/`, both {DOMAIN_ADJ} knowledge and the `prompts/` templates loaded by `{AI_PROJECT}/src/.../prompts/loader.py`)
 - **NEVER run destructive git** — no `reset --hard`, `push --force`, `clean -fdx`, `rm -rf`
 - **NEVER reuse archived pipeline/wave names** — check archives, append `-v2` if collision
 - Never install unvalidated libraries; never commit secrets

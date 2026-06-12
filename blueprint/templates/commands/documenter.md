@@ -1,6 +1,6 @@
 ---
 name: documenter
-description: Documentation source of truth — archives pipeline docs, merges shipped decisions into the docs/agents/ hub and clusters, audits cross-references, and bootstraps missing docs. Route permanent documentation updates here.
+description: Documentation source of truth — archives pipeline docs, merges shipped decisions into the docs/agents/ hub and clusters, audits cross-references, and bootstraps missing docs. Route permanent documentation updates here. Subcommand `epic` consolidates the current session's work into the active epic for "Load epic" continuation — trigger /documenter epic {epic-name?}.
 argument-hint: [request]
 ---
 
@@ -30,17 +30,17 @@ Invoked by `mono-documenter` agent for pipeline work or directly via `/documente
 
 ## Owned Documents
 
-| Document           | Path                                                  | Purpose                                                             | When to update                                                         |
-| ------------------ | ----------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| **Doc Registry**   | § Document Registry below                             | Master inventory of all permanent docs                              | When docs are added, removed, renamed, or ownership changes            |
-| **Sync Rules**     | `$CDOCS/documenter/$REFS/sync-rules.md`               | Cross-reference rules the audit checks                              | When new sync relationships are discovered                             |
-| **Backlog**        | `docs/dev/backlog.md`                                 | Roadmap-candidate feature ideas parked for later                    | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection) |
-| **Epic Manifests** | `docs/epics/*/manifest.md` + `docs/epics/*/update.md` | ARCHIVE auto-update ONLY — append pipeline progress to active epics | ARCHIVE mode Step 2j (when pipeline matches an active epic)            |
+| Document         | Path                                    | Purpose                                                                   | When to update                                                                    |
+| ---------------- | --------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Doc Registry** | § Document Registry below               | Master inventory of all permanent docs                                    | When docs are added, removed, renamed, or ownership changes                       |
+| **Sync Rules**   | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks                                    | When new sync relationships are discovered                                        |
+| **Backlog**      | `docs/dev/backlog.md`                   | Roadmap-candidate feature ideas parked for later                          | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection)            |
+| **Epic docs**    | `docs/epics/*/`                         | Consolidate shipped/session work into active epics — current-state merges | ARCHIVE Step 2j (pipeline matches an active epic); EPIC mode (`/documenter epic`) |
 
 **Scope guard (single rule — applies everywhere):**
 
 - You are the ONLY agent that writes to permanent child project docs (`{project}/docs/*.md` for every roster entry), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog.md`
-- You MAY append progress entries to `docs/epics/*/update.md` (create if absent) and `docs/epics/*/manifest.md` during ARCHIVE mode Step 2j ONLY — never create, restructure, or delete epic files (owned by Professor)
+- You MAY write to `docs/epics/*/` only per § Epic consolidation contract (ARCHIVE Step 2j, EPIC mode) — never `## Vision & Scope`, `status:`, or epic creation/deletion (the Professor owns the lifecycle)
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `docs/dev/research/`)
 
 **On every invocation:** Read the **Document Registry** below first. Update it last if structural changes occurred.
@@ -80,6 +80,7 @@ Determine the mode from `$ARGUMENTS`:
 | **JC-Update** | Orchestrator describes a hotfix                    | Update only affected permanent docs                   |
 | **Registry**  | "registry", "update registry", "add doc"           | Update the doc registry                               |
 | **Graphs**    | "graphs", "graph update", "update graphs"          | Generate/update Mermaid workflow diagrams             |
+| **Epic**      | starts with "epic"                                 | Consolidate this session's work into the active epic  |
 
 ---
 
@@ -173,17 +174,7 @@ If the pipeline changed a flow already diagrammed under `docs/agents/graph/{proj
 
 Resolve the epic: use the `Epic:` value from your invocation (build Step 10 passes `$EPIC`) when it names an epic; otherwise (`none`/absent) match a `docs/epics/*/manifest.md` (`status: IN_PROGRESS`) whose slug the pipeline name contains. Skip only if no epic resolves either way.
 
-For the matched epic `{name}`:
-
-1. Append a dated entry to `docs/epics/{name}/update.md` (create the file if absent):
-   ```
-   ### {YYYY-MM-DD} — {PIPELINE}
-   - {1-3 bullet summary of what shipped}
-   - Features: {names added to the features cluster in Step 2g-1}
-   ```
-2. In `manifest.md`: append the same entry under `## Progress Log`; append new architectural/scope decisions from `$DOCS/1-plan.md` and `3-architecture.md` under `## Key Decisions` (deduped against existing entries); add `{PIPELINE}` to `pipelines:`; bump `updated:`.
-
-**Scope guard:** append only. Leave `## Vision & Scope`, `## Open Questions`, and `## Discoveries` untouched, and never set `status: SHIPPED` — the Professor owns the narrative and the lifecycle.
+Consolidate the pipeline into the matched epic per § Epic consolidation contract: merge what shipped (dev reports + the features added in Step 2g-1) into `update.md` — `## Delivered` per area, `## State of work` refreshed; fold new architectural/scope decisions from `$DOCS/1-plan.md` and `3-architecture.md` into `## Key Decisions` (deduped); add one `## Progress Log` line; add `{PIPELINE}` to `pipelines:`; bump `updated:`. `## Discoveries` and `## Open Questions` stay untouched in this mode.
 
 ### Step 3 — Leave the pipeline directory in place
 
@@ -206,6 +197,47 @@ Documentation updated. Pipeline: $PIPELINE.
 Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you created or edited in this mode. This normalizes formatting for consistent LLM read/write.
 
 **NOTE:** You do NOT commit. The orchestrator invokes gitter DOCS-COMMIT after you finish.
+
+---
+
+## Epic consolidation contract
+
+Epic files are current-state — consolidated chunks of work and decisions, never append-only logs. Governs every epic write: ARCHIVE Step 2j, EPIC mode, and wave.md Step 3.5. Sections named here are created on first write, so older epics converge on their next update.
+
+**`update.md` — the epic's work doc:**
+
+- `## State of work` (top, REWRITTEN every consolidation) — what is live, the exact in-flight position, and ordered next steps precise enough to execute (paths, commands, expected outcomes).
+- `## Delivered` — one `###` subsection per feature/area describing what exists NOW: behavior, key files/symbols, merge SHAs woven in as facts. Merge into the matching subsection; when a later ship supersedes earlier work, rewrite the subsection — replaced designs vanish (git history keeps them).
+
+**`manifest.md`:**
+
+- `## Progress Log` — exactly one line per milestone: `- {YYYY-MM-DD} — {pipeline|wave|session}: {one sentence} ({SHA})`. The substance lives in `update.md` and `## Key Decisions`, never here.
+- `## Key Decisions` — fold new decisions in with their why, deduped; sharpen an existing entry over adding a near-duplicate.
+- `## Files` — register any new topic file in the epic dir with a one-line hook (the load index).
+- Frontmatter: add to `pipelines:`/`waves:` as applicable; bump `updated:`.
+
+**Boundaries:** `## Vision & Scope`, `status:`, and epic creation/deletion belong to the Professor everywhere. Bulky superseded artifacts move to `docs/epics/{name}/archive/` — loads never read it.
+
+---
+
+## Mode: EPIC (invoked as /documenter epic)
+
+You run inline in the founder's session — the conversation is your source. Write no dump file; skip the `p:quality:doc` load (epic files are working context, not reference clusters).
+
+1. **Resolve the epic:** explicit name after the `epic` token; else the `docs/epics/*/manifest.md` with `status: IN_PROGRESS` whose scope matches the session's work; no unambiguous match → list candidates and ask the founder.
+2. **Consolidate the whole session** per § Epic consolidation contract — walk the ENTIRE conversation, not just recent turns:
+   - Work state — done (with evidence: paths, SHAs, test results), in-flight position, ordered next steps → `update.md` (`## State of work` rewritten, `## Delivered` merged).
+   - Decisions with rationale, founder rulings included → manifest `## Key Decisions` (deduped).
+   - Gotchas, failed attempts, surprises → `## Discoveries` (deduped); items awaiting the founder → `## Open Questions`.
+   - One `## Progress Log` milestone line; new epic files registered in `## Files`; bump `updated:`.
+3. **Completeness pass:** re-scan the conversation top to bottom. The bar: a fresh session given only "Load epic {name}" continues seamlessly — no re-reading the old chat, no re-asking the founder, no re-discovering gotchas.
+4. **Report:**
+
+   ```
+   Saved into epic {name}: update.md + manifest consolidated.
+   Continue in a new chat with:
+     Load epic {name}
+   ```
 
 ---
 
