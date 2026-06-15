@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.30.0](releases/v0.30.0.md) — chat: family consolidated to one `chat.sh` engine, injection-only delivery (/chat:send + inbox removed; added /chat:dump, /chat:ls, /chat:whoami, /chat:load; /chat:save now a mechanical copy); MIGRATION: /chat:send → /chat:inject.
 - [v0.29.0](releases/v0.29.0.md) — /chat command family (find/read/send/inject/capture + mail bus & live-tmux inject), documenter ARCHIVE split with bang-cat shared fragments, goal-definer → goal-manager with epic continuation prompts, gitter scoped-commit discipline, statusline effort/limit/ultracode upgrades; MIGRATION: /chat:load → /chat:read, /goal-definer → /goal-manager.
 - [v0.28.0](releases/v0.28.0.md) — /save → /chat:save (script-dumped transcripts, 5-section header) + new /chat:load (resume a past chat from a pasted excerpt) and /goal-definer (compile a super-goal into a fresh-session prompt); MIGRATION: /save renamed, three new scripts.
 - [v0.27.1](releases/v0.27.1.md) — /save loses its epic redirect; epic saves live solely in /documenter epic.
