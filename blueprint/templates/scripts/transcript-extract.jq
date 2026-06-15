@@ -1,7 +1,7 @@
 # transcript-extract.jq — render a Claude Code session JSONL as readable chat.
 # Visible text only: founder messages, assistant replies, tool-name trail,
 # compaction summaries. Thinking, tool outputs, and system-reminders excluded.
-# Used by save-transcript.sh and chat-load.sh (jq -rf).
+# Used by save-transcript.sh and chat-read.sh (jq -rf).
 
 def textblocks:
   (if (.message.content | type) == "string"

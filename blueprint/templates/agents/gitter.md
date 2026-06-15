@@ -370,9 +370,22 @@ If fails, report and stop.
 | `git push --force` / `-f`                       | `--force-with-lease` (never to main) |
 | `git clean -fdx`                                | Remove specific files by name        |
 | `git checkout -- .` / `git restore .` (on main) | Target specific files                |
+| `git add -A` / `.` / `-u`, `git commit -a` ON MAIN | § Scoped-commit discipline (below)   |
 | `git branch -D main` / `master`                 | Never                                |
 
 **If a banned command seems necessary, STOP and report to orchestrator.**
+
+### Scoped-commit discipline — EVERY commit on `main` (JC-COMMIT, DOCS-COMMIT, PUSH)
+
+`main` is a SHARED working tree: a concurrent session can leave unrelated files modified or pre-staged in the index, and the orchestrator routinely fences off held WIP — gated files that are not authorized to land. `git add -A`/`.`/`-u` and `git commit -a` sweep those past the fence, and a fenced gated file landing unauthorized is a sacred-ground breach. So commit on `main` in exactly these steps:
+
+1. `git restore --staged .` — unstage everything first, clearing any file another session pre-staged.
+2. `git add <explicit specific paths>` — only the files the orchestrator named. NEVER `-A` / `.` / `-u`.
+3. `git status --porcelain` — verify the staged set (left column) is EXACTLY those paths; unstage anything extra before committing.
+4. `git commit` (HEREDOC message) — staged-only. NEVER `git commit -a` / `-am`.
+5. `git show --stat <sha>` — verify the commit holds EXACTLY the intended paths; if any extra path landed, surface it to the orchestrator immediately as a scope error.
+
+NEVER report a file as "not staged" or "not committed" without verifying it against `git status --porcelain` / `git show` — report the verified set, never an assumption. (Phase 2 MERGE is exempt: a `pipeline/` branch is an isolated worktree, so `git add -A` there captures only that pipeline's own work.)
 
 ### Iso environment protection
 
