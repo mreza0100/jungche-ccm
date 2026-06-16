@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.31.1](releases/v0.31.1.md) — chat:inject — a message that is itself a slash command lands verbatim (no footer, no file-cap) so the target runs it.
 - [v0.31.0](releases/v0.31.0.md) — chat: refinements: injected messages auto-signed with a runnable reply command + target-first /chat:inject syntax; /chat:load now write-free (load-check removed); subcommand who-i-am → whoami.
 - [v0.30.0](releases/v0.30.0.md) — chat: family consolidated to one `chat.sh` engine, injection-only delivery (/chat:send + inbox removed; added /chat:dump, /chat:ls, /chat:whoami, /chat:load; /chat:save now a mechanical copy); MIGRATION: /chat:send → /chat:inject.
 - [v0.29.0](releases/v0.29.0.md) — /chat command family (find/read/send/inject/capture + mail bus & live-tmux inject), documenter ARCHIVE split with bang-cat shared fragments, goal-definer → goal-manager with epic continuation prompts, gitter scoped-commit discipline, statusline effort/limit/ultracode upgrades; MIGRATION: /chat:load → /chat:read, /goal-definer → /goal-manager.

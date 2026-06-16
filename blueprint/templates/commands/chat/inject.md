@@ -29,6 +29,8 @@ Args: $ARGUMENTS
 
 The script appends a footer to the end of every message — `— from {name} · sid {sender session-id} · to reply: /chat:inject {sender tmux} <message>` — so the recipient knows the source and gets a runnable reply command. The `sid` is always derived; the `to reply:` line appears whenever the sender is in tmux (its session is the live reply handle); the human `{name}` appears only when you pass `CHAT_INJECT_FROM_NAME`. The typed (LIVE) footer is single-line; the transcript and any long-message spill file get a block footer, and that spill's live pointer also names the sender.
 
+**Exception — a message that IS a slash command** (starts with `/`) is injected verbatim into a live pane: no signature footer (it would land as command arguments) and no long-message file-cap (a file pointer gets read, never run). The command lands clean so the target executes it.
+
 ## To steer a RUNNING chat, target its tmux session — not its UUID
 
 The LIVE send-keys arm fires only for `self` or a **live tmux session name**. A bare session-id has no pane map, so it **falls back to the transcript (RESUME) arm** — which a _running_ target will not see until it reopens, so it cannot stop a live chat in time. To steer a running chat, pass its **tmux session name**.

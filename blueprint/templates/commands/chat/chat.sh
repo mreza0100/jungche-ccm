@@ -161,11 +161,18 @@ case "$cmd" in
     sender_short="${sender_name:-${sender_handle:-${sender_uuid8:-unknown}}}"
 
     if [[ -n "$live_tmux" ]]; then
-      limit="${CHAT_INJECT_MAXLEN:-280}"; note=""; msg="${msg}${footer_inline}"
-      if [[ ${#msg} -gt $limit ]]; then
-        msgdir="$HOME/.claude-sessions/.chat-inject-msgs"; mkdir -p "$msgdir"
-        msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s%s\n' "$*" "$footer_block" > "$msgfile"
-        msg="📨 Injected message from ${sender_short} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
+      note=""
+      if [[ "$msg" =~ ^[[:space:]]*/ ]]; then
+        : # the message IS a slash command — send verbatim so the target runs it:
+          # no signature (it would land as command args) and no file-cap (a file
+          # pointer would be read, never executed).
+      else
+        limit="${CHAT_INJECT_MAXLEN:-280}"; msg="${msg}${footer_inline}"
+        if [[ ${#msg} -gt $limit ]]; then
+          msgdir="$HOME/.claude-sessions/.chat-inject-msgs"; mkdir -p "$msgdir"
+          msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s%s\n' "$*" "$footer_block" > "$msgfile"
+          msg="📨 Injected message from ${sender_short} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
+        fi
       fi
       tmux send-keys -t "$live_tmux" -l -- "$msg"
       sleep "${CHAT_INJECT_SUBMIT_DELAY:-0.4}"
