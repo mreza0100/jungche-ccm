@@ -1,7 +1,7 @@
 ---
 name: chat:inject
-description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Trigger — /chat:inject {message} :: {target}.
-argument-hint: [{message} :: {self | tmux-session | session-id | excerpt}]
+description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
+argument-hint: [{self | tmux-session | session-id} {message}]
 ---
 
 # Chat Inject — force a turn into another chat (or this one)
@@ -15,12 +15,19 @@ Args: $ARGUMENTS
 
 ## Steps
 
-1. **Split message from target.** `$ARGUMENTS` is `{message} :: {target}`, where `{target}` is `self`, a tmux session name, a session-id, or a distinctive excerpt. If `::` is absent, ask the founder for the message and the target.
+1. **Split target from message.** Two accepted forms:
+   - **Target-first** `{target} {message}` — the first whitespace-delimited token is the target (`self`, a tmux session name, or a session-id); everything after it is the message. This is the form the reply-footer teaches.
+   - **Legacy** `{message} :: {target}` — message first, then `::`, then the target; use this when the target is a distinctive **excerpt** (multi-word) rather than a single handle.
+     If neither a leading single-token target nor `::` is present, ask the founder for the message and the target.
 2. **Resolve the target:**
    - `self`, a tmux session name, or a session-id → pass straight through.
    - excerpt → write it to `tmp/chat-loads/inject-target.txt`, then `.claude/commands/chat/chat.sh find tmp/chat-loads/inject-target.txt` for the session-id (confirm an ambiguous match against the printed date range first).
-3. **Inject:** `.claude/commands/chat/chat.sh inject {target} "{message}"`. It delivers LIVE for `self` or a live tmux pane, else appends to the transcript.
+3. **Inject (signed):** `CHAT_INJECT_FROM_NAME="{this chat's name}" .claude/commands/chat/chat.sh inject {target} "{message}"`. It delivers LIVE for `self` or a live tmux pane, else appends to the transcript. Pass `CHAT_INJECT_FROM_NAME` with this chat's own display name (the 🔖 name in your status line) so the recipient sees who sent it.
 4. **Report** which path it took from the output — LIVE (answered now) or RESUME (answered on reopen).
+
+## Every injected message is signed
+
+The script appends a footer to the end of every message — `— from {name} · sid {sender session-id} · to reply: /chat:inject {sender tmux} <message>` — so the recipient knows the source and gets a runnable reply command. The `sid` is always derived; the `to reply:` line appears whenever the sender is in tmux (its session is the live reply handle); the human `{name}` appears only when you pass `CHAT_INJECT_FROM_NAME`. The typed (LIVE) footer is single-line; the transcript and any long-message spill file get a block footer, and that spill's live pointer also names the sender.
 
 ## To steer a RUNNING chat, target its tmux session — not its UUID
 

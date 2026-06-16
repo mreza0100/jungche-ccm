@@ -4,7 +4,7 @@ set -euo pipefail
 # chat.sh — the chat: family engine, one script with subcommands. Lives in
 # .claude/commands/chat/ ; each chat/<name>.md command calls `chat.sh <name>`.
 #
-#   who-i-am                                  print THIS chat's own tmux session
+#   whoami                                    print THIS chat's own tmux session
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
 #   inject  <self|tmux|session-id|path> <message...>   force a turn (live / resume)
@@ -13,8 +13,7 @@ set -euo pipefail
 #   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
 #   extract <transcript-jsonl>                render a known transcript to text
 #   tail    [N]                               render THIS session's last N lines
-#   load    <dir-or-file>...                  enumerate a file set to force-read
-#   load-check <doc> <dir-or-file>...         verify the doc covers every file
+#   load    <dir-or-file>...                  enumerate a file set to force-read in full
 
 # transcript-extract.jq, inlined — renders a session JSONL as readable chat.
 read -r -d '' JQ_EXTRACT <<'JQ' || true
@@ -95,7 +94,7 @@ _find() {
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  who-i-am)
+  whoami)
     self_tmux
     ;;
 
@@ -140,12 +139,33 @@ case "$cmd" in
       [[ -n "$transcript" ]] || { echo "ERROR: no live tmux pane and no transcript for '$target'" >&2; exit 1; }
     else echo "ERROR: target is not self, a live tmux session, a transcript path, or a session-id" >&2; exit 1; fi
 
+    # Sender signature — every injected message ends with who sent it and the
+    # exact command to answer with. The /rename chat title isn't readable from a
+    # script, so identity = the sender's own tmux session (the reply handle) +
+    # short session id; an optional human name comes from the caller via
+    # $CHAT_INJECT_FROM_NAME (the model's own 🔖 chat name). The reply line hands
+    # the recipient a runnable `/chat:inject {handle} <message>`.
+    # Two footer forms: a one-line one for the LIVE typed path (a bare newline
+    # submits in Claude Code, so the typed message must stay single-line), and a
+    # block one for pure text — the RESUME transcript and the long-message file.
+    sender_handle="$(self_tmux 2>/dev/null || true)"
+    sender_uuid="${CLAUDE_CODE_SESSION_ID:-}"; sender_uuid8="${sender_uuid:0:8}"
+    sender_name="${CHAT_INJECT_FROM_NAME:-}"
+    sigparts=()
+    [[ -n "$sender_name" ]]   && sigparts+=("from ${sender_name}")
+    [[ -n "$sender_uuid8" ]]  && sigparts+=("sid ${sender_uuid8}")
+    [[ -n "$sender_handle" ]] && sigparts+=("to reply: /chat:inject ${sender_handle} <message>")
+    sig=""; for p in "${sigparts[@]:-}"; do [[ -n "$p" ]] || continue; [[ -n "$sig" ]] && sig="$sig · "; sig="$sig$p"; done
+    footer_inline=""; footer_block=""
+    [[ -n "$sig" ]] && { footer_inline="  — ${sig}"; footer_block=$'\n\n'"— ${sig}"; }
+    sender_short="${sender_name:-${sender_handle:-${sender_uuid8:-unknown}}}"
+
     if [[ -n "$live_tmux" ]]; then
-      limit="${CHAT_INJECT_MAXLEN:-280}"; note=""
+      limit="${CHAT_INJECT_MAXLEN:-280}"; note=""; msg="${msg}${footer_inline}"
       if [[ ${#msg} -gt $limit ]]; then
         msgdir="$HOME/.claude-sessions/.chat-inject-msgs"; mkdir -p "$msgdir"
-        msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s\n' "$msg" > "$msgfile"
-        msg="📨 Injected message (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
+        msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s%s\n' "$*" "$footer_block" > "$msgfile"
+        msg="📨 Injected message from ${sender_short} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
       fi
       tmux send-keys -t "$live_tmux" -l -- "$msg"
       sleep "${CHAT_INJECT_SUBMIT_DELAY:-0.4}"
@@ -154,6 +174,7 @@ case "$cmd" in
       exit 0
     fi
 
+    msg="${msg}${footer_block}"
     tail_event="$(jq -c 'select(.uuid != null)' "$transcript" | tail -1)"
     [[ -n "$tail_event" ]] || { echo "ERROR: no uuid-bearing event in $transcript" >&2; exit 1; }
     parent_uuid="$(printf '%s' "$tail_event" | jq -r '.uuid')"
@@ -257,34 +278,11 @@ case "$cmd" in
       done | sort -u
     )
     echo "---"
-    echo "$n files, $total total lines. READ EVERY ONE; rewrite each into the mental-model doc, then run: chat.sh load-check <doc> $*"
-    ;;
-
-  load-check)
-    [[ $# -ge 2 ]] || { echo "usage: chat.sh load-check <mental-model-doc> <dir-or-file>..." >&2; exit 1; }
-    out="$1"; shift
-    [[ -f "$out" ]] || { echo "ERROR: mental-model doc not found: $out" >&2; exit 1; }
-    covered=0; missing=0; misslist=""
-    while IFS= read -r f; do
-      [[ -n "$f" ]] || continue
-      grep -Iq . "$f" 2>/dev/null || continue
-      if grep -qF -- "$f" "$out"; then covered=$((covered + 1)); else missing=$((missing + 1)); misslist+="  MISSING: $f"$'\n'; fi
-    done < <(
-      for t in "$@"; do
-        if [[ -f "$t" ]]; then printf '%s\n' "$t"
-        elif [[ -d "$t" ]]; then find "$t" -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/.venv/*' -not -path '*/__pycache__/*' 2>/dev/null; fi
-      done | sort -u
-    )
-    total=$((covered + missing))
-    out_chars="$(wc -c < "$out" | tr -d ' ')"; min_chars=$((total * 120))
-    echo "coverage: $covered/$total files referenced; doc ${out_chars}c (need ~${min_chars}c for a real rewrite)"
-    if [[ "$missing" -gt 0 ]]; then printf '%s' "$misslist"; echo "INCOMPLETE — read the MISSING files, add their sections, re-run load-check."; exit 2; fi
-    if [[ "$out_chars" -lt "$min_chars" ]]; then echo "INCOMPLETE — all referenced but the doc is too thin to be a genuine rewrite. Expand each section."; exit 2; fi
-    echo "COMPLETE — every file covered with substantive content."
+    echo "$n files, $total total lines. READ EVERY ONE in full with the Read tool — no skim, no sampling. Write nothing."
     ;;
 
   *)
-    echo "usage: chat.sh {who-i-am|find|read|inject|ls|capture|save|extract|tail|load|load-check} ..." >&2
+    echo "usage: chat.sh {whoami|find|read|inject|ls|capture|save|extract|tail|load} ..." >&2
     exit 1
     ;;
 esac

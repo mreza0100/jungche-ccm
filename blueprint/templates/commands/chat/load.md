@@ -1,14 +1,14 @@
 ---
 name: chat:load
-description: Force-load a directory or file set into context — chat.sh load enumerates every file, then you must read ALL of them and rewrite each into a mental-model doc, gated by chat.sh load-check (every file referenced + substantive) so nothing is skipped. Trigger — /chat:load {dir-or-files}.
+description: Force-load a directory or file set into context — chat.sh load enumerates every text file, then you read ALL of them in full (no skim, no sampling). Writes nothing. Trigger — /chat:load {dir-or-files}.
 argument-hint: [directory or file paths]
 ---
 
-# Chat Load — force-load a file set into a verified mental model
+# Chat Load — force every file in a set into context
 
 Args: $ARGUMENTS
 
-Load the target into context for real — not a skim. The check at the end proves you read everything; you are done only when it prints `COMPLETE`.
+Load the target into context for real — every file, in full, no skim. This writes nothing; the whole point is that you actually read all of it.
 
 ## Steps
 
@@ -16,13 +16,6 @@ Load the target into context for real — not a skim. The check at the end prove
    ```bash
    .claude/commands/chat/chat.sh load $ARGUMENTS
    ```
-   It lists EVERY text file (line counts + total). This is the full set you must cover — no sampling.
-2. **Read all of them.** Read every file in the manifest, in ranged Read calls. Actually read them — do not announce victory after a few.
-3. **Rewrite into a mental-model doc.** Write `tmp/chat-loads/loaded-{slug}.md`: a `## {full-file-path}` section per file restating its purpose, key facts, and how it connects to the rest — substantive, in your own words (the rewrite is the proof you read it). End with a `## Synthesis` section holding the overall mental model.
-4. **Verify — do not skip:**
-   ```bash
-   .claude/commands/chat/chat.sh load-check tmp/chat-loads/loaded-{slug}.md $ARGUMENTS
-   ```
-   - `INCOMPLETE` → it lists the files you missed, or flags a too-thin doc. Read/expand those, then re-run. Loop until `COMPLETE`.
-   - `COMPLETE` → every file is genuinely loaded.
-5. **Report** the synthesized mental model and confirm `COMPLETE`.
+   It lists EVERY text file (line counts + total). That is the full set — no sampling.
+2. **Read every one in full.** Read each listed file with the Read tool, in ranged calls for the large ones. Actually read them all — do not stop after a few. Write nothing.
+3. **Report** the mental model you now hold: what the set is, the key facts per area, and how the pieces connect.
