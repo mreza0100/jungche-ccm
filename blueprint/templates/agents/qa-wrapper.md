@@ -1,6 +1,6 @@
 ---
 name: qa-{project}
-description: QA gate for {project} — spawned by /build pre-merge (Step 7) and post-merge (Step 9); full protocol lives in {project}/.claude/agents/qa.md
+description: QA gate for {project} — spawned by /wave:build pre-merge (Step 7) and post-merge (Step 9); full protocol lives in {project}/.claude/agents/qa.md
 model: opus
 tools: Read, Write, Edit, Bash, Glob, Grep, Agent
 hooks:

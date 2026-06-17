@@ -28,7 +28,7 @@ The executor is a fresh Professor session in this repo with no memory of this co
 
 - Locate the surfaces the goal touches (start at `docs/agents/_index.md` and the relevant child `CLAUDE.md`); collect the 3–8 entry-point files or docs the executor should read first.
 - Check `docs/epics/` and recent waves for prior work the goal builds on or collides with.
-- Identify the natural first move for the executor: a command (`/build`, `/jc`, `/wave`), a skill (`p:wave:refine`, `p:rnd`, `rr`), or direct analysis.
+- Identify the natural first move for the executor: a command (`/wave:build`, `/jc`, `/wave`, `/wave:refine`, `/p:rnd`), a skill (`rr`), or direct analysis.
 - Distill what the executor cannot infer from the repo: founder intent, tradeoffs already decided, context from this conversation.
 
 ## Step 3 — Write the prompt

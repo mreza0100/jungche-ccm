@@ -1,6 +1,6 @@
-# /build Reference
+# /wave:build Reference
 
-Detailed mechanics the `/build` orchestrator reads on demand: the Step 0a stale-cleanup procedure, the BLOCKED.md template, and the full pipeline step map.
+Detailed mechanics the `/wave:build` orchestrator reads on demand: the Step 0a stale-cleanup procedure, the BLOCKED.md template, and the full pipeline step map.
 
 ## Contents
 
@@ -21,7 +21,7 @@ gitter archives it to `$DOCS/audit-trail.json` at MERGE.
 
 ## Step 0a — Stale Pipeline Cleanup
 
-The full mechanics of `/build` Step 0a (MANDATORY pre-flight). The orchestrator reads and executes this before naming the pipeline. Invariants the rest of the pipeline depends on: `BLOCKED.md` dirs are preserved (never archived), wave-owned builds are never archived individually, stale standalone dirs move to gitignored cold storage `tmp/dev/archive/builds/`.
+The full mechanics of `/wave:build` Step 0a (MANDATORY pre-flight). The orchestrator reads and executes this before naming the pipeline. Invariants the rest of the pipeline depends on: `BLOCKED.md` dirs are preserved (never archived), wave-owned builds are never archived individually, stale standalone dirs move to gitignored cold storage `tmp/dev/archive/builds/`.
 
 **First, prune orphaned worktrees** — `.worktrees/{name}` directories left by failed or abandoned pipelines that no agent otherwise reclaims (the inverse of the doc-dir sweep below):
 
@@ -51,7 +51,7 @@ done
 - If it has NO completion markers (no `7-*` file, no `BLOCKED.md`) → it was abandoned mid-pipeline. Add an `ABANDONED.md` marker, then archive. **Only for standalone builds (no wave owner).**
 
 ```bash
-echo "Pipeline abandoned — archived during /build pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
+echo "Pipeline abandoned — archived during /wave:build pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
 ```
 
 **Archive to cold storage (for standalone builds only — NEVER for wave-owned builds):**
@@ -98,7 +98,7 @@ When the fix loop escalates to BLOCKED-DEFERRED, the orchestrator writes `$DOCS/
 
 ## Pipeline step map
 
-What each `/build` step produces and where. Each step in `build.md` is authoritative for its own Produces/Location; this is the at-a-glance index.
+What each `/wave:build` step produces and where. Each step in `build.md` is authoritative for its own Produces/Location; this is the at-a-glance index.
 
 **Two-gate test discipline:** developer self-QA (Step 6) and the Step 7 fix-loop rounds are TARGETED (unit + typecheck + lint + only the failing/affected profiles + the pipeline's adversarial tests, NEVER the full suite). The full suite runs at exactly two zero-tolerance gates — **GATE-1** (pre-merge full, on the worktree branches, between Code review and Merge) and **GATE-2** (post-merge full, on `main` after merge). Both gates run on the per-pipeline isolated test stack (`up-test-pipeline` / `db-setup-test-pipeline` / `nuke-test-pipeline` `PIPELINE={name}` on the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT` from `.env.ports`); GATE-2 runs from the project dirs on `main`.
 
@@ -116,7 +116,7 @@ What each `/build` step produces and where. Each step in `build.md` is authorita
 | 6   | Develop                         | developers (per-project role)               | Working code in worktrees + `$DOCS/5-dev-report-{project}.md`                                     | worktrees (code) + root (docs)   |
 | 7   | Targeted QA _(pre-merge)_       | child QA (qa-{project} wrapper)             | TARGETED pre-merge QA feeding the fix loop — unit + affected/failing profiles + adversarial, NOT the full suite. Adversarial tests in worktrees + consolidated `$DOCS/6-bugs.md` (one `## {PROJECT}` section each) | worktrees (tests) + root (docs)  |
 | -   | Fix loop                        | developers → targeted QA                    | TARGETED re-run, cap 3. Repeat until `$DOCS/6-bugs.md` = NONE                                     |                                  |
-| -   | Code review _(pre-merge gate)_  | p:audit:code-hygiene → architects → devs    | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                               | worktrees (code) + root (docs)   |
+| -   | Code review _(pre-merge gate)_  | audit:code-hygiene → architects → devs      | `$DOCS/6-code-review.md` (loops until CLEAN, cap 2)                                               | worktrees (code) + root (docs)   |
 | -   | **GATE-1 — pre-merge full**     | child QA (FULL, qa-{project} wrapper)       | Full suite (unit + integration/e2e), zero-tolerance all-green on the worktree branches; one bounded fix pass + re-run, still failing → BLOCKED-DEFERRED. Writes `## {PROJECT}` sections of `$DOCS/6-bugs.md` | worktrees (tests) + root (docs)  |
 | 8   | Merge                           | gitter (MERGE)                              | Commits + merges to main                                                                          |                                  |
 | 9   | **GATE-2 — post-merge full**    | child QA (POST-MERGE, qa-{project} wrapper) | Full suite from project dirs on `main`, zero-tolerance all-green. `$DOCS/7-post-merge-qa.md` (single consolidated file from inline results) | root                             |

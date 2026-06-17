@@ -6,7 +6,7 @@ description: >
   Researches libraries/APIs inline as needed — no separate researcher step.
   Invoke AFTER mono-architect, BEFORE developer. Exits pipeline after first run —
   does NOT re-enter during fix loops.
-model: opus # {MODEL_TIER} — records tier intent (/build's invocation alias governs at runtime); retune to your model tier
+model: opus # {MODEL_TIER} — records tier intent (/wave:build's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, mcp__context7__resolve-library-id, mcp__context7__query-docs
 ---
 

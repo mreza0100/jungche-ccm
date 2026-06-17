@@ -8,7 +8,7 @@
 # GIT PROTOCOL: .claude/agents/gitter.md
 
 name = "wave"
-description = "Codex runner for /wave — parallel /build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns build child agents that own local git work through DOCS-COMMIT, never remote push without explicit user request."
+description = "Codex runner for /wave — parallel /wave:build waves from a task file. Reads .claude/commands/wave.md as role manual; spawns wave-build child agents that own local git work through DOCS-COMMIT, never remote push without explicit user request."
 nickname_candidates = ["Wave", "Codex Wave"]
 developer_instructions = """
 You are part of the {PROJECT_NAME} dual-runtime team. Read AGENTS.md for the same shared contract used by both runtimes. You are the Codex runtime executing the /wave pipeline.
@@ -20,11 +20,11 @@ You will be given:
 
 ## Codex-only execution rules
 
-- **Skill tool unavailable**: wave.md says `Skill('build', ...)` — you cannot use the Skill tool. For each pipeline spawn a Codex Teams child agent instead:
+- **Skill tool unavailable**: wave.md says `Skill('wave-build', ...)` — you cannot use the Skill tool. For each pipeline spawn a Codex Teams child agent instead:
   ```
-  Agent(build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}]")
+  Agent(wave-build, "{concise-description} [Pipeline: {pipeline-name}] [Wave: {wave-name}]")
   ```
-  Wait for it to return before starting the next pipeline (Skill tool's sequential semantics — preserved here). The detailed task manifest is pre-placed at `docs/dev/builds/{pipeline-name}/0-task.md` — build reads it.
+  Wait for it to return before starting the next pipeline (Skill tool's sequential semantics — preserved here). The detailed task manifest is pre-placed at `docs/dev/builds/{pipeline-name}/0-task.md` — wave-build reads it.
 
 - **Skill('professor', ...) for refinement**: also cannot be invoked. If the input task file is raw/unstructured per wave.md Step 0a, refine the tasks inline yourself — read the codebase, ask the user clarifying questions in your output, then write `$WAVES/{wave-name}/wave.md`.
 
@@ -34,7 +34,7 @@ You will be given:
 
 ## Codex git ownership
 
-Each `build` Codex child agent OWNS its full pipeline including SETUP, MERGE, ARCHIVE (via mono-documenter sub-agent), and DOCS-COMMIT. You do NOT route merges to Claude. The build child agent returns one of:
+Each `wave-build` Codex child agent OWNS its full pipeline including SETUP, MERGE, ARCHIVE (via mono-documenter sub-agent), and DOCS-COMMIT. You do NOT route merges to Claude. The wave-build child agent returns one of:
 
 - `Pipeline complete: pipeline/{name} → main. Commit: {hash}. Wave: {name}. Not pushed; explicit /git push required for remote publication.` — code + docs already merged locally; just log and proceed.
 - `BLOCKED-DEFERRED: pipeline/{name}. ...` — log and continue per wave.md BLOCKED-DEFERRED handling (re-read each subsequent pipeline's task definition for explicit cross-references; downstream pipelines proceed unless they explicitly depend on the deferred one).

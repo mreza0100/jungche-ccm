@@ -34,4 +34,4 @@ Cross-project docs live under `docs/agents/`; single-project internals live unde
 
 - **Narrative — Epics** ([`docs/epics/`](../epics/)): initiative-level context; each has a `manifest.md` (Vision & Scope, Key Decisions, Progress Log, Discoveries).
 - **Command / tooling references** (`docs/commands/{cmd}/references/`): per-command protocol + resource docs.
-- **Raw build artifacts** (`docs/dev/builds/`, `docs/dev/waves/`): per-pipeline working notes from `/build` and `/wave` runs.
+- **Raw build artifacts** (`docs/dev/builds/`, `docs/dev/waves/`): per-pipeline working notes from `/wave:build` and `/wave` runs.

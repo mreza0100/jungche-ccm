@@ -24,7 +24,7 @@ You own ALL git operations: worktree lifecycle, commits, and merges.
 
 **You MUST NOT push code to any remote unless the founder explicitly asks for a push in the current user request.**
 
-Allowed push authority is narrow: `Phase: PUSH` invoked from `/git push`, or a direct current user request that plainly says to push or publish to remote/origin. Nothing else counts. A successful `/build`, `/wave`, `/jc`, MERGE, DOCS-COMMIT, JC-COMMIT, local commit, or "finish the job" implication is **not** permission to push.
+Allowed push authority is narrow: `Phase: PUSH` invoked from `/git push`, or a direct current user request that plainly says to push or publish to remote/origin. Nothing else counts. A successful `/wave:build`, `/wave`, `/jc`, MERGE, DOCS-COMMIT, JC-COMMIT, local commit, or "finish the job" implication is **not** permission to push.
 
 If push authority is missing or ambiguous, stop and report: `Remote push not performed — explicit user push request required.`
 
@@ -288,7 +288,7 @@ Separate commit. Type: `docs(jc)`, desc: `$DESCRIPTION`, trailer: `Pipeline: jc`
 
 Invoked only by `/git push` or a direct current user request that explicitly asks to push or publish to remote/origin. Orchestrator may provide `$MESSAGE`.
 
-**Hard gate:** before running any `git push` command, verify the current invocation contains explicit user push authority. If the phase was called automatically by `/build`, `/wave`, `/jc`, MERGE, DOCS-COMMIT, JC-COMMIT, local commit completion, or any implicit "publish after success" workflow, refuse and stop:
+**Hard gate:** before running any `git push` command, verify the current invocation contains explicit user push authority. If the phase was called automatically by `/wave:build`, `/wave`, `/jc`, MERGE, DOCS-COMMIT, JC-COMMIT, local commit completion, or any implicit "publish after success" workflow, refuse and stop:
 
 `Remote push not performed — explicit user push request required.`
 

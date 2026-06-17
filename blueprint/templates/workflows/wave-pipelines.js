@@ -9,7 +9,7 @@ export const meta = {
 //   groups: [[{ pipelineName, idx, description, routing: ['{project}',...], dependsOn: [] }]] }
 // The harness may deliver `args` JSON-STRING-encoded instead of parsed — parse before validating,
 // else the guard below throws "requires args.groups" before any workflow runs.
-// Flow graph + spawn briefs are declared copies of .claude/commands/build.md § Wave workflow mode — update both together.
+// Flow graph + spawn briefs are declared copies of .claude/commands/wave/build.md § Wave workflow mode — update both together.
 
 if (typeof args === 'string') {
   try { args = JSON.parse(args) } catch (e) {

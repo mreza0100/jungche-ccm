@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.33.0](releases/v0.33.0.md) — uniform nested-command shape (`/wave:build`, `/quality:*`, `/wave:{refine,review}`, `/p:*`, `/audit:*`, `/pcm:{update,release}`; `/build`→`/wave:build` incl. the Codex layer); all three Tier-A personas restored to full depth; a generic `km-guard.sh` file-protection gate; `/chat:interrogate` joins the `/chat:` family; `/p:360` ships portable. MIGRATION: skills→nested commands + `/build`→`/wave:build`.
 - [v0.32.0](releases/v0.32.0.md) — wave engine splits into a composable `wave-build` workflow + a thin group scheduler; two-gate test discipline (GATE-1 pre-merge + GATE-2 post-merge, targeted in between) with a global failure-biased test-output filter; per-pipeline isolated test infra; `/jc:wave`, `/dev restart`, and the `p:tokens` token-attribution skill; MIGRATION: wave-pipelines split + two-gate QA cadence.
 - [v0.31.2](releases/v0.31.2.md) — chat:inject `--no-sig` flag drops the sender signature in every arm (LIVE, spill file, RESUME) for clean operational injections (`/compact`, `/goal`, `/loop`).
 - [v0.31.1](releases/v0.31.1.md) — chat:inject — a message that is itself a slash command lands verbatim (no footer, no file-cap) so the target runs it.

@@ -53,7 +53,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["bash", ".claude/scripts/worktree.sh"],
     decision = "allow",
-    justification = "worktree.sh is the sanctioned pipeline setup script. Codex uses this for branch + worktree + port allocation. Auto-allow because under approval_policy=never any 'prompt' decision auto-rejects, which would block Codex from running /build at all.",
+    justification = "worktree.sh is the sanctioned pipeline setup script. Codex uses this for branch + worktree + port allocation. Auto-allow because under approval_policy=never any 'prompt' decision auto-rejects, which would block Codex from running /wave:build at all.",
     match = ["bash .claude/scripts/worktree.sh create fe-transcription-ux"],
     not_match = [],
 )
@@ -69,7 +69,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "add"],
     decision = "allow",
-    justification = "Codex owns its own git staging when orchestrating /build or /wave. The separate gitter agent owns staging when another runtime orchestrates; both runtimes follow the same gitter.md protocol.",
+    justification = "Codex owns its own git staging when orchestrating /wave:build or /wave. The separate gitter agent owns staging when another runtime orchestrates; both runtimes follow the same gitter.md protocol.",
     match = ["git add file.ts", "git add -A"],
     not_match = ["git status"],
 )
@@ -77,7 +77,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["git", "commit"],
     decision = "allow",
-    justification = "Codex owns its own commits when orchestrating /build or /wave (SETUP snapshots, worktree commits, MERGE commits, DOCS-COMMIT). Must follow gitter.md commit-message convention with Pipeline:/Wave: trailers.",
+    justification = "Codex owns its own commits when orchestrating /wave:build or /wave (SETUP snapshots, worktree commits, MERGE commits, DOCS-COMMIT). Must follow gitter.md commit-message convention with Pipeline:/Wave: trailers.",
     match = ["git commit -m '...'", "git commit"],
     not_match = ["git log --oneline"],
 )
@@ -125,7 +125,7 @@ prefix_rule(
 prefix_rule(
     pattern = ["edit", "{AI_PROJECT}/knowledge"],
     decision = "prompt",
-    justification = "Files under {AI_PROJECT}/knowledge/ ARE the {AI_SERVICE_NAME} prompts, injected verbatim into the LLM. Human-driven knowledge work routes via /km (loads the p:quality:prompt skill first). Review before editing directly.",
+    justification = "Files under {AI_PROJECT}/knowledge/ ARE the {AI_SERVICE_NAME} prompts, injected verbatim into the LLM. Human-driven knowledge work routes via /km (loads the quality:prompt skill first). Review before editing directly.",
     match = ["edit {AI_PROJECT}/knowledge/REGISTRY.json", "edit {AI_PROJECT}/knowledge/prompts/foo.md"],
     not_match = [],
 )

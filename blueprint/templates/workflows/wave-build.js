@@ -1,13 +1,13 @@
 export const meta = {
   name: 'wave-build',
-  description: 'Single-pipeline build workflow — runs ONE pipeline end-to-end (SETUP → plan → architecture → develop → QA → review → merge → post-merge → docs) with per-pipeline isolated test infra, and returns its result. The group scheduler (wave-pipelines) composes this; standalone /build invokes it directly.',
+  description: 'Single-pipeline build workflow — runs ONE pipeline end-to-end (SETUP → plan → architecture → develop → QA → review → merge → post-merge → docs) with per-pipeline isolated test infra, and returns its result. The group scheduler (wave-pipelines) composes this; standalone /wave:build invokes it directly.',
   phases: [{title:'Setup'},{title:'Plan'},{title:'Architecture'},{title:'Develop'},{title:'QA'},{title:'Code Review'},{title:'GATE-1'},{title:'Merge'},{title:'Post-Merge'},{title:'Docs'}],
 }
 
-// args is ONE pipeline (the scheduler passes one element of its groups; standalone /build may pass a lean object):
+// args is ONE pipeline (the scheduler passes one element of its groups; standalone /wave:build may pass a lean object):
 // { pipelineName, idx, total, description, routing: ['{project}',...], dependsOn: [], waveName, epicName, carryWip, timestamp }
 // The harness may deliver `args` JSON-STRING-encoded instead of parsed — parse before validating.
-// Flow graph + spawn briefs are declared copies of .claude/commands/build.md — update both together.
+// Flow graph + spawn briefs are declared copies of .claude/commands/wave/build.md — update both together.
 
 if (typeof args === 'string') {
   try { args = JSON.parse(args) } catch (e) {
@@ -16,7 +16,7 @@ if (typeof args === 'string') {
 }
 
 if (!args || !args.pipelineName) {
-  throw new Error('wave-build requires args.pipelineName — it runs exactly one pipeline; see /build for the invocation contract')
+  throw new Error('wave-build requires args.pipelineName — it runs exactly one pipeline; see /wave:build for the invocation contract')
 }
 
 if (args.idx == null) args.idx = 1
@@ -66,7 +66,7 @@ async function resilient(prompt, opts) {
 
 const bad = r => !r || r.status === 'FAIL'
 const take = (flags, r) => { if (r && r.flags && r.flags.length) flags.push(...r.flags); return r }
-const COMMON = ' Follow build.md § Common spawn contract: NEVER run git (gitter owns every commit); write reports to the root $DOCS path given here, never inside the worktree; ZERO GAP — implement the spec, never re-decide it; doc-awareness via the grep-true doc clusters. Report carry-forward items (/jc candidates, SPEC-CONFLICTs, pre-existing defects) in your structured flags, one line each.'
+const COMMON = ' Follow wave/build.md § Common spawn contract: NEVER run git (gitter owns every commit); write reports to the root $DOCS path given here, never inside the worktree; ZERO GAP — implement the spec, never re-decide it; doc-awareness via the grep-true doc clusters. Report carry-forward items (/jc candidates, SPEC-CONFLICTs, pre-existing defects) in your structured flags, one line each.'
 // INSTALL: adapt the infra project key and test-port references below to match your install's {INFRA_PROJECT} and TEST_PG_PORT/TEST_LS_PORT allocated test ports.
 const TEST_INFRA = ' Test infra is ISOLATED per pipeline — bring up YOUR stack with make -C <worktree>/{INFRA_PROJECT} up-test-pipeline PIPELINE=' + p.pipelineName + ' + db-setup-test-pipeline PIPELINE=' + p.pipelineName + ', using YOUR allocated TEST_PG_PORT/TEST_LS_PORT from <worktree>/.env.ports (NOT the shared default test stack). You are the sole occupant by construction — no cross-pipeline lock. Clean up with nuke-test-pipeline PIPELINE=' + p.pipelineName + '. If you hit a stale stack from an interrupted run, nuke-test-pipeline then up-test-pipeline again.'
 const SELF_QA = ' Self-QA TARGETED — unit + typecheck + lint + only the affected/own integration (or e2e) profile; never the full suite (the full suite runs at the two gates only). Wrap test runs in timeout 600s; passing output stays out of context via filter-test-output.sh.'
@@ -191,7 +191,7 @@ function fixRound(p, routing) {
     'If your section has no open bugs, return immediately with summary "no open bugs for ' + proj + '".' + SELF_QA, 'QA')))
 }
 
-// Step 7 + Fix Loop (TARGETED) → GATE-1 (PRE-MERGE FULL) — caps + escalation per build.md § Fix Loop / GATE-1.
+// Step 7 + Fix Loop (TARGETED) → GATE-1 (PRE-MERGE FULL) — caps + escalation per wave/build.md § Fix Loop / GATE-1.
 // Returns null only when GATE-1 is green; otherwise an escalation trigger string.
 async function gateStage(p, routing, flags) {
   // Targeted fix loop — re-run only failing+affected+adversarial+unit.
@@ -225,12 +225,12 @@ async function gateStage(p, routing, flags) {
   return 'iteration-cap'
 }
 
-// Pre-merge hygiene gate — cap 2 per build.md § Code Review
+// Pre-merge hygiene gate — cap 2 per wave/build.md § Code Review
 async function reviewStage(p, routing, flags) {
   for (let iter = 0; iter <= 2; iter++) {
     const last = iter === 2
     const rev = await resilient(
-      header(p) + ' Pre-merge hygiene gate: read .claude/skills/p:audit:code-hygiene/SKILL.md and execute it with scope `diff` over the changed set from ' +
+      header(p) + ' Pre-merge hygiene gate: read .claude/commands/audit/code-hygiene.md and execute it with scope `diff` over the changed set from ' +
       '`git -C ' + wt(p) + ' diff --name-only main...pipeline/' + p.pipelineName + '` (read-only git permitted for this audit only). ' +
       'Scope strictly to that committed three-dot range — files inherited from main\'s dirty working tree are OUT of scope. Category 8 (Duplication) first. ' +
       'Write findings to ' + docs(p) + '/6-code-review.md ending with a verdict line.' +
@@ -251,7 +251,7 @@ async function reviewStage(p, routing, flags) {
   return 'RESIDUAL'
 }
 
-// Steps 8–11 per build.md § Merge Phase / Post-Merge / Documentation
+// Steps 8–11 per wave/build.md § Merge Phase / Post-Merge / Documentation
 async function shipStage(p, routing, flags) {
   const projectsCsv = routing.join(',')
   const m = await resilient(

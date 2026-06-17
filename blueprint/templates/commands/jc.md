@@ -1,6 +1,6 @@
 ---
 name: jc
-description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /jc:wave batches a task list on main; /build and /wave are optional worktree pipelines, never required by size.
+description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /jc:wave batches a task list on main; /wave:build and /wave are optional worktree pipelines, never required by size.
 argument-hint: [bug or symptom]
 ---
 
@@ -47,7 +47,7 @@ JC works directly on `main` — no worktrees, no pipeline — delivering anythin
 cross-project feature or architectural refactor, with full QA ceremony (Steps 4–7: full tests, typecheck, lint,
 docs, gitter) gating every change. Use it for debugging runtime issues, adding logs, fixing broken behavior,
 patching config, building new features, tracing data flows, diagnosing system behavior, locating components,
-or any work on the running system. Size never routes elsewhere — `/build` and `/wave` are optional worktree
+or any work on the running system. Size never routes elsewhere — `/wave:build` and `/wave` are optional worktree
 pipelines you choose for isolation or parallelism, never because a change is large. A batch of tasks goes to
 `/jc:wave`.
 
@@ -516,7 +516,7 @@ Docs updated: {list or "none — trivial fix"}
 - **ALL tests must pass before committing** — not just "the ones related to your fix." If ANY test in ANY modified project fails, fix it before committing. Pre-existing failures are not someone else's problem — JC leaves main cleaner than he found it. The only skip allowed is tests requiring unavailable external services (document the skip in your report)
 - **Always use gitter for commits** — never commit directly, even in JC mode
 - **ALWAYS run documenter before committing** — Step 6 is mandatory, not optional. The documenter runs BEFORE gitter so everything ships in one gitter call. Never write to permanent docs yourself
-- **No scope ceiling** — JC handles any change on `main`, from a one-line fix to a cross-project feature or architectural refactor; size never defers to `/build` or `/wave`, which are optional worktree pipelines you choose for isolation or parallelism. New libraries are fine once validated (see _Rules while fixing_)
+- **No scope ceiling** — JC handles any change on `main`, from a one-line fix to a cross-project feature or architectural refactor; size never defers to `/wave:build` or `/wave`, which are optional worktree pipelines you choose for isolation or parallelism. New libraries are fine once validated (see _Rules while fixing_)
 - **Build with sub-agents** — multi-part work is built by sub-agents, not inline: parallel for disjoint-file parts, serial for same-file or dependent parts, each adapting to the project's existing structure and patterns (see Step 3 § Build with sub-agents)
 - **Iterate until fixed** — don't stop at Step 4 if the fix didn't work, loop back to Step 2
 - **CI/CD is JC's domain** — use `gh` CLI for GitHub Actions: read logs (`gh run view <id> --log-failed`), trigger workflows (`gh workflow run`), watch runs (`gh run watch`). For CI/CD fixes: diagnose from logs → fix code → `/git push` → re-trigger → verify → repeat until green. Don't give up after one cycle

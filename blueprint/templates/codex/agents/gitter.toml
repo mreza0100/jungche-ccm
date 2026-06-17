@@ -24,7 +24,7 @@ The Codex sandbox permits `.git/` writes for pipeline branches. The default.rule
 
 ## Remote publication boundary
 
-Plain `git push` is allowed only inside gitter.md Phase 5 when the invocation came from `/git push` or another direct current user request that explicitly asks for remote publication. Successful /build, /wave, /jc, MERGE, DOCS-COMMIT, JC-COMMIT, or local commit completion is not permission to push. If authority is missing or ambiguous, stop and return: `Remote push not performed — explicit user push request required.`
+Plain `git push` is allowed only inside gitter.md Phase 5 when the invocation came from `/git push` or another direct current user request that explicitly asks for remote publication. Successful /wave:build, /wave, /jc, MERGE, DOCS-COMMIT, JC-COMMIT, or local commit completion is not permission to push. If authority is missing or ambiguous, stop and return: `Remote push not performed — explicit user push request required.`
 
 ## How you are invoked
 

@@ -1,7 +1,7 @@
 ---
 name: pcm
-description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (audit) and upstream updates (update).
-argument-hint: [change request|audit|update]
+description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (audit). Upstream blueprint updates and releases are the /pcm:update and /pcm:release subcommands.
+argument-hint: [change request|audit]
 ---
 
 # PCM — Professor Change Manager
@@ -12,7 +12,7 @@ $ARGUMENTS
 
 ## Mandatory skill load (before any prompt-file edit)
 
-Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — load `Skill("p:quality:prompt")`. It carries Anthropic's prompt-quality rules (cut test, thresholds, anti-patterns, structural conventions) that govern every edit you make here.
+Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — read and apply `.claude/commands/quality/prompt.md`. It carries Anthropic's prompt-quality rules (cut test, thresholds, anti-patterns, structural conventions) that govern every edit you make here.
 
 ---
 
@@ -32,7 +32,7 @@ CLAUDE.md (Professor persona + request routing)
     ├── loads skills as needed
     └── references agent/command/skill tables
 
-.claude/commands/*.md → slash commands (/build, /jc, /pcm, etc.)
+.claude/commands/*.md → slash commands (/wave:build, /jc, /pcm, etc.)
 .claude/agents/*.md   → root pipeline agents (mono-planner, mono-architect, gitter, mono-documenter) + N qa-{proj} wrappers (registered QA gates that read the child protocol and carry the test-output filter hook)
 .claude/skills/*/SKILL.md → reusable skills
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
@@ -49,8 +49,8 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 ### Critical invariants
 
 1. **Gitter monopoly** — only gitter runs git commands. All other agents delegate.
-2. **Path variables** — agents use `$DOCS`, `$DOCS_REL`, `$DOCS_POST`, never hardcoded paths. Defined in `build.md` § Step 0.
-3. **Pipeline flow lives in build.md** — CLAUDE.md just redirects. Don't duplicate.
+2. **Path variables** — agents use `$DOCS`, `$DOCS_REL`, `$DOCS_POST`, never hardcoded paths. Defined in `wave/build.md` § Step 0.
+3. **Pipeline flow lives in wave/build.md** — CLAUDE.md just redirects. Don't duplicate.
 4. **Non-negotiable rules in CLAUDE.md are sacred** — ethics, privacy, code quality cannot be weakened.
 5. **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
 6. **Registry over tables** — every command/skill carries its routing in its `description:` frontmatter (the harness injects that registry into the session); CLAUDE.md keeps no command/skill/agent roster. The agent inventory lives in this doc's Inventory + `agent-models.md` and must match actual files. `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands.
@@ -66,7 +66,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 <!-- INSTALL: Fill in your actual roster + agent counts. All counts are install-derived from the roster — never hardcode a total in prose. Use ONE consistent agent figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
 
 - **Projects:** one entry per roster project — `{project}` ({PROJECT_PKG_MGR}), repeated for the whole roster (a single-project install lists exactly one)
-- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 4 mono orchestrators + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file. **Two-tier model policy:** root strategists (mono-planner, mono-architect) pin the top-tier full model ID in frontmatter; every `/build` child spawn rides the floating `opus` alias (real work); `sonnet` only for small jobs (gitter, mono-documenter). Record the authoritative tier reference at `docs/commands/pcm/references/agent-models.md` (command-owned, created post-install — not a shipped template)
+- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 4 mono orchestrators + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file. **Two-tier model policy:** root strategists (mono-planner, mono-architect) pin the top-tier full model ID in frontmatter; every `/wave:build` child spawn rides the floating `opus` alias (real work); `sonnet` only for small jobs (gitter, mono-documenter). Record the authoritative tier reference at `docs/commands/pcm/references/agent-models.md` (command-owned, created post-install — not a shipped template)
 - Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts; the project/agent counts derive from the roster, not a fixed number
 
 ---
@@ -94,11 +94,11 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 Every infra change `/pcm` makes is recorded as the final step of the work, in exactly **one** `.professor/` ledger:
 
 - **`drift.md`** — local customizations that diverge from the blueprint and must **stay local** (the update merge's forced KEEP-LOCAL set). Also holds the local update history.
-- **`release.md`** — framework changes that belong upstream, **pending push/sync**. `p:blueprint release` consumes this file to build the CHANGELOG, then clears it.
+- **`release.md`** — framework changes that belong upstream, **pending push/sync**. `/pcm:release` consumes this file to build the CHANGELOG, then clears it.
 
 The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the user — never guess.** One line per change: `- {Tier/scope} — {what changed}`.
 
-**Standalone skills are a special case.** Skills listed in `.claude/skills/sources.json` (rr, p:360, ghostwriter, vision-factory) are fetched from their own public repos at install — the blueprint never vendors them, so a fix to one does NOT ship through a Professor release. When you change one: bump its `version:` frontmatter (and the README version line), then log a `release.md` entry that carries only the version bump for the Professor changelog and flags the real action — replicate the change in the skill's own repo (the `repo` in `sources.json`), bump its version, and cut a release there. The substance lives in the skill repo's changelog; Professor's changelog carries the version bump alone.
+**Standalone skills are a special case.** Skills listed in `.claude/skills/sources.json` (rr, ghostwriter, vision-factory) are fetched from their own public repos at install — the blueprint never vendors them, so a fix to one does NOT ship through a Professor release. When you change one: bump its `version:` frontmatter (and the README version line), then log a `release.md` entry that carries only the version bump for the Professor changelog and flags the real action — replicate the change in the skill's own repo (the `repo` in `sources.json`), bump its version, and cut a release there. The substance lives in the skill repo's changelog; Professor's changelog carries the version bump alone.
 
 ---
 
@@ -106,7 +106,7 @@ The test: is the change an **improvement to existing infra** (a framework change
 
 ### Step 1 — Understand
 
-Parse `$ARGUMENTS`. Dispatch first: `update` or `release` → the **Blueprint bus** section; `audit` → the **Pipeline Consistency Audit** section; anything else → the change-request flow below. Common change-request categories: agent behavior, pipeline flow, conventions, new agent/command/skill, script fix, rename/restructure, settings.
+Parse `$ARGUMENTS`. Dispatch first: `audit` → the **Pipeline Consistency Audit** section; anything else → the change-request flow below. Upstream blueprint updates and releases are now the `/pcm:update` and `/pcm:release` subcommands (the `update.md` and `release.md` files in the `pcm/` directory). Common change-request categories: agent behavior, pipeline flow, conventions, new agent/command/skill, script fix, rename/restructure, settings.
 
 ### Step 2 — Audit impact
 
@@ -117,9 +117,9 @@ Before ANY changes, read all affected files. Grep every reference across `.claud
 - Project dir names in CLAUDE.md match actual directories
 - Agent frontmatter matches actual behavior and tools needed
 - worktree.sh project resolution matches directory names
-- /build references match agent names and doc paths
+- /wave:build references match agent names and doc paths
 - Tech stack descriptions match package.json/pyproject.toml deps
-- Pipeline flow in build.md matches agent ordering constraints
+- Pipeline flow in wave/build.md matches agent ordering constraints
 
 <!-- OPTIONAL: Secondary runtime impact checklist
 - Agent added/removed/renamed? → Update wrappers
@@ -147,11 +147,11 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 - Keep section hierarchy — agents/commands reference sections by name
 - Keep non-negotiable rules exactly as they are
 - Update tables when adding/removing agents, commands, skills
-- Pipeline flow stays in build.md, not CLAUDE.md
+- Pipeline flow stays in wave/build.md, not CLAUDE.md
 
 **Command rules:**
 
-- /build is the orchestrator — must reference every pipeline agent by name
+- /wave:build is the orchestrator — must reference every pipeline agent by name
 - Step numbers must match the Pipeline Reference table
 - Port reading instructions must match what gitter writes to ports.md
 
@@ -164,8 +164,8 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 1. Grep for stale references to old names/paths
 2. Cross-reference agent tools lists
-3. Pipeline completeness — every agent in build.md has a definition
-4. Command completeness — every command in CLAUDE.md table has a file
+3. Pipeline completeness — every agent in wave/build.md has a definition
+4. Command completeness — every command referenced in CLAUDE.md (Request Routing) has a file; every `.claude/commands/*.md` has a `description:`
 5. Script references exist at stated paths
 6. Directory name consistency across all files
 
@@ -244,9 +244,9 @@ Files: `.claude/skills/*/SKILL.md`
 - **Skill registration:** every skill dir under `.claude/skills/` has a `description` frontmatter (auto-surfaced in the available-skills list); CLAUDE.md keeps only the one-line Skills pointer, not a per-skill table
 - **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
 
-#### `pipeline` — Walk build.md end-to-end
+#### `pipeline` — Walk wave/build.md end-to-end
 
-Files: `.claude/commands/build.md` (primary), all agents it references
+Files: `.claude/commands/wave/build.md` (primary), all agents it references
 
 - **Reference resolution:** every "Read and follow" path → target file exists
 - **Agent spawn validity:** every `subagent_type` referenced → matches a registered agent name/description in `.claude/agents/` or child agents
@@ -322,7 +322,7 @@ Ask: "Want me to fix these issues?"
 
 ## Special Operations
 
-**Full rename:** Grep ALL occurrences → update agents → update CLAUDE.md → update /build → final grep for zero stale refs.
+**Full rename:** Grep ALL occurrences → update agents → update CLAUDE.md → update /wave:build → final grep for zero stale refs.
 
 **New agent:** Create `.claude/agents/{name}.md` → update the count in this doc's Inventory + `docs/commands/pcm/references/agent-models.md` → update pipeline if needed (CLAUDE.md carries no agent roster).
 
@@ -332,9 +332,9 @@ Ask: "Want me to fix these issues?"
 
 ---
 
-## Blueprint bus — `/pcm update` · `/pcm release`
+## Blueprint bus — `/pcm:update` · `/pcm:release`
 
-Every project carrying the blueprint is a peer on the shared bus: it **consumes** others' improvements (`update`) and **publishes** its own (`release`). Both directions live in the `p:blueprint` skill — load `Skill("p:blueprint")` and run its matching subcommand, passing `$ARGUMENTS` through verbatim (`update check`, `update --to vX.Y.Z`, `update --force`, `update --re-interview N`, `release {patch|minor|major} "{summary}"`). The real work happens in the skill; /pcm only routes.
+Every project carrying the blueprint is a peer on the shared bus: it **consumes** others' improvements and **publishes** its own. Both directions are nested subcommands of the `pcm` command directory — `/pcm:update` (`.claude/commands/pcm/update.md`) pulls a newer release tag and three-way-merges it with local customizations; `/pcm:release` (`.claude/commands/pcm/release.md`) regenerates the portable blueprint from the live `.claude/` via the refresh pass (`docs/commands/pcm/references/refresh.md`), then versions, tags, and pushes upstream. Each carries its own full protocol — invoke the matching subcommand directly; `/pcm` (this command) handles change requests and audits, not the bus.
 
 ---
 

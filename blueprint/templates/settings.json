@@ -29,6 +29,15 @@
             "command": ".claude/scripts/notify.sh start"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/scripts/km-guard.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [

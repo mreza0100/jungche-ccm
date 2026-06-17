@@ -161,7 +161,7 @@ Anything needing resolution during implementation.
 ## Rules
 
 - First line must be `> Author: mono-architect`
-- **ZERO GAP:** when the plan/manifest carries a `/p:wave:refine` ZERO-GAP spec (data model, contracts, file plan already decided), transcribe and validate it into `3-architecture.md` — do not re-design, re-decide routing, or re-scope. Flag a genuine flaw back to the orchestrator; never design around it silently.
+- **ZERO GAP:** when the plan/manifest carries a `/wave:refine` ZERO-GAP spec (data model, contracts, file plan already decided), transcribe and validate it into `3-architecture.md` — do not re-design, re-decide routing, or re-scope. Flag a genuine flaw back to the orchestrator; never design around it silently.
 - Be **exact** with the contract definitions — child architects copy verbatim
 - Do NOT make code-level decisions or create TODO stubs
 - Focus on the **boundary** between projects

@@ -19,7 +19,7 @@ Codex never gets its own copy of pipeline logic or identity. Every `.toml` file 
 
 ## Why it's optional
 
-Claude Code can run the full pipeline alone: `/build`, `/wave`, `/jc`, all root agents, all child agents, all git operations via gitter. Codex is optional because the pipeline must not require a second runtime, not because Codex is subordinate. When enabled, Codex mirrors the same contract with Codex-specific mechanics.
+Claude Code can run the full pipeline alone: `/wave:build`, `/wave`, `/jc`, all root agents, all child agents, all git operations via gitter. Codex is optional because the pipeline must not require a second runtime, not because Codex is subordinate. When enabled, Codex mirrors the same contract with Codex-specific mechanics.
 
 The value proposition:
 
@@ -106,7 +106,7 @@ Read .claude/commands/{command-name}.md in full — it is your complete role man
 """
 ```
 
-See `agents/build.toml` and `agents/jc.toml` for examples.
+See `agents/wave-build.toml` and `agents/jc.toml` for examples.
 
 #### Type 2: Role agent wrappers
 
@@ -172,16 +172,14 @@ Read `.claude/commands/{command-name}.md` in full — it is your complete role m
 - {any other runtime differences}
 ```
 
-See `skills/build/SKILL.md` for the example.
+See `skills/wave-build/SKILL.md` for the example.
 
 ### 5. Add research/utility skills (optional)
 
-If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `p:rnd`, `p:360`, `ghostwriter`), symlink them into `.codex/skills/` so Codex can use them too. These skills share the same `SKILL.md` across both runtimes — no Codex-specific wrapper needed:
+If you have runtime-agnostic skills in `.claude/skills/` (like `rr`, `ghostwriter`), symlink them into `.codex/skills/` so Codex can use them too. These skills share the same `SKILL.md` across both runtimes — no Codex-specific wrapper needed:
 
 ```bash
 ln -s ../../.claude/skills/rr .codex/skills/rr
-ln -s ../../.claude/skills/rnd .codex/skills/rnd
-ln -s ../../.claude/skills/p:360 .codex/skills/p:360
 ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 ```
 
@@ -191,7 +189,7 @@ ln -s ../../.claude/skills/ghostwriter .codex/skills/ghostwriter
 
 | Type               | Example                              | Count                 | Points to                            | Git access                  |
 | ------------------ | ------------------------------------ | --------------------- | ------------------------------------ | --------------------------- |
-| Command wrapper    | `build.toml`, `jc.toml`, `wave.toml` | ~15 (one per command) | `.claude/commands/{name}.md`         | Yes (when orchestrating)    |
+| Command wrapper    | `jc.toml`, `wave.toml`, `dev.toml`   | ~15 (one per command) | `.claude/commands/{name}.md`         | Yes (when orchestrating)    |
 | Role agent wrapper | `be-developer.toml`, `fe-qa.toml`    | ~4 per subproject     | `{project}/.claude/agents/{role}.md` | No (sandbox blocks `.git/`) |
 | Git operator       | `gitter.toml`                        | 1                     | `.claude/agents/gitter.md`           | Yes (phase-based)           |
 
@@ -247,7 +245,7 @@ your-project/
 │   ├── rules/                   ← safety rules (git protection, destructive ops)
 │   │   └── default.rules        ← prefix_rule() definitions
 │   ├── agents/                  ← .toml wrappers pointing to .claude/ manuals
-│   │   ├── build.toml           ← command wrapper
+│   │   ├── wave-build.toml      ← command wrapper
 │   │   ├── jc.toml              ← command wrapper
 │   │   ├── wave.toml            ← command wrapper
 │   │   ├── gitter.toml          ← git operator
@@ -256,7 +254,7 @@ your-project/
 │   │   ├── fe-developer.toml    ← role agent wrapper
 │   │   └── ...                  ← one per role per subproject
 │   └── skills/                  ← $name interactive invocations
-│       ├── build/SKILL.md       ← mirrors /build
+│       ├── wave-build/SKILL.md  ← mirrors /wave:build
 │       ├── jc/SKILL.md          ← mirrors /jc
 │       ├── rr -> symlink        ← shared research skill
 │       └── ...

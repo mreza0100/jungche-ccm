@@ -1,13 +1,9 @@
 {
-  "_comment": "Universal skills the blueprint does NOT vendor. SETUP fetches each from its canonical public repo at install (always latest). Single source of truth — the blueprint never holds a copy that can silently drift. Refresh/export MUST NOT re-vendor these; it only maintains this list. The remaining skills under templates/skills/ are blueprint-owned (p:rnd, p:wave:refine, p:wave:review, p:quality:prompt, p:quality:doc) or domain-hydrated shells (p:audit:code-hygiene, p:audit:security) and ship bundled. Note: the canonical 360 repo's own SKILL.md frontmatter must read `name: p:360` for the install target `skills/p:360/` to fully resolve (external repo — fix it there).",
+  "_comment": "Universal skills the blueprint does NOT vendor. SETUP fetches each from its canonical public repo at install (always latest). Single source of truth — the blueprint never holds a copy that can silently drift. Refresh/export MUST NOT re-vendor these; it only maintains this list. The blueprint no longer bundles any skill under templates/skills/ — what used to ship as standalone skills (rnd, wave:refine, wave:review, quality:prompt, quality:doc, audit:code-hygiene, audit:security, and 360) are now nested COMMANDS under templates/commands/ (p/rnd.md, wave/{refine,review}.md, quality/{prompt,doc}.md, audit/{code-hygiene,security}.md, p/360.md), each registering via its frontmatter name. 360 ships as the portable command templates/commands/p/360.md — it is NOT source-fetched.",
   "source_fetched": {
     "rr": {
       "repo": "https://github.com/{GH_USER}/rr",
       "parameterize": []
-    },
-    "p:360": {
-      "repo": "https://github.com/{GH_USER}/360",
-      "parameterize": ["{USER_PERSONA}", "{SECONDARY_PERSONA}"]
     },
     "ghostwriter": {
       "repo": "https://github.com/{GH_USER}/ghost-writer",
