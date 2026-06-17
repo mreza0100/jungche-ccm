@@ -1,7 +1,7 @@
 ---
 name: chat:inject
 description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
-argument-hint: [{self | tmux-session | session-id} {message}]
+argument-hint: [[--no-sig] {self | tmux-session | session-id} {message}]
 ---
 
 # Chat Inject — force a turn into another chat (or this one)
@@ -22,14 +22,17 @@ Args: $ARGUMENTS
 2. **Resolve the target:**
    - `self`, a tmux session name, or a session-id → pass straight through.
    - excerpt → write it to `tmp/chat-loads/inject-target.txt`, then `.claude/commands/chat/chat.sh find tmp/chat-loads/inject-target.txt` for the session-id (confirm an ambiguous match against the printed date range first).
-3. **Inject (signed):** `CHAT_INJECT_FROM_NAME="{this chat's name}" .claude/commands/chat/chat.sh inject {target} "{message}"`. It delivers LIVE for `self` or a live tmux pane, else appends to the transcript. Pass `CHAT_INJECT_FROM_NAME` with this chat's own display name (the 🔖 name in your status line) so the recipient sees who sent it.
+3. **Inject (signed):** `CHAT_INJECT_FROM_NAME="{this chat's name}" .claude/commands/chat/chat.sh inject {target} "{message}"`. It delivers LIVE for `self` or a live tmux pane, else appends to the transcript. Pass `CHAT_INJECT_FROM_NAME` with this chat's own display name (the 🔖 name in your status line) so the recipient sees who sent it. For an unsigned, operational injection (`/compact`, `/goal`, `/loop`, …), add `--no-sig` before the target — see below.
 4. **Report** which path it took from the output — LIVE (answered now) or RESUME (answered on reopen).
 
 ## Every injected message is signed
 
 The script appends a footer to the end of every message — `— from {name} · sid {sender session-id} · to reply: /chat:inject {sender tmux} <message>` — so the recipient knows the source and gets a runnable reply command. The `sid` is always derived; the `to reply:` line appears whenever the sender is in tmux (its session is the live reply handle); the human `{name}` appears only when you pass `CHAT_INJECT_FROM_NAME`. The typed (LIVE) footer is single-line; the transcript and any long-message spill file get a block footer, and that spill's live pointer also names the sender.
 
-**Exception — a message that IS a slash command** (starts with `/`) is injected verbatim into a live pane: no signature footer (it would land as command arguments) and no long-message file-cap (a file pointer gets read, never run). The command lands clean so the target executes it.
+**Suppressing the footer** — two ways:
+
+- **Auto** — a message that IS a slash command (starts with `/`) injects verbatim into a live pane: no footer (it would land as command arguments) and no long-message file-cap (a file pointer gets read, never run). The command lands clean so the target executes it.
+- **Explicit `--no-sig`** — `chat.sh inject --no-sig {target} "{message}"` drops the footer for any message, in every arm (LIVE, the spill file, and RESUME). Use it for operational injections the target must consume clean — `/compact`, `/goal`, `/loop`, and the like — especially when driving another chat programmatically. The long-message cap still applies; only the signature is gone.
 
 ## To steer a RUNNING chat, target its tmux session — not its UUID
 

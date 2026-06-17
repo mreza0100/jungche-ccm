@@ -7,7 +7,7 @@ set -euo pipefail
 #   whoami                                    print THIS chat's own tmux session
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
-#   inject  <self|tmux|session-id|path> <message...>   force a turn (live / resume)
+#   inject  [--no-sig] <self|tmux|session-id|path> <message...>  force a turn (live / resume)
 #   ls                                        list live chats with cwd in this repo
 #   capture <tmux-session> [scrollback]       snapshot a live chat's screen
 #   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
@@ -123,7 +123,9 @@ case "$cmd" in
     ;;
 
   inject)
-    [[ $# -ge 2 ]] || { echo "usage: chat.sh inject <self|tmux-session|session-id|transcript-path> <message...>" >&2; exit 1; }
+    nosig=0
+    if [[ "${1:-}" == "--no-sig" ]]; then nosig=1; shift; fi
+    [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--no-sig] <self|tmux-session|session-id|transcript-path> <message...>" >&2; exit 1; }
     target="$1"; shift; msg="$*"
     [[ -n "$msg" ]] || { echo "ERROR: refusing to inject an empty message" >&2; exit 1; }
     if [[ "$target" == "self" || "$target" == "me" ]]; then target="$(self_tmux)" || exit 1; fi
@@ -158,6 +160,9 @@ case "$cmd" in
     sig=""; for p in "${sigparts[@]:-}"; do [[ -n "$p" ]] || continue; [[ -n "$sig" ]] && sig="$sig · "; sig="$sig$p"; done
     footer_inline=""; footer_block=""
     [[ -n "$sig" ]] && { footer_inline="  — ${sig}"; footer_block=$'\n\n'"— ${sig}"; }
+    # --no-sig drops the footer entirely — for /compact, /goal, /loop and other
+    # operational injections that must not carry a signature.
+    [[ "$nosig" == 1 ]] && { footer_inline=""; footer_block=""; }
     sender_short="${sender_name:-${sender_handle:-${sender_uuid8:-unknown}}}"
 
     if [[ -n "$live_tmux" ]]; then
@@ -171,7 +176,8 @@ case "$cmd" in
         if [[ ${#msg} -gt $limit ]]; then
           msgdir="$HOME/.claude-sessions/.chat-inject-msgs"; mkdir -p "$msgdir"
           msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s%s\n' "$*" "$footer_block" > "$msgfile"
-          msg="📨 Injected message from ${sender_short} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
+          frm=""; [[ "$nosig" == 1 ]] || frm=" from ${sender_short}"
+          msg="📨 Injected message${frm} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
         fi
       fi
       tmux send-keys -t "$live_tmux" -l -- "$msg"
