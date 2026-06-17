@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.32.0](releases/v0.32.0.md) — wave engine splits into a composable `wave-build` workflow + a thin group scheduler; two-gate test discipline (GATE-1 pre-merge + GATE-2 post-merge, targeted in between) with a global failure-biased test-output filter; per-pipeline isolated test infra; `/jc:wave`, `/dev restart`, and the `p:tokens` token-attribution skill; MIGRATION: wave-pipelines split + two-gate QA cadence.
 - [v0.31.2](releases/v0.31.2.md) — chat:inject `--no-sig` flag drops the sender signature in every arm (LIVE, spill file, RESUME) for clean operational injections (`/compact`, `/goal`, `/loop`).
 - [v0.31.1](releases/v0.31.1.md) — chat:inject — a message that is itself a slash command lands verbatim (no footer, no file-cap) so the target runs it.
 - [v0.31.0](releases/v0.31.0.md) — chat: refinements: injected messages auto-signed with a runnable reply command + target-first /chat:inject syntax; /chat:load now write-free (load-check removed); subcommand who-i-am → whoami.

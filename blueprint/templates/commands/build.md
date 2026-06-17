@@ -27,6 +27,8 @@ single-project repo, where the worktree IS the repo root and routing is triviall
 
 **ZERO GAP & doc-awareness** bind every agent — both are stated in the § Common spawn contract and carried by every spawn block. The orchestrator distinction: when `$DOCS/0-task.md` is a `/p:wave:refine` spec, agents implement and validate it; a standalone build given a bare description has agents design as normal.
 
+**Execution is a saved workflow.** The end-to-end pipeline (Setup → Plan → Architecture → Develop → QA → Code Review → GATE-1 → Merge → GATE-2 → Docs) runs as the saved single-pipeline workflow `.claude/workflows/wave-build.js`. A standalone `/build` does its pre-flight + naming here, then LAUNCHES that workflow (Step 1) rather than hand-running each stage in the expensive main loop. `/wave` reaches the same engine through `wave-pipelines.js`, the group scheduler, which composes one `wave-build` per pipeline. The stage-by-stage prose below (§ Pipeline flow, Steps 1a–11) is the **declared copy** of `wave-build.js` — when a stage, spawn brief, loop cap, or escalation trigger changes in one, change both.
+
 ---
 
 ## Pre-flight — validate before starting any work
@@ -49,7 +51,7 @@ Both Claude and {SECONDARY_RUNTIME} read this same file and execute the pipeline
 
 ## Status Emission
 
-Print fixed-format status to stdout so a watching operator never has to ask "where are we" — every runtime emits identically. `$BUILD_IDX` = `[Build: {n}/{total}]` from `$ARGUMENTS` when wave-invoked, else empty (standalone).
+This fixed-format stdout framing is the standalone-orchestrator / Workflow-unavailable fallback. When the build runs as the `wave-build` workflow (the normal path — Step 1), its `log()` + per-stage phase stream owns live progress (visible via `/workflows`) and these lines are not emitted; the orchestrator only reports the returned result object. The format below is kept so a watching operator never has to ask "where are we" — every runtime emits identically. `$BUILD_IDX` = `[Build: {n}/{total}]` from `$ARGUMENTS` when wave-invoked, else empty (standalone).
 
 **Header** (once, at the end of Step 0 — `Wave $WAVE · Build $BUILD_IDX` only when wave-invoked, else just the name):
 
@@ -61,7 +63,7 @@ Tasks:     {count}
 ```
 
 **Phase lines** — as each major phase completes, emit `▸ {phase} … {result}`:
-Analysis→done · Plan→{routing} · Architecture→done · UI/UX→done · Database→done · Develop→done · QA→`PASS · {n} fix loop(s)` · Code Review→`{CLEAN / FINDINGS→fixed / N residual}` · Merge→`{commit sha}` · Post-merge QA→`{PASS / FIX}` · Docs→archived. Omit the UI/UX and Database lines when those conditional steps did not run.
+Analysis→done · Plan→{routing} · Architecture→done · UI/UX→done · Database→done · Develop→done · Targeted QA→`PASS · {n} fix loop(s)` · Code Review→`{CLEAN / FINDINGS→fixed / N residual}` · GATE-1→`{PASS / FIX}` · Merge→`{commit sha}` · GATE-2→`{PASS / FIX}` · Docs→archived. Omit the UI/UX and Database lines when those conditional steps did not run.
 
 **Footer** (once, after Step 11 — or on BLOCKED-DEFERRED, appending the trigger and the `$DOCS/BLOCKED.md` resume hint):
 
@@ -212,6 +214,39 @@ Every spawned agent inherits these. Each spawn block carries only its role, work
 
 ---
 
+## Step 1 — Launch the build workflow
+
+After pre-flight and Step 0 (name resolved, `0-task.md` pre-placed), launch the saved single-pipeline workflow. It runs cheap workflow orchestration — not the expensive main loop — and owns every stage from SETUP to docs-commit:
+
+`Workflow({name: 'wave-build', args: { pipelineName: '<build-name>', idx: 1, total: 1, description: '<feature>', routing: [<declared roster keys, or [] when none declared>], waveName: '<build-name>', epicName: '<$EPIC or none>', carryWip: '<$CARRYWIP>', timestamp: '<YYYY-MM-DD>' }})`
+
+- `routing` = the declared roster keys from `0-task.md`'s `**Routing:**`; `[]` for a bare description — the workflow's plan stage then fans out all roster planners and lets mono-planner decide routing (a single-project roster resolves routing trivially to its one entry).
+- `waveName` for a standalone build is the build name itself (no wave); `epicName` carries `$EPIC` so the workflow's documenter routes progress into the epic.
+- It runs in the background — `/workflows` shows live per-pipeline progress. Wait for the completion notification; do NOT poll.
+
+**On return**, the result is `{ pipeline, status, sha, trigger, codeReview, detail, flags }`:
+
+- `DONE` → run § Step 11 standalone archive tail, then announce completion.
+- `BLOCKED-DEFERRED` → the workflow already wrote `$DOCS/BLOCKED.md`, preserved the worktree, and skipped merge. Report the `trigger` and the resume hint; do NOT archive.
+- `FAILED` / `MERGE-FAILED` → report `detail`; do NOT archive.
+- `POSTMERGE-FIX-NEEDED` → run § If Post-Merge QA fails for this pipeline, then archive.
+
+Surface `flags` (carry-forward /jc candidates, SPEC-CONFLICTs, pre-existing defects) to the founder.
+
+**Resume:** same session — relaunch with `resumeFromRunId: {runId}`; completed agents return cached. New session — resume a BLOCKED-DEFERRED pipeline per its `BLOCKED.md` protocol.
+
+The § Status Emission header/phase/footer lines are the standalone-orchestrator framing; once the workflow owns the run, its `log()` + per-stage phase stream (visible via `/workflows`) is the live progress, and the orchestrator only reports the returned result object.
+
+---
+
+## Pipeline flow (declared copy of wave-build.js) — Steps 1a–11
+
+The stages below are the contract `.claude/workflows/wave-build.js` executes — invariant: flow graph + spawn briefs are declared copies, update both together. The two-gate discipline and per-pipeline isolated test infra live in the engine; this prose must match it, never contradict.
+
+**Stage flow:** Setup → Plan → Architecture → Develop (TARGETED self-QA) → Targeted QA + Fix Loop → Code Review → **GATE-1 (pre-merge full)** → Merge → **GATE-2 (post-merge full)** → Docs. Model tiers per `docs/commands/pcm/references/agent-models.md` (single source).
+
+---
+
 ## Step 1a — Parallel Codebase Analysis (child planners)
 
 **Routing-gated fan-out.** Parse the `**Routing:**` declaration in `$DOCS/0-task.md` (a `/p:wave:refine` spec declares it). Spawn child planners **in parallel** (single message) ONLY for the declared projects. When NO routing is declared (bare standalone description), fall back to spawning all roster planners. mono-planner (Step 1b) may demand a missing project's planner when it spots an undeclared seam — spawn that one then.
@@ -355,6 +390,8 @@ $DOCS_REL is ../../docs/dev/builds/{name}/ (one level shallower than a per-proje
 Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
   Pipeline: {name}. Follow the Common spawn contract (developer doc reads).
   Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
+  Self-QA is TARGETED — unit + typecheck + lint + only your own/affected integration (or e2e) profile, never the full suite
+  (the full suite runs at the two gates only). Wrap test runs in timeout 600s; passing output stays out of context via filter-test-output.sh.
   Write to $DOCS_REL/5-dev-report-{ROLE}.md. {PROJECT_ROLE} port: {PROJECT_PORT}."
 ```
 
@@ -362,9 +399,11 @@ Launch only the developers for routed roster entries. Wait for completion.
 
 ---
 
-## Step 7 — QA (BEFORE merge)
+## Step 7 — Targeted QA (BEFORE merge)
 
 **CRITICAL: QA runs against the worktree branches, NOT main.**
+
+This is the TARGETED pre-merge QA that feeds the Fix Loop — unit + typecheck + lint + only the failing/affected profiles + the pipeline's adversarial tests, NEVER the full suite. The full suite runs only at the two gates (GATE-1 pre-merge, GATE-2 post-merge).
 
 Spawn the QA engineer for each routed roster entry.
 **Model: opus** — every build child agent does real work.
@@ -374,8 +413,13 @@ Spawn as the registered `qa-{project}` wrapper type (model governed by frontmatt
 Single-project roster: $WORKTREE/{project} resolves to $WORKTREE (repo root). -->
 
 ```
-Agent(qa-{project}): "Mode: PRE-MERGE. Pipeline: {name}. Follow the Common spawn contract (pre-merge QA doc reads).
+Agent(qa-{project}): "Mode: PRE-MERGE. Scope: TARGETED — re-run ONLY failing + affected profiles + the pipeline's adversarial tests + unit, NOT the full suite.
+  Pipeline: {name}. Follow the Common spawn contract (pre-merge QA doc reads).
   Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT}.
+  Test infra is ISOLATED per pipeline — bring up YOUR own stack: make -C $WORKTREE/{INFRA_PROJECT} up-test-pipeline PIPELINE={name} + db-setup-test-pipeline PIPELINE={name},
+  using YOUR allocated TEST_PG_PORT/TEST_LS_PORT from $WORKTREE/.env.ports (NOT the shared default test stack + lock). You are the sole occupant — no cross-pipeline lock.
+  Run infra make targets from the WORKTREE infra (make -C $WORKTREE/{INFRA_PROJECT} …) so worktree-only migrations reach the test template. Tear down with nuke-test-pipeline PIPELINE={name}; on a stale stack, nuke then up again.
+  Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
   Write findings into $DOCS_REL/6-bugs.md under a `## {PROJECT_ROLE}` section (create the file if absent)."
 ```
 
@@ -393,25 +437,27 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 **Iteration cap: 3 maximum.** Never run more than 3 fix-loop iterations per pipeline. After iteration 3 fails, escalate to BLOCKED-DEFERRED (see § Fix Loop Escalation below) — do NOT keep looping. Past incidents show runaway fix loops eat orders of magnitude more wall-time than the work they purport to fix.
 
-**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation). Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
+**Per-pipeline isolated test infra.** Each pipeline owns its OWN test stack — agents bring it up with `make -C $WORKTREE/{INFRA_PROJECT} up-test-pipeline PIPELINE={name}` + `db-setup-test-pipeline PIPELINE={name}`, using the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT` from `$WORKTREE/.env.ports`, NOT the shared `{DB_PORT_TEST}`/`{QUEUE_PORT_TEST}` default stack + lock. Each pipeline is the sole occupant by construction — no cross-pipeline lock. Run infra make targets from the WORKTREE infra (worktree-only migrations must reach the test template; running main's infra builds a template missing them). Tear down with `nuke-test-pipeline PIPELINE={name}`; on a stale stack from an interrupted run, `nuke-test-pipeline` then `up-test-pipeline` again. The same isolated stack serves the targeted Fix Loop, GATE-1, and GATE-2.
+
+**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation), and passing output stays out of context via the `filter-test-output.sh` hook (failures + summaries only). Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
 
 **Hung-process detection.** If any test process sits at 0% CPU for >2 minutes (deadlocked, not slow) the running agent must `kill` it and report `BUG-HUNG-TEST` with the file:line of the hanging test. A hung test is NOT a fix-loop bug — it is a code bug that requires `/jc` on main.
 
 If `$DOCS/6-bugs.md` has `Status: OPEN`:
 
-1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: opus). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
+1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: opus, TARGETED self-QA). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
 
-2. **Re-run QA** (same as Step 7, model: opus)
+2. **Re-run targeted QA** (same as Step 7, model: opus — TARGETED scope, never the full suite)
 
-3. Repeat until `$DOCS/6-bugs.md` has `Status: NONE` OR iteration count reaches 3 OR an escalation trigger fires.
+3. Repeat until `$DOCS/6-bugs.md` has `Status: NONE` OR iteration count reaches 3 OR an escalation trigger fires. When the targeted loop is green, advance to Code Review then GATE-1 (the pre-merge full suite).
 
-**DO NOT merge until the fix loop completes with zero bugs.**
+**DO NOT advance to GATE-1 or merge until the targeted fix loop completes with zero bugs.**
 
 ### Fix Loop Escalation — BLOCKED-DEFERRED
 
-When the fix loop hits ANY of these conditions, abort the loop and mark the pipeline as `BLOCKED-DEFERRED`:
+When the fix loop (targeted, or the bounded GATE-1 fix pass) hits ANY of these conditions, abort the loop and mark the pipeline as `BLOCKED-DEFERRED`:
 
-- **Iteration cap reached** — 3 fix-loop iterations passed, bugs still `OPEN`.
+- **Iteration cap reached** — 3 targeted fix-loop iterations passed (or the bounded GATE-1 re-run), bugs still `OPEN`.
 - **Hung test detected** — any QA report contains `BUG-HUNG-TEST` (a deterministic deadlock; no amount of fix-loop iterations will fix code that hangs at 0% CPU).
 - **Same bug returns** — the same bug ID (or same failing test) appears in two consecutive QA reports despite a developer fix in between (the fix is wrong; no point re-trying).
 - **Sub-agent orphan** — a developer or QA sub-agent returns no output / errors out / silently dies without writing its expected report file.
@@ -476,15 +522,28 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 4. Repeat until `CLEAN` or 2 iterations pass.
 
-**After 2 iterations with findings remaining:** these are quality nits, not correctness bugs (QA already passed). Log them under `## Residual` in `$DOCS/6-code-review.md` and proceed to merge — never block shipping on hygiene perfection. A standalone build surfaces the residual to the founder; a wave-owned build leaves it in the merged code for `/p:wave:review` to catch and route through `/jc`.
+**After 2 iterations with findings remaining:** these are quality nits, not correctness bugs (QA already passed). Log them under `## Residual` in `$DOCS/6-code-review.md` and proceed to GATE-1 — never block shipping on hygiene perfection. A standalone build surfaces the residual to the founder; a wave-owned build leaves it in the merged code for `/p:wave:review` to catch and route through `/jc`.
 
 ---
 
-## Merge Phase (only after QA passes and Code Review completes)
+## GATE-1 — Pre-merge FULL suite (only after the Fix Loop and Code Review converge)
+
+The first of two zero-tolerance gates. The targeted Fix Loop (Step 7) proved the changed surface is green; GATE-1 proves the WHOLE suite is green before anything reaches `main`.
+
+Spawn the QA engineer for each routed roster entry (same `qa-{project}` wrapper + isolated per-pipeline test infra as Step 7), but **Scope: FULL** — the full pre-merge suite (unit + integration/e2e), zero-tolerance all-green, external services mocked, database real, full cleanup. Each agent writes its `## {PROJECT_ROLE}` section of `$DOCS/6-bugs.md`.
+
+- **All green** → proceed to Merge Phase.
+- **Bugs found** → one bounded targeted fix pass (developers fix OPEN bugs per the Fix Loop) + one GATE-1 re-run. Still failing → escalate to BLOCKED-DEFERRED (§ Fix Loop Escalation); the bounded GATE-1 re-run counts as the iteration cap.
+
+GATE-1 reuses every Step 7 discipline: per-pipeline isolated stack via `up-test-pipeline`/`db-setup-test-pipeline`/`nuke-test-pipeline` on the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT`, every test command wrapped in `timeout 600s`, passing output suppressed by `filter-test-output.sh`.
+
+---
+
+## Merge Phase (only after GATE-1 is green)
 
 ### Step 8 — Git Merge + Cleanup
 
-Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git ops.
+Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git ops. It serializes against `main` via its own `git-lock.sh` — a single merge to main at a time across concurrent pipelines — and returns the merge sha.
 
 - Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: MERGE. Projects: {comma-separated `{ROLE}` keys based on routing}."
   - `{ROLE}-ONLY` (any single roster entry) → `Projects: {ROLE}` (e.g. one project's key)
@@ -493,19 +552,21 @@ Use the `gitter` agent in **MERGE** phase. **Model: sonnet** — structured git 
 
 ---
 
-## Post-Merge Verification (MANDATORY after every merge)
+## GATE-2 — Post-Merge FULL suite (MANDATORY after every merge)
 
-### Step 9 — Post-Merge QA (on main)
+### Step 9 — Post-Merge QA (GATE-2, on main)
 
-Spawn the post-merge QA engineer for each routed roster entry. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
-**Model: `opus`.** Each entry's QA runs via general-purpose on the `opus` alias and reads its own `qa.md` for protocol.
+The second zero-tolerance gate: the full suite, this time against `main` after the merge. Spawn the post-merge QA engineer for each routed roster entry. Since these run from project dirs on `main` (not worktrees), pass `$DOCS_POST` for relative doc access.
+**Model: `opus`.** Each entry's QA runs via the `qa-{project}` wrapper and reads its own `qa.md` for protocol.
 
 <!-- PATTERN: per-project — SETUP expands once per routed {PROJECT_ROSTER} entry.
 Spawn as the registered `qa-{project}` wrapper type. Single-project roster: {project}/ on main IS the repo root.
 SETUP binds each entry's runbook path. -->
 
 ```
-Agent(qa-{project}): "Mode: POST-MERGE. Pipeline: {name}. Run against {project}/ on main. Follow the Common spawn contract (post-merge QA doc reads), reading docs via $DOCS_POST/ from the project dir.
+Agent(qa-{project}): "Mode: POST-MERGE — GATE-2 full suite (always FULL), zero-tolerance all-green. Pipeline: {name}. Run against {project}/ on main (NOT the worktree). Follow the Common spawn contract (post-merge QA doc reads), reading docs via $DOCS_POST/ from the project dir.
+  Infra make targets via make -C {INFRA_PROJECT} … on the project's own isolated per-pipeline stack (up-test-pipeline / db-setup-test-pipeline / nuke-test-pipeline PIPELINE={name}).
+  Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
   Runbook: {PROJECT_RUNBOOK}."
 ```
 
@@ -513,15 +574,15 @@ If `qa-{project}` is not a recognized agent type in this session (registry preda
 
 Spawn only QA agents for projects that were part of this pipeline.
 
-After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents.
+After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents. A GATE-2 failure returns `POSTMERGE-FIX-NEEDED`.
 
 ### If Post-Merge QA fails
 
-Spawn a new fix pipeline `{name}-postmerge-fix`:
+On `POSTMERGE-FIX-NEEDED`, spawn a new fix pipeline `{name}-postmerge-fix`:
 
 1. Start a new pipeline named `{name}-postmerge-fix` (creates `$DOCS` for the new name) and write a plan scoped to the bugs found
-2. Run the full pipeline cycle: gitter SETUP → architects → developers → QA → fix loop → gitter MERGE
-3. Run Post-Merge QA again
+2. Run the full pipeline cycle: gitter SETUP → architects → developers → targeted QA + fix loop → GATE-1 → gitter MERGE
+3. Run GATE-2 (Post-Merge QA) again
 4. Repeat until clean
 
 ---
@@ -542,13 +603,11 @@ All pipeline docs are already in `$DOCS/` — no aggregation needed. Permanent r
 
 ---
 
-### Step 11 — Commit Docs + Archive (MANDATORY after documenter finishes)
+### Step 11 — Commit Docs (inside the workflow) + standalone archive tail
 
-Use the `gitter` agent in **DOCS-COMMIT** phase. **Model: sonnet** — structured git ops.
+The workflow's internal docs-commit uses the `gitter` agent in **DOCS-COMMIT** phase (**Model: sonnet** — structured git ops): "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}. Archive: none." It commits all doc changes including `$DOCS/` (git history is the permanent archive). The workflow always passes `Archive: none` — a wave archives all its build dirs together at wave end (`/wave` Step 4), and a standalone build archives its own dir in the orchestrator tail below.
 
-- Tell it: "Pipeline: {name}. Wave: {$WAVE or 'none'}. Phase: DOCS-COMMIT. Projects: {same project keys as MERGE step}. Archive: {$DOCS when $WAVE is none, else 'none'}."
-
-Gitter commits all doc changes including `$DOCS/` (git history is the permanent archive), then moves `$DOCS` to `tmp/dev/archive/builds/` and commits the removal. Wave-owned builds pass `Archive: none` — the wave archives all its dirs together at wave end.
+**Standalone archive tail (orchestrator, after the workflow returns DONE).** A standalone `/build` archives its own build dir here — invoke the `gitter` agent in **DOCS-COMMIT** phase: "Pipeline: {name}. Wave: none. Phase: DOCS-COMMIT. Projects: none. Archive: docs/dev/builds/{name}." Gitter moves `docs/dev/builds/{name}` to `tmp/dev/archive/builds/` (gitignored cold storage; git history keeps the permanent record) and commits the removal. Skip on any non-DONE outcome — BLOCKED-DEFERRED dirs stay in place for resume.
 
 ---
 
@@ -560,16 +619,16 @@ At-a-glance step map (who/produces/location for every step): `docs/commands/buil
 
 ## Wave workflow mode
 
-Wave-invoked pipelines execute through the saved workflow `.claude/workflows/wave-pipelines.js` (launched by `/wave` Step 1). Workflow sub-agents cannot spawn nested agents, so the script schedules every spawn in this file's step order directly — there is no per-pipeline orchestrator agent. The script's flow graph and spawn briefs are declared copies of Steps 1a–11: when a step, spawn brief, loop cap, or escalation trigger changes here, update the script in the same change.
+`/wave` (Step 1) launches `.claude/workflows/wave-pipelines.js`, the group scheduler that sequences groups, runs a group's pipelines in parallel, handles `dependsOn` deferral and the durable STATE.md scribe — and composes ONE `wave-build` workflow per pipeline (the same single-pipeline engine `/build` launches standalone in Step 1). Both scripts' flow graphs and spawn briefs are declared copies of this file — change them in the same commit. One-level composition is nesting-safe: `wave-build` makes ZERO `workflow()` calls, so the scheduler composing it never nests a workflow inside a workflow.
 
-Wave-mode deltas (the script owns them):
+Wave-mode deltas:
 
-- Step 0a runs once for the whole wave (`/wave` Step 0d) and Step 0's naming/manifest work is pre-done by the wave — pipelines start at Step 1a.
-- Cross-pipeline locks: gitter SETUP, the Step 7 QA + Fix Loop + Code Review block (shared test infra), and Steps 8–11 (single `main`) serialize across pipelines; Steps 1a–1b and 3–6 run in parallel across a group.
-- § Status Emission's header/phase/footer lines are replaced by the workflow's phase/log stream; the workflow journal plus the script's per-pipeline STATE.md appends are the wave-mode audit trail (checkpoint events are standalone-orchestrator mode).
+- Step 0a (stale sweep) runs once for the whole wave (`/wave` Step 0d), and Step 0's naming/manifest work is pre-done by the wave — `wave-build` starts at Setup.
+- Infra is isolated per pipeline (each pipeline's own `*-pipeline` test stack on its allocated `TEST_PG_PORT`/`TEST_LS_PORT`), so SETUP, the targeted QA + Fix Loop, GATE-1, and merge run inline with NO cross-pipeline lock; gitter MERGE serializes against `main` via `git-lock.sh`. The only wave-level exclusive lock serializes STATE.md scribes (parallel children would race the single file).
+- § Status Emission's header/phase/footer lines are replaced by the workflow's phase/log stream; the workflow journal plus the per-pipeline STATE.md appends are the wave-mode audit trail.
 - A role agent that dies mid-task is respawned once with a continuation brief (resume from its report's Continuation section) before orphan-escalation to BLOCKED-DEFERRED.
-- Decisions the orchestrator reads from files here (routing, schema signals, bug status, review verdict) return to the script as structured output instead, including a `flags` channel for carry-forward items (/jc candidates, SPEC-CONFLICTs, pre-existing defects) that `/wave` feeds into remediation.
-- A post-merge QA failure returns `POSTMERGE-FIX-NEEDED` to `/wave`, which runs § If Post-Merge QA fails after the wave workflow completes.
+- Each pipeline's `flags` channel (carry-forward /jc candidates, SPEC-CONFLICTs, pre-existing defects) feeds `/wave` remediation. A post-merge QA (GATE-2) failure returns `POSTMERGE-FIX-NEEDED` to `/wave`, which runs § If Post-Merge QA fails after the wave completes.
+- A wave-owned build passes `Archive: none` at docs-commit; the wave archives all its build dirs together at wave end (`/wave` Step 4).
 
 ---
 

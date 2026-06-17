@@ -3,7 +3,9 @@ set -euo pipefail
 
 # PostToolUse(Bash) — failure-biased filter for test-runner output. Strips passing
 # noise so only failures, errors, and the summary block reach the agent's context.
-# Registered per-agent in QA frontmatter hooks: blocks, never globally.
+# Wired GLOBALLY in settings.json PostToolUse(Bash) so EVERY agent that runs a suite
+# (developers + fix-loop devs included — the heaviest token burners) gets it, not just
+# the qa-{project} frontmatter hooks. No-ops on any non-test Bash command.
 # Verify live field name (tool_output vs tool_response) during pilot.
 
 INPUT=$(cat)
@@ -12,9 +14,15 @@ INPUT=$(cat)
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 [[ "$TOOL" == "Bash" ]] || exit 0
 
+# Match the test commands this project actually runs — bare invocations and the
+# `run`-script shapes (test/integration/e2e). INSTALL: extend this case list with
+# your project's actual test commands (your package manager, your test runner, and
+# any extra suites such as <your test commands>) so nothing slips through unfiltered.
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 case "$CMD" in
-  *"{PACKAGE_MANAGER} test"*|*vitest*|*pytest*|*"{TEST_RUNNER}"*) ;;
+  *"{PACKAGE_MANAGER} test"*|*"{PACKAGE_MANAGER} run test"*|\
+  *"{PACKAGE_MANAGER} run integration"*|*"{PACKAGE_MANAGER} run e2e"*|\
+  *"{TEST_RUNNER}"*) ;;
   *) exit 0 ;;
 esac
 

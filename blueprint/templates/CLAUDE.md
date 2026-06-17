@@ -168,12 +168,11 @@ Every command and skill carries its routing in its `description:` frontmatter �
 
 ## Development Workflow
 
-- **New features → `/build`** — full pipeline with worktrees, QA gates, merge guards. Handles all routing automatically.
-- **Bug fixes → `/jc`** — diagnose, fix, test, commit on `main`. Targeted fixes only.
+- **Any change ships through `/jc`** — fix or feature, any size, a single change or a batched wave (`/jc:wave`), live on `main`, gated by JC's own QA (full tests, lint, docs, gitter commit). `/build` (isolated worktree, parallel agents, QA-before-merge) and `/wave` (batched `/build` pipelines) are optional — choose them for worktree isolation and QA-before-merge, never because a change is too large or a batch too wide for `/jc`. Ambiguous intent → recommend the lightest path that fits.
 - **Code hygiene / security → `p:audit:code-hygiene` / `p:audit:security`** — invoked directly as skills, each carrying its own 360-sweep pre-step.
 - **Never edit code directly on `main`** without one of these commands.
 
-Both `/build` and `/jc` handle worktree isolation, port allocation, and git via gitter. Details in `.claude/commands/build.md` and `.claude/commands/jc.md`.
+`/jc` and `/jc:wave` deliver on `main` gated by JC's own QA; `/build` and `/wave` handle worktree isolation, port allocation, and git via gitter. Details in `.claude/commands/build.md` and `.claude/commands/jc.md`.
 
 ---
 
@@ -234,7 +233,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Structure: `manifes
 
 - **Two environments:** `.env.local` (dev, port {DB_PORT}/{QUEUE_PORT}) and `.env.test` (test, port {DB_PORT_TEST}/{QUEUE_PORT_TEST}). Start infra: `make -C {INFRA_PROJECT} up-local` / `up-test`
 - **Mock Policy:** Mock ALL external deps (LLM, {TRANSCRIPTION_SERVICE}, {EMAIL_SERVICE}). NEVER mock internal deps within 1 hop. The boundary is external vs internal.
-- **Zero-Tolerance Tests:** When `/build` touches a project, QA MUST run that project's full test suite (unit + integration) — no scope-gating, no skip shortcuts. External services mocked, database real. ALL failures are blocking — no "pre-existing" excuse. Every pipeline leaves main cleaner than it found it. Setup: `make -C {INFRA_PROJECT} up-test` → `db-setup-test` → run tests. Cleanup: `db-reset-test`, `sqs-purge-test`, `nuke-test`
+- **Zero-Tolerance Tests — two full gates, targeted in between:** the full suite (unit + integration/e2e) runs at exactly two zero-tolerance points per pipeline — GATE-1 PRE-MERGE FULL (after the fix loop + code review converge, immediately before merge) and GATE-2 POST-MERGE FULL (on `main` after merge). Everything else is targeted: developer self-QA and fix-loop rounds run unit + typecheck + lint + only the failing/affected/adversarial profiles, never the full suite. Both gates are all-green, external services mocked, database real, full cleanup. ALL failures are blocking — no "pre-existing" excuse. Every pipeline leaves main cleaner than it found it. Healthy output stays out of agent context — the `filter-test-output.sh` hook suppresses passing noise so only failures + summaries surface. Setup: `make -C {INFRA_PROJECT} up-test` → `db-setup-test` → run tests. Cleanup: `db-reset-test`, `sqs-purge-test`, `nuke-test`
 - **Never hardcode table/enum names** in test setup — use `make -C {INFRA_PROJECT} db-reset-test`
 - **{AI_SERVICE_NAME} test env:** set `ENV_FILE=.env.test` before running integration tests
 

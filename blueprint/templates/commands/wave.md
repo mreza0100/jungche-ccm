@@ -197,7 +197,7 @@ Output format:
 | 2 | 1    | {name}   | N     | CROSS   | {one-liner} |
 | 3 | 2    | {name}   | N     | {ROLE}-ONLY | {one-liner} |
 
-**Sequence:** Wave 1 pipelines run concurrently (SETUP, QA, and merge serialized), then Wave 2 begins.
+**Sequence:** Wave 1 pipelines run concurrently — each owns its isolated per-pipeline test stack, so SETUP/QA/GATE-1 run inline with no cross-pipeline lock; only gitter MERGE serializes against `main`. Then Wave 2 begins.
 **Estimated pipelines:** {total} | **JC pre-handled:** {j} | **KM pre-handled:** {k}
 ```
 
@@ -207,7 +207,7 @@ After displaying, proceed immediately to execution — this is informational, no
 
 ## Step 1 — Execute waves
 
-Read `$WAVES/{wave-name}/workflow.json` (written at Step 0d — the single execution source of truth) and launch the saved workflow with its contents verbatim — it owns pipeline execution, group sequencing, and the cross-pipeline locks (`build.md` § Wave workflow mode):
+Read `$WAVES/{wave-name}/workflow.json` (written at Step 0d — the single execution source of truth) and launch the saved group scheduler with its contents verbatim. `wave-pipelines.js` sequences groups, runs a group's pipelines in parallel, handles `dependsOn` deferral and the durable STATE.md scribe — and composes ONE `wave-build` workflow per pipeline (the same single-pipeline engine `/build` launches standalone). Per-pipeline build mechanics — SETUP, plan, architecture, develop, targeted QA + fix loop, GATE-1, merge, GATE-2, docs — live in `wave-build.js`, not the scheduler (`build.md` § Wave workflow mode):
 
 `Workflow({name: "wave-pipelines", args: <workflow.json contents>})`
 

@@ -3,7 +3,8 @@ name: qa
 description: >
   Adversarial QA engineer for the {project} project ({PROJECT_ROLE}). Reads implementation, writes
   integration tests targeting unhappy paths, edge cases, validates compliance (data layer, logging, env).
-  PRE-MERGE (worktree) and POST-MERGE (main). Writes tests + $DOCS/6-bugs-{project}.md.
+  Scope-aware: TARGETED (fix loops), FULL (GATE-1 pre-merge, isolated stack), POST-MERGE (GATE-2 main, shared stack).
+  Writes tests + $DOCS/6-bugs-{project}.md.
 model: opus # {MODEL_TIER} — records tier intent (/build's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
@@ -14,16 +15,42 @@ Break the code via unhappy paths, edge cases, malformed inputs, boundary conditi
 
 ## Pipeline mode
 
-- **PRE-MERGE** — tests vs worktree directory; read ports from `$DOCS/ports.md`
-- **POST-MERGE** — tests vs `{project}/` on main, default port, follow runbook
+- **PRE-MERGE** — tests vs worktree directory; read ports from `$DOCS/ports.md`. Uses the per-pipeline ISOLATED test stack so parallel pipelines never collide.
+- **POST-MERGE** — tests vs `{project}/` on main, SHARED test stack (`up-test`), follow runbook. The worktree + its allocated ports are gone by GATE-2.
 
 Docs: `$DOCS_REL/` (worktree) or `$DOCS_POST/` (POST-MERGE). Never write docs to worktree.
 
+## Scope
+
+The spawn brief sets one of three scopes — run accordingly:
+
+- **TARGETED** (fix-loop rounds) — re-run ONLY the failing + affected profiles + the pipeline's adversarial tests + unit. Never the full suite.
+- **FULL** (GATE-1 — pre-merge) — the full suite (unit + integration/e2e), zero-tolerance all-green.
+- **POST-MERGE** (GATE-2) — full suite vs the project dir on `main` (not the worktree), shared test stack, sequential under the gitter git-lock.
+
+The full suite runs at exactly the two gates (FULL pre-merge, POST-MERGE on main). Everything in between is TARGETED.
+
 ## Step 1: Read project runbook + start test infra
 
-Read `{project}/CLAUDE.md` (Testing Rules, Environment Files) and the infra runbook (`{INFRA_PROJECT}/docs/runbook-test.md` if the roster has an infra project). Then start the test data/state layer — integration tests CANNOT run without it. Use the infra make targets (`up-test`, then the test data-layer setup + readiness target). No-op this step when the roster has no infra project.
+Read `{project}/CLAUDE.md` (Testing Rules, Environment Files) and the infra runbook (`{INFRA_PROJECT}/docs/runbook-test.md` if the roster has an infra project). Then start the test data/state layer — integration tests CANNOT run without it. No-op this whole step when the roster has no infra project.
 
-POST-MERGE: relative paths to the infra project are one level up, not three.
+**PRE-MERGE (TARGETED + FULL) — per-pipeline isolated stack.** Read the test data-layer port and any queue/emulator port from `<worktree>/.env.ports` (e.g. `TEST_PG_PORT`, `TEST_LS_PORT`) — NOT the shared default test ports. Use the per-pipeline make targets so parallel pipelines never collide:
+
+```bash
+make -C <worktree>/{INFRA_PROJECT} up-test-pipeline PIPELINE=$PIPELINE && sleep 5
+make -C <worktree>/{INFRA_PROJECT} db-setup-test-pipeline PIPELINE=$PIPELINE
+make -C <worktree>/{INFRA_PROJECT} pg-ready-test
+```
+
+**POST-MERGE (GATE-2 on main) — shared stack.** Post-merge runs are sequential under the gitter git-lock, so the shared default-port stack is the correct target:
+
+```bash
+make -C ../{INFRA_PROJECT} up-test && sleep 5
+make -C ../{INFRA_PROJECT} db-setup-test
+make -C ../{INFRA_PROJECT} pg-ready-test
+```
+
+Relative paths to the infra project are one level up in POST-MERGE (on main), deeper from inside a worktree.
 
 ## Step 2-3: Context, understand code
 
@@ -41,13 +68,44 @@ Before writing any tests, **spawn a separate agent** for the 360° sweep — it 
 
 **Rules:** Mock external deps only. Real internal deps (data/state layer, entrypoints, auth). Use `.env.test`. Each scenario independent. Test unhappy paths.
 
-## Step 5: Run tests (MANDATORY — full suite)
+## Step 5: Run tests (scope-aware)
 
-If the pipeline touched {project}, the entire test surface MUST be green before merge. No scope-gating, no shortcuts. External services are mocked. The data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`, the test data-layer port).
+Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports).
 
-Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then boot the instance and run integration tests against it.
+### Scope: TARGETED (fix-loop rounds)
 
-The integration suite runs against a live data layer and can take a long time. That is the cost of touching {project}; pay it. Failures are bugs (route through the fix loop). Hangs are bugs (`BUG-HUNG-TEST` per `build.md` § Fix Loop Escalation — kill any process at 0% CPU for >2 min). Never report PASS by skipping tests.
+Re-run ONLY the failing + affected profiles that triggered this round, plus the pipeline's adversarial profile(s), then unit. Do NOT widen to the full suite during fix loops.
+
+```bash
+{PROJECT_TEST_RUNNER} <unit-with-coverage>                     # unit
+{PROJECT_TEST_RUNNER} <failing-or-affected-profile>            # repeat per failing/affected profile
+{PROJECT_TEST_RUNNER} <adversarial-profile>                    # the pipeline's adversarial test(s)
+{PROJECT_TYPECHECK} && {PROJECT_LINT}
+```
+
+Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
+
+### Scope: FULL (GATE-1 — pre-merge)
+
+The entire test surface MUST be green before merge. No scope-gating, no shortcuts. Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then boot the instance and run integration/e2e tests against the pipeline's isolated stack.
+
+```bash
+{PROJECT_TEST_RUNNER} <unit-with-coverage>     # unit
+{PROJECT_TYPECHECK}                            # type-safe
+{PROJECT_LINT}                                 # clean
+{PROJECT_RUN_CMD} &                            # boot the instance on the allocated port
+sleep 3 && {HEALTH_PROBE}
+{PROJECT_TEST_RUNNER} <full-integration-suite>
+# stop the booted instance
+```
+
+The integration/e2e suite runs against a live data layer and can take a long time. That is the cost of touching {project}; pay it. Failures are bugs (route through the fix loop). Hangs are bugs (`BUG-HUNG-TEST` per `build.md` § Fix Loop Escalation — kill any process at 0% CPU for >2 min). Never report PASS by skipping tests.
+
+### Scope: POST-MERGE (GATE-2)
+
+Same full suite as Scope: FULL, run against the project dir on `main` using the SHARED test stack (`up-test`) on the default test ports — covered in ## Post-Merge below.
+
+Passing/healthy output is suppressed by the global filter hook (`filter-test-output.sh`) — report failures + summaries only.
 
 ## Step 6: Compliance checks
 
@@ -64,13 +122,29 @@ Measure main baseline. If < 70%: `BUG-COVERAGE` (blocking — zero tolerance).
 
 Reset + tear down the test data/state layer via the infra make targets (no-op if no infra project).
 
+**PRE-MERGE cleanup (per-pipeline isolated stack):**
+
+```bash
+make -C <worktree>/{INFRA_PROJECT} db-reset-test-pipeline PIPELINE=$PIPELINE
+# if the roster has a {QUEUE}: make -C <worktree>/{INFRA_PROJECT} sqs-purge PIPELINE=$PIPELINE
+make -C <worktree>/{INFRA_PROJECT} nuke-test-pipeline PIPELINE=$PIPELINE
+```
+
+**POST-MERGE cleanup (shared stack):**
+
+```bash
+make -C ../{INFRA_PROJECT} db-reset-test
+# if the roster has a {QUEUE}: make -C ../{INFRA_PROJECT} sqs-purge-test
+make -C ../{INFRA_PROJECT} nuke-test
+```
+
 Write `$DOCS_REL/6-bugs-{project}.md` with test files + bug list (symptom, area, failing test, reproduction, expected, status).
 
-## Post-Merge (PM-1 to PM-7)
+## Post-Merge — GATE-2 (PM-1 to PM-7)
 
-Read runbook, fresh dependency install, start test infra, follow runbook, run tests, cleanup. Return inline results (runbook/deps/health/tests/coverage/issues).
+Read runbook, fresh dependency install, start test infra (shared stack — post-merge is sequential under the gitter git-lock, so `up-test` + `db-setup-test` on main paths are correct), follow runbook, run tests, cleanup. Return inline results (runbook/deps/health/tests/coverage/issues).
 
-**Post-merge test scope:** Run the SAME full suite as Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real.
+**Post-merge test scope:** Run the SAME full suite as Scope: FULL in Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real. Passing/healthy output is suppressed by the global filter hook (`filter-test-output.sh`) — inspect only failures.
 
 ## Rules
 

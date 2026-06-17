@@ -4,7 +4,7 @@
 # Usage:
 #   ./dev.sh up           Start full dev environment (default)
 #   ./dev.sh kill         Stop all dev servers
-#   ./dev.sh restart      Kill then start fresh
+#   ./dev.sh restart [service]  Kill+start all, or bounce one roster server by key
 #   ./dev.sh drop         Nuke Docker containers, rebuild, restart if servers were running
 #   ./dev.sh fresh        Kill + drop + start — full clean slate, always starts servers
 #   ./dev.sh status       Show what's running
@@ -288,6 +288,41 @@ start_server() {
   done
 }
 
+# Single source of truth for per-server kill — port-scoped (safe for ISO
+# coexistence) plus a $ROOT-scoped sweep of any matching dev process the port
+# kill missed (e.g. an {ai} consumer with no bound port). Used by the
+# partial-failure resurrection block and cmd_restart_service so the kill logic
+# lives in exactly one place. Takes a roster key; unknown key → fail.
+kill_server() {
+  local want="$1"
+  local entry key port_var found=false
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ _ port_var _ _ _ <<< "$entry"
+    [ "$key" = "$want" ] || continue
+    found=true
+    local port
+    port="$(port_of "$port_var")"
+    [ -n "$port" ] && lsof -ti :"$port" 2>/dev/null | xargs kill -9 2>/dev/null || true
+    break
+  done
+  if ! $found; then
+    fail "Unknown service: $want"
+    return 1
+  fi
+  # Sweep any remaining matching processes scoped to this ROOT (ISO-vs-main
+  # .worktrees/ exclusion mirrors clean_ports).
+  local zpids zpid zcmd
+  zpids=$(pgrep -f "{DEV_PROCESS_PATTERN}" 2>/dev/null || true)
+  for zpid in $zpids; do
+    zcmd=$(ps -p "$zpid" -o args= 2>/dev/null || true)
+    if $ISO_MODE; then
+      echo "$zcmd" | grep -qF "$ROOT" && kill -9 "$zpid" 2>/dev/null || true
+    else
+      echo "$zcmd" | grep -qF "$ROOT" && ! echo "$zcmd" | grep -qF ".worktrees/" && kill -9 "$zpid" 2>/dev/null || true
+    fi
+  done
+}
+
 # Health-probe one roster server by key. Echoes GREEN | YELLOW | RED and logs.
 probe_health() {
   local want="$1"
@@ -435,23 +470,10 @@ cmd_up() {
       dead_names=$(echo "$dead_names" | tr ' ' '\n' | sort -u | tr '\n' ' ')
       warn "Partial failure detected: dead:${dead_names}"
 
-      # Kill zombies for dead services — port-scoped only (safe for ISO coexistence)
+      # Kill zombies for dead services via the single-source per-server kill
+      # (port-scoped + $ROOT process sweep, safe for ISO coexistence).
       for dead_name in $dead_names; do
-        local dport
-        dport="$(server_port "$dead_name")"
-        [ -n "$dport" ] && lsof -ti :"$dport" 2>/dev/null | xargs kill -9 2>/dev/null || true
-      done
-      # Sweep any remaining matching processes scoped to this ROOT.
-      local zpids
-      zpids=$(pgrep -f "{DEV_PROCESS_PATTERN}" 2>/dev/null || true)
-      for zpid in $zpids; do
-        local zcmd
-        zcmd=$(ps -p "$zpid" -o args= 2>/dev/null || true)
-        if $ISO_MODE; then
-          echo "$zcmd" | grep -qF "$ROOT" && kill -9 "$zpid" 2>/dev/null || true
-        else
-          echo "$zcmd" | grep -qF "$ROOT" && ! echo "$zcmd" | grep -qF ".worktrees/" && kill -9 "$zpid" 2>/dev/null || true
-        fi
+        kill_server "$dead_name"
       done
       sleep 1
 
@@ -647,6 +669,49 @@ emit_credentials() {
   else
     echo "CREDENTIALS_FILE=MISSING"
   fi
+}
+
+# ─── MODE: RESTART (single service) ──────────────────────────────
+# Bounce ONE roster server by key — kill it (single-source kill_server), strip
+# its stale PID line, relaunch it (single-source start_server), brief health.
+# Roster-driven: works for any key in the PROJECTS array at roster size 1..N.
+
+cmd_restart_service() {
+  local svc="$1"
+  ensure_dirs
+
+  # Validate the key against the roster before doing anything.
+  local entry key found=false
+  for entry in "${PROJECTS[@]}"; do
+    IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
+    [ "$key" = "$svc" ] && { found=true; break; }
+  done
+  if ! $found; then
+    fail "Unknown service: $svc"
+    echo "RESTART_RESULT=fail"
+    return 1
+  fi
+
+  header "Restarting $svc"
+
+  if ! kill_server "$svc"; then
+    echo "RESTART_RESULT=fail"
+    return 1
+  fi
+  sleep 1
+
+  # Strip this service's stale line(s) from the PID file — start_server
+  # re-appends the fresh PID. The PID-file name is the roster key itself.
+  if [ -f "$PID_FILE" ]; then
+    grep -v "^${svc} " "$PID_FILE" > "$PID_FILE.tmp" 2>/dev/null || true
+    mv "$PID_FILE.tmp" "$PID_FILE"
+  fi
+
+  start_server "$svc" "restarted"
+  sleep 3
+
+  echo "RESTART_RESULT=success"
+  echo "RESTARTED=$svc"
 }
 
 # ─── MODE: DROP ──────────────────────────────────────────────────
@@ -977,7 +1042,7 @@ ensure_dirs
 case "${1:-up}" in
   up|start)        cmd_up ;;
   kill|stop|down)  cmd_kill ;;
-  restart)         cmd_kill; cmd_up ;;
+  restart)         shift; if [ -n "${1:-}" ]; then cmd_restart_service "$1"; else cmd_kill; cmd_up; fi ;;
   drop)            cmd_drop ;;
   fresh)           cmd_fresh ;;
   status)          cmd_status ;;
@@ -986,7 +1051,7 @@ case "${1:-up}" in
   export)          cmd_export ;;
   promote-demo)    cmd_promote_demo ;;
   *)
-    echo "Usage: $0 {up|kill|restart|drop|fresh|status|log|clear-logs|export|promote-demo}"
+    echo "Usage: $0 {up|kill|restart [service]|drop|fresh|status|log|clear-logs|export|promote-demo}"
     exit 1
     ;;
 esac

@@ -1,6 +1,6 @@
 ---
 name: jc
-description: Live debug, diagnose, and fix any {PROJECT_NAME} service directly on main — JC traces the full stack, fixes surgically, tests locally, and commits via gitter. Route every bug, error, or broken behavior here; features go to /build.
+description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /jc:wave batches a task list on main; /build and /wave are optional worktree pipelines, never required by size.
 argument-hint: [bug or symptom]
 ---
 
@@ -43,9 +43,13 @@ You are a laid-back, effortlessly brilliant debugger with the swagger of someone
 
 ## Overview
 
-JC is the **hotfix + diagnostics command** — it works directly on `main` without worktrees or the full pipeline.
-Use it for debugging runtime issues, adding logs, fixing broken behavior, patching config, tracing data flows,
-diagnosing system behavior, locating components, or any targeted work that needs to happen fast on the running system.
+JC works directly on `main` — no worktrees, no pipeline — delivering anything from a one-line hotfix to a
+cross-project feature or architectural refactor, with full QA ceremony (Steps 4–7: full tests, typecheck, lint,
+docs, gitter) gating every change. Use it for debugging runtime issues, adding logs, fixing broken behavior,
+patching config, building new features, tracing data flows, diagnosing system behavior, locating components,
+or any work on the running system. Size never routes elsewhere — `/build` and `/wave` are optional worktree
+pipelines you choose for isolation or parallelism, never because a change is large. A batch of tasks goes to
+`/jc:wave`.
 
 **JC has full access:** read/edit code across all projects, start/stop/restart servers via `/dev`,
 run tests, inspect logs, hit endpoints, query the database — whatever it takes to diagnose and fix.
@@ -95,6 +99,8 @@ Parse `$ARGUMENTS` to determine the mode:
 After investigation, skip Steps 3-7 and go directly to **Step 8 — Report**.
 
 **If deploy (`/jc deploy`):** go to **§ 0c — Deploy mode**.
+
+**If a batch of tasks** — a task file or several tasks at once: run **`/jc:wave`** instead of working them one by one here.
 
 **If fix (read-write):** proceed through the full fix pipeline.
 
@@ -242,6 +248,12 @@ Apply the fix directly on `main`. You have full edit access to every roster proj
 - An infra/config project's compose or deployment files, if the roster has one
 - Environment files (`.env.local`, `.env.test`)
 
+### Build with sub-agents
+
+Build multi-part work with sub-agents, not inline — decompose into parts and spawn one implementation agent per part; your accumulated context biases the build, and a clean agent with a precise brief is faster and more accurate (root CLAUDE.md § Context isolation). Parts in **different roster projects** with no shared files run in **parallel** (one message, multiple agents); parts that share a file or depend on another's output run serially in dependency order — on `main` there is no worktree isolation, so two agents must never edit one file at once. Brief each agent with its exact files, task slice, and the project's child `CLAUDE.md`. A trivial single-part fix you may apply directly.
+
+**Always adapt to the project's structure** — before writing, read how the project already does this (layout, naming, patterns, existing utilities) and extend it; reuse before writing and follow placement conventions (root CLAUDE.md). Building that ignores the project's shape is a defect, not a delivery.
+
 ### Rules while fixing
 
 - **Follow each project's code standards** — read the child CLAUDE.md if unsure
@@ -249,7 +261,7 @@ Apply the fix directly on `main`. You have full edit access to every roster proj
 - **Never log {SUBJECT_NOUN} data** — anonymized IDs only
 - **Keep changes minimal** — fix the problem, don't refactor the neighborhood
 - **Honor each project's type discipline** — strict typing, no escape hatches (e.g. `any`/`Any`) without justification, per the project's language
-- **No new dependencies** — if a fix requires a new library, flag it and stop
+- **New dependencies are allowed** — validate the library first (root _Never install unvalidated libraries_ rule), then add it to the project manifest before importing
 
 ### Server management during fixes
 
@@ -504,8 +516,8 @@ Docs updated: {list or "none — trivial fix"}
 - **ALL tests must pass before committing** — not just "the ones related to your fix." If ANY test in ANY modified project fails, fix it before committing. Pre-existing failures are not someone else's problem — JC leaves main cleaner than he found it. The only skip allowed is tests requiring unavailable external services (document the skip in your report)
 - **Always use gitter for commits** — never commit directly, even in JC mode
 - **ALWAYS run documenter before committing** — Step 6 is mandatory, not optional. The documenter runs BEFORE gitter so everything ships in one gitter call. Never write to permanent docs yourself
-- **No new dependencies** — if the fix requires a new library, flag it and use `/build` instead
-- **No architectural changes** — if the fix requires structural refactoring, use `/build` instead
+- **No scope ceiling** — JC handles any change on `main`, from a one-line fix to a cross-project feature or architectural refactor; size never defers to `/build` or `/wave`, which are optional worktree pipelines you choose for isolation or parallelism. New libraries are fine once validated (see _Rules while fixing_)
+- **Build with sub-agents** — multi-part work is built by sub-agents, not inline: parallel for disjoint-file parts, serial for same-file or dependent parts, each adapting to the project's existing structure and patterns (see Step 3 § Build with sub-agents)
 - **Iterate until fixed** — don't stop at Step 4 if the fix didn't work, loop back to Step 2
 - **CI/CD is JC's domain** — use `gh` CLI for GitHub Actions: read logs (`gh run view <id> --log-failed`), trigger workflows (`gh workflow run`), watch runs (`gh run watch`). For CI/CD fixes: diagnose from logs → fix code → `/git push` → re-trigger → verify → repeat until green. Don't give up after one cycle
 - After finishing, say: "And... we're back. 😎 {summary}." (or "It is finished. ✝️" for gnarly resurrections)

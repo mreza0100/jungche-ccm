@@ -30,7 +30,7 @@ Parse `$ARGUMENTS` to determine the mode:
 | ---------------------- | --------------------------------------------------------------------------------------------- |
 | (empty), `up`, `start` | **UP** — start the full dev environment                                                       |
 | `kill`, `stop`, `down` | **KILL** — stop all running dev servers                                                       |
-| `restart`              | **RESTART** — kill all servers then start fresh                                               |
+| `restart [{project}]`  | **RESTART** — kill+start all servers, or bounce just the named roster server                  |
 | `status`               | **STATUS** — show what's running                                                              |
 | `log`, `logs`          | **LOG** — show recent log output (all servers or one)                                         |
 | `drop`                 | **DROP** — nuke Docker containers, rebuild from scratch, restart servers if they were running |
@@ -126,7 +126,8 @@ All modes assemble from these blocks. `{COMMAND FOOTER}` is always shown last.
 Commands:
   /dev           Start dev environment
   /dev kill      Stop all servers
-  /dev restart   Kill + start fresh
+  /dev restart [{project}]  Kill + restart all, or one roster server
+
   /dev drop      Nuke containers + rebuild from scratch
   /dev fresh     Kill + drop + start — full clean slate
   /dev status    Show what's running
@@ -164,7 +165,7 @@ After showing the report, check if any service has RED status or `ERRORS` is not
 
 **Loop prevention:** When JC fixes a service and needs to restart it, JC should either:
 
-- Restart the individual service directly (using the manual restart commands in JC Step 3)
+- Restart the individual service with `/dev restart {project}` (bounces just that roster server)
 - Or run the dev script with `DEV_NO_AUTOHEAL=1 ./.claude/scripts/dev.sh up` so auto-heal doesn't re-trigger
 
 ---
@@ -201,10 +202,19 @@ Dev servers stopped.
 
 ## Mode: RESTART
 
+**Bare `/dev restart` (all servers):**
+
 1. Run Script Maintenance (Step 0)
 2. Run: `./.claude/scripts/dev.sh restart 2>&1`
 3. Parse and report using Canonical Template with header: "Dev environment restarted (killed old servers, started fresh)."
 4. Auto-heal if needed
+
+**`/dev restart {project}` (single roster server):** a targeted bounce — kill that one server, start it, brief health. `{project}` is any roster entry's key. Skip Script Maintenance (Step 0).
+
+1. Run: `./.claude/scripts/dev.sh restart {project} 2>&1`
+2. Parse `RESTART_RESULT=success|fail` and `RESTARTED={project}`.
+3. Report which server was bounced and its result.
+4. Auto-heal if `RESTART_RESULT=fail`.
 
 ---
 
