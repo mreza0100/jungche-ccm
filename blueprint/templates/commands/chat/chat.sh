@@ -7,9 +7,9 @@ set -euo pipefail
 #   whoami                                    print THIS chat's own tmux session
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
-#   inject  [--no-sig] <self|tmux|session-id|path> <message...>  force a turn (live / resume)
+#   inject  [--no-sig] [--force-now] <self|tmux|label|session-id|path> <message...>  force a turn (live / resume)
 #   ls                                        list live chats with cwd in this repo
-#   capture <tmux-session> [scrollback]       snapshot a live chat's screen
+#   capture <tmux-session>                    snapshot a live chat's full scrollback
 #   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
 #   extract <transcript-jsonl>                render a known transcript to text
 #   tail    [N]                               render THIS session's last N lines
@@ -48,6 +48,89 @@ repo_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P; }
 self_tmux() {
   [[ -n "${TMUX:-}" ]] || { echo "ERROR: this chat is not inside tmux (\$TMUX unset)" >&2; return 1; }
   tmux display-message -p '#{session_name}'
+}
+
+# self_label: this chat's own 🔖 label (its /rename name), read from its own
+# statusline — the line carrying both 🔖 and 🌿. Empty when not in tmux or unlabeled.
+# Reliable mid-run because this script never prints 🌿, so no command-echo line in our
+# own pane collides with the real statusline.
+self_label() {
+  local s
+  s="$(self_tmux 2>/dev/null || true)"; [[ -n "$s" ]] || return 0
+  tmux capture-pane -t "$s" -p -J 2>/dev/null | grep -F '🔖' | grep -F '🌿' | tail -1 \
+    | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true
+}
+
+# _pane_busy <tmux-session>: true while Claude Code is actively generating. The live
+# indicator is the spinner detail line — "<word>… (Ns · ↓ N tokens · …)" or the
+# "esc to interrupt" hint. A FINISHED turn shows "✻ <word> for Ns" (no paren-timer,
+# no token counter), which must NOT match — so we key on the in-progress paren-timer,
+# token counter, or esc hint, never a bare spinner glyph.
+_pane_busy() {
+  tmux capture-pane -t "$1" -p -J 2>/dev/null | grep -qiE 'esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens'
+}
+
+# _inject_lock_acquire <target>: serialize LIVE injects to the SAME target across
+# processes — several chats may inject into one pane at once and their keystrokes
+# would interleave into a mangled turn. mkdir is atomic on POSIX, so it is the
+# portable lock primitive (stock macOS has no flock(1)). The owner file holds
+# "PID EPOCH"; a held lock is STOLEN only when its owner process is dead or it has
+# been held past CHAT_INJECT_LOCK_MAXHOLD (a wedged holder) — never otherwise.
+# Sets INJECT_LOCKDIR on success; times out after CHAT_INJECT_LOCK_TIMEOUT.
+_inject_lock_acquire() {
+  local target="$1" safe lockdir line opid ots now deadline
+  safe="$(printf '%s' "$target" | tr '/:. ' '____')"
+  lockdir="${TMPDIR:-/tmp}/chat-inject-locks/${safe}.lock"
+  mkdir -p "$(dirname "$lockdir")" 2>/dev/null || true
+  deadline=$(( $(date +%s) + ${CHAT_INJECT_LOCK_TIMEOUT:-30} ))
+  while :; do
+    if mkdir "$lockdir" 2>/dev/null; then
+      printf '%s %s\n' "$$" "$(date +%s)" > "$lockdir/owner" 2>/dev/null || true
+      INJECT_LOCKDIR="$lockdir"
+      return 0
+    fi
+    line="$(cat "$lockdir/owner" 2>/dev/null || true)"; opid="${line%% *}"; ots="${line##* }"; now="$(date +%s)"
+    if { [[ -n "$opid" ]] && ! kill -0 "$opid" 2>/dev/null; } || { [[ "$ots" =~ ^[0-9]+$ ]] && (( now - ots > ${CHAT_INJECT_LOCK_MAXHOLD:-60} )); }; then
+      rm -rf "$lockdir" 2>/dev/null || true
+      continue
+    fi
+    if (( now >= deadline )); then return 1; fi
+    sleep "${CHAT_INJECT_LOCK_POLL:-0.1}"
+  done
+}
+
+# _inject_lock_release: drop the lock held in INJECT_LOCKDIR (run from an EXIT trap).
+_inject_lock_release() {
+  [[ -n "${INJECT_LOCKDIR:-}" ]] && rm -rf "$INJECT_LOCKDIR" 2>/dev/null || true
+  INJECT_LOCKDIR=""
+}
+
+# _resolve_label <label>: resolve a destination by its Claude 🔖 label (the /rename
+# name) to a tmux session — scanning live panes the way `ls` does. Match is
+# case-insensitive and exact on the 🔖 text. Prints the session on a UNIQUE match
+# (return 0); prints nothing on no match (return 1); on several matches lists the
+# candidates on stderr (return 2). The 🔖 name lives on the statusline — the line
+# that carries both 🔖 and 🌿 — so we key on that to avoid matching conversation text.
+_resolve_label() {
+  local want="$1" sess pane cap name wantlc namelc seen m; local -a matches=()
+  wantlc="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
+  # Scan EVERY pane (not just each session's active pane) — a session can hold
+  # several shells, and only the Claude pane carries the 🔖 statusline.
+  while IFS=$'\t' read -r sess pane; do
+    [[ -n "$pane" ]] || continue
+    cap="$(tmux capture-pane -t "$pane" -p -J 2>/dev/null || true)"
+    name="$(printf '%s\n' "$cap" | grep -F '🔖' | grep -F '🌿' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
+    [[ -n "$name" ]] || continue
+    namelc="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+    [[ "$namelc" == "$wantlc" ]] || continue
+    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sess" ]] && { seen=1; break; }; done
+    [[ "$seen" == 0 ]] && matches+=("$sess")
+  done < <(tmux list-panes -a -F '#{session_name}'$'\t''#{pane_id}' 2>/dev/null)
+  case "${#matches[@]}" in
+    1) printf '%s\n' "${matches[0]}"; return 0;;
+    0) return 1;;
+    *) echo "ambiguous 🔖 label '$want' — matches sessions: ${matches[*]}" >&2; return 2;;
+  esac
 }
 
 # _find <excerpt-file>: resolve to the past session containing the excerpt across
@@ -123,70 +206,170 @@ case "$cmd" in
     ;;
 
   inject)
-    nosig=0
-    if [[ "${1:-}" == "--no-sig" ]]; then nosig=1; shift; fi
-    [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--no-sig] <self|tmux-session|session-id|transcript-path> <message...>" >&2; exit 1; }
+    nosig=0; force_now=0
+    while [[ "${1:-}" == --* ]]; do
+      case "$1" in
+        --no-sig)    nosig=1; shift;;
+        --force-now) force_now=1; shift;;
+        *) echo "ERROR: unknown inject flag '$1'" >&2; exit 1;;
+      esac
+    done
+    [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--no-sig] [--force-now] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
     target="$1"; shift; msg="$*"
     [[ -n "$msg" ]] || { echo "ERROR: refusing to inject an empty message" >&2; exit 1; }
     if [[ "$target" == "self" || "$target" == "me" ]]; then target="$(self_tmux)" || exit 1; fi
     live_tmux=""; transcript=""
-    if tmux has-session -t "$target" 2>/dev/null; then live_tmux="$target"
-    elif [[ -f "$target" ]]; then transcript="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
-    elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
-      transcript="$(
-        for p in "$HOME"/.claude/projects/*/"$target".jsonl "$HOME"/.claude[0-9]*/projects/*/"$target".jsonl; do
-          [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
-        done | sort -u | head -1 || true
-      )"
-      [[ -n "$transcript" ]] || { echo "ERROR: no live tmux pane and no transcript for '$target'" >&2; exit 1; }
-    else echo "ERROR: target is not self, a live tmux session, a transcript path, or a session-id" >&2; exit 1; fi
+    if tmux has-session -t "$target" 2>/dev/null; then
+      live_tmux="$target"
+    elif [[ -f "$target" ]]; then
+      transcript="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
+    else
+      # Not an exact session name or a path → try resolving it as a 🔖 label (the
+      # destination's /rename name), found across live panes the way `ls` works.
+      lbl=""; lrc=0; lbl="$(_resolve_label "$target")" || lrc=$?
+      if [[ $lrc -eq 0 && -n "$lbl" ]]; then
+        live_tmux="$lbl"; echo "resolved 🔖 label '$target' → tmux session '$live_tmux'" >&2
+      elif [[ $lrc -eq 2 ]]; then
+        echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
+      elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        transcript="$(
+          for p in "$HOME"/.claude/projects/*/"$target".jsonl "$HOME"/.claude[0-9]*/projects/*/"$target".jsonl; do
+            [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
+          done | sort -u | head -1 || true
+        )"
+        [[ -n "$transcript" ]] || { echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
+      else
+        echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1
+      fi
+    fi
 
     # Sender signature — every injected message ends with who sent it and the
-    # exact command to answer with. The /rename chat title isn't readable from a
-    # script, so identity = the sender's own tmux session (the reply handle) +
-    # short session id; an optional human name comes from the caller via
-    # $CHAT_INJECT_FROM_NAME (the model's own 🔖 chat name). The reply line hands
-    # the recipient a runnable `/chat:inject {handle} <message>`.
+    # exact command to answer with. Identity is the SCRIPT's job, never the
+    # caller's: it self-derives from this chat's own tmux session (= chat.sh
+    # whoami, also the reply handle) + short session id + the 🔖 label (via
+    # self_label — readable mid-run since the script never prints 🌿). The reply line
+    # hands the recipient a runnable `/chat:inject {handle} <message>`, and the 🔖
+    # label sits next to it so the recipient sees who sent it and can reply by label.
     # Two footer forms: a one-line one for the LIVE typed path (a bare newline
     # submits in Claude Code, so the typed message must stay single-line), and a
-    # block one for pure text — the RESUME transcript and the long-message file.
+    # block one for the RESUME transcript (pure text, not typed).
     sender_handle="$(self_tmux 2>/dev/null || true)"
+    sender_lbl="$(self_label 2>/dev/null || true)"
     sender_uuid="${CLAUDE_CODE_SESSION_ID:-}"; sender_uuid8="${sender_uuid:0:8}"
-    sender_name="${CHAT_INJECT_FROM_NAME:-}"
     sigparts=()
-    [[ -n "$sender_name" ]]   && sigparts+=("from ${sender_name}")
     [[ -n "$sender_uuid8" ]]  && sigparts+=("sid ${sender_uuid8}")
     [[ -n "$sender_handle" ]] && sigparts+=("to reply: /chat:inject ${sender_handle} <message>")
+    [[ -n "$sender_lbl" ]]    && sigparts+=("🔖 ${sender_lbl}")
     sig=""; for p in "${sigparts[@]:-}"; do [[ -n "$p" ]] || continue; [[ -n "$sig" ]] && sig="$sig · "; sig="$sig$p"; done
     footer_inline=""; footer_block=""
     [[ -n "$sig" ]] && { footer_inline="  — ${sig}"; footer_block=$'\n\n'"— ${sig}"; }
     # --no-sig drops the footer entirely — for /compact, /goal, /loop and other
     # operational injections that must not carry a signature.
     [[ "$nosig" == 1 ]] && { footer_inline=""; footer_block=""; }
-    sender_short="${sender_name:-${sender_handle:-${sender_uuid8:-unknown}}}"
 
     if [[ -n "$live_tmux" ]]; then
-      note=""
-      if [[ "$msg" =~ ^[[:space:]]*/ ]]; then
-        : # the message IS a slash command — send verbatim so the target runs it:
-          # no signature (it would land as command args) and no file-cap (a file
-          # pointer would be read, never executed).
-      else
-        limit="${CHAT_INJECT_MAXLEN:-280}"; msg="${msg}${footer_inline}"
-        if [[ ${#msg} -gt $limit ]]; then
-          msgdir="$HOME/.claude-sessions/.chat-inject-msgs"; mkdir -p "$msgdir"
-          msgfile="$msgdir/$(date -u +%Y%m%dT%H%M%SZ)-$$.md"; printf '%s%s\n' "$*" "$footer_block" > "$msgfile"
-          frm=""; [[ "$nosig" == 1 ]] || frm=" from ${sender_short}"
-          msg="📨 Injected message${frm} (too long to type inline). Read it and act on it: $msgfile"; note=" (long message saved to $msgfile)"
-        fi
+      # Serialize delivery to this target across processes — several chats may inject
+      # into one pane at once and their keystrokes would interleave. Hold a per-target
+      # lock for the whole interrupt/type/submit critical section; the EXIT trap frees
+      # it on every exit path (success, warning, or error).
+      if ! _inject_lock_acquire "$live_tmux"; then
+        echo "WARNING: could not acquire the inject lock for '$live_tmux' within ${CHAT_INJECT_LOCK_TIMEOUT:-30}s — another inject is mid-delivery into it. Re-run when it frees." >&2
+        exit 4
       fi
+      trap '_inject_lock_release' EXIT
+
+      # --force-now: interrupt the target's running tool/flow so it reads this NOW.
+      # Press Esc only while the pane is busy (re-checking each round) — a single
+      # Esc interrupts and may rewind the running turn into the input box, which the
+      # empty-box guard below stashes and clears before we type. An idle target has
+      # nothing to interrupt, gets no Esc, and the marker below is not appended.
+      did_intr=0
+      if [[ "$force_now" == 1 ]]; then
+        for _ in $(seq 1 "${CHAT_INJECT_INTR_TRIES:-8}"); do
+          _pane_busy "$live_tmux" || break
+          tmux send-keys -t "$live_tmux" Escape; did_intr=1
+          sleep "${CHAT_INJECT_POLL:-0.2}"
+        done
+      fi
+      # Everything goes inline — no file, no pointer, no length cap. A slash
+      # command sends verbatim (a footer/marker would land as command args);
+      # anything else gets the force marker (only if we actually interrupted) plus
+      # the one-line footer appended. The settle-poll below confirms the whole
+      # message — however long — actually rendered before Enter, so a long inline
+      # send is reliable and a genuine jam is caught instead of half-sent.
+      force_mark=""
+      [[ "$did_intr" == 1 ]] && force_mark=" — ⚠ FORCE-DELIVERED via Esc (your running flow was interrupted; re-check any in-progress action)"
+      if [[ "$msg" =~ ^[[:space:]]*/ ]]; then :; else msg="${msg}${force_mark}${footer_inline}"; fi
+
+      # Normalize the input surface so keystrokes actually land — a pane in copy/scroll
+      # mode or sitting in the Rewind menu silently eats input (a common "Enter didn't
+      # land" cause). Exit copy-mode; cancel a Rewind menu with a single Esc.
+      if [[ "$(tmux display-message -t "$live_tmux" -p '#{pane_in_mode}' 2>/dev/null || echo 0)" == 1 ]]; then
+        tmux send-keys -t "$live_tmux" -X cancel 2>/dev/null || true
+      fi
+      if tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -qiF 'Restore the code'; then
+        tmux send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
+      fi
+
+      # PRE-INJECT draft safety: send-keys -l appends at the cursor, so typing onto an
+      # unsent draft would submit the mash-up. Ctrl+S stashes any draft (the box clears
+      # and the draft auto-restores after the next submit) and is a NO-OP on an empty
+      # box — so we press it unconditionally and never need to read the input. A draft
+      # was stashed iff the "stashed" indicator then appears near the prompt; that
+      # decides single vs double Enter below (a restored draft must not be re-submitted).
+      tmux send-keys -t "$live_tmux" C-s
+      sleep "${CHAT_INJECT_POLL:-0.2}"
+      saved_draft=0
+      tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -8 | grep -qi 'stashed' && saved_draft=1
+
       tmux send-keys -t "$live_tmux" -l -- "$msg"
-      sleep "${CHAT_INJECT_SUBMIT_DELAY:-0.4}"
-      tmux send-keys -t "$live_tmux" Enter
-      echo "injected LIVE into tmux session '$live_tmux'$note — answered now (pane must be idle at its prompt)"
-      exit 0
+      # A distinctive tail of the message — used to confirm the text rendered AND
+      # to tell "still in the input box" from "submitted". On submit the input line
+      # clears, but the message stays visible UP in the conversation, so the
+      # submit check looks at the input line only (the LAST '❯'), never the whole pane.
+      needle="$(printf '%s' "$msg" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ *$//')"; needle="${needle: -40}"
+      # 1) Wait for the full text to render before the first Enter (advisory). NEVER
+      #    bail on a miss — a typed-but-unsubmitted message is the worst outcome, and
+      #    detection can flake on wrapping/footer glyphs even when the text is there.
+      for _ in $(seq 1 "${CHAT_INJECT_SETTLE_TRIES:-40}"); do
+        cap="$(tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | tr -s '[:space:]' ' ')"
+        [[ "$cap" == *"$needle"* ]] && break
+        sleep "${CHAT_INJECT_POLL:-0.2}"
+      done
+      # 2) Submit and CONFIRM the Enter actually landed (positive safety net). Press
+      #    Enter; with NO stashed draft press a second Enter CHAT_INJECT_ENTER_GAP
+      #    (0.15s) later to defeat a swallowed first one (an empty box ignores it);
+      #    with a stashed draft press ONCE (the stash restores in <0.3s — a second
+      #    Enter would re-submit it). Then settle CHAT_INJECT_ENTER_SETTLE (0.4s) and
+      #    check the PLAIN input line (color-stripped, so syntax-highlighting of the
+      #    message/footer can't fool it) for the message's LEADING text: while that
+      #    prefix is still sitting in the input the turn did NOT submit, so press
+      #    again. Test the INPUT LINE only (last ❯) — the submitted message stays
+      #    visible UP in the conversation. The CALLER never presses Enter — this owns it.
+      prefix="$(printf '%s' "$msg" | tr -s '[:space:]' ' ' | sed 's/^ //')"; prefix="${prefix:0:24}"
+      submitted=0
+      for _ in $(seq 1 "${CHAT_INJECT_ENTER_TRIES:-12}"); do
+        tmux send-keys -t "$live_tmux" Enter
+        if [[ "$saved_draft" == 0 ]]; then
+          sleep "${CHAT_INJECT_ENTER_GAP:-0.15}"
+          tmux send-keys -t "$live_tmux" Enter
+        fi
+        sleep "${CHAT_INJECT_ENTER_SETTLE:-0.4}"
+        input_line="$(tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1)"
+        [[ "$input_line" != *"$prefix"* ]] && { submitted=1; break; }
+      done
+      if [[ "$submitted" == 1 ]]; then
+        note=""
+        [[ "$did_intr" == 1 ]]    && note="${note} — FORCE-NOW: interrupted the target's running flow"
+        [[ "$saved_draft" == 1 ]] && note="${note} — stashed and restored the target's unsent draft"
+        echo "injected LIVE into tmux session '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
+        exit 0
+      fi
+      echo "WARNING: typed the text into '$live_tmux' but could not confirm submission after ${CHAT_INJECT_ENTER_TRIES:-12} Enter attempts — the pane is likely busy mid-turn or in a selector. The text is in its input and will send on the next Enter; re-run when it is idle at '❯'." >&2
+      exit 3
     fi
 
+    [[ "$force_now" == 1 ]] && echo "WARNING: --force-now ignored — '$target' is not a live pane (a dormant chat has no running flow to interrupt); delivering via transcript RESUME." >&2
     msg="${msg}${footer_block}"
     tail_event="$(jq -c 'select(.uuid != null)' "$transcript" | tail -1)"
     [[ -n "$tail_event" ]] || { echo "ERROR: no uuid-bearing event in $transcript" >&2; exit 1; }
@@ -228,10 +411,14 @@ case "$cmd" in
     ;;
 
   capture)
-    [[ $# -ge 1 ]] || { echo "usage: chat.sh capture <tmux-session> [scrollback-lines]" >&2; exit 1; }
-    target="$1"; lines="${2:-}"
+    [[ $# -ge 1 ]] || { echo "usage: chat.sh capture <tmux-session>" >&2; exit 1; }
+    target="$1"
     tmux has-session -t "$target" 2>/dev/null || { echo "ERROR: no live tmux session '$target' — capture needs a live window; use 'read' for a dormant chat's transcript" >&2; exit 1; }
-    if [[ -n "$lines" ]]; then tmux capture-pane -t "$target" -p -S "-$lines"; else tmux capture-pane -t "$target" -p; fi
+    # -J joins wrapped lines so a long input line / footer reads as one whole
+    # line instead of "empty-looking" fragments split at the wrap column.
+    # -S - starts at the top of the scrollback so the whole retained buffer is
+    # captured, not just the visible fold — bounded only by tmux history-limit.
+    tmux capture-pane -t "$target" -p -J -S -
     ;;
 
   save)
