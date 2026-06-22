@@ -213,7 +213,7 @@ Read `$WAVES/{wave-name}/workflow.json` (written at Step 0d — the single execu
 
 Record the returned `runId` in STATE.md's TOP brief. The workflow runs in the background (`/workflows` shows live per-pipeline progress) — wait for its completion notification, do not poll.
 
-**Resume:** same session — relaunch with `resumeFromRunId: {runId from STATE.md}`; completed agents return cached. New session — the run cache is unavailable: edit `workflow.json` to drop pipelines STATE.md's appended outcome lines already mark DONE, then launch fresh from it; BLOCKED-DEFERRED pipelines resume per their `BLOCKED.md` protocol instead.
+**Resume:** same session — relaunch with the SAME `args` (the `workflow.json` contents) AND `resumeFromRunId: {runId from STATE.md}`; args are NOT restored from the journal, so omitting them throws the args-guard before any cached agent runs. Completed agents return cached; in-flight ones re-run. A machine crash mid-wave recovers the same way — the journal, the worktrees, and `main` survive: assess them, then relaunch with args + `resumeFromRunId`. New session — the run cache is unavailable: edit `workflow.json` to drop pipelines STATE.md's appended outcome lines already mark DONE, then launch fresh from it; BLOCKED-DEFERRED pipelines resume per their `BLOCKED.md` protocol instead.
 
 **Pause & amend:** a founder pause = `TaskStop` on the workflow task; resume per the rules above. Mid-wave spec amendments land only in NOT-yet-started pipelines' `0-task.md` (agents read it at spawn) — a running pipeline is never re-scoped mid-flight.
 
@@ -248,6 +248,17 @@ Update report with:
 
 | Pipeline | Tasks | Status | Notes |
 ```
+
+---
+
+## Step 2.5 — Wave GATE: full suite on integrated main (NON-OPTIONAL)
+
+After ALL pipelines merge, run ONE comprehensive full-suite gate on integrated `main` — the authoritative whole-wave validation. Per-pipeline GATE-2 runs in worktree-isolated infra that may report `INTEGRATION-UNRUN`; this gate is where every touched project's full integration/e2e tier actually executes together on the merged result, catching cross-pipeline interactions no single pipeline's gate can see. Skip ONLY when zero pipelines merged.
+
+Spawn ONE wave-gate runner (`general-purpose`, `model: "opus"`): bring the canonical (default, non-pipeline) test stack up ONCE (`make -C {INFRA_PROJECT} up-test` → `db-setup-test`), then run each touched project's FULL suite (unit + integration/e2e + typecheck + lint) **serially** on `main` — they share the one canonical stack, so a parallel run corrupts it; reset between projects (`db-reset-test`, queue purge). Front-load the highest-risk tiers: any `INTEGRATION-UNRUN` flag carried from Step 1, the destructive/erasure/cascade canaries, and any cross-pipeline shared surface. Tear down at the end. It reports per-project PASS/FAIL with each failure's `file:line`.
+
+- **GREEN** → record under `## Wave GATE` in the report, proceed to Step 3.
+- **RED** → a code regression on integrated `main` is wave-level remediation: append it to the `### /jc Action Items` that Step 3.4 drains (fix it there, never defer). A failure isolated to one pipeline routes to `wave/build.md` § If Post-Merge QA fails.
 
 ---
 
@@ -298,6 +309,29 @@ Skip if `{epic-name}` is `none`. Otherwise consolidate ONE entry for the whole w
 
 ---
 
+## Step 3.6 — Token consumption
+
+Total what the wave cost end-to-end — the pipeline workflow PLUS the review, remediation, and epic update this chat just ran. Run from the chat that executed the wave (default scope = this session):
+
+```bash
+node .claude/commands/p/tokens/token-ledger.mjs --by-workflow
+```
+
+The `TOTAL` row is the end-to-end cost for this chat; the wave's `wf_*` row (matching the `runId` in STATE.md) is the pipeline-execution portion, and `(non-workflow agents)` is the review + remediation + main-loop work. Append both token count and cost to the report and surface the total to the user:
+
+```markdown
+## Token Consumption
+
+**End-to-end (this chat):** {grand-total} tok · ${total-usd} (fresh {fresh-total} tok)
+
+- Pipelines (`{runId}`): {wf-grand} tok · ${wf-usd}
+- Review + remediation + main-loop: {nonwf-grand} tok · ${nonwf-usd}
+```
+
+Multiple chats active? Scope explicitly with `--session <PARENT CONV of the runId>` (from `--all --by-workflow`).
+
+---
+
 ## Step 4 — Commit & Archive (NON-OPTIONAL — execute AFTER Professor review)
 
 Everything goes into git history first, then to gitignored cold storage under `tmp/` — no archive stays in `docs/`.
@@ -313,6 +347,10 @@ done
 ```
 
 Collect the present dirs plus `$WAVES/{wave-name}` as the archive list. Exception: leave a `BLOCKED.md` (deferred) pipeline dir in place — it archives when resumed.
+
+### 4a-bis. Documenter sweep for out-of-band merges
+
+A pipeline whose `wave-build` ran through its Docs stage already merged its decisions into the permanent docs. A pipeline that merged OUTSIDE that flow — BLOCKED-resumed, crash-recovered, or hand-merged — never ran its documenter. For each such pipeline, invoke `mono-documenter` ARCHIVE for it now so its removed/added symbols reach the permanent docs before the build dir is archived. A normally-completed pipeline needs nothing here.
 
 ### 4b. Gitter commit + archive
 

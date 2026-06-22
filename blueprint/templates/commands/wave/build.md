@@ -233,7 +233,7 @@ After pre-flight and Step 0 (name resolved, `0-task.md` pre-placed), launch the 
 
 Surface `flags` (carry-forward /jc candidates, SPEC-CONFLICTs, pre-existing defects) to the founder.
 
-**Resume:** same session — relaunch with `resumeFromRunId: {runId}`; completed agents return cached. New session — resume a BLOCKED-DEFERRED pipeline per its `BLOCKED.md` protocol.
+**Resume:** same session — relaunch with the SAME `args` AND `resumeFromRunId: {runId}` (args are NOT restored from the journal — omit them and the args-guard throws before any cached agent runs); completed agents return cached, in-flight ones re-run. A machine crash mid-run recovers the same way: the journal, the worktree, and `main` all survive — assess them, then relaunch with args + `resumeFromRunId`. New session — resume a BLOCKED-DEFERRED pipeline per its `BLOCKED.md` protocol.
 
 The § Status Emission header/phase/footer lines are the standalone-orchestrator framing; once the workflow owns the run, its `log()` + per-stage phase stream (visible via `/workflows`) is the live progress, and the orchestrator only reports the returned result object.
 
@@ -376,7 +376,7 @@ Agent(general-purpose, model: "opus"): "You are the database admin. Read and fol
 ## Step 6 — Parallel Development (on named worktrees)
 
 Read ports from `$DOCS/ports.md`, then launch the developer for each routed roster entry.
-**Model: opus** — every build child agent does real work.
+**Model: sonnet** — implementer agents (developers, the infra/devops engineer, the AI/prompt engineer) execute the architect's designed spec, which is the Sonnet (spec-following) tier; every judgment role (planners, architects, mono-planner/architect, ui-ux, db-admin, QA gates, code-review) stays opus. Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); the literals below are declared copies.
 
 **Trivial infrastructure/config tasks:** If the scope is only adding env vars or config to normal project files (e.g., adding vars to a `{project}/.env.local`) and no roster entry ships a dedicated DevOps agent, the orchestrator MAY handle it directly instead of spawning a sub-agent. Sub-agents sometimes get permission-blocked on `.worktrees/` paths — for 3-line edits, doing it yourself is faster and more reliable.
 
@@ -387,7 +387,7 @@ label. For a single-project roster, $WORKTREE/{project} resolves to $WORKTREE (r
 $DOCS_REL is ../../docs/dev/builds/{name}/ (one level shallower than a per-project subdir). -->
 
 ```
-Agent(general-purpose, model: "opus"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
+Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} developer. Read and follow {project}/.claude/agents/developer.md.
   Pipeline: {name}. Follow the Common spawn contract (developer doc reads).
   Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
   Self-QA is TARGETED — unit + typecheck + lint + only your own/affected integration (or e2e) profile, never the full suite
@@ -416,9 +416,8 @@ Single-project roster: $WORKTREE/{project} resolves to $WORKTREE (repo root). --
 Agent(qa-{project}): "Mode: PRE-MERGE. Scope: TARGETED — re-run ONLY failing + affected profiles + the pipeline's adversarial tests + unit, NOT the full suite.
   Pipeline: {name}. Follow the Common spawn contract (pre-merge QA doc reads).
   Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT}.
-  Test infra is ISOLATED per pipeline — bring up YOUR own stack: make -C $WORKTREE/{INFRA_PROJECT} up-test-pipeline PIPELINE={name} + db-setup-test-pipeline PIPELINE={name},
-  using YOUR allocated TEST_PG_PORT/TEST_LS_PORT from $WORKTREE/.env.ports (NOT the shared default test stack + lock). You are the sole occupant — no cross-pipeline lock.
-  Run infra make targets from the WORKTREE infra (make -C $WORKTREE/{INFRA_PROJECT} …) so worktree-only migrations reach the test template. Tear down with nuke-test-pipeline PIPELINE={name}; on a stale stack, nuke then up again.
+  The per-pipeline test stack is ALREADY UP — the orchestrator stood it up ONCE before Develop and owns its lifecycle. Do NOT run up-/down-/nuke-test-pipeline: a per-agent nuke drops the shared template + every sibling project's worker DBs mid-run. Read YOUR allocated test ports from $WORKTREE/.env.ports (NOT the shared default test stack + lock).
+  Isolate INSIDE the shared container — run against your own dedicated per-project worker DB ({project}_test_{worker}, cloned from the shared template) and per-project queue segments ({base}-{project}-{worker}), so all projects' QA runs in parallel with no collision.
   Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
   Write findings into $DOCS_REL/6-bugs.md under a `## {PROJECT_ROLE}` section (create the file if absent)."
 ```
@@ -437,7 +436,7 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 **Iteration cap: 3 maximum.** Never run more than 3 fix-loop iterations per pipeline. After iteration 3 fails, escalate to BLOCKED-DEFERRED (see § Fix Loop Escalation below) — do NOT keep looping. Past incidents show runaway fix loops eat orders of magnitude more wall-time than the work they purport to fix.
 
-**Per-pipeline isolated test infra.** Each pipeline owns its OWN test stack — agents bring it up with `make -C $WORKTREE/{INFRA_PROJECT} up-test-pipeline PIPELINE={name}` + `db-setup-test-pipeline PIPELINE={name}`, using the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT` from `$WORKTREE/.env.ports`, NOT the shared `{DB_PORT_TEST}`/`{QUEUE_PORT_TEST}` default stack + lock. Each pipeline is the sole occupant by construction — no cross-pipeline lock. Run infra make targets from the WORKTREE infra (worktree-only migrations must reach the test template; running main's infra builds a template missing them). Tear down with `nuke-test-pipeline PIPELINE={name}`; on a stale stack from an interrupted run, `nuke-test-pipeline` then `up-test-pipeline` again. The same isolated stack serves the targeted Fix Loop, GATE-1, and GATE-2.
+**Per-pipeline test infra — the orchestrator owns the lifecycle (`TEST_INFRA` contract).** Each pipeline runs ONE isolated test stack at the worktree's allocated test ports (NOT the shared `{DB_PORT_TEST}`/`{QUEUE_PORT_TEST}` default). The orchestrator (engine) stands it up ONCE before Develop (`stackSetup`: nuke → up → template → db → health, run from the WORKTREE infra so worktree-only migrations reach the test template, recording the ports to `$DOCS/test-stack.env` for post-merge GATE-2) and tears it down ONCE at the very end (`stackTeardown`, in a `finally`). The parallel developer + QA agents SHARE that one container and **NEVER run `up-/down-/nuke-test-pipeline`** — a per-agent nuke drops the shared template + every sibling's worker DBs mid-run. Each agent isolates INSIDE the container via a dedicated per-project worker DB (`{project}_test_{worker}`, cloned from the shared template) and per-project queue segments (`{base}-{project}-{worker}`), so all projects' QA runs in parallel with no collision. The same orchestrator-owned stack serves the targeted Fix Loop, GATE-1, and GATE-2. Every test command is wrapped in `timeout 600s`; passing output stays out of context via the `filter-test-output.sh` hook (failures + summaries only).
 
 **Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation), and passing output stays out of context via the `filter-test-output.sh` hook (failures + summaries only). Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
 
@@ -445,9 +444,9 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 If `$DOCS/6-bugs.md` has `Status: OPEN`:
 
-1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: opus, TARGETED self-QA). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
+1. **Developer fixes** — spawn developer agents on their existing worktree branches (same as Step 6, model: sonnet — implementer tier, TARGETED self-QA). Developers read `6-bugs.md` directly for bugs with `Status: OPEN`. QA's adversarial tests provide the reproduction — the failing test IS the root cause. Developers debug and fix the code themselves — no separate debugger needed.
 
-2. **Re-run targeted QA** (same as Step 7, model: opus — TARGETED scope, never the full suite)
+2. **Re-run targeted QA** (same as Step 7, model: opus — judgment role, TARGETED scope, never the full suite)
 
 3. Repeat until `$DOCS/6-bugs.md` has `Status: NONE` OR iteration count reaches 3 OR an escalation trigger fires. When the targeted loop is green, advance to Code Review then GATE-1 (the pre-merge full suite).
 
@@ -457,6 +456,7 @@ If `$DOCS/6-bugs.md` has `Status: OPEN`:
 
 When the fix loop (targeted, or the bounded GATE-1 fix pass) hits ANY of these conditions, abort the loop and mark the pipeline as `BLOCKED-DEFERRED`:
 
+- **Pre-existing / orthogonal failure** (trigger `pre-existing-orthogonal`) — QA confirms every OPEN bug reproduces on `main` or sits outside this pipeline's diff (`git -C $WORKTREE diff --name-only main...pipeline/{name}`), so it is not this pipeline's bug to fix-loop. The engine short-circuits IMMEDIATELY — no iteration cap spent — and `BLOCKED.md` routes it to `/jc` on main (resume branch A). QA signals this via the `preExistingOrthogonal` field; a failure in code this pipeline changed never qualifies.
 - **Iteration cap reached** — 3 targeted fix-loop iterations passed (or the bounded GATE-1 re-run), bugs still `OPEN`.
 - **Hung test detected** — any QA report contains `BUG-HUNG-TEST` (a deterministic deadlock; no amount of fix-loop iterations will fix code that hangs at 0% CPU).
 - **Same bug returns** — the same bug ID (or same failing test) appears in two consecutive QA reports despite a developer fix in between (the fix is wrong; no point re-trying).
@@ -470,7 +470,7 @@ When any condition triggers:
    # Pipeline Blocked: {pipeline-name}
 
    **Status:** BLOCKED-DEFERRED
-   **Trigger:** {iteration-cap | hung-test | repeat-bug | sub-agent-orphan}
+   **Trigger:** {pre-existing-orthogonal | iteration-cap | hung-test | repeat-bug | sub-agent-orphan}
    **Date:** {YYYY-MM-DD}
 
    ## Root cause
@@ -516,7 +516,7 @@ Assemble the pipeline's changed-file set (read-only): `git -C $WORKTREE diff --n
 
 1. **Architect plans the fixes.** Spawn the child architect for each affected roster entry (same spawn pattern as Step 4 — general-purpose, `model: "opus"`): "Pipeline: {name}. Read $DOCS/6-code-review.md. For each finding decide the fix — which existing symbol to reuse, where to extract the shared helper, which copy to delete. Append a `## Fix Plan` section to $DOCS/6-code-review.md. Decisions only, no code edits. NEVER run git commands."
 
-2. **Developer applies the fixes.** Spawn the developer for each affected roster entry (same spawn pattern as Step 6 — general-purpose, `model: "opus"`): "Pipeline: {name}. Worktree: $WORKTREE/{project} (the worktree root for a single-project roster). Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
+2. **Developer applies the fixes.** Spawn the developer for each affected roster entry (same spawn pattern as Step 6 — general-purpose, `model: "sonnet"` — implementer tier): "Pipeline: {name}. Worktree: $WORKTREE/{project} (the worktree root for a single-project roster). Apply every fix in the `## Fix Plan` of $DOCS_REL/6-code-review.md. Re-run your project's tests (timeout 600s) to confirm no regression — the worktree must stay test-green. NEVER run git commands."
 
 3. **Re-run the hygiene audit** on the updated diff and overwrite the verdict line.
 
@@ -534,8 +534,9 @@ Spawn the QA engineer for each routed roster entry (same `qa-{project}` wrapper 
 
 - **All green** → proceed to Merge Phase.
 - **Bugs found** → one bounded targeted fix pass (developers fix OPEN bugs per the Fix Loop) + one GATE-1 re-run. Still failing → escalate to BLOCKED-DEFERRED (§ Fix Loop Escalation); the bounded GATE-1 re-run counts as the iteration cap.
+- **Whole test tier can't provision its infra** → it is reported `envBlocked` with an `INTEGRATION-UNRUN` flag — NEVER counted as green, never PASS. An un-executed integration tier is visible and carried forward, not silently passed on unit-green; the flag rides to the wave-level gate, which re-runs that tier on integrated `main`.
 
-GATE-1 reuses every Step 7 discipline: per-pipeline isolated stack via `up-test-pipeline`/`db-setup-test-pipeline`/`nuke-test-pipeline` on the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT`, every test command wrapped in `timeout 600s`, passing output suppressed by `filter-test-output.sh`.
+GATE-1 reuses every Step 7 discipline: the same orchestrator-owned per-pipeline stack (agents NEVER run `up-/down-/nuke-test-pipeline` — they share the one container and isolate via their per-project worker DB + queue segments), every test command wrapped in `timeout 600s`, passing output suppressed by `filter-test-output.sh`.
 
 ---
 
@@ -565,7 +566,7 @@ SETUP binds each entry's runbook path. -->
 
 ```
 Agent(qa-{project}): "Mode: POST-MERGE — GATE-2 full suite (always FULL), zero-tolerance all-green. Pipeline: {name}. Run against {project}/ on main (NOT the worktree). Follow the Common spawn contract (post-merge QA doc reads), reading docs via $DOCS_POST/ from the project dir.
-  Infra make targets via make -C {INFRA_PROJECT} … on the project's own isolated per-pipeline stack (up-test-pipeline / db-setup-test-pipeline / nuke-test-pipeline PIPELINE={name}).
+  The orchestrator-owned per-pipeline stack is still up (ports recorded in $DOCS/test-stack.env from stackSetup) — do NOT run up-/down-/nuke-test-pipeline. Isolate INSIDE the shared container via your per-project worker DB ({project}_test_{worker}) + per-project queue segments ({base}-{project}-{worker}).
   Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
   Runbook: {PROJECT_RUNBOOK}."
 ```
@@ -574,7 +575,7 @@ If `qa-{project}` is not a recognized agent type in this session (registry preda
 
 Spawn only QA agents for projects that were part of this pipeline.
 
-After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents. A GATE-2 failure returns `POSTMERGE-FIX-NEEDED`.
+After all post-merge QA agents complete, **write a single** `$DOCS/7-post-merge-qa.md` consolidating the inline results from all agents. A code failure returns `POSTMERGE-FIX-NEEDED`. A whole tier that cannot provision its infra is reported `envBlocked` with an `INTEGRATION-UNRUN` flag (distinct from a code failure — never counted green, never PASS) — the wave-level gate covers that tier on integrated `main`.
 
 ### If Post-Merge QA fails
 
@@ -624,7 +625,7 @@ At-a-glance step map (who/produces/location for every step): `docs/commands/buil
 Wave-mode deltas:
 
 - Step 0a (stale sweep) runs once for the whole wave (`/wave` Step 0d), and Step 0's naming/manifest work is pre-done by the wave — `wave-build` starts at Setup.
-- Infra is isolated per pipeline (each pipeline's own `*-pipeline` test stack on its allocated `TEST_PG_PORT`/`TEST_LS_PORT`), so SETUP, the targeted QA + Fix Loop, GATE-1, and merge run inline with NO cross-pipeline lock; gitter MERGE serializes against `main` via `git-lock.sh`. The only wave-level exclusive lock serializes STATE.md scribes (parallel children would race the single file).
+- Infra is isolated per pipeline (each pipeline's own test stack on its allocated test ports, lifecycle owned by that pipeline's engine — stood up once before Develop, torn down once in a `finally`), so SETUP, the targeted QA + Fix Loop, GATE-1, and merge run inline with NO cross-pipeline lock; gitter MERGE serializes against `main` via `git-lock.sh`. The only wave-level exclusive lock serializes STATE.md scribes (parallel children would race the single file).
 - § Status Emission's header/phase/footer lines are replaced by the workflow's phase/log stream; the workflow journal plus the per-pipeline STATE.md appends are the wave-mode audit trail.
 - A role agent that dies mid-task is respawned once with a continuation brief (resume from its report's Continuation section) before orphan-escalation to BLOCKED-DEFERRED.
 - Each pipeline's `flags` channel (carry-forward /jc candidates, SPEC-CONFLICTs, pre-existing defects) feeds `/wave` remediation. A post-merge QA (GATE-2) failure returns `POSTMERGE-FIX-NEEDED` to `/wave`, which runs § If Post-Merge QA fails after the wave completes.

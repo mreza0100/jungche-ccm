@@ -45,10 +45,10 @@ const FLAGS = { type: 'array', items: { type: 'string' }, description: 'carry-fo
 const STATUS = { type: 'object', properties: { status: { type: 'string', enum: ['OK', 'FAIL'] }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'summary'] }
 const PLAN = { type: 'object', properties: { routing: { type: 'array', items: { type: 'string', enum: PROJECTS_ALL } }, needsMonoArchitect: { type: 'boolean' }, addPlanners: { type: 'array', items: { type: 'string', enum: PROJECTS_ALL } }, summary: { type: 'string' } }, required: ['routing', 'needsMonoArchitect', 'addPlanners', 'summary'] }
 const DETECT = { type: 'object', properties: { dbAdmin: { type: 'boolean' }, uiUx: { type: 'boolean' } }, required: ['dbAdmin', 'uiUx'] }
-const QA = { type: 'object', properties: { status: { type: 'string', enum: ['NONE', 'OPEN'] }, bugIds: { type: 'array', items: { type: 'string' } }, hungTest: { type: 'boolean' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'bugIds', 'hungTest', 'summary'] }
+const QA = { type: 'object', properties: { status: { type: 'string', enum: ['NONE', 'OPEN'] }, bugIds: { type: 'array', items: { type: 'string' } }, hungTest: { type: 'boolean' }, preExistingOrthogonal: { type: 'boolean' }, envBlocked: { type: 'boolean' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'bugIds', 'hungTest', 'summary'] }
 const REVIEW = { type: 'object', properties: { verdict: { type: 'string', enum: ['CLEAN', 'FINDINGS', 'RESIDUAL'] }, projects: { type: 'array', items: { type: 'string', enum: PROJECTS_ALL } }, summary: { type: 'string' }, flags: FLAGS }, required: ['verdict', 'projects', 'summary'] }
 const MERGE = { type: 'object', properties: { status: { type: 'string', enum: ['OK', 'FAIL'] }, sha: { type: 'string' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'sha', 'summary'] }
-const PMQA = { type: 'object', properties: { status: { type: 'string', enum: ['PASS', 'FAIL'] }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'summary'] }
+const PMQA = { type: 'object', properties: { status: { type: 'string', enum: ['PASS', 'FAIL'] }, envBlocked: { type: 'boolean' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'summary'] }
 
 // Silent agent death is routine (gitter SETUP, devs died in past waves) — respawn once
 // with a continuation brief before treating it as an orphan.
@@ -67,8 +67,9 @@ async function resilient(prompt, opts) {
 const bad = r => !r || r.status === 'FAIL'
 const take = (flags, r) => { if (r && r.flags && r.flags.length) flags.push(...r.flags); return r }
 const COMMON = ' Follow wave/build.md § Common spawn contract: NEVER run git (gitter owns every commit); write reports to the root $DOCS path given here, never inside the worktree; ZERO GAP — implement the spec, never re-decide it; doc-awareness via the grep-true doc clusters. Report carry-forward items (/jc candidates, SPEC-CONFLICTs, pre-existing defects) in your structured flags, one line each.'
-// INSTALL: adapt the infra project key and test-port references below to match your install's {INFRA_PROJECT} and TEST_PG_PORT/TEST_LS_PORT allocated test ports.
-const TEST_INFRA = ' Test infra is ISOLATED per pipeline — bring up YOUR stack with make -C <worktree>/{INFRA_PROJECT} up-test-pipeline PIPELINE=' + p.pipelineName + ' + db-setup-test-pipeline PIPELINE=' + p.pipelineName + ', using YOUR allocated TEST_PG_PORT/TEST_LS_PORT from <worktree>/.env.ports (NOT the shared default test stack). You are the sole occupant by construction — no cross-pipeline lock. Clean up with nuke-test-pipeline PIPELINE=' + p.pipelineName + '. If you hit a stale stack from an interrupted run, nuke-test-pipeline then up-test-pipeline again.'
+// INSTALL: adapt the infra project key, test-port references, worker-DB and SQS-segment naming below
+// to match your install's {INFRA_PROJECT}, TEST_PG_PORT/TEST_LS_PORT allocated test ports, and message-queue conventions.
+const TEST_INFRA = ' Test infra is ISOLATED per pipeline and the ORCHESTRATOR owns its container lifecycle. The stack is ALREADY UP and you SHARE it with the other parallel dev/QA agents — DB + message-queue services at your allocated TEST_PG_PORT/TEST_LS_PORT (from <worktree>/.env.ports; post-merge GATE-2, when the worktree is gone, from docs/dev/builds/' + p.pipelineName + '/test-stack.env); template + DB built from the worktree migrations. Export TEST_PG_PORT/TEST_LS_PORT/PIPELINE=' + p.pipelineName + ' and run your suite against it. NEVER run up-test-pipeline / down-test-pipeline / nuke-test-pipeline — nuking the shared container drops the template + every sibling agent\'s worker DBs mid-run; the orchestrator brought the stack up once and tears it down once after ALL agents finish. You MAY run db-setup-test-template-pipeline / db-setup-test-pipeline to refresh schema with current migrations (idempotent — no DROP of the shared template). Your suite isolates INSIDE the one container: a DEDICATED per-project worker DB ({project}_test_{worker}, cloned from the shared template) AND per-project message-queue segments ({base}-{project}-{worker}) — a bare {base}-{worker} queue name collides with a sibling project on the shared queue service.'
 const SELF_QA = ' Self-QA TARGETED — unit + typecheck + lint + only the affected/own integration (or e2e) profile; never the full suite (the full suite runs at the two gates only). Wrap test runs in timeout 600s; passing output stays out of context via filter-test-output.sh.'
 
 const docs = p => 'docs/dev/builds/' + p.pipelineName
@@ -77,6 +78,22 @@ const header = p =>
   'Pipeline: ' + p.pipelineName + ' (build ' + p.idx + '/' + args.total + ', wave ' + args.waveName + ', epic ' + args.epicName + '). ' +
   'Task spec: ' + docs(p) + '/0-task.md (pre-placed — read it first). $DOCS = ' + docs(p) + '. $WORKTREE = ' + wt(p) + '. Branch: pipeline/' + p.pipelineName + '.'
 const tag = p => args.total > 1 ? ' · ' + p.pipelineName : ''
+
+// Orchestrator-owned test-stack lifecycle (one shared stack per pipeline; dev + QA agents
+// share it with dedicated per-project worker DBs + namespaced queues; cleaned ONCE at the end).
+// INSTALL: adapt the {INFRA_PROJECT} key and the *-pipeline make targets to your install's infra conventions.
+function stackSetup(p) {
+  return resilient(
+    header(p) + ' Phase: TEST-STACK-UP — orchestrator-owned, ONE shared stack for the whole pipeline (dev self-QA + QA gates). From the WORKTREE infra, stand up a FRESH isolated stack — run each command wrapped in the Bash 600000ms timeout: `make -C ' + wt(p) + '/{INFRA_PROJECT} nuke-test-pipeline PIPELINE=' + p.pipelineName + '` (clear any stale stack), then `up-test-pipeline PIPELINE=' + p.pipelineName + '`, then `db-setup-test-template-pipeline PIPELINE=' + p.pipelineName + '` (the worktree migrations MUST reach the template), then `db-setup-test-pipeline PIPELINE=' + p.pipelineName + '`, then `health-test-pipeline PIPELINE=' + p.pipelineName + '`. Then record the test ports durably for post-merge GATE-2 (the worktree is removed at merge): `cp ' + wt(p) + '/.env.ports ' + docs(p) + '/test-stack.env 2>/dev/null || true`. Do NOT run any tests — you only stand the stack up. Report OK only when the DB + message-queue services are healthy.',
+    { label: 'stack-up' + tag(p), phase: 'Develop', model: 'haiku', schema: STATUS }
+  )
+}
+function stackTeardown(p) {
+  return resilient(
+    header(p) + ' Phase: TEST-STACK-DOWN — orchestrator-owned, run ONCE now that ALL dev + QA agents are finished. Tear the pipeline stack down + wipe volumes: `make -C ' + wt(p) + '/{INFRA_PROJECT} nuke-test-pipeline PIPELINE=' + p.pipelineName + '`. If the worktree is already gone (post-merge), run it from main: `make -C {INFRA_PROJECT} nuke-test-pipeline PIPELINE=' + p.pipelineName + '`. Best-effort — report OK even if already torn down.',
+    { label: 'stack-down' + tag(p), phase: 'Docs', model: 'haiku', schema: STATUS }
+  )
+}
 
 function plannerAgent(p, proj) {
   return resilient(
@@ -98,7 +115,7 @@ function devAgent(p, proj, brief, phase = 'Develop') {
   return resilient(
     'You are the ' + DEV_ROLE[proj] + '. Read and follow {project-prefix}-' + proj + '/.claude/agents/' + DEV_FILE[proj] + '. ' + header(p) +
     ' Worktree: ' + wt(p) + '/{project-prefix}-' + proj + '. Read dev-server ports from ' + docs(p) + '/ports.md. ' + brief + COMMON,
-    { label: 'dev · ' + proj + tag(p), phase, model: 'opus', schema: STATUS }
+    { label: 'dev · ' + proj + tag(p), phase, model: 'sonnet', schema: STATUS }
   )
 }
 
@@ -179,7 +196,9 @@ function qaRound(p, routing, iter, scope) {
     ' Run every infra make target from the WORKTREE infra — make -C ' + wt(p) + '/{INFRA_PROJECT} ... — worktree-only migrations must reach the test template (running main\'s infra builds a template missing them).' + TEST_INFRA +
     ' Write findings into ' + docs(p) + '/6-bugs.md under a `## ' + proj.toUpperCase() + '` section (create the file if absent) — own only that section, never touch another\'s; your structured return must match what you wrote there. ' +
     'Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.' + COMMON +
-    ' Structured output: status NONE|OPEN for your section; bugIds = stable ids of bugs still OPEN; hungTest = true if any test deadlocked at 0% CPU for >2 minutes (kill it and report BUG-HUNG-TEST in your section).',
+    ' Structured output: status NONE|OPEN for your section; bugIds = stable ids of bugs still OPEN; hungTest = true if any test deadlocked at 0% CPU for >2 minutes (kill it and report BUG-HUNG-TEST in your section); ' +
+    'preExistingOrthogonal = true ONLY when EVERY open bug either reproduces on main OR lives in a file this pipeline never changed (confirm against `git -C ' + wt(p) + ' diff --name-only main...pipeline/' + p.pipelineName + '`) — name each as a `/jc on main` candidate in flags; a failure in code this pipeline changed keeps it false; ' +
+    'envBlocked = true when a whole test TIER could not run because its infra would not provision (an environment blocker, not a code failure) — add an `INTEGRATION-UNRUN: {tier}` flag and report status NONE only for tiers that actually executed, never for one that was skipped.',
     { label: 'qa ' + (scope === 'FULL' ? 'gate1' : 'r' + iter) + ' · ' + proj + tag(p), phase: scope === 'FULL' ? 'GATE-1' : 'QA', agentType: 'qa-' + proj, schema: QA }
   )))
 }
@@ -202,6 +221,9 @@ async function gateStage(p, routing, flags) {
     if (qa.some(r => r === null)) return 'sub-agent-orphan'
     if (qa.some(r => r.hungTest)) return 'hung-test'
     if (qa.every(r => r.status === 'NONE')) { log(p.pipelineName + ': ✓ QA targeted r' + iter + ' green'); break }
+    // Every open bug reproduces on main or sits outside this pipeline's diff → not ours to fix-loop;
+    // defer it straight to /jc-on-main rather than spending the iteration cap (BLOCKED.md routes it).
+    if (qa.filter(r => r.status === 'OPEN').every(r => r.preExistingOrthogonal)) return 'pre-existing-orthogonal'
     const cur = new Set(qa.flatMap(r => r.bugIds))
     if (prev && [...cur].some(id => prev.has(id))) return 'repeat-bug'
     if (iter === 3) return 'iteration-cap'
@@ -218,6 +240,7 @@ async function gateStage(p, routing, flags) {
     if (gate.some(r => r === null)) return 'sub-agent-orphan'
     if (gate.some(r => r.hungTest)) return 'hung-test'
     if (gate.every(r => r.status === 'NONE')) { log(p.pipelineName + ': ✓ GATE-1 green'); return null }
+    if (gate.filter(r => r.status === 'OPEN').every(r => r.preExistingOrthogonal)) return 'pre-existing-orthogonal'
     if (g === 1) return 'iteration-cap'
     log(p.pipelineName + ': ⚙ GATE-1 fix pass · ' + new Set(gate.flatMap(r => r.bugIds)).size + ' bugs')
     if ((await fixRound(p, routing)).some(r => r === null)) return 'sub-agent-orphan'
@@ -268,7 +291,8 @@ async function shipStage(p, routing, flags) {
   const pm = await parallel(routing.map(proj => () => resilient(
     'Mode: POST-MERGE — GATE-2 full suite (always FULL), zero-tolerance all-green. Pipeline: ' + p.pipelineName + '. Run against {project-prefix}-' + proj + '/ on main (NOT the worktree), infra targets via make -C {INFRA_PROJECT}.' + TEST_INFRA +
     ' Pipeline docs: docs/dev/builds/' + p.pipelineName + '/.' +
-    (RUNBOOK[proj] ? ' Runbook: ' + RUNBOOK[proj] + '.' : '') + ' Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.',
+    (RUNBOOK[proj] ? ' Runbook: ' + RUNBOOK[proj] + '.' : '') + ' Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.' +
+    ' Structured output: status PASS|FAIL; envBlocked = true when a whole test TIER could not run because its infra would not provision (add an `INTEGRATION-UNRUN: {tier}` flag) — never report a tier that was skipped as PASS.',
     { label: 'pmqa · ' + proj + tag(p), phase: 'Post-Merge', agentType: 'qa-' + proj, schema: PMQA }
   )))
   pm.forEach(r => take(flags, r))
@@ -317,16 +341,27 @@ if (!plan) return { pipeline: p.pipelineName, status: 'FAILED', detail: 'plannin
 const routing = plan.routing && plan.routing.length ? plan.routing : (p.routing || [])
 if (!routing.length) return { pipeline: p.pipelineName, status: 'FAILED', detail: 'no routing resolved', flags }
 
-log(p.pipelineName + ': ▶ Develop · ' + routing.length + ' projects (' + routing.join(', ') + ')')
-const built = await buildStage(p, plan, routing, flags)
-if (!built) return { ...(await blockPipeline(p, 'sub-agent-orphan')), flags }
+// Orchestrator owns the per-pipeline test stack: stand it up ONCE here (fresh); the dev + QA
+// agents SHARE it (dedicated per-project worker DB + per-project queue segment); it is torn down
+// ONCE in the finally — never per-agent (a per-agent nuke drops the shared template + sibling
+// worker DBs mid-run, the GATE-1 teardown collision this guarantees eliminates).
+const stackOk = await stackSetup(p)
+if (bad(stackOk)) return { pipeline: p.pipelineName, status: 'FAILED', detail: 'test-stack setup failed', flags }
 
-log(p.pipelineName + ': ▶ QA gate (isolated per-pipeline test infra)')
-const blocked = await gateStage(p, routing, flags)
-if (blocked) return { ...(await blockPipeline(p, blocked)), flags }
-const review = await reviewStage(p, routing, flags)
-if (review === 'FAIL') return { ...(await blockPipeline(p, 'sub-agent-orphan')), flags }
+try {
+  log(p.pipelineName + ': ▶ Develop · ' + routing.length + ' projects (' + routing.join(', ') + ')')
+  const built = await buildStage(p, plan, routing, flags)
+  if (!built) return { ...(await blockPipeline(p, 'sub-agent-orphan')), flags }
 
-log(p.pipelineName + ': ▶ Ship (merge serialized against main via gitter git-lock.sh)')
-const ship = await shipStage(p, routing, flags)
-return { pipeline: p.pipelineName, status: ship.status, sha: ship.sha, trigger: ship.trigger, codeReview: review, detail: ship.detail, flags }
+  log(p.pipelineName + ': ▶ QA gate (shared stack · per-agent dedicated DB · orchestrator owns teardown)')
+  const blocked = await gateStage(p, routing, flags)
+  if (blocked) return { ...(await blockPipeline(p, blocked)), flags }
+  const review = await reviewStage(p, routing, flags)
+  if (review === 'FAIL') return { ...(await blockPipeline(p, 'sub-agent-orphan')), flags }
+
+  log(p.pipelineName + ': ▶ Ship (merge serialized against main via gitter git-lock.sh)')
+  const ship = await shipStage(p, routing, flags)
+  return { pipeline: p.pipelineName, status: ship.status, sha: ship.sha, trigger: ship.trigger, codeReview: review, detail: ship.detail, flags }
+} finally {
+  await stackTeardown(p)
+}

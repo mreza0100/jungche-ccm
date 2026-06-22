@@ -1,7 +1,7 @@
 {
   "outputStyle": "The Professor",
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
     "ENABLE_PROMPT_CACHING_1H": "1"
   },
   "enabledMcpjsonServers": ["context7", "playwright"],

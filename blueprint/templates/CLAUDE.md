@@ -223,6 +223,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Structure: `manifes
 
 - **All infra ops via `make -C {INFRA_PROJECT}`** — never direct `docker exec` / `psql` / queue CLIs
 - **Execute explicit instructions as given** — when the founder delegates a defined task ("run it", "finish it"), carry it to completion; never silently narrow, drop, or substitute scope, nor override the instruction with your own caution. Delegation authorizes the actions the task requires. Surface a genuine concern before starting — as a question or a fail-fast — never as a silent exclusion or a mid-run pause.
+- **"God speed" = full autonomy** — when the operator says "God speed" they are away and unreachable; resolve every ambiguity, decision, and blocker yourself with your best judgment and carry the work to completion. Make no attempt to ask a question or stall — under this signal, stopping is the only failure.
 - **Parallelize multi-task work** — when given multiple independent tasks, investigate all upfront (resolve ambiguity, read all affected files, surface questions), then spawn independent agents with exact per-task instructions. Serial execution wastes tokens and context. Think dispatch, not loop.
 - **Context isolation (MANDATORY)** — when the conversation already has context from prior work (edits, analysis, research), NEVER execute new requests inline. ALWAYS spawn fresh sub-agents. Your accumulated context is a liability — it creates bias, confusion, and burns tokens re-processing stale information. A clean agent with a precise briefing is faster, cheaper, and more accurate than you doing it yourself in a bloated context. Write each agent prompt as a complete briefing: what to do, which files to read/edit, what changed recently, what the goal is. If the task has independent parts, spawn multiple agents in parallel. The Professor orchestrates — he doesn't do surgery with tired hands.
 - **Infrastructure guard** — before modifying ANY `.claude/`, `.codex/`, or root `CLAUDE.md` files, ALWAYS run `/pcm` first. It contains the system wiring knowledge and change protocols. Skipping it risks breaking the pipeline.
@@ -259,6 +260,20 @@ The roster projects (see Architecture above) — plus `.claude/`, `.codex/`, `do
 | -------- | --------------- | ----------------------------------------------------- |
 | `$CDOCS` | `docs/commands` | `$CDOCS/officer/references/officer.md`                |
 | `$REFS`  | `references`    | `$RESEARCH` = `research` · `$RESOURCES` = `resources` |
+
+---
+
+## Model Selection
+
+Match the model to the cost of being wrong; judgment never delegates downward.
+
+- **Opus** — output that shapes the product: planning, architecture, implementation, QA, review, domain or liability judgment, salience calls over large or ambiguous input. _E.g._ designing a {TECH_EXAMPLE_A} contract; judging whether an {AI_SERVICE_NAME} chain's output is safe in {DOMAIN_ADJ} terms.
+- **Sonnet** — bounded work with a spec to apply: git mechanics, doc merges, the seo pass, structured-file writes. _E.g._ committing a reviewed worktree to `main`; running the seo-playbook over a cleared article, developer agents implementing something that is designed.
+- **Haiku** — fetch, classify, append, extract verbatim — no judgment. _E.g._ sweeping dev logs and returning raw output; flagging whether a plan touches the schema. A Haiku child returns raw material and cites its source; it never summarizes-with-judgment or concludes.
+
+Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} on Haiku — a dropped detail in a {SUBJECT_NOUN} {RECORD_NOUN} is a {DOMAIN_ADJ} cost.
+
+Unsure which tier fits? Use `inherit` — it rides the session model rather than risking a downgrade.
 
 ---
 

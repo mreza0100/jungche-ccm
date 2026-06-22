@@ -11,7 +11,7 @@ Detailed mechanics the `/wave:build` orchestrator reads on demand: the Step 0a s
 
 ## Audit trail
 
-From Git Setup (Step 2) onward — once `$WORKTREE` exists and gitter has inited `$WORKTREE/.checkpoint.json` — the orchestrator appends an audit event alongside each phase line:
+From Git Setup (Step 1) onward — once `$WORKTREE` exists and gitter has inited `$WORKTREE/.checkpoint.json` — the orchestrator appends an audit event alongside each phase line:
 
 ```bash
 bash .claude/scripts/checkpoint.sh log "$WORKTREE" "{phase}" "{agent(s) that ran}" "{one-line result}"
@@ -73,7 +73,7 @@ When the fix loop escalates to BLOCKED-DEFERRED, the orchestrator writes `$DOCS/
 # Pipeline Blocked: {pipeline-name}
 
 **Status:** BLOCKED-DEFERRED
-**Trigger:** {iteration-cap | hung-test | repeat-bug | sub-agent-orphan}
+**Trigger:** {pre-existing-orthogonal | iteration-cap | hung-test | repeat-bug | sub-agent-orphan}
 **Date:** {YYYY-MM-DD}
 
 ## Root cause
@@ -89,9 +89,21 @@ When the fix loop escalates to BLOCKED-DEFERRED, the orchestrator writes `$DOCS/
 
 ## Resume protocol
 
-1. `/jc` the underlying bug on main first (if hung test or stubborn bug). Note the fix commit SHA here: `_______________`
-2. `cd .worktrees/{pipeline-name} && git rebase main` to pick up the fix.
-3. Re-spawn QA agents — skip planners/architects/devs (their work is in the worktree).
+Pick the branch by WHERE the blocking defect lives — the Root cause above names it:
+
+**A — defect is pre-existing on `main` or orthogonal to this pipeline's diff** (trigger `pre-existing-orthogonal`; a hung or stubborn bug in code this pipeline never changed):
+
+1. Fix the underlying bug on `main` first (the live-on-main change path). Note the fix commit SHA: `_______________`
+2. `cd .worktrees/{pipeline-name} && git rebase main` (or cherry-pick the fix commit) to pick it up.
+3. Re-spawn QA only — skip planners/architects/devs (their work is intact in the worktree).
+
+**B — defect is in THIS pipeline's own uncommitted worktree work** (a bug in code/seed/config this pipeline added — it does not exist on `main`):
+
+1. Fix it directly in the worktree (`.worktrees/{pipeline-name}/…`) — no `main` detour, no rebase; the artifact lives only here.
+2. Re-spawn QA only.
+
+**Both branches converge:**
+
 4. If QA passes → gitter MERGE → post-merge QA → documenter (normal pipeline tail).
 5. If QA still fails → ONE more fix-loop iteration max, then re-defer.
 ```
@@ -106,9 +118,9 @@ What each `/wave:build` step produces and where. Each step in `build.md` is auth
 
 | #   | Step                            | Who                                         | Produces                                                                                          | Location                         |
 | --- | ------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------- |
-| 1a  | Parallel analysis               | child planners (routing-gated)              | `$DOCS/1-analysis-{project}.md`                                                                   | root                             |
-| 1b  | Consolidate plan                | mono-planner                                | `$DOCS/1-plan.md`                                                                                 | root                             |
-| 2   | Git setup                       | gitter (SETUP)                              | Worktrees, ports, `$DOCS/ports.md`                                                                | root                             |
+| 1   | Git setup                       | gitter (SETUP)                              | Worktrees, ports, `$DOCS/ports.md`                                                                | root                             |
+| 2a  | Parallel analysis               | child planners (routing-gated)              | `$DOCS/1-analysis-{project}.md`                                                                   | root                             |
+| 2b  | Consolidate plan                | mono-planner                                | `$DOCS/1-plan.md`                                                                                 | root                             |
 | 3   | Cross-project arch + research   | mono-architect                              | `$DOCS/3-architecture.md` (integration contracts + research notes)                                | root                             |
 | 4   | Child arch + research           | child architects                            | `$DOCS/3-architecture-{project}.md` (docs only, no code stubs, inline research)                   | root                             |
 | 5a  | UI/UX _(conditional)_           | ui-ux                                       | `$DOCS/4-ui-ux-spec.md`                                                                           | root                             |

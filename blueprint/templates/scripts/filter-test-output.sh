@@ -43,7 +43,12 @@ FILTERED=$(printf '%s\n' "$OUTPUT" \
   | tail -200 || true)
 
 if [[ -z "$FILTERED" ]]; then
-  FILTERED="(all tests passed — verbose output suppressed by filter-test-output.sh)"
+  # A green run ALWAYS emits an "N passed" summary, which the keep-grep catches — so an
+  # empty result is NOT a pass. It means the runner crashed, was killed (timeout/OOM), or
+  # printed an unrecognized format. Surface the raw tail so a real failure is never
+  # silently reported as green.
+  FILTERED="(no pass/fail summary recognized — runner may have crashed or been killed; raw tail follows)
+$(printf '%s\n' "$OUTPUT" | tail -40)"
 fi
 
 jq -nc --arg out "$FILTERED" '

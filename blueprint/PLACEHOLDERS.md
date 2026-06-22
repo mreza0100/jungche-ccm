@@ -165,3 +165,14 @@ Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" s
 ## Ignored artifacts (do NOT ship, drop references)
 
 `audit:cortex`, `cortex-drain-wait.sh`, `km-guard.sh` and the Knowledge-guard / No-inline-LLM-prompts rules that reference them are **out of scope**. When a shipped template (root `CLAUDE.md`, `/km`, `/documenter`, `dev`, `wave`, `pcm`, `settings.json`) references them, drop that row/rule/line — exactly as `council`/`reddit` are dropped — so the blueprint has no dangling pointers.
+
+## Tokens (additional canonical entries)
+
+These slot into the concept families above — registered here to close prior gaps. One canonical token per concept; never invent a synonym.
+
+| Source value                                                                                | Placeholder                                                       | Family       |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------ |
+| the AI service's own name / codename (the source's internal AI-service brand)               | `{AI_SERVICE_NAME}`                                               | Identity     |
+| the test database name (e.g. `<project>_test`)                                              | `{TEST_DB_NAME}`                                                  | Tech stack   |
+| transcript / case note / session record (the artifact holding `{SENSITIVE_DATA}`)           | `{RECORD_NOUN}`                                                   | Domain nouns |
+| illustrative persona examples — a tech artifact, a domain artifact, a domain risk (Professor opening + Model Selection examples) | `{TECH_EXAMPLE_A}` / `{DOMAIN_EXAMPLE_A}` / `{DOMAIN_RISK_EXAMPLE}` | Persona      |

@@ -90,11 +90,11 @@ Every phase ends with a confirmation ("Confirm per template" in each phase below
 
 ## Phase 1: SETUP
 
-Invoked **after** `$DOCS/1-plan.md` is written, **before** architects scaffold.
+First pipeline stage — creates the worktree before planning and architecture run.
 
 ### 1. Validate preconditions
 
-- Confirm `$DOCS/1-plan.md` exists.
+- Confirm `$DOCS/0-task.md` exists (the pre-placed task spec).
 - Confirm no leftover worktree: `./.claude/scripts/worktree.sh list $PIPELINE`. If it exists, warn and stop — do NOT overwrite.
 - **Uncommitted changes on main** — handle per the orchestrator's `CarryWIP` directive (`commit` | `leave`, default `leave`). Run only when `git status --porcelain` is non-empty:
   - `commit` — the founder confirmed building on main's WIP. Commit it so the new branch (cut from `main`) inherits it, and the commit becomes a shared ancestor the later merge cannot conflict over. Includes untracked files; loses nothing:

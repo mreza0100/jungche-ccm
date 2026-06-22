@@ -135,6 +135,33 @@ ENVEOF
   # SETUP expands one block per roster entry that declares env_files — the port
   # substitution rules are project-specific, so they materialize per entry rather
   # than from the array. A single-project repo gets one block targeting the root.
+  #
+  # .env.test coherence (CRITICAL): when a project's test harness reads its
+  # connection target verbatim from .env.test, the rewrite must retarget EVERY
+  # test-port reference to the pipeline-isolated stack — not just the DB URL but
+  # also the DB port and ALL data-store/queue service endpoints ({TECH_STACK_PLACEHOLDER}
+  # object-store + queue URLs). Leaving any one on the shared {PORT_B}/{PORT_B} stack
+  # silently pins that project (and any sibling whose e2e tier reads the same file)
+  # onto the default stack, causing cross-pipeline collisions. The rewrite rules:
+  #   • ^-anchored — so an endpoint rewrite never touches a cross-service URL
+  #     (e.g. a {project}→{project} callback URL, or a non-test HOST/comment line);
+  #   • password-agnostic — match the DB URL without assuming a `user:pass@` form,
+  #     since a credential-less `user@host` URL must rewrite too;
+  #   • slash-agnostic — match the endpoint with or without a trailing slash,
+  #     since committed values may carry none.
+  # SETUP materializes one such block per roster entry with env_files, e.g.:
+  #
+  #   if [ -f "$(proj_path "$ROOT" "{project}")/.env.test" ]; then
+  #     sed \
+  #       -e "s|@localhost:[0-9]*/{TEST_DB_NAME}|@localhost:${test_pg_port}/{TEST_DB_NAME}|" \
+  #       -e "s/^DB_PORT=.*/DB_PORT=${test_pg_port}/" \
+  #       -e "s|^AWS_ENDPOINT_URL=.*|AWS_ENDPOINT_URL=http://localhost:${test_ls_port}|" \
+  #       -e "s|^SQS_ENDPOINT_URL=.*|SQS_ENDPOINT_URL=http://localhost:${test_ls_port}|" \
+  #       -e "s|^AWS_S3_ENDPOINT_URL=.*|AWS_S3_ENDPOINT_URL=http://localhost:${test_ls_port}|" \
+  #       "$(proj_path "$ROOT" "{project}")/.env.test" \
+  #       > "$(proj_path "$worktree_dir" "{project}")/.env.test"
+  #   fi
+  #
   # {ENV_FILE_PROVISION} — SETUP fills this from the roster's env_files + port map.
 
   echo "Worktree ready: $worktree_dir"
