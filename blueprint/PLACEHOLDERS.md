@@ -16,6 +16,7 @@ Every regeneration agent reads this file and applies it uniformly. One canonical
 | the canonical blueprint repo `owner/repo`                                                                                 | `{BLUEPRINT_REPO}`                                                                                  |
 | the blueprint repo owner (GH/GL handle)                                                                                   | `{GH_USER}`                                                                                         |
 | the local blueprint clone path                                                                                            | `{BLUEPRINT_CLONE_PATH}`                                                                            |
+| the memory-vault directory name (memory-backup scripts; default base `$HOME/work/{MEMORY_VAULT_DIR}`, env override `CLAUDE_MEMORY_REPO`) | `{MEMORY_VAULT_DIR}`                                                          |
 
 > Blueprint self-references resolve at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork.
 

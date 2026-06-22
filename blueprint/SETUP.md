@@ -401,31 +401,24 @@ Walk through the prompts. The first run reveals anything missed in adaptation. I
 
 Claude tells the adopter what this is, then ASKS whether to set it up — it's opt-in, never automatic.
 
-> **Memory backup** points Claude Code's persistent project memory at a private git repo and auto-syncs it on session end — so a machine wipe or a new machine doesn't lose what Claude has learned about your project. Plain git on a `SessionEnd` hook: ~1 second, zero tokens. Set it up now?
+> **Memory backup** points Claude Code's persistent project memory at ONE private git vault — every project in its own subdirectory — and auto-syncs it. A `SessionStart` hook auto-wires whatever project you open; a `SessionEnd` hook syncs the whole vault. So a machine wipe or a new machine doesn't lose what Claude has learned, across all your projects. Plain git: ~1 second, zero tokens. Set it up now?
 
 If the adopter says **no**, skip the rest of this phase — nothing about the pipeline depends on it.
 
-If **yes**, walk the six-step procedure (full detail + every gotcha in `blueprint/references/memory-backup.md`):
+If **yes**, walk the procedure (full detail + every gotcha in `blueprint/references/memory-backup.md`):
 
-1. **Create a PRIVATE repo** `<gh-user>/<project>-memory` on GitHub.
-2. **Seed the vault off-machine first** — copy the current `~/.claude/projects/<PROJECT-KEY>/memory/` contents into `~/work/<project>-memory`, then `git init`, commit, push. The vault exists off-machine BEFORE the original is touched.
-3. **Configure headless auth** — `gh auth setup-git` (registers `gh` as the credential helper; token in the OS keychain, HTTPS not SSH). Verify with `GIT_TERMINAL_PROMPT=0 git ls-remote origin HEAD` — it returns instantly, no prompt.
-4. **Swap the live dir for a symlink** — `mv` the original to `memory.bak` (never `rm`), then `ln -s ~/work/<project>-memory ~/.claude/projects/<PROJECT-KEY>/memory`. Verify Claude reads through it, THEN optionally remove `memory.bak`.
-5. **Install the sync script + hook.** Copy `blueprint/templates/scripts/memory-sync.sh` into the vault as `.sync.sh` (replace `{PROJECT_NAME}`). Then add the `SessionEnd` hook to `~/.claude/settings.json`:
+1. **Create ONE PRIVATE vault repo** (e.g. `<gh-user>/<you>-memory`) on GitHub, and `git init` a local clone at the vault path — `$HOME/work/<vault-dir>` (the `{MEMORY_VAULT_DIR}` config point) or wherever `$CLAUDE_MEMORY_REPO` points. One vault holds every project's memory.
+2. **Configure headless auth** — `gh auth setup-git` (registers `gh` as the credential helper; token in the OS keychain, HTTPS not SSH). Verify with `GIT_TERMINAL_PROMPT=0 git ls-remote origin HEAD` — it returns instantly, no prompt.
+3. **Install the scripts + hooks.** Copy `blueprint/templates/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh` to `~/.claude/scripts/` (substitute `{MEMORY_VAULT_DIR}`). These are user-level — they target `~/.claude/...` across every project, so they ship into `~/.claude/scripts/`, NOT a project's `.claude/`. Then add the `SessionStart` + `SessionEnd` hooks to global `~/.claude/settings.json`:
 
    ```json
    {
      "hooks": {
+       "SessionStart": [
+         { "matcher": "", "hooks": [ { "type": "command", "command": "sh $HOME/.claude/scripts/cc-memory-wire.sh" } ] }
+       ],
        "SessionEnd": [
-         {
-           "matcher": "",
-           "hooks": [
-             {
-               "type": "command",
-               "command": "sh $HOME/work/<project>-memory/.sync.sh"
-             }
-           ]
-         }
+         { "matcher": "", "hooks": [ { "type": "command", "command": "sh $HOME/.claude/scripts/memory-sync.sh" } ] }
        ]
      }
    }
@@ -434,12 +427,13 @@ If **yes**, walk the six-step procedure (full detail + every gotcha in `blueprin
    **Permission-mode pitfall:** editing global `~/.claude/settings.json` is a persistent, code-running config change — under auto-permission mode with `skipAutoPermissionPrompt`, the classifier SILENTLY DENIES it without prompting. So have the USER run this idempotent one-liner themselves (it won't duplicate or clobber existing hooks):
 
    ```
-   python3 -c "import json,pathlib; p=pathlib.Path.home()/'.claude/settings.json'; d=json.loads(p.read_text()); d.setdefault('hooks',{}).setdefault('SessionEnd',[{'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/work/<project>-memory/.sync.sh'}]}]); p.write_text(json.dumps(d,indent=2)); print('SessionEnd hook added')"
+   python3 -c "import json,pathlib; p=pathlib.Path.home()/'.claude/settings.json'; d=json.loads(p.read_text()); h=d.setdefault('hooks',{}); h.setdefault('SessionStart',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/cc-memory-wire.sh'}]}); h.setdefault('SessionEnd',[]).append({'matcher':'','hooks':[{'type':'command','command':'sh \$HOME/.claude/scripts/memory-sync.sh'}]}); p.write_text(json.dumps(d,indent=2)); print('memory hooks added')"
    ```
 
-6. **Test with the test-payload trick.** A clean repo makes the hook a silent no-op — indistinguishable from "never fired" — so stage a deliberate pending change first (bait the hook). Exit cleanly with `/quit`, then confirm a new `pushed` line in `~/.claude/<project>-memory-sync.log` AND that the file reached the remote.
+4. **Run the consolidator once** — `sh ~/.claude/scripts/cc-memory-consolidate.sh`. It migrates every existing `~/work/<project>` memory dir into its vault subdir (copy → verify file-for-file → swap for a symlink), skipping any dir already linked (including a legacy single-project root brain). New projects need no manual step — the `SessionStart` hook wires them on first open.
+5. **Test with the test-payload trick.** A clean vault makes the sync a silent no-op — indistinguishable from "never fired" — so stage a deliberate pending change first (bait the hook). Exit cleanly with `/quit`, then confirm a new `pushed` line in `~/.claude/memory-sync.log` AND that the file reached the remote.
 
-Tell the adopter to exit with `/quit` or `/clear` for a guaranteed synchronous flush; a hard window-close still works but leans on the script's self-heal to catch up next session. Full architecture, the self-healing-push rationale, all 12 tips, and the new-machine restore steps live in `blueprint/references/memory-backup.md`.
+Tell the adopter to exit with `/quit` or `/clear` for a guaranteed synchronous flush; a hard window-close still works but leans on the script's self-heal to catch up next session. Full architecture, the single config point, the root-guard, multi-writer safety, all tips, and the new-machine restore steps live in `blueprint/references/memory-backup.md`.
 
 ---
 
