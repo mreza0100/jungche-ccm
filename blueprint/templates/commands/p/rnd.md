@@ -177,6 +177,15 @@ RND is domain-agnostic. Execution depends on the goal:
 
 For code/command approaches: **run them at scale**. Don't just reason about whether they'd work — actually execute, observe, and then try to break the result with adversarial inputs.
 
+### Prompt RNDs — build the fix from ranked failures
+
+A prompt-engineering RND usually finds the failing instruction is already IN the prompt and the model violates it anyway — confusion, not disobedience, which a worked example cures and more emphasis does not (the contrastive ✗→✓ + counterweight technique lives in `/quality:prompt`). Build that example from the failures, not intuition:
+
+1. **Collect every failure mode across the runs and rank by frequency.** The high-frequency failures mark where the model is most confused, and earn an example first.
+2. **Cluster by shared confusion.** The frequent failures usually trace to one root — a single label over-applied across several distinct situations, or one surface cue overriding the real signal. Fix the cluster, not each failure.
+3. **Add the fewest contrastive examples that resolve the cluster, not one per failure.** One example placed on the boundary the model keeps crossing carries the long tail behind it.
+4. **Confirm generalization on a held-out case.** A fix that only moves the cases you tuned on is overfit; the lever that generalizes is the discriminating wording, not the example text.
+
 ### Loop discipline
 
 - **Show your work per iteration.** After each attempt, output: what you tried, what happened, whether it satisfied the goal, and what you're changing about the remaining plan.

@@ -61,13 +61,16 @@ self_label() {
     | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true
 }
 
-# _pane_busy <tmux-session>: true while Claude Code is actively generating. The live
-# indicator is the spinner detail line — "<word>… (Ns · ↓ N tokens · …)" or the
-# "esc to interrupt" hint. A FINISHED turn shows "✻ <word> for Ns" (no paren-timer,
-# no token counter), which must NOT match — so we key on the in-progress paren-timer,
-# token counter, or esc hint, never a bare spinner glyph.
+# _pane_busy <tmux-session> [socketpath]: true while Claude Code is actively
+# generating. The live indicator is the spinner detail line — "<word>… (Ns · ↓ N
+# tokens · …)" or the "esc to interrupt" hint. A FINISHED turn shows "✻ <word> for Ns"
+# (no paren-timer, no token counter), which must NOT match — so we key on the
+# in-progress paren-timer, token counter, or esc hint, never a bare spinner glyph.
+# An optional socket path routes the capture to the target's own socket (cross-socket
+# inject); omitted, it uses the connected/default socket as before.
 _pane_busy() {
-  tmux capture-pane -t "$1" -p -J 2>/dev/null | grep -qiE 'esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens'
+  local -a tm=(tmux); [[ -n "${2:-}" ]] && tm=(tmux -S "$2")
+  "${tm[@]}" capture-pane -t "$1" -p -J 2>/dev/null | grep -qiE 'esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens'
 }
 
 # _inject_lock_acquire <target>: serialize LIVE injects to the SAME target across
@@ -105,31 +108,78 @@ _inject_lock_release() {
   INJECT_LOCKDIR=""
 }
 
+# _sockets: print every tmux socket path under the per-user tmux dir, one per line.
+# Each chat now runs on its OWN `tmux -L <name>` socket so a single tmux server
+# SIGSEGV can no longer take down every chat at once; cross-chat ops must therefore
+# search every socket, not just the connected/default one. Fail-safe — if the dir is
+# absent, print nothing and return 0; only real sockets ([ -S ]) are emitted.
+_sockets() {
+  local dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)" f
+  [[ -d "$dir" ]] || return 0
+  for f in "$dir"/*; do
+    [[ -S "$f" ]] && printf '%s\n' "$f"
+  done
+}
+
+# _all_panes: enumerate every pane on EVERY socket. Each output row is
+# "socketpath<TAB>session<TAB>pane_id". A dead or unreadable socket is skipped
+# (the `|| true` swallows its error) and never aborts the scan.
+_all_panes() {
+  local sock line
+  while IFS= read -r sock; do
+    [[ -n "$sock" ]] || continue
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && printf '%s\t%s\n' "$sock" "$line"
+    done < <(tmux -S "$sock" list-panes -a -F '#{session_name}'$'\t''#{pane_id}' 2>/dev/null || true)
+  done < <(_sockets)
+}
+
 # _resolve_label <label>: resolve a destination by its Claude 🔖 label (the /rename
-# name) to a tmux session — scanning live panes the way `ls` does. Match is
-# case-insensitive and exact on the 🔖 text. Prints the session on a UNIQUE match
-# (return 0); prints nothing on no match (return 1); on several matches lists the
-# candidates on stderr (return 2). The 🔖 name lives on the statusline — the line
-# that carries both 🔖 and 🌿 — so we key on that to avoid matching conversation text.
+# name) to a (socket, session) — scanning live panes on EVERY socket the way `ls`
+# does. Match is case-insensitive and exact on the 🔖 text. Prints
+# "socketpath<TAB>session" on a UNIQUE match (return 0); prints nothing on no match
+# (return 1); on several matches lists the candidates on stderr (return 2). The 🔖
+# name lives on the statusline — the line that carries both 🔖 and 🌿 — so we key on
+# that to avoid matching conversation text.
 _resolve_label() {
-  local want="$1" sess pane cap name wantlc namelc seen m; local -a matches=()
+  local want="$1" sock sess pane cap name wantlc namelc seen m; local -a matches=()
   wantlc="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
-  # Scan EVERY pane (not just each session's active pane) — a session can hold
-  # several shells, and only the Claude pane carries the 🔖 statusline.
-  while IFS=$'\t' read -r sess pane; do
+  # Scan EVERY pane on EVERY socket (not just each session's active pane) — a
+  # session can hold several shells, and only the Claude pane carries the 🔖
+  # statusline. Per-pane capture must hit the pane's OWN socket via -S "$sock".
+  while IFS=$'\t' read -r sock sess pane; do
     [[ -n "$pane" ]] || continue
-    cap="$(tmux capture-pane -t "$pane" -p -J 2>/dev/null || true)"
+    cap="$(tmux -S "$sock" capture-pane -t "$pane" -p -J 2>/dev/null || true)"
     name="$(printf '%s\n' "$cap" | grep -F '🔖' | grep -F '🌿' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
     [[ -n "$name" ]] || continue
     namelc="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
     [[ "$namelc" == "$wantlc" ]] || continue
-    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sess" ]] && { seen=1; break; }; done
-    [[ "$seen" == 0 ]] && matches+=("$sess")
-  done < <(tmux list-panes -a -F '#{session_name}'$'\t''#{pane_id}' 2>/dev/null)
+    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sock"$'\t'"$sess" ]] && { seen=1; break; }; done
+    [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$sess")
+  done < <(_all_panes)
   case "${#matches[@]}" in
     1) printf '%s\n' "${matches[0]}"; return 0;;
     0) return 1;;
-    *) echo "ambiguous 🔖 label '$want' — matches sessions: ${matches[*]}" >&2; return 2;;
+    *) { echo "ambiguous 🔖 label '$want' — matches sessions:"; for m in "${matches[@]}"; do echo "  ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
+  esac
+}
+
+# _resolve_session <name>: resolve a destination by EXACT tmux session name across
+# EVERY socket. Session names are globally unique (the launcher names each chat's
+# session after its unique socket basename), so a hit is normally unique. Prints
+# "socketpath<TAB>session" on a unique match (return 0); nothing on no match
+# (return 1); on several lists candidates on stderr (return 2).
+_resolve_session() {
+  local want="$1" sock sess pane seen m; local -a matches=()
+  while IFS=$'\t' read -r sock sess pane; do
+    [[ "$sess" == "$want" ]] || continue
+    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sock"$'\t'"$sess" ]] && { seen=1; break; }; done
+    [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$sess")
+  done < <(_all_panes)
+  case "${#matches[@]}" in
+    1) printf '%s\n' "${matches[0]}"; return 0;;
+    0) return 1;;
+    *) { echo "ambiguous session '$want' — matches:"; for m in "${matches[@]}"; do echo "  ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
   esac
 }
 
@@ -217,29 +267,41 @@ case "$cmd" in
     [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--no-sig] [--force-now] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
     target="$1"; shift; msg="$*"
     [[ -n "$msg" ]] || { echo "ERROR: refusing to inject an empty message" >&2; exit 1; }
-    if [[ "$target" == "self" || "$target" == "me" ]]; then target="$(self_tmux)" || exit 1; fi
-    live_tmux=""; transcript=""
-    if tmux has-session -t "$target" 2>/dev/null; then
-      live_tmux="$target"
+    # Resolve the LIVE destination to (socketpath, session). Cross-chat ops span every
+    # tmux socket now (one socket per chat), so we never assume the connected/default
+    # one. self/me is this chat — its socket is ${TMUX%%,*} and bare tmux is correct.
+    live_tmux=""; transcript=""; socketpath=""
+    if [[ "$target" == "self" || "$target" == "me" ]]; then
+      [[ -n "${TMUX:-}" ]] || { echo "ERROR: this chat is not inside tmux (\$TMUX unset)" >&2; exit 1; }
+      socketpath="${TMUX%%,*}"; live_tmux="$(tmux display-message -p '#{session_name}')"
     elif [[ -f "$target" ]]; then
       transcript="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
     else
-      # Not an exact session name or a path → try resolving it as a 🔖 label (the
-      # destination's /rename name), found across live panes the way `ls` works.
-      lbl=""; lrc=0; lbl="$(_resolve_label "$target")" || lrc=$?
-      if [[ $lrc -eq 0 && -n "$lbl" ]]; then
-        live_tmux="$lbl"; echo "resolved 🔖 label '$target' → tmux session '$live_tmux'" >&2
-      elif [[ $lrc -eq 2 ]]; then
-        echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
-      elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
-        transcript="$(
-          for p in "$HOME"/.claude/projects/*/"$target".jsonl "$HOME"/.claude[0-9]*/projects/*/"$target".jsonl; do
-            [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
-          done | sort -u | head -1 || true
-        )"
-        [[ -n "$transcript" ]] || { echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
+      # Try an exact tmux session name first (across every socket), then a 🔖 label
+      # (the destination's /rename name), then fall through to a transcript/session-id
+      # RESUME. Session resolution prints "socketpath<TAB>session".
+      srow=""; srrc=0; srow="$(_resolve_session "$target")" || srrc=$?
+      if [[ $srrc -eq 0 && -n "$srow" ]]; then
+        socketpath="${srow%%$'\t'*}"; live_tmux="${srow#*$'\t'}"
+      elif [[ $srrc -eq 2 ]]; then
+        echo "ERROR: session '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
       else
-        echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1
+        lrow=""; lrc=0; lrow="$(_resolve_label "$target")" || lrc=$?
+        if [[ $lrc -eq 0 && -n "$lrow" ]]; then
+          socketpath="${lrow%%$'\t'*}"; live_tmux="${lrow#*$'\t'}"
+          echo "resolved 🔖 label '$target' → tmux session '$live_tmux'" >&2
+        elif [[ $lrc -eq 2 ]]; then
+          echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
+        elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
+          transcript="$(
+            for p in "$HOME"/.claude/projects/*/"$target".jsonl "$HOME"/.claude[0-9]*/projects/*/"$target".jsonl; do
+              [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
+            done | sort -u | head -1 || true
+          )"
+          [[ -n "$transcript" ]] || { echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
+        else
+          echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1
+        fi
       fi
     fi
 
@@ -268,11 +330,17 @@ case "$cmd" in
     [[ "$nosig" == 1 ]] && { footer_inline=""; footer_block=""; }
 
     if [[ -n "$live_tmux" ]]; then
+      # Every tmux call in this critical section must hit the TARGET's socket, not the
+      # connected/default one — so route them all through TM. live_tmux still holds the
+      # session name for log lines and -t targeting (session names are globally unique).
+      # (Plain array, not `local` — the case body runs at top level, not in a function.)
+      TM=(tmux -S "$socketpath")
       # Serialize delivery to this target across processes — several chats may inject
       # into one pane at once and their keystrokes would interleave. Hold a per-target
       # lock for the whole interrupt/type/submit critical section; the EXIT trap frees
-      # it on every exit path (success, warning, or error).
-      if ! _inject_lock_acquire "$live_tmux"; then
+      # it on every exit path (success, warning, or error). The lock key is
+      # socket-scoped so identically-named sessions on different sockets don't collide.
+      if ! _inject_lock_acquire "${socketpath}:${live_tmux}"; then
         echo "WARNING: could not acquire the inject lock for '$live_tmux' within ${CHAT_INJECT_LOCK_TIMEOUT:-30}s — another inject is mid-delivery into it. Re-run when it frees." >&2
         exit 4
       fi
@@ -286,8 +354,8 @@ case "$cmd" in
       did_intr=0
       if [[ "$force_now" == 1 ]]; then
         for _ in $(seq 1 "${CHAT_INJECT_INTR_TRIES:-8}"); do
-          _pane_busy "$live_tmux" || break
-          tmux send-keys -t "$live_tmux" Escape; did_intr=1
+          _pane_busy "$live_tmux" "$socketpath" || break
+          "${TM[@]}" send-keys -t "$live_tmux" Escape; did_intr=1
           sleep "${CHAT_INJECT_POLL:-0.2}"
         done
       fi
@@ -304,11 +372,11 @@ case "$cmd" in
       # Normalize the input surface so keystrokes actually land — a pane in copy/scroll
       # mode or sitting in the Rewind menu silently eats input (a common "Enter didn't
       # land" cause). Exit copy-mode; cancel a Rewind menu with a single Esc.
-      if [[ "$(tmux display-message -t "$live_tmux" -p '#{pane_in_mode}' 2>/dev/null || echo 0)" == 1 ]]; then
-        tmux send-keys -t "$live_tmux" -X cancel 2>/dev/null || true
+      if [[ "$("${TM[@]}" display-message -t "$live_tmux" -p '#{pane_in_mode}' 2>/dev/null || echo 0)" == 1 ]]; then
+        "${TM[@]}" send-keys -t "$live_tmux" -X cancel 2>/dev/null || true
       fi
-      if tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -qiF 'Restore the code'; then
-        tmux send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
+      if "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -qiF 'Restore the code'; then
+        "${TM[@]}" send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
       fi
 
       # PRE-INJECT draft safety: send-keys -l appends at the cursor, so typing onto an
@@ -317,12 +385,12 @@ case "$cmd" in
       # box — so we press it unconditionally and never need to read the input. A draft
       # was stashed iff the "stashed" indicator then appears near the prompt; that
       # decides single vs double Enter below (a restored draft must not be re-submitted).
-      tmux send-keys -t "$live_tmux" C-s
+      "${TM[@]}" send-keys -t "$live_tmux" C-s
       sleep "${CHAT_INJECT_POLL:-0.2}"
       saved_draft=0
-      tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -8 | grep -qi 'stashed' && saved_draft=1
+      "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -8 | grep -qi 'stashed' && saved_draft=1
 
-      tmux send-keys -t "$live_tmux" -l -- "$msg"
+      "${TM[@]}" send-keys -t "$live_tmux" -l -- "$msg"
       # A distinctive tail of the message — used to confirm the text rendered AND
       # to tell "still in the input box" from "submitted". On submit the input line
       # clears, but the message stays visible UP in the conversation, so the
@@ -332,7 +400,7 @@ case "$cmd" in
       #    bail on a miss — a typed-but-unsubmitted message is the worst outcome, and
       #    detection can flake on wrapping/footer glyphs even when the text is there.
       for _ in $(seq 1 "${CHAT_INJECT_SETTLE_TRIES:-40}"); do
-        cap="$(tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | tr -s '[:space:]' ' ')"
+        cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | tr -s '[:space:]' ' ')"
         [[ "$cap" == *"$needle"* ]] && break
         sleep "${CHAT_INJECT_POLL:-0.2}"
       done
@@ -349,13 +417,13 @@ case "$cmd" in
       prefix="$(printf '%s' "$msg" | tr -s '[:space:]' ' ' | sed 's/^ //')"; prefix="${prefix:0:24}"
       submitted=0
       for _ in $(seq 1 "${CHAT_INJECT_ENTER_TRIES:-12}"); do
-        tmux send-keys -t "$live_tmux" Enter
+        "${TM[@]}" send-keys -t "$live_tmux" Enter
         if [[ "$saved_draft" == 0 ]]; then
           sleep "${CHAT_INJECT_ENTER_GAP:-0.15}"
-          tmux send-keys -t "$live_tmux" Enter
+          "${TM[@]}" send-keys -t "$live_tmux" Enter
         fi
         sleep "${CHAT_INJECT_ENTER_SETTLE:-0.4}"
-        input_line="$(tmux capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1)"
+        input_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1)"
         [[ "$input_line" != *"$prefix"* ]] && { submitted=1; break; }
       done
       if [[ "$submitted" == 1 ]]; then
@@ -393,32 +461,60 @@ case "$cmd" in
     ;;
 
   ls)
-    repo="$(repo_root)"; self=""
-    [[ -n "${TMUX:-}" ]] && self="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+    repo="$(repo_root)"; self_sock=""; self_sess=""
+    if [[ -n "${TMUX:-}" ]]; then
+      self_sock="${TMUX%%,*}"; self_sess="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
+    fi
     echo "live chats in this repo (session · state · last activity):"
     found=0
-    while IFS='|' read -r sess path pcmd wactive pactive; do
+    # Enumerate panes on EVERY socket (one socket per chat now); each row is prefixed
+    # with its socket so per-pane capture/display hit the right server. A dead socket
+    # is skipped (|| true), never aborting the listing. Self-match compares BOTH socket
+    # and session — session names are globally unique, so the session stays the handle.
+    while IFS='|' read -r sock sess path pcmd wactive pactive; do
       [[ "$wactive" == "1" && "$pactive" == "1" ]] || continue
       case "$path" in "$repo" | "$repo"/*) ;; *) continue ;; esac
       case "$pcmd" in [0-9]* | claude) ;; *) continue ;; esac
-      cap="$(tmux capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
+      cap="$(tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
       state="$(printf '%s\n' "$cap" | grep -oE '🟢|⚡|🔴' | tail -1 || true)"; state="${state:-·}"
       topic="$(printf '%s\n' "$cap" | grep -vE '^$|🟢|⚡|🔴|auto mode on|shift\+tab|esc to interrupt|to scroll|for agents|^[─╭╮╰╯│]|^❯$|💾|💰|⏱' | tail -1 | cut -c1-64 || true)"
-      mark=""; [[ "$sess" == "$self" ]] && mark="  <- this chat"
+      mark=""; [[ "$sock" == "$self_sock" && "$sess" == "$self_sess" ]] && mark="  <- this chat"
       printf '  %-6s %s  %s%s\n' "$sess" "$state" "$topic" "$mark"; found=$((found + 1))
-    done < <(tmux list-panes -a -F '#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}' 2>/dev/null | sort -t'|' -k1 -n)
+    done < <(
+      while IFS= read -r sock; do
+        [[ -n "$sock" ]] || continue
+        tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}' 2>/dev/null || true
+      done < <(_sockets) | sort -t'|' -k2 -n
+    )
     [[ "$found" -gt 0 ]] || echo "  (none — no live claude chats with cwd inside $repo)"
     ;;
 
   capture)
     [[ $# -ge 1 ]] || { echo "usage: chat.sh capture <tmux-session>" >&2; exit 1; }
     target="$1"
-    tmux has-session -t "$target" 2>/dev/null || { echo "ERROR: no live tmux session '$target' — capture needs a live window; use 'read' for a dormant chat's transcript" >&2; exit 1; }
+    # Resolve across EVERY socket (one socket per chat): exact session name first,
+    # then 🔖 label. Either yields "socketpath<TAB>session"; capture then hits that
+    # pane's own socket. rc2 is an ambiguous match (candidates already on stderr).
+    socketpath=""; session=""; srow=""; srrc=0; srow="$(_resolve_session "$target")" || srrc=$?
+    if [[ $srrc -eq 0 && -n "$srow" ]]; then
+      socketpath="${srow%%$'\t'*}"; session="${srow#*$'\t'}"
+    elif [[ $srrc -eq 2 ]]; then
+      echo "ERROR: session '$target' is ambiguous — pass the tmux session id (run /chat:ls to list them)" >&2; exit 1
+    else
+      lrow=""; lrc=0; lrow="$(_resolve_label "$target")" || lrc=$?
+      if [[ $lrc -eq 0 && -n "$lrow" ]]; then
+        socketpath="${lrow%%$'\t'*}"; session="${lrow#*$'\t'}"
+      elif [[ $lrc -eq 2 ]]; then
+        echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id (run /chat:ls to list them)" >&2; exit 1
+      else
+        echo "ERROR: no live tmux session '$target' — capture needs a live window; use 'read' for a dormant chat's transcript" >&2; exit 1
+      fi
+    fi
     # -J joins wrapped lines so a long input line / footer reads as one whole
     # line instead of "empty-looking" fragments split at the wrap column.
     # -S - starts at the top of the scrollback so the whole retained buffer is
     # captured, not just the visible fold — bounded only by tmux history-limit.
-    tmux capture-pane -t "$target" -p -J -S -
+    tmux -S "$socketpath" capture-pane -t "$session" -p -J -S -
     ;;
 
   save)

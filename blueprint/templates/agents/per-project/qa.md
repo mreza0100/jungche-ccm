@@ -70,17 +70,21 @@ Before writing any tests, **spawn a separate agent** for the 360° sweep — it 
 
 ## Step 5: Run tests (scope-aware)
 
+**Affected-first (every scope):** run the tests you wrote or changed, plus the directly affected profiles, first as a fast confirm; only once they pass, proceed to the scope's run below. For FULL/POST-MERGE the full suite then runs once as the gate — never loop the full suite to chase a fix.
+
 Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports).
+
+Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Typecheck, lint, and any build step run bare.
 
 ### Scope: TARGETED (fix-loop rounds)
 
 Re-run ONLY the failing + affected profiles that triggered this round, plus the pipeline's adversarial profile(s), then unit. Do NOT widen to the full suite during fix loops.
 
 ```bash
-{PROJECT_TEST_RUNNER} <unit-with-coverage>                     # unit
-{PROJECT_TEST_RUNNER} <failing-or-affected-profile>            # repeat per failing/affected profile
-{PROJECT_TEST_RUNNER} <adversarial-profile>                    # the pipeline's adversarial test(s)
-{PROJECT_TYPECHECK} && {PROJECT_LINT}
+{PROJECT_TEST_RUNNER} <unit-with-coverage> 2>&1 | ../.claude/scripts/filter-test-output.sh -p          # unit
+{PROJECT_TEST_RUNNER} <failing-or-affected-profile> 2>&1 | ../.claude/scripts/filter-test-output.sh -p # repeat per failing/affected profile
+{PROJECT_TEST_RUNNER} <adversarial-profile> 2>&1 | ../.claude/scripts/filter-test-output.sh -p         # the pipeline's adversarial test(s)
+{PROJECT_TYPECHECK} && {PROJECT_LINT}                                                                  # bare — errors only
 ```
 
 Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
@@ -90,12 +94,12 @@ Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
 The entire test surface MUST be green before merge. No scope-gating, no shortcuts. Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then boot the instance and run integration/e2e tests against the pipeline's isolated stack.
 
 ```bash
-{PROJECT_TEST_RUNNER} <unit-with-coverage>     # unit
-{PROJECT_TYPECHECK}                            # type-safe
-{PROJECT_LINT}                                 # clean
+{PROJECT_TEST_RUNNER} <unit-with-coverage> 2>&1 | ../.claude/scripts/filter-test-output.sh -p   # unit
+{PROJECT_TYPECHECK}                            # type-safe (bare)
+{PROJECT_LINT}                                 # clean (bare)
 {PROJECT_RUN_CMD} &                            # boot the instance on the allocated port
 sleep 3 && {HEALTH_PROBE}
-{PROJECT_TEST_RUNNER} <full-integration-suite>
+{PROJECT_TEST_RUNNER} <full-integration-suite> 2>&1 | ../.claude/scripts/filter-test-output.sh -p
 # stop the booted instance
 ```
 
@@ -105,7 +109,7 @@ The integration/e2e suite runs against a live data layer and can take a long tim
 
 Same full suite as Scope: FULL, run against the project dir on `main` using the SHARED test stack (`up-test`) on the default test ports — covered in ## Post-Merge below.
 
-Passing/healthy output is suppressed by the global filter hook (`filter-test-output.sh`) — report failures + summaries only.
+Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output.
 
 ## Step 6: Compliance checks
 
@@ -113,6 +117,11 @@ Passing/healthy output is suppressed by the global filter hook (`filter-test-out
 **6b.** Env leak: no `.env.local` in integration tests → `BUG-WRONG-ENV`
 **6c.** Logging: no raw stdout prints in source → `BUG-RAW-CONSOLE`
 **6d.** Data layer: every schema/model change must have its corresponding migration/provisioning artifact → `BUG-MISSING-MIGRATION` (blocking)
+**6e. Test-data & schema discipline (blocking).** The canonical rule is root `CLAUDE.md` "Tests own their data; the schema owns itself." Flag as a bug:
+
+- DDL or raw schema statements in test code (`CREATE`/`ALTER` table/type, or any raw DDL) → `BUG-TEST-DDL` — `db-setup-test` applies the migrated schema; tests never recreate it.
+- A test that asserts on a row it did not insert inline (depends on a global/migration seed), or any schema/seed `.sql` fixture under the test tree → `BUG-TEST-SEED-DRIFT` — create needed rows at scenario start; schema/seed SQL lives only in the migrations directory, never a fixture or a service-generated dump.
+- A test coupled to a migration file by name (`readFileSync`/open of a numbered migration file) → `BUG-MIGRATION-FILE-COUPLING` — introspect the live test DB or the canonical schema source, never a migration filename. (A `.sql` fixture that re-creates dropped migration SQL to turn a red test green is the same bug — it then tests a fiction.)
 
 ## Step 7: Coverage >= 70%
 
@@ -144,7 +153,7 @@ Write `$DOCS_REL/6-bugs-{project}.md` with test files + bug list (symptom, area,
 
 Read runbook, fresh dependency install, start test infra (shared stack — post-merge is sequential under the gitter git-lock, so `up-test` + `db-setup-test` on main paths are correct), follow runbook, run tests, cleanup. Return inline results (runbook/deps/health/tests/coverage/issues).
 
-**Post-merge test scope:** Run the SAME full suite as Scope: FULL in Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real. Passing/healthy output is suppressed by the global filter hook (`filter-test-output.sh`) — inspect only failures.
+**Post-merge test scope:** Run the SAME full suite as Scope: FULL in Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real. Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output.
 
 ## Rules
 

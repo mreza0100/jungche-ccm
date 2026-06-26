@@ -391,7 +391,7 @@ Agent(general-purpose, model: "sonnet"): "You are the {PROJECT_ROLE} developer. 
   Pipeline: {name}. Follow the Common spawn contract (developer doc reads).
   Worktree: $WORKTREE/{project}. Branch: pipeline/{name}.
   Self-QA is TARGETED — unit + typecheck + lint + only your own/affected integration (or e2e) profile, never the full suite
-  (the full suite runs at the two gates only). Wrap test runs in timeout 600s; passing output stays out of context via filter-test-output.sh.
+  (the full suite runs at the two gates only). Wrap test runs in timeout 600s and pipe each through ../.claude/scripts/filter-test-output.sh -p (the settings.json hook does not reach subagents) — failures + summaries only; never tail/head/grep test output.
   Write to $DOCS_REL/5-dev-report-{ROLE}.md. {PROJECT_ROLE} port: {PROJECT_PORT}."
 ```
 
@@ -418,11 +418,11 @@ Agent(qa-{project}): "Mode: PRE-MERGE. Scope: TARGETED — re-run ONLY failing +
   Worktree: $WORKTREE/{project}. Port: {PROJECT_PORT}.
   The per-pipeline test stack is ALREADY UP — the orchestrator stood it up ONCE before Develop and owns its lifecycle. Do NOT run up-/down-/nuke-test-pipeline: a per-agent nuke drops the shared template + every sibling project's worker DBs mid-run. Read YOUR allocated test ports from $WORKTREE/.env.ports (NOT the shared default test stack + lock).
   Isolate INSIDE the shared container — run against your own dedicated per-project worker DB ({project}_test_{worker}, cloned from the shared template) and per-project queue segments ({base}-{project}-{worker}), so all projects' QA runs in parallel with no collision.
-  Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
+  Wrap every test command in timeout 600s and pipe each through ../.claude/scripts/filter-test-output.sh -p (the settings.json hook does not reach subagents) — report failures + summaries only; never tail/head/grep test output.
   Write findings into $DOCS_REL/6-bugs.md under a `## {PROJECT_ROLE}` section (create the file if absent)."
 ```
 
-If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the filter hook simply won't fire.
+If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the frontmatter filter hook simply won't fire, but the agent still pipes test output through `filter-test-output.sh -p` per its qa.md.
 
 Spawn QA agents only for relevant roster entries. Each QA agent owns exactly its own `## {PROJECT_ROLE}` section in the consolidated `$DOCS/6-bugs.md` — it writes only that section, never touching another's. There are no per-project bug files.
 
@@ -436,9 +436,9 @@ QA may have already patched trivial bugs inline (listed under `Inline fixes:` in
 
 **Iteration cap: 3 maximum.** Never run more than 3 fix-loop iterations per pipeline. After iteration 3 fails, escalate to BLOCKED-DEFERRED (see § Fix Loop Escalation below) — do NOT keep looping. Past incidents show runaway fix loops eat orders of magnitude more wall-time than the work they purport to fix.
 
-**Per-pipeline test infra — the orchestrator owns the lifecycle (`TEST_INFRA` contract).** Each pipeline runs ONE isolated test stack at the worktree's allocated test ports (NOT the shared `{DB_PORT_TEST}`/`{QUEUE_PORT_TEST}` default). The orchestrator (engine) stands it up ONCE before Develop (`stackSetup`: nuke → up → template → db → health, run from the WORKTREE infra so worktree-only migrations reach the test template, recording the ports to `$DOCS/test-stack.env` for post-merge GATE-2) and tears it down ONCE at the very end (`stackTeardown`, in a `finally`). The parallel developer + QA agents SHARE that one container and **NEVER run `up-/down-/nuke-test-pipeline`** — a per-agent nuke drops the shared template + every sibling's worker DBs mid-run. Each agent isolates INSIDE the container via a dedicated per-project worker DB (`{project}_test_{worker}`, cloned from the shared template) and per-project queue segments (`{base}-{project}-{worker}`), so all projects' QA runs in parallel with no collision. The same orchestrator-owned stack serves the targeted Fix Loop, GATE-1, and GATE-2. Every test command is wrapped in `timeout 600s`; passing output stays out of context via the `filter-test-output.sh` hook (failures + summaries only).
+**Per-pipeline test infra — the orchestrator owns the lifecycle (`TEST_INFRA` contract).** Each pipeline runs ONE isolated test stack at the worktree's allocated test ports (NOT the shared `{DB_PORT_TEST}`/`{QUEUE_PORT_TEST}` default). The orchestrator (engine) stands it up ONCE before Develop (`stackSetup`: nuke → up → template → db → health, run from the WORKTREE infra so worktree-only migrations reach the test template, recording the ports to `$DOCS/test-stack.env` for post-merge GATE-2) and tears it down ONCE at the very end (`stackTeardown`, in a `finally`). The parallel developer + QA agents SHARE that one container and **NEVER run `up-/down-/nuke-test-pipeline`** — a per-agent nuke drops the shared template + every sibling's worker DBs mid-run. Each agent isolates INSIDE the container via a dedicated per-project worker DB (`{project}_test_{worker}`, cloned from the shared template) and per-project queue segments (`{base}-{project}-{worker}`), so all projects' QA runs in parallel with no collision. The same orchestrator-owned stack serves the targeted Fix Loop, GATE-1, and GATE-2. Every test command is wrapped in `timeout 600s` and piped through `../.claude/scripts/filter-test-output.sh -p` (failures + summaries only) — the `settings.json` hook does not reach subagents, so each agent pipes explicitly.
 
-**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation), and passing output stays out of context via the `filter-test-output.sh` hook (failures + summaries only). Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
+**Hard timeouts on test commands.** Every test invocation inside the fix loop MUST be wrapped in `timeout 600s <test command>` (10 minutes per invocation) and piped through `../.claude/scripts/filter-test-output.sh -p` (failures + summaries only) — the `settings.json` hook does not reach subagents, so each agent pipes explicitly. Agent definitions enforce this — see each roster entry's `{project}/.claude/agents/{qa,developer}.md` (or `devops.md` for an infra-shaped entry). The orchestrator does NOT spawn raw test runs; it spawns agents that own the timeout discipline.
 
 **Hung-process detection.** If any test process sits at 0% CPU for >2 minutes (deadlocked, not slow) the running agent must `kill` it and report `BUG-HUNG-TEST` with the file:line of the hanging test. A hung test is NOT a fix-loop bug — it is a code bug that requires `/jc` on main.
 
@@ -536,7 +536,7 @@ Spawn the QA engineer for each routed roster entry (same `qa-{project}` wrapper 
 - **Bugs found** → one bounded targeted fix pass (developers fix OPEN bugs per the Fix Loop) + one GATE-1 re-run. Still failing → escalate to BLOCKED-DEFERRED (§ Fix Loop Escalation); the bounded GATE-1 re-run counts as the iteration cap.
 - **Whole test tier can't provision its infra** → it is reported `envBlocked` with an `INTEGRATION-UNRUN` flag — NEVER counted as green, never PASS. An un-executed integration tier is visible and carried forward, not silently passed on unit-green; the flag rides to the wave-level gate, which re-runs that tier on integrated `main`.
 
-GATE-1 reuses every Step 7 discipline: the same orchestrator-owned per-pipeline stack (agents NEVER run `up-/down-/nuke-test-pipeline` — they share the one container and isolate via their per-project worker DB + queue segments), every test command wrapped in `timeout 600s`, passing output suppressed by `filter-test-output.sh`.
+GATE-1 reuses every Step 7 discipline: the same orchestrator-owned per-pipeline stack (agents NEVER run `up-/down-/nuke-test-pipeline` — they share the one container and isolate via their per-project worker DB + queue segments), every test command wrapped in `timeout 600s` and piped through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents, so each agent pipes explicitly).
 
 ---
 
@@ -567,11 +567,11 @@ SETUP binds each entry's runbook path. -->
 ```
 Agent(qa-{project}): "Mode: POST-MERGE — GATE-2 full suite (always FULL), zero-tolerance all-green. Pipeline: {name}. Run against {project}/ on main (NOT the worktree). Follow the Common spawn contract (post-merge QA doc reads), reading docs via $DOCS_POST/ from the project dir.
   The orchestrator-owned per-pipeline stack is still up (ports recorded in $DOCS/test-stack.env from stackSetup) — do NOT run up-/down-/nuke-test-pipeline. Isolate INSIDE the shared container via your per-project worker DB ({project}_test_{worker}) + per-project queue segments ({base}-{project}-{worker}).
-  Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.
+  Wrap every test command in timeout 600s and pipe each through ../.claude/scripts/filter-test-output.sh -p (the settings.json hook does not reach subagents) — report failures + summaries only; never tail/head/grep test output.
   Runbook: {PROJECT_RUNBOOK}."
 ```
 
-If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the filter hook simply won't fire.
+If `qa-{project}` is not a recognized agent type in this session (registry predates the wrappers), fall back to `Agent(general-purpose, model: "opus")` + "Read and follow {project}/.claude/agents/qa.md" — the frontmatter filter hook simply won't fire, but the agent still pipes test output through `filter-test-output.sh -p` per its qa.md.
 
 Spawn only QA agents for projects that were part of this pipeline.
 

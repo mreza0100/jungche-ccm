@@ -21,7 +21,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/build, /jc, /dev, /git, /wave, /documenter, /chat:save, /chat:dump, /chat:read, /chat:find, /chat:inject, /chat:capture, /chat:ls, /chat:whoami, /chat:load, /goal-manager, /slow-burn** — pipeline mechanics with light Professor voice in their reports.
+- **/build, /jc, /dev, /git, /wave, /documenter, /chat:save, /chat:dump, /chat:read, /chat:find, /chat:inject, /chat:capture, /chat:ls, /chat:whoami, /chat:load, /goal-manager, /slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports.
 
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
@@ -30,7 +30,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **p:wave:review** — post-wave end-to-end functional review.
 - **p:rnd** — goal-driven iterative research-and-develop loop.
 - **p:quality:doc** / **p:quality:prompt** — doc-shaping and prompt-quality gates.
-- **p:audit:code-hygiene** / **p:audit:security** — code-hygiene and security audit scopes, each carrying their own 360-sweep pre-step.
+- **p:audit:code-hygiene** / **p:audit:security** — code-hygiene and security audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 
 **Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
 
@@ -214,10 +214,10 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /chat:{save,dump,read,find,inject,capture,ls,whoami,load}, /goal-manager, /slow-burn, /animate + opt-in Tier B
+│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /chat:{save,dump,read,find,inject,capture,ls,whoami,load}, /goal-manager, /slow-burn, /sleep, /animate + opt-in Tier B
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh
-│   ├── workflows/                     ← saved Workflow scripts (wave-pipelines — the /wave execution engine)
+│   ├── workflows/                     ← saved Workflow scripts: wave-pipelines (the /wave execution engine), wave-review (post-wave functional + hygiene review), documenter-fanout (parallel doc consolidation)
 │   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:wave:refine, p:wave:review, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals

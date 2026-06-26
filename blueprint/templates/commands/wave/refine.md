@@ -45,8 +45,9 @@ Walk the actual code **once per original task**. Build a per-task reconciliation
 | **Original title**       | Exactly as user wrote it.                                                                                 |
 | **Code referenced**      | File paths, components, chains, endpoints this task names or implies. If something doesn't exist, say so. |
 | **What exists today**    | One line on current state.                                                                                |
-| **What's missing**       | Gap between what's asked and what's in code.                                                              |
-| **Concrete-spec status** | `READY` / `NEEDS-CLARIFICATION` / `NEEDS-FOUNDER-SPEC`                                                    |
+| **What's missing**       | Gap between what's asked and what's in code.                                                                                                                                                                                                                                                                     |
+| **Reuse targets**        | Existing helpers, components, hooks, types, or query fragments this task must import rather than rebuild — apply `/audit:code-hygiene` Category 8 (Duplication & Missed Reuse) discovery to the task's domain so the spec names what to call, not just what to write. Empty only when the task is genuinely net-new. |
+| **Concrete-spec status** | `READY` / `NEEDS-CLARIFICATION` / `NEEDS-FOUNDER-SPEC`                                                                                                                                                                                                                                                            |
 
 `NEEDS-FOUNDER-SPEC` tasks **must** surface as Tier-1 questions in R1.5. Never silently merge, drop, or renumber them.
 

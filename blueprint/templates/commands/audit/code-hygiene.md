@@ -1,6 +1,6 @@
 ---
 name: audit:code-hygiene
-description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, plus one per project in the roster ({project})."
+description: "Code hygiene audit — duplication & missed reuse, ghost fields, dead code, deps, arch, types, naming, quality, magic numbers. Tuned for AI-authored code. Scopes: all, dup, ghosts, dead, deps, arch, types, naming, quality, magic, diff, sweep, plus one per project in the roster ({project}); the sweep scope additionally removes confirmed-dead code and unused dependencies end-to-end behind QA."
 argument-hint: [scope]
 ---
 
@@ -10,11 +10,35 @@ argument-hint: [scope]
 
 **Trigger:** `code-hygiene`, `code-hygiene <scope>`.
 
-**Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, plus a per-project scope for each `{project}` in the roster (a single-project repo has just one).
+**Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, `sweep`, plus a per-project scope for each `{project}` in the roster (a single-project repo has just one).
 
 Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/wave:review`.
 
 **This codebase is largely AI-authored — weight the checks accordingly.** LLM-written code fails in characteristic ways: it regenerates logic instead of importing what already exists (duplication is the top signal), over-builds simple tasks, leaves stubs and dead branches when it pivots, imports packages that may not exist, and reaches for `any`/broad types and swallowed errors. Before accepting any new function, component, or util, grep for the existing one it should have called.
+
+---
+
+## Sweep Mode — report-only by default, remediate on `sweep`
+
+Every run is **report-only by default**: detect, tier, and STOP — it never deletes. The `sweep` scope (`code-hygiene sweep [{project}|all]`) is the one mode that _removes_ confirmed-dead code and unused dependencies. It governs **Category 2 (Dead Code)** and **Category 3 (Stale Dependencies)** only; every other category stays advisory.
+
+**The end-to-end deadness bar.** A symbol is dead only when it has zero consumers across _the whole roster_ and across every surface a static import-grep misses — because this is a {DOMAIN_ADJ} product, and a false "dead" becomes a regression in a live {SESSION_NOUN}:
+
+- {API_PROTOCOL} contract — the {API_PROTOCOL} schema (SDL/types the UI/client queries by name, never imports)
+- {QUEUE} message contracts between roster projects (payload fields the consumer reads, never imports)
+- a prompt/asset registry — assets loaded by string name at runtime (e.g. a prompt loader), never statically imported
+- {ORM} migrations, {UI_FRAMEWORK} file-routes, and JSON/(de)serialization mappers — registered by name or convention, not import
+- Test-only, config-only (babel/webpack/jest/pytest/ruff), and reflection consumers
+
+A candidate that can't be proven past this bar is not dead — flag it and keep it.
+
+**Sweep procedure:**
+
+1. **Detect** Category 2 + 3 candidates per their detection steps below.
+2. **Prove deadness** adversarially — for each candidate, try to prove it still _alive_ against the bar above before declaring it dead.
+3. **Tier** the survivors: **TIER-1** confirmed-dead (cleared the bar) · **TIER-2** uncertain (a consumer surface unresolved — verify first) · **kept** (a real consumer found).
+4. **Approval gate** — present the full tiered kill-list and STOP. Cut only the set the founder approves; never remediate piecemeal mid-scan.
+5. **Remove** the approved set in a worktree (never on `main`), run the full QA gate — green tests are the only empirical proof the cut was truly dead — and have gitter merge. Git is the undo.
 
 ---
 
@@ -96,6 +120,8 @@ Code that is never called, never imported, or commented out and left to rot.
 - **API/service projects:** Check resolvers -> services -> repositories chain. If a repo method exists but no service calls it, and no resolver calls that service method — it's dead.
 - **UI/client projects:** Check components. If a component file exists but is never imported in any route, screen, or parent component — it's dead.
 - **AI/pipeline projects (if the roster has one):** Check chains. If a chain function exists but the orchestrator never calls it — it's dead. Check prompt templates not referenced by any chain.
+
+**Deadness bar:** a `Safe to remove: yes` verdict — and any sweep cut — holds only when the symbol clears the end-to-end deadness bar (§ Sweep Mode); absence from its own project is suspicion, not proof.
 
 **Report format:**
 

@@ -49,6 +49,10 @@ Above threshold = split into a referenced file (one level deep, with a Table of 
 - **Deeply nested file references** (SKILL.md → reference.md → details.md). Claude `head -100`s and misses content. Keep references one level deep.
 - **Inline incident logs in references / gotchas.** Once the rule is codified, the incident becomes redundant. Move it to the commit message or epic manifest.
 
+## Teaching by example — when a stated rule keeps leaking
+
+When the model keeps violating a rule the prompt already states, that is confusion about where the rule applies, not disobedience — sharpening the wording or piling on emphasis only adds noise. Reach for a **contrastive example**: show the tempting WRONG answer and the trap that produces it, then the correct one (✗→✓), drawn from a real failure. **Counterweight** every "avoid X" example with an "X is correct here" example — a contrastive example against a frequent label otherwise teaches the model to avoid that label everywhere, suppressing its legitimate uses.
+
 ## Structural conventions by file type
 
 ### Sub-agents (`.claude/agents/*.md`)

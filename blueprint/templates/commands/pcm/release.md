@@ -29,6 +29,14 @@ If `{BLUEPRINT_CLONE_PATH}` is missing, clone it (or create the repo on the host
 ---
 
 ```pseudo
+0. Update-gate (run before everything) — release only from current. Compare `.professor/VERSION` against the
+   highest published tag (`git ls-remote --tags https://github.com/{BLUEPRINT_REPO}.git 'refs/tags/v*'`).
+   If a tag is newer → run `/pcm:update` first, then continue. For this source repo a newer tag is usually the
+   self-publish round-trip (our own last release this host never pulled): the update syncs `.professor/VERSION`
+   + manifest to the latest tag with no peer content to consume. The new version Step 4 computes must be greater
+   than every published tag — skip this and the source repo, lagging its own last publish, recomputes an
+   already-shipped version and collides on the tag push.
+
 1. Validate args (bump type + summary required, bail if missing)
    patch = bug fixes/doc tweaks | minor = new archetype/command/step | major = breaking/migration
 

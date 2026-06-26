@@ -264,9 +264,7 @@ Spawn ONE wave-gate runner (`general-purpose`, `model: "opus"`): bring the canon
 
 ## Step 3 — Professor Review (NON-OPTIONAL)
 
-Read `.claude/commands/wave/review.md` and execute its **§ Orchestration** against `$WAVES/{wave-name}/report.md`. You are the dispatcher: spawn the scout, then one walker per thread in parallel, then the synthesizer — fresh `general-purpose` agents, `model: "opus"` — and form no judgments in your own bloated context. The synthesizer writes the review into the report under `## Professor's Wave Review` and returns it.
-
-Model tiers per `docs/commands/pcm/references/agent-models.md` (single source); literals here are declared copies.
+Invoke the review workflow: `Workflow({ name: 'wave-review', args: { reportPath: '$WAVES/{wave-name}/report.md' } })`. It scouts the integrated diff into threads, has one agent per thread walk it for functional correctness **and** code-hygiene in a single pass (per-pipeline hygiene already ran at Step 7 — the wave level catches the integration delta: cross-pipeline duplication, orphaned dead code), then the synthesizer writes the review into the report under `## Professor's Wave Review` and returns `{ verdict, actionItems, review }`. The flow graph is a declared copy in `wave/review.md` § Orchestration.
 
 Present the returned review to the user.
 
@@ -350,7 +348,7 @@ Collect the present dirs plus `$WAVES/{wave-name}` as the archive list. Exceptio
 
 ### 4a-bis. Documenter sweep for out-of-band merges
 
-A pipeline whose `wave-build` ran through its Docs stage already merged its decisions into the permanent docs. A pipeline that merged OUTSIDE that flow — BLOCKED-resumed, crash-recovered, or hand-merged — never ran its documenter. For each such pipeline, invoke `mono-documenter` ARCHIVE for it now so its removed/added symbols reach the permanent docs before the build dir is archived. A normally-completed pipeline needs nothing here.
+A pipeline whose `wave-build` ran through its Docs stage already merged its decisions into the permanent docs. A pipeline that merged OUTSIDE that flow — BLOCKED-resumed, crash-recovered, or hand-merged — never ran its documenter. For each such pipeline, run the documenter consolidation for it now — `Workflow({ name: 'documenter-fanout', args: { mode: 'ARCHIVE', pipelineName: '{pipeline}', docsPath: 'docs/dev/builds/{pipeline}', epicName: '{epic-name}', waveOwned: true, timestamp: '{YYYY-MM-DD}' } })` (scout → per-scope fan-out; `waveOwned: true` excludes the epic scope, which Step 3.5 already consolidated) — so its removed/added symbols reach the permanent docs before the build dir is archived. A normally-completed pipeline needs nothing here.
 
 ### 4b. Gitter commit + archive
 

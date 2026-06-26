@@ -24,7 +24,39 @@ Read and apply `.claude/commands/quality/doc.md` before creating or editing ANY 
 
 You are the **Documentation Specialist** for the {PROJECT_NAME} project — single source of truth for all documentation logic: archiving pipeline docs, updating permanent docs, auditing cross-reference consistency, and maintaining the doc registry.
 
-Invoked by `mono-documenter` agent for pipeline work or directly via `/documenter`.
+ARCHIVE and JC-UPDATE run **fanned out per scope** (§ Orchestration): a `mono-documenter` scout maps the blast radius, then one Sonnet worker per scope merges its own slice in parallel. AUDIT, EPIC, REGISTRY, and GRAPHS run inline as described in their mode sections.
+
+---
+
+## Orchestration
+
+ARCHIVE and JC-UPDATE are parallelized: a single serial pass over every doc surface is slow, so the work splits along **disjoint write-sets**.
+
+**Flow** (the `documenter-fanout` workflow `.claude/workflows/documenter-fanout.js` is the declared copy of this):
+
+1. **Scout** (`mono-documenter` agent, Sonnet) — read-only; examines the pipeline `$DOCS` (ARCHIVE) or the hotfix diff (JC-UPDATE) and returns the scope manifest — only the scopes this change touches, each with its `steps`, `writeTargets`, and `sources`.
+2. **Consolidate** (one Sonnet worker per scope, in parallel) — each **first reads and applies `.claude/commands/quality/doc.md`** (the doc-quality contract — loaded BEFORE it touches any doc), then runs ONLY its scope's steps from this file, writes ONLY its `writeTargets`, and finally re-runs the `/quality:doc` Approval gate + `prettier` on the files it wrote.
+
+**Scope partition — disjoint write-sets** (the scout's map; two scopes never name the same file):
+
+| Scope           | Owns (write targets)                                   | Steps                                                                                                                  |
+| --------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `{project}`     | `{project}/docs/**` + `docs/agents/graph/{project}/**` | child-doc steps for this project — 2b, 2h, 2i (+ 2e if it owns the UI; a project with no architecture cluster drops 2b) |
+| `root-arch`     | `docs/agents/architecture/**`                          | 2a                                                                                                                   |
+| `root-api`      | `docs/agents/api/**`                                   | 2f                                                                                                                   |
+| `root-map`      | `docs/agents/map/**`                                   | 2g-3                                                                                                                 |
+| `root-features` | `docs/agents/features/**` + `docs/dev/backlog.md`      | 2g-1, 2g-2                                                                                                           |
+| `root-db`       | `docs/agents/db/**` + `docs/agents/graph/db/**`        | 2g-4                                                                                                                 |
+| `epic`          | `docs/epics/{name}/**`                                 | 2j                                                                                                                   |
+
+<!-- Install-time: the `{project}` row is a PATTERN — SETUP expands one such row per roster entry (single-project install = one row), each with that project's own doc tree and the child-doc steps its surfaces need. The root-* rows are fixed cross-project scopes. -->
+
+Several scopes read the same pipeline doc (e.g. `3-architecture.md` feeds `root-arch` and the child scopes), but each writes only its own slice — the Step 2a scope guard ("would this fit in a child doc? write it there") is satisfied because every worker owns one target. The `epic` scope is emitted only for a standalone build with a resolving epic — never a wave-owned build (the wave consolidates the epic) and never in JC-UPDATE.
+
+**Where it runs:**
+
+- **Main-loop sites** (standalone `/documenter` ARCHIVE/JC-UPDATE, `/jc` Step 6, `/wave` Step 4a-bis) size the response to the blast radius: an **obviously small change** (one project or one cluster) → **spawn the Sonnet documenter sub-agent(s) directly**, one per scope — no workflow ceremony. A **wider or unclear** blast radius → launch `Workflow({ name: 'documenter-fanout', args })`, whose scout maps the scopes and scales the worker count. Either way the worker count tracks the blast radius — never manufacture scopes to parallelize.
+- **`wave-build.js` Docs stage** runs the same scout + fan-out **inline** via `agent()` — a workflow cannot nest inside it (it already runs under `wave-pipelines`). Its inline flow is a declared copy of this section; change them together.
 
 ---
 
@@ -84,7 +116,9 @@ Determine the mode from `$ARGUMENTS`:
 
 ---
 
-## Mode: ARCHIVE (called by mono-documenter from pipeline)
+## Mode: ARCHIVE (fanned out per scope — see § Orchestration)
+
+You are normally **one per-scope worker**: run ONLY the steps your scope assigned (its `steps` field), write ONLY its `writeTargets`, ignore every step that belongs to another scope. The steps below are the full menu; the scout already sliced it. (Run the whole menu only if invoked directly with no scope.)
 
 ### Step 1 — Read all pipeline documents
 
@@ -283,7 +317,9 @@ If audit discovered new/removed docs or changed ownership, update the registry.
 
 ---
 
-## Mode: JC-UPDATE (after a /jc hotfix)
+## Mode: JC-UPDATE (after a /jc hotfix — fanned out per scope, see § Orchestration)
+
+As in ARCHIVE, you are normally one per-scope worker: apply only your scope's `steps` to its `writeTargets`. The scout maps the (usually small) blast radius from the hotfix diff — often one or two scopes.
 
 1. **Read what changed** — Orchestrator describes the fix and affected projects.
 2. **Update relevant permanent docs** — Same merge logic as ARCHIVE Step 2, but only affected docs. Skip unaffected. Always check the `map/` and `features/` clusters, plus `docs/agents/db/_index.md` if DB or infra ops changed.

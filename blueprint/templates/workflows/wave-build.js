@@ -49,6 +49,9 @@ const QA = { type: 'object', properties: { status: { type: 'string', enum: ['NON
 const REVIEW = { type: 'object', properties: { verdict: { type: 'string', enum: ['CLEAN', 'FINDINGS', 'RESIDUAL'] }, projects: { type: 'array', items: { type: 'string', enum: PROJECTS_ALL } }, summary: { type: 'string' }, flags: FLAGS }, required: ['verdict', 'projects', 'summary'] }
 const MERGE = { type: 'object', properties: { status: { type: 'string', enum: ['OK', 'FAIL'] }, sha: { type: 'string' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'sha', 'summary'] }
 const PMQA = { type: 'object', properties: { status: { type: 'string', enum: ['PASS', 'FAIL'] }, envBlocked: { type: 'boolean' }, summary: { type: 'string' }, flags: FLAGS }, required: ['status', 'summary'] }
+// Docs fan-out (declared copy of documenter.md § Orchestration): scout maps disjoint doc scopes, one Sonnet worker per scope.
+const DOC_SCOPE = { type: 'object', properties: { key: { type: 'string' }, steps: { type: 'string' }, writeTargets: { type: 'string' }, sources: { type: 'array', items: { type: 'string' } } }, required: ['key', 'steps', 'writeTargets'] }
+const DOCSCOUT = { type: 'object', properties: { scopes: { type: 'array', items: DOC_SCOPE }, summary: { type: 'string' } }, required: ['scopes'] }
 
 // Silent agent death is routine (gitter SETUP, devs died in past waves) — respawn once
 // with a continuation brief before treating it as an orphan.
@@ -70,7 +73,7 @@ const COMMON = ' Follow wave/build.md § Common spawn contract: NEVER run git (g
 // INSTALL: adapt the infra project key, test-port references, worker-DB and SQS-segment naming below
 // to match your install's {INFRA_PROJECT}, TEST_PG_PORT/TEST_LS_PORT allocated test ports, and message-queue conventions.
 const TEST_INFRA = ' Test infra is ISOLATED per pipeline and the ORCHESTRATOR owns its container lifecycle. The stack is ALREADY UP and you SHARE it with the other parallel dev/QA agents — DB + message-queue services at your allocated TEST_PG_PORT/TEST_LS_PORT (from <worktree>/.env.ports; post-merge GATE-2, when the worktree is gone, from docs/dev/builds/' + p.pipelineName + '/test-stack.env); template + DB built from the worktree migrations. Export TEST_PG_PORT/TEST_LS_PORT/PIPELINE=' + p.pipelineName + ' and run your suite against it. NEVER run up-test-pipeline / down-test-pipeline / nuke-test-pipeline — nuking the shared container drops the template + every sibling agent\'s worker DBs mid-run; the orchestrator brought the stack up once and tears it down once after ALL agents finish. You MAY run db-setup-test-template-pipeline / db-setup-test-pipeline to refresh schema with current migrations (idempotent — no DROP of the shared template). Your suite isolates INSIDE the one container: a DEDICATED per-project worker DB ({project}_test_{worker}, cloned from the shared template) AND per-project message-queue segments ({base}-{project}-{worker}) — a bare {base}-{worker} queue name collides with a sibling project on the shared queue service.'
-const SELF_QA = ' Self-QA TARGETED — unit + typecheck + lint + only the affected/own integration (or e2e) profile; never the full suite (the full suite runs at the two gates only). Wrap test runs in timeout 600s; passing output stays out of context via filter-test-output.sh.'
+const SELF_QA = ' Self-QA TARGETED — unit + typecheck + lint + only the affected/own integration (or e2e) profile; never the full suite (the full suite runs at the two gates only). Wrap test runs in timeout 600s and pipe each test runner through filter-test-output.sh -p (the settings.json hook does not reach subagents); report failures + summaries only — never tail/head/grep test output (typecheck/lint stay bare).'
 
 const docs = p => 'docs/dev/builds/' + p.pipelineName
 const wt = p => '.worktrees/' + p.pipelineName
@@ -95,11 +98,13 @@ function stackTeardown(p) {
   )
 }
 
+// Child planner = the find-half of a find→verify chain: ANALYSIS only MAPS the project; the Opus mono-planner renders the routing verdict.
+// {MODEL_TIER}: sonnet (navigation/detect-walk — fast + best at mapping) — retune to your model tier.
 function plannerAgent(p, proj) {
   return resilient(
     'You are the ' + proj + ' planner. Read and follow {project-prefix}-' + proj + '/.claude/agents/planner.md. Mode: ANALYSIS. ' + header(p) +
     ' Feature: ' + p.description + '. Analyze the {project-prefix}-' + proj + '/ codebase and write ' + docs(p) + '/1-analysis-' + proj + '.md.' + COMMON,
-    { label: 'plan · ' + proj + tag(p), phase: 'Plan', model: 'opus', schema: STATUS }
+    { label: 'plan · ' + proj + tag(p), phase: 'Plan', model: 'sonnet', schema: STATUS }
   )
 }
 
@@ -195,7 +200,7 @@ function qaRound(p, routing, iter, scope) {
     'Mode: PRE-MERGE.' + scopeBrief + ' ' + header(p) + ' Worktree: ' + wt(p) + '/{project-prefix}-' + proj + '.' +
     ' Run every infra make target from the WORKTREE infra — make -C ' + wt(p) + '/{INFRA_PROJECT} ... — worktree-only migrations must reach the test template (running main\'s infra builds a template missing them).' + TEST_INFRA +
     ' Write findings into ' + docs(p) + '/6-bugs.md under a `## ' + proj.toUpperCase() + '` section (create the file if absent) — own only that section, never touch another\'s; your structured return must match what you wrote there. ' +
-    'Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.' + COMMON +
+    'Wrap every test runner in timeout 600s and pipe through filter-test-output.sh -p — report failures + summaries only; never tail/head/grep test output (typecheck/lint stay bare).' + COMMON +
     ' Structured output: status NONE|OPEN for your section; bugIds = stable ids of bugs still OPEN; hungTest = true if any test deadlocked at 0% CPU for >2 minutes (kill it and report BUG-HUNG-TEST in your section); ' +
     'preExistingOrthogonal = true ONLY when EVERY open bug either reproduces on main OR lives in a file this pipeline never changed (confirm against `git -C ' + wt(p) + ' diff --name-only main...pipeline/' + p.pipelineName + '`) — name each as a `/jc on main` candidate in flags; a failure in code this pipeline changed keeps it false; ' +
     'envBlocked = true when a whole test TIER could not run because its infra would not provision (an environment blocker, not a code failure) — add an `INTEGRATION-UNRUN: {tier}` flag and report status NONE only for tiers that actually executed, never for one that was skipped.',
@@ -291,7 +296,7 @@ async function shipStage(p, routing, flags) {
   const pm = await parallel(routing.map(proj => () => resilient(
     'Mode: POST-MERGE — GATE-2 full suite (always FULL), zero-tolerance all-green. Pipeline: ' + p.pipelineName + '. Run against {project-prefix}-' + proj + '/ on main (NOT the worktree), infra targets via make -C {INFRA_PROJECT}.' + TEST_INFRA +
     ' Pipeline docs: docs/dev/builds/' + p.pipelineName + '/.' +
-    (RUNBOOK[proj] ? ' Runbook: ' + RUNBOOK[proj] + '.' : '') + ' Wrap every test command in timeout 600s; passing output stays out of context via filter-test-output.sh — report failures + summaries only.' +
+    (RUNBOOK[proj] ? ' Runbook: ' + RUNBOOK[proj] + '.' : '') + ' Wrap every test runner in timeout 600s and pipe through filter-test-output.sh -p — report failures + summaries only; never tail/head/grep test output (typecheck/lint stay bare).' +
     ' Structured output: status PASS|FAIL; envBlocked = true when a whole test TIER could not run because its infra would not provision (add an `INTEGRATION-UNRUN: {tier}` flag) — never report a tier that was skipped as PASS.',
     { label: 'pmqa · ' + proj + tag(p), phase: 'Post-Merge', agentType: 'qa-' + proj, schema: PMQA }
   )))
@@ -303,10 +308,20 @@ async function shipStage(p, routing, flags) {
   )
   if (pm.some(r => !r || r.status === 'FAIL')) return { status: 'POSTMERGE-FIX-NEEDED', sha: m.sha }
 
-  await resilient(
-    'Pipeline: ' + p.pipelineName + '. Phase: ARCHIVE. Epic: ' + args.epicName + '. Docs: ' + docs(p) + '. Wave-owned build — skip the epic write; the wave consolidates it.',
-    { label: 'documenter' + tag(p), phase: 'Docs', agentType: 'mono-documenter', schema: STATUS }
+  // Docs — scout the blast radius (mono-documenter, Sonnet), then fan out one Sonnet documenter per scope.
+  // A workflow can't nest inside this one (it runs under wave-pipelines), so the scout + fan-out is INLINE here —
+  // a declared copy of documenter.md § Orchestration / the documenter-fanout workflow. Wave-owned build → no epic scope.
+  const docScout = await resilient(
+    'Phase: ARCHIVE-SCOUT. Pipeline: ' + p.pipelineName + '. Docs: ' + docs(p) + '. Wave-owned build — EXCLUDE the epic scope (the wave consolidates it). ' +
+    'Read .claude/commands/documenter.md § Orchestration, examine the blast radius, and return the DISJOINT scope manifest (each scope: steps + writeTargets + sources; a small change is one or two scopes).',
+    { label: 'doc-scout' + tag(p), phase: 'Docs', agentType: 'mono-documenter', schema: DOCSCOUT }
   )
+  const docScopes = ((docScout && docScout.scopes) || []).filter(Boolean)
+  if (docScopes.length) await parallel(docScopes.map(s => () => resilient(
+    'Phase: ARCHIVE. BEFORE you touch any document, read and apply .claude/commands/quality/doc.md (the doc-quality contract). Then read .claude/commands/documenter.md and execute the merge for ONLY this scope — write ONLY its writeTargets; another worker owns every other scope, so touching outside your write-set is a write race. ' +
+    'Scope: ' + JSON.stringify(s) + '. Pipeline docs: ' + docs(p) + '. Permanent docs are current-state — add what shipped, delete what was removed or renamed. ' +
+    'After writing, re-run the /quality:doc Approval gate over every doc you touched, then `npx prettier --write --prose-wrap preserve` each file you wrote; write no other files, run no git.',
+    { label: 'doc · ' + s.key + tag(p), phase: 'Docs', model: 'sonnet', schema: STATUS })))
   await resilient(
     'Pipeline: ' + p.pipelineName + '. Wave: ' + args.waveName + '. Phase: DOCS-COMMIT. Projects: ' + projectsCsv + '. Archive: none.',
     { label: 'docs-commit' + tag(p), phase: 'Docs', agentType: 'gitter', schema: STATUS }

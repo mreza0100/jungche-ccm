@@ -306,7 +306,7 @@ sleep 3 && tail -100 $ROOT/tmp/dev/{project}.log 2>/dev/null   # per modified ro
 ### 4c. Test the fix
 
 - Hit the relevant endpoints to confirm the issue is resolved
-- Run the **full** test suite for every modified project — one PATTERN block per modified roster entry, using that entry's test runner:
+- **Affected-first:** run only the tests you touched or added (plus directly affected ones) first as a fast confirm — they must fail without the fix and pass with it. Only once they pass, run the **full** test suite for every modified project, once, as the gate — one PATTERN block per modified roster entry, using that entry's test runner:
 
 ```bash
 # PATTERN — per modified roster entry

@@ -4,7 +4,7 @@ description: >
   Plans features for the {project} project ({PROJECT_ROLE}). ANALYSIS mode: analyze the
   codebase for mono-planner, runs in parallel with the other roster projects' planners.
   Invoke FIRST before any other agent.
-model: opus # {MODEL_TIER} — records tier intent (/wave:build's invocation alias governs at runtime); retune to your model tier
+model: sonnet # {MODEL_TIER} — navigation/detect-walk tier: the find-half of a find→verify chain (ANALYSIS maps the project; the Opus mono-planner renders the routing verdict). /wave:build's invocation alias governs at runtime; retune to your model tier
 tools: Read, Write, Glob, Grep
 ---
 
