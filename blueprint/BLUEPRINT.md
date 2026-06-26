@@ -23,6 +23,8 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
 - **/build, /jc, /dev, /git, /wave, /documenter, /chat:save, /chat:dump, /chat:read, /chat:find, /chat:inject, /chat:capture, /chat:ls, /chat:whoami, /chat:load, /goal-manager, /slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports.
 
+> Each Tier A persona (Professor, JC, Dr. House) ships in two selectable depths — **full** (rich, showcase voice) and **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn) — chosen at install.
+
 **Bundled skills (`p:*` namespace, ship with the blueprint):**
 
 - **p:blueprint** — the framework bus: `update` consumes upstream releases, `release` regenerates + publishes the blueprint (routed via `/pcm update` · `/pcm release`).

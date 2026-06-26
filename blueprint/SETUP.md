@@ -52,6 +52,13 @@ This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Acme is a develop
 
 Most adopters keep Professor as-is. The voice transplants well across domains. If you want a different name (e.g., "Beatrix" for a finance project, "Gandalf" for an open-source library), name it. The voice can stay.
 
+**Persona depth — full or compact.** Each persona (Professor, JC, Dr. House) ships in two depths; pick one for the install:
+
+- **full** — the rich, showcase version: every worked voice example, the "What NOT to do" block, the full PhD roster, the relationship-with-the-work section. The voice IS the value. The reasonable showcase default.
+- **compact** — a lean version: the same behavioral contract (the Verdict rule, the sacred-ground red lines, the Analysis Protocol) and each character's distinct voice, with the flavor and PhD detail trimmed to a single visible one-line roster. Fewer tokens every turn.
+
+The Professor is the **session style** — its output style is loaded on every main-loop turn, so compact's per-turn savings land mostly there; JC and Dr. House are command overlays loaded only when `/jc` or `/pcm` runs. One install-wide choice covers all three personas; you can switch later by re-copying the other variant (see Phase 2) or re-answering this question.
+
 Then tell Claude your **sacred ground** — the topics where the character drops the humor and reports flat (e.g., "patient data", "user funds", "physical safety in autonomous control"). This goes into the persona's "What NOT to do" block. Without sacred ground defined, the character will make jokes in places it shouldn't.
 
 ### 3. Project roster
@@ -242,6 +249,7 @@ Claude takes your answers and:
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, and the non-negotiable rules. Emits `{PROJECT_ROSTER}` (one Architecture bullet per roster entry) and `{PROJECT_AGENT_ROSTER}` (one Agents line per entry, listing only that project's installed agents); a single-project install collapses the monorepo framing to "the project." Strict-typing and infra rules emitted per roster entry (one typing rule per typed stack; infra rules only if a project owns infra).
 2. **Writes per-project `CLAUDE.md` files** (roster of 2+) — one per entry, with that entry's tech stack and conventions. A roster of one has no child CLAUDE.md.
 3. **Writes Tier A command files** — `/build`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave`, `/documenter`. Voice intact, domain content filled.
+   3a. **Installs output-style personas** — for each of `professor`, `jc`, `dr-house`, copies the **chosen depth** variant `blueprint/templates/output-styles/{name}.{depth}.md` (where `{depth}` is `full` or `compact` from Q2) to `.claude/output-styles/{name}.md`, substituting placeholders. The install always lands on the canonical bare filenames — `professor.md` (the session style loaded every main-loop turn), `jc.md`, `dr-house.md` (the `/jc` and `/pcm` overlays); the `.full`/`.compact` suffix exists only in the blueprint templates. To switch depth later, re-copy the other variant over the bare filename.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter` and `mono-documenter` always; `mono-planner` + `mono-architect` only for a roster of 2+, each with the roster pinned. A single-project install omits the two `mono-` consolidators.
 6. **Writes per-project agents** — for each roster entry, instantiates that project's `planner`, `architect`, `developer`, `qa` (plus any specialists from Q3) under `{project}/.claude/agents/`, with its test/lint/build commands pinned. One set per entry; none for projects not in the roster.
@@ -343,6 +351,7 @@ Claude takes your answers and:
         "project_pitch": "AI-assisted neuropsychological assessment platform",
         "character_name": "Professor",
         "character_voice": "keep",
+        "persona_depth": "full",
         "sacred_ground": "patient cognitive assessment data and diagnostic accuracy",
         "structure": "monorepo",
         "subprojects": [

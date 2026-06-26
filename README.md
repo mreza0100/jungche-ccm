@@ -93,6 +93,7 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 - **/sleep** — deferred execution: arm a background timer for any wall-clock duration (`30m`, `2h`, `1h30m`, `90s`), then run any prompt on wake — as if you just sent it.
 - **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:blueprint` (the framework bus — `/pcm update` · `/pcm release`), `p:wave:refine`, `p:wave:review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
 - **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `p:360` (blind-spot killer), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
+- **Persona depth** — each persona (Professor, JC, Dr. House) ships in two selectable depths: **full** (rich, showcase voice) or **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn). Pick at install.
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
 - **VSCode tmux launcher** — new VSCode terminals open straight into tmux + Claude; `/exit` drops you back to your shell. Ships a companion tmux config (mouse scroll + click-to-copy).
 - **Multi-account billing swap (opt-in, macOS)** — per-chat `/swap` switches which Claude subscription a session bills to; other sessions untouched.
