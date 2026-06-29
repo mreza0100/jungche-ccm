@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.39.0](releases/v0.39.0.md) — /quality:prompt mandatory before every prompt-file edit (hand-edited or via /pcm or /km)
 - [v0.38.0](releases/v0.38.0.md) — selectable full/compact persona depth
 - [v0.37.0](releases/v0.37.0.md) — new /sleep command, wave-review + documenter-fanout workflows, code-hygiene Sweep Mode, affected-first test ordering, subagent test-output filtering, chat: tmux-socket awareness, Dead-code ripple + Test-data discipline review threads, prompt-by-example wisdom, model-tiering detect/walk→Sonnet, /pcm:release update-gate.
 - [v0.36.0](releases/v0.36.0.md) — memory backup rebuilt to ONE vault, MANY subdirs (per-project subdir keyed by project basename, shared across machines): `cc-memory-wire.sh` SessionStart auto-wire with root-guard, `cc-memory-consolidate.sh` one-time migrator, `memory-sync.sh` whole-vault pull-rebase→commit→push; vault path configurable via `{MEMORY_VAULT_DIR}` + `CLAUDE_MEMORY_REPO`. SUPERSEDES the v0.12.0 single-project model. MIGRATION: replace the `.sync.sh` SessionEnd hook with the two user-level hooks + run the consolidator.
