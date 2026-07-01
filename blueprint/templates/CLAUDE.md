@@ -219,6 +219,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Structure: `manifes
 - **NEVER run destructive git** — no `reset --hard`, `push --force`, `clean -fdx`, `rm -rf`
 - **NEVER reuse archived pipeline/wave names** — check archives, append `-v2` if collision
 - Never install unvalidated libraries; never commit secrets
+
 <!-- KEEP the next rule only if the roster has a project that owns infra/orchestration; drop it (and adapt the Testing & Environment infra lines below) for a roster with no such project. -->
 
 - **All infra ops via `make -C {INFRA_PROJECT}`** — never direct `docker exec` / `psql` / queue CLIs
@@ -268,12 +269,24 @@ The roster projects (see Architecture above) — plus `.claude/`, `.codex/`, `do
 Match the model to the cost of being wrong; judgment never delegates downward.
 
 - **Opus** — output that shapes the product: planning, architecture, implementation, QA, review, domain or liability judgment, salience calls over large or ambiguous input. _E.g._ designing a {TECH_EXAMPLE_A} contract; judging whether an {AI_SERVICE_NAME} chain's output is safe in {DOMAIN_ADJ} terms.
-- **Sonnet** — bounded work with a spec to apply: git mechanics, doc merges, the seo pass, structured-file writes. _E.g._ committing a reviewed worktree to `main`; running the seo-playbook over a cleared article, developer agents implementing something that is designed.
-- **Haiku** — fetch, classify, append, extract verbatim — no judgment. _E.g._ sweeping dev logs and returning raw output; flagging whether a plan touches the schema. A Haiku child returns raw material and cites its source; it never summarizes-with-judgment or concludes.
+- **Sonnet** — bounded work with a spec to apply: git mechanics, doc merges, the seo pass, structured-file writes, implementing a design. _E.g._ committing a reviewed worktree to `main`; running the seo-playbook over a cleared article.
+- **Haiku** — fetch, classify, append, extract verbatim, summarize large non-sensitive output — no judgment. A Haiku child returns raw material and cites its source; it never summarizes-with-judgment or concludes.
 
 Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} on Haiku — a dropped detail in a {SUBJECT_NOUN} {RECORD_NOUN} is a {DOMAIN_ADJ} cost.
 
 Unsure which tier fits? Use `inherit` — it rides the session model rather than risking a downgrade.
+
+**Effort:**
+
+- Max: never unless {FOUNDER_NAME} says so
+- XHigh: only to force open a genuinely hard problem
+- High: the default — nearly everything
+- Medium: small tasks needing little reasoning
+- Low: never
+
+**Agent nesting** — complex work nests mixed tiers: a Sonnet fans out Haiku probes, lines up their raw findings, then reasons over them. Don't call a heavy MCP tool (large web-fetch / docs / browser-automation servers) from the main loop — it floods context; dispatch a Sonnet nesting Haiku probes to fetch and distill, returning only the answer.
+
+**Sequential agentic work** — for a multi-step operation, look far past the immediate goal, plan the changes in sequential batches, and send Sonnet agents to execute them one by one; sub-agents are your cheaper hands.
 
 ---
 

@@ -12,7 +12,7 @@ $ARGUMENTS
 
 ## Mandatory skill load (before any prompt-file edit)
 
-Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — read and apply `.claude/commands/quality/prompt.md`. It carries Anthropic's prompt-quality rules (cut test, thresholds, anti-patterns, structural conventions) that govern every edit you make here.
+Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — read and apply `.claude/commands/quality/prompt.md`. It carries Anthropic's prompt-quality rules (cut test, compaction, thresholds, anti-patterns) that govern how lean the prose is; **§ Authoring conventions** below governs the file skeleton (frontmatter + shape).
 
 ---
 
@@ -134,6 +134,8 @@ Before ANY changes, read all affected files. Grep every reference across `.claud
 Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independent).
 
 ### Step 4 — Execute
+
+**Open the gate (before the edit pass).** A PreToolUse hook (`pcm-guard.sh`) denies Edit/Write to `.claude/**` and any `CLAUDE.md` (root or child) unless `/pcm` is active. Stamp the marker from the repo root immediately before editing — `date +%s > tmp/professor_pcm_active` — not at the start of analysis; the gate is short-lived (600s TTL) and the Stop hook closes it at turn end. If a write is denied, re-stamp and retry.
 
 **Agent edit rules:**
 
@@ -329,6 +331,122 @@ Ask: "Want me to fix these issues?"
 **New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter).
 
 **New command:** Create `.claude/commands/{name}.md` with a `description:` → it self-indexes; add to CLAUDE.md "Request Routing" ONLY if it's a non-obvious call or a guard.
+
+---
+
+## Authoring conventions — frontmatter + file shape
+
+The skeleton every framework file follows. `quality:prompt` governs how lean the prose is; this governs the shape.
+
+### Sub-agents (`.claude/agents/*.md`)
+
+```
+---
+name: kebab-case-id
+description: One sentence. Includes "when to delegate" phrase.
+tools: <minimal allowlist>
+model: inherit | opus | sonnet | haiku
+---
+You are a {role}. {one-sentence scope}.
+
+When invoked:
+1. {step}
+2. {step}
+3. {step}
+
+{Checklist or rubric — bulleted, short.}
+{Output format — usually one paragraph or a tiny template.}
+```
+
+Frontmatter `description` is the routing weight — Claude reads it to decide auto-delegation. Use phrases like "Use proactively after X". Body is literally the system prompt; subagents see only their own prompt + env.
+
+### Slash commands (`.claude/commands/*.md`)
+
+```
+---
+name: cmd-name
+description: One sentence. Action verb first.
+argument-hint: [arg1] [arg2]
+disable-model-invocation: true  # if has side effects
+---
+{Numbered procedure — or markdown body if non-procedural}
+```
+
+`$ARGUMENTS` / `$1` / `$N` substitute at invocation. Prefixing a backticked command with a bang (!`cmd`) injects live shell output before Claude sees the prompt.
+
+### Skills (`.claude/skills/*/SKILL.md`)
+
+```
+---
+name: lowercase-hyphenated  # ≤64 chars, no reserved words (anthropic, claude)
+description: What it does AND when to use it. Highest-signal use case first. Third person. ≤1,024 chars; combined with when_to_use ≤1,536.
+---
+{One-line role / scope}
+{Trigger conditions or "When to load"}
+{Steps or rules — keep behavioral, no manifesto}
+{3-5 markdown example sections (`### Example — …`), relevant + diverse}
+{Constraints — only the ones that aren't obvious from CLAUDE.md}
+```
+
+Skill content stays in context for the rest of the session after invocation and re-attaches after compaction. Every line is a recurring tax.
+
+### CLAUDE.md (root + child)
+
+Keep: bash commands Claude can't guess, code-style rules that differ from defaults, architectural decisions / invariants, non-obvious gotchas, repo etiquette / test runners.
+
+NOT: standard language conventions, file-by-file descriptions, "write clean code" platitudes, info Claude can read from the code. Child CLAUDE.md files keep only the project-specific delta — never re-declare workspace rules already in root.
+
+**No skill/command rosters.** Claude Code indexes skills and commands itself — it reads every `SKILL.md` and command `description:` at startup and loads a body only on a match. A list of skills or commands in CLAUDE.md is dead weight that rots on every add, so leave it out. CLAUDE.md carries only what auto-indexing can't: **guards** (what's forbidden or must route through a command), **routing decisions** (which handler wins for an ambiguous intent), and **mandatory-load obligations** (when a skill is required at a step). Existence is the filesystem's job; obligation is CLAUDE.md's.
+
+### Example — well-shaped sub-agent
+
+```markdown
+---
+name: code-reviewer
+description: Expert code review specialist. Proactively reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.
+tools: Read, Grep, Glob, Bash
+model: inherit
+---
+
+You are a senior code reviewer ensuring high standards of code quality and security.
+
+When invoked:
+
+1. Run git diff to see recent changes
+2. Focus on modified files
+3. Begin review immediately
+
+Review checklist:
+
+- Code is clear and readable
+- Proper error handling
+- No exposed secrets or API keys
+- Good test coverage
+
+Provide feedback organized by priority:
+
+- Critical issues (must fix)
+- Warnings (should fix)
+- Suggestions (consider improving)
+```
+
+26 lines. Role = one sentence. Procedure = 3 numbered steps. Checklist = 4 bullets. No backstory.
+
+### Example — well-shaped CLAUDE.md
+
+```markdown
+# Code style
+
+- Use ES modules (import/export), not CommonJS
+- Destructure imports when possible
+
+# Workflow
+
+- Typecheck when done with a series of changes
+- Prefer single-test runs over the whole suite for speed
+```
+
+7 lines. Specific. Behavioral. Each line passes the cut test.
 
 ---
 

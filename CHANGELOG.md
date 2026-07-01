@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.40.0](releases/v0.40.0.md) — chat teammate orchestration (/chat:branch, /chat:new, pane-aware inject) + cc-fleet tools (cc-ls, /bb, cc-reap); /quality:prompt ⇄ /pcm authoring-conventions split; CLAUDE.md model-effort + agent-nesting; /p:2opinion; pcm-guard edit-gate
 - [v0.39.0](releases/v0.39.0.md) — /quality:prompt mandatory before every prompt-file edit (hand-edited or via /pcm or /km)
 - [v0.38.0](releases/v0.38.0.md) — selectable full/compact persona depth
 - [v0.37.0](releases/v0.37.0.md) — new /sleep command, wave-review + documenter-fanout workflows, code-hygiene Sweep Mode, affected-first test ordering, subagent test-output filtering, chat: tmux-socket awareness, Dead-code ripple + Test-data discipline review threads, prompt-by-example wisdom, model-tiering detect/walk→Sonnet, /pcm:release update-gate.

@@ -14,6 +14,8 @@ set -euo pipefail
 #   extract <transcript-jsonl>                render a known transcript to text
 #   tail    [N]                               render THIS session's last N lines
 #   load    <dir-or-file>...                  enumerate a file set to force-read in full
+#   branch  [name]                            fork THIS session into a side-by-side pane (inherits model, names the fork)
+#   new     [--detach] [name]                  spawn a FRESH teammate chat — a side-by-side pane, or --detach for a headless bg session
 
 # transcript-extract.jq, inlined — renders a session JSONL as readable chat.
 read -r -d '' JQ_EXTRACT <<'JQ' || true
@@ -135,12 +137,14 @@ _all_panes() {
 }
 
 # _resolve_label <label>: resolve a destination by its Claude 🔖 label (the /rename
-# name) to a (socket, session) — scanning live panes on EVERY socket the way `ls`
-# does. Match is case-insensitive and exact on the 🔖 text. Prints
-# "socketpath<TAB>session" on a UNIQUE match (return 0); prints nothing on no match
-# (return 1); on several matches lists the candidates on stderr (return 2). The 🔖
-# name lives on the statusline — the line that carries both 🔖 and 🌿 — so we key on
-# that to avoid matching conversation text.
+# name) to a (socket, pane) — scanning live panes on EVERY socket the way `ls` does.
+# Match is case-insensitive and exact on the 🔖 text. Prints "socketpath<TAB>pane_id"
+# on a UNIQUE match (return 0); prints nothing on no match (return 1); on several
+# matches lists the candidates on stderr (return 2). The 🔖 name lives on the
+# statusline — the line carrying both 🔖 and 🌿 — so we key on that to avoid matching
+# conversation text. Returning the PANE (not its session) lets a backgrounded teammate
+# that shares its orchestrator's tmux session still be addressed precisely: send-keys
+# to a pane id needs no select-pane, so an inject never steals focus or breaks a zoom.
 _resolve_label() {
   local want="$1" sock sess pane cap name wantlc namelc seen m; local -a matches=()
   wantlc="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
@@ -154,13 +158,13 @@ _resolve_label() {
     [[ -n "$name" ]] || continue
     namelc="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
     [[ "$namelc" == "$wantlc" ]] || continue
-    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sock"$'\t'"$sess" ]] && { seen=1; break; }; done
-    [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$sess")
+    seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sock"$'\t'"$pane" ]] && { seen=1; break; }; done
+    [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$pane")
   done < <(_all_panes)
   case "${#matches[@]}" in
     1) printf '%s\n' "${matches[0]}"; return 0;;
     0) return 1;;
-    *) { echo "ambiguous 🔖 label '$want' — matches sessions:"; for m in "${matches[@]}"; do echo "  ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
+    *) { echo "ambiguous 🔖 label '$want' — matches panes:"; for m in "${matches[@]}"; do echo "  pane ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
   esac
 }
 
@@ -181,6 +185,37 @@ _resolve_session() {
     0) return 1;;
     *) { echo "ambiguous session '$want' — matches:"; for m in "${matches[@]}"; do echo "  ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
   esac
+}
+
+# _self_model: map THIS session's recorded model to the launch alias for a new pane.
+# The transcript records only the base id (…/claude-opus-4-8), never the [1m] suffix,
+# and a bare alias drops the 1M context — so emit the alias + [1m] variant this
+# environment runs (opus[1m]/sonnet[1m]); haiku/fable have no [1m] tier. Empty when
+# undetectable, so the caller omits --model and the new chat boots the default.
+_self_model() {
+  local sid="${CLAUDE_CODE_SESSION_ID:-}" tx base
+  [[ -n "$sid" ]] || return 0
+  tx="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | tr '/.' '--')/$sid.jsonl"
+  [[ -f "$tx" ]] || return 0
+  base="$(jq -r 'select(.isSidechain != true and .message.model != null) | .message.model' "$tx" 2>/dev/null | tail -1 || true)"
+  case "$base" in
+    *opus*)   echo "opus[1m]" ;;
+    *sonnet*) echo "sonnet[1m]" ;;
+    *haiku*)  echo "haiku" ;;
+    *fable*)  echo "fable" ;;
+  esac
+}
+
+# _register_pane_child <pane-id>: record a teammate PANE this chat spawned (via branch or
+# new pane mode) under this chat's session uuid, as "<socket>\t<pane>", so /bb (cc-hide.sh)
+# kills that pane when this chat closes. A pane teammate shares this chat's tmux server, so
+# /bb must take it down by PANE — never kill-server, which would drop this chat's neighbours.
+_register_pane_child() {
+  local cp="$1" sock_name
+  [[ -n "$cp" && -n "${CLAUDE_CODE_SESSION_ID:-}" && -n "${TMUX:-}" ]] || return 0
+  sock_name="${TMUX%%,*}"; sock_name="${sock_name##*/}"
+  mkdir -p "$HOME/.claude/.cc-pane-children" 2>/dev/null || true
+  printf '%s\t%s\n' "$sock_name" "$cp" >> "$HOME/.claude/.cc-pane-children/$CLAUDE_CODE_SESSION_ID"
 }
 
 # _find <excerpt-file>: resolve to the past session containing the excerpt across
@@ -256,11 +291,12 @@ case "$cmd" in
     ;;
 
   inject)
-    nosig=0; force_now=0
+    nosig=0; force_now=0; then_steer=""
     while [[ "${1:-}" == --* ]]; do
       case "$1" in
         --no-sig)    nosig=1; shift;;
         --force-now) force_now=1; shift;;
+        --then)      shift; then_steer="${1:-}"; shift;;
         *) echo "ERROR: unknown inject flag '$1'" >&2; exit 1;;
       esac
     done
@@ -276,6 +312,11 @@ case "$cmd" in
       socketpath="${TMUX%%,*}"; live_tmux="$(tmux display-message -p '#{session_name}')"
     elif [[ -f "$target" ]]; then
       transcript="$(cd "$(dirname "$target")" && pwd -P)/$(basename "$target")"
+    elif [[ "$target" =~ ^%[0-9]+$ ]]; then
+      # A raw tmux pane id (e.g. %1) — target that exact pane. Pane ids are unique per
+      # tmux server, not globally, so the socket comes from CHAT_INJECT_SOCKET (set by
+      # the __then waiter re-delivering to the pane it watched) or this chat's own.
+      socketpath="${CHAT_INJECT_SOCKET:-${TMUX%%,*}}"; live_tmux="$target"
     else
       # Try an exact tmux session name first (across every socket), then a 🔖 label
       # (the destination's /rename name), then fall through to a transcript/session-id
@@ -289,7 +330,7 @@ case "$cmd" in
         lrow=""; lrc=0; lrow="$(_resolve_label "$target")" || lrc=$?
         if [[ $lrc -eq 0 && -n "$lrow" ]]; then
           socketpath="${lrow%%$'\t'*}"; live_tmux="${lrow#*$'\t'}"
-          echo "resolved 🔖 label '$target' → tmux session '$live_tmux'" >&2
+          echo "resolved 🔖 label '$target' → pane '$live_tmux'" >&2
         elif [[ $lrc -eq 2 ]]; then
           echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
         elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
@@ -430,7 +471,29 @@ case "$cmd" in
         note=""
         [[ "$did_intr" == 1 ]]    && note="${note} — FORCE-NOW: interrupted the target's running flow"
         [[ "$saved_draft" == 1 ]] && note="${note} — stashed and restored the target's unsent draft"
-        echo "injected LIVE into tmux session '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
+        if [[ -n "$then_steer" ]]; then
+          # --then: deliver a follow-up steer once the primary turn settles. The
+          # primary is built for /compact, which leaves the pane idle — a steer typed
+          # while compaction runs is swallowed, so the waiter rides out the busy→idle
+          # transition first. It must be DETACHED: for a self-inject the waiter runs
+          # inside the very turn it waits on, and that turn cannot end until we return,
+          # so a synchronous wait would hang. A reparented background process outlives
+          # the turn and delivers via a fresh inject (its own per-target lock). Release
+          # our lock now so the waiter is never blocked by us.
+          _inject_lock_release; trap - EXIT
+          steer_log="${TMPDIR:-/tmp}/chat-then-$(printf '%s' "$live_tmux" | tr -c 'A-Za-z0-9' _).log"
+          setsid bash "$0" __then "$socketpath" "$live_tmux" "$nosig" "$then_steer" >"$steer_log" 2>&1 </dev/null &
+          note="${note} — --then steer queued; delivers after the primary settles (log: $steer_log)"
+        fi
+        echo "injected LIVE into '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
+        # Delivery proof — capture the target pane right after the send so the caller
+        # (often an orchestrator that has zoomed this teammate into the background)
+        # sees the message landed without un-zooming to look. A brief settle lets the
+        # new turn register first.
+        sleep "${CHAT_INJECT_PROOF_SETTLE:-0.5}"
+        echo "--- delivery proof: screen of '$live_tmux' ---"
+        "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -"${CHAT_INJECT_PROOF_LINES:-20}"
+        echo "--- end proof ---"
         exit 0
       fi
       echo "WARNING: typed the text into '$live_tmux' but could not confirm submission after ${CHAT_INJECT_ENTER_TRIES:-12} Enter attempts — the pane is likely busy mid-turn or in a selector. The text is in its input and will send on the next Enter; re-run when it is idle at '❯'." >&2
@@ -438,6 +501,7 @@ case "$cmd" in
     fi
 
     [[ "$force_now" == 1 ]] && echo "WARNING: --force-now ignored — '$target' is not a live pane (a dormant chat has no running flow to interrupt); delivering via transcript RESUME." >&2
+    [[ -n "$then_steer" ]] && echo "WARNING: --then ignored — '$target' is not a live pane; there is no turn to wait on. Deliver the steer yourself after the chat resumes and compacts." >&2
     msg="${msg}${footer_block}"
     tail_event="$(jq -c 'select(.uuid != null)' "$transcript" | tail -1)"
     [[ -n "$tail_event" ]] || { echo "ERROR: no uuid-bearing event in $transcript" >&2; exit 1; }
@@ -458,6 +522,35 @@ case "$cmd" in
     printf '%s\n' "$new_event" >> "$transcript"
     echo "injected user turn $new_uuid (parent $parent_uuid) into session ${session_id:-?} — answered on that chat's next RESUME (no live pane found)"
     echo "backup: $backup"
+    ;;
+
+  __then)
+    # internal (detached): deliver a --then follow-up steer once the target's current
+    # turn — typically a /compact compaction — has settled to idle. Args:
+    # <socketpath> <target> <nosig 0|1> <steer>, where <target> is whatever the parent
+    # inject resolved — a pane id for a label/pane target, a session name otherwise.
+    # Waits for busy→stable-idle so the steer lands on a quiet pane, then re-injects
+    # (own lock), passing the socket via env so a pane-id target hits the right server.
+    socketpath="${1:-}"; target="${2:-}"; nosig="${3:-0}"; then_steer="${4:-}"
+    [[ -n "$target" && -n "$then_steer" ]] || { echo "ERROR: __then needs <socketpath> <target> <nosig> <steer>" >&2; exit 1; }
+    # 1) let the primary turn take hold (ride past any turn-end → /compact-start gap)
+    sleep "${CHAT_THEN_MIN:-1.5}"
+    # 2) wait for it to start (pane busy), bounded so a no-op turn can't stall us
+    for _ in $(seq 1 "${CHAT_THEN_BUSY_TRIES:-25}"); do
+      _pane_busy "$target" "$socketpath" && break
+      sleep "${CHAT_INJECT_POLL:-0.2}"
+    done
+    # 3) wait for it to finish — idle must hold steady, since compaction shows brief
+    #    stalls that would otherwise read as done
+    stable=0; need="${CHAT_THEN_IDLE_STABLE:-3}"
+    for _ in $(seq 1 "${CHAT_THEN_IDLE_TRIES:-1500}"); do
+      if _pane_busy "$target" "$socketpath"; then stable=0; else stable=$((stable+1)); fi
+      (( stable >= need )) && break
+      sleep "${CHAT_THEN_IDLE_POLL:-0.4}"
+    done
+    sleep "${CHAT_THEN_SETTLE:-0.4}"
+    steer_cmd=("$0" inject); [[ "$nosig" == 1 ]] && steer_cmd+=(--no-sig); steer_cmd+=("$target" "$then_steer")
+    CHAT_INJECT_SOCKET="$socketpath" exec "${steer_cmd[@]}"
     ;;
 
   ls)
@@ -577,8 +670,90 @@ case "$cmd" in
     echo "$n files, $total total lines. READ EVERY ONE in full with the Read tool — no skim, no sampling. Write nothing."
     ;;
 
+  branch)
+    # Split THIS pane side-by-side (the tmux `Ctrl+b %` split) and run a fork of
+    # the current session in the new pane. --fork-session resumes into a fresh
+    # session id, so the original transcript is never mutated; the original chat
+    # stays visible in the left pane. The fork is pinned to THIS session's model
+    # at the 1M-context [1m] variant and takes the given name (the fork can't
+    # rename itself) — both on the launch command.
+    sid="${CLAUDE_CODE_SESSION_ID:-}"
+    [[ -n "$sid" ]] || { echo "ERROR: \$CLAUDE_CODE_SESSION_ID unset — run /chat:branch from inside a live Claude Code session" >&2; exit 1; }
+    [[ -n "${TMUX:-}" ]] || { echo "ERROR: not inside tmux — /chat:branch splits the current tmux pane" >&2; exit 1; }
+    command -v claude >/dev/null 2>&1 || { echo "ERROR: 'claude' not found on PATH" >&2; exit 1; }
+    name="$*"
+    model="$(_self_model)"
+    fork="claude --resume '$sid' --fork-session"
+    [[ -n "$model" ]] && fork="$fork --model '$model'"
+    [[ -n "$name" ]]  && fork="$fork --name '$name'"
+    child_pane="$(tmux split-window -h -P -F '#{pane_id}' -c "$PWD" "$fork")"
+    _register_pane_child "$child_pane"   # so this chat's /bb takes the fork down with it
+    echo "Branched ${sid:0:8}…${name:+ as '$name'}${model:+ on $model} into a new pane beside this one — original chat still live in the left pane (tmux prefix + ←/→)."
+    ;;
+
+  new)
+    # Spawn a FRESH (empty) teammate chat — by DEFAULT in a side-by-side pane like
+    # `branch` (but a new chat, not a fork), or with --detach as a headless background
+    # session on its own socket. Either way it is a new empty session (no --resume /
+    # --fork-session), inherits THIS session's model, and is auto-named from this chat's
+    # 🔖 prefix with the next free number (RR → RR_1, RR_2 …); an argument overrides the
+    # prefix. The model can't rename itself, so --name sets it. Drive it with
+    # /chat:inject <name> (which returns its screen as proof).
+    #   default  — split-window -h: a visible pane in THIS window; shares this chat's
+    #              tmux server, so it closes when this chat does.
+    #   --detach — a detached session on its own cc-new-* socket: headless, off-screen,
+    #              found by 🔖 name across sockets; registered so /bb reaps it on bye-bye.
+    detach=0
+    while [[ "${1:-}" == --* ]]; do
+      case "$1" in
+        --detach) detach=1; shift;;
+        *) echo "ERROR: unknown new flag '$1' (only --detach)" >&2; exit 1;;
+      esac
+    done
+    command -v claude >/dev/null 2>&1 || { echo "ERROR: 'claude' not found on PATH" >&2; exit 1; }
+    [[ -n "${TMUX:-}" ]] || { echo "ERROR: not inside tmux — /chat:new needs tmux" >&2; exit 1; }
+    # Prefix: an explicit arg wins; else this chat's 🔖 label with a trailing _<n>
+    # stripped; else 'chat'.
+    prefix="$*"
+    [[ -n "$prefix" ]] || prefix="$(self_label 2>/dev/null || true)"
+    [[ "$prefix" =~ ^(.+)_[0-9]+$ ]] && prefix="${BASH_REMATCH[1]}"
+    [[ -n "$prefix" ]] || prefix="chat"
+    # Next free number in the prefix_<n> family, reading 🔖 labels across all panes.
+    used="$(_all_panes | while IFS=$'\t' read -r s sess pane; do
+        nm="$(tmux -S "$s" capture-pane -t "$pane" -p -J 2>/dev/null | grep -F '🔖' | grep -F '🌿' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
+        [[ "$nm" =~ ^${prefix}_([0-9]+)$ ]] && echo "${BASH_REMATCH[1]}" || true
+      done | sort -n || true)"
+    n=1; while printf '%s\n' "$used" | grep -qx "$n"; do n=$((n+1)); done
+    name="${prefix}_${n}"
+    model="$(_self_model)"
+    spawn="claude"
+    [[ -n "$model" ]] && spawn="$spawn --model '$model'"
+    spawn="$spawn --name '$name'"
+    if [[ "$detach" == 1 ]]; then
+      # Detached background session on its OWN socket (cc-prefixed so the cross-socket
+      # scan in /chat:ls and inject picks it up) + a wide pane so the 🔖 statusline
+      # renders un-truncated for name resolution. -d keeps it headless; -c opens in repo.
+      socket="cc-new-${name}"
+      tmux -L "$socket" new-session -d -s "$name" -c "$PWD" -x "${CHAT_NEW_COLS:-220}" -y "${CHAT_NEW_ROWS:-50}" "$spawn"
+      # Register it under THIS chat so /bb (cc-hide.sh) reaps it on bye-bye — a detached
+      # teammate is its own tmux server and would otherwise outlive its orchestrator
+      # headless. Keyed by session uuid, which is exactly the id cc-hide.sh resolves.
+      if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
+        mkdir -p "$HOME/.claude/.cc-new-children" 2>/dev/null || true
+        printf '%s\n' "$socket" >> "$HOME/.claude/.cc-new-children/$CLAUDE_CODE_SESSION_ID"
+      fi
+      echo "Spawned background teammate '$name'${model:+ on $model} as a detached session on socket '$socket' — headless, not in this terminal. Give it work: /chat:inject $name <task>  (inject returns its screen as proof). Watch it live: tmux -L $socket attach -t $name. Reaped when this chat runs /bb."
+    else
+      # Visible side-by-side pane in THIS window (like branch, but a fresh empty chat).
+      # It shares this chat's tmux server, so it closes when this chat does.
+      child_pane="$(tmux split-window -h -P -F '#{pane_id}' -c "$PWD" "$spawn")"
+      _register_pane_child "$child_pane"   # so this chat's /bb takes the teammate down with it
+      echo "Spawned teammate '$name'${model:+ on $model} in a new pane beside this one (fresh empty chat — closes with this chat). Give it work: /chat:inject $name <task>  (inject returns its screen as proof)."
+    fi
+    ;;
+
   *)
-    echo "usage: chat.sh {whoami|find|read|inject|ls|capture|save|extract|tail|load} ..." >&2
+    echo "usage: chat.sh {whoami|find|read|inject|ls|capture|save|extract|tail|load|branch|new} ..." >&2
     exit 1
     ;;
 esac

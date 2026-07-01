@@ -48,6 +48,10 @@ The `account` marker file (`<num> <label> <email>`) is written by the launcher a
 | `zshrc-swap.snippet.sh` | append to `~/.zshrc` | `cc`/`cc1`/`cc2`/`cc3` launchers, `cc-swap` picker, `cc-clean` |
 | `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge |
+| `cc-ls.snippet.sh` | append to `~/.zshrc` | `cc-ls` — fzf picker over every live + resumable chat (Enter attaches a live tmux, or resumes a transcript in a fresh tmux) |
+| `cc-hide.sh` | `~/.claude/bin/cc-hide.sh` | `/bb`'s engine — hide this chat from `cc-ls` then close it; **pane-aware**: kills only its own pane (never the shared server) and reaps the teammates it spawned |
+| `cc-reap.sh` | `~/.claude/bin/cc-reap.sh` | reclaim RAM from the `cc-*` socket graveyard (dry-run by default; `--kill` reaps unattached orphans + stale socket files) |
+| `bb.command.md` | `~/.claude/commands/bb.md` | `/bb` slash command — bye-bye: hide + close this chat (and any detached `/chat:new --detach` teammates it spawned) |
 
 ## Install (opt-in)
 
@@ -125,3 +129,22 @@ Then update the `case` blocks in `cc-launch.sh`, `cc-account-swap.sh`, `zshrc-sw
 
 - **Re-seed a master token** (if Anthropic rotates it): launch the plain master (`CLAUDE_CONFIG_DIR=~/.claude2 claude`) and `/login` again. Existing per-session items will fail on next swap — relaunch with `cc2 -c` to continue the chat under a fresh session.
 - **Prune old session dirs:** `cc-clean` (default: prune dirs older than 7 days) removes both the dir and its private Keychain item.
+
+## Fleet management — `cc-ls`, `/bb`, `cc-reap`
+
+The pieces above launch and bill chats; these manage the resulting fleet. They are **launcher-agnostic** — they work with any setup that runs each chat in its own `tmux -L cc-*` socket (the swap snippet above is one such launcher) and a statusline that writes a `/tmp/cc-sid/<socket>` → transcript breadcrumb.
+
+- **`cc-ls`** — one fzf list of every chat: `●` live tmux sessions (Enter attaches) and `↻` resumable transcripts with no live tmux (Enter resumes in a fresh tmux). `⌃T` re-sorts recent⇄prompts, `⌃R` rotates the project on top, `⌃X` hides⇄shows a chat. `cc-ls -a` shows all; `cc-ls --hidden` shows only hidden.
+- **`/bb`** (bye-bye) — hide THIS chat from `cc-ls` and close it. Pane-aware: it kills only its **own** pane (so a chat spawned beside others via `/chat:branch` or `/chat:new` never drops its neighbours) and reaps the teammates it spawned (pane teammates by `kill-pane`, detached `--detach` teammates by `kill-server`). Identifies the chat by `$CLAUDE_CODE_SESSION_ID`, so it never hides the wrong transcript on a shared socket.
+- **`cc-reap`** — reclaim RAM from orphaned `cc-*` servers (a closed terminal tab detaches the client but leaves the server + its `claude` node alive). Dry-run report by default; `cc-reap --kill` reaps unattached orphans and removes stale socket files. Never touches an attached chat or your own socket.
+
+**Install (opt-in):**
+
+```bash
+mkdir -p ~/.claude/bin
+cp cc-hide.sh cc-reap.sh ~/.claude/bin/ && chmod +x ~/.claude/bin/cc-hide.sh ~/.claude/bin/cc-reap.sh
+cat cc-ls.snippet.sh >> ~/.zshrc && source ~/.zshrc      # needs fzf
+cp bb.command.md ~/.claude/commands/bb.md                 # /bb
+```
+
+`cc-ls` needs `fzf`. `/bb` and `cc-reap` need no extra dependency. Pairs naturally with `/chat:branch` and `/chat:new` (the chat: command family) for spawn-and-orchestrate teammate workflows.
