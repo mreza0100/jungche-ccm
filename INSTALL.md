@@ -448,6 +448,34 @@ cp blueprint/templates/vscode/tmux.conf ~/.tmux.conf   # or merge into an existi
 
 Open a new terminal to verify. Requires `tmux` and the `claude` CLI on `PATH`. The `cc` function is `typeset -f`-guarded, so an existing `cc` is left untouched. On Linux/Windows, swap `pbcopy` in `tmux.conf` for your platform's clipboard command.
 
+### Step 8.4a — Multi-account host-swap + fleet tooling (opt-in)
+
+If the user runs Claude Code across multiple accounts — billing swap, or just several chats
+going at once — offer `blueprint/templates/host-swap/`. This edits **global** shell config
+and `~/.claude/`, so ask before applying; see `blueprint/templates/host-swap/README.md` for
+the full install (the account table, `cc-launch.sh`/`cc-account-swap.sh`, `/swap`, and the
+`cc-ls`/`/bb`/`cc-reap` fleet tools). Skipped entirely if the user declines.
+
+**Account command-mirror** (required once ANY extra account config dir exists —
+`~/.claude2`, `~/.claude3`, …): a chat launched under an extra account reads slash commands
+from `CLAUDE_CONFIG_DIR/commands/`, not `~/.claude/commands/` — so a command installed only
+in the primary (e.g. `/bb`, any `/chat:*`) is invisible on that account. Mirror `commands/`
+(and `projects/`, so every account shares one transcript store) the same way the source
+project's account-provisioning script does it — symlink, not copy, so a newly-added command
+appears on every account with zero re-sync:
+
+```bash
+mkdir -p ~/.claude/commands
+for cfg in ~/.claude2 ~/.claude3; do   # every extra account dir the user set up
+  [ -d "$cfg" ] || continue
+  [ -e "$cfg/commands" ] || ln -s ~/.claude/commands "$cfg/commands"
+  [ -e "$cfg/projects" ] || ln -s ~/.claude/projects "$cfg/projects"
+done
+```
+
+Idempotent (the `-e` guard skips an existing link) — safe to re-run whenever a new account
+dir is added.
+
 ### Step 8.5 — Skills (thinking protocols)
 
 Skills are maintained as standalone public repos. Clone each into `.claude/skills/{name}/`, strip the `.git/` directory, and parameterize where needed.

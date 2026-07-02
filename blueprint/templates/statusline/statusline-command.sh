@@ -27,7 +27,7 @@ SEP=" ${D}│${X} "
 # ── JSON (single jq, unit-separator IFS — one subprocess, all fields) ──
 IFS=$'\x1f' read -r MODEL DIR PCT COST DUR VIM AGENT WT GWT \
   HR5 D7 HR5R LADD LDEL STYLE TOKIN TOKOUT EFFORT THINK \
-  SESSNAME CACHER CACHEC CACHEI D7R SID < <(
+  SESSNAME CACHER CACHEC CACHEI D7R SID TPATH < <(
   printf '%s' "$input" | jq -r '[
     (.model.display_name // "Claude"),
     (.workspace.current_dir // .cwd // ""),
@@ -53,9 +53,20 @@ IFS=$'\x1f' read -r MODEL DIR PCT COST DUR VIM AGENT WT GWT \
     (.context_window.current_usage.cache_creation_input_tokens // 0 | tostring),
     (.context_window.current_usage.input_tokens // 0 | tostring),
     (.rate_limits.seven_day.resets_at // 0 | tostring),
-    (.session_id // "")
-  ] | join("")' 2>/dev/null
+    (.session_id // ""),
+    (.transcript_path // "")
+  ] | join("")' 2>/dev/null
 ) || true
+
+# ── socket → transcript-path map (lets the cc-ls fleet picker size each chat; path,
+#    not id, since a resumed/bridged session's id ≠ its transcript filename). Opt-in
+#    by nature — a no-op unless you're inside tmux, so it's safe to leave in place
+#    even if you never install the host-swap fleet tooling. ──
+if [ -n "${TMUX:-}" ] && [ -n "${TPATH:-}" ]; then
+  _sock="${TMUX%%,*}"; _sock="${_sock##*/}"
+  # 700: breadcrumbs are transcript paths and the namecache carries prompt text — not for other uids
+  { mkdir -p /tmp/cc-sid && chmod 700 /tmp/cc-sid && printf '%s' "$TPATH" > "/tmp/cc-sid/${_sock}"; } 2>/dev/null || true
+fi
 
 # ── Helpers ──────────────────────────────────────────────────────────
 pc() {

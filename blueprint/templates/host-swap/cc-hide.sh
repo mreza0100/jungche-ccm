@@ -66,18 +66,30 @@ if [ "$do_exit" = 1 ]; then
     # and /chat:new put sibling chats in OTHER panes of the SAME tmux server (kill-server
     # would drop them all — the bug this replaces). Killing the last pane ends the server, so
     # a standalone chat still fully closes. Detached + delayed so this turn finishes first;
-    # graceful /exit lets Claude flush its transcript and run Stop hooks, then kill-pane is the
-    # backstop. Sweep the cc-sid breadcrumb only if this was the last pane on the server.
+    # graceful /exit lets Claude flush its transcript and run Stop hooks — polled until the
+    # pane closes itself (up to 20s; compaction can blow past a fixed grace), then kill-pane
+    # is the backstop. Sweep the cc-sid breadcrumb only if this was the last pane on the
+    # server. Finally record the POST-exit transcript size as the auto-unhide baseline, so
+    # the /exit flush itself can never read as "new activity" and resurrect the chat in cc-ls.
     last=0; [ "$(tmux -L "$sock" list-panes -a 2>/dev/null | wc -l | tr -d ' ')" = "1" ] && last=1
     echo "cc-hide: closing this chat (auto /exit, then kill-pane $pane)…"
-    setsid bash -c "
+    setsid env SOCK="$sock" PANE="$pane" LAST="$last" U="$u" \
+      AF="$HOME/.claude/.cc-ls-hidden.at" PROJ="$HOME/.claude/projects" bash -c '
       sleep 1.5
-      tmux -L '$sock' send-keys -t '$pane' -l -- /exit
-      tmux -L '$sock' send-keys -t '$pane' Enter
-      sleep 4
-      tmux -L '$sock' kill-pane -t '$pane' 2>/dev/null
-      [ '$last' = 1 ] && rm -f '/tmp/cc-sid/$sock'
-    " >/dev/null 2>&1 &
+      tmux -L "$SOCK" send-keys -t "$PANE" -l -- /exit
+      tmux -L "$SOCK" send-keys -t "$PANE" Enter
+      n=0
+      while [ "$n" -lt 20 ] && tmux -L "$SOCK" list-panes -a -F "#{pane_id}" 2>/dev/null | grep -qx -- "$PANE"; do
+        sleep 1; n=$((n+1))
+      done
+      tmux -L "$SOCK" kill-pane -t "$PANE" 2>/dev/null
+      [ "$LAST" = 1 ] && rm -f "/tmp/cc-sid/$SOCK"
+      tp="$(ls "$PROJ"/*/"$U".jsonl 2>/dev/null | head -1)"
+      if [ -n "$tp" ]; then
+        sz="$(stat -c%s "$tp" 2>/dev/null || echo 0)"
+        { grep -v "^$U$(printf "\t")" "$AF" 2>/dev/null; printf "%s\t%s\n" "$U" "$sz"; } > "$AF.t" && mv "$AF.t" "$AF"
+      fi
+    ' >/dev/null 2>&1 &
   elif [ -n "$sock" ]; then
     echo "cc-hide: in tmux but \$TMUX_PANE unset — type /exit yourself"
   else

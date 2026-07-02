@@ -6,8 +6,10 @@
 # SPOF) leave 0-RAM stale socket files. Over weeks this piles up — 100+ dead sockets, several GB held.
 #
 # This walks every cc-* socket under /tmp/tmux-$UID and classifies each:
-#   KEEP  = attached (a live tab is showing it) OR this very chat's own socket ($TMUX).
-#   KILL  = unattached live orphan (kill-server frees its RAM) OR dead socket file (just rm it).
+#   KEEP  = attached (a live tab is showing it) OR this very chat's own socket ($TMUX)
+#           OR a cc-new-* detached teammate (headless BY DESIGN — its parent's /bb reaps it)
+#           OR a session Claude itself reports BUSY (deliberately detached, still working).
+#   KILL  = unattached idle orphan (kill-server frees its RAM) OR dead socket file (just rm it).
 # It NEVER touches an attached chat, your own socket, or any non-cc socket (dev / vscode /
 # default / cctest*). Default run is a DRY-RUN report with per-socket RAM; --kill performs the reap.
 #
@@ -30,6 +32,18 @@ esac
 TMUXDIR="/tmp/tmux-$(id -u)"
 MYSOCK=""
 [ -n "${TMUX:-}" ] && { MYSOCK="${TMUX%%,*}"; MYSOCK="${MYSOCK##*/}"; }
+
+# live-work guard: sessions Claude itself reports BUSY are kept even when detached — a
+# deliberately detached chat grinding a long task must survive a sweep. Sockets map to
+# sessions via the /tmp/cc-sid breadcrumb (socket → transcript path → uuid). Scans every
+# configured account (the default ~/.claude plus each extra ~/.claudeN master dir).
+CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
+BUSY_IDS="$({ env -u CLAUDE_CONFIG_DIR timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null
+              for _acct_dir in "$HOME"/.claude[0-9]*; do
+                [ -d "$_acct_dir" ] || continue
+                CLAUDE_CONFIG_DIR="$_acct_dir" timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null
+              done
+            } | jq -r '.[] | select(.status=="busy") | .sessionId' 2>/dev/null | sort -u)"
 
 PS_SNAP="$(ps -e -o pid=,ppid=,rss=)"   # one snapshot; subtree sums read from it
 _subtree_kb() {                          # $1 = root pid -> KB (0 if unknown)
@@ -65,6 +79,19 @@ for path in "${SOCKS[@]}"; do
   IFS=$'\t' read -r att pid label cwd <<<"$line"
   [ -z "${label:-}" ] && label="(unnamed)"
   ram_kb="$(_subtree_kb "${pid:-}")"
+
+  case "$sock" in cc-new-*)                 # detached teammate (/chat:new --detach): headless by
+    keep_n=$((keep_n+1)); keep_kb=$((keep_kb+ram_kb))        # design — its parent's /bb reaps it
+    printf '%-38s %-5s %8s  %s\n' "$sock" "mate" "$((ram_kb/1024))" "$label [$cwd]"
+    continue ;;
+  esac
+  buuid=""
+  [ -r "/tmp/cc-sid/$sock" ] && buuid="$(basename -- "$(cat "/tmp/cc-sid/$sock")" .jsonl)"
+  if [ -n "$buuid" ] && printf '%s\n' "$BUSY_IDS" | grep -qxF -- "$buuid"; then   # KEEP: still working
+    keep_n=$((keep_n+1)); keep_kb=$((keep_kb+ram_kb))
+    printf '%-38s %-5s %8s  %s\n' "$sock" "busy" "$((ram_kb/1024))" "$label [$cwd]"
+    continue
+  fi
 
   if [ "$sock" = "$MYSOCK" ] || [ "${att:-0}" = "1" ]; then   # KEEP
     keep_n=$((keep_n+1)); keep_kb=$((keep_kb+ram_kb))
