@@ -7,9 +7,9 @@
 #   ● live    — a tmux session                → Enter attaches to it
 #   ↻ resume  — a transcript with no live tmux → Enter resumes it in a fresh tmux
 #   ⚙ agent   — a live background/forked session (no tmux socket — `--resume` refuses
-#               a session that's still running) → Enter opens the `claude agents --cwd`
-#               attach view under its OWNING account, so you attach instead of failing
-#               to resume it. See _cc_agents below.
+#               a session that's still running) → Enter opens the takeover/attach chooser
+#               (cc-agent-open.sh): take it over fresh under the current primary account,
+#               or attach to the running agent. See _cc_agents below.
 # Pairs with a launcher that runs each chat in its OWN `tmux -L cc-*` socket and a
 # statusline that drops a /tmp/cc-sid/<socket> → transcript breadcrumb (the zshrc-swap
 # multi-account snippet is one such launcher; any cc-* launcher works).
@@ -260,13 +260,14 @@ END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
     sock="$f[5]"; name="$f[6]"
     echo "Attaching → -L $sock · $name"
     TMUX= tmux -L "$sock" attach -t "$name"
-  elif [[ "$kind" == A ]]; then             # live background agent → open the agent view to ATTACH
-    uuid="$f[5]"; local acwd="$f[6]" acfg="$f[8]"   # --resume can't touch a running session; `claude agents` attaches
+  elif [[ "$kind" == A ]]; then             # live background agent → takeover/attach chooser
+    uuid="$f[5]"; local acwd="$f[6]" acfg="$f[8]"   # --resume can't touch a running session
     [[ -d "$acwd" ]] || acwd="$PWD"; [[ -n "$acfg" ]] || acfg="$HOME/.claude"
     local as="cc-$(date +%s)-$$-$RANDOM"
-    echo "'$uuid' is a live background agent — opening the agent view (pick it to attach) → new tmux -L $as"
-    local apfx=""; [[ "$acfg" != "$HOME/.claude" ]] && apfx="CLAUDE_CONFIG_DIR=${(q)acfg} "
-    TMUX= tmux -L "$as" new-session -s "$as" -c "$acwd" "${apfx}claude agents --cwd ${(q)acwd}"
+    echo "'$uuid' is a live background agent — opening the takeover/attach chooser → new tmux -L $as"
+    local ocfg="$acfg"; [[ "$ocfg" == "$HOME/.claude" ]] && ocfg=""   # default account = unset for the helper
+    TMUX= tmux -L "$as" new-session -s "$as" -c "$acwd" \
+      "bash ${(q)HOME}/.claude/bin/cc-agent-open.sh $uuid ${(q)acwd} ${(q)ocfg}"
   else                                       # resumable → cc --resume in a fresh tmux (like _cc_run)
     uuid="$f[5]"; local rcwd="$f[6]"           # launch in the session's home dir — claude --resume is cwd-scoped
     [[ -d "$rcwd" ]] || rcwd="$PWD"             # fall back if the project dir is gone
@@ -275,9 +276,9 @@ END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
     echo "Resuming $uuid in $rcwd → new tmux -L $rs"
     # failure net: a session live OUTSIDE tmux is invisible to _cc_agents when its argv carries no
     # uuid (picker-resume, --continue; pane siblings too) — --resume then refuses. Fall through to
-    # the agent view so Enter still lands somewhere useful instead of an instant [exited].
+    # the takeover/attach chooser so Enter still lands somewhere useful instead of an instant [exited].
     local rpfx=""; [[ -n "$cfg" ]] && rpfx="CLAUDE_CONFIG_DIR=${(q)cfg} "
     TMUX= tmux -L "$rs" new-session -s "$rs" -c "$rcwd" \
-      "${rpfx}claude --resume $uuid || { echo; echo 'resume refused — the session is likely running elsewhere; pick it in the agent view to attach:'; ${rpfx}claude agents; }"
+      "${rpfx}claude --resume $uuid || { echo; echo 'resume refused — session is live elsewhere:'; bash ${(q)HOME}/.claude/bin/cc-agent-open.sh $uuid ${(q)rcwd}; }"
   fi
 }

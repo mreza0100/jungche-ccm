@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.42.0](releases/v0.42.0.md) — cc-ls's ⚙ agent row gains a takeover/attach chooser (`cc-agent-open.sh`): take a chat locked by a live background agent over fresh under the current primary account (born-with account/model/permissions otherwise stick on attach), or attach to the running process; N-account generic (primary from `~/.claude-primary`, registry probed across `~/.claude` + every `~/.claudeN`)
 - [v0.41.0](releases/v0.41.0.md) — cc-fleet tools synced to current upstream logic: cc-ls gains the ⚙ agent attach view + auto-unhide, cc-hide's /bb close sequence polls instead of a fixed sleep, cc-reap gains busy/mate KEEP guards; statusline writes the /tmp/cc-sid breadcrumb the fleet depends on (+ a join-separator fix); INSTALL.md gains the account command-mirror step
 - [v0.40.0](releases/v0.40.0.md) — chat teammate orchestration (/chat:branch, /chat:new, pane-aware inject) + cc-fleet tools (cc-ls, /bb, cc-reap); /quality:prompt ⇄ /pcm authoring-conventions split; CLAUDE.md model-effort + agent-nesting; /p:2opinion; pcm-guard edit-gate
 - [v0.39.0](releases/v0.39.0.md) — /quality:prompt mandatory before every prompt-file edit (hand-edited or via /pcm or /km)
