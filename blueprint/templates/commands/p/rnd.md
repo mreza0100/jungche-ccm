@@ -11,7 +11,7 @@ The user gives you a **goal** — not a topic to survey, but an **outcome to ach
 
 ## NEVER touch real code (the one inviolable boundary)
 
-RND works ONLY inside its `RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:build`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
+RND works ONLY inside its `RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
 
 ---
 
@@ -28,7 +28,7 @@ Load when the user's message includes:
 Do NOT load for:
 
 - `RR <topic>` — that's the research-and-report skill (knowledge-seeking, not goal-seeking)
-- One-shot implementation requests ("implement X") — those go to `/wave:build` or `/jc`
+- One-shot implementation requests ("implement X") — those go to `/wave:builder` or `/jc`
 - Pure research questions with no execution ("how does X work?") — use RR or inline answer
 
 The key distinction: **RND requires a testable goal and iterative execution.** If there's no way to evaluate "did we achieve this?", it's probably not RND.
@@ -120,7 +120,7 @@ RND's value comes from actually stressing solutions against reality, not from co
 
 4. **Test the artifact you intend to ship.** If the RND's deliverable is a code change, validate the real fix in-process: import the production module and monkey-patch the target function or attribute at runtime from the sandbox, then run it. A sandbox copy that "behaves like" the proposed patch validates your understanding of the fix, not the fix — a `# simulates the fixed version` comment documents that shortcut, it does not absolve it. Validate by in-process patch, never by editing a real project file.
 
-5. **Work only inside `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts live in the sandbox folder. Never modify a real project file, and never create a git branch or worktree — RND does not use `isolation: "worktree"` agents. RND ships its deliverable as a `PROPOSED_DIFF.md`; the actual code change lands later through `/jc` or `/wave:build`. Clean up `__pycache__` and build artifacts before reporting.
+5. **Work only inside `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts live in the sandbox folder. Never modify a real project file, and never create a git branch or worktree — RND does not use `isolation: "worktree"` agents. RND ships its deliverable as a `PROPOSED_DIFF.md`; the actual code change lands later through `/jc` or `/wave:builder`. Clean up `__pycache__` and build artifacts before reporting.
 
 ### 360° integration — systematic blind-spot sweep on failure
 
@@ -205,7 +205,7 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Winner:** {approach name}
 
-**Result:** the validated fix, written to `RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:build`) lands it.
+**Result:** the validated fix, written to `RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:builder`) lands it.
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
@@ -236,7 +236,7 @@ If the loop exhausted without full satisfaction:
 
 ## Adaptive planning — the critical difference from other skills
 
-The reason RND exists separately from `/wave:build` or RR is the **adaptive loop**. Most pipelines plan up front and execute. RND's plan is a living document:
+The reason RND exists separately from `/wave:builder` or RR is the **adaptive loop**. Most pipelines plan up front and execute. RND's plan is a living document:
 
 - After approach 1: you know more than before it ran. Update the plan.
 - After approach 2: you know even more. Update again.

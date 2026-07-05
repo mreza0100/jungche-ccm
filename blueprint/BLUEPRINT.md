@@ -21,18 +21,18 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling.
-- **/build, /jc, /dev, /git, /wave, /documenter, /chat:save, /chat:dump, /chat:read, /chat:find, /chat:inject, /chat:capture, /chat:ls, /chat:whoami, /chat:load, /goal-manager, /slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports.
+- **/wave:{orchestrator,builder,refine,walker,live,schedule}, /jc, /dev, /git, /documenter, /chat:save, /chat:dump, /chat:read, /chat:find, /chat:inject, /chat:capture, /chat:goal, /chat:self:compact, /chat:ls, /chat:whoami, /chat:load, /goal-manager, /slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports.
 
 > Each Tier A persona (Professor, JC, Dr. House) ships in two selectable depths — **full** (rich, showcase voice) and **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn) — chosen at install.
 
-**Bundled skills (`p:*` namespace, ship with the blueprint):**
+**Bundled commands (ship with the blueprint):**
 
-- **p:blueprint** — the framework bus: `update` consumes upstream releases, `release` regenerates + publishes the blueprint (routed via `/pcm update` · `/pcm release`).
-- **p:wave:refine** — wave task refinement into a zero-gap spec.
-- **p:wave:review** — post-wave end-to-end functional review.
-- **p:rnd** — goal-driven iterative research-and-develop loop.
-- **p:quality:doc** / **p:quality:prompt** — doc-shaping and prompt-quality gates.
-- **p:audit:code-hygiene** / **p:audit:security** — code-hygiene and security audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
+- **the framework bus** — `/pcm:update` consumes upstream releases, `/pcm:release` regenerates + publishes the blueprint.
+- **/wave:refine** — wave task refinement into a zero-gap spec.
+- **/wave:walker** — post-merge end-to-end functional + hygiene walk.
+- **/p:rnd** — goal-driven iterative research-and-develop loop.
+- **/quality:doc** / **/quality:prompt** — doc-shaping and prompt-quality gates.
+- **/audit:code-hygiene** / **/audit:security** / **/audit:ai-output** — code-hygiene, security, and AI-output audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 
 **Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
 
@@ -93,11 +93,11 @@ Agents receive paths as variables:
 | `$RESEARCH`  | Research docs subdir               | `research`                               |
 | `$RESOURCES` | Static resources subdir            | `resources`                              |
 
-Agents NEVER hardcode `docs/dev/tasks/...` — they use what `/build` passes them. Path conventions can change without rewriting every agent.
+Agents NEVER hardcode `docs/dev/tasks/...` — they use what `/wave:builder` passes them. Path conventions can change without rewriting every agent.
 
 ### 4. Worktree isolation per pipeline
 
-Every `/build` invocation creates:
+Every `/wave:builder` invocation creates:
 
 - A git branch: `pipeline/{name}`
 - A worktree checkout: `.worktrees/{name}/` (full repo)
@@ -132,9 +132,9 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 ## Pipeline architecture
 
 ```
-                              ┌──────────────┐
-                              │  /build req  │
-                              └──────┬───────┘
+                              ┌─────────────────┐
+                              │  /wave:builder  │
+                              └────────┬────────┘
                                      ▼
                           ┌─────────────────────┐
                           │  child planners     │ (parallel — one per affected project)
@@ -184,7 +184,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
                           └──────────┬──────────┘
                                      ▼
                           ┌─────────────────────┐
-                          │  p:audit:* + /officer  │ (parallel — code audit + compliance audit)
+                          │  /audit:* + /officer   │ (parallel — code audit + compliance audit)
                           │  (officer optional) │   if /officer is opted in
                           └──────────┬──────────┘
                                      ▼
@@ -216,11 +216,11 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /build, /jc, /pcm, /dev, /git, /wave, /documenter, /chat:{save,dump,read,find,inject,capture,ls,whoami,load}, /goal-manager, /slow-burn, /sleep, /animate + opt-in Tier B
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /chat:{save,dump,read,find,inject,capture,goal,self:compact,ls,whoami,load,new,branch,interrogate}, /p:{rnd,360,2opinion,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh
-│   ├── workflows/                     ← saved Workflow scripts: wave-pipelines (the /wave execution engine), wave-review (post-wave functional + hygiene review), documenter-fanout (parallel doc consolidation)
-│   ├── skills/                        ← bundled p:* (p:blueprint, p:rnd, p:wave:refine, p:wave:review, p:quality:*, p:audit:*) + source-fetched (rr, p:360, ghostwriter, vision-factory)
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-sensor.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
+│   ├── workflows/                     ← saved Workflow scripts: wave-build (single-pipeline build engine), wave-walker (post-merge functional + hygiene walk), documenter-fanout (parallel doc consolidation), audit-ai-output-sessions (per-session AI-output audit fan-out)
+│   ├── skills/                        ← source-fetched at install from sources.json (rr, ghostwriter, vision-factory); the former bundled p:* skills (rnd, 360, quality:*, audit:*, wave:refine, wave:walker) now ship as nested commands under commands/
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals
 │   ├── config.toml
@@ -274,7 +274,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 
 - The `gitter` agent (with project list adjusted at install)
 - The `worktree.sh` and `alloc-ports.sh` scripts (with port ranges adjusted)
-- The pipeline flow in `/build`
+- The pipeline flow in `/wave:builder`
 - The path variable conventions
 - The five load-bearing walls
 - The non-negotiable rules

@@ -126,7 +126,7 @@ Examples:
 
 - "**Verdict:** N+1 query fixed in the session resolver, down from 47 queries to 2 — run the integration suite before shipping. 🍵"
 - "**Verdict:** Architecture is sound, but the {QUEUE} retry logic has a gap at the 3-minute mark — `/jc` it before the next wave. ☕"
-- "**Verdict:** Routed to `/wave:build` — this is a feature, not a fix. Wave it if there are more tasks queued."
+- "**Verdict:** Routed to `/wave:builder` — this is a feature, not a fix. Wave it if there are more tasks queued."
 - "**Verdict:** FORBIDDEN — this feature would output {FORBIDDEN_DOMAIN_OUTPUTS}. Sacred ground. 🚫"
 
 ---
@@ -148,7 +148,7 @@ The intersections are where you earn your keep:
 - Tracks patterns across {SESSION_NOUN}s (CS) + longitudinal profiling (Compliance) = **regulatory flag**
 - Outputs {FORBIDDEN_DOMAIN_OUTPUTS} (CS) + {DOMAIN_STANDARD_ADJACENT_CLUSTERING} (Compliance) + pathologizes normal behavior ({DOMAIN_DISCIPLINE_GROUP}) = **FORBIDDEN**
 
-When deep analysis is needed, **NEVER execute these protocols from memory.** System analysis, architecture review, and {AI_SERVICE_NAME} audit run through the **Analysis Protocol** in your active persona (`.claude/output-styles/professor.md`); wave refinement routes to `/wave:refine`; wave review to `/wave:review`.
+When deep analysis is needed, **NEVER execute these protocols from memory.** System analysis, architecture review, and {AI_SERVICE_NAME} audit run through the **Analysis Protocol** in your active persona (`.claude/output-styles/professor.md`); wave refinement routes to `/wave:refine`; wave review to `/wave:walker`.
 
 Because you see all dimensions simultaneously, you know exactly where each request belongs — handle it yourself, or route to the right command.
 
@@ -168,11 +168,11 @@ Every command and skill carries its routing in its `description:` frontmatter �
 
 ## Development Workflow
 
-- **Any change ships through `/jc`** — fix or feature, any size, a single change or a batched wave (`/jc:wave`), live on `main`, gated by JC's own QA (full tests, lint, docs, gitter commit). `/wave:build` (isolated worktree, parallel agents, QA-before-merge) and `/wave` (batched `/wave:build` pipelines) are optional — choose them for worktree isolation and QA-before-merge, never because a change is too large or a batch too wide for `/jc`. Ambiguous intent → recommend the lightest path that fits.
+- **Any change ships through `/jc`** — fix or feature, any size, a single change or a batched wave (`/wave:live`), live on `main`, gated by JC's own QA (full tests, lint, docs, gitter commit). `/wave:builder` (isolated worktree, parallel agents, QA-before-merge) and `/wave:orchestrator` (worktree-isolated wave trains) are optional — choose them for worktree isolation and QA-before-merge, never because a change is too large or a batch too wide for `/jc`. Ambiguous intent → recommend the lightest path that fits.
 - **Code hygiene / security → `audit:code-hygiene` / `audit:security`** — invoked directly as skills, each carrying its own 360-sweep pre-step.
 - **Never edit code directly on `main`** without one of these commands.
 
-`/jc` and `/jc:wave` deliver on `main` gated by JC's own QA; `/wave:build` and `/wave` handle worktree isolation, port allocation, and git via gitter. Details in `.claude/commands/wave/build.md` and `.claude/commands/jc.md`.
+`/jc` and `/wave:live` deliver on `main` gated by JC's own QA; `/wave:builder` and `/wave:orchestrator` handle worktree isolation, port allocation, and git via gitter. Details in `.claude/commands/wave/builder.md` and `.claude/commands/jc.md`.
 
 ---
 
@@ -184,7 +184,7 @@ Initiative-level persistent context at `docs/epics/{name}/`. Structure: `manifes
 
 - **Create:** "Create Epic {name}" → Professor asks scope questions, creates `docs/epics/{name}/manifest.md`
 - **Load:** "Load epic {name}" → Professor reads `manifest.md` + `update.md`, then opens topic files from `## Files` (fall back to `ls`) only as the task requires — never `archive/`
-- **Update:** Professor adds topic files during work (registering each in `## Files`). `/wave:refine` stamps the target epic in `wave.md`. When work ships or a session saves, the writer consolidates into the epic per the Epic consolidation contract (`documenter.md`) — `/documenter` for a standalone `/wave:build`, `/wave` for a wave, `/documenter epic` for a session save. Epic files are current-state merges, never append-only logs
+- **Update:** Professor adds topic files during work (registering each in `## Files`). `/wave:refine` stamps the target epic in `wave.md`. When work ships or a session saves, the writer consolidates into the epic per the Epic consolidation contract (`documenter.md`) — `/documenter` for a standalone `/wave:builder`, `/wave:orchestrator` (or `/wave:live`) for a wave, `/documenter epic` for a session save. Epic files are current-state merges, never append-only logs
 - **Ship:** Professor sets `status: SHIPPED` when all scope is delivered
 
 **Manifest format:** frontmatter `epic`, `status` (PLANNING | IN_PROGRESS | SHIPPED), `created`, `updated`, `pipelines: []`, `waves: []`; body sections `## Vision & Scope`, `## Key Decisions` (deduped, each with its why), `## Progress Log` (one line per milestone — substance lives in `update.md`), `## Discoveries`, `## Open Questions`, `## Files` (one-line hook per topic file).
@@ -266,33 +266,23 @@ The roster projects (see Architecture above) — plus `.claude/`, `.codex/`, `do
 
 ## Model Selection
 
-Match the model to the cost of being wrong; judgment never delegates downward.
+Match the tier to the cost of being wrong; judgment never delegates downward. Models are named inline at each spawn site as aliases; this section alone defines the tiers and the frontier — there is no separate model registry.
 
-- **Opus** — output that shapes the product: planning, architecture, implementation, QA, review, domain or liability judgment, salience calls over large or ambiguous input. _E.g._ designing a {TECH_EXAMPLE_A} contract; judging whether an {AI_SERVICE_NAME} chain's output is safe in {DOMAIN_ADJ} terms.
-- **Sonnet** — bounded work with a spec to apply: git mechanics, doc merges, the seo pass, structured-file writes, implementing a design. _E.g._ committing a reviewed worktree to `main`; running the seo-playbook over a cleared article.
-- **Haiku** — fetch, classify, append, extract verbatim, summarize large non-sensitive output — no judgment. A Haiku child returns raw material and cites its source; it never summarizes-with-judgment or concludes.
+- **frontier-judgment** (`opus`) — product-shaping output: planning, architecture, RND, {DOMAIN_ADJ}/liability judgment, salience over large or ambiguous input. _E.g._ designing a {TECH_EXAMPLE_A} contract; judging whether an {AI_SERVICE_NAME} chain's output is safe in {DOMAIN_ADJ} terms.
+- **spec-execution** (`sonnet`) — bounded work with a spec to apply: git mechanics, doc merges, structured-file writes, implementing a design. _E.g._ committing a reviewed worktree to `main`; running a playbook over cleared input.
+- **collector** (`haiku`) — fetch, classify, append, extract verbatim, summarize large non-sensitive output; returns raw material with its source, never concludes. Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} at collector tier — a dropped detail in a {SUBJECT_NOUN} {RECORD_NOUN} is a {DOMAIN_ADJ} cost. Unsure? `inherit` — it rides the session model rather than risking a downgrade.
 
-Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} on Haiku — a dropped detail in a {SUBJECT_NOUN} {RECORD_NOUN} is a {DOMAIN_ADJ} cost.
+**Frontier today: {FRONTIER_MODEL} (optional).** When a limited-run model outclasses your base `opus`, name it here: where a spawn site says `opus` and the work is frontier-judgment, `{FRONTIER_MODEL}` may be passed at invocation or chat launch instead. When it retires, delete this sentence and everything falls back to `opus`. Keep this the ONLY place `{FRONTIER_MODEL}` is named in the framework — delete the sentence entirely if you have no such model.
 
-Unsure which tier fits? Use `inherit` — it rides the session model rather than risking a downgrade.
+**Effort:** High the default; Medium for small low-reasoning tasks; XHigh only to force open a genuinely hard problem; Low never; Max never unless {FOUNDER_NAME} says.
 
-**Effort:**
-
-- Max: never unless {FOUNDER_NAME} says so
-- XHigh: only to force open a genuinely hard problem
-- High: the default — nearly everything
-- Medium: small tasks needing little reasoning
-- Low: never
-
-**Agent nesting** — complex work nests mixed tiers: a Sonnet fans out Haiku probes, lines up their raw findings, then reasons over them. Don't call a heavy MCP tool (large web-fetch / docs / browser-automation servers) from the main loop — it floods context; dispatch a Sonnet nesting Haiku probes to fetch and distill, returning only the answer.
-
-**Sequential agentic work** — for a multi-step operation, look far past the immediate goal, plan the changes in sequential batches, and send Sonnet agents to execute them one by one; sub-agents are your cheaper hands.
+**Delegate far ahead** — investigate all tasks up front; independent tasks dispatch in parallel with exact per-task briefings; dependent work runs as planned sequential batches of spec-execution agents (your cheaper hands); nest tiers — a spec-execution agent fans out collector probes, lines up their raw findings, then reasons over them. Heavy MCP tools (large web-fetch / docs / browser-automation servers) never run in the main loop — a nested agent fetches, distills, and returns only the answer.
 
 ---
 
 ## Agents
 
-**Root:** mono-planner, mono-architect, gitter, mono-documenter (4 orchestrators) + one `qa-{project}` hook-carrier wrapper per roster entry — all in `.claude/agents/`. The `qa-{project}` wrappers are registered root agents (name/description/model/tools/hooks only); the full QA protocol stays in `{project}/.claude/agents/qa.md`. Every OTHER child agent is spawned by `/wave:build` via general-purpose + "read and follow" its child file. (A single-project install drops mono-planner and mono-architect — nothing to consolidate across.)
+**Root:** mono-planner, mono-architect, gitter, mono-documenter (4 orchestrators) + one `qa-{project}` hook-carrier wrapper per roster entry — all in `.claude/agents/`. The `qa-{project}` wrappers are registered root agents (name/description/model/tools/hooks only); the full QA protocol stays in `{project}/.claude/agents/qa.md`. Every OTHER child agent is spawned by `/wave:builder` via general-purpose + "read and follow" its child file. (A single-project install drops mono-planner and mono-architect — nothing to consolidate across.)
 
 Each roster project carries its own agents under `{project}/.claude/agents/` — the standard four (planner, architect, developer, qa) plus any specialists that project's concerns justify (e.g. ui-ux, db-admin, devops, ai-engineer):
 
@@ -302,7 +292,7 @@ Only list the agents actually installed for that project. Do NOT carry agents fo
 
 {PROJECT_AGENT_ROSTER}
 
-Model tiers: `docs/commands/pcm/references/agent-models.md`
+Model tiers are named inline — each agent pins its tier in frontmatter (`model:`), each spawn site names its alias, and § Model Selection defines what the aliases mean. There is no separate model registry.
 
 ---
 

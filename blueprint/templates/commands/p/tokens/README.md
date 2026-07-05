@@ -23,7 +23,7 @@ node .claude/commands/p/tokens/token-ledger.mjs --all
 # What did each workflow run cost? (one row per wf_* run, sorted by cost):
 node .claude/commands/p/tokens/token-ledger.mjs --all --by-workflow
 
-# Total one /wave:build pipeline or /wave feature (by label substring):
+# Total one /wave:builder pipeline or /wave:live feature (by label substring):
 node .claude/commands/p/tokens/token-ledger.mjs --all --filter my-feature
 
 # A specific conversation (by id or by path to its dir / main .jsonl):
@@ -56,13 +56,13 @@ node .claude/commands/p/tokens/token-ledger.mjs --root /some/other/.claude --pro
 ### `--by-workflow` honesty caveat
 
 `--by-workflow` groups every agent file under each distinct `wf_*` run directory.
-It captures **Workflow-engine runs** (e.g. `/rr`, or the wave-pipelines engine when it
+It captures **Workflow-engine runs** (e.g. `/rr`, or the wave-build engine when it
 runs as a Workflow) **exactly**.
 
-It does **NOT** total a plain `/wave`. A `/wave` runs each `/wave:build` in the **main
-session**, and `/wave:build` spawns its plan/arch/dev/QA agents as **session-level**
+It does **NOT** total a plain `/wave:live`. A `/wave:live` runs each `/wave:builder` in the **main
+session**, and `/wave:builder` spawns its plan/arch/dev/QA agents as **session-level**
 sub-agents — not as `wf_*` workflow runs. Those land in the `(non-workflow agents)`
-summary row. To total one `/wave:build` pipeline or one `/wave` feature, use
+summary row. To total one `/wave:builder` pipeline or one `/wave:live` feature, use
 `--filter <feature-label>` (e.g. `--filter my-feature`), which sums every agent
 row carrying that feature name.
 
@@ -87,7 +87,7 @@ Within a session:
 - `{conversationId}/subagents/agent-*.jsonl` — each sub-agent → one row.
 - `{conversationId}/subagents/workflows/wf_*/agent-*.jsonl` — nested workflow
   sub-agents (a Workflow-engine run, e.g. `/rr`) → one row each. See the
-  `--by-workflow` honesty caveat above: a plain `/wave` is NOT a `wf_*` run.
+  `--by-workflow` honesty caveat above: a plain `/wave:live` is NOT a `wf_*` run.
 
 ## Schema notes (verified against real files)
 
@@ -100,7 +100,7 @@ Within a session:
   final line carries complete cumulative usage. Summing raw lines overcounts ~2-3x.
 - **Agent label** is resolved in priority order:
   1. `agent-{id}.meta.json` → `description` (the richest — e.g. `"BE developer"`,
-     `"gitter SETUP"`, `"FE QA pre-merge"`; present for `/wave:build`/`/wave` sub-agents).
+     `"gitter SETUP"`, `"FE QA pre-merge"`; present for `/wave:builder`/`/wave:live` sub-agents).
   2. `agent-{id}.meta.json` → `agentType` (e.g. `"workflow-subagent"`, `"general-purpose"`).
   3. `attributionAgent` on the assistant line.
   4. First-user-message prompt snippet (the agent's task brief).

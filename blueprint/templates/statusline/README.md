@@ -6,7 +6,7 @@ A two-line Claude Code statusline synthesized from 13+ community projects. Ships
 
 ```
 Line 1: ◆ Opus │ myproject │ 🌳 worktree │ 🌿 main +2 ~1 │ ⚡agent-name
-Line 2: 🟢 ▓▓▓░░░░░░░ 28% │ 💰$3.42 │ +156 -23 │ ⏱ 5m32s │ ▓▓░░░ 5h:42% ↻2h0m
+Line 2: 🟢 ▓▓▓░░░░░░░ 28% │ 💰$3.42 │ +156 -23 │ ⏱ 5m32s │ ▓▓░░░ 5h-used:42% ↻2h0m
 ```
 
 **Line 1 — Identity:** model (with tier symbol), directory, worktree, git branch + staged/modified, agent name, vim mode. All conditional — only shows what's active.

@@ -12,7 +12,9 @@ argument-hint: [scope]
 
 **Scopes:** `all`, `dup`, `ghosts`, `dead`, `deps`, `arch`, `types`, `naming`, `quality`, `magic`, `diff`, `sweep`, plus a per-project scope for each `{project}` in the roster (a single-project repo has just one).
 
-Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/wave:review`.
+Each category is independent — run only applicable ones based on scope. Scope `diff` restricts every category to a provided changed-file set (e.g., a wave's merged diff) plus the call-sites and imports that touch those files — used by `/wave:walker`.
+
+Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audit scope — in parallel with the scan.
 
 **This codebase is largely AI-authored — weight the checks accordingly.** LLM-written code fails in characteristic ways: it regenerates logic instead of importing what already exists (duplication is the top signal), over-builds simple tasks, leaves stubs and dead branches when it pivots, imports packages that may not exist, and reaches for `any`/broad types and swallowed errors. Before accepting any new function, component, or util, grep for the existing one it should have called.
 
@@ -220,7 +222,7 @@ Places where TypeScript strict mode or Python type hints are bypassed, or where 
 
 3. **Duplicate type definitions:** Same interface/type defined independently in multiple files with different shapes. Grep for identical interface/type names across files.
 
-4. **Overly broad types:** `string` for known sets (should be union/enum), `object` or `{}` for typed data, `dict[str, Any]` for structured data that should be TypedDict/Pydantic.
+4. **Overly broad types:** `string` for known sets (should be union/enum), `object` or `{}` for typed data, a loose string-keyed map for structured data that should be a typed schema model.
 
 5. **Double `as any` (TS):** Grep for `as any) as any` — indicates the developer gave up on typing entirely.
 
@@ -320,7 +322,7 @@ The top failure mode of AI-authored code: it regenerates logic instead of import
 
 4. **Repeated query fragments:** The same {ORM} `.where(eq(...))` or {AI_FRAMEWORK} `.filter(...)` clause at ≥3 call sites — extract a shared query helper.
 
-5. **Duplicate definitions:** Same Pydantic model, {API_PROTOCOL} type, {AI_FRAMEWORK} chain `description=`, tool signature, constant, or `beforeEach` test-setup body defined in multiple files. Grep symbol/description names for cross-file duplicates.
+5. **Duplicate definitions:** Same typed schema model, {API_PROTOCOL} type, {AI_FRAMEWORK} chain `description=`, tool signature, constant, or `beforeEach` test-setup body defined in multiple files. Grep symbol/description names for cross-file duplicates.
 
 6. **Near-duplicate-with-variation:** Copies that look identical now but will drift — flag them before one gets fixed and the others don't.
 

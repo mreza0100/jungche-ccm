@@ -1,8 +1,7 @@
 {
   "outputStyle": "The Professor",
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0",
-    "ENABLE_PROMPT_CACHING_1H": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "0"
   },
   "enabledMcpjsonServers": ["context7", "playwright"],
   "permissions": {
@@ -11,7 +10,6 @@
       "WebFetch(*)",
       "WebSearch(*)",
       "Workflow(*)",
-      "Update(*)",
       "Read(*)",
       "Write(*)",
       "mcp__context7__resolve-library-id",
@@ -20,6 +18,18 @@
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/.claude/scripts/limits-hook.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "",
@@ -35,16 +45,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/pcm-guard.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/km-guard.sh"
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/km-guard.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/pcm-guard.sh"
           }
         ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/guard-stamp.sh"
+          }
+        ]
+      },
       {
         "matcher": "Edit|Write",
         "hooks": [
@@ -71,6 +90,10 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/notify.sh stop"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/guard-stamp.sh stop"
           }
         ]
       }

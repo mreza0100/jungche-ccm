@@ -77,7 +77,7 @@ claude
 
 > Replace `/path/to/professor` with wherever you cloned the repo. Keep it around for future updates, or delete it — `/pcm update` can re-fetch from git tags.
 
-Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/build` smoke-test reveals anything missed.
+Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/wave:builder` smoke-test reveals anything missed.
 
 For the manual path, see `SETUP.md`.
 
@@ -102,9 +102,9 @@ See `SETUP.md` for the install interview and adaptation guidance.
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command. You pick the disciplines at install.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
 - **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
-- **/build, /dev, /git, /wave, /documenter, /chat:save, /chat:load, /goal-definer** — pipeline mechanics with light Professor voice.
+- **/wave:{orchestrator,builder,refine,walker,live,schedule}, /dev, /git, /documenter, /chat:{save,dump,read,find,inject,capture,goal,self:compact,load}, /goal-manager** — pipeline mechanics with light Professor voice.
 
-**Bundled skills (`p:*` namespace, ship with the blueprint):** `p:blueprint`, `p:wave:refine`, `p:wave:review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+**Bundled commands (ship with the blueprint):** the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 
 **Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `rr`, `p:360`, `ghostwriter`, `vision-factory`.
 

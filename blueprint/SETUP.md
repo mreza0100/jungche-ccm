@@ -74,7 +74,7 @@ For each roster entry, Claude needs:
 - Tech: language, framework, package manager, test runner, build tool, dev server port(s)
 - Whether it owns shared infra/orchestration (DB, queue, containers) — at most one entry usually does
 
-**Single-project repo (roster of one):** the worktree is the repo root (no per-project subdir), there are no cross-project/integration steps, routing is trivially that one project, and the "monorepo" framing collapses to "the project." Skip child `CLAUDE.md` files, skip `mono-planner` and `mono-architect` (nothing to consolidate). All agents live flat at `.claude/agents/`; the orchestrator runs `planner → architect → developer → qa` directly; `/build` drops the parallel fan-out.
+**Single-project repo (roster of one):** the worktree is the repo root (no per-project subdir), there are no cross-project/integration steps, routing is trivially that one project, and the "monorepo" framing collapses to "the project." Skip child `CLAUDE.md` files, skip `mono-planner` and `mono-architect` (nothing to consolidate). All agents live flat at `.claude/agents/`; the orchestrator runs `planner → architect → developer → qa` directly; `/wave:builder` drops the parallel fan-out.
 
 **Multi-project repo (roster of 2+):** keep `mono-planner` and `mono-architect` for cross-project consolidation. For each entry, create `{project}/CLAUDE.md` and `{project}/.claude/agents/`.
 
@@ -95,7 +95,7 @@ Example roster (one possible shape — yours may have one entry or seven):
 | Deployment configs are real code         | Infra configs, environment promotion (`devops`)     |
 | Prompt engineering is its own discipline | Prompts, evals, knowledge ingestion (`ai-engineer`) |
 
-Slot specialists into `/build` between architect and QA.
+Slot specialists into `/wave:builder` between architect and QA.
 
 ### 4. Tech stack details
 
@@ -242,33 +242,33 @@ Claude shows you a summary of all answers + a list of files that will be written
 
 ## Phase 2 — Customization
 
-> **Materialization — how the roster expands.** Several templates carry per-project **PATTERN blocks**, written once with generic `{project}` tokens: the per-project pipeline stages in `build.md`/`wave.md`, the per-project agent files under `{project}/.claude/agents/{planner,architect,developer,qa}.md` (plus any specialists), and the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh`. For each roster entry, Claude **expands every pattern block once**, substituting that entry's directory, role, stack, package manager, test runner, and port — then fills the `PROJECTS=()` arrays so the scripts iterate the real roster. A roster of one expands each block once; a roster of seven expands it seven times. **Never carry a pattern block for a project the roster does not list** — `/build` must not reference a planner/architect/dev/qa agent or pipeline stage for a project that does not exist, and no `{project}` placeholder may remain unexpanded. **Single-project install:** the worktree is the repo root, the `PROJECTS=()` array holds the single entry (or the scripts drop the loop entirely), cross-project consolidation steps are omitted, and `mono-planner`/`mono-architect` are not installed.
+> **Materialization — how the roster expands.** Several templates carry per-project **PATTERN blocks**, written once with generic `{project}` tokens: the per-project pipeline stages in `wave/builder.md`/`wave/live.md`, the per-project agent files under `{project}/.claude/agents/{planner,architect,developer,qa}.md` (plus any specialists), and the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh`. For each roster entry, Claude **expands every pattern block once**, substituting that entry's directory, role, stack, package manager, test runner, and port — then fills the `PROJECTS=()` arrays so the scripts iterate the real roster. A roster of one expands each block once; a roster of seven expands it seven times. **Never carry a pattern block for a project the roster does not list** — `/wave:builder` must not reference a planner/architect/dev/qa agent or pipeline stage for a project that does not exist, and no `{project}` placeholder may remain unexpanded. **Single-project install:** the worktree is the repo root, the `PROJECTS=()` array holds the single entry (or the scripts drop the loop entirely), cross-project consolidation steps are omitted, and `mono-planner`/`mono-architect` are not installed.
 
 Claude takes your answers and:
 
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, and the non-negotiable rules. Emits `{PROJECT_ROSTER}` (one Architecture bullet per roster entry) and `{PROJECT_AGENT_ROSTER}` (one Agents line per entry, listing only that project's installed agents); a single-project install collapses the monorepo framing to "the project." Strict-typing and infra rules emitted per roster entry (one typing rule per typed stack; infra rules only if a project owns infra).
 2. **Writes per-project `CLAUDE.md` files** (roster of 2+) — one per entry, with that entry's tech stack and conventions. A roster of one has no child CLAUDE.md.
-3. **Writes Tier A command files** — `/build`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave`, `/documenter`. Voice intact, domain content filled.
+3. **Writes Tier A command files** — `/wave:builder`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave:orchestrator`, `/documenter`. Voice intact, domain content filled.
    3a. **Installs output-style personas** — for each of `professor`, `jc`, `dr-house`, copies the **chosen depth** variant `blueprint/templates/output-styles/{name}.{depth}.md` (where `{depth}` is `full` or `compact` from Q2) to `.claude/output-styles/{name}.md`, substituting placeholders. The install always lands on the canonical bare filenames — `professor.md` (the session style loaded every main-loop turn), `jc.md`, `dr-house.md` (the `/jc` and `/pcm` overlays); the `.full`/`.compact` suffix exists only in the blueprint templates. To switch depth later, re-copy the other variant over the bare filename.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter` and `mono-documenter` always; `mono-planner` + `mono-architect` only for a roster of 2+, each with the roster pinned. A single-project install omits the two `mono-` consolidators.
 6. **Writes per-project agents** — for each roster entry, instantiates that project's `planner`, `architect`, `developer`, `qa` (plus any specialists from Q3) under `{project}/.claude/agents/`, with its test/lint/build commands pinned. One set per entry; none for projects not in the roster.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`. Fills the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh` from the roster so they iterate the real entries, with each entry's setup logic and port ranges pinned. A single-project roster fills the array with one entry (or drops the loop).
-   7a. **Installs skills.** Two kinds: **source-fetched** skills are cloned from their canonical public repos (listed in `blueprint/templates/skills/sources.json`) into `.claude/skills/{name}/` — the blueprint never vendors a copy of these, so they can't drift; the installer clones each, parameterizes where needed (360°'s stakeholder names from Batch 5), and removes the `.git/` directory so they're plain files in your project. **Bundled** skills ship inside `blueprint/templates/skills/` (blueprint-owned protocols + domain-hydrated shells) and are copied + parameterized in place.
+   7a. **Installs skills.** The blueprint no longer vendors any skill — every skill it installs is **source-fetched**: cloned from its canonical public repo (listed in `blueprint/templates/skills/sources.json`) into `.claude/skills/{name}/`, so the blueprint can't hold a copy that drifts; the installer clones each, parameterizes where needed, and removes the `.git/` directory so they're plain files in your project. The reasoning protocols that once shipped as bundled skills — `/p:rnd`, `/p:360`, `/wave:refine`, `/wave:walker`, `/quality:prompt`, `/quality:doc`, `/audit:code-hygiene`, `/audit:security` — are now **commands** under `templates/commands/` and install with the other command files (steps 3–4). The table records each subject's source path and its parameterization.
 
-| Skill                  | Source                                                          | Parameterization                                                     |
+| Skill / command        | Source                                                          | Parameterization                                                     |
 | ---------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `rr`                   | repo (sources.json) https://github.com/mreza0100/rr             | None                                                                 |
-| `p:360`                | repo (sources.json) https://github.com/mreza0100/360            | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `ghostwriter`          | repo (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
-| `vision-factory`       | repo (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
-| `p:rnd`                | Bundled in `blueprint/templates/skills/p:rnd/`                  | None                                                                 |
-| `p:wave:refine`        | Bundled in `blueprint/templates/skills/p:wave:refine/`          | None (pipeline-coupled)                                              |
-| `p:wave:review`        | Bundled in `blueprint/templates/skills/p:wave:review/`          | None (pipeline-coupled)                                              |
-| `p:quality:prompt`     | Bundled in `blueprint/templates/skills/p:quality:prompt/`       | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
-| `p:quality:doc`        | Bundled in `blueprint/templates/skills/p:quality:doc/`          | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
-| `p:audit:code-hygiene` | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
-| `p:audit:security`     | Bundled (domain-hydrated shell)                                 | Hydrated by RR (Phase 2.5)                                           |
+| `rr`                   | source-fetched (sources.json) https://github.com/mreza0100/rr   | None                                                                 |
+| `ghostwriter`          | source-fetched (sources.json) https://github.com/mreza0100/ghost-writer | None                                                         |
+| `vision-factory`       | source-fetched (sources.json) https://github.com/mreza0100/vision-factory | None                                                       |
+| `/p:360`               | Command `templates/commands/p/360.md`                           | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `/p:rnd`               | Command `templates/commands/p/rnd.md`                           | None                                                                 |
+| `/wave:refine`         | Command `templates/commands/wave/refine.md`                     | None (pipeline-coupled)                                              |
+| `/wave:walker`         | Command `templates/commands/wave/walker.md`                     | None (pipeline-coupled)                                              |
+| `/quality:prompt`      | Command `templates/commands/quality/prompt.md`                  | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
+| `/quality:doc`         | Command `templates/commands/quality/doc.md`                     | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
+| `/audit:code-hygiene`  | Command `templates/commands/audit/code-hygiene.md`              | Hydrated by RR (Phase 2.5)                                           |
+| `/audit:security`      | Command `templates/commands/audit/security.md`                  | Hydrated by RR (Phase 2.5)                                           |
 
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
 7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `.claude/settings.json` hooks. Sends a macOS native notification with Glass sound when a turn takes 30+ seconds. Character name and project root path are parameterized at install. Add to `.claude/settings.json`:
@@ -338,7 +338,7 @@ Claude takes your answers and:
 
 8b. **(If Codex opted in)** Creates `.codex/` layer — `config.toml`, `.toml` agent wrappers pointing to `.claude/commands/*.md` and `.claude/agents/*.md`, command skill wrappers, and shared skill wrappers/symlinks for `p:360`, `rr`, `p:rnd`, `ghostwriter`, `vision-factory`, `p:quality:prompt`, and `p:quality:doc`. Creates `AGENTS.md` symlink → `CLAUDE.md`. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), `drift.md` (human-readable record of what's different from vanilla Professor — the merge keeps these local), and `release.md` (framework changes pending upstream sync). 11. **Writes `.professor/VERSION`** — the blueprint version tag installed from. 12. **Writes `.professor/manifest.json`** — generates `.professor/manifest.json` containing (a) the blueprint version installed from, (b) ALL interview answers as a replay seed, and (c) SHA-256 hashes of every installed file post-substitution. This manifest is what `/pcm update` uses for three-way comparison (installed baseline vs current on-disk vs re-parameterized upstream) and for replaying interview answers against new template versions. Format:
 
-**Build roster validation:** `/build` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
+**Build roster validation:** `/wave:builder` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
 `json
     {
       "schema": 1,
@@ -396,10 +396,10 @@ The `interview` field is the replay seed — `/pcm update` re-applies these answ
 
 ## Phase 3 — Smoke test
 
-After install, Claude runs a tiny `/build` to verify the pipeline works end-to-end:
+After install, Claude runs a tiny `/wave:builder` to verify the pipeline works end-to-end:
 
 ```
-/build add-readme-section
+/wave:builder add-readme-section
 ```
 
 Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pcm` to fix it at the source.
@@ -477,7 +477,7 @@ Same for adding a new Tier A archetype if you build one — `/pcm` copies the te
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
 - Verify the statusline shows in your terminal (you should see model, context %, git branch). If not, check `~/.claude/settings.json` has the statusLine config and `jq` is installed.
 - Verify notifications work — start a task that takes 30+ seconds and check you get the macOS notification when the turn completes.
-- Run `/build` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run the Professor analysis for cross-disciplinary analysis.
+- Run `/wave:builder` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run the Professor analysis for cross-disciplinary analysis.
 
 **When something feels wrong** after a few real pipelines:
 

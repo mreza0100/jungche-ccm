@@ -5,7 +5,7 @@ description: >
   integration tests targeting unhappy paths, edge cases, validates compliance (data layer, logging, env).
   Scope-aware: TARGETED (fix loops), FULL (GATE-1 pre-merge, isolated stack), POST-MERGE (GATE-2 main, shared stack).
   Writes tests + $DOCS/6-bugs-{project}.md.
-model: opus # {MODEL_TIER} — records tier intent (/wave:build's invocation alias governs at runtime); retune to your model tier
+model: opus # {MODEL_TIER} — records tier intent (/wave:builder's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
 

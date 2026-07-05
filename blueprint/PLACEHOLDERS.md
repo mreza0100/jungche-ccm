@@ -161,7 +161,7 @@ This makes the codex-touched files a 3-way merge — read all three:
 2. **Current blueprint template** (re-inject the Codex sections/lines/refs that live deleted).
 3. **This map** (apply placeholders).
 
-Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" section + `.codex/` refs), `commands/build.md` (keep the dual-runtime paragraph), `commands/wave.md` (keep the dual Skill/Agent runtime block), `commands/documenter.md` (keep `.codex/` in ownership), `commands/pcm.md` (keep ALL Codex-management: invariants stay at 10, Special-Ops Codex steps, codex audit scope — also fix the 34-vs-31 agent-count inconsistency to ONE consistent generic count), `scripts/format-md.sh` (keep `AGENTS.md` in the allow-list). Keep `AGENTS.md` references generally — it is the Codex-side mirror of `CLAUDE.md`.
+Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" section + `.codex/` refs), the wave command dir `commands/wave/{builder,orchestrator}.md` (keep the dual-runtime paragraph), the codex mirror's own wave wrappers under `codex/` (`skills/wave/SKILL.md`, `skills/wave-build/SKILL.md`, `agents/{wave,wave-build}.toml` — keep the dual Skill/Agent runtime block, and keep their read-target pointers aimed at `commands/wave/orchestrator.md` and `commands/wave/builder.md`), `commands/documenter.md` (keep `.codex/` in ownership), `commands/pcm.md` (keep ALL Codex-management: invariants stay at 10, Special-Ops Codex steps, codex audit scope — also fix the 34-vs-31 agent-count inconsistency to ONE consistent generic count), `scripts/format-md.sh` (keep `AGENTS.md` in the allow-list). Keep `AGENTS.md` references generally — it is the Codex-side mirror of `CLAUDE.md`.
 
 ## Ignored artifacts (do NOT ship, drop references)
 

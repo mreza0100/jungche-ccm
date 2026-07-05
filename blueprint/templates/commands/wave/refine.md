@@ -1,20 +1,19 @@
 ---
 name: wave:refine
-version: "1.0.0"
-description: "Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave.md (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave or /wave:build. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /wave:build or /wave to build a working prototype under RND/POC/. Triggers: \"refine\", \"/wave:refine\", \"write wave.md\", \"refine tasks\", \"refine poc\"."
+description: Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave spec at docs/dev/waves/queue/ (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave:schedule, /wave:orchestrator, or /wave:builder. Interactive discovery, PM + officer consultation, confidence scoring, founder approval gate. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /wave:builder or /wave:orchestrator to build a working prototype under .professor/RND/POC/. Triggers: "refine", "/wave:refine", "write wave.md", "refine tasks", "refine poc".
 ---
 
 # Refine — Wave Task Refinement
 
 > Critically refine the task list — question, reshape, and strengthen every work item until each is specified completely enough that pipeline agents implement it without making a single decision.
 
-**Trigger:** `refine <tasks>`, `refine this`, `write wave.md`, or when preparing tasks for `/wave`.
+**Trigger:** `refine <tasks>`, `refine this`, `write wave.md`, or when preparing tasks for `/wave:orchestrator`.
 
 **Subcommand:** `refine poc <goal>` runs the **Refine-to-Prototype** flow (§ Subcommand: `poc`) — skip R1–R4. Bare `refine <tasks>` runs R1–R4 below.
 
 ## ZERO GAP — the contract (read first)
 
-wave.md is the single source of truth. It leaves **zero decisions** — technical or product — for `/wave` or `/wave:build`: every field, column type, API signature, message shape, file path, route, behavior, and copy string is decided here and written down. Downstream agents execute the spec; they never re-decide, re-scope, or override.
+The spec — wave.md format, written to `docs/dev/waves/queue/{YYYY-MM-DD}-{slug}.md`; root `wave.md` belongs to `/wave:schedule` alone, so concurrent refines never clobber — is the single source of truth. It leaves **zero decisions** — technical or product — for `/wave:orchestrator` or `/wave:builder`: every field, column type, API signature, message shape, file path, route, behavior, and copy string is decided here and written down. Downstream agents execute the spec; they never re-decide, re-scope, or override.
 
 Division of labor: the **founder** answers the main questions (R1.5) and approves the final visual + summary (R4). The **Professor** supplies all technical detail from the codebase walk — the founder is never asked to hand-specify fields or signatures.
 
@@ -27,7 +26,7 @@ Run **R1 → R4 in order**. Every gate is blocking — never skip a step or move
 Read:
 
 - `CLAUDE.md` (root) — system overview, current state
-- `docs/agents/architecture/` cluster — how the roster's projects connect, or the single project's internal structure (start at `_index.md`)
+- `docs/agents/architecture/` cluster — how the roster's projects connect, or the single project's internal structure: read `_index.md`, grep the cluster for the subsystems the tasks touch; never read the cluster in full
 - `docs/agents/api/` cluster — **GREP the cluster for specific endpoints/operations the tasks touch** — never read in full
 - `docs/agents/graph/db/{DATABASE}.mmd` — whole DB schema (tables, columns, FKs) for data-model decisions; names match the database exactly
 - `$CDOCS/officer/$REFS/officer.md` — compliance posture, feature inventory, regulatory lines _(if the Officer archetype is installed)_
@@ -37,17 +36,17 @@ You CANNOT refine tasks without understanding what exists.
 
 ### R1 walk — one entry per ORIGINAL task
 
-Walk the actual code **once per original task**. Build a per-task reconciliation note:
+Walk the actual code **once per original task** — fanned out, never in your own loop: read-only `Explore` readers, one per subsystem cluster of tasks, each returning its tasks' reconciliation-note fields below as cards with file:line evidence. You judge the cards (spot-check anchors that smell wrong) and author everything downstream — retrieval is the readers', judgment stays yours. Build a per-task reconciliation note:
 
-| Field                    | What to capture                                                                                           |
-| ------------------------ | --------------------------------------------------------------------------------------------------------- |
-| **Original #**           | Task number as user wrote it. Preserve through R2/R3.                                                     |
-| **Original title**       | Exactly as user wrote it.                                                                                 |
-| **Code referenced**      | File paths, components, chains, endpoints this task names or implies. If something doesn't exist, say so. |
-| **What exists today**    | One line on current state.                                                                                |
-| **What's missing**       | Gap between what's asked and what's in code.                                                                                                                                                                                                                                                                     |
-| **Reuse targets**        | Existing helpers, components, hooks, types, or query fragments this task must import rather than rebuild — apply `/audit:code-hygiene` Category 8 (Duplication & Missed Reuse) discovery to the task's domain so the spec names what to call, not just what to write. Empty only when the task is genuinely net-new. |
-| **Concrete-spec status** | `READY` / `NEEDS-CLARIFICATION` / `NEEDS-FOUNDER-SPEC`                                                                                                                                                                                                                                                            |
+| Field                    | What to capture                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Original #**           | Task number as user wrote it. Preserve through R2/R3.                                                                                                                                                                                                                                                                             |
+| **Original title**       | Exactly as user wrote it.                                                                                                                                                                                                                                                                                                         |
+| **Code referenced**      | File paths, components, chains, endpoints this task names or implies. If something doesn't exist, say so. A path cited as a DATA SOURCE (fixtures/corpus/records to copy or reuse) is opened to confirm it CONTAINS that data — results-only or empty = NEEDS-CLARIFICATION, resolved in the spec, never left to the builder. |
+| **What exists today**    | One line on current state.                                                                                                                                                                                                                                                                                                        |
+| **What's missing**       | Gap between what's asked and what's in code.                                                                                                                                                                                                                                                                                      |
+| **Reuse targets**        | Existing helpers, components, hooks, types, or query fragments this task must import rather than rebuild — apply `/audit:code-hygiene` Category 8 (Duplication & Missed Reuse) discovery to the task's domain so the spec names what to call, not just what to write. Empty only when the task is genuinely net-new.              |
+| **Concrete-spec status** | `READY` / `NEEDS-CLARIFICATION` / `NEEDS-FOUNDER-SPEC`                                                                                                                                                                                                                                                                            |
 
 `NEEDS-FOUNDER-SPEC` tasks **must** surface as Tier-1 questions in R1.5. Never silently merge, drop, or renumber them.
 
@@ -92,11 +91,11 @@ Assess which tasks benefit from a throwaway POC. Pattern-copies and config chang
 
 Present recommendation, wait for founder approval. Unapproved tasks skip to R2.
 
-For each approved POC, spawn an RND agent in `RND/{poc-name}/`. Run independent POCs in parallel.
+For each approved POC, spawn an RND agent in `.professor/RND/{poc-name}/`. Run independent POCs in parallel.
 
 ### R-POC output — embed RND findings in wave.md
 
-Applies to ANY wave built from RND work — POCs spawned at R-POC above, or a pre-existing `RND/` run the tasks originate from. During the walk, study the RND output itself: the result, the iteration trail, and the exact prompts it converged on.
+Applies to ANY wave built from RND work — POCs spawned at R-POC above, or a pre-existing `.professor/RND/` run the tasks originate from. During the walk, study the RND output itself: the result, the iteration trail, and the exact prompts it converged on.
 
 RND findings are NOT just internal notes — they are **mandatory implementation constraints** for build agents. Write a dedicated section in wave.md BEFORE the task list:
 
@@ -127,7 +126,7 @@ _Why this wording works: {the behavior it produces; what failed without it}._
 
 **What NOT to capture:** internal RND iteration details, discarded approaches, tooling quirks. Only validated production-relevant findings.
 
-**RND artifacts:** Do NOT delete `RND/`. Build agents and QA may reference the raw outputs for verification. The founder decides cleanup timing.
+**RND artifacts:** Do NOT delete `.professor/RND/`. Build agents and QA may reference the raw outputs for verification. The founder decides cleanup timing.
 
 ## Step R2 — Critically evaluate each task
 
@@ -142,8 +141,8 @@ For every task, ask:
 | **Obvious gaps?**                      | Add missing task with `[PROFESSOR ADDED]` tag  |
 | **Overlapping?**                       | Merge into one clear task                      |
 | **Scope creep?**                       | Tighten boundaries — state what's NOT included |
-| **Compliance line?**                   | Add compliance flags or scope down to {REGULATION} boundary |
-| **Executable by `/wave:build`?**       | Tag `[CMD: /km]`, `[CMD: /jc]`, etc.           |
+| **Compliance line?**                   | Add compliance flags or scope down to the {REGULATION} boundary |
+| **Executable by `/wave:builder`?**     | Tag `[CMD: /km]`, `[CMD: /jc]`, etc.           |
 
 ## Step R2.5 — PM consultation (founder-gated)
 
@@ -164,12 +163,12 @@ Agent(general-purpose): "Use the Skill tool to invoke /officer with arguments:
   Tasks: {post-R2 task list, verbatim}.
   Return ADVISORY per-task flags only, each citing its regulatory line. Do NOT design consent mechanisms, schemas, or mandates."
 ```
-_(Only if the Officer archetype is installed.)_
 
 Officer is **advisory** — it returns compliance flags, never requirements:
 
 1. Fold returned observations into R3 as `[WATCH: ...]` tags on the affected tasks.
 2. Anything that would mandate a new consent scope, schema, or hard requirement → surface to the founder for a decision; never auto-encode it.
+3. A condition calling for a legal/compliance-record update NEVER folds into a task deliverable or clause — it routes to the R4 paper-trail list (§ Constraints legal fence).
 
 ## Step R3 — Rewrite with complete technical design (ZERO GAP)
 
@@ -181,23 +180,26 @@ Officer is **advisory** — it returns compliance flags, never requirements:
 
 ### The Professor decides everything (ZERO GAP)
 
-Decide and write down, per task — leaving nothing for `/wave:build` or `/wave` to judge:
+Decide and write down, per task — leaving nothing for `/wave:orchestrator` or `/wave:builder` to judge:
 
 - **Routing** — exact set of roster projects the task touches.
+- **Build agents** — the conditional specialists the task needs: `db-admin` when it carries a data-model change, `ui-ux` when it carries UI visual work. The build spawns exactly what this line declares — refine wrote the data model, so refine knows.
 - **Data model** — every new or changed table, column (with exact type), index, enum, constraint.
 - **Contracts** — exact API schema (types, inputs, operations with arg + return types), resolver/handler signatures, message-queue schemas, realtime event payloads.
-- **File plan** — every file to create or edit, each with the functions/exports/components it gains and their signatures.
+- **File plan** — every file to create or edit, each with the functions/exports/components it gains and their signatures. Every file marked DELETE is grep-verified single-purpose (top-level defs); a grab-bag or removed-code-interleaved-with-kept file is `EDIT (strip X by def-boundaries)`, never a wholesale/range delete. A dropped column/enum/table names its FULL coupling: every WHERE / ON CONFLICT / caller AND every raw-SQL string reference — SQL column refs are invisible to typecheckers. A removed Settings/config field names its env-var scrub set (every `.env*` variant + infra/deploy carriers). A removal spanning >10 files or >3 layers is declared a FAN-OUT candidate (parallel disjoint sub-slices + a reconcile), never one serial hand.
 - **Product** — behavior (success/failure/edge), UX, copy, scope.
 
-The Professor derives all of this from the R1 codebase walk — the founder is asked only the main questions (R1.5), never to author fields or signatures. `/wave` keeps all execution discipline — grouping same-routing tasks for token efficiency, pipeline naming, wave ordering/sequencing, parallelism; `/wave:build` only implements. Neither re-decides the spec's content.
+The Professor derives all of this from the R1 codebase walk — the founder is asked only the main questions (R1.5), never to author fields or signatures. `/wave:orchestrator` keeps all execution discipline — task ordering, milestones, per-task verification, gates; `/wave:builder` only implements. Neither re-decides the spec's content.
 
 ### wave.md format
 
-Use **heading-per-task** format. NEVER use markdown tables for task descriptions — task content contains pipe characters (enum definitions, union types) that break table parsing, and 2000+ character cells produce unreadable output after formatting.
+Use **heading-per-task** format. NEVER use markdown tables for task descriptions — task content contains pipe characters (enum definitions, union types) that break table parsing, and 2000+ character cells produce unreadable output after prettier formatting.
 
 ```markdown
 # Tasks
 
+**Status:** QUEUED
+**Refined:** {YYYY-MM-DD} · main @ {short-sha}
 **Epic:** {kebab-name | `none`}
 **Scope:** {the objective this wave delivers}
 **Deferred:** {parts of the founder's broader objective this wave intentionally omits — or `none`}
@@ -221,6 +223,8 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 **Why:** {problem or value}
 
 **Routing:** {exact roster project set}
+
+**Build agents:** {dev projects [, db-admin] [, ui-ux]}
 
 **Key behaviors:**
 
@@ -248,18 +252,33 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 **Rules:**
 
 - Group by domain/category, number sequentially across all categories
+- **Wave train:** tasks spanning more than one code impact area → the top-level grouping becomes wave sections (each `## Wave {k}:` section = one partition = one full downstream wave): dependency-ordered, aggressively few (every extra wave costs a full boundary — two compactions, reconcile, full gates) yet single-area each; tasks number sequentially across waves. A rules block binding only some waves' tasks is written inside EACH wave section it governs (self-contained manifests beat DRY); only ALL-task sections sit in the top preamble. Every wave heading MUST carry all four header-block fields — missing any = not a valid partition; `/wave:orchestrator` builds its train map from these blocks alone, never a full-file read:
+
+  ```markdown
+  ## Wave {k}: {kebab-area} ({N} tasks)
+
+  **Changes:** {one line — what this wave delivers}
+  **Touches:** {project set + key subsystems/dirs}
+  **Depends:** {Wave {j} | none}
+  **Tasks:** #{a}–#{b} {| list form for non-contiguous sets: #4–#7, #9, #11–#13}
+  **Epic:** {name — OPTIONAL fifth line; overrides the source top-level epic for this wave only}
+  ```
+
 - Separate tasks with `---` horizontal rules
 - Flag compliance: `[WATCH: ...]`, `[BLOCKED: ...]`, `[FIXES GAP: ...]`
-- Flag command routing: `[CMD: /km]`, `[CMD: /jc]` — mandatory for non-`/wave:build` tasks
+- Flag command routing: `[CMD: /km]`, `[CMD: /jc]` — mandatory for non-`/wave:builder` tasks
 - Tables are ONLY for the reconciliation section (short, fixed-width cells)
 
-Every task MUST contain all 10 sections shown in the template above (summary, Why, Routing, Key behaviors, Data model, Contracts, File plan, Technical flow, Boundaries, Named anchors); missing any = not ZERO GAP.
+Every task MUST contain all 11 sections shown in the template above (summary, Why, Routing, Build agents, Key behaviors, Data model, Contracts, File plan, Technical flow, Boundaries, Named anchors); missing any = not ZERO GAP.
+
+Mark **milestones**: tag every Kth task-group heading `[MILESTONE]` (in a train: the opening `### Task` heading of the checkpoint span — wave sections replace group headings) — `/wave:orchestrator` runs its checkpoint gate there (cross-project typecheck + affected profiles + main-SYNC + reconcile refresh). Unmarked → `/wave:orchestrator` defaults to every group boundary.
 
 ### Constraints
 
-- You MAY write `wave.md` at repo root — the ONLY file you create
-- Stamp the target epic at the top of `wave.md` (`**Epic:** {name}`) so `/wave` routes its progress to `docs/epics/{name}/`. Determine it during R1.5 when unclear; write `none` if the work isn't epic-tied
-- You do NOT write source files — you specify the complete implementation (data model, contracts, file plan, signatures) in wave.md; `/wave:build` writes the code from your spec
+- You write the spec to `docs/dev/waves/queue/{YYYY-MM-DD}-{slug}.md` — the ONLY file you create. `**Status:** QUEUED` + `**Refined:** {date} · main @ {short-sha}` (the HEAD you walked in R1 — `/wave:schedule`'s staleness anchor) head the file
+- Stamp the target epic at the top of the spec (`**Epic:** {name}`) so `/wave:orchestrator` routes its progress to `docs/epics/{name}/`. Determine it during R1.5 when unclear; write `none` if the work isn't epic-tied
+- You do NOT write source files — you specify the complete implementation (data model, contracts, file plan, signatures) in wave.md; `/wave:builder` writes the code from your spec
+- **Legal/compliance documents are sacred ground — FOUNDER-OWNED.** DPIA, DPA, RoPA, privacy policy, consent documents, sub-processor register, data-flow records, feature inventory — anything under `$CDOCS/officer/$REFS/` or of legal character. You NEVER edit one, and wave.md NEVER carries a task, clause, file-plan entry, or `[CMD: /officer]` routing that orders any agent to create or update one. A task whose completion seems to need a records update ships code only; the paper need is listed (exact paths) in the R4 decision summary as a founder-owned paper-trail item _(when the Officer archetype is installed)_
 - You MAY add tasks with `[PROFESSOR ADDED]` tag or remove/merge redundant ones
 - PM consultation is mandatory (twice) — R2.5 and R3.5 _(when the PM archetype is installed)_
 - Task identity is sacred — reconciliation table required
@@ -272,33 +291,33 @@ Spawn PM as a fan-out agent with fresh context (has NOT seen R1-R3) _(if the PM 
 
 ```
 Agent(general-purpose): "Use the Skill tool to invoke /pm with arguments:
-  wave-post-review — Independent post-refinement review of wave.md."
+  wave-post-review — Independent post-refinement review of the spec at docs/dev/waves/queue/{file}."
 ```
 
 1. Present PM's response to founder verbatim
 2. Ask founder about incorporating suggestions
 3. Apply approved items with `[PM-POST]` tag
 
-R3.5 is mandatory. PM gets only wave.md — fresh eyes. Professor does NOT pre-judge PM's review.
+R3.5 is mandatory. PM gets only the spec file — fresh eyes. Professor does NOT pre-judge PM's review.
 
 ## Step R4 — Founder approval gate (visual + summary)
 
 The founder authored none of the technical detail — R4 is where they see it and rule on it. After R3.5's PM input is folded in, present in ONE message:
 
 1. **Wave-level technical flow** — a single mermaid diagram: every task as a node tagged with its routing, plus the data/control edges and dependencies between tasks. This is the "visual on technical ground."
-2. **Decision summary** — lead with the wave's **Scope / Deferred** boundary so the founder approves what is excluded, not only what is built; then one line per task: routing + the key technical decisions the Professor made (data model, contract, approach) + the key product decisions (behavior, scope). Surface every choice the founder did NOT explicitly make.
+2. **Decision summary** — lead with the wave's **Scope / Deferred** boundary so the founder approves what is excluded, not only what is built — a train additionally opens with its partition map (the wave header blocks: which impact areas merge in which order); then one line per task: routing + the key technical decisions the Professor made (data model, contract, approach) + the key product decisions (behavior, scope). Surface every choice the founder did NOT explicitly make.
 
-Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. This gate approves the **wave.md spec** — not the execution of `/wave`. Refine's job ends when the wave is written; running `/wave` is the founder's separate decision, after and apart from this gate. wave.md is not final until the founder approves this gate.
+Then the **founder approves or adjusts.** Apply every adjustment to wave.md (and the affected per-task technical flows); re-present if the change is structural; loop until approved. This gate approves the **spec**, not its execution — refine ends when the spec is queued; `/wave:schedule` (which builds the consolidated train for `/wave:orchestrator`) is the founder's separate decision afterward.
 
-After R4 approval, refine is complete — the wave is written and approved. Report: "Wave file written to `wave.md` with {N} refined tasks (ZERO GAP). Reconciliation: {counts}. R1.5 confidence: {%} in {N} round(s). Compliance (R2.6): {N} WATCH flags. PM input: {counts}. Founder approved the wave at R4."
+After R4 approval, refine is complete — report: "Spec queued at `docs/dev/waves/queue/{file}` with {N} refined tasks (ZERO GAP). Next: `/wave:schedule`. Reconciliation: {counts}. R1.5 confidence: {%} in {N} round(s). Compliance (R2.6): {N} WATCH flags. PM input: {counts}. Founder approved the flow + summary at R4."
 
 ---
 
 ## Subcommand: `poc <goal>` — Refine-to-Prototype
 
-`refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/wave:build` (or `/wave`) to build a working prototype under `RND/POC/{name}/`.
+`refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/wave:builder` (or `/wave:orchestrator`) to build a working prototype under `.professor/RND/POC/{name}/`.
 
-This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which writes root `wave.md` for the roster projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `RND/POC/` that exists only to answer "does this approach work?"
+This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which queues a wave spec for the roster projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `.professor/RND/POC/` that exists only to answer "does this approach work?"
 
 Run P1 → P4 in order; every gate blocks.
 
@@ -320,8 +339,8 @@ Score the spec on the same scale as § Confidence scoring. Loop until it reaches
 
 ### P3 — Write the POC spec
 
-Write `RND/POC/{name}/spec.md` — the ONLY file you create. At the same ZERO-GAP bar as wave.md but scoped to the prototype, it carries: **Goal**, **Proves**, **Success criteria**, **Real vs faked**, **Build plan** (every file to create under `RND/POC/{name}/`, each with what it does and its signatures), **How to run it**, **Boundaries**.
+Write `.professor/RND/POC/{name}/spec.md` — the ONLY file you create. At the same ZERO-GAP bar as wave.md but scoped to the prototype, it carries: **Goal**, **Proves**, **Success criteria**, **Real vs faked**, **Build plan** (every file to create under `.professor/RND/POC/{name}/`, each with what it does and its signatures), **How to run it**, **Boundaries**.
 
 ### P4 — Hand off
 
-Recommend the builder — one self-contained probe → `/wave:build`; several parallel probes → `/wave` — with the build target pinned to `RND/POC/{name}/`. Give the founder the exact command; the founder runs it.
+Recommend the builder — one self-contained probe → `/wave:builder`; several parallel probes → `/wave:orchestrator` — with the build target pinned to `.professor/RND/POC/{name}/`. Give the founder the exact command; the founder runs it.

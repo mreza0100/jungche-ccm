@@ -264,7 +264,7 @@ function firstUserSnippet(file) {
 }
 
 // meta.json sidecar (agent-{id}.meta.json) carries {agentType, description?}.
-// description is the richest label for /wave:build sub-agents ("BE developer", "gitter SETUP").
+// description is the richest label for /wave:builder sub-agents ("BE developer", "gitter SETUP").
 function readMeta(agentFile) {
   const metaFile = agentFile.replace(/\.jsonl$/, ".meta.json");
   try {
@@ -469,7 +469,7 @@ function printDetail(rows, query) {
 }
 
 // Group rows by their wf_* run dir → one row per workflow run. Rows not under a
-// wf_* dir (session-level /wave:build agents, MAIN loops) fold into one trailing summary
+// wf_* dir (session-level /wave:builder agents, MAIN loops) fold into one trailing summary
 // row labeled "(non-workflow agents)" — never silently dropped.
 function printByWorkflow(rows) {
   const groups = new Map(); // wf id -> { wf, conv, agentCount, agg, mtime }
@@ -510,8 +510,8 @@ function printByWorkflow(rows) {
   renderGrid(H, data, new Set([0, 1, 2]), new Set([data.length - 1]));
   console.log(
     "\nFRESH = in+out+cache-write (the harness's subagent_tokens definition); GRAND TOTAL adds cache-read." +
-      "\nNote: a /wave's per-feature /wave:build is NOT a wf_* run — /wave runs /wave:build in the main session, so its" +
-      "\nagents land in the non-workflow row. Total a /wave:build or /wave feature with --filter <label>, not" +
+      "\nNote: a /wave:live's per-feature /wave:builder is NOT a wf_* run — /wave:live runs /wave:builder in the main session, so its" +
+      "\nagents land in the non-workflow row. Total a /wave:builder or /wave:live feature with --filter <label>, not" +
       "\n--by-workflow. --by-workflow captures Workflow-engine runs (e.g. /rr) exactly."
   );
 }
@@ -545,8 +545,8 @@ Usage: node token-ledger.mjs [options]
   --by-workflow          group by workflow run (wf_*) instead of by agent — one row
                          per run + a "(non-workflow agents)" summary row + TOTAL.
                          Captures Workflow-engine runs (e.g. /rr) exactly. NOTE: a
-                         /wave's per-feature /wave:build is NOT a wf_* run (it runs in the
-                         main session); total a /wave:build or /wave feature with --filter.
+                         /wave:live's per-feature /wave:builder is NOT a wf_* run (it runs in the
+                         main session); total a /wave:builder or /wave:live feature with --filter.
   --filter <substr>      restrict the per-agent table + totals to rows whose label or
                          model id contains <substr> (case-insensitive); prints match
                          count. Composes with --all / --session / --json.

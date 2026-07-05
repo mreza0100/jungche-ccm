@@ -32,12 +32,12 @@ CLAUDE.md (Professor persona + request routing)
     ├── loads skills as needed
     └── references agent/command/skill tables
 
-.claude/commands/*.md → slash commands (/wave:build, /jc, /pcm, etc.)
+.claude/commands/*.md → slash commands (/wave:builder, /jc, /pcm, etc.)
 .claude/agents/*.md   → root pipeline agents (mono-planner, mono-architect, gitter, mono-documenter) + N qa-{proj} wrappers (registered QA gates that read the child protocol and carry the test-output filter hook)
 .claude/skills/*/SKILL.md → reusable skills
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
-.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-pipelines — the /wave execution engine); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-build — the single-pipeline build engine, wave-walker — the post-merge verification walk, documenter-fanout — parallel doc consolidation); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions
@@ -49,8 +49,8 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 ### Critical invariants
 
 1. **Gitter monopoly** — only gitter runs git commands. All other agents delegate.
-2. **Path variables** — agents use `$DOCS`, `$DOCS_REL`, `$DOCS_POST`, never hardcoded paths. Defined in `wave/build.md` § Step 0.
-3. **Pipeline flow lives in wave/build.md** — CLAUDE.md just redirects. Don't duplicate.
+2. **Path variables** — agents use `$DOCS`, `$DOCS_REL`, `$DOCS_POST`, never hardcoded paths. Defined in `wave/builder.md` § Step 0.
+3. **Pipeline flow lives in wave/builder.md** — CLAUDE.md just redirects. Don't duplicate.
 4. **Non-negotiable rules in CLAUDE.md are sacred** — ethics, privacy, code quality cannot be weakened.
 5. **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
 6. **Registry over tables** — every command/skill carries its routing in its `description:` frontmatter (the harness injects that registry into the session); CLAUDE.md keeps no command/skill/agent roster. The agent inventory lives in this doc's Inventory + `agent-models.md` and must match actual files. `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands.
@@ -66,7 +66,7 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 <!-- INSTALL: Fill in your actual roster + agent counts. All counts are install-derived from the roster — never hardcode a total in prose. Use ONE consistent agent figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
 
 - **Projects:** one entry per roster project — `{project}` ({PROJECT_PKG_MGR}), repeated for the whole roster (a single-project install lists exactly one)
-- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 4 mono orchestrators + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file. **Two-tier model policy:** root strategists (mono-planner, mono-architect) pin the top-tier full model ID in frontmatter; every `/wave:build` child spawn rides the floating `opus` alias (real work); `sonnet` only for small jobs (gitter, mono-documenter). Record the authoritative tier reference at `docs/commands/pcm/references/agent-models.md` (command-owned, created post-install — not a shipped template)
+- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 4 mono orchestrators + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file. **Two-tier model policy:** root strategists (mono-planner, mono-architect) pin the top-tier full model ID in frontmatter; every `/wave:builder` child spawn rides the floating `opus` alias (real work); `sonnet` only for small jobs (gitter, mono-documenter). Record the authoritative tier reference at `docs/commands/pcm/references/agent-models.md` (command-owned, created post-install — not a shipped template)
 - Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts; the project/agent counts derive from the roster, not a fixed number
 
 ---
@@ -117,9 +117,9 @@ Before ANY changes, read all affected files. Grep every reference across `.claud
 - Project dir names in CLAUDE.md match actual directories
 - Agent frontmatter matches actual behavior and tools needed
 - worktree.sh project resolution matches directory names
-- /wave:build references match agent names and doc paths
+- /wave:builder references match agent names and doc paths
 - Tech stack descriptions match package.json/pyproject.toml deps
-- Pipeline flow in wave/build.md matches agent ordering constraints
+- Pipeline flow in wave/builder.md matches agent ordering constraints
 
 <!-- OPTIONAL: Secondary runtime impact checklist
 - Agent added/removed/renamed? → Update wrappers
@@ -149,11 +149,11 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 - Keep section hierarchy — agents/commands reference sections by name
 - Keep non-negotiable rules exactly as they are
 - Update tables when adding/removing agents, commands, skills
-- Pipeline flow stays in wave/build.md, not CLAUDE.md
+- Pipeline flow stays in wave/builder.md, not CLAUDE.md
 
 **Command rules:**
 
-- /wave:build is the orchestrator — must reference every pipeline agent by name
+- /wave:builder is the orchestrator — must reference every pipeline agent by name
 - Step numbers must match the Pipeline Reference table
 - Port reading instructions must match what gitter writes to ports.md
 
@@ -166,7 +166,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 1. Grep for stale references to old names/paths
 2. Cross-reference agent tools lists
-3. Pipeline completeness — every agent in wave/build.md has a definition
+3. Pipeline completeness — every agent in wave/builder.md has a definition
 4. Command completeness — every command referenced in CLAUDE.md (Request Routing) has a file; every `.claude/commands/*.md` has a `description:`
 5. Script references exist at stated paths
 6. Directory name consistency across all files
@@ -246,9 +246,9 @@ Files: `.claude/skills/*/SKILL.md`
 - **Skill registration:** every skill dir under `.claude/skills/` has a `description` frontmatter (auto-surfaced in the available-skills list); CLAUDE.md keeps only the one-line Skills pointer, not a per-skill table
 - **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
 
-#### `pipeline` — Walk wave/build.md end-to-end
+#### `pipeline` — Walk wave/builder.md end-to-end
 
-Files: `.claude/commands/wave/build.md` (primary), all agents it references
+Files: `.claude/commands/wave/builder.md` (primary), all agents it references
 
 - **Reference resolution:** every "Read and follow" path → target file exists
 - **Agent spawn validity:** every `subagent_type` referenced → matches a registered agent name/description in `.claude/agents/` or child agents
@@ -324,7 +324,7 @@ Ask: "Want me to fix these issues?"
 
 ## Special Operations
 
-**Full rename:** Grep ALL occurrences → update agents → update CLAUDE.md → update /wave:build → final grep for zero stale refs.
+**Full rename:** Grep ALL occurrences → update agents → update CLAUDE.md → update /wave:builder → final grep for zero stale refs.
 
 **New agent:** Create `.claude/agents/{name}.md` → update the count in this doc's Inventory + `docs/commands/pcm/references/agent-models.md` → update pipeline if needed (CLAUDE.md carries no agent roster).
 

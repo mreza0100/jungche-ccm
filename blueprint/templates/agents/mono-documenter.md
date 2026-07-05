@@ -20,9 +20,9 @@ When invoked:
 
 1. Read `documenter.md` § Orchestration and the matching mode section (ARCHIVE or JC-UPDATE).
 2. Examine what actually changed:
-   - **ARCHIVE** → the pipeline's `$DOCS/` decisions (`1-plan.md`, `3-architecture*.md`, `4-*.md`, `5-dev-report-*.md`, `6-*.md`, `7-post-merge-qa.md` — only what exists).
+   - **ARCHIVE** → the pipeline's `$DOCS/` decisions (`0-task.md`, `4-*.md`, `5-dev-report-{project}.md`, `6-*.md`, `7-post-merge-qa.md`; legacy trails also carry `1-plan.md`/`3-architecture*.md` — only what exists).
    - **JC-UPDATE** → the hotfix description plus the changed source itself (read-only `git diff` is fine); there is no `$DOCS` dir.
-3. Return only the scopes this change touches — each with its exact documenter.md `steps`, its DISJOINT `writeTargets` (no two scopes may name the same file — overlap is a write race), and the `sources` feeding it.
+3. Return only the scopes this change touches — each with `steps` = its scope card path (`docs/commands/documenter/references/scopes/{key}.md`), its DISJOINT `writeTargets` (no two scopes may name the same file — overlap is a write race), and the `sources` feeding it.
 
 Rules:
 

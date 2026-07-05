@@ -38,11 +38,11 @@ node .claude/commands/p/tokens/token-ledger.mjs [flags]
 
 - **Heaviest burner** → default or `--all` (the per-agent table is sorted by est cost desc; top row is the answer).
 - **Per-workflow-run cost** → `--all --by-workflow`.
-- **Per-`/wave:build`-pipeline or per-`/wave`-feature cost** → `--all --filter <feature-label>`.
+- **Per-`/wave:builder`-pipeline or per-`/wave:live`-feature cost** → `--all --filter <feature-label>`.
 
 ## `--by-workflow` honesty caveat
 
-`--by-workflow` groups agent files under each `wf_*` directory and captures Workflow-engine runs (e.g. `/rr`) **exactly**. A plain `/wave` is **not** a `wf_*` run: `/wave` runs each `/wave:build` in the main session, and `/wave:build` spawns its plan/arch/dev/QA agents as session-level sub-agents — they land in the `(non-workflow agents)` row, not a per-run row. To total a `/wave:build` pipeline or a `/wave` feature, use `--filter <label>`, never `--by-workflow`.
+`--by-workflow` groups agent files under each `wf_*` directory and captures Workflow-engine runs (e.g. `/rr`) **exactly**. A plain `/wave:live` is **not** a `wf_*` run: `/wave:live` runs each `/wave:builder` in the main session, and `/wave:builder` spawns its plan/arch/dev/QA agents as session-level sub-agents — they land in the `(non-workflow agents)` row, not a per-run row. To total a `/wave:builder` pipeline or a `/wave:live` feature, use `--filter <label>`, never `--by-workflow`.
 
 ## Token-definition calibration
 

@@ -1,6 +1,6 @@
 ---
 name: jc
-description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /jc:wave batches a task list on main; /wave:build and /wave are optional worktree pipelines, never required by size.
+description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /wave:live batches a task list on main; /wave:builder and /wave:orchestrator are optional worktree pipelines, never required by size.
 argument-hint: [bug or symptom]
 ---
 
@@ -47,9 +47,9 @@ JC works directly on `main` — no worktrees, no pipeline — delivering anythin
 cross-project feature or architectural refactor, with full QA ceremony (Steps 4–7: full tests, typecheck, lint,
 docs, gitter) gating every change. Use it for debugging runtime issues, adding logs, fixing broken behavior,
 patching config, building new features, tracing data flows, diagnosing system behavior, locating components,
-or any work on the running system. Size never routes elsewhere — `/wave:build` and `/wave` are optional worktree
+or any work on the running system. Size never routes elsewhere — `/wave:builder` and `/wave:orchestrator` are optional worktree
 pipelines you choose for isolation or parallelism, never because a change is large. A batch of tasks goes to
-`/jc:wave`.
+`/wave:live`.
 
 **JC has full access:** read/edit code across all projects, start/stop/restart servers via `/dev`,
 run tests, inspect logs, hit endpoints, query the database — whatever it takes to diagnose and fix.
@@ -100,7 +100,7 @@ After investigation, skip Steps 3-7 and go directly to **Step 8 — Report**.
 
 **If deploy (`/jc deploy`):** go to **§ 0c — Deploy mode**.
 
-**If a batch of tasks** — a task file or several tasks at once: run **`/jc:wave`** instead of working them one by one here.
+**If a batch of tasks** — a task file or several tasks at once: run **`/wave:live`** instead of working them one by one here.
 
 **If fix (read-write):** proceed through the full fix pipeline.
 
@@ -217,7 +217,7 @@ Before debugging CI failures, deploy errors, or workflow issues, **load `docs/ag
 
 ### 1g. Hang / deadlock / mystery-failure playbook
 
-When the failure mode isn't visible — hangs, deadlocks, "no output no error", intermittent failures, "passes alone but fails in suite", silent crashes — **load `$CDOCS/jc/$REFS/hang-playbook.md`** and follow its five-step protocol. The anti-pattern it kills: re-running with `-v` and waiting longer. A process hung at 0% CPU hangs forever — instrument, don't wait.
+When the failure mode isn't visible — hangs, deadlocks, "no output no error", intermittent failures, "passes alone but fails in suite", silent crashes — **load `$CDOCS/jc/$REFS/debug-discipline.md`** and follow its five-step protocol. The anti-pattern it kills: re-running with `-v` and waiting longer. A process hung at 0% CPU hangs forever — instrument, don't wait.
 
 ---
 
@@ -358,7 +358,7 @@ After the fix is verified, ask: **"Can this class of bug happen again?"** If yes
 
 ### 4g. QA regression test
 
-Always invoke the modified project's `qa` agent to add two layers of coverage: a regression test that reproduces the failure end-to-end (fails without the fix, passes with it), and unit tests for the specific functions, components, or sections that broke. QA judges feasibility — when no reliable test is possible (e.g. an external-service-only failure), it reports why instead of forcing one. Both ship in the same JC commit.
+Always invoke `Agent(qa-{project})` — the modified project's registered QA subagent, one per modified project — to add two layers of coverage: a regression test that reproduces the failure end-to-end (fails without the fix, passes with it), and unit tests for the specific functions, components, or sections that broke. QA judges feasibility — when no reliable test is possible (e.g. an external-service-only failure), it reports why instead of forcing one. Both ship in the same JC commit.
 
 ---
 
@@ -516,7 +516,7 @@ Docs updated: {list or "none — trivial fix"}
 - **ALL tests must pass before committing** — not just "the ones related to your fix." If ANY test in ANY modified project fails, fix it before committing. Pre-existing failures are not someone else's problem — JC leaves main cleaner than he found it. The only skip allowed is tests requiring unavailable external services (document the skip in your report)
 - **Always use gitter for commits** — never commit directly, even in JC mode
 - **ALWAYS run documenter before committing** — Step 6 is mandatory, not optional. The documenter runs BEFORE gitter so everything ships in one gitter call. Never write to permanent docs yourself
-- **No scope ceiling** — JC handles any change on `main`, from a one-line fix to a cross-project feature or architectural refactor; size never defers to `/wave:build` or `/wave`, which are optional worktree pipelines you choose for isolation or parallelism. New libraries are fine once validated (see _Rules while fixing_)
+- **No scope ceiling** — JC handles any change on `main`, from a one-line fix to a cross-project feature or architectural refactor; size never defers to `/wave:builder` or `/wave:orchestrator`, which are optional worktree pipelines you choose for isolation or parallelism. New libraries are fine once validated (see _Rules while fixing_)
 - **Build with sub-agents** — multi-part work is built by sub-agents, not inline: parallel for disjoint-file parts, serial for same-file or dependent parts, each adapting to the project's existing structure and patterns (see Step 3 § Build with sub-agents)
 - **Iterate until fixed** — don't stop at Step 4 if the fix didn't work, loop back to Step 2
 - **CI/CD is JC's domain** — use `gh` CLI for GitHub Actions: read logs (`gh run view <id> --log-failed`), trigger workflows (`gh workflow run`), watch runs (`gh run watch`). For CI/CD fixes: diagnose from logs → fix code → `/git push` → re-trigger → verify → repeat until green. Don't give up after one cycle

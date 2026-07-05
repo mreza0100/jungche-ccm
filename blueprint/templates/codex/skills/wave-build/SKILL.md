@@ -3,7 +3,7 @@ name: wave-build
 description: "Cross-project build pipeline. Invoked as $wave-build <feature> or $wave-build with Pipeline/Task manifest/Wave args. Runs the full pipeline end to end including all git work."
 ---
 
-Read `.claude/commands/wave/build.md` in full — it is your complete role manual. Follow it verbatim.
+Read `.claude/commands/wave/builder.md` in full — it is your complete role manual. Follow it verbatim.
 
 **Argument:** feature description string, or structured `Pipeline: {name}. Task manifest: {path}. [Wave: {wave}]` when called from wave.
 

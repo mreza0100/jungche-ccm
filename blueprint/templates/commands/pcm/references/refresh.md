@@ -18,7 +18,7 @@ Cross-conversation context persists via **Epics** — initiative-level manifest 
 
 ### Tier assignments
 
-**Tier A** — `Professor` (persona), `/jc`, `/pcm` (with its `update` and `release` subcommands), `/wave:build`, `/dev`, `/git`, `/wave`, `/documenter`, `/chat:save`, `/chat:load`, `/goal-definer`, `/animate`, `/p:slow-burn`
+**Tier A** — `Professor` (persona), `/jc`, `/pcm` (with its `update` and `release` subcommands), `/wave:builder`, `/dev`, `/git`, `/wave:orchestrator`, `/documenter`, `/animate`, `/save`, `/p:slow-burn`
 **Tier B** — `/officer` `{REGULATION}`, `/km` `{KNOWLEDGE_DOMAIN}`, `/pm` `{USER_PERSONA}`, `/mentor` `{MARKET_SEGMENT}`, `/marketer` `{CHANNEL_LANDSCAPE}`
 **Tier C** — root agents (mono-planner, mono-architect, mono-documenter, gitter), scripts (worktree.sh, alloc-ports.sh, dev.sh), per-project agents (planner, architect, developer, qa, ui-ux, db-admin, devops, ai-engineer)
 
@@ -77,10 +77,10 @@ From the project repo:
     └── templates/
         ├── CLAUDE.md
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (SKILL=/wave, build, refine, review), pcm/ (update, release, references/refresh.md), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
+        ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/refresh.md), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
         ├── skills/
-        │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:review, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
-        ├── workflows/ (wave-pipelines — the /wave execution engine)
+        │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
+        ├── workflows/ (wave-build, wave-walker, documenter-fanout, audit-ai-output-sessions)
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
         ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
@@ -154,7 +154,7 @@ Exports an interview Claude conducts before touching files. Structure:
 6. Tier B opt-ins: Officer (regulations?), KM (domain?), PM (persona?), Mentor (market+jurisdiction?), Marketer (channels+language?)
 7. Sacred ground ("do no harm" in your domain)
 
-**Phase 2 — Customization:** Rewrite every template replacing placeholders with interview answers. `/wave:build` MUST be materialized from the actual project roster; delete planner/architect/developer/QA/db/devops blocks for missing projects and fail if any referenced agent path does not exist.
+**Phase 2 — Customization:** Rewrite every template replacing placeholders with interview answers. `/wave:builder` MUST be materialized from the actual project roster; delete planner/architect/developer/QA/db/devops blocks for missing projects and fail if any referenced agent path does not exist.
 
 **Phase 2.5 — Skill Knowledge Hydration (domain-hydrated skills):**
 
@@ -186,7 +186,7 @@ Skills ship as **empty shells** when their content is project-specific — the s
 
 **Phase 2.6 — Host tooling probe (git-host bridge):** Check the install machine for `gh` and `glab` (`command -v`). For each present, write a one-file host command at `.claude/commands/h/{gh|glab}.md` (the `h:` host namespace) whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: an adopter on GitLab forks + releases professor through `/h:glab`, a GitHub adopter through `/h:gh`, and `/pcm:release` and `/git` read this marker to target the right host. These host-local bridges are KEEP-LOCAL — excluded from the portable blueprint. Absent tools get no command. Then resolve the blueprint repo target: if the user has push access to the canonical repo, set `{BLUEPRINT_REPO}`/`{GH_USER}`/`{BLUEPRINT_CLONE_PATH}` to it; otherwise have them fork it and use the fork.
 
-**Phase 3 — Smoke test:** Run `/wave:build` with a tiny test feature to verify end-to-end.
+**Phase 3 — Smoke test:** Run `/wave:builder` with a tiny test feature to verify end-to-end.
 
 ## 5. Public README
 
@@ -216,7 +216,7 @@ One-paragraph pitch: portable .claude/ that turns Claude Code into a self-discip
 git clone, cd your-project, claude → read blueprint → follow SETUP.md → interview → customize → smoke test
 
 ## The cast — Tier A
-Professor, /jc, /pcm, /wave:build, /dev, /git, /wave, /documenter
+Professor, /jc, /pcm, /wave:builder, /dev, /git, /wave:orchestrator, /documenter
 
 ## Tier B (opt-in)
 /officer, /km, /pm, /mentor, /marketer

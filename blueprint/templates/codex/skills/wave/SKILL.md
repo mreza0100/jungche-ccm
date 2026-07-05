@@ -3,7 +3,7 @@ name: wave
 description: Wave task runner. Reads a wave.md file and runs each pipeline sequentially. Invoked as `$wave <path/to/wave.md>`. Argument is the path to the wave manifest file.
 ---
 
-Read `.claude/commands/wave.md` in full — it is your complete role manual. Follow it verbatim.
+Read `.claude/commands/wave/orchestrator.md` in full — it is your complete role manual. Follow it verbatim.
 
 **Argument:** the wave manifest file path (e.g. `$wave docs/dev/waves/my-wave/wave.md` or `$wave ./wave.md`).
 

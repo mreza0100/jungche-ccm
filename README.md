@@ -65,7 +65,7 @@ The Professor IS `CLAUDE.md`. Not a command you invoke — the identity that run
 
 > _"This reminds me of what my colleague in Delft used to say about distributed systems: 'Everything works until the second server.' Your WebSocket reconnection is dropping messages like a tired postman. Let's talk about that."_
 
-### /build — the pipeline
+### /wave:builder — the pipeline
 
 Full development pipeline — planning, architecture, implementation, QA, merge. Every feature gets its own git worktree and unique ports. Nothing touches `main` until QA passes. Run three pipelines in parallel without collisions.
 
@@ -77,7 +77,7 @@ The one command allowed to touch `main` directly. Diagnoses, fixes, tests, commi
 
 ### /pcm — the meta-engineer
 
-Dr. House persona. Edits the pipeline's own rules at the source — agent definitions, command protocols, pipeline wiring. When something in the system itself needs fixing, this is who fixes it. Diagnostic obsession. "Everybody lies" verification ethos. Sarcastic, precise, and right.
+Dr. House persona. Edits the pipeline's own rules at the source — agent definitions, command protocols, pipeline wiring. When something in the system itself needs fixing, this is who fixes it. Diagnostic obsession. "Everybody lies" verification ethos. Sarcastic, precise, and right. Its `/pcm:context-meter` subcommand audits the framework's own context budget; `/pcm:update` · `/pcm:release` ride the blueprint bus.
 
 ### p:360 — the blind-spot killer
 
@@ -85,13 +85,13 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 
 ### And more
 
-- **/wave** — parallel `/build` waves from a task file. Multiple features at once. Now executes through a saved workflow — group parallelism with serialized QA/merge locks.
+- **/wave:orchestrator** — parallel `/wave:builder` waves from a task file. Multiple features at once. Runs through saved workflows — group parallelism with serialized QA/merge locks. (`/wave:live` batches the same on `main` without worktrees; `/wave:refine` and `/wave:schedule` turn a task list into a zero-gap train; `/wave:walker` walks the merged result.)
 - **/animate** — research-grounded educational HTML animation of any flow or structure: cited fact sheet → storyboard → single-file HTML, browser-verified for both behavior and accuracy. The animated hero at the top of this README is the kind of thing it produces.
 - **/dev, /git, /documenter** — pipeline mechanics with personality.
-- **/chat:save** mechanically copies the session's transcript straight from disk; **/chat:dump** writes a model briefing on top for continuation before `/compact` or a fresh chat. The **/chat:** family resumes and coordinates across chats: **/chat:read** (read an earlier chat — full, or its last N lines), **/chat:find** (locate one by a pasted excerpt), **/chat:inject** (force a turn into a live tmux pane, `self`, or a dormant chat's transcript — messages auto-signed with the sender and a runnable reply command, `--no-sig` to suppress for operational injections), **/chat:capture** (snapshot another chat's live window), **/chat:ls** (list the live chats in this repo), **/chat:whoami** (this chat's own tmux handle), **/chat:load** (force-load a directory or file set — read every file in full, no write). **/goal-manager** compiles a fuzzy super-goal into a sharp prompt for a fresh session — or `epic {name}` writes an epic's continuation prompt (to consolidate a session into the active epic instead, use `/documenter epic`).
+- **/chat:save** mechanically copies the session's transcript straight from disk; **/chat:dump** writes a model briefing on top for continuation before `/compact` or a fresh chat. The **/chat:** family resumes and coordinates across chats: **/chat:read** (read an earlier chat — full, or its last N lines), **/chat:find** (locate one by a pasted excerpt), **/chat:inject** (force a turn into a live tmux pane, `self`, or a dormant chat's transcript — messages auto-signed with the sender and a runnable reply command, `--no-sig` to suppress for operational injections), **/chat:capture** (snapshot another chat's live window), **/chat:ls** (list the live chats in this repo), **/chat:whoami** (this chat's own tmux handle), **/chat:goal** (compile an ambition into a runnable goal and fire it at a live chat or this one), **/chat:self:compact** (focused self-compaction of this chat's own context), **/chat:load** (force-load a directory or file set — read every file in full, no write). **/goal-manager** compiles a fuzzy super-goal into a sharp prompt for a fresh session — or `epic {name}` writes an epic's continuation prompt (to consolidate a session into the active epic instead, use `/documenter epic`).
 - **/slow-burn** — session-limit pacing for long marathons: checkpointed rounds, cache-aware naps/hibernations, an intensity dial 0–10 (`/slow-burn N` mid-run; 0 removes pacing), and cross-session resume so a hard cutoff loses nothing.
 - **/sleep** — deferred execution: arm a background timer for any wall-clock duration (`30m`, `2h`, `1h30m`, `90s`), then run any prompt on wake — as if you just sent it.
-- **Bundled skills** (ship with the blueprint, `p:*` namespace) — `p:blueprint` (the framework bus — `/pcm update` · `/pcm release`), `p:wave:refine`, `p:wave:review`, `p:rnd`, `p:quality:doc`, `p:quality:prompt`, `p:audit:code-hygiene`, `p:audit:security`.
+- **Bundled commands** (ship with the blueprint) — the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 - **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `p:360` (blind-spot killer), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
 - **Persona depth** — each persona (Professor, JC, Dr. House) ships in two selectable depths: **full** (rich, showcase voice) or **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn). Pick at install.
 - **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
@@ -106,7 +106,7 @@ A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) a
 ## How the pipeline works
 
 ```
-You say: /build add-user-search
+You say: /wave:builder add-user-search
 
   planners (parallel)         <- each project analyzes its codebase
        |
@@ -133,7 +133,7 @@ Every step is isolated. Every merge is gated. Every decision is traceable.
 
 **Hotfix?** `/jc` skips the full pipeline — diagnoses on `main`, fixes, tests, commits. Still goes through QA.
 
-**Big batch?** `/wave` runs multiple `/build` pipelines from a task file. Parallel execution, coordinated merging.
+**Big batch?** `/wave:orchestrator` runs multiple `/wave:builder` pipelines from a task file. Parallel execution, coordinated merging.
 
 ---
 
@@ -176,7 +176,7 @@ Five rules that make the whole system hold together:
 
 2. **QA gates every merge.** Pre-merge on the branch. Post-merge on `main`. Test failures block. No exceptions.
 
-3. **Worktree isolation.** Every `/build` gets its own git worktree + unique ports. Run three pipelines in parallel. `main` is never dirty.
+3. **Worktree isolation.** Every `/wave:builder` gets its own git worktree + unique ports. Run three pipelines in parallel. `main` is never dirty.
 
 4. **Context isolation.** When conversation context accumulates, the Professor spawns fresh sub-agents with self-contained prompts. No bias from stale context. No confusion from earlier attempts.
 

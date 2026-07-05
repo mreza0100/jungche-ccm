@@ -17,15 +17,15 @@ The shared base and the epic consolidation contract are injected below from thei
 
 ---
 
-## Step 1 — Read all pipeline documents
+## Step 1 — Sources
 
-All pipeline docs are in `$DOCS/`. Read everything that exists (`{project}` ranges over the roster's per-project suffixes):
+Pipeline docs live in `$DOCS/`; read only what exists (`{project}` ranges over the roster's per-project suffixes):
 
-- `1-plan.md`, `1-analysis-{project}.md`
-- `3-architecture.md`, `3-architecture-{project}.md`
+- `0-task.md` (the spec)
 - `4-ui-ux-spec.md`, `4-db-architecture.md`
 - `5-dev-report-{project}.md`
 - `6-bugs-{project}.md`, `6-bugs.md`, `7-post-merge-qa.md`
+- legacy archives also carry `1-plan.md`, `1-analysis-{project}.md`, `3-architecture.md`, `3-architecture-{project}.md`
 - `ports.md` (ephemeral, discard)
 
 <!-- Install-time: the `{project}` suffix expands to one file per roster entry; a single-project install has just one suffix (or none). -->

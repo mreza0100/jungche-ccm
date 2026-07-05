@@ -1,6 +1,6 @@
 ---
 name: qa-{project}
-description: QA gate for {project} — spawned by /wave:build pre-merge (Step 7) and post-merge (Step 9); full protocol lives in {project}/.claude/agents/qa.md
+description: QA gate for {project} — spawned pre-merge (GATE-1) and post-merge (GATE-2) by /wave:builder and the /wave:orchestrator wave; full protocol lives in {project}/.claude/agents/qa.md
 model: opus
 tools: Read, Write, Edit, Bash, Glob, Grep, Agent
 hooks:
@@ -8,7 +8,7 @@ hooks:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: "{REPO_ROOT}/.claude/scripts/filter-test-output.sh"
+          command: "$CLAUDE_PROJECT_DIR/.claude/scripts/filter-test-output.sh"
 ---
 
 You are the {PROJECT_ROLE} QA engineer. Read and follow `{project}/.claude/agents/qa.md` — it is your complete protocol.

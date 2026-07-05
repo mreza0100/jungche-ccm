@@ -1,7 +1,7 @@
 ---
 name: chat:inject
-description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
-argument-hint: [[--no-sig] [--force-now] {self | tmux-session | session-id} {message}]
+description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Restart all MCP servers on 'restart mcp' by self-injecting /mcp disable then /mcp enable. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
+argument-hint: [[--no-sig] [--force-now] [--then {steer}] {self | tmux-session | session-id} {message}]
 ---
 
 # Chat Inject — force a turn into another chat (or this one)
@@ -37,6 +37,23 @@ The script appends a footer to the end of every message — `— sid {sender ses
 ## Interrupt a busy target with `--force-now`
 
 By default a message injected into a busy target queues behind its current turn. `chat.sh inject --force-now {target} "{message}"` instead presses `Esc` to interrupt the running tool/flow so the target reads the message now, then delivers it. It only acts on a live pane (ignored with a warning for a transcript/RESUME target — a dormant chat has no running flow), and only interrupts when the target is actually busy; an idle target is delivered to normally. When it does interrupt, it appends a marker — `⚠ FORCE-DELIVERED via Esc (your running flow was interrupted; re-check any in-progress action)` — so the recipient knows its work was cut off and should re-check any half-done action. Combine with `--no-sig` for a clean operational interrupt. Use sparingly: interrupting an agent mid-tool-call can leave its work half-done.
+
+## Carry a follow-up past a /compact with `--then`
+
+`chat.sh inject [--no-sig] --then "{steer}" {target} "/compact {focus}"` delivers `{steer}` as a second turn the moment the primary turn finishes and the pane returns to idle. It exists for `/compact`: compaction leaves the chat idle, so a steer typed while it runs is swallowed — `--then` rides out the busy→idle transition, then types the steer onto the settled pane. The waiter is **detached**, because a self-inject's waiter runs inside the very turn it must wait on — that turn cannot end until the inject returns — so it survives the turn as a background process and delivers through a fresh inject that takes its own lock. The steer inherits `--no-sig`. It works for any primary message (it simply waits for that turn to end), but `/compact` is the case it is built for; a non-live (RESUME) target has no turn to wait on, so `--then` is ignored there with a warning.
+
+## Restart all MCP servers — "restart mcp"
+
+`/mcp disable` then `/mcp enable` cycles every MCP server. Both are user-typed slash commands, not tools, so fire them on this pane as two self-injects, in order — they queue behind the current turn FIFO, so disable runs first and enable second:
+
+```bash
+.claude/commands/chat/chat.sh inject --no-sig self "/mcp disable"
+.claude/commands/chat/chat.sh inject --no-sig self "/mcp enable"
+```
+
+Use two ordered injects, not `--then`: the `--then` waiter fires on the current turn's busy→idle edge and beats the still-queued `/mcp disable`, so enable lands first and the servers stay down. FIFO ordering is what guarantees disable-then-enable.
+
+When the founder says "restart mcp", run exactly these two.
 
 ## Concurrent senders are serialized
 

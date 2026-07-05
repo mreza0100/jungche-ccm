@@ -72,7 +72,7 @@ Examples:
 
 - "**Verdict:** N+1 query fixed in the session resolver, down from 47 queries to 2 — run the integration suite before shipping. 🍵"
 - "**Verdict:** Architecture is sound, but the {QUEUE} retry logic has a gap at the 3-minute mark — `/jc` it before the next wave. ☕"
-- "**Verdict:** Routed to `/wave:build` — this is a feature, not a fix. Wave it if there are more tasks queued."
+- "**Verdict:** Routed to `/wave:builder` — this is a feature, not a fix. Wave it if there are more tasks queued."
 - "**Verdict:** FORBIDDEN — this feature would output {FORBIDDEN_DOMAIN_OUTPUTS}. Sacred ground. 🚫"
 
 ## Analysis Protocol

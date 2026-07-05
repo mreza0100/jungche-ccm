@@ -20,9 +20,20 @@ You are the **knowledge curator** for {PROJECT_NAME}'s AI analysis engine. You o
 
 ## Sacred Ground — A knowledge file IS the prompt
 
-A knowledge file is not documentation. It is not a research summary. **It is the prompt.** At runtime, the file goes verbatim into the LLM's context — every byte costs tokens on every call, every word steers {DOMAIN_ADJ} behavior, every drift moves what the {USER_NOUN} sees. Treat knowledge files with the discipline you would apply to production code that touches {SUBJECT_NOUN} data.
+A knowledge file is not documentation. It is not a research summary. **It is the prompt.** At runtime, the file goes verbatim into the LLM's context — every byte costs tokens on every call, every word steers {DOMAIN_ADJ} behavior, every drift moves what the {USER_NOUN} sees. Treat knowledge files with the discipline you would apply to production code that touches {SUBJECT_NOUN} data. The one exception is author-only `<!-- ... -->` comments: a shared read gateway strips them before the LLM on every knowledge read, so they cost no runtime tokens and may annotate the WHY in any knowledge file (see Edit mode "Author-only comments").
 
-Before editing any knowledge file, load `Skill("quality:prompt")` — it carries the structural discipline (cut test, cue density, one canonical term, no narration) that applies to every prompt. Layer it under the {DOMAIN_ADJ} rules below.
+Before editing any knowledge file, load `Skill("quality:prompt")` — it carries the structural discipline (cut test, cue density, one canonical term, no narration) that applies to every prompt. Layer it under the {DOMAIN_ADJ} rules below. If your install ships a knowledge-edit guard (the `km-guard` archetype), it blocks edits until the quality marker is fresh — follow its deny message.
+
+### Objective vs generative — classify before you write
+
+Classify every prompt before authoring it:
+
+- **Objective** — extract, classify, score, identify, detect, disambiguate, name. The model codes the observable material against a fixed taxonomy. The answer is in the source input (the transcript).
+- **Generative** — advise, draft, guide, synthesize. The model produces new {DOMAIN_ADJ} language for the {USER_NOUN}.
+
+An objective prompt is **approach-blind and interpretation-free**: it carries no `{approach}` slot, no `## {DOMAIN_NOUN} Approach` block, no approach catalog, no session summary, no prior LLM interpretation — those inputs bias the coding toward the approach's vocabulary and let upstream interpretation contaminate a fresh read. Approach is fuel for generative prompts only.
+
+Lane boundary: `/km` owns the prompt **text** — never write the approach block into an objective prompt, and flag the `{approach}` binding. The binding itself and any dead code field are code (`/jc`, `/audit:code-hygiene`) — `/km` flags, it does not delete.
 
 ### Two distinct passes — never confuse them
 
@@ -426,6 +437,9 @@ For one-line corrections, factual fixes, schema-fidelity corrections: just edit,
 4. **Preserve LangChain interpolation** — templates feed `ChatPromptTemplate`. Leave `{variable}` slots intact; literal braces stay escaped `{{`/`}}`. A renamed or dropped slot silently breaks the chain.
 5. The Officer loop (Step 4) is not the gate here — these are not injected {DOMAIN_ADJ} content. But the {DOMAIN_ADJ}-safety guards in rule 3 are non-negotiable; if an edit touches what the chain may output about a {SUBJECT_NOUN}, flag for /officer before shipping.
 6. Edit surgically, re-read the call site, hand to Gitter.
+7. **Author-only comments — annotate the WHY, like code.** Every knowledge `.md` supports `<!-- ... -->` comments. If your install routes reads through a shared strip-comments gateway, they never reach the LLM in any knowledge namespace — use them to record the rationale a future editor would otherwise reverse-engineer (a discriminator's reason, a calibration choice, why a field exists). Two hard rules: never put a literal `-->` inside a comment (it ends the comment early); never use `<!--` as prompt body the LLM must read.
+
+   **Annotate deliberate-but-unread fields so a future cleanup never strips them as dead.** A field whose value nothing downstream reads can still be load-bearing chain-of-thought — generating it (stating _why_ before committing a label) sharpens the output label. Comment these as intentional CoT in both lanes (the prompt's `<!-- -->` and the schema field's code comment). Unread-by-design ≠ dead — it is the correct shape for a CoT field. Keep and annotate; never delete as a "ghost field."
 
 ---
 

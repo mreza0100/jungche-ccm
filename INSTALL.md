@@ -135,7 +135,7 @@ If a command doesn't exist for a project (e.g., no separate typecheck), say "ski
 ### Batch 6 — Optional commands
 
 ```
-14. Beyond the core Tier A + C (/build, /jc, /pcm, /dev, /git, /wave, /documenter,
+14. Beyond the core Tier A + C (/wave:builder, /jc, /pcm, /dev, /git, /wave:orchestrator, /documenter,
     /audit, /blueprint), which Tier B archetypes do you want? Pick from the menu,
     request your own, or skip:
 
@@ -323,7 +323,7 @@ Copy from `blueprint/templates/commands/`:
 
 Add the `git` command (gitter gateway — see template).
 
-**Critical build.md adaptation:** `/build` MUST be generated from the actual project roster captured in Batches 2-3. Delete every planner/architect/developer/QA/db/devops block for projects that do not exist. Do not map a missing archetype to a different project just to satisfy a placeholder. After writing `build.md`, fail if any `{OPTIONAL_*}` placeholder remains, grep every referenced `*/.claude/agents/*.md` path, and fail the install if any path does not exist. Also fail if report lists mention project keys that are not in the installed roster.
+**Critical wave/builder.md adaptation:** `/wave:builder` MUST be generated from the actual project roster captured in Batches 2-3. Delete every planner/architect/developer/QA/db/devops block for projects that do not exist. Do not map a missing archetype to a different project just to satisfy a placeholder. After writing `wave/builder.md`, fail if any `{OPTIONAL_*}` placeholder remains, grep every referenced `*/.claude/agents/*.md` path, and fail the install if any path does not exist. Also fail if report lists mention project keys that are not in the installed roster.
 
 ### Step 7 — Tier B commands (the user's opt-ins from Batch 6)
 
@@ -524,13 +524,13 @@ If the user said YES to Codex:
    ```
 2. Copy `blueprint/templates/codex/config.toml` to `.codex/config.toml` and customize:
    - Set project-relevant env vars in `[shell_environment_policy.set]`
-3. For each command in `.claude/commands/`, generate a `.codex/agents/{name}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/build.toml`. Each wrapper:
+3. For each command in `.claude/commands/`, generate a `.codex/agents/{name}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/wave-build.toml`. Each wrapper:
    - Has `name`, `description`, `nickname_candidates`
    - Points to the same `.claude/commands/{name}.md` as its role manual
    - Adds Codex-specific instructions (git ownership when Codex orchestrates, Skill→Agent substitutions)
 4. For each per-project agent role (planner, architect, developer, qa), generate a `.codex/agents/{project}-{role}.toml` wrapper following the pattern in `blueprint/templates/codex/agents/developer.toml`.
-5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/build/SKILL.md`.
-6. For each shared `.claude/skills/{360,rr,p:rnd,ghostwriter,vision-factory,p:quality:prompt,p:quality:doc}/SKILL.md`, create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch — verify this by grepping the wrappers before reporting Codex setup complete.
+5. For each command, create a `.codex/skills/{name}/SKILL.md` following the pattern in `blueprint/templates/codex/skills/wave-build/SKILL.md`.
+6. For each shared `.claude/skills/{rr,ghostwriter,vision-factory}/SKILL.md` (the source-fetched set), create a `.codex/skills/{name}/SKILL.md` wrapper or symlink. Wrappers must read the `.claude/skills/{name}/SKILL.md` source manual and preserve protocol semantics. In particular, `rr` must remain scout → fan-out → aggregate; never replace explicit RR with inline WebSearch/WebFetch — verify this by grepping the wrappers before reporting Codex setup complete.
 
 If the user said NO to Codex: skip this entire step. No `.codex/`, no `AGENTS.md`.
 
@@ -583,7 +583,7 @@ mkdir -p .professor
      "files": {
        "CLAUDE.md": "sha256:...",
        ".claude/agents/gitter.md": "sha256:...",
-       ".claude/commands/build.md": "sha256:..."
+       ".claude/commands/wave/builder.md": "sha256:..."
      }
    }
    ```
@@ -626,7 +626,7 @@ This manifest is the baseline for `/pcm update`'s three-way detection (installed
 
 ### Step 10 — Smoke test
 
-DO NOT run `/build` yet. First:
+DO NOT run `/wave:builder` yet. First:
 
 ```bash
 .claude/scripts/alloc-ports.sh alloc test-pipeline
@@ -637,7 +637,7 @@ DO NOT run `/build` yet. First:
 If those work cleanly, try a tiny first build:
 
 ```
-/build add-readme-section
+/wave:builder add-readme-section
 ```
 
 The first run reveals anything I missed. When it does, tell me and I'll fix the source via /pcm-style edits.
@@ -739,7 +739,7 @@ Codex integration: {yes — .codex/ created | no — skipped}
 Suggested next actions:
 - Read CLAUDE.md and confirm the structure looks right
 - Try /dev status to make sure dev.sh works in your environment
-- Try /build add-readme-section as a smoke test
+- Try /wave:builder add-readme-section as a smoke test
 - When something feels off, run /pcm with the issue — I edit the source, not patch with comments
 
 Public repo: https://github.com/mreza0100/professor

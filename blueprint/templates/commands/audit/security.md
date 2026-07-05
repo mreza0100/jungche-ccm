@@ -2,17 +2,20 @@
 name: audit:security
 version: "1.0.0"
 description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. {DOMAIN_ADJ} data is sacred."
+argument-hint: [scope]
 ---
 
 # Security — Deep Scan
 
 > {PROJECT_NAME} handles {SESSION_NOUN} records, {SUBJECT_NOUN} data, and {DOMAIN_ADJ} observations — among the most sensitive data categories in this domain. A security breach here doesn't just leak emails; it exposes someone's most private information to whoever should never see it. This is not a checkbox — it's a fortress inspection. {DOMAIN_SAFETY}
 
-**Trigger:** `security`, `security <scope>`.
+**Trigger:** `security`, `security <scope>`, or when `/audit` routes to security scopes.
 
 **Scopes:** `security` (all), `injection`, `auth`, `graphql`, `llm`, `prompt`, `phi`, `health`, `crypto`, `secrets`, `transport`, `supply-chain`.
 
 Each sub-category is independent — run only applicable ones based on scope.
+
+Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audit scope — in parallel with the scan (the same blind-spot backstop the other `audit/*` skills carry).
 
 **Report format (used across all sub-categories):**
 
@@ -56,7 +59,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, Python `text(` or `execute(` with f-strings/.format() (e.g. in {AI_FRAMEWORK}).
+1. **SQL injection:** `sql.raw(` with user values, template literals with variables in {ORM}, Python `text(` or `execute(` with f-strings/.format() (e.g. in the AI/pipeline project).
 
 2. **Command injection:** `child_process.exec(` with string args containing variables, `subprocess.run(`/`os.system(` in Python.
 
@@ -86,7 +89,13 @@ Internal system details leaking to end users through error messages, headers, or
 
 5. **Session/token management:** Missing refresh token rotation, no invalidation on password change, tokens in URLs/query params.
 
-6. **Magic login bypass:** `MAGIC_LOGIN_EMAIL` must check `FEATURE_FLAG_MAGIC_LOGIN=true`. Not enabled in `.env.local` (only `.env.demo`).
+6. **Feature-flag login bypass:** any magic/demo login path must be gated behind an explicit feature flag that is off in dev/prod env files (enabled only in a dedicated demo env).
+
+7. **Header-trust (CWE-290):** authorization/identity/rate-limit decisions read the verified JWT context (`ctx.user`), never a raw header (`X-Forwarded-For`, `X-Real-IP`, `req.headers[...]`). Pin {API_FRAMEWORK} `trust proxy` to the exact proxy hop count.
+
+8. **JWKS/`jku` injection (CWE-347, if RS256 is adopted):** the signing-key URL is code-configured, never taken from the token's own `jku`/`jwk`/`kid` header.
+
+9. **Revocation honored:** a token carrying `jti`/session-id is checked against a server-side revocation store on every verify, not trusted because it parses.
 
 **Files to check:** JWT middleware, resolver auth patterns, auth service, feature flag config, token storage in UI/client projects, env files.
 
@@ -109,6 +118,14 @@ Internal system details leaking to end users through error messages, headers, or
 6. **Field-level authorization:** {SENSITIVE_DATA} fields need per-field auth checks.
 
 7. **Field suggestion leakage:** "Did you mean 'socialSecurityNumber'?" in errors.
+
+8. **BOPLA via fragments (OWASP API3):** field-level authorization gates the RESOLVED runtime type — inline fragments (`...on Type`), interface and union spreads cannot reach a field the named query hides.
+
+9. **Alias-count cost:** the complexity plugin multiplies cost by alias count, not depth alone — 50 aliased copies of one expensive resolver stay under a depth limit while running it 50×.
+
+10. **Mass assignment (BOPLA):** input types and mutation args that accept `role`/`{ORG_UNIT}` id/`{USER_NOUN}` id/consent flags must strip or re-derive them server-side, never persist the caller's value.
+
+11. **Batch/export per-row fence (OWASP API1 at scale):** a resolver returning a collection (export, roster, `*sBy{SUBJECT_NOUN}`) fences EACH row, not once at the request level.
 
 **Files to check:** {API_FRAMEWORK} config, schema type definitions, input types, {REALTIME_PROTOCOL} setup, subscription resolvers.
 
@@ -136,7 +153,13 @@ Internal system details leaking to end users through error messages, headers, or
 
 9. **Data poisoning via vector store:** Source text not scanned before embedding, no knowledge file integrity verification.
 
-**Files to check:** Chain definitions, prompt templates, {AI_FRAMEWORK} agent/tool definitions, LLM response processing, {QUEUE} consumer, UI rendering of AI content, `pyproject.toml` for the {AI_FRAMEWORK} version.
+10. **Agent-tool-argument trust:** an AI-project `@tool`'s record-id arguments come from trusted server context (a `{SUBJECT_NOUN}_id` set by the caller-verified session), never a model-chosen value.
+
+11. **ATLAS tagging:** tag each injection finding with its MITRE ATLAS id — AML.T0051 (direct), AML.T0051.001 (indirect/RAG), AML.T0051.002 (agent-tool-abuse) — for the {PRIVACY_ASSESSMENT}.
+
+12. **Semantic injection scan:** alongside structural source-text sanitize, a phrase-level jailbreak scan (log + metric) over source-derived text feeding any chain.
+
+**Files to check:** Chain definitions, prompt templates, {AI_FRAMEWORK} agent/tool definitions, LLM response processing, {QUEUE} consumer, UI rendering of AI content, the AI project's manifest for the {AI_FRAMEWORK} version.
 
 ---
 
@@ -150,15 +173,15 @@ Internal system details leaking to end users through error messages, headers, or
 
 3. **{SENSITIVE_DATA} in URLs/query params/headers:** {SUBJECT_NOUN} names in URL construction — URLs are logged by proxies, stored in browser history.
 
-4. **{SENSITIVE_DATA} in client-side storage:** `localStorage`/`AsyncStorage` storing {subject} data instead of a secure store (`expo-secure-store`).
+4. **{SENSITIVE_DATA} in client-side storage:** `localStorage`/`AsyncStorage` storing {subject} data instead of a secure store.
 
 5. **{SENSITIVE_DATA} sent to external APIs:** {TRANSCRIPTION_SERVICE} must use the {DATA_REGION} endpoint. Check data minimization in LLM prompts. Verify HTTPS.
 
-6. **Audio file security:** Auth checks on audio URLs, unpredictable file paths (UUIDs not sequential IDs), signed URLs with short expiry.
+6. **Media file security:** Auth checks on media URLs, unpredictable file paths (UUIDs not sequential IDs), signed URLs with short expiry.
 
 7. **Missing audit trail:** No logging of who accessed what {SUBJECT_NOUN} data when.
 
-8. **Data deletion / right to erasure:** Cascade deletion across all stores ({session}s, transcripts, analysis, audio, embeddings, external service copies).
+8. **Data deletion / right to erasure:** Cascade deletion across all stores ({session}s, transcripts, analysis, media, embeddings, external service copies).
 
 9. **{SENSITIVE_DATA} in analytics (the $7M FTC-fine precedent):** Check for `gtag`/`fbq`/`mixpanel`/`amplitude`/`posthog`/`segment` sending {DOMAIN_ADJ} data. Marketing site must not link visitors to {DOMAIN_ADJ} identities.
 
@@ -166,9 +189,9 @@ Internal system details leaking to end users through error messages, headers, or
 
 11. **{DOMAIN_ADJ}-notes special protection:** Under {DOMAIN_STANDARDS} and {REGULATION} Article {N}, {DOMAIN_ADJ} notes need stricter access controls than general {SESSION_NOUN} data. {ROLE_SUPER} role should NOT access note content.
 
-12. **Consent management:** Consent flags verified before audio recording, AI analysis, vector embedding, external service calls. Check at every data processing boundary.
+12. **Consent management:** Consent flags verified before recording, AI analysis, vector embedding, external service calls. Check at every data processing boundary.
 
-**Files to check:** All log statements, error handlers, {TRANSCRIPTION_SERVICE} integration, LLM prompt construction, UI/client storage, media handling, URL construction, `package.json` for analytics SDKs, marketing site for tracking pixels, notes resolver access control, consent flag checks.
+**Files to check:** All log statements, error handlers, {TRANSCRIPTION_SERVICE} integration, LLM prompt construction, UI/client storage, media handling, URL construction, package manifests for analytics SDKs, marketing site for tracking pixels, notes resolver access control, consent flag checks.
 
 ---
 
@@ -187,6 +210,12 @@ Internal system details leaking to end users through error messages, headers, or
 5. **Missing encryption:** DB connections without SSL/TLS, `http://` in API base URLs.
 
 6. **Secrets in version control:** Check `.gitignore` includes `.env*`/`*.pem`/`*.key`, `.env.example` has placeholders not real values.
+
+7. **Weak-secret dictionary:** the JWT/session secret value is checked against a known-weak wordlist (`changeme`, `jwt_secret`, `your-256-bit-secret`), not length alone.
+
+8. **Committed key material:** grep for raw PEM private-key block headers and connection strings with inline `user:password`.
+
+9. **AEAD nonce:** AES-GCM / ChaCha20-Poly1305 nonces and IVs are generated fresh per call from a CSPRNG, never static or hardcoded.
 
 **Files to check:** All `.env*` files, auth/JWT config, password hashing, token generation, DB connection config.
 
@@ -210,6 +239,10 @@ Internal system details leaking to end users through error messages, headers, or
 
 7. **Debug mode in production:** `NODE_ENV` checks disabling security, source maps served in prod builds.
 
+8. **SSRF encoding + rebind:** URL allowlists reject encoded-localhost/private-IP forms (hex/decimal/octal) and pin the outbound connection to the validated IP — no DNS re-resolve between check and connect.
+
+9. **Rate-limit key integrity:** the limiter's key is not attacker-chosen — a key derived from `X-Forwarded-For`/`X-Real-IP` is bypassed by header rotation (ties to 8C-7 header-trust).
+
 **Files to check:** {API_FRAMEWORK} middleware stack, CORS config, HTTP client usage, {REALTIME_PROTOCOL} config, rate limiting, environment config branching.
 
 ---
@@ -228,4 +261,46 @@ Internal system details leaking to end users through error messages, headers, or
 
 5. **Pinned vs floating versions:** Security-critical deps (auth, crypto, validation) should use exact pins.
 
+6. **Typosquat denylist:** direct dependency names are checked against a typosquat list keyed to the real deps (`loadsh`, `axois`, `djago`, `python3-dateutil`).
+
+7. **Runtime install:** no `pip`/`npm`/`pnpm install` executed from application or skill source at runtime.
+
 **Files to check:** `package.json` files, lock files, `.npmrc`, CI config for audit steps.
+
+---
+
+## 8J — CI/CD & Framework Supply Chain
+
+**How to detect:**
+
+1. **Actions script injection:** every `${{ ... }}` expression inside a workflow `run:` block is a shell-injection sink — the value belongs in `env:`/`with:`, referenced as `$VAR`.
+
+2. **Unpinned actions:** third-party CI actions are pinned to a full commit SHA, not a floating tag (`@v4`).
+
+3. **Framework-file trust:** any new or changed file under `.claude/**` or the AI project's prompt/knowledge dir gets a static injection/code-exec scan before merge — a marketplace skill or knowledge file is untrusted input injected verbatim into an agent or the runtime LLM. The guard gates (the `pcm`/`km` archetypes) own this boundary.
+
+**Files to check:** CI workflow files, `.claude/**`, the AI project's prompt/knowledge dir.
+
+---
+
+## 8K — Concurrency & Segregation of Duties
+
+**How to detect:**
+
+1. **TOCTOU fence:** an ownership/{ORG_UNIT}/role fence is re-checked at the point of use, not evaluated once at the top of an `await`-spanning multi-step handler whose state can change mid-flight.
+
+2. **Atomic state:** read-modify-write on shared {DOMAIN_ADJ} state (consent flags, session/job status, analysis step) is atomic — no lost-update race between concurrent requests or {QUEUE} consumers.
+
+3. **Segregation of duties (ISO 27001:2022 A.5.3):** no single role holds BOTH a {SENSITIVE_DATA}-mutation capability AND the ability to modify/delete the audit-log rows that would record it.
+
+**Files to check:** resolvers/services with multi-step reads-then-writes, {QUEUE} consumers, audit-log write path, consent/erasure services.
+
+---
+
+## Method & Severity
+
+- **Adversarial verification:** confirm each finding through distinct hostile lenses — a Saboteur (concurrency/state/error-swallow), a New Hire (misused API), a Security Auditor (authz/secret/injection) — surfacing at least one finding per lens. A finding two lenses raise independently is promoted a severity level.
+- **State the contract first:** before reading a resolver body, state its authorization contract in one line (who may call, whose data) — then verify the code meets it.
+- **CVSS on confirmed findings:** attach a vector as a reproducible severity input — horizontal read ≈ 6.5, horizontal write ≈ 8.1, vertical-to-admin ≈ 8.8, unauthenticated-admin ≈ 9.8.
+- **Verification gate:** a scan is done when a re-run after the fix lands clean, not when the report is written.
+- **Control mapping (ISO 27001:2022 Annex A):** A.5.15 (access control), A.5.18 (access rights), A.8.3 (info access restriction), A.5.16 (identity management), A.8.4 (source-code access), A.8.16 (monitoring), A.5.34 (PII/privacy). The 2013 labels A.9/A.12/A.18 are retired.

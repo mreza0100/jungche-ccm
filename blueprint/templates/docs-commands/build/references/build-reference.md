@@ -1,6 +1,6 @@
-# /wave:build Reference
+# /wave:builder Reference
 
-Detailed mechanics the `/wave:build` orchestrator reads on demand: the Step 0a stale-cleanup procedure, the BLOCKED.md template, and the full pipeline step map.
+Detailed mechanics the `/wave:builder` orchestrator reads on demand: the Step 0a stale-cleanup procedure, the BLOCKED.md template, and the full pipeline step map.
 
 ## Contents
 
@@ -21,7 +21,7 @@ gitter archives it to `$DOCS/audit-trail.json` at MERGE.
 
 ## Step 0a — Stale Pipeline Cleanup
 
-The full mechanics of `/wave:build` Step 0a (MANDATORY pre-flight). The orchestrator reads and executes this before naming the pipeline. Invariants the rest of the pipeline depends on: `BLOCKED.md` dirs are preserved (never archived), wave-owned builds are never archived individually, stale standalone dirs move to gitignored cold storage `tmp/dev/archive/builds/`.
+The full mechanics of `/wave:builder` Step 0a (MANDATORY pre-flight). The orchestrator reads and executes this before naming the pipeline. Invariants the rest of the pipeline depends on: `BLOCKED.md` dirs are preserved (never archived), wave-owned builds are never archived individually, stale standalone dirs move to gitignored cold storage `tmp/dev/archive/builds/`.
 
 **First, prune orphaned worktrees** — `.worktrees/{name}` directories left by failed or abandoned pipelines that no agent otherwise reclaims (the inverse of the doc-dir sweep below):
 
@@ -51,7 +51,7 @@ done
 - If it has NO completion markers (no `7-*` file, no `BLOCKED.md`) → it was abandoned mid-pipeline. Add an `ABANDONED.md` marker, then archive. **Only for standalone builds (no wave owner).**
 
 ```bash
-echo "Pipeline abandoned — archived during /wave:build pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
+echo "Pipeline abandoned — archived during /wave:builder pre-flight cleanup on $(date -I)" > docs/dev/builds/$name/ABANDONED.md
 ```
 
 **Archive to cold storage (for standalone builds only — NEVER for wave-owned builds):**
@@ -110,7 +110,7 @@ Pick the branch by WHERE the blocking defect lives — the Root cause above name
 
 ## Pipeline step map
 
-What each `/wave:build` step produces and where. Each step in `build.md` is authoritative for its own Produces/Location; this is the at-a-glance index.
+What each `/wave:builder` step produces and where. Each step in `wave/builder.md` is authoritative for its own Produces/Location; this is the at-a-glance index.
 
 **Two-gate test discipline:** developer self-QA (Step 6) and the Step 7 fix-loop rounds are TARGETED (unit + typecheck + lint + only the failing/affected profiles + the pipeline's adversarial tests, NEVER the full suite). The full suite runs at exactly two zero-tolerance gates — **GATE-1** (pre-merge full, on the worktree branches, between Code review and Merge) and **GATE-2** (post-merge full, on `main` after merge). Both gates run on the per-pipeline isolated test stack (`up-test-pipeline` / `db-setup-test-pipeline` / `nuke-test-pipeline` `PIPELINE={name}` on the worktree's allocated `TEST_PG_PORT`/`TEST_LS_PORT` from `.env.ports`); GATE-2 runs from the project dirs on `main`.
 

@@ -202,6 +202,27 @@ if [ "${ACCOUNT_BADGE:-0}" = "1" ]; then
   fi
 fi
 
+# ── Rate-limit harvest — persist the gauges for mechanical consumers (e.g. the
+#    wave-sensor LIMITS check and limits-hook.sh) so nothing scrapes them off a
+#    rendered pane. Atomic write, keyed by account, one file PER SESSION. The stdin
+#    JSON is the ONLY carrier of .rate_limits, so the statusline is the harvester of
+#    record. Single-account setups always key to acct-1. ──
+_hnow=$(date +%s)
+if (( ${HR5:-0} > 0 || ${D7:-0} > 0 )) && (( ${HR5R:-0} > _hnow )); then
+  # Freshness gate: an ACTIVE session's 5h resets_at is in the future; an idle chat
+  # re-renders a stale snapshot with a fresh write ts — a past resets_at marks dead
+  # data, never harvested. One file PER SESSION (sessions carry different snapshot
+  # vintages of one account); consumers take max across fresh files. Self-reaps at 1h.
+  # Account from the badge (🥇→1 / 🥈→2 / 🥉→3); defaults to 1 when the badge is off.
+  _ra=1; [ "${badge:-}" = "🥈 " ] && _ra=2; [ "${badge:-}" = "🥉 " ] && _ra=3
+  _rld=/tmp/cc-rate-limits
+  _rsid="${SID:-anon}"
+  { mkdir -p "$_rld" && printf '{"acct":%s,"five_hour_used":%s,"seven_day_used":%s,"five_hour_resets_at":%s,"seven_day_resets_at":%s,"ts":%s}\n' \
+      "$_ra" "${HR5:-0}" "${D7:-0}" "${HR5R:-0}" "${D7R:-0}" "$_hnow" > "$_rld/.acct-${_ra}.${_rsid}.$$" \
+    && mv -f "$_rld/.acct-${_ra}.${_rsid}.$$" "$_rld/acct-${_ra}.${_rsid}.json" \
+    && find "$_rld" -name "acct-${_ra}.*.json" -mmin +60 -delete; } 2>/dev/null || true
+fi
+
 # ── LINE 1: Identity ────────────────────────────────────────────────
 l1="${badge}${C}${ms} ${MODEL}${X}"
 [ -n "${SESSNAME:-}" ] && l1+="${SEP}${W}🔖 ${SESSNAME}${X}"
@@ -251,7 +272,7 @@ l2+="${SEP}${D}⏱ ${df}${X}"
 
 # Rate limits (Pro/Max — direct from stdin JSON, no API call): 5-hour + 7-day windows.
 if (( ${HR5:-0} > 0 )); then
-  l2+="${SEP}$(mkbar "$HR5" 5) $(pc "$HR5")5h:${HR5}%${X}"
+  l2+="${SEP}$(mkbar "$HR5" 5) $(pc "$HR5")5h-used:${HR5}%${X}"
   if (( ${HR5R:-0} > 0 )); then
     rem=$(( HR5R - $(date +%s) ))
     (( rem > 0 )) && l2+=" ${D}↻$((rem/3600))h$(((rem%3600)/60))m${X}"
@@ -259,7 +280,7 @@ if (( ${HR5:-0} > 0 )); then
 fi
 # 7-day window — the weekly ceiling (was read but never rendered); pc() flags it red past 80%.
 if (( ${D7:-0} > 0 )); then
-  l2+="${SEP}$(mkbar "$D7" 5) $(pc "$D7")7d:${D7}%${X}"
+  l2+="${SEP}$(mkbar "$D7" 5) $(pc "$D7")7d-used:${D7}%${X}"
   if (( ${D7R:-0} > 0 )); then
     rem7=$(( D7R - $(date +%s) ))
     (( rem7 > 0 )) && l2+=" ${D}↻$((rem7/86400))d$(((rem7%86400)/3600))h${X}"
