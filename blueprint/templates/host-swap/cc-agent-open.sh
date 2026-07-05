@@ -49,7 +49,7 @@ for cfg in "${cands[@]}"; do
     if [ -n "$1" ]; then CLAUDE_CONFIG_DIR="$1" claude agents --json
     else env -u CLAUDE_CONFIG_DIR claude agents --json; fi' _ "$cfg" 2>/dev/null)"
   row="$(printf '%s' "$j" | jq -c --arg u "$u" \
-    '.[] | select((.sessionId==$u) or (.id!=null and ($u|startswith(.id))))' 2>/dev/null | head -1)"
+    '.[] | objects | select((.sessionId==$u) or (.id!=null and (.id as $i | $u|startswith($i))))' 2>/dev/null | head -1)"
   [ -n "$row" ] && { hit="$row"; hitcfg="$cfg"; break; }
 done
 
