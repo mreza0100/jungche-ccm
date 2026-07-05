@@ -64,7 +64,7 @@ Read the per-release files `releases/v*.md` for every version `> {INSTALLED}` an
 Parse each bullet:
 
 - Prefix → category (`Tier A:`, `Tier B:`, `Mechanics:`, `Docs:`, `Scripts:`)
-- Trailing tags → override (`(safe-auto)`, `(breaking)`, `(opt-in)`)
+- Trailing tags → override (`(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)`)
 
 ### Step 4 — Classify bump magnitude
 
@@ -96,7 +96,7 @@ If new templates introduce placeholders not in the manifest → flag as `[manual
 
 **Bucket 1 — Auto-apply** (summary, apply unless user objects): `A→A→B` files, new Tier C / `(safe-auto)` files, `Scripts:`/`Mechanics:` the user hasn't customized.
 
-**Bucket 2 — Review** (show diff, ask per-file): `A→B→C` conflicts, `Tier A:` content changes, new `(opt-in)` Tier B archetypes, entries marked `(breaking)`.
+**Bucket 2 — Review** (show diff, ask per-file): `A→B→C` conflicts, `Tier A:` content changes, new `(opt-in)` Tier B archetypes, entries marked `(breaking)`. Cost-bearing deltas — env vars, hooks, permissions, model/config changes (`settings.json` or any file) — ALWAYS land here with an explicit cost/behavior note, regardless of the hash table or `(safe-auto)` tags.
 
 **Bucket 3 — Manual** (interactive walkthrough): new interview questions (new placeholders), structural migrations (renames, moves, deletes), `### Breaking` and `### Migration` entries.
 

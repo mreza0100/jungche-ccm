@@ -2,6 +2,8 @@
 
 Executed inside `/pcm:release` (step 3). Re-derives the blueprint from the CURRENT `.claude/` and `CLAUDE.md` state. Edit files directly inside `{BLUEPRINT_CLONE_PATH}blueprint/`.
 
+**Scope (incremental):** `blueprint/refresh-map.json` maps every template to its live source(s) + the SHA-256 of each as of the last sync. `scripts/refresh-scope.sh scan` proves unchanged sources untouched — their templates are skipped; re-derive only CHANGED templates (plus files named in `.professor/release.md`); UNMAPPED-LIVE files get a mapping ruling. `curated` templates have no live source and are never auto-derived. `refresh-scope.sh regen` re-baselines the hashes at release end.
+
 **Update mechanism context:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, `/pcm:update` replays interview answers against new templates, runs a three-way hash comparison, and presents changes in three buckets. The blueprint update/release protocol ships in `templates/commands/pcm/` as the `update` and `release` subcommands of the `pcm` command directory; this refresh-pass reference lives at `templates/commands/pcm/references/refresh.md`.
 
 Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
@@ -30,6 +32,8 @@ Cross-conversation context persists via **Epics** — initiative-level manifest 
 - Discipline frame (zero-tolerance tests, mock policy, never-destructive-git, never-edit-main)
 
 ### Placeholders (project-specific → generic at refresh)
+
+> Human copy — the executable copy is `scripts/placeholder-map.tsv`, applied by `scripts/genericize.sh` as the deterministic first pass on every re-derived template; edit both together. The LLM hand-judges structure only (roster collapsing, domain nouns, persona metaphors).
 
 - `{PROJECT_NAME}` (and any former brand the repo was renamed from — a rename orphans the old name in the blueprint source, so scrub both), per-project directories → `{PROJECT_NAME}`, `{project-a}` etc.
 - `Professor` → keep with "rename if you want" comment

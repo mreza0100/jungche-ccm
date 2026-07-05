@@ -267,6 +267,16 @@ professor/
 
 ---
 
+## Maintainer setup (one-time per host)
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Arms the committed pre-push leak gate: `scripts/leak-check.sh` scans every outgoing diff for brand (current + former), founder PII, and machine paths — a leaking push fails mechanically. The hook also warns on lightweight `v*` tags (releases are annotated). Release tooling lives in `scripts/`: `genericize.sh` (+ `placeholder-map.tsv`) is the deterministic placeholder pass, `refresh-scope.sh` (+ `blueprint/refresh-map.json`) scopes the incremental refresh.
+
+---
+
 ## Origin
 
 Extracted from a live production monorepo — not designed in theory. Every rule exists because something went wrong without it. Every character exists because a generic agent wasn't good enough.

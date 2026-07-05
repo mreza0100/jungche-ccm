@@ -29,13 +29,11 @@ If `{BLUEPRINT_CLONE_PATH}` is missing, clone it (or create the repo on the host
 ---
 
 ```pseudo
-0. Update-gate (run before everything) — release only from current. Compare `.professor/VERSION` against the
-   highest published tag (`git ls-remote --tags https://github.com/{BLUEPRINT_REPO}.git 'refs/tags/v*'`).
-   If a tag is newer → run `/pcm:update` first, then continue. For this source repo a newer tag is usually the
-   self-publish round-trip (our own last release this host never pulled): the update syncs `.professor/VERSION`
-   + manifest to the latest tag with no peer content to consume. The new version Step 4 computes must be greater
-   than every published tag — skip this and the source repo, lagging its own last publish, recomputes an
-   already-shipped version and collides on the tag push.
+0. Update-gate (run before everything) — release only from current. Run `.claude/scripts/baseline-sync.sh`:
+   a version gap that is purely our own self-publish round-trip (every gap tag already contained in the local
+   blueprint clone, zero peer commits on origin) is synced mechanically — VERSION + manifest + a drift.md row.
+   A PEER-CONTENT report (exit 10) → run `/pcm:update` first, then continue. Either way the version Step 4
+   computes must be greater than every published tag, or the tag push collides.
 
 1. Validate args (bump type + summary required, bail if missing)
    patch = bug fixes/doc tweaks | minor = new archetype/command/step | major = breaking/migration
@@ -44,16 +42,25 @@ If `{BLUEPRINT_CLONE_PATH}` is missing, clone it (or create the repo on the host
    if !exists {BLUEPRINT_CLONE_PATH}.git → create repo on host if needed → clone
    else → git fetch origin && git pull --ff-only origin main (STOP if fails)
 
-3. Run the refresh pass — read `docs/commands/pcm/references/refresh.md` and execute it
-   end-to-end: re-derive the blueprint from the live `.claude/` + `CLAUDE.md`, update the
-   public README. STOP if it fails.
+3. Run the refresh pass, scoped by the refresh map:
+   a. `{BLUEPRINT_CLONE_PATH}scripts/refresh-scope.sh scan {project-root}` — hashes every live source in
+      `blueprint/refresh-map.json`; UNCHANGED sources are a mechanical untouched-proof, their templates are
+      SKIPPED. Re-derive only CHANGED templates plus any file a `.professor/release.md` bullet names;
+      UNMAPPED-LIVE files get a mapping ruling (map or ignore_sources) before continuing; `curated`
+      templates are hand-maintained, never auto-derived.
+   b. Read `docs/commands/pcm/references/refresh.md` and execute it over that scope: run
+      `scripts/genericize.sh` first on each re-derived template (deterministic placeholder pass from
+      `scripts/placeholder-map.tsv`), hand-judge structure only. Update the public README.
+   c. After template edits land: `refresh-scope.sh regen {project-root}` — fresh hashes are the next
+      release's baseline. STOP if any step fails.
 
 4. Read VERSION, compute new version
 
-5. Build CHANGELOG bullets from `.professor/release.md` — the pending-sync queue is the source
-   of what ships (format: "- {Tier}: {scope} — {semantic change}").
+5. Build CHANGELOG bullets from `.professor/release.md` — entries are already final bullets
+   (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim,
+   never re-author. Bullets carrying env-var/hook/permission/model-config changes are tagged `(cost)` —
+   update Step 6 routes them to Bucket 2 review.
    if release.md empty → prompt maintainer for bullets
-   Per-bullet migration sub-headings (#### → For:) required for adopter-side action
    Informational-only bullets marked: **`update`: skip — informational only.**
 
 5b. Source-fetched skill release — for each pending bullet naming a `sources.json` skill, ship
@@ -97,7 +104,7 @@ If `{BLUEPRINT_CLONE_PATH}` is missing, clone it (or create the repo on the host
 - Refresh pass succeeded
 - `.professor/release.md` non-empty (or maintainer provided bullets)
 - No secrets in staged diff
-- Staged templates grep clean (0 hits) for the project brand (current AND former name), founder name, and `/Users/` machine paths — the refresh pass swaps the brand for `{PROJECT_NAME}`, so a single leftover is a refresh bug, not an exception
+- `scripts/leak-check.sh` clean on the staged diff (brand current+former, founder PII, machine paths) — the committed `.githooks/pre-push` hook enforces the same gate at push time; a single leftover is a refresh bug, not an exception
 - Every pending `sources.json`-skill bullet shipped via step 5b (skill repo tagged + pushed); the professor diff vendors none of their files
 - New version > local version
 
