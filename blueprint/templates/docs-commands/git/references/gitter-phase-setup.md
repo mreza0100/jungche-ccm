@@ -13,10 +13,8 @@ First pipeline stage — creates the worktree before planning and architecture r
     ```bash
     git add -A && git commit -m "chore(wip): carry into pipeline/$PIPELINE"
     ```
-  - `leave` — stash so worktree creation runs on a clean tree; restored to main in Step 2:
-    ```bash
-    git stash push --include-untracked -m "pre-pipeline stash: $PIPELINE"
-    ```
+  - `leave` — leave main's WIP exactly in place, NO stash: `git worktree add` cuts the branch from the COMMITTED ref, so a dirty main never blocks or contaminates worktree creation. A stash+pop window makes live-lane ledgers vanish from sibling readers mid-window, and an aborted phase orphans the stash; `docs/dev/waves/**` is never stashed on a live train.
+- **Orphan check** — a `pre-pipeline stash: *` entry in `git stash list` is an ABORTED prior SETUP's orphan: stop and report it before any new work (never stack a second; gitter.md § Aborted phase).
 
 ## 2. Create worktree
 
@@ -24,12 +22,9 @@ First pipeline stage — creates the worktree before planning and architecture r
 ./.claude/scripts/worktree.sh create $PIPELINE
 ```
 
-Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, installs deps for every roster project, allocates ports, writes `.env.ports`. Then pop the stash if present and init the audit trail (`$WORKTREE/.checkpoint.json` logs which agent did what; gitignored, archived at MERGE):
+Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, installs deps for every roster project, allocates ports, writes `.env.ports`. Then init the audit trail (`$WORKTREE/.checkpoint.json` logs which agent did what; gitignored, archived at MERGE):
 
 ```bash
-if git stash list | grep -q "pre-pipeline stash: $PIPELINE"; then
-  git stash pop || echo "WARNING: stash pop had conflicts — run 'git stash show' to inspect."
-fi
 bash .claude/scripts/checkpoint.sh init "$WORKTREE" "$PIPELINE"
 ```
 

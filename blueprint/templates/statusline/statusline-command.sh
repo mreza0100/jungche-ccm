@@ -66,6 +66,9 @@ if [ -n "${TMUX:-}" ] && [ -n "${TPATH:-}" ]; then
   _sock="${TMUX%%,*}"; _sock="${_sock##*/}"
   # 700: breadcrumbs are transcript paths and the namecache carries prompt text — not for other uids
   { mkdir -p /tmp/cc-sid && chmod 700 /tmp/cc-sid && printf '%s' "$TPATH" > "/tmp/cc-sid/${_sock}"; } 2>/dev/null || true
+  # pane-keyed breadcrumb too (<sock>.<pane_id>): several chats SPLIT in one window each get their
+  # own map entry — cc-ls merges them into one row (the socket-keyed file above is last-writer-wins)
+  [ -n "${TMUX_PANE:-}" ] && { printf '%s' "$TPATH" > "/tmp/cc-sid/${_sock}.${TMUX_PANE}"; } 2>/dev/null || true
 fi
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -203,8 +206,8 @@ if [ "${ACCOUNT_BADGE:-0}" = "1" ]; then
 fi
 
 # ── Rate-limit harvest — persist the gauges for mechanical consumers (e.g. the
-#    wave-sensor LIMITS check and limits-hook.sh) so nothing scrapes them off a
-#    rendered pane. Atomic write, keyed by account, one file PER SESSION. The stdin
+#    orchestrator/watcher LIMITS checks and limits-hook.sh) so nothing scrapes them
+#    off a rendered pane. Atomic write, keyed by account, one file PER SESSION. The stdin
 #    JSON is the ONLY carrier of .rate_limits, so the statusline is the harvester of
 #    record. Single-account setups always key to acct-1. ──
 _hnow=$(date +%s)
@@ -270,6 +273,20 @@ fi
 # Duration
 l2+="${SEP}${D}⏱ ${df}${X}"
 
+l3=""
+
+# Local segment modules — OPT-IN extension point: every *.sh under
+# ~/.claude/statusline/segments.d/ is sourced here in name order, with the
+# helpers (pc/mkbar/fmttok), colors, SEP, and all parsed fields in scope.
+# A module appends to l1/l2/l3 (l3 — the money/limits line, empty here — is
+# the usual target). Host-personal gauges (cloud spend, quota meters) live
+# here as local files, never in this shipped core.
+if [ -d "$HOME/.claude/statusline/segments.d" ]; then
+  for _seg in "$HOME/.claude/statusline/segments.d"/*.sh; do
+    [ -f "$_seg" ] && { . "$_seg"; } 2>/dev/null || true
+  done
+fi
+
 # Rate limits (Pro/Max — direct from stdin JSON, no API call): 5-hour + 7-day windows.
 if (( ${HR5:-0} > 0 )); then
   l2+="${SEP}$(mkbar "$HR5" 5) $(pc "$HR5")5h-used:${HR5}%${X}"
@@ -288,4 +305,8 @@ if (( ${D7:-0} > 0 )); then
 fi
 
 # ── Render (prepend reset to fight CC's dimColor wrapper) ────────────
-printf '\033[0m%s\n\033[0m%s\n' "$l1" "$l2"
+if [ -n "$l3" ]; then
+  printf '\033[0m%s\n\033[0m%s\n\033[0m%s\n' "$l1" "$l2" "$l3"
+else
+  printf '\033[0m%s\n\033[0m%s\n' "$l1" "$l2"
+fi

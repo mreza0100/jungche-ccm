@@ -48,6 +48,12 @@ Add to `~/.claude/settings.json`:
 
 Requires `jq` and `git`.
 
+## Local segments (segments.d)
+
+The line-3 anchor is an OPT-IN extension point: every `*.sh` file under `~/.claude/statusline/segments.d/` is sourced in name order, right where `l3=""` is initialized, with the script's helpers (`pc`/`mkbar`/`fmttok`), colors, `SEP`, and every parsed field already in scope. A module appends to `l1`, `l2`, or `l3` (`l3` — the money/limits line, empty by default — is the usual target). A broken or missing module is a no-op — sourcing is wrapped in `2>/dev/null || true`, so one bad file never breaks the statusline, and the directory itself is optional.
+
+This is where host-personal gauges belong — cloud-spend meters, quota trackers, anything tied to your own accounts or billing — as local files this blueprint never ships. With no modules present the statusline stays two lines; drop a module in and it renders a third.
+
 ## Related: Notifications (`notify.sh`)
 
 The statusline shows real-time state while you're watching. For when you're NOT watching, `scripts/notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events to send a macOS notification when a turn takes 30+ seconds. Both are installed together — see `INSTALL.md` Steps 8.1 and 8.2.

@@ -6,7 +6,7 @@ argument-hint: [{session or topic} {question}]
 
 # Chat Interrogate — interrogate a finished session
 
-Talk to a finished session. Epics and memory store what was decided; the transcript still holds _why_. Chat interrogate finds the predecessor and fork-resumes it to answer a question — a read-only fork, so the original session is untouched.
+Talk to a finished session. Epics and memory store what was decided; the transcript still holds _why_.
 
 ## When to load
 
@@ -16,10 +16,10 @@ Talk to a finished session. Epics and memory store what was decided; the transcr
 
 ## Discover the session
 
-Sessions live at `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/*.jsonl` (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`). The sanitized cwd replaces `/` with `-`.
+Sessions live at `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/*.jsonl` (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`). The sanitized cwd is `pwd | tr '/.' '--'` — the same derivation `chat.sh` itself uses.
 
 ```bash
-DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | tr '/' '-')"
+DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | tr '/.' '--')"
 ls -t "$DIR"/*.jsonl | head -10   # most-recent first; the uuid is the filename
 ```
 

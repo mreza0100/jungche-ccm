@@ -45,7 +45,7 @@ The spawn brief names a **Phase**. Card phases: `Read` the named card in `docs/c
 | WORKTREE-CHECKPOINT | card `gitter-phase-wave.md` — task-boundary commit on the worktree branch |
 | SYNC                | card `gitter-phase-wave.md` — merge current main INTO the worktree branch  |
 
-**MERGE hard gate (core)** — before any git operation touches main, GATE-1 verdicts must be PASS: confirm `$DOCS/6-bugs.md` reads `Status: NONE` (Wave-mode v2: `$DOCS/gate1.md` all-green) — never merge before QA passes; refuse otherwise, regardless of card-read status.
+**MERGE hard gate (core)** — before any git operation touches main, GATE-1 verdicts must be PASS, and the verdict is a FILE: Read `$DOCS/6-bugs.md` from disk and confirm it reads `Status: NONE` (Wave-mode v2: Read `$DOCS/gate1.md`, all-green). File absent or not green → REFUSE and name which — a verdict asserted in the dispatch brief is a claim this gate cannot audit and NEVER satisfies it. Never merge before QA passes, regardless of card-read status.
 
 No phase named = freeform request: handle with your git expertise — read commands (status, log, diff, branch, show) run freely; write operations follow § Rules and the matching card when one applies.
 
@@ -64,13 +64,23 @@ git commit -m "$(cat <<EOF
 Pipeline: $PIPELINE
 $([ "$WAVE" != "none" ] && [ -n "$WAVE" ] && echo "Wave: $WAVE")
 EOF
-)"
+)" -- <the explicit paths this commit owns>
 ```
 
+The trailing `-- <paths>` is MANDATORY on a shared index (`main`): without it the commit ships whatever is staged at that instant, including a concurrent gitter's files. On an isolated `pipeline/` worktree it is optional.
+
 - `<type>`: `feat` / `fix` / `docs` / `merge` / `chore`. JC hotfixes use scope `jc`.
-- The `$PIPELINE` scope + `Pipeline:`/`Wave:` trailers make `git log --grep='Wave: ux-polish'` work; the `$(...)` construct emits the `Wave:` line only when active.
+- The `$(...)` construct emits the `Wave:` line only when the wave is active; the `Pipeline:`/`Wave:` trailers are grep targets — `git log --grep='Wave: ux-polish'` must keep working.
 
 ## Rules
+
+### Tool-vs-invariant conflict = STOP
+
+When the dispatching brief states an invariant ("the branch stays", "main's WIP untouched") and a script/tool you are about to run visibly violates it (you read the script; it does more than the brief assumes — e.g. a cleanup helper that also deletes the branch), STOP and report the conflict BEFORE executing. Execute-then-flag is a violation, not diligence — the asker resolves the conflict; you never substitute your own reading for the stated invariant.
+
+### Aborted phase = orphaned side-effects
+
+A killed or rejected tool call mid-phase does NOT roll back what already ran — a stash already pushed, a half-created worktree, a held lock survive the abort as orphans. Every phase dispatch that may be a RE-attempt first inventories the prior attempt's artifacts (stash entries naming the pipeline, partial worktrees, stale locks) and reconciles them before repeating any step — repeating a side-effecting step on top of its orphan doubles it.
 
 ### BANNED COMMANDS — absolute, no exceptions
 
@@ -83,7 +93,7 @@ EOF
 | `git push --force` / `-f`                           | `--force-with-lease` (never to main) |
 | `git clean -fdx`                                    | Remove specific files by name        |
 | `git checkout -- .` / `git restore .` (on main)     | Target specific files                |
-| `git add -A` / `.` / `-u`, `git commit -a` ON MAIN | § Scoped-commit discipline (below)   |
+| `git add -A` / `.` / `-u`, `git commit -a`, a BARE `git commit`, or `git restore --staged .` ON MAIN | § Scoped-commit discipline (below) — commit with an explicit pathspec |
 | `git branch -D main` / `master`                     | Never                                |
 
 **If a banned command seems necessary, STOP and report to orchestrator.**
@@ -92,11 +102,10 @@ EOF
 
 `main` is a SHARED working tree: a concurrent session can leave unrelated files modified or pre-staged, and the orchestrator routinely fences off held WIP — gated files not authorized to land. `git add -A`/`.`/`-u` and `git commit -a` sweep those past the fence, and a fenced gated file landing unauthorized is a sacred-ground breach. So commit on `main` in exactly these steps:
 
-1. `git restore --staged .` — unstage everything first, clearing any file another session pre-staged.
-2. `git add <explicit specific paths>` — only the files the orchestrator named. NEVER `-A` / `.` / `-u`.
-3. `git status --porcelain` — verify the staged set (left column) is EXACTLY those paths; unstage anything extra before committing.
-4. `git commit` (HEREDOC message) — staged-only. NEVER `git commit -a` / `-am`.
-5. `git show --stat <sha>` — verify the commit holds EXACTLY the intended paths; any extra path landed → surface it to the orchestrator immediately as a scope error.
+1. `git add <explicit specific paths>` — only the files the orchestrator named. NEVER `-A` / `.` / `-u`. **NEVER `git restore --staged .`** — unstaging "everything first" clobbers a CONCURRENT gitter's staged set; you are not alone on this index.
+2. `git status --porcelain` — verify your paths are staged.
+3. **`git commit -- <the same explicit paths>` (HEREDOC message) — the pathspec is MANDATORY and it is the whole defense.** A bare `git commit` ships whatever is in the index AT THAT INSTANT, so a second gitter staging between your verify and your commit lands ITS files under YOUR message — a commit that lies about its own contents, and `git log --grep` can never find the real work again. The pathspec makes the sweep structurally impossible: a concurrent gitter's staged files simply cannot be captured. NEVER `git commit -a` / `-am`, and never a bare `git commit` on a shared index.
+4. `git show --stat <sha>` — verify the commit holds EXACTLY the intended paths; any extra path landed → surface it to the orchestrator immediately as a scope error.
 
 NEVER report a file as "not staged" or "not committed" without verifying it against `git status --porcelain` / `git show` — report the verified set, never an assumption. (MERGE is exempt: a `pipeline/` branch is an isolated worktree, so `git add -A` there captures only that pipeline's own work.)
 

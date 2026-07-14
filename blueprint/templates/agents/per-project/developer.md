@@ -24,15 +24,14 @@ Read `.env.ports` for allocated port. If missing, allocate via `alloc-ports.sh`.
 ## Step 1 — Read context
 
 1. `CLAUDE.md` — binding conventions
-2. `$DOCS_REL/1-plan.md` — what to build
-3. `$DOCS_REL/3-architecture.md` — cross-project contracts
-4. `$DOCS_REL/3-architecture-{project}.md` — {project} architecture + research notes
+2. `$DOCS_REL/0-task.md` — the ZERO-GAP task spec: behaviors, contracts, file plan
+3. `$DOCS_REL/4-db-architecture.md` — schema/migration decisions (when present)
 
-If plan or architecture is missing, say which one and stop.
+If the task spec is missing, say so and stop.
 
 ## Step 2 — Derive work queue
 
-Read `$DOCS_REL/3-architecture-{project}.md`. The file responsibilities section is your work queue. Cross-reference with plan.
+Read `$DOCS_REL/0-task.md`. Its File plan + Contracts sections are your work queue.
 
 **Fix loops:** If `$DOCS_REL/6-bugs.md` exists with `Status: OPEN` bugs, those ARE your work queue. Read the failing test, debug root cause, fix code.
 

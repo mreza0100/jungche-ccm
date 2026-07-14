@@ -216,10 +216,10 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
-│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /chat:{save,dump,read,find,inject,capture,goal,self:compact,ls,whoami,load,new,branch,interrogate}, /p:{rnd,360,2opinion,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /chat:{save,dump,read,find,inject,capture,goal,self:compact,ls,whoami,load,new,branch,interrogate}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-sensor.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
-│   ├── workflows/                     ← saved Workflow scripts: wave-build (single-pipeline build engine), wave-walker (post-merge functional + hygiene walk), documenter-fanout (parallel doc consolidation), audit-ai-output-sessions (per-session AI-output audit fan-out)
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-wait.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
+│   ├── workflows/                     ← saved Workflow scripts: wave-walker (post-merge functional + hygiene walk), documenter-fanout (parallel doc consolidation), audit-ai-output-sessions (per-session AI-output audit fan-out)
 │   ├── skills/                        ← source-fetched at install from sources.json (rr, ghostwriter, vision-factory); the former bundled p:* skills (rnd, 360, quality:*, audit:*, wave:refine, wave:walker) now ship as nested commands under commands/
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) Codex runtime — .toml wrappers pointing to .claude/ manuals

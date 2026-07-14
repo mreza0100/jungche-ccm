@@ -165,7 +165,7 @@ Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" s
 
 ## Ignored artifacts (do NOT ship, drop references)
 
-`audit:cortex`, `cortex-drain-wait.sh`, `km-guard.sh` and the Knowledge-guard / No-inline-LLM-prompts rules that reference them are **out of scope**. When a shipped template (root `CLAUDE.md`, `/km`, `/documenter`, `dev`, `wave`, `pcm`, `settings.json`) references them, drop that row/rule/line — exactly as `council`/`reddit` are dropped — so the blueprint has no dangling pointers.
+`audit:cortex`, `cortex-drain-wait.sh` and the No-inline-LLM-prompts rules that reference them are **out of scope**. When a shipped template (root `CLAUDE.md`, `/km`, `/documenter`, `dev`, `wave`, `pcm`, `settings.json`) references them, drop that row/rule/line — exactly as `council`/`reddit` are dropped — so the blueprint has no dangling pointers. Exception since v0.44.0: `km-guard.sh` DOES ship — generalized to a config-driven protected-paths guard (`PROTECTED_PATHS` glob array + `PROTECTED_PATH_GREP`), wired in `settings.json` (Edit|Write + Bash matchers); the Knowledge-guard rule ships with it.
 
 ## Tokens (additional canonical entries)
 

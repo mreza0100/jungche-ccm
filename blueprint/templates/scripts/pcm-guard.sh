@@ -54,7 +54,7 @@ if ! fresh "$QUALITY"; then
   REASON+=" DENIED — prompt-file edits require /quality:prompt loaded this session: Read .claude/commands/quality/prompt.md (the Read auto-stamps your session), then retry."
 fi
 if ! fresh "$ACTIVE"; then
-  REASON+=" DENIED — infra edits route through /pcm: open this session's gate from the repo root: date +%s > \"tmp/professor_pcm_active${SID:+.$SID}\" , then retry."
+  REASON+=" DENIED — infra edits route through /pcm: open this session's gate from the repo root: date +%s > \"tmp/professor_pcm_active${SID:+.$SID}\" — run the stamp UNSANDBOXED (a sandboxed write never lands on the filesystem this hook reads; a denied retry after stamping means the stamp ran sandboxed), then retry."
 fi
 REASON+=" Markers slide on every allowed edit and are cleared at turn end. Do NOT route around this by disabling the hook or editing infra outside /pcm."
 

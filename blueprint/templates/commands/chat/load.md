@@ -8,13 +8,11 @@ argument-hint: [directory or file paths]
 
 Args: $ARGUMENTS
 
-Load the target into context for real — every file, in full, no skim. This writes nothing; the whole point is that you actually read all of it.
-
 ## Steps
 
 1. **Enumerate the authoritative set:**
    ```bash
-   .claude/commands/chat/chat.sh load $ARGUMENTS
+   $HOME/.claude/commands/chat/chat.sh load $ARGUMENTS
    ```
    It lists EVERY text file (line counts + total). That is the full set — no sampling.
 2. **Read every one in full.** Read each listed file with the Read tool, in ranged calls for the large ones. Actually read them all — do not stop after a few. Write nothing.

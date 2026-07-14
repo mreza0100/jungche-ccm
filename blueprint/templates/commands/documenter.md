@@ -22,9 +22,9 @@ Read and apply `.claude/commands/quality/doc.md` before creating or editing ANY 
 
 ## Overview
 
-You are the **Documentation Specialist** for the {PROJECT_NAME} project — single source of truth for all documentation logic: archiving pipeline docs, updating permanent docs, auditing cross-reference consistency, and maintaining the doc registry.
+You are the **Documentation Specialist** — single source of truth for all {PROJECT_NAME} documentation.
 
-ARCHIVE and JC-UPDATE run **fanned out per scope** (§ Orchestration): a `mono-documenter` scout maps the blast radius, then one spec-execution worker per scope (CLAUDE.md § Model Selection) merges its own slice in parallel. AUDIT, EPIC, REGISTRY, and GRAPHS run inline as described in their mode sections.
+ARCHIVE and JC-UPDATE run **fanned out per scope** (§ Orchestration): a `mono-documenter` scout maps the blast radius, then one spec-execution worker per scope (CLAUDE.md § Model Selection) merges its own slice in parallel from its scope card. AUDIT, EPIC, REGISTRY, and GRAPHS run inline as described in their mode sections.
 
 ---
 
@@ -44,14 +44,13 @@ ARCHIVE and JC-UPDATE parallelize along **disjoint write-sets**. **Canonical eng
 | `root-db`       | `docs/agents/db/**` + `docs/agents/graph/db/**`        |
 | `epic`          | `docs/epics/{name}/**`                                 |
 
-<!-- Install-time: the `{project}` row is a PATTERN — SETUP expands one such row (and one `scopes/{project}.md` card) per roster entry (single-project install = one row); the root-* rows are fixed cross-project scopes. The step CONTENT each card carries is the § Mode: ARCHIVE step menu below — the cards are the per-scope slices of that menu, so a small install may keep the menu inline and skip splitting the cards out. -->
+<!-- Install-time: the `{project}` row is a PATTERN — SETUP expands one such row (and one `scopes/{project}.md` card) per roster entry (single-project install = one row); the root-* rows are fixed cross-project scopes. Each card's merge steps are canonical — documenter.md defers to the card, it does not carry its own step menu. -->
 
 Several scopes read the same pipeline doc, but each writes only its own slice — every worker owns one target. The `epic` scope is emitted only for a standalone build with a resolving epic — never a wave-owned build (the wave consolidates the epic) and never in JC-UPDATE.
 
 **Where it runs:**
 
 - **Main-loop sites** (standalone `/documenter` ARCHIVE/JC-UPDATE, `/jc` Step 6, `/wave:orchestrator` § O6) size the response to the blast radius: an obviously small change (one project or one cluster) → spawn the worker(s) directly, each briefed on its two cards (the `DOC_BRIEF` contract in the workflow) — no workflow ceremony. Wider or unclear → `Workflow({ name: 'documenter-fanout', args })`. Worker count tracks the blast radius — never manufacture scopes to parallelize.
-- **`wave-build.js` Docs stage** inlines the same scout + per-card fan-out via `agent()` (nest-safe under the one-level `workflow()` law) through the shared `DOC_BRIEF` constant — a declared copy synced with `documenter-fanout.js`; edit both together.
 
 ---
 
@@ -70,8 +69,6 @@ Several scopes read the same pipeline doc, but each writes only its own slice �
 - You MAY write to `docs/epics/*/` only per § Epic consolidation contract (the `epic` scope card, EPIC mode) — never `## Vision & Scope`, `status:`, or epic creation/deletion (the Professor owns the lifecycle)
 - NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `docs/dev/research/`)
 
-**Main-loop/direct invocations** (REGISTRY, AUDIT, or ARCHIVE/JC-UPDATE run with no scope) read the **Document Registry** below first and update it last if structural changes occurred. **Fanned-out per-scope workers** don't read this file — their Registry duty lives in `doc-approval.md` § Boundaries instead.
-
 ---
 
 ## Doc clusters
@@ -82,17 +79,17 @@ Permanent reference docs are **clusters** — a directory holding an `_index.md`
 
 ## Document Registry
 
-Map of permanent doc surfaces and owners. **Read first on every invocation; update last when docs are added, removed, renamed, or ownership changes.** Owner is `mono-documenter` unless noted.
+Map of permanent doc surfaces and owners. **Main-loop/direct invocations (REGISTRY, AUDIT, or ARCHIVE/JC-UPDATE with no scope) read this first and update it last** when docs are added, removed, renamed, or ownership changes; **fanned-out scope workers** follow the Registry duty in `doc-approval.md` § Boundaries instead. Owner is `mono-documenter` unless noted.
 
 <!-- Install-time: rewrite this registry from your actual `docs/` tree. List every permanent doc surface (root cross-project clusters + each subproject's `docs/`), each cluster's `_index.md`, and the non-`mono-documenter` owners (`/pm`, `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories; gitter owns its Living Reference; the Professor owns `docs/epics/`). Keep `.claude/` and `.codex/` instruction surfaces OUT — they are pipeline infrastructure, not registry entries. -->
 
 **Root (`docs/agents/`):** `_index.md`; clusters `architecture/`, `api/`, `map/`, `features/` (each an `_index.md` + topic files); `standards.md`; `graph/` (Mermaid diagrams — see `graph/_index.md`); operational refs `deploy/_index.md` (ship checklist) and `db/_index.md` (DB + queue ops).
 
-**Command-owned (`docs/commands/{cmd}/`):** `documenter/references/sync-rules.md` → `/documenter`; `pcm/references/` → `/pcm`; each opted-in Tier B command owns its `references/`/`research/` directory.
+**Command-owned (`docs/commands/{cmd}/`):** `documenter/references/sync-rules.md`, `documenter/references/doc-approval.md`, `documenter/references/scopes/*.md` → `/documenter`; `pcm/references/` → `/pcm`; `officer/references/` → `/officer`; `mentor/references/` → `/mentor`; `pm/references/` → `/pm`; `km/research/` → `/km`; each other opted-in Tier B command owns its `references/`/`research/` directory.
 
 **Child projects:** each roster project's `docs/` — `architecture/` + `developer-reference/` + `runbook/` clusters, `api-reference`, `qa-reference` (flat files or clusters per project size). A UI-owning project adds a `ui-ux/` cluster.
 
-**Ownership:** `mono-documenter` owns root + child docs and this registry through `/documenter`. Tier B commands own their reference/research directories. `.claude/` and `.codex/` instruction surfaces are pipeline infrastructure, outside this registry.
+**Ownership:** `mono-documenter` owns root + child docs and this registry through `/documenter`. `/pm` owns PM references. `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories. `.claude/` and `.codex/` instruction surfaces are pipeline infrastructure, outside this registry.
 
 ---
 
@@ -113,97 +110,15 @@ Determine the mode from `$ARGUMENTS`:
 
 ## Mode: ARCHIVE (fanned out per scope — see § Orchestration)
 
-You are normally **one per-scope worker**: your scope card (`docs/commands/documenter/references/scopes/{key}.md`) is your complete merge spec — read it and run ONLY its slice of the step menu below, writing ONLY its write set. The step menu is canonical for the per-scope steps; the card just names which of them your scope owns. Invoked directly with no scope, run every step (the `epic` step only per its own gate).
+You are normally **one per-scope worker**: your scope card (`docs/commands/documenter/references/scopes/{key}.md`) is your complete merge spec — the cards are canonical for the per-scope steps; run only your card, write only its write set. Invoked directly with no scope, run every card in the § Orchestration table (the `epic` card only per its own gate).
 
 ### Step 1 — Sources
 
-Pipeline docs live in `$DOCS/`; read only what exists (`{project}` ranges over the roster's per-project suffixes):
+Pipeline docs live in `$DOCS/`: `0-task.md` (the spec), `4-ui-ux-spec.md`, `4-db-architecture.md`, `5-dev-report-{project}.md`, `6-bugs*.md`, `7-post-merge-qa.md`; legacy archives also carry `1-plan.md`, `1-analysis-*.md`, `3-architecture*.md`. Read only what exists; `ports.md` is ephemeral — discard. Each card names the slice that feeds it.
 
-- `0-task.md` (the spec)
-- `4-ui-ux-spec.md`, `4-db-architecture.md`
-- `5-dev-report-{project}.md`
-- `6-bugs-{project}.md`, `6-bugs.md`, `7-post-merge-qa.md`
-- legacy archives also carry `1-plan.md`, `1-analysis-{project}.md`, `3-architecture.md`, `3-architecture-{project}.md`
-- `ports.md` (ephemeral, discard)
+### Step 2 — Merge per your scope card
 
-<!-- Install-time: the `{project}` suffix expands to one file per roster entry; a single-project install has just one suffix (or none). -->
-
-Each card names the slice that feeds it. Only read files that exist.
-
-### Step 2 — Merge decisions into permanent docs
-
-Read pipeline docs and **intelligently integrate** new information. Permanent docs read as "current state" — not changelogs: every step below both adds what the pipeline introduced and deletes or rewrites what it removed, renamed, or superseded. A removed endpoint, component, or feature vanishes from its doc — it does not linger.
-
-#### 2a. `docs/agents/architecture/` cluster (cross-project ONLY)
-
-Source: `3-architecture.md`. **Scope guard:** before adding content, ask "would this fit in `{project}/docs/architecture/`?" If yes, write it there instead. Root = topology + integration contracts only. KEEP: system topology, project boundaries, inter-project data flows, cross-project rules. NEVER: internals of a single project.
-
-Merge into the matching topic file (`overview.md`, `integration-contracts.md`, or a per-subsystem file — see the cluster `_index.md`): new integration patterns, cross-boundary data flows, updated roles/access, new inter-service contracts. Remove superseded content. Route child-internal details to 2b–2d.
-
-#### 2b–2d. Child `architecture/` clusters
-
-For each affected project, read `3-architecture.md` + `3-architecture-{project}.md`. Merge into the matching topic file under `{project}/docs/architecture/` (see the cluster `_index.md`): internal structure, schema/route/chain additions, data flow patterns. Remove superseded content.
-
-#### 2e. UI project's `docs/ui-ux/` cluster (skip if no roster entry has a UI)
-
-Source: `4-ui-ux-spec.md`. Merge into the matching topic file under the UI-owning project's `docs/ui-ux/` (see the cluster `_index.md`): design tokens, component designs, screen layouts, interaction patterns, accessibility.
-
-#### 2f. `docs/agents/api/` cluster
-
-Sources: `3-architecture.md` (contracts), the `5-dev-report-{project}.md` files whose projects expose an API (API Reference sections).
-
-**Scope:** inter-service communication protocol ONLY — API queries/mutations/subscriptions exposed across boundaries, REST crossing boundaries, messaging events, queue contracts, shared types, error codes, auth headers. NEVER: internal helpers, private endpoints.
-
-Route by surface (e.g. `graphql-queries-*.md`, `graphql-mutations-*.md`, `rest.md`, `websocket.md`, `sqs-*.md`, `shared-types.md` — see the cluster `_index.md` for the current file set). Consumers grep for an operation, then read its surface file — keep each entry self-contained.
-
-#### 2g-1. `docs/agents/features/` cluster
-
-If this pipeline added/modified/removed features: update the matching category topic file (see the cluster `_index.md`). Skip if no feature changes.
-
-#### 2g-2. Clean `docs/dev/backlog.md`
-
-Purpose: Remove shipped features from this parking lot. You are the ONLY cleanup mechanism.
-
-Execute:
-
-1. Read full file
-2. For each section (§1, §2, …) and each "Refactor / Cleanup Tasks" row, compare against the features cluster entries just added (Step 2g-1) + pipeline dev reports
-3. Apply: **SHIPPED in full** → delete section, renumber subsequent. **SHIPPED in part** → rewrite to remaining scope, add `> **Partially shipped {YYYY-MM-DD} ({PIPELINE}):** {summary}`. **NOT SHIPPED** → leave untouched
-4. Fix stale references to archived pipeline docs
-
-Match criteria: name overlap, concept overlap, component overlap (same files/chains/types). When in doubt, leave the section.
-
-Skip if Step 2g-1 was skipped. Do NOT add new sections during ARCHIVE.
-
-#### 2g-3. `docs/agents/map/` cluster
-
-Merge into the matching topic file (`components.md`, `workflows.md`, `database-schema.md`, `integration-boundaries.md`, `access-control.md`): new components, modified workflows, new/changed boundaries, tables, ports, tests, permissions. Must reflect actual current state.
-
-#### 2g-4. `docs/agents/db/` — DB + infra operations
-
-Source: `4-db-architecture.md`, `5-dev-report-infra.md`. If the pipeline changed DB/queue ports, infra make targets, migration order or schema sources, test setup/teardown, queue/object-store setup, env connection vars, or the seeding flow, update `docs/agents/db/_index.md`. This is **operations** — table/enum/schema changes go to the map's `database-schema.md` (2g-3), not here.
-
-#### 2h. Child permanent docs from dev reports
-
-For each affected project, read `5-dev-report-{project}.md` and update for what it introduced or removed:
-
-- New endpoints → `docs/api-reference.md`
-- New patterns → `docs/developer-reference/` cluster (route into the matching topic file — see the cluster `_index.md`)
-- New setup/env vars → `docs/runbook.md`
-- New test patterns → `docs/qa-reference.md`
-- Removed/renamed endpoint, pattern, or env var → delete or rewrite its entry in the same doc
-
-#### 2i. Flow diagrams
-
-If the pipeline changed a flow already diagrammed under `docs/agents/graph/{project}/` — new/changed/removed graph nodes or edges, BE queue/WebSocket/state-machine flow, FE navigation/state flow, infra topology, or web routing/content flow — regenerate the affected `.mmd` files per **Graph Mode** (which lists each project's source surfaces). Skip if no diagrammed flow changed.
-
-#### 2j. Update active epic (standalone builds only)
-
-**Wave-owned builds skip this.** If `grep -rl "$PIPELINE" docs/dev/waves/*/report.md` matches, the wave consolidates its own epic update (wave.md Step 3.5). Print `SKIP-EPIC: $PIPELINE belongs to active wave` and move on.
-
-Resolve the epic: use the `Epic:` value from your invocation (build Step 10 passes `$EPIC`) when it names an epic; otherwise (`none`/absent) match a `docs/epics/*/manifest.md` (`status: IN_PROGRESS`) whose slug the pipeline name contains. Skip only if no epic resolves either way.
-
-Consolidate the pipeline into the matched epic per § Epic consolidation contract: merge what shipped (dev reports + the features added in Step 2g-1) into `update.md` — `## Delivered` per area, `## State of work` refreshed; fold new architectural/scope decisions from `$DOCS/1-plan.md` and `3-architecture.md` into `## Key Decisions` (deduped); add one `## Progress Log` line; add `{PIPELINE}` to `pipelines:`; bump `updated:`. `## Discoveries` and `## Open Questions` stay untouched in this mode.
+Execute your card's merge steps under the `doc-approval.md` contract (current-state, grep-true, Approval gate, prettier).
 
 ### Step 3 — Leave the pipeline directory in place
 
@@ -231,7 +146,7 @@ Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you 
 
 ## Epic consolidation contract
 
-Epic files are current-state — consolidated chunks of work and decisions, never append-only logs. Governs every epic write: ARCHIVE Step 2j, EPIC mode, and wave.md Step 3.5. Sections named here are created on first write, so older epics converge on their next update.
+Epic files are current-state — consolidated chunks of work and decisions, never append-only logs. Governs every epic write: the ARCHIVE `epic` scope card, EPIC mode, and wave.md Step 3.5. Sections named here are created on first write, so older epics converge on their next update.
 
 **`update.md` — the epic's work doc:**
 
@@ -314,13 +229,7 @@ If audit discovered new/removed docs or changed ownership, update the registry.
 
 ## Mode: JC-UPDATE (after a /jc hotfix — fanned out per scope, see § Orchestration)
 
-As in ARCHIVE, you are normally one per-scope worker: your scope card's JC-UPDATE slice of the ARCHIVE Step 2 menu is your spec — same merge logic over only the affected docs, blast radius verified against the changed source (read-only `git diff` is fine), no `$DOCS` dir. The scout maps the (usually small) radius from the hotfix diff — often one or two scopes.
-
-1. **Read what changed** — Orchestrator describes the fix and affected projects.
-2. **Update relevant permanent docs** — Same merge logic as ARCHIVE Step 2, but only affected docs. Skip unaffected. Always check the `map/` and `features/` clusters, plus `docs/agents/db/_index.md` if DB or infra ops changed.
-3. **Clean `docs/dev/backlog.md`** — If hotfix shipped a parked feature, follow ARCHIVE Step 2g-2 procedure. Skip if purely a bug fix.
-4. **Format** — Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you edited.
-5. **Confirm** — Same format as ARCHIVE Step 4 but with `(jc)` label.
+As in ARCHIVE, you are normally one per-scope worker: your scope card's JC-UPDATE section is your spec — same merge logic over only the affected docs, blast radius verified against the changed source (read-only `git diff`), no `$DOCS` dir. The scout maps the (usually small) radius — often one or two scopes; always consider `root-map` and `root-features`, plus `root-db` if DB or infra ops changed. A hotfix that shipped a parked feature triggers the `root-features` card's backlog-clean procedure. Confirm in the ARCHIVE Step 4 format with a `(jc)` label.
 
 ---
 
@@ -356,7 +265,6 @@ Output: `docs/agents/graph/{project}/{workflow-name}.mmd`. **Format (each file M
 - Frontmatter `---` is the first line — a comment or blank line above it breaks Mermaid's diagram detection. Source attribution goes in `%%` comments below `graph TD` (`%% Generated by /documenter from {project} source` + `%% Source: {path} ({symbol})`).
 - `graph TD`, every edge including conditional (`-->|condition|`), node IDs matching code symbols, config `{ flowchart: { curve: linear }, theme: dark }`.
 - Never use `end`, `start`, `graph`, `subgraph`, `class`, `style`, `state`, `default` as a bare node ID — uppercase or prefix it (`END`, `langgraph`). Wrap labels containing `()`/commas in quotes: `id["text (x)"]`.
-- Build manually from the graph construction calls — do NOT rely on auto-generated outputs that miss conditional edges.
 
 ### Step 3 — Verify
 
@@ -380,7 +288,6 @@ Graph diagrams updated.
 
 See root CLAUDE.md § Non-Negotiable Rules for general rules. Additional documenter-specific:
 
-- Leave `$DOCS/` in place — gitter commits it to git history, then archives it to `tmp/dev/archive/builds/`
 - Permanent docs are unnumbered — no number prefixes in permanent locations
 - Never lose decisions — pipeline architecture/UI/API decisions MUST appear in permanent docs
 - After finishing, say: "Documentation updated." or "Documentation audit complete."

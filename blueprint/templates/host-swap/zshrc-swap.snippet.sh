@@ -18,6 +18,21 @@
 # macOS only — uses the macOS Keychain via `security`.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── no sneaky agent conversions ───────────────────────────────────────────
+# tmux is this fleet's survival layer — a chat killed mid-task must DIE, not resurrect as a
+# hidden background agent under its birth account. These two stop the daemon's silent
+# conversions (exit handoff + in-flight adoption) while leaving deliberate background work
+# (wave workers, RR sub-agents, --bg) untouched. Read at process birth — live chats unaffected.
+export CLAUDE_DISABLE_ADOPT=1
+export CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF=1
+
+# ── goal-hook churn cap ───────────────────────────────────────────────────
+# An idle chat holding an active /goal argues with the goal-continuation stop hook
+# 9 consecutive times per idle turn (~90s + ~1K tokens each cycle, every builder,
+# every between-BRIEF hold). Two blocks keep the nag's reminder value; nine is churn.
+# Read at process birth — live chats keep the old cap until relaunched.
+export CLAUDE_CODE_STOP_HOOK_BLOCK_CAP=2
+
 _cc_primary() {
   local n="1"
   [[ -f "$HOME/.claude-primary" ]] && n="$(<$HOME/.claude-primary)"

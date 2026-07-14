@@ -12,7 +12,7 @@ $ARGUMENTS
 
 ## Mandatory skill load (before any prompt-file edit)
 
-Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.claude/skills/*/SKILL.md`, or child `*/CLAUDE.md` — read and apply `.claude/commands/quality/prompt.md`. It carries Anthropic's prompt-quality rules (cut test, compaction, thresholds, anti-patterns) that govern how lean the prose is; **§ Authoring conventions** below governs the file skeleton (frontmatter + shape).
+Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/prompt.md` is READ this session (Read auto-stamps the quality marker). Its rules govern prose leanness; **§ Authoring conventions** below governs the file skeleton (frontmatter + shape).
 
 ---
 
@@ -21,8 +21,6 @@ Before editing CLAUDE.md, `.claude/agents/*.md`, `.claude/commands/*.md`, `.clau
 ---
 
 ## System Wiring Knowledge
-
-This is THE map. Read it before touching anything.
 
 ### How the pieces connect
 
@@ -33,17 +31,17 @@ CLAUDE.md (Professor persona + request routing)
     └── references agent/command/skill tables
 
 .claude/commands/*.md → slash commands (/wave:builder, /jc, /pcm, etc.)
-.claude/agents/*.md   → root pipeline agents (mono-planner, mono-architect, gitter, mono-documenter) + N qa-{proj} wrappers (registered QA gates that read the child protocol and carry the test-output filter hook)
-.claude/skills/*/SKILL.md → reusable skills
+.claude/agents/*.md   → root pipeline agents (gitter, mono-documenter) + N qa-{proj} wrappers (registered QA gates that read the child protocol and carry the test-output filter hook)
+.claude/skills/*/SKILL.md → reusable skills (rr, ghostwriter, vision-factory)
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
-.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-build — the single-pipeline build engine, wave-walker — the post-merge verification walk, documenter-fanout — parallel doc consolidation); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-build — the standalone /wave:builder engine (/wave:orchestrator is the dual-chat runner in wave/orchestrator.md); wave-walker — wave verification walk (thread walk + zero-token ledger spine, pre-merge branch mode for /wave:orchestrator), declared copy of wave/walker.md § Orchestration; documenter-fanout — the scout→per-scope doc-consolidation fan-out, declared copy of documenter.md § Orchestration); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions
 
 docs/commands/{cmd}/references/ → command-owned reference docs ($CDOCS/$CMD/$REFS/)
-docs/agents/          → cross-project reference (API, architecture, map, features)
+docs/agents/          → cross-project reference clusters (api/, architecture/, map/, features/) + standards.md, graph/
 ```
 
 ### Critical invariants
@@ -53,20 +51,20 @@ docs/agents/          → cross-project reference (API, architecture, map, featu
 3. **Pipeline flow lives in wave/builder.md** — CLAUDE.md just redirects. Don't duplicate.
 4. **Non-negotiable rules in CLAUDE.md are sacred** — ethics, privacy, code quality cannot be weakened.
 5. **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
-6. **Registry over tables** — every command/skill carries its routing in its `description:` frontmatter (the harness injects that registry into the session); CLAUDE.md keeps no command/skill/agent roster. The agent inventory lives in this doc's Inventory + `agent-models.md` and must match actual files. `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands.
+6. **Registry over tables** — every command/skill carries its routing in its `description:` frontmatter (the harness injects that registry into the session); CLAUDE.md keeps no command/skill/agent roster. The agent inventory lives in this doc's Inventory and must match actual files. `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands.
 7. **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the output style appends to the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
 8. **Never hardcode names that change** — table names, enum values, chain names evolve. Tell agents WHERE to discover, not WHAT the names are.
 9. **Frontmatter features need registration** — `hooks:`/`model:`/`effort:` load ONLY when an agent is spawned as a registered type via its `subagent_type`; a protocol file read by a general-purpose agent never loads frontmatter. A child agent needing frontmatter features needs a thin root wrapper (the `qa-{proj}` pattern: registration shell at root, protocol stays in the child file).
 10. **Registries read at session start** — agent types, settings.json hooks, and the output style load at session start; mid-session file changes land at natural boundaries (next spawn, next pipeline, next session). When a long-running session will consume an edited orchestrator file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
 11. **Voice lives in `.claude/output-styles/`** — one active session style + per-command overlay files loaded by a one-line adopt pointer at invocation; personas ≤~10 lines may stay inline in their command.
-12. **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()`; `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change.
+12. **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()` — `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change. **One-level nesting only** (`workflow()` inside a child throws): when a workflow can't be nested at a call site, that site inlines the same `agent()` fan-out as a second declared copy. The doc fan-out is the live case — `documenter-fanout.js` is the engine, and `wave-build.js`'s Docs stage inlines the scout→per-scope fan-out (nest-safe for composing orchestrators); sync set: the two `DOC_BRIEF` copies (`documenter-fanout.js` canonical ↔ `wave-build.js` Docs inline), the `documenter.md` § Orchestration scope table ↔ the cards under `docs/commands/documenter/references/scopes/`, and `doc-approval.md` ↔ `quality/doc.md` § Approval.
 
 ### Inventory counts (verify before reporting)
 
 <!-- INSTALL: Fill in your actual roster + agent counts. All counts are install-derived from the roster — never hardcode a total in prose. Use ONE consistent agent figure everywhere it appears (here and in the `cross-refs` audit scope) — never ship two different totals. -->
 
 - **Projects:** one entry per roster project — `{project}` ({PROJECT_PKG_MGR}), repeated for the whole roster (a single-project install lists exactly one)
-- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 4 mono orchestrators + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file. **Two-tier model policy:** root strategists (mono-planner, mono-architect) pin the top-tier full model ID in frontmatter; every `/wave:builder` child spawn rides the floating `opus` alias (real work); `sonnet` only for small jobs (gitter, mono-documenter). Record the authoritative tier reference at `docs/commands/pcm/references/agent-models.md` (command-owned, created post-install — not a shipped template)
+- **Agents:** {R} root + the per-project agents (count = roster size × the per-project agent set). Root = 2 mono orchestrators (gitter + mono-documenter) + N `qa-{proj}` hook-carrier wrappers (one per roster project). QA spawns via the registered `qa-{proj}` wrappers (which read the child protocol and carry the per-agent test-output filter hook); all OTHER child agents are spawned via general-purpose reading their child file — model tiers per CLAUDE.md § Model Selection
 - Run `ls .claude/commands/*.md` and `ls .claude/skills/` to get current command/skill counts; the project/agent counts derive from the roster, not a fixed number
 
 ---
@@ -98,7 +96,9 @@ Every infra change `/pcm` makes is recorded as the final step of the work, in ex
 
 The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the user — never guess.** Entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — release step 5 copies them verbatim.
 
-**Standalone skills are a special case.** Skills listed in `.claude/skills/sources.json` (rr, ghostwriter, vision-factory) are fetched from their own public repos at install — the blueprint never vendors them, so a fix to one does NOT ship through a Professor release. When you change one: bump its `version:` frontmatter (and the README version line), then log a `release.md` entry that carries only the version bump for the Professor changelog and flags the real action — replicate the change in the skill's own repo (the `repo` in `sources.json`), bump its version, and cut a release there. The substance lives in the skill repo's changelog; Professor's changelog carries the version bump alone.
+**Standalone-skill special case:** a change to a `sources.json` skill logs one `release.md` line and bumps the skill's `version:` frontmatter — release step 5b ships the substance to the skill's own public repo; the Professor changelog carries only the version pointer + re-pull note.
+
+**Retro inbox — `.professor/retro.md`:** the main-loop steering-conscience ledger (sessions append per its header; wave retros archive with their wave) — an inbox `/pcm` consumes, never a change log. The `retro` dispatch sweeps entries lacking `Resolved:`, folds each `Amend:` into the named file through the normal change flow (or rules it `judgment` — no text fix), stamps `Resolved: {date} — {where}` under the entry in place, and logs every fold to drift/release as usual.
 
 ---
 
@@ -106,7 +106,7 @@ The test: is the change an **improvement to existing infra** (a framework change
 
 ### Step 1 — Understand
 
-Parse `$ARGUMENTS`. Dispatch first: `audit` → the **Pipeline Consistency Audit** section; anything else → the change-request flow below. Upstream blueprint updates and releases are now the `/pcm:update` and `/pcm:release` subcommands (the `update.md` and `release.md` files in the `pcm/` directory). Common change-request categories: agent behavior, pipeline flow, conventions, new agent/command/skill, script fix, rename/restructure, settings.
+Parse `$ARGUMENTS`. Dispatch first: `audit` → the **Pipeline Consistency Audit** section; `retro` → the § Logging retro-inbox fold pass; anything else → the change-request flow below. Upstream blueprint updates and releases are the `/pcm:update` and `/pcm:release` subcommands (the `update.md` and `release.md` files in the `pcm/` directory). Common change-request categories: agent behavior, pipeline flow, conventions, new agent/command/skill, script fix, rename/restructure, settings.
 
 ### Step 2 — Audit impact
 
@@ -135,7 +135,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 ### Step 4 — Execute
 
-**Open the gate (before the edit pass).** A PreToolUse hook (`pcm-guard.sh`) denies Edit/Write to `.claude/**` and any `CLAUDE.md` (root or child) unless `/pcm` is active. Stamp the marker from the repo root immediately before editing — `date +%s > tmp/professor_pcm_active` — not at the start of analysis; the gate is short-lived (600s TTL) and the Stop hook closes it at turn end. If a write is denied, re-stamp and retry.
+**Open the gate (before the edit pass).** A PreToolUse hook (`pcm-guard.sh`) denies Edit/Write to `.claude/**` and any `CLAUDE.md` (root or child) unless BOTH session-keyed markers are fresh: reading `quality/prompt.md` stamps the quality marker automatically, and the pcm marker is stamped with the exact command the deny message provides (it carries your session key). Markers slide on every allowed edit — an active session never expires mid-batch; the 1500s TTL reaps only abandoned sessions, and the Stop hook clears this session's markers at turn end. If a write is denied, follow the deny message and retry.
 
 **Agent edit rules:**
 
@@ -153,8 +153,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 **Command rules:**
 
-- /wave:builder is the orchestrator — must reference every pipeline agent by name
-- Step numbers must match the Pipeline Reference table
+- Stage names must match the Pipeline Reference table
 - Port reading instructions must match what gitter writes to ports.md
 
 **Script rules:**
@@ -224,7 +223,7 @@ Files: `.claude/agents/*.md`, `{project-*}/.claude/agents/*.md`
 - **Delegation chains:** if agent says "spawn", "Read and follow", or references another agent → verify target exists
 - **Gitter monopoly:** grep ALL agents for `git add`, `git commit`, `git push`, `git checkout`, `git merge` → ONLY `gitter.md` should contain these
 - **Size limit:** no agent file >15KB
-- **Inventory sync:** agent file counts ↔ the Inventory in this doc + `docs/commands/pcm/references/agent-models.md` (CLAUDE.md carries no agent roster)
+- **Inventory sync:** agent file counts ↔ the Inventory in this doc
 - **Frontmatter ↔ behavior:** `tools` field lists tools the agent actually uses in its instructions
 
 #### `commands` — Walk every command file
@@ -240,7 +239,7 @@ Files: `.claude/commands/*.md`
 
 #### `skills` — Walk every SKILL.md
 
-Files: `.claude/skills/*/SKILL.md`
+Files: every SKILL.md under `.claude/` (`find .claude -name 'SKILL.md'` — includes command-embedded skills like `p/tokens/SKILL.md`)
 
 - **Structure:** SKILL.md exists in each skill dir, has identifiable trigger patterns
 - **Skill registration:** every skill dir under `.claude/skills/` has a `description` frontmatter (auto-surfaced in the available-skills list); CLAUDE.md keeps only the one-line Skills pointer, not a per-skill table
@@ -252,10 +251,10 @@ Files: `.claude/commands/wave/builder.md` (primary), all agents it references
 
 - **Reference resolution:** every "Read and follow" path → target file exists
 - **Agent spawn validity:** every `subagent_type` referenced → matches a registered agent name/description in `.claude/agents/` or child agents
-- **Path variables:** `$DOCS`, `$DOCS_REL`, `$DOCS_POST` used — no hardcoded pipeline or worktree paths
+- **Path variables:** `$DOCS`, `$DOCS_REL`, `$DOCS_POST` used — no hardcoded `docs/dev/builds/` or `.worktrees/` paths
 - **Step ↔ table match:** step numbers in instructions match the Pipeline Reference table
 - **Script references:** worktree.sh, alloc-ports.sh paths → files exist and are executable
-- **Flow integrity:** planner → architect → developer → QA → gitter ordering maintained — no step references an agent from a later phase
+- **Flow integrity:** design (conditional) → developer → QA → gitter ordering maintained — no step references an agent from a later phase
 
 #### `scripts` — Walk each script
 
@@ -282,11 +281,11 @@ Files: project dirs, CLAUDE.md files, permanent docs, lock files
 Catches what no single-domain audit can see. Reads across ALL domains simultaneously.
 
 - **Routing ↔ commands:** every command/skill named in CLAUDE.md "Request Routing" (the non-obvious calls + guards only — most route by self-indexing) → file exists and handles claimed scope
-- **Agent counts ↔ reality:** actual agent file counts → match the inventory here and `docs/commands/pcm/references/agent-models.md`; CLAUDE.md carries no agent roster
+- **Agent counts ↔ reality:** actual agent file counts → match the inventory here (rosters: invariant #6)
 - **Command count ↔ reality:** every `.claude/commands/*.md` carries `name:` + `description:` frontmatter (the harness registry) — CLAUDE.md carries no command roster
 - **Skill count ↔ reality:** every dir in `ls .claude/skills/` has valid SKILL.md frontmatter; CLAUDE.md Skills section is a pointer, not a list (nothing to drift)
 - **Frontmatter validity:** every agent has non-empty `name`/`description`/`tools`; root agent `name` matches its `subagent_type` registry entry
-- **Doc ownership:** CLAUDE.md doc ownership claims → claimed paths exist
+- **Doc ownership:** CLAUDE.md "Non-Negotiable Rules § Process" doc ownership claims → claimed paths exist
 - **Invariant spot-check:** sample 3 critical invariants from § Critical invariants → verify they hold in the actual files
 
 ### Aggregation
@@ -326,7 +325,7 @@ Ask: "Want me to fix these issues?"
 
 **Full rename:** Grep ALL occurrences → update agents → update CLAUDE.md → update /wave:builder → final grep for zero stale refs.
 
-**New agent:** Create `.claude/agents/{name}.md` → update the count in this doc's Inventory + `docs/commands/pcm/references/agent-models.md` → update pipeline if needed (CLAUDE.md carries no agent roster).
+**New agent:** Create `.claude/agents/{name}.md` → update the count in this doc's Inventory → update pipeline if needed.
 
 **New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter).
 
@@ -460,7 +459,7 @@ Every project carrying the blueprint is a peer on the shared bus: it **consumes*
 
 After every execution, verify this command's knowledge is still accurate:
 
-1. Are the inventory counts correct? (`ls .claude/agents/`, `ls .claude/commands/`, `ls .claude/skills/`)
+1. Are the inventory counts correct? (`ls .claude/agents/`, `ls .claude/commands/`, `find .claude -name 'SKILL.md'` — skills live under `.claude/skills/` AND embedded in command dirs)
 2. Are the critical invariants still true?
 3. Did any project directories or table structures change?
 4. Is the system wiring diagram still accurate?
@@ -478,7 +477,6 @@ If anything is stale, update this file before completing the report. This comman
 - **Keep it DRY** — reference CLAUDE.md from agents, don't duplicate
 - **Sync across projects** — change in one place = reflect everywhere
 - **Minimal edits** — fewest changes possible. Prefer deletion over addition
-- **Never hardcode names that change** — tell agents WHERE to discover, not WHAT the names are
 - **Research before writing** — verify domain content before adding. Structural changes don't need research
 - **Always consider token budget** — define once, reference everywhere
 - **Routing-gate every fan-out** — spawn agents only for declared scope; the consolidator may demand additions; fall back to full fan-out only when scope is undeclared
@@ -488,3 +486,4 @@ If anything is stale, update this file before completing the report. This comman
 - **Exact per-role read lists in spawn briefs** — "read ALL docs in {dir}/" licenses every agent to read everything; name each role's exact read list
 - **One common spawn contract per orchestrator** — hoist rules shared across spawn blocks into a single contract each block references, never restated per block
 - **Cheap-child collectors never conclude** — a retrieval child (haiku/`Explore`) returns raw excerpts + sources with an over-inclusion bias, never summaries or conclusions; judgment never delegates down
+- **Every check names what its OWN broken state reports** — authoring or editing any instrument that returns a verdict (probe, health check, gate, audit, walker, lint), ask what it reports when IT is broken rather than when the world is clean. Same answer both ways = not a check but a coincidence detector, and it will bless the failure it exists to catch (`kill -0` cannot distinguish a healthy waiter from a reparented deaf one; `PPID ≠ 1` can — a pane capture on the wrong socket returns silence identical to a quiet chat; `chat.sh capture` exits non-zero). Build the distinguishing signal INTO the instrument: a law forbidding the mistake is strictly weaker than a check detecting it

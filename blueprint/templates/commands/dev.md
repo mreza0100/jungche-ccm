@@ -127,7 +127,6 @@ Commands:
   /dev           Start dev environment
   /dev kill      Stop all servers
   /dev restart [{project}]  Kill + restart all, or one roster server
-
   /dev drop      Nuke containers + rebuild from scratch
   /dev fresh     Kill + drop + start — full clean slate
   /dev status    Show what's running
@@ -163,10 +162,7 @@ After showing the report, check if any service has RED status or `ERRORS` is not
 - `ALREADY_RUNNING=true` — servers were already up, not an error
 - All services are GREEN but `CREDENTIALS_FILE` is MISSING — warning, not failure
 
-**Loop prevention:** When JC fixes a service and needs to restart it, JC should either:
-
-- Restart the individual service with `/dev restart {project}` (bounces just that roster server)
-- Or run the dev script with `DEV_NO_AUTOHEAL=1 ./.claude/scripts/dev.sh up` so auto-heal doesn't re-trigger
+**Loop prevention:** When JC fixes a service and needs to restart it, prefer `/dev restart {project}` — bounces just that roster server (the invocation prompt above already carries `DEV_NO_AUTOHEAL=1` for a full restart).
 
 ---
 

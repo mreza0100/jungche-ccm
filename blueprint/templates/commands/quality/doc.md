@@ -7,7 +7,7 @@ description: Use BEFORE writing or restructuring any permanent reference doc und
 
 Reference docs under `docs/` are read by LLM agents (whole-file `Read`, `grep`), not by humans in a rendered viewer. Shape them for that reader. Apply these rules at write-time.
 
-**When to load:** `/documenter` loads this before writing any permanent reference doc. Load it yourself before hand-editing or restructuring `docs/agents/*`, child `*/docs/*`, or any large reference doc.
+**When to load:** `/documenter` loads this before writing any permanent reference doc. Load it yourself before hand-editing or restructuring `docs/agents/*`, child `*/docs/*`, or any large reference doc. Fan-out documenter workers read the extract card `docs/commands/documenter/references/doc-approval.md` instead — a declared copy of the write rules + § Approval here (this file is canonical); edit both together.
 
 ## The deciding principle
 
@@ -20,7 +20,7 @@ A reference doc is a **cluster** — a directory, not a monolith:
 - **`_index.md`** — navigation only: a pointer table `| Topic | File | Covers |`, ≤150 lines, no prose.
 - **topic files** — each a self-contained slice, each readable in one `Read` call.
 
-A consumer reads `_index.md` (cheap), then opens the one topic file it needs. Two cheap reads replace one impossible one. A monolith forces every reader through the same door regardless of need; a cluster lets each open exactly its slice.
+A consumer reads `_index.md` (cheap), then opens the one topic file it needs. Two cheap reads replace one impossible one.
 
 ## Size — operational target vs hard cap
 
@@ -90,7 +90,7 @@ Every identifier in a reference doc is the exact code/DB name, verbatim: a table
 
 ## Why these rules hold (grounded)
 
-- **Prettier force-pads tables.** It aligns every column to the widest cell, with no config option to disable it, and {PROJECT*NAME} runs `prettier --write` on all markdown. So a "compact unpadded table" is a mirage — it re-bloats on the next save. The real choice is \_padded table* vs _sections_. ([prettier#12074](https://github.com/prettier/prettier/issues/12074))
+- **Prettier force-pads tables.** It aligns every column to the widest cell, with no config option to disable it, and {PROJECT_NAME} runs `prettier --write` on all markdown. So a "compact unpadded table" is a mirage — it re-bloats on the next save. The real choice is _padded table_ vs _sections_. ([prettier#12074](https://github.com/prettier/prettier/issues/12074))
 - **Padding is real token waste.** In the pre-section `features` cluster, 45.9% of all table-row bytes were alignment spaces; the worst file hit 71.8%. Whitespace is ~10–24% of input tokens in formatting studies — BPE merging softens it but never makes it free. ([arXiv:2508.13666](https://arxiv.org/html/2508.13666v1))
 - **Format ≠ comprehension for frontier models** (p=0.484 across 9,649 experiments; capability dominates by 21 points), which is why the rules above optimize mechanics, not "readability." ([arXiv:2602.05447](https://arxiv.org/abs/2602.05447))
 - **Heading-per-record matches retrieval evidence.** Heading-based chunking improves retrieval ~35% over unstructured text, and a key:value/heading layout beat flat tables on field retrieval in head-to-head benchmarks (60.7% vs 51.9%) — the gap widens precisely when one field is long. Anthropic's own long-context guidance wraps each record as its own labeled block.

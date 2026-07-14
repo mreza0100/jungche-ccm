@@ -9,7 +9,8 @@
 #              account/model/effort/permission-mode it was BORN with — only a fresh process
 #              picks up the new primary.
 #   attach   — connect to the running process via the agent view (keeps its original everything).
-# Default: takeover when the agent is idle/blocked/done · attach when it is actively working.
+# Default: takeover unless the agent is BUSY (computing right now) · busy → attach.
+# A lock-holder that lives inside a cc-* tmux is attached via its own window instead.
 #
 # N-account generic: the current primary is read from ~/.claude-primary (number N → ~/.claudeN;
 # 1 → the unset default ~/.claude). The registry is probed across the default account plus every
@@ -26,15 +27,18 @@ _acct_of() { case "$1" in ""|"$HOME/.claude") echo 1 ;; *) local n="${1##*/.clau
 prim=1; [ -f "$HOME/.claude-primary" ] && prim="$(cat "$HOME/.claude-primary")"
 pcfg="$(_cfg_of "$prim")"
 
-cc() {  # run claude under a config dir ("" = the default account / unset)
+cc() {  # run claude under a config dir ("" = the default account / unset); never inherit a host chat's identity
   local cfg="$1"; shift
-  if [ -n "$cfg" ]; then CLAUDE_CONFIG_DIR="$cfg" claude "$@"
-  else env -u CLAUDE_CONFIG_DIR claude "$@"; fi
+  if [ -n "$cfg" ]; then env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE CLAUDE_CONFIG_DIR="$cfg" claude "$@"
+  else env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR claude "$@"; fi
 }
 
 # find this session in the agent registry (owning account if known, else every configured account).
 # Match .sessionId OR the short .id prefix — the registry shows the RESUMED transcript's id
 # for forked sessions, while cc-ls keys by transcript filename.
+# jq gotcha: inside `$u|startswith(...)` the input is $u (a string), so the row's .id must be
+# captured as a variable BEFORE the pipe — bare `.id` there indexes the string and jq aborts
+# the whole stream, hiding every row after the first id-bearing one.
 hit=""; hitcfg=""
 if [ -n "$owncfg" ]; then
   [ "$owncfg" = "$HOME/.claude" ] && owncfg=""   # normalize the default account to ""
@@ -66,31 +70,41 @@ fi
 
 name="$(printf '%s' "$hit" | jq -r '.name // "(unnamed)"')"
 pid="$(printf '%s' "$hit" | jq -r '.pid // empty')"
-st="$(printf '%s' "$hit" | jq -r '.state // .status // "unknown"')"
+# LIVE activity (.status: busy/idle/waiting) outranks task lifecycle (.state: working/blocked/
+# done) — a wave agent between turns reads idle+working, and only busy means "computing right
+# now". Routing on .state sent idle agents to the attach view, where picking them wedges.
+st="$(printf '%s' "$hit" | jq -r '.status // .state // "unknown"')"
 oacct="$(_acct_of "$hitcfg")"
-def=t; case "$st" in working|busy) def=a ;; esac   # never default to killing in-flight work
 
-echo "⚙ $name — live background agent on account $oacct · state: $st"
-echo
-echo "  [t] take over — stop the agent, reopen this chat fresh under account $prim$( [ "$def" = t ] && echo '   (default)')"
-echo "  [a] attach — join the running agent (keeps its original account/model/permissions)$( [ "$def" = a ] && echo '   (default)')"
-echo "  [q] quit"
-echo
-read -r -n1 -p "choice ❯ " ch; echo
-[ -z "$ch" ] && ch="$def"
+# a lock-holder living inside a cc-* tmux is just a CHAT whose breadcrumb went missing (statusline
+# never rendered) — attach its own window; the agents view can't reach it and the resume refuses
+if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+  tsock="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^TMUX=//p' | head -1)"
+  tsock="${tsock%%,*}"; tsock="${tsock##*/}"
+  case "$tsock" in
+    cc-*)
+      echo "⚙ $name is a tmux-resident chat on $tsock — attaching its window"
+      tmux -L "$tsock" set -g window-size latest 2>/dev/null
+      exec env -u TMUX tmux -L "$tsock" attach
+      ;;
+  esac
+fi
 
-case "$ch" in
-  t|T)
+# zero-question routing — Enter in cc-ls must land INSIDE the chat:
+#   busy (computing right now) → attach (never kill in-flight work; pick "$name" in the view)
+#   idle/waiting/blocked/done/stale → silent takeover: stop the agent, resume fresh under the primary
+case "$st" in
+  busy)
+    echo "⚙ $name (account $oacct) is BUSY — attaching. Pick '$name' in the view; ⌃C detaches."
+    cc "$hitcfg" agents --cwd "$cwd"; exit $?
+    ;;
+  *)
+    echo "⚙ $name (account $oacct, state: $st) — taking over → fresh resume under account $prim"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      echo "stopping agent pid $pid (graceful)…"
       kill -TERM "$pid" 2>/dev/null
       for _ in $(seq 1 15); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
-      kill -0 "$pid" 2>/dev/null && { echo "still up after 15s — SIGKILL"; kill -KILL "$pid" 2>/dev/null; sleep 1; }
-    else
-      echo "registry entry has no live process (stale) — nothing to stop"
+      kill -0 "$pid" 2>/dev/null && { kill -KILL "$pid" 2>/dev/null; sleep 1; }
     fi
     resume_fresh
     ;;
-  a|A) cc "$hitcfg" agents --cwd "$cwd"; exit $? ;;
-  *)   echo "cancelled"; exit 0 ;;
 esac

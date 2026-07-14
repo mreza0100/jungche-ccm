@@ -5,13 +5,13 @@ description: RND (Research & Develop) — goal-driven iterative skill. Takes a g
 
 # RND — Research & Develop
 
-> The iterative goal-seeker. Where RR maps the landscape and reports, RND _proves out_ a solution — trying approaches in sequence, learning from each attempt, and delivering the best validated result that satisfies the goal.
+> Where RR maps a landscape and reports, RND _proves out_ a solution — trying approaches in sequence, learning from each, delivering the best validated result that satisfies the goal.
 
-The user gives you a **goal** — not a topic to survey, but an **outcome to achieve**. Your job is to reach that outcome through structured iteration, adapting your approach as you learn.
+The user gives you a **goal** — not a topic to survey but an **outcome to achieve** — reached through structured, adaptive iteration.
 
 ## NEVER touch real code (the one inviolable boundary)
 
-RND works ONLY inside its `RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
+RND works ONLY inside its `.professor/RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
 
 ---
 
@@ -89,7 +89,7 @@ Generate 2-5 approaches ordered from most-promising to least. For each:
 - **Method** — what you will actually do (concrete, executable)
 - **Evaluation** — how you'll know if it worked and how well
 
-Output the plan to the user before executing. This gives them a chance to redirect before you invest effort.
+Output the plan to the user before executing, so they can redirect before you invest effort.
 
 **Approach ordering principles:**
 
@@ -120,7 +120,7 @@ RND's value comes from actually stressing solutions against reality, not from co
 
 4. **Test the artifact you intend to ship.** If the RND's deliverable is a code change, validate the real fix in-process: import the production module and monkey-patch the target function or attribute at runtime from the sandbox, then run it. A sandbox copy that "behaves like" the proposed patch validates your understanding of the fix, not the fix — a `# simulates the fixed version` comment documents that shortcut, it does not absolve it. Validate by in-process patch, never by editing a real project file.
 
-5. **Work only inside `RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts live in the sandbox folder. Never modify a real project file, and never create a git branch or worktree — RND does not use `isolation: "worktree"` agents. RND ships its deliverable as a `PROPOSED_DIFF.md`; the actual code change lands later through `/jc` or `/wave:builder`. Clean up `__pycache__` and build artifacts before reporting.
+5. **Work only inside `.professor/RND/{goal-name}/`.** All prototype code, test scripts, and result artifacts live in the sandbox folder. Never modify a real project file, and never create a git branch or worktree — RND does not use `isolation: "worktree"` agents. RND ships its deliverable as a `PROPOSED_DIFF.md`; the actual code change lands later through `/jc` or `/wave:builder`. Clean up `__pycache__` and build artifacts before reporting.
 
 ### 360° integration — systematic blind-spot sweep on failure
 
@@ -205,7 +205,7 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Winner:** {approach name}
 
-**Result:** the validated fix, written to `RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:builder`) lands it.
+**Result:** the validated fix, written to `.professor/RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:builder`) lands it.
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
@@ -236,11 +236,7 @@ If the loop exhausted without full satisfaction:
 
 ## Adaptive planning — the critical difference from other skills
 
-The reason RND exists separately from `/wave:builder` or RR is the **adaptive loop**. Most pipelines plan up front and execute. RND's plan is a living document:
-
-- After approach 1: you know more than before it ran. Update the plan.
-- After approach 2: you know even more. Update again.
-- By approach 3: you might have replaced the original plan entirely — and that's correct behavior, not drift.
+RND exists separately from `/wave:builder` and RR because of the **adaptive loop**. Most pipelines plan up front and execute; RND's plan is a living document — update it after every approach as you learn. By approach 3 you may have replaced the original plan entirely: that's correct behavior, not drift.
 
 The key invariant: **the goal stays fixed, the approaches evolve.** Never let the approach loop drift the goal itself. If the goal turns out to be the wrong question, stop the loop and surface that to the user — don't silently reframe it.
 
@@ -252,8 +248,7 @@ The key invariant: **the goal stays fixed, the approaches evolve.** Never let th
 - **Executing approaches in your head instead of running them.** "This would work because..." is analysis, not execution. RND requires actually doing the thing and observing what happens.
 - **Not stress-testing after the happy path passes.** The happy path passing is the START of evaluation, not the end. Feed adversarial inputs. Try to break it. If you can't break it, you've earned confidence. If you didn't try, you haven't.
 - **Skipping 360° after a failure.** When an approach fails, you have a blind spot. 360° exists to find it systematically. Skipping it means your next approach inherits the same blind spot.
-- **Mocking the thing you're testing.** If you're validating an LLM chain, calling a fake LLM proves nothing about the chain's real behavior. Use actual execution paths.
-- **Approximating production prompts or chain wiring.** Calling the real LLM with a hand-written prompt that resembles the production one is a sketch, not a simulation. Load the actual templates from `{AI_PROJECT}/knowledge/prompts/` and invoke the actual chain orchestrator. If you can't, lower confidence and say so.
+- **Mocking or approximating the thing under test.** A fake LLM proves nothing about the chain's real behavior; a hand-written prompt that resembles production is a sketch, not a simulation. Use actual execution paths — load the real templates from `{AI_PROJECT}/knowledge/prompts/` and invoke the real chain orchestrator. If you can't, lower confidence and say so.
 - **Snapshot caching between approaches.** When approach N depends on approach M's output, run M live in the same execution and pipe the result. Hardcoded Python literals of prior LLM emissions (e.g. `APPROACH_1_OUTPUT = [...]`) are unreproducible — the model is non-deterministic — and silently rot the moment the upstream prompt or seed changes. No static lists where a live function call belongs.
 - **Not adapting the plan after each attempt.** If you run approach 1, learn something, then run approach 2 exactly as originally planned without considering what approach 1 revealed — you've broken the loop.
 - **Setting an unevaluable success criterion.** "Find the best prompt" without defining what "best" means makes the loop aimless. Pin down the criterion in Phase 1.

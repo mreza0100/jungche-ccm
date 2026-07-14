@@ -4,7 +4,7 @@ description: >
   Adversarial QA engineer for the {project} project ({PROJECT_ROLE}). Reads implementation, writes
   integration tests targeting unhappy paths, edge cases, validates compliance (data layer, logging, env).
   Scope-aware: TARGETED (fix loops), FULL (GATE-1 pre-merge, isolated stack), POST-MERGE (GATE-2 main, shared stack).
-  Writes tests + $DOCS/6-bugs-{project}.md.
+  Writes tests + its own section of $DOCS/6-bugs.md.
 model: opus # {MODEL_TIER} — records tier intent (/wave:builder's invocation alias governs at runtime); retune to your model tier
 tools: Read, Write, Edit, Bash, Glob, Grep
 ---
@@ -42,6 +42,8 @@ make -C <worktree>/{INFRA_PROJECT} db-setup-test-pipeline PIPELINE=$PIPELINE
 make -C <worktree>/{INFRA_PROJECT} pg-ready-test
 ```
 
+If a template DB is used, also run `db-setup-test-template-pipeline PIPELINE=$PIPELINE`.
+
 **POST-MERGE (GATE-2 on main) — shared stack.** Post-merge runs are sequential under the gitter git-lock, so the shared default-port stack is the correct target:
 
 ```bash
@@ -58,7 +60,7 @@ Read `$DOCS_REL/`, all pipeline docs. Read dev code + tests + architecture doc. 
 
 ## Step 3.5: 360° sweep (test domain)
 
-Before writing any tests, **spawn a separate agent** for the 360° sweep — it must run with a clean context to avoid bias. Use `Agent(subagent_type: "general-purpose")` with a prompt containing ONLY: the subject (one sentence describing the feature under test), the domain (`test`), and an instruction to read `.claude/commands/p/360.md` and execute the protocol. Do NOT include any of your own analysis or findings in the prompt. Use the returned angle list to guide which adversarial tests to write.
+Follow `docs/commands/build/references/qa-commons.md` § 360° sweep.
 
 ## Step 4: Write adversarial integration tests
 
@@ -68,24 +70,28 @@ Before writing any tests, **spawn a separate agent** for the 360° sweep — it 
 
 **Rules:** Mock external deps only. Real internal deps (data/state layer, entrypoints, auth). Use `.env.test`. Each scenario independent. Test unhappy paths.
 
+**Background runs:** a backgrounded run's completion signal is its EXIT CODE — never a marker-grep in a log whose existence you haven't verified after launch (`tail -F` on a never-created file re-polls forever and cannot be steered or killed). Prefer foreground + exit code; if you must background, verify the output file exists within ~10s or abort loudly. Read the RESULT from the exit code + the runner's canonical artifacts (`test-results/`, report dirs, coverage summaries) — never by polling a guessed log path (an agent once polled a nonexistent log file for 38 minutes while the real run finished underneath).
+
 ## Step 5: Run tests (scope-aware)
 
-**Affected-first (every scope):** run the tests you wrote or changed, plus the directly affected profiles, first as a fast confirm; only once they pass, proceed to the scope's run below. For FULL/POST-MERGE the full suite then runs once as the gate — never loop the full suite to chase a fix.
+**Affected-first** per `docs/commands/build/references/qa-commons.md` § Affected-first — then run the scope below.
 
 Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports).
 
-Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Typecheck, lint, and any build step run bare.
+Agents REDIRECT a run to a log file and filter the FILE (`{cmd} > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`; the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Typecheck, lint, and any build step run bare.
 
 ### Scope: TARGETED (fix-loop rounds)
 
 Re-run ONLY the failing + affected profiles that triggered this round, plus the pipeline's adversarial profile(s), then unit. Do NOT widen to the full suite during fix loops.
 
 ```bash
-{PROJECT_TEST_RUNNER} <unit-with-coverage> 2>&1 | ../.claude/scripts/filter-test-output.sh -p          # unit
-{PROJECT_TEST_RUNNER} <failing-or-affected-profile> 2>&1 | ../.claude/scripts/filter-test-output.sh -p # repeat per failing/affected profile
-{PROJECT_TEST_RUNNER} <adversarial-profile> 2>&1 | ../.claude/scripts/filter-test-output.sh -p         # the pipeline's adversarial test(s)
-{PROJECT_TYPECHECK} && {PROJECT_LINT}                                                                  # bare — errors only
+{PROJECT_TEST_RUNNER} <unit-with-coverage> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log          # unit
+{PROJECT_TEST_RUNNER} <failing-or-affected-profile> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log # repeat per failing/affected profile
+{PROJECT_TEST_RUNNER} <adversarial-profile> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log         # the pipeline's adversarial test(s)
+{PROJECT_TYPECHECK} && {PROJECT_LINT}                                                                                                 # bare — errors only
 ```
+
+Never pipe a runner's LIVE stdout through the filter: an integration run through a live pipe can hang before spawning a single worker — 0% CPU, zero children, no output, indefinitely, indistinguishable from "still running". A run at 0 CPU with zero children is THAT hang, never slowness.
 
 Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
 
@@ -94,14 +100,16 @@ Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
 The entire test surface MUST be green before merge. No scope-gating, no shortcuts. Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then boot the instance and run integration/e2e tests against the pipeline's isolated stack.
 
 ```bash
-{PROJECT_TEST_RUNNER} <unit-with-coverage> 2>&1 | ../.claude/scripts/filter-test-output.sh -p   # unit
+{PROJECT_TEST_RUNNER} <unit-with-coverage> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log   # unit
 {PROJECT_TYPECHECK}                            # type-safe (bare)
 {PROJECT_LINT}                                 # clean (bare)
 {PROJECT_RUN_CMD} &                            # boot the instance on the allocated port
 sleep 3 && {HEALTH_PROBE}
-{PROJECT_TEST_RUNNER} <full-integration-suite> 2>&1 | ../.claude/scripts/filter-test-output.sh -p
+{PROJECT_TEST_RUNNER} <full-integration-suite> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log
 # stop the booted instance
 ```
+
+REDIRECT every test runner to a log file and filter the FILE (`{cmd} > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`) — the `settings.json` hook does not reach subagents, and a LIVE pipe hangs an integration run before its first worker spawns (0 CPU, 0 children, no output — indistinguishable from "still running") — keeps failures, summaries, coverage totals; never `tail`/`head`/`grep` test output.
 
 The integration/e2e suite runs against a live data layer and can take a long time. That is the cost of touching {project}; pay it. Failures are bugs (route through the fix loop). Hangs are bugs (`BUG-HUNG-TEST` per `build.md` § Fix Loop Escalation — kill any process at 0% CPU for >2 min). Never report PASS by skipping tests.
 
@@ -109,7 +117,7 @@ The integration/e2e suite runs against a live data layer and can take a long tim
 
 Same full suite as Scope: FULL, run against the project dir on `main` using the SHARED test stack (`up-test`) on the default test ports — covered in ## Post-Merge below.
 
-Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output.
+Agents REDIRECT a run to a log file and filter the FILE (`../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`, the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Never pipe a runner's LIVE stdout through the filter — a live pipe can hang an integration run before its first worker spawns (0 CPU, 0 children, no output, indistinguishable from "still running").
 
 ## Step 6: Compliance checks
 
@@ -147,15 +155,15 @@ make -C ../{INFRA_PROJECT} db-reset-test
 make -C ../{INFRA_PROJECT} nuke-test
 ```
 
-Write `$DOCS_REL/6-bugs-{project}.md` with test files + bug list (symptom, area, failing test, reproduction, expected, status).
+Write findings directly into the consolidated `$DOCS_REL/6-bugs.md` under your own `## {PROJECT_ROLE}` section (create the section if absent; never touch other projects' sections): test files + bug list (symptom, area, failing test, reproduction, expected, status). If the spawn brief names a different findings file, the brief wins.
 
 ## Post-Merge — GATE-2 (PM-1 to PM-7)
 
 Read runbook, fresh dependency install, start test infra (shared stack — post-merge is sequential under the gitter git-lock, so `up-test` + `db-setup-test` on main paths are correct), follow runbook, run tests, cleanup. Return inline results (runbook/deps/health/tests/coverage/issues).
 
-**Post-merge test scope:** Run the SAME full suite as Scope: FULL in Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real. Pipe every test runner through `../.claude/scripts/filter-test-output.sh -p` (the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output.
+**Post-merge test scope:** Run the SAME full suite as Scope: FULL in Step 5. No scope-gating. If {project} was touched and merged, the entire test surface must be green on `main` before the pipeline closes. External services mocked, data layer real. Agents REDIRECT a run to a log file and filter the FILE (`../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`, the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Never pipe a runner's LIVE stdout through the filter — that is the hang class named in Step 5.
 
 ## Rules
 
 - Write adversarial tests (not read-only). Don't modify impl code. No permanent docs writes. Integration tests use `.env.test`. Always cleanup. Never hardcode table/resource names. Fresh dependency install in POST-MERGE. End: "QA complete. Result: PASS" or "FAIL — N issues."
-- **Inline-fix escape hatch:** If a bug is trivial (<5 lines, single file, zero logic change — e.g. typo, missing import, off-by-one), fix it in-place and note it in the bug report as `INLINE-FIXED`. Don't create a fix-loop cycle for trivia.
+- **Inline-fix escape hatch:** per `docs/commands/build/references/qa-commons.md` § Inline-fix escape hatch.

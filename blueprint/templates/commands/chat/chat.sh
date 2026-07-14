@@ -2,20 +2,22 @@
 set -euo pipefail
 
 # chat.sh — the chat: family engine, one script with subcommands. Lives in
-# .claude/commands/chat/ ; each chat/<name>.md command calls `chat.sh <name>`.
+# $HOME/.claude/commands/chat/ (global — shared by every repo; repo .claude/commands/chat
+# entries are symlinks here); each chat/<name>.md command calls `chat.sh <name>`.
 #
 #   whoami                                    print THIS chat's own tmux session
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
-#   inject  [--no-sig] [--force-now] <self|tmux|label|session-id|path> <message...>  force a turn (live / resume)
+#   inject  [--force-now] [--then <steer>] <self|tmux|label|session-id|path> <message...>  force a turn (live / resume)
 #   ls                                        list live chats with cwd in this repo
 #   capture <tmux-session>                    snapshot a live chat's full scrollback
-#   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
 #   extract <transcript-jsonl>                render a known transcript to text
+#   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
 #   tail    [N]                               render THIS session's last N lines
 #   load    <dir-or-file>...                  enumerate a file set to force-read in full
 #   branch  [name]                            fork THIS session into a side-by-side pane (inherits model, names the fork)
 #   new     [--detach] [name]                  spawn a FRESH teammate chat — a side-by-side pane, or --detach for a headless bg session
+#   modal   <tmux-session> deny <down-count>  answer a permission modal DENY-ONLY (N Downs + Enter); modal deadlock rescue
 
 # transcript-extract.jq, inlined — renders a session JSONL as readable chat.
 read -r -d '' JQ_EXTRACT <<'JQ' || true
@@ -45,7 +47,11 @@ select(.isSidechain != true)
 | . + "\n"
 JQ
 
-repo_root() { cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P; }
+# repo_root: the CALLING chat's repo root — derived from $PWD (Claude Code runs this
+# from the project's cwd), never from this script's own on-disk location, since the
+# script is a single global copy shared by every repo. Falls back to $PWD itself
+# outside a git repo.
+repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd -P; }
 
 self_tmux() {
   [[ -n "${TMUX:-}" ]] || { echo "ERROR: this chat is not inside tmux (\$TMUX unset)" >&2; return 1; }
@@ -291,17 +297,30 @@ case "$cmd" in
     ;;
 
   inject)
-    nosig=0; force_now=0; then_steer=""
+    force_now=0; then_steer=""; msg_file=""
     while [[ "${1:-}" == --* ]]; do
       case "$1" in
-        --no-sig)    nosig=1; shift;;
+        --no-sig)    echo "WARNING: --no-sig is retired — the message PREFIX decides (/-prefixed = unsigned, everything else signed); flag ignored" >&2; shift;;
         --force-now) force_now=1; shift;;
         --then)      shift; then_steer="${1:-}"; shift;;
+        --file)      shift; msg_file="${1:-}"; shift;;
         *) echo "ERROR: unknown inject flag '$1'" >&2; exit 1;;
       esac
     done
-    [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--no-sig] [--force-now] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
-    target="$1"; shift; msg="$*"
+    # --file: read the message body from a file instead of argv. The CALLER's shell —
+    # not tmux, not this script — is what mangles a message carrying shell syntax
+    # (redirects, pipes, backticks, $): one imperfect quote and the caller's shell eats
+    # or executes part of it. A file never crosses a shell, so command examples travel
+    # intact. Use it for any message carrying shell metacharacters or spanning lines.
+    if [[ -n "$msg_file" ]]; then
+      [[ -f "$msg_file" ]] || { echo "ERROR: --file '$msg_file' not found" >&2; exit 1; }
+      [[ $# -ge 1 ]] || { echo "usage: chat.sh inject --file <path> [--force-now] [--then <steer>] <target>" >&2; exit 1; }
+      target="$1"; shift
+      msg="$(cat "$msg_file")"
+    else
+      [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--force-now] [--then <steer>] [--file <path>] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
+      target="$1"; shift; msg="$*"
+    fi
     [[ -n "$msg" ]] || { echo "ERROR: refusing to inject an empty message" >&2; exit 1; }
     # Resolve the LIVE destination to (socketpath, session). Cross-chat ops span every
     # tmux socket now (one socket per chat), so we never assume the connected/default
@@ -346,6 +365,35 @@ case "$cmd" in
       fi
     fi
 
+    # EVERY /compact inject must carry a --then steer (founder law; chat/self/compact.md
+    # owns the self dialect): compaction returns to an idle prompt — no turn fires — so
+    # a steerless compact strands the target command-less. The --then waiter (__then)
+    # rides out the busy→idle compaction and delivers on a quiet pane. The steer must
+    # not itself be a /compact (recursion loses the thread).
+    if printf '%s' "$msg" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
+      if [[ -z "$then_steer" ]]; then
+        echo "ERROR: a /compact inject requires --then <steer> — compaction ends at an idle prompt with no turn fired, stranding the target. Re-run: chat.sh inject --then '<post-compact steer>' <target> '/compact <focus>'" >&2
+        exit 1
+      fi
+      if printf '%s' "$then_steer" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
+        echo "ERROR: the --then steer must not itself start with /compact — compact-steering-into-compact recurses and loses the thread" >&2
+        exit 1
+      fi
+      # LONG-FOCUS GUARD (exit 6). A long /compact body is typed as a bracketed
+      # PASTE, which the TUI collapses to "[Pasted text #N] · paste again to
+      # expand" — the Enter lands on the collapsed block, the compaction never
+      # fires, and the message sits in the composer as queue-limbo. Twice live.
+      # The fix is also the better practice: a /compact focus is a POINTER plus
+      # the few facts that must survive VERBATIM — the long hold goes to a file
+      # the target reads back after compacting. A file on disk survives the
+      # summary; a 2,000-character focus competes with it for the same budget.
+      COMPACT_FOCUS_MAX="${COMPACT_FOCUS_MAX:-600}"
+      if (( ${#msg} > COMPACT_FOCUS_MAX )); then
+        echo "ABORT: /compact focus is ${#msg} chars (max ${COMPACT_FOCUS_MAX}) — a body this long is typed as a PASTE, the TUI collapses it, and the compaction never fires (queue-limbo, seen twice). Write the hold to a file and make the focus a POINTER: chat.sh inject --then '<steer>' <target> '/compact hold: read <abs path> — {2-3 facts that must survive verbatim}'. Nothing was typed." >&2
+        exit 6
+      fi
+    fi
+
     # Sender signature — every injected message ends with who sent it and the
     # exact command to answer with. Identity is the SCRIPT's job, never the
     # caller's: it self-derives from this chat's own tmux session (= chat.sh
@@ -366,9 +414,16 @@ case "$cmd" in
     sig=""; for p in "${sigparts[@]:-}"; do [[ -n "$p" ]] || continue; [[ -n "$sig" ]] && sig="$sig · "; sig="$sig$p"; done
     footer_inline=""; footer_block=""
     [[ -n "$sig" ]] && { footer_inline="  — ${sig}"; footer_block=$'\n\n'"— ${sig}"; }
-    # --no-sig drops the footer entirely — for /compact, /goal, /loop and other
-    # operational injections that must not carry a signature.
-    [[ "$nosig" == 1 ]] && { footer_inline=""; footer_block=""; }
+    # Signature policy (founder law): the sender signature is MANDATORY on every
+    # normal prompt — an unsigned message hides who is speaking. The MESSAGE PREFIX
+    # alone decides, never a caller flag: a /-prefixed prompt is a harness command
+    # and travels bare (a trailing footer would corrupt its args); everything else
+    # is signed. There is no opt-out flag.
+    exempt=0
+    msg_trim="${msg#"${msg%%[![:space:]]*}"}"
+    case "$msg_trim" in
+      /*) exempt=1; footer_inline=""; footer_block="";;
+    esac
 
     if [[ -n "$live_tmux" ]]; then
       # Every tmux call in this critical section must hit the TARGET's socket, not the
@@ -400,15 +455,17 @@ case "$cmd" in
           sleep "${CHAT_INJECT_POLL:-0.2}"
         done
       fi
-      # Everything goes inline — no file, no pointer, no length cap. A slash
-      # command sends verbatim (a footer/marker would land as command args);
-      # anything else gets the force marker (only if we actually interrupted) plus
+      # Everything goes inline — no file, no pointer, no length cap. A /-prefixed
+      # command sends verbatim (a footer/marker would corrupt its args); plain text
+      # gets the force marker (only if we actually interrupted) plus
       # the one-line footer appended. The settle-poll below confirms the whole
       # message — however long — actually rendered before Enter, so a long inline
       # send is reliable and a genuine jam is caught instead of half-sent.
       force_mark=""
       [[ "$did_intr" == 1 ]] && force_mark=" — ⚠ FORCE-DELIVERED via Esc (your running flow was interrupted; re-check any in-progress action)"
-      if [[ "$msg" =~ ^[[:space:]]*/ ]]; then :; else msg="${msg}${force_mark}${footer_inline}"; fi
+      # Founder law: /-prefixed harness commands (decided above) travel bare;
+      # every plain-text message is signed.
+      if [[ "$exempt" == 1 ]]; then :; else msg="${msg}${force_mark}${footer_inline}"; fi
 
       # Normalize the input surface so keystrokes actually land — a pane in copy/scroll
       # mode or sitting in the Rewind menu silently eats input (a common "Enter didn't
@@ -418,6 +475,31 @@ case "$cmd" in
       fi
       if "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -qiF 'Restore the code'; then
         "${TM[@]}" send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
+      fi
+
+      # COPY-MODE GUARD: a pane sitting in tmux copy-mode (the scrollback view — a
+      # scroll-wheel or stray key opens it) EATS every typed key as a copy-mode
+      # binding: the inject would vanish, and stray letters raise jump prompts
+      # ("(jump to forward)") instead of reaching the composer. Cancel the view
+      # first — it only closes the scrollback overlay; the underlying composer
+      # and any draft are untouched.
+      if [[ "$("${TM[@]}" display-message -t "$live_tmux" -p '#{pane_in_mode}' 2>/dev/null || true)" == "1" ]]; then
+        "${TM[@]}" send-keys -t "$live_tmux" -X cancel
+        sleep "${CHAT_INJECT_POLL:-0.2}"
+      fi
+
+      # SELECTOR GUARD: an open AskUserQuestion/permission menu treats Enter as
+      # SELECT — injecting would forge an answer on the target's behalf (menus can
+      # gate security authorizations). Selector shape: the pane's LAST '❯' sits on
+      # a numbered option row instead of a bare input line. Abort BEFORE typing;
+      # exit 4 = selector-open, retry after the menu's owner answers/dismisses it
+      # (distinct from exit 3 typed-not-submitted). A pane with NO '❯' at all is a
+      # foreign (non-Claude) UI — no Claude menu can be open there, so the guard
+      # passes; the || true keeps the failing grep from killing the script (set -e).
+      sel_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
+      if printf '%s' "$sel_line" | grep -qE '❯[[:space:]]*[0-9]+\.[[:space:]]'; then
+        echo "ABORT: '$live_tmux' has an OPEN selector menu (its ❯ sits on a numbered option: $(printf '%s' "$sel_line" | sed 's/^[[:space:]]*//')) — an inject would press Enter INTO the menu and forge an answer. Nothing was typed. Re-run after the menu's owner answers or dismisses it." >&2
+        exit 4
       fi
 
       # PRE-INJECT draft safety: send-keys -l appends at the cursor, so typing onto an
@@ -430,6 +512,53 @@ case "$cmd" in
       sleep "${CHAT_INJECT_POLL:-0.2}"
       saved_draft=0
       "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -8 | grep -qi 'stashed' && saved_draft=1
+
+      # MASH GUARD: one C-s is not proof — a stash-restore from the PREVIOUS inject can
+      # race this one (the restored draft pops back after our C-s already fired), and
+      # transient pane states can leave the binding inert. Typing onto a live draft
+      # submits a mash-up as the TARGET's words. Verify the composer is EMPTY (bare ❯,
+      # the pane's LAST ❯ line) before typing; a lingering draft gets stash retries,
+      # then a hard abort — never typed over. ❯-less (foreign) panes skip: no Claude
+      # composer to guard.
+      draft_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
+      if [[ -n "$draft_line" ]]; then
+        # A draft is REAL only if it carries a printable ASCII char — the empty
+        # composer's line can hold invisible artifacts (cursor glyph, NBSP) that
+        # [[:space:]] never strips in the C locale — and the queued-messages hint
+        # ("Press up to edit queued messages") is placeholder text on the ❯ line,
+        # never a draft: strip it before the test or every inject to a target with
+        # a queued backlog false-aborts exit 5.
+        _has_draft() { printf '%s' "$1" | sed 's/^[[:space:]]*❯[[:space:]]*//; s/Press up to edit queued messages//' | LC_ALL=C grep -qE '[[:graph:]]'; }
+        # Dim-styled (SGR 2) ❯-line text is a HARNESS PLACEHOLDER (contextual suggested
+        # reply, CC ≥2.1.205) — never a buffer draft: C-s cannot stash it (the buffer is
+        # empty) and typing replaces it, so it must not trip the guard. Discriminate by
+        # styling in an escape-preserving capture: a real typed draft renders undimmed.
+        # Placeholder iff the styled line carries an SGR-2 span AND stripping the dim
+        # spans + all SGRs + the queued hint leaves no printable text after ❯.
+        # Dynamic placeholders once false-aborted (exit 5) every inject to any
+        # pane showing one, while the unconditional first C-s had already stashed real
+        # drafts underneath — a self-deepening delivery trap.
+        _is_placeholder() {
+          local styled esc; esc=$'\x1b'
+          styled="$("${TM[@]}" capture-pane -t "$live_tmux" -p -e -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
+          [[ "$styled" == *"${esc}[2m"* ]] || return 1
+          printf '%s' "$styled" | LC_ALL=C sed -E "s/${esc}\[2m[^${esc}]*//g; s/${esc}\[[0-9;]*m//g; s/^[[:space:]]*❯[[:space:]]*//; s/Press up to edit queued messages//" | LC_ALL=C grep -qE '[[:graph:]]' && return 1
+          return 0
+        }
+        for _ in $(seq 1 "${CHAT_INJECT_STASH_TRIES:-4}"); do
+          _has_draft "$draft_line" || break
+          _is_placeholder && break
+          "${TM[@]}" send-keys -t "$live_tmux" C-s
+          sleep "${CHAT_INJECT_POLL:-0.2}"
+          "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -8 | grep -qi 'stashed' && saved_draft=1
+          draft_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
+        done
+        if _has_draft "$draft_line" && ! _is_placeholder; then
+          rest="$(printf '%s' "$draft_line" | sed 's/^[[:space:]]*❯[[:space:]]*//; s/[[:space:]]*$//')"
+          echo "ABORT: '$live_tmux' composer holds a draft that will not stash (mash guard): ${rest:0:80} — nothing typed; the draft is preserved, re-run when the composer clears. (Dim SGR-2 placeholder text is exempt — this text rendered UNDIMMED, i.e. a real draft.)" >&2
+          exit 5
+        fi
+      fi
 
       "${TM[@]}" send-keys -t "$live_tmux" -l -- "$msg"
       # A distinctive tail of the message — used to confirm the text rendered AND
@@ -464,7 +593,9 @@ case "$cmd" in
           "${TM[@]}" send-keys -t "$live_tmux" Enter
         fi
         sleep "${CHAT_INJECT_ENTER_SETTLE:-0.4}"
-        input_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1)"
+        # || true: a foreign (non-Claude) pane has no '❯' input line — the empty
+        # result reads as submitted-after-Enter (best-effort on foreign UIs).
+        input_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
         [[ "$input_line" != *"$prefix"* ]] && { submitted=1; break; }
       done
       if [[ "$submitted" == 1 ]]; then
@@ -482,7 +613,7 @@ case "$cmd" in
           # our lock now so the waiter is never blocked by us.
           _inject_lock_release; trap - EXIT
           steer_log="${TMPDIR:-/tmp}/chat-then-$(printf '%s' "$live_tmux" | tr -c 'A-Za-z0-9' _).log"
-          setsid bash "$0" __then "$socketpath" "$live_tmux" "$nosig" "$then_steer" >"$steer_log" 2>&1 </dev/null &
+          setsid bash "$0" __then "$socketpath" "$live_tmux" "$then_steer" >"$steer_log" 2>&1 </dev/null &
           note="${note} — --then steer queued; delivers after the primary settles (log: $steer_log)"
         fi
         echo "injected LIVE into '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
@@ -527,12 +658,12 @@ case "$cmd" in
   __then)
     # internal (detached): deliver a --then follow-up steer once the target's current
     # turn — typically a /compact compaction — has settled to idle. Args:
-    # <socketpath> <target> <nosig 0|1> <steer>, where <target> is whatever the parent
+    # <socketpath> <target> <steer>, where <target> is whatever the parent
     # inject resolved — a pane id for a label/pane target, a session name otherwise.
     # Waits for busy→stable-idle so the steer lands on a quiet pane, then re-injects
     # (own lock), passing the socket via env so a pane-id target hits the right server.
-    socketpath="${1:-}"; target="${2:-}"; nosig="${3:-0}"; then_steer="${4:-}"
-    [[ -n "$target" && -n "$then_steer" ]] || { echo "ERROR: __then needs <socketpath> <target> <nosig> <steer>" >&2; exit 1; }
+    socketpath="${1:-}"; target="${2:-}"; then_steer="${3:-}"
+    [[ -n "$target" && -n "$then_steer" ]] || { echo "ERROR: __then needs <socketpath> <target> <steer>" >&2; exit 1; }
     # 1) let the primary turn take hold (ride past any turn-end → /compact-start gap)
     sleep "${CHAT_THEN_MIN:-1.5}"
     # 2) wait for it to start (pane busy), bounded so a no-op turn can't stall us
@@ -549,8 +680,7 @@ case "$cmd" in
       sleep "${CHAT_THEN_IDLE_POLL:-0.4}"
     done
     sleep "${CHAT_THEN_SETTLE:-0.4}"
-    steer_cmd=("$0" inject); [[ "$nosig" == 1 ]] && steer_cmd+=(--no-sig); steer_cmd+=("$target" "$then_steer")
-    CHAT_INJECT_SOCKET="$socketpath" exec "${steer_cmd[@]}"
+    CHAT_INJECT_SOCKET="$socketpath" exec "$0" inject "$target" "$then_steer"
     ;;
 
   ls)
@@ -634,11 +764,6 @@ case "$cmd" in
     } >> "$target"
     user_count=$(jq -r 'select(.type == "user" and .isSidechain != true) | 1' "$transcript" | wc -l | tr -d ' ')
     echo "Appended transcript ($user_count user records) + env snapshot -> $target ($(wc -l < "$target" | tr -d ' ') lines total)"
-    ;;
-
-  extract)
-    [[ $# -ge 1 && -f "${1:-}" ]] || { echo "usage: chat.sh extract <transcript-jsonl>" >&2; exit 1; }
-    jq -r "$JQ_EXTRACT" "$1"
     ;;
 
   tail)
@@ -752,8 +877,33 @@ case "$cmd" in
     fi
     ;;
 
+  extract)
+    [[ $# -ge 1 && -f "${1:-}" ]] || { echo "usage: chat.sh extract <transcript-jsonl>" >&2; exit 1; }
+    jq -r "$JQ_EXTRACT" "$1"
+    ;;
+
+  modal)
+    # modal <tmux-session> deny <down-count> — answer a permission MODAL in a live chat pane.
+    # SANCTIONED DENY-ONLY (wave/orchestrator.md § tmux-Escape lever): a blocked destructive action
+    # raises a modal that swallows the statusline (label-resolve breaks — hence session-name-only)
+    # and deadlocks the chat; inject cannot answer a menu. This navigates <down-count> Downs + Enter
+    # to select the deny/"No" option. NEVER used to accept — blind-accepting defeats the guard.
+    [[ $# -ge 3 && "${2:-}" == "deny" && "${3:-}" =~ ^[0-9]+$ ]] || { echo "usage: chat.sh modal <tmux-session> deny <down-count>   # deny-only: N Downs + Enter onto the deny option" >&2; exit 1; }
+    target="$1"; downs="$3"
+    sock="/tmp/tmux-$(id -u)/$target"
+    [[ -S "$sock" ]] || { echo "ERROR: no tmux socket for session '$target'" >&2; exit 1; }
+    _inject_lock_acquire "$target"
+    trap _inject_lock_release EXIT
+    for ((i = 0; i < downs; i++)); do tmux -S "$sock" send-keys Down; sleep 0.2; done
+    tmux -S "$sock" send-keys Enter
+    sleep 1
+    echo "--- modal answered (deny, ${downs} Down) : screen of '$target' ---"
+    tmux -S "$sock" capture-pane -p | tail -25
+    echo "--- end proof ---"
+    ;;
+
   *)
-    echo "usage: chat.sh {whoami|find|read|inject|ls|capture|save|extract|tail|load|branch|new} ..." >&2
+    echo "usage: chat.sh {whoami|find|read|inject|ls|capture|save|extract|tail|load|branch|new|modal} ..." >&2
     exit 1
     ;;
 esac

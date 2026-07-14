@@ -12,16 +12,17 @@ Args: $ARGUMENTS
 
 - **`$ARGUMENTS` is a bare number `N`** → THIS chat's own last N lines:
   ```bash
-  .claude/commands/chat/chat.sh tail N
+  $HOME/.claude/commands/chat/chat.sh tail N
   ```
   Present those lines to the founder; it is a self-tail, so skip Steps 2-4.
 - **`$ARGUMENTS` is an excerpt (optionally ending in a number `N`)** → write the excerpt verbatim to `tmp/chat-loads/excerpt.txt` (exclude any trailing `N`), then run Step 2.
 - **Empty** → ask the founder for an excerpt of the target chat, or a bare number for this chat's tail.
+- **Sid fast path** — when you already hold the target's sid (every signature footer carries `sid {8-hex}`) or its jsonl path, skip the excerpt hunt: `$HOME/.claude/commands/chat/history.sh {sid-prefix|jsonl-path} [N-messages]` prints the last N MESSAGES (timestamped, tool noise and system-reminders stripped) across every account pool.
 
 ## Step 2 — Locate and extract (a pasted target chat)
 
 ```bash
-.claude/commands/chat/chat.sh read tmp/chat-loads/excerpt.txt [N]
+$HOME/.claude/commands/chat/chat.sh read tmp/chat-loads/excerpt.txt [N]
 ```
 
 `chat.sh read` finds the chat across every account's registry (current session excluded), picks the best match, and extracts its visible chat to `tmp/chat-loads/{session-id}.md` — the whole transcript, or just the last `N` lines when `N` is given. It reports the date range, other candidates, and line count.

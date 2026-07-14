@@ -102,7 +102,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command. You pick the disciplines at install.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
 - **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
-- **/wave:{orchestrator,builder,refine,walker,live,schedule}, /dev, /git, /documenter, /chat:{save,dump,read,find,inject,capture,goal,self:compact,load}, /goal-manager** — pipeline mechanics with light Professor voice.
+- **/wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /dev, /git, /documenter, /chat:{save,dump,read,find,inject,capture,goal,self:compact,load}, /goal-manager** — pipeline mechanics with light Professor voice.
 
 **Bundled commands (ship with the blueprint):** the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 

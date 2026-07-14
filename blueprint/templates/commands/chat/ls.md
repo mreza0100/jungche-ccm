@@ -6,4 +6,4 @@ argument-hint: (no arguments)
 
 # Chat LS — live chats in this repo
 
-Run `.claude/commands/chat/chat.sh ls` and report what it lists. Each row is a live chat's tmux session name — the handle for `/chat:inject … :: {session}` — with its idle/busy state and a snippet of its current screen, this chat marked. Only chats whose working dir is inside this repo are shown.
+Run `$HOME/.claude/commands/chat/chat.sh ls` and report what it lists, noting which row is this chat.

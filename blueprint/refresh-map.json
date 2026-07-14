@@ -55,12 +55,12 @@
     },
     "templates/CLAUDE.md": {
       "sources": {
-        "CLAUDE.md": "448d1a356addfce2269bb3920d3bc3828a916b99c5b81e7194ad07379cd07c3b"
+        "CLAUDE.md": "5786520df93277a568dd1ddaa81e95222e2f31fa38008792930b1f4162eafe1d"
       }
     },
     "templates/agents/gitter.md": {
       "sources": {
-        ".claude/agents/gitter.md": "7cbcef4198acd584f158c196a8c0608a54395236a4356eff704741119f57e1eb"
+        ".claude/agents/gitter.md": "23428e09a07e1c41a108ed5330366fc9bdb44fdac5762336f16b18f6be480fd5"
       }
     },
     "templates/agents/mono-architect.md": {
@@ -68,7 +68,7 @@
     },
     "templates/agents/mono-documenter.md": {
       "sources": {
-        ".claude/agents/mono-documenter.md": "2b7810710cf4944e81ca863d13bda3cdc6bec1e23876241fce35b3ad389d0830"
+        ".claude/agents/mono-documenter.md": "15e04c4a0ab612faa92bf5b3c63480c8dd969f95eeede7cbcc6f2a46781b972c"
       }
     },
     "templates/agents/mono-planner.md": {
@@ -79,7 +79,7 @@
     },
     "templates/agents/per-project/developer.md": {
       "sources": {
-        "{project:backend}/.claude/agents/developer.md": "486722178adecccb28b10f8bc715ed7d0ebad55a43a1a027c13a5cb8d59702b9"
+        "{project:backend}/.claude/agents/developer.md": "58d377c6455bcecdc9cd277a5515a942883d36e6ae2990632462855e659cb0c7"
       }
     },
     "templates/agents/per-project/planner.md": {
@@ -87,7 +87,7 @@
     },
     "templates/agents/per-project/qa.md": {
       "sources": {
-        "{project:backend}/.claude/agents/qa.md": "278f0be708c3dc41602fbd825a04cb4468eecfebd52772b21ca5830a09756bd7"
+        "{project:backend}/.claude/agents/qa.md": "937f36fc6f99fb1f0a24c9f09a430a53bbb417561368999f64c069097b5b4ff3"
       }
     },
     "templates/agents/qa-wrapper.md": {
@@ -226,12 +226,12 @@
     },
     "templates/commands/audit/ai-output.md": {
       "sources": {
-        ".claude/commands/audit/cortex.md": "f60e40b466593c489c8adde3f6a22e2a1ece091ce7b51d0de6d138511e6801b7"
+        ".claude/commands/audit/cortex.md": "452c858d85f61b6cb94c5b38ccc1cd852210ee307d9e012fe9cc7e84c7e5762a"
       }
     },
     "templates/commands/audit/code-hygiene.md": {
       "sources": {
-        ".claude/commands/audit/code-hygiene.md": "abf67611d4f7298fd84319519c63d52433f39132c8e58dae61a2a147f3c550fb"
+        ".claude/commands/audit/code-hygiene.md": "188d720ea7ad0d1a5dbec0f9c9039ee2fc631476c042a82efbaf19b0ba2b9d0f"
       }
     },
     "templates/commands/audit/security.md": {
@@ -241,87 +241,87 @@
     },
     "templates/commands/chat/branch.md": {
       "sources": {
-        ".claude/commands/chat/branch.md": "dd3eb68c62186261c0d5a83fbde9474e82dd000ea9fe9dcb3d1ef17c68b5c765"
+        ".claude/commands/chat/branch.md": "51439d83575bea7e8a116deeaafa4a93732a1c84b268244c58957fdc70685a6d"
       }
     },
     "templates/commands/chat/capture.md": {
       "sources": {
-        ".claude/commands/chat/capture.md": "bfcc0725fd2bac7b888f90d32e537fb534c499973a2f16e8c829e3a57dd24dd4"
+        ".claude/commands/chat/capture.md": "908f16f9e8086ca8049a379b43662a03a1feb40aaf7d854f332a6c3a180ebebf"
       }
     },
     "templates/commands/chat/chat.sh": {
       "sources": {
-        ".claude/commands/chat/chat.sh": "49f2efd035020107e169fa04e99083f518281527b0a99c60da94620e380f9cc1"
+        ".claude/commands/chat/chat.sh": "2097d60f3e2eb69fa67d0a9a1f888f53efe51ab79140b3a17ea0b94f04faa183"
       }
     },
     "templates/commands/chat/dump.md": {
       "sources": {
-        ".claude/commands/chat/dump.md": "2bf6028a407ce09ae16be9840e45c5963c491bef48ee9011b48fbb0372f41b61"
+        ".claude/commands/chat/dump.md": "6151a4dff281d63578d84d51827b69d7918ce690b594ac2d4ca8a0f74e7520e7"
       }
     },
     "templates/commands/chat/find.md": {
       "sources": {
-        ".claude/commands/chat/find.md": "ae0e97d063f2cb18d8d9f925f8b356a6b2fdeea63e9da3093b721498a87bd4a6"
+        ".claude/commands/chat/find.md": "044a798f57fe8e00946751fbd69526a3e547482dcaba62197709e3f624361930"
       }
     },
     "templates/commands/chat/goal.md": {
       "sources": {
-        ".claude/commands/chat/goal.md": "fe221fba86f98bfba1fdcf8d15860ef1debbd4756d05b9d0f1fe9ca54f61b5a9"
+        ".claude/commands/chat/goal.md": "3901da9f6c04f19ed5de5b36963a6d61f8a1467d96e7dde0103cbe0a4efc145c"
       }
     },
     "templates/commands/chat/inject.md": {
       "sources": {
-        ".claude/commands/chat/inject.md": "798f384d7bf54856e4a379630fc876bc2934b3e849cfb5a1f4069c23f377d62a"
+        ".claude/commands/chat/inject.md": "96831b76fa2b687e4cc5919081b21d11624f1bfa13114521103f246d175ecb20"
       }
     },
     "templates/commands/chat/interrogate.md": {
       "sources": {
-        ".claude/commands/chat/interrogate.md": "0698ee0a1e4e692c582ddfba93f7fcf5f985d8a6cca7b9b4cbe17d26605cc8c0"
+        ".claude/commands/chat/interrogate.md": "b832be82de7886ed414e0319cf5b5ef68d8050011e626bf82799f9b5dea3cc6b"
       }
     },
     "templates/commands/chat/load.md": {
       "sources": {
-        ".claude/commands/chat/load.md": "6b77e1b3be653719df21585e998aba78924639ca3416ed8027d9c1aa5ac21c4f"
+        ".claude/commands/chat/load.md": "f847d633120ba58ec8edde2168f7bced6afd5a8df4c791e82483407abbc21594"
       }
     },
     "templates/commands/chat/ls.md": {
       "sources": {
-        ".claude/commands/chat/ls.md": "bbaa6889cb2c5e5b8c77f723bcf69f6f9f4622125dfa8ac28dd5519e34e566f3"
+        ".claude/commands/chat/ls.md": "1aba25937aea6822193b4cb50a1bfd248540d4239bb85c3b550c33e409d21e56"
       }
     },
     "templates/commands/chat/new.md": {
       "sources": {
-        ".claude/commands/chat/new.md": "44f28c428f504c41ca5f67e6def077c5816b9f5c0a2bcf04c334fc142435d193"
+        ".claude/commands/chat/new.md": "6a6a6e89f76294d0849210e284256f8e99442fe932dbb5c64d03c5eb1232b5ec"
       }
     },
     "templates/commands/chat/read.md": {
       "sources": {
-        ".claude/commands/chat/read.md": "47f49a3638b6eb9136ac589f85158b67e3b523697a252ab094e4537417e8a516"
+        ".claude/commands/chat/read.md": "e702e178de41244555eb4a6a498d450919b8b0276d3f923ee18026bf14822ae5"
       }
     },
     "templates/commands/chat/save.md": {
       "sources": {
-        ".claude/commands/chat/save.md": "05a037df68577cb4a57de171ed939659b4c4663a28b7bef377bd7c4cfc1d03de"
+        ".claude/commands/chat/save.md": "75bbe12d096dd254e94c443dd2cb403bb7e6efdc9a23e2c9f20e1a6d786f4052"
       }
     },
     "templates/commands/chat/self/compact.md": {
       "sources": {
-        ".claude/commands/chat/self/compact.md": "5c4c5b799cf6c9e2c04fccb508d4ff540deeed46345a051610671c798d819de4"
+        ".claude/commands/chat/self/compact.md": "a19c860c1ba89fd5f0d52a12dcc5dd396f034bb4ce5eb70935fd133e506e01be"
       }
     },
     "templates/commands/chat/whoami.md": {
       "sources": {
-        ".claude/commands/chat/whoami.md": "daf1294fb54d3154707f0a0e910055fefd721ac27cbe25e8329eb79d6f001d33"
+        ".claude/commands/chat/whoami.md": "85de096ae7eba25f84e8e8e8f2ca303fb06f15448a00f26684ac290b06bf5695"
       }
     },
     "templates/commands/dev.md": {
       "sources": {
-        ".claude/commands/dev.md": "cd1c11b42100b10b5307175614743a831f7cfe448950dd43187f7c244dd8fb5a"
+        ".claude/commands/dev.md": "2162753dfc5618ff9968ab35ad7fd4538ebd6e432dc84f653f74457120eb5974"
       }
     },
     "templates/commands/documenter.md": {
       "sources": {
-        ".claude/commands/documenter.md": "741898bee68adb3901ef5c065dac75b641594c3311ebe3498a7e649bc8eacb3a"
+        ".claude/commands/documenter.md": "2d65fb5ab2baef88e55ae932ce8558e265f133314b5f07ad1248ff261c7ad245"
       }
     },
     "templates/commands/documenter/_base.txt": {
@@ -335,7 +335,7 @@
     },
     "templates/commands/git.md": {
       "sources": {
-        ".claude/commands/git.md": "4084782bb44dec3ac14166b39ccbe268ae2466db3949013828f92cba9a1c5719"
+        ".claude/commands/git.md": "cc6f1b5cd11b876fdd0074bd2139ed13ff63c8c5cbe2261a5d4b57adbc3d88d0"
       }
     },
     "templates/commands/goal-manager.md": {
@@ -343,7 +343,7 @@
     },
     "templates/commands/jc.md": {
       "sources": {
-        ".claude/commands/jc.md": "5490a9975f8767834e1318f6985585c0ed84b0e902685e98b52d8551d7342da6"
+        ".claude/commands/jc.md": "2e602541f23e38b6e9ef80562191f27c7053b867dbe30c8e55672625b82d1d1e"
       }
     },
     "templates/commands/km.md": {
@@ -353,32 +353,27 @@
     },
     "templates/commands/marketer.md": {
       "sources": {
-        ".claude/commands/marketer.md": "9bd69412a0c23133d88658f56a3789d254985476cd6b4aa8a8582d522f73d204"
+        ".claude/commands/marketer.md": "20e42f718b1ffb04bd217140572483cf19dd8a513a954f4a4033ea532ce711ba"
       }
     },
     "templates/commands/mentor.md": {
       "sources": {
-        ".claude/commands/mentor.md": "d10ca2a778d0815e3df7035d8084ccf3e1b83126a424b15755b2fa108635d05f"
+        ".claude/commands/mentor.md": "80c0b7f91a48aae692894229d490b83048769801b66344735a456c9e835375f0"
       }
     },
     "templates/commands/officer.md": {
       "sources": {
-        ".claude/commands/officer.md": "4b3a90b6abe9a4fc71009c7a979b66f9ad50b2182b5633c59a99cbd7de0c756a"
-      }
-    },
-    "templates/commands/p/2opinion.md": {
-      "sources": {
-        ".claude/commands/p/2opinion.md": "ca1be03659e732abcef92547e4c1aa701a5031fe13e77a770af6c6f2875603f9"
+        ".claude/commands/officer.md": "aa1dbf5f6e86998bc679b88bc70b3e4f2affaea89eafedcdd7795087b803952a"
       }
     },
     "templates/commands/p/360.md": {
       "sources": {
-        ".claude/commands/p/360.md": "4c5ab4b7c37e6e7b7a122effdc7f21d80e0c92516ce6369a0bf14ce1a32ef66f"
+        ".claude/commands/p/360.md": "1488857760e88eb93cd1af6e844dc6284108ceb32d7d716fa67c36bdf9f10e15"
       }
     },
     "templates/commands/p/rnd.md": {
       "sources": {
-        ".claude/commands/p/rnd.md": "869987242b0468a688ee02532a9359b6bb4628ed64b03e8490a24490dd678249"
+        ".claude/commands/p/rnd.md": "fef9b4f3d9df57328da98f409194721506aac34fe7167cb21799757c0ec2800a"
       }
     },
     "templates/commands/p/slow-burn.md": {
@@ -388,7 +383,7 @@
     },
     "templates/commands/p/tokens/README.md": {
       "sources": {
-        ".claude/commands/p/tokens/README.md": "52683ed9fc847db0ed9548267eb3a830a2b8803089b7074e507775666673ef35"
+        ".claude/commands/p/tokens/README.md": "8046b4b1f13c1922021d91a7da5ef9a6eadb151b173c18d3c9a2e1ee1fb9c5ff"
       }
     },
     "templates/commands/p/tokens/SKILL.md": {
@@ -403,12 +398,12 @@
     },
     "templates/commands/pcm.md": {
       "sources": {
-        ".claude/commands/pcm.md": "213850cb98285b19c90ac80cf309b7da095632418cc3f1f8d640211d3fa1a65a"
+        ".claude/commands/pcm.md": "7e7beea5dabc23bd25320ed3acae73d6b8863aa350793f86e18563ecf59094b9"
       }
     },
     "templates/commands/pcm/context-meter.md": {
       "sources": {
-        ".claude/commands/pcm/context-meter.md": "d6eeefbd2a5e4452d0ea046490aafc66e2096cf073062e1d9640206126e7871d"
+        ".claude/commands/pcm/context-meter.md": "e64a48f3bf5bf4c9a1a3bcaa79e1cdab49c9f22ec437741e7bdf137f3f24c3ac"
       }
     },
     "templates/commands/pcm/references/refresh.md": {
@@ -428,22 +423,22 @@
     },
     "templates/commands/pm.md": {
       "sources": {
-        ".claude/commands/pm.md": "5c557cc284f423e42f6b4acb0d3a7bc949e5bff1ed5581eefbdea72722e00f71"
+        ".claude/commands/pm.md": "454982084c02941805656e6185844e9ffe2e056bcd57154d6ceedf973fa06e2b"
       }
     },
     "templates/commands/qa/live.md": {
       "sources": {
-        ".claude/commands/qa/live.md": "c8c760c8a0c48bb0194a0b0decd1907692526b9ac94890c02146ef44fa5ccc88"
+        ".claude/commands/qa/live.md": "e3e3eba9c7f1ae8bab6dd5e563e348b5ef562fc4db2d89e3580b63a39c09082f"
       }
     },
     "templates/commands/quality/doc.md": {
       "sources": {
-        ".claude/commands/quality/doc.md": "2099ef116d892d112effecc2630aeb18c1293029b3809dd8cc676f46025b7413"
+        ".claude/commands/quality/doc.md": "b09e3771fcc8a418b4e2e8e0e6826e81d7b3b1d0e1bcd176c6cb5c39f8e524e4"
       }
     },
     "templates/commands/quality/prompt.md": {
       "sources": {
-        ".claude/commands/quality/prompt.md": "79c39bcab04107af58b23dc0204ff10550b0ab185d9438e87612994d3ec547d8"
+        ".claude/commands/quality/prompt.md": "e41d014e9cf05a4022388fba1769d7bb0a19a25599e27f38053051b8907ee8b0"
       }
     },
     "templates/commands/sleep.md": {
@@ -453,32 +448,32 @@
     },
     "templates/commands/wave/builder.md": {
       "sources": {
-        ".claude/commands/wave/builder.md": "39e5625685fdf8c1a7ec9563ed8c587880402e0ad6ed9c82f056d94a77250c7c"
+        ".claude/commands/wave/builder.md": "775309306a1f9c2d40cb1b3043c9a0bcf7c727a805d287eaa05f14d9553ece0f"
       }
     },
     "templates/commands/wave/live.md": {
       "sources": {
-        ".claude/commands/wave/live.md": "e3e7829d847d427848018445cab02c34f3ffb239864de8fdf03a30caedb5a1c8"
+        ".claude/commands/wave/live.md": "f6acce577a88bf1e59172432651f3caf91c6ffa0c124bd481b2ec211dd6c9159"
       }
     },
     "templates/commands/wave/orchestrator.md": {
       "sources": {
-        ".claude/commands/wave/orchestrator.md": "cba1dfb88eea74d88eb78b9ff6a180737efdc656865d5928228b9727ca897789"
+        ".claude/commands/wave/orchestrator.md": "351dd1f3099770b95804914abe86a1432bfd0ea3fd92d768a181675651f2caff"
       }
     },
     "templates/commands/wave/refine.md": {
       "sources": {
-        ".claude/commands/wave/refine.md": "5fb6c99927077cdf8f36821a01181a3aebce2342bc6d0c2001022fb1b72903b6"
+        ".claude/commands/wave/refine.md": "ec7075c264dcbfb3a822030d54c4f7c750180dc4f5a15524b2f5ca61f2b6d3e6"
       }
     },
     "templates/commands/wave/schedule.md": {
       "sources": {
-        ".claude/commands/wave/schedule.md": "005a993283c0d128295dde2f5884203e87c33122fc08db5acd45d0f01f12eab6"
+        ".claude/commands/wave/schedule.md": "285c8ab94023a9afb9c48e5e1b35f17a8cb232c9eb68e58bf29db31743f6b923"
       }
     },
     "templates/commands/wave/walker.md": {
       "sources": {
-        ".claude/commands/wave/walker.md": "9a153c76b0ecb15cb580484239be2a62c6cb47a6f5268092fafd127b4a4c56f9"
+        ".claude/commands/wave/walker.md": "5e9183e2fde26d492b78b17427c20a1608649dd231371e75f563316bf9a328ad"
       }
     },
     "templates/docs-agents/_index.md": {
@@ -557,12 +552,12 @@
     },
     "templates/docs-commands/git/references/gitter-phase-docs.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-docs.md": "b3b3c97218da00cd75b20c5c9c9152fcf4f04d15ec3ce034aec96969736eb514"
+        "docs/commands/git/references/gitter-phase-docs.md": "b95e900a1f94992844847673bf2907aca3e2df3b0eb1caaf0145072085b6d507"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-merge.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-merge.md": "b34afd5f47567dfd67c3cc65c416d51b2399dc2ae6ab395bd17ea56bc9e700c8"
+        "docs/commands/git/references/gitter-phase-merge.md": "f93ac3d99bf79a6d9be4fa99c9030c49557f576a6018a73cec181a7dec9611fe"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-push.md": {
@@ -572,12 +567,12 @@
     },
     "templates/docs-commands/git/references/gitter-phase-setup.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-setup.md": "ea4e44118984aae3e0df4584001b1d29075ed54142236052280c6c326271d7f0"
+        "docs/commands/git/references/gitter-phase-setup.md": "67fa11f2f6df4724de697f892afc71434f270169c9070fcc0c80f8619d8c7e24"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-wave.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-wave.md": "44013055cda872cb7640bc724ff3a61130c27486cef86e9045500844c1497859"
+        "docs/commands/git/references/gitter-phase-wave.md": "fbf9e77ba5babeb1e9b77c025ac5ed20a576bb7d68e9982e34842b23f6ff8e04"
       }
     },
     "templates/docs-commands/jc/references/debug-discipline.md": {
@@ -606,7 +601,7 @@
     },
     "templates/host-swap/cc-agent-open.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-agent-open.sh": "c2b82cf11c7bc996fbd6c94574a86dfd73c7ade01e78e6d3d35e1bb3b0f37dd1"
+        "~/work/host-ops/devbox/scripts/cc-agent-open.sh": "ba895868140e12d304ba637d73c1d0f30597f566729e55c69f0820a31689c2cc"
       }
     },
     "templates/host-swap/cc-hide.sh": {
@@ -619,7 +614,7 @@
     },
     "templates/host-swap/cc-ls.snippet.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "ab65085b09e2e6ee81529256a96ee2dfa000880f1faedde876de1c5548a0c414"
+        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "744d6555e615ff0a015d10946c8be5172a4a3f887ff4e6a9efec5b5421623042"
       }
     },
     "templates/host-swap/cc-reap.sh": {
@@ -629,7 +624,7 @@
     },
     "templates/host-swap/statusline-badge.snippet.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "de58df57457d77dabd16d2e6220e4c7e24b0d48512111fea892a41f70fa399b6"
+        "~/.claude/statusline-command.sh": "69413dfdf3afecb7ab75f602e3896d05f7bf633c025c9d0dd08721b2346375c0"
       }
     },
     "templates/host-swap/swap.command.md": {
@@ -639,7 +634,7 @@
     },
     "templates/host-swap/zshrc-swap.snippet.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "ab65085b09e2e6ee81529256a96ee2dfa000880f1faedde876de1c5548a0c414"
+        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "744d6555e615ff0a015d10946c8be5172a4a3f887ff4e6a9efec5b5421623042"
       }
     },
     "templates/output-styles/dr-house.compact.md": {
@@ -668,7 +663,7 @@
     },
     "templates/per-project/CLAUDE.md": {
       "sources": {
-        "{project:backend}/CLAUDE.md": "7271d939cd39210d37e17f7a53b58aeec6626595e6356a62867854c072663bf2"
+        "{project:backend}/CLAUDE.md": "9ffc61dcefc66ec0e9f04088e7316a44506014203e03484f8888afac12696e65"
       }
     },
     "templates/scripts/alloc-ports.sh": {
@@ -728,7 +723,7 @@
     },
     "templates/scripts/km-guard.sh": {
       "sources": {
-        ".claude/scripts/km-guard.sh": "b66b9b31424d48169c34b9458c648989e804e2a7d734c566ad6ec08525062299"
+        ".claude/scripts/km-guard.sh": "695dbfc5952209a4b7df6262421440e09a74c4f7402c42e6f24e07a74ba989ad"
       }
     },
     "templates/scripts/limits-hook.sh": {
@@ -748,22 +743,17 @@
     },
     "templates/scripts/pcm-guard.sh": {
       "sources": {
-        ".claude/scripts/pcm-guard.sh": "b1f361dd891239621eec5949f0c57123734e6557685c69b0db25a7c8d3326ca7"
-      }
-    },
-    "templates/scripts/wave-sensor.sh": {
-      "sources": {
-        ".claude/scripts/wave-sensor.sh": "1743611fc8b041a14eefee58f8a1d87f2473fb4897b48f28a31b67fd261ec34f"
+        ".claude/scripts/pcm-guard.sh": "123a5bcddaa725598e0797e0a0875b2513f3db6dd1b48401225e662d5638a7c3"
       }
     },
     "templates/scripts/worktree.sh": {
       "sources": {
-        ".claude/scripts/worktree.sh": "f5e339414050d81fb65f821f02dd2dde4672a8694aa0b580cd7741f12f21960a"
+        ".claude/scripts/worktree.sh": "0d3d0eefea1e11a667b7ffaea9c729d91d37a56d1149d9ed49f97b206e5c75dc"
       }
     },
     "templates/settings.json": {
       "sources": {
-        ".claude/settings.json": "8ea967a1d9420813c997388e17325edcd91a786500d782e2cc8cc38be7c43379"
+        ".claude/settings.json": "c9f8538df0345478ab2dd9101559adb20293e0a1a9d16e7357a7d1381603ef3e"
       }
     },
     "templates/skills/sources.json": {
@@ -774,7 +764,7 @@
     },
     "templates/statusline/statusline-command.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "de58df57457d77dabd16d2e6220e4c7e24b0d48512111fea892a41f70fa399b6"
+        "~/.claude/statusline-command.sh": "69413dfdf3afecb7ab75f602e3896d05f7bf633c025c9d0dd08721b2346375c0"
       }
     },
     "templates/themes/sources.json": {
@@ -802,14 +792,29 @@
         ".claude/workflows/documenter-fanout.js": "292d537117263c45990ab8e34fc18ae400998d25bf7956f3d156a9734bad2c6d"
       }
     },
-    "templates/workflows/wave-build.js": {
-      "sources": {
-        ".claude/workflows/wave-build.js": "8e66984fdf8da28a79494594a0d13dc3535eee3b112611fd58a281aa7d1346ea"
-      }
-    },
     "templates/workflows/wave-walker.js": {
       "sources": {
-        ".claude/workflows/wave-walker.js": "ebba345ae61219c0aef1070cef04d2e1a45d6eba5e66f68734833067230e098b"
+        ".claude/workflows/wave-walker.js": "9f2ea6ba75f9a3fac7854f8b26d43c5d992bd41c5f7b938408dbb0854dda1718"
+      }
+    },
+    "templates/commands/wave/watcher.md": {
+      "sources": {
+        ".claude/commands/wave/watcher.md": "13734e218771bede9bb67737af37d01ee2972b2a0f53275d3dc0b8e726ac111a"
+      }
+    },
+    "templates/scripts/wave-wait.sh": {
+      "sources": {
+        ".claude/scripts/wave-wait.sh": "bd1caa3fae526a6d37a4ba568177c4d59bd4213ffd7cf66a428c010c3ff647ae"
+      }
+    },
+    "templates/docs-commands/build/references/qa-commons.md": {
+      "sources": {
+        "docs/commands/build/references/qa-commons.md": "58de96e1dedf55eeb843278db84c5e459e3a65a88d9e1464af5865258c50e03d"
+      }
+    },
+    "templates/commands/chat/history.sh": {
+      "sources": {
+        "~/.claude/commands/chat/history.sh": "b141151dd51f201982bda44fa90ed9d0441cd14d2fcc4634f2c390684b1726dc"
       }
     }
   }

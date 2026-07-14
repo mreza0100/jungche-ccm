@@ -19,6 +19,8 @@ Division of labor: the **founder** answers the main questions (R1.5) and approve
 
 **Founder interaction:** every founder question in this skill — R1.5 discovery, R-POC approval, R2.5 Bucket B relay, R3.5, the R4 gate, P2 — goes through the `AskUserQuestion` tool, preceded by a brief prose explanation of the context (what the walk found, why these need the founder). Batch large sets into consecutive calls, ≤4 questions per call, each with concrete options; free-form answers arrive via the built-in "Other".
 
+**Founder-touchpoint forecast (mandatory in R1.5):** every secret to place, live-pipeline/deploy review, destructive-op ratification, and merge nod the wave will EVER need is asked NOW and recorded in the spec as pre-authorized (a `WATCH:`/founder-ratified line per item). God speed's only failure is waiting for the founder — a wave that must stop mid-flight for a founder answer is a failed spec.
+
 Run **R1 → R4 in order**. Every gate is blocking — never skip a step or move past a gate until its exit condition is met.
 
 ## Step R1 — Read the codebase first
@@ -36,7 +38,7 @@ You CANNOT refine tasks without understanding what exists.
 
 ### R1 walk — one entry per ORIGINAL task
 
-Walk the actual code **once per original task** — fanned out, never in your own loop: read-only `Explore` readers, one per subsystem cluster of tasks, each returning its tasks' reconciliation-note fields below as cards with file:line evidence. You judge the cards (spot-check anchors that smell wrong) and author everything downstream — retrieval is the readers', judgment stays yours. Build a per-task reconciliation note:
+Walk the actual code **once per original task** — fanned out, never in your own loop: read-only `Explore` (Sonnet) readers, one per subsystem cluster of tasks, each returning its tasks' reconciliation-note fields below as cards with file:line evidence. You judge the cards (spot-check anchors that smell wrong) and author everything downstream — retrieval is the readers', judgment stays yours. Build a per-task reconciliation note:
 
 | Field                    | What to capture                                                                                                                                                                                                                                                                                                                   |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -119,6 +121,7 @@ _Why this wording works: {the behavior it produces; what failed without it}._
 **What to capture in this section:**
 
 - Every prompt RND validated, EXACTLY as it is — full text in a fenced block, byte-identical, never paraphrased, trimmed, or "improved" — each with the reason that wording works. The wave is the only carrier; build agents reconstruct nothing, and a rewritten prompt is an unvalidated prompt
+- COVERAGE is a gate: every key behavior that ADDS an LLM call names its validated prompt artifact here (path + the fenced text); a behavior with no validated prompt is explicitly staged to the wave where its prompt validates, never shipped on an unvalidated one
 - Every technique that made the difference between success and failure
 - Failure modes with numbers (e.g., "positional array → 163/190, indexed → 190/190")
 - Non-obvious constraints the LLM exhibited (skipping, hallucinating, losing count)
@@ -133,7 +136,7 @@ _Why this wording works: {the behavior it produces; what failed without it}._
 For every task, ask:
 
 | Question                               | Action if "no"                                 |
-| -------------------------------------- | ---------------------------------------------- |
+| --------------------------------------- | ----------------------------------------------- |
 | **Well-scoped?**                       | Split into distinct tasks                      |
 | **Specific enough?**                   | Rewrite with concrete requirements             |
 | **Necessary?** Serves the {USER_NOUN}? | Flag low-priority or remove                    |
@@ -188,8 +191,18 @@ Decide and write down, per task — leaving nothing for `/wave:orchestrator` or 
 - **Contracts** — exact API schema (types, inputs, operations with arg + return types), resolver/handler signatures, message-queue schemas, realtime event payloads.
 - **File plan** — every file to create or edit, each with the functions/exports/components it gains and their signatures. Every file marked DELETE is grep-verified single-purpose (top-level defs); a grab-bag or removed-code-interleaved-with-kept file is `EDIT (strip X by def-boundaries)`, never a wholesale/range delete. A dropped column/enum/table names its FULL coupling: every WHERE / ON CONFLICT / caller AND every raw-SQL string reference — SQL column refs are invisible to typecheckers. A removed Settings/config field names its env-var scrub set (every `.env*` variant + infra/deploy carriers). A removal spanning >10 files or >3 layers is declared a FAN-OUT candidate (parallel disjoint sub-slices + a reconcile), never one serial hand.
 - **Product** — behavior (success/failure/edge), UX, copy, scope.
+- **{SENSITIVE_DATA} channels** — every place the task moves {SUBJECT_NOUN} content. Content reaches the access-controlled DB and nowhere else: a clause routing it to a log, metric label, error string, or telemetry payload is a SACRED-GROUND decision and cannot be written into a mechanism paragraph — it surfaces at the R4 gate as its own line, in plain words ("this logs the {SUBJECT_NOUN}'s verbatim crisis disclosure to the ops stream"), or it does not ship. A risk escalation carries the POINTER (key, segment index, metric), never the text.
 
-The Professor derives all of this from the R1 codebase walk — the founder is asked only the main questions (R1.5), never to author fields or signatures. `/wave:orchestrator` keeps all execution discipline — task ordering, milestones, per-task verification, gates; `/wave:builder` only implements. Neither re-decides the spec's content.
+`/wave:orchestrator` keeps all execution discipline — task ordering, milestones, per-task verification, gates; `/wave:builder` only implements. Neither re-decides the spec's content.
+
+### Brief-authoring lore (write into the matching task sections, never a loose preamble)
+
+- **km-coupling, both directions** — a task whose code drops/renames a `{slot}` a live prompt references is marked `[CMD: /km]`-coupled up front (persist-hop check both ways); its km-needed spec enumerates DIRECT-template-render tests alongside the consuming chains — each needs a matching inputs-dict update when slots change.
+- **Extraction/consolidation tasks** — the done-checklist greps test patch targets for the removed/moved import (`mock.patch("<module>.…")` whitebox patterns); stale patch targets survive targeted re-verification.
+- **Module-creating tasks** — the done-checklist greps the tree for forward-ref scaffolds/skip-guards naming the new module (`pytest.importorskip`, `try/except ImportError`, guess-name skips); a scaffold waiting on that name silently re-skips or mis-fires the moment the module lands.
+- **Numbering hygiene** — a task editing files that carry old wave-N comments states: stamp the current wave name only, never inherit historical wave/task numbering phrasing.
+- **New-principal threat-model delta** — a wave promoting a role to a live authenticating principal carries the delta IN THE SPEC: enumerate every `require{ORG_UNIT}Access`-only (no `requireRole`) resolver and rule the new principal's reachability before merge.
+- **Security-remediation briefs** — every read-redaction fix pairs with a write-path check for the same field+role, and every fenced resolver's verification plan includes an adversarial sibling-path judge; self-QA and the named-leak test both miss the sibling read path.
 
 ### wave.md format
 
@@ -252,7 +265,7 @@ Use **heading-per-task** format. NEVER use markdown tables for task descriptions
 **Rules:**
 
 - Group by domain/category, number sequentially across all categories
-- **Wave train:** tasks spanning more than one code impact area → the top-level grouping becomes wave sections (each `## Wave {k}:` section = one partition = one full downstream wave): dependency-ordered, aggressively few (every extra wave costs a full boundary — two compactions, reconcile, full gates) yet single-area each; tasks number sequentially across waves. A rules block binding only some waves' tasks is written inside EACH wave section it governs (self-contained manifests beat DRY); only ALL-task sections sit in the top preamble. Every wave heading MUST carry all four header-block fields — missing any = not a valid partition; `/wave:orchestrator` builds its train map from these blocks alone, never a full-file read:
+- **Wave train:** tasks spanning more than one code impact area → the top-level grouping becomes wave sections (each `## Wave {k}:` section = one partition = one full downstream wave): dependency-ordered, aggressively few (every extra wave costs a full boundary — two compactions, reconcile, full gates) yet single-area each; tasks number sequentially across waves. **GRAPH WIDTH IS THE THROUGHPUT CEILING — state it, because only this step can.** N linear chains keep at most N builders busy however many run; "aggressively few" buys cheap boundaries and pays in a NARROW graph, and that trade is invisible unless it is written down. So the partition map states its WIDTH (waves runnable in parallel) against the lane count, and where width < lanes it names each SOFT dependency — a shared file surface or shared primitives, never a data/contract edge — as a carve candidate with what the carve would cost. **By dispatch time the graph is FIXED and every surplus hand is permanent**: an idle builder then is a refine-time decision arriving late, and no dispatch can undo it. A rules block binding only some waves' tasks is written inside EACH wave section it governs (self-contained manifests beat DRY); only ALL-task sections sit in the top preamble. Every wave heading MUST carry all four header-block fields — missing any = not a valid partition; `/wave:orchestrator` builds its train map from these blocks alone, never a full-file read:
 
   ```markdown
   ## Wave {k}: {kebab-area} ({N} tasks)

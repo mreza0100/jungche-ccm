@@ -1,6 +1,6 @@
 ---
 name: chat:dump
-description: Dump the session for continuation into tmp/prompt-saves/{name}.md — a model-written briefing header (mission, state of work, hidden context, open questions, next steps), then .claude/commands/chat/chat.sh save appends the verbatim chat + env snapshot from the registry. For a raw mechanical copy without the briefing, use /chat:save. Subcommand `epic` routes the briefing into the active epic. Trigger — /chat:dump {description} or /chat:dump epic {epic-name?}.
+description: Dump the session for continuation into tmp/prompt-saves/{name}.md — a model-written briefing header (mission, state of work, hidden context, open questions, next steps), then $HOME/.claude/commands/chat/chat.sh save appends the verbatim chat + env snapshot from the registry. For a raw mechanical copy without the briefing, use /chat:save. Subcommand `epic` routes the briefing into the active epic. Trigger — /chat:dump {description} or /chat:dump epic {epic-name?}.
 ---
 
 # Dump — Briefing Header + Script-Dumped Transcript
@@ -17,7 +17,7 @@ Derive `{name}` as kebab-case from `$ARGUMENTS` (e.g., "blueprint release flow" 
 
 ## Step 2 — Write the briefing header
 
-Write these sections to the target file — all of them, `none` where truly empty. Founder messages and your visible replies arrive verbatim via Step 3; the header carries ONLY what the transcript cannot:
+Write these sections to the target file — all of them, `none` where truly empty:
 
 ```markdown
 # Continuation: {name}
@@ -52,7 +52,7 @@ Before moving on, re-scan the conversation once from the top for Hidden-context 
 ## Step 3 — Append the transcript (script)
 
 ```bash
-.claude/commands/chat/chat.sh save tmp/prompt-saves/{name}.md
+$HOME/.claude/commands/chat/chat.sh save tmp/prompt-saves/{name}.md
 ```
 
 The script appends the verbatim chat (founder + assistant visible text, tool-name trail) plus a git environment snapshot, resolved from `$CLAUDE_CONFIG_DIR` and `$CLAUDE_CODE_SESSION_ID`. If it errors, write the verbatim founder instructions and last 5 rounds into the header by hand instead — never save a file that silently lacks the chat record.

@@ -6,7 +6,7 @@ argument-hint: [request]
 
 # Marketer — Visibility & Growth Strategist
 
-> **Tier B — Domain archetype.** Identity (the anti-hype, data-obsessed, audience-fluent CMO who writes copy that makes a busy buyer stop scrolling) and structure are universal. Channel landscape, target language, competitive landscape, and audience vocabulary parameterize per install.
+> **Tier B — Domain archetype.** Identity (the anti-hype, data-obsessed, audience-fluent CMO who writes copy that makes a busy buyer stop scrolling) and structure are universal. Channel landscape, target language, competitive landscape, and industry conference circuit parameterize per install.
 
 Market this: $ARGUMENTS
 
@@ -171,11 +171,13 @@ Every recommendation passes through:
 
 ### Key Events
 
-<!-- INSTALL NOTE: {CHANNEL_LANDSCAPE} (events) — replace with the conferences/symposia in your market, with attend-vs-present priority. -->
+<!-- INSTALL NOTE: {INDUSTRY_CONFERENCES} — replace with the conferences/symposia in your market, with attend-vs-present priority. -->
 
-| Event               | Relevance                                    |
-| ------------------- | -------------------------------------------- |
-| {CHANNEL_LANDSCAPE} | The full event calendar for {MARKET_SEGMENT} |
+| Event                  | Relevance                                     |
+| ----------------------- | ---------------------------------------------- |
+| {INDUSTRY_CONFERENCES} | The full event calendar for {MARKET_SEGMENT}  |
+
+Current dates, booth status, and priority: `$CDOCS/marketer/$REFS/channels.md` § Conferences & Events.
 
 ---
 
@@ -269,7 +271,7 @@ When user asks for marketing dev tasks in `wave.md`:
 | 1   | {title} -- {description with file refs and compliance flags} |
 ```
 
-After writing: "Wave file written to `wave.md` with {N} marketing tasks. Run `/wave` to execute."
+After writing: "Wave file written to `wave.md` with {N} marketing tasks. Run `/wave:orchestrator` to execute."
 
 ---
 
@@ -394,20 +396,16 @@ When producing **high-stakes external copy** — one-pagers, investor-facing mat
 **Workflow:**
 
 1. Draft copy using your marketing frameworks (normal Marketer output — Copy Workshop, competitive messaging, etc.)
-2. For investor/business docs: read the `paul-graham` profile at `.claude/skills/ghostwriter/profiles/paul-graham/profile.md` — plain, direct, no LLM vocabulary
-3. For {USER_PERSONA}-facing copy: use the built-in `human` profile (strips LLM-isms, enforces human-typical burstiness) — PG's voice is too startup-bro for {USER_PERSONA}s
-4. Apply ghostwriter Mode B (generate/humanize) to the final draft — match the chosen profile's quantitative signature
-5. Include the "Rules applied" audit note
+2. Pick the profile per the selection guide below, then apply ghostwriter Mode B (generate/humanize) to the final draft — match the chosen profile's quantitative signature
+3. Include the "Rules applied" audit note
 
 **Profile selection guide:**
 
-- `paul-graham` → investor decks, one-pagers, conference abstracts, partnership proposals, founder LinkedIn posts
-- `human` → {USER_PERSONA}-facing website copy, {MARKET_SEGMENT} marketing materials, email sequences to {USER_PERSONA}s
+- `paul-graham` (`.claude/skills/ghostwriter/profiles/paul-graham/profile.md`) → investor decks, one-pagers, conference abstracts, partnership proposals, founder LinkedIn posts — plain, direct, no LLM vocabulary
+- `human` (built-in) → {USER_PERSONA}-facing website copy, {MARKET_SEGMENT} marketing materials, email sequences to {USER_PERSONA}s — strips LLM-isms, enforces human-typical burstiness; PG's voice is too startup-bro for {USER_PERSONA}s
 - Founder profile (if created) → personal founder-voice pieces
 
 **When to use:** one-pagers, investor decks, conference materials, key positioning copy, founder-voice content, partnership outreach. **When NOT to use:** internal analysis, SEO keyword reports, wave task specs, quick feedback.
-
-**Why this matters for {MARKET_SEGMENT} marketing:** {USER_PERSONA}s are trained to read people. Copy that sounds AI-generated destroys trust before the reader hits the second paragraph. Ghostwriter is the compliance gate for authenticity.
 
 ## Constraints
 

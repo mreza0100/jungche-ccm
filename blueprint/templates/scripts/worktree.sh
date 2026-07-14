@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./.claude/scripts/worktree.sh create <pipeline>
-#   ./.claude/scripts/worktree.sh remove <pipeline>
+#   ./.claude/scripts/worktree.sh remove <pipeline> [--delete-branch]
 #   ./.claude/scripts/worktree.sh list [pipeline]
 #   ./.claude/scripts/worktree.sh prune          # remove orphaned worktree dirs
 #
@@ -93,6 +93,28 @@ cmd_create() {
         elif [ -n "$install_cmd" ]; then
           (cd "$dst_path" && eval "$install_cmd") || true
         fi
+        # Propagate this project's gitignored env files now — `git worktree add`
+        # checks out tracked files only, so a symlink-kind project's env file is
+        # missing until copied, and its dev/test tooling fails fast without it.
+        # No port substitution here (that is the later {ENV_FILE_PROVISION} pass
+        # for install-kind projects whose test harness reads a port verbatim); a
+        # symlink-kind project typically carries no port-dependent env content.
+        if [ "$env_files" != "-" ]; then
+          local ef
+          for ef in $env_files; do
+            [ -f "${src_path}/${ef}" ] && cp "${src_path}/${ef}" "${dst_path}/${ef}"
+          done
+        fi
+        # Clear a shared build-transform cache once at setup. node_modules is
+        # SYMLINKED from main (above), so any bundler/transform cache living under
+        # it (babel/jest/jiti/webpack — conventionally node_modules/.cache) is
+        # SHARED across every pipeline worktree and may hold transforms baked
+        # against a DIFFERENT pipeline's env vars. A stale cache silently inlines
+        # the wrong values, surfacing as suites that fail to even RUN at GATE —
+        # not as a test failure. Adjust the cache path per this project's stack.
+        if [ -d "${dst_path}/node_modules/.cache" ]; then
+          rm -rf "${dst_path}/node_modules/.cache"
+        fi
         ;;
       none) : ;;  # nothing to install
     esac
@@ -177,6 +199,8 @@ ENVEOF
 
 cmd_remove() {
   local pipeline="$1"
+  local delete_branch=""
+  [ "${2:-}" = "--delete-branch" ] && delete_branch=1
   local branch="pipeline/${pipeline}"
   local worktree_dir="${ROOT}/.worktrees/${pipeline}"
 
@@ -187,7 +211,15 @@ cmd_remove() {
     echo "No worktree found: $worktree_dir"
   fi
 
-  git branch -d "$branch" 2>/dev/null || true
+  # Branch survives by default — it is the merged wave's revert path and can still
+  # be LIVE (boundary GATE-2) when cleanup runs; deletion is a separate, explicit
+  # act, never bundled into worktree teardown.
+  if [ -n "$delete_branch" ]; then
+    git branch -d "$branch" 2>/dev/null || true
+    echo "Branch deleted: $branch"
+  else
+    echo "Branch kept: $branch (pass --delete-branch to delete)"
+  fi
 
   # Free port allocation
   "$ALLOC" free "$pipeline"
@@ -281,7 +313,7 @@ cmd_list() {
 
 case "${1:-help}" in
   create)  cmd_create "${2:?pipeline required}" ;;
-  remove)  cmd_remove "${2:?pipeline required}" ;;
+  remove)  cmd_remove "${2:?pipeline required}" "${3:-}" ;;
   list)    cmd_list   "${2:-}" ;;
   prune)   cmd_prune ;;
   *)

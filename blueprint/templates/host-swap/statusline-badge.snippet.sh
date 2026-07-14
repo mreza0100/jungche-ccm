@@ -14,9 +14,20 @@
 # Account 1 gets 🥇, account 2 gets 🥈, account 3 gets 🥉.
 # The fallback case block uses the oauthAccount email from .claude.json for
 # sessions launched without the cc launcher (e.g., plain `claude`).
+#
+# Optional — canonical per-account config-dir paths. If your launcher gives each
+# account ONE fixed, never-changing config dir, fill these in and they're checked
+# FIRST (before the marker file or the email fallback) — the fastest, least
+# ambiguous match. Leave empty (default) to skip straight to the marker file.
+ACCOUNT_CFGDIR_2=""   # e.g. $HOME/.cc/2
+ACCOUNT_CFGDIR_3=""   # e.g. $HOME/.cc/3
 cfgdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 badge="🥇 "
-if [ -f "$cfgdir/account" ]; then
+if [ -n "$ACCOUNT_CFGDIR_3" ] && [ "$cfgdir" = "$ACCOUNT_CFGDIR_3" ]; then
+  badge="🥉 "
+elif [ -n "$ACCOUNT_CFGDIR_2" ] && [ "$cfgdir" = "$ACCOUNT_CFGDIR_2" ]; then
+  badge="🥈 "
+elif [ -f "$cfgdir/account" ]; then
   read -r _an _ < "$cfgdir/account" || true
   [ "${_an:-1}" = "2" ] && badge="🥈 "
   [ "${_an:-1}" = "3" ] && badge="🥉 "

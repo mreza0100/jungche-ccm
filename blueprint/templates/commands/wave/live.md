@@ -20,11 +20,15 @@ Read `.claude/output-styles/jc.md` now and adopt it for all responses while this
 
 `/wave:live` runs a task batch with grouping and parallelism, without worktrees or the dual-chat `/wave:orchestrator` ceremony — one QA, docs, commit, and post-wave-walk cycle for the whole batch. Use it for a set of related changes that don't need worktree isolation. Single coherent changes go to `/jc`; this is for a task list.
 
+**Lane mode (running as an on-main lane under a `/wave:orchestrator` train):** every W-step completion PINGS the orchestrator — one line with the absolute artifact path (w-status ledger, commit SHA, gate verdict) — AND appends the same line to `tmp/wave-sensor/events.log` (guaranteed wake), mirroring `wave/builder.md`'s ping discipline; an in-thread reply the orchestrator never sees is a silent lane. Standalone runs skip this.
+
 The fix machinery it reuses (Steps 2–8, "Rules while fixing", zero-tolerance) lives in the jc-core card (`docs/commands/jc/references/jc-core.md` — a declared copy of `.claude/commands/jc.md` §§ 2–8, synced whenever jc.md's core steps change); the steps below cite the card. If the card is missing or stale, fall back to `/jc` (`.claude/commands/jc.md`) directly rather than stalling.
 
 ---
 
 ## W1 — Resolve, stage & pre-flight
+
+**Founder-question forecast (gate):** enumerate and CLOSE every founder-only item the batch will hit (secrets, deploy reviews, destructive ratifications, merge nods) before W2 — God speed's only failure is waiting for the founder; a mid-batch founder wait is a failed pre-flight and a reversal retro.
 
 **Resolve the task list:** empty/blank arg → task file is `wave.md` at repo root; a path → read that file; a description → parse as inline tasks. Wave-train partitioning (splitting a multi-area spec into per-area waves) is orchestrator-only — `/wave:live` always flattens a partitioned spec into one flat batch.
 
@@ -44,7 +48,7 @@ Spawn one implementation agent per task, briefed with its exact task section, th
 
 ## W4 — QA writes the tests
 
-Once every task has landed, spawn one `qa-{project}` agent per modified project in POST-MERGE mode — tests run against `main`, no worktree or pipeline `$DOCS`, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. Fix all breakage before proceeding.
+The full suites run on the single-tenant canonical test stack: hold the cross-lane boundary mutex `tmp/wave-boundary.lock` for the W4 span (protocol: `orchestrator.md` § Lanes) — a held lock is an orchestrator lane's GATE-2; wait for its release. Once every task has landed, spawn one `qa-{project}` agent per modified project in POST-MERGE mode — tests run against `main`, no worktree or pipeline `$DOCS`, findings reported in the return. Each adds the regression + unit coverage for this wave's changes in its project and runs the full suite under the jc-core card § Step 4c zero-tolerance — every failure blocking, pre-existing included. Fix all breakage before proceeding.
 
 ## W5 — Cleanup → docs → commit
 

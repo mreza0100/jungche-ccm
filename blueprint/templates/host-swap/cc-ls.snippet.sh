@@ -7,9 +7,10 @@
 #   ● live    — a tmux session                → Enter attaches to it
 #   ↻ resume  — a transcript with no live tmux → Enter resumes it in a fresh tmux
 #   ⚙ agent   — a live background/forked session (no tmux socket — `--resume` refuses
-#               a session that's still running) → Enter opens the takeover/attach chooser
-#               (cc-agent-open.sh): take it over fresh under the current primary account,
-#               or attach to the running agent. See _cc_agents below.
+#               a session that's still running) → Enter opens the router (cc-agent-open.sh):
+#               auto-attaches if it's busy computing right now, else silently takes it over —
+#               stops the agent, resumes the same transcript fresh under the current primary
+#               account. See _cc_agents below.
 # Pairs with a launcher that runs each chat in its OWN `tmux -L cc-*` socket and a
 # statusline that drops a /tmp/cc-sid/<socket> → transcript breadcrumb (the zshrc-swap
 # multi-account snippet is one such launcher; any cc-* launcher works).
@@ -116,6 +117,13 @@ cc-ls() {
   # ── source 1: live tmux sessions (attach) ──
   for s in "$dir"/*(N=); do                 # N=nullglob, ==sockets only
     sock="${s:t}"
+    if ! tmux -L "$sock" has-session 2>/dev/null; then
+      # corpse socket file (server gone) — self-heal the graveyard on sight, cc-reap style.
+      # Age guard (>1h): never touch a server mid-startup whose socket exists but isn't
+      # answering yet — 200 uncollected corpses is what made an unguarded cc-ls crawl.
+      [[ -n "$s"(#qNmh+1) ]] && rm -f "$s" 2>/dev/null
+      continue
+    fi
     while IFS= read -r rest; do             # tab-safe split — an empty pane_title must not collapse columns
       [[ -z "$rest" ]] && continue
       name="${rest%%$'\t'*}"; rest="${rest#*$'\t'}"
@@ -260,11 +268,11 @@ END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
     sock="$f[5]"; name="$f[6]"
     echo "Attaching → -L $sock · $name"
     TMUX= tmux -L "$sock" attach -t "$name"
-  elif [[ "$kind" == A ]]; then             # live background agent → takeover/attach chooser
+  elif [[ "$kind" == A ]]; then             # live background agent → the router (attach/takeover)
     uuid="$f[5]"; local acwd="$f[6]" acfg="$f[8]"   # --resume can't touch a running session
     [[ -d "$acwd" ]] || acwd="$PWD"; [[ -n "$acfg" ]] || acfg="$HOME/.claude"
     local as="cc-$(date +%s)-$$-$RANDOM"
-    echo "'$uuid' is a live background agent — opening the takeover/attach chooser → new tmux -L $as"
+    echo "'$uuid' is a live background agent — auto-routing (attach if busy, else takeover) → new tmux -L $as"
     local ocfg="$acfg"; [[ "$ocfg" == "$HOME/.claude" ]] && ocfg=""   # default account = unset for the helper
     TMUX= tmux -L "$as" new-session -s "$as" -c "$acwd" \
       "bash ${(q)HOME}/.claude/bin/cc-agent-open.sh $uuid ${(q)acwd} ${(q)ocfg}"
@@ -276,7 +284,7 @@ END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
     echo "Resuming $uuid in $rcwd → new tmux -L $rs"
     # failure net: a session live OUTSIDE tmux is invisible to _cc_agents when its argv carries no
     # uuid (picker-resume, --continue; pane siblings too) — --resume then refuses. Fall through to
-    # the takeover/attach chooser so Enter still lands somewhere useful instead of an instant [exited].
+    # the router so Enter still lands somewhere useful instead of an instant [exited].
     local rpfx=""; [[ -n "$cfg" ]] && rpfx="CLAUDE_CONFIG_DIR=${(q)cfg} "
     TMUX= tmux -L "$rs" new-session -s "$rs" -c "$rcwd" \
       "${rpfx}claude --resume $uuid || { echo; echo 'resume refused — session is live elsewhere:'; bash ${(q)HOME}/.claude/bin/cc-agent-open.sh $uuid ${(q)rcwd}; }"
