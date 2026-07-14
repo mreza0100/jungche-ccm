@@ -624,7 +624,7 @@
     },
     "templates/host-swap/statusline-badge.snippet.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "69413dfdf3afecb7ab75f602e3896d05f7bf633c025c9d0dd08721b2346375c0"
+        "~/.claude/statusline-command.sh": "a981683948b75502a694248534c77e39d1fc26c2e77fd38d4b9a003ca9ed86eb"
       }
     },
     "templates/host-swap/swap.command.md": {
@@ -764,7 +764,7 @@
     },
     "templates/statusline/statusline-command.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "69413dfdf3afecb7ab75f602e3896d05f7bf633c025c9d0dd08721b2346375c0"
+        "~/.claude/statusline-command.sh": "a981683948b75502a694248534c77e39d1fc26c2e77fd38d4b9a003ca9ed86eb"
       }
     },
     "templates/themes/sources.json": {

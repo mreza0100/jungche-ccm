@@ -1,17 +1,20 @@
 # Professor Statusline
 
-A two-line Claude Code statusline synthesized from 13+ community projects. Ships as part of the Professor pipeline — universal, no domain placeholders needed.
+A two-to-three-line Claude Code statusline synthesized from 13+ community projects. Ships as part of the Professor pipeline — universal, no domain placeholders needed.
 
 ## What it shows
 
 ```
-Line 1: ◆ Opus │ myproject │ 🌳 worktree │ 🌿 main +2 ~1 │ ⚡agent-name
-Line 2: 🟢 ▓▓▓░░░░░░░ 28% │ 💰$3.42 │ +156 -23 │ ⏱ 5m32s │ ▓▓░░░ 5h-used:42% ↻2h0m
+Line 1: ◆ Opus │ 🔖 session-name │ 💠 high │ myproject │ 🌳 worktree │ 🌿 main +2 ~1 │ ⚡agent-name
+Line 2: 🟢 ▓▓▓░░░░░░░ 28% │ 🧮84.9K │ 💾5m✓4m (90.0K→4.0K) │ 💰$3.42 │ ⏱ 5m32s
+Line 3: ▓▓░░░ 5h-used:42% ↻2h0m │ ░░░░░ 7d-used:17% ↻3d4h
 ```
 
-**Line 1 — Identity:** model (with tier symbol), directory, worktree, git branch + staged/modified, agent name, vim mode. All conditional — only shows what's active.
+**Line 1 — Identity:** model (with tier symbol), session name, effort/thinking gem, directory, worktree, git branch + staged/modified, agent name, vim mode. All conditional — only shows what's active.
 
-**Line 2 — Metrics:** context bar with urgency emoji, cost, lines changed, duration, rate limits with reset countdown. Cost hidden at $0, rate limits hidden for non-Pro/Max.
+**Line 2 — Session metrics:** context bar with urgency emoji, chat size in tokens (🧮 — what the next prompt re-sends), prompt-cache window (💾 TTL ✓time-left / ✗time-expired) with the session in→out token breakdown, cost, duration. Cost hidden at $0; low-priority segments drop when the terminal is narrow.
+
+**Line 3 — Money & account limits:** rate limits (5-hour + 7-day windows) with reset countdowns, plus any local segment modules (see below). Hidden entirely when empty (non-Pro/Max, no modules).
 
 ## Features
 

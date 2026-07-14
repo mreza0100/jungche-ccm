@@ -247,17 +247,36 @@ l2="${ce} $(mkbar "${PCT:-0}" 10) $(pc "${PCT:-0}")${PCT:-0}%${X}"
 # Unset COLUMNS → WIDE=1 → full layout (no behavior change).
 WIDE=1; [ -n "${COLUMNS:-}" ] && (( ${COLUMNS:-999} < 100 )) && WIDE=0
 
-# Session token count (in→out breakdown)
-if (( total_tok > 0 )); then
-  l2+=" ${D}(${tok_in_fmt}→${tok_out_fmt})${X}"
+# Chat size in tokens — what the next prompt re-sends: the last request's total input
+# (cache read + cache write + fresh). The token twin of the context-% bar.
+ctx_tok=$(( ${CACHER:-0} + ${CACHEC:-0} + ${CACHEI:-0} ))
+(( WIDE && ctx_tok > 0 )) && l2+="${SEP}${D}🧮$(fmttok "$ctx_tok")${X}"
+
+# Cache window — will the NEXT prompt hit the prompt cache? Shows the TTL this chat runs
+# (5m, or 1h when launched with ENABLE_PROMPT_CACHING_1H — set by your launcher; env
+# inherited from the claude process) and the time left: every request re-arms the window,
+# and the transcript's mtime is the last request. ✓12m = warm, hits; ✗ = window passed,
+# next prompt pays full freight.
+if (( WIDE )) && [ -n "${TPATH:-}" ] && [ -f "$TPATH" ]; then
+  cttl=300; cwl="5m"
+  [ "${ENABLE_PROMPT_CACHING_1H:-}" = "1" ] && { cttl=3600; cwl="1h"; }
+  cage=$(( $(date +%s) - $(stat -c%Y "$TPATH" 2>/dev/null || echo 0) ))
+  crem=$(( cttl - cage ))
+  if (( crem > 0 )); then
+    crf="${crem}s"; (( crem >= 60 )) && crf="$(( (crem + 59) / 60 ))m"
+    l2+="${SEP}${G}💾${cwl}✓${crf}${X}"
+  else
+    # how long ago the window closed — ✗20m = it expired 20 minutes ago
+    cpast=$(( -crem ))
+    crf="${cpast}s"; (( cpast >= 60 )) && crf="$(( cpast / 60 ))m"
+    (( cpast >= 5400 )) && crf="$(( (cpast + 1800) / 3600 ))h"
+    l2+="${SEP}${R}💾${cwl}✗${crf}${X}"
+  fi
 fi
 
-# Cache-hit % (cache_read vs read+creation+fresh input) — colors up when you're paying full freight
-cdiv=$(( ${CACHER:-0} + ${CACHEC:-0} + ${CACHEI:-0} ))
-if (( WIDE && cdiv > 0 )); then
-  chit=$(( ${CACHER:-0} * 100 / cdiv ))
-  chc="$D"; (( chit < 80 )) && chc="$Y"; (( chit < 50 )) && chc="$R"
-  l2+="${SEP}${chc}💾${chit}%${X}"
+# Session token count (in→out breakdown), riding on the cache segment's right
+if (( total_tok > 0 )); then
+  l2+=" ${D}(${tok_in_fmt}→${tok_out_fmt})${X}"
 fi
 
 # Cost (float comparison via single awk call)
@@ -267,12 +286,10 @@ if [ "$c1" = "1" ]; then
   l2+="${SEP}${cc}💰$(printf '$%.2f' "${COST:-0}")${X}"
 fi
 
-# Lines changed
-(( WIDE && ( ${LADD:-0} > 0 || ${LDEL:-0} > 0 ) )) && l2+="${SEP}${G}+${LADD:-0}${X} ${R}-${LDEL:-0}${X}"
-
 # Duration
 l2+="${SEP}${D}⏱ ${df}${X}"
 
+# ── LINE 3: Money & account limits ──────────────────────────────────
 l3=""
 
 # Local segment modules — OPT-IN extension point: every *.sh under
@@ -288,19 +305,22 @@ if [ -d "$HOME/.claude/statusline/segments.d" ]; then
 fi
 
 # Rate limits (Pro/Max — direct from stdin JSON, no API call): 5-hour + 7-day windows.
+# Account-scoped, so they live on the money/limits line, not the session line.
 if (( ${HR5:-0} > 0 )); then
-  l2+="${SEP}$(mkbar "$HR5" 5) $(pc "$HR5")5h-used:${HR5}%${X}"
+  [ -n "$l3" ] && l3+="${SEP}"
+  l3+="$(mkbar "$HR5" 5) $(pc "$HR5")5h-used:${HR5}%${X}"
   if (( ${HR5R:-0} > 0 )); then
     rem=$(( HR5R - $(date +%s) ))
-    (( rem > 0 )) && l2+=" ${D}↻$((rem/3600))h$(((rem%3600)/60))m${X}"
+    (( rem > 0 )) && l3+=" ${D}↻$((rem/3600))h$(((rem%3600)/60))m${X}"
   fi
 fi
-# 7-day window — the weekly ceiling (was read but never rendered); pc() flags it red past 80%.
+# 7-day window — the weekly ceiling; pc() flags it red past 80%.
 if (( ${D7:-0} > 0 )); then
-  l2+="${SEP}$(mkbar "$D7" 5) $(pc "$D7")7d-used:${D7}%${X}"
+  [ -n "$l3" ] && l3+="${SEP}"
+  l3+="$(mkbar "$D7" 5) $(pc "$D7")7d-used:${D7}%${X}"
   if (( ${D7R:-0} > 0 )); then
     rem7=$(( D7R - $(date +%s) ))
-    (( rem7 > 0 )) && l2+=" ${D}↻$((rem7/86400))d$(((rem7%86400)/3600))h${X}"
+    (( rem7 > 0 )) && l3+=" ${D}↻$((rem7/86400))d$(((rem7%86400)/3600))h${X}"
   fi
 fi
 
