@@ -1,6 +1,6 @@
 ---
 name: qa:live
-description: Live end-to-end QA of the whole frontend on the dev stack with real database, real LLM, and real transcription — no mocks, no seeded data. Builds its own data through the real UI dependency chain ({ROLE_ADMIN}→{ORG_UNIT}→{ROLE_SUPER}→{USER_NOUN}→{SUBJECT_NOUN}→{SESSION_NOUN}→audio→analysis), walks each step in its own browser sub-agent, and reports per-feature pass/fail plus feature↔UI drift. Triggered by "/qa:live", "/qa:live <area>", or "/qa:live <feature-number>". Distinct from the qa-{project} pipeline gate agents.
+description: Live end-to-end QA of the whole frontend on the dev stack with real database, real LLM, and real transcription — no mocks, no seeded data. Builds its own data through the real UI dependency chain, walks each step in its own browser sub-agent, and reports per-feature pass/fail plus feature↔UI drift. Triggered by "/qa:live", "/qa:live <area>", or "/qa:live <feature-number>". Distinct from the qa-{project} pipeline gate agents.
 argument-hint: [all | <feature-area> | <feature-number>]
 disable-model-invocation: true
 ---

@@ -1,6 +1,6 @@
 ---
 name: quality:doc
-description: Use BEFORE writing or restructuring any permanent reference doc under docs/ (architecture, api, map, features, child-project docs). Defines how to shape reference docs for LLM Read/grep consumption — the cluster model, the ~500-line topic-file target (~80 KB hard cap), navigation indexes, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule. Mandatory load for /documenter; load it yourself before any large reference-doc edit.
+description: Use BEFORE writing or restructuring any permanent reference doc under docs/ (architecture, api, map, features, child-project docs), or to certify an existing doc via the Approval gate (APPROVED/REJECTED). Defines how to shape reference docs for LLM Read/grep consumption — the cluster model, the ~500-line topic-file target (~80 KB hard cap), navigation indexes, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule. Mandatory load for /documenter; load it yourself before any large reference-doc edit.
 ---
 
 # Doc Format

@@ -1,6 +1,6 @@
 ---
 name: quality:prompt
-description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {AI_PROJECT}/knowledge/. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
+description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {AI_PROJECT}/knowledge/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
 ---
 
 # Prompt Quality

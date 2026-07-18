@@ -37,7 +37,7 @@ if [[ -f "$PIDF" ]] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; then
   exit 0
 fi
 printf '%s' "$$" > "$PIDF"
-trap 'rm -f "$PIDF"' EXIT TERM INT
+trap 'if [[ "$(cat "$PIDF" 2>/dev/null)" == "$$" ]]; then rm -f "$PIDF"; fi' EXIT TERM INT
 
 # First launch starts at EOF — history is the orchestrator's to sweep, not to replay.
 if [[ ! -f "$CURSOR" ]]; then stat -c %s "$SPOOL" > "$CURSOR"; fi

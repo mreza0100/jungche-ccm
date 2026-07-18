@@ -2,14 +2,14 @@
 
 Merge spec for ONE fan-out documenter worker (documenter.md § Orchestration scope table is the card index). Read `docs/commands/documenter/references/doc-approval.md` FIRST — write rules, sacred boundaries, Approval gate, finish steps.
 
-**Write set (yours alone):** `docs/agents/features/**` + `docs/dev/backlog.md`.
+**Write set (yours alone):** `docs/agents/features/**` + `docs/dev/backlog/backlog.md`.
 **Sources:** `$DOCS/5-dev-report-*.md`, `$DOCS/0-task.md`.
 
 ## Features cluster
 
 If this pipeline added/modified/removed features: update the matching category topic file (see the cluster `_index.md`). Skip if no feature changes.
 
-## Clean `docs/dev/backlog.md`
+## Clean `docs/dev/backlog/backlog.md`
 
 Purpose: Remove shipped features from this parking lot. You are the ONLY cleanup mechanism.
 

@@ -1,17 +1,18 @@
 ---
 name: chat:self:compact
-description: Compact THIS chat's own context now with a focus you author — not a raw passthrough. First read the session for what's next and what's noise, write a strong /compact focus around it, then self-inject /compact (you can't trigger it on yourself directly). Takes two MANDATORY prompts — what to hold, and a steer (never itself a /compact) that runs the moment compaction lands. Trigger — /chat:self:compact <hold> || <steer>.
-argument-hint: <what to hold> || <post-compact steer>
+description: Compact THIS chat's own context now with a focus you author — not a raw passthrough. First read the session for what's next and what's noise, write a strong /compact focus around it, then self-inject /compact (you can't trigger it on yourself directly). Takes two MANDATORY prompts — what to hold, and a steer (never itself a /compact) that runs the moment compaction lands; further ||-segments chain as extra steers, one settled turn apart. Trigger — /chat:self:compact <hold> || <steer> [|| <steer 2> ...].
+argument-hint: <what to hold> || <post-compact steer> [|| <next steer> ...]
 ---
 
 # Chat Self-Compact — author a focused /compact, then steer what comes after
 
 You cannot run the harness `/compact` on yourself — it is a user-typed command, not a tool you hold. `/chat:inject` typing into your own pane is the one way to fire it on this session, and to queue the turn that runs after it. Injecting to `self` targets this chat's own pane; each inject queues a turn that runs after the current one, in the order you inject them.
 
-`$ARGUMENTS` carries two prompts split on `||`:
+`$ARGUMENTS` carries prompts split on `||`:
 
 - **left — what to hold:** the seed for what the compaction must preserve.
 - **right — post-compact steer (MANDATORY):** the instruction that runs the moment compaction completes. No steer → REFUSE: print the diagnostic (a self-compact without a steer strands the chat command-less) + the corrected invocation shape, fire nothing. A steer beginning with `/compact` → REFUSE the same way (compact-steering-into-compact recurses and loses the thread).
+- **further segments — extra steers (optional):** each additional `||`-segment becomes one more `--then` steer, delivered in the given order, one settled turn apart (steer N+1 waits out steer N's whole turn). Use them to script the sequence after rebirth — e.g. confirm state, then start the next phase. The no-`/compact` rule applies to every segment.
 
 ## Step 1 — Read the session before you compact
 
@@ -27,10 +28,10 @@ Fold the left arg together with the next step and key state you found into one s
 
 ## Step 3 — Fire the compaction, carry the steer
 
-One inject does both. `--then` holds the steer and delivers it the moment compaction finishes and the pane settles to idle — a follow-up typed while compaction runs is swallowed, so `chat.sh` waits out the busy→idle transition for you, in a detached waiter that survives this turn ending:
+One inject does it all. `--then` holds the steer and delivers it the moment compaction finishes and the pane settles to idle — a follow-up typed while compaction runs is swallowed, so `chat.sh` waits out the busy→idle transition for you, in a detached waiter that survives this turn ending. Repeat `--then` once per extra `||`-segment, in order — the chain delivers each steer as its own turn after the previous one settles:
 
 ```bash
-$HOME/.claude/commands/chat/chat.sh inject --then "{right arg — post-compact steer}" self "/compact {authored focus}"
+$HOME/.claude/commands/chat/chat.sh inject --then "{post-compact steer}" [--then "{next steer}" ...] self "/compact {authored focus}"
 ```
 
 The `/compact` primary is auto-exempt from the sender signature (any `/`-prefixed command travels unsigned; plain text is always signed); a plain-text steer arrives signed by this same chat, which is harmless on `self`. Each lands as a single line. Report that compaction is queued with its steer to follow.

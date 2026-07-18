@@ -1,6 +1,6 @@
 ---
 name: documenter
-description: Documentation source of truth — archives pipeline docs, merges shipped decisions into the docs/agents/ hub and clusters, audits cross-references, and bootstraps missing docs. Route permanent documentation updates here. Subcommand `epic` consolidates the current session's work into the active epic for "Load epic" continuation — trigger /documenter epic {epic-name?}.
+description: Documentation source of truth — archives pipeline docs, merges shipped decisions into the docs/agents/ hub and clusters, audits cross-references, updates the doc registry (`registry`), regenerates Mermaid workflow diagrams (`graphs`), and bootstraps missing docs. Route permanent documentation updates here. Subcommand `epic` consolidates the current session's work into the active epic for "Load epic" continuation — trigger /documenter epic {epic-name?}.
 argument-hint: [request]
 ---
 

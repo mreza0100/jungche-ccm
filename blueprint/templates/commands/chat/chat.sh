@@ -8,8 +8,8 @@ set -euo pipefail
 #   whoami                                    print THIS chat's own tmux session
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
-#   inject  [--force-now] [--then <steer>] <self|tmux|label|session-id|path> <message...>  force a turn (live / resume)
-#   ls                                        list live chats with cwd in this repo
+#   inject  [--force-now] [--then <steer>]... <self|tmux|label|session-id|path> <message...>  force a turn (live / resume; steers chain in order)
+#   ls      [--all]                           list live chats with cwd in this repo (--all: every dir/project)
 #   capture <tmux-session>                    snapshot a live chat's full scrollback
 #   extract <transcript-jsonl>                render a known transcript to text
 #   save    <target-file> [transcript-jsonl]  dump THIS session's transcript
@@ -129,6 +129,19 @@ _sockets() {
   done
 }
 
+# _config_dirs: every account's Claude config dir — ~/.claude (account 1) plus each
+# ~/.cc/<n> plus the legacy ~/.claude[0-9]* aliases — as PHYSICAL paths, deduped, one
+# per line. Cross-account transcript discovery must walk all of these: ~/.cc/3 is a
+# real directory with no ~/.claudeN alias, so the old .claude[0-9]* glob silently
+# missed every chat born under account 3. Symlinked accounts (~/.cc/1 → ~/.claude,
+# ~/.cc/2 → ~/.claude3) collapse to one physical path via pwd -P + sort -u.
+_config_dirs() {
+  local cfg
+  for cfg in "$HOME/.claude" "$HOME"/.cc/[0-9]* "$HOME"/.claude[0-9]*; do
+    [[ -d "$cfg/projects" ]] && ( cd "$cfg" && pwd -P )
+  done | sort -u
+}
+
 # _all_panes: enumerate every pane on EVERY socket. Each output row is
 # "socketpath<TAB>session<TAB>pane_id". A dead or unreadable socket is skipped
 # (the `|| true` swallows its error) and never aborts the scan.
@@ -232,10 +245,10 @@ _find() {
   local current="${CLAUDE_CODE_SESSION_ID:-__none__}"
   local registries=()
   while IFS= read -r proj; do [[ -n "$proj" ]] && registries+=("$proj"); done < <(
-    for cfg in "$HOME"/.claude "$HOME"/.claude[0-9]*; do
+    while IFS= read -r cfg; do
       [[ -d "$cfg/projects" ]] || continue
       for p in "$cfg/projects"/*/; do [[ -d "$p" ]] && ( cd "$p" && pwd -P ); done
-    done | sort -u
+    done < <(_config_dirs) | sort -u
   )
   [[ ${#registries[@]} -gt 0 ]] || { echo "ERROR: no transcript registry under \$HOME/.claude*/projects" >&2; return 2; }
 
@@ -297,12 +310,12 @@ case "$cmd" in
     ;;
 
   inject)
-    force_now=0; then_steer=""; msg_file=""
+    force_now=0; then_steers=(); msg_file=""
     while [[ "${1:-}" == --* ]]; do
       case "$1" in
         --no-sig)    echo "WARNING: --no-sig is retired — the message PREFIX decides (/-prefixed = unsigned, everything else signed); flag ignored" >&2; shift;;
         --force-now) force_now=1; shift;;
-        --then)      shift; then_steer="${1:-}"; shift;;
+        --then)      shift; [[ -n "${1:-}" ]] || { echo "ERROR: --then needs a non-empty steer" >&2; exit 1; }; then_steers+=("$1"); shift;;
         --file)      shift; msg_file="${1:-}"; shift;;
         *) echo "ERROR: unknown inject flag '$1'" >&2; exit 1;;
       esac
@@ -314,11 +327,11 @@ case "$cmd" in
     # intact. Use it for any message carrying shell metacharacters or spanning lines.
     if [[ -n "$msg_file" ]]; then
       [[ -f "$msg_file" ]] || { echo "ERROR: --file '$msg_file' not found" >&2; exit 1; }
-      [[ $# -ge 1 ]] || { echo "usage: chat.sh inject --file <path> [--force-now] [--then <steer>] <target>" >&2; exit 1; }
+      [[ $# -ge 1 ]] || { echo "usage: chat.sh inject --file <path> [--force-now] [--then <steer>]... <target>" >&2; exit 1; }
       target="$1"; shift
       msg="$(cat "$msg_file")"
     else
-      [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--force-now] [--then <steer>] [--file <path>] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
+      [[ $# -ge 2 ]] || { echo "usage: chat.sh inject [--force-now] [--then <steer>]... [--file <path>] <self|tmux-session|🔖-label|session-id|transcript-path> <message...>" >&2; exit 1; }
       target="$1"; shift; msg="$*"
     fi
     [[ -n "$msg" ]] || { echo "ERROR: refusing to inject an empty message" >&2; exit 1; }
@@ -354,9 +367,11 @@ case "$cmd" in
           echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
         elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
           transcript="$(
-            for p in "$HOME"/.claude/projects/*/"$target".jsonl "$HOME"/.claude[0-9]*/projects/*/"$target".jsonl; do
-              [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
-            done | sort -u | head -1 || true
+            while IFS= read -r cfg; do
+              for p in "$cfg"/projects/*/"$target".jsonl; do
+                [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
+              done
+            done < <(_config_dirs) | sort -u | head -1 || true
           )"
           [[ -n "$transcript" ]] || { echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
         else
@@ -370,13 +385,20 @@ case "$cmd" in
     # a steerless compact strands the target command-less. The --then waiter (__then)
     # rides out the busy→idle compaction and delivers on a quiet pane. The steer must
     # not itself be a /compact (recursion loses the thread).
-    if printf '%s' "$msg" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
-      if [[ -z "$then_steer" ]]; then
-        echo "ERROR: a /compact inject requires --then <steer> — compaction ends at an idle prompt with no turn fired, stranding the target. Re-run: chat.sh inject --then '<post-compact steer>' <target> '/compact <focus>'" >&2
+    # No steer, wherever it sits in the chain, may itself be a /compact — compact-
+    # steering-into-compact recurses and loses the thread. Checked upfront for ANY
+    # primary (not just a /compact one): a bad chain must die here, at the caller,
+    # not later in a detached waiter's log where nobody is watching.
+    for s in "${then_steers[@]:-}"; do
+      [[ -n "$s" ]] || continue
+      if printf '%s' "$s" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
+        echo "ERROR: a --then steer must not itself start with /compact — compact-steering-into-compact recurses and loses the thread" >&2
         exit 1
       fi
-      if printf '%s' "$then_steer" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
-        echo "ERROR: the --then steer must not itself start with /compact — compact-steering-into-compact recurses and loses the thread" >&2
+    done
+    if printf '%s' "$msg" | grep -qE '^[[:space:]]*/compact([[:space:]]|$)'; then
+      if [[ ${#then_steers[@]} -eq 0 ]]; then
+        echo "ERROR: a /compact inject requires --then <steer> — compaction ends at an idle prompt with no turn fired, stranding the target. Re-run: chat.sh inject --then '<post-compact steer>' <target> '/compact <focus>'" >&2
         exit 1
       fi
       # LONG-FOCUS GUARD (exit 6). A long /compact body is typed as a bracketed
@@ -596,34 +618,64 @@ case "$cmd" in
         # || true: a foreign (non-Claude) pane has no '❯' input line — the empty
         # result reads as submitted-after-Enter (best-effort on foreign UIs).
         input_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
+        # A long message collapses in the composer to "[Pasted text #N]" — that line
+        # does NOT contain the message prefix, so the prefix check alone reads it as
+        # submitted while the text sits UNSENT. A collapsed paste on the input line is
+        # NOT submitted: keep pressing Enter until the placeholder leaves the composer.
+        [[ "$input_line" == *"[Pasted text"* ]] && continue
         [[ "$input_line" != *"$prefix"* ]] && { submitted=1; break; }
       done
       if [[ "$submitted" == 1 ]]; then
         note=""
         [[ "$did_intr" == 1 ]]    && note="${note} — FORCE-NOW: interrupted the target's running flow"
         [[ "$saved_draft" == 1 ]] && note="${note} — stashed and restored the target's unsent draft"
-        if [[ -n "$then_steer" ]]; then
-          # --then: deliver a follow-up steer once the primary turn settles. The
-          # primary is built for /compact, which leaves the pane idle — a steer typed
-          # while compaction runs is swallowed, so the waiter rides out the busy→idle
-          # transition first. It must be DETACHED: for a self-inject the waiter runs
-          # inside the very turn it waits on, and that turn cannot end until we return,
-          # so a synchronous wait would hang. A reparented background process outlives
-          # the turn and delivers via a fresh inject (its own per-target lock). Release
-          # our lock now so the waiter is never blocked by us.
+        if [[ ${#then_steers[@]} -gt 0 ]]; then
+          # --then: deliver follow-up steers once the primary turn settles, IN ORDER —
+          # each steer is its own turn. The primary is built for /compact, which
+          # leaves the pane idle — a steer typed while compaction runs is swallowed,
+          # so the waiter rides out the busy→idle transition first, delivers the FIRST
+          # steer, and passes the remainder as --then flags on that recursive inject:
+          # the chain re-arms itself one confirmed delivery at a time, so steer N+1
+          # always waits out steer N's whole turn. It must be DETACHED: for a
+          # self-inject the waiter runs inside the very turn it waits on, and that
+          # turn cannot end until we return, so a synchronous wait would hang. A
+          # reparented background process outlives the turn and delivers via a fresh
+          # inject (its own per-target lock). Release our lock now so the waiter is
+          # never blocked by us.
           _inject_lock_release; trap - EXIT
           steer_log="${TMPDIR:-/tmp}/chat-then-$(printf '%s' "$live_tmux" | tr -c 'A-Za-z0-9' _).log"
-          setsid bash "$0" __then "$socketpath" "$live_tmux" "$then_steer" >"$steer_log" 2>&1 </dev/null &
-          note="${note} — --then steer queued; delivers after the primary settles (log: $steer_log)"
+          # A fresh chain truncates the log; a HOP (this inject was exec'd by a __then
+          # waiter, marked by CHAT_THEN_CHAIN) appends — truncating here would wipe the
+          # chain's earlier hops WHILE the exec'ing inject still writes into the same
+          # file, garbling the record (seen in fixture).
+          if [[ -n "${CHAT_THEN_CHAIN:-}" ]]; then
+            setsid bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >>"$steer_log" 2>&1 </dev/null &
+          else
+            setsid bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >"$steer_log" 2>&1 </dev/null &
+          fi
+          note="${note} — ${#then_steers[@]} --then steer(s) queued; deliver in order, one settled turn apart (log: $steer_log)"
         fi
-        echo "injected LIVE into '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
         # Delivery proof — capture the target pane right after the send so the caller
         # (often an orchestrator that has zoomed this teammate into the background)
         # sees the message landed without un-zooming to look. A brief settle lets the
-        # new turn register first.
+        # new turn register first. The proof VERIFIES, never just displays: if the
+        # composer line in this very capture still holds the collapsed paste or the
+        # message prefix, the submit verdict above was a false positive — report
+        # NOT-DELIVERED loudly and exit nonzero instead of printing a success banner
+        # over a screen that contradicts it.
         sleep "${CHAT_INJECT_PROOF_SETTLE:-0.5}"
+        proof_cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null)"
+        proof_input="$(printf '%s\n' "$proof_cap" | grep -F '❯' | tail -1 || true)"
+        if [[ "$proof_input" == *"[Pasted text"* || "$proof_input" == *"$prefix"* ]]; then
+          echo "PROOF-CONTRADICTION: '$live_tmux' composer STILL holds the message (${proof_input:0:80}) — NOT delivered despite the submit check. Text remains queued in its input; re-run inject when the pane is idle, or press Enter in that pane." >&2
+          echo "--- delivery proof (FAILED): screen of '$live_tmux' ---" >&2
+          printf '%s\n' "$proof_cap" | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -"${CHAT_INJECT_PROOF_LINES:-20}" >&2
+          echo "--- end proof ---" >&2
+          exit 4
+        fi
+        echo "injected LIVE into '$live_tmux' — typed inline and submitted (Enter confirmed, input cleared)${note}"
         echo "--- delivery proof: screen of '$live_tmux' ---"
-        "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -"${CHAT_INJECT_PROOF_LINES:-20}"
+        printf '%s\n' "$proof_cap" | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -"${CHAT_INJECT_PROOF_LINES:-20}"
         echo "--- end proof ---"
         exit 0
       fi
@@ -632,7 +684,7 @@ case "$cmd" in
     fi
 
     [[ "$force_now" == 1 ]] && echo "WARNING: --force-now ignored — '$target' is not a live pane (a dormant chat has no running flow to interrupt); delivering via transcript RESUME." >&2
-    [[ -n "$then_steer" ]] && echo "WARNING: --then ignored — '$target' is not a live pane; there is no turn to wait on. Deliver the steer yourself after the chat resumes and compacts." >&2
+    [[ ${#then_steers[@]} -gt 0 ]] && echo "WARNING: --then ignored (${#then_steers[@]} steer(s)) — '$target' is not a live pane; there is no turn to wait on. Deliver the steers yourself after the chat resumes and compacts." >&2
     msg="${msg}${footer_block}"
     tail_event="$(jq -c 'select(.uuid != null)' "$transcript" | tail -1)"
     [[ -n "$tail_event" ]] || { echo "ERROR: no uuid-bearing event in $transcript" >&2; exit 1; }
@@ -656,14 +708,19 @@ case "$cmd" in
     ;;
 
   __then)
-    # internal (detached): deliver a --then follow-up steer once the target's current
+    # internal (detached): deliver --then follow-up steers once the target's current
     # turn — typically a /compact compaction — has settled to idle. Args:
-    # <socketpath> <target> <steer>, where <target> is whatever the parent
+    # <socketpath> <target> <steer> [steer...], where <target> is whatever the parent
     # inject resolved — a pane id for a label/pane target, a session name otherwise.
-    # Waits for busy→stable-idle so the steer lands on a quiet pane, then re-injects
-    # (own lock), passing the socket via env so a pane-id target hits the right server.
-    socketpath="${1:-}"; target="${2:-}"; then_steer="${3:-}"
-    [[ -n "$target" && -n "$then_steer" ]] || { echo "ERROR: __then needs <socketpath> <target> <steer>" >&2; exit 1; }
+    # Waits for busy→stable-idle so the FIRST steer lands on a quiet pane, then
+    # re-injects it (own lock) with any REMAINING steers passed through as --then
+    # flags: that inject spawns the NEXT waiter only after its own delivery confirms,
+    # so an N-steer chain delivers in order, one settled turn apart, each hop a fresh
+    # detached process. The socket rides env so a pane-id target hits the right server.
+    socketpath="${1:-}"; target="${2:-}"
+    shift 2 2>/dev/null || true
+    [[ -n "$target" && $# -ge 1 && -n "${1:-}" ]] || { echo "ERROR: __then needs <socketpath> <target> <steer> [steer...]" >&2; exit 1; }
+    then_steer="$1"; shift
     # 1) let the primary turn take hold (ride past any turn-end → /compact-start gap)
     sleep "${CHAT_THEN_MIN:-1.5}"
     # 2) wait for it to start (pane busy), bounded so a no-op turn can't stall us
@@ -680,36 +737,56 @@ case "$cmd" in
       sleep "${CHAT_THEN_IDLE_POLL:-0.4}"
     done
     sleep "${CHAT_THEN_SETTLE:-0.4}"
-    CHAT_INJECT_SOCKET="$socketpath" exec "$0" inject "$target" "$then_steer"
+    # CHAT_THEN_CHAIN marks the exec'd inject as a chain hop: its own --then spawn
+    # (for the remaining steers) APPENDS to the chain log instead of truncating it.
+    if [[ $# -gt 0 ]]; then
+      rest=(); for s in "$@"; do rest+=(--then "$s"); done
+      CHAT_INJECT_SOCKET="$socketpath" CHAT_THEN_CHAIN=1 exec "$0" inject "${rest[@]}" "$target" "$then_steer"
+    fi
+    CHAT_INJECT_SOCKET="$socketpath" CHAT_THEN_CHAIN=1 exec "$0" inject "$target" "$then_steer"
     ;;
 
   ls)
+    # Default: chats whose cwd is inside THIS repo. --all: every live chat on the box,
+    # each row carrying its dir — cross-project discovery (inject/capture already
+    # resolve globally, so any session listed here is directly addressable).
+    all=0
+    case "${1:-}" in --all|-a|all) all=1;; esac
     repo="$(repo_root)"; self_sock=""; self_sess=""
     if [[ -n "${TMUX:-}" ]]; then
       self_sock="${TMUX%%,*}"; self_sess="$(tmux display-message -p '#{session_name}' 2>/dev/null || true)"
     fi
-    echo "live chats in this repo (session · state · last activity):"
-    found=0
+    if [[ "$all" == 1 ]]; then echo "live chats everywhere (session · state · dir · last activity):"
+    else echo "live chats in this repo (session · state · last activity):"; fi
+    found=0; elsewhere=0
     # Enumerate panes on EVERY socket (one socket per chat now); each row is prefixed
     # with its socket so per-pane capture/display hit the right server. A dead socket
     # is skipped (|| true), never aborting the listing. Self-match compares BOTH socket
     # and session — session names are globally unique, so the session stays the handle.
     while IFS='|' read -r sock sess path pcmd wactive pactive; do
       [[ "$wactive" == "1" && "$pactive" == "1" ]] || continue
-      case "$path" in "$repo" | "$repo"/*) ;; *) continue ;; esac
       case "$pcmd" in [0-9]* | claude) ;; *) continue ;; esac
+      in_repo=1; case "$path" in "$repo" | "$repo"/*) ;; *) in_repo=0 ;; esac
+      [[ "$all" == 0 && "$in_repo" == 0 ]] && { elsewhere=$((elsewhere + 1)); continue; }
       cap="$(tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
       state="$(printf '%s\n' "$cap" | grep -oE '🟢|⚡|🔴' | tail -1 || true)"; state="${state:-·}"
       topic="$(printf '%s\n' "$cap" | grep -vE '^$|🟢|⚡|🔴|auto mode on|shift\+tab|esc to interrupt|to scroll|for agents|^[─╭╮╰╯│]|^❯$|💾|💰|⏱' | tail -1 | cut -c1-64 || true)"
       mark=""; [[ "$sock" == "$self_sock" && "$sess" == "$self_sess" ]] && mark="  <- this chat"
-      printf '  %-6s %s  %s%s\n' "$sess" "$state" "$topic" "$mark"; found=$((found + 1))
+      loc=""; [[ "$all" == 1 ]] && loc="${path/#$HOME/\~}  "
+      printf '  %-6s %s  %s%s%s\n' "$sess" "$state" "$loc" "$topic" "$mark"; found=$((found + 1))
     done < <(
       while IFS= read -r sock; do
         [[ -n "$sock" ]] || continue
         tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}' 2>/dev/null || true
       done < <(_sockets) | sort -t'|' -k2 -n
     )
-    [[ "$found" -gt 0 ]] || echo "  (none — no live claude chats with cwd inside $repo)"
+    if [[ "$found" -eq 0 ]]; then
+      if [[ "$all" == 1 ]]; then echo "  (none — no live claude chats anywhere)"
+      else echo "  (none — no live claude chats with cwd inside $repo)"; fi
+    fi
+    if [[ "$all" == 0 && "$elsewhere" -gt 0 ]]; then
+      echo "  (+$elsewhere live in other dirs — chat.sh ls --all to see them)"
+    fi
     ;;
 
   capture)

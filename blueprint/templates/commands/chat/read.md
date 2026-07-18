@@ -1,6 +1,6 @@
 ---
 name: chat:read
-description: Read a chat's transcript — paste a distinctive excerpt to pull another chat in (full, or its last N lines), or pass a bare number for THIS chat's last N lines. chat.sh read/tail extracts to tmp/chat-loads/, then Professor reads it with the LLM-optimized protocol below. Trigger — /chat:read {excerpt} [N], or /chat:read {N}.
+description: Read a chat's transcript — paste a distinctive excerpt to pull another chat in (full, or its last N lines), pass a bare number for THIS chat's last N lines, or pass a known sid/jsonl path to jump straight to its last N messages. chat.sh read/tail extracts to tmp/chat-loads/, then Professor reads it with the LLM-optimized protocol below. Trigger — /chat:read {excerpt} [N], /chat:read {N}, or /chat:read {sid|jsonl-path} [N].
 argument-hint: [{pasted excerpt} [N]] | [N]
 ---
 

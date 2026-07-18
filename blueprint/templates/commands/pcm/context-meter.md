@@ -1,6 +1,6 @@
 ---
 name: pcm:context-meter
-description: "Audits Claude Code context consumption across CLAUDE.md, agents, commands, skills, and MCP servers, then ranks the heaviest offenders against {PROJECT_NAME}'s size limits and reports prioritized token savings. Triggered by 'context budget', 'token budget', 'context-budget', 'context meter', 'context-meter', 'audit context', 'what's eating my context', or after adding/growing an agent, command, or skill."
+description: "Audits Claude Code context consumption across CLAUDE.md, agents, commands, skills, and MCP servers, then ranks the heaviest offenders against {PROJECT_NAME}'s size limits and reports prioritized token savings (`--verbose` for per-file detail). Triggered by 'context budget', 'token budget', 'context-budget', 'context meter', 'context-meter', 'audit context', 'what's eating my context', or after adding/growing an agent, command, or skill."
 ---
 
 # Context Budget

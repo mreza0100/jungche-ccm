@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.45.0](releases/v0.45.0.md) — /wave:\* trains + archival lifecycle, descriptions-as-router law + registry-wide sweep, stale wave-build.js references cut, wave-engine boundary-lock hardening + wave-wait.sh fix
 - [v0.44.1](releases/v0.44.1.md) — statusline template synced to the current live layout (🧮 chat-size + 💾 cache-window on line 2, rate bars to line 3)
 - [v0.44.0](releases/v0.44.0.md) — /wave:watcher + lanes/pool multi-builder trains, retro-fold hardening season (coverage/PHI/honest-absence laws), chat.sh guard ladder + $HOME canonicalization, statusline segments.d, sensors + standalone wave mode + /p:2opinion retired
 - [v0.43.0](releases/v0.43.0.md) — wave engine v2/v3: the `/wave:build`+`/wave` pair is replaced by the refine → schedule → orchestrator/builder → walker family (dual-chat worktree trains, `/wave:live` batches on main, hybrid walker with VERIFY/MANIFEST-VERIFY/INVESTIGATE modes); mechanical rate-limit plumbing (statusline harvest → wave-sensor → limits-hook); session-keyed guard teeth + guard-stamp; model doctrine inline in CLAUDE.md (agent-models registry gone); gitter/documenter/jc reference-card splits; new scripts (git-lock, checkpoint, drain-wait); `/qa`→`/qa:live`; refine legal-document hard fence; `ENABLE_PROMPT_CACHING_1H` scoped to the orchestrator launch

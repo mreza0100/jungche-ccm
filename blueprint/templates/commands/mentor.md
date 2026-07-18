@@ -1,6 +1,6 @@
 ---
 name: mentor
-description: The Mentor — blunt, numbers-driven startup consulting for {MARKET_SEGMENT} — strategy, ICP, pricing, fundraising, GTM, and market reality. Route business and market-coherence questions here.
+description: The Mentor — blunt, numbers-driven startup consulting for {MARKET_SEGMENT}: strategy, ICP, pricing, fundraising, GTM, company formation, tax, hiring, regulation, exits, roadmap planning (`plan`/`roadmap`). Also runs vision-factory (`vision`, `stress-test`, `pressure-test`). Route business and market-coherence questions here.
 argument-hint: [question]
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: p:rnd
-description: RND (Research & Develop) — goal-driven iterative skill. Takes a goal, plans multiple approaches, executes them one by one evaluating each result, and adapts the remaining plan as knowledge grows. Stops when the goal is satisfied with the best result found. Triggered when the user says "RND <goal>", "research and develop", "iterate until <goal>", or "find the best approach for".
+description: RND (Research & Develop) — goal-driven iterative skill. Takes a goal, plans multiple approaches, executes them one by one evaluating each result, and adapts the remaining plan as knowledge grows. Stops when the goal is satisfied with the best result found. Triggered when the user says "RND <goal>", "research and develop <goal>", "iterate until <goal>", "keep trying until <goal>", "find the best approach for <goal>", or "try different ways to <goal>".
 ---
 
 # RND — Research & Develop

@@ -1,6 +1,6 @@
 ---
 name: p:slow-burn
-description: Paces long-running multi-round work so the rolling session limit never cuts it short — splits the task into checkpointed rounds, throttles with cache-aware pauses (4-min naps keep the prompt cache warm; 25-min hibernations amortize one cache miss), scales throttle with an intensity dial 0–10 (default 4; 0 removes pacing), cuts per-round burn (sequential subagents, ranged reads, haiku downshift), and keeps a resume file so a hard cutoff loses nothing. Route here for "slow-burn", "time-bump", "pace this so we don't hit the session limit", mid-run intensity changes, and resuming a paced run.
+description: Paces long-running multi-round work so the rolling session limit never cuts it short — splits the task into checkpointed rounds, throttles with cache-aware pauses (4-min naps keep the prompt cache warm; 25-min hibernations amortize one cache miss), scales throttle with an intensity dial 0–10 (default 4; 0 removes pacing), cuts per-round burn (sequential subagents, ranged reads, haiku downshift), and keeps a resume file so a hard cutoff loses nothing. Route here for "slow-burn", "time-bump", "pace this so we don't hit the session limit", bare `<N>` to change intensity mid-run, and `resume <slug>` to continue a paced run.
 argument-hint: [intensity] <task> | <intensity> | resume <slug>
 ---
 

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'wave-walker',
-  description: 'Wave Walker — wave verification. Walks the wave\'s diff (merged SHAs, or a pre-merge worktree branch via args.branch) two ways in one pass and folds them. (1) THREAD WALK (the proven thread-walk floor): a scout enumerates feature-flow / seam / invariant threads from the integrated diff, one Sonnet walker per thread confirms the flow reaches its terminal state and catches the integration-delta hygiene. (2) LEDGER SPINE (the mechanical add): the same scout schedules Haiku sensors over the GraphQL type-fields + entry-point gates the diff touches; they extract comparable cards; a zero-token JS rule engine diffs them (orphan producer, phantom consumer, encoding/double-encode mismatch, value-set/casing mismatch, base-type drift, gate-outlier, mandated-fence violation, unfenced ID flow, dangling refs); Sonnet judges only the flagged anomalies, Opus second-opinions killed security/near-certain ones, and one FINAL Opus judge rules the whole walk (authoritative verdict, reinstates wrong kills, names missed cross-cutting risks). A fold merges thread verdicts + confirmed anomalies + hygiene + the final judgment into `## Professor\'s Wave Review` in the report and returns { verdict, actionItems, review }; the ledger travels in the RESULT and the caller persists it. A diff with no GraphQL surface runs pure thread-walk — the floor never regresses. Flow graph is a declared copy of wave/walker.md § Orchestration. (3) SECURITY: the Walk barrier carries one diff-scoped auditor applying audit/security.md (8A–8K) to the wave\'s changed surface; findings ride the final judgment, the review\'s Security Audit section, and the action items. (4) VERIFY MODE (args.claims — no reportPath): skips the walk; a pre-ruling claims panel fact-checks load-bearing claims against named files (one read-only verifier per claim × votes, Sonnet-xhigh pinned, per-claim opus flag) and returns verdicts + evidence for the CALLER to rule over — no file writes. (5) MANIFEST-VERIFY (args.manifestPath): a claim extractor mines the manifest\'s load-bearing claims (hallucinated fields/premises), the panel probes each, and a consistency judge flags cross-task conflicts + refuted premises + freeloader tasks. (6) INVESTIGATE (args.goal) — RR-for-code: lens probes seed a quote-pinned claim ledger; an Opus brainer steers ≤maxWaves of pursue/attack lanes over it (settled REQUIRES a survived challenge); a Haiku auditor greps every quote-pin; status and confidence are COMPUTED from ledger topology, never asserted; a synthesiser writes the cited report with confidence floored by the computed value; every death degrades loudly, never silently.',
+  description: 'Wave Walker — wave verification. Walks the wave\'s diff (merged SHAs, or a pre-merge worktree branch via args.branch) two ways in one pass and folds them. (1) THREAD WALK (the proven thread-walk floor): a scout enumerates feature-flow / seam / invariant threads from the integrated diff, one Sonnet walker per thread confirms the flow reaches its terminal state and catches the integration-delta hygiene. (2) LEDGER SPINE (the mechanical add): the same scout schedules Haiku sensors over the GraphQL type-fields + entry-point gates the diff touches; they extract comparable cards; a zero-token JS rule engine diffs them (orphan producer, phantom consumer, encoding/double-encode mismatch, value-set/casing mismatch, base-type drift, gate-outlier, mandated-fence violation, unfenced ID flow, dangling refs); Sonnet judges only the flagged anomalies, Opus second-opinions killed security/near-certain ones, Sonnet territory digests catch the un-mechanizable smells the rules and the walk cannot see, and one FINAL Opus judge rules the whole walk (authoritative verdict, reinstates wrong kills, names missed cross-cutting risks). A fold merges thread verdicts + confirmed anomalies + hygiene + digest findings + the final judgment into `## Professor\'s Wave Review` in the report and returns { verdict, actionItems, review }; the ledger travels in the RESULT and the caller persists it. A diff with no GraphQL surface runs pure thread-walk — the floor never regresses. Flow graph is a declared copy of wave/walker.md § Orchestration. (3) SECURITY: the Walk barrier carries one diff-scoped auditor applying audit/security.md (8A–8K) to the wave\'s changed surface; findings ride the final judgment, the review\'s Security Audit section, and the action items. (4) VERIFY MODE (args.claims — no reportPath): skips the walk; a pre-ruling claims panel fact-checks load-bearing claims against named files (one read-only verifier per claim × votes, Sonnet-xhigh pinned, per-claim opus flag) and returns verdicts + evidence for the CALLER to rule over — no file writes. (5) MANIFEST-VERIFY (args.manifestPath): a claim extractor mines the manifest\'s load-bearing claims (hallucinated fields/premises), the panel probes each, and a consistency judge flags cross-task conflicts + refuted premises + freeloader tasks. (6) INVESTIGATE (args.goal) — RR-for-code: lens probes seed a quote-pinned claim ledger; an Opus brainer steers ≤maxWaves of pursue/attack lanes over it (settled REQUIRES a survived challenge); a Haiku auditor greps every quote-pin; status and confidence are COMPUTED from ledger topology, never asserted; a synthesiser writes the cited report with confidence floored by the computed value; every death degrades loudly, never silently.',
   phases: [{ title: 'Scout' }, { title: 'Walk' }, { title: 'Judge' }, { title: 'Fold' }, { title: 'Verify' }, { title: 'Investigate' }],
 }
 // ╔══ module: src/agents/shared.ts ════════════════════════════════════════
@@ -52,10 +52,14 @@ function ruleMeaning(authRule        )                         {
     R6: 'gate asymmetry / mandated-fence violation — auth fences unequal across a resource class, or the documented ownership-fence rule violated. ' + authRule,
     R7: 'unfenced ID flow — a client-supplied ID reaches data access with no fence at all.',
     R8: 'dangling reference — a reference resolving to nothing.',
+    'R9-INV':
+      'invariant-registry violation — a hunter-found breach of a cross-cutting sacred rule, found by TERRITORY (not diff scope). Adversarial, not mechanical: REFUTE-FIRST — reproduce the sequence or kill, hunt the guard/compensation the finder missed, kill anything with no real-world harm.',
   }
 }
 // ╔══ module: src/agents/anomalyJudge/prompts.ts ══════════════════════════
-// anomalyJudge prompt — byte-identical to the source's inline construction (wave-walker.js lines 608-620).
+// anomalyJudge prompt — byte-identical to the source's inline construction (wave-walker.js lines 608-620)
+// for every R1-R8 rule. INVARIANT REGISTRY FEATURE (§ 2.3) adds one conditional block, gated on
+// `rule === 'R9-INV'` — never true for any R1-R8 call, so those stay byte-identical.
 
 
                                                              
@@ -64,6 +68,7 @@ const buildAnomalyJudge = ({ rule, ruleMeaning, sec, instances, ctxCards }      
   'You are an anomaly JUDGE. Rule ' + rule + ': ' + ruleMeaning + '\n'
   + 'For EACH instance: open the file(s) at the cited anchors (BOTH ends where two are given), confirm the facts, and rule CONFIRMED (severity, one-sentence what, location=file:line, fix=`/jc {fix}`), FALSE (say why), or UNPROVEN (say what is missing). Judge evidence, not vibes.\n'
   + (sec ? 'SECURITY: this rule enforces a WRITTEN project invariant. "Every sibling does it the same way" is NOT a defense — a documented-rule violation is CONFIRMED even when it is the file-wide pattern. Read {project}/CLAUDE.md § Auth Pattern before any FALSE.\n' : '')
+  + (rule === 'R9-INV' ? 'R9-INV — this anomaly came from an ADVERSARIAL invariant hunter, not the mechanical rule engine: fold three lens duties into one adjudication — (1) reproduce the concrete failure scenario yourself or kill it; (2) hunt for the guard/compensation the finder may have missed; (3) kill anything with no real-world harm. Default to FALSE/UNPROVEN when uncertain — CONFIRMED is reserved for a scenario you can actually walk.\n' : '')
   + DEADNESS_BAR + '\nInstances: ' + JSON.stringify(instances) + '\n'
   + (ctxCards.length ? 'Extracted cards for context (verify against real files): ' + JSON.stringify(ctxCards) + '\n' : '')
   + RO + ' Structured output: verdicts (one per instance, anomalyId matching).';
@@ -84,7 +89,7 @@ const buildAnomalyJudge = ({ rule, ruleMeaning, sec, instances, ctxCards }      
 // (no arg) — ported as fixed defaults, still overridable through `agents.<seat>.effort` like every
 // other seat.
 // ─────────────────────────────────────────────────────────────────────────────
-                                                              
+                                                                             
 
                                                                          
 
@@ -101,6 +106,11 @@ class Configs {
   // ── fixed doc/path constants (source lines 34, 51) ──
   WALKER_DOC = '.claude/commands/wave/walker.md';
   SECURITY_DOC = '.claude/commands/audit/security.md';
+  // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — provenance pointer cited in
+  // the scout prompt; the JS engine never reads this file itself (no fs access in src/ — confirmed by
+  // grep). The registry's DATA arrives structured via args.invariants (see INVARIANTS below); this doc
+  // path is what the /pcm promotion step's orchestrator wiring parses into that JSON.
+  INVARIANTS_DOC = '.claude/commands/wave/walker-invariants.md';
 
   // ── WALK mode ──
   REPORT_PATH               ;
@@ -118,6 +128,18 @@ class Configs {
   // The charter ADDS focus on top of the standard enumeration/judgment, never replaces it, and never
   // touches the security-auditor, gate-sweep, or sensor prompts. No output schema changes anywhere.
   CHARTER        ;
+  // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — args.invariants, validated and
+  // structured. [] (the default — no args.invariants) is THE FLOOR: no hunter/coverageCritic dispatched,
+  // scout prompt gets zero added bytes, review/ledger byte-identical to today. Malformed shape throws
+  // loudly (never a silent partial registry), same discipline as `charter`/`agents`.
+  INVARIANTS                 ;
+  // WALK TELEMETRY (DEBUG STEP) — mirrors rr's config.ts:383 debugger flag exactly: DEFAULT ON. A
+  // structured `debugRecord` + a mechanically-rendered `### Walk Telemetry` block give "good data of
+  // what's half broken" after a few runs, at zero LLM cost (see runtime.ts SEAT_TALLY, engine.ts
+  // assembleDebugRecord, utils/index.ts renderTelemetryMd). `debug:false` reproduces today's behavior
+  // byte-for-byte — no record, no telemetry block, zero added bytes anywhere.
+  debug         ;
+  DEBUG_PATH               ;
 
   // ── VERIFY / MANIFEST-VERIFY mode ──
   MANIFEST_PATH               ;
@@ -192,6 +214,19 @@ class Configs {
     if (arg.charter !== undefined && arg.charter !== null && typeof arg.charter !== 'string')
       throw new Error('wave-walker: charter must be a string (the walk\'s caller-supplied duty note), got ' + JSON.stringify(arg.charter));
     this.CHARTER = typeof arg.charter === 'string' ? arg.charter : '';
+    // INVARIANT REGISTRY FEATURE — absent/null → [] (THE FLOOR: no hunter/critic, byte-identical walk).
+    // A non-array, or an array with a malformed entry, throws loudly — never a silently-partial registry.
+    this.INVARIANTS = Configs.parseInvariants(arg.invariants);
+    // WALK TELEMETRY (DEBUG STEP) — mirrors rr config.ts:383 `this.debug = bool(arg.debug, true)`,
+    // DEFAULT ON. DEBUG_PATH derives from REPORT_PATH the same way LEDGER_PATH does (walker-debug.json
+    // sibling); an explicit args.debugPath overrides it; both null when there's no REPORT_PATH to derive from.
+    this.debug = Configs.bool(arg.debug, true);
+    this.DEBUG_PATH =
+      typeof arg.debugPath === 'string'
+        ? arg.debugPath
+        : this.REPORT_PATH
+          ? this.REPORT_PATH.replace(/report\.md$/, '') + 'walker-debug.json'
+          : null;
 
     // ── VERIFY / MANIFEST-VERIFY config (source lines 59-64, plus the E2 manifest-coverage lever) ──
     this.VOTES = Number.isInteger(arg.votes) && (arg.votes          ) > 0 ? (arg.votes          ) : 1;
@@ -235,6 +270,13 @@ class Configs {
     const probeEffort = str(arg.probeEffort, 'xhigh')          ;
     const auditModel = str(arg.auditModel, 'haiku')        ;
     const synthModel = str(arg.synthModel, 'sonnet')        ;
+    // INVARIANT REGISTRY FEATURE — invariantHunter/coverageCritic default sonnet/high, same tier as
+    // securityAuditor (its closest precedent: adversarial, diff/territory-scoped, non-frontier by root
+    // CLAUDE.md § Model Selection's own taxonomy — spec-execution work with a defined territory+brief,
+    // not open-ended judgment). No dedicated legacy `<seat>Model` arg (neither seat existed pre-feature)
+    // — retuned only via `agents.<seat>`, like every seat added after the original 17.
+    const invariantHunterModel       = 'sonnet';
+    const coverageCriticModel       = 'sonnet';
     // FRONTIER-JUDGMENT SEATS — final judge, security second-opinion, investigate brainer. Durable
     // default = the 'opus' alias, per root CLAUDE.md § Model Selection; never a model literal here. A
     // limited-time frontier model rides ONLY the invocation args (finalJudgeModel / securityEscalateModel
@@ -263,6 +305,8 @@ class Configs {
       brainer: brainerModel,
       claimAuditor: auditModel,
       synthesiser: synthModel,
+      invariantHunter: invariantHunterModel,
+      coverageCritic: coverageCriticModel,
     };
     this.EFFORT = {
       scout: 'high',
@@ -282,6 +326,8 @@ class Configs {
       brainer: brainerEffort,
       claimAuditor: 'medium', // hardcoded in the source (no auditEffort arg) — source line 213
       synthesiser: 'xhigh', // hardcoded in the source (no synthEffort arg) — source line 265
+      invariantHunter: 'high',
+      coverageCritic: 'high',
     };
 
     // ── PER-SEAT OVERRIDE (`agents` arg) — retune any seat's model/effort without touching source,
@@ -291,7 +337,7 @@ class Configs {
     const VALID_TIERS         = ['haiku', 'sonnet', 'opus'];
     const VALID_EFFORTS           = ['low', 'medium', 'high', 'xhigh', 'max'];
     const FRONTIER_SEATS = ['brainer', 'finalJudge', 'secondOpinion'];
-    const seats = Object.keys(this.TIER); // the canonical 17 seat names — read off the default map itself
+    const seats = Object.keys(this.TIER); // the canonical seat names — read off the default map itself (17 original + invariantHunter/coverageCritic, INVARIANT REGISTRY FEATURE)
     if (arg.agents !== undefined && arg.agents !== null) {
       if (typeof arg.agents !== 'object' || Array.isArray(arg.agents))
         throw new Error('wave-walker: agents must be an object keyed by seat name, e.g. { scout: { model: "opus" } }');
@@ -331,6 +377,51 @@ class Configs {
         }
       }
     }
+  }
+
+  // INVARIANT REGISTRY FEATURE — validates args.invariants into InvariantSpec[]. Absent/null → [] (the
+  // floor). Any other shape is validated ENTRY-BY-ENTRY and throws loudly on the first defect, naming it
+  // — same "fail loud, never a silent partial" discipline as `charter`/`agents` above. A malformed entry
+  // here would otherwise either crash a later JSON.stringify into a prompt or silently disarm territory
+  // matching (an empty `territory` array can never glob-match anything) — both are worse than a
+  // construction-time throw.
+          static parseInvariants(raw         )                  {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw)) throw new Error('wave-walker: invariants must be an array of registry entries, got ' + JSON.stringify(raw));
+    const isStringArray = (v         )                => Array.isArray(v) && v.every((x) => typeof x === 'string');
+    return raw.map((entry, i) => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry))
+        throw new Error('wave-walker: invariants[' + i + '] must be an object, got ' + JSON.stringify(entry));
+      const e = entry                           ;
+      for (const field of ['id', 'law', 'huntBrief'])
+        if (typeof e[field] !== 'string' || !e[field])
+          throw new Error('wave-walker: invariants[' + i + '].' + field + ' must be a non-empty string, got ' + JSON.stringify(e[field]));
+      if (!isStringArray(e.territory) || !(e.territory            ).length)
+        throw new Error('wave-walker: invariants[' + i + '].territory must be a non-empty array of glob strings, got ' + JSON.stringify(e.territory));
+      if (e.triggers !== undefined && !isStringArray(e.triggers))
+        throw new Error('wave-walker: invariants[' + i + '].triggers must be an array of strings, got ' + JSON.stringify(e.triggers));
+      if (e.exemplars !== undefined && !isStringArray(e.exemplars))
+        throw new Error('wave-walker: invariants[' + i + '].exemplars must be an array of strings, got ' + JSON.stringify(e.exemplars));
+      return {
+        id: e.id          ,
+        law: e.law          ,
+        territory: e.territory            ,
+        triggers: isStringArray(e.triggers) ? e.triggers : [],
+        exemplars: isStringArray(e.exemplars) ? e.exemplars : [],
+        huntBrief: e.huntBrief          ,
+      };
+    });
+  }
+
+  // WALK TELEMETRY (DEBUG STEP) — a strict-typed boolean reader, mirroring rr's local `bool()` helper
+  // (rr engine/src/config.ts:119: `(v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v :
+  // d)`) verbatim. A static method (not a local const like the file's own `str` helper) because
+  // CONFIG.debug is set early in the constructor — before `str` is declared — so a same-scope local
+  // const would be a temporal-dead-zone reference; a static method has the same zero-ceremony call
+  // shape and matches this file's own `Configs.parseInvariants` precedent. Strict-typed: a non-boolean
+  // truthy value (e.g. the string "false") never accidentally flips the flag.
+          static bool(v         , d         )          {
+    return typeof v === 'boolean' ? v : d;
   }
 }
 
@@ -372,7 +463,8 @@ const anomalyJudge                          = {
   buildPrompt: buildAnomalyJudge,
 };
 // ╔══ module: src/runtime.ts ══════════════════════════════════════════════
-                                                  
+
+                                                             
 
 // ─────────────────────────────────────────────────────────────────────────────
 // retryAgent() — the shared sub-agent caller (rr calls its analog `retryAgent`; this one is the
@@ -384,22 +476,56 @@ const anomalyJudge                          = {
 // fallback attributes workflow spend per stage. Lives in its own module (bundled before every agent's
 // run.ts) so each run fn imports retryAgent without a cycle back through engine.ts.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// WALK TELEMETRY (DEBUG STEP) — a lightweight per-seat call tally, mirroring rr's IO_LOG/LOG_BUFFER
+// gating pattern (rr engine/src/runtime.ts:14-16, 23,43,63: every increment `if (CONFIG.debug)`) but
+// COUNTS ONLY — never the full prompt/output capture rr's IO_LOG does (that forensic layer already
+// exists one hop down, in the harness's own journal.jsonl; see tmp/walker-debug-design.md §0/§3). A
+// module-level singleton: the bundle concatenates every module into one flat scope (build.js), so this
+// is the SAME object every seat's retryAgent call mutates — exactly like rr's own module-level buffers.
+const SEAT_TALLY                            = {};
+
+// seatKey — derives the tally key as the label's prefix before the FIRST ' · ' or '#', whichever comes
+// first (tmp/walker-debug-design.md §4.1). Needs zero changes to any agents/*/run.ts file — every
+// seat's `label` already carries this shape verbatim (e.g. 'walk · t1', 'judge · R3#2',
+// '2nd-opinion#1', 'scout'). A '-retry' suffix (added by the retry branch below) always lands AFTER
+// the first delimiter, so both attempts of a retried call tally under the SAME key.
+function seatKey(label        )         {
+  const dot = label.indexOf(' · ');
+  const hash = label.indexOf('#');
+  const idx = [dot, hash].filter((i) => i >= 0).sort((a, b) => a - b)[0];
+  return idx === undefined ? label : label.slice(0, idx);
+}
+
+function recordSeat(label        , patch                    )       {
+  const key = seatKey(label);
+  const t = (SEAT_TALLY[key] = SEAT_TALLY[key] || { calls: 0, diedFirstAttempt: 0, retried: 0, diedAfterRetry: 0 });
+  t.calls += patch.calls || 0;
+  t.diedFirstAttempt += patch.diedFirstAttempt || 0;
+  t.retried += patch.retried || 0;
+  t.diedAfterRetry += patch.diedAfterRetry || 0;
+}
+
 async function retryAgent   (
   prompt        ,
   opts           ,
   escalateModel         ,
 )                    {
-  let r = (await agent('[' + (opts.label || 'agent') + '] ' + prompt, opts))            ;
+  const label = opts.label || 'agent';
+  let r = (await agent('[' + label + '] ' + prompt, opts))            ;
+  if (CONFIG.debug) recordSeat(label, { calls: 1, diedFirstAttempt: r === null ? 1 : 0 });
   if (r === null) {
     const retryModel = escalateModel || opts.model;
-    log('⚠ ' + (opts.label || 'agent') + ' died · respawning once on ' + retryModel);
+    log('⚠ ' + label + ' died · respawning once on ' + retryModel);
+    if (CONFIG.debug) recordSeat(label, { retried: 1 });
     r = (await agent(
       '[' +
-        (opts.label || 'agent') +
+        label +
         '-retry] RESUME: a prior agent for this exact role died mid-task (often on structured-output). Redo from scratch — idempotent. Keep output values SHORT and schema-exact. ' +
         prompt,
-      { ...opts, model: retryModel                      , label: (opts.label || 'agent') + '-retry' },
+      { ...opts, model: retryModel                      , label: label + '-retry' },
     ))            ;
+    if (CONFIG.debug) recordSeat(label, { diedAfterRetry: r === null ? 1 : 0 });
   }
   return r;
 }
@@ -811,8 +937,82 @@ function runConsistencyJudge(args                      )                        
     schema: consistencyJudge.schema,
   });
 }
+// ╔══ module: src/agents/coverageCritic/prompts.ts ════════════════════════
+// coverageCritic prompt — ported from the proven rollout-bug-hunt completeness critic (which produced
+// 8 concrete, high-value coverage gaps), per tmp/wave-walker-investigation.md § 2.4. Not a source-fidelity
+// port — there is no bundle equivalent.
+
+                                                               
+
+const buildCoverageCritic = ({
+  changedFiles,
+  threadNames,
+  hunterCoverage,
+  armedIds,
+  unarmedInvariants,
+  unsensed,
+}                    )         =>
+  'You are the COVERAGE CRITIC — this walk\'s EXTERNAL denominator. Every other seat reports its OWN coverage; your job is naming what the WALK ITSELF could not see, from outside it. Never re-litigate a finding — only name territory nothing inspected.\n'
+  + 'Changed files: ' + JSON.stringify(changedFiles) + '\n'
+  + 'Threads walked this pass: ' + JSON.stringify(threadNames) + '\n'
+  + 'Invariant hunters that ran, and their own stated coverage: ' + JSON.stringify(hunterCoverage) + '\n'
+  + 'Invariants ARMED this walk: ' + JSON.stringify(armedIds) + '. Registered but NOT armed (their territory, unhunted this walk): ' + JSON.stringify(unarmedInvariants) + '\n'
+  + 'Fields the sensor cap dropped (UNSENSED): ' + JSON.stringify(unsensed) + '\n'
+  + 'Name AT MOST 8 territories this walk could not see: files in the diff\'s blast radius appearing in no thread/hunter scope, a load-bearing named-skip buried inside a coverage line above, a cross-dimension interaction no single seat could see (two armed invariants whose territories overlap but whose hunters never compared notes), or an unarmed invariant whose territory the diff plausibly touches anyway. An empty enumeration is never a verdict — if you truly find nothing, say so explicitly and name what you actually checked (file list / directories) to reach that conclusion; do not render silence as "clean".' + RO
+  + ' Structured output: gaps (each {territory, why}, at most 8), summary.';
+// ╔══ module: src/agents/coverageCritic/index.ts ══════════════════════════
+// COVERAGE CRITIC — INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.4). The walk's
+// EXTERNAL denominator: one Sonnet call after Phase 1, before the final judge, whose only job is naming
+// what the walk itself did NOT inspect — territories armed but unhunted, dims skipped, thread coverage
+// vs the diff's blast radius. Never re-litigates findings. Dispatched only when the registry is non-empty
+// (CONFIG.INVARIANTS.length > 0) — an absent/empty registry means no critic runs at all (the floor).
+
+
+                                                                              
+
+const COVERAGE_CRITIC         = {
+  type: 'object',
+  properties: {
+    gaps: {
+      type: 'array',
+      maxItems: 8,
+      items: {
+        type: 'object',
+        properties: {
+          territory: { type: 'string' },
+          why: { type: 'string' },
+        },
+        required: ['territory', 'why'],
+      },
+    },
+    summary: { type: 'string' },
+  },
+  required: ['gaps', 'summary'],
+};
+
+const coverageCritic                            = {
+  tier: CONFIG.TIER.coverageCritic,
+  effort: CONFIG.EFFORT.coverageCritic,
+  schema: COVERAGE_CRITIC,
+  buildPrompt: buildCoverageCritic,
+};
+// ╔══ module: src/agents/coverageCritic/run.ts ════════════════════════════
+// runCoverageCritic — the one call after Phase 1, before the final judge (INVARIANT REGISTRY FEATURE § 2.4).
+
+
+                                                                                  
+
+function runCoverageCritic(args                    )                                    {
+  return retryAgent                   (coverageCritic.buildPrompt(args), {
+    label: 'coverage-critic',
+    phase: 'Judge',
+    model: coverageCritic.tier,
+    effort: coverageCritic.effort,
+    schema: coverageCritic.schema,
+  });
+}
 // ╔══ module: src/agents/finalJudge/prompts.ts ════════════════════════════
-// finalJudge prompt — byte-identical to the source's inline construction (wave-walker.js lines 673-685). A non-empty charter appends the Professor-authored WALK CHARTER block (zero bytes otherwise).
+// finalJudge prompt — byte-identical to the source's inline construction (wave-walker.js lines 673-685). A non-empty charter appends the Professor-authored WALK CHARTER block (zero bytes otherwise). INVARIANT REGISTRY FEATURE (§ 2.4) — a non-empty coverageGaps list appends the critic's named holes to the Coverage line (zero bytes when empty/absent).
 
                                                            
 
@@ -829,6 +1029,7 @@ const buildFinalJudge = ({
   cardsLen,
   unsensed,
   charter,
+  coverageGaps,
 }                )         =>
   'You are the FINAL JUDGE of this wave walk — one Opus ruling over the WHOLE result before the review is written. Complete inputs: '
   + 'THREAD WALKS: ' + JSON.stringify(walksBrief)
@@ -837,7 +1038,8 @@ const buildFinalJudge = ({
   + ' · KILLED as FALSE (re-examine — a wrong kill hides here): ' + JSON.stringify(killedWithAnomaly)
   + ' · Territory digests: ' + JSON.stringify(digests)
   + ' · SECURITY AUDIT (diff-scoped ' + securityDoc + '): ' + (security ? JSON.stringify(security.findings || []) + ' (swept: ' + (security.categoriesSwept || []).join(',') + ')' : 'AUDIT DIED — a coverage hole')
-  + ' · Coverage: threads ' + walksLen + '/' + threadsLen + ', fields sensed ' + cardsLen + ', UNSENSED: ' + (unsensed.length ? unsensed.join(', ') : 'none') + '\n'
+  + ' · Coverage: threads ' + walksLen + '/' + threadsLen + ', fields sensed ' + cardsLen + ', UNSENSED: ' + (unsensed.length ? unsensed.join(', ') : 'none')
+  + ((coverageGaps || []).length ? ', coverage-critic gaps: ' + JSON.stringify(coverageGaps) : '') + '\n'
   + 'Rule the wave: (1) the authoritative verdict on the SMOOTH SAILING | MOSTLY GOOD | ROUGH SEAS | SHIPWRECK scale — weigh broken threads, confirmed severity, security findings, and coverage holes; (2) reinstate any killed anomaly whose kill reasoning does not hold (open the files yourself before reinstating); (3) missedRisks — cross-cutting hazards only the whole picture shows (a pattern repeating across threads, an unsensed-field cluster over clinical surface, digest smells that compound). Judge evidence, not vibes.' + RO
   + ' Structured output: verdict, reinstated, missedRisks, rationale.'
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nAnswer the charter explicitly: what the walk found for it and whether its concern is satisfied — inside your existing fields; the verdict scale and schema unchanged.' : '');
@@ -900,7 +1102,9 @@ function runFinalJudge(args                )                           {
   });
 }
 // ╔══ module: src/agents/fold/prompts.ts ══════════════════════════════════
-// fold prompt — byte-identical to the source's inline construction (wave-walker.js lines 700-712).
+// fold prompt — byte-identical to the source's inline construction (wave-walker.js lines 700-712). INVARIANT
+// REGISTRY FEATURE (§ 2.4) — a non-empty coverageGaps list extends the honesty sentence (zero bytes when
+// empty/absent).
                                                      
 
 const buildFold = ({
@@ -913,6 +1117,8 @@ const buildFold = ({
   security,
   coverageSummary,
   finalJudge,
+  coverageGaps,
+  telemetryMd,
 }          )         =>
   'You are the FOLD of a wave-walker review. Merge the two walks into ONE review and WRITE it into the report at ' + reportPath + ' under a `## Professor\'s Wave Review` section (create/overwrite ONLY that section of that file; run no git).\n'
   + 'Inputs:\n· THREAD WALKS (functional flow + hygiene, the floor): ' + JSON.stringify(walks) + '\n'
@@ -921,7 +1127,8 @@ const buildFold = ({
   + (finalJudge ? '· FINAL JUDGMENT (authoritative): verdict=' + finalJudge.verdict + ' · missedRisks: ' + JSON.stringify(finalJudge.missedRisks) + ' · rationale: ' + (finalJudge.rationale || '') + '\n' : '')
   + 'Fold rules: every functional defect (thread) AND every confirmed ledger anomaly AND every digest fix AND every security finding becomes a `### /jc Action Items` line (deduped — a thread defect and a ledger anomaly at the same anchor are ONE item). '
   + (finalJudge ? 'ADOPT the FINAL JUDGMENT verdict verbatim; fold each missedRisk into the review (fixable → an action item, else Unproven/needs-eyes). ' : '')
-  + 'The verdict weighs BOTH: a broken thread flow OR a confirmed critical/high ledger anomaly sinks it. HONESTY: the Coverage note MUST name every UNSENSED field as a hole.\n'
+  + 'The verdict weighs BOTH: a broken thread flow OR a confirmed critical/high ledger anomaly sinks it. HONESTY: the Coverage note MUST name every UNSENSED field as a hole' + ((coverageGaps || []).length ? ', AND every coverage-critic gap (' + JSON.stringify(coverageGaps) + ') as a named hole' : '') + '.\n'
+  + (telemetryMd ? '\nAlso append this VERBATIM as a `### Walk Telemetry` subsection at the end of the review, after Coverage — do not summarize, edit, or judge it, just copy it in:\n' + telemetryMd + '\n' : '')
   + 'Report format (per wave/walker.md § Report Format): ## Professor\'s Wave Review (Wave · Date · Verdict); Executive Summary; Thread Walk table; Ledger Anomalies by rule (Expected/Got + anchors + severity); Territory Digests; Security Audit (per-category Expected/Got, or None); ### /jc Action Items; Coverage.\n'
   + 'Verdict: SMOOTH SAILING (nothing) | MOSTLY GOOD (minor only) | ROUGH SEAS (a confirmed high or a BROKEN thread) | SHIPWRECK (a confirmed critical / security, or multiple broken flows).'
   + ' Structured output: verdict, actionItems (verbatim /jc lines), review (the full markdown you wrote).';
@@ -1035,6 +1242,80 @@ function runGateSweep(args               )                               {
     CONFIG.SENSOR_ESCALATE,
   );
 }
+// ╔══ module: src/agents/invariantHunter/prompts.ts ═══════════════════════
+// invariantHunter prompt — ported near-verbatim from the proven rollout-bug-hunt finder prompts (which
+// produced 53 confirmed findings), per tmp/wave-walker-investigation.md § 2.2. Not a source-fidelity
+// port — there is no bundle equivalent; this is the new piece.
+
+                                                                
+
+const buildInvariantHunter = ({ invariant, matchedFiles }                     )         =>
+  'You are an INVARIANT HUNTER — an adversarial finder, not a confirmer. Your only question is: does anything in this TERRITORY violate the LAW below, right now? REFUTE-FIRST: hunt for a violation before you accept that the code is clean; do not conclude "looks fine" from a skim.\n'
+  + 'LAW (' + invariant.id + '): ' + invariant.law + '\n'
+  + 'TERRITORY (walk this — the whole territory, not just the files below; matchedFiles is only where the diff first tripped the trigger): ' + JSON.stringify(invariant.territory) + '. Files the diff touched in this territory: ' + JSON.stringify(matchedFiles) + '.\n'
+  + (invariant.triggers.length ? 'DIFF TRIGGERS that armed this hunt: ' + JSON.stringify(invariant.triggers) + '\n' : '')
+  + (invariant.exemplars.length ? 'CLASS EXEMPLARS (already-confirmed bugs of exactly this shape — use them to calibrate what you are hunting for, not as an exhaustive list): ' + JSON.stringify(invariant.exemplars) + '\n' : '')
+  + 'HUNT BRIEF: ' + invariant.huntBrief + '\n'
+  + 'METHOD: WALK the code — open files, trace call paths end-to-end, read every branch. Never conclude from grep hits alone. For EVERY finding: file, line, Expected vs Got, and a CONCRETE failure scenario (inputs/state -> wrong outcome -> who is harmed) — a finding with no failure scenario is not a finding, it is a hunch; drop it. Verify by ENUMERATION — walk every instance of the class the hunt brief names, not a sample. Your coverage line MUST name what you walked AND what you skipped; an empty enumeration ("nothing found") is never a verdict unless you name what you inspected to reach it.' + RO
+  + ' Structured output: invariantId="' + invariant.id + '", findings (each {what, location=file:line, expected, got, failureScenario, severity, fix=`/jc {fix}`}), coverage.';
+// ╔══ module: src/agents/invariantHunter/index.ts ═════════════════════════
+// INVARIANT HUNTER — INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.2). One call per
+// ARMED registry entry, territory-scoped (registry globs, NOT just the diff — this is what catches bucket
+// C: pre-existing code no wave diff ever touches). Adversarial, REFUTE-FIRST: hunt for violations of the
+// invariant's law, never confirm the happy path. Findings ride the existing judge path as rule class
+// R9-INV (rules.ts computeInvariantAnomalies), never adjudicated by this seat itself.
+
+
+                                                                               
+
+const INVARIANT_HUNT         = {
+  type: 'object',
+  properties: {
+    invariantId: { type: 'string' },
+    findings: {
+      type: 'array',
+      maxItems: 12,
+      items: {
+        type: 'object',
+        properties: {
+          what: { type: 'string' },
+          location: { type: 'string' },
+          expected: { type: 'string' },
+          got: { type: 'string' },
+          failureScenario: { type: 'string', description: 'concrete: inputs/state -> wrong outcome -> who is harmed. REQUIRED, never a vibe.' },
+          severity: { type: 'string', enum: ['info', 'low', 'med', 'high', 'critical'] },
+          fix: { type: 'string' },
+        },
+        required: ['what', 'location', 'expected', 'got', 'failureScenario', 'severity'],
+      },
+    },
+    coverage: { type: 'string', description: 'what you walked AND what you skipped — an empty enumeration is never a verdict' },
+  },
+  required: ['invariantId', 'findings', 'coverage'],
+};
+
+const invariantHunter                             = {
+  tier: CONFIG.TIER.invariantHunter,
+  effort: CONFIG.EFFORT.invariantHunter,
+  schema: INVARIANT_HUNT,
+  buildPrompt: buildInvariantHunter,
+};
+// ╔══ module: src/agents/invariantHunter/run.ts ═══════════════════════════
+// runInvariantHunter — one call per ARMED registry entry (INVARIANT REGISTRY FEATURE § 2.2), dispatched
+// inside the existing Phase-1 barrier alongside threadWalker/sliceSensor/gateSweep/securityAuditor.
+
+
+                                                                                    
+
+function runInvariantHunter(args                     )                                     {
+  return retryAgent                    (invariantHunter.buildPrompt(args), {
+    label: 'invariant-hunt · ' + args.invariant.id,
+    phase: 'Walk',
+    model: invariantHunter.tier,
+    effort: invariantHunter.effort,
+    schema: invariantHunter.schema,
+  });
+}
 // ╔══ module: src/agents/probe/prompts.ts ═════════════════════════════════
 // probe prompt — byte-identical to the source's inline construction (wave-walker.js lines 219-223).
 
@@ -1119,11 +1400,11 @@ async function runProbe(lane      , goal        , scopeLine        )            
   return r && Object.assign(r, { _laneKind: lane.kind, _targets: lane.targets || [] });
 }
 // ╔══ module: src/agents/scout/prompts.ts ═════════════════════════════════
-// scout prompt — byte-identical to the source's inline construction (wave-walker.js lines 400-415) when charter is '' ; a non-empty charter appends the Professor-authored WALK CHARTER block (zero bytes otherwise).
+// scout prompt — byte-identical to the source's inline construction (wave-walker.js lines 400-415) when charter is '' ; a non-empty charter appends the Professor-authored WALK CHARTER block (zero bytes otherwise). INVARIANT REGISTRY FEATURE (§ 2.1): a non-empty `invariants` list appends step 7 (zero bytes when empty/absent — the floor).
 
                                                       
 
-const buildScout = ({ reportPath, branch, walkerDoc, maxFieldsPerJob, charter }           )         =>
+const buildScout = ({ reportPath, branch, walkerDoc, maxFieldsPerJob, charter, invariants, invariantsDoc }           )         =>
   'You are the SCOUT-SCHEDULER of a wave-walker review. Read the wave report at ' + reportPath + ' and walk the WAVE\'S DIFF. Repo root: {REPO_ROOT}.\n'
   + (branch
     ? '1) PRE-MERGE BRANCH MODE: the wave is NOT merged yet. changedFiles = `git diff --name-only main...' + branch + '` (three-dot; read file contents from the branch\'s worktree checkout when present, else `git show ' + branch + ':{path}`). mergeShas = []. headSha = `git rev-parse ' + branch + '`. The report carries the wave manifest + slice list for context.\n'
@@ -1137,7 +1418,10 @@ const buildScout = ({ reportPath, branch, walkerDoc, maxFieldsPerJob, charter } 
   + '5) territories — which of BE/FE/Cortex the diff touches.\n'
   + '6) authRule — grep {project}/CLAUDE.md for its "Auth Pattern" heading (locate by heading text, NEVER by line number) and return the "Role fences" bullet VERBATIM — the ledger\'s R6 auth-fence rule and the security second-opinion quote it live.' + RO
   + ' Structured output: headSha, territories, changedFiles, mergeShas, threads, operations, fields, jobs, gateFiles, authRule.'
-  + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nShape the thread manifest to serve this charter IN ADDITION to the standard enumeration — add charter-driven threads; never drop or merge a standard thread for it.' : '');
+  + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nShape the thread manifest to serve this charter IN ADDITION to the standard enumeration — add charter-driven threads; never drop or merge a standard thread for it.' : '')
+  + ((invariants && invariants.length)
+    ? '\n7) INVARIANT REGISTRY (' + (invariantsDoc || '') + ') — a durable registry of sacred cross-cutting semantics, seeded by a proven adversarial bug-hunt. For EACH entry below, test its `triggers` against this diff (does the diff touch its territory, add/modify a reuse-skip-cache gate, touch an engine-stamped column, etc. — read the triggers literally). Registry: ' + JSON.stringify(invariants) + '. Return armedInvariants: one entry per registry id whose trigger fires, each {id, matchedFiles (the diff files that armed it), reason}. Arm generously — a missed arm is a missed hunt; when genuinely uncertain, arm it. Do NOT drop or merge a standard thread to make room for this — it is additive.'
+    : '');
 // ╔══ module: src/agents/scout/index.ts ═══════════════════════════════════
 // SCOUT — the scout-scheduler seat: diffs the wave, emits the thread manifest AND the ledger schedule
 // in one pass (source lines 332-348, 400-415).
@@ -1222,6 +1506,22 @@ const SCOUT         = {
       type: 'string',
       description: 'VERBATIM Role-fences bullet from {project}/CLAUDE.md § Auth Pattern',
     },
+    // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — optional, absent when no
+    // registry was supplied (CONFIG.INVARIANTS empty). engine.ts's computeArmedInvariants unions this
+    // with a zero-token territory-glob fail-safe, so a scout omission can never silently disarm a hunt.
+    armedInvariants: {
+      type: 'array',
+      description: 'registry entries whose triggers fired against this diff',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          matchedFiles: { type: 'array', items: { type: 'string' } },
+          reason: { type: 'string' },
+        },
+        required: ['id'],
+      },
+    },
   },
   required: ['headSha', 'changedFiles', 'threads', 'fields', 'jobs', 'gateFiles'],
 };
@@ -1249,14 +1549,24 @@ function runScout(args           )                           {
   });
 }
 // ╔══ module: src/agents/secondOpinion/prompts.ts ═════════════════════════
-// secondOpinion prompt — byte-identical to the source's inline construction (wave-walker.js lines 649-655).
+// secondOpinion prompt — byte-identical to the source's inline construction (wave-walker.js lines 649-655)
+// when `direction` is omitted (the ONLY caller before this feature, and still the default). INVARIANT
+// REGISTRY FEATURE (§ 2.3, escalation symmetry) adds the 'confirmed' branch: a first judge CONFIRMED an
+// R9-INV high/critical finding — re-examine for a wrongful confirm, symmetric to the existing wrongful-kill
+// re-examination. `direction === 'confirmed'` is the only path that changes any byte of the output.
 
                                                               
 
-const buildSecondOpinion = ({ authRule, items }                   )         =>
-  'You are the SECOND-OPINION judge (a first judge killed these as FALSE, but the rule\'s evidence is regex/string-exact or a documented security invariant). ' + authRule + '\n'
-  + 'For each: open the file(s) yourself, re-derive from scratch, rule independently. Be suspicious of a kill that contradicts the verbatim extracted expression (a JSON.parse(JSON.stringify(...)) still present, a literal that truly never matches the produced set).\n'
-  + 'Killed verdicts with anomalies: ' + JSON.stringify(items) + RO
+const buildSecondOpinion = ({ authRule, items, direction }                   )         =>
+  (direction === 'confirmed'
+    ? 'You are the SECOND-OPINION judge (a first judge CONFIRMED these at high/critical severity from an adversarial invariant-hunter finding — this is the last gate before the founder sees it). '
+    : 'You are the SECOND-OPINION judge (a first judge killed these as FALSE, but the rule\'s evidence is regex/string-exact or a documented security invariant). ')
+  + authRule + '\n'
+  + 'For each: open the file(s) yourself, re-derive from scratch, rule independently. '
+  + (direction === 'confirmed'
+    ? 'Be suspicious of a confirm with no reproducible failure scenario, or where a guard/compensating control the finder missed already defeats it — override to FALSE when the confirm does not hold.\n'
+    : 'Be suspicious of a kill that contradicts the verbatim extracted expression (a JSON.parse(JSON.stringify(...)) still present, a literal that truly never matches the produced set).\n')
+  + (direction === 'confirmed' ? 'Confirmed verdicts with anomalies: ' : 'Killed verdicts with anomalies: ') + JSON.stringify(items) + RO
   + ' Structured output: verdicts (one per anomalyId).';
 // ╔══ module: src/agents/secondOpinion/index.ts ═══════════════════════════
 // SECOND OPINION — Opus re-examines killed security/near-certain verdicts (source lines 646-658).
@@ -1603,15 +1913,21 @@ function runTerritoryDigest(args                     )                          
   });
 }
 // ╔══ module: src/agents/threadWalker/prompts.ts ══════════════════════════
-// threadWalker prompt — byte-identical to the source's inline construction (wave-walker.js lines 441-449). A non-empty charter appends the Professor-authored WALK CHARTER block (zero bytes otherwise).
+// threadWalker prompt — byte-identical to the source's inline construction (wave-walker.js lines 441-449)
+// EXCEPT for one deliberate, ALWAYS-ON addition: the reorientation sentences below (INVARIANT REGISTRY
+// FEATURE, tmp/wave-walker-investigation.md § 2.5 — "cheap, high-yield prompt change", NOT gated by the
+// registry; the design names this an unconditional improvement, unlike every other piece of this
+// feature). A non-empty charter still appends the Professor-authored WALK CHARTER block (zero bytes
+// otherwise) — that part is unchanged.
 
                                                              
 
 const buildThreadWalker = ({ walkerDoc, thread, charter }                  )         =>
   'Read ' + walkerDoc + ' § Role: Walker. Walk this ONE thread end-to-end in a single pass over its files, returning BOTH the functional verdict AND the integration-delta code-hygiene findings. '
   + 'Per-pipeline hygiene already ran pre-merge (wave/builder.md Step 7) — your wave-level value is the INTEGRATION delta: a repo-wide reuse-grep for a helper/type/hook a SIBLING pipeline duplicated, plus dead code the integration orphaned. '
+  + 'At every step, also name the concrete input/state under which this step corrupts, aborts, or lies — a failure scenario, not a vibe. Any two set-enumerations the flow assumes equal (a wipe set vs its snapshot set, a terminal-status set vs a poll loop\'s terminal set, a required-env list vs a validator\'s list) are diffed member-by-member. Apply the broken-mechanism test: what does this step report when it FAILS — the same as "nothing to do"? Flag it. '
   + 'Thread: ' + JSON.stringify(thread) + '.' + RO
-  + ' Structured output: threadId, name, type, flow (INTACT|AT-RISK|BROKEN|N/A), trace (step → step, marking any break), defects (each {what, location=file:line, jc=`/jc {fix}`}), hygiene (each {kind, where=file:line, detail, jc}), notes.'
+  + ' Structured output: threadId, name, type, flow (INTACT|AT-RISK|BROKEN|N/A), trace (step → step, marking any break), defects (each {what, location=file:line, failureScenario, jc=`/jc {fix}`}), hygiene (each {kind, where=file:line, detail, jc}), notes.'
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nWeigh this thread against the charter and report charter-relevant findings explicitly in notes — on top of the standard verdict, never instead of it.' : '');
 // ╔══ module: src/agents/threadWalker/index.ts ════════════════════════════
 // THREAD WALKER — one thread-walker call per scout thread: functional verdict + integration-delta
@@ -1632,7 +1948,14 @@ const WALK         = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { what: { type: 'string' }, location: { type: 'string' }, jc: { type: 'string' } },
+        properties: {
+          what: { type: 'string' },
+          location: { type: 'string' },
+          jc: { type: 'string' },
+          // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.5) — optional, so the field
+          // is additive: a defect with none named stays a valid defect.
+          failureScenario: { type: 'string', description: 'the concrete input/state under which this step corrupts, aborts, or lies' },
+        },
         required: ['what', 'location'],
       },
     },
@@ -1825,12 +2148,17 @@ function computedConfidence(state             , keyIds          )             {
 // zipCards mechanically zips every sliceSensor job's SlicesOut onto one Card per field (lines 508-528);
 // computeAnomalies runs the R1-R8 diff over the zipped cards + undeclared reads + gate cards (529-589).
 // Both are byte-behavior-identical to the source — same iteration order, same id numbering, same detail
-// strings — verified by test/rules.test.ts against hand-traced expected anomaly sets.
+// strings — verified by test/rules.test.ts against hand-traced expected anomaly sets. A third function,
+// computeInvariantAnomalies (INVARIANT REGISTRY FEATURE, tmp/wave-walker-investigation.md § 2.2-2.3), is
+// NOT a source port — it reshapes invariantHunter findings into the same Anomaly shape under a new rule
+// class, R9-INV, so they concatenate onto computeAnomalies's output and ride the identical downstream
+// pipeline. It only ever runs when CONFIG.INVARIANTS is non-empty; empty input yields [].
              
           
        
             
                    
+                     
          
            
         
@@ -2188,6 +2516,41 @@ function computeAnomalies(
   return anomalies;
 }
 
+// computeInvariantAnomalies — INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.2-2.3):
+// converts every invariantHunter's findings into Anomaly-shaped rows of rule class R9-INV, sequentially
+// numbered across ALL hunters (one global aseq, same discipline as computeAnomalies's own numbering) so
+// engine.ts can simply CONCATENATE this array onto computeAnomalies's R1-R8 output — the merged array
+// then rides the EXISTING byRule → judge → escalation → final-judge → fold pipeline completely unchanged.
+// Zero tokens; pure data reshaping, no judgment (judgment is the hunter's + the R9-INV anomalyJudge's job).
+function computeInvariantAnomalies(hunterResults                      )            {
+  const anomalies            = [];
+  let aseq = 0;
+  for (const r of hunterResults || []) {
+    for (const f of r.findings || []) {
+      anomalies.push({
+        id: 'R9-INV-' + ++aseq,
+        rule: 'R9-INV',
+        ruleName: 'invariant-registry violation',
+        detail:
+          '[' +
+          r.invariantId +
+          '] ' +
+          f.what +
+          ' — Expected: ' +
+          f.expected +
+          ' — Got: ' +
+          f.got +
+          ' — failure scenario: ' +
+          f.failureScenario,
+        anchors: [f.location].filter((x)              => !!x),
+        severityHint: f.severity,
+        cardId: null,
+      });
+    }
+  }
+  return anomalies;
+}
+
 // ruleCounts — the per-rule tally the source logs (`anomalies.reduce(...)`, line 588).
 function ruleCounts(anomalies           )                         {
   return anomalies.reduce(
@@ -2203,12 +2566,150 @@ function ruleCounts(anomalies           )                         {
 // (wave-walker.js line 603) with one defensive addition: size<=0 degrades to one whole-array chunk
 // instead of an infinite loop — the source never calls it with a non-positive size (always the literal
 // 6 or 4), so this never changes observed behavior, only guards against future misuse.
+                                                     
 function chunk   (items     , size        )        {
   if (!items.length) return [];
   if (size <= 0) return [items];
   const out        = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
+}
+
+// globMatch — a minimal, dependency-free glob matcher for INVARIANT REGISTRY territory patterns
+// (tmp/wave-walker-investigation.md section 2.1). No npm glob/minimatch package is vendored (build.js's
+// resolveSpec rejects any bare-specifier import - the Workflow sandbox has no module loader), so this is
+// the zero-token fail-safe's own primitive, in the same spirit as isGateRelevant's hand-rolled regex
+// tests (engine.ts). Supports `*` (any run of non-slash chars) and `**` (any run of chars, incl. `/`) -
+// no brace expansion; a territory needing alternatives lists each as its own glob string instead.
+// Implemented by walking the pattern char-by-char (never a placeholder-and-replace pass — no marker
+// string could be proven absent from an arbitrary caller-supplied glob) and building the regex source
+// directly, so a literal '*' inside the pattern can never be misread as part of a longer '**' run twice.
+function globMatch(pattern        , filePath        )          {
+  let out = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '*') {
+      if (pattern[i + 1] === '*') {
+        out += '.*';
+        i++;
+      } else {
+        out += '[^/]*';
+      }
+    } else if ('.+^${}()|[]\\'.includes(c)) {
+      out += '\\' + c;
+    } else {
+      out += c;
+    }
+  }
+  return new RegExp('^' + out + '$').test(filePath);
+}
+
+// WALK TELEMETRY (DEBUG STEP) — mechanically renders a DebugRecord into the `### Walk Telemetry`
+// markdown block fold copies VERBATIM into the review (tmp/walker-debug-design.md §4/§6). Plain data
+// in, plain string out, zero engine coupling — fully unit-testable without stubbing `agent()`, mirroring
+// rr's compactCheckpoint discipline. COUNTS ONLY, bounded regardless of wave size (design §9: target
+// ≤40 lines / ~1.5KB) — never the raw prompt/output capture rr's `_debug.md` carries.
+//
+// Self-floored: wraps its own body in a try/catch and NEVER throws — a malformed/partial record (a
+// future field shape change, a caller passing something not fully DebugRecord-shaped) falls back to one
+// honest line rather than crashing the walk or the caller's own try/catch (tmp/walker-debug-design.md
+// §5 row 2). This lets the function be called directly (engine.ts, or a unit test) with no wrapping
+// required at every call site.
+function renderTelemetryMd(rec             )         {
+  try {
+    return renderTelemetryMdInner(rec);
+  } catch (e) {
+    return (
+      '### Walk Telemetry\n\n_(telemetry render failed: ' +
+      ((e         ) && (e         ).message ? (e         ).message : String(e)) +
+      ' — see debugRecord in the workflow result for raw data)_'
+    );
+  }
+}
+
+function renderTelemetryMdInner(rec             )         {
+  const lines           = ['### Walk Telemetry', ''];
+  if (rec.degraded) lines.push('**DEGRADED** — ' + (rec.gaps.length ? rec.gaps.join('; ') : 'a section failed to assemble'), '');
+
+  lines.push('**Seats:**');
+  const seatKeys = Object.keys(rec.seats).sort();
+  if (!seatKeys.length) lines.push('- (none recorded)');
+  for (const k of seatKeys) {
+    const t = rec.seats[k];
+    const deaths = t.diedFirstAttempt || t.retried || t.diedAfterRetry;
+    lines.push(
+      '- ' +
+        k +
+        ': ' +
+        t.calls +
+        ' call(s)' +
+        (deaths ? ' · died-first ' + t.diedFirstAttempt + ' · retried ' + t.retried + ' · died-after-retry ' + t.diedAfterRetry : ''),
+    );
+  }
+  if (rec.seatsExpectedButAbsent.length) lines.push('- **MISSING (expected, never dispatched):** ' + rec.seatsExpectedButAbsent.join(', '));
+
+  lines.push(
+    '',
+    '**Invariant registry:** ' +
+      rec.armedInvariants.registered +
+      ' registered, ' +
+      rec.armedInvariants.armed.length +
+      ' armed' +
+      (rec.armedInvariants.armed.length ? ' (' + rec.armedInvariants.armed.map((a) => a.id).join(', ') + ')' : ''),
+  );
+  if (rec.armedInvariants.unarmed.length) lines.push('- unarmed: ' + rec.armedInvariants.unarmed.map((a) => a.id).join(', '));
+
+  const er = rec.emptyResults;
+  lines.push(
+    '',
+    '**Coverage:** threads ' +
+      er.threadsWalked +
+      '/' +
+      er.threadsExpected +
+      ' · sensors ' +
+      er.sensorsWithCards +
+      '/' +
+      er.sensorsExpected +
+      ' · hunters ' +
+      er.huntersReturned +
+      '/' +
+      er.huntersExpected +
+      ' (' +
+      er.hunterFindingsTotal +
+      ' finding(s)) · digests ' +
+      er.digestsWithFindings +
+      '/' +
+      er.digestsExpected +
+      (er.securityDied ? ' · security: DIED' : '') +
+      (er.coverageCriticDied ? ' · coverage-critic: DIED' : '') +
+      (er.foldDied ? ' · fold: DIED' : ''),
+  );
+  if (rec.coverage.unsensedFields.length) lines.push('- unsensed fields: ' + rec.coverage.unsensedFields.join(', '));
+  if (rec.coverage.gateSweepSkipped) lines.push('- gate sweep: SKIPPED (diff-scoped)');
+  if (rec.coverage.coverageGaps.length)
+    lines.push('- coverage-critic gaps: ' + rec.coverage.coverageGaps.map((g) => g.territory + ' (' + g.why + ')').join('; '));
+
+  const js = rec.judgeStats;
+  lines.push(
+    '',
+    '**Judgment:** confirmed ' +
+      js.confirmed +
+      ' · false ' +
+      js.falseCount +
+      ' · unproven ' +
+      js.unproven +
+      ' · 2nd-opinion: ' +
+      js.secondOpinionDispatched +
+      ' dispatched, ' +
+      js.secondOpinionOverturned +
+      ' overturned, ' +
+      js.secondOpinionReexaminedKilled +
+      ' re-examined-killed · final judge: ' +
+      (js.finalJudgeDied ? 'DIED' : (js.finalJudgeVerdict || '?') + ', reinstated ' + js.finalJudgeReinstated),
+  );
+
+  lines.push('', '_tokenAttribution: not available at the engine layer (agent() returns no usage metadata) — see the p:tokens skill for post-hoc spend analysis._');
+  return lines.join('\n');
 }
 // ╔══ module: src/engine.ts ═══════════════════════════════════════════════
 
@@ -2218,24 +2719,34 @@ function chunk   (items     , size        )        {
 
 
 
+
              
           
+                 
                    
        
           
                   
              
            
+                    
+              
+              
+            
                  
                
            
           
                    
                
+                     
+                
                     
+               
        
                
            
+            
               
            
             
@@ -2282,6 +2793,193 @@ function isGateRelevant(changedFiles          , fieldsLen        , jobsLen      
     fieldsLen > 0 ||
     jobsLen > 0
   );
+}
+
+// INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — computeArmedInvariants: the
+// zero-token fail-safe, same philosophy as isGateRelevant ("any hit → sweep; when in doubt, sweep"). The
+// scout's own semantic judgment (scoutArmed — it can arm on a trigger no glob could express, e.g. "diff
+// adds a reuse/skip/cache gate") is UNIONED with a deterministic territory-glob match against
+// changedFiles, so a scout that forgets to arm an invariant whose territory the diff plainly touches
+// cannot silently disarm the hunt. Registry order is preserved (stable, testable output order).
+function computeArmedInvariants(
+  invariants                 ,
+  changedFiles          ,
+  scoutArmed                                           ,
+)                   {
+  const scoutById = new Map((scoutArmed || []).filter((a) => a && a.id).map((a) => [a.id, a]));
+  const out                   = [];
+  for (const inv of invariants || []) {
+    const scoutHit = scoutById.get(inv.id);
+    const territoryMatches = (changedFiles || []).filter((f) => (inv.territory || []).some((g) => globMatch(g, f)));
+    if (!scoutHit && !territoryMatches.length) continue;
+    const matchedFiles = [...new Set([...((scoutHit && scoutHit.matchedFiles) || []), ...territoryMatches])];
+    const reason =
+      scoutHit && territoryMatches.length
+        ? 'scout + territory glob'
+        : scoutHit
+          ? 'scout-armed (semantic trigger)'
+          : 'territory glob match (fail-safe — scout did not arm)';
+    out.push({ id: inv.id, matchedFiles, reason });
+  }
+  return out;
+}
+
+// WALK TELEMETRY (DEBUG STEP, tmp/walker-debug-design.md) — the plain-data bag runWalk() gathers before
+// calling assembleDebugRecord. Every field is already computed elsewhere in runWalk() by the time of
+// assembly; this interface exists only to keep the assembler a pure, independently-testable function
+// (mirrors computeArmedInvariants/isGateRelevant's own pure-function, directly-testable precedent above).
+                                     
+                     
+                              
+                                    
+                                                           
+                                       
+                          
+                        
+                   
+                   
+                
+                                      
+                        
+                       
+                               
+                                                 
+                            
+                         
+                           
+                                  
+                                  
+                                        
+                              
+                               
+                     
+                            
+                              
+ 
+
+// assembleDebugRecord — the FLOOR-disciplined assembler (tmp/walker-debug-design.md §5 "null economy"):
+// every section below is wrapped in its OWN try/catch. One bad section sets `degraded: true`, names
+// itself in `gaps`, and falls back to honest zeros/empties — every OTHER section still assembles
+// independently ("one bad section never blanks the rest"). Zero LLM cost — pure JS over already-computed
+// data. Exported (like computeArmedInvariants/isGateRelevant above) so a unit test can force one
+// section to throw directly, without needing a full stubbed pipeline run.
+function assembleDebugRecord(input                    )              {
+  const gaps           = [];
+  let degraded = false;
+  const fail = (section        , e         ) => {
+    degraded = true;
+    gaps.push(section + ' assembly failed: ' + ((e         ) && (e         ).message ? (e         ).message : String(e)));
+  };
+
+  let armedInvariantsOut                                 = { registered: 0, armed: [], unarmed: [] };
+  try {
+    armedInvariantsOut = {
+      registered: input.invariants.length,
+      armed: input.armedInvariants.map((a) => ({ id: a.id, matchedFiles: a.matchedFiles, reason: a.reason || '' })),
+      unarmed: input.unarmedInvariants,
+    };
+  } catch (e) {
+    fail('armedInvariants', e);
+  }
+
+  let seats                            = {};
+  let seatsExpectedButAbsent           = [];
+  try {
+    seats = Object.fromEntries(Object.entries(input.seatTally).map(([k, v]) => [k, { ...v }]));
+    seatsExpectedButAbsent = input.expectedSeats.filter((s) => !(s in seats));
+  } catch (e) {
+    fail('seats', e);
+  }
+
+  let emptyResults                              = {
+    threadsWalked: 0,
+    threadsExpected: 0,
+    sensorsWithCards: 0,
+    sensorsExpected: 0,
+    hunterFindingsTotal: 0,
+    huntersReturned: 0,
+    huntersExpected: 0,
+    digestsWithFindings: 0,
+    digestsExpected: 0,
+    securityDied: false,
+    coverageCriticDied: false,
+    foldDied: false,
+  };
+  try {
+    const coverageCriticDied = input.invariants.length > 0 && !input.coverageCriticResult;
+    emptyResults = {
+      threadsWalked: input.walks.length,
+      threadsExpected: input.threads.length,
+      sensorsWithCards: input.cards.length,
+      sensorsExpected: input.jobs.length,
+      hunterFindingsTotal: input.hunterResults.reduce((n, r) => n + r.findings.length, 0),
+      huntersReturned: input.hunterResults.length,
+      huntersExpected: input.armedInvariants.length,
+      digestsWithFindings: input.digests.filter((d) => d.findings.length > 0).length,
+      digestsExpected: input.digestJobsLen,
+      securityDied: !input.security,
+      coverageCriticDied,
+      foldDied: false, // patched by the caller once runFold() resolves — see engine.ts runWalk()
+    };
+    // CLAUDE.md "error never renders as absence" — a dead coverage-critic over a non-empty registry is
+    // named directly in `gaps`, not just a quiet boolean a reader could miss (tmp/walker-debug-design.md §5).
+    if (coverageCriticDied) gaps.push('coverageCriticDied: registry non-empty but coverage-critic returned nothing');
+  } catch (e) {
+    fail('emptyResults', e);
+  }
+
+  let judgeStats                            = {
+    confirmed: 0,
+    falseCount: 0,
+    unproven: 0,
+    secondOpinionDispatched: 0,
+    secondOpinionOverturned: 0,
+    secondOpinionReexaminedKilled: 0,
+    finalJudgeReinstated: 0,
+    finalJudgeVerdict: null,
+    finalJudgeDied: true,
+  };
+  try {
+    judgeStats = {
+      confirmed: input.confirmed.length,
+      falseCount: input.killed.length,
+      unproven: input.unproven.length,
+      secondOpinionDispatched: input.secondOpinionDispatched,
+      secondOpinionOverturned: input.secondOpinionOverturned,
+      secondOpinionReexaminedKilled: input.secondOpinionReexaminedKilled,
+      finalJudgeReinstated: input.finalJudgeReinstated,
+      finalJudgeVerdict: input.finalJudge ? input.finalJudge.verdict : null,
+      finalJudgeDied: !input.finalJudge,
+    };
+  } catch (e) {
+    fail('judgeStats', e);
+  }
+
+  let coverage                          = { unsensedFields: [], gateSweepSkipped: false, coverageGaps: [] };
+  try {
+    coverage = {
+      unsensedFields: input.unsensed,
+      gateSweepSkipped: input.gateSweepSkipped,
+      coverageGaps: input.coverageGaps,
+    };
+  } catch (e) {
+    fail('coverage', e);
+  }
+
+  return {
+    schemaVersion: 1,
+    mode: 'walk',
+    reportPath: input.reportPath,
+    degraded,
+    gaps,
+    armedInvariants: armedInvariantsOut,
+    seats,
+    seatsExpectedButAbsent,
+    emptyResults,
+    judgeStats,
+    coverage,
+    tokenAttribution: null,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2605,6 +3303,8 @@ class WaveWalker {
       walkerDoc: CONFIG.WALKER_DOC,
       maxFieldsPerJob: CONFIG.MAX_FIELDS_PER_JOB,
       charter: CONFIG.CHARTER,
+      invariants: CONFIG.INVARIANTS,
+      invariantsDoc: CONFIG.INVARIANTS_DOC,
     });
     if (!scout) return { status: 'FAILED', detail: 'scout died twice' };
     if (!(scout.changedFiles || []).length)
@@ -2647,6 +3347,22 @@ class WaveWalker {
         ' files',
     );
 
+    // INVARIANT REGISTRY FEATURE (§ 2.1) — THE FLOOR: CONFIG.INVARIANTS defaults to [], so
+    // computeArmedInvariants trivially returns [] and armedInvariants.length is 0 for every walk that
+    // never supplied args.invariants — zero hunters dispatch, zero coverageCritic calls, zero extra log
+    // lines below (this ONE line only fires when the registry is non-empty).
+    const invariantById = new Map(CONFIG.INVARIANTS.map((inv) => [inv.id, inv]));
+    const armedInvariants = computeArmedInvariants(CONFIG.INVARIANTS, scout.changedFiles || [], scout.armedInvariants || []);
+    if (CONFIG.INVARIANTS.length)
+      log(
+        'Invariant registry: ' +
+          CONFIG.INVARIANTS.length +
+          ' registered · ' +
+          armedInvariants.length +
+          ' armed' +
+          (armedInvariants.length ? ' (' + armedInvariants.map((a) => a.id).join(', ') + ')' : ''),
+      );
+
     // E3: diff-scoped gate sweep — skip R6/R7's repo-wide gate population entirely when the diff touches
     // no resolver/auth/service surface (LOUD skip, fail-safe classifier; the diff-scoped security auditor
     // below ALWAYS runs regardless). args.fullGateSweep:true forces the full sweep.
@@ -2688,9 +3404,12 @@ class WaveWalker {
         log('⚠ sensor cap ' + CONFIG.MAX_SENSORS + ': DROPPED slice jobs — fields reported UNSENSED: ' + droppedFieldIds.join(', '));
     }
 
-    // ─── Phase 1: Walk (thread walkers) + Sense (ledger sensors + gate sweeps) — one parallel barrier ─────
+    // ─── Phase 1: Walk (thread walkers) + Sense (ledger sensors + gate sweeps) + Hunt (armed invariants)
+    // — one parallel barrier. invariantHunter dispatch is appended LAST, after the security auditor, so
+    // the existing threads/jobs/gates/security slice math (nT/nJ/nG) is untouched — a strictly additive
+    // tail, exactly like the floor invariant demands. ─────
     const fieldById = new Map(fields.map((f) => [f.id, f]));
-                                                                           
+                                                                                                
     const walked            = await parallel([
       ...threads.map((t) => () => runThreadWalker({ walkerDoc: CONFIG.WALKER_DOC, thread: t, charter: CONFIG.CHARTER })                    ),
       ...jobs.map((j) => () => {
@@ -2708,10 +3427,15 @@ class WaveWalker {
           branch,
           mergeShas: scout.mergeShas || [],
         })                    ,
+      ...armedInvariants.map((ai) => () => {
+        const inv = invariantById.get(ai.id);
+        return (inv ? runInvariantHunter({ invariant: inv, matchedFiles: ai.matchedFiles }) : Promise.resolve(null))                    ;
+      }),
     ]);
     const nT = threads.length;
     const nJ = jobs.length;
     const nG = gateFiles.length;
+    const nInv = armedInvariants.length;
     const walks = (walked.slice(0, nT)                      ).filter((x)               => !!x);
     const sliceResults = (walked.slice(nT, nT + nJ)                        ).filter((x)                 => !!x);
     const gates                     = (walked.slice(nT + nJ, nT + nJ + nG)                           )
@@ -2720,6 +3444,19 @@ class WaveWalker {
     const security = (walked[nT + nJ + nG]                      ) || null;
     const secFindings = security ? security.findings || [] : [];
     const undeclaredReads = sliceResults.flatMap((r) => r.undeclaredReads || []);
+    const hunterResults = (walked.slice(nT + nJ + nG + 1, nT + nJ + nG + 1 + nInv)                                 ).filter(
+      (x)                          => !!x,
+    );
+    if (armedInvariants.length)
+      log(
+        'Invariant hunt: ' +
+          hunterResults.length +
+          '/' +
+          armedInvariants.length +
+          ' hunter(s) returned · ' +
+          hunterResults.reduce((n, r) => n + (r.findings || []).length, 0) +
+          ' finding(s)',
+      );
 
     // Zip slices into cards (mechanical, zero tokens)
     const { cards, unsensed } = zipCards(fields, jobs, sliceResults, droppedFieldIds);
@@ -2743,8 +3480,9 @@ class WaveWalker {
         (security ? secFindings.length + ' finding(s)' : 'AUDIT DIED'),
     );
 
-    // ─── Phase 2: the ledger diff — mechanical rules, zero tokens ─────
-    const anomalies            = computeAnomalies(cards, undeclaredReads, gates, authRule);
+    // ─── Phase 2: the ledger diff — mechanical rules, zero tokens; R9-INV (hunter findings, zero when
+    // the registry is absent/empty) concatenated on — same array, same downstream pipeline ─────
+    const anomalies            = computeAnomalies(cards, undeclaredReads, gates, authRule).concat(computeInvariantAnomalies(hunterResults));
     const counts = ruleCounts(anomalies);
     log('Ledger diff: ' + anomalies.length + ' anomalies (' + Object.entries(counts).map(([k, v]) => k + ':' + v).join(' ') + ')');
 
@@ -2767,24 +3505,44 @@ class WaveWalker {
           }))
           .filter((j) => j.slice.length)
       : [];
-    const [judgeResults, digestResults] = await Promise.all([
+    // INVARIANT REGISTRY FEATURE (§ 2.4) — the external denominator, dispatched alongside judges/digests
+    // (all three depend only on Phase-1 outputs, none on each other) so it completes before the final
+    // judge needs it. Only runs when the registry is non-empty — an absent/empty registry dispatches
+    // NOTHING here, honoring the floor invariant exactly.
+    const armedIds = armedInvariants.map((a) => a.id);
+    const unarmedInvariants = CONFIG.INVARIANTS.filter((inv) => !armedIds.includes(inv.id)).map((inv) => ({ id: inv.id, territory: inv.territory }));
+    const [judgeResults, digestResults, coverageCriticResult] = await Promise.all([
       parallel(
         judgeJobs.map((j) => () => {
           const ctxCards = [...new Set(j.grp.map((x) => x.cardId).filter((id)               => !!id))]
             .map((id) => cardById.get(id))
             .filter((c)            => !!c);
           return runAnomalyJudge(
-            { rule: j.rule, ruleMeaning: meaning[j.rule], sec: SECURITY_RULES.includes(j.rule), instances: j.grp, ctxCards },
+            { rule: j.rule, ruleMeaning: meaning[j.rule], sec: SECURITY_RULES.includes(j.rule) || j.rule === 'R9-INV', instances: j.grp, ctxCards },
             j.i,
           );
         }),
       ),
       parallel(digestJobs.map((j) => () => runTerritoryDigest({ territory: j.territory, slice: j.slice, charter: CONFIG.CHARTER }))),
+      CONFIG.INVARIANTS.length
+        ? runCoverageCritic({
+            changedFiles: scout.changedFiles || [],
+            threadNames: threads.map((t) => ({ id: t.id, type: t.type, name: t.name })),
+            hunterCoverage: hunterResults.map((r) => ({ invariantId: r.invariantId, coverage: r.coverage })),
+            armedIds,
+            unarmedInvariants,
+            unsensed,
+          })
+        : Promise.resolve(null),
     ]);
     let verdicts = judgeResults.filter((r)                             => !!r).flatMap((r) => r.verdicts || []);
     const digests = digestResults.filter((d)                             => !!d);
+    const coverageGaps                = coverageCriticResult ? coverageCriticResult.gaps || [] : [];
+    if (CONFIG.INVARIANTS.length)
+      log('Coverage critic: ' + (coverageCriticResult ? coverageGaps.length + ' gap(s) named' : 'DIED — a coverage hole'));
     const anomalyById = new Map(anomalies.map((x) => [x.id, x]));
-    const escalatable = verdicts
+    // killed security/near-certain (existing) — a wrong KILL hides here.
+    const killedEscalatable = verdicts
       .filter((v) => v.verdict === 'FALSE')
       .filter((v) => {
         const x = anomalyById.get(v.anomalyId);
@@ -2792,13 +3550,37 @@ class WaveWalker {
         if (SECURITY_RULES.includes(x.rule) && ['high', 'critical'].includes(x.severityHint)) return true;
         return NEAR_CERTAIN.includes(x.rule);
       });
+    // INVARIANT REGISTRY FEATURE (§ 2.3, escalation symmetry) — confirmed R9-INV high/critical (new) —
+    // a wrong CONFIRM hides here, the opposite direction. [] whenever no R9-INV anomaly was ever raised.
+    const confirmedInvEscalatable = verdicts.filter((v) => {
+      if (v.verdict !== 'CONFIRMED') return false;
+      const x = anomalyById.get(v.anomalyId);
+      return !!x && x.rule === 'R9-INV' && ['high', 'critical'].includes(x.severityHint);
+    });
+    const escalatable = [...killedEscalatable, ...confirmedInvEscalatable];
     if (escalatable.length) {
-      log('Escalation: ' + escalatable.length + ' killed security/near-certain verdict(s) → ' + CONFIG.TIER.secondOpinion + ' second opinion');
-      const second = await parallel(
-        chunk(escalatable, 4).map((grp, i) => () =>
+      log(
+        'Escalation: ' +
+          escalatable.length +
+          ' killed security/near-certain' +
+          (confirmedInvEscalatable.length ? ' or confirmed R9-INV high/critical' : '') +
+          ' verdict(s) → ' +
+          CONFIG.TIER.secondOpinion +
+          ' second opinion',
+      );
+      const killedChunks = chunk(killedEscalatable, 4);
+      const confirmedChunks = chunk(confirmedInvEscalatable, 4);
+      const second = await parallel([
+        ...killedChunks.map((grp, i) => () =>
           runSecondOpinion({ authRule, items: grp.map((v) => ({ verdict: v, anomaly: anomalyById.get(v.anomalyId) })) }, i),
         ),
-      );
+        ...confirmedChunks.map((grp, i) => () =>
+          runSecondOpinion(
+            { authRule, items: grp.map((v) => ({ verdict: v, anomaly: anomalyById.get(v.anomalyId) })), direction: 'confirmed' },
+            killedChunks.length + i,
+          ),
+        ),
+      ]);
       const overrides = new Map(
         second
           .filter((r)                             => !!r)
@@ -2807,11 +3589,19 @@ class WaveWalker {
       );
       verdicts = verdicts.map((v) => {
         const o = overrides.get(v.anomalyId);
-        return o && v.verdict === 'FALSE' && o.verdict !== 'FALSE'
-          ? { ...o, why: '[OVERRIDE by ' + CONFIG.TIER.secondOpinion + '] ' + (o.why || '') }
-          : v;
+        if (!o) return v;
+        if (v.verdict === 'FALSE' && o.verdict !== 'FALSE')
+          return { ...o, why: '[OVERRIDE by ' + CONFIG.TIER.secondOpinion + '] ' + (o.why || '') };
+        if (v.verdict === 'CONFIRMED' && o.verdict === 'FALSE')
+          return { ...o, why: '[RE-EXAMINED by ' + CONFIG.TIER.secondOpinion + ', KILLED] ' + (o.why || '') };
+        return v;
       });
     }
+    // WALK TELEMETRY (DEBUG STEP) — snapshot the second-opinion override markers HERE, before Phase 3.5's
+    // final-judge reinstatement can potentially overwrite a `why` string that also got reinstated. 0/0
+    // naturally when escalation never ran (verdicts never got these markers).
+    const secondOpinionOverturned = verdicts.filter((v) => (v.why || '').startsWith('[OVERRIDE')).length;
+    const secondOpinionReexaminedKilled = verdicts.filter((v) => (v.why || '').startsWith('[RE-EXAMINED')).length;
     let confirmed = verdicts.filter((v) => v.verdict === 'CONFIRMED');
     let unproven = verdicts.filter((v) => v.verdict === 'UNPROVEN');
     let killed = verdicts.filter((v) => v.verdict === 'FALSE');
@@ -2844,7 +3634,9 @@ class WaveWalker {
       cardsLen: cards.length,
       unsensed,
       charter: CONFIG.CHARTER,
+      coverageGaps,
     });
+    let finalJudgeReinstatedCount = 0;
     if (finalJudge && (finalJudge.reinstated || []).length) {
       const re = new Map(finalJudge.reinstated .map((r) => [r.anomalyId, r]));
       verdicts = verdicts.map((v) =>
@@ -2855,6 +3647,7 @@ class WaveWalker {
       confirmed = verdicts.filter((v) => v.verdict === 'CONFIRMED');
       unproven = verdicts.filter((v) => v.verdict === 'UNPROVEN');
       killed = verdicts.filter((v) => v.verdict === 'FALSE');
+      finalJudgeReinstatedCount = finalJudge.reinstated .length;
       log('Final judge reinstated ' + finalJudge.reinstated .length + ' killed verdict(s)');
     }
     if (finalJudge) log('Final judgment: ' + finalJudge.verdict + ' · ' + finalJudge.missedRisks.length + ' missed risk(s)');
@@ -2880,7 +3673,120 @@ class WaveWalker {
       ', unproven ' +
       unproven.length +
       ' · security: ' +
-      (security ? secFindings.length + ' finding(s) over ' + (security.categoriesSwept || []).length + ' categories' : 'AUDIT DIED');
+      (security ? secFindings.length + ' finding(s) over ' + (security.categoriesSwept || []).length + ' categories' : 'AUDIT DIED') +
+      (CONFIG.INVARIANTS.length
+        ? ' · invariants: ' +
+          CONFIG.INVARIANTS.length +
+          ' registered, ' +
+          armedInvariants.length +
+          ' armed (' +
+          (armedIds.length ? armedIds.join(', ') : 'none') +
+          ') · coverage gaps: ' +
+          coverageGaps.length
+        : '');
+
+    // WALK TELEMETRY (DEBUG STEP) — assembled HERE, immediately before the runFold() call, so it is in
+    // scope for both the success return below and the `fold died twice` FAILED return (the single
+    // highest-value floor fix per tmp/walker-debug-design.md §5: today that path returns nothing but a
+    // detail string).
+    //
+    // computeExpectedSeats — the WALK-mode-relevant subset THIS WALK actually SCHEDULED, derived from
+    // real per-walk dispatch decisions (jobs-by-kind, gateFiles, judgeJobs, digestJobs, escalatable,
+    // armedInvariants, CONFIG.INVARIANTS), not a static universal seat list — a walk with no GraphQL
+    // surface / a gate-free diff / zero anomalies legitimately dispatches zero sensors/gates/judges/
+    // digests (the documented floor, walker.md: "the floor never regresses"), so those seats are never
+    // flagged as a false "gap." `includeFold` is false pre-fold-call (fold hasn't been dispatched yet at
+    // that point) and true in the post-fold patch below, once it genuinely has been.
+    const computeExpectedSeats = (includeFold         )           =>
+      ['scout', 'walk', 'security', 'final-judge']
+        .concat(includeFold ? ['fold'] : [])
+        .concat(jobs.some((j) => j.kind === 'producer') ? ['producer'] : [])
+        .concat(jobs.some((j) => j.kind === 'consumer') ? ['consumer'] : [])
+        .concat(jobs.some((j) => j.kind === 'cortex') ? ['cortex'] : [])
+        .concat(gateFiles.length && !gateSweepSkipped ? ['gates'] : [])
+        .concat(judgeJobs.length ? ['judge'] : [])
+        .concat(digestJobs.length ? ['digest'] : [])
+        .concat(escalatable.length ? ['2nd-opinion'] : [])
+        .concat(armedInvariants.length ? ['invariant-hunt'] : [])
+        .concat(CONFIG.INVARIANTS.length ? ['coverage-critic'] : []);
+
+    let debugRecord                         ;
+    if (CONFIG.debug) {
+      try {
+        debugRecord = assembleDebugRecord({
+          reportPath,
+          invariants: CONFIG.INVARIANTS,
+          armedInvariants,
+          unarmedInvariants,
+          seatTally: SEAT_TALLY,
+          expectedSeats: computeExpectedSeats(false),
+          threads,
+          walks,
+          jobs,
+          cards,
+          hunterResults,
+          digestJobsLen: digestJobs.length,
+          digests,
+          security,
+          coverageCriticResult,
+          confirmed,
+          killed,
+          unproven,
+          secondOpinionDispatched: escalatable.length,
+          secondOpinionOverturned,
+          secondOpinionReexaminedKilled,
+          finalJudge,
+          finalJudgeReinstated: finalJudgeReinstatedCount,
+          unsensed,
+          gateSweepSkipped,
+          coverageGaps,
+        });
+      } catch (e) {
+        // outermost floor — even a bug in the assembler's own scaffolding must never break the walk.
+        log('⚠ debugRecord assembly failed entirely: ' + ((e         ) && (e         ).message ? (e         ).message : String(e)));
+        debugRecord = {
+          schemaVersion: 1,
+          mode: 'walk',
+          reportPath,
+          degraded: true,
+          gaps: ['full assembly failed: ' + ((e         ) && (e         ).message ? (e         ).message : String(e))],
+          armedInvariants: { registered: 0, armed: [], unarmed: [] },
+          seats: {},
+          seatsExpectedButAbsent: [],
+          emptyResults: {
+            threadsWalked: 0,
+            threadsExpected: 0,
+            sensorsWithCards: 0,
+            sensorsExpected: 0,
+            hunterFindingsTotal: 0,
+            huntersReturned: 0,
+            huntersExpected: 0,
+            digestsWithFindings: 0,
+            digestsExpected: 0,
+            securityDied: false,
+            coverageCriticDied: false,
+            foldDied: false,
+          },
+          judgeStats: {
+            confirmed: 0,
+            falseCount: 0,
+            unproven: 0,
+            secondOpinionDispatched: 0,
+            secondOpinionOverturned: 0,
+            secondOpinionReexaminedKilled: 0,
+            finalJudgeReinstated: 0,
+            finalJudgeVerdict: null,
+            finalJudgeDied: true,
+          },
+          coverage: { unsensedFields: [], gateSweepSkipped: false, coverageGaps: [] },
+          tokenAttribution: null,
+        };
+      }
+    }
+    // renderTelemetryMd is self-floored (never throws — see utils/index.ts), so no wrapping try/catch
+    // is needed here; `debug:false` or an assembly failure both fall through to '' cleanly.
+    const telemetryMd = CONFIG.debug && debugRecord ? renderTelemetryMd(debugRecord) : '';
+
     const fold                 = await runFold({
       reportPath,
       walks,
@@ -2891,9 +3797,30 @@ class WaveWalker {
       security,
       coverageSummary,
       finalJudge,
+      coverageGaps,
+      telemetryMd,
     });
+    if (CONFIG.debug && debugRecord) {
+      try {
+        // refresh seats/seatsExpectedButAbsent now that fold has genuinely been dispatched (whether it
+        // died or succeeded, its tally now exists in SEAT_TALLY) — see computeExpectedSeats above.
+        debugRecord.seats = Object.fromEntries(Object.entries(SEAT_TALLY).map(([k, v]) => [k, { ...v }]));
+        debugRecord.seatsExpectedButAbsent = computeExpectedSeats(true).filter((s) => !(s in debugRecord .seats));
+        debugRecord.emptyResults.foldDied = !fold;
+      } catch (e) {
+        debugRecord.degraded = true;
+        debugRecord.gaps.push('post-fold patch failed: ' + ((e         ) && (e         ).message ? (e         ).message : String(e)));
+      }
+    }
     if (!fold)
-      return { status: 'FAILED', detail: 'fold died twice', threads: threads.length, anomalies: anomalies.length, confirmed: confirmed.length };
+      return {
+        status: 'FAILED',
+        detail: 'fold died twice',
+        threads: threads.length,
+        anomalies: anomalies.length,
+        confirmed: confirmed.length,
+        debugRecord,
+      };
 
     const ledger             = {
       report: reportPath,
@@ -2911,6 +3838,8 @@ class WaveWalker {
       digests,
       security: security || null,
       coverage: coverageSummary,
+      armedInvariants,
+      coverageGaps,
     };
     log('Wave walker complete · ' + fold.verdict + ' · ' + coverageSummary + ' · ledger in result (persist to ' + CONFIG.LEDGER_PATH + ')');
     return {
@@ -2934,6 +3863,9 @@ class WaveWalker {
       reportPath,
       ledgerTarget: CONFIG.LEDGER_PATH,
       ledger,
+      invariantsArmed: armedIds,
+      coverageGaps: coverageGaps.length,
+      debugRecord,
     };
   }
 }

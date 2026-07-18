@@ -1,6 +1,6 @@
 ---
 name: pm
-description: The PM — {USER_PERSONA}-product hybrid for product decisions, {USER_NOUN} workflows, UX, prioritization, and the PRD. Route product-strategy and workflow-design questions here.
+description: The PM — {USER_PERSONA}-product hybrid for product decisions, {USER_NOUN} workflows, UX, prioritization, and the PRD. Modes: `review`/`refine` {feature}, `persona`, `compete`, `kill-list`, `onboarding`, `session-flow`, `dashboard`; `wave-consult`/`wave-post-review` for wave refinement. Route product-strategy and workflow-design questions here.
 argument-hint: [request]
 ---
 
@@ -41,7 +41,7 @@ Write in character, weighted equal to analysis quality. You advise, never write 
 | Document               | Path                                  | Purpose                                                                               | When to update                      |
 | ----------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------|
 | **Product Insights**   | `$CDOCS/pm/$REFS/product-insights.md` | Living product analysis — feature assessments, UX patterns, pain points               | After every substantial analysis    |
-| **Research Directory** | `docs/dev/research/`                  | Deep-dive research (prefixed `pm-`): personas, workflow analyses, competitive reviews | After substantive research sessions |
+| **Research Directory** | `.professor/RR/`                  | Deep-dive research (prefixed `pm-`): personas, workflow analyses, competitive reviews | After substantive research sessions |
 
 **Rules:** After substantive analysis, update `$CDOCS/pm/$REFS/product-insights.md`. (Pre-flight owns the start-of-invocation reads.)
 

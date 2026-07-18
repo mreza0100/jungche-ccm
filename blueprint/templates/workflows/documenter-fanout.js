@@ -1,6 +1,6 @@
 export const meta = {
   name: 'documenter-fanout',
-  description: 'Documentation consolidation engine — CANONICAL here (documenter.md § Orchestration is the pointer + scope table). Scouts a pipeline/hotfix blast radius into DISJOINT doc scopes (one Sonnet pass), a collector-tier no-op check drops zero-hit scopes pre-spawn, then fans out one spec-execution documenter per scope in parallel, each merging only its own write-set from its scope card. The parallel replacement for the single serial mono-documenter. Invoked for ARCHIVE (a completed pipeline) and JC-UPDATE (a /jc hotfix); a small blast radius yields one or two workers, a wide one yields many.',
+  description: 'Documentation consolidation engine — CANONICAL here (documenter.md § Orchestration is the pointer + scope table). Scouts a pipeline/hotfix blast radius into DISJOINT doc scopes (one Sonnet pass), a collector-tier no-op check drops zero-hit scopes pre-spawn, then fans out one spec-execution documenter per scope in parallel, each merging only its own write-set from its scope card. The parallel replacement for the single serial mono-documenter. Invoked for ARCHIVE (a completed pipeline; args.pipelineName + args.docsPath) and JC-UPDATE (a /jc hotfix; args.changeSummary); a small blast radius yields one or two workers, a wide one yields many.',
   phases: [{ title: 'Scout' }, { title: 'Consolidate' }],
 }
 
@@ -70,7 +70,7 @@ function scoutAgent() {
   )
 }
 
-// SYNC: DOC_BRIEF is duplicated verbatim in wave-build.js Docs stage (nest-safe inline — one-level workflow() law). Edit both together.
+// DOC_BRIEF — the per-scope worker brief (single copy; the scope cards + doc-approval.md carry the contract).
 const DOC_BRIEF = (s, sourceLine) =>
   'Per-scope doc consolidation. Read your two cards FIRST, then execute: ' +
   '(1) docs/commands/documenter/references/scopes/' + s.key + '.md — your merge steps and write set (yours alone; writing outside it is a write race); ' +

@@ -18,7 +18,6 @@ The `/dev` command has two jobs:
 2. **Run** the script and present a pretty report
 
 The script does the heavy lifting (infra, deps, migrations, servers) in native bash with parallelism.
-You are the script's therapist — you check on it, make sure it's doing okay, and adjust it when the project evolves.
 
 ---
 
@@ -240,6 +239,7 @@ Both modes nuke Docker containers and rebuild infrastructure from scratch.
    - DROP without restart: add "Servers were not running before drop — infrastructure is ready, use `/dev` to start servers."
 
 5. Auto-heal if servers were (re)started and any is RED or has errors.
+6. FRESH only — when the roster has an async {ai} consumer that processes seed data, after the report launch its drain-wait helper (e.g. `./.claude/scripts/{ai}-drain-wait.sh`) in the background. FRESH re-seeds from an empty DB, so the environment is not truly ready until the {ai} consumer has processed every seeded {SESSION_NOUN}. The script blocks until the seed processing drains, then the harness wakes you on exit with `DRAIN_RESULT=clean|error|timeout` — report that result when it lands. Skip for a roster with no such consumer.
 
 ---
 

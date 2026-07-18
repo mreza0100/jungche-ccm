@@ -1,6 +1,6 @@
 ---
 name: km
-description: Author, sharpen, and curate the {AI_PROJECT} prompt registry — the .md prompt prose injected verbatim into the AI analysis chains. Use for "write/edit/sharpen/clean/review the {DOMAIN_NOUN} prompts", any work on knowledge/prompts/*.md, or registering new prompt text.
+description: Author, sharpen, and curate the {AI_PROJECT} knowledge registry — insight knowledge (`insights/`), full-injection formats (`note-formats/`), and prompt templates (`prompts/*.md`) injected verbatim into the AI analysis chains. Use for "write/edit/sharpen/clean/review/status" on {DOMAIN_NOUN} prompts or insight knowledge, `insights {approach}`, `note-formats {format}`, or any work under {AI_PROJECT}/knowledge/.
 argument-hint: [write|edit|sharpen|clean|review|status] [target]
 ---
 

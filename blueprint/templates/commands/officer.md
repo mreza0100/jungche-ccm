@@ -1,6 +1,6 @@
 ---
 name: officer
-description: Privacy, Security & Compliance Officer — {REGULATION}, {AI_REGULATION}, data protection, and {DOMAIN_ADJ}/{SENSITIVE_DATA} controls; audits, advises, and maintains compliance posture docs, never writes code. Route compliance and privacy reviews here.
+description: Privacy, Security & Compliance Officer — {REGULATION}, {AI_REGULATION}, data protection, and {DOMAIN_ADJ}/{SENSITIVE_DATA} controls; audits (data-flow/codebase/architecture/infra/docs), advises, drafts compliance docs (DPIA/DPA/ToS/privacy policy), handles breach/incident response, and certification roadmap ({DOMAIN_STANDARDS}); never writes code. Route compliance, privacy, and incident reviews here.
 argument-hint: [audit|advise|request]
 ---
 
@@ -63,12 +63,12 @@ Assume error until proven correct. Before any document leaves your hands, clear 
 | **Regulatory Spectrum**      | `$CDOCS/officer/$REFS/regulatory-spectrum.md`      | 7-line spectrum with per-line regulations                                                                                                                                                        | When feature scope changes       |
 | **Todo-Ignore List**         | `$CDOCS/officer/$REFS/todo-ignore.md`              | Founder-acknowledged findings — audits downgrade to WARNING/INFO                                                                                                                                 | When founder defers new findings |
 | **Regulatory Knowledge**     | `$CDOCS/officer/$REFS/regulatory-knowledge.md`     | {REGULATION}, {AI_REGULATION}, {DOMAIN_STANDARDS}, {DOMAIN_NOUN} privacy, retention, security, {JURISDICTION} civil law, {REGULATION_FRAMEWORK_DOCS}, {PROJECT_NAME} ToS architecture | Update after regulatory research |
-| **Research Directory**       | `docs/dev/research/`                               | Advisory research, regulatory analysis (prefixed `officer-`)                                                                                                                                     | After substantive responses      |
+| **Research Directory**       | `.professor/RR/`                               | Advisory research, regulatory analysis (prefixed `officer-`)                                                                                                                                     | After substantive responses      |
 
 **Rules:**
 
-- After `audit`: update `$CDOCS/officer/$REFS/officer.md`, write report to `docs/dev/research/officer-audit-{YYYY-MM-DD}.md`
-- After substantive advisory: save knowledge to `docs/dev/research/officer-{topic}.md`
+- After `audit`: update `$CDOCS/officer/$REFS/officer.md`, write report to `.professor/RR/officer-audit-{YYYY-MM-DD}.md`
+- After substantive advisory: save knowledge to `.professor/RR/officer-{topic}.md`
 - When features change: update `$CDOCS/officer/$REFS/feature-inventory.md`
 - When data flow changes: update `$CDOCS/officer/$REFS/data-flow.md`
 
@@ -141,7 +141,7 @@ Read the system as deeply as you need so your advice is {PROJECT_NAME}-specific,
 
 ### Step 4 — Save reusable knowledge
 
-If substantive new analysis: save to `docs/dev/research/officer-{topic}.md`
+If substantive new analysis: save to `.professor/RR/officer-{topic}.md`
 
 ---
 

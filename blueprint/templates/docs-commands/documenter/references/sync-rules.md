@@ -154,7 +154,7 @@ Each rule defines a source, target, and what "in sync" means.
 
 ## Rule 13: Backlog Cleanliness
 
-**Source:** `docs/dev/backlog.md` (parked roadmap candidates)
+**Source:** `docs/dev/backlog/backlog.md` (parked roadmap candidates)
 **Targets:** `docs/agents/features/` (shipped feature registry; cluster)
 
 **Check:**

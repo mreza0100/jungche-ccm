@@ -26,7 +26,7 @@ The orchestrator provides:
 - `$PIPELINE` — kebab-case feature name
 - `$WAVE` — kebab-case wave name, or `none` when not wave-owned. Only meaningful for MERGE and DOCS-COMMIT.
 - **Phase** — one of the eight dispatch-table phases
-- `Archive:` — DOCS-COMMIT only: pipeline/wave dirs to move to tmp cold storage after committing, or `none` (wave-owned builds; the wave archives all its dirs together at wave end)
+- `Archive:` — DOCS-COMMIT only: pipeline/wave/train dirs and consumed queue-spec files to move to tmp cold storage after committing, or `none` (wave-owned builds; the wave archives all its dirs together at wave end)
 
 **Derived:** `$WORKTREE = .worktrees/$PIPELINE` · `$DOCS = docs/dev/builds/$PIPELINE`
 
@@ -104,7 +104,7 @@ A killed or rejected tool call mid-phase does NOT roll back what already ran —
 
 1. `git add <explicit specific paths>` — only the files the orchestrator named. NEVER `-A` / `.` / `-u`. **NEVER `git restore --staged .`** — unstaging "everything first" clobbers a CONCURRENT gitter's staged set; you are not alone on this index.
 2. `git status --porcelain` — verify your paths are staged.
-3. **`git commit -- <the same explicit paths>` (HEREDOC message) — the pathspec is MANDATORY and it is the whole defense.** A bare `git commit` ships whatever is in the index AT THAT INSTANT, so a second gitter staging between your verify and your commit lands ITS files under YOUR message — a commit that lies about its own contents, and `git log --grep` can never find the real work again. The pathspec makes the sweep structurally impossible: a concurrent gitter's staged files simply cannot be captured. NEVER `git commit -a` / `-am`, and never a bare `git commit` on a shared index.
+3. **`git commit -- <the same explicit paths>` (HEREDOC message) — the pathspec is MANDATORY and it is the whole defense.** A bare `git commit` ships whatever is in the index AT THAT INSTANT, so a second gitter staging between your verify and your commit lands ITS files under YOUR message — a commit that lies about its own contents, and `git log --grep` can never find the real work again. Twice in one hour before this rule existed. The pathspec makes the sweep structurally impossible: a concurrent gitter's staged files simply cannot be captured. NEVER `git commit -a` / `-am`, and never a bare `git commit` on a shared index.
 4. `git show --stat <sha>` — verify the commit holds EXACTLY the intended paths; any extra path landed → surface it to the orchestrator immediately as a scope error.
 
 NEVER report a file as "not staged" or "not committed" without verifying it against `git status --porcelain` / `git show` — report the verified set, never an assumption. (MERGE is exempt: a `pipeline/` branch is an isolated worktree, so `git add -A` there captures only that pipeline's own work.)

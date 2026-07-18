@@ -1,6 +1,6 @@
 ---
 name: chat:branch
-description: Fork THIS chat into a side-by-side tmux pane (the `Ctrl+b %` split) — a fresh-session-id fork that inherits this chat's model and takes the name you give it (the fork can't rename itself). The original chat stays live in the left pane; unlike the built-in in-place branch, which displaces your current chat. Trigger — /chat:branch [name].
+description: Fork THIS chat into a side-by-side tmux pane — a fresh-session-id fork that inherits this chat's model and takes the name you give it (the fork can't rename itself). The original chat stays live in the left pane; unlike the built-in in-place branch, which displaces your current chat. Trigger — /chat:branch [name].
 argument-hint: [name]
 disable-model-invocation: true
 ---

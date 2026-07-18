@@ -1,6 +1,6 @@
 ---
 name: chat:new
-description: Spawn a fresh teammate chat. By default it opens in a side-by-side tmux pane (like /chat:branch, but a NEW empty chat instead of a fork); with --detach it runs as a headless detached session on its own socket — off-screen, not a pane. Either way it's auto-named from this chat's prefix (RR → RR_1, RR_2 …), inherits this chat's model, and is driven with /chat:inject {name}, which returns its screen as proof. Spawn teammates to do the work while you stay back and orchestrate — the four-eye principle; detached teammates are reaped by /bb. Trigger — /chat:new [--detach] [name].
+description: Spawn a fresh teammate chat. By default it opens in a side-by-side tmux pane (like /chat:branch, but a NEW empty chat instead of a fork); with --detach it runs as a headless detached session on its own socket — off-screen, not a pane. Either way it's auto-named from this chat's prefix (RR → RR_1, RR_2 …), inherits this chat's model, and is driven with /chat:inject {name}, which returns its screen as proof. Spawn teammates to do the work while you stay back and orchestrate; detached teammates are reaped by /bb. Trigger — /chat:new [--detach] [name].
 argument-hint: [--detach] [name]
 ---
 

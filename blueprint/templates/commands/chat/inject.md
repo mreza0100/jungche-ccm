@@ -1,7 +1,7 @@
 ---
 name: chat:inject
-description: Force a turn into another chat or into this one — 'self' or a live tmux session gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Restart all MCP servers on 'restart mcp' by self-injecting /mcp disable then /mcp enable. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
-argument-hint: [[--force-now] [--then {steer}] [--file {path}] {self | tmux-session | session-id} {message}]
+description: Force a turn into another chat or into this one — 'self', a live tmux session, or its 🔖 label gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. `--force-now` interrupts a busy target (Esc); `--file {path}` sends a message with shell metacharacters safely; `--then {steer}` queues a follow-up turn for after the primary lands (e.g. post-/compact); repeat it to chain several steers, delivered in order one settled turn apart. Restart all MCP servers on 'restart mcp' by self-injecting /mcp disable then /mcp enable. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
+argument-hint: [[--force-now] [--then {steer}]... [--file {path}] {self | tmux-session | session-id} {message}]
 ---
 
 # Chat Inject — force a turn into another chat (or this one)
@@ -57,6 +57,8 @@ This is also the better practice regardless of the transport: a file on disk sur
 ## Carry a follow-up past a /compact with `--then`
 
 `chat.sh inject --then "{steer}" {target} "/compact {focus}"` delivers `{steer}` as a second turn the moment the primary turn finishes and the pane returns to idle. It exists for `/compact`: compaction leaves the chat idle, so a steer typed while it runs is swallowed — `--then` rides out the busy→idle transition, then types the steer onto the settled pane. The waiter is **detached**, because a self-inject's waiter runs inside the very turn it must wait on — that turn cannot end until the inject returns — so it survives the turn as a background process and delivers through a fresh inject that takes its own lock. The steer follows the same signature rule as any message (a `/`-prefixed steer travels bare). It works for any primary message (it simply waits for that turn to end), but `/compact` is the case it is built for; a non-live (RESUME) target has no turn to wait on, so `--then` is ignored there with a warning. **A `/compact` inject REQUIRES `--then` (founder law)** — chat.sh rejects a steerless compact: compaction ends at an idle prompt with no turn fired, stranding the target command-less.
+
+**`--then` is repeatable** — `--then "{s1}" --then "{s2}" --then "{s3}"` chains the steers in the given order, each delivered as its own turn after the previous one settles to idle (the waiter delivers the first, then the recursive inject re-queues the remainder, one confirmed hop at a time). Use it to script a short sequence onto one target — e.g. `/compact` → confirm state → start the next phase. No steer may itself start with `/compact` (checked upfront, whatever the primary): compact-steering-into-compact recurses and loses the thread.
 
 ## Restart all MCP servers — "restart mcp"
 

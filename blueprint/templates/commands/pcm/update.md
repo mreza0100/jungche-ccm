@@ -1,6 +1,6 @@
 ---
 name: pcm:update
-description: Pull a newer Professor blueprint release tag from upstream and three-way-merge it with local customizations via manifest replay, honoring drift.md KEEP-LOCAL. Invoked by /pcm:update, "blueprint update", or "pull the latest professor blueprint".
+description: Pull a newer Professor blueprint release tag from upstream and three-way-merge it with local customizations via manifest replay, honoring drift.md KEEP-LOCAL. Modes: default (full interactive update to latest), `check` (read-only preview, no writes), `--to vX.Y.Z` (pin a specific tag), `--force` (repair/re-apply current version), `--re-interview N` (redo interview question N). Invoked by /pcm:update, "blueprint update", or "pull the latest professor blueprint".
 argument-hint: [check | --to vX.Y.Z | --force | --re-interview N]
 ---
 

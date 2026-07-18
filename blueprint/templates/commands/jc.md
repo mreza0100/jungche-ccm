@@ -1,6 +1,6 @@
 ---
 name: jc
-description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size. JC traces the full stack, implements surgically, tests locally, and commits via gitter. Route any bug, error, or change here; /wave:live batches a task list on main; /wave:builder and /wave:orchestrator are optional worktree pipelines, never required by size.
+description: Live debug, diagnose, and deliver any change to any {PROJECT_NAME} service directly on main — fix or feature, any size; also read-only diagnostics (trace/locate/diagnose/data/compare/scope/status) and `/jc deploy` (ship to production). JC traces the full stack, implements surgically, tests locally, and commits via gitter. `boundary-lite` flag (named by an owning caller) suppresses JC's own gate/docs re-run. Route any bug, error, or change here; /wave:live batches a task list on main; /wave:builder and /wave:orchestrator are optional worktree pipelines, never required by size.
 argument-hint: [bug or symptom]
 ---
 

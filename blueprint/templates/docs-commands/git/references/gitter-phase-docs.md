@@ -25,13 +25,15 @@ if ! git diff --cached --quiet; then
 fi
 ```
 
+**Archive-dir gate (blocking before Step 3):** every `Archive:` dir must be TRACKED AND CLEAN after this commit — `git status --porcelain -- {archive-dir}` returns EMPTY, else add+commit the residue first. Step 3's target `tmp/` is gitignored: a file that reaches the move untracked exits git history forever, so the committed snapshot at the tracked docs path IS the archive.
+
 ## 3. Move archived dirs to tmp cold storage
 
-Skip if `Archive: none`. For each dir: `docs/dev/builds/*` → `tmp/dev/archive/builds/`, `docs/dev/waves/*` → `tmp/dev/archive/waves/`. `tmp/` is gitignored — dirs stay browseable while git history keeps the committed record; no archive remains under `docs/`.
+Skip if `Archive: none`. `Archive:` entries may be dirs or single files. Per entry: `docs/dev/builds/*` → `tmp/dev/archive/builds/`, `docs/dev/waves/*` → `tmp/dev/archive/waves/`, `docs/dev/trains/*` → `tmp/dev/archive/trains/`, consumed queue specs `docs/dev/waves/queue/*.md` → `tmp/dev/archive/waves/queue/`. `tmp/` is gitignored — entries stay browseable while git history keeps the committed record; no archive remains under `docs/`.
 
 ```bash
-mkdir -p tmp/dev/archive/builds tmp/dev/archive/waves
-mv {dir} tmp/dev/archive/{builds|waves}/
+mkdir -p tmp/dev/archive/builds tmp/dev/archive/waves tmp/dev/archive/trains tmp/dev/archive/waves/queue
+mv {entry} tmp/dev/archive/{builds|waves|trains|waves/queue}/
 ```
 
 ## 4. Commit the removals
@@ -40,7 +42,7 @@ On `main` — follow core § Scoped-commit discipline: clear the index, stage on
 
 ```bash
 git restore --staged .
-git add docs/dev/builds/ docs/dev/waves/
+git add docs/dev/builds/ docs/dev/waves/ docs/dev/trains/
 git status --porcelain  # verify ONLY the moved-out dirs are staged
 if ! git diff --cached --quiet; then
   git commit  # type: docs($PIPELINE), desc: "move archived pipeline docs to tmp"

@@ -1,6 +1,6 @@
 ---
 name: marketer
-description: The Marketer (CMO) — positioning, messaging, SEO, campaigns, and competitive framing grounded in product truth, calibrated for {MARKET_SEGMENT}. Route marketing and market-communication work here.
+description: The Marketer (CMO) — positioning, messaging, SEO, content, campaigns, sales coaching, channel/persona/brand strategy, and competitive framing for {MARKET_SEGMENT}. Modes: `audit` (full marketing audit), `wave` (write marketing tasks to wave.md). Route marketing and market-communication work here.
 argument-hint: [request]
 ---
 
@@ -82,7 +82,7 @@ Before answering, read relevant references:
 | Brand Positioning  | `$CDOCS/marketer/$REFS/positioning.md`      |
 | SEO Playbook       | `$CDOCS/marketer/$REFS/seo-playbook.md`     |
 | Channel Strategy   | `$CDOCS/marketer/$REFS/channels.md`         |
-| Research Directory | `docs/dev/research/` (prefixed `marketer-`) |
+| Research Directory | `.professor/RR/` (prefixed `marketer-`) |
 
 ### Cross-Command Docs (read, don't write)
 
@@ -341,7 +341,7 @@ Core objections {USER_PERSONA}s raise: data safety, {FORBIDDEN_DOMAIN_OUTPUTS} f
 | Brand Positioning | `$CDOCS/marketer/$REFS/positioning.md`      | After positioning analysis           |
 | SEO Playbook      | `$CDOCS/marketer/$REFS/seo-playbook.md`     | After SEO analysis                   |
 | Channel Strategy  | `$CDOCS/marketer/$REFS/channels.md`         | After channel analysis/event debrief |
-| Research          | `docs/dev/research/` (prefixed `marketer-`) | After deep research                  |
+| Research          | `.professor/RR/` (prefixed `marketer-`) | After deep research                  |
 
 Rules: Read features + owned refs at start. Save reusable insights after substantive analysis. Never write to other commands' docs. Cross-reference competitive claims with mentor's CI. Cross-reference compliance with officer.
 

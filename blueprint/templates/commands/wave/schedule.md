@@ -1,6 +1,6 @@
 ---
 name: wave:schedule
-description: Wave scheduler — sole writer of root wave.md. Collects every QUEUED /wave:refine spec from docs/dev/waves/queue/, builds the cross-spec dependency + conflict graph, gets founder rulings on conflicts and the train map, and emits ONE consolidated dependency-ordered wave train for /wave:orchestrator. Triggers: "schedule the waves", "/wave:schedule", "build the train".
+description: Wave scheduler — sole writer of root wave.md. Collects every QUEUED /wave:refine spec from docs/dev/waves/queue/, builds the cross-spec dependency + conflict graph, gets founder rulings on conflicts and the train map, and emits ONE consolidated dependency-ordered wave train for /wave:orchestrator. Subcommand `rebalance` re-maps unstarted waves when a live lane-mapped train's queues go lopsided. Triggers: "schedule the waves", "/wave:schedule", "/wave:schedule rebalance", "build the train".
 ---
 
 # Schedule — Wave Train Scheduler
@@ -43,6 +43,7 @@ Present in ONE message: a mermaid train map (waves as nodes tagged Touches, depe
 
 - **Batching laws:** dependency topo-order; ties broken founder priority > unblocking fan-out > spec age. Merge same-Touches, conflict-free partitions into ONE wave section — aggressively few (every boundary costs two compactions + reconcile + full gates) yet single-impact-area each; a merged wave grown too big splits HERE, never mid-train.
 - Promote the approved draft (S3 adjustments applied) to root `wave.md` in the exact refine train dialect: top preamble (`**Epic:**` — `none` when sources differ — + ALL-task rules blocks only) + `## Wave {k}: {kebab-area}` sections, each with the four header fields (+ per-wave `**Epic:**` override where source epics differ; + `**Lane:** pinned-to:{wave}` only on S3-pinned waves — multi-builder trains are pool, single-lane trains carry no lane headers), its scoped rules blocks, its tasks. Task bodies byte-identical; renumber sequentially across the train and remap EVERY in-spec `#N` reference per the map — grep-verify zero stale numbers. Open with a **Source Reconciliation** table: queue file → original # → train # / disposition; multi-builder trains follow it with `## Priority` (wave names in dispatch order) + `## Conflict graph` (wave pair → grade → overlapping write-paths).
+- Create the train's home `docs/dev/trains/{train-name}/` and park any later-wave MANIFEST-VERIFY findings there as `train-notes.md`. Every train-level ledger lives in this dir — `train-goal.md`, `lanes.md`/`pool.md`, `decisions.md`, `train-notes.md`, ad-hoc checkpoints (orchestrator + watcher write them); at train close the dir archives whole to `tmp/dev/archive/trains/` (orchestrator § O6.7), and the consumed specs stamped with this train's name archive beside it — a SCHEDULED stamp is never a terminal state.
 - Stamp each consumed spec `**Status:** SCHEDULED → {train-name} ({date})`; DROP / HOLD / MERGE→re-refine stamped likewise. Release the lock.
 - Report: specs consumed/held, waves, tasks, conflicts ruled, RE-REFINE flags outstanding. Running `/wave:orchestrator {builder}` is the founder's separate decision.
 
@@ -52,7 +53,7 @@ Lane-mapped is the LEGACY dialect — read for trains predating pool, S3 draws n
 
 ## Constraints
 
-- Files you write: root `wave.md`, queue header stamps, the lock — nothing else. No git (gitter law).
+- Files you write: root `wave.md`, queue header stamps, the lock, the `docs/dev/trains/{train-name}/` seed (dir + `train-notes.md`) — nothing else. No git (gitter law).
 - **Legal fence inherits from refine:** you NEVER introduce a task, clause, or routing over legal/compliance documents; a founder-owned paper-trail item in a spec is carried verbatim into your report, never into the train.
 - Task identity is sacred: every queued task traces to a train # / DROP (founder-ruled) / MERGE→re-refine / HOLD.
 - ZERO GAP never lowers: a gap found in a spec (missing section, undecided field) is a RE-REFINE flag, never something schedule fills.

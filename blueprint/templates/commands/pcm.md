@@ -1,6 +1,6 @@
 ---
 name: pcm
-description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (audit). Upstream blueprint updates and releases are the /pcm:update and /pcm:release subcommands.
+description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (`audit [scope]`, e.g. `audit all`) and folds the steering-conscience inbox (`retro`). Upstream blueprint updates and releases are the /pcm:update and /pcm:release subcommands.
 argument-hint: [change request|audit]
 ---
 
@@ -35,7 +35,7 @@ CLAUDE.md (Professor persona + request routing)
 .claude/skills/*/SKILL.md → reusable skills (rr, ghostwriter, vision-factory)
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
-.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-build — the standalone /wave:builder engine (/wave:orchestrator is the dual-chat runner in wave/orchestrator.md); wave-walker — wave verification walk (thread walk + zero-token ledger spine, pre-merge branch mode for /wave:orchestrator), declared copy of wave/walker.md § Orchestration; documenter-fanout — the scout→per-scope doc-consolidation fan-out, declared copy of documenter.md § Orchestration); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-walker — wave verification walk (thread walk + zero-token ledger spine, pre-merge branch mode for /wave:orchestrator), declared copy of wave/walker.md § Orchestration; documenter-fanout — the scout→per-scope doc-consolidation fan-out (canonical; documenter.md § Orchestration is the pointer + scope table)); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions
@@ -57,7 +57,7 @@ docs/agents/          → cross-project reference clusters (api/, architecture/,
 9. **Frontmatter features need registration** — `hooks:`/`model:`/`effort:` load ONLY when an agent is spawned as a registered type via its `subagent_type`; a protocol file read by a general-purpose agent never loads frontmatter. A child agent needing frontmatter features needs a thin root wrapper (the `qa-{proj}` pattern: registration shell at root, protocol stays in the child file).
 10. **Registries read at session start** — agent types, settings.json hooks, and the output style load at session start; mid-session file changes land at natural boundaries (next spawn, next pipeline, next session). When a long-running session will consume an edited orchestrator file, add a transitional fallback clause (brief-wins, registry-fallback) rather than assuming hot reload.
 11. **Voice lives in `.claude/output-styles/`** — one active session style + per-command overlay files loaded by a one-line adopt pointer at invocation; personas ≤~10 lines may stay inline in their command.
-12. **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()` — `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change. **One-level nesting only** (`workflow()` inside a child throws): when a workflow can't be nested at a call site, that site inlines the same `agent()` fan-out as a second declared copy. The doc fan-out is the live case — `documenter-fanout.js` is the engine, and `wave-build.js`'s Docs stage inlines the scout→per-scope fan-out (nest-safe for composing orchestrators); sync set: the two `DOC_BRIEF` copies (`documenter-fanout.js` canonical ↔ `wave-build.js` Docs inline), the `documenter.md` § Orchestration scope table ↔ the cards under `docs/commands/documenter/references/scopes/`, and `doc-approval.md` ↔ `quality/doc.md` § Approval.
+12. **Workflow scripts are schedulers** — workflow sub-agents carry NO Agent tool (no nesting) and no Skill tool; a saved workflow script must call every role directly via `agent()` — `agentType` resolves registered types (frontmatter model/hooks intact). A script's flow graph is a declared copy of its command file — update both in the same change. **One-level nesting only** (`workflow()` inside a child throws): when a workflow can't be nested at a call site, that site inlines the same `agent()` fan-out as a second declared copy. Sync sets today: the `documenter.md` § Orchestration scope table ↔ the cards under `docs/commands/documenter/references/scopes/`, and `doc-approval.md` ↔ `quality/doc.md` § Approval.
 
 ### Inventory counts (verify before reporting)
 
@@ -235,14 +235,14 @@ Files: `.claude/commands/*.md`
 - **Subcommand structure:** if command defines subcommands via table/args, verify each is handled in the body
 - **Route-to validity:** if this command is named in CLAUDE.md "Request Routing" (non-obvious calls + guards only), the entry → matches what the command actually handles
 - **Size limit:** no command file >35KB
-- **Registry coverage:** every command carries `name:` + `description:` frontmatter — the routing signal the harness injects — and the `description:` matches what the command body actually handles; `disable-model-invocation: true` only on user-triggered-by-design commands
+- **Registry coverage:** every command carries `name:` + `description:` frontmatter — the routing signal the harness injects — and the `description:` matches what the command body actually handles and names every subcommand/mode/flag the body defines (§ Authoring conventions — Descriptions); `disable-model-invocation: true` only on user-triggered-by-design commands
 
 #### `skills` — Walk every SKILL.md
 
 Files: every SKILL.md under `.claude/` (`find .claude -name 'SKILL.md'` — includes command-embedded skills like `p/tokens/SKILL.md`)
 
 - **Structure:** SKILL.md exists in each skill dir, has identifiable trigger patterns
-- **Skill registration:** every skill dir under `.claude/skills/` has a `description` frontmatter (auto-surfaced in the available-skills list); CLAUDE.md keeps only the one-line Skills pointer, not a per-skill table
+- **Skill registration:** every skill dir under `.claude/skills/` has a `description` frontmatter (auto-surfaced in the available-skills list) that names every mode/trigger the body defines (§ Authoring conventions — Descriptions); CLAUDE.md keeps only the one-line Skills pointer, not a per-skill table
 - **References:** skill is referenced from CLAUDE.md skill routing section with matching triggers
 
 #### `pipeline` — Walk wave/builder.md end-to-end
@@ -337,6 +337,14 @@ Ask: "Want me to fix these issues?"
 
 The skeleton every framework file follows. `quality:prompt` governs how lean the prose is; this governs the shape.
 
+### Descriptions — the routing registry
+
+The `description:` is all the model sees at routing time — the harness injects every command/skill description into each session; the body loads only on a match. Write it as the router:
+
+- **Name every user-nameable entry point** — each subcommand, mode, flag, and alias the body handles (`rr fast`, `audit {scope}`, `epic`, `--detach`) appears with its trigger form; a sub-functionality absent from the description is unroutable.
+- **Every clause routes or instructs** — what it does, when to invoke it, how to call it; cut anything else.
+- Compact — telegraphic clauses over sentences; every description is re-injected into every session, a recurring tax.
+
 ### Sub-agents (`.claude/agents/*.md`)
 
 ```
@@ -364,7 +372,7 @@ Frontmatter `description` is the routing weight — Claude reads it to decide au
 ```
 ---
 name: cmd-name
-description: One sentence. Action verb first.
+description: Action verb first; names every subcommand/mode/flag (§ Descriptions).
 argument-hint: [arg1] [arg2]
 disable-model-invocation: true  # if has side effects
 ---
@@ -378,7 +386,7 @@ disable-model-invocation: true  # if has side effects
 ```
 ---
 name: lowercase-hyphenated  # ≤64 chars, no reserved words (anthropic, claude)
-description: What it does AND when to use it. Highest-signal use case first. Third person. ≤1,024 chars; combined with when_to_use ≤1,536.
+description: What it does AND when to use it; every mode/trigger named (§ Descriptions). Highest-signal use case first. Third person. ≤1,024 chars; combined with when_to_use ≤1,536.
 ---
 {One-line role / scope}
 {Trigger conditions or "When to load"}

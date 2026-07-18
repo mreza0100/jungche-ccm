@@ -1,7 +1,7 @@
 ---
 name: audit:security
 version: "1.0.0"
-description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. {DOMAIN_ADJ} data is sacred."
+description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. Use to run a security scan on a scope."
 argument-hint: [scope]
 ---
 

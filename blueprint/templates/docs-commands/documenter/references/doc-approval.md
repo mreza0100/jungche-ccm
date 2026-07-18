@@ -14,7 +14,7 @@ Worker-facing extract of `.claude/commands/quality/doc.md` (canonical) — edit 
 ## Boundaries (sacred)
 
 - Write ONLY your scope card's write set — another worker owns every other path; outside writes are a write race.
-- NEVER write: `$CDOCS/officer/`, `$CDOCS/mentor/`, `.claude/agents/gitter.md` Living Reference, CLAUDE.md or `.claude/` files, source code, pipeline/temp files (`docs/dev/builds/`, `docs/dev/waves/`), research dirs (`docs/commands/*/research/`, `docs/dev/research/`).
+- NEVER write: `$CDOCS/officer/`, `$CDOCS/mentor/`, `.claude/agents/gitter.md` Living Reference, CLAUDE.md or `.claude/` files, source code, pipeline/temp files (`docs/dev/builds/`, `docs/dev/waves/`), research dirs (`docs/commands/*/research/`, `.professor/RR/`).
 - Leave `$DOCS/` in place — gitter commits and archives it. Run no git.
 - Never lose decisions — pipeline architecture/UI/API decisions MUST land in permanent docs. Permanent docs are unnumbered (no number prefixes).
 - **Registry duty** — if your merge added, removed, or renamed a doc/cluster, or changed ownership, update the matching row in `documenter.md` § Document Registry — this is separate from your cluster's own `_index.md`.
