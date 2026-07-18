@@ -260,9 +260,12 @@ ctx_tok=$(( ${CACHER:-0} + ${CACHEC:-0} + ${CACHEI:-0} ))
 if (( WIDE )) && [ -n "${TPATH:-}" ] && [ -f "$TPATH" ]; then
   cttl=300; cwl="5m"
   [ "${ENABLE_PROMPT_CACHING_1H:-}" = "1" ] && { cttl=3600; cwl="1h"; }
-  cage=$(( $(date +%s) - $(stat -c%Y "$TPATH" 2>/dev/null || echo 0) ))
+  # BSD stat first (macOS), GNU fallback (Linux); 0 mtime = unreadable → skip the segment
+  cmt=$(stat -f%m "$TPATH" 2>/dev/null || stat -c%Y "$TPATH" 2>/dev/null || echo 0)
+  cage=$(( $(date +%s) - cmt ))
   crem=$(( cttl - cage ))
-  if (( crem > 0 )); then
+  if (( cmt == 0 )); then :
+  elif (( crem > 0 )); then
     crf="${crem}s"; (( crem >= 60 )) && crf="$(( (crem + 59) / 60 ))m"
     l2+="${SEP}${G}💾${cwl}✓${crf}${X}"
   else
