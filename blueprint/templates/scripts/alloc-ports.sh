@@ -2,7 +2,7 @@
 # alloc-ports.sh — Allocate unique ports for a worktree pipeline
 #
 # Usage:
-#   ./.claude/scripts/alloc-ports.sh alloc <worktree-id>   → prints BE_PORT=N FE_PORT=M TEST_PG_PORT=P TEST_LS_PORT=Q PULSE_PORT=R WEB_PORT=S CORTEX_PORT=T
+#   ./.claude/scripts/alloc-ports.sh alloc <worktree-id>   → prints BE_PORT=N FE_PORT=M TEST_PG_PORT=P TEST_LS_PORT=Q PULSE_PORT=R WEB_PORT=S AI_PORT=T
 #   ./.claude/scripts/alloc-ports.sh free  <worktree-id>   → releases the allocation
 #   ./.claude/scripts/alloc-ports.sh list                   → shows all allocations
 #
@@ -15,7 +15,7 @@
 #   {WEB_PROJECT}:  4001–4099  (main uses {WEB_PORT})
 #   {AI_SERVICE_NAME} HTTP:    3501–3599  (main uses 3500)
 #
-# Registry: .worktrees/.ports (one line per allocation: id be_port fe_port test_pg_port test_ls_port pulse_port web_port cortex_port)
+# Registry: .worktrees/.ports (one line per allocation: id be_port fe_port test_pg_port test_ls_port pulse_port web_port ai_port)
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ TEST_PG_BASE=5434
 TEST_LS_BASE=4568
 PULSE_BASE=3302
 WEB_BASE=4001
-CORTEX_BASE=3501
+AI_BASE=3501
 MAX_SLOTS=99
 
 mkdir -p "$(dirname "$REGISTRY")"
@@ -52,80 +52,93 @@ cmd_alloc() {
   local id="$1"
   acquire_lock
 
-  # Already allocated? Support old (3-col), mid (5-col), 6-col, 7-col, and current (8-col) formats
+  # Already allocated? (registry is always 8-col — this script is the sole writer)
   local existing
   existing=$(awk -v id="$id" '$1 == id { print $0 }' "$REGISTRY")
   if [ -n "$existing" ]; then
-    local cols
-    cols=$(echo "$existing" | awk '{print NF}')
-    local be_port fe_port test_pg_port test_ls_port pulse_port web_port cortex_port
+    local be_port fe_port test_pg_port test_ls_port pulse_port web_port ai_port
     be_port=$(echo "$existing" | awk '{print $2}')
     fe_port=$(echo "$existing" | awk '{print $3}')
-    local slot=$((be_port - BE_BASE))
-    if [ "$cols" -ge 8 ]; then
-      test_pg_port=$(echo "$existing" | awk '{print $4}')
-      test_ls_port=$(echo "$existing" | awk '{print $5}')
-      pulse_port=$(echo "$existing" | awk '{print $6}')
-      web_port=$(echo "$existing" | awk '{print $7}')
-      cortex_port=$(echo "$existing" | awk '{print $8}')
-    elif [ "$cols" -ge 7 ]; then
-      test_pg_port=$(echo "$existing" | awk '{print $4}')
-      test_ls_port=$(echo "$existing" | awk '{print $5}')
-      pulse_port=$(echo "$existing" | awk '{print $6}')
-      web_port=$(echo "$existing" | awk '{print $7}')
-      cortex_port=$((CORTEX_BASE + slot))
-      # Migrate 7-column entry to 8-column
-      grep -v "^${id} " "$REGISTRY" > "${REGISTRY}.tmp" 2>/dev/null || true
-      echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${cortex_port}" >> "${REGISTRY}.tmp"
-      mv "${REGISTRY}.tmp" "$REGISTRY"
-    elif [ "$cols" -ge 6 ]; then
-      test_pg_port=$(echo "$existing" | awk '{print $4}')
-      test_ls_port=$(echo "$existing" | awk '{print $5}')
-      pulse_port=$(echo "$existing" | awk '{print $6}')
-      web_port=$((WEB_BASE + slot))
-      cortex_port=$((CORTEX_BASE + slot))
-      # Migrate 6-column entry to 8-column
-      grep -v "^${id} " "$REGISTRY" > "${REGISTRY}.tmp" 2>/dev/null || true
-      echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${cortex_port}" >> "${REGISTRY}.tmp"
-      mv "${REGISTRY}.tmp" "$REGISTRY"
-    elif [ "$cols" -ge 5 ]; then
-      test_pg_port=$(echo "$existing" | awk '{print $4}')
-      test_ls_port=$(echo "$existing" | awk '{print $5}')
-      pulse_port=$((PULSE_BASE + slot))
-      web_port=$((WEB_BASE + slot))
-      cortex_port=$((CORTEX_BASE + slot))
-      # Migrate 5-column entry to 8-column
-      grep -v "^${id} " "$REGISTRY" > "${REGISTRY}.tmp" 2>/dev/null || true
-      echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${cortex_port}" >> "${REGISTRY}.tmp"
-      mv "${REGISTRY}.tmp" "$REGISTRY"
-    else
-      # Migrate old 3-column entry to 8-column
-      test_pg_port=$((TEST_PG_BASE + slot))
-      test_ls_port=$((TEST_LS_BASE + slot))
-      pulse_port=$((PULSE_BASE + slot))
-      web_port=$((WEB_BASE + slot))
-      cortex_port=$((CORTEX_BASE + slot))
-      grep -v "^${id} " "$REGISTRY" > "${REGISTRY}.tmp" 2>/dev/null || true
-      echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${cortex_port}" >> "${REGISTRY}.tmp"
-      mv "${REGISTRY}.tmp" "$REGISTRY"
-    fi
+    test_pg_port=$(echo "$existing" | awk '{print $4}')
+    test_ls_port=$(echo "$existing" | awk '{print $5}')
+    pulse_port=$(echo "$existing" | awk '{print $6}')
+    web_port=$(echo "$existing" | awk '{print $7}')
+    ai_port=$(echo "$existing" | awk '{print $8}')
     echo "BE_PORT=${be_port}"
     echo "FE_PORT=${fe_port}"
     echo "TEST_PG_PORT=${test_pg_port}"
     echo "TEST_LS_PORT=${test_ls_port}"
     echo "PULSE_PORT=${pulse_port}"
     echo "WEB_PORT=${web_port}"
-    echo "CORTEX_PORT=${cortex_port}"
+    echo "AI_PORT=${ai_port}"
     return 0
   fi
 
-  # Check if a port is actually free on the host (not just in registry)
-  port_is_free() {
-    ! lsof -i ":${1}" -sTCP:LISTEN >/dev/null 2>&1
+  # An existing registry entry is an idempotent reservation, not a liveness probe.
+  # A later host bind may still make its consumer fail, but reallocation would break callers.
+
+  host_tcp_port_state() {
+    local port="$1"
+    local output status
+
+    if command -v ss >/dev/null 2>&1; then
+      if output=$(ss -H -ltn "sport = :${port}" 2>&1); then
+        [ -n "$output" ] && return 1
+        return 0
+      fi
+      echo "Error: could not inspect TCP listener occupancy for port ${port} with ss: ${output}" >&2
+      return 2
+    fi
+
+    if command -v lsof >/dev/null 2>&1; then
+      if output=$(lsof -nP -iTCP:"${port}" -sTCP:LISTEN 2>&1); then
+        return 1
+      else
+        status=$?
+      fi
+      if [ "$status" -eq 1 ] && [ -z "$output" ]; then
+        return 0
+      fi
+      echo "Error: could not inspect TCP listener occupancy for port ${port} with lsof: ${output}" >&2
+      return 2
+    fi
+
+    echo "Error: cannot inspect TCP listener occupancy: neither ss nor lsof is available" >&2
+    return 2
   }
 
-  # Find next free slot (checks both registry AND host)
-  local slot=0
+  tuple_is_host_free() {
+    local port state
+    for port in "$@"; do
+      if host_tcp_port_state "$port"; then
+        continue
+      else
+        state=$?
+      fi
+      case "$state" in
+        1) return 1 ;;
+        2) return 2 ;;
+        *)
+          echo "Error: unexpected TCP listener inspection state for port ${port}: ${state}" >&2
+          return 2
+          ;;
+      esac
+    done
+  }
+
+  tuple_is_unreserved() {
+    awk -v be="$1" -v fe="$2" -v test_pg="$3" -v test_ls="$4" \
+      -v pulse="$5" -v web="$6" -v ai="$7" '
+      $2 == be || $3 == fe || $4 == test_pg || $5 == test_ls ||
+      $6 == pulse || $7 == web || $8 == ai { found = 1 }
+      END { exit found }
+    ' "$REGISTRY"
+  }
+
+  # Pin: an adversarial test starts an unregistered host listener and proves its tuple is
+  # rejected. This remains a TOCTOU snapshot: the registry lock serializes allocators, not
+  # later OS binds.
+  local slot=0 inspection_state
   while [ "$slot" -lt "$MAX_SLOTS" ]; do
     local be_port=$((BE_BASE + slot))
     local fe_port=$((FE_BASE + slot))
@@ -133,19 +146,23 @@ cmd_alloc() {
     local test_ls_port=$((TEST_LS_BASE + slot))
     local pulse_port=$((PULSE_BASE + slot))
     local web_port=$((WEB_BASE + slot))
-    local cortex_port=$((CORTEX_BASE + slot))
-    if ! awk -v p="${be_port}" '$2 == p' "$REGISTRY" | grep -q .; then
-      # Verify key ports are actually free on the host
-      if port_is_free "$be_port" && port_is_free "$fe_port" && port_is_free "$test_pg_port" && port_is_free "$test_ls_port" && port_is_free "$cortex_port"; then
-        echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${cortex_port}" >> "$REGISTRY"
+    local ai_port=$((AI_BASE + slot))
+    if tuple_is_unreserved "$be_port" "$fe_port" "$test_pg_port" "$test_ls_port" "$pulse_port" "$web_port" "$ai_port"; then
+      if tuple_is_host_free "$be_port" "$fe_port" "$test_pg_port" "$test_ls_port" "$pulse_port" "$web_port" "$ai_port"; then
+        echo "${id} ${be_port} ${fe_port} ${test_pg_port} ${test_ls_port} ${pulse_port} ${web_port} ${ai_port}" >> "$REGISTRY"
         echo "BE_PORT=${be_port}"
         echo "FE_PORT=${fe_port}"
         echo "TEST_PG_PORT=${test_pg_port}"
         echo "TEST_LS_PORT=${test_ls_port}"
         echo "PULSE_PORT=${pulse_port}"
         echo "WEB_PORT=${web_port}"
-        echo "CORTEX_PORT=${cortex_port}"
+        echo "AI_PORT=${ai_port}"
         return 0
+      else
+        inspection_state=$?
+      fi
+      if [ "$inspection_state" -eq 2 ]; then
+        exit 1
       fi
     fi
     slot=$((slot + 1))
@@ -170,9 +187,9 @@ cmd_list() {
     echo "No port allocations."
     return 0
   fi
-  printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "WORKTREE" "BE_PORT" "FE_PORT" "TEST_PG" "TEST_LS" "PULSE" "WEB" "CORTEX_HTTP"
+  printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "WORKTREE" "BE_PORT" "FE_PORT" "TEST_PG" "TEST_LS" "PULSE" "WEB" "AI_HTTP"
   while IFS= read -r line; do
-    local id be fe tpg tls pulse web cortex
+    local id be fe tpg tls pulse web ai
     id=$(echo "$line" | awk '{print $1}')
     be=$(echo "$line" | awk '{print $2}')
     fe=$(echo "$line" | awk '{print $3}')
@@ -180,14 +197,8 @@ cmd_list() {
     tls=$(echo "$line" | awk '{print $5}')
     pulse=$(echo "$line" | awk '{print $6}')
     web=$(echo "$line" | awk '{print $7}')
-    cortex=$(echo "$line" | awk '{print $8}')
-    # Handle old entries gracefully
-    [ -z "$tpg" ] && tpg="—"
-    [ -z "$tls" ] && tls="—"
-    [ -z "$pulse" ] && pulse="—"
-    [ -z "$web" ] && web="—"
-    [ -z "$cortex" ] && cortex="—"
-    printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "$id" "$be" "$fe" "$tpg" "$tls" "$pulse" "$web" "$cortex"
+    ai=$(echo "$line" | awk '{print $8}')
+    printf "%-40s %-10s %-10s %-10s %-10s %-10s %-10s %-12s\n" "$id" "$be" "$fe" "$tpg" "$tls" "$pulse" "$web" "$ai"
   done < "$REGISTRY"
 }
 

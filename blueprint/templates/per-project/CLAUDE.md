@@ -73,6 +73,16 @@
 <!-- Two tiers, strict separation. Root CLAUDE.md owns the cross-project mock policy, zero-tolerance
      gates, and parallel-N invariant — restate here ONLY the project-specific mechanics. -->
 
+<!-- Only for a project with a real database + hand-written migrations; drop entirely otherwise. -->
+
+**Database & test-data discipline (root rule applies — project delta below):**
+
+- Missing table/column → add the migration, never a defensive `CREATE ... IF [NOT] EXISTS` in the test.
+- Seed/fixture data is dev/demo data, never a unit/integration fixture.
+- Immutable-reference-data exception: any system-actor row required as an FK target, seeded in the baseline migration.
+- Assert schema via the database's own introspection tables — never a migration filename.
+- **Restructuring migrations is schema-only-blind** — a schema-only dump drops every data-mutating statement; when squashing, carry forward every data op (or prove it moot) and re-point dependent tests.
+
 #### Unit ({UNIT_TEST_DIR})
 
 - {UNIT_RUNNER}; mock ALL external deps — fast, isolated
@@ -86,6 +96,9 @@
 - QA reports `BUG-WRONG-ENV` if any integration test loads `.env.local` as the primary env
 
 ### Environment Files
+
+<!-- Add a row per extra tier THIS project needs beyond root's two (e.g. a demo/staging env with its
+     own flag defaults) — most projects need none. -->
 
 | File         | Purpose           | Infrastructure                                        |
 | ------------ | ----------------- | ----------------------------------------------------- |

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'wave-walker',
-  description: 'Wave Walker — wave verification. Walks the wave\'s diff (merged SHAs, or a pre-merge worktree branch via args.branch) two ways in one pass and folds them. (1) THREAD WALK (the proven thread-walk floor): a scout enumerates feature-flow / seam / invariant threads from the integrated diff, one Sonnet walker per thread confirms the flow reaches its terminal state and catches the integration-delta hygiene. (2) LEDGER SPINE (the mechanical add): the same scout schedules Haiku sensors over the GraphQL type-fields + entry-point gates the diff touches; they extract comparable cards; a zero-token JS rule engine diffs them (orphan producer, phantom consumer, encoding/double-encode mismatch, value-set/casing mismatch, base-type drift, gate-outlier, mandated-fence violation, unfenced ID flow, dangling refs); Sonnet judges only the flagged anomalies, Opus second-opinions killed security/near-certain ones, Sonnet territory digests catch the un-mechanizable smells the rules and the walk cannot see, and one FINAL Opus judge rules the whole walk (authoritative verdict, reinstates wrong kills, names missed cross-cutting risks). A fold merges thread verdicts + confirmed anomalies + hygiene + digest findings + the final judgment into `## Professor\'s Wave Review` in the report and returns { verdict, actionItems, review }; the ledger travels in the RESULT and the caller persists it. A diff with no GraphQL surface runs pure thread-walk — the floor never regresses. Flow graph is a declared copy of wave/walker.md § Orchestration. (3) SECURITY: the Walk barrier carries one diff-scoped auditor applying audit/security.md (8A–8K) to the wave\'s changed surface; findings ride the final judgment, the review\'s Security Audit section, and the action items. (4) VERIFY MODE (args.claims — no reportPath): skips the walk; a pre-ruling claims panel fact-checks load-bearing claims against named files (one read-only verifier per claim × votes, Sonnet-xhigh pinned, per-claim opus flag) and returns verdicts + evidence for the CALLER to rule over — no file writes. (5) MANIFEST-VERIFY (args.manifestPath): a claim extractor mines the manifest\'s load-bearing claims (hallucinated fields/premises), the panel probes each, and a consistency judge flags cross-task conflicts + refuted premises + freeloader tasks. (6) INVESTIGATE (args.goal) — RR-for-code: lens probes seed a quote-pinned claim ledger; an Opus brainer steers ≤maxWaves of pursue/attack lanes over it (settled REQUIRES a survived challenge); a Haiku auditor greps every quote-pin; status and confidence are COMPUTED from ledger topology, never asserted; a synthesiser writes the cited report with confidence floored by the computed value; every death degrades loudly, never silently.',
+  description: 'Wave Walker — wave verification. Walks the wave\'s diff (merged SHAs, or a pre-merge worktree branch via args.branch) two ways in one pass and folds them. (1) THREAD WALK (the proven thread-walk floor): a scout enumerates feature-flow / seam / invariant threads from the integrated diff, one Sonnet walker per thread confirms the flow reaches its terminal state and catches the integration-delta hygiene. (2) LEDGER SPINE (the mechanical add): the same scout schedules Haiku sensors over the GraphQL type-fields + entry-point gates the diff touches; they extract comparable cards; a zero-token JS rule engine diffs them (orphan producer, phantom consumer, encoding/double-encode mismatch, value-set/casing mismatch, base-type drift, gate-outlier, mandated-fence violation, unfenced ID flow, dangling refs); Sonnet judges only the flagged anomalies, Opus second-opinions killed security/near-certain ones, Sonnet territory digests catch the un-mechanizable smells the rules and the walk cannot see, and one FINAL Opus judge rules the whole walk (authoritative verdict, reinstates wrong kills, names missed cross-cutting risks). A fold merges thread verdicts + confirmed anomalies + hygiene + digest findings + the final judgment into `## Professor\'s Wave Review` in the report and returns { verdict, actionItems, review }; the ledger travels in the RESULT and the caller persists it. A diff with no GraphQL surface runs pure thread-walk — the floor never regresses. Flow graph is a declared copy of wave/walker.md § Orchestration. (3) SECURITY: the Walk barrier fans the changed files out to diff-scoped security auditors (sorted slices of ≤securityFilesPerAuditor files, full set as cross-file context) applying audit/security.md (8A–8K); the engine merges the slices and the headline carries filesOpened/filesInScope with every unswept file named — a sweep never reads as complete without its denominator; findings ride the final judgment, the review\'s Security Audit section, and the action items. (4) VERIFY MODE (args.claims — no reportPath): skips the walk; a pre-ruling claims panel fact-checks load-bearing claims against named files (one read-only verifier per claim × votes, Sonnet-xhigh pinned, per-claim opus flag) and returns verdicts + evidence for the CALLER to rule over — no file writes. (5) MANIFEST-VERIFY (args.manifestPath): a claim extractor mines the manifest\'s load-bearing claims (hallucinated fields/premises), the panel probes each, and a consistency judge flags cross-task conflicts + refuted premises + freeloader tasks. (6) INVESTIGATE (args.goal) — RR-for-code: lens probes seed a quote-pinned claim ledger; an Opus brainer steers ≤maxWaves of pursue/attack lanes over it (settled REQUIRES a survived challenge); a Haiku auditor greps every quote-pin; status and confidence are COMPUTED from ledger topology, never asserted; a synthesiser writes the cited report with confidence floored by the computed value; every death degrades loudly, never silently.',
   phases: [{ title: 'Scout' }, { title: 'Walk' }, { title: 'Judge' }, { title: 'Fold' }, { title: 'Verify' }, { title: 'Investigate' }],
 }
 // ╔══ module: src/agents/shared.ts ════════════════════════════════════════
@@ -22,15 +22,15 @@ const RO =
 // section's Role-fences bullet — any edit to § Auth Pattern re-syncs this string (grep AUTH_RULE_FALLBACK).
 const AUTH_RULE_FALLBACK =
   '{project}/CLAUDE.md § Auth Pattern (FALLBACK COPY — verify against the live file): "Role fences (founder-ruled, SACRED — reads AND writes): '
-  + 'THERAPIST is fenced to OWNERSHIP (record.therapistId === user.id) — never another therapist\'s patients, even inside the same clinic. '
-  + 'SUPERVISOR is a therapist with clinic-wide access inside their OWN clinic ONLY (record.clinicId === user.clinicId) — never another clinic, never global. '
-  + 'Clinic-equality alone is NEVER a sufficient fence on a THERAPIST-reachable path (that is the cross-therapist PHI leak). Every path that loads or mutates a patient/session/couple/note/document '
-  + 'by client-supplied id branches by role and applies the matching fence — proof pattern: requireTherapistOwnsPatient (treatment-plan.resolvers.ts). Fence both roles or neither."'
+  + '{ROLE_USER} is fenced to OWNERSHIP (record.ownerId === user.id) — never another {ROLE_USER}\'s records, even inside the same {ORG_UNIT}. '
+  + '{ROLE_SUPER} is a {ROLE_USER} with {ORG_UNIT}-wide access inside their OWN {ORG_UNIT} ONLY (record.orgId === user.orgId) — never another {ORG_UNIT}, never global. '
+  + '{ORG_UNIT}-equality alone is NEVER a sufficient fence on a {ROLE_USER}-reachable path (that is the cross-{ROLE_USER} {SENSITIVE_DATA} leak). Every path that loads or mutates a record/group/note/document '
+  + 'by client-supplied id branches by role and applies the matching fence — proof pattern: requireOwnerOwnsRecord (treatment-plan.resolvers.ts). Fence both roles or neither."'
 
 const DEADNESS_BAR =
-  'DEADNESS BAR (for any dead/unread/orphan verdict): prove it ALIVE first — a false dead in a clinical product is a live-session regression. '
-  + 'Dead only with zero PRODUCTION consumers across all five projects AND the surfaces a static grep misses: GraphQL SDL queried by name, SQS payload fields, '
-  + 'the Cortex prompt registry (knowledge/prompts/*.md via load_prompt), {ORM} migrations, Expo Router file-routes, Pydantic/JSON (de)serialization, '
+  'DEADNESS BAR (for any dead/unread/orphan verdict): prove it ALIVE first — a false dead in a live product is a production regression. '
+  + 'Dead only with zero PRODUCTION consumers across the whole project roster AND the surfaces a static grep misses: GraphQL SDL queried by name, {QUEUE} payload fields, '
+  + 'the {AI_PROJECT} prompt registry (knowledge/prompts/*.md via its prompt loader), {ORM} migrations, {FRONTEND_STACK} file-based routes, {AI_STACK} (de)serialization, '
   + 'and test/config/reflection consumers. Cannot prove past the bar -> NOT dead: verdict UNPROVEN, keep the code.'
 
 const CATCHBOOK =
@@ -66,7 +66,7 @@ function ruleMeaning(authRule        )                         {
 
 const buildAnomalyJudge = ({ rule, ruleMeaning, sec, instances, ctxCards }                  )         =>
   'You are an anomaly JUDGE. Rule ' + rule + ': ' + ruleMeaning + '\n'
-  + 'For EACH instance: open the file(s) at the cited anchors (BOTH ends where two are given), confirm the facts, and rule CONFIRMED (severity, one-sentence what, location=file:line, fix=`/jc {fix}`), FALSE (say why), or UNPROVEN (say what is missing). Judge evidence, not vibes.\n'
+  + 'For EACH instance: open the file(s) at the cited anchors (BOTH ends where two are given), confirm the facts, and rule CONFIRMED (severity, one-sentence what, location=file:line, fix=`/jc {fix}`), FALSE (say why), or UNPROVEN (say what is missing). When a claimed fix or consumer handles a produced SHAPE (a response envelope, an error body, a message payload), also open the PRODUCER that actually emits it — middleware, service, emitter — even when it sits outside the cited anchors; a test\'s fabricated envelope is never evidence the shapes agree. Judge evidence, not vibes.\n'
   + (sec ? 'SECURITY: this rule enforces a WRITTEN project invariant. "Every sibling does it the same way" is NOT a defense — a documented-rule violation is CONFIRMED even when it is the file-wide pattern. Read {project}/CLAUDE.md § Auth Pattern before any FALSE.\n' : '')
   + (rule === 'R9-INV' ? 'R9-INV — this anomaly came from an ADVERSARIAL invariant hunter, not the mechanical rule engine: fold three lens duties into one adjudication — (1) reproduce the concrete failure scenario yourself or kill it; (2) hunt for the guard/compensation the finder may have missed; (3) kill anything with no real-world harm. Default to FALSE/UNPROVEN when uncertain — CONFIRMED is reserved for a scenario you can actually walk.\n' : '')
   + DEADNESS_BAR + '\nInstances: ' + JSON.stringify(instances) + '\n'
@@ -106,6 +106,11 @@ class Configs {
   // ── fixed doc/path constants (source lines 34, 51) ──
   WALKER_DOC = '.claude/commands/wave/walker.md';
   SECURITY_DOC = '.claude/commands/audit/security.md';
+  // D3 (audit 2026-07-28): the hygiene standard the thread walkers' integration-delta lens applies.
+  // walker.md § Role: Walker step 4 cited this file from day one, but no seat was ever handed it —
+  // the hygiene standard had never been read by a walk (a phantom citation, found because the walk
+  // certified hygiene it never checked).
+  HYGIENE_DOC = '.claude/commands/audit/code-hygiene.md';
   // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — provenance pointer cited in
   // the scout prompt; the JS engine never reads this file itself (no fs access in src/ — confirmed by
   // grep). The registry's DATA arrives structured via args.invariants (see INVARIANTS below); this doc
@@ -118,6 +123,9 @@ class Configs {
   LEDGER_PATH               ;
   MAX_FIELDS_PER_JOB        ;
   MAX_SENSORS        ;
+  // D2 SECURITY FAN-OUT (audit 2026-07-28) — changed files per security-auditor slice. Security was the
+  // only lens with no fan-out; coverage now scales with diff size like every other seat.
+  SECURITY_FILES_PER_AUDITOR        ;
   EXTRA_THREADS           ;
   // E3 gate-conditional dispatch override: `fullGateSweep: true` forces the repo-wide gate-file sweep
   // regardless of the diff classifier (engine.ts § isGateRelevant). Ported from the proven v3 variant.
@@ -207,6 +215,10 @@ class Configs {
           : null;
     this.MAX_FIELDS_PER_JOB = Number.isInteger(arg.maxFieldsPerJob) ? (arg.maxFieldsPerJob          ) : 18;
     this.MAX_SENSORS = Number.isInteger(arg.maxSensors) ? (arg.maxSensors          ) : 60;
+    this.SECURITY_FILES_PER_AUDITOR =
+      Number.isInteger(arg.securityFilesPerAuditor) && (arg.securityFilesPerAuditor          ) > 0
+        ? (arg.securityFilesPerAuditor          )
+        : 12;
     this.EXTRA_THREADS = Array.isArray(arg.extraThreads) ? (arg.extraThreads             ) : [];
     this.FULL_GATE_SWEEP = arg.fullGateSweep === true; // strict — exactly the v3 variant's `!== true` gate inverted
     // charter — absent/null → '' (no-op); anything else must be a string (a mis-typed duty note must
@@ -1030,6 +1042,7 @@ const buildFinalJudge = ({
   unsensed,
   charter,
   coverageGaps,
+  contradictions,
 }                )         =>
   'You are the FINAL JUDGE of this wave walk — one Opus ruling over the WHOLE result before the review is written. Complete inputs: '
   + 'THREAD WALKS: ' + JSON.stringify(walksBrief)
@@ -1037,11 +1050,15 @@ const buildFinalJudge = ({
   + ' · UNPROVEN: ' + JSON.stringify(unproven)
   + ' · KILLED as FALSE (re-examine — a wrong kill hides here): ' + JSON.stringify(killedWithAnomaly)
   + ' · Territory digests: ' + JSON.stringify(digests)
-  + ' · SECURITY AUDIT (diff-scoped ' + securityDoc + '): ' + (security ? JSON.stringify(security.findings || []) + ' (swept: ' + (security.categoriesSwept || []).join(',') + ')' : 'AUDIT DIED — a coverage hole')
+  + ' · SECURITY AUDIT (diff-scoped ' + securityDoc + '): ' + (security ? JSON.stringify(security.findings || []) + ' (auditors ' + security.auditorsReturned + '/' + security.auditorsDispatched + ' · opened ' + security.filesOpened.length + '/' + security.filesInScope + ' files · swept everywhere: ' + (security.categoriesSwept || []).join(',') + (security.filesUnswept.length ? ' · UNSWEPT files — coverage holes, never clean: ' + security.filesUnswept.slice(0, 12).join(', ') + (security.filesUnswept.length > 12 ? ' (+' + (security.filesUnswept.length - 12) + ' more)' : '') : '') + ')' : 'AUDIT DIED — a coverage hole')
   + ' · Coverage: threads ' + walksLen + '/' + threadsLen + ', fields sensed ' + cardsLen + ', UNSENSED: ' + (unsensed.length ? unsensed.join(', ') : 'none')
   + ((coverageGaps || []).length ? ', coverage-critic gaps: ' + JSON.stringify(coverageGaps) : '') + '\n'
-  + 'Rule the wave: (1) the authoritative verdict on the SMOOTH SAILING | MOSTLY GOOD | ROUGH SEAS | SHIPWRECK scale — weigh broken threads, confirmed severity, security findings, and coverage holes; (2) reinstate any killed anomaly whose kill reasoning does not hold (open the files yourself before reinstating); (3) missedRisks — cross-cutting hazards only the whole picture shows (a pattern repeating across threads, an unsensed-field cluster over clinical surface, digest smells that compound). Judge evidence, not vibes.' + RO
+  + 'Rule the wave: (1) the authoritative verdict on the SMOOTH SAILING | MOSTLY GOOD | ROUGH SEAS | SHIPWRECK scale — weigh broken threads, confirmed severity, security findings, and coverage holes; (2) reinstate any killed anomaly whose kill reasoning does not hold (open the files yourself before reinstating); (3) missedRisks — cross-cutting hazards only the whole picture shows (a pattern repeating across threads, an unsensed-field cluster over sensitive surface, digest smells that compound). Judge evidence, not vibes.' + RO
   + ' Structured output: verdict, reinstated, missedRisks, rationale.'
+  + ((contradictions || []).length
+    ? '\nNAMED CONTRADICTIONS (two or more seats walked ONE file and returned opposite verdicts): ' + JSON.stringify(contradictions)
+      + '\nRule EACH one explicitly in your rationale — open the file yourself first. Name which seat is wrong about the file in front of it and VOID any verdict resting on evidence the file does not contain (a line count, a parity claim, text reported removed that is still there). A clean verdict never wins for being calmer, and a flagged one never wins for being louder; averaging, merging, or letting the more optimistic verdict stand is forbidden. A contradiction you cannot resolve from the files is a coverage hole — say so, and weigh it in the verdict.'
+    : '')
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nAnswer the charter explicitly: what the walk found for it and whether its concern is satisfied — inside your existing fields; the verdict scale and schema unchanged.' : '');
 // ╔══ module: src/agents/finalJudge/index.ts ══════════════════════════════
 // FINAL JUDGE — one Opus ruling over the WHOLE walk before the review is written (source lines
@@ -1119,15 +1136,20 @@ const buildFold = ({
   finalJudge,
   coverageGaps,
   telemetryMd,
+  contradictions,
 }          )         =>
   'You are the FOLD of a wave-walker review. Merge the two walks into ONE review and WRITE it into the report at ' + reportPath + ' under a `## Professor\'s Wave Review` section (create/overwrite ONLY that section of that file; run no git).\n'
   + 'Inputs:\n· THREAD WALKS (functional flow + hygiene, the floor): ' + JSON.stringify(walks) + '\n'
   + '· LEDGER anomalies CONFIRMED (mechanical, file-verified by judges): ' + JSON.stringify(confirmed) + '\n· Ledger UNPROVEN (needs human eyes): ' + JSON.stringify(unproven) + '\n· Ledger killed-as-false: ' + killedCount + ' (one line)\n'
-  + '· Territory digests: ' + JSON.stringify(digests) + '\n· SECURITY AUDIT (diff-scoped): ' + (security ? JSON.stringify({ findings: security.findings || [], categoriesSwept: security.categoriesSwept, summary: security.summary }) : 'AUDIT DIED — name it in Coverage as an explicit hole') + '\n· Coverage: ' + coverageSummary + '\n'
+  + '· Territory digests: ' + JSON.stringify(digests) + '\n· SECURITY AUDIT (diff-scoped): ' + (security ? JSON.stringify({ findings: security.findings || [], categoriesSwept: security.categoriesSwept, summary: security.summary, auditors: security.auditorsReturned + '/' + security.auditorsDispatched, filesOpened: security.filesOpened.length + '/' + security.filesInScope, filesUnswept: security.filesUnswept.slice(0, 12).concat(security.filesUnswept.length > 12 ? ['+' + (security.filesUnswept.length - 12) + ' more'] : []) }) : 'AUDIT DIED — name it in Coverage as an explicit hole') + '\n· Coverage: ' + coverageSummary + '\n'
   + (finalJudge ? '· FINAL JUDGMENT (authoritative): verdict=' + finalJudge.verdict + ' · missedRisks: ' + JSON.stringify(finalJudge.missedRisks) + ' · rationale: ' + (finalJudge.rationale || '') + '\n' : '')
   + 'Fold rules: every functional defect (thread) AND every confirmed ledger anomaly AND every digest fix AND every security finding becomes a `### /jc Action Items` line (deduped — a thread defect and a ledger anomaly at the same anchor are ONE item). '
   + (finalJudge ? 'ADOPT the FINAL JUDGMENT verdict verbatim; fold each missedRisk into the review (fixable → an action item, else Unproven/needs-eyes). ' : '')
-  + 'The verdict weighs BOTH: a broken thread flow OR a confirmed critical/high ledger anomaly sinks it. HONESTY: the Coverage note MUST name every UNSENSED field as a hole' + ((coverageGaps || []).length ? ', AND every coverage-critic gap (' + JSON.stringify(coverageGaps) + ') as a named hole' : '') + '.\n'
+  + 'The verdict weighs BOTH: a broken thread flow OR a confirmed critical/high ledger anomaly sinks it. HONESTY: the Coverage note MUST name every UNSENSED field as a hole' + (security && security.filesUnswept.length ? ', AND the security files-opened denominator with every UNSWEPT file' : '') + ((coverageGaps || []).length ? ', AND every coverage-critic gap (' + JSON.stringify(coverageGaps) + ') as a named hole' : '') + '.\n'
+  + ((contradictions || []).length
+    ? '· NAMED CONTRADICTIONS (seats disagreeing over ONE file): ' + JSON.stringify(contradictions)
+      + '\nName each one in Coverage with the final judgment\'s ruling on it, and mark a voided thread verdict as VOID in the Thread Walk table — never silently keep the cleaner verdict.\n'
+    : '')
   + (telemetryMd ? '\nAlso append this VERBATIM as a `### Walk Telemetry` subsection at the end of the review, after Coverage — do not summarize, edit, or judge it, just copy it in:\n' + telemetryMd + '\n' : '')
   + 'Report format (per wave/walker.md § Report Format): ## Professor\'s Wave Review (Wave · Date · Verdict); Executive Summary; Thread Walk table; Ledger Anomalies by rule (Expected/Got + anchors + severity); Territory Digests; Security Audit (per-category Expected/Got, or None); ### /jc Action Items; Coverage.\n'
   + 'Verdict: SMOOTH SAILING (nothing) | MOSTLY GOOD (minor only) | ROUGH SEAS (a confirmed high or a BROKEN thread) | SHIPWRECK (a confirmed critical / security, or multiple broken flows).'
@@ -1177,9 +1199,9 @@ function runFold(args          )                          {
 
 const buildGateSweep = ({ file }               )         =>
   'You are a PURE EXTRACTOR (gate sweep). NO judgment. Open the resolver file ' + file + ' and extract ONE gate card per GraphQL entry point in it.\n'
-  + 'Per entry point: id ("Query.opName"/"Mutation.opName"), kind, resource class (session|patient|clinic|couple|user|other), anchor, idArgs (client-supplied ID args), '
+  + 'Per entry point: id ("Query.opName"/"Mutation.opName"), kind, resource class (record|subject|org|group|user|other), anchor, idArgs (client-supplied ID args), '
   + 'chain (IN ORDER, every guard call between entry and first data access; open custom helpers and note what they fence), rolesAllowed (EXPAND role-set constants), '
-  + 'clinicFence (boolean), ownershipFence (boolean: record-owner check enforced). Keep strings SHORT.' + RO
+  + 'orgFence (boolean), ownershipFence (boolean: record-owner check enforced). Keep strings SHORT.' + RO
   + ' Structured output: file, gates.';
 // ╔══ module: src/agents/gateSweep/index.ts ═══════════════════════════════
 // GATE SWEEP — one call per resolver file: a PURE EXTRACTOR emitting one gate card per GraphQL entry
@@ -1204,7 +1226,7 @@ const GATE_SWEEP         = {
           idArgs: { type: 'array', items: { type: 'string' } },
           rolesAllowed: { type: 'array', items: { type: 'string' } },
           chain: { type: 'array', items: { type: 'string' } },
-          clinicFence: { type: 'boolean' },
+          orgFence: { type: 'boolean' },
           ownershipFence: { type: 'boolean' },
           notes: { type: 'string' },
         },
@@ -1404,20 +1426,23 @@ async function runProbe(lane      , goal        , scopeLine        )            
 
                                                       
 
-const buildScout = ({ reportPath, branch, walkerDoc, maxFieldsPerJob, charter, invariants, invariantsDoc }           )         =>
+const buildScout = ({ reportPath, branch, walkerDoc, maxFieldsPerJob, charter, invariants, invariantsDoc, reconcile }           )         =>
   'You are the SCOUT-SCHEDULER of a wave-walker review. Read the wave report at ' + reportPath + ' and walk the WAVE\'S DIFF. Repo root: {REPO_ROOT}.\n'
   + (branch
-    ? '1) PRE-MERGE BRANCH MODE: the wave is NOT merged yet. changedFiles = `git diff --name-only main...' + branch + '` (three-dot; read file contents from the branch\'s worktree checkout when present, else `git show ' + branch + ':{path}`). mergeShas = []. headSha = `git rev-parse ' + branch + '`. The report carries the wave manifest + slice list for context.\n'
-    : '1) From the report — a `**Merge SHA:**` line (the dual-chat wave writes one at MERGE) and/or the Final Summary / Grouping / `## JC Pre-flight` sections: list SUCCEEDED pipeline merge SHAs (mergeShas) and any JC commits. Run `git diff {merge}^1 {merge}` per merge SHA (`git show {sha}` for a JC fix) and union into changedFiles (the integrated changed-and-generated set). headSha = git rev-parse HEAD.\n')
+    ? '1) PRE-MERGE BRANCH MODE: the wave is NOT merged yet. changedFiles = `git diff --name-only main...' + branch + '` (three-dot; read file contents from the branch\'s worktree checkout when present, else `git show ' + branch + ':{path}`). mergeShas = []. headSha = `git rev-parse ' + branch + '`. The report carries the wave manifest + slice list for context. changedFileCount = run `git diff --name-only main...' + branch + ' | wc -l` as a SEPARATE command and copy its printed integer EXACTLY — never the length of your enumerated list. The engine FAILS the walk when list and count disagree: enumerate EVERY file the diff prints, no salience filtering, no truncation.\n'
+    : '1) From the report — a `**Merge SHA:**` line (the dual-chat wave writes one at MERGE) and/or the Final Summary / Grouping / `## JC Pre-flight` sections: list SUCCEEDED pipeline merge SHAs (mergeShas) and any JC commits. Run `git diff {merge}^1 {merge}` per merge SHA (`git show {sha}` for a JC fix) and union into changedFiles (the integrated changed-and-generated set). headSha = git rev-parse HEAD. changedFileCount = re-run the same name-only diffs (`git diff --name-only {merge}^1 {merge}` per merge, `git show --name-only --format= {sha}` per JC commit) in ONE piped command through `sort -u | wc -l` and copy the printed integer EXACTLY — never the length of your enumerated list. The engine FAILS the walk when list and count disagree: enumerate EVERY file, no salience filtering, no truncation.\n')
   + '2) THREADS — the functional/hygiene walk manifest (the proven floor). Read ' + walkerDoc + ' § Role: Scout for the thread taxonomy; aim for >= 4, one per feature flow plus a thread for each seam, field, schema change, invariant, test-data-discipline, or dead-code-ripple the diff puts at risk. Emit a Field thread with an explicit READ-BACK check for EVERY new persisted field (writer AND reader mapping). Each: id, type, name, scope, files, verify.\n'
   + '3) LEDGER SCHEDULE (the mechanical spine, only if the diff touches the GraphQL contract surface — else return empty fields/jobs and the thread walk carries the wave):\n'
   + '   · operations — GraphQL operations whose resolver/SDL the diff changed OR whose result type the diff touches: id, kind, resolver anchor, resultType.\n'
   + '   · fields — every field of each touched result type, DEDUPED by (ownerType, field); id="OwnerType.fieldName"; fill each field\'s sdl slice {anchor, typeToken} YOURSELF from the schema. Include a field when the diff changed its producer, its SDL, or any consumer.\n'
-  + '   · jobs — cluster fields by FILE LOCALITY into sensor jobs (kind producer|consumer|cortex), each with the EXACT files to read and <= ' + maxFieldsPerJob + ' fieldIds; follow resolver imports / grep the query call-sites NOW so each job\'s file list is exact.\n'
+  + '   · jobs — cluster fields by FILE LOCALITY into sensor jobs (kind producer|consumer|ai), each with the EXACT files to read and <= ' + maxFieldsPerJob + ' fieldIds; follow resolver imports / grep the query call-sites NOW so each job\'s file list is exact.\n'
   + '4) gateFiles — EVERY resolver file under {project}/src/infrastructure/graphql/resolvers (repo-wide; fence-outlier detection needs the full population even when the diff is small).\n'
-  + '5) territories — which of BE/FE/Cortex the diff touches.\n'
+  + '5) territories — which of BE/FE/{AI_PROJECT} the diff touches.\n'
   + '6) authRule — grep {project}/CLAUDE.md for its "Auth Pattern" heading (locate by heading text, NEVER by line number) and return the "Role fences" bullet VERBATIM — the ledger\'s R6 auth-fence rule and the security second-opinion quote it live.' + RO
-  + ' Structured output: headSha, territories, changedFiles, mergeShas, threads, operations, fields, jobs, gateFiles, authRule.'
+  + ' Structured output: headSha, territories, changedFiles, changedFileCount, mergeShas, threads, operations, fields, jobs, gateFiles, authRule.'
+  + (reconcile
+    ? '\nRECONCILIATION RETRY: your previous pass enumerated ' + reconcile.enumerated + ' changedFiles but its separately-executed git count said ' + reconcile.counted + '. The enumerated list scopes EVERY downstream lens — security above all — so a file missing from it is invisible to the whole walk. Re-run the git command(s), enumerate EVERY file they print (no filtering, no truncation), re-run the separate count, and return both; they must match.'
+    : '')
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nShape the thread manifest to serve this charter IN ADDITION to the standard enumeration — add charter-driven threads; never drop or merge a standard thread for it.' : '')
   + ((invariants && invariants.length)
     ? '\n7) INVARIANT REGISTRY (' + (invariantsDoc || '') + ') — a durable registry of sacred cross-cutting semantics, seeded by a proven adversarial bug-hunt. For EACH entry below, test its `triggers` against this diff (does the diff touch its territory, add/modify a reuse-skip-cache gate, touch an engine-stamped column, etc. — read the triggers literally). Registry: ' + JSON.stringify(invariants) + '. Return armedInvariants: one entry per registry id whose trigger fires, each {id, matchedFiles (the diff files that armed it), reason}. Arm generously — a missed arm is a missed hunt; when genuinely uncertain, arm it. Do NOT drop or merge a standard thread to make room for this — it is additive.'
@@ -1435,6 +1460,13 @@ const SCOUT         = {
     headSha: { type: 'string' },
     territories: { type: 'array', items: { type: 'string' } },
     changedFiles: { type: 'array', items: { type: 'string' } },
+    // D1 FILE-SET RECONCILIATION (audit 2026-07-28) — the separately-executed `wc -l` count; the engine
+    // fails the walk when this disagrees with changedFiles.length (one corrective retry first).
+    changedFileCount: {
+      type: 'integer',
+      description:
+        'the separately-executed `wc -l` count of the name-only diff — NEVER the length of the enumerated list',
+    },
     mergeShas: { type: 'array', items: { type: 'string' } },
     threads: {
       type: 'array',
@@ -1489,7 +1521,7 @@ const SCOUT         = {
         type: 'object',
         properties: {
           jobId: { type: 'string' },
-          kind: { type: 'string', description: 'producer | consumer | cortex' },
+          kind: { type: 'string', description: 'producer | consumer | ai' },
           files: { type: 'array', items: { type: 'string' } },
           fieldIds: { type: 'array', items: { type: 'string' } },
           hint: { type: 'string' },
@@ -1523,7 +1555,7 @@ const SCOUT         = {
       },
     },
   },
-  required: ['headSha', 'changedFiles', 'threads', 'fields', 'jobs', 'gateFiles'],
+  required: ['headSha', 'changedFiles', 'changedFileCount', 'threads', 'fields', 'jobs', 'gateFiles'],
 };
 
 const scout                   = {
@@ -1601,19 +1633,31 @@ function runSecondOpinion(args                   , chunkIndex        )          
   });
 }
 // ╔══ module: src/agents/securityAuditor/prompts.ts ═══════════════════════
-// securityAuditor prompt — byte-identical to the source's inline construction (wave-walker.js lines 486-492).
+// securityAuditor prompt — D2 SECURITY FAN-OUT (audit 2026-07-28): one auditor per changed-file slice,
+// replacing the single whole-diff auditor that opened only a fraction of a large diff's files and
+// reported a clean sweep. Each slice is swept exhaustively; the full changed set rides along as
+// cross-file context; filesOpened/filesSkipped make the sweep's denominator reportable. Carries the D4
+// producer-verification clause.
 
-                                                                
 
-const buildSecurityAuditor = ({ securityDoc, changedFiles, branch, mergeShas }                     )         =>
-  'You are the WAVE SECURITY AUDITOR. Read ' + securityDoc + ' and apply its FULL category set (8A–8K + Method & Severity) SCOPED TO THIS WAVE\'S DIFF — the changed files plus every security-relevant surface they touch (follow a changed symbol into its callers/config when the risk crosses the file boundary). Changed files: ' + JSON.stringify(changedFiles) + '. ' + (branch ? 'Diff: main...' + branch + '.' : 'Merge SHAs: ' + JSON.stringify(mergeShas || []) + '.') + ' Therapy data is sacred — PHI (8F), auth (8C), GraphQL (8D), LLM/prompt (8E) get the deepest pass. Report ONLY defects the diff introduced or worsened; a pre-existing issue you trip over goes into summary as one line (category + location), never a finding. categoriesSwept names every category you ACTUALLY swept — honesty over completeness.' + RO
-  + ' Structured output: findings (Expected/Got), categoriesSwept, summary.';
+
+const buildSecurityAuditor = ({
+  securityDoc,
+  clusterFiles,
+  allChangedFiles,
+  clusterIndex,
+  clusterCount,
+  branch,
+  mergeShas,
+}                     )         =>
+  'You are a WAVE SECURITY AUDITOR (slice ' + (clusterIndex + 1) + '/' + clusterCount + '). Read ' + securityDoc + ' and apply its FULL category set (8A–8K + Method & Severity) to YOUR SLICE of this wave\'s diff. Your assigned files — OPEN AND SWEEP EVERY ONE; a file you did not open goes in filesSkipped with why, never silently: ' + JSON.stringify(clusterFiles) + ". The wave's full changed set (context — follow a changed symbol from your slice into its callers/config/emitters wherever the risk crosses a file boundary, inside or outside the slice): " + JSON.stringify(allChangedFiles) + '. ' + (branch ? 'Diff: main...' + branch + '.' : 'Merge SHAs: ' + JSON.stringify(mergeShas || []) + '.') + ' {SENSITIVE_DATA} is sacred — {SENSITIVE_DATA} handling (8F), auth (8C), GraphQL (8D), LLM/prompt (8E) get the deepest pass. A guard or fix claiming to handle a response/error/message SHAPE is verified against the code that EMITS that shape — open the producer; a test\'s fabricated envelope is never evidence. Report ONLY defects the diff introduced or worsened; a pre-existing issue you trip over goes into summary as one line (category + location), never a finding. filesOpened lists every file you ACTUALLY read; categoriesSwept names every category you ACTUALLY swept — honesty over completeness.' + RO
+  + ' Structured output: findings (Expected/Got), categoriesSwept, filesOpened, filesSkipped, summary.';
 // ╔══ module: src/agents/securityAuditor/index.ts ═════════════════════════
-// SECURITY AUDITOR — the one diff-scoped wave-level security sweep, audit/security.md 8A-8K (source
-// lines 479-492).
+// SECURITY AUDITOR — the diff-scoped wave-level security sweep, audit/security.md 8A-8K, fanned out
+// one auditor per changed-file slice (D2, audit 2026-07-28).
 
 
-                                                                               
+
 
 const SECURITY         = {
   type: 'object',
@@ -1636,9 +1680,20 @@ const SECURITY         = {
       },
     },
     categoriesSwept: { type: 'array', items: { type: 'string' } },
+    // D2 SECURITY FAN-OUT — the sweep's own denominator: what was ACTUALLY read, and what was assigned
+    // but skipped (with why). Required, so a sweep can never return without its coverage.
+    filesOpened: { type: 'array', items: { type: 'string' } },
+    filesSkipped: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { file: { type: 'string' }, why: { type: 'string' } },
+        required: ['file'],
+      },
+    },
     summary: { type: 'string' },
   },
-  required: ['findings', 'categoriesSwept', 'summary'],
+  required: ['findings', 'categoriesSwept', 'filesOpened', 'summary'],
 };
 
 const securityAuditor                             = {
@@ -1648,14 +1703,15 @@ const securityAuditor                             = {
   buildPrompt: buildSecurityAuditor,
 };
 // ╔══ module: src/agents/securityAuditor/run.ts ═══════════════════════════
-// runSecurityAuditor — the one diff-scoped auditor call, part of the Walk barrier (source lines 486-492).
+// runSecurityAuditor — one diff-scoped auditor call per changed-file slice (D2 fan-out), part of the
+// Walk barrier. The label's ' · ' delimiter keeps every slice under the single 'security' seat tally.
 
 
-                                                                             
+
 
 function runSecurityAuditor(args                     )                              {
   return retryAgent             (securityAuditor.buildPrompt(args), {
-    label: 'security · 8A-8K',
+    label: 'security · 8A-8K s' + (args.clusterIndex + 1) + '/' + args.clusterCount,
     phase: 'Walk',
     model: securityAuditor.tier,
     effort: securityAuditor.effort,
@@ -1676,12 +1732,12 @@ const buildSliceSensor = ({ jobId, kind, files, hint, assigned }                
     ? '· producer: where the value is mapped onto the result object — anchor, writer, typeToken, encoding (' + ENC_VOCAB + '), valueLiterals (EXACT, case-preserved).\n· dbColumn (if from a column): anchor, columnName, columnType, checkLiterals.\n· resolver (if a dedicated field/type resolver exists): anchor.\n'
     : kind === 'consumer'
       ? '· feSelection: where the query selects it — anchor, queryName (omit if never selected).\n· feTypes: generated type AND any hand-written interfaces — anchor, typeToken, kind (generated|hand).\n· consumers: EVERY read to the leaf render — anchor, name, decode (' + DEC_VOCAB + '), decodeExpr (VERBATIM, <=80 chars), context (production|test|generated|story), comparedLiterals (EXACT, case-preserved), aliasChain.\n· PARSE SITES ARE CONSUMERS: a screen that parses/transforms before drilling down (JSON.parse, mapping, memo) is its own consumer — its verbatim expression is the decodeExpr; a JSON.parse(JSON.stringify(x)) roundtrip MUST appear verbatim, never summarized; record each screen\'s parse separately.\n· undeclaredReads: any property read off the same result object NOT in your assigned field list (side:"fe"), INCLUDING reads in fallback chains (a ?? b, a || b, ternaries) and optional-chained access; plus any field the resolver returns beyond the declared set if a resolver file is listed (side:"be", expand spreads).\n'
-      : '· producer (Cortex writer): where Cortex computes/writes this value — anchor, writer:"cortex", encoding, valueLiterals (EXACT). Grep the snake_case form.\n')
+      : '· producer ({AI_PROJECT} writer): where {AI_PROJECT} computes/writes this value — anchor, writer:"ai", encoding, valueLiterals (EXACT). Grep the snake_case form.\n')
   + 'A field with nothing to extract here gets a slice with just its fieldId. Every anchor grep-verified file:line. Keep strings SHORT (<=80 chars).\n'
   + 'Assigned fields: ' + JSON.stringify(assigned) + RO
   + ' Structured output: jobId=' + jobId + ', slices, undeclaredReads.';
 // ╔══ module: src/agents/sliceSensor/index.ts ═════════════════════════════
-// SLICE SENSOR — one call per scheduled producer/consumer/cortex job: a PURE EXTRACTOR, zero judgment
+// SLICE SENSOR — one call per scheduled producer/consumer/ai job: a PURE EXTRACTOR, zero judgment
 // (source lines 305-331, 451-468). Escalates to CONFIG.SENSOR_ESCALATE on a dead respawn (see run.ts).
 
 
@@ -1862,7 +1918,7 @@ const buildTerritoryDigest = ({ territory, slice, charter }                     
   + ' Structured output: territory, findings (each {lens, severity, what, location=file:line, fix}), summary (<=3 sentences).'
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nHunt charter-relevant smells in your territory on top of the standard digest.' : '');
 // ╔══ module: src/agents/territoryDigest/index.ts ═════════════════════════
-// TERRITORY DIGEST — one call per territory (BE/FE/Cortex), catch-book smells the mechanical rules and
+// TERRITORY DIGEST — one call per territory (BE/FE/{AI_PROJECT}), catch-book smells the mechanical rules and
 // thread walk can't see (source lines 369-375, 630-638).
 
 
@@ -1922,10 +1978,11 @@ function runTerritoryDigest(args                     )                          
 
                                                              
 
-const buildThreadWalker = ({ walkerDoc, thread, charter }                  )         =>
+const buildThreadWalker = ({ walkerDoc, hygieneDoc, thread, charter }                  )         =>
   'Read ' + walkerDoc + ' § Role: Walker. Walk this ONE thread end-to-end in a single pass over its files, returning BOTH the functional verdict AND the integration-delta code-hygiene findings. '
-  + 'Per-pipeline hygiene already ran pre-merge (wave/builder.md Step 7) — your wave-level value is the INTEGRATION delta: a repo-wide reuse-grep for a helper/type/hook a SIBLING pipeline duplicated, plus dead code the integration orphaned. '
+  + 'Per-pipeline hygiene already ran pre-merge (wave/builder.md Step 7) — your wave-level value is the INTEGRATION delta: read ' + hygieneDoc + ' and apply it scope-diff to this thread\'s files — above all a repo-wide reuse-grep for a helper/type/hook a SIBLING pipeline duplicated, plus dead code the integration orphaned. '
   + 'At every step, also name the concrete input/state under which this step corrupts, aborts, or lies — a failure scenario, not a vibe. Any two set-enumerations the flow assumes equal (a wipe set vs its snapshot set, a terminal-status set vs a poll loop\'s terminal set, a required-env list vs a validator\'s list) are diffed member-by-member. Apply the broken-mechanism test: what does this step report when it FAILS — the same as "nothing to do"? Flag it. '
+  + 'A step claiming to HANDLE a shape it receives (a response envelope, an error body, a message payload) is verified against the code that EMITS that shape — open the producer and quote it; a test\'s fabricated envelope is never evidence the two sides agree. '
   + 'Thread: ' + JSON.stringify(thread) + '.' + RO
   + ' Structured output: threadId, name, type, flow (INTACT|AT-RISK|BROKEN|N/A), trace (step → step, marking any break), defects (each {what, location=file:line, failureScenario, jc=`/jc {fix}`}), hygiene (each {kind, where=file:line, detail, jc}), notes.'
   + (charter ? '\nWALK CHARTER (caller-supplied duty): ' + charter + '\nWeigh this thread against the charter and report charter-relevant findings explicitly in notes — on top of the standard verdict, never instead of it.' : '');
@@ -2475,12 +2532,12 @@ function computeAnomalies(
       );
   }
   for (const [res, group] of Object.entries(byResource)) {
-    if (!['session', 'patient', 'couple'].includes(res)) continue;
+    if (!['record', 'subject', 'group'].includes(res)) continue;
     const violators = group.filter(
       (g) =>
         (g.idArgs || []).length > 0 &&
         !g.ownershipFence &&
-        (g.rolesAllowed || []).some((r) => String(r).toUpperCase().includes('THERAPIST')),
+        (g.rolesAllowed || []).some((r) => String(r).toUpperCase().includes('{ROLE_USER}')),
     );
     if (violators.length)
       flag(
@@ -2490,7 +2547,7 @@ function computeAnomalies(
           res +
           '": ' +
           violators.map((g) => g.id).join(', ') +
-          ' admit THERAPIST with client-supplied id but enforce NO ownership fence — direct violation of the documented rule. ' +
+          ' admit {ROLE_USER} with client-supplied id but enforce NO ownership fence — direct violation of the documented rule. ' +
           authRule,
         violators.map((g) => g.anchor),
         'critical',
@@ -2498,14 +2555,14 @@ function computeAnomalies(
       );
   }
   for (const g of gates)
-    if ((g.idArgs || []).length > 0 && !g.clinicFence && !g.ownershipFence)
+    if ((g.idArgs || []).length > 0 && !g.orgFence && !g.ownershipFence)
       flag(
         'R7',
         'unfenced ID flow',
         g.id +
           ': client-supplied ' +
           JSON.stringify(g.idArgs) +
-          ' reaches data access with neither clinic nor ownership fence (chain: ' +
+          ' reaches data access with neither org nor ownership fence (chain: ' +
           (g.chain || []).join(' → ') +
           ')',
         [g.anchor],
@@ -2688,6 +2745,22 @@ function renderTelemetryMdInner(rec             )         {
   if (rec.coverage.gateSweepSkipped) lines.push('- gate sweep: SKIPPED (diff-scoped)');
   if (rec.coverage.coverageGaps.length)
     lines.push('- coverage-critic gaps: ' + rec.coverage.coverageGaps.map((g) => g.territory + ' (' + g.why + ')').join('; '));
+  // VERDICT CONTRADICTIONS — printed on EVERY walk, zero included: the line states what was compared and
+  // what could not be, so "0" reads as a scan result, never as "nobody looked" (walker.md § Orchestration).
+  const scan = rec.coverage.contradictionScan || { filesCompared: 0, uncomparableThreads: [] };
+  const contras = rec.coverage.verdictContradictions || [];
+  lines.push(
+    '- verdict contradictions: ' +
+      contras.length +
+      ' over ' +
+      scan.filesCompared +
+      ' file(s) walked by 2+ seats' +
+      (scan.uncomparableThreads.length
+        ? ' · uncomparable (no files in thread spec): ' + scan.uncomparableThreads.join(', ')
+        : ''),
+  );
+  for (const c of contras)
+    lines.push('  - ' + c.file + ': ' + c.clean.join('/') + ' INTACT vs ' + c.flagged.join('/') + ' — escalated to the final judge');
 
   const js = rec.judgeStats;
   lines.push(
@@ -2759,12 +2832,12 @@ function renderTelemetryMdInner(rec             )         {
                    
                           
 
-// project — the digest's per-territory card projection (source lines 621-625): a BE/Cortex/FE side sees
+// project — the digest's per-territory card projection (source lines 621-625): a BE/{AI_PROJECT}/FE side sees
 // only the fields relevant to it.
 function project(c      , side                        )                          {
   if (side === 'BE')
     return { id: c.id, producer: c.producer, dbColumn: c.dbColumn, sdl: c.sdl, resolver: c.resolver, notes: c.notes };
-  if (side === 'Cortex') return { id: c.id, producer: c.producer, dbColumn: c.dbColumn, notes: c.notes };
+  if (side === '{AI_PROJECT}') return { id: c.id, producer: c.producer, dbColumn: c.dbColumn, notes: c.notes };
   return {
     id: c.id,
     sdl: c.sdl && c.sdl.typeToken,
@@ -2795,6 +2868,54 @@ function isGateRelevant(changedFiles          , fieldsLen        , jobsLen      
   );
 }
 
+// D1 FILE-SET RECONCILIATION (audit 2026-07-28) — a scout result whose enumerated list disagrees with
+// its own separately-executed git count (or that returned no count at all — a pre-feature shape) has an
+// untrusted denominator. Zero tokens; the walk-level policy (one corrective retry, then FAIL) lives in
+// runWalk().
+function misreconciled(scout          )          {
+  return (
+    !Number.isInteger(scout.changedFileCount) ||
+    (scout.changedFiles || []).length !== scout.changedFileCount
+  );
+}
+
+// D2 SECURITY FAN-OUT (audit 2026-07-28) — the zero-token merge of per-slice auditor results into ONE
+// object whose headline carries its own denominator. Semantics: null ONLY when every slice auditor died
+// (the existing AUDIT DIED path); a partial death keeps the survivors' findings and the dead slices'
+// files simply never enter filesOpened — they surface in filesUnswept, a named coverage hole, never a
+// silent pass. categoriesSwept is the INTERSECTION across returned slices: the only category claim true
+// of the whole diff (per-slice detail rides findings/summary). Finding ids are prefixed per slice so
+// two auditors' 'SEC-1' never collide downstream.
+function mergeSecurityResults(
+  results               ,
+  dispatched        ,
+  allFiles          ,
+)                        {
+  if (!results.length) return null;
+  const findings = results.flatMap((r, i) =>
+    (r.findings || []).map((f) => ({ ...f, id: 's' + (i + 1) + '·' + (f.id || '') })),
+  );
+  const categoriesSwept = results
+    .map((r) => r.categoriesSwept || [])
+    .reduce((a, b) => a.filter((c) => b.includes(c)));
+  const filesOpened = [...new Set(results.flatMap((r) => r.filesOpened || []))];
+  const openedSet = new Set(filesOpened);
+  const filesUnswept = (allFiles || []).filter((f) => !openedSet.has(f));
+  return {
+    findings,
+    categoriesSwept,
+    summary: results
+      .map((r) => r.summary || '')
+      .filter(Boolean)
+      .join(' | '),
+    filesOpened,
+    auditorsDispatched: dispatched,
+    auditorsReturned: results.length,
+    filesInScope: (allFiles || []).length,
+    filesUnswept,
+  };
+}
+
 // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — computeArmedInvariants: the
 // zero-token fail-safe, same philosophy as isGateRelevant ("any hit → sweep; when in doubt, sweep"). The
 // scout's own semantic judgment (scoutArmed — it can arm on a trigger no glob could express, e.g. "diff
@@ -2822,6 +2943,58 @@ function computeArmedInvariants(
     out.push({ id: inv.id, matchedFiles, reason });
   }
   return out;
+}
+
+// VERDICT CONTRADICTIONS (walker.md § Orchestration) — the zero-token contradiction scan, pure and
+// exported for direct unit testing (same precedent as computeArmedInvariants/isGateRelevant above).
+// Two seats over ONE file returning opposite verdicts is escalated BY NAME to the final judge, never
+// averaged, merged, or resolved in favour of the calmer verdict: a clean verdict built on evidence the
+// file does not contain is indistinguishable from an earned one until someone opens the file.
+// A seat is paired to its files through its thread spec (the scout's `files`); a walked thread whose
+// spec named none is UNCOMPARABLE and is named as such — the scan reports what it compared and what it
+// could not, so an empty contradiction list is never read as agreement.
+function computeVerdictContradictions(
+  threads              ,
+  walks           ,
+)                    {
+  const specById = new Map((threads || []).filter((t) => t && t.id).map((t) => [t.id, t]));
+  const norm = (f        )         => f.trim().replace(/^\.\//, '');
+  const byFile = new Map                             ();
+  const uncomparableThreads           = [];
+  for (const w of walks || []) {
+    if (!w || !w.threadId) continue;
+    const spec = specById.get(w.threadId);
+    const files = [
+      ...new Set(
+        ((spec && spec.files) || []).filter((f) => typeof f === 'string' && f.trim()).map(norm),
+      ),
+    ];
+    if (!files.length) {
+      uncomparableThreads.push(w.threadId);
+      continue;
+    }
+    // N/A is an abstention, not a health claim — it joins no side and contradicts nothing.
+    if (w.flow !== 'INTACT' && w.flow !== 'AT-RISK' && w.flow !== 'BROKEN') continue;
+    const seat                    = {
+      threadId: w.threadId,
+      name: w.name || (spec && spec.name) || undefined,
+      flow: w.flow,
+      defects: (w.defects || []).length,
+    };
+    for (const f of files) byFile.set(f, (byFile.get(f) || []).concat(seat));
+  }
+  let filesCompared = 0;
+  const contradictions                         = [];
+  for (const [file, seats] of [...byFile.entries()].sort((a, b) =>
+    a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0,
+  )) {
+    if (seats.length < 2) continue;
+    filesCompared++;
+    const clean = seats.filter((s) => s.flow === 'INTACT');
+    const flagged = seats.filter((s) => s.flow !== 'INTACT');
+    if (clean.length && flagged.length) contradictions.push({ file, clean, flagged });
+  }
+  return { contradictions, filesCompared, uncomparableThreads };
 }
 
 // WALK TELEMETRY (DEBUG STEP, tmp/walker-debug-design.md) — the plain-data bag runWalk() gathers before
@@ -2955,12 +3128,27 @@ function assembleDebugRecord(input                    )              {
     fail('judgeStats', e);
   }
 
-  let coverage                          = { unsensedFields: [], gateSweepSkipped: false, coverageGaps: [] };
+  let coverage                          = {
+    unsensedFields: [],
+    gateSweepSkipped: false,
+    coverageGaps: [],
+    verdictContradictions: [],
+    contradictionScan: { filesCompared: 0, uncomparableThreads: [] },
+  };
   try {
     coverage = {
       unsensedFields: input.unsensed,
       gateSweepSkipped: input.gateSweepSkipped,
       coverageGaps: input.coverageGaps,
+      verdictContradictions: input.contradictionScan.contradictions.map((c) => ({
+        file: c.file,
+        clean: c.clean.map((s) => s.threadId),
+        flagged: c.flagged.map((s) => s.threadId + ' (' + s.flow + ')'),
+      })),
+      contradictionScan: {
+        filesCompared: input.contradictionScan.filesCompared,
+        uncomparableThreads: input.contradictionScan.uncomparableThreads,
+      },
     };
   } catch (e) {
     fail('coverage', e);
@@ -3297,7 +3485,7 @@ class WaveWalker {
 
     const reportPath = CONFIG.REPORT_PATH          ;
     const branch = CONFIG.BRANCH;
-    const scout                  = await runScout({
+    const scoutArgs = {
       reportPath,
       branch,
       walkerDoc: CONFIG.WALKER_DOC,
@@ -3305,7 +3493,30 @@ class WaveWalker {
       charter: CONFIG.CHARTER,
       invariants: CONFIG.INVARIANTS,
       invariantsDoc: CONFIG.INVARIANTS_DOC,
-    });
+    };
+    let scout                  = await runScout(scoutArgs);
+    // D1 FILE-SET RECONCILIATION (docs/dev/audits/wave-walker-instrument-defects-2026-07-28.md) — the
+    // changed-file denominator is LLM-reported and the engine cannot run git, so the scout returns BOTH
+    // the enumerated list and a separately-executed `wc -l` count, and the two must agree. One
+    // corrective retry with the mismatch named, then the walk FAILS — the empty-set guard's law, one
+    // altitude up: a walk over an untrusted denominator must never render a verdict.
+    if (scout && misreconciled(scout)) {
+      log(
+        '⚠ changed-file reconciliation MISMATCH: scout enumerated ' +
+          (scout.changedFiles || []).length +
+          ' file(s) but its separately-executed git count says ' +
+          scout.changedFileCount +
+          ' — one corrective scout retry',
+      );
+      const retry = await runScout({
+        ...scoutArgs,
+        reconcile: {
+          enumerated: (scout.changedFiles || []).length,
+          counted: scout.changedFileCount,
+        },
+      });
+      if (retry) scout = retry;
+    }
     if (!scout) return { status: 'FAILED', detail: 'scout died twice' };
     if (!(scout.changedFiles || []).length)
       return {
@@ -3315,6 +3526,16 @@ class WaveWalker {
           reportPath +
           (branch ? ' / empty branch diff' : '') +
           '; a walk over nothing must never return a verdict',
+      };
+    if (misreconciled(scout))
+      return {
+        status: 'FAILED',
+        detail:
+          'changed-file reconciliation FAILED twice: scout enumerated ' +
+          (scout.changedFiles || []).length +
+          ' file(s) but its separately-executed git count says ' +
+          scout.changedFileCount +
+          ' — every lens (security above all) is scoped by the enumerated list, and a walk over an untrusted denominator must never render a verdict',
       };
     const threads               = (scout.threads || []).concat(CONFIG.EXTRA_THREADS                );
     // ZERO-THREAD GUARD — the empty-diff guard above states the law ("a walk over
@@ -3376,8 +3597,8 @@ class WaveWalker {
 
     const authOk =
       typeof scout.authRule === 'string' &&
-      scout.authRule.includes('THERAPIST') &&
-      scout.authRule.includes('SUPERVISOR') &&
+      scout.authRule.includes('{ROLE_USER}') &&
+      scout.authRule.includes('{ROLE_SUPER}') &&
       scout.authRule.length >= 120;
     if (!authOk)
       log('⚠ scout returned no usable § Auth Pattern extract — R6/second-opinion run on AUTH_RULE_FALLBACK (verify it against {project}/CLAUDE.md)');
@@ -3404,14 +3625,22 @@ class WaveWalker {
         log('⚠ sensor cap ' + CONFIG.MAX_SENSORS + ': DROPPED slice jobs — fields reported UNSENSED: ' + droppedFieldIds.join(', '));
     }
 
+    // D2 SECURITY FAN-OUT (audit 2026-07-28) — security was the only lens with no fan-out: one auditor
+    // over a large diff opened only a fraction of the changed files and reported a clean sweep. Coverage
+    // now scales like every other seat: the changed files, sorted (directory locality), cluster into
+    // slices of ≤ CONFIG.SECURITY_FILES_PER_AUDITOR, one auditor per slice, each carrying the full set as
+    // cross-file context; mergeSecurityResults folds them into one object whose headline carries
+    // filesOpened/filesInScope.
+    const securityClusters = chunk([...(scout.changedFiles || [])].sort(), CONFIG.SECURITY_FILES_PER_AUDITOR);
+    log('Security fan-out: ' + securityClusters.length + ' auditor slice(s) × ≤' + CONFIG.SECURITY_FILES_PER_AUDITOR + ' files');
+
     // ─── Phase 1: Walk (thread walkers) + Sense (ledger sensors + gate sweeps) + Hunt (armed invariants)
-    // — one parallel barrier. invariantHunter dispatch is appended LAST, after the security auditor, so
-    // the existing threads/jobs/gates/security slice math (nT/nJ/nG) is untouched — a strictly additive
-    // tail, exactly like the floor invariant demands. ─────
+    // — one parallel barrier. Order: threads · jobs · gates · security slices (nS) · hunters — the slice
+    // math below indexes by these counts, in this order. ─────
     const fieldById = new Map(fields.map((f) => [f.id, f]));
-                                                                                                
+
     const walked            = await parallel([
-      ...threads.map((t) => () => runThreadWalker({ walkerDoc: CONFIG.WALKER_DOC, thread: t, charter: CONFIG.CHARTER })                    ),
+      ...threads.map((t) => () => runThreadWalker({ walkerDoc: CONFIG.WALKER_DOC, hygieneDoc: CONFIG.HYGIENE_DOC, thread: t, charter: CONFIG.CHARTER })                    ),
       ...jobs.map((j) => () => {
         const assigned = j.fieldIds.map((id) => {
           const f = fieldById.get(id);
@@ -3420,13 +3649,18 @@ class WaveWalker {
         return runSliceSensor({ jobId: j.jobId, kind: j.kind, files: j.files, hint: j.hint, assigned })                    ;
       }),
       ...gateFiles.map((f) => () => runGateSweep({ file: f })                    ),
-      () =>
-        runSecurityAuditor({
-          securityDoc: CONFIG.SECURITY_DOC,
-          changedFiles: scout.changedFiles,
-          branch,
-          mergeShas: scout.mergeShas || [],
-        })                    ,
+      ...securityClusters.map(
+        (cf, ci) => () =>
+          runSecurityAuditor({
+            securityDoc: CONFIG.SECURITY_DOC,
+            clusterFiles: cf,
+            allChangedFiles: scout.changedFiles,
+            clusterIndex: ci,
+            clusterCount: securityClusters.length,
+            branch,
+            mergeShas: scout.mergeShas || [],
+          })                    ,
+      ),
       ...armedInvariants.map((ai) => () => {
         const inv = invariantById.get(ai.id);
         return (inv ? runInvariantHunter({ invariant: inv, matchedFiles: ai.matchedFiles }) : Promise.resolve(null))                    ;
@@ -3435,16 +3669,18 @@ class WaveWalker {
     const nT = threads.length;
     const nJ = jobs.length;
     const nG = gateFiles.length;
+    const nS = securityClusters.length;
     const nInv = armedInvariants.length;
     const walks = (walked.slice(0, nT)                      ).filter((x)               => !!x);
     const sliceResults = (walked.slice(nT, nT + nJ)                        ).filter((x)                 => !!x);
     const gates                     = (walked.slice(nT + nJ, nT + nJ + nG)                           )
       .filter((x)                    => !!x)
       .flatMap((s) => (s.gates || []).map((g) => ({ ...g, file: s.file })));
-    const security = (walked[nT + nJ + nG]                      ) || null;
+    const securityResults = (walked.slice(nT + nJ + nG, nT + nJ + nG + nS)                          ).filter((x)                   => !!x);
+    const security                        = mergeSecurityResults(securityResults, nS, scout.changedFiles || []);
     const secFindings = security ? security.findings || [] : [];
     const undeclaredReads = sliceResults.flatMap((r) => r.undeclaredReads || []);
-    const hunterResults = (walked.slice(nT + nJ + nG + 1, nT + nJ + nG + 1 + nInv)                                 ).filter(
+    const hunterResults = (walked.slice(nT + nJ + nG + nS, nT + nJ + nG + nS + nInv)                                 ).filter(
       (x)                          => !!x,
     );
     if (armedInvariants.length)
@@ -3457,6 +3693,28 @@ class WaveWalker {
           hunterResults.reduce((n, r) => n + (r.findings || []).length, 0) +
           ' finding(s)',
       );
+
+    // VERDICT CONTRADICTIONS (walker.md § Orchestration) — mechanical, zero tokens, ALWAYS run: two
+    // seats over one file with opposite verdicts are escalated BY NAME to the final judge below, never
+    // averaged and never settled by the calmer verdict. The log line is unconditional so a zero result
+    // states its own coverage rather than passing silently.
+    const contradictionScan = computeVerdictContradictions(threads, walks);
+    log(
+      'Verdict contradictions: ' +
+        contradictionScan.contradictions.length +
+        ' over ' +
+        contradictionScan.filesCompared +
+        ' file(s) walked by 2+ seats' +
+        (contradictionScan.uncomparableThreads.length
+          ? ' · ' + contradictionScan.uncomparableThreads.length + ' thread(s) uncomparable (no files in spec): ' + contradictionScan.uncomparableThreads.join(', ')
+          : '') +
+        (contradictionScan.contradictions.length
+          ? ' → ' +
+            contradictionScan.contradictions
+              .map((c) => c.file + ': ' + c.clean.map((s) => s.threadId).join('/') + ' INTACT vs ' + c.flagged.map((s) => s.threadId + ' ' + s.flow).join('/'))
+              .join(' · ')
+          : ''),
+    );
 
     // Zip slices into cards (mechanical, zero tokens)
     const { cards, unsensed } = zipCards(fields, jobs, sliceResults, droppedFieldIds);
@@ -3477,7 +3735,9 @@ class WaveWalker {
         ' gates · undeclared reads: ' +
         undeclaredReads.length +
         ' · security: ' +
-        (security ? secFindings.length + ' finding(s)' : 'AUDIT DIED'),
+        (security
+          ? secFindings.length + ' finding(s) · auditors ' + security.auditorsReturned + '/' + security.auditorsDispatched + ' · opened ' + security.filesOpened.length + '/' + security.filesInScope
+          : 'AUDIT DIED (all ' + nS + ' slice auditors)'),
     );
 
     // ─── Phase 2: the ledger diff — mechanical rules, zero tokens; R9-INV (hunter findings, zero when
@@ -3499,8 +3759,8 @@ class WaveWalker {
           .map((t) => ({
             territory: t,
             slice:
-              t === 'Cortex'
-                ? cards.filter((c) => c.producer && String(c.producer.writer || '').toLowerCase().includes('cortex')).map((c) => project(c, 'Cortex'))
+              t === '{AI_PROJECT}'
+                ? cards.filter((c) => c.producer && String(c.producer.writer || '').trim().toLowerCase() === 'ai').map((c) => project(c, '{AI_PROJECT}'))
                 : cards.map((c) => project(c, t === 'BE' ? 'BE' : 'FE')),
           }))
           .filter((j) => j.slice.length)
@@ -3635,6 +3895,7 @@ class WaveWalker {
       unsensed,
       charter: CONFIG.CHARTER,
       coverageGaps,
+      contradictions: contradictionScan.contradictions,
     });
     let finalJudgeReinstatedCount = 0;
     if (finalJudge && (finalJudge.reinstated || []).length) {
@@ -3673,7 +3934,22 @@ class WaveWalker {
       ', unproven ' +
       unproven.length +
       ' · security: ' +
-      (security ? secFindings.length + ' finding(s) over ' + (security.categoriesSwept || []).length + ' categories' : 'AUDIT DIED') +
+      (security
+        ? secFindings.length +
+          ' finding(s) over ' +
+          (security.categoriesSwept || []).length +
+          ' categories swept everywhere · auditors ' +
+          security.auditorsReturned +
+          '/' +
+          security.auditorsDispatched +
+          ' · files opened ' +
+          security.filesOpened.length +
+          '/' +
+          security.filesInScope +
+          (security.filesUnswept.length
+            ? ' · UNSWEPT: ' + security.filesUnswept.slice(0, 12).join(', ') + (security.filesUnswept.length > 12 ? ' (+' + (security.filesUnswept.length - 12) + ' more)' : '')
+            : '')
+        : 'AUDIT DIED') +
       (CONFIG.INVARIANTS.length
         ? ' · invariants: ' +
           CONFIG.INVARIANTS.length +
@@ -3683,6 +3959,15 @@ class WaveWalker {
           (armedIds.length ? armedIds.join(', ') : 'none') +
           ') · coverage gaps: ' +
           coverageGaps.length
+        : '') +
+      ' · verdict contradictions: ' +
+      contradictionScan.contradictions.length +
+      ' over ' +
+      contradictionScan.filesCompared +
+      ' multi-seat file(s)' +
+      (contradictionScan.contradictions.length ? ' (' + contradictionScan.contradictions.map((c) => c.file).join(', ') + ')' : '') +
+      (contradictionScan.uncomparableThreads.length
+        ? ' · uncomparable threads (no files in spec): ' + contradictionScan.uncomparableThreads.join(', ')
         : '');
 
     // WALK TELEMETRY (DEBUG STEP) — assembled HERE, immediately before the runFold() call, so it is in
@@ -3702,7 +3987,7 @@ class WaveWalker {
         .concat(includeFold ? ['fold'] : [])
         .concat(jobs.some((j) => j.kind === 'producer') ? ['producer'] : [])
         .concat(jobs.some((j) => j.kind === 'consumer') ? ['consumer'] : [])
-        .concat(jobs.some((j) => j.kind === 'cortex') ? ['cortex'] : [])
+        .concat(jobs.some((j) => j.kind === 'ai') ? ['ai'] : [])
         .concat(gateFiles.length && !gateSweepSkipped ? ['gates'] : [])
         .concat(judgeJobs.length ? ['judge'] : [])
         .concat(digestJobs.length ? ['digest'] : [])
@@ -3740,6 +4025,7 @@ class WaveWalker {
           unsensed,
           gateSweepSkipped,
           coverageGaps,
+          contradictionScan,
         });
       } catch (e) {
         // outermost floor — even a bug in the assembler's own scaffolding must never break the walk.
@@ -3778,7 +4064,13 @@ class WaveWalker {
             finalJudgeVerdict: null,
             finalJudgeDied: true,
           },
-          coverage: { unsensedFields: [], gateSweepSkipped: false, coverageGaps: [] },
+          coverage: {
+            unsensedFields: [],
+            gateSweepSkipped: false,
+            coverageGaps: [],
+            verdictContradictions: [],
+            contradictionScan: { filesCompared: 0, uncomparableThreads: [] },
+          },
           tokenAttribution: null,
         };
       }
@@ -3799,6 +4091,7 @@ class WaveWalker {
       finalJudge,
       coverageGaps,
       telemetryMd,
+      contradictions: contradictionScan.contradictions,
     });
     if (CONFIG.debug && debugRecord) {
       try {
@@ -3840,6 +4133,7 @@ class WaveWalker {
       coverage: coverageSummary,
       armedInvariants,
       coverageGaps,
+      contradictions: contradictionScan.contradictions,
     };
     log('Wave walker complete · ' + fold.verdict + ' · ' + coverageSummary + ' · ledger in result (persist to ' + CONFIG.LEDGER_PATH + ')');
     return {
@@ -3856,7 +4150,18 @@ class WaveWalker {
       killedAsFalse: killed.length,
       overrides: verdicts.filter((v) => (v.why || '').startsWith('[OVERRIDE')).length,
       digestFindings: digests.reduce((n, d) => n + d.findings.length, 0),
-      security: security ? { findings: secFindings, categoriesSwept: security.categoriesSwept || [], summary: security.summary || '' } : null,
+      security: security
+        ? {
+            findings: secFindings,
+            categoriesSwept: security.categoriesSwept || [],
+            summary: security.summary || '',
+            auditorsDispatched: security.auditorsDispatched,
+            auditorsReturned: security.auditorsReturned,
+            filesOpened: security.filesOpened.length,
+            filesInScope: security.filesInScope,
+            filesUnswept: security.filesUnswept,
+          }
+        : null,
       finalJudge: finalJudge ? { verdict: finalJudge.verdict, missedRisks: finalJudge.missedRisks.length, reinstated: (finalJudge.reinstated || []).length } : null,
       unsensedFields: unsensed,
       coverage: coverageSummary,
@@ -3865,6 +4170,7 @@ class WaveWalker {
       ledger,
       invariantsArmed: armedIds,
       coverageGaps: coverageGaps.length,
+      verdictContradictions: contradictionScan.contradictions.length,
       debugRecord,
     };
   }

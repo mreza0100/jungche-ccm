@@ -1,21 +1,25 @@
 # ── Claude Code: multi-account per-chat billing swap ─────────────────────────
-# Masters: account 1 "work"     → ~/.claude  + Keychain "Claude Code-credentials"
-#          account 2 "personal" → ~/.claude2 + "Claude Code-credentials-XXXXXXXX"
-#          account 3 "third"    → ~/.claude3 + "Claude Code-credentials-YYYYYYYY"
-# (Replace XXXXXXXX/YYYYYYYY with your real suffixes — see README for the
-# shasum command.)
+# Masters: account 1 "work"     → ~/.claude   (CLAUDE_CONFIG_DIR unset — Claude's own default)
+#          account 2 "personal" → ~/.claude2
+#          account 3 "third"    → ~/.claude3  (optional — this reads correctly with just 1 and 2;
+#                                               drop every "3" line below if you only use two)
+# One /login each, ever — no credential copying (a copied OAuth token forks and dies). Each
+# account IS its own config dir directly — nothing forks a per-launch session dir, so there is
+# nothing to prune later.
 #
-# Every launch gets its own config dir under ~/.claude-sessions (symlink shell
-# over the master; private Keychain item seeded from it), so /swap inside a chat
-# switches THAT chat's account only. Logic: ~/.claude/bin/cc-launch.sh.
-# Keychain suffix = first 8 hex of sha256(config dir path); unsuffixed when unset.
+# Every launch gets its OWN tmux server (-L cc-<epoch>-<pid>-<rand>) so a single crashed tmux
+# can't take every chat down at once, and so a chat picker / the /swap command can address one
+# chat's pane precisely instead of guessing which pane in a shared server is which chat.
 #
-# Marker file ~/.claude-primary holds "1".."3" (default "1"). cc-swap opens an
-# fzf picker (pointer starts on the next account, so plain Enter = old cycle);
-# cc-swap <1|2|3> jumps without the menu.
-# Commands: cc (tmux + primary), cc1/cc2/cc3 (tmux + that account), cc-clean [days].
+# Marker file ~/.claude-primary holds "1".."3" (default "1"). cc-swap opens an fzf picker
+# (pointer starts on the next account, so plain Enter = old cycle); cc-swap <1|2|3> jumps
+# without the menu — this only changes which account a FUTURE bare `cc` opens. To move an
+# ALREADY-RUNNING chat to another account (or flip its cache-window mode) without losing the
+# conversation, use /swap from inside the chat (blueprint/templates/host-swap/swap.command.md)
+# — it reboots that one chat in place; see that command file for the install note.
+# Commands: cc (tmux + primary), cc1/cc2/cc3 (tmux + that account).
 #
-# macOS only — uses the macOS Keychain via `security`.
+# Linux and macOS — plain config-dir files, no Keychain/credential-store dependency.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── no sneaky agent conversions ───────────────────────────────────────────
@@ -33,25 +37,63 @@ export CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF=1
 # Read at process birth — live chats keep the old cap until relaunched.
 export CLAUDE_CODE_STOP_HOOK_BLOCK_CAP=2
 
+# ── cache-window flag (⚡1h vs 🪫5m) ────────────────────────────────────────
+# _cc_arm1h — 1 when THIS launch should be born with the ⚡1h prompt-cache TTL: CC_ARM_1H=1 (an
+# explicit per-launch verdict, e.g. from a picker) or ENABLE_PROMPT_CACHING_1H=1 set from a
+# NON-chat shell (the documented `ENABLE_PROMPT_CACHING_1H=1 cc` interface). Inside a chat's own
+# tool shell (CLAUDECODE set) an inherited flag is the HOST chat's birth env leaking downstream —
+# it must never arm a new launch on its own. The harness defaults every session to the 1h
+# window; an un-armed launch must actively set FORCE_PROMPT_CACHING_5M=1 to get 5m instead.
+_cc_arm1h() {
+  if [[ "${CC_ARM_1H:-}" == 1 ]]; then echo 1
+  elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo 1
+  else echo 0; fi
+}
+
 _cc_primary() {
   local n="1"
   [[ -f "$HOME/.claude-primary" ]] && n="$(<$HOME/.claude-primary)"
+  case "$n" in 1|2|3) ;; *) n=1 ;; esac
   echo "$n"
 }
+
+# config dir for account N: 1 (or unset) → "" (the default ~/.claude); else ~/.claudeN
+_cc_cfgdir() { case "$1" in 1|"") echo "" ;; *) echo "$HOME/.claude$1" ;; esac }
 
 # _cc_run <account-num: 1|2|3> <tmux: 0|1> [claude args...]
 _cc_run() {
   local acct="$1" use_tmux="$2"; shift 2
+  local cfg; cfg="$(_cc_cfgdir "$acct")"
   local in_tmux=0; [[ -n "${TMUX:-}" ]] && in_tmux=1
-  local need_tmux=0; [[ "$use_tmux" == "1" && "$in_tmux" == "0" ]] && need_tmux=1
+  # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
+  # time) — _cc_arm1h decides; env -u strips a leaked flag first, and an armed launch re-adds
+  # it as an env ARGUMENT (a shell prefix would be re-unset by its own -u below)
+  local arm1h; arm1h="$(_cc_arm1h)"
 
-  local sdir
-  sdir="$("$HOME/.claude/bin/cc-launch.sh" "$acct")" || { echo "cc: session setup failed" >&2; return 1; }
+  # explicit env, always: a launch from INSIDE a chat (Bash tool, nested shell) inherits the
+  # host chat's CLAUDE_CONFIG_DIR / session identity / cache mode — env -u makes every one of
+  # them THIS launch's own verdict, never the environment's
+  local -a envargs=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M)
+  if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
+  if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
 
-  if (( need_tmux )); then
-    tmux new-session "CLAUDE_CONFIG_DIR=$sdir claude $*"
+  if [[ "$use_tmux" == "1" ]]; then
+    # Each chat gets its OWN tmux server (unique socket == session name) so a single tmux
+    # crash can no longer take down every chat at once. The globally-unique session name
+    # preserves the "address a chat by its tmux session name" handle other fleet tooling
+    # (a chat picker, /bb, /swap) relies on. Inside a tmux already, the chat STILL gets its
+    # own server — the current pane just becomes a nested client viewing it.
+    local sock="cc-$(date +%s)-$$-$RANDOM"
+    # per-arg quoting via printf %q (bash/zsh builtin) so a multi-word claude argument (e.g.
+    # `cc --model x`) survives being flattened into tmux's one shell-command string.
+    local -a q=() a
+    for a in "${envargs[@]}" claude "$@"; do q+=("$(printf '%q' "$a")"); done
+    local run="env ${q[*]}"
+    if (( ! in_tmux )); then tmux -L "$sock" new-session -s "$sock" "$run"
+    else TMUX= tmux -L "$sock" new-session -s "$sock" "$run"
+    fi
   else
-    CLAUDE_CONFIG_DIR="$sdir" claude "$@"
+    env "${envargs[@]}" claude "$@"
   fi
 }
 
@@ -60,31 +102,46 @@ if ! typeset -f cc > /dev/null 2>&1; then
   cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }                                  # tmux + primary
 fi
 
-# ── EDIT: update labels in comments to match your accounts ──────────────────
-cc1() { _cc_run 1 1 "$@"; }   # tmux + account 1 (work)
-cc2() { _cc_run 2 1 "$@"; }   # tmux + account 2 (personal)
-cc3() { _cc_run 3 1 "$@"; }   # tmux + account 3 (third)
-# ── END EDIT ─────────────────────────────────────────────────────────────────
+cc1() { _cc_run 1 1 "$@"; }   # tmux + account 1
+cc2() { _cc_run 2 1 "$@"; }   # tmux + account 2
+cc3() { _cc_run 3 1 "$@"; }   # tmux + account 3 (delete this line if you only use 2 accounts)
 
+# pretty label per account: medal + the real email pulled from its config dir — nothing to
+# keep in sync by hand when an account's login changes.
+_cc_label() {
+  local n="$1" dir medal email
+  case "$n" in
+    1) dir="$HOME/.claude";   medal="🥇" ;;
+    2) dir="$HOME/.claude2";  medal="🥈" ;;
+    3) dir="$HOME/.claude3";  medal="🥉" ;;
+    *) dir="$HOME/.claude$n"; medal="●" ;;
+  esac
+  email="$(jq -r '.oauthAccount.emailAddress // empty' "$dir/.claude.json" 2>/dev/null)"
+  [[ -z "$email" ]] && email="(not logged in — run cc${n} then /login)"
+  printf '%s\n' "$medal $email"
+}
+
+# cc-swap [1|2|3] — fzf picker (no arg) to set which account bare `cc` opens
 cc-swap() {
   local cur n; cur="$(_cc_primary)"
 
-  # ── EDIT: your accounts ──────────────────────────────────────────────────
-  local -a rows=(
-    "1 │ 🥇 work     │ you@work.example"
-    "2 │ 🥈 personal │ you@personal.example"
-    "3 │ 🥉 third    │ you3@example"
-  )
-  # ── END EDIT ───────────────────────────────────────────────────────────────
+  # ── EDIT: which account numbers you actually use (2 accounts works fine — just drop the "3") ──
+  local -a accts=(1 2 3)
+  # ── END EDIT ─────────────────────────────────────────────────────────────
 
-  if [[ "${1:-}" =~ ^[123]$ ]]; then
+  local -a rows=() ; local a
+  for a in "${accts[@]}"; do rows+=("$a │ $(_cc_label "$a")"); done
+
+  if [[ "${1:-}" =~ ^[0-9]+$ ]] && [[ " ${accts[*]} " == *" ${1} "* ]]; then
     n="$1"
   elif command -v fzf >/dev/null; then
-    local next; case "$cur" in 1) next="2" ;; 2) next="3" ;; *) next="1" ;; esac
-    rows[$cur]="${rows[$cur]}  ← current"
+    local curi=1 i=0 x next
+    for x in "${accts[@]}"; do i=$((i+1)); [[ "$x" == "$cur" ]] && curi=$i; done
+    next=$(( curi % ${#accts[@]} + 1 ))
+    rows[$curi]="${rows[$curi]}  ← current"
     local pick
     pick="$(printf '%s\n' "${rows[@]}" | fzf \
-      --height=~9 --reverse --cycle --no-info --header-first \
+      --height=~$(( ${#accts[@]} + 3 )) --reverse --cycle --no-info --header-first \
       --border=rounded --border-label=' Claude Code · primary account ' \
       --header="Enter picks (starts on next) · Esc keeps account $cur" \
       --prompt='cc ❯ ' --pointer='▶' \
@@ -93,29 +150,11 @@ cc-swap() {
     [[ -z "$pick" ]] && { echo "cc-swap: unchanged — primary stays account $cur"; return 0; }
     n="${pick%% *}"
   else
-    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2|3>"; return 1
+    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
   fi
   echo "$n" > "$HOME/.claude-primary"
-
-  # ── EDIT: update labels to match your accounts ───────────────────────────
-  local lbl; case "$n" in 1) lbl="🥇 work" ;; 2) lbl="🥈 personal" ;; 3) lbl="🥉 third" ;; esac
-  # ── END EDIT ───────────────────────────────────────────────────────────────
-
-  echo "Primary → account $n ($lbl)"
+  echo "Primary → account $n  ($(_cc_label "$n"))"
   echo "  cc          → account $n"
   echo "  cc1/cc2/cc3 → explicit account"
-}
-
-# cc-clean [days] — prune per-session config dirs older than N days (default 7)
-# plus their private Keychain items. Long-running sessions older than the
-# cutoff would need a /login after pruning, so keep the window generous.
-cc-clean() {
-  local days="${1:-7}" d sfx
-  find "$HOME/.claude-sessions" -maxdepth 1 -type d -name 's*' -mtime +"$days" 2>/dev/null | while read -r d; do
-    sfx="$(printf '%s' "$d" | shasum -a 256 | cut -c1-8)"
-    security delete-generic-password -s "Claude Code-credentials-$sfx" >/dev/null 2>&1
-    rm -rf "$d"
-    echo "pruned $d"
-  done
 }
 # ── end multi-account swap ────────────────────────────────────────────────────

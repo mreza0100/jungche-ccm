@@ -12,7 +12,7 @@ $ARGUMENTS
 
 ## Mandatory skill load (before any prompt-file edit)
 
-Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/prompt.md` is READ this session (Read auto-stamps the quality marker). Its rules govern prose leanness; **§ Authoring conventions** below governs the file skeleton (frontmatter + shape).
+Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/prompt.md` is READ this session (Read auto-stamps the quality marker). Its rules govern prose leanness for ANY prompt; **§ Claude-harness prompt law** below carries the harness-specific file rules (size limits, voice location, hooks, routing); **§ Authoring conventions** below governs the file skeleton (frontmatter + shape).
 
 ---
 
@@ -35,7 +35,7 @@ CLAUDE.md (Professor persona + request routing)
 .claude/skills/*/SKILL.md → reusable skills (rr, ghostwriter, vision-factory)
 .claude/output-styles/*.md → persona registry (Professor session style + per-command overlays)
 .claude/scripts/*.sh  → worktree.sh, alloc-ports.sh, dev.sh
-.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-walker — wave verification walk (thread walk + zero-token ledger spine, pre-merge branch mode for /wave:orchestrator), declared copy of wave/walker.md § Orchestration; documenter-fanout — the scout→per-scope doc-consolidation fan-out (canonical; documenter.md § Orchestration is the pointer + scope table)); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
+.claude/workflows/*.js → saved Workflow scripts, invocable as Workflow({name, args}) (wave-walker — wave verification walk (thread walk + zero-token ledger spine, pre-merge branch mode for /wave:orchestrator), declared copy of wave/walker.md § Orchestration; documenter-fanout — the scout→per-scope doc-consolidation fan-out (canonical; documenter.md § Orchestration is the pointer + scope table); audit-ai-output-sessions — the /audit:ai-output per-unit fan-out, declared copy of audit/ai-output.md Step 3); a skill may embed its own engine as {skill}/workflow.js, invoked via Workflow({scriptPath}) (rr)
 
 {project-*}/.claude/agents/*.md → child project agents
 {project-*}/CLAUDE.md → child project conventions
@@ -69,21 +69,62 @@ docs/agents/          → cross-project reference clusters (api/, architecture/,
 
 ---
 
+## Claude-harness prompt law
+
+Harness-specific rules for files Claude Code loads at runtime — the general prompt law (cut test, compaction, anti-patterns) lives in `/quality:prompt` and applies on top.
+
+### The harness prompt stream
+
+In the Claude Code harness the LLM reads one concatenated context: root `CLAUDE.md`, the auto-loaded skill descriptions, the active command or agent, and every skill loaded this session — all at once. Audit any harness prompt against that whole stream (per `/quality:prompt § The prompt stream`).
+
+### Hard thresholds (Anthropic-published)
+
+| File type                       | Limit                                                     | Source                           |
+| -------------------------------- | ----------------------------------------------------------- | --------------------------------- |
+| CLAUDE.md (any)                 | ≤ 200 lines                                               | docs/claude-code/memory          |
+| SKILL.md body                   | ≤ 500 lines — split via progressive disclosure above this | docs/agent-skills/best-practices |
+| Skill description + when_to_use | ≤ 1,536 chars combined                                    | docs/claude-code/skills          |
+| Sub-agent body                  | No formal cap; Anthropic examples are 20–35 lines         | docs/claude-code/sub-agents      |
+
+Above threshold = split into a referenced file (one level deep, with a Table of Contents at the top if >100 lines).
+
+### Voice location
+
+Voice lives in `.claude/output-styles/` — the session persona as the active output style (main-loop only; subagents never receive it), command personas as overlay files read at invocation; personas ≤~10 lines may stay inline in their command. CLAUDE.md and every agent/skill/command carry zero voice. Cross-file dedup targets: child CLAUDE.md keeps only its delta vs root CLAUDE.md; a project agent keeps only its delta vs the project CLAUDE.md it reads at start.
+
+### Hooks vs prompts
+
+For things that must happen every time (formatting, validation, secret-scanning), write a hook (`.claude/settings.json` PreToolUse / PostToolUse) — deterministic, cheap. Prompts are advisory; the model can drift. Once a hook owns an invariant, delete the prompt rule that restated it — keeping both is duplication against a deterministic mechanism.
+
+### Where harness content goes (anti-bloat routing)
+
+| Content                                             | Belongs in                                            | NOT in                                            |
+| ----------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------- |
+| Behavioral rules                                    | Prompt files (CLAUDE.md, agents, commands, skills)    | —                                                 |
+| Incident narratives ("on 2026-XX-XX...")            | Commit message / epic manifest (`docs/epics/{name}/`) | Prompt files                                      |
+| Architectural decisions / why-this-design           | Epic manifest or `docs/commands/{cmd}/references/`    | Prompt files (encode the rule, not the rationale) |
+| Voice / character flavor                            | `.claude/output-styles/` (session style + overlays)   | CLAUDE.md, agents, skills, commands (zero voice)  |
+| Project-specific tooling                            | Child CLAUDE.md only                                  | Per-project agents (already inherit via parent)   |
+| Cross-cutting templates (report format, plan shape) | One canonical reference file                          | Duplicated per-project                            |
+
+---
+
 ## What you own
 
-| Artifact           | Path                              |
-| ------------------ | --------------------------------- |
-| Root CLAUDE.md     | `CLAUDE.md`                       |
-| Root agents        | `.claude/agents/*.md`             |
-| Child agents       | `{project-*}/.claude/agents/*.md` |
-| Commands           | `.claude/commands/*.md`           |
-| Skills             | `.claude/skills/*/SKILL.md`       |
-| Output styles      | `.claude/output-styles/*.md`      |
-| Scripts            | `.claude/scripts/*.sh`            |
-| Workflows          | `.claude/workflows/*.js`          |
-| Settings           | `.claude/settings.json`           |
-| Child CLAUDE.md    | `{project-*}/CLAUDE.md`           |
-| PCM reference docs | `docs/commands/pcm/references/`   |
+| Artifact           | Path                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| Root CLAUDE.md     | `CLAUDE.md`                                                                                                   |
+| Root agents        | `.claude/agents/*.md`                                                                                         |
+| Child agents       | `{project-*}/.claude/agents/*.md`                                                                              |
+| Commands           | `.claude/commands/*.md`                                                                                        |
+| Skills             | `.claude/skills/*/SKILL.md`                                                                                    |
+| Output styles      | `.claude/output-styles/*.md`                                                                                   |
+| Scripts            | `.claude/scripts/*.sh`                                                                                          |
+| Codex mirror       | `.codex/` — skills, agent TOMLs, execpolicy rules, config; regenerate with `.claude/scripts/codex-mirror.sh` |
+| Workflows          | `.claude/workflows/*.js`                                                                                        |
+| Settings           | `.claude/settings.json`                                                                                        |
+| Child CLAUDE.md    | `{project-*}/CLAUDE.md`                                                                                        |
+| PCM reference docs | `docs/commands/pcm/references/`                                                                                |
 
 ---
 
@@ -275,6 +316,7 @@ Files: project dirs, CLAUDE.md files, permanent docs, lock files
 - **Permanent docs:** `docs/agents/`, `docs/commands/` dirs exist with expected subdirs
 - **Stale names:** grep all CLAUDE.md files and agents for old/renamed project names or typos
 - **Package managers:** expected lock files present per project
+- **Codex mirror:** `.claude/scripts/codex-mirror.sh check` exits 0 — report its output verbatim; a non-zero exit names each entry point missing from `.codex/skills/`, drifted from its source, or downgraded to a file symlink (which Codex silently drops)
 
 #### `cross-refs` — The glue between domains
 

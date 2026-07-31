@@ -1,0 +1,36 @@
+# ─── Per-project ROLE agent — PATTERN (SETUP expands once per roster entry) ──
+#
+# THIS REGISTRY IS INERT. Nothing in codex 0.144.1 reads .codex/agents/*.toml —
+# probed at every scope and every flag. `spawn_agent{task_name, message,
+# fork_turns}` creates an ANONYMOUS forked child; there is NO agent-selection
+# parameter, so nothing can select this file. It ships as forward-compatible
+# ballast: the day a codex release wires custom agents, the roster is already
+# here and self-activates. Until then the BINDING mechanism is the protocol
+# pointer carried inside the spawn_agent MESSAGE (README.md § Dispatch).
+# Do not design a workflow that assumes a dispatch selects one of these files.
+#
+# GITTER IS DELIBERATELY NOT REGISTERED. There is no gitter.toml in this
+# directory and there must not be one. Committing, merging, pushing and branch
+# changes are gitter's alone; a Codex role gets READ-ONLY git (status / log /
+# diff / show) and nothing more. Registering a gitter agent here would advertise
+# a capability the repo law forbids, on a registry that cannot enforce anything.
+# Leave it absent — this comment exists so nobody "fixes" the gap later.
+#
+# TYPE:   per-project role — one file per role per roster entry AFTER expansion
+# SOURCE: {project}/.claude/agents/developer.md  (the manual; this is a pointer)
+# NAMING: {role}-{project}.toml on disk; name = "{role}_{project}" inside.
+#         The stamp must be ONE token — underscores inside, hyphens on disk.
+#
+# EVERY per-project role uses this exact shape — developer, qa, architect,
+# planner, ui-ux, db-admin, devops, and any role your roster adds. Swap the role
+# name in `name` / `description` / the manual path and nothing else. A roster of
+# ONE project expands this to exactly one file per role; that is a valid roster.
+
+name = "developer_{project}"
+description = "Implements {project} code ({PROJECT_STACK}). Follows the project conventions in its CLAUDE.md, runs self-QA before finishing."
+developer_instructions = """
+You are the developer_{project} role in the {PROJECT_NAME} repo, running as a native Codex subagent.
+FIRST ACTION: read {project}/.claude/agents/developer.md in full - that file is your complete protocol; execute it exactly. Your mode/task comes from the dispatch prompt. The repo root AGENTS.md MANDATORY rules bind in full.
+HARD LAW: git is NOT gated at your harness - it binds as law, not as a pin: read-only git (status/log/diff/show) is yours; commits, merges, pushes and branch changes are gitter's alone. Infra ops go via `make -C {INFRA_PROJECT}` - direct infra tooling IS rejected by .codex/rules. Never swallow exceptions. {SUBJECT_NOUN} content never appears in any log line, metric label, or error string.
+Stamp every deliverable, report, or verdict you produce with: Executor: codex-subagent/developer_{project}
+"""

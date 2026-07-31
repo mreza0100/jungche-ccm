@@ -3,12 +3,11 @@
 # "LINE 1: Identity" section. The `badge` variable is already consumed by
 # the l1 line in the Professor statusline — you only need this computation.
 #
-# Reads the `account` marker written by cc-launch.sh / /swap (format: "<n> <label> <email>").
-# Falls back to the oauthAccount email in .claude.json for legacy sessions
-# that predate the per-session launcher.
-#
-# macOS only — the fallback jq read works on any platform;
-# the per-session marker path (~/.claude-sessions/) is macOS-convention.
+# Primary signal: the oauthAccount email cached in each account's own .claude.json (works on
+# any platform, no launcher-specific plumbing required). The `<cfgdir>/account` marker file
+# below is optional legacy support for a launcher that writes one (format: "<n> <label>
+# <email>") — the blueprint's own zshrc-swap.snippet.sh launcher does not write this file, so
+# that branch is a no-op fallback unless your own launcher populates it.
 #
 # ── EDIT: update labels and fallback emails to match your accounts ───────────
 # Account 1 gets 🥇, account 2 gets 🥈, account 3 gets 🥉.

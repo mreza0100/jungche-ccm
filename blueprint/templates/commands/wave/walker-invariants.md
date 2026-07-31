@@ -26,7 +26,10 @@ One `##` section per invariant. Each entry:
   zero-token engine-side fail-safe floor beneath this — see `computeArmedInvariants`,
   `.professor/ENGINES/wave-walker/engine/src/engine.ts`).
 - **Exemplars** — 2-4 already-confirmed bugs of exactly this class, cited `file:line`. Exemplars are
-  what make a finder sharp.
+  what make a finder sharp. Each carries its STATUS — LIVE, or FIXED naming the pin that closed it: a
+  fixed exemplar still teaches the shape, an unmarked one sends a hunter to an anchor that no longer
+  holds and teaches it the registry cannot be trusted. Anchors rot as code moves — a hunter re-reads a
+  cited line before treating it as evidence and names a stale anchor in its coverage.
 - **Hunt Brief** — the enumeration duty handed to the invariantHunter verbatim.
 
 ## § Registration Duty
@@ -65,9 +68,9 @@ cross-cutting law: it applies to every empty-state render, health check, and gat
 **Triggers:** diff touches a probe/gate/healthcheck/empty-state branch; diff adds an error-suppressing
 idiom (`2>/dev/null`, `|| true`, `set +e`, a `catch`/`except` with no re-raise).
 
-**Exemplars:** *(cite 2-4 real confirmed bugs of this class once you have them — `file:line` + a one-line
-description + severity. Exemplars are what make a finder sharp; an empty list still arms the hunter on
-territory + triggers alone.)*
+**Exemplars:** *(cite 2-4 real confirmed bugs of this class once you have them — STATUS (LIVE, or FIXED
+naming the pin that closed it) + `file:line` + a one-line description + severity. Exemplars are what make
+a finder sharp; an empty list still arms the hunter on territory + triggers alone.)*
 
 **Hunt Brief:** For every probe/gate/empty-state in the territory, apply the broken-mechanism test: what
 does this step report when the thing it checks ERRORS (permission, timeout, malformed output) — does it

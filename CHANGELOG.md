@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.46.0](releases/v0.46.0.md) — Codex layer re-derived from what actually runs (a git-permitting rules file and a Teams orchestration model that never existed, both deleted), chat:\* moved to the host bundle, walker fast mode + four instrument defects closed, qa-commons test economy/validity/isolation, /quality:prompt ↔ /pcm scope split
 - [v0.45.0](releases/v0.45.0.md) — /wave:\* trains + archival lifecycle, descriptions-as-router law + registry-wide sweep, stale wave-build.js references cut, wave-engine boundary-lock hardening + wave-wait.sh fix
 - [v0.44.1](releases/v0.44.1.md) — statusline template synced to the current live layout (🧮 chat-size + 💾 cache-window on line 2, rate bars to line 3)
 - [v0.44.0](releases/v0.44.0.md) — /wave:watcher + lanes/pool multi-builder trains, retro-fold hardening season (coverage/PHI/honest-absence laws), chat.sh guard ladder + $HOME canonicalization, statusline segments.d, sensors + standalone wave mode + /p:2opinion retired

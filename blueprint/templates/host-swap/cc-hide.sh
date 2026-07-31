@@ -2,7 +2,7 @@
 # cc-hide.sh [--exit] — add the CURRENT Claude chat to cc-ls's hide list (run from inside the chat,
 # e.g. via the global /hide command). Non-destructive: the transcript is kept; it just stops showing
 # in cc-ls. Identifies this chat via the tmux socket → transcript-path map the statusline maintains
-# (/tmp/cc-sid/<socket>), falling back to the most-recently-written transcript.
+# (/tmp/cc-sid/<socket>), falling back to the pane-keyed breadcrumb.
 #   --exit  after hiding, gracefully close the chat by typing /exit into its tmux pane, then
 #           kill-server its OWN tmux so nothing idle is left behind (detached, ~1.5s later, so
 #           this turn finishes first). Per-chat -L socket → kill-server can't touch a sibling.
@@ -16,14 +16,30 @@ if [ -n "${TMUX:-}" ]; then
   sock="${TMUX%%,*}"; sock="${sock##*/}"          # this chat's -L socket
   pane="${TMUX_PANE:-}"                            # this chat's OWN pane (not the active one)
 fi
-# Identify THIS chat's transcript uuid. Prefer the live session id from the env — correct
-# even when several chats share one tmux socket via panes (/chat:branch, /chat:new), where
-# the socket→transcript breadcrumb is ambiguous. Fall back to that breadcrumb, then newest.
-u="${CLAUDE_CODE_SESSION_ID:-}"
+# Identify THIS chat's transcript uuid. The env session id comes first, but ONLY when a
+# transcript by that name exists — a bridged session's id can differ from its file, and
+# hiding a phantom id hides nothing. Then the pane-keyed breadcrumb (precise even when
+# several chats share one tmux socket as panes), then the socket breadcrumb.
+u=""
+# env session id first — but ONLY when a transcript by that name exists, across ALL accounts
+# (an account-2/3 chat's transcript lives under ~/.claudeN; checking only the account-1 glob
+# made every account-2/3 chat fail this rung). Test STDOUT, not ls's exit code: passing the
+# account-1 glob AND the ~/.claudeN glob together makes ls exit nonzero whenever one side has
+# no match (the literal unmatched pattern errors), so `if ls …` would wrongly fail for an
+# account-2/3 chat even though the ~/.claudeN glob matched. `| grep -q .` is true iff ls
+# printed at least one real path.
+if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && \
+   ls "$HOME"/.claude/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl "$HOME"/.claude[0-9]*/projects/*/"$CLAUDE_CODE_SESSION_ID".jsonl 2>/dev/null | grep -q .; then
+  u="$CLAUDE_CODE_SESSION_ID"
+fi
 if [ -z "$u" ]; then
   tp=""
-  [ -n "$sock" ] && tp="$(cat "/tmp/cc-sid/$sock" 2>/dev/null)"
-  [ -z "$tp" ] && tp="$(ls -t "$HOME"/.claude/projects/*/*.jsonl 2>/dev/null | head -1)"
+  [ -n "$sock" ] && [ -n "$pane" ] && tp="$(cat "/tmp/cc-sid/$sock.$pane" 2>/dev/null)"
+  [ -z "$tp" ] && [ -n "$sock" ] && tp="$(cat "/tmp/cc-sid/$sock" 2>/dev/null)"
+  # NO newest-transcript fallback: `ls -t …/*.jsonl | head -1` returned the most-recently
+  # written transcript BOX-WIDE (no relation to this chat), and with --exit that wrong uuid
+  # drove kill-server/kill-pane over ANOTHER chat's teammates. Fail loud instead — the case
+  # below catches an empty/garbage u.
   u="$(basename -- "$tp" .jsonl 2>/dev/null)"
 fi
 case "$u" in
@@ -83,6 +99,7 @@ if [ "$do_exit" = 1 ]; then
         sleep 1; n=$((n+1))
       done
       tmux -L "$SOCK" kill-pane -t "$PANE" 2>/dev/null
+      rm -f "/tmp/cc-sid/$SOCK.$PANE"                     # the pane-keyed breadcrumb
       [ "$LAST" = 1 ] && rm -f "/tmp/cc-sid/$SOCK"
       tp="$(ls "$PROJ"/*/"$U".jsonl 2>/dev/null | head -1)"
       if [ -n "$tp" ]; then

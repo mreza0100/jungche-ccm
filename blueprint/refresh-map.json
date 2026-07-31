@@ -56,7 +56,7 @@
     },
     "templates/CLAUDE.md": {
       "sources": {
-        "CLAUDE.md": "f580a1ea6f2a72349a4dda205b8389c2bd4ddaa4424fae4aa277c1de4de84c32"
+        "CLAUDE.md": "47abfb2c6a28f7e90c3d40d3a7af4f95cf7df02d1e717de9b9445124b51983b4"
       }
     },
     "templates/agents/gitter.md": {
@@ -88,7 +88,7 @@
     },
     "templates/agents/per-project/qa.md": {
       "sources": {
-        "{project:backend}/.claude/agents/qa.md": "937f36fc6f99fb1f0a24c9f09a430a53bbb417561368999f64c069097b5b4ff3"
+        "{project:backend}/.claude/agents/qa.md": "b160e528f1e5fca6df127da7644a8afea9d94fd8048c95ad3d1bb04ac95b58dc"
       }
     },
     "templates/agents/qa-wrapper.md": {
@@ -97,127 +97,32 @@
         ".claude/agents/qa-fe.md": "102e1b7bb62de538f2b2bee7150e8c4fd4ac6b1fe890d402bc2a3edd1d546422",
         ".claude/agents/qa-cortex.md": "dd1a4d4a85d213c9f5377841b1d1d6503584c73e79f396cce4341eb88dd7c434",
         ".claude/agents/qa-infra.md": "544903a31f20f4b64a0f0440f2bf8440f5306cfe0c74cc377667516536cd1a46",
-        ".claude/agents/qa-web.md": "86371bd664110017c5352592f34b45396f5e06719475cd4a1e72c382d21e34e3"
+        ".claude/agents/qa-web.md": "86371bd664110017c5352592f34b45396f5e06719475cd4a1e72c382d21e34e3",
+        ".claude/agents/qa-contracts.md": "80456984c8b7a813d63ec04b89414566b0f30278c65e073ced4daa69bb2fa392"
       }
     },
     "templates/codex/README.md": {
       "curated": true
     },
-    "templates/codex/agents/dev.toml": {
+    "templates/codex/agents/mono-documenter.toml": {
       "curated": true
     },
-    "templates/codex/agents/developer.toml": {
+    "templates/codex/agents/per-project/developer.toml": {
       "curated": true
     },
-    "templates/codex/agents/documenter.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/git.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/gitter.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/jc.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/km.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/marketer.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/mentor.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/officer.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/pcm.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/pm.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/wave-build.toml": {
-      "curated": true
-    },
-    "templates/codex/agents/wave.toml": {
+    "templates/codex/agents/per-project/qa.toml": {
       "curated": true
     },
     "templates/codex/config.toml": {
       "curated": true
     },
-    "templates/codex/rules/default.rules": {
+    "templates/codex/rules/repo-law.rules": {
       "curated": true
     },
-    "templates/codex/skills/audit:code-hygiene/SKILL.md": {
+    "templates/codex/skills/chat/SKILL.md": {
       "curated": true
     },
-    "templates/codex/skills/audit:security/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/dev/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/documenter/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/ghostwriter/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/git/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/jc/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/km/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/marketer/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/mentor/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/officer/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/p:360/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/p:rnd/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/pcm/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/pm/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/quality:doc/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/quality:prompt/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/rr/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/vision-factory/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/wave-build/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/wave/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/wave:refine/SKILL.md": {
-      "curated": true
-    },
-    "templates/codex/skills/wave:review/SKILL.md": {
+    "templates/codex/skills/wave-builder/SKILL.md": {
       "curated": true
     },
     "templates/commands/animate.md": {
@@ -227,7 +132,7 @@
     },
     "templates/commands/audit/ai-output.md": {
       "sources": {
-        ".claude/commands/audit/cortex.md": "452c858d85f61b6cb94c5b38ccc1cd852210ee307d9e012fe9cc7e84c7e5762a"
+        ".claude/commands/audit/cortex.md": "d019ac510bf320bc4621bfb87359f42ef5d735b361e0257567dbc384cd301e88"
       }
     },
     "templates/commands/audit/code-hygiene.md": {
@@ -238,81 +143,6 @@
     "templates/commands/audit/security.md": {
       "sources": {
         ".claude/commands/audit/security.md": "216124c42f5eeb3533e5e6f18edb65bcbcfee72371336ca2b72581bc40766efb"
-      }
-    },
-    "templates/commands/chat/branch.md": {
-      "sources": {
-        ".claude/commands/chat/branch.md": "73ade7e28ca2f5a4a70128154757d1698faa5e15c849e0e76252c159fea76bf5"
-      }
-    },
-    "templates/commands/chat/capture.md": {
-      "sources": {
-        ".claude/commands/chat/capture.md": "908f16f9e8086ca8049a379b43662a03a1feb40aaf7d854f332a6c3a180ebebf"
-      }
-    },
-    "templates/commands/chat/chat.sh": {
-      "sources": {
-        ".claude/commands/chat/chat.sh": "1509805a88dccafa3a409e16144e01c2b680715b0193a82eb9bc068492f41159"
-      }
-    },
-    "templates/commands/chat/dump.md": {
-      "sources": {
-        ".claude/commands/chat/dump.md": "6151a4dff281d63578d84d51827b69d7918ce690b594ac2d4ca8a0f74e7520e7"
-      }
-    },
-    "templates/commands/chat/find.md": {
-      "sources": {
-        ".claude/commands/chat/find.md": "044a798f57fe8e00946751fbd69526a3e547482dcaba62197709e3f624361930"
-      }
-    },
-    "templates/commands/chat/goal.md": {
-      "sources": {
-        ".claude/commands/chat/goal.md": "3901da9f6c04f19ed5de5b36963a6d61f8a1467d96e7dde0103cbe0a4efc145c"
-      }
-    },
-    "templates/commands/chat/inject.md": {
-      "sources": {
-        ".claude/commands/chat/inject.md": "be18601a35acf05178c3bb38baf66c2f06235c5b13faaa9a6b6a804fca171a1d"
-      }
-    },
-    "templates/commands/chat/interrogate.md": {
-      "sources": {
-        ".claude/commands/chat/interrogate.md": "b832be82de7886ed414e0319cf5b5ef68d8050011e626bf82799f9b5dea3cc6b"
-      }
-    },
-    "templates/commands/chat/load.md": {
-      "sources": {
-        ".claude/commands/chat/load.md": "f847d633120ba58ec8edde2168f7bced6afd5a8df4c791e82483407abbc21594"
-      }
-    },
-    "templates/commands/chat/ls.md": {
-      "sources": {
-        ".claude/commands/chat/ls.md": "39a03eeaaf5e4b66b3bfb78799ebf73dc16781732055c6a1b3406dcd45149a34"
-      }
-    },
-    "templates/commands/chat/new.md": {
-      "sources": {
-        ".claude/commands/chat/new.md": "5060ac897b0faa7a44529c0602739d49a3fab4f7acf278d1d9a28f279083b068"
-      }
-    },
-    "templates/commands/chat/read.md": {
-      "sources": {
-        ".claude/commands/chat/read.md": "6c4bc656233256b5ab4e25c8a12f68ac3b091da0d747031e1b25defcffdda4df"
-      }
-    },
-    "templates/commands/chat/save.md": {
-      "sources": {
-        ".claude/commands/chat/save.md": "75bbe12d096dd254e94c443dd2cb403bb7e6efdc9a23e2c9f20e1a6d786f4052"
-      }
-    },
-    "templates/commands/chat/self/compact.md": {
-      "sources": {
-        ".claude/commands/chat/self/compact.md": "e160bc13a87c36f1c7d8a1246666be76ff4933abf03c5dea6a707fff5b7e975f"
-      }
-    },
-    "templates/commands/chat/whoami.md": {
-      "sources": {
-        ".claude/commands/chat/whoami.md": "85de096ae7eba25f84e8e8e8f2ca303fb06f15448a00f26684ac290b06bf5695"
       }
     },
     "templates/commands/dev.md": {
@@ -374,7 +204,7 @@
     },
     "templates/commands/p/rnd.md": {
       "sources": {
-        ".claude/commands/p/rnd.md": "2d0e852d9ae400a3f28c6e1c19cc8c8e26685a59e8c7ba55da1805157970b21a"
+        ".claude/commands/p/rnd.md": "a364a44adfafacbdcf8f5a1273dd36275fa245449d50ed170ea7cdf224e70b4d"
       }
     },
     "templates/commands/p/slow-burn.md": {
@@ -399,7 +229,7 @@
     },
     "templates/commands/pcm.md": {
       "sources": {
-        ".claude/commands/pcm.md": "fd1f12e33bb7730ce0111befe350651c2b174f9f7eafde5622c22d632c83fc15"
+        ".claude/commands/pcm.md": "34e99254edc4b2d8ed1f1fafac0edfe1a1d4f98cf5c7bc557205a0f93cd0bdcc"
       }
     },
     "templates/commands/pcm/context-meter.md": {
@@ -439,7 +269,7 @@
     },
     "templates/commands/quality/prompt.md": {
       "sources": {
-        ".claude/commands/quality/prompt.md": "c3304ef08ace8167fb3ca872b20a325e082687cfce0fd185b98992f50a6c1129"
+        ".claude/commands/quality/prompt.md": "2b27c466110394d97b4152b8fc9e2f3f14612d41e3fea41229143f4421af7f18"
       }
     },
     "templates/commands/sleep.md": {
@@ -474,12 +304,12 @@
     },
     "templates/commands/wave/walker.md": {
       "sources": {
-        ".claude/commands/wave/walker.md": "c993dd047ecdf51cfed8ed5fa668b5d9ff825a7b6317857c9f146dd3f2d6f3f3"
+        ".claude/commands/wave/walker.md": "fe100c1ec6e7cf401fe533f7ca3d52c4d3292a2ad6155ec758b1adea3ef3cc54"
       }
     },
     "templates/commands/wave/walker-invariants.md": {
       "sources": {
-        ".claude/commands/wave/walker-invariants.md": "30a476f7df66775f56431d550d57fc3e9ee960fb1d88a921a2ba44576721102c"
+        ".claude/commands/wave/walker-invariants.md": "c07b71b79e9ce6cd27c639b6c367925ea43808c58cb4871701c62c4019a3723a"
       }
     },
     "templates/docs-agents/_index.md": {
@@ -599,48 +429,122 @@
     },
     "templates/host-swap/bb.command.md": {
       "sources": {
-        "~/.claude/commands/bb.md": "5b10dc83cd57d27dcba61a0879edeace4be8c736eab1d0c1a0c23759c4fb0fbb"
+        "~/.claude/commands/bb.md": "3b25d7cfce2c20183d3a882243b391848d27f22535b428953cf6e75fa94dca65"
       }
     },
-    "templates/host-swap/cc-account-swap.sh": {
-      "curated": true
+    "templates/host-swap/chat/branch.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/branch.md": "73ade7e28ca2f5a4a70128154757d1698faa5e15c849e0e76252c159fea76bf5"
+      }
+    },
+    "templates/host-swap/chat/capture.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/capture.md": "908f16f9e8086ca8049a379b43662a03a1feb40aaf7d854f332a6c3a180ebebf"
+      }
+    },
+    "templates/host-swap/chat/chat.sh": {
+      "sources": {
+        "~/.claude/commands/chat/chat.sh": "84f77f012f068d3ba7a6e53da868e9c837c43dcec43d8014abb2591dd333d27e"
+      }
+    },
+    "templates/host-swap/chat/dump.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/dump.md": "6151a4dff281d63578d84d51827b69d7918ce690b594ac2d4ca8a0f74e7520e7"
+      }
+    },
+    "templates/host-swap/chat/find.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/find.md": "044a798f57fe8e00946751fbd69526a3e547482dcaba62197709e3f624361930"
+      }
+    },
+    "templates/host-swap/chat/goal.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/goal.md": "3901da9f6c04f19ed5de5b36963a6d61f8a1467d96e7dde0103cbe0a4efc145c"
+      }
+    },
+    "templates/host-swap/chat/history.sh": {
+      "sources": {
+        "~/.claude/commands/chat/history.sh": "b141151dd51f201982bda44fa90ed9d0441cd14d2fcc4634f2c390684b1726dc"
+      }
+    },
+    "templates/host-swap/chat/inject.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/inject.md": "be18601a35acf05178c3bb38baf66c2f06235c5b13faaa9a6b6a804fca171a1d"
+      }
+    },
+    "templates/host-swap/chat/interrogate.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/interrogate.md": "b832be82de7886ed414e0319cf5b5ef68d8050011e626bf82799f9b5dea3cc6b"
+      }
+    },
+    "templates/host-swap/chat/load.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/load.md": "f847d633120ba58ec8edde2168f7bced6afd5a8df4c791e82483407abbc21594"
+      }
+    },
+    "templates/host-swap/chat/ls.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/ls.md": "39a03eeaaf5e4b66b3bfb78799ebf73dc16781732055c6a1b3406dcd45149a34"
+      }
+    },
+    "templates/host-swap/chat/new.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/new.md": "5060ac897b0faa7a44529c0602739d49a3fab4f7acf278d1d9a28f279083b068"
+      }
+    },
+    "templates/host-swap/chat/read.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/read.md": "6c4bc656233256b5ab4e25c8a12f68ac3b091da0d747031e1b25defcffdda4df"
+      }
+    },
+    "templates/host-swap/chat/save.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/save.md": "75bbe12d096dd254e94c443dd2cb403bb7e6efdc9a23e2c9f20e1a6d786f4052"
+      }
+    },
+    "templates/host-swap/chat/self/compact.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/self/compact.md": "e160bc13a87c36f1c7d8a1246666be76ff4933abf03c5dea6a707fff5b7e975f"
+      }
+    },
+    "templates/host-swap/chat/whoami.command.md": {
+      "sources": {
+        "~/.claude/commands/chat/whoami.md": "85de096ae7eba25f84e8e8e8f2ca303fb06f15448a00f26684ac290b06bf5695"
+      }
     },
     "templates/host-swap/cc-agent-open.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-agent-open.sh": "ba895868140e12d304ba637d73c1d0f30597f566729e55c69f0820a31689c2cc"
+        "~/work/host-ops/cc-fleet/cc-agent-open.sh": "c0a091a68adc7d623c52c6e397f6ed7b4b2b274700c897007120dbaeb4d01f70"
       }
     },
     "templates/host-swap/cc-hide.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-hide.sh": "303c2b7d2692da6453b25da7a6acc1c603151a885c2abeef90082409f523dfb9"
+        "~/work/host-ops/cc-fleet/cc-hide.sh": "60061a4a6d330f266afc93e8715b98ccd541299a345a076d4c12410762db035e"
       }
-    },
-    "templates/host-swap/cc-launch.sh": {
-      "curated": true
     },
     "templates/host-swap/cc-ls.snippet.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "9b30271ee50eee632785448bb3f9dc9286504802f2cbb4780d2b7d23acfc9739"
+        "~/work/host-ops/cc-fleet/cc-fleet.zsh": "ca2f563b056a2f20391cf28fd87ec950c8d59228ea21f42fe4d2c060d5772cce"
       }
     },
     "templates/host-swap/cc-reap.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-reap.sh": "2db26ee56c3a1912ebc835841623ab28caec0a1912f09f97e9129065d9641270"
+        "~/work/host-ops/devbox/scripts/cc-reap.sh": "82ea438bccec169573f7fd7dfe139d48b4e63f85c9c66e0f7221d1de76ce08fc"
       }
     },
     "templates/host-swap/statusline-badge.snippet.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "a981683948b75502a694248534c77e39d1fc26c2e77fd38d4b9a003ca9ed86eb"
+        "~/.claude/statusline-command.sh": "cccc61aebac59db00d11605cac3f683349eeb7ef5a3bc612da9f64fb2d0989ee"
       }
     },
     "templates/host-swap/swap.command.md": {
       "sources": {
-        "~/.claude/commands/swap.md": "ebaf577983d2f63441e3d417bb755fe887a233eb66532a9f4e69f3a0c9ff8575"
+        "~/.claude/commands/swap.md": "1caa236da0cb5bf6fab7e115d10ca6d14065071a1536cddd26279f404e5a411f"
       }
     },
     "templates/host-swap/zshrc-swap.snippet.sh": {
       "sources": {
-        "~/work/host-ops/devbox/scripts/cc-fleet.zsh": "9b30271ee50eee632785448bb3f9dc9286504802f2cbb4780d2b7d23acfc9739"
+        "~/work/host-ops/cc-fleet/cc-fleet.zsh": "ca2f563b056a2f20391cf28fd87ec950c8d59228ea21f42fe4d2c060d5772cce"
       }
     },
     "templates/output-styles/dr-house.compact.md": {
@@ -661,7 +565,7 @@
     },
     "templates/output-styles/professor.compact.md": {
       "sources": {
-        ".claude/output-styles/professor.md": "a6afdddde74c37b7ffac6aa504a7f2ad53f3326e05a14ede041eac4954d9b707"
+        ".claude/output-styles/professor.md": "7d6c2790340c6f9a923f8c08944df688d55de77de7576020974f8413dc67c244"
       }
     },
     "templates/output-styles/professor.full.md": {
@@ -669,12 +573,12 @@
     },
     "templates/per-project/CLAUDE.md": {
       "sources": {
-        "{project:backend}/CLAUDE.md": "dbfa78c06137f3e204fb362b73a77186da0fdbf7db04ea9714b37e5683142b82"
+        "{project:backend}/CLAUDE.md": "9d6eccb530a32106c0a2a10a4c4472dc9b1ecd387e5d7814537fffc49413933a"
       }
     },
     "templates/scripts/alloc-ports.sh": {
       "sources": {
-        ".claude/scripts/alloc-ports.sh": "115832d7283f75c438a9cd39c3c31efad7b7093fdd1c7b09dc95bb8da868ca44"
+        ".claude/scripts/alloc-ports.sh": "a0950dcb20c218837dfdf602f53dfd8a13ac536c7a05bb76e93e1fa794ce163a"
       }
     },
     "templates/scripts/baseline-sync.sh": {
@@ -697,9 +601,14 @@
         ".claude/scripts/checkpoint.sh": "8184d92715dd35504d17af80a5111d6ea1989047f59bd50c051f3fe65ec178dc"
       }
     },
+    "templates/scripts/codex-mirror.sh": {
+      "sources": {
+        ".claude/scripts/codex-mirror.sh": "a2a43352ea39395a03100646be142f442d5d40dfd82dc0865783ce7e4e03c151"
+      }
+    },
     "templates/scripts/dev.sh": {
       "sources": {
-        ".claude/scripts/dev.sh": "2125613ad40953aeeeb40e75f042b14cdc248ec804f43a98993ca6a559c1ea73"
+        ".claude/scripts/dev.sh": "920db213b5d3fc6e9eb0dd2a04aa8c8ab8ada9666d02c8b31c04d83a3fcc8570"
       }
     },
     "templates/scripts/drain-wait.sh": {
@@ -770,7 +679,7 @@
     },
     "templates/statusline/statusline-command.sh": {
       "sources": {
-        "~/.claude/statusline-command.sh": "a981683948b75502a694248534c77e39d1fc26c2e77fd38d4b9a003ca9ed86eb"
+        "~/.claude/statusline-command.sh": "cccc61aebac59db00d11605cac3f683349eeb7ef5a3bc612da9f64fb2d0989ee"
       }
     },
     "templates/themes/sources.json": {
@@ -790,7 +699,7 @@
     },
     "templates/workflows/audit-ai-output-sessions.js": {
       "sources": {
-        ".claude/workflows/audit-cortex-sessions.js": "23ddce02aad763a644e737f4c19dd84f56d2215988e031bdf3c830ceccf7a628"
+        ".claude/workflows/audit-cortex-sessions.js": "d4217c60155382a525d2e4980ca366aca91697b40cb704e697f08b52c12bd953"
       }
     },
     "templates/workflows/documenter-fanout.js": {
@@ -800,7 +709,7 @@
     },
     "templates/workflows/wave-walker.js": {
       "sources": {
-        ".claude/workflows/wave-walker.js": "ca1f26b79d31cf34b53c6ba1069a0d30bb67e3c2ff5009e4f785c31f0f0b5c1c"
+        ".claude/workflows/wave-walker.js": "e26a7e84ffa3867b51d6dc39daa8f05828ed60e301b4468a52f2ef32a5c092ef"
       }
     },
     "templates/commands/wave/watcher.md": {
@@ -815,12 +724,7 @@
     },
     "templates/docs-commands/build/references/qa-commons.md": {
       "sources": {
-        "docs/commands/build/references/qa-commons.md": "58de96e1dedf55eeb843278db84c5e459e3a65a88d9e1464af5865258c50e03d"
-      }
-    },
-    "templates/commands/chat/history.sh": {
-      "sources": {
-        "~/.claude/commands/chat/history.sh": "b141151dd51f201982bda44fa90ed9d0441cd14d2fcc4634f2c390684b1726dc"
+        "docs/commands/build/references/qa-commons.md": "c0473b657acb9c63194c650ad9dfced4037c696a1cb2cd216d286bfb210f5300"
       }
     }
   }

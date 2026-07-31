@@ -1,15 +1,13 @@
 ---
 name: quality:prompt
-description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {AI_PROJECT}/knowledge/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. Enforces Anthropic's prompt-quality rules — cut test, ≤200-line CLAUDE.md, ≤500-line skills, positive framing, no time-sensitive narration, one canonical term, frontmatter discipline. Mandatory load for /pcm and /km.
+description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/*.md, .claude/skills/*/SKILL.md, child CLAUDE.md, or /km knowledge files under {AI_PROJECT}/knowledge/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. General prompt-quality law for ANY LLM-consumed prompt — leanness (cut test, compaction, positive framing, no time-sensitive narration, one canonical term) plus correctness (compute numbers in code, no conflicting directives, per-language validation). Claude-harness file rules (size limits, voice location, hooks, routing) live in /pcm § Claude-harness prompt law. Mandatory load for /pcm and /km.
 ---
 
 # Prompt Quality
 
-You are about to edit a prompt file that Claude Code loads at runtime (or, for `/km` knowledge files, that the {AI_SERVICE_NAME} LLM loads). Every line is paid for on every invocation. Apply the rules below at write-time. This law binds runtime-loaded prompts; a human-consumed reference file (README, docs/) follows `quality:doc` instead.
+You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (Claude Code, the {AI_PROJECT} chains, or any future LLM surface). A human-consumed reference file (README, docs/) follows `quality:doc` instead. Harness-specific file rules (size limits, voice placement, hook mechanics, content routing) live in `/pcm § Claude-harness prompt law`.
 
-**When to load:** `/pcm` loads this before editing any infrastructure prompt file; `/km` loads this before editing knowledge files. Also load it yourself before hand-editing any CLAUDE.md, agent, command, or skill.
-
-**Scope boundary:** serving both consumers, this skill carries runtime-agnostic prompt law only. Claude-Code file-shape skeletons (agent/command/skill frontmatter + templates) live in `/pcm § Authoring conventions`; harness runtime mechanics (spawn economics, registries, orchestrator/spawn-brief design) live in `/pcm § System Wiring`.
+**When to load:** `/pcm` loads this before editing any infrastructure prompt file; `/km` loads this before editing knowledge files. Also load it yourself before hand-editing any runtime-loaded prompt.
 
 ## Cut mode — `quality:prompt cut <file>`
 
@@ -17,7 +15,7 @@ Rewrite the target leaner in place: read it, apply every rule below, cut hard. P
 
 ## The cut test (apply to every line)
 
-> Would removing this line cause Claude to make a mistake?
+> Would removing this line cause the model to make a mistake?
 
 If no — delete it. Bloat dilutes the rules that matter; the model "may start forgetting earlier instructions or making more mistakes" as the file grows.
 
@@ -36,40 +34,61 @@ Before → after, at the aggression this expects:
 
 ## The prompt stream — audit in context, not in isolation
 
-A prompt rarely loads alone. In the Claude Code harness the LLM reads one concatenated context: root `CLAUDE.md`, the auto-loaded skill descriptions, the active command or agent, and every skill loaded this session — all at once. Audit a prompt against that whole stream, not just the file in front of you: a rule may already live in a co-loaded file (duplication), contradict one (conflict), or push the combined context past what the model holds well (budget). Follow the stream the target LLM actually reads, end to end, before judging any single file.
+A prompt rarely loads alone: the target LLM reads one concatenated context assembled from many files. Audit a prompt against that whole stream, not just the file in front of you: a rule may already live in a co-loaded file (duplication), contradict one (conflict), or push the combined context past what the model holds well (budget). Follow the stream the target LLM actually reads, end to end, before judging any single file. (The Claude Code harness's stream composition is enumerated in `/pcm § Claude-harness prompt law`.)
 
-## Hard thresholds (Anthropic-published)
+## Size discipline
 
-| File type                       | Limit                                                     | Source                           |
-| -------------------------------- | ----------------------------------------------------------- | --------------------------------- |
-| CLAUDE.md (any)                 | ≤ 200 lines                                               | docs/claude-code/memory          |
-| SKILL.md body                   | ≤ 500 lines — split via progressive disclosure above this | docs/agent-skills/best-practices |
-| Skill description + when_to_use | ≤ 1,536 chars combined                                    | docs/claude-code/skills          |
-| Sub-agent body                  | No formal cap; Anthropic examples are 20–35 lines         | docs/claude-code/sub-agents      |
-
-Above threshold = split into a referenced file (one level deep, with a Table of Contents at the top if >100 lines).
+Every consumer imposes size limits on its prompt files; know the target's limits before writing and split via progressive disclosure above them (one reference level deep, with a Table of Contents at the top if >100 lines). The Claude-harness limits table lives in `/pcm § Claude-harness prompt law`.
 
 ## Anti-patterns — cut on sight
 
 1. **Time-sensitive narration.** "On 2026-05-19...", "after the X incident", the one-word recency markers ("now", "recently", "no longer"), and deferred-feature notes ("not wired yet", "planned"). Encode the current rule; incidents go in the commit message or epic manifest, future intent in the epic — never the prompt.
 2. **Dates of change.** Changelog-style "changed 2026-06-07" lines or update-history dates inside a prompt or `.professor/` ledger are the same antipattern — version control already timestamps every change. State the current rule, never when it changed.
-3. **Restating one rule — reworded OR repeated across sections (NO DUPLICATION).** Two phrasings of one rule, or the same rule echoed in a non-negotiable, a routing-table cell, and a process bullet (e.g. three copies of "route framework changes through `/pcm`"), make Claude pick one arbitrarily and rot out of sync. State each rule ONCE in its canonical home. Before adding a rule, grep the whole file for its key noun; if it already lives somewhere, sharpen that one and stop. When a rule sits in both step prose and a Rules/checklist section, the Rules section is the canonical home; sacred-ground rules alone may keep one extra point-of-use reminder.
+3. **Restating one rule — reworded OR repeated across sections (NO DUPLICATION).** Two phrasings of one rule, or the same rule echoed in a non-negotiable, a routing-table cell, and a process bullet, make the model pick one arbitrarily and rot out of sync. State each rule ONCE in its canonical home. Before adding a rule, grep the whole file for its key noun; if it already lives somewhere, sharpen that one and stop. When a rule sits in both step prose and a Rules/checklist section, the Rules section is the canonical home; sacred-ground rules alone may keep one extra point-of-use reminder.
 4. **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
-5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Voice lives in `.claude/output-styles/` — the session persona as the active output style (main-loop only; subagents never receive it), command personas as overlay files read at invocation. CLAUDE.md and every agent/skill/command carry zero voice.
+5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Working prompts carry zero voice; voice belongs in the consumer's dedicated persona layer (for the Claude harness: `/pcm § Claude-harness prompt law`).
 6. **Rationale that rephrases the rule — labeled "Why:" or not.** Trailing purpose clauses and rationale parentheticals whose content the rule's wording already implies. The rule's purpose lives in the rule's wording.
-7. **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SENSITIVE_DATA}, {DOMAIN_ADJ} safety, secrets).
+7. **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground ({SENSITIVE_DATA}, {DOMAIN_ADJ} safety, secrets) — an isolated "do not X" measurably degrades untargeted behavior (`{AI_PROJECT}/knowledge/bias/llm-biases.md` Part 4, ~31.5% collateral).
 8. **Aggressive emphasis on non-sacred rules** — "CRITICAL", "YOU MUST", "MANDATORY", "(MANDATORY)" heading suffixes, capitalized intensifiers. Frontier models overtrigger on it. Plain language for ordinary rules; reserve emphasis for invariants.
 9. **Inconsistent terminology** — mixing "endpoint / URL / route", "field / box / element", "extract / pull / get". One canonical term per concept, used everywhere.
 10. **Cross-references that say nothing new** ("See § X above" two paragraphs up). If the reference matters, summarize the takeaway inline.
-11. **Inline cross-file restatement** — a file restating rules already in a file co-loaded in its stream: child CLAUDE.md vs root CLAUDE.md, a project's agents vs the project CLAUDE.md they read at start. Each file keeps ONLY its local delta.
+11. **Inline cross-file restatement** — a file restating rules already in a file co-loaded in its stream (a child config vs the parent it always loads with). Each file keeps ONLY its local delta.
 12. **Multiple options when one default suffices.** "Use pypdf, pdfplumber, PyMuPDF, or pdf2image" → "Use pdfplumber. For OCR, use pdf2image+pytesseract."
 13. **Examples that don't pin down behavior.** An example earns its tokens only if the rule alone wouldn't produce the same output. An example naming an external consumer of a format (a grep pattern that must keep matching) pins behavior — keep it.
-14. **Vague descriptions.** "Helps with documents", "Processes data", "Does stuff with files" → no auto-invocation.
-15. **Deeply nested file references** (SKILL.md → reference.md → details.md). Claude `head -100`s and misses content. Keep references one level deep.
+14. **Vague descriptions.** "Helps with documents", "Processes data", "Does stuff with files" → the consumer cannot route to it.
+15. **Deeply nested file references** (entry file → reference.md → details.md). The model reads the head and misses content. Keep references one level deep.
 16. **Inline incident logs in references / gotchas.** Once the rule is codified, the incident becomes redundant. Move it to the commit message or epic manifest.
-17. **Cross-document restatement.** Copying SQL/SDL/contract bodies between docs — or mirroring a co-read doc's whole section (an agent restating a CLAUDE.md § wholesale) — cite doc + section plus the local delta instead ("cite, don't restate").
+17. **Cross-document restatement.** Copying SQL/SDL/contract bodies between docs — or mirroring a co-read doc's whole section — cite doc + section plus the local delta instead ("cite, don't restate").
 18. **Token-heavy formatting.** HTML tags (`<example>`, `<div>`), XML-style wrappers, drawn ASCII boxes, decorative dividers, decorative emoji legends, bold labels restating the code block they introduce, stray editing debris (empty fences, orphaned markup) — they cost tokens markdown gives free. Use `## Example` over `<example name=…>`, a fenced block over a drawn box, a single `—` over a rule of dashes. Keep the structure, drop the scaffolding.
-19. **List-item definitions read `- term: gloss`** — a plain term, a colon, one tight gloss. The smell is a bold term, an em-dash, and clauses chained with `;` / `—` into a run-on. `- High: the default — step up only for a genuinely hard problem` beats `- **High** — the level you reach for in nearly all work; balances depth against cost; step up only when the task truly demands it`. Same law for command references: a gloss restating the command's own flags (`` `dev` = `next dev -p 4000` — dev server on port 4000 ``) is dead weight.
+19. **List-item definitions read `- term: gloss`** — a plain term, a colon, one tight gloss. The smell is a bold term, an em-dash, and clauses chained with `;` / `—` into a run-on. `- High: the default — step up only for a genuinely hard problem` beats `- **High** — the level you reach for in nearly all work; balances depth against cost; step up only when the task truly demands it`. Same law for command references: a gloss restating the command's own flags is dead weight.
+
+## Correctness & model behavior
+
+The second axis: the rules above keep prompts SHORT; these keep the model's OUTPUT correct — a lean prompt can still be wrong. Empirical companion: `{AI_PROJECT}/knowledge/bias/llm-biases.md` (field-order, few-shot 2–4, verbosity, do-not collateral, target-language gaps) — this file is the craft, that one is the evidence.
+
+**Numbers — compute, don't ask.**
+
+- Inject the computed value, never the calculation. A ratio/fraction/count-of-a-count ("no leaf > 40% of segments") is arithmetic the model can't do — compute `{max_segments_per_topic}` in code and inject the number.
+- One operative number, singular. An illustrative "12" hardcoded beside a computed placeholder is two caps, one fake — illustrative numbers stay "e.g." in prose; the injected variable is the only cap.
+
+**Instruction conflicts — one pull at a time.**
+
+- No gas-and-brake. A cap + a completeness demand + an overrun penalty fight each other and the model thrashes; audit for mutually-exclusive directives, keep one.
+- Rules interact. Removing one rule worsens a failure elsewhere (whack-a-mole) — test every rule change against the OTHER failure modes, not just its target.
+
+**Structure & order.**
+
+- Job first · define before use · explain every slot · critical constraint last. Open with a one-line job statement; never reference a term before it is defined; give every injected slot (`{prior_block}`, `{transcript}`) a one-line "what it is / what not to infer"; restate the single most important constraint at the very END — recency, the last thing the model reads before generating.
+
+**Language.**
+
+- A translated prompt is a NEW prompt. A fresh translation silently regresses (a target-language register gap is an unvalidated risk until proven otherwise — see the bias reference); validate each language independently, never assume the source-language prompt carries over.
+
+**When a rule is disobeyed, escalate — don't shout louder:**
+
+1. Add a contrastive WRONG→RIGHT example drawn from the real failure (§ Teaching by example, next) — "skip filler" was ignored until an example drew the line.
+2. Reframe positively — state what TO do (anti-pattern 7).
+3. Shape the input, or enforce in code, so the wrong output is unreachable (§ Enforce invariants with mechanisms) — excluding disallowed turns from the index so they can't be cited beat three rounds of "don't include them"; a prompt can't reliably hold a hard constraint.
 
 ## Teaching by example — when a stated rule keeps leaking
 
@@ -89,42 +108,32 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 
 ## Pre-commit self-check (run before saving any prompt file)
 
-1. **Cut test:** Did I delete every line that wouldn't change Claude's behavior?
-2. **Threshold:** Is the file under its limit (CLAUDE.md ≤200, SKILL.md ≤500)?
+1. **Cut test:** Did I delete every line that wouldn't change the model's behavior?
+2. **Size:** Is the file under its consumer's limit (Claude-harness table: `/pcm § Claude-harness prompt law`)?
 3. **Frontmatter discipline:** Does the body re-state what's already in `description:`? Cut.
 4. **One canonical term:** Did I sweep for synonym mixing?
 5. **Positive framing:** Is every "do NOT" a sacred-ground rule? If not, rewrite as a positive instruction.
 6. **No time-stamps:** No "2026-XX-XX", no "after the X incident", no "we used to". Encode rules, not history.
 7. **Aggressive emphasis only on invariants:** "MUST" / "NEVER" / "MANDATORY" earn their place only on sacred ground.
-8. **References one level deep:** No SKILL.md → ref.md → ref2.md chains.
-9. **Cross-file deduplication:** Is this rule already declared in a parent file (root CLAUDE.md, root agent)? If yes, delete here; keep only the local delta.
-10. **Colleague test:** Could a colleague with no context follow this? If they'd be confused, Claude will be too.
-11. **No duplication:** Did I grep this file for the rule's key noun and confirm it appears in exactly ONE section? And did I leave skill/command rosters out (Claude Code self-indexes them)?
+8. **References one level deep:** No entry → ref.md → ref2.md chains.
+9. **Cross-file deduplication:** Is this rule already declared in a co-loaded parent file? If yes, delete here; keep only the local delta.
+10. **Colleague test:** Could a colleague with no context follow this? If they'd be confused, the model will be too.
+11. **No duplication:** Did I grep this file for the rule's key noun and confirm it appears in exactly ONE section?
+12. **Correctness axis:** Numbers computed in code (not asked of the model), no conflicting directives, every injected slot defined, the one critical constraint stated last, each language validated?
 
-## Where things go (anti-bloat routing)
+## Enforce invariants with mechanisms, not repetition
 
-| Content                                             | Belongs in                                            | NOT in                                            |
-| ----------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------- |
-| Behavioral rules                                    | Prompt files (CLAUDE.md, agents, commands, skills)    | —                                                 |
-| Incident narratives ("on 2026-XX-XX...")            | Commit message / epic manifest (`docs/epics/{name}/`) | Prompt files                                      |
-| Architectural decisions / why-this-design           | Epic manifest or `docs/commands/{cmd}/references/`    | Prompt files (encode the rule, not the rationale) |
-| Voice / character flavor                            | `.claude/output-styles/` (session style + overlays)   | CLAUDE.md, agents, skills, commands (zero voice)  |
-| Project-specific tooling                            | Child CLAUDE.md only                                  | Per-project agents (already inherit via parent)   |
-| Cross-cutting templates (report format, plan shape) | One canonical reference file                          | Duplicated per-project                            |
-
-## Hooks vs prompts
-
-For things that must happen every time (formatting, validation, secret-scanning), write a hook (`.claude/settings.json` PreToolUse / PostToolUse) — deterministic, cheap. Prompts are advisory; the model can drift. Don't try to enforce critical invariants by repeating "ALWAYS DO X" in the prompt. Once a hook owns an invariant, delete the prompt rule that restated it — keeping both is duplication against a deterministic mechanism.
+Prompts are advisory; the model can drift. For things that must happen every time (formatting, validation, secret-scanning), use the consumer's deterministic enforcement layer instead of repeating "ALWAYS DO X" in the prompt — and once a mechanism owns an invariant, delete the prompt rule that restated it (keeping both is duplication against a deterministic mechanism). The Claude-harness mechanism is hooks: `/pcm § Claude-harness prompt law`.
 
 ## Iteration discipline
 
 When a rule fails in practice:
 
-1. Observe Claude's actual output (not how the prompt reads).
+1. Observe the model's actual output (not how the prompt reads).
 2. Diagnose: is the rule ambiguous, contradicted by another rule, or buried in noise?
 3. Fix surgically — sharpen, move, scope. Adding more emphasis is rarely the answer.
 
-If the failure is recurring and structural, consider a hook instead.
+If the failure is recurring and structural, move the invariant to a deterministic mechanism.
 
 ## /km knowledge files are prompts too
 

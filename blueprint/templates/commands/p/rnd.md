@@ -11,7 +11,7 @@ The user gives you a **goal** — not a topic to survey but an **outcome to achi
 
 ## NEVER touch real code (the one inviolable boundary)
 
-RND works ONLY inside its `.professor/RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
+RND works ONLY inside its `.professor/RND/{goal-name}/` sandbox. It NEVER edits a real project file — not a `.py`, not a prompt under `knowledge/`, not via `/km`, not via any tool. It validates the fix by **in-process monkey-patch** (import the production module, patch the target at runtime from the sandbox) and ships the deliverable as a **`PROPOSED_DIFF.md`**. The Professor (or `/jc` / `/wave:builder`) judges that proposal and applies the real change only after the user ratifies it, having seen the completed RND result: whatever instruction authorized the RND itself (e.g. "fix it", "RND this and fix", "fix it with my steering") authorizes the research and the proposal, never the landing. Present the deliverable and wait for that post-RND ratification before any real file changes. An RND agent that edits a real file has broken the skill — stop and revert. This holds even when the goal is "fix X": RND's job is to find and PROVE the fix, never to land it.
 
 ---
 
@@ -205,7 +205,7 @@ When the loop ends (goal satisfied, exhausted, or user abort):
 
 **Winner:** {approach name}
 
-**Result:** the validated fix, written to `.professor/RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:builder`) lands it.
+**Result:** the validated fix, written to `.professor/RND/{goal-name}/PROPOSED_DIFF.md` — the exact code/prompt change to apply, never applied to a real file here. The Professor (or `/jc` / `/wave:builder`) lands it after user ratification.
 
 **Why this approach won:** {brief rationale — what made it better than others}
 
