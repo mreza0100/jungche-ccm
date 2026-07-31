@@ -424,129 +424,6 @@
     "templates/epics/TEMPLATE.md": {
       "curated": true
     },
-    "templates/host-swap/README.md": {
-      "curated": true
-    },
-    "templates/host-swap/bb.command.md": {
-      "sources": {
-        "~/.claude/commands/bb.md": "3b25d7cfce2c20183d3a882243b391848d27f22535b428953cf6e75fa94dca65"
-      }
-    },
-    "templates/host-swap/chat/branch.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/branch.md": "73ade7e28ca2f5a4a70128154757d1698faa5e15c849e0e76252c159fea76bf5"
-      }
-    },
-    "templates/host-swap/chat/capture.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/capture.md": "908f16f9e8086ca8049a379b43662a03a1feb40aaf7d854f332a6c3a180ebebf"
-      }
-    },
-    "templates/host-swap/chat/chat.sh": {
-      "sources": {
-        "~/.claude/commands/chat/chat.sh": "84f77f012f068d3ba7a6e53da868e9c837c43dcec43d8014abb2591dd333d27e"
-      }
-    },
-    "templates/host-swap/chat/dump.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/dump.md": "6151a4dff281d63578d84d51827b69d7918ce690b594ac2d4ca8a0f74e7520e7"
-      }
-    },
-    "templates/host-swap/chat/find.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/find.md": "044a798f57fe8e00946751fbd69526a3e547482dcaba62197709e3f624361930"
-      }
-    },
-    "templates/host-swap/chat/goal.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/goal.md": "3901da9f6c04f19ed5de5b36963a6d61f8a1467d96e7dde0103cbe0a4efc145c"
-      }
-    },
-    "templates/host-swap/chat/history.sh": {
-      "sources": {
-        "~/.claude/commands/chat/history.sh": "b141151dd51f201982bda44fa90ed9d0441cd14d2fcc4634f2c390684b1726dc"
-      }
-    },
-    "templates/host-swap/chat/inject.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/inject.md": "be18601a35acf05178c3bb38baf66c2f06235c5b13faaa9a6b6a804fca171a1d"
-      }
-    },
-    "templates/host-swap/chat/interrogate.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/interrogate.md": "b832be82de7886ed414e0319cf5b5ef68d8050011e626bf82799f9b5dea3cc6b"
-      }
-    },
-    "templates/host-swap/chat/load.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/load.md": "f847d633120ba58ec8edde2168f7bced6afd5a8df4c791e82483407abbc21594"
-      }
-    },
-    "templates/host-swap/chat/ls.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/ls.md": "39a03eeaaf5e4b66b3bfb78799ebf73dc16781732055c6a1b3406dcd45149a34"
-      }
-    },
-    "templates/host-swap/chat/new.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/new.md": "5060ac897b0faa7a44529c0602739d49a3fab4f7acf278d1d9a28f279083b068"
-      }
-    },
-    "templates/host-swap/chat/read.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/read.md": "6c4bc656233256b5ab4e25c8a12f68ac3b091da0d747031e1b25defcffdda4df"
-      }
-    },
-    "templates/host-swap/chat/save.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/save.md": "75bbe12d096dd254e94c443dd2cb403bb7e6efdc9a23e2c9f20e1a6d786f4052"
-      }
-    },
-    "templates/host-swap/chat/self/compact.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/self/compact.md": "e160bc13a87c36f1c7d8a1246666be76ff4933abf03c5dea6a707fff5b7e975f"
-      }
-    },
-    "templates/host-swap/chat/whoami.command.md": {
-      "sources": {
-        "~/.claude/commands/chat/whoami.md": "85de096ae7eba25f84e8e8e8f2ca303fb06f15448a00f26684ac290b06bf5695"
-      }
-    },
-    "templates/host-swap/cc-agent-open.sh": {
-      "sources": {
-        "~/work/host-ops/cc-fleet/cc-agent-open.sh": "c0a091a68adc7d623c52c6e397f6ed7b4b2b274700c897007120dbaeb4d01f70"
-      }
-    },
-    "templates/host-swap/cc-hide.sh": {
-      "sources": {
-        "~/work/host-ops/cc-fleet/cc-hide.sh": "60061a4a6d330f266afc93e8715b98ccd541299a345a076d4c12410762db035e"
-      }
-    },
-    "templates/host-swap/cc-ls.snippet.sh": {
-      "sources": {
-        "~/work/host-ops/cc-fleet/cc-fleet.zsh": "ca2f563b056a2f20391cf28fd87ec950c8d59228ea21f42fe4d2c060d5772cce"
-      }
-    },
-    "templates/host-swap/cc-reap.sh": {
-      "sources": {
-        "~/work/host-ops/devbox/scripts/cc-reap.sh": "82ea438bccec169573f7fd7dfe139d48b4e63f85c9c66e0f7221d1de76ce08fc"
-      }
-    },
-    "templates/host-swap/statusline-badge.snippet.sh": {
-      "sources": {
-        "~/.claude/statusline-command.sh": "cccc61aebac59db00d11605cac3f683349eeb7ef5a3bc612da9f64fb2d0989ee"
-      }
-    },
-    "templates/host-swap/swap.command.md": {
-      "sources": {
-        "~/.claude/commands/swap.md": "1caa236da0cb5bf6fab7e115d10ca6d14065071a1536cddd26279f404e5a411f"
-      }
-    },
-    "templates/host-swap/zshrc-swap.snippet.sh": {
-      "sources": {
-        "~/work/host-ops/cc-fleet/cc-fleet.zsh": "ca2f563b056a2f20391cf28fd87ec950c8d59228ea21f42fe4d2c060d5772cce"
-      }
-    },
     "templates/output-styles/dr-house.compact.md": {
       "sources": {
         ".claude/output-styles/dr-house.md": "0987584aa32a97524c0a3c982c1f9a3419831ac30b52356654e5e4570f7b3005"
@@ -726,6 +603,102 @@
       "sources": {
         "docs/commands/build/references/qa-commons.md": "c0473b657acb9c63194c650ad9dfced4037c696a1cb2cd216d286bfb210f5300"
       }
+    },
+    "templates/host-swap/README.md": {
+      "curated": true
+    },
+    "templates/host-swap/bb.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/cc-agent-open.sh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-archive.sh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-db.sh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-fleet.zsh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-hide.sh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-reap.sh": {
+      "curated": true
+    },
+    "templates/host-swap/cc-swap-chat.sh": {
+      "curated": true
+    },
+    "templates/host-swap/chat/branch.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/capture.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/chat.sh": {
+      "curated": true
+    },
+    "templates/host-swap/chat/dump.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/find.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/goal.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/history.sh": {
+      "curated": true
+    },
+    "templates/host-swap/chat/inject.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/interrogate.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/load.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/ls.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/new.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/read.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/save.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/self/compact.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/chat/whoami.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/cx-hide.sh": {
+      "curated": true
+    },
+    "templates/host-swap/install.sh": {
+      "curated": true
+    },
+    "templates/host-swap/statusline-badge.snippet.sh": {
+      "curated": true
+    },
+    "templates/host-swap/swap.command.md": {
+      "curated": true
+    },
+    "templates/host-swap/tests/db-fixtures.sh": {
+      "curated": true
+    },
+    "templates/host-swap/tests/install-fixtures.sh": {
+      "curated": true
+    },
+    "templates/host-swap/tests/selflocate-fixtures.sh": {
+      "curated": true
     }
   }
 }

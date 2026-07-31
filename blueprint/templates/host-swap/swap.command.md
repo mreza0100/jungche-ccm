@@ -1,38 +1,30 @@
 ---
 name: swap
-description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another account (whichever account numbers you configured in zshrc-swap.snippet.sh, e.g. 1|2|3) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains.
-allowed-tools: Bash(~/.claude/bin/cc-swap-chat.sh:*)
+description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another Claude account (1|2|3) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains. Usage /swap <1|2|3|--1h on|off> [--then "<prompt>"]. Account 4 (GPT) is NOT a swap target: GPT and Claude chats never cross, so /swap refuses in either direction.
 ---
 
-# `/swap [<n>] [--1h on|off] [--then "<prompt>"]` — reboot this chat under another account / cache mode
+# `/swap [<1|2|3>] [--1h on|off] [--then "<prompt>"]` — reboot this chat under another account / cache mode
 
-**This command needs an engine you write.** The blueprint ships the `/swap` *contract* below —
-the mechanism a reboot-in-place script must implement — but not the script itself: it depends on
-how you launch chats (tmux socket layout, per-account config dirs), which is host-specific and
-not something this template can assume for you. `allowed-tools` above names
-`~/.claude/bin/cc-swap-chat.sh` as the conventional drop-in location; point it at wherever you
-actually place your script, and author that file yourself. Until it exists, `/swap` has nothing
-to run.
+**Accounts 1-3 only.** Account 4 is the GPT account (Claude Code harness on `claude-code-proxy`);
+its transcripts never move to an Anthropic account and no Claude chat moves onto it. `/swap 4`
+from a Claude chat, and any `/swap 1|2|3` from a GPT chat, refuse with a message instead of
+rebooting. Start a GPT chat with `cc4`, or the `✦ 🍀 new GPT chat here` row in `cc-ls`.
 
-## What the engine must do
+Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
-Given `$ARGUMENTS` (`[<n>] [--1h on|off] [--then "<prompt>"]`), the script this command shells
-out to must:
+```
+bash ~/.claude/bin/cc-swap-chat.sh $ARGUMENTS
+```
 
-1. **Resolve the target env** — the account config dir for `<n>` (skip if no account arg — see
-   § Cache-only reboot) and/or the cache-TTL env var for `--1h`.
-2. **Respawn in place** — end this chat's process, then launch a fresh `claude` in the
-   **SAME tmux pane and the SAME tmux socket**, under the resolved env. Split sibling panes and
-   any other chat's socket are untouched; nothing disconnects the terminal, the pane just blinks
-   and returns with the same conversation (`claude --resume`/`--continue` over this chat's own
-   transcript, or equivalent).
-3. **Optional `--then "<prompt>"` handoff** — after the respawned chat reaches its input box,
-   type and submit the prompt automatically, so work continues unattended.
+~1.5s later this chat auto-`/exit`s and **reboots IN PLACE — same window, same pane, same tmux
+socket — under the target env** (medal badge + theme switch accordingly). Fully seamless in
+every terminal: nothing disconnects, the pane just blinks and returns with the same conversation.
+Split siblings untouched. With `--then`, the script waits for the reborn chat to reach its input
+box, then types and submits the prompt — the reborn you has the full conversation, so a short
+directive is enough.
 
-Once wired up, invoking `/swap` should feel like: run the engine once via the Bash tool as your
-LAST action (the chat is about to exit), then reply with ONE short line and END YOUR TURN
-immediately — a turn still running when the exit lands is force-killed after 20s, and in-flight
-sub-agents die with it.
+After running it, reply with ONE short line and END YOUR TURN immediately — a turn still running
+when the `/exit` lands is force-killed after 20s, and in-flight sub-agents die with it.
 
 ## Cache-only reboot — `/swap --1h on|off`
 
@@ -50,9 +42,8 @@ instead of stalling:
 1. **Land in-flight work first** — sub-agents, workflows, and background tasks do NOT survive the
    reboot. Finish or checkpoint them; never swap mid-flight.
 2. **Pick a DIFFERENT account**: current = `${CLAUDE_CONFIG_DIR:-~/.claude}` — `~/.claude` → 1,
-   `~/.claude2` → 2, `~/.claude3` → 3 (whichever numbers you configured).
+   `~/.cc/2` (legacy `~/.claude2`/`~/.claude3`) → 2, `~/.cc/3` → 3.
 3. **Swap with a handoff**:
-   `/swap <other-n> --then "Continue: <what you were doing + the next concrete step>"`
-   (requires your engine at the `allowed-tools` path to be wired up — see above).
+   `bash ~/.claude/bin/cc-swap-chat.sh <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you
    reads the `--then` prompt and continues on the fresh account's budget.
