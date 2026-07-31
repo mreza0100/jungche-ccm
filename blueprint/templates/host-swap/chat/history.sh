@@ -4,11 +4,15 @@
 # redraws in place); the .jsonl transcript is the unbounded record. Signatures carry the
 # sid prefix this script resolves ("sid 3737775b" → 3737775b*.jsonl in any account pool).
 #
-# usage: history.sh <sid-prefix|jsonl-path> [messages=20] [project-slug=derived from the current repo]
+# usage: history.sh <sid-prefix|jsonl-path> [messages=20] [project-slug=this repo's]
+#
+# The project slug is Claude Code's own naming for a project's transcript dir: the absolute
+# working directory with every "/" turned into "-". Defaulting it to $PWD's slug means the
+# lookup follows you from repo to repo instead of pinning one project's pool.
 set -euo pipefail
 sid="${1:?usage: history.sh <sid-prefix|jsonl-path> [messages] [project-slug]}"
 n="${2:-20}"
-slug="${3:-$(git rev-parse --show-toplevel 2>/dev/null | tr '/.' '--')}"
+slug="${3:-${PWD//\//-}}"
 
 if [ -f "$sid" ]; then
   f="$sid"

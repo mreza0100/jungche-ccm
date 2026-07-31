@@ -11,10 +11,6 @@
 #   attach   — connect to the running process via the agent view (keeps its original everything).
 # Default: takeover unless the agent is BUSY (computing right now) · busy → attach.
 # A lock-holder that lives inside a cc-* tmux is attached via its own window instead.
-#
-# N-account generic: the current primary is read from ~/.claude-primary (number N → ~/.claudeN;
-# 1 → the unset default ~/.claude). The registry is probed across the default account plus every
-# ~/.claude[0-9]* config dir found on disk (the same convention cc-reap's busy-scan uses).
 set -u
 u="${1:?usage: cc-agent-open.sh <uuid> [cwd] [owning-config-dir]}"
 cwd="${2:-$PWD}"; owncfg="${3:-}"
@@ -22,10 +18,10 @@ cwd="${2:-$PWD}"; owncfg="${3:-}"
 # PER-UUID TAKEOVER MUTEX. Two terminals opening the same ⚙ agent row both snapshot the
 # registry, both TERM the pid, then both `claude --resume <u>` — and the harness session lock
 # refuses only BACKGROUND holders, so two INTERACTIVE resumes are admitted, appending one
-# transcript (the corruption class the solo-instance guard exists to prevent, on the one path
-# it skips). A non-blocking flock serializes takeover+resume per uuid; the loser exits with
-# guidance. Held for the script's life (the fd survives the `exec` attach and the foreground
-# resume), so a second open can't race in while this one owns the session.
+# transcript (the corruption class _cc_solo exists to prevent, on the one path it skips).
+# A non-blocking flock serializes takeover+resume per uuid; the loser exits with guidance.
+# Held for the script's life (the fd survives the `exec` attach and the foreground resume),
+# so a second open can't race in while this one owns the session.
 mkdir -p /tmp/cc-sid 2>/dev/null; chmod 700 /tmp/cc-sid 2>/dev/null || true
 exec 8>"/tmp/cc-sid/.takeover-$u.lock" 2>/dev/null || true
 if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
@@ -34,34 +30,30 @@ if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
   exit 1
 fi
 
-# config dir for account N: 1 (or unset) → "" (the default ~/.claude); else ~/.claudeN
-_cfg_of() { case "$1" in 1|"") echo "" ;; *) echo "$HOME/.claude$1" ;; esac; }
-# account number for a config dir: "" / ~/.claude → 1; else the trailing digits of ~/.claudeN
-_acct_of() { case "$1" in ""|"$HOME/.claude") echo 1 ;; *) local n="${1##*/.claude}"; echo "${n:-1}" ;; esac; }
+# CC_FLEET_HOME — this bundle's OWN directory, resolved THROUGH symlinks. install.sh links these
+# scripts into ~/.claude/bin, so $BASH_SOURCE is the link, not the file: taking its dirname
+# straight would hunt for siblings in the link's directory. Plain `readlink` (never -f) because
+# macOS ships BSD readlink, which has no -f.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 
-prim=1; [ -f "$HOME/.claude-primary" ] && prim="$(cat "$HOME/.claude-primary")"
-pcfg="$(_cfg_of "$prim")"
+prim="$(bash "$CC_FLEET_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
+case "$prim" in 2|3) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
 
-cc() {  # run claude under a config dir ("" = the default account / unset); never inherit a host chat's identity
+cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit a host chat's identity
   local cfg="$1"; shift
   if [ -n "$cfg" ]; then env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE CLAUDE_CONFIG_DIR="$cfg" claude "$@"
   else env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR claude "$@"; fi
 }
 
-# find this session in the agent registry (owning account if known, else every configured account).
+# find this session in the agent registry (owning account if known, else both accounts).
 # Match .sessionId OR the short .id prefix — the registry shows the RESUMED transcript's id
 # for forked sessions, while cc-ls keys by transcript filename.
 # jq gotcha: inside `$u|startswith(...)` the input is $u (a string), so the row's .id must be
 # captured as a variable BEFORE the pipe — bare `.id` there indexes the string and jq aborts
 # the whole stream, hiding every row after the first id-bearing one.
 hit=""; hitcfg=""
-if [ -n "$owncfg" ]; then
-  [ "$owncfg" = "$HOME/.claude" ] && owncfg=""   # normalize the default account to ""
-  cands=("$owncfg")
-else
-  cands=("")                                          # account 1 / the unset default…
-  for d in "$HOME"/.claude[0-9]*; do [ -d "$d" ] && cands+=("$d"); done   # …plus every extra ~/.claudeN
-fi
+if [ -n "$owncfg" ]; then cands=("$owncfg"); else cands=("" "$HOME/.cc/2" "$HOME/.cc/3" "$HOME/.cc/4"); fi
 for cfg in "${cands[@]}"; do
   # judge by parseable output, not exit code — a registry that answers is a registry that counts
   j="$(timeout 20 bash -c '
@@ -89,7 +81,8 @@ pid="$(printf '%s' "$hit" | jq -r '.pid // empty')"
 # done) — a wave agent between turns reads idle+working, and only busy means "computing right
 # now". Routing on .state sent idle agents to the attach view, where picking them wedges.
 st="$(printf '%s' "$hit" | jq -r '.status // .state // "unknown"')"
-oacct="$(_acct_of "$hitcfg")"
+# legacy ~/.claude2 / ~/.claude3 paths = account 2 (old sessions' env still carries them)
+oacct=1; case "$hitcfg" in "$HOME/.cc/2"|"$HOME/.claude2"|"$HOME/.claude3") oacct=2 ;; "$HOME/.cc/3") oacct=3 ;; "$HOME/.cc/4") oacct=4 ;; esac
 
 # a lock-holder living inside a cc-* tmux is just a CHAT whose breadcrumb went missing (statusline
 # never rendered) — attach its own window; the agents view can't reach it and the resume refuses

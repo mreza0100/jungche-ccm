@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# CC_FLEET_HOME — the fleet bundle this script belongs to. chat.sh sits one level under it
+# (bundle/chat/chat.sh alongside bundle/cc-db.sh), and install.sh symlinks it into
+# ~/.claude/commands/chat/, so resolve THROUGH the link before stepping up a directory —
+# $BASH_SOURCE is the link, and its dirname is the install path, not the bundle. Plain
+# `readlink` (never -f) because macOS ships BSD readlink, which has no -f.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")/.." && pwd)}"
+
 # chat.sh — the chat: family engine, one script with subcommands. Lives in
 # $HOME/.claude/commands/chat/ (global — shared by every repo; repo .claude/commands/chat
 # entries are symlinks here); each chat/<name>.md command calls `chat.sh <name>`.
@@ -53,12 +61,12 @@ JQ
 # outside a git repo.
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd -P; }
 
-# tmux_from_ancestry: recover this chat's TMUX from the nearest ancestor that carries
-# it. A launcher may spawn this script's shell WITHOUT passing tmux context through
-# (measured as TMUX unset / TMUX_PANE unset even though the chat IS inside a tmux
-# pane), which would otherwise leave every message from that shell unsigned (no
-# handle, no label). Identity stays the SCRIPT's job: the value is read from the
-# caller's OWN process chain, never accepted from a caller flag.
+# tmux_from_ancestry: recover this chat's TMUX from the nearest ancestor that carries it.
+# A chat engine may spawn its tool-shell WITHOUT passing tmux context through — the codex
+# path measures as TMUX=unset / TMUX_PANE=unset / PPID=codex, which left every codex-origin
+# message unsigned (no handle, no label, and CLAUDE_CODE_SESSION_ID is unset at codex launch
+# too, so all three signature parts came back empty at once). Identity stays the SCRIPT's job:
+# the value is read from the sender's OWN process chain, never accepted from a caller flag.
 tmux_from_ancestry() {
   local pid="${1:-$PPID}" depth=0 val
   while [[ -n "$pid" && "$pid" -gt 1 && depth -lt 12 ]]; do
@@ -70,11 +78,11 @@ tmux_from_ancestry() {
   return 1
 }
 
-# NEVER export a recovered value globally. An empty $TMUX is not always a defect to
-# repair: this script CLEARS it deliberately when probing another chat's socket, and a
-# global re-export would point every such probe at the SENDER's own session instead.
-# The fallback is scoped per call, to the one command that needs it, and is never
-# exported.
+# NEVER export a recovered value globally. An empty $TMUX is not always a defect to repair:
+# this script CLEARS it deliberately when probing another chat's socket, and a global re-export
+# points every such probe at the SENDER's own session instead (measured: every codex chat
+# vanished from `ls` and became uninjectable). The fallback is scoped per call, to the one
+# command that needs it, and is never exported.
 self_tmux() {
   local t="${TMUX:-}"
   [[ -n "$t" ]] || t="$(tmux_from_ancestry 2>/dev/null || true)"
@@ -83,16 +91,30 @@ self_tmux() {
 }
 
 # self_label: this chat's own 🔖 label (its /rename name), read from its own statusline —
-# the line carrying both 🔖 and the model symbol (◆/◇/○/●, always emitted). Empty when
-# not in tmux or unlabeled. Anchored on the model symbol (always present) rather than 🌿
-# (only when git symbolic-ref succeeds — absent outside a repo or in detached HEAD, which
-# made a labeled chat unaddressable there). Still collision-proof: this script prints 🔖
-# but never a model symbol, so no command-echo line in our own pane can satisfy both.
+# the line carrying both 🔖 and the account badge (🥇/🥈/🥉/🍀). Empty when not in tmux or
+# unlabeled. Anchored on the badge (always emitted) rather than 🌿 (only when git
+# symbolic-ref succeeds — absent outside a repo or in detached HEAD, which made a labeled
+# chat unaddressable). Still collision-proof: this script prints 🔖 but never a badge, so
+# no command-echo line in our own pane can satisfy both.
+# CODEX FALLBACK: a codex chat has no 🔖 statusline, which left codex-origin signatures
+# opaque (bare cx-… handle, no name). When the scrape finds nothing AND this chat's own
+# socket basename is cx-*, fall back to the tmux window name — the human thread name, set
+# by cc-fleet — returned BARE (no ⬢ prefix: the signature must carry exactly the label the
+# founder gave the chat, and a recipient replying by that label must resolve; the cx-…
+# reply handle already says which engine it is). The 🔖+badge anchor always wins when
+# present — the Claude path is unchanged.
 self_label() {
-  local s
+  local s lbl sockbase
   s="$(self_tmux 2>/dev/null || true)"; [[ -n "$s" ]] || return 0
-  tmux capture-pane -t "$s" -p -J 2>/dev/null | grep -F '🔖' | grep -E '◆|◇|○|●' | tail -1 \
-    | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true
+  lbl="$(tmux capture-pane -t "$s" -p -J 2>/dev/null | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 \
+    | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
+  if [[ -z "$lbl" && -n "${TMUX:-}" ]]; then
+    sockbase="${TMUX%%,*}"; sockbase="${sockbase##*/}"
+    if [[ "$sockbase" == cx-* ]]; then
+      lbl="$(tmux display-message -p '#{window_name}' 2>/dev/null || true)"
+    fi
+  fi
+  printf '%s\n' "$lbl"
 }
 
 # _pane_busy <tmux-session> [socketpath]: true while Claude Code is actively
@@ -159,12 +181,11 @@ _inject_lock_release() {
 }
 
 # _inject_lock_beat: refresh the owner epoch so the steal test (held-past-MAXHOLD) measures
-# STALL, not total hold. A live holder legitimately runs past 60s under heavy multi-target
-# fan-out (many tmux roundtrips + bounded sleeps); without a heartbeat a contender would
-# steal the lock from a working holder. Called at each long-loop iteration below.
-# OWNERSHIP-AWARE: if the owner file no longer carries our pid, the lock was stolen — do NOT
-# rewrite it (that would clobber the thief's claim and re-open the pane to a third writer);
-# just stop beating.
+# STALL, not total hold. A live holder legitimately runs past 60s under fleet load (~120
+# tmux roundtrips + bounded sleeps); without a heartbeat a contender would steal the lock
+# from a working holder. Called at each long-loop iteration below. OWNERSHIP-AWARE: if the
+# owner file no longer carries our pid, the lock was stolen — do NOT rewrite it (that would
+# clobber the thief's claim and re-open the pane to a third writer); just stop beating.
 _inject_lock_beat() {
   [[ -n "${INJECT_LOCKDIR:-}" ]] || return 0
   local _line; _line="$(cat "$INJECT_LOCKDIR/owner" 2>/dev/null || true)"
@@ -200,11 +221,12 @@ _config_dirs() {
 
 # _all_panes: enumerate every pane on EVERY socket. Each output row is
 # "socketpath<TAB>session<TAB>pane_id<TAB>pane_current_command". The 4th field lets
-# resolvers tell an AUTHORITATIVE pane from a VIEWPORT: an editor-terminal pane running a
-# tmux CLIENT attached to a chat's server mirrors the inner statusline pixel-for-pixel —
-# pcmd==tmux marks the mirror. EVERY caller must read all 4 fields (read -r sock sess
-# pane pcmd) or the command folds into $pane and breaks targeting. A dead or unreadable
-# socket is skipped (the `|| true` swallows its error) and never aborts the scan.
+# resolvers tell an AUTHORITATIVE pane from a VIEWPORT: a vsct bunker pane runs a tmux
+# CLIENT attached to a chat's server, so its screen mirrors the inner statusline (🔖 and
+# badge included) — pcmd==tmux marks the mirror. EVERY caller must read all 4 fields
+# (read -r sock sess pane pcmd) or the command folds into $pane and breaks targeting.
+# A dead or unreadable socket is skipped (the `|| true` swallows its error) and never
+# aborts the scan.
 _all_panes() {
   local sock line
   while IFS= read -r sock; do
@@ -230,18 +252,20 @@ _resolve_label() {
   # Scan EVERY pane on EVERY socket (not just each session's active pane) — a
   # session can hold several shells, and only the Claude pane carries the 🔖
   # statusline. Per-pane capture must hit the pane's OWN socket via -S "$sock".
-  # MIRROR SKIP: a pane running a tmux CLIENT (an editor-terminal viewport attached to a
+  # MIRROR SKIP: a pane running a tmux CLIENT (a vsct/VS Code viewport attached to a
   # chat's server) mirrors the inner chat's statusline pixel-for-pixel, so it matches
-  # the 🔖 scrape and would make every attached chat resolve ambiguous. A viewport is
+  # the 🔖 scrape and made EVERY attached chat resolve ambiguous (rc=2). A viewport is
   # never the authoritative pane — the real chat runs claude — so skip pcmd==tmux.
   while IFS=$'\t' read -r sock sess pane pcmd; do
     [[ -n "$pane" ]] || continue
     [[ "$pcmd" == tmux ]] && continue
     cap="$(tmux -S "$sock" capture-pane -t "$pane" -p -J 2>/dev/null || true)"
-    # anchor on 🔖 + the model symbol (◆/◇/○/●, always emitted), NOT 🌿 (git-only — a
-    # labeled chat outside a repo or in detached HEAD renders 🔖 without 🌿 and became
-    # unaddressable there).
-    name="$(printf '%s\n' "$cap" | grep -F '🔖' | grep -E '◆|◇|○|●' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
+    # anchor on 🔖 + account badge (🥇/🥈/🥉/🍀, always emitted), NOT 🌿 (git-only — a labeled
+    # chat outside a repo or in detached HEAD renders 🔖 without 🌿 and became unaddressable).
+    # 🍀 is account 4 (the GPT account): it was missing here, so every cc4 chat WAS listed by
+    # `ls` yet could not be addressed by its 🔖 label — the badge set must be identical in
+    # every anchor (self_label, _resolve_label, and the `new` numbering scan).
+    name="$(printf '%s\n' "$cap" | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
     [[ -n "$name" ]] || continue
     namelc="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
     [[ "$namelc" == "$wantlc" ]] || continue
@@ -249,12 +273,12 @@ _resolve_label() {
     [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$pane")
   done < <(_all_panes)
   # SAME-CHAT TIE-BREAK: several matches whose crumbs all point at ONE transcript are not
-  # several chats — they are one chat multi-hosted by leftover servers (e.g. a relaunch that
-  # left the elder session running). Refusing there made the chat unaddressable by its label
-  # exactly while duplicated. Resolve to the NEWEST-born server (epoch in the socket name, if
-  # your launcher names sockets that way) using the statusline's socket→transcript breadcrumb
-  # (`/tmp/cc-sid/<socket-basename>.<pane>`); different transcripts (or any pane without a
-  # crumb) stay genuinely ambiguous — fail loud as before.
+  # several chats — they are one chat multi-hosted by leftover servers (an account-switch
+  # relaunch leaves the elder running; cc-ls shows it as ⚠Nsrv). Refusing there made the
+  # chat unaddressable by its label exactly while duplicated (WATCHER, live). Resolve to
+  # the NEWEST-born server (epoch in the cc-<epoch>-… socket name) — the launch the founder
+  # is typing into; Enter/⌃B in cc-ls reaps the elders. Different transcripts (or any pane
+  # without a crumb) stay genuinely ambiguous — fail loud as before.
   if [[ ${#matches[@]} -gt 1 ]]; then
     local tb_uuid="" tb_ok=1 tb_best="" tb_beste=-1 tb_sock tb_pane tb_base tb_tp tb_u tb_e
     for m in "${matches[@]}"; do
@@ -268,7 +292,7 @@ _resolve_label() {
       if [[ "$tb_e" -gt "$tb_beste" ]]; then tb_beste="$tb_e"; tb_best="$m"; fi
     done
     if [[ "$tb_ok" == 1 && -n "$tb_best" ]]; then
-      echo "note: 🔖 '$want' is hosted by ${#matches[@]} servers for ONE chat ($tb_uuid) — resolving to the newest" >&2
+      echo "note: 🔖 '$want' is hosted by ${#matches[@]} servers for ONE chat ($tb_uuid) — resolving to the newest (cc-ls shows it ⚠${#matches[@]}srv; open it there to reap the elders)" >&2
       printf '%s\n' "$tb_best"; return 0
     fi
   fi
@@ -298,10 +322,10 @@ _resolve_session() {
       # A single (socket,session) — but /chat:branch and pane-mode /chat:new split a SECOND
       # claude pane INTO the same session, and send-keys to a bare session name targets the
       # session's ACTIVE pane (so a reply could land on the fork, not the parent). With more
-      # than one pane, count the CLAUDE panes (comm "claude" or a bare version string):
-      # exactly one → resolve to that PANE id (precise, like _resolve_label — a manual shell
-      # split must not break addressing); two or more (or none identifiable) → ambiguous,
-      # address by 🔖 label or %pane-id.
+      # than one pane, count the CLAUDE panes (comm "claude" or a bare version string —
+      # same discriminator as cc-swap-chat's tty scan): exactly one → resolve to that PANE
+      # id (precise, like _resolve_label — a manual shell split must not break addressing);
+      # two or more (or none identifiable) → ambiguous, address by 🔖 label or %pane-id.
       np=0; for m in "${panerows[@]}"; do [[ "$m" == "${matches[0]}"$'\t'* ]] && np=$((np+1)); done
       if (( np > 1 )); then
         local msock="${matches[0]%%$'\t'*}" prow ppcmd; local -a cpanes=()
@@ -317,6 +341,40 @@ _resolve_session() {
       printf '%s\n' "${matches[0]}"; return 0;;
     0) return 1;;
     *) { echo "ambiguous session '$want' — matches:"; for m in "${matches[@]}"; do echo "  ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
+  esac
+}
+
+# _resolve_cxwin <name>: resolve a destination CODEX chat by its human thread name.
+# Codex has no 🔖 statusline (the label rung never matches) and its tmux SESSION name is
+# the opaque cx-<epoch>-<pid>-<rand> socket id — the human name lives in tmux
+# #{window_name}, set at spawn and kept converged with the codex thread name by cc-ls.
+# Only sockets whose basename starts cx- are scanned; do NOT key on the pane command
+# (codex flips between `codex` and `node` with state). Match is case-insensitive and
+# exact — plus a truncation rule: cc-ls clips the window name to 24 chars, so a longer
+# wanted name matches a window holding exactly its first 24. Same contract as
+# _resolve_label: prints "socketpath<TAB>pane_id" on a unique match (rc 0), nothing on
+# none (rc 1), candidates on stderr on several (rc 2).
+_resolve_cxwin() {
+  local want="$1" wantlc sock base sess pane win winlc m seen hit; local -a matches=()
+  wantlc="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')"
+  while IFS= read -r sock; do
+    base="${sock##*/}"
+    [[ "$base" == cx-* ]] || continue
+    while IFS=$'\t' read -r sess pane win; do
+      [[ -n "$pane" && -n "$win" ]] || continue
+      winlc="$(printf '%s' "$win" | tr '[:upper:]' '[:lower:]')"
+      hit=0
+      [[ "$winlc" == "$wantlc" ]] && hit=1
+      [[ ${#wantlc} -gt 24 && "$winlc" == "${wantlc:0:24}" ]] && hit=1
+      [[ "$hit" == 1 ]] || continue
+      seen=0; for m in "${matches[@]:-}"; do [[ "$m" == "$sock"$'\t'"$pane" ]] && { seen=1; break; }; done
+      [[ "$seen" == 0 ]] && matches+=("$sock"$'\t'"$pane")
+    done < <(tmux -S "$sock" list-panes -a -F '#{session_name}'$'\t''#{pane_id}'$'\t''#{window_name}' 2>/dev/null || true)
+  done < <(_sockets)
+  case "${#matches[@]}" in
+    1) printf '%s\n' "${matches[0]}"; return 0;;
+    0) return 1;;
+    *) { echo "ambiguous codex thread name '$want' — matches panes:"; for m in "${matches[@]}"; do echo "  pane ${m#*$'\t'}  (socket ${m%%$'\t'*})"; done; } >&2; return 2;;
   esac
 }
 
@@ -342,19 +400,22 @@ _self_model() {
   esac
 }
 
-# _spawn_envpfx: the `env …` prefix that bakes THIS chat's config dir + cache mode into a
+# _spawn_envpfx: the `env …` prefix that bakes THIS chat's account + cache mode into a
 # split-pane spawn (branch / pane-mode new). A tmux split inherits the tmux SERVER
-# environment, NOT the parent chat's process env — so without this a fork/teammate of a
-# chat launched under a non-default CLAUDE_CONFIG_DIR silently boots against the default
-# config, and also loses the parent's cache-window mode. Also drops the parent's session
-# identity so a fresh/forked pane never re-uses it.
+# environment (account 1, harness-default 1h cache), NOT the parent chat's process env — so
+# without this a fork/teammate of an account-2/3 chat silently boots on account 1 and drains
+# the wrong budget, and also loses the parent's ⚡ cache mode. Also drops the parent's session
+# identity so a fresh/forked pane never re-uses it. The config dir is our own $HOME path
+# (single-quote-safe); the cache flags are the exact ones the launcher sets at birth.
 _spawn_envpfx() {
   # GNU env parses ALL -u/options FIRST, then NAME=VALUE assignments, then the command — the
   # first NAME=VALUE ends option parsing, so a -u placed AFTER an assignment is read as the
-  # command ("env: '-u': No such file or directory"). Emit every -u first, then the sets.
+  # command ("env: '-u': No such file or directory"). Emit every -u first, then the sets
+  # (mirrors cc-open/cc-swap-chat's rpfx ordering).
   local unsets="-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE" sets=""
   if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then sets="$sets CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}'"; else unsets="$unsets -u CLAUDE_CONFIG_DIR"; fi
-  if [[ "${FORCE_PROMPT_CACHING_5M:-}" == 1 ]]; then sets="$sets FORCE_PROMPT_CACHING_5M=1"; else unsets="$unsets -u FORCE_PROMPT_CACHING_5M"; fi
+  if [[ "${FORCE_PROMPT_CACHING_5M:-}" == 1 ]]; then unsets="$unsets -u ENABLE_PROMPT_CACHING_1H"; sets="$sets FORCE_PROMPT_CACHING_5M=1"
+  elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == 1 ]]; then unsets="$unsets -u FORCE_PROMPT_CACHING_5M"; sets="$sets ENABLE_PROMPT_CACHING_1H=1"; fi
   printf 'env %s%s' "$unsets" "$sets"
 }
 
@@ -366,8 +427,7 @@ _register_pane_child() {
   local cp="$1" sock_name
   [[ -n "$cp" && -n "${CLAUDE_CODE_SESSION_ID:-}" && -n "${TMUX:-}" ]] || return 0
   sock_name="${TMUX%%,*}"; sock_name="${sock_name##*/}"
-  mkdir -p "$HOME/.claude/.cc-pane-children" 2>/dev/null || true
-  printf '%s\t%s\n' "$sock_name" "$cp" >> "$HOME/.claude/.cc-pane-children/$CLAUDE_CODE_SESSION_ID"
+  bash "$CC_FLEET_HOME/cc-db.sh" child-add pane "$CLAUDE_CODE_SESSION_ID" "$(printf '%s\t%s' "$sock_name" "$cp")" 2>/dev/null || true
 }
 
 # _find <excerpt-file>: resolve to the past session containing the excerpt across
@@ -498,17 +558,27 @@ case "$cmd" in
           echo "resolved 🔖 label '$target' → pane '$live_tmux'" >&2
         elif [[ $lrc -eq 2 ]]; then
           echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id instead (run /chat:ls to list them)" >&2; exit 1
-        elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
-          transcript="$(
-            while IFS= read -r cfg; do
-              for p in "$cfg"/projects/*/"$target".jsonl; do
-                [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
-              done
-            done < <(_config_dirs) | sort -u | head -1 || true
-          )"
-          [[ -n "$transcript" ]] || { echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
         else
-          echo "ERROR: 🔖 label '$target' matched no live chat (run /chat:ls to see live labels), and it is not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1
+          # Codex rung: no 🔖 matched — try the codex thread name (tmux window name on
+          # cx-* sockets) before falling through to the transcript/session-id RESUME.
+          xrow=""; xrc=0; xrow="$(_resolve_cxwin "$target")" || xrc=$?
+          if [[ $xrc -eq 0 && -n "$xrow" ]]; then
+            socketpath="${xrow%%$'\t'*}"; live_tmux="${xrow#*$'\t'}"
+            echo "resolved ⬢ codex thread '$target' → pane '$live_tmux'" >&2
+          elif [[ $xrc -eq 2 ]]; then
+            echo "ERROR: codex thread name '$target' is ambiguous — pass the cx-* tmux session id instead (run cc-ls to list them)" >&2; exit 1
+          elif [[ "$target" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            transcript="$(
+              while IFS= read -r cfg; do
+                for p in "$cfg"/projects/*/"$target".jsonl; do
+                  [[ -f "$p" ]] && ( cd "$(dirname "$p")" && printf '%s\n' "$(pwd -P)/$(basename "$p")" )
+                done
+              done < <(_config_dirs) | sort -u | head -1 || true
+            )"
+            [[ -n "$transcript" ]] || { echo "ERROR: '$target' matched no live chat — not a 🔖 label (run /chat:ls), not a codex thread name (run cc-ls), not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1; }
+          else
+            echo "ERROR: '$target' matched no live chat — not a 🔖 label (run /chat:ls), not a codex thread name (run cc-ls), not a live tmux session, a transcript path, or a session-id — nothing to inject into" >&2; exit 1
+          fi
         fi
       fi
     fi
@@ -622,7 +692,23 @@ case "$cmd" in
           sleep "${CHAT_INJECT_POLL:-0.2}"
         done
       fi
-      # Everything goes inline — no file, no pointer, no length cap. A /-prefixed
+      # CODEX TALL-MESSAGE GUARD (2026-07-26, second false-green repro): a ~2500-char
+      # inline send to a cx-* pane rendered ~40 rows against a ~50-row pane, truncated
+      # MID-WORD in the composer, and defeated every composer-line scrape — the submit
+      # confirm matched a stale › echo above and reported DELIVERED on an unsent brief.
+      # The composer window shows the TAIL of a tall message while the prefix test keys
+      # on its HEAD, so no scrape is reliable there. Founder standing law already says
+      # long messages travel as FILE PATHS + a pointer line; enforce it mechanically for
+      # codex targets (same shape as the /compact long-focus guard, same exit 6).
+      # Claude panes keep unlimited inline — their [Pasted text] collapse is handled.
+      if [[ "${socketpath##*/}" == cx-* ]]; then
+        CX_INLINE_MAX="${CHAT_INJECT_CX_INLINE_MAX:-1500}"
+        if (( ${#msg} > CX_INLINE_MAX )); then
+          echo "ABORT: message is ${#msg} chars — over the ${CX_INLINE_MAX}-char inline cap for codex panes. A tall message overflows the codex composer and every submit-confirm scrape goes blind (false DELIVERED on an unsent brief, seen live twice). Write the body to a file and inject a short pointer: chat.sh inject $target 'READ AND EXECUTE: <abs path> — <one-line summary>'. Nothing was typed." >&2
+          exit 6
+        fi
+      fi
+      # Everything else goes inline — no file, no pointer, no length cap. A /-prefixed
       # command sends verbatim (a footer/marker would corrupt its args); plain text
       # gets the force marker (only if we actually interrupted) plus
       # the one-line footer appended. The settle-poll below confirms the whole
@@ -644,6 +730,17 @@ case "$cmd" in
         "${TM[@]}" send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
       fi
 
+      # CODEX PLAN-OVERLAY GUARD (2026-07-26): codex sometimes raises a "Create a
+      # plan?" prompt-overlay that SWALLOWS the next Enter (it answers the overlay
+      # instead of submitting the composer) — three briefs sat unsent behind it in
+      # one dispatch. Dismiss with a single Esc before typing, same shape as the
+      # Rewind guard above. Bounded to the last 12 lines so an old conversation
+      # echo of the phrase can't trigger a spurious Esc; Esc on an idle composer
+      # is a no-op.
+      if "${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | tail -12 | grep -qiE 'create a plan\?'; then
+        "${TM[@]}" send-keys -t "$live_tmux" Escape; sleep "${CHAT_INJECT_POLL:-0.2}"
+      fi
+
       # COPY-MODE GUARD: a pane sitting in tmux copy-mode (the scrollback view — a
       # scroll-wheel or stray key opens it) EATS every typed key as a copy-mode
       # binding: the inject would vanish, and stray letters raise jump prompts
@@ -655,17 +752,35 @@ case "$cmd" in
         sleep "${CHAT_INJECT_POLL:-0.2}"
       fi
 
-      # SELECTOR GUARD: an open AskUserQuestion/permission menu treats Enter as
-      # SELECT — injecting would forge an answer on the target's behalf (menus can
-      # gate security authorizations). Selector shape: the pane's LAST '❯' sits on
-      # a numbered option row instead of a bare input line. Abort BEFORE typing;
-      # exit 4 = selector-open, retry after the menu's owner answers/dismisses it
-      # (distinct from exit 3 typed-not-submitted). A pane with NO '❯' at all is a
-      # foreign (non-Claude) UI — no Claude menu can be open there, so the guard
-      # passes; the || true keeps the failing grep from killing the script (set -e).
-      sel_line="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null | grep -F '❯' | tail -1 || true)"
-      if printf '%s' "$sel_line" | grep -qE '❯[[:space:]]*[0-9]+\.[[:space:]]'; then
-        echo "ABORT: '$live_tmux' has an OPEN selector menu (its ❯ sits on a numbered option: $(printf '%s' "$sel_line" | sed 's/^[[:space:]]*//')) — an inject would press Enter INTO the menu and forge an answer. Nothing was typed. Re-run after the menu's owner answers or dismisses it." >&2
+      # SELECTOR GUARD (both engines): an open AskUserQuestion/permission/approval menu
+      # treats Enter as SELECT — injecting would forge an answer on the target's behalf
+      # (menus gate security authorizations, incl. Codex's exec/patch-approval modals).
+      # Abort BEFORE typing; exit 4 = selector-open, retry after the menu's owner answers/
+      # dismisses it (distinct from exit 3 typed-not-submitted).
+      #   Claude marks the selected option with ❯; the LAST '❯' on a numbered option row
+      #   (not a bare input line) is a menu. A pane with NO '❯' is a foreign/idle UI.
+      #   Codex marks it with › (U+203A) — the SAME glyph as its normal composer prompt
+      #   AND its sent-message echo, so a bare › is NOT a menu (a lone "› 1. do this" draft
+      #   must inject fine). Discriminate a real Codex menu: its LAST › sits on a numbered
+      #   option AND either a menu confirm/cancel hint is present (every Codex modal prints
+      #   one — "Press enter to confirm … esc to cancel") OR ≥2 numbered option rows are
+      #   stacked (a menu always offers several; a numbered draft is one line). The hint OR
+      #   the option-count keeps the guard robust if Codex reword the hint. || true keeps a
+      #   failing grep from killing the script (set -e).
+      guard_cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null || true)"
+      cc_sel="$(printf '%s\n' "$guard_cap" | grep -F '❯' | tail -1 || true)"
+      cx_sel="$(printf '%s\n' "$guard_cap" | grep -F '›' | tail -1 || true)"
+      menu_hit=""
+      if printf '%s' "$cc_sel" | grep -qE '❯[[:space:]]*[0-9]+\.[[:space:]]'; then
+        menu_hit="$cc_sel"
+      elif printf '%s' "$cx_sel" | grep -qE '›[[:space:]]*[0-9]+\.[[:space:]]'; then
+        cx_nopt="$(printf '%s\n' "$guard_cap" | grep -cE '^[[:space:]]*[›]?[[:space:]]*[0-9]+\.[[:space:]]' || true)"
+        if printf '%s\n' "$guard_cap" | grep -qiE 'enter to (confirm|continue|select)|esc to (cancel|go back)' || (( ${cx_nopt:-0} >= 2 )); then
+          menu_hit="$cx_sel"
+        fi
+      fi
+      if [[ -n "$menu_hit" ]]; then
+        echo "ABORT: '$live_tmux' has an OPEN selector menu (marker on a numbered option: $(printf '%s' "$menu_hit" | sed 's/^[[:space:]]*//')) — an inject would press Enter INTO the menu and forge an answer. Nothing was typed. Re-run after the menu's owner answers or dismisses it." >&2
         exit 4
       fi
 
@@ -702,7 +817,7 @@ case "$cmd" in
         # styling in an escape-preserving capture: a real typed draft renders undimmed.
         # Placeholder iff the styled line carries an SGR-2 span AND stripping the dim
         # spans + all SGRs + the queued hint leaves no printable text after ❯.
-        # Dynamic placeholders once false-aborted (exit 5) every inject to any
+        # 2026-07-13: dynamic placeholders false-aborted (exit 5) every inject to any
         # pane showing one, while the unconditional first C-s had already stashed real
         # drafts underneath — a self-deepening delivery trap.
         _is_placeholder() {
@@ -735,7 +850,7 @@ case "$cmd" in
       needle="$(printf '%s' "$msg" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ *$//')"; _fullneedle="$needle"; needle="${needle: -40}"
       # a message under 40 chars slices to EMPTY, and *""* matches any capture — the settle
       # loop would break on iteration 1 without ever confirming the render. Fall back to the
-      # whole (normalized) message as the needle.
+      # whole (normalized) message as the needle (mirrors cc-swap-chat.sh's guard).
       [[ -n "$needle" ]] || needle="$_fullneedle"
       # 1) Wait for the full text to render before the first Enter (advisory). NEVER
       #    bail on a miss — a typed-but-unsubmitted message is the worst outcome, and
@@ -768,19 +883,28 @@ case "$cmd" in
         sleep "${CHAT_INJECT_ENTER_SETTLE:-0.4}"
         _cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null || true)"
         input_line="$(printf '%s\n' "$_cap" | grep -F '❯' | tail -1 || true)"
-        # EMPTY prompt-line match is UNKNOWN, never SUBMITTED: a message TALLER THAN THE
-        # PANE scrolls the ❯ prompt off the visible screen, the grep returns empty, and
-        # reading that absence as "prefix gone → submitted" would report a message as sent
-        # while it still sits UNSENT in the composer — an error rendering as absence inside
-        # the delivery mechanism itself. Re-capture WITH SCROLLBACK (-S) to find the real
-        # composer line (-J joins wrapped lines, so the composer reads as one "❯<full
-        # message>" row the prefix test can see). Still nothing → we know NOTHING: retry,
-        # and let the exit-3 warning report honestly. This also retires the old
-        # foreign-pane best-effort (empty ⇒ submitted) — an unconfirmable pane now exits 3
-        # with the text still in its input, which is the truthful outcome.
+        # The Codex TUI composer prompt is › (U+203A), not Claude's ❯. When no ❯ is
+        # present the submit-confirm was blind: input_line came back EMPTY, the prefix
+        # check passed on iteration 1, and the loop declared success while the message
+        # sat UNSENT in the codex composer (the founder had to press Enter every time).
+        # ❯-first / ›-fallback keeps Claude behaviour byte-identical and only extends
+        # the confirm to codex panes.
+        [[ -n "$input_line" ]] || input_line="$(printf '%s\n' "$_cap" | grep -F '›' | tail -1 || true)"
+        # EMPTY prompt-line match is UNKNOWN, never SUBMITTED (2026-07-26, live in
+        # fleet): a message TALLER THAN THE PANE scrolls the ❯/› prompt off the
+        # visible screen, both greps return empty, and the old guard read that
+        # absence as "prefix gone → submitted" while the whole brief sat UNSENT in
+        # the composer — an error rendering as absence inside the delivery mechanism
+        # itself. Re-capture WITH SCROLLBACK (-S) to find the real composer line
+        # (-J joins wrapped lines, so the composer reads as one "›<full message>"
+        # row the prefix test can see). Still nothing → we know NOTHING: retry, and
+        # let the exit-3 warning report honestly. This also retires the old
+        # foreign-pane best-effort (empty ⇒ submitted) — an unconfirmable pane now
+        # exits 3 with the text still in its input, which is the truthful outcome.
         if [[ -z "$input_line" ]]; then
           _cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J -S "-${CHAT_INJECT_SCROLLBACK:-300}" 2>/dev/null || true)"
           input_line="$(printf '%s\n' "$_cap" | grep -F '❯' | tail -1 || true)"
+          [[ -n "$input_line" ]] || input_line="$(printf '%s\n' "$_cap" | grep -F '›' | tail -1 || true)"
           [[ -n "$input_line" ]] || continue
         fi
         # A long message collapses in the composer to "[Pasted text #N]" — that line
@@ -831,14 +955,16 @@ case "$cmd" in
         sleep "${CHAT_INJECT_PROOF_SETTLE:-0.5}"
         proof_cap="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J 2>/dev/null)"
         proof_input="$(printf '%s\n' "$proof_cap" | grep -F '❯' | tail -1 || true)"
-        # Same scrollback fallback as the submit loop above: a message taller than the
-        # pane scrolls the composer off the visible screen, so an empty proof capture is
-        # UNKNOWN, never a green light. Look into scrollback before concluding; a proof
-        # that finds NO composer line anywhere reports its own blindness in the banner
-        # instead of implying green.
+        # ›-fallback + scrollback here too (2026-07-26): the proof read only ❯, so a
+        # codex pane's proof was ALWAYS empty and the contradiction check could never
+        # fire — the same blindness the submit loop had. Empty visible screen → look
+        # into scrollback before concluding; a proof that finds NO composer line
+        # anywhere reports its own blindness in the banner instead of implying green.
+        [[ -n "$proof_input" ]] || proof_input="$(printf '%s\n' "$proof_cap" | grep -F '›' | tail -1 || true)"
         if [[ -z "$proof_input" ]]; then
           _pcap2="$("${TM[@]}" capture-pane -t "$live_tmux" -p -J -S "-${CHAT_INJECT_SCROLLBACK:-300}" 2>/dev/null || true)"
           proof_input="$(printf '%s\n' "$_pcap2" | grep -F '❯' | tail -1 || true)"
+          [[ -n "$proof_input" ]] || proof_input="$(printf '%s\n' "$_pcap2" | grep -F '›' | tail -1 || true)"
         fi
         proof_note=""
         [[ -z "$proof_input" ]] && proof_note=" (proof caveat: no composer line found in capture+scrollback — submit was positively confirmed above, but this proof is blind; verify the target pane if in doubt)"
@@ -867,7 +993,7 @@ case "$cmd" in
     # A running CC process reads stdin, not its jsonl, and keeps chaining events off its own
     # in-memory tail — so appending a turn here is a dangling side-branch it never reads: the
     # steer is silently lost behind a success banner. Refuse if the uuid is in ANY account's
-    # agent registry, and point the caller at the takeover path.
+    # agent registry, and point the caller at the takeover path (cc-open → cc-agent-open.sh).
     dm_uuid="$(basename -- "$transcript" .jsonl 2>/dev/null)"
     if [[ "$dm_uuid" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
       # LIVE-PROCESS GUARD: the daemon registry below only knows `claude agents` daemons —
@@ -884,7 +1010,7 @@ case "$cmd" in
         fi
       done
       if [[ -n "$lp" ]]; then
-        echo "ERROR: '$target' is a LIVE session (pid $lp carries its session id) with no resolvable tmux pane on this path — a running Claude reads its input stream, not its transcript, so appending a turn here would be silently lost behind a success banner. If it is a pane chat, inject by its tmux session or 🔖 label (/chat:ls); if it is a background job or daemon agent, reach it through its own surface. Nothing was appended." >&2
+        echo "ERROR: '$target' is a LIVE session (pid $lp carries its session id) with no resolvable tmux pane on this path — a running Claude reads its input stream, not its transcript, so appending a turn here would be silently lost behind a success banner. If it is a pane chat, inject by its tmux session or 🔖 label (/chat:ls); if it is a background job or daemon agent, reach it through its own surface (claude.ai / cc-open). Nothing was appended." >&2
         exit 1
       fi
       dm_bin="$(command -v claude || echo "$HOME/.local/bin/claude")"
@@ -892,7 +1018,7 @@ case "$cmd" in
         [[ -n "$dm_cfg" ]] || continue
         dm_json="$(CLAUDE_CONFIG_DIR="$dm_cfg" timeout 15 "$dm_bin" agents --json 2>/dev/null || true)"
         if printf '%s' "$dm_json" | jq -e --arg u "$dm_uuid" '(type=="array") and (map(select((.sessionId==$u) or (.id!=null and (.id as $i|$u|startswith($i))))) | length > 0)' >/dev/null 2>&1; then
-          echo "ERROR: '$target' is a LIVE background agent (daemon-hosted, config $dm_cfg) — it has no tmux pane and reads stdin, not its transcript, so appending a turn here would be a dangling side-branch it never sees. Take it over instead: attach its agent view. Nothing was appended." >&2
+          echo "ERROR: '$target' is a LIVE background agent (daemon-hosted, config $dm_cfg) — it has no tmux pane and reads stdin, not its transcript, so appending a turn here would be a dangling side-branch it never sees. Take it over instead: cc-open $dm_uuid (routes through cc-agent-open.sh), or attach its agent view. Nothing was appended." >&2
           exit 1
         fi
       done < <(_config_dirs)
@@ -974,25 +1100,51 @@ case "$cmd" in
     # with its socket so per-pane capture/display hit the right server. A dead socket
     # is skipped (|| true), never aborting the listing. Self-match compares BOTH socket
     # and session — session names are globally unique, so the session stays the handle.
-    while IFS='|' read -r sock sess path pcmd wactive pactive; do
+    while IFS='|' read -r sock sess path pcmd wactive pactive win; do
       [[ "$wactive" == "1" && "$pactive" == "1" ]] || continue
-      case "$pcmd" in [0-9]* | claude) ;; *) continue ;; esac
+      # Codex rows: gated on the cx-* SOCKET basename, never on bare `node` (that would
+      # list unrelated node processes); the codex TUI renders as `codex` or `node` (its
+      # wrapper) with state. Claude rows keep the original filter untouched.
+      codexrow=0; sockbase="${sock##*/}"
+      if [[ "$sockbase" == cx-* ]]; then
+        case "$pcmd" in node | codex) codexrow=1 ;; *) continue ;; esac
+      elif [[ "$sockbase" == cc-* ]]; then
+        # A cc-* socket hosts exactly one Claude chat by launcher convention, and the
+        # pane command is NOT a reliable discriminator for it: a chat launched under a
+        # non-exec'ing shell wrapper reports its parent shell (zsh) forever, and the
+        # old claude-only filter dropped that row — `ls` denied a LIVE attached chat
+        # existed while whoami/capture/label-resolve all found it (2026-07-26: the
+        # WATCHER itself, nearly ruled dead on the empty listing). The socket naming
+        # is the discriminator; only a tmux client (viewport mirror) is excluded,
+        # mirroring _resolve_label's pcmd==tmux skip.
+        case "$pcmd" in tmux) continue ;; *) ;; esac
+      else
+        case "$pcmd" in [0-9]* | claude) ;; *) continue ;; esac
+      fi
       in_repo=1; case "$path" in "$repo" | "$repo"/*) ;; *) in_repo=0 ;; esac
       [[ "$all" == 0 && "$in_repo" == 0 ]] && { elsewhere=$((elsewhere + 1)); continue; }
-      cap="$(tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
-      state="$(printf '%s\n' "$cap" | grep -oE '🟢|⚡|🔴' | tail -1 || true)"; state="${state:-·}"
-      # Statusline rows must never become the "topic" — they are chrome, not conversation.
-      # 🔖 (label) / 🧮 (tokens) / the account badges (🥇🥈🥉, opt-in) join the older markers:
-      # an UNLABELED chat's line 1 carries no 🔖, so it survived the old filter and rows
-      # printed statusline chrome instead of the chat's last line.
-      topic="$(printf '%s\n' "$cap" | grep -vE '^$|🟢|⚡|🔴|🔖|🧮|🥇|🥈|🥉|auto mode on|shift\+tab|esc to interrupt|to scroll|for agents|^[─╭╮╰╯│]|^❯$|💾|💰|⏱' | tail -1 | cut -c1-64 || true)"
+      if [[ "$codexrow" == 1 ]]; then
+        # Codex: no Claude statusline to scrape — the human thread name lives in the
+        # tmux window name (cc-fleet sets and converges it). ⬢ marks the engine.
+        state="⬢"; topic="$win"
+      else
+        cap="$(tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
+        state="$(printf '%s\n' "$cap" | grep -oE '🟢|⚡|🔴' | tail -1 || true)"; state="${state:-·}"
+        # Statusline rows must never become the "topic" — they are chrome, not conversation.
+        # ☁️ (cost) / 🔖 (label) / 🧮 (tokens) / the account badges join the older markers:
+        # the cost row carries none of 💰|⏱|🟢 and an UNLABELED chat's line 1 carries no 🔖,
+        # so both survived the filter and rows printed statusline chrome instead of the
+        # chat's last line. Every badge is listed — 🥇🥈🥉 (Claude accounts 1-3) and 🍀
+        # (account 4, GPT) — since line 1 always carries exactly one of them.
+        topic="$(printf '%s\n' "$cap" | grep -vE '^$|🟢|⚡|🔴|☁️|🔖|🧮|🥇|🥈|🥉|🍀|auto mode on|shift\+tab|esc to interrupt|to scroll|for agents|^[─╭╮╰╯│]|^❯$|💾|💰|⏱' | tail -1 | cut -c1-64 || true)"
+      fi
       mark=""; [[ "$sock" == "$self_sock" && "$sess" == "$self_sess" ]] && mark="  <- this chat"
       loc=""; [[ "$all" == 1 ]] && loc="${path/#$HOME/\~}  "
       printf '  %-6s %s  %s%s%s\n' "$sess" "$state" "$loc" "$topic" "$mark"; found=$((found + 1))
     done < <(
       while IFS= read -r sock; do
         [[ -n "$sock" ]] || continue
-        tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}' 2>/dev/null || true
+        tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}|#{window_name}' 2>/dev/null || true
       done < <(_sockets) | sort -t'|' -k2 -n
     )
     if [[ "$found" -eq 0 ]]; then
@@ -1022,7 +1174,14 @@ case "$cmd" in
       elif [[ $lrc -eq 2 ]]; then
         echo "ERROR: 🔖 label '$target' is ambiguous — pass the tmux session id (run /chat:ls to list them)" >&2; exit 1
       else
-        echo "ERROR: no live tmux session '$target' — capture needs a live window; use 'read' for a dormant chat's transcript" >&2; exit 1
+        xrow=""; xrc=0; xrow="$(_resolve_cxwin "$target")" || xrc=$?
+        if [[ $xrc -eq 0 && -n "$xrow" ]]; then
+          socketpath="${xrow%%$'\t'*}"; session="${xrow#*$'\t'}"
+        elif [[ $xrc -eq 2 ]]; then
+          echo "ERROR: codex thread name '$target' is ambiguous — pass the cx-* tmux session id (run cc-ls to list them)" >&2; exit 1
+        else
+          echo "ERROR: no live tmux session, 🔖 label, or codex thread named '$target' — capture needs a live window; use 'read' for a dormant chat's transcript" >&2; exit 1
+        fi
       fi
     fi
     # -J joins wrapped lines so a long input line / footer reads as one whole
@@ -1105,8 +1264,8 @@ case "$cmd" in
     # fixed alias — neither is user-influenced.)
     name="${name//[^A-Za-z0-9 ._-]/}"
     model="$(_self_model)"
-    # bake THIS chat's config dir + cache mode into the fork (a split pane otherwise inherits
-    # the tmux server env) — see _spawn_envpfx.
+    # bake THIS chat's account + cache mode into the fork (a split pane otherwise inherits the
+    # tmux server env = account 1, harness-default cache) — see _spawn_envpfx.
     fork="$(_spawn_envpfx) claude --resume '$sid' --fork-session"
     [[ -n "$model" ]] && fork="$fork --model '$model'"
     [[ -n "$name" ]]  && fork="$fork --name '$name'"
@@ -1149,15 +1308,16 @@ case "$cmd" in
     [[ -n "$prefix" ]] || prefix="chat"
     # Next free number in the prefix_<n> family, reading 🔖 labels across all panes.
     used="$(_all_panes | while IFS=$'\t' read -r s sess pane pcmd; do
-        [[ "$pcmd" == tmux ]] && continue   # an editor-terminal viewport mirrors the inner 🔖 — skip
-        nm="$(tmux -S "$s" capture-pane -t "$pane" -p -J 2>/dev/null | grep -F '🔖' | grep -E '◆|◇|○|●' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
+        [[ "$pcmd" == tmux ]] && continue   # vsct viewport mirrors the inner 🔖 — skip
+        nm="$(tmux -S "$s" capture-pane -t "$pane" -p -J 2>/dev/null | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
         [[ "$nm" =~ ^${prefix}_([0-9]+)$ ]] && echo "${BASH_REMATCH[1]}" || true
       done | sort -n || true)"
     n=1; while printf '%s\n' "$used" | grep -qx "$n"; do n=$((n+1)); done
     name="${prefix}_${n}"
     model="$(_self_model)"
-    # bake THIS chat's config dir + cache mode into the teammate — a split pane inherits the
-    # tmux server env, and the --detach path also gets it explicitly. See _spawn_envpfx.
+    # bake THIS chat's account + cache mode into the teammate — a split pane inherits the tmux
+    # server env (account 1), and the --detach path also gets it explicitly (harmless, since it
+    # already births from the parent's tool shell). See _spawn_envpfx.
     spawn="$(_spawn_envpfx) claude"
     [[ -n "$model" ]] && spawn="$spawn --model '$model'"
     spawn="$spawn --name '$name'"
@@ -1171,8 +1331,7 @@ case "$cmd" in
       # teammate is its own tmux server and would otherwise outlive its orchestrator
       # headless. Keyed by session uuid, which is exactly the id cc-hide.sh resolves.
       if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
-        mkdir -p "$HOME/.claude/.cc-new-children" 2>/dev/null || true
-        printf '%s\n' "$socket" >> "$HOME/.claude/.cc-new-children/$CLAUDE_CODE_SESSION_ID"
+        bash "$CC_FLEET_HOME/cc-db.sh" child-add new "$CLAUDE_CODE_SESSION_ID" "$socket" 2>/dev/null || true
       fi
       echo "Spawned background teammate '$name'${model:+ on $model} as a detached session on socket '$socket' — headless, not in this terminal. Give it work: /chat:inject $name <task>  (inject returns its screen as proof). Watch it live: tmux -L $socket attach -t $name. Reaped when this chat runs /bb."
     else

@@ -39,15 +39,13 @@ claude --fork-session --resume <uuid> -p "<your question>"
 - One question per call; ask a follow-up with another `-p` call against the same uuid.
 - If no session matches, say so — do not fabricate the predecessor's reasoning from the transcript yourself.
 
-<example>
-Founder: ask — why did the research agent drop the candidate library X?
-Command: ls -t finds the relevant research session (uuid 9f3c…). →
-       claude --fork-session --resume 9f3c… -p "Why did you recommend against adopting library X for the work ledger?"
-       Returns: "Heavy new runtime for the existing stack; the lighter event-log approach gets 80% of the value without it."
-</example>
+## Examples
 
-<example>
-Founder: ask the predecessor what it decided about the {feature} data shape
+Founder: ask — why did the research agent drop the Dolt ledger idea?
+Command: ls -t finds the gastown-study session (uuid 9f3c…). →
+claude --fork-session --resume 9f3c… -p "Why did you recommend against adopting Dolt for the work ledger?"
+Returns: "Heavy new runtime for a TS/Python shop; the JSONL event-log + checkpoint gets 80% of the value without it."
+
+Founder: ask the predecessor what it decided about the couple-session speaker labels
 Command: Reads $DOCS archived audit-trail.json → session uuid a17b… →
-       claude --fork-session --resume a17b… -p "What did you decide about the {feature} data shape, and why?"
-</example>
+claude --fork-session --resume a17b… -p "What did you decide about speaker labelling for couple sessions, and why?"

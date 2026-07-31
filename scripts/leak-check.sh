@@ -4,9 +4,14 @@
 # via .githooks/ (git config core.hooksPath .githooks). Stock service ports
 # (5432/5433/4566/4567) are industry defaults, not identifying — deliberately
 # ungated.
+#
+# MATCHED CASE-INSENSITIVELY (grep -i), and that is load-bearing: the pattern once spelled the
+# brand `[Ii]ntuita` and matched neither `INTUITA` nor `iNTUITA`, so an all-caps chat name carried
+# the client's name straight through a "clean" gate. A denylist that only knows two capitalisations
+# of a word does not know the word. Keep the alternatives lowercase and let -i do the work.
 set -euo pipefail
 
-PATTERN='([Ii]ntuita|[Ff]reudche|Khosravivala|Mohammadreza|\bReza\b|reza@|/home/reza|/Users/[A-Za-z0-9])'
+PATTERN='(intuita|freudche|nervah|soulcheck|khosravivala|mohammadreza|\breza\b|reza@|/home/reza|/Users/[A-Za-z0-9])'
 
 usage() {
   echo "Usage: leak-check.sh [--range OLD NEW | --files f1 [f2 ...]]" >&2
@@ -61,7 +66,7 @@ scan_diff_stream() {
       file="${line#+++ }"
     elif [[ "$line" == "+"* ]]; then
       content="${line#+}"
-      if grep -qE "$PATTERN" <<<"$content"; then
+      if grep -qiE "$PATTERN" <<<"$content"; then
         printf 'LEAK %s: %s\n' "$file" "$content"
       fi
     fi
@@ -95,7 +100,7 @@ case "$mode" in
         continue
       fi
       if [[ -f "$f" ]]; then
-        matches="$(grep -nE "$PATTERN" "$f" || true)"
+        matches="$(grep -niE "$PATTERN" "$f" || true)"
         if [[ -n "$matches" ]]; then
           while IFS=: read -r lnum content; do
             printf 'LEAK %s: %s\n' "$f" "$content"
