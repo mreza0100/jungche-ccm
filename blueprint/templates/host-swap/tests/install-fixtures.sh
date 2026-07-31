@@ -11,8 +11,12 @@ pass=0; fail=0
 ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else fail=$((fail+1)); printf '  ✗ %s\n     want=[%s]\n     got =[%s]\n' "$1" "$3" "$2"; fi; }
 
 export HOME="$T/home"; mkdir -p "$HOME"
-export CLAUDE_CONFIG_DIR="$HOME/.claude"
-CMD="$CLAUDE_CONFIG_DIR/commands"; BIN="$CLAUDE_CONFIG_DIR/bin"
+CLAUDE_DIR="$HOME/.claude"
+CMD="$CLAUDE_DIR/commands"; BIN="$CLAUDE_DIR/bin"
+# CLAUDE_CONFIG_DIR is deliberately set to a DIFFERENT account here and stays set for every run:
+# the installer is normally invoked from inside a running chat, where that variable names that
+# chat's account. It must be ignored — see the dedicated case below.
+export CLAUDE_CONFIG_DIR="$HOME/.cc/2"
 run() { bash "$BUNDLE/install.sh" "$@" 2>&1; }
 
 echo "=== dry run changes nothing ==="
@@ -21,6 +25,14 @@ ok "dry run announces itself"      "$(printf '%s' "$out" | grep -c 'dry run')" "
 ok "no bin dir created"            "$([ -d "$BIN" ] && echo yes || echo no)" "no"
 ok "no commands dir created"       "$([ -d "$CMD" ] && echo yes || echo no)" "no"
 ok "no zshrc created"              "$([ -f "$HOME/.zshrc" ] && echo yes || echo no)" "no"
+
+echo "=== a chat's CLAUDE_CONFIG_DIR must NOT redirect the install ==="
+# The bundle is host-level: one copy shared by every account. Installing into the running chat's
+# account would put the scripts in ~/.cc/N/bin while /bb keeps looking in ~/.claude/bin — silent.
+out="$(run)"
+ok "targets the host default, not \$CLAUDE_CONFIG_DIR" "$(printf '%s' "$out" | grep -c "Target config dir: *$CLAUDE_DIR\$")" "1"
+ok "does not name the account dir"  "$(printf '%s' "$out" | grep -c "Target config dir: *$HOME/.cc/2\$")" "0"
+ok "--config-dir overrides on purpose" "$(run --config-dir "$T/elsewhere" | grep -c "Target config dir: *$T/elsewhere\$")" "1"
 
 echo "=== --apply wires everything ==="
 out="$(run --apply)"

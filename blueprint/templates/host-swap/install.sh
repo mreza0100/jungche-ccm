@@ -4,9 +4,10 @@
 # friends become links back into this clone, which makes the clone the single home for the
 # fleet. Edit a file here and the live command changes; there is no second copy to drift.
 #
-#   install.sh              dry run — print exactly what would change, touch nothing
-#   install.sh --apply      make the changes
-#   install.sh --uninstall  replace every link this script made with its backup (or drop it)
+#   install.sh                    dry run — print exactly what would change, touch nothing
+#   install.sh --apply            make the changes
+#   install.sh --uninstall        replace every link this script made with its backup (or drop it)
+#   install.sh --config-dir DIR   target DIR instead of ~/.claude (rarely wanted; see below)
 #
 # DRY RUN IS THE DEFAULT, matching cc-reap.sh and cc-archive.sh in this bundle: a run that
 # rewrites files under ~/.claude should have to be asked for twice.
@@ -22,14 +23,24 @@ _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "
 BUNDLE="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 
 MODE=dry
-case "${1:-}" in
-  --apply)     MODE=apply ;;
-  --uninstall) MODE=uninstall ;;
-  ""|--dry-run) MODE=dry ;;
-  *) echo "install.sh: unknown argument '$1' (want --apply, --uninstall, or nothing)" >&2; exit 2 ;;
-esac
+CLAUDE_DIR=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --apply)       MODE=apply ;;
+    --uninstall)   MODE=uninstall ;;
+    --dry-run)     MODE=dry ;;
+    --config-dir)  shift; CLAUDE_DIR="${1:?--config-dir needs a path}" ;;
+    *) echo "install.sh: unknown argument '$1' (want --apply, --uninstall, --config-dir DIR)" >&2; exit 2 ;;
+  esac
+  shift
+done
 
-CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+# THE TARGET IS THE HOST'S DEFAULT CONFIG DIR, NEVER $CLAUDE_CONFIG_DIR. This bundle is
+# host-level — one copy shared by every account — and it will usually be installed from inside a
+# running chat, where CLAUDE_CONFIG_DIR names THAT CHAT'S account. Honouring it would drop the
+# scripts into, say, ~/.cc/2/bin while the /bb command still looks in ~/.claude/bin, and the
+# breakage is silent. --config-dir is the deliberate override.
+CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 BIN="$CLAUDE_DIR/bin"
 CMD="$CLAUDE_DIR/commands"
 ZSHRC="$HOME/.zshrc"
