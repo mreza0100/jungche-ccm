@@ -44,10 +44,22 @@ _cc_hsize() {
 # injected pseudo-prompts CC stores as "user" messages — skip these when naming a chat
 _CC_JUNK='^(<[a-z]|Caveat:|\[Request)'   # injected blocks (<system-reminder>, <task-notification>, <bash-input>, …)
 
+# user-turn text extractor shared by _cc_meta/_cc_lastprompt: string content as-is; array
+# content joins the TOP-LEVEL text blocks (a slash command's expansion turn, a pasted-image
+# prompt's text) — tool_result blocks are not text blocks, so tool returns never count. Junk
+# filter applies after. Compact summaries are user-typed records but not prompts — counting
+# them let an auto-compaction resurrect a hidden chat, and naming from them titled chats
+# "This session is being continued…".
+_CC_TEXTQ='select(.type=="user" and (.isCompactSummary != true)) | (.message.content) as $c
+  | (if ($c|type)=="string" then $c
+     elif ($c|type)=="array" then ([$c[]? | select(.type=="text") | .text] | join(" "))
+     else "" end) as $t
+  | select($t != "" and ($t|test($j)|not))'
+
 # _cc_lastprompt <transcript> — most recent REAL human prompt, flattened to one line
 _cc_lastprompt() {
   [[ -r "$1" ]] || return
-  tac "$1" 2>/dev/null | jq -rc --arg j "$_CC_JUNK" 'select(.type=="user" and (.message.content|type=="string") and (.message.content|test($j)|not)) | (.message.content|gsub("[\n\t]+";" "))' 2>/dev/null | head -1
+  tac "$1" 2>/dev/null | jq -rc --arg j "$_CC_JUNK" "$_CC_TEXTQ"' | ($t|gsub("[\n\t]+";" "))' 2>/dev/null | head -1
 }
 
 # _cc_meta <transcript> — "cwd<TAB>first-real-prompt<TAB>prompt-count" in one jq pass (whole file).
@@ -55,9 +67,15 @@ _cc_lastprompt() {
 _cc_meta() {
   [[ -r "$1" ]] || { print -r -- $'\t\t0'; return; }
   local out title firstline
-  out="$(jq -rc --arg j "$_CC_JUNK" 'select(.type=="user" and (.message.content|type=="string") and (.message.content|test($j)|not)) | [(.cwd//""),(.message.content|gsub("[\n\t]+";" "))]|@tsv' "$1" 2>/dev/null)"
+  out="$(jq -rc --arg j "$_CC_JUNK" "$_CC_TEXTQ"' | [(.cwd//""),($t|gsub("[\n\t]+";" "))]|@tsv' "$1" 2>/dev/null)"
   # /rename writes {"type":"custom-title",…} + {"type":"agent-name",…}; the LAST one is the chat's name and wins over the first prompt
   title="$(grep -aE '"type":"(custom-title|agent-name)"' "$1" 2>/dev/null | tail -1 | jq -r '.customTitle // .agentName // empty' 2>/dev/null)"
+  # Never /rename'd? The harness titles the chat itself ({"type":"ai-title","aiTitle":…}) — a
+  # far better row label than the raw first prompt. STRICTLY second: a renamed chat keeps
+  # writing ai-title records AFTER its custom-title ones, so folding both into one
+  # last-record-wins grep would relabel every /rename'd chat with its AI title.
+  [[ -z "$title" ]] && title="$(grep -a '"type":"ai-title"' "$1" 2>/dev/null | tail -1 | jq -r '.aiTitle // empty' 2>/dev/null)"
+  title="${title//[$'\t\n']/ }"   # titles are user text — a raw tab/newline would corrupt the TSV cache record
   [[ -z "$out" ]] && { print -r -- $'\t'"$title"$'\t0'; return; }   # command-only/cleared chat — a /rename title still names it
   firstline="${out%%$'\n'*}"                                         # cwd<TAB>first-prompt of the first real turn
   print -r -- "${firstline%%$'\t'*}"$'\t'"${title:-${firstline#*$'\t'}}"$'\t'"$(print -r -- "$out" | grep -c .)"
@@ -279,7 +297,8 @@ END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
   else                                       # resumable → cc --resume in a fresh tmux (like _cc_run)
     uuid="$f[5]"; local rcwd="$f[6]"           # launch in the session's home dir — claude --resume is cwd-scoped
     [[ -d "$rcwd" ]] || rcwd="$PWD"             # fall back if the project dir is gone
-    local cfg; case "$(_cc_primary)" in 2) cfg="$HOME/.claude2" ;; 3) cfg="$HOME/.claude3" ;; *) cfg="" ;; esac
+    local prim; prim="$(_cc_primary)"          # account 1 (or unset) → default dir; else ~/.claudeN — reads correctly at any N
+    local cfg=""; [[ "$prim" != 1 ]] && cfg="$HOME/.claude$prim"
     local rs="cc-$(date +%s)-$$-$RANDOM"
     echo "Resuming $uuid in $rcwd → new tmux -L $rs"
     # failure net: a session live OUTSIDE tmux is invisible to _cc_agents when its argv carries no

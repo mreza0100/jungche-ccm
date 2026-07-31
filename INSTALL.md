@@ -453,8 +453,29 @@ Open a new terminal to verify. Requires `tmux` and the `claude` CLI on `PATH`. T
 If the user runs Claude Code across multiple accounts — billing swap, or just several chats
 going at once — offer `blueprint/templates/host-swap/`. This edits **global** shell config
 and `~/.claude/`, so ask before applying; see `blueprint/templates/host-swap/README.md` for
-the full install (the account table, `cc-launch.sh`/`cc-account-swap.sh`, `/swap`, and the
-`cc-ls`/`/bb`/`cc-reap` fleet tools). Skipped entirely if the user declines.
+the full install (the account table, the `cc`/`cc-swap` launchers, `/swap`'s reboot-in-place
+contract — the adopter still authors its engine — and the `cc-ls`/`/bb`/`cc-reap` fleet tools).
+Skipped entirely if the user declines.
+
+**`/chat:*` install (host-level, not project-level):**
+
+```bash
+mkdir -p ~/.claude/commands/chat/self
+( cd blueprint/templates/host-swap/chat
+  for f in *.command.md self/*.command.md; do
+    cp "$f" "$HOME/.claude/commands/chat/${f%.command.md}.md"
+  done
+  cp chat.sh history.sh "$HOME/.claude/commands/chat/"
+)
+chmod +x ~/.claude/commands/chat/chat.sh ~/.claude/commands/chat/history.sh
+```
+
+Home, not the repo, and deliberately so: `~/.claude/commands/` is read by every project and every
+worktree, which is exactly why `chat:*` lives there — its old project-level shape was a set of
+relative symlinks that broke inside a worktree at a different directory depth (a worktree's
+`.claude/commands/chat/*` resolved `../../..` one hop short of the real target). A command
+installed only under the primary account's `~/.claude/` still needs the mirror step below to
+reach any extra `~/.claudeN` account dir.
 
 **Account command-mirror** (required once ANY extra account config dir exists —
 `~/.claude2`, `~/.claude3`, …): a chat launched under an extra account reads slash commands

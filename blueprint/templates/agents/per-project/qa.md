@@ -64,6 +64,8 @@ Follow `docs/commands/build/references/qa-commons.md` § 360° sweep.
 
 ## Step 4: Write adversarial integration tests
 
+**Gates:** `docs/commands/build/references/qa-commons.md` §§ Test economy, Test validity.
+
 **Where:** the project's integration test directory, in adversarial-named test files.
 
 **What to test:** Input validation, auth/authz, error handling, response contracts, data integrity, race conditions.
@@ -74,7 +76,7 @@ Follow `docs/commands/build/references/qa-commons.md` § 360° sweep.
 
 ## Step 5: Run tests (scope-aware)
 
-**Affected-first** per `docs/commands/build/references/qa-commons.md` § Affected-first — then run the scope below.
+**Affected-first** per `docs/commands/build/references/qa-commons.md` §§ Affected-first, Isolation on suspicion — then run the scope below.
 
 Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports).
 

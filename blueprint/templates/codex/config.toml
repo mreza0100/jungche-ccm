@@ -1,63 +1,37 @@
-# Professor Codex integration layer.
+# Repo-level Codex config — loads only when this project is trusted in
+# ~/.codex/config.toml (Codex asks for trust once, per repo). Scope: sandbox
+# reach for builder lanes and for any Codex session started inside this repo.
 #
-# This file configures OpenAI's Codex CLI to mirror the .claude/ pipeline.
-# The existing markdown command/agent docs remain read-only source manuals;
-# these settings expose the runtime primitives Codex actually understands.
+# LANE LAUNCH FLAGS DO NOT BELONG HERE. `-s workspace-write -a never` and the
+# rest of the per-launch policy live with the LAUNCHER (the tmux command that
+# starts a lane) — this file is also read by the human's interactive sessions,
+# and it must never change their defaults out from under them.
 #
-# OPTIONAL — everything works without this. Delete the entire .codex/ directory
-# if you don't use Codex, and the pipeline runs fine on Claude Code alone.
+# This file mirrors a WORKING config: every setting below is one the live
+# pipeline actually needs. Before adding anything back that a previous version
+# of this template carried, read README.md § "Settings deliberately absent" —
+# several of them configured a Codex orchestration model that does not exist.
 
-# ─── Voice ───────────────────────────────────────────────────────────────────
-# Disable Codex's generic Friendly/Pragmatic personality layer for this repo.
-# Professor owns voice through AGENTS.md, skills, and archetype-specific agents
-# such as JC, Professor, Officer, PM, and Mentor.
-personality = "none"
+# ─── Model (adopter choice — keep the shape, pick your own values) ───────────
+# The Codex model and reasoning effort this repo defaults to. These are the two
+# settings worth pinning per-repo: a lane that silently drops a tier produces
+# work that reads finished and is not. See {MODEL_TIER} in CLAUDE.md.
+model = "{CODEX_MODEL}"
+model_reasoning_effort = "{CODEX_REASONING_EFFORT}"
 
-# ─── Limits ──────────────────────────────────────────────────────────────────
-# Max bytes Codex will read from AGENTS.md (symlink to CLAUDE.md).
-# Increase if your CLAUDE.md exceeds 64KB — Codex silently truncates beyond this.
-project_doc_max_bytes = 65536
+[sandbox_workspace_write]
+# The test tier lives on localhost ({DB_PORT_TEST} / {QUEUE_PORT_TEST}, plus any
+# per-pipeline allocated ports) — a builder lane must reach it from INSIDE
+# workspace-write or every integration test fails at connect. Unix-socket
+# connects (tmux among them) stay blocked by the sandbox regardless of this
+# flag, which is why lane pings go through the events.log spool and not tmux.
+network_access = true
 
-# ─── Approval & sandbox ─────────────────────────────────────────────────────
-# "never" = full auto-approve (Codex runs without human confirmation).
-# Change to "on-failure" or "always" if you want a human gate.
-approval_policy = "never"
-
-# "danger-full-access" = no filesystem sandbox. Required for worktree.sh,
-# port allocation, git operations, and infrastructure commands (make, docker).
-# If your project doesn't need worktrees or infra access, consider "relaxed".
-sandbox_mode = "danger-full-access"
-
-[features]
-# Disable the generic personality selector so Professor archetypes own voice.
-personality = false
-# Enable Codex hook system (pre/post task hooks).
-codex_hooks = true
-
-[agents]
-# Max parallel Codex Teams child agents (e.g., child planners, developers).
-# Match to your machine's cores / token budget. 6 handles most monorepos.
-max_threads = 6
-# Depth of agent nesting. 1 = orchestrator can spawn children, children cannot
-# spawn grandchildren. Increase to 2 if your pipeline needs sub-sub-agents.
-max_depth = 1
-# Hard timeout per agent job (seconds). 1800 = 30 minutes. Increase for
-# complex pipelines; decrease for tighter cost control.
-job_max_runtime_seconds = 1800
-
-[shell_environment_policy]
-# "core" = inherit PATH, HOME, USER, SHELL and nothing else.
-# Use "all" if your build tools need more env vars (e.g., JAVA_HOME, NVM_DIR).
-inherit = "core"
-
-[shell_environment_policy.set]
-# Enable Codex Teams — allows Agent() spawning from .codex/agents/*.toml.
-# Without this, Codex runs single-threaded and cannot orchestrate pipelines.
-CODEX_EXPERIMENTAL_AGENT_TEAMS = "1"
-
-# ─── Project-specific env vars ───────────────────────────────────────────────
-# Add any env vars your build/test/dev commands need here. Examples:
+# ─── MCP servers (OPTIONAL — example shape; delete if you run none) ──────────
+# One table per server; Codex spawns `command` + `args` at session start. PIN the
+# version: an unpinned server changes under you between sessions, and a protocol
+# that changed shape mid-wave gets blamed on your own code first.
 #
-# NODE_ENV = "development"
-# PYTHON_PATH = "./src"
-# ENV_FILE = ".env.local"
+# [mcp_servers.{server-name}]
+# command = "npx"
+# args = ["-y", "{npm-package}@{version}"]

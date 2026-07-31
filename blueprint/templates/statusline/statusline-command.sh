@@ -64,11 +64,19 @@ IFS=$'\x1f' read -r MODEL DIR PCT COST DUR VIM AGENT WT GWT \
 #    even if you never install the host-swap fleet tooling. ──
 if [ -n "${TMUX:-}" ] && [ -n "${TPATH:-}" ]; then
   _sock="${TMUX%%,*}"; _sock="${_sock##*/}"
-  # 700: breadcrumbs are transcript paths and the namecache carries prompt text — not for other uids
-  { mkdir -p /tmp/cc-sid && chmod 700 /tmp/cc-sid && printf '%s' "$TPATH" > "/tmp/cc-sid/${_sock}"; } 2>/dev/null || true
+  # 700: breadcrumbs are transcript paths and the namecache carries prompt text — not for other uids.
+  # Write atomically (hidden tmp + mv): a consumer that reads this crumb to size/list a chat must
+  # never see a truncated empty read, and a plain truncate-then-write leaves a microsecond
+  # empty-read window that reads as "no crumb". The tmp name is dot-prefixed so it's invisible to
+  # a consumer globbing this directory for real breadcrumbs.
+  { mkdir -p /tmp/cc-sid && chmod 700 /tmp/cc-sid \
+      && printf '%s' "$TPATH" > "/tmp/cc-sid/.${_sock}.$$" \
+      && mv -f "/tmp/cc-sid/.${_sock}.$$" "/tmp/cc-sid/${_sock}"; } 2>/dev/null || true
   # pane-keyed breadcrumb too (<sock>.<pane_id>): several chats SPLIT in one window each get their
-  # own map entry — cc-ls merges them into one row (the socket-keyed file above is last-writer-wins)
-  [ -n "${TMUX_PANE:-}" ] && { printf '%s' "$TPATH" > "/tmp/cc-sid/${_sock}.${TMUX_PANE}"; } 2>/dev/null || true
+  # own map entry — a fleet picker merges them into one row (the socket-keyed file above is
+  # last-writer-wins)
+  [ -n "${TMUX_PANE:-}" ] && { printf '%s' "$TPATH" > "/tmp/cc-sid/.${_sock}.${TMUX_PANE}.$$" \
+      && mv -f "/tmp/cc-sid/.${_sock}.${TMUX_PANE}.$$" "/tmp/cc-sid/${_sock}.${TMUX_PANE}"; } 2>/dev/null || true
 fi
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -253,26 +261,32 @@ ctx_tok=$(( ${CACHER:-0} + ${CACHEC:-0} + ${CACHEI:-0} ))
 (( WIDE && ctx_tok > 0 )) && l2+="${SEP}${D}🧮$(fmttok "$ctx_tok")${X}"
 
 # Cache window — will the NEXT prompt hit the prompt cache? Shows the TTL this chat runs
-# (5m, or 1h when launched with ENABLE_PROMPT_CACHING_1H — set by your launcher; env
-# inherited from the claude process) and the time left: every request re-arms the window,
-# and the transcript's mtime is the last request. ✓12m = warm, hits; ✗ = window passed,
-# next prompt pays full freight.
+# and the time left: every request re-arms the window, and the transcript's mtime is the last
+# request. ✓12m = warm, hits; ✗ = window passed, next prompt pays full freight. The harness
+# defaults to a 1-hour cache window; an explicit FORCE_PROMPT_CACHING_5M=1 (set by your
+# launcher) opts a chat into the shorter 5-minute window instead. Env inherited from the
+# claude process, so this reads the chat's true birth mode.
 if (( WIDE )) && [ -n "${TPATH:-}" ] && [ -f "$TPATH" ]; then
-  cttl=300; cwl="5m"
-  [ "${ENABLE_PROMPT_CACHING_1H:-}" = "1" ] && { cttl=3600; cwl="1h"; }
+  cttl=3600; cwl="1h"
+  [ "${FORCE_PROMPT_CACHING_5M:-}" = "1" ] && { cttl=300; cwl="5m"; }
   # BSD stat first (macOS), GNU fallback (Linux); 0 mtime = unreadable → skip the segment
   cmt=$(stat -f%m "$TPATH" 2>/dev/null || stat -c%Y "$TPATH" 2>/dev/null || echo 0)
   cage=$(( $(date +%s) - cmt ))
   crem=$(( cttl - cage ))
+  # seconds are always shown: at a fast refresh, the last minute of a warm window is the part
+  # worth watching, and a bare rounded "1m" hides whether the next prompt still hits the cache
   if (( cmt == 0 )); then :
   elif (( crem > 0 )); then
-    crf="${crem}s"; (( crem >= 60 )) && crf="$(( (crem + 59) / 60 ))m"
+    crf="${crem}s"
+    (( crem >= 60 ))   && crf="$(( crem / 60 ))m:$(( crem % 60 ))s"
+    (( crem >= 3600 )) && crf="$(( crem / 3600 ))h:$(( (crem % 3600) / 60 ))m:$(( crem % 60 ))s"
     l2+="${SEP}${G}💾${cwl}✓${crf}${X}"
   else
-    # how long ago the window closed — ✗20m = it expired 20 minutes ago
+    # how long ago the window closed — ✗20m14s = it expired 20 minutes 14 seconds ago
     cpast=$(( -crem ))
-    crf="${cpast}s"; (( cpast >= 60 )) && crf="$(( cpast / 60 ))m"
-    (( cpast >= 5400 )) && crf="$(( (cpast + 1800) / 3600 ))h"
+    crf="${cpast}s"
+    (( cpast >= 60 ))   && crf="$(( cpast / 60 ))m:$(( cpast % 60 ))s"
+    (( cpast >= 3600 )) && crf="$(( cpast / 3600 ))h:$(( (cpast % 3600) / 60 ))m"
     l2+="${SEP}${R}💾${cwl}✗${crf}${X}"
   fi
 fi

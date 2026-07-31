@@ -4,7 +4,7 @@ export const meta = {
   phases: [
     { title: 'Discover', detail: 'enumerate every unit of every subject with output for the chosen channel(s)' },
     { title: 'Audit', detail: 'one auditor per unit — paired source-vs-output walk, in parallel' },
-    { title: 'Synthesize', detail: 'quantify failure rates, write the report to .professor/AUDIT/ai-output/, return a pointer' },
+    { title: 'Synthesize', detail: 'quantify failure rates, write the report to .professor/AUDIT/ai-output/, reconcile docs/audit/{channel}/ if the project keeps one, return a pointer' },
   ],
 }
 
@@ -120,7 +120,9 @@ const synth = await agent(
    - \`mkdir -p .professor/AUDIT/ai-output\`, then Write the full markdown to \`.professor/AUDIT/ai-output/<date>-${CHANNEL}.md\`.
    - The file leads with the OVERALL-% line and the PER-CATEGORY % table (user reads these first), then: verdict, per-subject roll-up, the consolidated CRITICAL/HIGH findings table (subject·unit·index·field·Got·Expected·severity·evidence), completeness (missed content per subject), the recurring-pattern read (which ONE root confusion explains the most failures — where a single example would help most), and recommendations (prompt fixes -> /km, code/guard fixes -> /jc; do NOT remediate).
 
-4. RETURN ONLY a pointer + the headline numbers — never the full report (the requesting chat reads the file for detail).
+4. RECONCILE the open-issue registry docs/audit/${CHANNEL}/, if the project maintains one (law + record format in its _index.md — skip this step entirely if no such registry exists): ADD each newly-confirmed finding to its area file (heading = a stable slug or code symbol; pointer-only evidence — unit_id + index + table.field — NEVER source content); DELETE each record this audit verifies no longer reproducible (remove entirely — never mark fixed, no tombstones); REFRESH re-confirmed records whose evidence or staged-fix pointers moved. The .professor/AUDIT file is the immutable record; the registry is current state only. An audit that skips this step while the registry exists is incomplete.
+
+5. RETURN ONLY a pointer + the headline numbers — never the full report (the requesting chat reads the file for detail).
 
 PER-UNIT RESULTS (JSON):
 ${JSON.stringify(results, null, 2)}`,

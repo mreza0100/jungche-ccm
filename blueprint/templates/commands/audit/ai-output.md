@@ -56,7 +56,7 @@ Run the saved `audit-ai-output-sessions` workflow (`.claude/workflows/audit-ai-o
 
 1. **Discover** — one agent enumerates from the store every unit of every subject that carries output for the chosen channel(s) (join the source table to the channel's output table) — the unit set is discovered, never hardcoded.
 2. **Audit** — one `general-purpose` frontier-tier agent PER UNIT in parallel (`args.frontierModel`, durable default `opus` — faithfulness verdicts on real domain content never run below the frontier tier), each walking ITS unit data-first, code-last per the brief below.
-3. **Synthesize** — a final frontier-tier agent (same `args.frontierModel`, default `opus`) quantifies the failure rates, WRITES the full report to `.professor/AUDIT/ai-output/{date}-{channel}.md`, and returns only a pointer + the headline numbers. The chat that invoked the audit then reads that file. This is the standing output contract for every `/audit:*` command — detailed results go to `.professor/AUDIT/{audit-type}/{date}-{component}.md`, kept out of the conversation's context, never dumped inline.
+3. **Synthesize** — a final frontier-tier agent (same `args.frontierModel`, default `opus`) quantifies the failure rates, WRITES the full report to `.professor/AUDIT/ai-output/{date}-{channel}.md`, RECONCILES the open-issue registry (§ Registry reconcile below), and returns only a pointer + the headline numbers. The chat that invoked the audit then reads that file. This is the standing output contract for every `/audit:*` command — detailed results go to `.professor/AUDIT/{audit-type}/{date}-{component}.md`, kept out of the conversation's context, never dumped inline.
 
 The workflow file is the declared copy of this flow — change both together. The orchestrator never inline-audits.
 
@@ -166,9 +166,33 @@ The synthesizer writes this to `.professor/AUDIT/ai-output/{date}-{channel}.md`.
 
 ---
 
+### Registry reconcile — `docs/audit/ai-output/`
+
+`docs/audit/ai-output/` is the LIVE open-issue registry (per-area files; law + record format in its `_index.md`). Every audit run ENDS by reconciling it — the synthesizer's last duty before returning:
+
+- **Add** each newly-confirmed finding as a record in its area file (heading = code symbol or stable kebab slug; pointer-only evidence: `unit_id · index · table.field` — never source content).
+- **Delete** each record the audit verifies is no longer reproducible — remove it entirely; never mark it fixed, never annotate (no changelog, no tombstones; history = git + the `.professor/AUDIT/` records).
+- **Refresh** re-confirmed records whose evidence or staged-fix pointers moved.
+
+The `.professor/AUDIT/ai-output/` file is the immutable per-run record; the registry is current state only. An audit that skips the reconcile is incomplete.
+
+---
+
+## Key questions the audit must answer
+
+The closing, human-readable form of the Cross-validation checks table above: each channel gets a short list of yes/no questions a domain expert can read without translation, roughly one per channel category. A synthesizer report that can't answer every question here is not done.
+
+> **KNOWLEDGE BASE EMPTY** — This section needs the project's domain-specific key questions (what a faithful vs. fabricated output looks like in this domain, phrased in the language a domain expert reads).
+> Run the Professor's Analysis Protocol or `.claude/commands/audit/ai-output.md` after the pipeline's output channels are enumerated (§ Step 1).
+> The Professor will surface this gap: "Knowledge base is empty, waiting for user specification to fill it in."
+
+Illustrative shape (replace with the real per-channel list): "Are the {DOMAIN_NOUN} labels applied to the output grounded in what the {USER_NOUN} actually said or did, or invented?"
+
+---
+
 ## Constraints
 
-- **Read-only** — this skill does NOT modify code. It produces findings and recommendations.
+- **Read-only on code** — this skill does NOT modify code. It produces findings and recommendations; its ONLY writes are the `.professor/AUDIT/` record and the `docs/audit/ai-output/` registry reconcile.
 - **Evidence-based** — every finding references a specific unit index, a specific output field, and the prompt instruction it violates.
 - **Domain lens first** — a technically valid output that's misleading in the domain is still a failure.
 - **Sacred ground** — if the model is producing forbidden output ({FORBIDDEN_DOMAIN_OUTPUTS}), that's CRITICAL regardless of whether the prompt asked for it.

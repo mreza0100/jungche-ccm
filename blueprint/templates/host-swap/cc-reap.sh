@@ -11,7 +11,9 @@
 #           OR a session Claude itself reports BUSY (deliberately detached, still working).
 #   KILL  = unattached idle orphan (kill-server frees its RAM) OR dead socket file (just rm it).
 # It NEVER touches an attached chat, your own socket, or any non-cc socket (dev / vscode /
-# default / cctest*). Default run is a DRY-RUN report with per-socket RAM; --kill performs the reap.
+# default / cctest*). When the agents query fails, --kill skips every breadcrumbed socket
+# (busy-unknown, fail closed) rather than treating silence as idle. Default run is a DRY-RUN
+# report with per-socket RAM; --kill performs the reap.
 #
 #   cc-reap.sh            # dry run: classify + show RAM, change nothing
 #   cc-reap.sh --kill     # reap: kill-server unattached orphans, rm stale socket files
@@ -37,13 +39,32 @@ MYSOCK=""
 # deliberately detached chat grinding a long task must survive a sweep. Sockets map to
 # sessions via the /tmp/cc-sid breadcrumb (socket → transcript path → uuid). Scans every
 # configured account (the default ~/.claude plus each extra ~/.claudeN master dir).
+# FAIL CLOSED: each account is queried and validated separately (one account's error output
+# must not poison the others' jq), and any failed query flips AGENTS_OK=0 — with the busy set
+# unknown, --kill SKIPS every breadcrumbed socket instead of treating silence as idle.
 CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
-BUSY_IDS="$({ env -u CLAUDE_CONFIG_DIR timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null
-              for _acct_dir in "$HOME"/.claude[0-9]*; do
-                [ -d "$_acct_dir" ] || continue
-                CLAUDE_CONFIG_DIR="$_acct_dir" timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null
-              done
-            } | jq -r '.[] | select(.status=="busy") | .sessionId' 2>/dev/null | sort -u)"
+BUSY_IDS=""; AGENTS_OK=1
+for _cfg in "" "$HOME"/.claude[0-9]*; do
+  if [ -n "$_cfg" ] && [ ! -d "$_cfg" ]; then continue; fi
+  if [ -n "$_cfg" ]; then _out="$(CLAUDE_CONFIG_DIR="$_cfg" timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"
+  else _out="$(env -u CLAUDE_CONFIG_DIR timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"; fi
+  if printf '%s' "$_out" | jq -e 'type=="array"' >/dev/null 2>&1; then
+    _ids="$(printf '%s' "$_out" | jq -r '.[] | select(.status=="busy") | .sessionId' 2>/dev/null)"
+    [ -n "$_ids" ] && BUSY_IDS="${BUSY_IDS}${BUSY_IDS:+
+}${_ids}"
+  else
+    AGENTS_OK=0
+  fi
+done
+BUSY_IDS="$(printf '%s\n' "$BUSY_IDS" | sort -u)"
+[ "$AGENTS_OK" = 0 ] && echo "cc-reap: WARNING — an agents query failed; busy state unknown, --kill skips breadcrumbed sockets"
+
+NOW="$(date +%s)"
+# kill-time busy re-verify (defense against a stale one-time BUSY_IDS snapshot): a session
+# idle at snapshot time can start work while detached — and a running turn writes its
+# transcript continuously, so a transcript touched within the last BUSY_RECENT_S seconds is
+# treated as busy even if it missed the snapshot.
+BUSY_RECENT_S="${CC_REAP_BUSY_RECENT_S:-60}"
 
 PS_SNAP="$(ps -e -o pid=,ppid=,rss=)"   # one snapshot; subtree sums read from it
 _subtree_kb() {                          # $1 = root pid -> KB (0 if unknown)
@@ -70,10 +91,20 @@ printf '%-38s %-5s %8s  %s\n' "SOCKET" "STATE" "RAM(MB)" "LABEL [cwd]"
 for path in "${SOCKS[@]}"; do
   sock="${path##*/}"
   line="$(tmux -L "$sock" ls -F "$FMT" 2>/dev/null | head -1)"
-  if [ -z "$line" ]; then            # dead/stale socket file (server gone)
-    kill_dead_n=$((kill_dead_n+1))
-    printf '%-38s %-5s %8s  %s\n' "$sock" "dead" "0" "(stale socket file)"
-    if (( DO_KILL )); then rm -f "$path"; fi
+  if [ -z "$line" ]; then            # empty tmux ls — server gone OR mid-startup (a forking
+    # tmux binds the socket BEFORE its session exists, and that reads identically to dead).
+    # Only treat (and count) a socket file older than 1h as dead — a young empty socket is
+    # reported and left alone in BOTH modes.
+    if [ -n "$(find "$path" -mmin +60 2>/dev/null)" ]; then
+      kill_dead_n=$((kill_dead_n+1))
+      if (( DO_KILL )); then
+        rm -f "$path"; printf '%-38s %-5s %8s  %s\n' "$sock" "dead" "0" "(stale socket file — rm'd)"
+      else
+        printf '%-38s %-5s %8s  %s\n' "$sock" "dead" "0" "(stale socket file)"
+      fi
+    else
+      printf '%-38s %-5s %8s  %s\n' "$sock" "SKIP" "0" "(empty socket <1h — mid-startup? left alone)"
+    fi
     continue
   fi
   IFS=$'\t' read -r att pid label cwd <<<"$line"
@@ -85,11 +116,30 @@ for path in "${SOCKS[@]}"; do
     printf '%-38s %-5s %8s  %s\n' "$sock" "mate" "$((ram_kb/1024))" "$label [$cwd]"
     continue ;;
   esac
-  buuid=""
-  [ -r "/tmp/cc-sid/$sock" ] && buuid="$(basename -- "$(cat "/tmp/cc-sid/$sock")" .jsonl)"
-  if [ -n "$buuid" ] && printf '%s\n' "$BUSY_IDS" | grep -qxF -- "$buuid"; then   # KEEP: still working
+  # Resolve EVERY uuid this socket hosts — the socket crumb AND each pane crumb
+  # (/tmp/cc-sid/<sock>.<pane>). A split puts two claudes on one socket, and the socket crumb
+  # is last-writer-wins, so the busy pane may not own it — reading only the socket crumb could
+  # reap a busy worker beside an idle parent. has_crumb records whether ANY crumb file exists
+  # (the fail-closed signal below).
+  buuids=""; has_crumb=0
+  for cf in "/tmp/cc-sid/$sock" "/tmp/cc-sid/$sock".%*; do
+    [ -e "$cf" ] || continue
+    has_crumb=1
+    cu="$(basename -- "$(cat "$cf" 2>/dev/null)" .jsonl 2>/dev/null)"
+    case "$cu" in *-*-*-*-*) buuids="${buuids}${buuids:+ }$cu" ;; esac
+  done
+  # KEEP if ANY resolved uuid is busy in the snapshot, OR its transcript was written within
+  # the last BUSY_RECENT_S seconds (turned busy AFTER the one-time snapshot).
+  busy=0; busy_why="busy"
+  for cu in $buuids; do
+    if printf '%s\n' "$BUSY_IDS" | grep -qxF -- "$cu"; then busy=1; busy_why="busy"; break; fi
+    tf="$(ls "$HOME"/.claude/projects/*/"$cu".jsonl "$HOME"/.claude[0-9]*/projects/*/"$cu".jsonl 2>/dev/null | head -1)"
+    [ -n "$tf" ] || continue
+    if [ "$(( NOW - $(stat -c %Y "$tf" 2>/dev/null || echo 0) ))" -lt "$BUSY_RECENT_S" ]; then busy=1; busy_why="active<${BUSY_RECENT_S}s"; break; fi
+  done
+  if [ "$busy" = 1 ]; then   # KEEP: still working
     keep_n=$((keep_n+1)); keep_kb=$((keep_kb+ram_kb))
-    printf '%-38s %-5s %8s  %s\n' "$sock" "busy" "$((ram_kb/1024))" "$label [$cwd]"
+    printf '%-38s %-5s %8s  %s\n' "$sock" "$busy_why" "$((ram_kb/1024))" "$label [$cwd]"
     continue
   fi
 
@@ -103,6 +153,18 @@ for path in "${SOCKS[@]}"; do
   # KILL: unattached live orphan
   kill_live_n=$((kill_live_n+1)); kill_kb=$((kill_kb+ram_kb))
   if (( DO_KILL )); then
+    # fail closed: busy set unknown + this socket has a breadcrumb (a real chat) → never kill
+    if [ "$AGENTS_OK" = 0 ] && [ "$has_crumb" = 1 ]; then
+      printf '%-38s %-5s %8s  %s\n' "$sock" "SKIP" "$((ram_kb/1024))" "busy-unknown (agents query failed) — $label"
+      continue
+    fi
+    # fail closed: a live cc-* server with NO breadcrumb is busy-UNKNOWN — its busy state
+    # can't be read (statusline never rendered, or /tmp/cc-sid was cleared), so a detached
+    # chat grinding a task there would look like an idle orphan. Skip it.
+    if [ "$has_crumb" = 0 ]; then
+      printf '%-38s %-5s %8s  %s\n' "$sock" "SKIP" "$((ram_kb/1024))" "busy-unknown (no breadcrumb) — $label"
+      continue
+    fi
     # defense-in-depth: re-check attached at kill time (fleet spawns chats mid-sweep)
     if tmux -L "$sock" ls -F '#{?session_attached,1,0}' 2>/dev/null | grep -qx 1; then
       printf '%-38s %-5s %8s  %s\n' "$sock" "SKIP" "$((ram_kb/1024))" "now attached — $label"

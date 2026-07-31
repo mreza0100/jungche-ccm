@@ -1,52 +1,53 @@
-# Professor — Multi-Account Billing Swap
+# Professor — Multi-Account Fleet Tooling
 
-Run two or three Claude subscriptions and switch which one a given chat bills to — **without disturbing any other running session**. Universal Tier C mechanic, no domain placeholders.
-
-> **macOS only.** The mechanism relies on the macOS Keychain (`security` CLI). Linux/Windows users would need to substitute a different credential store.
+Run two or three Claude subscriptions and pick which one a chat launches under, or reboot an
+already-running chat onto a different one — **without disturbing any other running session**.
+Universal Tier C mechanic, no domain placeholders. **Linux and macOS** — each account is a plain
+config dir; nothing here depends on a Keychain or other OS credential store.
 
 ## What it does
 
 ```
-cc          ->  launch Claude in tmux, billing to your primary account
-cc2         ->  launch Claude in tmux, billing to account 2
-/swap       ->  switch THIS chat's billing account (others untouched)
-/swap 2     ->  jump straight to account 2
-cc-swap     ->  change the default "primary" account for future cc launches
+cc          ->  launch Claude in its own tmux socket, under the current primary account
+cc2         ->  launch Claude in its own tmux socket, under account 2
+cc-swap     ->  change which account a FUTURE bare `cc` opens (fzf picker; cc-swap 2 jumps directly)
+/swap 2     ->  reboot THIS running chat in place onto account 2 (same pane, same socket) —
+                needs the adopter-authored engine described in swap.command.md; not shipped
 ```
 
-Each `cc` launch gets its own **private Keychain credential** seeded from your chosen account's master token. `/swap` rewrites only that session's private item — other sessions keep their own. The change takes effect on the next message (~30 s Keychain cache).
+`cc-swap` only changes which account a **future** `cc` launch uses — it never touches a chat
+that's already running. Moving an already-running chat to another account is `/swap`'s job:
+`CLAUDE_CONFIG_DIR` (and the cache-TTL env) binds once at process birth, so retargeting a live
+chat means ending that process and starting a fresh one in the same pane, not rewriting a
+credential in place. `swap.command.md` documents that reboot contract; the respawn engine itself
+is host-specific (it depends on how you launch chats) and is not part of this template — see that
+file for what you need to author.
 
 ## How it works
 
-Claude Code keys its macOS Keychain credential by the `CLAUDE_CONFIG_DIR` path:
+Each **account** IS its own Claude Code config dir directly — no per-launch session dir, no
+credential store to seed or rotate:
 
 ```
-item name = "Claude Code-credentials-" + first_8_hex(sha256(config_dir_path))
-           (unsuffixed when CLAUDE_CONFIG_DIR is unset — the default ~/.claude session)
+~/.claude          account 1 (CLAUDE_CONFIG_DIR unset — Claude's own default)
+~/.claude2         account 2
+~/.claude3         account 3 (optional — everything below reads correctly with just 1 and 2)
 ```
 
-Each **account** has a **master config dir** (`~/.claude`, `~/.claude2`, `~/.claude3`) with its own master Keychain item seeded once via `/login`. Each **launch** creates a fresh **per-session dir** under `~/.claude-sessions/` — a symlink shell over the chosen master (so settings, commands, and projects stay shared) — and seeds a private Keychain item from the master token. That private item is what `/swap` rewrites.
-
-```
-~/.claude          master dir, account 1
-~/.claude2         master dir, account 2
-~/.claude3         master dir, account 3 (optional)
-~/.claude-sessions/s20250101-120000-12345/
-  ├── (symlinks → master dir files)
-  ├── .claude.json -> master .claude.json
-  └── account      "<num> <label> <email>"   ← read by /swap + statusline
-```
-
-The `account` marker file (`<num> <label> <email>`) is written by the launcher and updated by `/swap`. The statusline badge (🥇/🥈/🥉) reads it on every refresh.
+One `/login` per account, ever — no credential copying (a copied OAuth token forks and dies).
+Every launch gets its **own tmux server** (`-L cc-<epoch>-<pid>-<rand>`) so a single crashed tmux
+can't take every chat down at once, and so a chat picker or `/swap`'s engine can address one
+chat's pane precisely instead of guessing which pane in a shared server is which chat. The marker
+file `~/.claude-primary` holds which account number a bare `cc` opens (default `1`); `cc-swap`
+writes it. The statusline badge (🥇/🥈/🥉) reads each chat's own `CLAUDE_CONFIG_DIR` on every
+refresh — no separate marker to keep in sync.
 
 ## Files in this template
 
 | File | Destination | Purpose |
 |------|-------------|---------|
-| `cc-launch.sh` | `~/.claude/bin/cc-launch.sh` | Create per-session dir + seed Keychain + write marker |
-| `cc-account-swap.sh` | `~/.claude/bin/cc-account-swap.sh` | Per-chat swap: cycle / jump / status |
-| `zshrc-swap.snippet.sh` | append to `~/.zshrc` | `cc`/`cc1`/`cc2`/`cc3` launchers, `cc-swap` picker, `cc-clean` |
-| `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command |
+| `zshrc-swap.snippet.sh` | append to `~/.zshrc` | `cc`/`cc1`/`cc2`/`cc3` launchers (each its own tmux server) + `cc-swap` picker |
+| `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command — the reboot-in-place *contract*; you still need to author the engine it shells out to (see that file) |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge |
 | `cc-ls.snippet.sh` | append to `~/.zshrc` | `cc-ls` — fzf picker over every live + resumable chat (Enter attaches a live tmux, or resumes a transcript in a fresh tmux) |
 | `cc-hide.sh` | `~/.claude/bin/cc-hide.sh` | `/bb`'s engine — hide this chat from `cc-ls` then close it; **pane-aware**: kills only its own pane (never the shared server) and reaps the teammates it spawned |
@@ -56,80 +57,61 @@ The `account` marker file (`<num> <label> <email>`) is written by the launcher a
 
 ## Install (opt-in)
 
-**1. Edit the account table first** — see the section below. Every file has a clearly marked `# EDIT: your accounts` block. Update those blocks before running any script.
+**1. Edit the account table first** — see the section below. `zshrc-swap.snippet.sh` and
+`statusline-badge.snippet.sh` each have a clearly marked `# EDIT: your accounts` block. Update
+those before sourcing anything.
 
-**2. Create master config dirs** for accounts 2 and 3 if you haven't already, then seed their master Keychain items:
+**2. Log in to each account's config dir** you plan to use:
 
 ```bash
-# Seed account 1 (default ~/.claude — already set if you use CC normally)
-# Seed account 2:
+# Account 1 (default ~/.claude — already set if you use CC normally)
+# Account 2:
 CLAUDE_CONFIG_DIR="$HOME/.claude2" claude   # then /login inside CC
-# Seed account 3 (optional):
+# Account 3 (optional):
 CLAUDE_CONFIG_DIR="$HOME/.claude3" claude   # then /login inside CC
 ```
 
-**3. Install scripts:**
-
-```bash
-mkdir -p ~/.claude/bin
-cp cc-launch.sh ~/.claude/bin/cc-launch.sh
-cp cc-account-swap.sh ~/.claude/bin/cc-account-swap.sh
-chmod +x ~/.claude/bin/cc-launch.sh ~/.claude/bin/cc-account-swap.sh
-```
-
-**4. Append the shell snippet:**
+**3. Append the shell snippet:**
 
 ```bash
 cat zshrc-swap.snippet.sh >> ~/.zshrc
 source ~/.zshrc
 ```
 
-**5. Install the `/swap` command:**
+**4. Install the `/swap` command** (this installs the slash-command *contract* — you still need
+to write and wire up the engine it calls; see `swap.command.md`):
 
 ```bash
 cp swap.command.md ~/.claude/commands/swap.md
 ```
 
-**6. Add the account badge to your statusline** (if you use the Professor statusline):
+**5. Add the account badge to your statusline** (if you use the Professor statusline):
 
 Merge the block from `statusline-badge.snippet.sh` into `~/.claude/statusline-command.sh` just before the `# ── LINE 1` section (where `badge` is referenced). The badge variable is already consumed by the `l1` line — you just need the computation block.
 
-**7. Test:**
+**6. Test:**
 
 ```bash
-cc1   # should open CC billing to account 1
-# inside CC:  /swap 2    → confirm "now bills to account 2"
-# in another terminal:  cc2   → independent session, unaffected
+cc1        # should open CC under account 1, its own tmux socket
+cc2        # in another terminal — independent session, unaffected
+cc-swap 2  # change which account a FUTURE bare `cc` opens
 ```
 
 ## Editing the account table
 
-Every file contains a block like this (keyed by a `# EDIT: your accounts` comment):
+`zshrc-swap.snippet.sh` (the `cc-swap` picker's `accts` array) and `statusline-badge.snippet.sh`
+each contain a block keyed by an `# EDIT: your accounts` comment — update it to the account
+numbers you actually use.
 
-```
-# num  label       master dir      master Keychain item suffix   email
-#  1   work        ~/.claude       (none — unsuffixed default)   you@work.example
-#  2   personal    ~/.claude2      <8-hex suffix>                you@personal.example
-#  3   third       ~/.claude3      <8-hex suffix>                you3@example
-```
-
-**How to find your master Keychain item suffixes** — run this for each master dir:
-
-```bash
-printf '%s' "$HOME/.claude2" | shasum -a 256 | cut -c1-8   # → suffix for account 2
-printf '%s' "$HOME/.claude3" | shasum -a 256 | cut -c1-8   # → suffix for account 3
-```
-
-(Account 1 uses the unsuffixed item `Claude Code-credentials` because it runs without `CLAUDE_CONFIG_DIR` set.)
-
-Then update the `case` blocks in `cc-launch.sh`, `cc-account-swap.sh`, `zshrc-swap.snippet.sh`, and `swap.command.md` with your real labels, emails, master dirs, and suffix values.
-
-**Two-account setup:** remove all `3)` cases and references to account 3. Works fine with just 1 and 2.
+**Two-account setup:** delete the `cc3`/account-3 lines from `zshrc-swap.snippet.sh` and drop `3`
+from `cc-swap`'s `accts` array. Works fine with just 1 and 2.
 
 ## Maintenance
 
-- **Re-seed a master token** (if Anthropic rotates it): launch the plain master (`CLAUDE_CONFIG_DIR=~/.claude2 claude`) and `/login` again. Existing per-session items will fail on next swap — relaunch with `cc2 -c` to continue the chat under a fresh session.
-- **Prune old session dirs:** `cc-clean` (default: prune dirs older than 7 days) removes both the dir and its private Keychain item.
+Nothing to prune — each account is its own config dir directly, not a per-launch session dir, so
+there's no session-dir graveyard to clean up. If Anthropic ever rotates a refresh token, just
+re-`/login` under that account's config dir (`CLAUDE_CONFIG_DIR=~/.claude2 claude`, then
+`/login`) — no other chat is affected.
 
 ## Fleet management — `cc-ls`, `/bb`, `cc-reap`
 

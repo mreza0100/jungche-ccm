@@ -40,12 +40,12 @@ DEV_TMUX_SOCKET="{PROJECT_NAME_LOWER}-dev"
 #   key | label | dir | log | port_var | install_cmd | run_cmd | health
 #
 #   key         — short id used in the PID file, log filenames, and `log <svc>`
-#                 (e.g. backend, cortex, frontend, web). Must be unique.
+#                 (e.g. backend, worker, frontend, web). Must be unique.
 #   label       — human label for report lines (e.g. "Backend", "{AI_SERVICE_NAME}").
 #   dir         — project dir relative to repo root; "." for a single-project repo.
-#   log         — log basename under tmp/dev/ (e.g. be.log, cortex.log).
+#   log         — log basename under tmp/dev/ (e.g. be.log, worker.log).
 #   port_var    — name of the port variable this server binds (BE_PORT, FE_PORT,
-#                 WEB_PORT, CORTEX_PORT). Resolved indirectly at runtime.
+#                 WEB_PORT, WORKER_PORT). Resolved indirectly at runtime.
 #   install_cmd — dependency install command run in the project dir before start.
 #                 "-" to skip.
 #   run_cmd     — the dev-server command. ${PORT} expands to this server's port and
@@ -74,7 +74,7 @@ if [ -f "$DEV_PORTS_FILE" ]; then
 else
   # Defaults (main local dev). SETUP fills the per-project port defaults below from
   # the roster — one `: "${PORT_VAR:=default}"` per server entry.
-  # {PORT_DEFAULTS} — e.g. BE_PORT={BACKEND_PORT}, FE_PORT=8081, WEB_PORT={WEB_PORT}, CORTEX_PORT=3500
+  # {PORT_DEFAULTS} — e.g. BE_PORT={BACKEND_PORT}, FE_PORT=8081, WEB_PORT={WEB_PORT}, WORKER_PORT=3500
   ISO_MODE=false
   ISO_PROFILE=""
 fi
@@ -528,7 +528,13 @@ cmd_up() {
       info "Isolated mode — checking existing containers..."
       local infra_ok=true
       wait_for "{DATABASE} (${PG_PORT:-{DB_PORT}})" "docker exec ${DOCKER_PG_CONTAINER:-{PROJECT_NAME_LOWER}-postgres} pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-{PROJECT_NAME_LOWER}}" 10 || infra_ok=false
-      wait_for "{QUEUE} (${LS_PORT:-{QUEUE_PORT}})" "curl -sf http://localhost:${LS_PORT:-{QUEUE_PORT}}/_localstack/health" 10 || infra_ok=false
+      # Ready means the init scripts finished, not merely health-green — mirrors this
+      # project's own ls-ready-local/ls-ready-test make targets (the health endpoint
+      # goes green BEFORE the queue/bucket init scripts finish; a consumer that starts
+      # on health-green alone can poll a queue that doesn't exist yet). ISO's {QUEUE}
+      # runs on an arbitrary per-profile port those fixed-port make targets can't
+      # address, so the same two-stage check is mirrored inline here.
+      wait_for "{QUEUE} (${LS_PORT:-{QUEUE_PORT}})" "curl -sf http://localhost:${LS_PORT:-{QUEUE_PORT}}/_localstack/health >/dev/null && curl -sf http://localhost:${LS_PORT:-{QUEUE_PORT}}/_localstack/init | grep -Eq '\"READY\"[[:space:]]*:[[:space:]]*true'" 20 || infra_ok=false
       if ! $infra_ok; then
         fail "Isolated infrastructure not running — run '/dev iso init' first"
         exit 1
@@ -593,10 +599,18 @@ cmd_up() {
       ok "ISO mode — schema applied during init (skipping migrations)"
     else
       header "Database"
-      info "Checking schema + migrations..."
+      info "Checking database..."
+
+      # Create the DB if needed (ignore error if it exists). Migrations run on the
+      # app's own boot, not here — its boot-time migrator (advisory-lock +
+      # checksum-guarded) is the single migration authority, writing an
+      # applied_migrations ledger. A redundant pre-migration here would apply the
+      # schema without ever writing that ledger, so the app's migrator would see an
+      # empty ledger and re-run every file from 0001 on its own boot — safe only by
+      # idempotency luck, and fatal the moment a later migration assumes a column an
+      # earlier one already dropped.
       make -C "$ROOT/{INFRA_PROJECT}" db-create-local
-      make -C "$ROOT/{INFRA_PROJECT}" db-migrate-local 2>&1 | tail -2
-      ok "Database ready (seeding handled on boot)"
+      ok "Database created (migrations + seeding by the app on boot)"
     fi
   fi
 
@@ -609,6 +623,13 @@ cmd_up() {
   for entry in "${PROJECTS[@]}"; do
     IFS='|' read -r key _ _ _ _ _ _ _ <<< "$entry"
     start_server "$key"
+    # Boot-order fence — SETUP inserts a wait here, keyed to a specific roster entry,
+    # when a LATER server in this loop would race THIS one to bootstrap shared-database
+    # tables at boot (the service holding migration authority must answer healthy
+    # before a racing consumer starts: the loser hits a "relation already exists"
+    # error and aborts with an unwritten migration ledger — a half-migrated corpse,
+    # safe only by idempotency luck). "-" / empty if the roster has no such race.
+    # {BOOT_ORDER_FENCE}
   done
 
   # ── Step 6: Health checks ──
@@ -781,11 +802,10 @@ cmd_drop() {
 
   ok "Infrastructure rebuilt"
 
-  # Step 4: Recreate database + migrate
+  # Step 4: Recreate database (the app migrates on boot — cmd_up starts it next)
   header "Database"
   make -C "$ROOT/{INFRA_PROJECT}" db-create-local
-  make -C "$ROOT/{INFRA_PROJECT}" db-migrate-local 2>&1 | tail -2
-  ok "Database migrated"
+  ok "Database created (migrations + seeding by the app on boot)"
 
   # Step 5: Restart servers if they were running before
   if $were_running; then
@@ -850,11 +870,10 @@ cmd_fresh() {
 
   ok "Infrastructure rebuilt"
 
-  # Step 4: Recreate database + migrate
+  # Step 4: Recreate database (the app migrates on boot — cmd_up starts it next)
   header "Database"
   make -C "$ROOT/{INFRA_PROJECT}" db-create-local
-  make -C "$ROOT/{INFRA_PROJECT}" db-migrate-local 2>&1 | tail -2
-  ok "Database migrated"
+  ok "Database created (migrations + seeding by the app on boot)"
 
   # Step 5: Always start servers
   header "Starting servers"

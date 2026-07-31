@@ -19,6 +19,21 @@ set -u
 u="${1:?usage: cc-agent-open.sh <uuid> [cwd] [owning-config-dir]}"
 cwd="${2:-$PWD}"; owncfg="${3:-}"
 
+# PER-UUID TAKEOVER MUTEX. Two terminals opening the same ⚙ agent row both snapshot the
+# registry, both TERM the pid, then both `claude --resume <u>` — and the harness session lock
+# refuses only BACKGROUND holders, so two INTERACTIVE resumes are admitted, appending one
+# transcript (the corruption class the solo-instance guard exists to prevent, on the one path
+# it skips). A non-blocking flock serializes takeover+resume per uuid; the loser exits with
+# guidance. Held for the script's life (the fd survives the `exec` attach and the foreground
+# resume), so a second open can't race in while this one owns the session.
+mkdir -p /tmp/cc-sid 2>/dev/null; chmod 700 /tmp/cc-sid 2>/dev/null || true
+exec 8>"/tmp/cc-sid/.takeover-$u.lock" 2>/dev/null || true
+if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
+  echo "cc-agent-open: another open/takeover of $u is already in flight — let it settle, then retry (or attach its window)."
+  sleep 3   # this runs as a tmux window's command — hold the message on screen before the pane dies
+  exit 1
+fi
+
 # config dir for account N: 1 (or unset) → "" (the default ~/.claude); else ~/.claudeN
 _cfg_of() { case "$1" in 1|"") echo "" ;; *) echo "$HOME/.claude$1" ;; esac; }
 # account number for a config dir: "" / ~/.claude → 1; else the trailing digits of ~/.claudeN
@@ -85,6 +100,7 @@ if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     cc-*)
       echo "⚙ $name is a tmux-resident chat on $tsock — attaching its window"
       tmux -L "$tsock" set -g window-size latest 2>/dev/null
+      exec 8>&-   # pure attach, no takeover — release the mutex; holding it through an hours-long view would block legit opens
       exec env -u TMUX tmux -L "$tsock" attach
       ;;
   esac
@@ -96,6 +112,7 @@ fi
 case "$st" in
   busy)
     echo "⚙ $name (account $oacct) is BUSY — attaching. Pick '$name' in the view; ⌃C detaches."
+    exec 8>&-   # attach-only path (never kills/resumes) — don't hold the takeover mutex through the view
     cc "$hitcfg" agents --cwd "$cwd"; exit $?
     ;;
   *)
