@@ -452,23 +452,26 @@ Open a new terminal to verify. Requires `tmux` and the `claude` CLI on `PATH`. T
 
 If the user runs Claude Code across multiple accounts — billing swap, or just several chats
 going at once — offer `blueprint/templates/host-swap/`. This edits **global** shell config
-and `~/.claude/`, so ask before applying; see `blueprint/templates/host-swap/README.md` for
-the full install (the account table, the `cc`/`cc-swap` launchers, `/swap`'s reboot-in-place
-contract — the adopter still authors its engine — and the `cc-ls`/`/bb`/`cc-reap` fleet tools).
-Skipped entirely if the user declines.
+and `~/.claude/`, so ask before applying. Skipped entirely if the user declines.
 
-**`/chat:*` install (host-level, not project-level):**
+The bundle installs itself, and the `/chat:*` family comes with it. Clone the blueprint to a
+permanent home first — **the clone IS the install**, since every command and script becomes a
+symlink back into it:
 
 ```bash
-mkdir -p ~/.claude/commands/chat/self
-( cd blueprint/templates/host-swap/chat
-  for f in *.command.md self/*.command.md; do
-    cp "$f" "$HOME/.claude/commands/chat/${f%.command.md}.md"
-  done
-  cp chat.sh history.sh "$HOME/.claude/commands/chat/"
-)
-chmod +x ~/.claude/commands/chat/chat.sh ~/.claude/commands/chat/history.sh
+git clone https://github.com/{GH_USER}/professor.git ~/.professor
+~/.professor/blueprint/templates/host-swap/install.sh            # dry run — read it
+~/.professor/blueprint/templates/host-swap/install.sh --apply
 ```
+
+That wires the `cc`/`cc-swap` launchers, `cc-ls`, `/bb`, `/swap` (engine included), `cc-reap`,
+`cc-archive`, the SQLite state store, and the whole `/chat:*` family — then adds one `source`
+line to `~/.zshrc`. A real file already at a destination is backed up, never overwritten in
+place; `--uninstall` reverses everything. Afterwards the adopter edits the account table in
+`cc-fleet.zsh`; see `blueprint/templates/host-swap/README.md`.
+
+Because every installed file is a link into the clone, updates are `git -C ~/.professor pull` —
+one pull moves every command at once, and there is no second copy to drift.
 
 Home, not the repo, and deliberately so: `~/.claude/commands/` is read by every project and every
 worktree, which is exactly why `chat:*` lives there — its old project-level shape was a set of
