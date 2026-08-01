@@ -45,6 +45,7 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 blueprint/
 ├── README.md              ← you are here
 ├── BLUEPRINT.md           ← philosophy, three-tier framework, load-bearing walls
+├── ARCHITECTURE.md        ← mechanics: source→render→install→update, ownership law, tiers
 ├── SETUP.md               ← interactive install interview (Claude conducts it)
 └── templates/
     ├── CLAUDE.md          ← root project rules + Professor persona
