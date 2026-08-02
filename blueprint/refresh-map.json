@@ -699,6 +699,21 @@
     },
     "templates/host-swap/tests/selflocate-fixtures.sh": {
       "curated": true
+    },
+    "templates/host-swap/cc-name-sync.sh": {
+      "curated": true
+    },
+    "templates/host-swap/systemd/cc-name-sync.service": {
+      "curated": true
+    },
+    "templates/host-swap/systemd/cc-name-sync.path": {
+      "curated": true
+    },
+    "templates/host-swap/systemd/cc-name-sync.timer": {
+      "curated": true
+    },
+    "templates/host-swap/tests/name-sync-fixtures.sh": {
+      "curated": true
     }
   }
 }

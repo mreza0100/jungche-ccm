@@ -101,7 +101,7 @@ say "Target config dir:      $CLAUDE_DIR"
 say ""
 
 # ── the fleet scripts: one stable address, ~/.claude/bin, independent of where the clone lives ──
-FLEET_SCRIPTS="cc-db.sh cc-hide.sh cx-hide.sh cc-agent-open.sh cc-swap-chat.sh cc-archive.sh cc-reap.sh"
+FLEET_SCRIPTS="cc-db.sh cc-hide.sh cx-hide.sh cc-agent-open.sh cc-swap-chat.sh cc-archive.sh cc-reap.sh cc-name-sync.sh"
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
 for f in $FLEET_SCRIPTS; do
@@ -133,6 +133,33 @@ done
 for f in chat.sh history.sh; do
   if [ "$MODE" = uninstall ]; then unlink_one "$CMD/chat/$f"; else link "$BUNDLE/chat/$f" "$CMD/chat/$f"; fi
 done
+say ""
+
+# ── systemd user units: the cc-name-sync triggers (a codex rename lands on the tab in under a
+# second via the path watch; the timer converges claude /rename drift). Linked like everything
+# else; enable is what makes systemd read them. Skipped cleanly where systemd --user is absent
+# (a jail, a container) — there the sync still fires from every cc-ls run. ──
+SYSD="$HOME/.config/systemd/user"
+UNITS="cc-name-sync.service cc-name-sync.path cc-name-sync.timer"
+say "systemd user units -> $SYSD"
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  if [ "$MODE" = uninstall ]; then
+    act && systemctl --user disable --now cc-name-sync.path cc-name-sync.timer >/dev/null 2>&1
+    for u in $UNITS; do unlink_one "$SYSD/$u"; done
+    act && systemctl --user daemon-reload
+  else
+    act && mkdir -p "$SYSD"
+    for u in $UNITS; do link "$BUNDLE/systemd/$u" "$SYSD/$u"; done
+    if act; then
+      systemctl --user daemon-reload
+      systemctl --user enable --now cc-name-sync.path cc-name-sync.timer >/dev/null 2>&1 \
+        || say "  warn    could not enable cc-name-sync.path/.timer — run: systemctl --user enable --now cc-name-sync.path cc-name-sync.timer"
+    fi
+  fi
+else
+  say "  skip    systemd --user unavailable — codex renames land on the next cc-ls run instead"
+  n_skip=$((n_skip+1))
+fi
 say ""
 
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──

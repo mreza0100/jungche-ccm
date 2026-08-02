@@ -58,11 +58,13 @@ refresh — no separate marker to keep in sync.
 | `cc-swap-chat.sh` | `~/.claude/bin/cc-swap-chat.sh` | `/swap`'s engine — reboot a running chat in place onto another account and/or flip its cache mode |
 | `cc-reap.sh` | `~/.claude/bin/cc-reap.sh` | reclaim RAM from the `cc-*` socket graveyard (dry-run by default; `--kill` reaps unattached orphans + stale socket files) |
 | `cc-archive.sh` | `~/.claude/bin/cc-archive.sh` | move hidden chats and old subagent transcripts out of the live pool, reversibly (dry-run by default; `--restore` puts one back) |
+| `cc-name-sync.sh` | `~/.claude/bin/cc-name-sync.sh` | the single writer of chat **window names** — codex windows follow the `session_index.jsonl` thread name (pane matched to its rollout by birth time, so same-directory chats keep their own names), claude windows follow the 🔖 statusline label; the window name is what the VS Code tab renders for codex and what `/chat:*` resolves codex chats by |
+| `systemd/` | `~/.config/systemd/user/` | `cc-name-sync` triggers: a **path unit** on `session_index.jsonl` (a codex rename reaches the tab in under a second) + a 2-min **timer** (claude `/rename` drift); `cc-ls` also fires the sync on every run |
 | `bb.command.md` | `~/.claude/commands/bb.md` | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned) |
 | `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command — reboot this chat onto another account, in place |
 | `chat/` | `~/.claude/commands/chat/` | the `chat:*` command family + its engine `chat.sh` |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge (the one piece that is still a manual merge — it edits a file you own) |
-| `tests/` | — | fixtures for the state store, the self-location resolver, and the installer |
+| `tests/` | — | fixtures for the state store, the self-location resolver, the installer, and the name sync |
 
 ## Install
 
@@ -149,6 +151,7 @@ cd ~/.professor/blueprint/templates/host-swap
 bash tests/db-fixtures.sh          # the state store
 bash tests/selflocate-fixtures.sh  # the bundle finds itself through symlinks
 bash tests/install-fixtures.sh     # the installer, against a scratch HOME
+bash tests/name-sync-fixtures.sh   # window-name convergence, on scratch sockets
 ```
 
 ## Maintenance

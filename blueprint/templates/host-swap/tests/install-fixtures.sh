@@ -11,6 +11,10 @@ pass=0; fail=0
 ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else fail=$((fail+1)); printf '  ✗ %s\n     want=[%s]\n     got =[%s]\n' "$1" "$3" "$2"; fi; }
 
 export HOME="$T/home"; mkdir -p "$HOME"
+# jail systemd too: with HOME faked but the real session bus reachable, the installer's systemd
+# section would daemon-reload the REAL user manager from inside the test. A dead runtime dir
+# makes `systemctl --user` fail, which is exactly the installer's documented skip path.
+export XDG_RUNTIME_DIR="$T/xdg-dead"
 CLAUDE_DIR="$HOME/.claude"
 CMD="$CLAUDE_DIR/commands"; BIN="$CLAUDE_DIR/bin"
 # CLAUDE_CONFIG_DIR is deliberately set to a DIFFERENT account here and stays set for every run:
