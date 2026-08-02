@@ -1,0 +1,9 @@
+[Unit]
+Description=Periodic cc-name-sync (claude /rename drift between picker runs)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+
+[Install]
+WantedBy=timers.target

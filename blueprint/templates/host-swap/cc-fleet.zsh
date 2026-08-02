@@ -420,23 +420,35 @@ _cx_scan() {
   done
 }
 
-# _cx_rollout_by_cwd <dir> — the newest USER-thread rollout codex recorded as running in <dir>.
+# _cx_rollout_by_cwd <dir> [start-epoch] — the USER-thread rollout of the codex running in <dir>.
 # THE /proc MAP IS NO LONGER ENOUGH. Codex (v0.146) appends to its rollout and CLOSES it, so the
 # fd scan _cx_scan does finds nothing for a live chat: every ⬢ row fell back to the birth name
 # "Codex chat" with 0 prompts, the window name never converged to the thread name, and the VS Code
 # tab title (⬢ #{window_name} · …) showed that same placeholder. What codex still guarantees is
 # that a chat runs in one directory and writes that directory into its rollout's meta line, so the
-# pane's cwd identifies the thread with no fd and no env. Newest match wins — a directory can hold
-# several threads over time, and the live one is the most recently written.
+# pane's cwd identifies the thread with no fd and no env. With <start-epoch> (the pane's own start),
+# the match whose meta timestamp lies CLOSEST to it wins — codex writes the rollout within seconds
+# of starting, and this is what tells two chats in one directory apart (newest-wins labeled them
+# both with the newer thread). No start, or nothing born near it → newest match, as before.
+# Twin: cx_rollout_for in cc-name-sync.sh — change one, change both.
 _cx_rollout_by_cwd() {
-  local dir="$1" f meta
+  local dir="$1" start="${2:-}" f meta ts birth d best="" bestd=999999999 newest=""
   [[ -n "$dir" ]] || return 1
   for f in ${(f)"$(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null | sort -rn | head -60 | cut -f2)"}; do
     meta="$(head -1 "$f" 2>/dev/null)" || continue
     [[ "$meta" == *'"thread_source":"user"'* ]] || continue
     [[ "$meta" == *"\"cwd\":\"$dir\""* ]] || continue
-    print -r -- "$f"; return 0
+    [[ -n "$start" ]] || { print -r -- "$f"; return 0 }
+    [[ -n "$newest" ]] || newest="$f"
+    ts="${${meta#*\"timestamp\":\"}%%\"*}"
+    birth="$(date -d "$ts" +%s 2>/dev/null)" || birth=""
+    [[ -n "$birth" ]] || continue
+    (( birth >= start - 120 )) || continue
+    d=$(( birth - start )); (( d < 0 )) && d=$(( -d ))
+    (( d < bestd )) && { bestd=$d; best="$f"; }
   done
+  [[ -n "$best" ]] || best="$newest"
+  [[ -n "$best" ]] && { print -r -- "$best"; return 0 }
   return 1
 }
 
@@ -896,7 +908,7 @@ cc-ls() {
   typeset -A live SEEN NC cxlive PROJDIR           # live: transcript-uuids already in tmux · NC: cwd/name/count cache · PROJDIR: project basename → a real cwd (for the ✦ new-chat-follows-⌃R-rotation target)
   PROJDIR[${PWD:t}]="$PWD"                     # seed the launch dir first so it wins for PWD's project basename
   local s sock name tag proj win att epoch tpath bytes hsize dispname label marks lp ttl agets acct prim lc1h
-  local cxrl cxid cxnm cxct cxbytes cxmt cxst cxpp cxw cxcwd1                  # live Codex row scratch
+  local cxrl cxid cxnm cxct cxbytes cxmt cxst cxpp cxcwd1 cxst1                # live Codex row scratch
   prim="$(_cc_primary)"   # for the birth-account ≠ mark on live rows (border shows the live value)
   local cf="$siddir/.namecache.v5" cmeta rest cwd nm ct uuid u lmt stt   # bump vN if _cc_meta logic changes
   local -a ptp; local panes pbc pane_ mnm mu mst mmeta mmax ma            # split-window (⊞) merging
@@ -935,6 +947,9 @@ cc-ls() {
   done < <(bash "$CC_DB" hidden-at-list 2>/dev/null)
   _cc_agents   # CCAGENT: uuid → config dir for LIVE agents (bg/forked). Resuming these fails; cc-ls attaches instead.
   _cx_scan     # CXRL: pane/ancestor pid → live codex user-thread rollout, one /proc pass for every cx row
+  # chat window names (→ VS Code tabs) converge in the background; cc-name-sync.sh is their
+  # single writer, also fired by its systemd path/timer units between picker runs
+  [[ -x "$HOME/.claude/bin/cc-name-sync.sh" ]] && ( "$HOME/.claude/bin/cc-name-sync.sh" >/dev/null 2>&1 & )
 
   # ── source 1: live tmux sessions (attach) ──
   # PARALLEL probe, one call per socket: serial tmux round-trips (~25ms each) dominated cc-ls
@@ -985,12 +1000,13 @@ cc-ls() {
         # the codex process holds open (no crumbs/transcript exist); it must row HERE or it becomes
         # an invisible orphan server. Named by the codex thread_name, else its first real prompt.
         cxrl=""; cxid=""; cxnm=""; cxct=0; cxbytes=0; cxmt=""
-        cxw="$(cut -f9 "$pfile" | head -1)"
         for cxpp in ${(f)"$(cut -f10 "$pfile")"}; do cxrl="$(_cx_rollout "$cxpp")" && break; done
-        # fd map missed (current codex keeps no rollout open) → identify by the pane's own cwd
+        # fd map missed (current codex keeps no rollout open) → identify by the pane's own cwd,
+        # disambiguated by the pane's start time (two chats can share a directory)
         if [[ -z "$cxrl" ]]; then
           cxcwd1="$(tmux -L "$sock" list-panes -t "=$name" -F '#{pane_current_path}' 2>/dev/null | head -1)"
-          [[ -n "$cxcwd1" ]] && cxrl="$(_cx_rollout_by_cwd "$cxcwd1")"
+          cxst1="$(stat -c %Y "/proc/$(cut -f10 "$pfile" | head -1)" 2>/dev/null)"
+          [[ -n "$cxcwd1" ]] && cxrl="$(_cx_rollout_by_cwd "$cxcwd1" "$cxst1")"
         fi
         if [[ -n "$cxrl" && -r "$cxrl" ]]; then
           cxid="${${cxrl:t:r}#rollout-????-??-??T??-??-??-}"
@@ -1000,11 +1016,8 @@ cc-ls() {
           cxnm="$(_cx_name "$cxrl")"
           cxlive[$cxid]=1                   # so the resumable sweep won't duplicate it
         fi
-        # converge window name → the VS Code tab (set-titles-string renders '⬢ <window> · <pane
-        # title>'); elder servers born before the override get their title options set here too
-        if [[ -n "$cxnm" && "$cxw" != "${cxnm[1,24]}" ]]; then
-          tmux -L "$sock" set -g set-titles-string '⬢ #{window_name} · #{pane_title}' \; setw -g automatic-rename off \; rename-window -t "=$name" -- "${cxnm[1,24]}" 2>/dev/null
-        fi
+        # window names (→ the VS Code tab) belong to cc-name-sync.sh, fired in the background
+        # at sweep start — the single writer; an inline rename here fought it on same-cwd chats
         hideskip=0                          # hidden? same delta-scan rule as Claude rows
         if [[ -n "$cxid" && -n "${HID[$cxid]}" ]]; then
           if [[ -n "${AT[$cxid]}" ]] && (( ${cxbytes:-0} > AT[$cxid] )); then
