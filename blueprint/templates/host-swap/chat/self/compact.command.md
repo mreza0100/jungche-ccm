@@ -1,12 +1,12 @@
 ---
 name: chat:self:compact
-description: Compact THIS chat's own context now with a focus you author — not a raw passthrough. First read the session for what's next and what's noise, write a strong /compact focus around it, then self-inject /compact (you can't trigger it on yourself directly). Takes two MANDATORY prompts — what to hold, and a steer (never itself a /compact) that runs the moment compaction lands; further ||-segments chain as extra steers, one settled turn apart. Trigger — /chat:self:compact <hold> || <steer> [|| <steer 2> ...].
+description: Compact THIS chat's own context, then keep working — the ONLY sanctioned way a chat compacts itself. Route here on ANY self-compact phrasing from the founder or your own plan — "compact yourself", "give yourself a compact", "self-compact", "clean up / free your context", "compact and continue" — or when context is filling before a long next phase. Reads the session first, authors the /compact focus (never a raw passthrough), and fires it through chat.sh inject on this chat's own pane with a MANDATORY post-compact steer, so the reborn chat resumes unprompted. Transport is chat.sh ONLY — raw tmux keystrokes, forced injects, and detached timers are permission-blocked by design. Trigger — /chat:self:compact <hold> || <steer> [|| <steer 2> ...].
 argument-hint: <what to hold> || <post-compact steer> [|| <next steer> ...]
 ---
 
 # Chat Self-Compact — author a focused /compact, then steer what comes after
 
-You cannot run the harness `/compact` on yourself — it is a user-typed command, not a tool you hold. `/chat:inject` typing into your own pane is the one way to fire it on this session, and to queue the turn that runs after it. Injecting to `self` targets this chat's own pane; each inject queues a turn that runs after the current one, in the order you inject them.
+You cannot run the harness `/compact` on yourself — it is a user-typed command, not a tool you hold. The one transport is `$HOME/.claude/commands/chat/chat.sh inject` targeting `self` (this chat's own pane); each inject queues a turn that runs after the current one, in the order injected. The permission system blocks every improvised alternative — raw `tmux send-keys`, forced injects, detached timers typing keystrokes — so treat a wall as proof you left the sanctioned path, never as a reason to get creative with transport.
 
 `$ARGUMENTS` carries prompts split on `||`:
 
