@@ -5,6 +5,15 @@ already-running chat onto a different one — **without disturbing any other run
 Universal Tier C mechanic, no domain placeholders. **Linux and macOS** — each account is a plain
 config dir; nothing here depends on a Keychain or other OS credential store.
 
+Both platforms are first-class, and the seam between them is one file: `cc-portable.sh`. Where a
+tool differs (`stat -c` vs `stat -f`, `date -d` vs `date -j`, `find -printf`, and the four
+binaries macOS simply does not ship — `flock`, `setsid`, `timeout`, `free`) the GNU form is tried
+first and the BSD form backs it up. Where macOS genuinely **cannot** answer — reading another
+process's environment, which SIP has forbidden for a decade — the function returns empty and the
+caller asks a different question rather than acting on a fabricated answer; each such site says so
+in place. The one platform feature with no macOS equivalent is the `systemd/` name-sync triggers,
+and `install.sh` skips them with a line saying the sync still fires from every `cc-ls` run.
+
 ## What it does
 
 ```
@@ -50,6 +59,7 @@ refresh — no separate marker to keep in sync.
 | File | Installs as | Purpose |
 |------|-------------|---------|
 | `install.sh` | — | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo |
+| `cc-portable.sh` | `~/.claude/bin/cc-portable.sh` | the GNU/BSD seam — every question whose answer differs between Linux and macOS (`stat`, `date`, `find -printf`, `flock`, `setsid`, `timeout`, `free`, `ss`, `/proc`) is asked here once, so the rest of the bundle is written twice-free. Sourced, not run |
 | `cc-fleet.zsh` | sourced from `~/.zshrc` | the whole fleet: `cc`/`cc1`…`cc4` launchers (each its own tmux server), `cc-swap`, and the `cc-ls` picker |
 | `cc-db.sh` | `~/.claude/bin/cc-db.sh` | the fleet's state store — one SQLite database at `~/.cc/fleet.db` holding the hide list, the primary account, spawned children, the chat index and the swap log |
 | `cc-hide.sh` | `~/.claude/bin/cc-hide.sh` | `/bb`'s engine — hide this chat from `cc-ls` then close it; **pane-aware**: kills only its own pane (never the shared server) and reaps the teammates it spawned |

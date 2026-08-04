@@ -20,41 +20,39 @@ hf="$HOME/.claude/.cc-ls-hidden"
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 CC_DB="$CC_FLEET_HOME/cc-db.sh"   # fleet state store; falls back to $hf on its own
+. "$CC_FLEET_HOME/cc-portable.sh" # GNU/BSD seam — cc_pane_of, cc_penv, cc_size0, cc_detach
 
 # RECOVER $TMUX FROM ANCESTRY. Codex spawns its tool shell WITHOUT passing tmux context through,
 # so a /bb run from inside a Codex chat measures TMUX=unset and this script used to abort with
 # "not in tmux — nothing to hide" even though the chat plainly sits in a cx-* pane. Identity stays
-# the SCRIPT's job: the value is read from our OWN process chain, never accepted from a caller
-# flag. Same repair chat.sh makes for the same reason (tmux_from_ancestry there) — keep the two in
-# step, since a codex tool shell breaks BOTH the same way.
-_tmux_from_ancestry() {
-  local pid="${1:-$PPID}" depth=0 val
-  while [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ "$depth" -lt 12 ]; do
-    val="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^TMUX=//p' | head -1)"
-    [ -n "$val" ] && { printf '%s\n' "$val"; return 0; }
-    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
-    depth=$((depth + 1))
-  done
-  return 1
-}
-if [ -z "${TMUX:-}" ]; then
-  _t="$(_tmux_from_ancestry 2>/dev/null || true)"
-  # TRUST IT ONLY IF IT IS A CODEX SOCKET. The walk climbs OUR process chain, and when this script
-  # is invoked from another chat's shell that chain leads to THAT chat's tmux — adopting it would
-  # hide, and with --exit close, the wrong chat. A cx-* basename is the proof it is ours; anything
-  # else is someone else's server and we fall through to cwd resolution below.
-  case "${_t%%,*}" in */cx-*) TMUX="$_t"; export TMUX ;; esac
-  unset _t
-fi
-# TMUX_PANE rides the same missing env, and it decides whether --exit can close the pane; recover
-# it from the same ancestor rather than falling back to the "type /quit yourself" path.
-if [ -z "${TMUX_PANE:-}" ] && [ -n "${TMUX:-}" ]; then
-  _p="$PPID"; _d=0
-  while [ -n "$_p" ] && [ "$_p" -gt 1 ] && [ "$_d" -lt 12 ]; do
-    _v="$(tr '\0' '\n' < "/proc/$_p/environ" 2>/dev/null | sed -n 's/^TMUX_PANE=//p' | head -1)"
-    [ -n "$_v" ] && { TMUX_PANE="$_v"; export TMUX_PANE; break; }
-    _p="$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d '[:space:]')"; _d=$((_d + 1))
-  done
+# the SCRIPT's job: it is derived from our OWN process chain, never accepted from a caller flag.
+# Same repair chat.sh makes for the same reason (tmux_from_ancestry there) — keep the two in step,
+# since a codex tool shell breaks BOTH the same way.
+#
+# ASK TMUX, NOT THE KERNEL. This used to walk /proc/<pid>/environ up the ancestry looking for a
+# TMUX= line, which no macOS can answer: SIP has restricted `ps -E` to the calling process for a
+# decade, so every Mac read "no ancestor is in tmux" and /bb died on a Codex chat with the wrong
+# diagnosis. cc_pane_of asks the tmux servers which pids they own and walks the same ancestry —
+# one answer, both platforms, and truer besides: a pane whose command re-execs keeps its pane
+# while the original env may name a server that no longer holds it.
+if [ -z "${TMUX:-}" ] || [ -z "${TMUX_PANE:-}" ]; then
+  _hit="$(cc_pane_of "$PPID")"
+  if [ -n "$_hit" ]; then
+    _sk="${_hit%%	*}"; _pi="${_hit##*	}"
+    # TRUST IT ONLY IF IT IS A CODEX SOCKET. The walk climbs OUR process chain, and when this
+    # script is invoked from another chat's shell that chain leads to THAT chat's tmux — adopting
+    # it would hide, and with --exit close, the wrong chat. A cx-* name is the proof it is ours;
+    # anything else is someone else's server and we fall through to cwd resolution below.
+    case "$_sk" in
+      cx-*)
+        # Only the socket PATH component of $TMUX is ever read back (`${TMUX%%,*}`), so the
+        # server-pid and session-id fields are filled with zeros rather than invented.
+        [ -z "${TMUX:-}" ]      && { TMUX="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$_sk,0,0"; export TMUX; }
+        [ -z "${TMUX_PANE:-}" ] && { TMUX_PANE="$_pi"; export TMUX_PANE; }
+        ;;
+    esac
+  fi
+  unset _hit _sk _pi
 fi
 
 # CWD IS THE IDENTITY OF LAST RESORT. Two assumptions this script was built on have both
@@ -84,8 +82,7 @@ _cx_rollout_by_cwd() {                 # newest USER-thread rollout recorded in 
     meta="$(head -1 "$f" 2>/dev/null)" || continue
     case "$meta" in *'"thread_source":"user"'*) : ;; *) continue ;; esac
     case "$meta" in *"\"cwd\":\"$PWD\""*) printf '%s\n' "$f"; return 0 ;; esac
-  done < <(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
-           | sort -rn | head -60 | cut -f2)
+  done < <(cc_find_newest "$HOME/.codex/sessions" -name 'rollout-*.jsonl' | head -60)
   return 1
 }
 
@@ -120,19 +117,23 @@ declare -A CXRL
 while IFS= read -r p; do
   [ -n "$p" ] || continue
   crl=""
-  # numeric fd order — the binary opens its own rollout before any subagent thread's
-  for fd in $(ls -1v "/proc/$p/fd" 2>/dev/null); do
-    tgt="$(readlink -f "/proc/$p/fd/$fd" 2>/dev/null)" || continue
+  # fd order — the binary opens its own rollout before any subagent thread's. cc_pfiles yields
+  # that order from /proc/<pid>/fd on Linux and from lsof on macOS, which lists fds ascending too.
+  while IFS= read -r tgt; do
     case "$tgt" in "$HOME"/.codex/sessions/*/rollout-*.jsonl) : ;; *) continue ;; esac
     head -1 "$tgt" 2>/dev/null | grep -q '"thread_source":"user"' || continue
     crl="$tgt"; break
-  done
+  done <<EOF
+$(cc_pfiles "$p")
+EOF
   [ -n "$crl" ] || continue
   pp="$p"
   for _ in 1 2 3 4; do
     [ -z "${CXRL[$pp]:-}" ] && CXRL[$pp]="$crl"
-    st="$(cat "/proc/$pp/stat" 2>/dev/null)" || break
-    rest="${st##*) }"; pp="$(printf '%s\n' "$rest" | awk '{print $2}')"   # ppid: 2nd field after "(comm)"
+    # cc_ppid, not /proc/<pid>/stat: that file's comm field can contain spaces and parentheses,
+    # so its ppid is only safe to read positionally AFTER the last ")" — and macOS has no /proc
+    # at all. `ps -o ppid=` is both portable and immune to the comm-parsing trap.
+    pp="$(cc_ppid "$pp")"
     case "$pp" in ''|0|1) break ;; esac
   done
 done < <(pgrep -x codex 2>/dev/null)
@@ -173,8 +174,8 @@ if [ "$do_exit" = 1 ]; then
   # baseline (cc-ls scans only bytes past this baseline for a NEW REAL PROMPT — noise never
   # unhides — so baselining after the /quit flush keeps flush bytes out of every future delta scan).
   echo "cx-hide: closing this Codex chat (auto /quit, then kill-pane $pane)…"
-  setsid env SOCKPATH="$sockpath" SOCK="$sock" PANE="$pane" RL="$rl" U="$u" \
-    AF="$hf.at" HF="$hf" CCDB="$CC_DB" bash -c '
+  $(cc_detach) env SOCKPATH="$sockpath" SOCK="$sock" PANE="$pane" RL="$rl" U="$u" \
+    AF="$hf.at" HF="$hf" CCDB="$CC_DB" CCPORT="$CC_FLEET_HOME/cc-portable.sh" bash -c '
     sleep 1.5
     tmux -S "$SOCKPATH" send-keys -t "$PANE" -l -- /quit
     tmux -S "$SOCKPATH" send-keys -t "$PANE" Enter
@@ -183,8 +184,9 @@ if [ "$do_exit" = 1 ]; then
       sleep 1; n=$((n+1))
     done
     tmux -S "$SOCKPATH" kill-pane -t "$PANE" 2>/dev/null
+    . "$CCPORT"                                       # the GNU/BSD seam, in this detached shell too
     if [ -r "$RL" ]; then
-      sz="$(stat -c%s "$RL" 2>/dev/null || echo 0)"
+      sz="$(cc_size0 "$RL")"
       bash "$CCDB" hidden-add "$U" "$sz"   # upsert the baseline in one statement
     fi
   ' >/dev/null 2>&1 &

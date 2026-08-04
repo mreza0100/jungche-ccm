@@ -21,8 +21,15 @@
 #
 # RAM caveat: per-socket RAM is summed RSS of the server's process subtree. RSS over-counts shared
 # node runtime pages across chats (~1.5x), so the column is an upper bound — read the TRUE reclaim
-# from the `free` before/after delta the reap prints, not the summed column.
+# from the memory before/after delta the reap prints, not the summed column.
 set -u
+
+# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
+# links this script into ~/.claude/bin and $BASH_SOURCE is then the link. Plain `readlink`
+# (never -f) because macOS ships BSD readlink.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_timeout, cc_mtime0, cc_mem
 
 DO_KILL=0
 case "${1:-}" in
@@ -45,8 +52,11 @@ MYSOCK=""
 CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 BUSY_IDS=""; AGENTS_OK=1
 for _cfg in "" "$HOME/.cc/2" "$HOME/.cc/3" "$HOME/.cc/4"; do
-  if [ -n "$_cfg" ]; then _out="$(CLAUDE_CONFIG_DIR="$_cfg" timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"
-  else _out="$(env -u CLAUDE_CONFIG_DIR timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"; fi
+  # A subshell sets (or unsets) the account for the probe rather than an `env` prefix: cc_timeout
+  # is a shell FUNCTION, and `env` execs a binary — it cannot see one. The subshell scopes the
+  # change just as tightly and works with either.
+  if [ -n "$_cfg" ]; then _out="$(export CLAUDE_CONFIG_DIR="$_cfg"; cc_timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"
+  else _out="$(unset CLAUDE_CONFIG_DIR; cc_timeout 20 "$CLAUDE_BIN" agents --json 2>/dev/null)"; fi
   if printf '%s' "$_out" | jq -e 'type=="array"' >/dev/null 2>&1; then
     _ids="$(printf '%s' "$_out" | jq -r '.[] | select(.status=="busy") | .sessionId' 2>/dev/null)"
     [ -n "$_ids" ] && BUSY_IDS="${BUSY_IDS}${BUSY_IDS:+
@@ -86,7 +96,7 @@ SOCKS=("$TMUXDIR"/cc-* "$TMUXDIR"/cx-*)   # cx-* = Codex chats, same per-chat-se
 shopt -u nullglob
 [ ${#SOCKS[@]} -eq 0 ] && echo "cc-reap: no cc-*/cx-* sockets under $TMUXDIR"   # vsct sweep below still runs
 
-(( DO_KILL )) && { echo "RAM before:"; free -m | awk 'NR==1||/Mem:/'; echo; }
+(( DO_KILL )) && { echo "RAM before:"; cc_mem; echo; }
 printf '%-38s %-5s %8s  %s\n' "SOCKET" "STATE" "RAM(MB)" "LABEL [cwd]"
 
 for path in "${SOCKS[@]}"; do
@@ -137,7 +147,7 @@ for path in "${SOCKS[@]}"; do
     if printf '%s\n' "$BUSY_IDS" | grep -qxF -- "$cu"; then busy=1; busy_why="busy"; break; fi
     tf="$(ls "$HOME"/.claude/projects/*/"$cu".jsonl "$HOME"/.cc/[0-9]*/projects/*/"$cu".jsonl 2>/dev/null | head -1)"
     [ -n "$tf" ] || continue
-    if [ "$(( NOW - $(stat -c %Y "$tf" 2>/dev/null || echo 0) ))" -lt "$BUSY_RECENT_S" ]; then busy=1; busy_why="active<${BUSY_RECENT_S}s"; break; fi
+    if [ "$(( NOW - $(cc_mtime0 "$tf") ))" -lt "$BUSY_RECENT_S" ]; then busy=1; busy_why="active<${BUSY_RECENT_S}s"; break; fi
   done
   if [ "$busy" = 1 ]; then   # KEEP: still working
     keep_n=$((keep_n+1)); keep_kb=$((keep_kb+ram_kb))
@@ -206,7 +216,7 @@ echo
 echo "KEEP: $keep_n live chats (~$((keep_kb/1024)) MB)   KILL: $kill_live_n orphans (~$((kill_kb/1024)) MB summed RSS) + $kill_dead_n dead files"
 if (( DO_KILL )); then
   echo "reaped ~$((freed_kb/1024)) MB summed RSS"
-  echo; echo "RAM after:"; free -m | awk 'NR==1||/Mem:/'
+  echo; echo "RAM after:"; cc_mem
 else
   echo "dry run — nothing changed. Run 'cc-reap.sh --kill' to reap."
 fi

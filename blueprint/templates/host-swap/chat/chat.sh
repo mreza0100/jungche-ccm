@@ -8,6 +8,7 @@ set -euo pipefail
 # `readlink` (never -f) because macOS ships BSD readlink, which has no -f.
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")/.." && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_pane_of, cc_session_live, cc_timeout, cc_detach
 
 # chat.sh — the chat: family engine, one script with subcommands. Lives in
 # $HOME/.claude/commands/chat/ (global — shared by every repo; repo .claude/commands/chat
@@ -67,15 +68,19 @@ repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd -P; }
 # message unsigned (no handle, no label, and CLAUDE_CODE_SESSION_ID is unset at codex launch
 # too, so all three signature parts came back empty at once). Identity stays the SCRIPT's job:
 # the value is read from the sender's OWN process chain, never accepted from a caller flag.
+#
+# ASK TMUX, NOT THE KERNEL. This walked /proc/<pid>/environ for a TMUX= line, which no macOS can
+# answer — SIP has restricted a process to its OWN environment for a decade, so every Mac read
+# "no ancestor is in tmux" and left codex-origin messages unsigned exactly as the bug above
+# describes. cc_pane_of asks the tmux servers which pids they own and walks the same ancestry:
+# one answer, both platforms. It returns socket and pane; this returns the $TMUX-shaped string
+# the callers already parse (only the socket path component is ever read back).
 tmux_from_ancestry() {
-  local pid="${1:-$PPID}" depth=0 val
-  while [[ -n "$pid" && "$pid" -gt 1 && depth -lt 12 ]]; do
-    val="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^TMUX=//p' | head -1)"
-    [[ -n "$val" ]] && { printf '%s\n' "$val"; return 0; }
-    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
-    depth=$((depth + 1))
-  done
-  return 1
+  local hit sk
+  hit="$(cc_pane_of "${1:-$PPID}")"
+  [[ -n "$hit" ]] || return 1
+  sk="${hit%%$'\t'*}"
+  printf '%s\n' "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$sk,0,0"
 }
 
 # NEVER export a recovered value globally. An empty $TMUX is not always a defect to repair:
@@ -938,9 +943,9 @@ case "$cmd" in
           # chain's earlier hops WHILE the exec'ing inject still writes into the same
           # file, garbling the record (seen in fixture).
           if [[ -n "${CHAT_THEN_CHAIN:-}" ]]; then
-            setsid bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >>"$steer_log" 2>&1 </dev/null &
+            $(cc_detach) bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >>"$steer_log" 2>&1 </dev/null &
           else
-            setsid bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >"$steer_log" 2>&1 </dev/null &
+            $(cc_detach) bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >"$steer_log" 2>&1 </dev/null &
           fi
           note="${note} — ${#then_steers[@]} --then steer(s) queued; deliver in order, one settled turn apart (log: $steer_log)"
         fi
@@ -1000,23 +1005,19 @@ case "$cmd" in
       # a claude.ai BACKGROUND JOB (~/.claude/jobs/*) or a pane chat targeted by raw uuid
       # is just as live and just as pane-less on this path, and the append below would be
       # a dangling side-branch its running process never reads: the message is silently
-      # lost behind a success banner. Detect liveness directly: any running process whose
-      # environment carries CLAUDE_CODE_SESSION_ID=<target uuid> (own-user /proc only;
-      # environ records are NUL-separated, hence grep -z). Refuse loudly instead.
-      lp=""
-      for _e in /proc/[0-9]*/environ; do
-        if grep -qzF "CLAUDE_CODE_SESSION_ID=$dm_uuid" "$_e" 2>/dev/null; then
-          lp="${_e#/proc/}"; lp="${lp%/environ}"; break
-        fi
-      done
+      # lost behind a success banner. Detect liveness directly — cc_session_live returns the pid
+      # whose environment carries CLAUDE_CODE_SESSION_ID=<target uuid> on Linux, or the tmux
+      # socket still hosting it on any platform. Refuse loudly instead. Its answer is evidence
+      # of life, never proof of death, which is why the daemon-registry query below still runs.
+      lp="$(cc_session_live "$dm_uuid")"
       if [[ -n "$lp" ]]; then
-        echo "ERROR: '$target' is a LIVE session (pid $lp carries its session id) with no resolvable tmux pane on this path — a running Claude reads its input stream, not its transcript, so appending a turn here would be silently lost behind a success banner. If it is a pane chat, inject by its tmux session or 🔖 label (/chat:ls); if it is a background job or daemon agent, reach it through its own surface (claude.ai / cc-open). Nothing was appended." >&2
+        echo "ERROR: '$target' is a LIVE session (running at $lp) with no resolvable tmux pane on this path — a running Claude reads its input stream, not its transcript, so appending a turn here would be silently lost behind a success banner. If it is a pane chat, inject by its tmux session or 🔖 label (/chat:ls); if it is a background job or daemon agent, reach it through its own surface (claude.ai / cc-open). Nothing was appended." >&2
         exit 1
       fi
       dm_bin="$(command -v claude || echo "$HOME/.local/bin/claude")"
       while IFS= read -r dm_cfg; do
         [[ -n "$dm_cfg" ]] || continue
-        dm_json="$(CLAUDE_CONFIG_DIR="$dm_cfg" timeout 15 "$dm_bin" agents --json 2>/dev/null || true)"
+        dm_json="$(export CLAUDE_CONFIG_DIR="$dm_cfg"; cc_timeout 15 "$dm_bin" agents --json 2>/dev/null || true)"
         if printf '%s' "$dm_json" | jq -e --arg u "$dm_uuid" '(type=="array") and (map(select((.sessionId==$u) or (.id!=null and (.id as $i|$u|startswith($i))))) | length > 0)' >/dev/null 2>&1; then
           echo "ERROR: '$target' is a LIVE background agent (daemon-hosted, config $dm_cfg) — it has no tmux pane and reads stdin, not its transcript, so appending a turn here would be a dangling side-branch it never sees. Take it over instead: cc-open $dm_uuid (routes through cc-agent-open.sh), or attach its agent view. Nothing was appended." >&2
           exit 1

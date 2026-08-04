@@ -51,11 +51,23 @@ ok "zshrc sources the bundle"      "$(grep -c "$BUNDLE/cc-fleet.zsh" "$HOME/.zsh
 ok "codex bb skill dir linked"     "$(readlink -f "$HOME/.agents/skills/bb")" "$BUNDLE/codex-skills/bb"
 
 echo "=== the point of it all: edit the clone, the live command changes ==="
-echo "SENTINEL-$$" >> "$BUNDLE/chat/ls.command.md"
+# THE BUNDLE UNDER TEST IS A COPY, NEVER THE CLONE. This wrote a sentinel line into the real
+# blueprint file and removed it with a GNU-form `sed -i` — which BSD sed rejects (it reads the
+# expression as the backup suffix and then waits on stdin), so on macOS the removal silently
+# failed and the fixture left a sentinel behind in a tracked source file. A test that proves
+# "editing the bundle changes the live command" must not prove it on the only copy that matters.
+SANDBOX="$T/bundle"; cp -R "$BUNDLE" "$SANDBOX"
+"$SANDBOX/install.sh" --apply >/dev/null 2>&1
+echo "SENTINEL-$$" >> "$SANDBOX/chat/ls.command.md"
 ok "live command sees the edit"    "$(grep -c "SENTINEL-$$" "$CMD/chat/ls.md")" "1"
-# put the bundle back exactly as it was
-sed -i "/SENTINEL-$$/d" "$BUNDLE/chat/ls.command.md"
-ok "sentinel removed again"        "$(grep -c "SENTINEL-$$" "$BUNDLE/chat/ls.command.md")" "0"
+# put it back exactly as it was — a temp file, not sed -i, so both seds behave the same
+grep -v "SENTINEL-$$" "$SANDBOX/chat/ls.command.md" > "$SANDBOX/.ls.tmp" && mv "$SANDBOX/.ls.tmp" "$SANDBOX/chat/ls.command.md"
+ok "sentinel removed again"        "$(grep -c "SENTINEL-$$" "$SANDBOX/chat/ls.command.md")" "0"
+ok "the real clone was untouched"  "$(grep -c "SENTINEL-" "$BUNDLE/chat/ls.command.md")" "0"
+# The sandbox install re-pointed every link at $SANDBOX. Put them back on $BUNDLE before the
+# idempotence check, or that check measures the relink THIS TEST just caused instead of the
+# no-op it means to prove.
+run --apply >/dev/null 2>&1
 
 echo "=== re-running is free (idempotent) ==="
 out="$(run --apply)"
@@ -84,7 +96,11 @@ out="$(run --apply)"
 ok "still exactly one source line" "$(grep -c 'cc-fleet\.zsh' "$HOME/.zshrc")" "1"
 ok "it points at this bundle"      "$(grep -c "$BUNDLE/cc-fleet.zsh" "$HOME/.zshrc")" "1"
 ok "unrelated lines survive"       "$(grep -c 'alias x=y' "$HOME/.zshrc")" "1"
-ok "the old zshrc was backed up"   "$(ls -1 "$HOME/".zshrc.pre-professor-* 2>/dev/null | wc -l)" "1"
+# EXISTENCE, not a count: the property is "the file it rewrote was preserved first". Earlier
+# sections in this fixture also apply, and each rewrite banks its own timestamped backup, so a
+# count is really an assertion about how many times this test file happens to call the installer
+# — it broke the moment a new case was added above, pointing at install.sh, which was innocent.
+ok "the old zshrc was backed up"   "$([ -n "$(ls -1 "$HOME/".zshrc.pre-professor-* 2>/dev/null)" ] && echo yes || echo no)" "yes"
 
 echo "=== --uninstall puts the operator's files back ==="
 out="$(run --uninstall --apply 2>/dev/null || run --uninstall)"

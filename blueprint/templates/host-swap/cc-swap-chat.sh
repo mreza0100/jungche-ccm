@@ -17,6 +17,7 @@ set -u
 # macOS ships BSD readlink, which has no -f.
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_size0, cc_penv, cc_detach
 n=""; then_prompt=""; sock_arg=""; c1h_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -87,20 +88,25 @@ else
   rcwd="$(head -40 "$tpf" 2>/dev/null | jq -r 'select(.cwd) | .cwd' 2>/dev/null | head -1)"
   [ -d "$rcwd" ] || rcwd="$PWD"
 fi
-tpmb=$(( $(stat -c %s "$tpf" 2>/dev/null || echo 0) / 1048576 ))   # scales the --then input-box wait
+tpmb=$(( $(cc_size0 "$tpf") / 1048576 ))   # scales the --then input-box wait
 
 # ⚡1h-cache: preserve the CHAT'S OWN mode across the swap — read from the live process's
 # environment (there is no sticky global toggle; a reboot must not silently change the chat's
 # cache profile). comm is "claude" or a bare version string, depending on the install.
 # Since CC 2.1.215 the harness defaults every session to 1h, so only an explicit
 # FORCE_PROMPT_CACHING_5M=1 birth reads as 5m — a flagless elder runs (and keeps) 1h.
-c1h=1; tenv=""
+#
+# READABLE ON LINUX ONLY, AND THAT IS SAFE. cc_penv answers from /proc/<pid>/environ; macOS gives
+# a process no way to read another's environment at all (SIP), so a Mac finds nothing and the
+# default stands. The default IS the harness default — a chat with no FORCE_PROMPT_CACHING_5M in
+# its birth env runs 1h — so an unreadable env and a flagless chat produce the same verdict, and
+# the one case a Mac gets wrong (a chat deliberately born 5m) is rebooted 1h rather than
+# silently billed the 2x write premium it never asked for. Wrong only in the cheap direction.
+c1h=1
 ptty="$(tmux -L "$sock" display-message -p -t "$pane" '#{pane_tty}' 2>/dev/null)"
 for cp in $(ps -o pid=,comm= -t "${ptty#/dev/}" 2>/dev/null | awk '$2=="claude" || $2 ~ /^[0-9]+\./ {print $1}'); do
-  tenv="$(tr '\0' '\n' < "/proc/$cp/environ" 2>/dev/null)"
-  [ -n "$tenv" ] && break   # the first readable claude env speaks for the chat
+  [ "$(cc_penv "$cp" FORCE_PROMPT_CACHING_5M)" = "1" ] && { c1h=0; break; }
 done
-printf '%s\n' "$tenv" | grep -qx 'FORCE_PROMPT_CACHING_5M=1' && c1h=0
 [ -n "$c1h_arg" ] && c1h="$c1h_arg"   # --1h on|off overrides (the picker's reboot-to-match gate)
 
 # account: an explicit <n> wins; else (--1h-only reboot) KEEP the chat's current account —
@@ -142,7 +148,7 @@ echo "cc-swap-chat: swapping this chat to account $n IN PLACE — it reboots rig
 # in the SAME window on the SAME socket — no client ever disconnects, so it's seamless for raw
 # VS Code tabs, bunkers, and splits alike; detached chats swap silently. Socket name and
 # breadcrumbs stay stable (the new statusline refreshes them). Delayed so this turn finishes.
-setsid env SOCK="$sock" PANE="$pane" U="$u" CFG="$cfg" CWD="$rcwd" THEN="$then_prompt" C1H="$c1h" TPMB="$tpmb" ACCT="$n" bash -c '
+$(cc_detach) env SOCK="$sock" PANE="$pane" U="$u" CFG="$cfg" CWD="$rcwd" THEN="$then_prompt" C1H="$c1h" TPMB="$tpmb" ACCT="$n" bash -c '
   sleep 1.5
   # per-pane mutual exclusion: two overlapping swaps of one pane both /exit and both
   # respawn -k, the second killing a freshly resumed claude with a stale env snapshot.
