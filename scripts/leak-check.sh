@@ -54,9 +54,18 @@ is_excluded_path() {
 # Reads a unified diff (-U0) on stdin, prints "LEAK {file}: {content}" for
 # every match found in an ADDED line (starts with "+", not "+++"), tracking
 # the current file from "+++ b/..." headers.
+#
+# Single-pass: the loop below only accumulates added lines + their file into
+# arrays (no subprocess). Matching runs as ONE `grep -inE` over the whole
+# accumulated stream, instead of forking grep once per added line — a diff
+# with tens of thousands of added lines used to fork tens of thousands of
+# grep processes and never return.
 scan_diff_stream() {
   local file=""
-  local line content
+  local line
+  local -a files=()
+  local -a contents=()
+
   while IFS= read -r line; do
     if [[ "$line" == "+++ /dev/null" ]]; then
       file=""
@@ -65,12 +74,21 @@ scan_diff_stream() {
     elif [[ "$line" == "+++"* ]]; then
       file="${line#+++ }"
     elif [[ "$line" == "+"* ]]; then
-      content="${line#+}"
-      if grep -qiE "$PATTERN" <<<"$content"; then
-        printf 'LEAK %s: %s\n' "$file" "$content"
-      fi
+      contents+=("${line#+}")
+      files+=("$file")
     fi
   done
+
+  [[ ${#contents[@]} -eq 0 ]] && return 0
+
+  local matches
+  matches="$(printf '%s\n' "${contents[@]}" | grep -niE "$PATTERN" || true)"
+  [[ -z "$matches" ]] && return 0
+
+  local idx content
+  while IFS=: read -r idx content; do
+    printf 'LEAK %s: %s\n' "${files[idx-1]}" "$content"
+  done <<< "$matches"
 }
 
 hits_file="$(mktemp)"

@@ -20,7 +20,26 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
 
   if [[ "$remote_sha" == "$zero_sha" ]]; then
-    old="$(git hash-object -t tree /dev/null)"
+    # No remote counterpart for this ref (e.g. a first-time tag push) — the
+    # empty tree is the wrong base, forcing a full-repo scan every time.
+    # If the ref's commit sits on the same line of history as origin/main
+    # (the common case: an annotated tag on the commit the branch push is
+    # already carrying), that content is already what the branch's own
+    # scan below covers — reuse origin/main as the base instead. A commit
+    # with no such relationship to origin/main still gets a full scan;
+    # never silently skip it.
+    target_commit="$(git rev-parse "${local_sha}^{commit}" 2>/dev/null || echo "")"
+    old=""
+    if [[ -n "$target_commit" ]] && git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+      remote_main="$(git rev-parse origin/main)"
+      if git merge-base --is-ancestor "$remote_main" "$target_commit" 2>/dev/null \
+        || git merge-base --is-ancestor "$target_commit" "$remote_main" 2>/dev/null; then
+        old="$remote_main"
+      fi
+    fi
+    if [[ -z "$old" ]]; then
+      old="$(git hash-object -t tree /dev/null)"
+    fi
   else
     old="$remote_sha"
   fi
