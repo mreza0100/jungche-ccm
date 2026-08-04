@@ -51,7 +51,7 @@ Character names (Professor, JC, etc.) ship as **default names with "rename if yo
 
 From the project repo:
 
-- `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B, including command directories like `.claude/commands/pcm/`, `.claude/commands/wave/`, `.claude/commands/audit/`, `.claude/commands/quality/`), `.claude/skills/*/SKILL.md` (source-fetched skills only — see next bullet), `.claude/scripts/*.sh`
+- `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B, including command directories like `.claude/commands/pcm/`, `.claude/commands/wave/`, `.claude/commands/audit/`, `.claude/commands/quality/`), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
 - **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
 - `docs/agents/` scaffold — the hub `_index.md` format, the `standards.md` skeleton, and the cluster convention (structure only, NEVER doc content — every adopter's documentation body is their own)
@@ -81,7 +81,7 @@ From the project repo:
     └── templates/
         ├── CLAUDE.md
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/refresh.md), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
+        ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/{refresh.md, audit-scopes.md}), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
         ├── skills/
         │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
         ├── workflows/ (wave-build, wave-walker, documenter-fanout, audit-ai-output-sessions)

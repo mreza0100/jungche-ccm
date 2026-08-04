@@ -260,23 +260,70 @@ WIDE=1; [ -n "${COLUMNS:-}" ] && (( ${COLUMNS:-999} < 100 )) && WIDE=0
 ctx_tok=$(( ${CACHER:-0} + ${CACHEC:-0} + ${CACHEI:-0} ))
 (( WIDE && ctx_tok > 0 )) && l2+="${SEP}${D}🧮$(fmttok "$ctx_tok")${X}"
 
-# Cache window — will the NEXT prompt hit the prompt cache? Shows the TTL this chat runs
-# and the time left: every request re-arms the window, and the transcript's mtime is the last
-# request. ✓12m = warm, hits; ✗ = window passed, next prompt pays full freight. The harness
-# defaults to a 1-hour cache window; an explicit FORCE_PROMPT_CACHING_5M=1 (set by your
-# launcher) opts a chat into the shorter 5-minute window instead. Env inherited from the
-# claude process, so this reads the chat's true birth mode.
+# Cache window — will the NEXT prompt hit the prompt cache? Shows the TTL this chat runs and the
+# time left. ✓12m = warm, hits; ✗ = window passed, next prompt pays full freight; ? = we could not
+# read the last request out of the transcript — OUR failure, and it must never render as ✗, which
+# is a claim about the chat.
+#
+# The window is armed by the last REQUEST, so the anchor is the last request RECORDED IN the
+# transcript — never the transcript's mtime. The harness can rewrite its own transcript on a
+# state-flush timer with no request behind it (identical bytes, identical inode) well after the
+# last turn — an mtime anchor therefore re-arms a dormant chat's window on a free write, and can
+# never age past the next flush, which is exactly why a chat left idle can under-report how long
+# its window has actually been expired.
+#
+# Anchor = the NEWEST timestamp on a main-chain `user` record. Read that as last ACTIVITY, not last
+# human prompt: inside an agentic turn every tool result is its own `user` record and its own
+# request, so a turn that runs for a while re-arms this constantly. The long gaps only ever appear
+# BETWEEN turns.
+#
+# `user` is the request START, which is when the cache entry is written/refreshed, so this is the
+# exact arm time. Assistant records are deliberately NOT counted even though they are activity:
+# they date the response END, which would hold ✓ through a long generation whose cache entry has
+# already aged out — a false warm costs real money, a false cold costs nothing. Wrong only in the
+# safe direction, or not at all. Taken as max(), not last(): records are appended in completion
+# order, not timestamp order (a file-history-delta lands out of sequence).
+# Excluded by construction: untimestamped flush records (title/mode/permission-mode/bridge-session)
+# that move mtime while adding nothing — they carry no timestamp, so they cannot arm this. Excluded
+# deliberately: sidechains (sub-agent turns) — a sub-agent's cache entry is not this chat's, so a
+# long-running agent really does leave this window to expire.
+# The harness defaults to a 1-hour cache window; an explicit FORCE_PROMPT_CACHING_5M=1 (set by your
+# launcher) opts a chat into the shorter 5-minute window instead. Env inherited from the claude
+# process, so this reads the chat's true birth mode.
 if (( WIDE )) && [ -n "${TPATH:-}" ] && [ -f "$TPATH" ]; then
   cttl=3600; cwl="1h"
   [ "${FORCE_PROMPT_CACHING_5M:-}" = "1" ] && { cttl=300; cwl="5m"; }
-  # BSD stat first (macOS), GNU fallback (Linux); 0 mtime = unreadable → skip the segment
-  cmt=$(stat -f%m "$TPATH" 2>/dev/null || stat -c%Y "$TPATH" 2>/dev/null || echo 0)
-  cage=$(( $(date +%s) - cmt ))
-  crem=$(( cttl - cage ))
-  # seconds are always shown: at a fast refresh, the last minute of a warm window is the part
+
+  # Scan the tail only when the transcript actually changed (mtime+size key): the scan is the one
+  # costly thing on a fast refresh. A silent rewrite invalidates the key and re-derives the SAME
+  # anchor — correct, and the reason the display no longer moves when nothing was sent. 64K covers
+  # a normal turn; the 1M retry covers a turn whose last tool result is enormous. ISO-8601 UTC
+  # sorts lexicographically, so max() over the raw strings IS the chronological max.
+  _tb="${TPATH##*/}"; caf="/tmp/cc-sl-anchor-${_tb%.jsonl}"
+  cakey=$(stat -c '%Y:%s' "$TPATH" 2>/dev/null || stat -f '%m:%z' "$TPATH" 2>/dev/null || echo 0:0)
+  cak=""; can=""
+  [ -f "$caf" ] && read -r cak can < "$caf" 2>/dev/null || true
+  if [ "$cak" != "$cakey" ]; then
+    can="-"                                   # "-" = scanned, no activity found (distinct from unscanned)
+    for _cb in 65536 1048576; do
+      cts=$(tail -c "$_cb" "$TPATH" 2>/dev/null | jq -rRs 'split("\n") | map(fromjson? // empty)
+              | map(select(.type == "user" and (.isSidechain | not) and .timestamp) | .timestamp)
+              | max // empty' 2>/dev/null) || cts=""
+      [ -n "$cts" ] || continue
+      can=$(date -u -d "$cts" +%s 2>/dev/null \
+            || date -u -j -f '%Y-%m-%dT%H:%M:%S' "${cts%%.*}" +%s 2>/dev/null || echo "-")
+      break
+    done
+    printf '%s %s' "$cakey" "$can" > "$caf" 2>/dev/null || true
+  fi
+
+  if [ -z "${can:-}" ] || [ "$can" = "-" ]; then
+    l2+="${SEP}${Y}💾${cwl}?${X}"
+  else
+  crem=$(( cttl - ( $(date +%s) - can ) ))
+  # seconds are always shown: at a fast refresh the last minute of a warm window is the part
   # worth watching, and a bare rounded "1m" hides whether the next prompt still hits the cache
-  if (( cmt == 0 )); then :
-  elif (( crem > 0 )); then
+  if (( crem > 0 )); then
     crf="${crem}s"
     (( crem >= 60 ))   && crf="$(( crem / 60 ))m:$(( crem % 60 ))s"
     (( crem >= 3600 )) && crf="$(( crem / 3600 ))h:$(( (crem % 3600) / 60 ))m:$(( crem % 60 ))s"
@@ -288,6 +335,7 @@ if (( WIDE )) && [ -n "${TPATH:-}" ] && [ -f "$TPATH" ]; then
     (( cpast >= 60 ))   && crf="$(( cpast / 60 ))m:$(( cpast % 60 ))s"
     (( cpast >= 3600 )) && crf="$(( cpast / 3600 ))h:$(( (cpast % 3600) / 60 ))m"
     l2+="${SEP}${R}💾${cwl}✗${crf}${X}"
+  fi
   fi
 fi
 

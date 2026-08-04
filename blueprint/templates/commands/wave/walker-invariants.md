@@ -41,10 +41,8 @@ exactly as blind as no registry.
 
 ## § Curation
 
-Who curates — `/pcm` mechanically, or a frontier review per new entry — is OPEN, for founder ruling.
-Until ruled, treat any addition to this file as `/pcm`-routed (guarded file) with the SAME rigor as a
-CLAUDE.md edit — a bad entry doesn't just fail to help, it can either arm nothing (dead territory
-globs) or arm everything (a territory of `**`), both silently.
+Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md edit: a bad entry
+either arms nothing (dead territory globs) or arms everything (a territory of `**`), both silently.
 
 ---
 

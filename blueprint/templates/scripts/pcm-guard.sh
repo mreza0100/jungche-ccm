@@ -11,9 +11,9 @@ set -euo pipefail
 #   tmp/professor_quality_loaded.<sid>  — quality/prompt.md was READ this session
 #                                         (stamped automatically by guard-stamp.sh)
 # Sliding expiry: every ALLOWED edit re-touches both markers, so an active session
-# never expires mid-batch; the TTL reaps only abandoned sessions. guard-stamp.sh
-# clears this session's markers at turn end (Stop hook). Silent no-op for every
-# other path. Knowledge / prompt files belong to km-guard.sh.
+# never expires mid-batch; the TTL reaps only abandoned sessions (guard-stamp.sh's
+# Stop pass reaps >1h leftovers; markers SURVIVE turn ends — stamp once per session).
+# Silent no-op for every other path. Knowledge / prompt files belong to km-guard.sh.
 
 INPUT=$(cat)
 FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
@@ -27,6 +27,7 @@ REL_PATH="${FILE_PATH#"$REPO_ROOT"/}"
 case "$REL_PATH" in
   CLAUDE.md|.claude/*) ;;              # root infrastructure
   */CLAUDE.md|*/.claude/*) ;;          # child-project infrastructure (any nesting)
+  docs/commands/pcm/references/*) ;;   # pcm runtime-loaded reference cards (audit law)
   *) exit 0 ;;
 esac
 
@@ -56,7 +57,7 @@ fi
 if ! fresh "$ACTIVE"; then
   REASON+=" DENIED — infra edits route through /pcm: open this session's gate from the repo root: date +%s > \"tmp/professor_pcm_active${SID:+.$SID}\" — run the stamp UNSANDBOXED (a sandboxed write never lands on the filesystem this hook reads; a denied retry after stamping means the stamp ran sandboxed), then retry."
 fi
-REASON+=" Markers slide on every allowed edit and are cleared at turn end. Do NOT route around this by disabling the hook or editing infra outside /pcm."
+REASON+=" Markers slide on every allowed edit and expire by TTL only — no turn-end clearing; stamp once per session. Do NOT route around this by disabling the hook or editing infra outside /pcm."
 
 jq -cn --arg r "$REASON" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
 exit 2

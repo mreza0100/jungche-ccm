@@ -1,6 +1,6 @@
 ---
 name: wave:refine
-description: Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave spec at docs/dev/waves/queue/ (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave:schedule, /wave:orchestrator, or /wave:builder. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and hands it to /wave:builder or /wave:orchestrator to build a working prototype under .professor/RND/POC/. Triggers: "refine", "refine this", "/wave:refine", "write wave.md", "refine tasks", "refine poc".
+description: Wave task refinement — critically evaluates a task list through the R1-R4 protocol into a ZERO-GAP wave spec at docs/dev/waves/queue/ (complete technical spec: routing, data model, contracts, file plan, mermaid flow) that delegates no decision to /wave:schedule, /wave:orchestrator, or /wave:builder. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and builds it itself — sonnet implementation agents dispatched directly under .professor/RND/POC/{name}/, no worktree, no gitter, no QA gates. Triggers: "refine", "refine this", "/wave:refine", "write wave.md", "refine tasks", "refine poc".
 ---
 
 # Refine — Wave Task Refinement
@@ -75,7 +75,7 @@ Score every task 0-100 after each Q&A round:
 
 **Overall confidence = MINIMUM task score** (not average).
 
-**Gates:** All >= 95 -> proceed to R-POC. All >= 85, min >= 90 -> one final focused round. Any <85 -> mandatory next round.
+**Gates, read off that minimum:** ≥95 → proceed to R-POC · 90-94 → one final focused round · <90 → mandatory next round.
 
 **Hard cap: 3 rounds.** After Round 3, any task still <95: (a) provide spec now, (b) defer from wave, (c) drop entirely. No "proceed at low confidence."
 
@@ -328,9 +328,9 @@ After R4 approval, refine is complete — report: "Spec queued at `docs/dev/wave
 
 ## Subcommand: `poc <goal>` — Refine-to-Prototype
 
-`refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then hands it to `/wave:builder` (or `/wave:orchestrator`) to build a working prototype under `.professor/RND/POC/{name}/`.
+`refine poc <goal>` interrogates a proof-of-concept idea into an airtight spec, then builds it directly: the refine chat dispatches sonnet implementation agents under `.professor/RND/POC/{name}/` — the same disposable sandbox `/p:rnd` builds under, needing no gitter, no QA gates, no worktree.
 
-This subcommand refines a question-driven spec and delegates the build — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which queues a wave spec for the roster projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `.professor/RND/POC/` that exists only to answer "does this approach work?"
+This subcommand refines a question-driven spec and builds it itself — distinct from RND (which iterates on a metric until it converges), from R1–R4 (which queues a wave spec for the roster projects), and from the in-flow R-POC step (which validates a wave task mid-refinement); a POC is a self-contained, disposable prototype under `.professor/RND/POC/` that exists only to answer "does this approach work?"
 
 Run P1 → P4 in order; every gate blocks.
 
@@ -354,6 +354,6 @@ Score the spec on the same scale as § Confidence scoring. Loop until it reaches
 
 Write `.professor/RND/POC/{name}/spec.md` — the ONLY file you create. At the same ZERO-GAP bar as wave.md but scoped to the prototype, it carries: **Goal**, **Proves**, **Success criteria**, **Real vs faked**, **Build plan** (every file to create under `.professor/RND/POC/{name}/`, each with what it does and its signatures), **How to run it**, **Boundaries**.
 
-### P4 — Hand off
+### P4 — Build
 
-Recommend the builder — one self-contained probe → `/wave:builder`; several parallel probes → `/wave:orchestrator` — with the build target pinned to `.professor/RND/POC/{name}/`. Give the founder the exact command; the founder runs it.
+Dispatch sonnet implementation agents (`Agent(subagent_type: "general-purpose", model: "sonnet")`) directly under `.professor/RND/POC/{name}/` per the spec's Build plan — one self-contained probe runs as a single agent, several independent probes fan out in parallel. No gitter, no QA gates, no worktree — the same disposable-sandbox law `/p:rnd` builds under. Report the result to the founder.

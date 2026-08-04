@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.48.0](releases/v0.48.0.md) — the Codex mirror is reborn as `build-codex.mjs`, one compiler deriving AGENTS.md/skills/agent-TOMLs/MCP config from the live Claude sources with deterministic compile-or-block hooks (`codex-mirror.sh` retired); the gitter git-write monopoly narrows so read-only git opens to every agent; `/pcm` slims 39.9KB→25KB with new fact-verification and governance law; first-time user-global `~/.claude/settings.json` template
 - [v0.47.0](releases/v0.47.0.md) — the fleet ships whole in the host bundle and installs by symlink (one `git pull` updates every command), `/swap`'s engine included, scripts locate themselves through links, 85 fixtures, and a leak gate that no longer misses ALL-CAPS
 - [v0.46.0](releases/v0.46.0.md) — Codex layer re-derived from what actually runs (a git-permitting rules file and a Teams orchestration model that never existed, both deleted), chat:\* moved to the host bundle, walker fast mode + four instrument defects closed, qa-commons test economy/validity/isolation, /quality:prompt ↔ /pcm scope split
 - [v0.45.0](releases/v0.45.0.md) — /wave:\* trains + archival lifecycle, descriptions-as-router law + registry-wide sweep, stale wave-build.js references cut, wave-engine boundary-lock hardening + wave-wait.sh fix

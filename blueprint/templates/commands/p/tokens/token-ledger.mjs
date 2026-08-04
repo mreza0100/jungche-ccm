@@ -98,8 +98,8 @@ function defaultRoots() {
   ].filter((p) => fs.existsSync(p));
 }
 
-// A "project dir" is any .../projects/{slug} directory across all roots (including an
-// optional multi-account ~/.claude-sessions/sNNN/projects/{slug} layout — we glob for it).
+// A "project dir" is any .../projects/{slug} directory across all roots (including the
+// multi-account ~/.claude-sessions/sNNN/projects/{slug} layout — we glob for it).
 function findProjectDirs(roots, slug) {
   const dirs = [];
   for (const root of roots) {
@@ -510,9 +510,10 @@ function printByWorkflow(rows) {
   renderGrid(H, data, new Set([0, 1, 2]), new Set([data.length - 1]));
   console.log(
     "\nFRESH = in+out+cache-write (the harness's subagent_tokens definition); GRAND TOTAL adds cache-read." +
-      "\nNote: a /wave:live's per-feature /wave:builder is NOT a wf_* run — /wave:live runs /wave:builder in the main session, so its" +
-      "\nagents land in the non-workflow row. Total a /wave:builder or /wave:live feature with --filter <label>, not" +
-      "\n--by-workflow. --by-workflow captures Workflow-engine runs (e.g. /rr) exactly."
+      "\nA wf_* row exists only for a Workflow-engine run — a script under .claude/workflows/ or a skill-embedded" +
+      "\nengine (/rr); a wave's walker pass (wave-walker) is one too. /wave:orchestrator and /wave:builder run" +
+      "\nin their chats' main sessions and land in (non-workflow agents) instead. The TOTAL row sums both —" +
+      "\na wave's end-to-end chat cost. Total a wave with --filter <wave-label>."
   );
 }
 
@@ -544,9 +545,10 @@ Usage: node token-ledger.mjs [options]
   --detail <id|substr>   list one agent's individual API calls in order
   --by-workflow          group by workflow run (wf_*) instead of by agent — one row
                          per run + a "(non-workflow agents)" summary row + TOTAL.
-                         Captures Workflow-engine runs (e.g. /rr) exactly. NOTE: a
-                         /wave:live's per-feature /wave:builder is NOT a wf_* run (it runs in the
-                         main session); total a /wave:builder or /wave:live feature with --filter.
+                         wf_* = a Workflow-engine run (.claude/workflows/* or /rr); a
+                         wave's walker pass (wave-walker) is one too. /wave:orchestrator
+                         and /wave:builder land in (non-workflow agents) instead — total
+                         a wave with --filter <wave-label>.
   --filter <substr>      restrict the per-agent table + totals to rows whose label or
                          model id contains <substr> (case-insensitive); prints match
                          count. Composes with --all / --session / --json.
@@ -573,7 +575,7 @@ async function main() {
 
   let sessions = listSessions(projectDirs);
 
-  // DEDUP across roots: ~/.claude and ~/.claude-sessions may be HARDLINKS to the same
+  // DEDUP across roots: ~/.claude and ~/.claude-sessions are HARDLINKS to the same
   // inodes for shared conversations. Collapse by real inode of the main file so we
   // never double-count the same session discovered under two roots.
   const byInode = new Map();

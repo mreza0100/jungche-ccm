@@ -1,39 +1,33 @@
 ---
 name: km
-description: Author, sharpen, and curate the {AI_PROJECT} knowledge registry — insight knowledge (`insights/`), full-injection formats (`note-formats/`), and prompt templates (`prompts/*.md`) injected verbatim into the AI analysis chains. Use for "write/edit/sharpen/clean/review/status" on {DOMAIN_NOUN} prompts or insight knowledge, `insights {approach}`, `note-formats {format}`, or any work under {AI_PROJECT}/knowledge/.
+description: Author, sharpen, and curate {PROJECT_NAME}'s {AI_SERVICE_NAME} prompt registry under `{AI_PROJECT}/knowledge/` — prompt templates (`prompts/**/*.prompt.md`, loaded verbatim by `load_prompt()` via `REGISTRY.json`) and full-injection {DOMAIN_ADJ} note formats (`note-formats/`). Modes: `write`, `edit`, `clean` (strip waste), `sharpen` (cut deeper), `review`, `status`; targets `note-formats {format}`, `prompts {registry-key}`. Use for write/edit/sharpen/clean/review/status on therapy prompts or {DOMAIN_ADJ} knowledge, or any work under `{AI_PROJECT}/knowledge/`.
 argument-hint: [write|edit|sharpen|clean|review|status] [target]
 ---
 
-# KM (Knowledge-Manager) — {DOMAIN_NOUN} Approach Knowledge Gathering & Curation
+# KM (Knowledge-Manager) — {AI_SERVICE_NAME} prompt & {DOMAIN_ADJ}-knowledge curation
 
-> **Note:** This template ships {PROJECT_NAME}'s {DOMAIN_NOUN}-knowledge curator verbatim — the illustrative taxonomy below (the `{DOMAIN_FRAMEWORKS}` approaches, their categories, and the two-phase / full-injection loading mechanics) is the worked example. Keep the structure and the loading mechanics; replace the domain values (approaches, categories, namespaces) with your own `{DOMAIN_FRAMEWORKS}` taxonomy when you install. The `Professor` and `JC` personas keep their names by default — rename if you want.
+> **Tier B — Domain archetype.** Identity (the knowledge curator who treats every injected file as production code) and structure — Sacred Ground, wiring verification, the cleanup-vs-sharpen split, the Officer compliance loop — are universal. Knowledge domain, taxonomy, and consumer chains parameterize per install. This template ships {PROJECT_NAME}'s {DOMAIN_NOUN}-knowledge curator verbatim: a `prompts/` (chain instruction templates) + `note-formats/` (full-injection format specs) + `bias/` (engineering-only) registry. Keep the structure and the loading mechanics; replace the domain values (namespaces, formats, chains) with your own `{KNOWLEDGE_DOMAIN}` taxonomy when you install. The `Professor` and `JC` personas keep their names by default — rename if you want.
 
-Research, write, and maintain {DOMAIN_ADJ} knowledge for {DOMAIN_NOUN} approaches: $ARGUMENTS
+Research, write, and maintain the {AI_SERVICE_NAME} prompt registry: $ARGUMENTS
 
----
-
-## Overview
-
-You are the **knowledge curator** for {PROJECT_NAME}'s AI analysis engine. You own everything under `{AI_PROJECT}/knowledge/`.
+Read `.claude/commands/quality/prompt.md` before the first edit — that Read stamps the session marker the knowledge guard requires, and its leanness + correctness law layers underneath the {DOMAIN_ADJ} rules here.
 
 ---
 
 ## Sacred Ground — A knowledge file IS the prompt
 
-A knowledge file is not documentation. It is not a research summary. **It is the prompt.** At runtime, the file goes verbatim into the LLM's context — every byte costs tokens on every call, every word steers {DOMAIN_ADJ} behavior, every drift moves what the {USER_NOUN} sees. Treat knowledge files with the discipline you would apply to production code that touches {SUBJECT_NOUN} data. The one exception is author-only `<!-- ... -->` comments: a shared read gateway strips them before the LLM on every knowledge read, so they cost no runtime tokens and may annotate the WHY in any knowledge file (see Edit mode "Author-only comments").
-
-Before editing any knowledge file, load `Skill("quality:prompt")` — it carries the structural discipline (cut test, cue density, one canonical term, no narration) that applies to every prompt. Layer it under the {DOMAIN_ADJ} rules below. If your install ships a knowledge-edit guard (the `km-guard` archetype), it blocks edits until the quality marker is fresh — follow its deny message.
+A knowledge file is not documentation. It is not a research summary. **It is the prompt.** At runtime, the file goes verbatim into the LLM's context — every byte costs tokens on every call, every word steers {DOMAIN_ADJ} behavior, every drift moves what the {USER_NOUN} sees. Treat knowledge files with the discipline you would apply to production code that touches {SUBJECT_NOUN} data.
 
 ### Objective vs generative — classify before you write
 
 Classify every prompt before authoring it:
 
-- **Objective** — extract, classify, score, identify, detect, disambiguate, name. The model codes the observable material against a fixed taxonomy. The answer is in the source input (the transcript).
+- **Objective** — extract, classify, score, identify, detect, disambiguate, name. The model codes the observable material against a fixed taxonomy. The answer is in the transcript.
 - **Generative** — advise, draft, guide, synthesize. The model produces new {DOMAIN_ADJ} language for the {USER_NOUN}.
 
-An objective prompt is **approach-blind and interpretation-free**: it carries no `{approach}` slot, no `## {DOMAIN_NOUN} Approach` block, no approach catalog, no session summary, no prior LLM interpretation — those inputs bias the coding toward the approach's vocabulary and let upstream interpretation contaminate a fresh read. Approach is fuel for generative prompts only.
+An objective prompt is **modality-blind and interpretation-free**: no modality block, no framework catalog, no {SESSION_NOUN} summary, no prior LLM interpretation — those inputs bias the coding toward the modality's vocabulary and let upstream interpretation contaminate a fresh read. Couple/framework vocabulary never reaches a solo-{SESSION_NOUN} prompt. Modality is fuel for generative prompts only.
 
-Lane boundary: `/km` owns the prompt **text** — never write the approach block into an objective prompt, and flag the `{approach}` binding. The binding itself and any dead code field are code (`/jc`, `/audit:code-hygiene`) — `/km` flags, it does not delete.
+Lane boundary: `/km` owns the prompt **text** — never write a modality block into an objective prompt, and flag the binding that injects one. The binding itself and any dead `.py` field are code (`/jc`, `/audit:code-hygiene`) — `/km` flags, it does not delete.
 
 ### Two distinct passes — never confuse them
 
@@ -44,474 +38,228 @@ Cleanup is deletion. Sharpening is replacement. Cleanup does not imply sharpenin
 
 ### One LLM call = one self-contained prompt
 
-A chain's prompt lives in ONE place. Inline static {DOMAIN_ADJ} knowledge directly into the prompt that uses it — the `prompts/` template (illustrative source-instance examples: `ccrt_extraction_prompt.md`, `rose_scoring_prompt.md`), or, where a chain holds its prompt in code, the chain's `.py` prompt constant. Never split a single chain's prompt across a template plus a separately-injected knowledge file: the same knowledge then drifts to different lengths on disk, in the DB, and at runtime.
+A chain's prompt lives in ONE place. Inline static {DOMAIN_ADJ} knowledge directly into the `prompts/` template that uses it (e.g. `extraction/ccrt_extraction.prompt.md`, `gottman/gottman_bids.prompt.md`). Never split a single chain's prompt across a template plus a separately-injected knowledge file: the same knowledge then drifts to different lengths on disk, in the DB, and at runtime.
 
-The only legitimate template + fragment composition is a **runtime-selected** fragment — `note-formats/` (one format chosen per note) and `insights/` (two-phase category selection). Even then, the LLM receives exactly one assembled prompt.
+The only legitimate template + fragment composition is a **runtime-selected** fragment — `note-formats/`, where one format file is chosen per note — plus a template's own static `__pre`/`__post` halves. Even then, the LLM receives exactly one assembled prompt.
 
 ### Point by locator, never echo back input text
 
-When the prompt's input carries a stable locator for each unit — a segment index, message id, timestamp — the prompt asks the LLM to return the LOCATOR (e.g. `segment_index`), and the code derives the verbatim text from it. Asking the LLM to retype text already present in its input makes it fabricate and stitch (CCRT fabricated few-shot-example quotes; Gottman retyped excerpts); returning a locator makes fabrication structurally impossible and cuts output tokens (~41% on Gottman). Reserve verbatim-return only for inputs with no locator.
-
-Ownership (source-instance example): some chain prompts live as `.py` constants (code, not `/km`); the `prompts/`-resident templates (e.g. CCRT, Rose) stay `/km`-owned.
+When the prompt's input carries a stable locator for each unit — a segment index, message id, timestamp — the prompt asks the LLM to return the LOCATOR (e.g. `segment_index`), and the code derives the verbatim text from it. Asking the LLM to retype text already present in its input makes it fabricate and stitch; returning a locator makes fabrication structurally impossible and cuts output tokens sharply. Reserve verbatim-return only for inputs with no locator.
 
 ### Forbidden in any injected knowledge file (cleanup targets — strip on sight)
 
 - **References to `knowledge/bias/llm-biases.md`** — that file is engineering-only, documenting {LLM_PROVIDER} biases for the human author of bias-control headers. NEVER seen by the runtime LLM.
 - **Etymology / "Methodology Notes" / "{PROJECT_NAME}-specific conventions"** — Wiggins-vs-Leary naming history, "this scale is a {PROJECT_NAME} normalization," "published instruments use Likert" — the LLM scores the construct; disciplinary lineage lives in README.
-- **"Terminology note" {PROJECT_NAME}-vs-published label mappings** — e.g. "{X} is a {PROJECT_NAME} label for the published '{Y}' category." Etymology lives in README or commit history, not the prompt.
+- **"Terminology note" {PROJECT_NAME}-vs-published label mappings** — "Softening is a {PROJECT_NAME} label for Gottman's 'I Feel' category." Etymology lives in README or commit history, not the prompt.
 - **"Note for UI alignment" / UI behavior** — the LLM is not the UI.
 - **Schema-conditional clauses for fields that do not exist** — "if the schema supports `bid_intensity`, use it" when no such field exists invites the LLM to emit unsupported shapes.
 - **Pointers to other knowledge files** — the LLM never opens them. Dead reference.
 - **Source citations / academic references** — the LLM cannot pursue them. Load-bearing justifications live in `knowledge/{namespace}/README.md`.
 - **Revision history / changelog notes** — those live in README. Do not inject "previously X; now Y."
+- **Few-shot examples that break a red line or the schema** — an example steers exactly like an instruction. It must never demonstrate a forbidden pattern (diagnostic or framework labels, taxonomy names) and must match the current output schema's shape. A stale or off-shape example teaches the model the wrong output.
 
 ### Required in every injected knowledge file
 
 - **`## {LLM_PROVIDER} Bias Control` section near the top** — 5-8 chain-specific guards calibrated from observed {LLM_PROVIDER} drift on this task (anti-positivity, anti-fabrication, null-array, quote-verbatim, no-extrapolation, speaker-binding, etc.). Stand-alone — cites no external file.
 - **Cue density** — every sentence defines a label, gives a detection cue, or shows a discriminating example. Anything else is waste.
 
-### Schema fidelity — don't contradict the code
+### Contract fidelity — every instruction traces to a real binding
 
 A knowledge file MUST NOT invite the LLM to produce output shapes the runtime schema rejects. Before authoring partial-state allowances, grep the corresponding schema enum / post-processor (Pydantic in the source instance).
 
+Schema fidelity is the floor; contract fidelity is the rule. Every instruction must trace to a real binding — an output field that **exists** in the Pydantic model, a length/format rule that **matches** the validator, a tool description that **matches** the tool's real behavior. Grep the model + validator + tool before writing the instruction. An instruction with no backing field, validator, or tool is junk.
+
 ### Wiring verification — don't author for nobody
 
-Before editing or extending a knowledge file, verify it is actually consumed at runtime:
+Before editing or extending a file, verify it is actually consumed at runtime:
 
-| Strategy           | Verify                                                                                                                                                                                                           |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full-injection     | Namespace in `FULL_INJECTION_DIRS` (`{AI_PROJECT}/src/{ai_module}/services/knowledge_sync.py`)? Chain loader queries `KnowledgeFullInjection` by namespace+filename? Prompt template has a slot for the content? |
-| Insights two-phase | Approach registered in `ApproachConfig.insight_categories` at `src/{ai_module}/approaches/*.py`? `InsightKnowledgeLoader` covers the path?                                                                       |
+- **Prompt template** — a `REGISTRY.json` key resolves to it, AND a `load_prompt("{key}")` call site exists under `{AI_PROJECT}/src/`.
+- **Full-injection** — its namespace is in `FULL_INJECTION_DIRS` (`src/{ai_module}/services/knowledge_sync.py`), a loader queries `KnowledgeFullInjection` by namespace + filename, and the consuming prompt template has a slot for the content.
 
 If ANY answer is no, the file is **ORPHANED**. Flag and ask before authoring — content for an orphan is theatre.
 
+**Live-or-delete** — wiring is a curation duty, not just an authoring check. Every `{placeholder}` resolves to real content at some layer; a placeholder bound to a permanently empty or constant value is dead — remove it. When a feature, field, or table is removed, its prompts, registry entries, and placeholders die in the SAME change — never "kept for backward compat." Sweep for orphaned placeholders and dead files and delete them. Deletion checklist, one unit per removed file: (1) rm the file; (2) remove its `REGISTRY.json` entry — the whole namespace block when emptied; (3) verify the registry parses AND every remaining path resolves to a live file (a dangling path or an orphan key fails `tests/unit/test_prompt_registry.py`, which the builder cannot touch).
+
 `session_vectors` backs transcript retrieval only. It is separate from KM-owned knowledge, and KM never authors files for transcript RAG.
+
+### Author-only comments — annotate the WHY, like code
+
+Every knowledge `.md` supports `<!-- ... -->` comments. A shared read gateway — `read_knowledge()` (holding `_strip_comments`, in `src/{ai_module}/prompts/_knowledge_text.py`) — strips them before the LLM, and it backs `load_prompt()` AND the full-injection sync, so comments NEVER reach the LLM and cost no runtime tokens, in `prompts/` and `note-formats/` alike. Use them in any knowledge file to record the rationale a future editor would otherwise reverse-engineer — a discriminator's reason, a calibration choice, why a field exists. Two hard rules: never put a literal `-->` inside a comment (it ends the comment early); never use `<!--` as prompt body the LLM must read.
+
+**Annotate deliberate-but-unread fields so a future cleanup never strips them as dead.** A field whose value nothing downstream reads can still be load-bearing chain-of-thought — generating it sharpens the output label. Comment these as intentional CoT. Illustrative case (source instance), annotated in both lanes (the prompt's `<!-- -->` and the Pydantic field's Python comment): a `reason`/`reasoning` field that is never persisted and nothing reads, yet making the model state _why_ before committing a label is the deliberation that gets the label right (RND-measured recall gain on subtle cases).
+
+Unread-by-design ≠ dead — it is the correct shape for a CoT field. Keep and annotate; never delete as a "ghost field."
 
 ### READMEs are engineering-only
 
-`knowledge/{namespace}/README.md` files are for human readers — validation history, source authority, scope divergences, revision notes. The loader syncs them to the DB but no chain queries them, so they never reach the LLM. Never put runtime-relevant rules in a README; always put them in the namespace's primary injected file(s).
+`knowledge/{namespace}/README.md` files are for human readers — validation history, source authority, scope divergences, revision notes. The sync stores them in the DB but no chain queries them, so they never reach the LLM. Never put runtime-relevant rules in a README; always put them in the namespace's primary injected file(s).
 
 ---
 
-## What you own
+## What you own — `{AI_PROJECT}/knowledge/`
 
-```
-{AI_PROJECT}/knowledge/
-├── bias/                             ← ENGINEERING-ONLY — never injected, never cited from injected files
-│   └── llm-biases.md
-├── ccrt/                             ← README only — CCRT prompt text lives in prompts/ccrt_extraction_prompt.md
-│   └── README.md
-├── rose/                             ← README only — Rose prompt text lives in prompts/rose_scoring_prompt.md
-│   └── README.md
-├── note-formats/                     ← FULL-INJECTION — {DOMAIN_ADJ} note format specs (one file per format)
-│   ├── soap.md, dap.md, birp.md, ... (~20 formats)
-│   └── README.md                     ← engineering doc — NOT injected
-├── insights/                         ← TWO-PHASE INJECT — insight analysis knowledge ({N} approaches × en/{lang2})
-│   ├── {approach}/{lang}/index.md          ← Phase 1: routing (category titles + one-liners)
-│   └── {approach}/{lang}/categories/*.md   ← Phase 2: per-category content (kebab-case)
-├── prompts/                          ← PROMPT TEMPLATES — chain instructions, NOT injected {DOMAIN_ADJ} content
-│   └── {prompt_name}.md                     ← exact text loaded by load_prompt() per name; some split __pre/__post
-```
+- **`REGISTRY.json`** — the dotted-key → path map for every prompt template; `load_prompt()`'s only resolver. Enumerate live prompts from it, never from a copied list.
+- **`prompts/{domain}/{stem}.prompt.md`** — chain instruction templates, read verbatim by `load_prompt()` (`src/{ai_module}/prompts/loader.py`). EXCLUDED from knowledge sync (`FULL_INJECTION_EXCLUDED_DIRS = frozenset({"prompts"})`) — they steer chain behavior, they are not injected {DOMAIN_ADJ} knowledge. Your primary work.
+- **`note-formats/*.md`** — full-injection {DOMAIN_ADJ} note-format specs, one file per format. The only namespace in `FULL_INJECTION_DIRS`.
+- **`bias/llm-biases.md`** — ENGINEERING-ONLY. Never injected, never cited from an injected file.
+- **`{namespace}/README.md`** — engineering-only (above).
 
-**Live knowledge areas:**
+**Template naming:** every registered template ends in `.prompt.md` — `{stem}.prompt.md`, composed fragments `{stem}__pre.prompt.md` / `{stem}__post.prompt.md`. `REGISTRY.json` values are these file paths; the dotted keys callers pass to `load_prompt()` (e.g. `extraction.ccrt_extraction`) are logical, so a file rename edits only its registry value, never a call site.
 
-- **`insights/`** — Two-phase injectable knowledge for insight analysis. Your PRIMARY work.
-- **`note-formats/`** — Full-injection namespace; loads through `KnowledgeFullInjection`, one format selected per note at runtime.
-- **`prompts/`** — The extracted LLM prompt templates (chain instructions, system/human/pre/post fragments). Loaded verbatim at runtime by `load_prompt()` in `src/{ai_module}/prompts/loader.py`. EXCLUDED from knowledge sync (`FULL_INJECTION_EXCLUDED_DIRS = frozenset({"prompts"})`) — these steer chain behavior, they are not injected {DOMAIN_ADJ} knowledge. You own and refine them.
-- **`bias/`** — Engineering-only author guidance. Never injected, never cited from injected files.
+**Adding a template:** create the file, add its `REGISTRY.json` entry, and wire the `load_prompt("{key}")` call site in the same change. An unregistered key raises `KeyError`; a registered-but-missing path raises `FileNotFoundError`; `tests/unit/test_prompt_registry.py` fails on an unresolvable path or an orphan key.
 
-Retired vector knowledge paths are gone: do not create top-level `{approach}/`, `vocabulary/`, or `radar/` knowledge paths.
+### Knowledge loading strategies
 
-Each approach under `insights/` maps 1:1 to `knowledge_namespace` in `ApproachConfig` at `src/{ai_module}/approaches/*.py`.
+- **Prompt templates (`prompts/`)** — `load_prompt("{dotted.key}")` reads the registered file byte-for-byte with comments stripped; `{slot}` placeholders and `{{`/`}}` escapes are preserved exactly. Cached per key per process. Not synced, not injected. Optimization target: leanest text that still steers the chain.
+- **Full-injection (`note-formats/`)** — the whole file text is stored in `knowledge_full_injection` at sync and pulled by namespace + `{format_slug}.md` (`src/{ai_module}/services/note_format_service.py`), then slotted into the conversion / AI-fill prompts. Optimization target: compact completeness ≤ ~4K tokens (max ~5K), ONE file per format.
 
-### Knowledge Loading Strategies
-
-| Strategy                        | How consumed                                                                                                                     | Directory                                                                                                       | Optimization target                                                   |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **Insights (two-phase inject)** | Phase 1: `index.md` + session summary → LLM selects categories. Phase 2: selected category files + transcript → InsightDocument. | `insights/{approach}/{lang}/`                                                                                   | Index ≤ ~1K tokens. Categories ≤ ~8K chars each (MAX_CATEGORY_CHARS). |
-| **Full-injection**              | Stored in `knowledge_full_injection` DB table; per-chain loader pulls by namespace+filename and slots into the LLM prompt.       | Top-level `{namespace}/` listed in `FULL_INJECTION_DIRS` (`services/knowledge_sync.py`) — today: `note-formats` | Compact completeness ≤ ~4K tokens (max ~5K). ONE file per format.     |
-
-**Strategy detection:** `insights/` → two-phase rules. Top-level namespace in `FULL_INJECTION_DIRS` → full-injection rules. `prompts/` → prompt-template rules (see "Editing prompt templates" below) — owned, NOT injected, excluded from sync. `bias/` is ENGINEERING-ONLY and has no runtime consumer. Anything else is orphaned unless the code proves a live prompt slot.
-
-**Two-phase insight architecture:**
-
-1. **Phase 1 (routing):** `index.md` + session summary → LLM selects 3 most relevant categories (~2K tokens input)
-2. **Phase 2 (analysis):** Selected category files + full transcript → final InsightDocument
-3. **Token savings:** ~5K net savings per analysis (3/7 categories loaded vs all)
-
-**Code anchors:**
-
-- `InsightKnowledgeLoader` at `src/{ai_module}/services/insight_knowledge_loader.py`
-- `select_relevant_categories()` at `src/{ai_module}/chains/insight_selection.py` (feature-flagged: `SMART_INSIGHT_SELECTION_ENABLED`)
-- Categories defined in `ApproachConfig.insight_categories` at `src/{ai_module}/approaches/*.py`
-
-**Discover existing files:** `find {AI_PROJECT}/knowledge/insights/ -name "*.md" -type f | sort`
+**Strategy detection:** `prompts/` → template rules ("Editing prompt templates" below). A top-level namespace in `FULL_INJECTION_DIRS` → full-injection rules. `bias/` is ENGINEERING-ONLY and has no runtime consumer. Anything else is orphaned unless the code proves a live prompt slot.
 
 ---
 
-## Multilingual Knowledge Architecture
+## Bilingual knowledge
 
-> If your product is single-language, collapse this section to one language directory and drop the second-language requirement throughout. The bilingual setup below is the source instance — a primary plus one {SECONDARY_LANG} locale.
+{PROJECT_NAME} serves {SECONDARY_LANG}-speaking {USER_NOUN}s. Two mechanisms carry language, and they are not interchangeable:
 
-{PROJECT_NAME} serves {USER_NOUN}s in more than one language. Insight knowledge is organized by language directory:
+- **Output language** is steered by the `{language_instruction}` slot (`get_language_instruction()` in `src/{ai_module}/prompts/shared.py`) — a {SECONDARY_LANG} instruction for `{lang2}`, empty for `en`. One template serves every {SESSION_NOUN}; language is an input, not a prompt selection.
+- **Language-split template directories** — `prompts/{domain}/{lang}/`, the shape for a chain that selects its template by language. Where twins exist, **lockstep for structure, independence for voice:** they carry the IDENTICAL taxonomy, rule set, section counts, and safeguards — edit both in one pass so they never drift. Only the {SUBJECT_NOUN}-speech _examples_ are independently authored: {SECONDARY_LANG} quotes are authentic {DOMAIN_ADJ} speech and idiom, never translations of the English.
 
-- `insights/{approach}/en/` — English routing and category files.
-- `insights/{approach}/{lang2}/` — {SECONDARY_LANG} routing and category files, with authentic {SECONDARY_LANG} {SUBJECT_NOUN} speech rather than translations.
+Full-injection namespaces are language-neutral unless a live chain explicitly asks for language-specific files. Never add a `{lang}` twin without the chain that loads it — an unloaded twin is an orphan.
 
-Full-injection namespaces are language-neutral unless a live chain explicitly asks for language-specific files.
-
-### Supported languages
-
-| Code      | Language         | Status                                                  |
-| --------- | ---------------- | ------------------------------------------------------- |
-| `en`      | English          | Primary — always exists                                 |
-| `{lang2}` | {SECONDARY_LANG} | Source-instance second locale — drop if single-language |
-
----
-
-## Supported approaches
-
-> **Illustrative taxonomy ({DOMAIN_FRAMEWORKS}).** The table below is the source instance's worked example — its {DOMAIN_NOUN} approaches, namespaces, and categories. Replace it wholesale with your own knowledge taxonomy; keep the table shape (Approach | Namespace | Categories) and the 1:1 mapping rule below.
-
-{N} {DOMAIN_NOUN} approaches with insight categories defined in `src/{ai_module}/approaches/*.py`:
-
-| Approach       | Namespace        | Categories                                                                                                                                              |
-| -------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ACT            | `act`            | 5: experiential_avoidance, defusion_moments, values_talk, committed_action, psychological_flexibility                                                   |
-| Adlerian       | `adlerian`       | 7: inferiority_superiority, birth_order_effects, social_interest, lifestyle_analysis, private_logic, fictional_final_goals, encouragement_patterns      |
-| Attachment     | `attachment`     | 6: attachment_style, internal_working_models, rupture_repair_cycles, relational_patterns, emotional_regulation, secure_base_behavior                    |
-| CBT            | `cbt`            | 7: cognitive_distortions, automatic_thoughts, core_beliefs, behavioral_patterns, thought_emotion_behavior_chains, schemas, safety_behaviors             |
-| Existential    | `existential`    | 8: meaning_making, freedom_responsibility, death_anxiety, isolation_connection, authenticity, thrownness, choice_patterns, existential_guilt            |
-| Family Systems | `family-systems` | 6: family_boundaries, triangulation, differentiation_of_self, intergenerational_patterns, family_roles, systemic_dynamics                               |
-| Freudian       | `freudian`       | 7: defense_mechanisms, transference, countertransference, unconscious_conflicts, id_ego_superego_dynamics, resistance, free_association_patterns        |
-| Horney         | `horney`         | 6: neurotic_trends, idealized_vs_real_self, tyranny_of_should, basic_anxiety, interpersonal_coping, moving_toward_against_away                          |
-| IFS            | `ifs`            | 4: parts_dynamics, self_energy_emergence, parts_self_relationships, unburdening_markers                                                                 |
-| Jungian        | `jungian`        | 8: archetype_detection, shadow_material, anima_animus, individuation_progress, collective_unconscious_themes, dream_symbolism, complexes, synchronicity |
-| Schema Therapy | `schema`         | 4: schema_activation, mode_shifts, coping_style_patterns, healthy_adult_emergence                                                                       |
-
-**Total:** 68 categories x 2 languages = 136 category files + 22 index files = **158 files**
-
-**Category slug -> filename:** Replace underscores with hyphens. `cognitive_distortions` -> `cognitive-distortions.md`.
-
-**Other knowledge areas (NOT insights):**
-
-| Area          | Directory                               | Strategy                                                               | Bilingual |
-| ------------- | --------------------------------------- | ---------------------------------------------------------------------- | --------- |
-| Note formats  | `note-formats/` (~20 format files)      | Full-injection                                                         | No        |
-| Rose of Leary | `prompts/rose_scoring_prompt.md`        | Self-contained prompt template                                         | No        |
-| CCRT          | `prompts/ccrt_extraction_prompt.md`     | Self-contained prompt template                                         | No        |
-| Gottman       | couple framework `.py` prompt constants | Code — not `/km`-owned                                                 | —         |
-| Bias playbook | `bias/llm-biases.md`                    | **ENGINEERING-ONLY — never injected, never cited from injected files** | No        |
+> If your product is single-language, drop this section and its per-language template directories entirely.
 
 ---
 
 ## How to process a request
 
-### Parse `$ARGUMENTS`
+Parse `$ARGUMENTS` into one mode:
 
-| Mode                        | Trigger                                   | Example                                                    |
-| --------------------------- | ----------------------------------------- | ---------------------------------------------------------- |
-| **Write insights**          | "insights" + approach (+ optional lang)   | "insights cbt", "insights freudian en", "insights all"     |
-| **Write insights index**    | "index" + approach                        | "index cbt", "index freudian"                              |
-| **Write insights category** | Approach + category name                  | "cbt cognitive-distortions", "freudian defense-mechanisms" |
-| **Write full-injection**    | Namespace + format name                   | "note-formats soap"                                        |
-| **Edit/improve**            | "edit", "update", "fix", "improve" + file | "edit cbt index"                                           |
-| **Review**                  | "review" + approach or file               | "review attachment"                                        |
-| **Status**                  | "status"                                  | Shows what exists and what's missing                       |
+- **Write** — namespace + target: "note-formats soap", "prompts extraction.ccrt_extraction".
+- **Edit** — "edit", "update", "fix", "improve" + file: single-targeted fix.
+- **Cleanup** — "clean", "trim", "shrink", "strip", "audit and remove", "what shouldn't be in the prompt".
+- **Sharpen** — "sharpen", "tighten", "improve extraction", "boundary cases", "discriminators", "{LLM_PROVIDER} is mis-coding X as Y".
+- **Review** — "review" + target.
+- **Status** — "status". Empty or unclear arguments also mean status.
 
-**Defaults:** Empty/unclear = status. Just approach name = insights mode (both EN + {SECONDARY_LANG}). No lang specified = write BOTH languages.
-
----
-
-## Step 0 — Check current state
+### Step 0 — check current state
 
 ```bash
-find {AI_PROJECT}/knowledge/ -type f -name "*.md" 2>/dev/null | sort
+find {AI_PROJECT}/knowledge -type f -name '*.md' | sort
 ```
 
-If directory doesn't exist, create only the live target structure: insights language/category dirs or the existing full-injection namespace. Do not create retired vector-knowledge directories.
+Read `REGISTRY.json` for the live template set, then read the existing files for the target so you don't duplicate them.
 
-Read existing files for target approach to avoid duplication. Note any legacy flat files (pre-bilingual) for migration.
+### Step 1 — research (one unit at a time)
 
----
+Work on exactly one file at a time: deep-dive, finish, move on.
 
-## Step 1 — Research (ONE category at a time)
+Use WebSearch and WebFetch extensively: {DOMAIN_ADJ}/academic sources (peer-reviewed, training materials), practitioner handbooks, structured construct catalogs, and {SESSION_NOUN} examples (what {SUBJECT_NOUN}s actually say that maps to constructs) — always cross-referencing multiple sources. You have no hardcoded taxonomy: read the target name from the request, check what exists on disk, then research the construct.
 
-**CRITICAL: Work on exactly ONE category file at a time.** Deep-dive, finish, move on.
+What earns injection: standalone definitions, concrete speech examples, {DOMAIN_ADJ}-reference style, "what to look for in {SESSION_NOUN}" guidance. Narrative prose, raw book dumps, biography, and vague language do not.
 
-### Research strategy
+If web sources are shallow or contradictory, stop and ask the user for specific book chapters as `.md` files in `tmp/km-sources/`.
 
-Use WebSearch and WebFetch extensively:
+### Step 2 — write
 
-1. **{DOMAIN_ADJ}/academic sources** — peer-reviewed papers, university notes, {DOMAIN_ADJ} training materials
-2. **Practitioner-oriented content** — training handbooks, case conceptualization frameworks
-3. **Structured catalogs** — enumerated constructs (defense mechanisms, distortions, archetypes)
-4. **Session examples** — what {SUBJECT_NOUN}s actually say that maps to constructs
-5. **Cross-reference multiple sources** — never trust a single source
+**Full-injection note formats.** The file carries, in order: `# {FORMAT} — {full expansion}`; a one-line injection note; a `> **COMPLIANCE:** Observational documentation only.` line; `## Format Definition`; `## Sections` (one `### {Key} — {Label}` per section, each with Contains + one Example); `## Conversion Mapping` (universal concept → maps-to); `## AI Fill Guidance`. Laws:
 
-### What makes knowledge useful for injection
+- Total ≤ ~4K tokens (max ~5K) — two format files load per conversion prompt (source + target).
+- **{AI_FRAMEWORK} curly-brace escaping:** these files feed `ChatPromptTemplate.from_template()`. ALL curly braces MUST be escaped as `{{`/`}}` — an unescaped brace is parsed as a slot and silently breaks the prompt.
+- One example per section. Every universal concept mapped in the conversion table or marked N/A. Conversion mapping and AI fill guidance are both mandatory.
 
-- **DO:** Standalone definitions, concrete speech examples, consistent formatting, {DOMAIN_ADJ}-reference style, "what to look for in session" guidance
-- **DON'T:** Narrative prose, raw book dumps, biographical info, context-dependent writing, vague language
+**Prompt templates.** Shape follows the chain: job statement first, every injected slot defined, the single critical constraint last. Apply "Editing prompt templates" below for the call-site and slot mechanics.
 
-### When you need books
+### Step 3 — verify
 
-If web sources are shallow/contradictory, stop and ask the user for specific book chapters as `.md` files in `tmp/km-sources/`.
+- **Wiring** — the registry key resolves and the call site loads it; a full-injection file's namespace and filename match what the loader queries.
+- **Budget** — full-injection ≤ ~4K tokens; templates lean enough that every remaining line changes the model's output.
+- **Detection utility** — examples and discriminators actually help the LLM identify {SESSION_NOUN} material.
+- **Language fit** — {SECONDARY_LANG} text is authentic {SECONDARY_LANG} {DOMAIN_ADJ} speech, not translation.
 
----
+### Step 4 — Officer compliance review
 
-## Step 2 — Write the knowledge file
+Knowledge files are upstream of every AI output: Line 5+ terminology in a knowledge file becomes Line 5+ terminology in {SUBJECT_NOUN} analysis. Mandatory for injected {DOMAIN_ADJ} content.
 
-### Format A: Full-injection files (top-level `{namespace}/` in `FULL_INJECTION_DIRS`)
+Flow: km writes/edits → `/officer` reviews (Line 4 compliance) → PASS: commit; FAIL: fix → re-submit → repeat until PASS.
 
-```markdown
-# {Format Name} — {Full Expansion}
+Submit the file path, note that it reaches the LLM by injection, and ask Officer to check for Line 5+ terminology, diagnostic/pathologizing language, content that could lead the LLM to produce forbidden output, red line violations, and Known Gaps critical-list terms.
 
-> Injected in full. Compact and complete.
+On FAIL: replace forbidden terminology with observational language; remove Line 5+ content entirely or rewrite it as observational patterns; preserve {DOMAIN_ADJ} accuracy — if you cannot describe it accurately within Line 4, flag to the user. Re-run Step 3 after fixes. Typical is 1-2 iterations; at 3+, reconsider whether the section belongs at Line 5+ and should be removed entirely.
 
----
+Forbidden → compliant — this row set is illustrative (the source instance's domain); swap for your own domain's forbidden-output examples, keeping the guard:
 
-> **COMPLIANCE:** Observational documentation only.
-
----
-
-## Format Definition
-
-## Sections
-
-### {Key} — {Label} (Contains + Example per section)
-
-## Conversion Mapping (table: Universal Concept -> Maps to)
-
-## AI Fill Guidance
-```
-
-**Rules:**
-
-1. Total ≤ ~4K tokens (max ~5K). Two files load per conversion prompt.
-2. **LangChain curly-brace escaping:** Full-injection files feed `ChatPromptTemplate.from_template()`. ALL curly braces MUST be escaped as `{{`/`}}`. Unescaped braces silently break the prompt.
-3. 1 example per section max. Conversion mapping + AI fill guidance mandatory.
-4. No biography/history filler. No redundancy between sections.
-
-### Format B: Insight injection files (`insights/`)
-
-#### C1: Index file (`insights/{approach}/{lang}/index.md`)
-
-```markdown
-# {Approach} — Insight Categories
-
-> Phase 1 routing file. LLM reads this + session summary to select relevant categories.
-> | Category | Summary |
-> |----------|---------|
-> | {category_slug} | {One-line: what this detects in session dialogue} |
-```
-
-**Rules:** Slugs MUST match `insight_categories` from ApproachConfig. Total ≤ ~1K tokens. No theory/examples. EN and {SECONDARY_LANG} use same slugs, summaries differ by language.
-
-#### C2: Category content file (`insights/{approach}/{lang}/categories/{category-kebab}.md`)
-
-```markdown
-# {Category Title} — {Approach} Injection Knowledge
-
-> {One sentence: what this helps the LLM identify}
-
-## What Are {Concept}
-
-## Types / Variants / Taxonomy
-
-### {Subtype} — definition + speech examples ("{Quote}" -> indication)
-
-## How {Concept} Manifests in Session
-
-## Detection Guidance — numbered strategies
-```
-
-**Rules:**
-
-1. ≤ 8,000 chars (aim 5,000-7,000)
-2. Detection-oriented — "what to look for" > "what textbook says"
-3. {SUBJECT_NOUN} speech examples mandatory (with `-> interpretation`)
-4. Detection guidance section mandatory (numbered steps)
-5. Kebab-case filenames. EN and {SECONDARY_LANG} conceptually equivalent ({SECONDARY_LANG} quotes = authentic {SECONDARY_LANG}, not translations)
-
-### Writing {SECONDARY_LANG} insight files
-
-Use authentic {SECONDARY_LANG} {DOMAIN_ADJ} language and {SUBJECT_NOUN} speech, not literal translations from English. {SECONDARY_LANG} examples should include realistic field terminology, idiom, and disfluencies when {DOMAIN_ADJ}ly relevant.
+- DSM-adjacent labels: "schizoid personality pattern" → "pattern of emotional detachment and limited social engagement"
+- Risk scoring: "suicide risk indicators" → remove entirely (H5)
+- Screening suggestions: "screen for attachment disorder" → remove entirely (H1)
+- Diagnostic clustering: "symptoms consistent with GAD" → "recurring themes of pervasive worry"
+- Treatment recommendations: "recommend exposure therapy" → remove entirely (H4)
+- Fixation/complex labels: "oral fixation", "mother complex" → "patterns associated with early dependency needs"
 
 ---
 
-## Step 3 — Verify quality
-
-**Apply checks for your file's loading strategy:**
-
-### Insight checks
-
-1. **Index fidelity** — slugs match `ApproachConfig.insight_categories`
-2. **Category budget** — category files stay ≤ 8,000 chars
-3. **Detection utility** — examples and discriminators help the LLM identify session material
-4. **Language fit** — {SECONDARY_LANG} files use authentic {SECONDARY_LANG} {DOMAIN_ADJ} speech, not translations
-5. **No fluff** — remove anything that doesn't help analyze sessions
-
-### Full-injection checks
-
-1. **Token budget** — word count x 1.3 ≤ ~4K tokens
-2. **Completeness** — format definition, section guide, conversion mapping, AI fill guidance all present
-3. **Conversion mapping** — every universal concept mapped or marked N/A
-4. **No redundancy** — nothing said twice
-5. **Example economy** — max 1-2 examples per section
-
----
-
-## Step 4 — Officer Compliance Review Loop (MANDATORY)
-
-Knowledge files feed into {AI_SERVICE_NAME} prompts — they're upstream of every AI output. Line 5+ terminology in knowledge files becomes Line 5+ terminology in {SUBJECT_NOUN} analysis.
-
-### Compliance loop flow
-
-```
-km writes/edits file
-  -> invoke /officer to review (Line 4 compliance)
-    -> PASS: proceed to git commit
-    -> FAIL: km fixes issues -> re-submit to /officer -> repeat until PASS
-```
-
-**Submit with context:** File path + note that it's used via injection + ask Officer to check for: Line 5+ terminology, diagnostic/pathologizing language, content that could lead LLM to produce forbidden output, red line violations, Known Gaps critical list terms.
-
-**Fix strategy for FAIL:** Replace forbidden terminology with observational language. Remove Line 5+ content entirely or rewrite as observational patterns. Preserve {DOMAIN_ADJ} accuracy — if you can't describe accurately within Line 4, flag to user. Re-run Step 3 after fixes.
-
-**Typical:** 1-2 iterations. If 3+, reconsider whether the section belongs at Line 5+ and should be removed entirely.
-
-| Check                     | Forbidden                         | Compliant                                                       |
-| ------------------------- | --------------------------------- | --------------------------------------------------------------- |
-| DSM-adjacent labels       | "schizoid personality pattern"    | "pattern of emotional detachment and limited social engagement" |
-| Risk scoring              | "suicide risk indicators"         | Remove entirely (H5)                                            |
-| Screening suggestions     | "screen for attachment disorder"  | Remove entirely (H1)                                            |
-| Diagnostic clustering     | "symptoms consistent with GAD"    | "recurring themes of pervasive worry"                           |
-| Treatment recommendations | "recommend exposure therapy"      | Remove entirely (H4)                                            |
-| Fixation/complex labels   | "oral fixation", "mother complex" | "patterns associated with early dependency needs"               |
-
-> These rows enumerate {FORBIDDEN_DOMAIN_OUTPUTS} — Sacred Ground. Keep the guard; swap the examples for your domain's forbidden outputs.
-
----
-
-## Edit mode
+## Edit modes
 
 Per Sacred Ground, edits fall into two distinct passes. Pick the one the request actually calls for — never silently conflate them.
 
 ### Cleanup mode (strip waste)
 
-Trigger words: "clean", "trim", "shrink", "strip", "audit and remove", "what shouldn't be in the prompt"
-
-1. Verify wiring (see Sacred Ground "Wiring verification") — if the file is orphaned, flag before editing.
-2. Read target file.
-3. Grep against the Forbidden list in Sacred Ground (`knowledge/bias` pointers, Methodology Notes, Terminology notes, UI alignment notes, dead pointers to other files, schema-conditionals for nonexistent fields, source citations, revision/changelog notes).
+1. Verify wiring — if the file is orphaned, flag before editing.
+2. Read the target file.
+3. Grep against the Forbidden list in Sacred Ground.
 4. Delete on sight. Pure subtraction — do not rewrite remaining content; do not add new content. If a paragraph contains one useful sentence buried in meta, lift that sentence into the surrounding {DOMAIN_ADJ} section.
 5. Final sweep: re-grep the Forbidden patterns across all injected files — zero hits required before reporting done.
-6. Officer compliance loop (Step 4) — usually PASS by construction (deletions don't add Line 5+ content), but mandatory.
+6. Officer loop (Step 4) — usually PASS by construction, since deletions add no Line 5+ content, but mandatory.
 
 ### Sharpen mode (make remaining content cut deeper)
 
-Trigger words: "sharpen", "tighten", "improve extraction", "boundary cases", "discriminators", "{LLM_PROVIDER} is mis-coding X as Y"
-
 1. Verify wiring.
-2. Read target file end-to-end. Identify the file's chain target (what extraction does this file steer?).
-3. Identify the highest-leverage sharpening axis for this file — usually one of:
-   - Adjacent-label discriminators (criticism vs contempt; turn_toward vs turn_away on bare acknowledgments; mild-positive vs neutral on Affiliation; W3 close vs W4 distant)
-   - Edge-case examples (currently the file has prototypes — add the 3-4 cases where {LLM_PROVIDER} would naturally mis-code)
-   - Cue density (every sentence either defines a label, gives a detection cue, or shows a discriminating example — anything else gets cut)
-   - Severity / outcome calibration (anchor what "high" vs "medium" actually looks like in the wire-level transcript)
-4. Edit surgically. One axis per pass. Do not also do cleanup work mid-sharpen — if you spot cleanup targets, note them and run a Cleanup pass before/after, not interleaved.
-5. Officer compliance loop (Step 4) — mandatory.
+2. Read the target file end-to-end. Identify its chain target — what extraction does this file steer?
+3. Pick the highest-leverage sharpening axis, usually one of:
+   - Adjacent-label discriminators (criticism vs contempt; turn_toward vs turn_away on bare acknowledgments; mild-positive vs neutral on Affiliation)
+   - Edge-case examples — the 3-4 cases where {LLM_PROVIDER} would naturally mis-code, replacing prototypes
+   - Cue density (Sacred Ground)
+   - Severity / outcome calibration — anchor what "high" vs "medium" looks like in the wire-level transcript
+4. Edit surgically. One axis per pass. Do not also do cleanup work mid-sharpen — if you spot cleanup targets, note them and run a Cleanup pass before or after, never interleaved.
+5. Officer loop (Step 4).
 
-### Generic edit (single-targeted fix)
+### Generic edit
 
-For one-line corrections, factual fixes, schema-fidelity corrections: just edit, re-verify, Officer loop.
+One-line corrections, factual fixes, contract-fidelity corrections: edit, re-verify, Officer loop.
 
 ### Editing prompt templates (`prompts/`)
 
-`prompts/` holds chain instructions loaded verbatim by `load_prompt()` — not injected {DOMAIN_ADJ} knowledge, so they bypass the full-injection rules above. They are still prompts: load `Skill("quality:prompt")` first and apply the structural discipline (cut test, one canonical term, positive framing, aggressive emphasis only on sacred ground).
+`prompts/` holds chain instructions loaded verbatim by `load_prompt()` — not injected {DOMAIN_ADJ} knowledge, so they bypass the full-injection rules above.
 
-1. **Load `quality:prompt`** before editing any file under `prompts/`.
-2. Find the call site — grep `load_prompt("{stem}")` in `src/{ai_module}/chains/` and `prompts/` to confirm which chain consumes it and whether it is a `__pre`/`__post` fragment of a composed template. Editing a fragment without its pair breaks the template.
-3. **Preserve {DOMAIN_ADJ}-safety blocks** — the `FORBIDDEN:` / `RULES:` guards inside these prompts ({FORBIDDEN_DOMAIN_OUTPUTS}, no {SUBJECT_NOUN} identifiers) are Sacred Ground. Sharpen wording, never weaken a guard.
-4. **Preserve LangChain interpolation** — templates feed `ChatPromptTemplate`. Leave `{variable}` slots intact; literal braces stay escaped `{{`/`}}`. A renamed or dropped slot silently breaks the chain.
-5. The Officer loop (Step 4) is not the gate here — these are not injected {DOMAIN_ADJ} content. But the {DOMAIN_ADJ}-safety guards in rule 3 are non-negotiable; if an edit touches what the chain may output about a {SUBJECT_NOUN}, flag for /officer before shipping.
-6. Edit surgically, re-read the call site, hand to Gitter.
-7. **Author-only comments — annotate the WHY, like code.** Every knowledge `.md` supports `<!-- ... -->` comments. If your install routes reads through a shared strip-comments gateway, they never reach the LLM in any knowledge namespace — use them to record the rationale a future editor would otherwise reverse-engineer (a discriminator's reason, a calibration choice, why a field exists). Two hard rules: never put a literal `-->` inside a comment (it ends the comment early); never use `<!--` as prompt body the LLM must read.
-
-   **Annotate deliberate-but-unread fields so a future cleanup never strips them as dead.** A field whose value nothing downstream reads can still be load-bearing chain-of-thought — generating it (stating _why_ before committing a label) sharpens the output label. Comment these as intentional CoT in both lanes (the prompt's `<!-- -->` and the schema field's code comment). Unread-by-design ≠ dead — it is the correct shape for a CoT field. Keep and annotate; never delete as a "ghost field."
+1. Find the call site — grep `load_prompt("{key}")` under `{AI_PROJECT}/src/` to confirm which chain consumes it and whether it is a `__pre`/`__post` fragment of a composed template. Editing a fragment without its pair breaks the template.
+2. **Preserve {DOMAIN_ADJ}-safety blocks** — the `FORBIDDEN:` / `RULES:` guards inside these prompts ({FORBIDDEN_DOMAIN_OUTPUTS}, no {SUBJECT_NOUN} identifiers) are Sacred Ground. Sharpen wording, never weaken a guard.
+3. **Preserve {AI_FRAMEWORK} interpolation** — templates feed `ChatPromptTemplate`. Leave `{variable}` slots intact; literal braces stay escaped `{{`/`}}`. A renamed or dropped slot silently breaks the chain.
+4. The Officer loop is not the gate here — these are not injected {DOMAIN_ADJ} content. But the guards in rule 2 are non-negotiable: if an edit touches what the chain may output about a {SUBJECT_NOUN}, flag for `/officer` before shipping.
+5. Edit surgically, re-read the call site, hand to gitter.
 
 ---
 
 ## Review mode
 
-1. Read all files for target approach
-2. Score each on: accuracy, prompt usefulness, example quality, actionability, completeness
-3. Report findings with specific improvement suggestions
-4. Don't auto-fix — present review, let user decide
-
----
+Read every file for the target, score each on accuracy, prompt usefulness, example quality, actionability, and completeness, and report findings with specific improvement suggestions. Don't auto-fix — present the review and let the user decide.
 
 ## Status mode
 
-Present as THREE tables:
+Report three things:
 
-**Table 1: Insight knowledge (two-phase inject)** — {N} approaches x supported languages:
+1. **Prompt templates** — every `REGISTRY.json` key, its file, and whether a `load_prompt()` call site consumes it. Flag orphan keys and unregistered `.prompt.md` files.
+2. **Full-injection** — the namespaces in `FULL_INJECTION_DIRS` and the files under each.
+3. **Orphan check** — `bias/` present (engineering-only); any unexpected top-level directory or file, flagged before authoring.
 
-| Approach | EN index | EN categories | {SECONDARY_LANG} index | {SECONDARY_LANG} categories | Status |
-| -------- | -------- | ------------- | ---------------------- | --------------------------- | ------ |
-
-**Table 2: Full-injection knowledge** — top-level namespaces in `FULL_INJECTION_DIRS` (today: `note-formats`)
-
-**Table 3: Engineering-only / templates / orphan check** — `bias/` present (engineering-only); `prompts/` present (owned templates, excluded from sync — count vs `load_prompt()` call sites); unexpected top-level dirs or files flagged before authoring.
-
----
-
-## Self-update
-
-When you create a new category that didn't exist before:
-
-1. Create insight files for both languages (`en` + `{lang2}`) after verifying the category is registered in code
-2. Update `docs/dev/research/km-approaches-plan.md`
-3. Note if category is relevant to other approaches
-
-When adding a new approach entirely: flag the required code wiring first. KM creates insight files only after `ApproachConfig` exposes the approach and categories.
-
----
-
-## Discovering what to research
-
-You do NOT have a hardcoded category list. Instead:
-
-1. Read approach name from request
-2. Check what exists in filesystem
-3. Research the approach to understand relevant categories
-4. For the specific category, grind the internet
-
-Accept new category requests as research prompts. If the category is {DOMAIN_ADJ}ly useful but not wired, flag the code change required before authoring.
+Then suggest the next work.
 
 ---
 
 ## Rules
 
-- **A knowledge file IS the prompt** — see Sacred Ground. Treat with production-code discipline. Every byte costs runtime tokens; every word steers {DOMAIN_ADJ} behavior.
-- **Verify wiring before authoring** — see Sacred Ground "Wiring verification." Orphaned-file authoring is theatre.
-- **`knowledge/bias/llm-biases.md` is engineering-only** — never cite from any injected file.
-- **Cleanup ≠ Sharpen** — distinct passes. Cleanup is deletion; sharpening is replacement. Never interleave.
-- **Schema fidelity** — knowledge files MUST NOT invite output shapes the runtime schema rejects. Grep the corresponding schema enum / post-processor (Pydantic in the source instance) before authoring partial-state allowances.
-- **READMEs are engineering-only** — validation history, source authority, scope divergences live in `{namespace}/README.md`, NEVER in the injected file.
-- **ONE category at a time** — research deep, write well, move on
-- **Quality over quantity** — 1500 precise words beats 5000-word dump
-- **Officer compliance mandatory** — NO file committed without PASS. No exceptions.
-- **Ask for books when needed** — be specific about which chapters
-- **Never invent {DOMAIN_ADJ} information** — research or flag uncertainty
-- **{DOMAIN_ADJ} accuracy is sacred** — wrong info = harmful interpretations
-- **Compliance AND accuracy** — if can't describe within Line 4, flag to user
-- **Optimize for loading strategy** — insights: selection fidelity + category cue density; full-injection: compact completeness + cue density
-- **No hardcoded category lists** — discover from filesystem, accept new requests
-- **Self-update on new categories** — keep plan doc in sync
-- **Stay in your lane** — own `{AI_PROJECT}/knowledge/` + plan doc. Don't touch code or other docs. Wiring (`FULL_INJECTION_DIRS`, chain loaders, prompt slots) is code — flag for a wave or /jc, do not edit.
-- **Bilingual:** {SECONDARY_LANG} mandatory for insight work. {SECONDARY_LANG} is independent research, not translation. Full-injection files stay language-neutral unless the chain explicitly asks for language-specific files.
-- After finishing: "Knowledge written: `{approach}/{category}.md` — {word count} words, {N} sections. Officer review: PASS ({N} iterations)."
-- After status: show tables + suggest next work.
-- Always call Gitter to commit after Officer PASS.
+The {DOMAIN_ADJ} discipline lives in Sacred Ground; Officer review is Step 4. These are the rules unique to running a request.
+
+- **Quality over quantity** — 1500 precise words beats a 5000-word dump.
+- **Never invent {DOMAIN_ADJ} information** — research it, or flag the uncertainty.
+- **No LLM-bound text in Python** — every prompt lives under `knowledge/prompts/` behind a `REGISTRY.json` key, so all LLM-facing text has one governed home.
+- **Stay in your lane** — own `{AI_PROJECT}/knowledge/`. Don't touch code or other docs. Wiring is code — flag it for a wave or `/jc`, never edit it. A new namespace, approach, or chain needs its code wiring landed first; KM authors only after the loader can reach the file.
+- **Report and commit** — close with the file path, its size, and the Officer verdict with iteration count; then call gitter to commit.

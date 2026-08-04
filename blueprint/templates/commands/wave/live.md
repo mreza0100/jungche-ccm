@@ -36,7 +36,7 @@ The fix machinery it reuses (Steps 2–8, "Rules while fixing", zero-tolerance) 
 
 **Stage the wave directory:** choose a short kebab-case `{wave-name}` (2–4 words) for the theme; on a collision with `docs/dev/waves/` or `tmp/dev/archive/waves/` append `-v2`; `mkdir -p docs/dev/waves/{wave-name}` and copy the resolved spec to `docs/dev/waves/{wave-name}/manifest.md` — the wave's permanent record. When the source is the root `wave.md`, reset it to the `# Tasks` stub in the same step so the consumed spec never lingers at root; a custom-path task file is copied, not cleared. Read the spec from the manifest thereafter, and extract `**Epic:** {name}` from it (`none` if absent).
 
-This whole section is a scoped-down declared copy of `orchestrator.md` § "Resolve the task file" + O0 item 3 + O1 item 1 — no worktree/train/builder-chat clauses; update both together when O0/O1's pre-flight-fatal classes or staging mechanics change.
+This whole section is a scoped-down declared copy of `orchestrator.md` § "Resolve the task file" + O0 items 3 and 6 + O1 item 1 — no worktree/train/builder-chat clauses; update both together when those pre-flight-fatal classes or staging mechanics change.
 
 ## W2 — Group for filesystem safety
 
@@ -58,7 +58,7 @@ The full suites run on the single-tenant canonical test stack: hold the cross-la
 
 ## W6 — Review & remediate
 
-Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the diff the review walks; its Scout runs `git show {sha}` for these JC commits). Invoke the walker workflow: `Workflow({ scriptPath: '{REPO_ROOT}/.claude/workflows/wave-walker.js', args: { reportPath: 'docs/dev/waves/{wave-name}/review.md' } })` (scriptPath, never `{name}` — name-lookup serves a stale session-start snapshot) — it walks the JC commits' diff two ways in one pass: threads for functional correctness + integration hygiene, and the ledger spine for {API_PROTOCOL} contract/gate mismatches (skipped when the diff has no {API_PROTOCOL} surface), returning `{ verdict, actionItems, review }` plus the `ledger`.
+Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the walk's scout runs `git show {sha}` for these JC commits). Invoke the walker workflow: `Workflow({ scriptPath: '{REPO_ROOT}/.claude/workflows/wave-walker.js', args: { reportPath: 'docs/dev/waves/{wave-name}/review.md', invariants } })` — scriptPath, never `{name}`: name-lookup serves a stale session-start snapshot; `invariants` transcribed from `.claude/commands/wave/walker-invariants.md` per `walker.md` § Walk args (mechanical transcription; an empty registry match → omit). It returns `{ verdict, actionItems, review }` plus the `ledger`.
 
 Group every code finding in `### /jc Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE `/jc` boundary-lite lane per group — diagnose → fix every finding in the group → re-test that group's affected suites once → cleanup (jc-core card §§ 2–5) — instead of one diagnose-fix-retest cycle per finding, so a 5-finding group nets one re-test pass, not five; /jc's own Step 7 commits each group via `gitter` — never suppressed under boundary-lite — one commit per group, or one commit total when every group lands together. Re-run `/documenter` if a fix changed documented behavior. Surface the review's owner-tagged deferrals (`/pm`, `/officer`, founder); never park a fixable defect. Present the verdict.
 

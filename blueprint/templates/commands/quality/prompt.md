@@ -5,9 +5,7 @@ description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.
 
 # Prompt Quality
 
-You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (Claude Code, the {AI_PROJECT} chains, or any future LLM surface). A human-consumed reference file (README, docs/) follows `quality:doc` instead. Harness-specific file rules (size limits, voice placement, hook mechanics, content routing) live in `/pcm § Claude-harness prompt law`.
-
-**When to load:** `/pcm` loads this before editing any infrastructure prompt file; `/km` loads this before editing knowledge files. Also load it yourself before hand-editing any runtime-loaded prompt.
+You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (Claude Code, the {AI_PROJECT} chains, or any future LLM surface). A human-consumed reference file (README, docs/) follows `quality:doc` instead.
 
 ## Cut mode — `quality:prompt cut <file>`
 
@@ -38,12 +36,12 @@ A prompt rarely loads alone: the target LLM reads one concatenated context assem
 
 ## Size discipline
 
-Every consumer imposes size limits on its prompt files; know the target's limits before writing and split via progressive disclosure above them (one reference level deep, with a Table of Contents at the top if >100 lines). The Claude-harness limits table lives in `/pcm § Claude-harness prompt law`.
+Every consumer imposes size limits on its prompt files; know the target's limits before writing and split via progressive disclosure above them (one reference level deep, with a Table of Contents at the top if >100 lines). The Claude-harness limits live in `/pcm § Claude-harness prompt law`.
 
 ## Anti-patterns — cut on sight
 
 1. **Time-sensitive narration.** "On 2026-05-19...", "after the X incident", the one-word recency markers ("now", "recently", "no longer"), and deferred-feature notes ("not wired yet", "planned"). Encode the current rule; incidents go in the commit message or epic manifest, future intent in the epic — never the prompt.
-2. **Dates of change.** Changelog-style "changed 2026-06-07" lines or update-history dates inside a prompt or `.professor/` ledger are the same antipattern — version control already timestamps every change. State the current rule, never when it changed.
+2. **Dates of change.** Changelog-style "changed 2026-06-07" lines or update-history dates inside a prompt are the same antipattern — version control already timestamps every change. State the current rule, never when it changed.
 3. **Restating one rule — reworded OR repeated across sections (NO DUPLICATION).** Two phrasings of one rule, or the same rule echoed in a non-negotiable, a routing-table cell, and a process bullet, make the model pick one arbitrarily and rot out of sync. State each rule ONCE in its canonical home. Before adding a rule, grep the whole file for its key noun; if it already lives somewhere, sharpen that one and stop. When a rule sits in both step prose and a Rules/checklist section, the Rules section is the canonical home; sacred-ground rules alone may keep one extra point-of-use reminder.
 4. **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
 5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Working prompts carry zero voice; voice belongs in the consumer's dedicated persona layer (for the Claude harness: `/pcm § Claude-harness prompt law`).
@@ -109,7 +107,7 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 ## Pre-commit self-check (run before saving any prompt file)
 
 1. **Cut test:** Did I delete every line that wouldn't change the model's behavior?
-2. **Size:** Is the file under its consumer's limit (Claude-harness table: `/pcm § Claude-harness prompt law`)?
+2. **Size:** Is the file under its consumer's limit (Claude-harness limits: `/pcm § Claude-harness prompt law`)?
 3. **Frontmatter discipline:** Does the body re-state what's already in `description:`? Cut.
 4. **One canonical term:** Did I sweep for synonym mixing?
 5. **Positive framing:** Is every "do NOT" a sacred-ground rule? If not, rewrite as a positive instruction.

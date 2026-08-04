@@ -1,7 +1,7 @@
 ---
 name: audit:security
 version: "1.0.0"
-description: "Security deep scan — injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain. Use to run a security scan on a scope."
+description: "Security deep scan, scoped to any section — info-leak, injection, auth, {API_PROTOCOL}, LLM/prompt, {SENSITIVE_DATA}, health endpoints, crypto, secrets, transport, supply-chain, CI/CD, concurrency/SoD. Use to run a security scan on a scope."
 argument-hint: [scope]
 ---
 
@@ -11,9 +11,7 @@ argument-hint: [scope]
 
 **Trigger:** `security`, `security <scope>`, or when `/audit` routes to security scopes.
 
-**Scopes:** `security` (all), `injection`, `auth`, `graphql`, `llm`, `prompt`, `phi`, `health`, `crypto`, `secrets`, `transport`, `supply-chain`.
-
-Each sub-category is independent — run only applicable ones based on scope.
+**Scopes:** bare `security` runs every section; a scope names a section by letter (`8C`) or a topic (`injection`, `auth`, `{API_PROTOCOL}`, `llm`, `prompt`, `phi`, `health`, `crypto`, `secrets`, `transport`, `supply-chain`, `ci-cd`, `concurrency`) and runs only the section(s) covering it. Sections are independent.
 
 Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audit scope — in parallel with the scan (the same blind-spot backstop the other `audit/*` skills carry).
 
@@ -51,7 +49,9 @@ Internal system details leaking to end users through error messages, headers, or
 
 4. **Verbose {API_PROTOCOL} errors:** Check `maskedErrors` configuration, custom error formatting, `extensions` field leaking resolver paths.
 
-**Files to check:** {API_FRAMEWORK} error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, AI/pipeline-project exception handlers (if the roster has one).
+5. **Health/status endpoints:** an unauthenticated health or status route returns liveness only — never version strings, dependency/DB connection detail, {QUEUE} depth, or config values.
+
+**Files to check:** {API_FRAMEWORK} error middleware, {API_FRAMEWORK} config, all catch blocks in resolvers/services, AI/pipeline-project exception handlers (if the roster has one), health/status route handlers.
 
 ---
 
@@ -69,7 +69,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 5. **Header/CRLF injection:** `res.setHeader(`/`res.redirect(` with user-controlled values.
 
-6. **Prototype pollution:** `Object.assign({}, userInput)`, vulnerable lodash versions (<4.17.21), missing `__proto__`/`constructor` filtering.
+6. **Prototype pollution:** `Object.assign({}, userInput)`, missing `__proto__`/`constructor` filtering (the vulnerable-dependency side is 8I-2).
 
 **Files to check:** Resolver input handling, AI/pipeline-project DB query code, shell command construction, UI components rendering AI content.
 
@@ -111,7 +111,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 3. **Batching attacks:** Check batch size limits — 1000 login mutations in one request = brute force.
 
-4. **Mass assignment:** Input types accepting privilege or ownership fields (`role`, `isAdmin`, an `{ORG_UNIT}` id, `createdAt`).
+4. **Mass assignment (OWASP API3 BOPLA):** input types and mutation args that accept `role`/`isAdmin`/an `{ORG_UNIT}` id/`{USER_NOUN}` id/`createdAt`/consent flags must strip or re-derive them server-side, never persist the caller's value.
 
 5. **Subscription/{REALTIME_PROTOCOL} security:** Auth on {REALTIME_PROTOCOL} connect, subscription resolver auth checks, connection limits.
 
@@ -123,9 +123,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 9. **Alias-count cost:** the complexity plugin multiplies cost by alias count, not depth alone — 50 aliased copies of one expensive resolver stay under a depth limit while running it 50×.
 
-10. **Mass assignment (BOPLA):** input types and mutation args that accept `role`/`{ORG_UNIT}` id/`{USER_NOUN}` id/consent flags must strip or re-derive them server-side, never persist the caller's value.
-
-11. **Batch/export per-row fence (OWASP API1 at scale):** a resolver returning a collection (export, roster, `*sBy{SUBJECT_NOUN}`) fences EACH row, not once at the request level.
+10. **Batch/export per-row fence (OWASP API1 at scale):** a resolver returning a collection (export, roster, `*sBy{SUBJECT_NOUN}`) fences EACH row, not once at the request level.
 
 **Files to check:** {API_FRAMEWORK} config, schema type definitions, input types, {REALTIME_PROTOCOL} setup, subscription resolvers.
 
@@ -167,7 +165,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **{SUBJECT_NOUN} data in logs:** `logger.*` calls with {SENSITIVE_DATA} fields, `JSON.stringify({subject})`/`str(result)` without filtering. NEVER log {SENSITIVE_DATA} — only anonymized IDs.
+1. **{SUBJECT_NOUN} data in logs:** read EVERY log call in scope and judge each field it carries — a grep for known {SENSITIVE_DATA} field names is a regression check only, structurally blind to a new field shape. NEVER log {SENSITIVE_DATA} — only anonymized IDs. Report log calls read / log calls in scope; an unread call is a named hole, not silence.
 
 2. **{SENSITIVE_DATA} in error messages/API responses:** Error strings interpolating {subject}/{session} data, AI/pipeline-project step status `reason` with raw source excerpts.
 
@@ -199,7 +197,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **Hardcoded secrets:** Grep for `sk-`, `{LLM_KEY_PREFIX}`, `pk_live_`, `AKIA`, `Bearer `, `password = "`, base64-encoded credentials.
+1. **Hardcoded secrets & committed key material:** Grep for `sk-`, `{LLM_KEY_PREFIX}`, `pk_live_`, `AKIA`, `Bearer `, `password = "`, base64-encoded credentials, raw PEM private-key block headers, and connection strings with inline `user:password`.
 
 2. **Weak password hashing:** `md5(`/`sha1(`/`sha256(` for passwords. Must use bcrypt (>= cost 10) or argon2id.
 
@@ -213,9 +211,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 7. **Weak-secret dictionary:** the JWT/session secret value is checked against a known-weak wordlist (`changeme`, `jwt_secret`, `your-256-bit-secret`), not length alone.
 
-8. **Committed key material:** grep for raw PEM private-key block headers and connection strings with inline `user:password`.
-
-9. **AEAD nonce:** AES-GCM / ChaCha20-Poly1305 nonces and IVs are generated fresh per call from a CSPRNG, never static or hardcoded.
+8. **AEAD nonce:** AES-GCM / ChaCha20-Poly1305 nonces and IVs are generated fresh per call from a CSPRNG, never static or hardcoded.
 
 **Files to check:** All `.env*` files, auth/JWT config, password hashing, token generation, DB connection config.
 
@@ -229,7 +225,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 2. **Missing security headers:** Check for `helmet()` middleware. Missing CSP/HSTS/X-Frame-Options.
 
-3. **SSRF:** `fetch(`/`axios(` where URL comes from user input. Check {TRANSCRIPTION_SERVICE} webhook URL validation.
+3. **SSRF:** `fetch(`/`axios(` where the URL comes from user input, config, or a callback/webhook registration.
 
 4. **Insecure deserialization:** Python `pickle.load`/`yaml.load` without SafeLoader, `node-serialize`.
 
@@ -251,11 +247,11 @@ Internal system details leaking to end users through error messages, headers, or
 
 **How to detect:**
 
-1. **Lock file integrity:** Verify each roster project has its package manager's lock file committed (one per `{project}`).
+1. **Lock file integrity:** every project ships a committed lock file for its package manager — enumerate the roster and each project's package manager from root `CLAUDE.md` § Architecture (never assume a fixed list), then confirm each project's lock file exists and is tracked.
 
 2. **Known vulnerabilities:** Check for `node-serialize` (RCE), `lodash` < 4.17.21 (prototype pollution), `jsonwebtoken` < 9.0.0 (algorithm confusion), `express` < 4.19.2 (open redirect).
 
-3. **Dependency confusion:** Check for scoped packages (`@{project}/...`), registry pinning.
+3. **Dependency confusion:** Check for scoped packages (`@{PROJECT_NAME}/...`), registry pinning.
 
 4. **Post-install scripts:** Check `package.json` for `preinstall`/`postinstall`/`prepare` scripts.
 
@@ -277,7 +273,7 @@ Internal system details leaking to end users through error messages, headers, or
 
 2. **Unpinned actions:** third-party CI actions are pinned to a full commit SHA, not a floating tag (`@v4`).
 
-3. **Framework-file trust:** any new or changed file under `.claude/**` or the AI project's prompt/knowledge dir gets a static injection/code-exec scan before merge — a marketplace skill or knowledge file is untrusted input injected verbatim into an agent or the runtime LLM. The guard gates (the `pcm`/`km` archetypes) own this boundary.
+3. **Framework-file trust:** any new or changed file under `.claude/**` or the AI project's prompt/knowledge dir gets a static injection/code-exec scan before merge — a marketplace skill or knowledge file is untrusted input injected verbatim into an agent or the runtime LLM. The `pcm-guard.sh` / `km-guard.sh` gates own this boundary.
 
 **Files to check:** CI workflow files, `.claude/**`, the AI project's prompt/knowledge dir.
 
