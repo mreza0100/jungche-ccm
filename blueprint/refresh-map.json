@@ -714,6 +714,12 @@
     },
     "templates/host-swap/tests/name-sync-fixtures.sh": {
       "curated": true
+    },
+    "templates/host-swap/codex-skills/bb/SKILL.md": {
+      "curated": true
+    },
+    "templates/host-swap/codex-skills/bb/agents/openai.yaml": {
+      "curated": true
     }
   }
 }

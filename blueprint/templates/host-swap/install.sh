@@ -135,6 +135,18 @@ for f in chat.sh history.sh; do
 done
 say ""
 
+# ── codex agent skills: codex ≥0.146 dropped ~/.codex/prompts custom prompts entirely; agent
+# skills at ~/.agents/skills are the replacement, invoked as $<name>. Codex follows symlinked
+# skill folders, so each skill dir links whole — same one-clone model as everything else. ──
+SKILLS_DIR="$HOME/.agents/skills"
+say "codex skills -> $SKILLS_DIR"
+for d in "$BUNDLE"/codex-skills/*/; do
+  [ -d "$d" ] || continue
+  nm="$(basename "$d")"
+  if [ "$MODE" = uninstall ]; then unlink_one "$SKILLS_DIR/$nm"; else link "${d%/}" "$SKILLS_DIR/$nm"; fi
+done
+say ""
+
 # ── systemd user units: the cc-name-sync triggers (a codex rename lands on the tab in under a
 # second via the path watch; the timer converges claude /rename drift). Linked like everything
 # else; enable is what makes systemd read them. Skipped cleanly where systemd --user is absent
