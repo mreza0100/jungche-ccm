@@ -111,4 +111,61 @@ describe('validate-bundle.js — permanent project-leak guard (e)', () => {
       writeFileSync(COMMITTED_BUNDLE, original);
     }
   });
+
+  // STEM REGRESSION (this fix) — 'therapist' alone missed the 'Therapy' inflection the bundle actually
+  // shipped (docs/dev/builds — the last hardcoded domain string, 8F/8C/8D/8E stakes line). 'therap' closes
+  // the class of gap: sibling word-family derivations, not just the one inflection the old denylist knew.
+  it('a bundle containing "Therapy" FAILS — the actual regression the old "therapist"-only entry missed', () => {
+    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    try {
+      writeFileSync(COMMITTED_BUNDLE, original + '\n// Therapy data is sacred\n');
+      let output = '';
+      try {
+        execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' });
+        throw new Error('expected validate-bundle.js to fail on a planted "Therapy"');
+      } catch (e) {
+        const err = e as { stderr?: Buffer; stdout?: Buffer };
+        output = String(err.stderr || err.stdout || '');
+      }
+      expect(output).toContain('bundle leaks project-specific term "therap"');
+    } finally {
+      writeFileSync(COMMITTED_BUNDLE, original);
+    }
+  });
+
+  // WORD-BOUNDARY REGRESSION PIN — PHI is only useful as a leak guard if it doesn't also fire on ordinary
+  // prose that merely contains the substring "phi" (philosophy, philanthropic, ...).
+  it('a bundle containing "PHI" in a sentence FAILS', () => {
+    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    try {
+      writeFileSync(COMMITTED_BUNDLE, original + '\n// PHI (8F), auth (8C) get the deepest pass\n');
+      let output = '';
+      try {
+        execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' });
+        throw new Error('expected validate-bundle.js to fail on a planted "PHI"');
+      } catch (e) {
+        const err = e as { stderr?: Buffer; stdout?: Buffer };
+        output = String(err.stderr || err.stdout || '');
+      }
+      expect(output).toContain('bundle leaks project-specific term "phi"');
+    } finally {
+      writeFileSync(COMMITTED_BUNDLE, original);
+    }
+  });
+
+  // LOAD-BEARING FALSE-POSITIVE PIN — this is WHY word-boundary matching exists: the engine's own source
+  // says "same philosophy as isGateRelevant" (src/engine.ts). A naive substring rule on 'phi' would fail
+  // every build on this line; word-boundary matching must let it through.
+  it('a bundle containing "philosophy" PASSES — the false positive a substring rule on "phi" would trip', () => {
+    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    try {
+      writeFileSync(
+        COMMITTED_BUNDLE,
+        original + '\n// same philosophy as isGateRelevant\n',
+      );
+      expect(() => execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' })).not.toThrow();
+    } finally {
+      writeFileSync(COMMITTED_BUNDLE, original);
+    }
+  });
 });

@@ -28,6 +28,7 @@ export interface ProjectProfile {
   gateSurfacePattern?: string; // regex SOURCE for the gate-relevant surface
   deadnessSurfaces?: string; // this project's registry-style consumer list for the deadness bar
   stakesLine?: string; // domain-stakes clause for the deadness bar; generic default when absent
+  securityStakesLine?: string; // sacred-data framing clause for the security auditor; generic category-only default when absent
 }
 
 // ── Scout (SCOUT schema) ──

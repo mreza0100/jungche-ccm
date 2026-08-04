@@ -191,6 +191,42 @@ describe('prompt parity — securityAuditor (D2 slice shape)', () => {
   });
 });
 
+// PROJECT PROFILE (universal-bundle refactor) — securityStakesLine (args.project.securityStakesLine) is
+// the last hardcoded domain string this engine shipped: prompts.ts used to open with the seeding
+// project's own sacred-data framing baked in as the auditor's opening line, steering every linked
+// project's security auditor at another product's sensitive-data class. The category emphasis itself
+// (8F/8C/8D/8E) is a generic constant, always present.
+describe('prompt parity — securityAuditor securityStakesLine (args.project)', () => {
+  const base = {
+    securityDoc: '.claude/commands/audit/security.md',
+    clusterFiles: ['a.ts'],
+    allChangedFiles: ['a.ts'],
+    clusterIndex: 0,
+    clusterCount: 1,
+    branch: 'pipeline/x',
+    mergeShas: [],
+  };
+  it('supplied: the prompt carries it, NOT the generic default', () => {
+    const args = { ...base, securityStakesLine: 'Therapy data is sacred' };
+    expect(buildSecurityAuditor(args)).toBe(expectedSecurityAuditor(args));
+    expect(buildSecurityAuditor(args)).toContain(
+      'Therapy data is sacred — Sensitive data (8F), auth (8C), API surface (8D), LLM/prompt (8E) get the deepest pass.',
+    );
+    // the generic default never rides ALONGSIDE a supplied stakes line — it directly follows the diff
+    // clause only when no stakes line is present (asserted in the sibling 'absent' case below).
+    expect(buildSecurityAuditor(args)).not.toContain('pipeline/x. Sensitive data (8F)');
+  });
+  it('absent: generic default present, no domain-specific sacred claim', () => {
+    const args = { ...base };
+    expect(buildSecurityAuditor(args)).toBe(expectedSecurityAuditor(args));
+    expect(buildSecurityAuditor(args)).toContain(
+      ' Sensitive data (8F), auth (8C), API surface (8D), LLM/prompt (8E) get the deepest pass.',
+    );
+    expect(buildSecurityAuditor(args)).not.toMatch(/is sacred/);
+    expect(buildSecurityAuditor(args)).not.toMatch(/Therapy/);
+  });
+});
+
 describe('prompt parity — anomalyJudge', () => {
   const instances = [
     {

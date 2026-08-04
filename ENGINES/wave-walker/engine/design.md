@@ -118,7 +118,7 @@ Nineteen seats, closed by the `Seat` union in `src/types/agents.ts` and mirrored
 
 ## The project profile
 
-Nothing project-specific is baked into this engine. `args.project` (validated in `Configs.parseProject`, shape `ProjectProfile` in `src/config.ts`) carries: `repoRoot`, `authDoc`, `authRuleFallback`, `authRuleMustContain`, `roles{owner,elevated}`, `resourceClasses`, `fencedResourceClasses`, `fenceLabels{org,ownership}`, `gateResolverPattern`, `gateSurfacePattern`, `deadnessSurfaces`, `stakesLine`. Each consuming project writes its profile once in its `wave/walker.md` § Engine profile and passes it on every invocation.
+Nothing project-specific is baked into this engine. `args.project` (validated in `Configs.parseProject`, shape `ProjectProfile` in `src/config.ts`) carries: `repoRoot`, `authDoc`, `authRuleFallback`, `authRuleMustContain`, `roles{owner,elevated}`, `resourceClasses`, `fencedResourceClasses`, `fenceLabels{org,ownership}`, `gateResolverPattern`, `gateSurfacePattern`, `deadnessSurfaces`, `stakesLine`, `securityStakesLine`. Each consuming project writes its profile once in its `wave/walker.md` § Engine profile and passes it on every invocation.
 
 `computeGateArming` arms the gate machinery only when the profile supplies both roles, a non-empty `fencedResourceClasses`, and both gate patterns compiling as regexes. Any miss disarms gate sweeps and R6/R7 for the whole walk — loudly:
 

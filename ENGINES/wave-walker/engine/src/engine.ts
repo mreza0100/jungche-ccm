@@ -1121,6 +1121,7 @@ export class WaveWalker {
             clusterCount: securityClusters.length,
             branch,
             mergeShas: scout!.mergeShas || [],
+            securityStakesLine: CONFIG.PROJECT?.securityStakesLine,
           }) as Promise<Barrier>,
       ),
       ...armedInvariants.map((ai) => () => {
