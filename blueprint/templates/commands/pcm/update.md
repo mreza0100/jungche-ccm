@@ -68,6 +68,8 @@ Parse each bullet:
 
 **Rebase-first — never overwrite blindly:** always re-hash the on-disk files fresh (never trust the manifest's cached hash — a local edit since the last update must register as "Current"), and re-read `.professor/drift.md`. Every divergence the ledger records is a **forced KEEP LOCAL** that overrides any auto-apply the comparison would otherwise suggest — a ledger-marked customization is never silently overwritten.
 
+**Atomic artifacts — whole-file only, NEVER line-surgery:** a file whose head carries a `GENERATED FILE — DO NOT EDIT` banner, and any built bundle under `.claude/workflows/`, is applied as a **whole-file copy** of the re-parameterized upstream (or a rebuild by its stated generator) — there is no line-merge path for it. Hand-stitching a version delta into a generated file is FORBIDDEN in every bucket: beyond the token waste, a partial merge produces a bundle whose `meta` description claims behavior its body does not contain — a lying instrument. A local divergence in a generated file is either recorded drift (KEEP LOCAL, whole file) or replaced (whole file); nothing in between. A file that is a **symlink into the blueprint clone** is the clone's file — never write through it; its update channel is the clone's own `git pull`, so skip it here entirely. The same economy applies generally: every Bucket-1 apply is a byte-for-byte file copy from the parameterized upstream, not a model-mediated re-edit.
+
 Re-apply interview answers from the manifest to the upstream templates → compute "parameterized upstream" hashes. Then compare three hashes per file — installed (manifest) → current (on-disk) → upstream (re-parameterized), `none` where the file is absent on that side:
 
 - `A→A→A` — **Skip**: unchanged everywhere
