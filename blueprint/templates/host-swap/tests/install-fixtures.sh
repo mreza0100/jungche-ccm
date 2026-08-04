@@ -48,6 +48,7 @@ ok "chat/ls.md linked"             "$(readlink -f "$CMD/chat/ls.md")" "$BUNDLE/c
 ok "chat/self/compact.md linked"   "$(readlink -f "$CMD/chat/self/compact.md")" "$BUNDLE/chat/self/compact.command.md"
 ok "chat.sh linked"                "$(readlink -f "$CMD/chat/chat.sh")" "$BUNDLE/chat/chat.sh"
 ok "zshrc sources the bundle"      "$(grep -c "$BUNDLE/cc-fleet.zsh" "$HOME/.zshrc")" "1"
+ok "codex bb skill dir linked"     "$(readlink -f "$HOME/.agents/skills/bb")" "$BUNDLE/codex-skills/bb"
 
 echo "=== the point of it all: edit the clone, the live command changes ==="
 echo "SENTINEL-$$" >> "$BUNDLE/chat/ls.command.md"

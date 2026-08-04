@@ -63,6 +63,7 @@ refresh — no separate marker to keep in sync.
 | `bb.command.md` | `~/.claude/commands/bb.md` | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned) |
 | `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command — reboot this chat onto another account, in place |
 | `chat/` | `~/.claude/commands/chat/` | the `chat:*` command family + its engine `chat.sh` |
+| `codex-skills/` | `~/.agents/skills/` | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge (the one piece that is still a manual merge — it edits a file you own) |
 | `tests/` | — | fixtures for the state store, the self-location resolver, the installer, and the name sync |
 
