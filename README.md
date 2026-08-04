@@ -1,47 +1,21 @@
-[![Professor — from idea to shipped: the full pipeline, animated](./docs/pipeline-animation.gif)](https://htmlpreview.github.io/?https://github.com/mreza0100/professor/blob/main/docs/pipeline-animation.html)
-
-<p align="center"><em>▶ click the animation for the interactive version — 1:45, four acts, from refine to shipped</em></p>
-
 # Professor — Turn Claude Code Into a Senior Engineering Team
 
-You're one person. You have a vision, a codebase, and a deadline. Claude Code is powerful — but left to its own devices, it edits `main` directly, merges broken code, skips QA, and forgets its own decisions. You've felt this. You've lost work to it.
+Claude Code is powerful and undisciplined. Left alone it edits `main` directly, merges before tests pass, forgets yesterday's architecture decision, and cheerfully overwrites what another instance just wrote. If you've shipped real work with it, you already know this.
 
-**Professor changes what one person can build.**
+**Professor is the discipline layer.** Drop it into any repo — one project or fifteen — and you get a pipeline with QA gates, a single owner for git, isolated worktrees, memory that survives conversations, and a cast of specialists with enough personality to tell you your idea is bad.
 
-Drop it into any repo — a single-project app or an N-project monorepo — and Claude Code stops being "an AI that writes code" and becomes a **cross-disciplinary engineering team** — with a pipeline, with QA gates, with memory, and with a personality sharp enough to refuse your bad ideas to your face. At install you describe your structure as a **roster** of 1..N projects; every template is sized to fit. A single-project repo is a roster of one — first-class, not a stripped path. A seven-project monorepo gets per-project agents and cross-project routing. Same pipeline, same characters, sized to you.
-
-> _"Ah, your error handling... you know, I once had a student who also believed exceptions would simply handle themselves. Lovely optimism. Didn't survive production, but lovely."_ ☕
+> _"Ah, your error handling... I once had a student who also believed exceptions would simply handle themselves. Lovely optimism. Didn't survive production, but lovely."_ ☕
 
 ---
 
-## What changes
-
-**Before Professor:** You prompt. Claude writes code. Sometimes it works. Sometimes it overwrites what another Claude instance just did. Nobody runs tests unless you remember to ask. Architecture decisions evaporate between conversations.
-
-**With Professor:** You describe what you want. A team of specialists — planners, architects, developers, QA engineers — debate, build, test, and merge it. You stay in the driver's seat. They handle the discipline.
-
-The difference isn't incremental. It's the difference between having an intern and having a team.
-
-### The multiplier effect
-
-Professor doesn't just write better code. It enables categories of work that were previously impractical for one person:
-
-- **Cross-project features** that touch your backend, frontend, and AI engine simultaneously — planned as one coherent change, not three independent guesses
-- **Parallel development** — three features building at once in isolated worktrees, merging only when QA passes
-- **Cross-disciplinary analysis** — your code reviewed through CS, domain-specific, and compliance lenses simultaneously, not sequentially
-- **Persistent initiative tracking** — Epics that survive across conversations, loading full context when you say "load epic X"
-- **Self-improving infrastructure** — the meta-engineer (`/pcm`) edits agent definitions at the source, not a wiki page
-
-One person, shipping like a team. That's the pitch. That's what it actually does.
-
----
-
-## 30-second install
+## Install
 
 ```bash
 cd ~/your-project
 claude
 ```
+
+Then paste:
 
 ```
 Read https://raw.githubusercontent.com/mreza0100/professor/main/INSTALL.md and walk me through
@@ -49,200 +23,129 @@ the interactive install. Ask me each section's questions one at a time and wait 
 before proceeding. Do not assume — confirm everything.
 ```
 
-Claude interviews you — project name, stack, structure, what disciplines your Professor should have, which optional agents you want. Five minutes. Everything is generated. See [`INSTALL.md`](./INSTALL.md) for the full protocol.
+Claude interviews you — structure, stack, which disciplines your Professor should hold, which optional agents you want — then generates everything. About five minutes. Full protocol in [`INSTALL.md`](./INSTALL.md).
 
 ---
 
-## Meet the team
+## The rules that make it work
 
-These aren't generic assistants with different system prompts. They're **characters** — and the personality is load-bearing. Strip the voice and you're left with a Confluence wiki.
+Everything else is detail. These five are load-bearing:
 
-### The Professor — the brain
-
-The root persona. A grandfatherly polymath with **10+ PhDs — you pick the disciplines** at install. Your biology + game theory + economics Professor is the same archetype as the source project's CS + clinical psychology Professor. Every response comes through those lenses simultaneously.
-
-The Professor IS `CLAUDE.md`. Not a command you invoke — the identity that runs everything. When you ask a question, the Professor analyzes it through all disciplines at once, routes it to the right command, or handles it directly with a cross-disciplinary deep dive. Every response ends with a **Verdict** — no hand-waving, no "it depends."
-
-> _"This reminds me of what my colleague in Delft used to say about distributed systems: 'Everything works until the second server.' Your WebSocket reconnection is dropping messages like a tired postman. Let's talk about that."_
-
-### /wave:builder — the pipeline
-
-Full development pipeline — planning, architecture, implementation, QA, merge. Every feature gets its own git worktree and unique ports. Nothing touches `main` until QA passes. Run three pipelines in parallel without collisions.
-
-### /jc — the debugger
-
-The one command allowed to touch `main` directly. Diagnoses, fixes, tests, commits — still gated by QA. Has a character (Jesus Christ, but cool) because even hotfixes deserve discipline.
-
-> _"Peace be upon this codebase. Let me lay hands on this database connection... ah, I see the sin."_
-
-### /pcm — the meta-engineer
-
-Dr. House persona. Edits the pipeline's own rules at the source — agent definitions, command protocols, pipeline wiring. When something in the system itself needs fixing, this is who fixes it. Diagnostic obsession. "Everybody lies" verification ethos. Sarcastic, precise, and right. `pcm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope. Its `/pcm:context-meter` subcommand audits the framework's own context budget; `/pcm:update` · `/pcm:release` ride the blueprint bus.
-
-### p:360 — the blind-spot killer
-
-A thinking protocol, not a person. Two modes: **test** (10 failure dimensions) and **inquiry** (9 question dimensions). QA runs it before writing tests. Professor runs it before deep-diving. Forces systematic coverage before creative work. Ships as a bundled command (`/p:360`) — not source-fetched, not vendored from elsewhere.
-
-### And more
-
-- **/wave:orchestrator** — parallel `/wave:builder` waves from a task file. Multiple features at once. Runs through saved workflows — group parallelism with serialized QA/merge locks. (`/wave:live` batches the same on `main` without worktrees; `/wave:refine` and `/wave:schedule` turn a task list into a zero-gap train; `/wave:walker` walks the merged result; `/wave:watcher` watchdogs a running train from a third chat.)
-- **/animate** — research-grounded educational HTML animation of any flow or structure: cited fact sheet → storyboard → single-file HTML, browser-verified for both behavior and accuracy. The animated hero at the top of this README is the kind of thing it produces.
-- **/dev, /git, /documenter** — pipeline mechanics with personality.
-- **/chat:\* (opt-in, host-level)** — installs to `~/.claude/commands/chat/`, not the repo, so it resolves the same in every project and every worktree (a repo-level copy would be relative symlinks that break at a different worktree directory depth). **/chat:save** mechanically copies the session's transcript straight from disk; **/chat:dump** writes a model briefing on top for continuation before `/compact` or a fresh chat. **/chat:new** spawns a fresh teammate chat (side-by-side pane, or `--detach` for headless); **/chat:branch** forks this chat into a side-by-side pane instead. The **/chat:** family resumes and coordinates across chats: **/chat:read** (read an earlier chat — full, or its last N lines), **/chat:find** (locate one by a pasted excerpt), **/chat:interrogate** (fork-resume a finished session, read-only, to ask it one question and recover its reasoning), **/chat:inject** (force a turn into a live tmux pane, `self`, or a dormant chat's transcript — messages auto-signed with the sender and a runnable reply command; a `/`-prefixed message travels unsigned automatically, no flag needed), **/chat:capture** (snapshot another chat's live window), **/chat:ls** (list the live chats in this repo), **/chat:whoami** (this chat's own tmux handle), **/chat:goal** (compile an ambition into a runnable goal and fire it at a live chat or this one), **/chat:self:compact** (focused self-compaction of this chat's own context), **/chat:load** (force-load a directory or file set — read every file in full, no write). **/goal-manager** compiles a fuzzy super-goal into a sharp prompt for a fresh session — or `epic {name}` writes an epic's continuation prompt (to consolidate a session into the active epic instead, use `/documenter epic`).
-- **/p:slow-burn** — session-limit pacing for long marathons: checkpointed rounds, cache-aware naps/hibernations, an intensity dial 0–10 (`/p:slow-burn N` mid-run; 0 removes pacing), and cross-session resume so a hard cutoff loses nothing.
-- **/sleep** — deferred execution: arm a background timer for any wall-clock duration (`30m`, `2h`, `1h30m`, `90s`), then run any prompt on wake — as if you just sent it.
-- **Bundled commands** (ship with the blueprint) — the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/p:tokens` (token spend attribution), `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`, `/qa:live` (live end-to-end QA on the running app, no mocks).
-- **Source-fetched skills** (installed at setup from their canonical public repos, never vendored) — `rr` (research-and-report), `ghostwriter` (captures a writer's mechanical fingerprint from samples), `vision-factory` (forge and stress-test a startup vision).
-- **Persona depth** — each persona (Professor, JC, Dr. House) ships in two selectable depths: **full** (rich, showcase voice) or **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn). Pick at install.
-- **Statusline** — two-line terminal status bar (model, context %, git branch, cost, rate limits, token I/O).
-- **VSCode tmux launcher** — new VSCode terminals open straight into tmux + Claude; `/exit` drops you back to your shell. Ships a companion tmux config (mouse scroll + click-to-copy).
-- **Multi-account fleet tooling (opt-in, Linux & macOS)** — run several Claude subscriptions at once: `cc-ls` picks over every live and resumable chat, `/bb` closes one cleanly, `/swap` reboots a running chat onto a different subscription in place (same pane, other sessions untouched). Engine included — clone to `~/.professor` and run `blueprint/templates/host-swap/install.sh --apply`, which wires it all by symlink so one `git pull` updates every command.
-- **Notifications** — macOS notification when a turn takes 30+ seconds. Never miss a long-running result.
-- **Memory backup (opt-in)** — a `SessionEnd` hook auto-syncs Claude's persistent project memory to a private repo, so a machine wipe never loses what Claude learned. Plain git, zero tokens.
-- **Optional agents** (pick at install): `/officer` (compliance), `/km` (knowledge curator), `/pm` (product manager), `/mentor` (business advisor), `/marketer` (visibility strategist).
+1. **One agent owns git writes.** Only `gitter` runs `commit` / `merge` / `push` / `checkout`. Read-only git is open to everyone. No races, no half-merges.
+2. **QA gates every merge.** Once on the branch, once again on `main` after. A failing test blocks. There is no flag to skip it.
+3. **Worktree isolation.** Each pipeline gets its own worktree and its own ports. Three features build at once without colliding. `main` stays clean.
+4. **Context isolation.** Long conversations rot. The Professor spawns fresh sub-agents with self-contained briefs rather than dragging stale context forward.
+5. **Self-improvement at the source.** `/pcm` edits the agent definitions themselves — not a wiki, not a "lessons learned" file. The rules and the code that follows them are the same artifact.
 
 ---
 
-## How the pipeline works
+## The cast
+
+These are characters, not system prompts with different adjectives. The voice is load-bearing — strip it and you have a Confluence page nobody reads.
+
+**The Professor** — the root persona, and the identity behind `CLAUDE.md` itself. A grandfatherly polymath with ten-plus doctorates that **you choose at install**. Every answer arrives through those lenses at once and ends with a **Verdict** — a decision, not a shrug.
+
+**`/jc`** — the one route allowed to deliver on `main`. Diagnoses, fixes, tests, commits, still QA-gated. Has a character because hotfixes are exactly where discipline usually dies.
+
+**`/pcm`** — the meta-engineer. Owns `.claude/`, every `CLAUDE.md`, the agents, the commands. `pcm audit [scope]` walks the framework's own files against a checklist; `/pcm:update` and `/pcm:release` ride the blueprint bus between installs.
+
+**`/wave:builder`** — the full pipeline: plan → architect → implement → QA → merge, in an isolated worktree.
+
+**`/p:360`** — a thinking protocol rather than a person. Ten failure dimensions in `test` mode, nine question dimensions in `inquiry`. QA runs it before writing tests; the Professor runs it before a deep dive.
+
+Each persona ships in **full** and **compact** depths — same contracts, fewer tokens per turn. Pick at install.
+
+---
+
+## How a feature ships
 
 ```
-You say: /wave:builder add-user-search
+/wave:builder add-user-search
 
-  planners (parallel)         <- each project analyzes its codebase
+  planners (parallel)      each project reads its own codebase
        |
-  mono-planner                <- consolidates, routes (single-project? cross-project?)
+  mono-planner             consolidates, routes single- vs cross-project
        |
-  gitter SETUP                <- creates worktree branch + allocates ports
+  gitter SETUP             worktree branch + port allocation
        |
-  architects (parallel)       <- design the solution (with inline research)
+  architects (parallel)    design, with inline research
        |
-  developers (parallel)       <- implement it
+  developers (parallel)    implement
        |
-  QA (parallel)               <- adversarial tests — try to BREAK it
-       |                        (360° sweep before writing tests)
-  fix loop                    <- QA found bugs? developer fixes, QA re-tests
+  QA (parallel)            adversarial tests — try to break it
+       |                   (360° sweep runs before any test is written)
+  fix loop                 QA found bugs → developer fixes → QA re-runs
        |
-  gitter MERGE                <- merge to main (only after QA passes)
+  gitter MERGE             only reachable once QA is green
        |
-  post-merge QA               <- verify main still works
+  post-merge QA            prove main still works
        |
-  documenter                  <- update permanent docs, archive pipeline
+  documenter               permanent docs updated, pipeline archived
 ```
 
-Every step is isolated. Every merge is gated. Every decision is traceable.
-
-**Hotfix?** `/jc` skips the full pipeline — diagnoses on `main`, fixes, tests, commits. Still goes through QA.
-
-**Big batch?** `/wave:orchestrator` runs multiple `/wave:builder` pipelines from a task file. Parallel execution, coordinated merging.
+Small change? `/jc` delivers on `main` under its own QA. Batch of related work? `/wave:live` runs them on `main` without worktrees; `/wave:orchestrator` drives parallel worktree pipelines from a task file, and `/wave:walker` walks the merged result to prove it actually works.
 
 ---
 
-## Cross-disciplinary analysis
+## What ships
 
-This is the Professor's superpower — and why the PhDs aren't flavor text.
+| | |
+|---|---|
+| **Pipeline** | `/wave:builder` · `/wave:orchestrator` · `/wave:live` · `/wave:refine` · `/wave:schedule` · `/wave:walker` · `/wave:watcher` |
+| **Delivery** | `/jc` · `/dev` · `/git` · `/documenter` · `/qa:live` |
+| **Framework** | `/pcm` · `/pcm:update` · `/pcm:release` · `/pcm:context-meter` |
+| **Thinking** | `/p:360` · `/p:rnd` · `/p:tokens` · `/p:slow-burn` · `/sleep` · `/animate` |
+| **Quality** | `/quality:doc` · `/quality:prompt` · `/audit:code-hygiene` · `/audit:security` · `/audit:ai-output` |
+| **Optional roles** | `/officer` (compliance) · `/km` (knowledge) · `/pm` (product) · `/mentor` (business) · `/marketer` (visibility) |
+| **Agents** | `gitter`, `mono-{planner,architect,documenter}`, and per-project `planner` / `architect` / `developer` / `qa` |
+| **Source-fetched** | `rr` (research & report) · `ghostwriter` (voice fingerprinting) · `vision-factory` — cloned from their own repos at install, never vendored, so they can't silently drift |
 
-When you ask the Professor to analyze something, it doesn't just look at the code. It applies **three simultaneous lenses**:
+**Also included:** a two-line statusline (model, context %, branch, cost, rate limits) · VSCode terminals that open straight into tmux + Claude · an opt-in memory backup hook that syncs Claude's project memory to a private repo · multi-account fleet tooling (`cc-ls`, `/bb`, `/swap`) for running several subscriptions at once · the `/chat:*` family for reading, forking, injecting into, and coordinating across live sessions · the Tokyo Night theme, source-fetched.
 
-1. **Technical lens** (your CS-adjacent PhDs) — architecture, performance, correctness, security
-2. **Domain lens** (your domain PhDs) — does this serve your users? Does it respect domain constraints?
-3. **Compliance lens** — regulatory, privacy, ethical implications
-
-The intersections are where the real insights live. A technically sound feature that violates domain norms. A compliant implementation that creates terrible UX. A performant shortcut that leaks sensitive data.
-
-No other tool does this. Most AI coding assistants see code. Professor sees a system in context.
+**Codex dual-runtime (optional).** `build-codex.mjs` compiles the entire Codex surface from the Claude sources — an `AGENTS.md` beside every `CLAUDE.md`, agent TOMLs, skill cards, MCP config — with model aliases and command prefixes rewritten for that runtime. Pure string transforms, so nothing is paraphrased or invented. A `Stop` hook recompiles and blocks the turn on a failed build, which means the mirror cannot quietly drift out of sync.
 
 ---
 
-## Epics — cross-conversation memory
+## Any repo, any shape
 
-Conversations end. Context evaporates. You start over.
+Structure is captured as a **roster** — an ordered list of 1..N projects, each with its own directory, stack, package manager, test runner, and ports. Install expands every template once per entry.
 
-**Epics fix that.** An epic is a persistent initiative — a `manifest.md` anchor file plus discoveries, research results, and progress logs that accumulate across conversations.
+- **One project** is a roster of one, and it is first-class rather than a stripped-down path. The worktree is the repo root, routing collapses, cross-project steps disappear, and the prose reads as "the project."
+- **A monorepo** lights up per-project agents and cross-project routing automatically.
+
+The characters are domain-independent. A Professor holding graphics, physics, and audio doctorates for a game engine is the same archetype as one holding CS and clinical psychology for a medical tool — you pick the disciplines, the archetype does the rest.
+
+Exercised on TypeScript/Node, Python, React Native/Expo, and Next.js; nothing in it is stack-specific.
+
+**Good fit:** anything where a broken `main` costs real time, where features cross project boundaries, or where you're one person who wants a team's discipline.
+**Overkill for:** a 200-line script, a throwaway prototype, or a repo where `main` breaking genuinely doesn't matter.
+
+---
+
+## Cross-conversation memory
+
+Conversations end and context evaporates. **Epics** are the fix — a persistent `manifest.md` plus the discoveries, research, and progress that accumulate around an initiative.
 
 ```
-"Create Epic add-user-search"     -> Professor interviews, creates manifest
-"Load epic add-user-search"       -> Professor reads everything, restores full context
+"Create Epic add-user-search"   → Professor interviews you, writes the manifest
+"Load epic add-user-search"     → Professor reads it all back, full context restored
 ```
 
-RND results, RR reports, POC notes, key decisions — all filed under the epic. When features ship, `/documenter` consolidates the progress into the epic's current-state work doc. Next conversation, you say "load epic X" and the Professor picks up exactly where you left off.
-
----
-
-## Why this actually works
-
-Five rules that make the whole system hold together:
-
-1. **One agent owns git.** `gitter` is the only agent that runs `git commit` / `merge` / `push`. No racing. No corruption.
-
-2. **QA gates every merge.** Pre-merge on the branch. Post-merge on `main`. Test failures block. No exceptions.
-
-3. **Worktree isolation.** Every `/wave:builder` gets its own git worktree + unique ports. Run three pipelines in parallel. `main` is never dirty.
-
-4. **Context isolation.** When conversation context accumulates, the Professor spawns fresh sub-agents with self-contained prompts. No bias from stale context. No confusion from earlier attempts.
-
-5. **Self-improvement at the source.** `/pcm` edits agent definitions directly. Not a wiki page. Not a "lessons learned" doc. The actual agent code.
-
----
-
-## Stack-independent, structure-agnostic
-
-The characters and pipeline are **domain-independent and structure-agnostic**. At install, you tell Claude your stack, your structure, your domain — and every template gets parameterized. The Professor who analyzes a therapy AI with CS + clinical psychology PhDs is the same archetype as the Professor who analyzes a game engine with graphics + physics + audio PhDs.
-
-Structure is captured as a **roster** — an ordered list of 1..N projects, each with its own directory, stack, package manager, test runner, and ports. Install expands the pipeline once per roster entry, so a one-project repo and a seven-project monorepo get correctly-sized files from the same templates:
-
-- **Single project (roster of one)** — first-class. The worktree is the repo root, routing is trivial, cross-project steps drop out, and the framing reads as "the project," not "the monorepo." Full pipeline, full character — just no per-project layer it doesn't need.
-- **Multi-project monorepo** — per-project agents (planner / architect / developer / QA per entry) and cross-project routing light up automatically. The shape it was extracted from, but no longer the shape it assumes.
-
-Tested on: TypeScript/Node, Python, React Native/Expo, Next.js. Works with any language Claude Code supports, at any repo size.
-
-**Optional: Codex dual-runtime.** If you use [OpenAI Codex](https://openai.com/index/introducing-codex/), Professor supports a setup where Claude orchestrates and Codex implements — same manuals, different runtime. Entirely optional.
-
----
-
-## When to use it
-
-**Good fit:**
-
-- Single-project apps that deserve team-level discipline — a roster of one, first-class
-- Multi-project monorepos with cross-project features — per-project agents and routing light up
-- Projects where `main` breaking costs real time
-- Solo devs who want team-level discipline
-- Anyone who's lost work to AI's cowboy tendencies
-- Projects with domain complexity that needs more than "write code"
-
-**Overkill for:**
-
-- A 200-line script
-- Throwaway prototypes
-- Projects where you genuinely don't care if `main` breaks
+Research results, proof-of-concept notes, and decisions file themselves under the epic; `/documenter` folds shipped work into it. Next session picks up where the last one stopped.
 
 ---
 
 ## Staying current
 
-Releases ship as **git tags** (`vX.Y.Z`). Your install records a manifest with your interview answers + file hashes. Updates replay your answers against new templates and show a three-bucket diff:
+Releases are annotated git tags. Your install records a manifest — interview answers plus file hashes — and updates replay those answers against the new templates:
 
 ```
-/pcm update              # interactive update to the latest release tag
-/pcm update check        # preview what would change (read-only)
-/pcm update --to vX.Y.Z  # pin to a specific release
+/pcm:update              # interactive update to the latest tag
+/pcm:update check        # read-only preview
+/pcm:update --to vX.Y.Z  # pin a specific release
 ```
 
-- **Auto-apply:** upstream changed, you didn't touch the file
-- **Review:** both sides changed — shows diff, you pick
-- **Manual:** breaking migration or new interview question
-
-No re-interview needed for standard updates — your manifest is the replay seed. See [`CHANGELOG.md`](./CHANGELOG.md).
-
----
-
-## Optional: Tokyo Night theme
-
-A high-saturation dark theme for Claude Code — source-fetched at install (never vendored) from [claude-code-tokyo-night](https://github.com/mreza0100/claude-code-tokyo-night). SETUP pulls it into `~/.claude/themes/`; activate with `/theme` → "Tokyo Night".
-
-![Tokyo Night theme](https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/preview.png)
-
-![Tokyo Night theme in a live session](https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/preview-2.png)
+Changes land in three buckets: **auto-apply** where upstream moved and you didn't, **review** where both moved, **manual** for migrations and new interview questions. Local customizations you want kept are recorded in `drift.md` and survive every update. See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
@@ -250,36 +153,37 @@ A high-saturation dark theme for Claude Code — source-fetched at install (neve
 
 ```
 professor/
-├── INSTALL.md           <- Claude reads this to install Professor into your project
-├── CHANGELOG.md         <- release notes, parsed by /pcm update
-├── VERSION              <- current release (e.g. vX.Y.Z)
+├── INSTALL.md           Claude reads this to install into your project
+├── CHANGELOG.md         release index; full notes live in releases/
+├── VERSION
 └── blueprint/
-    ├── BLUEPRINT.md     <- philosophy + design principles
-    ├── SETUP.md         <- install interview reference
-    └── templates/       <- the actual files that get installed
-        ├── CLAUDE.md, agents/, commands/, scripts/
-        ├── skills/      <- sources.json only, nothing bundled — rr/ghostwriter/vision-factory source-fetched at install; p:* utilities (360, rnd, slow-burn, tokens) ship as commands/, not skills
-        ├── themes/      <- tokyo-night theme, source-fetched at install (sources.json)
-        ├── statusline/  <- two-line terminal status bar + install README
-        ├── vscode/      <- terminals open into tmux + Claude (+ tmux clipboard config)
-        └── codex/       <- (optional) Codex dual-runtime layer
+    ├── BLUEPRINT.md     philosophy and design principles
+    ├── SETUP.md         the install interview
+    ├── refresh-map.json every template ↔ its live source
+    └── templates/
+        ├── CLAUDE.md, agents/, commands/, workflows/, scripts/
+        ├── output-styles/  personas, full and compact
+        ├── skills/         sources.json only — nothing vendored
+        ├── statusline/, vscode/, themes/, epics/
+        ├── host-swap/      multi-account fleet tooling
+        └── codex/          optional dual-runtime layer
 ```
 
 ---
 
-## Maintainer setup (one-time per host)
+## Maintainer setup
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-Arms the committed pre-push leak gate: `scripts/leak-check.sh` scans every outgoing diff for brand (current + former), founder PII, and machine paths — a leaking push fails mechanically. The hook also warns on lightweight `v*` tags (releases are annotated). Release tooling lives in `scripts/`: `genericize.sh` (+ `placeholder-map.tsv`) is the deterministic placeholder pass, `refresh-scope.sh` (+ `blueprint/refresh-map.json`) scopes the incremental refresh.
+Arms the committed pre-push gate: `scripts/leak-check.sh` scans every outgoing diff for brand names, maintainer PII, and machine-absolute paths, and a leaking push fails mechanically rather than politely. It also warns on lightweight `v*` tags, since releases are annotated. Release tooling lives beside it — `genericize.sh` with `placeholder-map.tsv` for the deterministic placeholder pass, `refresh-scope.sh` for the incremental refresh.
 
 ---
 
 ## Origin
 
-Extracted from a live production monorepo — not designed in theory. Every rule exists because something went wrong without it. Every character exists because a generic agent wasn't good enough.
+Extracted from a live production monorepo, not designed in the abstract. Every rule here exists because something went wrong without it, and every character exists because a generic agent wasn't good enough.
 
 Built by [@mreza0100](https://github.com/mreza0100). Issues and PRs welcome.
 
