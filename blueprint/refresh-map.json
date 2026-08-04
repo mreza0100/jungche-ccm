@@ -1,10 +1,10 @@
 {
   "_comment": [
-    "refresh-map.json — template → live-source map with the SHA-256 of each live source as of the last sync.",
+    "refresh-map.json \u2014 template \u2192 live-source map with the SHA-256 of each live source as of the last sync.",
     "Consumed by scripts/refresh-scope.sh (scan = incremental refresh scope; regen = re-baseline at release end).",
     "Template keys are relative to blueprint/. Source paths are relative to the source project root;",
     "{project:ROLE} tokens resolve via the project's .professor/manifest.json .interview.projects[ROLE]; leading ~/ resolves to $HOME (host-level sources).",
-    "curated: true = hand-curated template with no live source — never auto-derived.",
+    "curated: true = hand-curated template with no live source \u2014 never auto-derived.",
     "Multi-source entries list every live file whose change forces re-derivation (representative-pattern templates).",
     "ignore_sources = live files deliberately not shipped (project-local); source_globs = the mined surfaces scanned for UNMAPPED-LIVE files."
   ],
@@ -25,7 +25,8 @@
     "docs/commands/build/references/*",
     "docs/commands/animate/references/*",
     "docs/commands/documenter/references/**",
-    "docs/commands/jc/references/*"
+    "docs/commands/jc/references/*",
+    ".claude/skills/legal/**"
   ],
   "ignore_sources": [
     ".claude/commands/contentor.md",
@@ -695,6 +696,66 @@
     },
     "templates/host-swap/codex-skills/bb/agents/openai.yaml": {
       "curated": true
+    },
+    "templates/skills/legal/SKILL.md": {
+      "sources": {
+        ".claude/skills/legal/SKILL.md": "27d77b9f6e030208ce7e8a9eb7324abfd5f5b0ad9b31b29ff0b24f44ed22e94b"
+      }
+    },
+    "templates/skills/legal/references/breach-response.md": {
+      "sources": {
+        ".claude/skills/legal/references/breach-response.md": "88451bbd1d506152e67db8f2979f434bd98e24271c339798baef2059e476934b"
+      }
+    },
+    "templates/skills/legal/references/dpa-drafting-guide.md": {
+      "sources": {
+        ".claude/skills/legal/references/dpa-drafting-guide.md": "1afd27dbdae394588ba9f4084b5fc2198d5f5e88e17c6d88afdcf23ba9b9bf21"
+      }
+    },
+    "templates/skills/legal/references/dpia.md": {
+      "sources": {
+        ".claude/skills/legal/references/dpia.md": "b1bde8d24c867668f2eafa16cd7533567afe3d9b924b5a43ac1e954f4a3ec5ab"
+      }
+    },
+    "templates/skills/legal/references/nda-risk-triage.md": {
+      "sources": {
+        ".claude/skills/legal/references/nda-risk-triage.md": "1d44a3b9888b83ba3883af70f54b06d9e2c1e9f8901a8ff1bc317134dc4408bf"
+      }
+    },
+    "templates/skills/legal/references/pre-delivery-self-check.md": {
+      "sources": {
+        ".claude/skills/legal/references/pre-delivery-self-check.md": "113208b7c0f1654d8a7fdeb8af726f8d67b657440b0e9442b962eddc78664f18"
+      }
+    },
+    "templates/skills/legal/references/privacy-compliance-dpa.md": {
+      "sources": {
+        ".claude/skills/legal/references/privacy-compliance-dpa.md": "6f656433975eb35fb58a25efdc76a7a2e12b9c58c797c25136d0243040fbb5c7"
+      }
+    },
+    "templates/skills/legal/references/privacy-notice-policy.md": {
+      "sources": {
+        ".claude/skills/legal/references/privacy-notice-policy.md": "9443e2f0aec4de8545f70de5a7a8398ceeae776cc7b9a270e2ca6956add90801"
+      }
+    },
+    "templates/skills/legal/references/red-team-verifier.md": {
+      "sources": {
+        ".claude/skills/legal/references/red-team-verifier.md": "7b38f78624731a953cf6741dd00f1e66fb868fd6acda7ca5d9ccb81d28decf9a"
+      }
+    },
+    "templates/skills/legal/references/skill-optimizer.md": {
+      "sources": {
+        ".claude/skills/legal/references/skill-optimizer.md": "202efd05c0a4bf2d9a5712b455b7427fb8887024a114b5d7086f8d8ecde59a39"
+      }
+    },
+    "templates/skills/legal/references/statute-analysis.md": {
+      "sources": {
+        ".claude/skills/legal/references/statute-analysis.md": "137c8f26316634e4998ff42d17c83092c13d62cae98053362dbb6cd6bfa28c03"
+      }
+    },
+    "templates/skills/legal/references/vendor-due-diligence.md": {
+      "sources": {
+        ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
+      }
     }
   }
 }
