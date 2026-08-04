@@ -19,6 +19,12 @@
 // nothing here lists files by name. Transforms are pure string operations:
 //   verbatim copy + model-alias swap (opus/sonnet/haiku → Codex model names,
 //   lowercase word-boundary tokens only, hyphen-guarded so full model IDs survive)
+//   + Claude command references rewritten to Codex's own syntax (/name → $name,
+//     /wave:orchestrator → $wave-orchestrator); the roster is every name backed by
+//     a real .md file under .claude/commands/** — never a hand-written list, never
+//     a generic /\w+ rewrite (that would also corrupt path fragments like /scripts,
+//     /src, /commands) — so a directory with no {name}.md (e.g. wave/) never yields
+//     a bare $wave
 //   + in-body CLAUDE.md → AGENTS.md rewrite for the AGENTS.md compile step only
 //     (marker line and appended adapter constant keep their own CLAUDE.md wording)
 //   + nested command names flattened (wave/orchestrator → wave-orchestrator, name: rewritten)
@@ -73,7 +79,7 @@ This file is compiled verbatim from CLAUDE.md by ${SELF}; Claude model aliases a
 - Agent / Task spawn / \`subagent_type\` → \`spawn_agent\` with the matching \`.codex/agents/*.toml\` role
 - AskUserQuestion → ask the founder in prose and end your turn
 - Workflow() scripts → no equivalent: decompose sequentially or fan out \`spawn_agent\` calls
-- Skills / slash commands → \`.codex/skills/{name}/SKILL.md\`; nested Claude names flatten (\`/wave:orchestrator\` → \`wave-orchestrator\`)
+- Skills / slash commands → \`.codex/skills/{name}/SKILL.md\`, invoked as \`$name\` — Codex has no \`/name\` syntax, so every \`/name\` reference below is already rewritten to \`$name\` (nested Claude names flatten: \`/wave:orchestrator\` → \`$wave-orchestrator\`)
 - PreToolUse hooks (guarded files) → Codex has NO hook layer, so the guard is absolute: never edit \`.claude/**\`, any \`CLAUDE.md\`, any \`AGENTS.md\` (generated — change CLAUDE.md and re-run the build), or \`{AI_PROJECT}/knowledge/**\` — stop and report instead
 - \`make -C {INFRA_PROJECT}\` and gitter's git monopoly bind unchanged; \`.codex/rules\` enforces the shell subset
 `;
@@ -141,12 +147,40 @@ const PERSONA_RE = /(^|\n)(#{1,6}[ \t]*Persona[ \t]*\n+)?[^\n]*`\.claude\/output
 const stripPersona = (s) => s.replace(PERSONA_RE, '$1').replace(/\n---\n\n---\n/g, '\n---\n');
 
 const flatName = (rel) => rel.replace(/\.md$/, '').split('/').join('-');
+const colonName = (rel) => rel.replace(/\.md$/, '').split('/').join(':');
 const tomlEscape = (s) => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 const tomlMultiline = (s) => {
   let out = s.replace(/\\/g, '\\\\').replace(/"""/g, '\\"\\"\\"');
   if (!out.endsWith('\n')) out += '\n';
   return out;
 };
+
+// Codex command-prefix roster — Claude invokes `.claude/commands/**` as `/name`
+// (nested dirs join with `:`, e.g. /wave:orchestrator); Codex has no such syntax,
+// it invokes the compiled skill as `$name` (nested names flatten with flatName,
+// matching the skill dir the command compiles to). The roster is the exact set of
+// names backed by a real .md file on disk — never a hand-written list, never a
+// generic /\w+ rewrite (that would also mangle path fragments like /scripts, /src,
+// /commands). A directory alone (e.g. wave/, no wave.md) contributes no entry, so
+// bare /wave must never transform; only its real children (/wave:orchestrator, …) do.
+const commandRoster = new Map(); // "name:form" (no leading /) -> "$flat-form"
+const commandsRoot = join(ROOT, '.claude/commands');
+if (isDir(commandsRoot)) {
+  for (const entry of walkMd(commandsRoot)) {
+    const rel = relative(commandsRoot, entry.skillDir ? entry.dir : entry.file);
+    commandRoster.set(colonName(rel), `$${flatName(rel)}`);
+  }
+}
+// Longest-first alternation: /wave:walker-invariants must win over its own prefix
+// /wave:walker at the same text position (JS regex alternation is first-match, not
+// longest-match, across `|` branches). Whole-token only: the `/` is not preceded by
+// a word char, `/`, `.`, or `-` (protects path fragments); the matched name is not
+// followed by a word char, `:`, or `-` (protects an unknown longer/nested token from
+// a false partial match).
+const CMD_RE = commandRoster.size
+  ? new RegExp(`(?<![\\w/.-])/(${[...commandRoster.keys()].sort((a, b) => b.length - a.length).join('|')})(?![\\w:-])`, 'g')
+  : null;
+const cmdSwap = (s) => (CMD_RE ? s.replace(CMD_RE, (_, name) => commandRoster.get(name)) : s);
 
 // ---------- compile ----------------------------------------------------------
 // outputs: absolute path → { content } | { link: target }
@@ -165,7 +199,7 @@ for (const { src, dst, root } of [
   ...projects.map((p) => ({ src: join(ROOT, p, 'CLAUDE.md'), dst: join(ROOT, p, 'AGENTS.md'), root: false })),
 ]) {
   const srcRel = relative(ROOT, src);
-  const body = swap(stripPersona(read(src))).replaceAll('CLAUDE.md', 'AGENTS.md');
+  const body = cmdSwap(swap(stripPersona(read(src))).replaceAll('CLAUDE.md', 'AGENTS.md'));
   outputs.set(dst, {
     content: `<!-- ${marker(srcRel)} -->\n${body}${root ? ADAPTER : ''}`,
   });
@@ -206,9 +240,9 @@ for (const { src, name } of agentSources) {
   outputs.set(join(ROOT, '.codex/agents', `${name}.toml`), {
     content:
       `# ${marker(srcRel)}\n${tier}name = "${tomlName}"\n` +
-      `description = "${tomlEscape(swap(fields.description ?? ''))}"\n` +
+      `description = "${tomlEscape(cmdSwap(swap(fields.description ?? '')))}"\n` +
       (readOnly ? `sandbox_mode = "read-only"\n` : '') +
-      `developer_instructions = """\n${tomlMultiline(agentPreamble(tomlName) + swap(stripPersona(body).trim()))}"""\n`,
+      `developer_instructions = """\n${tomlMultiline(agentPreamble(tomlName) + cmdSwap(swap(stripPersona(body).trim())))}"""\n`,
   });
 }
 
@@ -226,7 +260,7 @@ function compileCommands(srcRoot, srcLabel, emit) {
     const { fm, body, fields } = parseFm(raw);
     const fmLines = (fm ?? []).filter((l) => !/^name:/.test(l));
     const content =
-      `---\n# ${marker(`${srcLabel}/${rel}`)}\nname: ${flat}\n${fmLines.join('\n')}\n---\n${swap(stripPersona(body))}`;
+      `---\n# ${marker(`${srcLabel}/${rel}`)}\nname: ${flat}\n${cmdSwap(fmLines.join('\n'))}\n---\n${cmdSwap(swap(stripPersona(body)))}`;
     emit({ flat, content, modelInvocable: fields['disable-model-invocation'] !== 'true' });
   }
 }
