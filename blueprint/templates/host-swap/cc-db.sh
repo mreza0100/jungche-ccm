@@ -30,6 +30,14 @@
 #   cc-db.sh swap-log LINE
 set -uo pipefail
 
+# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
+# links this script into ~/.claude/bin and $BASH_SOURCE is then the link. Plain `readlink`
+# (never -f) because macOS ships BSD readlink.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam
+
+
 DB="${CC_FLEET_DB:-$HOME/.cc/fleet.db}"
 LEG_HID="$HOME/.claude/.cc-ls-hidden"
 LEG_AT="$HOME/.claude/.cc-ls-hidden.at"
@@ -222,7 +230,9 @@ cmd_chat_save() {
 cmd_chat_prune() {
   have_db || return 0
   local t; t="$(mktemp)"
-  find -P "$HOME/.claude/projects" -name '*.jsonl' -printf '%f\n' 2>/dev/null | sed 's/\.jsonl$//' > "$t"
+  # basename-only, without GNU find's -printf '%f': strip the directory with sed, which every
+  # find can feed. The old form emitted nothing at all on BSD, silently pruning the whole index.
+  find -P "$HOME/.claude/projects" -name '*.jsonl' 2>/dev/null | sed 's|.*/||; s/\.jsonl$//' > "$t"
   { echo "BEGIN IMMEDIATE;"
     echo "CREATE TEMP TABLE live(uuid TEXT PRIMARY KEY);"
     while read -r u; do [ -n "$u" ] || continue; _esc_v "$u"; echo "INSERT OR IGNORE INTO live VALUES('$_E');"; done < "$t"

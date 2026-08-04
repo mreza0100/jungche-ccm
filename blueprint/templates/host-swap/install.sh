@@ -101,7 +101,10 @@ say "Target config dir:      $CLAUDE_DIR"
 say ""
 
 # ── the fleet scripts: one stable address, ~/.claude/bin, independent of where the clone lives ──
-FLEET_SCRIPTS="cc-db.sh cc-hide.sh cx-hide.sh cc-agent-open.sh cc-swap-chat.sh cc-archive.sh cc-reap.sh cc-name-sync.sh"
+# cc-portable.sh is a sourced library, not a command — it is linked with the rest so the bundle
+# has ONE published address per file and an operator reading ~/.claude/bin sees the whole set.
+# Nothing depends on the link: every script finds it through CC_FLEET_HOME, in the clone.
+FLEET_SCRIPTS="cc-portable.sh cc-db.sh cc-hide.sh cx-hide.sh cc-agent-open.sh cc-swap-chat.sh cc-archive.sh cc-reap.sh cc-name-sync.sh"
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
 for f in $FLEET_SCRIPTS; do

@@ -36,6 +36,7 @@ fi
 # macOS ships BSD readlink, which has no -f.
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_timeout, cc_pane_of
 
 prim="$(bash "$CC_FLEET_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
 case "$prim" in 2|3) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
@@ -56,7 +57,7 @@ hit=""; hitcfg=""
 if [ -n "$owncfg" ]; then cands=("$owncfg"); else cands=("" "$HOME/.cc/2" "$HOME/.cc/3" "$HOME/.cc/4"); fi
 for cfg in "${cands[@]}"; do
   # judge by parseable output, not exit code — a registry that answers is a registry that counts
-  j="$(timeout 20 bash -c '
+  j="$(cc_timeout 20 bash -c '
     if [ -n "$1" ]; then CLAUDE_CONFIG_DIR="$1" claude agents --json
     else env -u CLAUDE_CONFIG_DIR claude agents --json; fi' _ "$cfg" 2>/dev/null)"
   row="$(printf '%s' "$j" | jq -c --arg u "$u" \
@@ -87,8 +88,10 @@ oacct=1; case "$hitcfg" in "$HOME/.cc/2"|"$HOME/.claude2"|"$HOME/.claude3") oacc
 # a lock-holder living inside a cc-* tmux is just a CHAT whose breadcrumb went missing (statusline
 # never rendered) — attach its own window; the agents view can't reach it and the resume refuses
 if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-  tsock="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^TMUX=//p' | head -1)"
-  tsock="${tsock%%,*}"; tsock="${tsock##*/}"
+  # Which tmux (if any) holds this pid — asked of TMUX, not of /proc/<pid>/environ, because
+  # macOS answers nothing about another process's environment (SIP) and every agent there would
+  # read as "not in tmux", sending a resident chat down the takeover path instead of an attach.
+  tsock="$(cc_pane_of "$pid")"; tsock="${tsock%%	*}"
   case "$tsock" in
     cc-*)
       echo "⚙ $name is a tmux-resident chat on $tsock — attaching its window"

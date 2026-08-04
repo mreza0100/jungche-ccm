@@ -16,6 +16,15 @@ zmodload zsh/datetime 2>/dev/null
 zmodload zsh/stat 2>/dev/null
 zmodload zsh/system 2>/dev/null
 
+# ── the GNU/BSD seam ──────────────────────────────────────────────────────
+# Every question whose answer differs between Linux and macOS is asked through cc-portable.sh,
+# never inline here. It is POSIX sh on purpose so this zsh file and the bundle's bash scripts
+# share one implementation instead of drifting two. CC_FLEET_HOME is resolved THROUGH symlinks
+# because ~/.zshrc sources this file from wherever the clone lives.
+_ccfs="${(%):-%N}"; while [[ -L "$_ccfs" ]]; do _ccfd="${_ccfs:h:A}"; _ccfs="$(readlink "$_ccfs")"; [[ "$_ccfs" == /* ]] || _ccfs="$_ccfd/$_ccfs"; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-${_ccfs:h:A}}"
+[[ -r "$CC_FLEET_HOME/cc-portable.sh" ]] && source "$CC_FLEET_HOME/cc-portable.sh"
+
 # ── no sneaky agent conversions ───────────────────────────────────────────
 # tmux is this fleet's survival layer — a chat killed mid-task must DIE, not resurrect as a
 # hidden background agent under its birth account. These two stop the daemon's silent
@@ -184,12 +193,21 @@ _cc_label() {
   # account 4 has no Anthropic login to name — label it by what actually answers, and say so
   # when the proxy is down, because that is the only way a cc4 chat fails.
   if [[ "$n" == 4 ]]; then
-    if ss -ltn 2>/dev/null | grep -q '127\.0\.0\.1:18765'; then print -r -- "🍀 GPT-5.6 · codex proxy"
+    if cc_listening 18765; then print -r -- "🍀 GPT-5.6 · codex proxy"
     else print -r -- "🍀 GPT-5.6 · codex proxy (DOWN — systemctl --user start claude-code-proxy)"; fi
     return
   fi
   case "$n" in 1) dir="$HOME/.claude"; medal="🥇" ;; 2) dir="$HOME/.cc/2"; medal="🥈" ;; 3) dir="$HOME/.cc/3"; medal="🥉" ;; esac
-  email="$(jq -r '.oauthAccount.emailAddress // empty' "$dir/.claude.json" 2>/dev/null)"
+  # ACCOUNT 1'S IDENTITY IS NOT INSIDE ITS CONFIG DIR. Claude Code writes the default account's
+  # .claude.json BESIDE the config dir (~/.claude.json), not into it — ~/.claude/.claude.json
+  # also exists but carries only machine state (machineID, projects, seenNotifications) and no
+  # oauthAccount. A uniform "$dir/.claude.json" therefore reads a real file, finds no email, and
+  # renders the primary account "(not logged in)" while cc1 logs in perfectly well: a convincing
+  # wrong answer, which is the kind worth a special case. Accounts 2+ are explicit
+  # CLAUDE_CONFIG_DIRs and DO keep .claude.json inside. Same rule the statusline badge follows,
+  # for the same reason — change one, change the other.
+  local aj="$dir/.claude.json"; [[ "$dir" == "$HOME/.claude" ]] && aj="$HOME/.claude.json"
+  email="$(jq -r '.oauthAccount.emailAddress // empty' "$aj" 2>/dev/null)"
   [[ -z "$email" ]] && email="(not logged in — run cc${n} then /login)"
   print -r -- "$medal $email"
 }
@@ -290,7 +308,7 @@ vsct-revive() {
     if [[ -n "$pid" && "$pid" != *$'\n'* ]]; then       # husk check — same TWO shapes as vsct.sh:
       # exec'd (pane process IS the cc/cx viewport client) or legacy (shell + sole client child)
       ps -o args= -p "$pid" 2>/dev/null | grep -qE '^tmux -L c[cx]-[^ ]+ (attach|new-session)' && continue
-      kids="$(ps -o args= --ppid "$pid" 2>/dev/null)"
+      kids="$(cc_children_args "$pid")"
       [[ "$(print -r -- "$kids" | grep -c .)" == 1 ]] \
         && print -r -- "$kids" | grep -qE '^tmux -L c[cx]-[^ ]+ (attach|new-session)' && continue
     fi
@@ -380,11 +398,16 @@ _cc_selfswitch() {
 # "claude" or a bare version string, depending on the install. The harness defaults to
 # 1h since CC 2.1.215, so only an explicit FORCE_PROMPT_CACHING_5M=1 birth reads as 5m —
 # a flagless elder (born before the force-5m rewire) runs 1h and reports 1.
+# READABLE ON LINUX ONLY, AND THAT IS SAFE. cc_penv answers from /proc/<pid>/environ; macOS lets
+# no process read another's environment (SIP), so a Mac finds nothing and 1 stands. That is also
+# what a flagless chat reports, and since the harness now defaults to 1h, "unreadable" and
+# "flagless" mean the same thing here — the ⚡ badge is wrong only for a chat deliberately born
+# 5m, and it errs by NOT promising a cheaper window than the chat actually has.
 _cc_c1h_tty() {
   local t="${1:-}" cp
   [[ -n "$t" ]] || { echo 1; return }
-  for cp in $(ps -o pid=,comm= -t "$t" 2>/dev/null | awk '$2=="claude" || $2 ~ /^[0-9]+\./ {print $1}'); do
-    tr '\0' '\n' < "/proc/$cp/environ" 2>/dev/null | grep -qx 'FORCE_PROMPT_CACHING_5M=1' && { echo 0; return }
+  for cp in ${(f)"$(ps -o pid=,comm= -t "$t" 2>/dev/null | awk '$2=="claude" || $2 ~ /^[0-9]+\./ {print $1}')"}; do
+    [[ "$(cc_penv "${cp// /}" FORCE_PROMPT_CACHING_5M)" == 1 ]] && { echo 0; return }
   done
   echo 1
 }
@@ -404,17 +427,21 @@ _cx_scan() {
   local p pp rl l st rest i
   for p in ${(f)"$(pgrep -x codex 2>/dev/null)"}; do
     rl=""
-    for l in /proc/$p/fd/*(N@n); do   # numeric fd order — the binary opens its OWN rollout first
-      [[ "${l:A}" == "$HOME/.codex/sessions/"*/rollout-*.jsonl ]] || continue
-      head -1 "${l:A}" 2>/dev/null | grep -q '"thread_source":"user"' || continue
-      rl="${l:A}"; break
+    # fd order — the binary opens its OWN rollout first. cc_pfiles reads /proc/<pid>/fd on Linux
+    # and falls back to lsof on macOS, which lists fds in the same ascending order; the glob this
+    # replaced existed only under /proc, so a Mac saw no live codex chat at all.
+    for l in ${(f)"$(cc_pfiles $p)"}; do
+      [[ "$l" == "$HOME/.codex/sessions/"*/rollout-*.jsonl ]] || continue
+      head -1 "$l" 2>/dev/null | grep -q '"thread_source":"user"' || continue
+      rl="$l"; break
     done
     [[ -n "$rl" ]] || continue
     pp="$p"
     for i in 1 2 3 4; do
       [[ -z "${CXRL[$pp]:-}" ]] && CXRL[$pp]="$rl"
-      st="$(cat /proc/$pp/stat 2>/dev/null)" || break
-      rest="${st##*) }"; pp="${${(z)rest}[2]}"   # ppid = 2nd word after "(comm)" — comm may hold spaces
+      # cc_ppid, not /proc/<pid>/stat: comm can contain spaces and parentheses, so that field is
+      # only safe to read after the last ")" — and macOS has no /proc to read at all.
+      pp="$(cc_ppid $pp)"
       [[ "$pp" == <-> && "$pp" != [01] ]] || break
     done
   done
@@ -434,14 +461,14 @@ _cx_scan() {
 _cx_rollout_by_cwd() {
   local dir="$1" start="${2:-}" f meta ts birth d best="" bestd=999999999 newest=""
   [[ -n "$dir" ]] || return 1
-  for f in ${(f)"$(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null | sort -rn | head -60 | cut -f2)"}; do
+  for f in ${(f)"$(cc_find_newest "$HOME/.codex/sessions" -name 'rollout-*.jsonl' | head -60)"}; do
     meta="$(head -1 "$f" 2>/dev/null)" || continue
     [[ "$meta" == *'"thread_source":"user"'* ]] || continue
     [[ "$meta" == *"\"cwd\":\"$dir\""* ]] || continue
     [[ -n "$start" ]] || { print -r -- "$f"; return 0 }
     [[ -n "$newest" ]] || newest="$f"
     ts="${${meta#*\"timestamp\":\"}%%\"*}"
-    birth="$(date -d "$ts" +%s 2>/dev/null)" || birth=""
+    birth="$(cc_epoch "$ts")"
     [[ -n "$birth" ]] || continue
     (( birth >= start - 120 )) || continue
     d=$(( birth - start )); (( d < 0 )) && d=$(( -d ))
@@ -464,7 +491,7 @@ _cx_rollout() {
 # the file changes; a rename lands on the next picker run.
 _cx_index() {
   local idx="$HOME/.codex/session_index.jsonl" m i n
-  m="$(stat -c%Y "$idx" 2>/dev/null)" || { typeset -gA CXNM; CXNM=(); return 0 }
+  m="$(cc_mtime "$idx")"; [[ -n "$m" ]] || { typeset -gA CXNM; CXNM=(); return 0 }
   [[ "${_CXNM_MT:-}" == "$m" ]] && return 0
   typeset -gA CXNM; CXNM=(); typeset -g _CXNM_MT="$m"
   while IFS=$'\t' read -r i n; do [[ -n "$i" ]] && CXNM[$i]="$n"; done \
@@ -658,7 +685,7 @@ _cc_stat() {
   if zmodload -e zsh/stat && zstat -H _h -- "$1" 2>/dev/null; then
     REPLY="${_h[size]} ${_h[mtime]}"; return 0
   fi
-  REPLY="$(stat -c '%s %Y' "$1" 2>/dev/null)" && [[ -n "$REPLY" ]]
+  REPLY="$(cc_size "$1") $(cc_mtime "$1")" && [[ "$REPLY" != " " ]]
 }
 
 # _cc_meta <transcript> — "cwd<TAB>first-real-prompt<TAB>prompt-count" in one jq pass (whole file).
@@ -741,11 +768,23 @@ _cc_agents() {
     for sid in "${sids[@]}"; do
       [[ "$sid" =~ '^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$' ]] || continue   # strict uuid (hex only) — a crafted argv must not pass as a session id
       [[ -n "${CCAGENT[$sid]}" ]] && continue      # dedup: the agent + its pty-host share ids
+      # WHICH ACCOUNT OWNS THIS AGENT — from the per-session breadcrumb, not the process env.
+      # Every launch drops $CLAUDE_CONFIG_DIR/session-env/<session-id>, so the account that owns
+      # a session is the one holding that file: an on-disk fact, readable on any platform, and
+      # true for a chat whose process this scan cannot even see. The env read it replaced worked
+      # only through /proc — on macOS it always came back empty and EVERY agent silently
+      # defaulted to account 1, which sends a takeover to the wrong subscription. The env is
+      # still consulted first where it can be read, since it is the account the process is
+      # actually running under; the breadcrumb is the portable second opinion, and ~/.claude
+      # remains the floor when neither answers.
       if [[ -z "$cfgdir" ]]; then
-        cfgdir="$HOME/.claude"
-        for e in "${(@f)$(tr '\0' '\n' < /proc/$pid/environ 2>/dev/null)}"; do
-          [[ "$e" == CLAUDE_CONFIG_DIR=* ]] && { cfgdir="${e#CLAUDE_CONFIG_DIR=}"; break; }
-        done
+        cfgdir="$(cc_penv $pid CLAUDE_CONFIG_DIR)"
+        if [[ -z "$cfgdir" ]]; then
+          for e in "$HOME"/.cc/[0-9]* "$HOME/.claude"; do
+            [[ -e "$e/session-env/$sid" ]] && { cfgdir="$e"; break; }
+          done
+        fi
+        [[ -n "$cfgdir" ]] || cfgdir="$HOME/.claude"
       fi
       CCAGENT[$sid]="$cfgdir"
     done
@@ -1005,7 +1044,7 @@ cc-ls() {
         # disambiguated by the pane's start time (two chats can share a directory)
         if [[ -z "$cxrl" ]]; then
           cxcwd1="$(tmux -L "$sock" list-panes -t "=$name" -F '#{pane_current_path}' 2>/dev/null | head -1)"
-          cxst1="$(stat -c %Y "/proc/$(cut -f10 "$pfile" | head -1)" 2>/dev/null)"
+          cxst1="$(cc_pstart "$(cut -f10 "$pfile" | head -1)")"
           [[ -n "$cxcwd1" ]] && cxrl="$(_cx_rollout_by_cwd "$cxcwd1" "$cxst1")"
         fi
         if [[ -n "$cxrl" && -r "$cxrl" ]]; then
@@ -1189,7 +1228,7 @@ cc-ls() {
   # ── source 2: resumable chats from the store, deduped, newest first (cache keeps it fast) ──
   local cap=30 shown=0 line mt sz fp isagent acfg
   (( strict )) || cap=99999
-  for line in ${(f)"$(find "$store" -maxdepth 2 -name '*.jsonl' -printf '%T@\t%s\t%p\n' 2>/dev/null | sort -rn)"}; do
+  for line in ${(f)"$(cc_find_meta "$store" -maxdepth 2 -name '*.jsonl')"}; do
     mt="${line%%.*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"; uuid="${fp:t:r}"
     [[ -n "${live[$uuid]}" ]] && continue   # already shown as a live tmux session
     isagent=0; acfg="${CCAGENT[$uuid]}"; [[ -n "$acfg" ]] && isagent=1   # live bg/forked agent → attach (below), never resume
@@ -1267,7 +1306,7 @@ cc-ls() {
   local cxcap=15 cxshown=0
   (( strict )) || cxcap=99999
   if command -v codex >/dev/null; then
-    for line in ${(f)"$(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -printf '%T@\t%s\t%p\n' 2>/dev/null | sort -rn | head -120)"}; do
+    for line in ${(f)"$(cc_find_meta "$HOME/.codex/sessions" -name 'rollout-*.jsonl' | head -120)"}; do
       mt="${line%%.*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"
       uuid="${${fp:t:r}#rollout-????-??-??T??-??-??-}"
       [[ -n "${cxlive[$uuid]}" ]] && continue        # already shown as a live cx row

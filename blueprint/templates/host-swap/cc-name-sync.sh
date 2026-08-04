@@ -24,6 +24,14 @@
 #   cc-name-sync.sh --dry-run    print what would change, touch nothing
 set -uo pipefail
 
+# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
+# links this script into ~/.claude/bin and $BASH_SOURCE is then the link. Plain `readlink`
+# (never -f) because macOS ships BSD readlink.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam
+
+
 DRY=0
 case "${1:-}" in
   --dry-run) DRY=1 ;;
@@ -37,8 +45,11 @@ LOCK="${CC_NAME_SYNC_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/cc-name-sync.lock}"
 MAXLEN=24            # window names feed a tab title; longer is noise there
 BIRTH_SLOP=120       # a rollout may be stamped a moment before its pane's clock — allow this much
 
-# One sync at a time; a concurrent run's work is this run's work.
-exec 9>"$LOCK" 2>/dev/null && flock -n 9 || exit 0
+# One sync at a time; a concurrent run's work is this run's work. cc_trylock rather than flock(1),
+# which macOS does not ship — see the note on cc_trylock for how the flock form silently exited
+# this whole script on every Mac run.
+cc_trylock "$LOCK" || exit 0
+trap 'cc_unlock "$LOCK"' EXIT
 
 # ── the codex name index: id -> LAST thread_name (the index is append-only; a rename appends) ──
 declare -A CXNM
@@ -59,13 +70,11 @@ cx_rollout_for() {
     case "$meta" in *"\"cwd\":\"$cwd\""*) ;; *) continue ;; esac
     [ -n "$newest" ] || newest="$f"
     ts="$(printf '%s' "$meta" | grep -o '"timestamp":"[^"]*"' | head -1 | cut -d'"' -f4)"
-    birth="$(date -d "$ts" +%s 2>/dev/null)" || continue
-    [ -n "$birth" ] || continue
+    birth="$(cc_epoch "$ts")"; [ -n "$birth" ] || continue
     (( birth >= start - BIRTH_SLOP )) || continue
     d=$(( birth - start )); (( d < 0 )) && d=$(( -d ))
     (( d < bestd )) && { bestd=$d; best="$f"; }
-  done < <(find "$CODEX_DIR/sessions" -name 'rollout-*.jsonl' -printf '%T@\t%p\n' 2>/dev/null \
-             | sort -rn | head -60 | cut -f2)
+  done < <(cc_find_newest "$CODEX_DIR/sessions" -name 'rollout-*.jsonl' | head -60)
   [ -n "$best" ] || best="$newest"
   [ -n "$best" ] && printf '%s' "$best"
 }
@@ -120,8 +129,12 @@ for sockpath in "$TMUXDIR"/cc-* "$TMUXDIR"/cx-*; do
     [ "$pcmd" = "tmux" ] && continue           # a viewport mirrors an inner statusline — skip
     case "$sock" in
       cx-*)
-        [ -d "/proc/$ppid" ] || continue
-        start="$(stat -c %Y "/proc/$ppid" 2>/dev/null)" || continue
+        # The pane process's START TIME is what matches it to the rollout file born beside it,
+        # so two codex chats in one directory keep their own names. cc_pstart reads it from
+        # /proc's directory mtime on Linux and from `ps -o lstart=` on macOS — the liveness
+        # check rides along, since a dead pid yields no start time on either platform (the old
+        # `[ -d /proc/$ppid ]` gate was Linux's spelling of exactly that check).
+        start="$(cc_pstart "$ppid")"; [ -n "$start" ] || continue
         rl="$(cx_rollout_for "$pcwd" "$start")" || true
         [ -n "$rl" ] && [ -r "$rl" ] || continue
         nm="$(cx_display_name "$rl")"

@@ -7,7 +7,11 @@
 set -uo pipefail
 BUNDLE="$(cd "$(dirname "$0")/.." && pwd)"
 SYNC="$BUNDLE/cc-name-sync.sh"
-T="$(mktemp -d)"
+# cd -P, because tmux reports pane_current_path PHYSICALLY: on macOS /var is a symlink to
+# /private/var, so a logical $T makes every fixture cwd differ from the one the code under test
+# reads back, and not one codex pane matches its rollout. The scratch dir has to be spelled the
+# way the kernel spells it.
+T="$(cd -P "$(mktemp -d)" && pwd)"
 export TMUX_TMPDIR="$T/tmux"
 export CODEX_HOME="$T/codex"
 export CC_NAME_SYNC_LOCK="$T/sync.lock"
@@ -24,7 +28,13 @@ trap cleanup EXIT
 pass=0; fail=0
 ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else fail=$((fail+1)); printf '  ✗ %s\n     want=[%s]\n     got =[%s]\n' "$1" "$3" "$2"; fi; }
 win(){ tmux -S "$TMUX_TMPDIR/$1" list-windows -t "=$1" -F '#{window_name}' 2>/dev/null | head -1; }
-utc(){ date -u -d "@$1" +%Y-%m-%dT%H:%M:%S.000Z; }
+# utc / settime — the two GNU date/touch spellings this fixture used, taught to fall back to BSD.
+# `date -d @EPOCH` and `touch -d @EPOCH` are both GNU-only; macOS wants `date -r EPOCH` and
+# `touch -t CCYYMMDDhhmm.SS`. Neither failure was loud: touch printed a usage block to stderr and
+# carried on, so every rollout file kept the WRONG mtime, no codex thread ever matched its pane,
+# and thirteen assertions failed pointing at cc-name-sync.sh instead of at this file.
+utc(){ date -u -d "@$1" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S.000Z; }
+settime(){ touch -d "@$1" "$2" 2>/dev/null || touch -t "$(date -r "$1" +%Y%m%d%H%M.%S)" "$2"; }
 
 # rollout <file-stamp> <uuid> <birth-epoch> <cwd> [first-prompt]
 rollout(){
@@ -32,7 +42,7 @@ rollout(){
   printf '{"timestamp":"%s","type":"session_meta","payload":{"id":"%s","timestamp":"%s","cwd":"%s","thread_source":"user"}}\n' \
     "$(utc "$3")" "$2" "$(utc "$3")" "$4" > "$f"
   [ -n "${5:-}" ] && printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"user_message","message":"%s"}}\n' "$(utc "$3")" "$5" >> "$f"
-  touch -d "@$3" "$f"
+  settime "$3" "$f"
 }
 
 NOW="$(date +%s)"
@@ -82,7 +92,7 @@ tmux -S "$TMUX_TMPDIR/cx-350" new-session -d -s cx-350 -n Codex -c "$T/projD" 's
 TD="$(date +%s)"
 printf '{"timestamp":"%s","type":"session_meta","payload":{"id":"dddddddd-0000-0000-0000-000000000004","timestamp":"%s","cwd":"%s","thread_source":"user","parent_thread_id":"cccccccc-0000-0000-0000-000000000003"}}\n' \
   "$(utc "$((TD+1))")" "$(utc "$((TD+1))")" "$T/projD" > "$SESS/rollout-2026-08-02T00-00-11-dddddddd-0000-0000-0000-000000000004.jsonl"
-touch -d "@$((TD+1))" "$SESS/rollout-2026-08-02T00-00-11-dddddddd-0000-0000-0000-000000000004.jsonl"
+settime "$((TD+1))" "$SESS/rollout-2026-08-02T00-00-11-dddddddd-0000-0000-0000-000000000004.jsonl"
 printf '{"id":"cccccccc-0000-0000-0000-000000000003","thread_name":"RESUMED_ANCESTOR"}\n' >> "$CODEX_HOME/session_index.jsonl"
 "$SYNC" >/dev/null
 ok "ancestor's name via parent_thread_id" "$(win cx-350)" "RESUMED_ANCESTOR"
@@ -142,9 +152,19 @@ ok "viewport window untouched"            "$(win cc-800)" "viewport"
 
 echo "=== lock: a held lock means a silent, clean no-op ==="
 printf '{"id":"aaaaaaaa-0000-0000-0000-000000000001","thread_name":"MUST_NOT_LAND"}\n' >> "$CODEX_HOME/session_index.jsonl"
-out="$(flock "$CC_NAME_SYNC_LOCK" -c "\"$SYNC\"; echo rc=\$?")"
+# Hold the lock exactly the way the script takes it: a LIVE owner process holding cc_trylock.
+# The old form used flock(1), which stock macOS does not ship — the holder failed to start, the
+# sync ran unlocked, and the assertion measured nothing. A background subshell is also the more
+# faithful fixture: what makes a lock held is an owner that is still alive.
+( . "$BUNDLE/cc-portable.sh"; cc_trylock "$CC_NAME_SYNC_LOCK" && sleep 10 ) &
+holder=$!
+sleep 0.5
+out="$("$SYNC"; echo "rc=$?")"
 ok "locked run exits 0 with no renames"   "$out" "rc=0"
 ok "locked run changed nothing"           "$(win cx-100)" "CONTRACTS_BUILDER"
+# Killing the holder leaves an owner file naming a dead pid — the next run must STEAL it, which
+# is the crash-recovery path flock got for free from the kernel and mkdir has to earn.
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 "$SYNC" >/dev/null   # and the next unlocked run converges it
 ok "next run picks the rename up"         "$(win cx-100)" "MUST_NOT_LAND"
 

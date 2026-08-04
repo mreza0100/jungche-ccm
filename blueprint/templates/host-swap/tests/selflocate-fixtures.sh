@@ -6,7 +6,11 @@
 # the test cannot drift away from the code it guards.
 set -uo pipefail
 BUNDLE="$(cd "$(dirname "$0")/.." && pwd)"
-T="$(mktemp -d)"
+# macOS resolves /var through a symlink to /private/var, and every resolver under test resolves
+# symlinks BY DESIGN — so the expected value has to be the resolved spelling too, or the test
+# reports a failure whose "want" and "got" name the same directory. cd -P is how the shipped
+# code spells it; spell it the same way here.
+T="$(cd -P "$(mktemp -d)" && pwd)"
 trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else fail=$((fail+1)); printf '  ✗ %s\n     want=[%s]\n     got =[%s]\n' "$1" "$3" "$2"; fi; }
@@ -69,7 +73,7 @@ for sib in cc-db.sh cc-swap-chat.sh cc-agent-open.sh; do
 done
 # The invariant that matters, stated without naming any one install path: no script may reach a
 # sibling through a hand-written absolute path — that is exactly what breaks when the bundle moves.
-ok "siblings are reached only via CC_FLEET_HOME" "$(grep -lE '\$HOME/[^"]*/(cc-db|cc-swap-chat|cc-agent-open)\.sh' "$BUNDLE"/*.sh "$BUNDLE"/*.zsh 2>/dev/null | wc -l)" "0"
+ok "siblings are reached only via CC_FLEET_HOME" "$(grep -lE '\$HOME/[^"]*/(cc-db|cc-swap-chat|cc-agent-open)\.sh' "$BUNDLE"/*.sh "$BUNDLE"/*.zsh 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo
 printf 'PASS %d   FAIL %d\n' "$pass" "$fail"

@@ -29,6 +29,13 @@
 #   cc-archive.sh --restore UUID
 set -uo pipefail
 
+# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
+# links this script into ~/.claude/bin and $BASH_SOURCE is then the link. Plain `readlink`
+# (never -f) because macOS ships BSD readlink.
+_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
+CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam
+
 ARCHIVE="${CC_ARCHIVE_DIR:-$HOME/.claude-archive}"
 CL="$HOME/.claude/projects"
 CX="$HOME/.codex/sessions"
@@ -85,7 +92,7 @@ for s in "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"/cx-*; do
   done
 done | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' >> "$LIVE" || true
 sort -u -o "$LIVE" "$LIVE"
-say "live uuids (excluded): $(wc -l < "$LIVE")"
+say "live uuids (excluded): $(wc -l < "$LIVE" | tr -d ' ')"
 
 [ "$SUBAGENTS" = 1 ] || [ -f "$HID" ] || { echo "no hide list at $HID — nothing to do"; exit 0; }
 
@@ -104,12 +111,12 @@ if [ "$SUBAGENTS" = 1 ]; then
     head -c 4096 "$src" 2>/dev/null | grep -q '"isSidechain":true' || continue
     u="$(basename "$src" .jsonl)"
     if grep -qxF "$u" "$LIVE"; then n_live=$((n_live+1)); continue; fi
-    sz="$(stat -c '%s' "$src" 2>/dev/null || echo 0)"
+    sz="$(cc_size0 "$src")"
     dst="$ARCHIVE/subagents/$(basename "$(dirname "$src")")/$(basename "$src")"
     printf '%s\t%s\t%s\t%s\t%s\n' "$u" "subagent" "$src" "$sz" "$dst" >> "$PLAN"
     n_arch=$((n_arch+1)); bytes=$((bytes+sz))
   done < <(find -P "$CL" -name '*.jsonl' -mmin "+$AGE_MIN" 2>/dev/null)
-  n_young=$(find -P "$CL" -name '*.jsonl' -mmin "-$AGE_MIN" 2>/dev/null | wc -l)
+  n_young=$(find -P "$CL" -name '*.jsonl' -mmin "-$AGE_MIN" 2>/dev/null | wc -l | tr -d ' ')
   say ""
   say "PLAN:"
   say "  archive      : $n_arch files  ($(awk -v b=$bytes 'BEGIN{printf "%.1f", b/1048576}') MB)"
@@ -131,7 +138,7 @@ while read -r u; do
     src="$(find -P "$CX" -name "*${u}*.jsonl" 2>/dev/null | head -1)"; eng=codex
   fi
   if [ -z "$src" ]; then n_orphan=$((n_orphan+1)); continue; fi
-  sz="$(stat -c '%s' "$src" 2>/dev/null || echo 0)"
+  sz="$(cc_size0 "$src")"
   # mirror the source layout under the archive so restore is an exact reverse
   case "$eng" in
     claude) dst="$ARCHIVE/claude/$(basename "$(dirname "$src")")/$(basename "$src")" ;;
