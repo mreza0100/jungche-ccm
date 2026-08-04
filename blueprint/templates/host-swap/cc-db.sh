@@ -247,11 +247,11 @@ cmd_primary_get() {
   local n=""
   have_db && n="$(_q "SELECT val FROM meta WHERE key='primary_account';")"
   [ -n "$n" ] || n="$(cat "$LEG_PRIM" 2>/dev/null)"
-  case "$n" in 1|2|3|4) printf '%s\n' "$n" ;; *) printf '1\n' ;; esac
+  case "$n" in 1|2|3) printf '%s\n' "$n" ;; *) printf '1\n' ;; esac
 }
 cmd_primary_set() {
   local n="${1:?account}"
-  case "$n" in 1|2|3|4) ;; *) echo "account must be 1-4" >&2; return 2 ;; esac
+  case "$n" in 1|2|3) ;; *) echo "account must be 1-3" >&2; return 2 ;; esac
   have_db && _q "INSERT INTO meta(key,val,updated_at) VALUES('primary_account','$n',$NOW)
                  ON CONFLICT(key) DO UPDATE SET val='$n',updated_at=$NOW;"
   # keep the legacy file in lockstep: the statusline and other readers still consult it

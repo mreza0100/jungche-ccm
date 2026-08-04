@@ -145,7 +145,7 @@ for sockpath in "$TMUXDIR"/cc-* "$TMUXDIR"/cx-*; do
         # the 🔖+badge statusline anchor, exactly as chat.sh resolves labels (badge, not 🌿:
         # a labeled chat outside a repo renders no 🌿 and would go unaddressable)
         lbl="$(tmux -S "$sockpath" capture-pane -t "$pane" -p -J 2>/dev/null \
-               | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 \
+               | grep -F '🔖' | grep -E '🥇|🥈|🥉' | tail -1 \
                | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
         [ -n "$lbl" ] || continue
         lbl="${lbl:0:$MAXLEN}"

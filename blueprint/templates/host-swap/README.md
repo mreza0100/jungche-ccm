@@ -60,7 +60,7 @@ refresh — no separate marker to keep in sync.
 |------|-------------|---------|
 | `install.sh` | — | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo |
 | `cc-portable.sh` | `~/.claude/bin/cc-portable.sh` | the GNU/BSD seam — every question whose answer differs between Linux and macOS (`stat`, `date`, `find -printf`, `flock`, `setsid`, `timeout`, `free`, `ss`, `/proc`) is asked here once, so the rest of the bundle is written twice-free. Sourced, not run |
-| `cc-fleet.zsh` | sourced from `~/.zshrc` | the whole fleet: `cc`/`cc1`…`cc4` launchers (each its own tmux server), `cc-swap`, and the `cc-ls` picker |
+| `cc-fleet.zsh` | sourced from `~/.zshrc` | the whole fleet: `cc`/`cc1`…`cc3` launchers (each its own tmux server), `cc-swap`, and the `cc-ls` picker |
 | `cc-db.sh` | `~/.claude/bin/cc-db.sh` | the fleet's state store — one SQLite database at `~/.cc/fleet.db` holding the hide list, the primary account, spawned children, the chat index and the swap log |
 | `cc-hide.sh` | `~/.claude/bin/cc-hide.sh` | `/bb`'s engine — hide this chat from `cc-ls` then close it; **pane-aware**: kills only its own pane (never the shared server) and reaps the teammates it spawned |
 | `cx-hide.sh` | `~/.claude/bin/cx-hide.sh` | the **Codex** twin of `cc-hide.sh` — `/bb` for a `cx-*` chat, identified by rollout cwd since Codex passes no tmux context to its tool shell |
