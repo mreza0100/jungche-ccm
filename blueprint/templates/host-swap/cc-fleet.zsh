@@ -608,15 +608,37 @@ _cc_open_gate() {
   return 0
 }
 
-# _cc_ago <epoch> — compact relative age: 5s / 20m / 4h / 3d ago
-_cc_ago() {
-  # $EPOCHSECONDS (zsh/datetime), never `date +%s` — this runs once per row
-  local now=${EPOCHSECONDS:-0}; (( now == 0 )) && now=$(date +%s)
-  local d=$(( now - $1 )); (( d < 0 )) && d=0
-  if   (( d < 60 ));    then echo "${d}s ago"
-  elif (( d < 3600 ));  then echo "$(( d / 60 ))m ago"
-  elif (( d < 86400 )); then echo "$(( d / 3600 ))h ago"
-  else                       echo "$(( d / 86400 ))d ago"
+# _cc_cachew <uuid> <fallback-epoch> [ttl] — the prompt-cache window this chat's NEXT turn lands
+# in: the picker's twin of the statusline's 💾 segment, and the last column of every row.
+#   ✓12m  green — attach or resume now and the turn still hits the cache
+#   ✗3h   red   — the window closed; the next turn re-reads the whole context at full freight
+#   12m   dim   — no anchor to read: a plain AGE, never a cache claim (Codex rows, background
+#                 agents, chats whose statusline never cached an anchor). Our blind spot renders
+#                 as what we do know, because ✗ is a claim about the chat and this is not one.
+# The anchor is the statusline's own /tmp/cc-sl-anchor-<uuid> — the newest main-chain `user`
+# record, i.e. the request that armed the window — read as a file, so a row costs no scan and
+# inherits the statusline's correctness rules. A transcript's MTIME is NOT an anchor: CC rewrites
+# transcripts on a flush timer with no request behind them, which would re-arm a dormant chat's
+# window on a free write. A stale anchor only ever under-states warmth (its own chat's statusline
+# refreshes it every few seconds), so ✓ is never a false promise — wrong in the safe direction.
+# Sets REPLY (plain text, so the caller's ${(r:N:)} padding stays true) and REPLY_C (its colour).
+_cc_cachew() {
+  local u="${1:-}" mt="${2:-0}" ttl="${3:-3600}" a="" d g=""
+  local now=${EPOCHSECONDS:-0}; (( now == 0 )) && now=$(date +%s)   # zsh/datetime, never a `date` fork — this runs once per row
+  REPLY_C=$'\e[2m'                                   # dim = age, no verdict
+  [[ -n "$u" && -r "/tmp/cc-sl-anchor-$u" ]] && { a="$(<"/tmp/cc-sl-anchor-$u")"; a="${a##* }"; }
+  if [[ -z "$a" || "$a" == - ]]; then                # "-" = the statusline scanned and found nothing
+    d=$(( now - mt ))
+  else
+    d=$(( ttl - ( now - a ) ))
+    if (( d > 0 )); then g="✓"; REPLY_C=$'\e[32m'
+    else                g="✗"; REPLY_C=$'\e[31m'; d=$(( -d )); fi
+  fi
+  (( d < 0 )) && d=0
+  if   (( d < 60 ));    then REPLY="${g}${d}s"
+  elif (( d < 3600 ));  then REPLY="${g}$(( d / 60 ))m"
+  elif (( d < 86400 )); then REPLY="${g}$(( d / 3600 ))h"
+  else                       REPLY="${g}$(( d / 86400 ))d"
   fi
 }
 
@@ -938,7 +960,7 @@ cc-open() {
 # store (~/.codex/sessions) → every user thread no live codex holds open becomes a
 # `codex resume <id>` entry. Deduped by transcript (each tmux maps to one transcript; most
 # transcripts have no tmux).  ● = live · ↻ = resumable.
-# Columns: project │ name (/rename tag, or last/first prompt) │ prompts │ size │ age.
+# Columns: project │ name (/rename tag, or last/first prompt) │ prompts │ size │ cache window.
 # Default: orphans hidden + recent resumables; -a shows ALL. ⌃T re-sorts recent⇄size. Enter acts · Esc.
 cc-ls() {
   local dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)" siddir=/tmp/cc-sid store="$HOME/.claude/projects"   # tmux appends /tmux-$UID to TMUX_TMPDIR
@@ -950,7 +972,7 @@ cc-ls() {
   local cxrl cxid cxnm cxct cxbytes cxmt cxst cxpp cxcwd1 cxst1                # live Codex row scratch
   prim="$(_cc_primary)"   # for the birth-account ≠ mark on live rows (border shows the live value)
   local cf="$siddir/.namecache.v5" cmeta rest cwd nm ct uuid u lmt stt   # bump vN if _cc_meta logic changes
-  local -a ptp; local panes pbc pane_ mnm mu mst mmeta mmax ma            # split-window (⊞) merging
+  local -a ptp; local panes pbc pane_ mnm mu mst mmeta mmax mnewu ma      # split-window (⊞) merging
   local all=0 onlyhidden=0 hidden=0 strict=1   # strict = apply hide/orphan/cap filters (default only)
   # row palette (fzf --ansi): leading glyph = kind — ● live · ↻ resume · ⚙ agent · ✦ new
   local X0=$'\e[0m' Xd=$'\e[2m' Xb=$'\e[1m' Xc=$'\e[36m' Xg=$'\e[32m' Xy=$'\e[33m' Xm=$'\e[35m' Xu=$'\e[34m'
@@ -1076,9 +1098,12 @@ cc-ls() {
         [[ "$att" == "1" ]] && marks+="  ${Xg}⇄${X0}"; [[ "$sock" == "$cursock" ]] && marks+="  ${Xg}← here${X0}"
         (( all && hideskip )) && marks+="  ${Xd}·hidden${X0}"
         agets="${cxmt:-$epoch}"             # age = last rollout write; tmux birth only when unresolved
+        # Codex ids own no statusline anchor, so this always lands on the dim-age branch — the
+        # Anthropic prompt-cache window is a Claude fact and a ✓/✗ here would be inventing one.
+        _cc_cachew "$cxid" "$agets"
         # name column in magenta — the engine tint (matches the ⬢-new row and ⚙ agent tag), so
         # codex rows read apart from Claude's at a glance
-        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xm}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${cxct}p}} │ ${(l:6:)$(_cc_hsize "${cxbytes:-0}")} │ ${(r:8:)$(_cc_ago "$agets")}${X0}${marks}"
+        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xm}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${cxct}p}} │ ${(l:6:)$(_cc_hsize "${cxbytes:-0}")} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
         rows+=("${proj}"$'\t'"${cxct}"$'\t'"${agets}"$'\t'"L"$'\t'"${sock}"$'\t'"${name}"$'\t'"${label}"$'\t'"${cxid}")
         continue
       fi
@@ -1095,7 +1120,7 @@ cc-ls() {
       done
       bytes=0; hsize="-"; tpath=""; ct=0; lmt=""; nm=""; acct=""
       if (( ${#ptp} >= 2 )); then           # ⊞ merged split-window row (hide/⌃X not applied — it's live)
-        mnm=""; mmax=0
+        mnm=""; mmax=0; mnewu=""
         for tpath in "${ptp[@]}"; do
           [[ -n "$tpath" ]] || continue
           mu="${tpath:t:r}"; live[$mu]=1
@@ -1103,7 +1128,7 @@ cc-ls() {
           [[ -r "$tpath" ]] || continue
           _cc_stat "$tpath"; mst="$REPLY"
           bytes=$(( bytes + ${mst%% *} ))
-          (( ${mst##* } > mmax )) && mmax="${mst##* }"
+          (( ${mst##* } > mmax )) && { mmax="${mst##* }"; mnewu="$mu"; }   # the split's most recently active chat owns the cache cell
           _cc_metac "$mu" "$tpath" "${mst##* }" "${mst%% *}"; mmeta="$REPLY"
           ct=$(( ct + ${mmeta##*$'\t'} ))
           nm="${${mmeta#*$'\t'}%%$'\t'*}"; [[ -z "$nm" ]] && nm="?"
@@ -1120,7 +1145,9 @@ cc-ls() {
         fi
         [[ "$att" == "1" ]] && marks+="  ${Xg}⇄${X0}"; [[ "$sock" == "$cursock" ]] && marks+="  ${Xg}← here${X0}"
         nt=""; [[ "$acct" == *4* ]] && nt="$Xg"
-        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$bytes")} │ ${(r:8:)$(_cc_ago "$agets")}${X0}${marks}"
+        lc1h="$(_cc_c1h_tty "$ttylist")"   # the split shares one server, so one birth mode
+        _cc_cachew "$mnewu" "$agets" "$(( lc1h ? 3600 : 300 ))"
+        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$bytes")} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
         rows+=("${proj}"$'\t'"${ct}"$'\t'"${agets}"$'\t'"L"$'\t'"${sock}"$'\t'"${name}"$'\t'"${label}")
         continue
       fi
@@ -1187,7 +1214,8 @@ cc-ls() {
       [[ "$att" == "1" ]] && marks+="  ${Xg}⇄${X0}"; [[ "$sock" == "$cursock" ]] && marks+="  ${Xg}← here${X0}"
       (( all && hideskip )) && marks+="  ${Xd}·hidden${X0}"   # tag still-hidden ones in -a
       nt=""; [[ "$acct" == *4* ]] && nt="$Xg"
-      label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)hsize} │ ${(r:8:)$(_cc_ago "$agets")}${X0}${marks}"
+      _cc_cachew "$uuid" "$agets" "$(( lc1h ? 3600 : 300 ))"   # TTL is the chat's BIRTH mode: flagless = 1h, FORCE_PROMPT_CACHING_5M=1 = 5m
+      label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)hsize} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
       rows+=("${proj}"$'\t'"${ct}"$'\t'"${agets}"$'\t'"L"$'\t'"${sock}"$'\t'"${name}"$'\t'"${label}"$'\t'"${uuid}"$'\t'"${acct}"$'\t'"${lc1h}")   # f8 = transcript uuid (⌃X hides) · f9 = birth account · f10 = born-with-⚡1h (Enter's reboot gate)
     done <<< "$tls"
   done
@@ -1284,7 +1312,12 @@ cc-ls() {
     # because only the bg one can ever be suppressed. `-a` still shows everything.
     if (( strict && ! isagent )) && [[ -n "${SEEN[${dispname}$'\x1f'${proj}]}" ]] && _cc_isbg "$fp"; then hidden=$((hidden+1)); continue; fi
     SEEN[${dispname}$'\x1f'${proj}]=1
-    label="${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${(r:30:)dispname} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$sz")} │ ${(r:8:)$(_cc_ago "$mt")}${X0}"
+    # A dead chat's process is gone, so its birth mode is unknowable — take the SHORT window.
+    # The entry Anthropic holds was written with the TTL of the last request, and every chat this
+    # fleet launches carries FORCE_PROMPT_CACHING_5M=1 unless ⚡ armed it. Assuming 1h here would
+    # paint ✓ on a chat whose 5m window shut 55 minutes ago — a green that costs real money.
+    _cc_cachew "$uuid" "$mt" 300
+    label="${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${(r:30:)dispname} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$sz")} │ ${REPLY_C}${(r:6:)REPLY}${X0}"
     if (( isagent )); then
       acct="$(_cc_acct "$acfg")"            # birth account (no ≠ — a takeover resumes under the primary anyway)
       label="${Xm}⚙${X0} $label  ${Xm}agent${X0}"; [[ -n "$acct" ]] && label="$label ${Xd}$(_cc_medal $acct)${X0}"
@@ -1332,7 +1365,8 @@ cc-ls() {
       dispname="⬢ ${nm:-(no prompt)}"; (( ${#dispname} > 30 )) && dispname="${dispname[1,29]}…"
       proj="${cwd:t}"; [[ -z "$proj" ]] && proj="?"
       [[ -n "$proj" && -z "${PROJDIR[$proj]}" && -d "$cwd" ]] && PROJDIR[$proj]="$cwd"   # dir for ⌃R-aware ✦ new-chat
-      label="${Xd}↻${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xm}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$sz")} │ ${(r:8:)$(_cc_ago "$mt")}${X0}"   # magenta name = codex, like the live rows
+      _cc_cachew "$uuid" "$mt"   # codex id → dim age, same as the live ⬢ rows
+      label="${Xd}↻${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xm}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$sz")} │ ${REPLY_C}${(r:6:)REPLY}${X0}"   # magenta name = codex, like the live rows
       (( all && hideskip )) && label="$label  ${Xd}·hidden${X0}"
       rows+=("${proj}"$'\t'"${ct}"$'\t'"${mt}"$'\t'"X"$'\t'"${uuid}"$'\t'"${cwd}"$'\t'"${label}")   # X = codex resume · f6 = thread's home dir
       cxshown=$((cxshown+1))
@@ -1419,7 +1453,7 @@ printf ' tmux + Claude/Codex chats · cc → %s acct %s (⌃S) · %s (⌃E) ' "$
 LBL
 
   # two-line header: actions on top, glyph legend below (was one long noisy line)
-  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex · 🍀 GPT · ⇄ attached'
+  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex · 🍀 GPT · ⇄ attached · last col 💾 ✓warm ✗cold (dim = age)'
   local blabel="$(sh "$tmpd/label.sh" "$tmpd/1h")"
   if (( onlyhidden )); then
     hdr=$'HIDDEN only — ⌃X restores\n⏎ open · 🔄⌃R rotate'; blabel=' hidden chats · ⌃X restore '
