@@ -191,6 +191,11 @@ export const expectedGateSweep = ({
 // ── securityAuditor (source line 488) ── D2 SECURITY FAN-OUT (audit 2026-07-28), a deliberate
 // divergence replacing the single whole-diff auditor: one auditor per changed-file slice, full set as
 // cross-file context, filesOpened/filesSkipped honesty fields, and the D4 producer-verification clause.
+// PROJECT PROFILE (universal-bundle refactor) — the category emphasis is a generic constant (the 8A-8K
+// taxonomy's own deepest-pass categories, no domain claim); securityStakesLine (args.project) supplies
+// the leading sacred-data framing sentence when present, absent otherwise.
+const SECURITY_CATEGORY_EMPHASIS =
+  'Sensitive data (8F), auth (8C), API surface (8D), LLM/prompt (8E) get the deepest pass.';
 export const expectedSecurityAuditor = ({
   securityDoc,
   clusterFiles,
@@ -199,6 +204,7 @@ export const expectedSecurityAuditor = ({
   clusterCount,
   branch,
   mergeShas,
+  securityStakesLine,
 }: {
   securityDoc: string;
   clusterFiles: string[];
@@ -207,6 +213,7 @@ export const expectedSecurityAuditor = ({
   clusterCount: number;
   branch: string | null;
   mergeShas: string[];
+  securityStakesLine?: string;
 }): string =>
   'You are a WAVE SECURITY AUDITOR (slice ' +
   (clusterIndex + 1) +
@@ -222,7 +229,10 @@ export const expectedSecurityAuditor = ({
   (branch
     ? 'Diff: main...' + branch + '.'
     : 'Merge SHAs: ' + JSON.stringify(mergeShas || []) + '.') +
-  " Therapy data is sacred — PHI (8F), auth (8C), GraphQL (8D), LLM/prompt (8E) get the deepest pass. A guard or fix claiming to handle a response/error/message SHAPE is verified against the code that EMITS that shape — open the producer; a test's fabricated envelope is never evidence. Report ONLY defects the diff introduced or worsened; a pre-existing issue you trip over goes into summary as one line (category + location), never a finding. filesOpened lists every file you ACTUALLY read; categoriesSwept names every category you ACTUALLY swept — honesty over completeness." +
+  ' ' +
+  (securityStakesLine ? securityStakesLine + ' — ' : '') +
+  SECURITY_CATEGORY_EMPHASIS +
+  " A guard or fix claiming to handle a response/error/message SHAPE is verified against the code that EMITS that shape — open the producer; a test's fabricated envelope is never evidence. Report ONLY defects the diff introduced or worsened; a pre-existing issue you trip over goes into summary as one line (category + location), never a finding. filesOpened lists every file you ACTUALLY read; categoriesSwept names every category you ACTUALLY swept — honesty over completeness." +
   RO +
   ' Structured output: findings (Expected/Got), categoriesSwept, filesOpened, filesSkipped, summary.';
 

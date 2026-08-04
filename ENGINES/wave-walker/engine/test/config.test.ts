@@ -525,3 +525,35 @@ describe('Configs — debug (WALK TELEMETRY debug step)', () => {
     expect(new Configs({ goal: 'g' }).DEBUG_PATH).toBeNull();
   });
 });
+
+// PROJECT PROFILE (universal-bundle refactor) — securityStakesLine mirrors stakesLine exactly: an
+// optional string field on ProjectProfile, validated by parseProject's shared `str()` helper (absent →
+// undefined, the floor; wrong type → throws loudly, same discipline as every other project.* field).
+describe('Configs — PROJECT PROFILE securityStakesLine (args.project)', () => {
+  it('undefined when args.project is absent', () =>
+    expect(new Configs({ reportPath: 'r.md' }).PROJECT).toBeUndefined());
+  it('carries a supplied securityStakesLine verbatim, alongside stakesLine', () => {
+    const c = new Configs({
+      reportPath: 'r.md',
+      project: { stakesLine: 'a dead line', securityStakesLine: 'Therapy data is sacred' },
+    });
+    expect(c.PROJECT?.stakesLine).toBe('a dead line');
+    expect(c.PROJECT?.securityStakesLine).toBe('Therapy data is sacred');
+  });
+  it('defaults to undefined when the profile omits it (other fields still parse)', () => {
+    const c = new Configs({ reportPath: 'r.md', project: { repoRoot: 'apps/backend' } });
+    expect(c.PROJECT?.securityStakesLine).toBeUndefined();
+    expect(c.PROJECT?.repoRoot).toBe('apps/backend');
+  });
+  it('throws on a wrong-type securityStakesLine, same as stakesLine\'s own validation', () => {
+    expect(
+      () => new Configs({ reportPath: 'r.md', project: { securityStakesLine: 42 } }),
+    ).toThrow(/args\.project\.securityStakesLine must be a string/);
+    expect(
+      () => new Configs({ reportPath: 'r.md', project: { securityStakesLine: ['x'] } }),
+    ).toThrow(/args\.project\.securityStakesLine must be a string/);
+    expect(
+      () => new Configs({ reportPath: 'r.md', project: { stakesLine: 42 } }),
+    ).toThrow(/args\.project\.stakesLine must be a string/);
+  });
+});

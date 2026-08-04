@@ -128,6 +128,12 @@ export interface SecurityAuditorArgs {
   clusterCount: number;
   branch: string | null;
   mergeShas: string[];
+  // args.project.securityStakesLine (config.ts CONFIG.PROJECT) — the profile-supplied sacred-data
+  // framing clause (e.g. a domain's own "X is sacred" sentence); absent → the prompt names only the
+  // universal 8A-8K category weighting, no domain claim (the last hardcoded domain string this project
+  // profile refactor genericized — prompts.ts used to open every linked project's auditor with the
+  // seeding project's own sacred-data framing sentence).
+  securityStakesLine?: string;
 }
 
 // ── anomalyJudge — one call per chunk-of-6 same-rule anomalies (source lines 608-620) ──

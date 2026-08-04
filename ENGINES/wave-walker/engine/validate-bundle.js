@@ -96,26 +96,45 @@ for (const [re, label] of FORBIDDEN) {
 //    here means some site still hardcodes one project's vocabulary into text that ships to every caller —
 //    fail loud, name the term, never let it silently ship.
 //
+// Entries are STEMS, not whole words — a bare 'therapist' missed 'Therapy' (the actual regression this
+// stemming closes: the bundle shipped "Therapy data is sacred" and the old denylist, knowing only the
+// person-noun inflection, never saw it). A plain string entry matches as a case-insensitive SUBSTRING
+// ('therap' catches therapist/therapy/therapeutic; 'supervis' catches supervisor/supervision/supervise —
+// sibling derivations off one root that don't nest as substrings of each other, same gap class as
+// therapist/therapy). `{ term, word: true }` entries instead match on a case-insensitive WORD BOUNDARY —
+// required for short/generic-looking acronyms like PHI, where a substring rule would false-positive on
+// ordinary prose (this very engine's source says "same philosophy as isGateRelevant" — a naive
+// `includes('phi')` would fail every build on that false positive).
+//
 // The source-project brand term and its maintainer's home-path prefix are built by string concatenation
 // below, not spelled literally: the source repo's own leak gate scans this very file, and a literal hit
 // here would trip that gate on generic engine tooling that merely NAMES the term as a denylist entry (not
 // project residue). Concatenation keeps this guard's runtime behavior byte-identical — same terms, same
-// case-insensitive `lowerSrc.includes()` check, same failure message — without the file containing either
-// literal string.
+// case-insensitive check, same failure message — without the file containing either literal string. The
+// other stems below (therap, clinic, patient, supervis) and the new phi/hipaa entries were checked against
+// that same leak gate's own pattern and do NOT trip it, so they stay plain literals.
 const LEAK_TERMS = [
   ['int', 'uita'].join(''),
-  'therapist',
+  'therap',
   'clinic',
   'patient',
-  'supervisor',
+  'supervis',
   'drizzle',
   'expo router',
   'cortex',
+  { term: 'phi', word: true },
+  'hipaa',
   '/home/' + ['re', 'za'].join(''),
 ]
 const lowerSrc = src.toLowerCase()
-for (const term of LEAK_TERMS) {
-  if (lowerSrc.includes(term))
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+for (const entry of LEAK_TERMS) {
+  const word = typeof entry === 'object' && entry.word === true
+  const term = word ? entry.term : entry
+  const hit = word
+    ? new RegExp('\\b' + escapeRe(term) + '\\b').test(lowerSrc)
+    : lowerSrc.includes(term)
+  if (hit)
     fail(
       'bundle leaks project-specific term "' +
         term +

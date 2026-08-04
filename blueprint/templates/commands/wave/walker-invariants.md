@@ -1,14 +1,52 @@
 ---
 name: wave:walker-invariants
-description: The wave walker's invariant registry — durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
+description: The wave walker's project config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
 ---
 
-# Wave Walker — Invariant Registry
+# Wave Walker — Project Config & Invariant Registry
 
-> This ships with ONE illustrative entry. Replace it with YOUR project's real cross-cutting invariants —
-> the sacred rules, frozen-record classes, lifecycle state machines, and fail-closed guards a diff-scoped
-> walk can't see. A registry that only holds the example arms nothing (the example's exemplar list is
-> empty, so it stays a floor); it is here to teach the format, not to seed real coverage.
+> Everything about the wave walker that is specific to THIS project lives here: the engine's script
+> path and profile in § Engine Config, and the invariant registry below it. `walker.md` is the manual
+> — identical in every install; this file is the config — different in every install.
+>
+> The registry ships with ONE illustrative entry. Replace it with YOUR project's real cross-cutting
+> invariants — the sacred rules, frozen-record classes, lifecycle state machines, and fail-closed guards
+> a diff-scoped walk can't see. A registry that only holds the example arms nothing (the example's
+> exemplar list is empty, so it stays a floor); it is here to teach the format, not to seed real coverage.
+
+## § Engine Config
+
+Written once at install. Every caller reads this section and passes both values verbatim — the engine bundle is universal and carries none of it.
+
+**Script path** — the built bundle, one copy per machine, never copied into this repo:
+
+```
+{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine/dist/workflow.js
+```
+
+Absolute, because the Workflow harness does not expand `~` (a tilde path resolves against the repo root). The clone's `git pull` is this file's whole update story; the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner and any hand edit is overwritten by the next `npm run build` in `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`.
+
+**Profile (`args.project`)** — passed on every invocation, all modes:
+
+```json
+{
+  "repoRoot": ".",
+  "authDoc": "{BACKEND_PROJECT}/CLAUDE.md § Auth Pattern",
+  "authRuleFallback": "<verbatim declared copy of the live auth rule — re-sync on any edit to that section>",
+  "authRuleMustContain": ["<tokens a usable scout extract must contain, e.g. the two role names>"],
+  "roles": { "owner": "<owner-scoped role name>", "elevated": "<org-wide elevated role name>" },
+  "resourceClasses": ["<full sensor-card enum for this domain>", "user", "other"],
+  "fencedResourceClasses": ["<the subset the ownership-fence rule protects>"],
+  "fenceLabels": { "org": "<org-scope fence name>", "ownership": "ownershipFence" },
+  "gateResolverPattern": "{BACKEND_PROJECT}/src/.*/resolvers/",
+  "gateSurfacePattern": "{BACKEND_PROJECT}/src/(auth|api|application)/",
+  "deadnessSurfaces": "<the registry-style consumers a static import-grep misses in this project>",
+  "stakesLine": "<one sentence naming what a false 'dead' verdict costs in this domain>",
+  "securityStakesLine": "<optional — this domain's own 'X is sacred' framing clause for the security auditor; omit for the generic category-only default>"
+}
+```
+
+An absent profile — or an invalid gate regex — makes the gate machinery (gate sweeps, R6/R7, fence rules) report `gates: SKIPPED — no project profile supplied` (or `— invalid gate pattern: <err>`) in Coverage and telemetry: loud, never silent. The thread walk, security fan-out, hygiene, and panel modes run fully regardless.
 
 ## § Registry Format
 

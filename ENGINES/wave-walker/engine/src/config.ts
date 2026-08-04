@@ -498,6 +498,7 @@ export class Configs {
       gateSurfacePattern: str(p.gateSurfacePattern, 'gateSurfacePattern'),
       deadnessSurfaces: str(p.deadnessSurfaces, 'deadnessSurfaces'),
       stakesLine: str(p.stakesLine, 'stakesLine'),
+      securityStakesLine: str(p.securityStakesLine, 'securityStakesLine'),
     };
   }
 
