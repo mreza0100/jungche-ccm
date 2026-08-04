@@ -1,21 +1,21 @@
 ---
 name: wave:schedule
-description: Wave scheduler — sole writer of root wave.md. Collects every QUEUED /wave:refine spec from docs/dev/waves/queue/, builds the cross-spec dependency + conflict graph, gets founder rulings on conflicts and the train map, and emits ONE consolidated dependency-ordered wave train for /wave:orchestrator. Subcommand `rebalance` re-maps unstarted waves when a live lane-mapped train's queues go lopsided. Triggers: "schedule the waves", "/wave:schedule", "/wave:schedule rebalance", "build the train".
+description: Wave scheduler — owner of root wave.md, the between-trains task stub. Collects every QUEUED /wave:refine spec from docs/dev/waves/queue/, builds the cross-spec dependency + conflict graph, gets founder rulings on conflicts and the train map, and emits ONE consolidated dependency-ordered wave train for /wave:orchestrator. Subcommand `rebalance` re-maps unstarted waves when a live lane-mapped train's queues go lopsided. Triggers: "schedule the waves", "/wave:schedule", "/wave:schedule rebalance", "build the train".
 ---
 
 # Schedule — Wave Train Scheduler
 
 > Refine specifies, schedule sequences, orchestrator executes. N independently-refined specs become ONE conflict-free, dependency-ordered, aggressively-batched train.
 
-**Trigger:** `/wave:schedule` — no args. Run S0 → S4 in order; every gate blocks. A single-spec queue runs the same protocol (S1–S2 trivial, S3 one question).
+**Trigger:** `/wave:schedule` — run S0 → S4 in order; every gate blocks. A single-spec queue runs the same protocol (S1–S2 trivial, S3 one question). `rebalance` runs § Rebalance instead.
 
 ## Division of labor
 
 - `/wave:refine` writes ZERO-GAP specs to `docs/dev/waves/queue/{YYYY-MM-DD}-{slug}.md` — each R4-founder-approved, each blind to the others.
 - `/wave:schedule` sequences: ordering, batching, conflict resolution, staleness triage. It NEVER authors or rewrites spec content — task bodies copy byte-identical; its only pen is wave header blocks, sequential task renumbering (with every in-spec `#N` reference remapped), and reconciliation tables. A needed content change routes BACK to `/wave:refine` as a delta.
-- `/wave:orchestrator` executes root `wave.md` unchanged — it never reads the queue.
+- `/wave:orchestrator` executes root `wave.md` unchanged and never reads the queue; its § O1 whole-train split resets the file to the `# Tasks` stub.
 
-Root `wave.md` is written by THIS command ONLY.
+Root `wave.md` is that stub between trains, and this command is its only author.
 
 ## S0 — Lock + intake
 
@@ -31,9 +31,9 @@ One `Explore` (Sonnet) reader per spec returns per-partition cards (whole spec =
 ## S2 — Graph (frontier judgment + walker verification)
 
 - **Dependencies:** explicit `Depends` + inferred producer→consumer (a partition consuming a symbol/file/table another partition creates or reshapes) → edges for the topo sort.
-- **Staleness — walker claims panel, never hand-judged:** each touched anchor becomes a refute-first claim ("this spec's premise at {anchor} still holds on main") for `Workflow({ scriptPath: '{REPO_ROOT}/.claude/workflows/wave-walker.js', args: { claims } })` — scriptPath, never `{name}` (stale snapshot). REFUTED = structural drift → **RE-REFINE** flag carrying the panel's evidence — a stale spec is never silently patched here; survived = cosmetic → note for the orchestrator's O2 reconcile.
+- **Staleness — walker claims panel, never hand-judged:** each touched anchor becomes a refute-first claim — `{ id, statement: "this spec's premise at {anchor} still holds on main", files }` — for `Workflow({ scriptPath: '{REPO_ROOT}/.claude/workflows/wave-walker.js', args: { claims } })` — scriptPath, never `{name}` (stale snapshot). REFUTED = structural drift → **RE-REFINE** flag carrying the panel's evidence — a stale spec is never silently patched here; survived = cosmetic → note for the orchestrator's O2 reconcile.
 - **Overlap pairs** (any shared file/symbol/table across specs), graded: `INDEPENDENT` (orthogonal symbols → ordering constraint only) · `COMPOSABLE` (stackable — sequence them; the later partition inherits the earlier's deltas via O2 reconcile, noted in its wave header) · `CONFLICTING` (contradictory intent on one feature/surface — e.g. one spec adjusts what another redesigns). Same-FUNCTION overlap (two specs editing one hot function body) is graded explicitly — COMPOSABLE at best, its SYNC conflict named in the later wave's header, never left for the second lane's SYNC to discover.
-- **Draft-train MANIFEST-VERIFY:** assemble the candidate train at `tmp/wave-schedule/{train-name}-draft.md` (full S4 dialect), then run the walker panel on it — `args: { manifestPath: '{draft path}' }`. Once the specs sit in ONE manifest its consistency judge covers cross-spec conflicts natively: fold returned `conflicts` into the CONFLICTING set, refuted premises into RE-REFINE, and flag freeloader tasks for the gate. Leave `maxClaims` at its default (96) — the extractor covers every spec breadth-first, and returned `droppedClaimIds` must come back empty (a dropped spec = an unchecked premise); per-wave claim depth stays the orchestrator's O2 MANIFEST-VERIFY at cut time.
+- **Draft-train MANIFEST-VERIFY:** assemble the candidate train at `tmp/wave-schedule/{train-name}-draft.md` (full S4 dialect), then run the walker panel on it — `args: { manifestPath: '{draft path}' }`. Once the specs sit in ONE manifest its consistency judge covers cross-spec conflicts natively: fold returned `conflicts` into the CONFLICTING set, refuted premises into RE-REFINE, and flag freeloader tasks for the gate. Leave `maxClaims` at its default — the extractor covers every spec breadth-first, and returned `droppedClaimIds` must come back empty (a dropped spec = an unchecked premise); per-wave claim depth stays the orchestrator's O2 MANIFEST-VERIFY at cut time.
 
 ## S3 — Founder gate (ALWAYS — never auto-emit)
 
@@ -49,11 +49,11 @@ Present in ONE message: a mermaid train map (waves as nodes tagged Touches, depe
 
 ## Rebalance — mid-train re-entry (lane-mapped trains only)
 
-Lane-mapped is the LEGACY dialect — read for trains predating pool, S3 draws no new lane maps; pool trains assign at dispatch and never rebalance. `/wave:schedule rebalance`: when a live lane-mapped train's queues go lopsided (one lane dry or ending while a sibling holds ≥2 unstarted waves), re-map UNSTARTED waves only — every S3 grade and merged-`Depends:` edge holds, task bodies and numbering untouched, a started wave never moves. Before moving any wave, grep the delta for cross-wave PAIRED tasks — one side removing or renaming what the other side cleans up or consumes; a split pair moves TOGETHER, or the removal side gains the minimal unbreak in-wave. The delta table (wave → old lane → new lane → why safe) is WATCHER-ruled — grades + Depends held is mechanical verification, and the ruling lands in the decision ledger for the founder, who can pull any gate to himself; on approval the ORCHESTRATOR applies the delta — re-stamps `**Lane:**` in the affected manifests (the one sanctioned post-split manifest edit) + rewrites lanes.md; schedule writes nothing mid-train.
+Lane-mapped is the LEGACY dialect (trains predating pool); pool trains assign at dispatch and never rebalance. `/wave:schedule rebalance`: when a live lane-mapped train's queues go lopsided (one lane dry or ending while a sibling holds ≥2 unstarted waves), re-map UNSTARTED waves only — every S3 grade and merged-`Depends:` edge holds, task bodies and numbering untouched, a started wave never moves. Before moving any wave, grep the delta for cross-wave PAIRED tasks — one side removing or renaming what the other side cleans up or consumes; a split pair moves TOGETHER, or the removal side gains the minimal unbreak in-wave. The delta table (wave → old lane → new lane → why safe) is WATCHER-ruled — grades + Depends held is mechanical verification, and the ruling lands in the decision ledger for the founder, who can pull any gate to himself; on approval the ORCHESTRATOR applies the delta — re-stamps `**Lane:**` in the affected manifests (the one sanctioned post-split manifest edit) + rewrites lanes.md; schedule writes nothing mid-train.
 
 ## Constraints
 
-- Files you write: root `wave.md`, queue header stamps, the lock, the `docs/dev/trains/{train-name}/` seed (dir + `train-notes.md`) — nothing else. No git (gitter law).
+- Files you write: root `wave.md`, queue header stamps, the lock, the `docs/dev/trains/{train-name}/` seed (dir + `train-notes.md`) — nothing else.
 - **Legal fence inherits from refine:** you NEVER introduce a task, clause, or routing over legal/compliance documents; a founder-owned paper-trail item in a spec is carried verbatim into your report, never into the train.
 - Task identity is sacred: every queued task traces to a train # / DROP (founder-ruled) / MERGE→re-refine / HOLD.
 - ZERO GAP never lowers: a gap found in a spec (missing section, undecided field) is a RE-REFINE flag, never something schedule fills.

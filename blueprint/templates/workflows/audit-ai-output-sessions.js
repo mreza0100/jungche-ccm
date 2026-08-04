@@ -1,6 +1,6 @@
 export const meta = {
   name: 'audit-ai-output-sessions',
-  description: 'Per-unit AI-output faithfulness audit — discover every unit with channel output, fan out one auditor per unit (data-first/code-last paired walk), then a synthesizer that quantifies failure rates and WRITES the report to .professor/AUDIT/ai-output/{date}-{channel}.md (returns only a pointer). Declared copy of audit/ai-output.md Step 3.',
+  description: 'Per-unit AI-output faithfulness audit — discover every unit with channel output, fan out one auditor per unit (data-first/code-last paired walk), then a synthesizer that quantifies failure rates and WRITES the report to .professor/AUDIT/ai-output/{date}-{channel}.md (returns only a pointer). Optional args.exclude (unit ids to skip), args.frontierModel (verdict-seat override). Declared copy of audit/ai-output.md Step 3.',
   phases: [
     { title: 'Discover', detail: 'enumerate every unit of every subject with output for the chosen channel(s)' },
     { title: 'Audit', detail: 'one auditor per unit — paired source-vs-output walk, in parallel' },

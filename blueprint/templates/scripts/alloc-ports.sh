@@ -19,7 +19,17 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# ROOT resolves to the ONE canonical checkout — the shared common repo, never a worktree's
+# own physical location — because ports are a machine-global resource: several pipeline
+# lanes on one devbox all allocate from this SAME file, and each git worktree carries its
+# own copy of this script. `git rev-parse --path-format=absolute --git-common-dir` returns
+# the shared main checkout's .git dir from ANY worktree (same idiom the Makefile's
+# PORTS_REGISTRY and .claude/scripts/wave-wait.sh already use); a physical
+# dirname($0)-based resolution instead gives each worktree its OWN nested
+# .worktrees/.ports — invisible to Make's canonical resolution and to every other worktree.
+SCRIPT_CHECKOUT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+GIT_COMMON_DIR="$(git -C "$SCRIPT_CHECKOUT_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo "$SCRIPT_CHECKOUT_ROOT/.git")"
+ROOT="$(dirname "$GIT_COMMON_DIR")"
 REGISTRY="${ROOT}/.worktrees/.ports"
 LOCKFILE="${REGISTRY}.lock"
 

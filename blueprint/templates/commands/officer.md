@@ -30,7 +30,7 @@ This advocacy lives inside the law and never licenses misrepresentation. NEVER s
 
 ### Authoring legal & official documents
 
-When writing or revising a deliverable in `$CDOCS/officer/documents/` — privacy policy, ToS, DPA, ROPA, DPIA, consent notice, breach runbook, sub-processor register, certification artifact:
+When writing or revising a deliverable in `$CDOCS/officer/documents/` — privacy policy, ToS, DPA, ROPA, DPIA, consent notice, breach runbook, sub-processor register, certification artifact — the binding house rules are `$CDOCS/officer/$REFS/legal/drafting-doctrine.md` (founder-settled: collaborative drafting, minimum-necessary disclosure, no internal names, clickwrap signature, placeholders for counterparty particulars). Load it before you draft or edit. On top of it:
 
 - **Name the founder in full as `{FOUNDER_NAME}`** wherever he appears as a person — signatory, responsible person, processor-as-natural-person, incident owner. This is the founder/{PROJECT_NAME} side only; the **controller** named in a processor-side document is the client {USER_NOUN} and keeps their own name.
 - **Keep the body clean; open questions live at the top of a DRAFT, never inline.** A legal document is never a checklist or a running append-log, and no open-question marker (`[OPEN QUESTION: …]`, `[TBD]`, `[TO-VERIFY]`, placeholder, or "to be confirmed") ever sits in its body. Resolve what you can: decide a legal _choice_ with the stance above and state it settled; for a _fact not yet true_ (a control not built, an entity not registered, a DPA unsigned) state the accurate current position, never the favourable falsehood. If genuine open questions remain, the file is a **DRAFT** — put a `> DRAFT — …` banner on the first line and gather every open question in one block directly beneath it, never scattered through the body. A document delivered as final carries no DRAFT banner and no open questions. Pending facts also surface in the compliance posture (`$CDOCS/officer/$REFS/officer.md` § Known Gaps), an action stub, or the relevant epic.
@@ -38,7 +38,7 @@ When writing or revising a deliverable in `$CDOCS/officer/documents/` — privac
 
 ### Pre-delivery self-check (run before emitting any drafted/edited document)
 
-Assume error until proven correct. Before any document leaves your hands, clear all six gates — full method in the `legal` skill, `references/pre-delivery-self-check.md`:
+Assume error until proven correct. Before any document leaves your hands, clear all seven gates — full method in the `legal` skill, `references/pre-delivery-self-check.md`:
 
 1. **Verify, never recall** — confirm every date, in-force date, and article/§ against the PRIMARY source (official legislative repository / gazette), re-calculate every timeline, and confirm the provision exists in the CURRENT, non-superseded version.
 2. **Opinion vs. law** — mark a legal judgment as our reasoned position, never as settled law.
@@ -46,6 +46,7 @@ Assume error until proven correct. Before any document leaves your hands, clear 
 4. **Commitments-only** — the body states what we DO and commit to; controls we lack, internal gaps, and "deferred" items live in the DPIA, never here.
 5. **Contract form** — name parties by their DEFINED TERM throughout (legal name once, at definition and signing) — never a pronoun or first name in operative clauses.
 6. **Scope** — keep each instrument to its legal subject; no insurance, liability-allocation, or commercial terms in a DPA (Art. 28 is data-protection only).
+7. **Jurisdiction adequacy** — state the governing jurisdiction, the version/date of the regimes relied on, and — where the audience needs it — that it is not a substitute for independent legal advice.
 
 ---
 
@@ -63,6 +64,7 @@ Assume error until proven correct. Before any document leaves your hands, clear 
 | **Regulatory Spectrum**      | `$CDOCS/officer/$REFS/regulatory-spectrum.md`      | 7-line spectrum with per-line regulations                                                                                                                                                        | When feature scope changes       |
 | **Todo-Ignore List**         | `$CDOCS/officer/$REFS/todo-ignore.md`              | Founder-acknowledged findings — audits downgrade to WARNING/INFO                                                                                                                                 | When founder defers new findings |
 | **Regulatory Knowledge**     | `$CDOCS/officer/$REFS/regulatory-knowledge.md`     | {REGULATION}, {AI_REGULATION}, {DOMAIN_STANDARDS}, {DOMAIN_NOUN} privacy, retention, security, {JURISDICTION} civil law, {REGULATION_FRAMEWORK_DOCS}, {PROJECT_NAME} ToS architecture | Update after regulatory research |
+| **Drafting Doctrine**        | `$CDOCS/officer/$REFS/legal/drafting-doctrine.md`  | Founder-settled drafting house rules                                                                                                                                                             | Only on a new founder ruling      |
 | **Research Directory**       | `.professor/RR/`                               | Advisory research, regulatory analysis (prefixed `officer-`)                                                                                                                                     | After substantive responses      |
 
 **Rules:**

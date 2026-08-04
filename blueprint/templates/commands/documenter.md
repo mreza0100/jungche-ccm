@@ -8,25 +8,12 @@ argument-hint: [request]
 
 Handle this request: $ARGUMENTS
 
----
-
 ## Mandatory skill load (before writing any reference doc)
 
-Read and apply `.claude/commands/quality/doc.md` before creating or editing ANY permanent reference doc — every invocation, before the first edit. It defines the cluster model, the ≤500-line topic-file target, the `_index.md` format, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule — the contract every doc you write must satisfy.
+Read and apply `.claude/commands/quality/doc.md` before creating or editing ANY permanent reference doc — every invocation, before the first edit. It is the contract every doc you write must satisfy. Two duties it does not carry:
 
-**Verify against code, not the dev report.** A pipeline's dev report says what it MEANT to change; the source says what it DID. Before merging a claim, confirm the operation/table/component/queue name against actual code — a renamed or removed symbol the dev report didn't flag is the #1 source of doc drift. Doc identifiers are the exact code symbols (grep-true).
-
-**Run the Approval gate before finishing.** After editing, run the `/quality:doc` Approval gate (its 8-check rubric) over every doc you touched. Emit `APPROVED: {path}` or fix-and-recheck until it passes. A pipeline does not leave a doc REJECTED.
-
----
-
-## Overview
-
-You are the **Documentation Specialist** — single source of truth for all {PROJECT_NAME} documentation.
-
-ARCHIVE and JC-UPDATE run **fanned out per scope** (§ Orchestration): a `mono-documenter` scout maps the blast radius, then one spec-execution worker per scope (CLAUDE.md § Model Selection) merges its own slice in parallel from its scope card. AUDIT, EPIC, REGISTRY, and GRAPHS run inline as described in their mode sections.
-
----
+- **Verify against code, not the dev report.** A pipeline's dev report says what it MEANT to change; the source says what it DID. Confirm every operation/table/component/queue name against actual code before merging a claim — a renamed or removed symbol the dev report didn't flag is the #1 source of doc drift.
+- **Finish clean.** Run the `/quality:doc` Approval gate over every doc you touched, emitting `APPROVED: {path}` or fix-and-recheck until it passes; a run never leaves a doc REJECTED. Then run `npx prettier --write --prose-wrap preserve <file>` on every `.md` you created or edited.
 
 ## Orchestration
 
@@ -40,7 +27,7 @@ ARCHIVE and JC-UPDATE parallelize along **disjoint write-sets**. **Canonical eng
 | `root-arch`     | `docs/agents/architecture/**`                          |
 | `root-api`      | `docs/agents/api/**`                                   |
 | `root-map`      | `docs/agents/map/**`                                   |
-| `root-features` | `docs/agents/features/**` + `docs/dev/backlog.md`      |
+| `root-features` | `docs/agents/features/**` + `docs/dev/backlog/backlog.md` |
 | `root-db`       | `docs/agents/db/**` + `docs/agents/graph/db/**`        |
 | `epic`          | `docs/epics/{name}/**`                                 |
 
@@ -52,36 +39,30 @@ Several scopes read the same pipeline doc, but each writes only its own slice �
 
 - **Main-loop sites** (standalone `/documenter` ARCHIVE/JC-UPDATE, `/jc` Step 6, `/wave:orchestrator` § O6) size the response to the blast radius: an obviously small change (one project or one cluster) → spawn the worker(s) directly, each briefed on its two cards (the `DOC_BRIEF` contract in the workflow) — no workflow ceremony. Wider or unclear → `Workflow({ name: 'documenter-fanout', args })`. Worker count tracks the blast radius — never manufacture scopes to parallelize.
 
----
-
 ## Owned Documents
 
 | Document         | Path                                    | Purpose                                                                   | When to update                                                                    |
-| ---------------- | --------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **Doc Registry** | § Document Registry below               | Master inventory of all permanent docs                                    | When docs are added, removed, renamed, or ownership changes                       |
 | **Sync Rules**   | `$CDOCS/documenter/$REFS/sync-rules.md` | Cross-reference rules the audit checks                                    | When new sync relationships are discovered                                        |
-| **Backlog**      | `docs/dev/backlog.md`                   | Roadmap-candidate feature ideas parked for later                          | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection)            |
+| **Backlog**      | `docs/dev/backlog/backlog.md`           | Roadmap-candidate feature ideas parked for later                          | Every ARCHIVE and JC-UPDATE mode (cleanup); AUDIT mode (rot detection)            |
 | **Epic docs**    | `docs/epics/*/`                         | Consolidate shipped/session work into active epics — current-state merges | ARCHIVE `epic` scope card (pipeline matches an active epic); EPIC mode (`/documenter epic`) |
 
 **Scope guard (single rule — applies everywhere):**
 
-- You are the ONLY agent that writes to permanent child project docs (`{project}/docs/*.md` for every roster entry), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog.md`
+- You are the ONLY agent that writes to permanent child project docs (`{project}/docs/*.md` for every roster entry), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog/backlog.md`
 - You MAY write to `docs/epics/*/` only per § Epic consolidation contract (the `epic` scope card, EPIC mode) — never `## Vision & Scope`, `status:`, or epic creation/deletion (the Professor owns the lifecycle)
-- NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `docs/dev/research/`)
-
----
+- NEVER write to: `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/`/`.codex/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `.professor/RR/`)
 
 ## Doc clusters
 
-Permanent reference docs are **clusters** — a directory holding an `_index.md` plus topic files. Root clusters (`docs/agents/`): `architecture/`, `api/`, `map/`, `features/`. Child projects mirror the pattern (`{project}/docs/architecture/`, FE `ui-ux/`). Route a merge into the topic file whose `_index.md` entry matches; otherwise create one and register it. The cluster, ceiling, index, and record-format rules live in `/quality:doc` — loaded above. The Document Registry below lists current clusters and their owners.
-
----
+Permanent reference docs are **clusters** — a directory holding an `_index.md` plus topic files. Root clusters (`docs/agents/`): `architecture/`, `api/`, `map/`, `features/`. Child projects mirror the pattern (`{project}/docs/architecture/`, FE `ui-ux/`). Route a merge into the topic file whose `_index.md` entry matches; otherwise create one and register it. The cluster, ceiling, index, and record-format rules live in `/quality:doc`; the Document Registry below lists current clusters and their owners.
 
 ## Document Registry
 
 Map of permanent doc surfaces and owners. **Main-loop/direct invocations (REGISTRY, AUDIT, or ARCHIVE/JC-UPDATE with no scope) read this first and update it last** when docs are added, removed, renamed, or ownership changes; **fanned-out scope workers** follow the Registry duty in `doc-approval.md` § Boundaries instead. Owner is `mono-documenter` unless noted.
 
-<!-- Install-time: rewrite this registry from your actual `docs/` tree. List every permanent doc surface (root cross-project clusters + each subproject's `docs/`), each cluster's `_index.md`, and the non-`mono-documenter` owners (`/pm`, `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories; gitter owns its Living Reference; the Professor owns `docs/epics/`). Keep `.claude/` and `.codex/` instruction surfaces OUT — they are pipeline infrastructure, not registry entries. -->
+<!-- Install-time: rewrite this registry from your actual `docs/` tree. List every permanent doc surface (root cross-project clusters + each subproject's `docs/`), and the non-`mono-documenter` owners (`/pm`, `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories; gitter owns its Living Reference; the Professor owns `docs/epics/`). Keep `.claude/` and `.codex/` instruction surfaces OUT — they are pipeline infrastructure, not registry entries. -->
 
 **Root (`docs/agents/`):** `_index.md`; clusters `architecture/`, `api/`, `map/`, `features/` (each an `_index.md` + topic files); `standards.md`; `graph/` (Mermaid diagrams — see `graph/_index.md`); operational refs `deploy/_index.md` (ship checklist) and `db/_index.md` (DB + queue ops).
 
@@ -91,22 +72,16 @@ Map of permanent doc surfaces and owners. **Main-loop/direct invocations (REGIST
 
 **Ownership:** `mono-documenter` owns root + child docs and this registry through `/documenter`. `/pm` owns PM references. `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories. `.claude/` and `.codex/` instruction surfaces are pipeline infrastructure, outside this registry.
 
----
-
 ## Step 0 — Parse the request
 
 Determine the mode from `$ARGUMENTS`:
 
-| Mode          | Trigger                                            | Action                                                |
-| ------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| **Audit**     | starts with "audit"                                | Full cross-reference sync check                       |
-| **Archive**   | Orchestrator provides `$PIPELINE` and says ARCHIVE | Merge pipeline decisions into permanent docs, archive |
-| **JC-Update** | Orchestrator describes a hotfix                    | Update only affected permanent docs                   |
-| **Registry**  | "registry", "update registry", "add doc"           | Update the doc registry                               |
-| **Graphs**    | "graphs", "graph update", "update graphs"          | Generate/update Mermaid workflow diagrams             |
-| **Epic**      | starts with "epic"                                 | Consolidate this session's work into the active epic  |
-
----
+- Audit: starts with "audit" → full cross-reference sync check.
+- Archive: orchestrator supplies `$PIPELINE` and says ARCHIVE → merge pipeline decisions into permanent docs.
+- JC-Update: orchestrator describes a hotfix → update only the affected permanent docs.
+- Registry: "registry", "update registry", "add doc" → update the doc registry.
+- Graphs: "graphs", "graph update", "update graphs" → generate/update Mermaid workflow diagrams.
+- Epic: starts with "epic" → consolidate this session's work into the active epic.
 
 ## Mode: ARCHIVE (fanned out per scope — see § Orchestration)
 
@@ -122,7 +97,7 @@ Execute your card's merge steps under the `doc-approval.md` contract (current-st
 
 ### Step 3 — Leave the pipeline directory in place
 
-You do not move, archive, or delete `$DOCS/`. The orchestrator invokes gitter DOCS-COMMIT next: it commits all docs — including `$DOCS/` — into git history, then moves the directory to `tmp/dev/archive/builds/` (standalone builds) or leaves it for the wave to archive with all its builds together (wave-owned).
+You do not move, archive, delete, or commit `$DOCS/`. The orchestrator invokes gitter DOCS-COMMIT next: it commits all docs — including `$DOCS/` — into git history, then moves the directory to `tmp/dev/archive/builds/` (standalone builds) or leaves it for the wave to archive with all its builds together (wave-owned).
 
 ### Step 4 — Confirm
 
@@ -135,14 +110,6 @@ Documentation updated. Pipeline: $PIPELINE.
   Flow diagrams: updated | no changes
   Next: gitter DOCS-COMMIT commits these changes and archives $DOCS to tmp/dev/archive/builds/.
 ```
-
-### Step 5 — Format all touched markdown
-
-Run `npx prettier --write --prose-wrap preserve <file>` on every `.md` file you created or edited in this mode. This normalizes formatting for consistent LLM read/write.
-
-**NOTE:** You do NOT commit. The orchestrator invokes gitter DOCS-COMMIT after you finish.
-
----
 
 ## Epic consolidation contract
 
@@ -162,8 +129,6 @@ Epic files are current-state — consolidated chunks of work and decisions, neve
 
 **Boundaries:** `## Vision & Scope`, `status:`, and epic creation/deletion belong to the Professor everywhere. Bulky superseded artifacts move to `docs/epics/{name}/archive/` — loads never read it.
 
----
-
 ## Mode: EPIC (invoked as /documenter epic)
 
 You run inline in the founder's session — the conversation is your source. Write no dump file; skip the `/quality:doc` load (epic files are working context, not reference clusters).
@@ -175,15 +140,7 @@ You run inline in the founder's session — the conversation is your source. Wri
    - Gotchas, failed attempts, surprises → `## Discoveries` (deduped); items awaiting the founder → `## Open Questions`.
    - One `## Progress Log` milestone line; new epic files registered in `## Files`; bump `updated:`.
 3. **Completeness pass:** re-scan the conversation top to bottom. The bar: a fresh session given only "Load epic {name}" continues seamlessly — no re-reading the old chat, no re-asking the founder, no re-discovering gotchas.
-4. **Report:**
-
-   ```
-   Saved into epic {name}: update.md + manifest consolidated.
-   Continue in a new chat with:
-     Load epic {name}
-   ```
-
----
+4. **Report** which epic was saved into and the exact continuation line to paste in a new chat: `Load epic {name}`.
 
 ## Mode: AUDIT
 
@@ -199,7 +156,7 @@ Read `$CDOCS/documenter/$REFS/sync-rules.md` for the full rule set. Then execute
 6. **Agent table** (Rule 8) — Compare root CLAUDE.md agent tables ↔ actual agent files.
 7. **Developer reference vs CLAUDE.md** (Rule 5) — Standards match? No contradictions? Flag `DRIFT`.
 8. **Stale pipelines** (Rule 10) — Check `docs/dev/builds/` for non-archived pipeline dirs.
-   8.5. **Backlog rot** (Rule 13) — Cross-reference `docs/dev/backlog.md` sections against the `docs/agents/features/` cluster. Spot-check 5-10 sections. Flag `STALE-ROADMAP`. Do NOT fix during audit.
+   8.5. **Backlog rot** (Rule 13) — Cross-reference `docs/dev/backlog/backlog.md` sections against the `docs/agents/features/` cluster. Spot-check 5-10 sections. Flag `STALE-ROADMAP`. Do NOT fix during audit.
 9. **Ownership enforcement** (Rule 11) — Verify each doc sits under its owner's path; when an edit looks out of bounds, confirm the last editor with `git log -1 <file>`. Flag violations.
    9.5. **Epic consistency** (Rule 14) — Check `docs/epics/` for active manifests. Verify pipeline references resolve. Flag `STALE-EPIC` if no activity in 30 days.
 
@@ -225,13 +182,9 @@ Documentation audit complete.
 
 If audit discovered new/removed docs or changed ownership, update the registry.
 
----
-
 ## Mode: JC-UPDATE (after a /jc hotfix — fanned out per scope, see § Orchestration)
 
 As in ARCHIVE, you are normally one per-scope worker: your scope card's JC-UPDATE section is your spec — same merge logic over only the affected docs, blast radius verified against the changed source (read-only `git diff`), no `$DOCS` dir. The scout maps the (usually small) radius — often one or two scopes; always consider `root-map` and `root-features`, plus `root-db` if DB or infra ops changed. A hotfix that shipped a parked feature triggers the `root-features` card's backlog-clean procedure. Confirm in the ARCHIVE Step 4 format with a `(jc)` label.
-
----
 
 ## Mode: REGISTRY
 
@@ -239,8 +192,6 @@ As in ARCHIVE, you are normally one per-scope worker: your scope card's JC-UPDAT
 2. Apply requested changes (add/remove doc, change ownership)
 3. Update the registry section in place
 4. If sync rules affected, update `$CDOCS/documenter/$REFS/sync-rules.md` too
-
----
 
 ## Mode: GRAPHS (generate/update Mermaid workflow diagrams)
 
@@ -282,11 +233,7 @@ Graph diagrams updated.
   Files: {list}
 ```
 
----
-
 ## Rules
-
-See root CLAUDE.md § Non-Negotiable Rules for general rules. Additional documenter-specific:
 
 - Permanent docs are unnumbered — no number prefixes in permanent locations
 - Never lose decisions — pipeline architecture/UI/API decisions MUST appear in permanent docs

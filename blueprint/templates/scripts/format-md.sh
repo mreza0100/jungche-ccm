@@ -15,9 +15,8 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 REL_PATH="${FILE_PATH#"$REPO_ROOT"/}"
 
 # Only format {CHARACTER_NAME}-owned files — not user source code.
-# CLAUDE.md and AGENTS.md are the dual-runtime mirror pair (Claude + Codex).
 case "$REL_PATH" in
-  CLAUDE.md|AGENTS.md) ;;
+  CLAUDE.md) ;;
   .claude/*.md) ;;
   docs/commands/*.md) ;;
   docs/agents/*.md) ;;

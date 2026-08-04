@@ -5,74 +5,28 @@ description: "Attributes Claude Code runtime token spend per sub-agent and per w
 
 # Token Ledger
 
-Per-agent and per-workflow-run token attribution from Claude Code's local JSONL transcripts — the runtime spend view native OpenTelemetry can't give (OTel redacts custom agent names to `"custom"`).
-
-## When to load
-
-- "Which agent / operation burned the most tokens?" — retrospective spend ranking.
-- "What did this workflow / wave / pipeline / feature cost?"
-- Any token breakdown, per-operation token, or after-the-fact cost-attribution question.
-- NOT for static context budget (how big are CLAUDE.md/agents/skills) — that is `/pcm:context-meter`.
-
-## How to invoke
-
-Run from the monorepo root (project slug derives from cwd):
+Run from the monorepo root (the project slug derives from cwd); read-only over transcripts, no network:
 
 ```bash
 node .claude/commands/p/tokens/token-ledger.mjs [flags]
 ```
 
-| Flag                    | Purpose                                                                                                                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| (none)                  | Most recent session for this project.                                                                                             |
-| `--all`                 | Every session for this project.                                                                                                   |
-| `--by-workflow`         | Group by `wf_*` workflow run — one row per run + `(non-workflow agents)` summary + TOTAL.                                         |
-| `--filter <substr>`     | Restrict the per-agent table + totals to rows whose label or model id contains `<substr>` (case-insensitive); prints match count. |
-| `--session <id\|path>`  | One conversation by id or path.                                                                                                   |
-| `--detail <id\|substr>` | One agent's individual API calls in order.                                                                                        |
-| `--project <slug>`      | Project slug override.                                                                                                            |
-| `--root <dir>`          | Extra transcript root (repeatable).                                                                                               |
-| `--json`                | Machine-readable output.                                                                                                          |
+`--help` prints the full flag list; `p/tokens/README.md` carries the mechanics and schema notes.
 
-### The canonical answers
+## Which invocation answers which question
 
-- **Heaviest burner** → default or `--all` (the per-agent table is sorted by est cost desc; top row is the answer).
-- **Per-workflow-run cost** (a `/wave:orchestrator`, a standalone `/wave:builder`, an `/rr`) → `--all --by-workflow`, the `wf_*` row matching the run's `runId`.
-- **A wave's end-to-end cost incl. review + remediation** → `--by-workflow` from the chat that ran it (default scope): the `TOTAL` row is the whole chat — the wave's `wf_*` row is the pipelines, `wave-walker` gets its own `wf_*` row (it runs as a Workflow too), and `(non-workflow agents)` is `/jc` + main-loop.
-- **One pipeline within a wave** → `--all --filter <pipeline-label>` (nested wave-build children fold under the parent wave's row; isolate one by its label).
+- Heaviest burner: `--all` — the per-agent table sorts by est cost descending, so the top row is the answer.
+- One Workflow run's cost: `--all --by-workflow`, the run's `wf_*` row.
+- One wave, pipeline, or feature: `--all --filter <label>` — sums every agent row whose label carries it.
+- A whole chat's spend: `--by-workflow` in that chat (default scope) — `TOTAL` is the chat, `wf_*` rows are its Workflow runs, `(non-workflow agents)` is everything else.
+- One agent's individual calls: `--detail <id|label-substr>`.
 
-## `--by-workflow` scope note
+## What gets a `wf_*` row
 
-Full mechanics: `p/tokens/README.md` § `--by-workflow` honesty caveat. `/wave:orchestrator`'s walker pass (`wave-walker`) also runs as its own `wf_*` Workflow row, same as the wave itself. Distinct here — a dual-chat wave spans TWO chats: run default scope in the orchestrator chat and `--session {builder-session}` for the builder, and sum. Slice one label with `--filter <label>`.
+Only a Workflow-engine run — a script under `.claude/workflows/` or a skill-embedded engine (`/rr`). An orchestrated wave is not one: `/wave:orchestrator` and `/wave:builder` run in their chats' main sessions and spawn session-level sub-agents, which land in `(non-workflow agents)`; total a wave with `--filter <wave-label>` instead. The wave's walker pass runs the `wave-walker` script, so its cost sits in a separate `wf_*` row, outside that filter. A dual-chat wave spans two chats — sum default scope in the orchestrator chat with `--session {builder-session}` for the builder.
 
-## Token-definition calibration
+## Reading the output
 
-The footer prints four definitions of "tokens" — read whichever the question needs:
-
-- **output-only** — generated tokens.
-- **in+out** — input + output, no cache.
-- **fresh (in+out+cache-write)** — what the harness's `subagent_tokens` reports.
-- **grand total (+cache-read)** — adds cache-read, which dominates real spend.
-
-The harness's headline `subagent_tokens` is the **fresh** number — it EXCLUDES cache-read, so it is not the grand total. Cache-read is usually the largest component of actual cost.
-
-## Constraints
-
-- READ-ONLY by design — the tool only reads transcripts; it never writes or sends anything.
-- `--detail` content hints can contain sensitive prompt text — treat `--detail` output as sensitive; do not pipe or retain it.
-- Costs are ESTIMATES from the EDITABLE `PRICING` table at the top of `token-ledger.mjs`. Trust the relative ranking, verify absolute dollars against real Anthropic billing, and update the rates when Anthropic prices change.
-
-### Example 1
-
-user: what's my heaviest token burner this project?
-→ node .claude/commands/p/tokens/token-ledger.mjs --all (top row of the cost-sorted table)
-
-### Example 2
-
-user: what did the RR run cost?
-→ node .claude/commands/p/tokens/token-ledger.mjs --all --by-workflow (find the wf_* row)
-
-### Example 3
-
-user: total the my-feature wave
-→ node .claude/commands/p/tokens/token-ledger.mjs --all --filter my-feature
+- Footer totals: output-only, in+out, fresh (in+out+cache-write), grand total (+cache-read). The harness's `subagent_tokens` is the fresh number — it excludes cache-read, usually the largest component of real spend.
+- Costs are estimates from the editable `PRICING` table atop `token-ledger.mjs`: trust the ranking, verify absolute dollars against Anthropic billing, update the rates when prices change.
+- `--detail` content hints can carry sensitive prompt text — read it, never pipe or retain it.

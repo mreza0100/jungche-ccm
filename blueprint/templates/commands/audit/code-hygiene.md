@@ -122,6 +122,7 @@ Code that is never called, never imported, or commented out and left to rot.
 - **API/service projects:** Check resolvers -> services -> repositories chain. If a repo method exists but no service calls it, and no resolver calls that service method — it's dead.
 - **UI/client projects:** Check components. If a component file exists but is never imported in any route, screen, or parent component — it's dead.
 - **AI/pipeline projects (if the roster has one):** Check chains. If a chain function exists but the orchestrator never calls it — it's dead. Check prompt templates not referenced by any chain.
+- **Contracts/schema hub (if the roster has one):** an authored wire shape (message, frame, payload) that no emit/vendor script references and no consumer imports the vendored copy of is dead; the hub's emitted-artifact directory and consumers' vendored copies are never dead-code candidates — they are emitted and read by hash-pin, not static import (see the deadness bar above).
 
 **Deadness bar:** a `Safe to remove: yes` verdict — and any sweep cut — holds only when the symbol clears the end-to-end deadness bar (§ Sweep Mode); absence from its own project is suspicion, not proof.
 
@@ -178,23 +179,25 @@ Patterns that work but are structurally wrong — they'll cause pain as the code
 
 1. **Cross-boundary writes:** each roster project should only write to the tables it owns. Grep one project's DB code for INSERT/UPDATE to tables owned by another project. Any documented exception (a project writing one or two columns it does not own) should still be flagged as it should be migrated.
 
-2. **God classes/modules:** Classes or modules with too many methods (>15) or mixed responsibilities. Known patterns:
+2. **Wire-contract drift-gate coverage (if the roster has a contracts/schema hub):** every wire surface (API schema type, queue message, WS frame, REST/SSE payload) needs three links — an author→artifact drift test in the authoring project, an artifact→binding hash pin in the consuming project, and a completeness enumeration test (sorted sets, never counts) proving every surface is covered. A surface missing one of the three links, or a comment asserting a gate/protection with no named pinning test backing it, is the finding.
+
+3. **God classes/modules:** Classes or modules with too many methods (>15) or mixed responsibilities. Known patterns:
    - Repository classes that combine step-status updates, record saves, and multiple per-feature saves in one class
    - Settings/config models with 30+ fields that should be grouped into nested sub-models
 
-3. **Circular dependencies:** Module A imports from B, B imports from A.
+4. **Circular dependencies:** Module A imports from B, B imports from A.
 
-4. **Shallow or unsafe error handling (LLM-prone):** AI optimizes for the happy path. Flag: silent swallowing (`except.*:\s*pass`, empty `catch {}`); over-broad catches (`except Exception`, bare `except:`, `catch (e)`) that neither re-raise nor log the stack trace; resource acquisition (DB connection, cursor, file) with no `finally`/`with` to release on error paths; retry loops with no backoff. Same problem handled differently across files is also a smell.
+5. **Shallow or unsafe error handling (LLM-prone):** AI optimizes for the happy path. Flag: silent swallowing (`except.*:\s*pass`, empty `catch {}`); over-broad catches (`except Exception`, bare `except:`, `catch (e)`) that neither re-raise nor log the stack trace; resource acquisition (DB connection, cursor, file) with no `finally`/`with` to release on error paths; retry loops with no backoff. Same problem handled differently across files is also a smell.
 
-5. **Missing abstractions / wrong layer:**
+6. **Missing abstractions / wrong layer:**
    - SQL strings in service layer (should be in repository)
    - Business logic in resolvers (should be in services)
    - **API/service projects:** Resolvers with inline parallel-fan-out (e.g. `Promise.all()`) doing parallel DB queries
    - **UI/client projects:** Components doing {API_PROTOCOL} queries directly instead of through custom hooks
 
-6. **N+1 query patterns:** {API_PROTOCOL} resolvers that trigger a DB query per item in a list.
+7. **N+1 query patterns:** {API_PROTOCOL} resolvers that trigger a DB query per item in a list.
 
-7. **Over-engineering / speculative generality (LLM-prone):** AI defaults to over-built "enterprise" shapes for simple tasks. Flag an interface/`Protocol`/abstract base class with exactly one implementor or subclass, a factory/builder that always returns one concrete type, a wrapper class that only delegates to one member, a config object passed through layers but with most fields never read, or generics parameterized at a single call site. Only flag when no second consumer is foreseeable. (Duplication itself → Category 8.)
+8. **Over-engineering / speculative generality (LLM-prone):** AI defaults to over-built "enterprise" shapes for simple tasks. Flag an interface/`Protocol`/abstract base class with exactly one implementor or subclass, a factory/builder that always returns one concrete type, a wrapper class that only delegates to one member, a config object passed through layers but with most fields never read, or generics parameterized at a single call site. Only flag when no second consumer is foreseeable. (Duplication itself → Category 8.)
 
 **Report format:**
 

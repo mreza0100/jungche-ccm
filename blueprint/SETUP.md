@@ -271,6 +271,15 @@ Claude takes your answers and:
 | `/audit:security`      | Command `templates/commands/audit/security.md`                  | Hydrated by RR (Phase 2.5)                                           |
 
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
+
+7c-i. **Installs global settings** — merge `blueprint/templates/settings-global.json`'s keys into the adopter's OWN `~/.claude/settings.json`. **Merge, never overwrite**: this is the adopter's personal, machine-wide config file — it almost certainly already carries their own `model`, `theme`, MCP permissions, and hooks, and a blind copy would destroy them. Do a key-by-key JSON merge (add/update only the keys this template ships), the same discipline as step 7c's statusline block. The template currently ships exactly one key:
+
+    ```json
+    { "cleanupPeriodDays": 36500 }
+    ```
+
+    `cleanupPeriodDays` controls Claude Code's startup sweep: every session transcript AND every orphaned git worktree older than this many days is deleted automatically, with no warning, before you ever see them. The stock default is `30` — leave a project untouched for a month and its chat history and worktrees are gone at the next launch. `36500` (100 years) is the practical "off" value. **`0` is not "off"** — it fails settings validation (the minimum accepted value is `1`), so never write `0` trying to disable the sweep. This key is global: it governs every project on the adopter's machine, not just this one, so the merge (not overwrite) discipline matters even more here than for a project-scoped file.
+
 7d. **Configures notifications** — `notify.sh` hooks into Claude Code's `PreToolUse` and `Stop` events via `.claude/settings.json` hooks. Sends a macOS native notification with Glass sound when a turn takes 30+ seconds. Character name and project root path are parameterized at install. Add to `.claude/settings.json`:
 
     ```json

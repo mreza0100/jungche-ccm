@@ -1,6 +1,6 @@
 # JC Core — Fix Loop (Steps 2–8)
 
-> Declared copy of `.claude/commands/jc.md` §§ 2–8 (Diagnose → Fix → Verify → Cleanup → Docs → Commit → Report) — synced whenever jc.md's core steps change; source of truth is `.claude/commands/jc.md`. Consumed by `/wave:live` (W3–W8) so a wave batch doesn't hold the full `/jc` command (persona, Step 0 classify, Step 1 investigate, the debug-discipline on-demand card, and the boundary-lite section stay JC-invocation-only and are out of scope here). If this card is missing or stale, fall back to `.claude/commands/jc.md` directly.
+> Declared copy of `.claude/commands/jc.md` §§ 2–8 (Diagnose → Fix → Verify → Cleanup → Docs → Commit → Report) — synced whenever jc.md's core steps change; source of truth is `.claude/commands/jc.md`. Consumed by `/wave:live` (W3–W8) so a wave batch doesn't hold the full `/jc` command (persona, Step 0 classify, Step 1 investigate, the debug-discipline/deploy on-demand cards, and the boundary-lite section stay JC-invocation-only and are out of scope here). If this card is missing or stale, fall back to `.claude/commands/jc.md` directly.
 
 ---
 
@@ -8,10 +8,10 @@
 
 Based on the investigation:
 
-1. **Identify the root cause** — trace from symptom to source
-2. **Identify all affected files** — list every file that needs changes
-3. **Plan the fix** — what changes are needed and in which order
-4. **Assess risk** — will this fix break anything else?
+1. **Root cause** — trace from symptom to source.
+2. **Affected files** — list every file that needs changes.
+3. **Plan** — what changes, in which order.
+4. **Risk** — what else this fix could break.
 
 For cross-project issues (roster size > 1), trace the full path across the boundary the projects share — e.g.:
 
@@ -25,11 +25,7 @@ At roster size 1 there is no cross-project hop — trace within the single proje
 
 ## Step 3 — Fix
 
-Apply the fix directly on `main`. You have full edit access to every roster project's source and config:
-
-- `{project}/src/**` (or the project's source root) — source code for any affected roster entry
-- An infra/config project's compose or deployment files, if the roster has one
-- Environment files (`.env.local`, `.env.test`)
+Apply the fix directly on `main`, with edit access to every roster project's source (root CLAUDE.md § Architecture) plus `.env.local` / `.env.test`.
 
 ### Build with sub-agents
 
@@ -68,12 +64,7 @@ After the restart settles, check for new errors via `/dev log` (or tail `$ROOT/t
 ### 4c. Test the fix
 
 - Hit the relevant endpoints to confirm the issue is resolved
-- **Affected-first:** run only the tests you touched or added (plus directly affected ones) first as a fast confirm — they must fail without the fix and pass with it. Only once they pass, run the **full** test suite for every modified project, once, as the gate — one PATTERN block per modified roster entry, using that entry's test runner:
-
-```bash
-# PATTERN — per modified roster entry
-cd {project} && {PROJECT_TEST_RUNNER} && cd ..
-```
+- **Affected-first:** run only the tests you touched or added (plus directly affected ones) first as a fast confirm — they must fail without the fix and pass with it. Only once they pass, run the **full** suite (unit + integration) once per modified roster project, as the gate. Derive each project's suite commands from its child `CLAUDE.md` and its qa-reference doc — a project's integration tier can be a separate set of scripts from its unit tier, so the top-level test command alone may not be the full gate.
 
 **ZERO TOLERANCE — fix ALL failing tests.** If tests fail, you fix them — period. It does not matter
 whether the failure was caused by your hotfix or was pre-existing. JC leaves `main` cleaner than he
@@ -102,21 +93,14 @@ to iteratively narrow down the root cause.
 
 ### 4f. Prevent recurrence
 
-After the fix is verified, ask: **"Can this class of bug happen again?"** If yes, harden the codebase so it can't:
+After the fix is verified, ask: **"Can this class of bug happen again?"** If yes, harden the codebase so it can't. Choose the lightest measure that actually prevents recurrence:
 
-| Prevention type           | When to use                                      | Example                                                                                      |
-| ------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| **CLAUDE.md convention**  | An agent could rewrite the fix away              | Add rule to the relevant child CLAUDE.md so agents know to preserve the pattern              |
-| **Type guard**            | The bug was caused by a wrong type at a boundary | Add strict types or runtime validators (in the project's language) that reject the bad input |
-| **Lint rule / assertion** | The bug is a pattern that could recur anywhere   | Add a project-level lint rule or runtime assertion                                           |
-| **Config / env default**  | The bug was a missing or wrong config value      | Add sensible defaults, validation on startup, or fail-fast checks                            |
+- CLAUDE.md convention — an agent could rewrite the fix away: add the rule to the relevant child CLAUDE.md so agents preserve the pattern.
+- Type guard — a wrong type crossed a boundary: strict types or runtime validators (in the project's language) that reject the bad input.
+- Lint rule / assertion — the pattern could recur anywhere: a project-level lint rule or runtime assertion.
+- Config / env default — a missing or wrong config value: a sensible default, startup validation, or a fail-fast check.
 
-**Rules:**
-
-- At least ONE prevention measure is required for every fix. "Just fixing it" is not enough — if it broke once, it will break again.
-- Choose the lightest measure that actually prevents recurrence. A CLAUDE.md rule for agent-caused regressions, a type guard for data shape issues.
-- If the fix is truly a one-off (typo, wrong constant value with no pattern), explain why no prevention is needed instead of skipping silently.
-- Prevention changes are committed alongside the fix in the same JC commit — not as a separate step.
+Every fix carries at least ONE prevention measure, committed alongside it in the same JC commit — "just fixing it" is not enough. A genuine one-off (typo, wrong constant with no pattern) states why none is needed rather than skipping silently.
 
 ### 4g. QA regression test
 
@@ -131,28 +115,20 @@ Before committing, ensure the codebase is clean:
 1. **Remove debug artifacts** — any temporary `console.log`, `print()`, hardcoded values, or test hacks that were added during investigation (keep intentional logging additions)
 2. **Verify servers are healthy** — run `/dev status`
 3. **Stop dev servers** — run `/dev kill` to ensure clean state
-4. **Format + lint gate (MANDATORY)** — run formatter and linter on every modified project. Zero lint errors is the gate.
+4. **Format + lint gate** — zero lint errors on every modified project, fixed before committing:
 
 ```bash
 # PATTERN — per modified roster entry, run that project's formatter + linter
 cd {project} && {PROJECT_FORMAT} && {PROJECT_LINT} && cd ..
 ```
 
-If lint errors exist, fix them before committing. JC does not bless unformatted code. 🙏
-
 ---
 
-## Step 6 — Update docs via documenter (MANDATORY)
+## Step 6 — Update docs via documenter
 
-`/documenter` runs BEFORE committing — Step 7 ships code + docs in one gitter call. First spawn a collector-tier doc-relevance classifier (collector tier per root CLAUDE.md § Model Selection) briefed with the diff's file list + a one-line change summary, schema-forced to return exactly `{docsAffected: true|false, scopes: [affected doc clusters]}` — it classifies only, never concludes. `docsAffected: true`, or ANY uncertainty, → invoke `/documenter` in JC-UPDATE mode:
+`/documenter` runs BEFORE committing — Step 7 ships code + docs in one gitter call. First spawn a collector-tier doc-relevance classifier briefed with the diff's file list + a one-line change summary, schema-forced to return exactly `{docsAffected: true|false, scopes: [affected doc clusters]}` — it classifies only, never concludes. `docsAffected: true`, or ANY uncertainty, → invoke `/documenter` in JC-UPDATE mode: `/documenter A hotfix was applied via /jc: {what changed}. Projects affected: {list}. Doc scopes: {scopes}.`
 
-```
-/documenter A hotfix was applied via /jc: {what changed}. Projects affected: {list}. Doc scopes: {scopes}.
-```
-
-The documenter reads the changed files, updates only the relevant permanent docs
-(developer-reference, architecture, API, map, runbook, qa-reference, ui-ux), and skips
-unaffected docs automatically. It does NOT commit — that happens in Step 7.
+It reads the changed files, updates only the relevant permanent docs, skips unaffected ones, and does NOT commit — that happens in Step 7.
 
 `docsAffected: false` is legal only for zero-doc-surface changes (comment typo, log-message string,
 cosmetic-only); report "Documenter skipped — no doc surface (classifier + {reason})". Any change
@@ -163,31 +139,7 @@ test patterns HAS doc surface — a classifier verdict to the contrary is wrong;
 
 ## Step 7 — Commit all changes via gitter
 
-Invoke the `gitter` agent ONCE to commit both code and doc changes:
-
-```
-Agent(gitter): "Phase: JC-COMMIT. Pipeline: jc. Projects: {comma-separated project keys held}.
-
-  Two commits on main:
-
-  1. CODE COMMIT — stage and commit the fix:
-     - Code files changed: {list exact source files}
-     - Commit message: 'fix: {short description of what was fixed}'
-     - git add the specific code files (not -A), then git commit
-
-  2. DOC COMMIT (if documenter made changes) — stage and commit doc updates:
-     - Doc files changed: {list exact doc files, or 'none — documenter skipped'}
-     - Commit message: 'docs: jc — {short description matching the fix}'
-     - git add the specific doc files, then git commit
-     - Skip this commit if no doc files changed.
-
-
-
-  Report both commit hashes (or just one if no doc changes)."
-```
-
-**IMPORTANT:** Tell gitter exactly which files changed in each category.
-Gitter should add specific files per commit, not `git add -A`.
+Invoke the `gitter` agent ONCE with `Phase: JC-COMMIT`, `Pipeline: jc`, the project keys held, the exact code files changed, and the exact doc files changed (or "none — documenter skipped"). Gitter stages only the files you name, lands one code commit plus a separate doc commit when docs changed, and reports the hashes. Name every file — an unnamed file does not ship.
 
 ---
 
@@ -203,13 +155,10 @@ Match the shape to the query, always with `file:line` references:
 - **Data** — tables/lists with source refs.
 - **Scope** — direct deps, transitive deps, blast radius (`N files across M projects`), risk LOW/MEDIUM/HIGH.
 
-Close with: "We're good. 😎 No changes needed — just clarity. Peace be upon this codebase. 🕊️"
+Close by stating no changes were needed.
 
 ### Fix (read-write)
 
-```
-And... we're back. 😎  (or "It is finished. ✝️" for big resurrections)
-Problem: {what was wrong}      Root cause: {file:line}
-Fix: {what changed}            Prevention: {what stops recurrence}
-Tests: {pass/fail — suites}    Commits: {hashes}    Docs: {list or "none — trivial"}
-```
+- Problem: {what was wrong} · Root cause: {file:line}
+- Fix: {what changed} · Prevention: {what stops recurrence}
+- Tests: {pass/fail — suites} · Commits: {hashes} · Docs: {list or "none — trivial"}
