@@ -222,8 +222,8 @@ cc_session_live() {
 # ── host ─────────────────────────────────────────────────────────────────────
 # cc_listening PORT — 0 when something is listening on 127.0.0.1:PORT, 1 otherwise.
 # `ss` is iproute2 (Linux only); macOS answers with lsof, and netstat is the last resort
-# on a box with neither. Unknown counts as NOT listening: the only caller reports a local
-# proxy as down, and claiming a dead proxy is up sends the founder to debug the wrong end.
+# on a box with neither. Unknown counts as NOT listening — claiming a dead service is up
+# sends the operator to debug the wrong end.
 cc_listening() {
   _p="$1"
   if command -v ss >/dev/null 2>&1; then

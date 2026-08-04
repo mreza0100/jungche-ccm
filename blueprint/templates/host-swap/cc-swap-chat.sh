@@ -119,26 +119,10 @@ if [ -z "$n" ]; then
   case "$p" in
     "$HOME/.claude3"|"$HOME/.cc/2") n=2 ;;
     "$HOME/.cc/3")                  n=3 ;;
-    "$HOME/.cc/4")                  n=4 ;;
     *)                              n=1 ;;
   esac
-  case "$n" in 2|3|4) cfg="$HOME/.cc/$n" ;; *) cfg="" ;; esac
+  case "$n" in 2|3) cfg="$HOME/.cc/$n" ;; *) cfg="" ;; esac
   echo "cc-swap-chat: no account given — keeping the chat's current account $n"
-fi
-
-# GPT and Claude chats never cross. This chat's transcript is a record of one engine's turns;
-# rebooting it under the other replays a foreign conversation to the wrong provider and bills
-# the wrong account. The birth engine survives without tmux via account 4's session-env crumb.
-_isgpt=0; [ -n "$u" ] && [ -e "$HOME/.cc/4/session-env/$u" ] && _isgpt=1
-if [ "$_isgpt" = 1 ] && [ "$n" != 4 ]; then
-  echo "cc-swap-chat: this is a GPT chat (account 4 🍀) — it cannot swap to a Claude account."
-  echo "              Claude and GPT chats stay apart; use --1h only, or start a new chat with cc$n."
-  exit 1
-fi
-if [ "$_isgpt" = 0 ] && [ "$n" = 4 ]; then
-  echo "cc-swap-chat: this is a Claude chat — it cannot swap to account 4 (GPT 🍀)."
-  echo "              Claude and GPT chats stay apart; start a new GPT chat with cc4 (or cc-ls ✦ 🍀)."
-  exit 1
 fi
 
 echo "cc-swap-chat: swapping this chat to account $n IN PLACE — it reboots right here under the new account"
@@ -205,20 +189,14 @@ $(cc_detach) env SOCK="$sock" PANE="$pane" U="$u" CFG="$cfg" CWD="$rcwd" THEN="$
   # poisoned shell (chat-in-chat launch) carries CLAUDE_CONFIG_DIR and would silently defeat
   # a swap to account 1; stale session identity must not ride along either
   run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M"
-  # account 4 speaks to a local claude-code-proxy (GPT), so its whole ANTHROPIC_* block is
-  # stripped on every swap and re-added only for 4 — a leftover base URL would point a swap
-  # BACK to 1/2/3 at the proxy, and a missing one would point 4 at Anthropic with a dud token.
+  # strip any inherited API endpoint: a server born from a shell pointed at a translating proxy
+  # would carry a base URL that silently redirects the reborn chat away from Anthropic.
   run="$run -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL"
   run="$run -u CLAUDE_CODE_AUTO_COMPACT_WINDOW -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"
   if [ -n "$CFG" ]; then run="$run CLAUDE_CONFIG_DIR=$CFG"; else run="$run -u CLAUDE_CONFIG_DIR"; fi
   # the chat keeps (or the --1h override sets) its ⚡ mode — env ARG, after its own -u (a shell
   # prefix would be re-unset); 5m must be FORCED since the harness default is 1h
   if [ "$C1H" = 1 ]; then run="$run ENABLE_PROMPT_CACHING_1H=1"; else run="$run FORCE_PROMPT_CACHING_5M=1"; fi
-  if [ "$ACCT" = 4 ]; then
-    run="$run ANTHROPIC_BASE_URL=http://127.0.0.1:18765 ANTHROPIC_AUTH_TOKEN=unused"
-    run="$run \"ANTHROPIC_MODEL=gpt-5.6-sol[1m]\" \"ANTHROPIC_SMALL_FAST_MODEL=gpt-5.6-luna[1m]\""
-    run="$run CLAUDE_CODE_AUTO_COMPACT_WINDOW=272000 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1"
-  fi
   if [ -n "$U" ]; then run="$run claude --resume $U"; else run="$run claude"; fi   # no transcript yet → fresh boot
 
   tmux -L "$SOCK" respawn-pane -k -t "$PANE" -c "$CWD" "$run"

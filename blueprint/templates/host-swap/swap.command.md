@@ -1,14 +1,9 @@
 ---
 name: swap
-description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another Claude account (1|2|3) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains. Usage /swap <1|2|3|--1h on|off> [--then "<prompt>"]. Account 4 (GPT) is NOT a swap target: GPT and Claude chats never cross, so /swap refuses in either direction.
+description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another Claude account (1|2|3) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains. Usage /swap <1|2|3|--1h on|off> [--then "<prompt>"].
 ---
 
 # `/swap [<1|2|3>] [--1h on|off] [--then "<prompt>"]` — reboot this chat under another account / cache mode
-
-**Accounts 1-3 only.** Account 4 is the GPT account (Claude Code harness on `claude-code-proxy`);
-its transcripts never move to an Anthropic account and no Claude chat moves onto it. `/swap 4`
-from a Claude chat, and any `/swap 1|2|3` from a GPT chat, refuse with a message instead of
-rebooting. Start a GPT chat with `cc4`, or the `✦ 🍀 new GPT chat here` row in `cc-ls`.
 
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 

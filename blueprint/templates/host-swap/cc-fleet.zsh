@@ -64,24 +64,6 @@ _cc_arm1h() {
   elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo 1
   else echo 0; fi
 }
-# ── account 4: the GPT account ────────────────────────────────────────────
-# Account 4 is not an Anthropic login. It is the same Claude Code harness — same commands,
-# skills, hooks, subagents, MCP — pointed at a local claude-code-proxy, which translates the
-# Anthropic API traffic into ChatGPT/Codex subscription calls. GPT-5.6 answers; everything
-# else about the chat is identical, so cc-ls lists it and cc-open resumes it like any other.
-# The proxy runs as a systemd --user unit you supply, on loopback
-# 18765; if it is down, a cc4 chat simply cannot connect. Quota comes out of the ChatGPT plan
-# the cx codex chats already spend — a separate pool from accounts 1-3, which is the point.
-typeset -ga CC4_ENV=(
-  "ANTHROPIC_BASE_URL=http://127.0.0.1:18765"
-  "ANTHROPIC_AUTH_TOKEN=unused"                  # the proxy holds the real credential; this only satisfies the client
-  "ANTHROPIC_MODEL=gpt-5.6-sol[1m]"              # [1m] is a local compaction hint, stripped before the upstream call
-  "ANTHROPIC_SMALL_FAST_MODEL=gpt-5.6-luna[1m]"  # titles + background work
-  "CLAUDE_CODE_AUTO_COMPACT_WINDOW=272000"       # the real ChatGPT context limit for GPT-5.6
-  "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1"
-  "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1"  # a non-streaming retry of a partial stream duplicates tool calls
-  "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1" # /model reads the proxy's catalog instead of the harness's built-in tiers
-)
 # CC_AUTONOMY_FLAGS — the FULL-AUTONOMY posture, defined once and applied by EVERY path that starts
 # a chat: _cc_run (fresh launches, tmux and bare) and both --resume paths, on EVERY account. Standing
 # order 2026-07-31 — chats run unattended overnight, so a mid-task approval prompt is a stalled chat
@@ -91,10 +73,11 @@ typeset -ga CC4_ENV=(
 # host it can reach. PreToolUse hooks still fire (they sit outside the permission system) — they are
 # the only brake left, so a guard that matters belongs in a hook, not in a permission rule.
 typeset -ga CC_AUTONOMY_FLAGS=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
-# Every launch strips these, account 4 included (it re-adds them as env ARGUMENTS below). A
-# chat born inside a cc4 chat's Bash tool inherits ANTHROPIC_BASE_URL, and without the strip
-# an account-1/2/3 launch would silently answer from GPT under an Anthropic medal.
-typeset -ga CC4_UNSET=(
+# CC_ENDPOINT_UNSET — every launch strips any inherited API endpoint. A chat born inside another
+# chat's Bash tool inherits that chat's environment, so a shell pointed at a local translating
+# proxy would hand the next launch a foreign endpoint and it would answer from a foreign model
+# under an Anthropic medal. The launcher's verdict is the account; the environment gets no vote.
+typeset -ga CC_ENDPOINT_UNSET=(
   -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL -u ANTHROPIC_SMALL_FAST_MODEL
   -u CLAUDE_CODE_AUTO_COMPACT_WINDOW -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK
   -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
@@ -102,7 +85,7 @@ typeset -ga CC4_UNSET=(
 
 _cc_run() {
   local acct="$1" use_tmux="$2"; shift 2
-  local cfg; case "$acct" in 2|3|4) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
+  local cfg; case "$acct" in 2|3) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
   local in_tmux=0; [[ -n "$TMUX" ]] && in_tmux=1
   # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
   # time) — _cc_arm1h decides; the strip below unsets the leaked flag, and an armed launch
@@ -119,14 +102,13 @@ _cc_run() {
     # explicit env, always: a launch from INSIDE a chat (Bash tool, nested shell) inherits the
     # host chat's CLAUDE_CONFIG_DIR / session identity / cache mode — env -u makes every one of
     # them the picker's verdict, never the environment's
-    local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC4_UNSET}"
+    local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET}"
     if [[ -n "$cfg" ]]; then run+=" CLAUDE_CONFIG_DIR=$cfg"; else run+=" -u CLAUDE_CONFIG_DIR"; fi
     if [[ "$arm1h" == 1 ]]; then run+=" ENABLE_PROMPT_CACHING_1H=1"; else run+=" FORCE_PROMPT_CACHING_5M=1"; fi
-    [[ "$acct" == 4 ]] && run+=" ${(j: :)${(@q)CC4_ENV}}"   # per-element quoting: [1m] is a glob to the sh that runs this, and (q) on a joined array would collapse all seven into one variable
-    # PER-ELEMENT quoting, then join — the same trap CC4_ENV hit above. "${(q)@}" joins the array
+    # PER-ELEMENT quoting, then join. "${(q)@}" joins the array
     # into ONE word FIRST and quotes that, so two flags arrive as a single argv element with an
     # escaped space ("--allow-…\ --dangerously-…"), claude rejects the unknown option, and the
-    # tmux session dies at birth — which reads as "cc4 doesn't open". Latent until a launcher
+    # tmux session dies at birth — which reads as "the launcher doesn't open". Latent until a launcher
     # passed more than one argument; `cc --model x` style calls were mis-quoted the same way.
     run+=" claude ${(j: :)${(@q)CC_AUTONOMY_FLAGS}} ${(j: :)${(@q)@}}"
     if [[ "$in_tmux" == "0" ]]; then tmux -L "$sock" new-session -s "$sock" "$run"
@@ -134,10 +116,9 @@ _cc_run() {
     else TMUX= tmux -L "$sock" new-session -s "$sock" "$run"
     fi
   else
-    local -a envargs=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC4_UNSET[@]}")
+    local -a envargs=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
     if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
     if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
-    [[ "$acct" == 4 ]] && envargs+=("${CC4_ENV[@]}")
     env "${envargs[@]}" claude "${CC_AUTONOMY_FLAGS[@]}" "$@"
   fi
 }
@@ -149,15 +130,14 @@ typeset -g CC_FLEET_HOME="${CC_FLEET_HOME:-${${(%):-%x}:A:h}}"
 # children and the swap log goes through it instead of the sidecar files those used to live in.
 # It degrades to those same files when sqlite3 is missing, so the picker is never down.
 typeset -g CC_DB="$CC_FLEET_HOME/cc-db.sh"
-_cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2|3|4) ;; *) n=1 ;; esac; echo "$n"; }
+_cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2|3) ;; *) n=1 ;; esac; echo "$n"; }
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
 cc3() { _cc_run 3 1 "$@"; }                  # tmux + account 3
-# Account 4 is no longer special here — _cc_run prepends CC_AUTONOMY_FLAGS for every account, so cc4
-# must NOT pass them again (that would duplicate the flags in argv). A caller's own flags still
-# follow and win, so `cc1 --permission-mode manual` remains the escape hatch for a supervised chat.
-cc4() { _cc_run 4 1 "$@"; }
+# _cc_run prepends CC_AUTONOMY_FLAGS for every account, so a launcher must NOT pass them again
+# (that would duplicate the flags in argv). A caller's own flags still follow and win, so
+# `cc1 --permission-mode manual` remains the escape hatch for a supervised chat.
 # cx — a CODEX chat on the same per-chat-server pattern, socket prefix cx-* instead of cc-*.
 # The prefix IS the engine marker: codex writes no statusline breadcrumbs and no ~/.claude
 # transcript, so cc-ls recognizes (and lists) a live Codex chat by socket name alone. Claude
@@ -168,7 +148,7 @@ cx() {
   # --dangerously-bypass-approvals-and-sandbox: founder's standing order (2026-07-24) — a fleet
   # codex runs with FULL autonomy, never stopping to ask approval (wave builders stalled on
   # mid-task approval prompts). This box's codex work is already gated by repo trust + the fleet.
-  local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC4_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(q)@}"
+  local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(q)@}"
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab
@@ -190,13 +170,6 @@ _cx_server() {
 # pretty label per account: medal + the real email pulled from its config dir
 _cc_label() {
   local n="$1" dir medal email
-  # account 4 has no Anthropic login to name — label it by what actually answers, and say so
-  # when the proxy is down, because that is the only way a cc4 chat fails.
-  if [[ "$n" == 4 ]]; then
-    if cc_listening 18765; then print -r -- "🍀 GPT-5.6 · codex proxy"
-    else print -r -- "🍀 GPT-5.6 · codex proxy (DOWN — systemctl --user start claude-code-proxy)"; fi
-    return
-  fi
   case "$n" in 1) dir="$HOME/.claude"; medal="🥇" ;; 2) dir="$HOME/.cc/2"; medal="🥈" ;; 3) dir="$HOME/.cc/3"; medal="🥉" ;; esac
   # ACCOUNT 1'S IDENTITY IS NOT INSIDE ITS CONFIG DIR. Claude Code writes the default account's
   # .claude.json BESIDE the config dir (~/.claude.json), not into it — ~/.claude/.claude.json
@@ -219,9 +192,8 @@ cc-swap() {
     "1 │ $(_cc_label 1)"
     "2 │ $(_cc_label 2)"
     "3 │ $(_cc_label 3)"
-    "4 │ $(_cc_label 4)"
   )
-  if [[ "${1:-}" =~ ^[1234]$ ]]; then
+  if [[ "${1:-}" =~ ^[123]$ ]]; then
     n="$1"
   elif command -v fzf >/dev/null; then
     local curi="$cur"                           # row position == account number (rows are 1,2,3)
@@ -239,7 +211,7 @@ cc-swap() {
     [[ -z "$pick" ]] && { echo "cc-swap: unchanged — primary stays account $cur"; return 0; }
     n="${pick%% *}"
   else
-    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
+    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2|3>"; return 1
   fi
   bash "$CC_DB" primary-set "$n"   # writes the db AND keeps ~/.claude-primary in lockstep for the statusline
   echo "Primary → account $n  ($(_cc_label $n))"
@@ -331,28 +303,11 @@ _cc_acct() {
   case "$1" in
     "$HOME/.cc/2"|"$HOME/.cc/2/"*|"$HOME/.claude3"|"$HOME/.claude3/"*|"$HOME/.claude2"|"$HOME/.claude2/"*) echo 2 ;;
     "$HOME/.cc/3"|"$HOME/.cc/3/"*) echo 3 ;;
-    "$HOME/.cc/4"|"$HOME/.cc/4/"*) echo 4 ;;
     "$HOME/.claude"|"$HOME/.claude/"*) echo 1 ;;
     *) echo "" ;;
   esac
 }
-_cc_medal() { case "$1" in 1) echo 🥇 ;; 2) echo 🥈 ;; 3) echo 🥉 ;; 4) echo 🍀 ;; *) echo "" ;; esac }
-
-# _cc_isgpt <uuid> — was this chat born on account 4 (GPT)? Every launch drops a per-session
-# breadcrumb in its own config dir's session-env/, so the account survives even for a chat with
-# no live tmux — the shared transcript store cannot answer this on its own.
-_cc_isgpt() { [[ -n "$1" && -e "$HOME/.cc/4/session-env/$1" ]] }
-
-# _cc_resume_acct <uuid> — which account may host this resume. GPT and Claude chats NEVER cross:
-# a transcript full of GPT turns replayed to Anthropic is a foreign conversation billed to the
-# wrong account (and vice versa), so a chat born on 4 resumes only on 4, and a Claude-born chat
-# never lands on 4. Among accounts 1-3 the primary still decides, exactly as before.
-_cc_resume_acct() {
-  local p; p="$(_cc_primary)"
-  if _cc_isgpt "$1"; then echo 4; return; fi
-  [[ "$p" == 4 ]] && { echo 1; return; }    # Claude chat while the GPT account is primary → account 1
-  echo "$p"
-}
+_cc_medal() { case "$1" in 1) echo 🥇 ;; 2) echo 🥈 ;; 3) echo 🥉 ;; *) echo "" ;; esac }
 
 # _cc_in_bunker — true when this shell IS a vsct bunker pane. Chat opens from a bunker exec
 # INTO the tmux client: the viewport dies with the tab instead of lingering as an orphaned
@@ -564,12 +519,7 @@ _cc_open_gate() {
   pm="$(_cc_primary)"
   # collect ONLY the dimensions that actually disagree, as "<label>\t<born>\t<picker-wants>"
   local -a rows=()
-  # GPT↔Claude is not a swap this fleet offers: the transcript belongs to one engine, and
-  # rebooting it under the other replays a foreign conversation to the wrong provider. An
-  # account-4 chat opened while 1-3 is primary (or the reverse) simply reopens as itself.
-  local xeng=0
-  [[ ( "$acct" == 4 && "$pm" != 4 ) || ( "$acct" != 4 && "$acct" != "" && "$pm" == 4 ) ]] && xeng=1
-  [[ -n "$acct" && "$acct" != "$pm" ]] && (( ! xeng )) && rows+=("account"$'\t'"$(_cc_medal $acct) $acct"$'\t'"$(_cc_medal $pm) $pm")
+  [[ -n "$acct" && "$acct" != "$pm" ]] && rows+=("account"$'\t'"$(_cc_medal $acct) $acct"$'\t'"$(_cc_medal $pm) $pm")
   if [[ -n "$lc1h" && "$lc1h" != "$wc1h" ]]; then
     local lcs wcs
     [[ "$lc1h" == 1 ]] && lcs="⚡ 1h" || lcs="🪫 5m"
@@ -934,12 +884,11 @@ cc-open() {
   fi
   [[ -n "$tpf" ]] || { echo "cc-open: no transcript for $u"; return 1; }
   local cfg="" rs="cc-$(date +%s)-$$-$RANDOM"           # 3) resume (failure-net → router)
-  local ra; ra="$(_cc_resume_acct "$u")"   # GPT chats resume on 4, Claude chats never do
-  case "$ra" in 2|3|4) cfg="$HOME/.cc/$ra" ;; esac
-  local rpfx="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC4_UNSET} "   # never inherit a host chat's identity or cache mode
+  local ra; ra="$(_cc_primary)"            # a resume lands on the primary account
+  case "$ra" in 2|3) cfg="$HOME/.cc/$ra" ;; esac
+  local rpfx="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} "   # never inherit a host chat's identity or cache mode
   if [[ -n "$cfg" ]]; then rpfx+="CLAUDE_CONFIG_DIR=${(q)cfg} "; else rpfx+="-u CLAUDE_CONFIG_DIR "; fi
   if [[ "$wc1h" == 1 ]]; then rpfx+="ENABLE_PROMPT_CACHING_1H=1 "; else rpfx+="FORCE_PROMPT_CACHING_5M=1 "; fi   # env ARGUMENT after its own -u (a shell prefix would be re-unset)
-  [[ "$ra" == 4 ]] && rpfx+="${(j: :)${(@q)CC4_ENV}} "   # resume under account 4 → answer from GPT, not a dud Anthropic token
   local rflags=" ${(j: :)${(@q)CC_AUTONOMY_FLAGS}}"   # a resumed chat keeps full autonomy, every account
   _cc_solo "$u"
   _cc_in_bunker && TMUX= exec tmux -L "$rs" new-session -s "$rs" -c "$rcwd" \
@@ -948,11 +897,6 @@ cc-open() {
     "${rpfx}claude --resume ${(q)u}${rflags} || { echo; echo 'resume refused — session is live elsewhere:'; ${c1henv}bash ${(q)CC_FLEET_HOME}/cc-agent-open.sh ${(q)u} ${(q)rcwd}; }"
 }
 
-# cc-ls — Account 4 (GPT via claude-code-proxy) is deliberately NOT an entry point here:
-# `cc4` still launches one and its chats still LIST like any other Claude chat (they ARE
-# Claude Code chats — hiding them would orphan their transcripts), but the picker offers no
-# ✦ row for starting one. The proxy stays installed and disabled: GPT is out of the daily
-# workflow by choice, not removed.
 # cc-ls — unified chat picker. Source 1: live tmux sessions, Claude (cc-*) only — Codex is
 # not listed here at all (2026-07-29); `cx` still launches it
 # alike (Enter → attach). Source 2: the Claude Code chat store (~/.claude/projects/*/*.jsonl) →
@@ -976,7 +920,6 @@ cc-ls() {
   local all=0 onlyhidden=0 hidden=0 strict=1   # strict = apply hide/orphan/cap filters (default only)
   # row palette (fzf --ansi): leading glyph = kind — ● live · ↻ resume · ⚙ agent · ✦ new
   local X0=$'\e[0m' Xd=$'\e[2m' Xb=$'\e[1m' Xc=$'\e[36m' Xg=$'\e[32m' Xy=$'\e[33m' Xm=$'\e[35m' Xu=$'\e[34m'
-  local nt=""   # name tint — green marks an account-4 (GPT) row, the way magenta used to mark Codex
   case "$1" in -a|--all) all=1 ;; --hidden|-H) onlyhidden=1 ;; *-*-*-*-*) cc-open "$1"; return $? ;; esac   # uuid arg → direct open
   (( all || onlyhidden )) && strict=0
   # cache: uuid -> mtime\tsize\tcwd\tname\tcount  (split by param-expansion, so empty fields survive)
@@ -1144,10 +1087,9 @@ cc-ls() {
           [[ "$acct" != "$prim" ]] && marks+="${Xy}≠${X0}"
         fi
         [[ "$att" == "1" ]] && marks+="  ${Xg}⇄${X0}"; [[ "$sock" == "$cursock" ]] && marks+="  ${Xg}← here${X0}"
-        nt=""; [[ "$acct" == *4* ]] && nt="$Xg"
         lc1h="$(_cc_c1h_tty "$ttylist")"   # the split shares one server, so one birth mode
         _cc_cachew "$mnewu" "$agets" "$(( lc1h ? 3600 : 300 ))"
-        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$bytes")} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
+        label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)$(_cc_hsize "$bytes")} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
         rows+=("${proj}"$'\t'"${ct}"$'\t'"${agets}"$'\t'"L"$'\t'"${sock}"$'\t'"${name}"$'\t'"${label}")
         continue
       fi
@@ -1213,9 +1155,8 @@ cc-ls() {
       [[ "$lc1h" == 1 ]] && marks+="  ${Xy}⚡${X0}"
       [[ "$att" == "1" ]] && marks+="  ${Xg}⇄${X0}"; [[ "$sock" == "$cursock" ]] && marks+="  ${Xg}← here${X0}"
       (( all && hideskip )) && marks+="  ${Xd}·hidden${X0}"   # tag still-hidden ones in -a
-      nt=""; [[ "$acct" == *4* ]] && nt="$Xg"
       _cc_cachew "$uuid" "$agets" "$(( lc1h ? 3600 : 300 ))"   # TTL is the chat's BIRTH mode: flagless = 1h, FORCE_PROMPT_CACHING_5M=1 = 5m
-      label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${nt}${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)hsize} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
+      label="${Xg}●${X0} ${Xc}${(r:14:)proj}${X0} ${Xd}│${X0} ${Xb}${(r:30:)dispname}${X0} ${Xd}│ ${(l:5:)${:-${ct}p}} │ ${(l:6:)hsize} │ ${REPLY_C}${(r:6:)REPLY}${X0}${marks}"
       rows+=("${proj}"$'\t'"${ct}"$'\t'"${agets}"$'\t'"L"$'\t'"${sock}"$'\t'"${name}"$'\t'"${label}"$'\t'"${uuid}"$'\t'"${acct}"$'\t'"${lc1h}")   # f8 = transcript uuid (⌃X hides) · f9 = birth account · f10 = born-with-⚡1h (Enter's reboot gate)
     done <<< "$tls"
   done
@@ -1416,7 +1357,7 @@ cc-ls() {
   print -r -- '{ if ($1 != p) { b++; p = $1 } blk[NR] = b; ln[NR] = $0 }
 END { N = b; if (N < 1) N = 1; Rn = ((R % N) + N) % N
       for (i = 1; i <= NR; i++) { k = ((blk[i] - 1 - Rn) + N) % N; printf "%06d%08d\t%s\n", k, i, ln[i] } }' > "$tmpd/rotate.awk"
-  # ✦ new-chat rows (kind N Claude · C GPT/account-4) — regenerated EACH reload so their target dir FOLLOWS
+  # ✦ new-chat rows (kind N Claude · C Codex) — regenerated EACH reload so their target dir FOLLOWS
   # the ⌃R rotation: the project on top after rotating by $rot is block (Rn+1) in by_time's project
   # order; its dir comes from projdir (falls back to $PWD). f6 carries that dir; the Enter handler
   # launches there. Kept outside the sort so they always sit on top. Not shown in --hidden.
@@ -1453,7 +1394,7 @@ printf ' tmux + Claude/Codex chats · cc → %s acct %s (⌃S) · %s (⌃E) ' "$
 LBL
 
   # two-line header: actions on top, glyph legend below (was one long noisy line)
-  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex · 🍀 GPT · ⇄ attached · last col 💾 ✓warm ✗cold (dim = age)'
+  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex · ⇄ attached · last col 💾 ✓warm ✗cold (dim = age)'
   local blabel="$(sh "$tmpd/label.sh" "$tmpd/1h")"
   if (( onlyhidden )); then
     hdr=$'HIDDEN only — ⌃X restores\n⏎ open · 🔄⌃R rotate'; blabel=' hidden chats · ⌃X restore '
@@ -1578,18 +1519,17 @@ LBL
   else                                       # resumable → cc --resume in a fresh tmux (like _cc_run)
     uuid="$f[5]"; local rcwd="$f[6]"           # launch in the session's home dir — claude --resume is cwd-scoped
     [[ -d "$rcwd" ]] || rcwd="$PWD"             # fall back if the project dir is gone
-    local ra; ra="$(_cc_resume_acct "$uuid")"   # GPT chats resume on 4, Claude chats never do
-    local cfg; case "$ra" in 2|3|4) cfg="$HOME/.cc/$ra" ;; *) cfg="" ;; esac
+    local ra; ra="$(_cc_primary)"              # a resume lands on the primary account
+    local cfg; case "$ra" in 2|3) cfg="$HOME/.cc/$ra" ;; *) cfg="" ;; esac
     local rs="cc-$(date +%s)-$$-$RANDOM"
     echo "Resuming $uuid in $rcwd → new tmux -L $rs"
     # failure net: a session live OUTSIDE tmux is invisible to _cc_agents when its argv carries no
     # uuid (picker-resume, --continue; pane siblings too) — --resume then refuses. Fall through to
     # the auto-router so Enter still lands somewhere useful instead of an instant [exited].
-    local rpfx="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC4_UNSET} "   # never inherit a host chat's identity or cache mode
+    local rpfx="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} "   # never inherit a host chat's identity or cache mode
     if [[ -n "$cfg" ]]; then rpfx+="CLAUDE_CONFIG_DIR=${(q)cfg} "; else rpfx+="-u CLAUDE_CONFIG_DIR "; fi
     if (( c1h )); then rpfx+="ENABLE_PROMPT_CACHING_1H=1 "; else rpfx+="FORCE_PROMPT_CACHING_5M=1 "; fi   # env ARGUMENT after its own -u (a shell prefix would be re-unset)
-    [[ "$ra" == 4 ]] && rpfx+="${(j: :)${(@q)CC4_ENV}} "   # resume under account 4 → answer from GPT, not a dud Anthropic token
-    local rflags=" ${(j: :)${(@q)CC_AUTONOMY_FLAGS}}"   # a resumed chat keeps full autonomy, every account
+      local rflags=" ${(j: :)${(@q)CC_AUTONOMY_FLAGS}}"   # a resumed chat keeps full autonomy, every account
     _cc_solo "$uuid"                          # one instance per chat — close any other host first
     _cc_in_bunker && TMUX= exec tmux -L "$rs" new-session -s "$rs" -c "$rcwd" \
       "${rpfx}claude --resume ${(q)uuid}${rflags} || { echo; echo 'resume refused — session is live elsewhere:'; ${c1henv}bash ${(q)CC_FLEET_HOME}/cc-agent-open.sh ${(q)uuid} ${(q)rcwd}; }"
