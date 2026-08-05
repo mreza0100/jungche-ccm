@@ -41,14 +41,14 @@ export CLAUDE_CODE_DISABLE_BG_EXIT_HANDOFF=1
 export CLAUDE_CODE_STOP_HOOK_BLOCK_CAP=2
 
 # ── Claude Code: triple account (Linux-native, file-based creds) ──────────
-# ONE canonical path per account: ~/.cc/N (1 🥇 · 2 🥈 · 3 🥉). What ~/.cc/N points at is
+# ONE canonical path per account: ~/.cc/N (1 🥇 · 2 🥈). What ~/.cc/N points at is
 # storage trivia — on this box 1 → ~/.claude (Claude's default dir; account 1 launches with
 # CLAUDE_CONFIG_DIR unset), 2 → the legacy ~/.claude3 dir (2026-07 renumber; live sessions
 # still hold the old path — fold into a real dir once they drain, zero script changes), and
 # 3 is a real dir. Scripts speak ACCOUNT NUMBERS only; never reference a ~/.claudeN path.
 # One /login each, ever — no credential copying (a copied OAuth token forks
 # and dies). Launches inside tmux so agents survive SSH drops. ~/.claude-primary
-# holds which acct bare `cc` opens (default 1). cc-swap <1|2|3> changes it.
+# holds which acct bare `cc` opens (default 1). cc-swap <1|2> changes it.
 # cc1/cc2/cc3 force an account.
 # _cc_arm1h — 1 when THIS launch should be born with the ⚡1h-cache: CC_ARM_1H=1 (the picker's
 # explicit per-pick verdict) or ENABLE_PROMPT_CACHING_1H=1 from a NON-chat shell (the documented
@@ -85,7 +85,7 @@ typeset -ga CC_ENDPOINT_UNSET=(
 
 _cc_run() {
   local acct="$1" use_tmux="$2"; shift 2
-  local cfg; case "$acct" in 2|3) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
+  local cfg; case "$acct" in 2) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
   local in_tmux=0; [[ -n "$TMUX" ]] && in_tmux=1
   # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
   # time) — _cc_arm1h decides; the strip below unsets the leaked flag, and an armed launch
@@ -130,7 +130,7 @@ typeset -g CC_FLEET_HOME="${CC_FLEET_HOME:-${${(%):-%x}:A:h}}"
 # children and the swap log goes through it instead of the sidecar files those used to live in.
 # It degrades to those same files when sqlite3 is missing, so the picker is never down.
 typeset -g CC_DB="$CC_FLEET_HOME/cc-db.sh"
-_cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2|3) ;; *) n=1 ;; esac; echo "$n"; }
+_cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
@@ -170,7 +170,7 @@ _cx_server() {
 # pretty label per account: medal + the real email pulled from its config dir
 _cc_label() {
   local n="$1" dir medal email
-  case "$n" in 1) dir="$HOME/.claude"; medal="🥇" ;; 2) dir="$HOME/.cc/2"; medal="🥈" ;; 3) dir="$HOME/.cc/3"; medal="🥉" ;; esac
+  case "$n" in 1) dir="$HOME/.claude"; medal="🥇" ;; 2) dir="$HOME/.cc/2"; medal="🥈" ;; esac
   # ACCOUNT 1'S IDENTITY IS NOT INSIDE ITS CONFIG DIR. Claude Code writes the default account's
   # .claude.json BESIDE the config dir (~/.claude.json), not into it — ~/.claude/.claude.json
   # also exists but carries only machine state (machineID, projects, seenNotifications) and no
@@ -185,15 +185,14 @@ _cc_label() {
   print -r -- "$medal $email"
 }
 
-# cc-swap [1|2|3] — fzf picker (no arg) to set which account bare `cc` opens
+# cc-swap [1|2] — fzf picker (no arg) to set which account bare `cc` opens
 cc-swap() {
   local cur n; cur="$(_cc_primary)"
   local -a rows=(
     "1 │ $(_cc_label 1)"
     "2 │ $(_cc_label 2)"
-    "3 │ $(_cc_label 3)"
   )
-  if [[ "${1:-}" =~ ^[123]$ ]]; then
+  if [[ "${1:-}" =~ ^[12]$ ]]; then
     n="$1"
   elif command -v fzf >/dev/null; then
     local curi="$cur"                           # row position == account number (rows are 1,2,3)
@@ -211,7 +210,7 @@ cc-swap() {
     [[ -z "$pick" ]] && { echo "cc-swap: unchanged — primary stays account $cur"; return 0; }
     n="${pick%% *}"
   else
-    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2|3>"; return 1
+    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
   fi
   bash "$CC_DB" primary-set "$n"   # writes the db AND keeps ~/.claude-primary in lockstep for the statusline
   echo "Primary → account $n  ($(_cc_label $n))"
@@ -302,12 +301,11 @@ vsct-revive() {
 _cc_acct() {
   case "$1" in
     "$HOME/.cc/2"|"$HOME/.cc/2/"*|"$HOME/.claude3"|"$HOME/.claude3/"*|"$HOME/.claude2"|"$HOME/.claude2/"*) echo 2 ;;
-    "$HOME/.cc/3"|"$HOME/.cc/3/"*) echo 3 ;;
     "$HOME/.claude"|"$HOME/.claude/"*) echo 1 ;;
     *) echo "" ;;
   esac
 }
-_cc_medal() { case "$1" in 1) echo 🥇 ;; 2) echo 🥈 ;; 3) echo 🥉 ;; *) echo "" ;; esac }
+_cc_medal() { case "$1" in 1) echo 🥇 ;; 2) echo 🥈 ;; *) echo "" ;; esac }
 
 # _cc_in_bunker — true when this shell IS a vsct bunker pane. Chat opens from a bunker exec
 # INTO the tmux client: the viewport dies with the tab instead of lingering as an orphaned
@@ -885,7 +883,7 @@ cc-open() {
   [[ -n "$tpf" ]] || { echo "cc-open: no transcript for $u"; return 1; }
   local cfg="" rs="cc-$(date +%s)-$$-$RANDOM"           # 3) resume (failure-net → router)
   local ra; ra="$(_cc_primary)"            # a resume lands on the primary account
-  case "$ra" in 2|3) cfg="$HOME/.cc/$ra" ;; esac
+  case "$ra" in 2) cfg="$HOME/.cc/$ra" ;; esac
   local rpfx="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} "   # never inherit a host chat's identity or cache mode
   if [[ -n "$cfg" ]]; then rpfx+="CLAUDE_CONFIG_DIR=${(q)cfg} "; else rpfx+="-u CLAUDE_CONFIG_DIR "; fi
   if [[ "$wc1h" == 1 ]]; then rpfx+="ENABLE_PROMPT_CACHING_1H=1 "; else rpfx+="FORCE_PROMPT_CACHING_5M=1 "; fi   # env ARGUMENT after its own -u (a shell prefix would be re-unset)
@@ -1388,7 +1386,7 @@ NRW
   # $1 = this picker's per-run arm file ("$tmpd/1h")
   cat > "$tmpd/label.sh" <<'LBL'
 n=$(cat "$HOME/.claude-primary" 2>/dev/null || echo 1)
-case "$n" in 2) m=🥈 ;; 3) m=🥉 ;; *) n=1; m=🥇 ;; esac
+case "$n" in 2) m=🥈 ;; *) n=1; m=🥇 ;; esac
 c="🪫 5m cache (forced)"; [ "$(cat "${1:-}" 2>/dev/null)" = 1 ] && c="⚡ 1h ON (this pick)"
 printf ' tmux + Claude/Codex chats · cc → %s acct %s (⌃S) · %s (⌃E) ' "$m" "$n" "$c"
 LBL
@@ -1520,7 +1518,7 @@ LBL
     uuid="$f[5]"; local rcwd="$f[6]"           # launch in the session's home dir — claude --resume is cwd-scoped
     [[ -d "$rcwd" ]] || rcwd="$PWD"             # fall back if the project dir is gone
     local ra; ra="$(_cc_primary)"              # a resume lands on the primary account
-    local cfg; case "$ra" in 2|3) cfg="$HOME/.cc/$ra" ;; *) cfg="" ;; esac
+    local cfg; case "$ra" in 2) cfg="$HOME/.cc/$ra" ;; *) cfg="" ;; esac
     local rs="cc-$(date +%s)-$$-$RANDOM"
     echo "Resuming $uuid in $rcwd → new tmux -L $rs"
     # failure net: a session live OUTSIDE tmux is invisible to _cc_agents when its argv carries no

@@ -39,7 +39,7 @@ CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 . "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_timeout, cc_pane_of
 
 prim="$(bash "$CC_FLEET_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
-case "$prim" in 2|3) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
+case "$prim" in 2) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
 
 cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit a host chat's identity
   local cfg="$1"; shift
@@ -54,7 +54,7 @@ cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit 
 # captured as a variable BEFORE the pipe — bare `.id` there indexes the string and jq aborts
 # the whole stream, hiding every row after the first id-bearing one.
 hit=""; hitcfg=""
-if [ -n "$owncfg" ]; then cands=("$owncfg"); else cands=("" "$HOME/.cc/2" "$HOME/.cc/3"); fi
+if [ -n "$owncfg" ]; then cands=("$owncfg"); else cands=("" "$HOME/.cc/2"); fi
 for cfg in "${cands[@]}"; do
   # judge by parseable output, not exit code — a registry that answers is a registry that counts
   j="$(cc_timeout 20 bash -c '
@@ -83,7 +83,7 @@ pid="$(printf '%s' "$hit" | jq -r '.pid // empty')"
 # now". Routing on .state sent idle agents to the attach view, where picking them wedges.
 st="$(printf '%s' "$hit" | jq -r '.status // .state // "unknown"')"
 # legacy ~/.claude2 / ~/.claude3 paths = account 2 (old sessions' env still carries them)
-oacct=1; case "$hitcfg" in "$HOME/.cc/2"|"$HOME/.claude2"|"$HOME/.claude3") oacct=2 ;; "$HOME/.cc/3") oacct=3 ;; esac
+oacct=1; case "$hitcfg" in "$HOME/.cc/2"|"$HOME/.claude2"|"$HOME/.claude3") oacct=2 ;; esac
 
 # a lock-holder living inside a cc-* tmux is just a CHAT whose breadcrumb went missing (statusline
 # never rendered) — attach its own window; the agents view can't reach it and the resume refuses

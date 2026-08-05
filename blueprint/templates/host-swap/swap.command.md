@@ -1,9 +1,9 @@
 ---
 name: swap
-description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another Claude account (1|2|3) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains. Usage /swap <1|2|3|--1h on|off> [--then "<prompt>"].
+description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same conversation — under another Claude account (1|2) and/or with the ⚡1h-cache flipped (--1h on|off). Env binds at birth, so a reboot is the only way to change either. Account optional when --1h is given (cache-only reboot keeps the account). Optional --then "<prompt>" auto-types a follow-up into the reborn chat so work continues unattended. Invoke it YOURSELF (with --then as a handoff) when the current account's usage limit is nearly exhausted and work remains. Usage /swap <1|2|--1h on|off> [--then "<prompt>"].
 ---
 
-# `/swap [<1|2|3>] [--1h on|off] [--then "<prompt>"]` — reboot this chat under another account / cache mode
+# `/swap [<1|2>] [--1h on|off] [--then "<prompt>"]` — reboot this chat under another account / cache mode
 
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
@@ -37,7 +37,7 @@ instead of stalling:
 1. **Land in-flight work first** — sub-agents, workflows, and background tasks do NOT survive the
    reboot. Finish or checkpoint them; never swap mid-flight.
 2. **Pick a DIFFERENT account**: current = `${CLAUDE_CONFIG_DIR:-~/.claude}` — `~/.claude` → 1,
-   `~/.cc/2` (legacy `~/.claude2`/`~/.claude3`) → 2, `~/.cc/3` → 3.
+   `~/.cc/2` (legacy `~/.claude2`/`~/.claude3`) → 2.
 3. **Swap with a handoff**:
    `bash ~/.claude/bin/cc-swap-chat.sh <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you

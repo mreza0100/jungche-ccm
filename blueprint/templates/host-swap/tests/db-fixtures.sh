@@ -59,10 +59,11 @@ ok "reap kept only the live set" "$(bash "$CC" hidden-list | wc -l | n)" "2"
 
 echo "=== 5. primary account ==="
 ok "default primary" "$(bash "$CC" primary-get)" "1"
-bash "$CC" primary-set 3 >/dev/null
-ok "primary set to 3" "$(bash "$CC" primary-get)" "3"
-ok "legacy file kept in lockstep" "$(cat "$T/.claude-primary" 2>/dev/null)" "3"
+bash "$CC" primary-set 2 >/dev/null
+ok "primary set to 2" "$(bash "$CC" primary-get)" "2"
+ok "legacy file kept in lockstep" "$(cat "$T/.claude-primary" 2>/dev/null)" "2"
 bash "$CC" primary-set 9 >/dev/null 2>&1; ok "rejects out-of-range" "$?" "2"
+bash "$CC" primary-set 3 >/dev/null 2>&1; ok "rejects a retired account" "$?" "2"
 
 echo "=== 6. children ==="
 bash "$CC" child-add pane sess-1 cc-sock-a >/dev/null
