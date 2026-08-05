@@ -143,9 +143,12 @@ for sockpath in "$TMUXDIR"/cc-* "$TMUXDIR"/cx-*; do
         ;;
       cc-*)
         # the 🔖+badge statusline anchor, exactly as chat.sh resolves labels (badge, not 🌿:
-        # a labeled chat outside a repo renders no 🌿 and would go unaddressable)
+        # a labeled chat outside a repo renders no 🌿 and would go unaddressable). The badge set
+        # is whatever the STATUSLINE can emit, which outlives the fleet's account roster: a chat
+        # born under a retired account still renders its old badge until it exits, and dropping
+        # that badge here would silently stop syncing its name.
         lbl="$(tmux -S "$sockpath" capture-pane -t "$pane" -p -J 2>/dev/null \
-               | grep -F '🔖' | grep -E '🥇|🥈|🥉' | tail -1 \
+               | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 \
                | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
         [ -n "$lbl" ] || continue
         lbl="${lbl:0:$MAXLEN}"

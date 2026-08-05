@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cc-swap-chat.sh [<1|2|3>] [--then "<prompt>"] [--sock <cc-socket>] [--1h on|off] — move a
+# cc-swap-chat.sh [<1|2>] [--then "<prompt>"] [--sock <cc-socket>] [--1h on|off] — move a
 # chat to another account and/or flip its ⚡1h-cache mode: gracefully /exit its session, then
 # respawn `claude --resume <its transcript>` IN PLACE (same pane, same socket) under the target
 # env. The account is optional when --1h is given — a cache-only reboot keeps the chat's
@@ -25,16 +25,16 @@ while [ $# -gt 0 ]; do
     --sock) shift; sock_arg="${1:?cc-swap-chat: --sock needs a cc-* socket}" ;;
     --1h)   shift; case "${1:-}" in on|1) c1h_arg=1 ;; off|0) c1h_arg=0 ;;
               *) echo "cc-swap-chat: --1h needs on|off"; exit 2 ;; esac ;;
-    1|2|3|4)  n="$1" ;;
-    *) echo "usage: cc-swap-chat.sh [<1|2|3|4>] [--then \"<prompt>\"] [--sock <cc-socket>] [--1h on|off]   # account optional with --1h (cache-only reboot keeps the account)"; exit 2 ;;
+    1|2)  n="$1" ;;
+    *) echo "usage: cc-swap-chat.sh [<1|2>] [--then \"<prompt>\"] [--sock <cc-socket>] [--1h on|off]   # account optional with --1h (cache-only reboot keeps the account)"; exit 2 ;;
   esac
   shift
 done
-[ -n "$n" ] || [ -n "$c1h_arg" ] || { echo "usage: cc-swap-chat.sh [<1|2|3|4>] [--then \"<prompt>\"] [--sock <cc-socket>] [--1h on|off]   # account optional with --1h (cache-only reboot keeps the account)"; exit 2; }
+[ -n "$n" ] || [ -n "$c1h_arg" ] || { echo "usage: cc-swap-chat.sh [<1|2>] [--then \"<prompt>\"] [--sock <cc-socket>] [--1h on|off]   # account optional with --1h (cache-only reboot keeps the account)"; exit 2; }
 # send-keys -l types newlines as Enter (would submit mid-message) — flatten to spaces
 then_prompt="$(printf '%s' "$then_prompt" | tr '\n\r' '  ')"
 case "$n" in
-  2|3|4) cfg="$HOME/.cc/$n" ;;
+  2) cfg="$HOME/.cc/$n" ;;
   *) cfg="" ;;   # account 1 — or --1h-only, resolved below once the chat is identified
 esac
 
@@ -118,10 +118,9 @@ if [ -z "$n" ]; then
   p=""; [ -n "$tcfg" ] && [ -d "$tcfg" ] && p="$(cd "$tcfg" && pwd -P)"
   case "$p" in
     "$HOME/.claude3"|"$HOME/.cc/2") n=2 ;;
-    "$HOME/.cc/3")                  n=3 ;;
     *)                              n=1 ;;
   esac
-  case "$n" in 2|3) cfg="$HOME/.cc/$n" ;; *) cfg="" ;; esac
+  case "$n" in 2) cfg="$HOME/.cc/$n" ;; *) cfg="" ;; esac
   echo "cc-swap-chat: no account given — keeping the chat's current account $n"
 fi
 

@@ -51,7 +51,7 @@ MYSOCK=""
 # unknown, --kill SKIPS every breadcrumbed socket instead of treating silence as idle.
 CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 BUSY_IDS=""; AGENTS_OK=1
-for _cfg in "" "$HOME/.cc/2" "$HOME/.cc/3"; do
+for _cfg in "" "$HOME/.cc/2"; do
   # A subshell sets (or unsets) the account for the probe rather than an `env` prefix: cc_timeout
   # is a shell FUNCTION, and `env` execs a binary — it cannot see one. The subshell scopes the
   # change just as tightly and works with either.
