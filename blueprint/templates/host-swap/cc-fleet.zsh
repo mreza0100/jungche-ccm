@@ -102,6 +102,15 @@ typeset -ga CC4_UNSET=(
 
 _cc_run() {
   local acct="$1" use_tmux="$2"; shift 2
+  # REFUSE a retired slot instead of launching into it. Claude Code creates a CLAUDE_CONFIG_DIR
+  # that is missing, so the alternative to this check is a chat that opens at a /login prompt
+  # with no history, no hooks and no statusline — a new empty account wearing the number of one
+  # that used to exist.
+  if ! _cc_has "$acct"; then
+    print -u2 -- "cc: account $acct is not on this box (have: $(_cc_accounts))"
+    print -u2 -- "    add it with:  ln -s <its config dir> ~/.cc/$acct"
+    return 1
+  fi
   local cfg; case "$acct" in 2|3|4) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
   local in_tmux=0; [[ -n "$TMUX" ]] && in_tmux=1
   # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
@@ -149,7 +158,29 @@ typeset -g CC_FLEET_HOME="${CC_FLEET_HOME:-${${(%):-%x}:A:h}}"
 # children and the swap log goes through it instead of the sidecar files those used to live in.
 # It degrades to those same files when sqlite3 is missing, so the picker is never down.
 typeset -g CC_DB="$CC_FLEET_HOME/cc-db.sh"
-_cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2|3|4) ;; *) n=1 ;; esac; echo "$n"; }
+
+# ── which accounts this host actually HAS ─────────────────────────────────────
+# The fleet supports four slots. A given box rarely runs four, and an account can be RETIRED —
+# a subscription ends and its config dir goes away. Everything that offers a choice between
+# accounts must read the real set rather than a hardcoded 1..4, because Claude Code's answer to
+# a CLAUDE_CONFIG_DIR that does not exist is to CREATE one: the chat opens, unauthenticated, at
+# a /login prompt, having silently left the fleet. A missing slot must be a refusal, not a new
+# empty account.
+#
+# The test is the config dir. Slot 1 is Claude's own default dir and always exists (it launches
+# with CLAUDE_CONFIG_DIR unset). Slots 2+ are the ~/.cc/N symlinks the operator creates once per
+# account, so the absence of one is the operator saying "not on this box".
+_cc_dir() { if [[ "$1" == 1 ]]; then print -r -- "$HOME/.claude"; else print -r -- "$HOME/.cc/$1"; fi }
+_cc_accounts() { local n; local -a out=(1); for n in 2 3 4; do [[ -e "$HOME/.cc/$n" ]] && out+=($n); done; print -r -- "${out[@]}" }
+_cc_has()      { local n; for n in ${=$(_cc_accounts)}; do [[ "$n" == "$1" ]] && return 0; done; return 1 }
+
+# the stored primary can name a slot that has since been retired — fall back to the first
+# account this host does have rather than launching into a dir that is not there
+_cc_primary() {
+  local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"
+  _cc_has "$n" || n="${${=$(_cc_accounts)}[1]}"
+  echo "$n"
+}
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
@@ -215,17 +246,18 @@ _cc_label() {
 # cc-swap [1|2|3] — fzf picker (no arg) to set which account bare `cc` opens
 cc-swap() {
   local cur n; cur="$(_cc_primary)"
-  local -a rows=(
-    "1 │ $(_cc_label 1)"
-    "2 │ $(_cc_label 2)"
-    "3 │ $(_cc_label 3)"
-    "4 │ $(_cc_label 4)"
-  )
+  # only the accounts this box HAS (see _cc_accounts) — offering a retired slot is offering a
+  # chat that opens unauthenticated
+  local -a accts=(${=$(_cc_accounts)}) rows=()
+  local a; for a in $accts; do rows+=("$a │ $(_cc_label $a)"); done
   if [[ "${1:-}" =~ ^[1234]$ ]]; then
     n="$1"
+    _cc_has "$n" || { print -u2 -- "cc-swap: account $n is not on this box (have: ${accts})"; return 1; }
   elif command -v fzf >/dev/null; then
-    local curi="$cur"                           # row position == account number (rows are 1,2,3)
-    local next=$(( curi % ${#rows} + 1 ))       # row position of the other one
+    # row POSITION, not account number: with a slot retired the two stop being the same thing,
+    # and indexing rows by account number then points at the wrong row (or past the end).
+    local curi=${accts[(i)$cur]}; (( curi > ${#accts} )) && curi=1
+    local next=$(( curi % ${#rows} + 1 ))       # row position of the next one
     rows[$curi]="${rows[$curi]}  ← current"
     local pick
     pick="$(printf '%s\n' "${rows[@]}" | fzf \
@@ -239,7 +271,7 @@ cc-swap() {
     [[ -z "$pick" ]] && { echo "cc-swap: unchanged — primary stays account $cur"; return 0; }
     n="${pick%% *}"
   else
-    echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
+    echo "cc-swap: fzf not found — pass a number: cc-swap <${(j:|:)accts}>"; return 1
   fi
   bash "$CC_DB" primary-set "$n"   # writes the db AND keeps ~/.claude-primary in lockstep for the statusline
   echo "Primary → account $n  ($(_cc_label $n))"
@@ -950,7 +982,11 @@ cc-ls() {
   local cxrl cxid cxnm cxct cxbytes cxmt cxst cxpp cxcwd1 cxst1                # live Codex row scratch
   prim="$(_cc_primary)"   # for the birth-account ≠ mark on live rows (border shows the live value)
   local cf="$siddir/.namecache.v5" cmeta rest cwd nm ct uuid u lmt stt   # bump vN if _cc_meta logic changes
-  local -a ptp; local panes pbc pane_ mnm mu mst mmeta mmax ma            # split-window (⊞) merging
+  # NEVER re-declare one of these deeper in the function. zsh reads `local name` with no
+  # assignment, for a name ALREADY local in this scope, as a request to LIST it — it prints
+  # "name=value" to STDOUT. Inside the per-pane loop that is one junk line per pane, straight
+  # into the picker's own output.
+  local -a ptp; local panes pbc pane_ spanes mnm mu mst mmeta mmax ma     # split-window (⊞) merging
   local all=0 onlyhidden=0 hidden=0 strict=1   # strict = apply hide/orphan/cap filters (default only)
   # row palette (fzf --ansi): leading glyph = kind — ● live · ↻ resume · ⚙ agent · ✦ new
   local X0=$'\e[0m' Xd=$'\e[2m' Xb=$'\e[1m' Xc=$'\e[36m' Xg=$'\e[32m' Xy=$'\e[33m' Xm=$'\e[35m' Xu=$'\e[34m'
@@ -967,8 +1003,14 @@ cc-ls() {
   while IFS= read -r rest; do u="${rest%%$'\t'*}"; NC[$u]="${rest#*$'\t'}"; done < <(bash "$CC_DB" chat-load 2>/dev/null)
   # ⚡1h-cache ⌃E scratch lives at "$tmpd/1h" — keyed to THIS picker run (a fresh tmpd is
   # inherently OFF; concurrent pickers can no longer stomp each other's armed state)
-  # hide list: transcript uuids dropped with ⌃X (reversible — file kept; cc-ls -a reveals, edit "$hf" to undo)
-  local hf="$HOME/.claude/.cc-ls-hidden" h
+  # hide list: transcript uuids dropped with ⌃X (reversible — cc-ls -a reveals, ⌃X again restores).
+  # THE DB IS THE HIDE LIST. ~/.claude/.cc-ls-hidden is the pre-db sidecar and cc-db.sh migrate
+  # RENAMES IT ASIDE, so a migrated host has no such file — yet the fzf-side pipeline below went
+  # on filtering through it. `grep -f` on a missing file does not degrade, it exits 2 and prints
+  # nothing, so the reload emitted zero rows and the picker showed the two ✦ new-chat rows and
+  # not one chat. Nothing on this path may name that file again; the filter reads a file THIS
+  # run materializes from HID (see "$hfz" below).
+  local h
   typeset -A HID; while IFS= read -r h; do [[ -n "$h" ]] && HID[$h]=1; done < <(bash "$CC_DB" hidden-list 2>/dev/null)
   # auto-unhide: a hidden chat that gains a NEW REAL PROMPT after hiding = someone is talking to
   # it again → comes back to the list. Byte growth alone NEVER unhides — a live chat's transcript
@@ -978,7 +1020,7 @@ cc-ls() {
   # junk-filtered prompt (_cc_newprompts); a noise-only delta ratchets the baseline forward, so
   # each byte of a hidden chat is scanned at most once — never a full-file parse (this store is
   # multi-GB; full parses of hidden 70MB transcripts once wedged cc-ls for minutes).
-  local af="$hf.at" auuid asize hideskip; typeset -A AT UNHIDE
+  local auuid asize hideskip; typeset -A AT UNHIDE
   # read defensively: extra fields fold into $_ (an interim build shipped 3-field rows) and a
   # non-numeric size is re-baselined — a stray tab in a math value blows up zsh's (( )) parser
   while IFS=$'\t' read -r auuid asize _; do
@@ -1088,9 +1130,18 @@ cc-ls() {
       # sibling), Enter attaches the whole split. Stale pane files (pane gone) are swept here.
       ptp=()
       panes="$panelist"
+      # TWO pane sets, and they are not the same question. Staleness is a SERVER question — a
+      # crumb is dead only when no session anywhere on this server still holds that pane — but
+      # the ⊞ merge is a SESSION question, and merging on the server set was wrong on any socket
+      # carrying more than one session. The plain `default` socket does exactly that: six
+      # unrelated chats, one per session, each of which merged all six crumbs and rendered the
+      # SAME "⊞6" row. Six duplicate rows, and not one of those six chats reachable on its own.
+      # A cc-* chat server has a single session, which is why this never showed there.
+      spanes="$(awk -F'\t' -v s="$name" '$1==s{print $7}' "$pfile")"   # declared with the other ⊞ locals — never re-`local` it here
       for pbc in "$siddir/$sock".%*(N); do
         pane_="${pbc##*.}"
-        if [[ $'\n'"$panes"$'\n' == *$'\n'"%${pane_#'%'}"$'\n'* ]]; then ptp+=("$(<"$pbc")")
+        if [[ $'\n'"$panes"$'\n' == *$'\n'"%${pane_#'%'}"$'\n'* ]]; then
+          [[ $'\n'"$spanes"$'\n' == *$'\n'"%${pane_#'%'}"$'\n'* ]] && ptp+=("$(<"$pbc")")
         else rm -f "$pbc" 2>/dev/null; fi
       done
       bytes=0; hsize="-"; tpath=""; ct=0; lmt=""; nm=""; acct=""
@@ -1229,7 +1280,11 @@ cc-ls() {
   local cap=30 shown=0 line mt sz fp isagent acfg
   (( strict )) || cap=99999
   for line in ${(f)"$(cc_find_meta "$store" -maxdepth 2 -name '*.jsonl')"}; do
-    mt="${line%%.*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"; uuid="${fp:t:r}"
+    # split on TAB, never on '.': cc_find_meta guarantees an integer epoch in field 1, and the
+    # old `${line%%.*}` cut at the first dot in the whole LINE — which on BSD is inside the path
+    # (see cc_find_meta). That handed a tab-bearing "mtime" to the arithmetic below and poisoned
+    # the persisted chat cache with shifted fields.
+    mt="${line%%$'\t'*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"; uuid="${fp:t:r}"
     [[ -n "${live[$uuid]}" ]] && continue   # already shown as a live tmux session
     isagent=0; acfg="${CCAGENT[$uuid]}"; [[ -n "$acfg" ]] && isagent=1   # live bg/forked agent → attach (below), never resume
     # (the sessionKind:"bg" skip moved BELOW, where the prompt count exists — see there)
@@ -1307,7 +1362,7 @@ cc-ls() {
   (( strict )) || cxcap=99999
   if command -v codex >/dev/null; then
     for line in ${(f)"$(cc_find_meta "$HOME/.codex/sessions" -name 'rollout-*.jsonl' | head -120)"}; do
-      mt="${line%%.*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"
+      mt="${line%%$'\t'*}"; sz="${${line#*$'\t'}%%$'\t'*}"; fp="${line##*$'\t'}"   # TAB, never '.' — see source 2
       uuid="${${fp:t:r}#rollout-????-??-??T??-??-??-}"
       [[ -n "${cxlive[$uuid]}" ]] && continue        # already shown as a live cx row
       (( sz == 0 )) && continue
@@ -1340,15 +1395,12 @@ cc-ls() {
   fi
   { for u in ${(k)NC}; do print -r -- "$u"$'\t'"${NC[$u]}"; done } | bash "$CC_DB" chat-save 2>/dev/null   # persist cache (one transaction)
   if (( ${#UNHIDE} )); then            # chats that grew since hidden → drop from the hide-list (auto-return)
-    # grep exits 1 when EVERY line is dropped (the common one-hidden-chat case) — that's a
-    # valid empty result, not a failure; only >1 (real error) may veto the mv
-    (   # one flock across ALL hide-list writers (⌃X toggle, this auto-unhide, cc-hide append)
-        # so a concurrent append landing inside this read-modify-write is not lost; per-pid temp
-        flock 9 2>/dev/null || true
-        grep -vxF -f =(print -l -- ${(k)UNHIDE}) "$hf" > "$hf.t.$$" 2>/dev/null
-        (( $? <= 1 )) && mv "$hf.t.$$" "$hf" || rm -f "$hf.t.$$"
-    ) 9>"$hf.lock"
-    for u in ${(k)UNHIDE}; do unset "AT[$u]"; done
+    # Dropping the uuid from HID is the whole of it: the hidden-sync below sends HID as the
+    # hidden set, so a uuid removed here is released atomically (and, with no db, the fallback
+    # arm of hidden-sync rewrites the legacy sidecars from the same set). The old code instead
+    # rewrote ~/.claude/.cc-ls-hidden under a `flock` — a binary macOS does not ship — and never
+    # touched HID, so the very next line re-hid every chat auto-unhide had just released.
+    for u in ${(k)UNHIDE}; do unset "HID[$u]"; unset "AT[$u]"; done
   fi
   # ONE transaction replaces the old flock'd two-file rewrite, whose own comment conceded
   # "last-writer-wins" — the exact mechanism by which a concurrent picker's hides disappeared.
@@ -1371,6 +1423,12 @@ cc-ls() {
   # project-blocks (the file is proj-grouped) by a counter. Cheap: awk+sort over a few dozen rows.
   local tmpd; tmpd="$(mktemp -d "${TMPDIR:-/tmp}/cc-ls.XXXXXX")" || tmpd="/tmp/cc-ls.$$"
   printf '%s\n' "${rows[@]}" | sort -t$'\t' -k1,1 -k3,3nr > "$tmpd/by_time"   # project ▸ recent
+  # the fzf side's hide filter, materialized from the db-backed HID set. It exists for one job the
+  # in-memory filtering cannot do: ⌃X hides and restores DURING the picker, and the reload has to
+  # honour that without rebuilding every row. It is per-run and single-writer, which is why the
+  # ⌃X bind below needs no lock — the db, not this file, is what other pickers read.
+  local hfz="$tmpd/hidden"
+  { for h in ${(k)HID}; do print -r -- "$h"; done } > "$hfz"
   # PROJDIR → a file the fzf-side sh reads so the ✦ new-chat rows can target the CURRENTLY-rotated
   # project's real dir (project basename → cwd)
   { for _p in ${(k)PROJDIR}; do print -r -- "$_p"$'\t'"${PROJDIR[$_p]}"; done } > "$tmpd/projdir"
@@ -1401,14 +1459,28 @@ printf '%s\t0\t0\tN\t\t%s\t${Xy}${Xb}✦${X0} ${Xc}%s${X0} ${Xd}│${X0} ${Xy}%-
 NRW
   fi
   # reload: emit the ✦ rows (dir follows ⌃R), then the rotated+sorted list, strip the rank prefix, filter hidden
+  # ALWAYS TEST -s BEFORE `grep -f`. An empty pattern file is not portable: BSD and GNU grep read
+  # it as "no patterns" (so -v passes everything and plain -f matches nothing), while ugrep — which
+  # a Homebrew `grep` on PATH can be — does the exact opposite. Nothing hidden is the common case,
+  # so the divergence is the common case; branching on the file's size removes the question.
   local hgrep=""
-  (( strict ))     && hgrep=" | grep -vFf '$hf'"   # default: drop hidden
-  (( onlyhidden )) && hgrep=" | grep -Ff '$hf'"    # --hidden: keep ONLY hidden
+  (( strict ))     && hgrep=" | { if [ -s '$hfz' ]; then grep -vFf '$hfz'; else cat; fi; }"          # default: drop hidden
+  (( onlyhidden )) && hgrep=" | { if [ -s '$hfz' ]; then grep -Ff '$hfz'; else cat >/dev/null; fi; }" # --hidden: keep ONLY hidden
   local reload="[ -r '$tmpd/newrow.sh' ] && sh '$tmpd/newrow.sh'; r=\$(cat '$tmpd/rot'); awk -F'\t' -v R=\"\$r\" -f '$tmpd/rotate.awk' '$tmpd/by_time' | sort | cut -f2-${hgrep}"
   local tog_proj="echo \$((\$(cat '$tmpd/rot')+1)) > '$tmpd/rot'; $reload"
   # as files — binds stay quotable, and the load-transform can re-run the pipeline to FIND a row
   print -r -- "$reload"   > "$tmpd/reload.sh"
   print -r -- "$tog_proj" > "$tmpd/tog_proj.sh"
+  # ⌃S steps the primary through the accounts this box HAS, not a hardcoded 1→2→3→1. With a slot
+  # retired that hardcoded cycle stopped on a config dir that is not there, and Claude Code
+  # answers a missing CLAUDE_CONFIG_DIR by creating one — the next `cc` opened a brand-new
+  # unauthenticated account wearing the retired number. The successor map is computed here, in
+  # zsh, and baked into the bind, because the bind itself runs under `sh` and cannot ask.
+  # every name here carries an assignment: `local _i` alone, for an _i already declared above,
+  # is a LISTING request in zsh and prints "_i=3" to stdout (see the note at the ptp locals).
+  local -a _acl=(${=$(_cc_accounts)}); local _scase="" _si=0
+  for (( _si=1; _si <= ${#_acl}; _si++ )); do _scase+="${_acl[_si]}) n=${_acl[_si % ${#_acl} + 1]} ;; "; done
+  _scase+="*) n=${_acl[1]} ;;"
   # border-label builder — one source of truth for ⌃S (account) and ⌃E (⚡1h-cache) state;
   # $1 = this picker's per-run arm file ("$tmpd/1h")
   cat > "$tmpd/label.sh" <<'LBL'
@@ -1418,8 +1490,15 @@ c="🪫 5m cache (forced)"; [ "$(cat "${1:-}" 2>/dev/null)" = 1 ] && c="⚡ 1h O
 printf ' tmux + Claude/Codex chats · cc → %s acct %s (⌃S) · %s (⌃E) ' "$m" "$n" "$c"
 LBL
 
-  # two-line header: actions on top, glyph legend below (was one long noisy line)
-  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex · 🍀 GPT · ⇄ attached'
+  # two-line header: actions on top, glyph legend below (was one long noisy line).
+  # The legend names only glyphs this box can actually produce. 🍀 marks an account-4 (GPT via
+  # claude-code-proxy) row, and a box without that account can never show one — a legend entry
+  # for a glyph that cannot appear is a promise the picker does not keep, and it costs width on
+  # the one line that has to stay readable. Same rule as ⬢, which the ✦ row already gates on the
+  # codex binary being installed.
+  local hdr=$'⏎ open · ♻⌃O reload · ⇅⌃T sort · ⚡⌃E 1h-cache · 🔄⌃R rotate · 🙈⌃X hide⇄show · 🎖⌃S account\n● live · ↻ resume · ⚙ agent · ✦ new · ⬢ codex'
+  _cc_has 4 && hdr+=' · 🍀 GPT'
+  hdr+=' · ⇄ attached'
   local blabel="$(sh "$tmpd/label.sh" "$tmpd/1h")"
   if (( onlyhidden )); then
     hdr=$'HIDDEN only — ⌃X restores\n⏎ open · 🔄⌃R rotate'; blabel=' hidden chats · ⌃X restore '
@@ -1441,10 +1520,10 @@ LBL
     --prompt='cc ❯ ' --pointer='▌' \
     --bind "ctrl-t:execute-silent(printf %s {5} > '$tmpd/want')+reload:sh '$tmpd/tog_sort.sh'" \
     --bind "ctrl-r:execute-silent(printf %s {5} > '$tmpd/want')+reload:sh '$tmpd/tog_proj.sh'" \
-    --bind "ctrl-x:execute-silent(printf %s \"\$FZF_POS\" > '$tmpd/pos'; [ {4} = N ] && exit 0; id={5}; if [ {4} = L ]; then id={8}; fi; [ -n \"\$id\" ] || exit 0; F='$hf'; ( flock 9 2>/dev/null || true; if grep -qxF -- \"\$id\" \"\$F\"; then grep -vxF -- \"\$id\" \"\$F\" > \"\$F.t.\$\$\"; mv \"\$F.t.\$\$\" \"\$F\"; else printf '%s\n' \"\$id\" >> \"\$F\"; fi ) 9>\"\$F.lock\")+reload:sh '$tmpd/reload.sh'" \
+    --bind "ctrl-x:execute-silent(printf %s \"\$FZF_POS\" > '$tmpd/pos'; [ {4} = N ] && exit 0; id={5}; if [ {4} = L ]; then id={8}; fi; [ -n \"\$id\" ] || exit 0; F='$hfz'; if grep -qxF -- \"\$id\" \"\$F\" 2>/dev/null; then grep -vxF -- \"\$id\" \"\$F\" > \"\$F.t\" 2>/dev/null; mv \"\$F.t\" \"\$F\"; bash '$CC_DB' hidden-del \"\$id\"; else printf '%s\n' \"\$id\" >> \"\$F\"; bash '$CC_DB' hidden-add \"\$id\"; fi >/dev/null 2>&1)+reload:sh '$tmpd/reload.sh'" \
     --bind "load:transform(if [ -r '$tmpd/pos' ]; then printf 'pos(%s)' \"\$(cat '$tmpd/pos')\"; rm -f '$tmpd/pos'; elif [ -s '$tmpd/want' ]; then n=\$(sh '$tmpd/reload.sh' | awk -F'\t' -v w=\"\$(cat '$tmpd/want')\" '\$5==w{print NR; exit}'); rm -f '$tmpd/want'; [ -n \"\$n\" ] && printf 'pos(%s)' \"\$n\"; else rm -f '$tmpd/want'; fi || :)" \
     --bind "ctrl-e:execute-silent(f='$tmpd/1h'; if [ \"\$(cat \"\$f\" 2>/dev/null)\" = 1 ]; then rm -f \"\$f\"; else echo 1 > \"\$f\"; fi)+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
-    --bind "ctrl-s:execute-silent(n=\$(bash '$CC_DB' primary-get); case \"\$n\" in 1) n=2 ;; 2) n=3 ;; *) n=1 ;; esac; bash '$CC_DB' primary-set \"\$n\")+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
+    --bind "ctrl-s:execute-silent(n=\$(bash '$CC_DB' primary-get); case \"\$n\" in $_scase esac; bash '$CC_DB' primary-set \"\$n\")+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
     --color='border:cyan,label:bold:cyan,header:dim,prompt:bold:cyan,pointer:bright-yellow,fg+:bold,hl:bright-yellow,hl+:bright-yellow:bold' \
     < <(sh "$tmpd/reload.sh"))" || true
   # ⌃E arms the ⚡1h-cache for THIS pick only (shown in the border) — read this run's arm file,

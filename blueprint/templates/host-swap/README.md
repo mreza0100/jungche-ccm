@@ -44,6 +44,14 @@ credential store to seed or rotate:
 ~/.claude3         account 3 (optional — everything below reads correctly with just 1 and 2)
 ```
 
+The fleet addresses accounts by the canonical path `~/.cc/N`, a symlink you create once per
+account, and **a slot exists exactly when that path does.** `cc-swap`, the picker's ⌃S cycle and
+every `ccN` launcher read the real set, so a box can run one account or four, and an account can
+be **retired** by deleting its `~/.cc/N` — the launchers then refuse it by name instead of
+launching into it. That refusal is the point: Claude Code's answer to a `CLAUDE_CONFIG_DIR` that
+does not exist is to CREATE one, so without the check a retired slot opens a brand-new
+unauthenticated chat wearing the old number.
+
 One `/login` per account, ever — no credential copying (a copied OAuth token forks and dies).
 Every launch gets its **own tmux server** (`-L cc-<epoch>-<pid>-<rand>`) so a single crashed tmux
 can't take every chat down at once, and so a chat picker or `/swap`'s engine can address one
@@ -75,7 +83,7 @@ refresh — no separate marker to keep in sync.
 | `chat/` | `~/.claude/commands/chat/` | the `chat:*` command family + its engine `chat.sh` |
 | `codex-skills/` | `~/.agents/skills/` | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge (the one piece that is still a manual merge — it edits a file you own) |
-| `tests/` | — | fixtures for the state store, the self-location resolver, the installer, and the name sync |
+| `tests/` | — | fixtures for the state store, the self-location resolver, the installer, the name sync, and the GNU/BSD seam |
 
 ## Install
 
@@ -163,6 +171,7 @@ bash tests/db-fixtures.sh          # the state store
 bash tests/selflocate-fixtures.sh  # the bundle finds itself through symlinks
 bash tests/install-fixtures.sh     # the installer, against a scratch HOME
 bash tests/name-sync-fixtures.sh   # window-name convergence, on scratch sockets
+bash tests/portable-fixtures.sh    # the GNU/BSD seam — the SHAPE every caller depends on
 ```
 
 ## Maintenance
