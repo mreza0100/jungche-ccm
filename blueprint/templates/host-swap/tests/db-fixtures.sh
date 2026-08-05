@@ -115,6 +115,39 @@ ok "load->save->load is stable" "$(diff -q "$T/r1" "$T/r2" >/dev/null && echo sa
 bash "$CC" chat-prune
 ok "prune drops rows with no transcript" "$(bash "$CC" chat-load | wc -l | n)" "0"
 
+echo "=== 9b. a record with MORE than six fields is refused, not stored shifted ==="
+# How the poison got in: a caller packed a tab-bearing value into one field, every field to its
+# right shifted, and the row landed with cwd=<path prefix>, label=<byte count> and prompts=0.
+# A 0-prompt row is one the picker HIDES, so the chat vanished and stayed vanished — the cache
+# entry still matched the file's mtime and size, so no later run re-parsed it. Refusing the row
+# costs one re-parse. Storing it costs the chat.
+printf 'f1111111-0000-0000-0000-000000000001\t100\t200\t/good/cwd\tGOOD\t5\n' > "$T/in2.tsv"
+printf 'f2222222-0000-0000-0000-000000000002\t100\t200\t/x\t200\t/bad/cwd\tBAD\t0\n' >> "$T/in2.tsv"
+bash "$CC" chat-save < "$T/in2.tsv"
+ok "the well-formed row is stored" "$(sqlite3 "$CC_FLEET_DB" "SELECT label FROM chat WHERE uuid='f1111111-0000-0000-0000-000000000001';")" "GOOD"
+ok "the over-long row is refused"  "$(sqlite3 "$CC_FLEET_DB" "SELECT COUNT(*) FROM chat WHERE uuid='f2222222-0000-0000-0000-000000000002';")" "0"
+sqlite3 "$CC_FLEET_DB" "DELETE FROM chat;"
+
+echo "=== 9c. chat_gen — a cache written by a shipped bug clears itself once ==="
+# The chat table is 100% derived, so the honest repair for rows a bug wrote is to drop them and
+# let the next scan rebuild. The marker makes that happen exactly once per host.
+printf 'a1111111-0000-0000-0000-000000000001\t100\t200\t/c\tL\t5\n' > "$T/in3.tsv"
+bash "$CC" chat-save < "$T/in3.tsv"
+ok "stamped db keeps its rows across a load" "$(bash "$CC" chat-load | wc -l | n)" "1"
+sqlite3 "$CC_FLEET_DB" "DELETE FROM meta WHERE key='chat_gen';"   # a db from before the marker
+ok "unstamped db is purged on load"          "$(bash "$CC" chat-load | wc -l | n)" "0"
+ok "and is stamped, so it purges only once"  "$(sqlite3 "$CC_FLEET_DB" "SELECT val FROM meta WHERE key='chat_gen';")" "2"
+bash "$CC" chat-save < "$T/in3.tsv"
+ok "rows written after the purge survive"    "$(bash "$CC" chat-load | wc -l | n)" "1"
+# init must NOT stamp a db that already holds rows — migrate calls init, and an adopter running
+# migrate again would otherwise certify the poison as current and suppress the purge forever.
+sqlite3 "$CC_FLEET_DB" "DELETE FROM meta WHERE key='chat_gen';"
+bash "$CC" init >/dev/null 2>&1
+ok "init leaves a populated db unstamped"    "$(sqlite3 "$CC_FLEET_DB" "SELECT COUNT(*) FROM meta WHERE key='chat_gen';")" "0"
+sqlite3 "$CC_FLEET_DB" "DELETE FROM chat;"
+bash "$CC" init >/dev/null 2>&1
+ok "init stamps an empty db, so a fresh install never purges" "$(sqlite3 "$CC_FLEET_DB" "SELECT val FROM meta WHERE key='chat_gen';")" "2"
+
 echo "=== 10. /bb two-step hide must not lose the auto-unhide baseline ==="
 bash "$CC" init >/dev/null 2>&1
 sqlite3 "$CC_FLEET_DB" "DELETE FROM hidden;"

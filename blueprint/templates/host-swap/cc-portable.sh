@@ -320,10 +320,21 @@ cc_unlock() {
 # errored; the lists were simply empty, which reads as "you have no chats".
 #
 # The BSD arm gets the same three fields from one batched `stat` exec, so it stays one process
-# per scan rather than one per file. One difference is real and harmless here: GNU reports a
-# FRACTIONAL mtime, BSD whole seconds, so two files written in the same second sort by size then
-# path on a Mac instead of by sub-second time. These are chat transcripts minutes apart; nothing
-# in this bundle can tell the difference.
+# per scan rather than one per file.
+#
+# FIELD 1 IS AN INTEGER EPOCH ON BOTH ARMS, and that normalization belongs here rather than in
+# the callers. GNU's `%T@` carries a fractional part ("1785795885.1234567890"); BSD's `%m` does
+# not. Both callers stripped the fraction with `${line%%.*}` — correct on GNU only by accident,
+# because there the first `.` in the line is always the fraction separator. On BSD the first `.`
+# is in the PATH ("/Users/…/.claude/…"), so `mt` came back as "<mtime><TAB><size><TAB>$HOME/"
+# — a tab-bearing string handed to zsh arithmetic and then WRITTEN INTO THE CHAT CACHE, whose
+# fields it shifted by one. Every affected chat persisted with prompts=0 and was filtered out of
+# the picker on every subsequent run, including runs after the parse itself was fixed. A caller
+# cannot be trusted to re-derive a platform difference; the seam hands it a single shape.
+#
+# Sub-second ordering is preserved where it exists: the GNU arm sorts on the fractional value and
+# truncates AFTER the sort, so only the printed field loses the fraction, never the order. On BSD
+# two files written in the same second tie and order by size — nothing in this bundle can tell.
 #
 # The probe result is cached in CC_FIND_PRINTF: cc-fleet.zsh is sourced by every interactive
 # shell, and a fork per shell start to re-learn which find is installed is a cost with no payer.
@@ -334,7 +345,10 @@ cc_find_meta() {
     if find "$_d" -maxdepth 0 -printf '' >/dev/null 2>&1; then CC_FIND_PRINTF=1; else CC_FIND_PRINTF=0; fi
   fi
   if [ "$CC_FIND_PRINTF" = 1 ]; then
-    find "$_d" "$@" -printf '%T@\t%s\t%p\n' 2>/dev/null | sort -rn
+    # awk, not a second `sort` key or a `cut`: sub() rebuilds the record with OFS, so a path
+    # carrying anything exotic survives byte-for-byte. One process per SCAN, not per file.
+    find "$_d" "$@" -printf '%T@\t%s\t%p\n' 2>/dev/null | sort -rn \
+      | awk -F'\t' -v OFS='\t' '{ sub(/\.[0-9]*$/, "", $1); print }'
   else
     find "$_d" "$@" -exec stat -f '%m	%z	%N' {} + 2>/dev/null | sort -rn
   fi
