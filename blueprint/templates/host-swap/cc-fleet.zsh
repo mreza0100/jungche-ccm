@@ -1403,6 +1403,12 @@ LBL
   # --no-mouse: a focus-click (or trackpad-inertia scroll) into a fresh terminal lands on a row
   # and silently steals the cursor from "new chat here" — Enter then opens whatever chat sat
   # under the pointer. Keyboard + fuzzy-typing are the picker's only inputs.
+  #
+  # ⌃S cycles the primary account by INCREMENT-AND-WRAP, never a hardcoded ladder: bump the
+  # number, and when the database rejects it as out of roster, wrap to 1. The roster then lives
+  # in exactly one place — cc-db's own guard — so retiring an account can never stall the cycle
+  # on a number nothing will accept, which is how a hardcoded 1→2→3 froze at 2 the day the
+  # roster became two.
   pick="$(fzf \
     --delimiter=$'\t' --with-nth=7 \
     --expect=ctrl-t,ctrl-o \
@@ -1417,7 +1423,7 @@ LBL
     --bind "ctrl-x:execute-silent(printf %s \"\$FZF_POS\" > '$tmpd/pos'; [ {4} = N ] && exit 0; id={5}; if [ {4} = L ]; then id={8}; fi; [ -n \"\$id\" ] || exit 0; F='$hf'; ( flock 9 2>/dev/null || true; if grep -qxF -- \"\$id\" \"\$F\"; then grep -vxF -- \"\$id\" \"\$F\" > \"\$F.t.\$\$\"; mv \"\$F.t.\$\$\" \"\$F\"; else printf '%s\n' \"\$id\" >> \"\$F\"; fi ) 9>\"\$F.lock\")+reload:sh '$tmpd/reload.sh'" \
     --bind "load:transform(if [ -r '$tmpd/pos' ]; then printf 'pos(%s)' \"\$(cat '$tmpd/pos')\"; rm -f '$tmpd/pos'; elif [ -s '$tmpd/want' ]; then n=\$(sh '$tmpd/reload.sh' | awk -F'\t' -v w=\"\$(cat '$tmpd/want')\" '\$5==w{print NR; exit}'); rm -f '$tmpd/want'; [ -n \"\$n\" ] && printf 'pos(%s)' \"\$n\"; else rm -f '$tmpd/want'; fi || :)" \
     --bind "ctrl-e:execute-silent(f='$tmpd/1h'; if [ \"\$(cat \"\$f\" 2>/dev/null)\" = 1 ]; then rm -f \"\$f\"; else echo 1 > \"\$f\"; fi)+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
-    --bind "ctrl-s:execute-silent(n=\$(bash '$CC_DB' primary-get); case \"\$n\" in 1) n=2 ;; 2) n=3 ;; *) n=1 ;; esac; bash '$CC_DB' primary-set \"\$n\")+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
+    --bind "ctrl-s:execute-silent(n=\$(bash '$CC_DB' primary-get); bash '$CC_DB' primary-set \"\$((n + 1))\" 2>/dev/null || bash '$CC_DB' primary-set 1)+transform-border-label(sh '$tmpd/label.sh' '$tmpd/1h')" \
     --color='border:cyan,label:bold:cyan,header:dim,prompt:bold:cyan,pointer:bright-yellow,fg+:bold,hl:bright-yellow,hl+:bright-yellow:bold' \
     < <(sh "$tmpd/reload.sh"))" || true
   # ⌃E arms the ⚡1h-cache for THIS pick only (shown in the border) — read this run's arm file,

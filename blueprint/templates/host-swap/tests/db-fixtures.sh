@@ -64,6 +64,12 @@ ok "primary set to 2" "$(bash "$CC" primary-get)" "2"
 ok "legacy file kept in lockstep" "$(cat "$T/.claude-primary" 2>/dev/null)" "2"
 bash "$CC" primary-set 9 >/dev/null 2>&1; ok "rejects out-of-range" "$?" "2"
 bash "$CC" primary-set 3 >/dev/null 2>&1; ok "rejects a retired account" "$?" "2"
+# ⌃S cycles by increment-and-wrap and reads the roster from THIS guard — a rejected increment
+# must leave the account untouched, so the picker's fallback to 1 is the only thing that moves it
+bash "$CC" primary-set 2 >/dev/null
+bash "$CC" primary-set 3 >/dev/null 2>&1
+ok "a rejected increment changes nothing" "$(bash "$CC" primary-get)" "2"
+bash "$CC" primary-set 1 >/dev/null; ok "the wrap lands on 1" "$(bash "$CC" primary-get)" "1"
 
 echo "=== 6. children ==="
 bash "$CC" child-add pane sess-1 cc-sock-a >/dev/null
