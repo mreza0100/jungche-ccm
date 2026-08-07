@@ -36,11 +36,13 @@ win(){ tmux -S "$TMUX_TMPDIR/$1" list-windows -t "=$1" -F '#{window_name}' 2>/de
 utc(){ date -u -d "@$1" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%S.000Z; }
 settime(){ touch -d "@$1" "$2" 2>/dev/null || touch -t "$(date -r "$1" +%Y%m%d%H%M.%S)" "$2"; }
 
-# rollout <file-stamp> <uuid> <birth-epoch> <cwd> [first-prompt]
+# rollout <file-stamp> <uuid> <birth-epoch> <cwd> [first-prompt] [envelope-epoch]
+# The envelope timestamp defaults to the birth; pass it to model what codex actually writes —
+# an outer stamp carrying the record's WRITE time, minutes or hours past the thread's birth.
 rollout(){
   local f="$SESS/rollout-$1-$2.jsonl"
   printf '{"timestamp":"%s","type":"session_meta","payload":{"id":"%s","timestamp":"%s","cwd":"%s","thread_source":"user"}}\n' \
-    "$(utc "$3")" "$2" "$(utc "$3")" "$4" > "$f"
+    "$(utc "${6:-$3}")" "$2" "$(utc "$3")" "$4" > "$f"
   [ -n "${5:-}" ] && printf '{"timestamp":"%s","type":"event_msg","payload":{"type":"user_message","message":"%s"}}\n' "$(utc "$3")" "$5" >> "$f"
   settime "$3" "$f"
 }
@@ -114,6 +116,77 @@ rollout "2026-08-02T00-00-15" "ffffffff-0000-0000-0000-000000000006" "$((TE+1))"
 printf '{"id":"ffffffff-0000-0000-0000-000000000006","thread_name":"AAAAAAAAAAAAAAAAAAAAAAA BBBB"}\n' >> "$CODEX_HOME/session_index.jsonl"
 "$SYNC" >/dev/null
 ok "no trailing space in the window"      "$(win cx-450)" "AAAAAAAAAAAAAAAAAAAAAAA"
+
+echo "=== codex: the birth is payload.timestamp, not the envelope's write time ==="
+# Codex rewrites the meta record's OUTER stamp as the thread runs, so dating a thread by the first
+# "timestamp" in the line dated it by its last write — here an hour late, which hands the pane to
+# the sibling chat launched a minute after it.
+mkdir -p "$T/projG"
+tmux -S "$TMUX_TMPDIR/cx-460" new-session -d -s cx-460 -n Codex -c "$T/projG" 'sleep 300'
+TG="$(date +%s)"
+rollout "2026-08-02T00-00-17" "11111111-0000-0000-0000-000000000007" "$((TG+1))"  "$T/projG" "" "$((TG+3600))"
+rollout "2026-08-02T00-00-18" "22222222-0000-0000-0000-000000000008" "$((TG+60))" "$T/projG"
+{ printf '{"id":"11111111-0000-0000-0000-000000000007","thread_name":"MINE"}\n'
+  printf '{"id":"22222222-0000-0000-0000-000000000008","thread_name":"SIBLING"}\n'
+} >> "$CODEX_HOME/session_index.jsonl"
+"$SYNC" >/dev/null
+ok "dated by its birth, not its writes"   "$(win cx-460)" "MINE"
+
+echo "=== codex: the state store names the threads that write no rollout file ==="
+# Codex keeps a paginated thread's history in ~/.codex/state_<N>.sqlite and may write no rollout
+# at all. Every case below has NO rollout file — before the store was read, such a pane silently
+# inherited the newest OTHER rollout in its directory, and its renames never reached the window.
+if command -v sqlite3 >/dev/null 2>&1; then
+  CXDB="$CODEX_HOME/state_9.sqlite"
+  sqlite3 "$CXDB" "create table threads (id text primary key, cwd text not null, created_at integer not null,
+    name text, title text not null default '', first_user_message text not null default '',
+    thread_source text not null default 'user', archived integer not null default 0);" 2>/dev/null
+  # dbrow <id> <cwd> <created-epoch> <name> [first-prompt]
+  dbrow(){ sqlite3 "$CXDB" "insert or replace into threads (id,cwd,created_at,name,first_user_message)
+             values ('$1','$2',$3,'$4','${5:-}');" 2>/dev/null; }
+
+  mkdir -p "$T/projF"
+  # the stale sibling that used to win: an hour-old rollout, the only one in this directory
+  rollout "2026-08-02T00-00-16" "99999999-0000-0000-0000-000000000009" "$((NOW-3600))" "$T/projF"
+  printf '{"id":"99999999-0000-0000-0000-000000000009","thread_name":"STALE_SIBLING"}\n' >> "$CODEX_HOME/session_index.jsonl"
+  tmux -S "$TMUX_TMPDIR/cx-500" new-session -d -s cx-500 -n Codex -c "$T/projF" 'sleep 300'
+  TF="$(date +%s)"
+  dbrow "aaaa0001-0000-0000-0000-00000000000a" "$T/projF" "$TF" "STORE_NAME"
+  "$SYNC" >/dev/null
+  ok "rollout-less thread names its window" "$(win cx-500)" "STORE_NAME"
+
+  dbrow "aaaa0001-0000-0000-0000-00000000000a" "$T/projF" "$TF" "STORE_RENAMED"
+  "$SYNC" >/dev/null
+  ok "a rename in the store converges"      "$(win cx-500)" "STORE_RENAMED"
+
+  # a thread renamed before codex kept the name in the store: the index still holds it
+  mkdir -p "$T/projH"
+  tmux -S "$TMUX_TMPDIR/cx-600" new-session -d -s cx-600 -n Codex -c "$T/projH" 'sleep 300'
+  TH="$(date +%s)"
+  dbrow "aaaa0002-0000-0000-0000-00000000000b" "$T/projH" "$TH" "" "Wire the queue up and report back"
+  printf '{"id":"aaaa0002-0000-0000-0000-00000000000b","thread_name":"INDEX_NAME"}\n' >> "$CODEX_HOME/session_index.jsonl"
+  "$SYNC" >/dev/null
+  ok "no store name → the index's name"     "$(win cx-600)" "INDEX_NAME"
+
+  # neither → the thread's own first prompt, cut to 24
+  mkdir -p "$T/projI"
+  tmux -S "$TMUX_TMPDIR/cx-700" new-session -d -s cx-700 -n Codex -c "$T/projI" 'sleep 300'
+  TI="$(date +%s)"
+  dbrow "aaaa0003-0000-0000-0000-00000000000c" "$T/projI" "$TI" "" "Wire the queue up and report back"
+  "$SYNC" >/dev/null
+  ok "no name anywhere → first prompt"      "$(win cx-700)" "Wire the queue up and re"
+
+  # an elder pane the store cannot place (nothing born near its start) still reaches the scan
+  mkdir -p "$T/projJ"
+  tmux -S "$TMUX_TMPDIR/cx-800" new-session -d -s cx-800 -n Codex -c "$T/projJ" 'sleep 300'
+  dbrow "aaaa0004-0000-0000-0000-00000000000d" "$T/projJ" "$((NOW-7200))" "TOO_OLD"
+  rollout "2026-08-02T00-00-19" "aaaa0005-0000-0000-0000-00000000000e" "$((NOW-3600))" "$T/projJ"
+  printf '{"id":"aaaa0005-0000-0000-0000-00000000000e","thread_name":"ELDER_ROLLOUT"}\n' >> "$CODEX_HOME/session_index.jsonl"
+  "$SYNC" >/dev/null
+  ok "store miss falls back to the scan"    "$(win cx-800)" "ELDER_ROLLOUT"
+else
+  echo "  — sqlite3 absent, store cases skipped"
+fi
 
 echo "=== squatter: a second session on a chat's socket is not a chat ==="
 tmux -S "$TMUX_TMPDIR/cx-100" new-session -d -s squat -n keepme -c "$T/projA" 'sleep 300'
