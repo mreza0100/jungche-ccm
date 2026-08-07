@@ -3,12 +3,12 @@
 # is the fleet's DNS record: chat.sh resolves codex chats by it, the VS Code tab renders it
 # (cx servers title as '⬢ <window> · <pane title>'), and a human picking a pane reads it.
 #
-#   codex  window <- thread_name in ~/.codex/session_index.jsonl (what `codex resume <name>`
-#          accepts), else the thread's first real prompt. The pane is matched to its rollout by
-#          BIRTH TIME, not newest-in-cwd: codex writes the rollout within seconds of the process
-#          starting, so the user-thread rollout in the pane's cwd whose meta timestamp sits
-#          closest to the pane's own start is that pane's thread. Newest-in-cwd mislabeled every
-#          chat when two shared a directory.
+#   codex  window <- the thread's name in the codex state store (`threads` table), else the
+#          thread_name in ~/.codex/session_index.jsonl (what `codex resume <name>` accepts),
+#          else its first real prompt. The pane is matched to its thread by BIRTH TIME, not
+#          newest-in-cwd: codex records the thread within seconds of the process starting, so
+#          the user thread in the pane's cwd born closest to the pane's own start is that pane's
+#          thread. Newest-in-cwd mislabeled every chat when two shared a directory.
 #   claude window <- the 🔖 label scraped off the pane's own statusline (the /rename name),
 #          anchored on 🔖 + an account badge exactly as chat.sh resolves labels. The tab needs
 #          no help here — Claude Code sets it by OSC — the window name is for the DNS.
@@ -58,6 +58,46 @@ if [ -r "$CODEX_DIR/session_index.jsonl" ]; then
     jq -r 'select(.id != null) | [.id, .thread_name // ""] | @tsv' "$CODEX_DIR/session_index.jsonl" 2>/dev/null)
 fi
 
+# ── the codex thread store: ~/.codex/state_<N>.sqlite, table `threads` ────────────────────────
+# Codex moved a thread's identity into sqlite: a thread running in `paginated` history mode keeps
+# its history in the store and may leave NO rollout file behind at all. Matching a pane through
+# rollout files therefore missed every new chat, and the miss was silent — cx_rollout_for fell
+# back to "newest rollout in this cwd" and stamped a long-dead sibling's name on the window, so a
+# codex rename never reached the tab. The table answers the same question exactly, in one query:
+# id, name, cwd, created_at. The filename is versioned, so take the highest; a codex too old to
+# have the store leaves CXDB empty and the rollout scan below serves alone.
+CXDB="$(ls -1 "$CODEX_DIR"/state_*.sqlite 2>/dev/null \
+  | sed 's/.*state_\([0-9]*\)\.sqlite$/\1 &/' | sort -rn | head -1 | cut -d' ' -f2-)"
+
+# cx_db_name <cwd> <start-epoch> — the display name of the thread that pane owns, "" if the store
+# has none that close (an elder or resumed thread) and the rollout scan should try. Read-only and
+# WAL-aware: never `immutable`, which would hide every row still sitting in the -wal.
+# Name precedence: the store's own `name` (what codex writes on a rename), then the index — which
+# still holds the renames of threads that predate that column — then the thread's first prompt.
+cx_db_name() {
+  [ -n "$CXDB" ] || return 0
+  local cwd start id nm fum ttl row
+  cwd=${1//\'/\'\'}; start="$2"
+  row="$(sqlite3 -readonly -separator "$(printf '\037')" "file:$CXDB?mode=ro" \
+    "select id, coalesce(name,''),
+            replace(replace(coalesce(first_user_message,''),char(9),' '),char(10),' '),
+            replace(replace(coalesce(title,''),char(9),' '),char(10),' ')
+       from threads
+      where thread_source='user' and archived=0 and cwd='$cwd'
+        and abs(created_at - $start) <= $BIRTH_SLOP
+      order by abs(created_at - $start) limit 1;" 2>/dev/null)" || return 0
+  [ -n "$row" ] || return 0
+  # \037 (unit separator), not a tab: tab is IFS whitespace, so `read` would fold the run of
+  # separators an empty column produces and shift every later field one to the left.
+  IFS="$(printf '\037')" read -r id nm fum ttl <<EOF
+$row
+EOF
+  [ -n "${nm:-}" ] && { printf '%s' "$nm"; return 0; }
+  nm="${CXNM[${id:-}]:-}"
+  [ -n "$nm" ] && { printf '%s' "$nm"; return 0; }
+  printf '%s' "${fum:-${ttl:-}}"
+}
+
 # cx_rollout_for <cwd> <start-epoch> — the pane's own rollout: among user-thread rollouts whose
 # meta cwd matches, the one whose birth (meta timestamp, UTC) lies closest to the pane's start
 # and not before start-BIRTH_SLOP. None that close (an elder thread, clock trouble) → the newest
@@ -69,7 +109,11 @@ cx_rollout_for() {
     case "$meta" in *'"thread_source":"user"'*) ;; *) continue ;; esac
     case "$meta" in *"\"cwd\":\"$cwd\""*) ;; *) continue ;; esac
     [ -n "$newest" ] || newest="$f"
-    ts="$(printf '%s' "$meta" | grep -o '"timestamp":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    # the birth is payload.timestamp. Codex wraps the meta record in an envelope carrying its own
+    # WRITE time (seen 35 minutes past the thread's birth, and rewritten as the thread runs), so
+    # reading the first "timestamp" in the line dated the thread by when it was last written.
+    # A record with no payload leaves the string untouched and the first timestamp still serves.
+    ts="${meta#*\"payload\":\{}"; ts="${ts#*\"timestamp\":\"}"; ts="${ts%%\"*}"
     birth="$(cc_epoch "$ts")"; [ -n "$birth" ] || continue
     (( birth >= start - BIRTH_SLOP )) || continue
     d=$(( birth - start )); (( d < 0 )) && d=$(( -d ))
@@ -135,9 +179,14 @@ for sockpath in "$TMUXDIR"/cc-* "$TMUXDIR"/cx-*; do
         # check rides along, since a dead pid yields no start time on either platform (the old
         # `[ -d /proc/$ppid ]` gate was Linux's spelling of exactly that check).
         start="$(cc_pstart "$ppid")"; [ -n "$start" ] || continue
-        rl="$(cx_rollout_for "$pcwd" "$start")" || true
-        [ -n "$rl" ] && [ -r "$rl" ] || continue
-        nm="$(cx_display_name "$rl")"
+        # the store first — it knows the threads that write no rollout file; the rollout scan
+        # then covers the elder threads recorded before the store existed.
+        nm="$(cx_db_name "$pcwd" "$start")"
+        if [ -z "$nm" ]; then
+          rl="$(cx_rollout_for "$pcwd" "$start")" || true
+          [ -n "$rl" ] && [ -r "$rl" ] || continue
+          nm="$(cx_display_name "$rl")"
+        fi
         [ -n "$nm" ] || continue
         rename "$sockpath" "$win" "$wname" "${nm:0:$MAXLEN}" codex
         ;;
