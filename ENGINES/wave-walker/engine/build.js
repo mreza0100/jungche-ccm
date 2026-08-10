@@ -38,33 +38,33 @@
 //       asserted to sit at an EARLIER position; this is the actual invariant the flat-concatenation
 //       trick depends on, verified mechanically rather than assumed.
 //
-// STALE-BUNDLE GUARD: `npm run verify` (verify.js) reuses this file's exported `runBuild(outPath)` to
-// rebuild to a disposable temp path and byte-diffs the result against the committed dist/workflow.js —
-// catches "edited src/, forgot to rebuild + commit the bundle" before it ships. `npm test`'s `pretest`
-// runs `verify` first (cheap: one more bundle pass, no vitest boot), so the full suite can never pass
-// against a bundle that no longer matches src/. (Chosen over "verify only inside build's own finishing
-// step": that would only catch staleness at `npm run build` time, not at `npm test` time — the moment
-// that actually gates a commit per this repo's `npm test && npm run typecheck` habit.)
-//
-// OUTPUT PATH — this is a STAGING build. dist/workflow.js is where this port lands during
-// development/review; it is NOT the live engine. The eventual promotion target is the consuming
-// project's .claude/workflows/wave-walker.js (the file the wave orchestrator actually invokes) —
-// that promotion is a separate step performed later, never written by this build script.
+// CROSS-RUNTIME COMPILE: the flat program is canonical build input to the pinned cross-workflow
+// library. Its native-contract Claude compiler preserves the established raw result shape and emits a
+// side-by-side candidate at dist/cross-workflow/claude/workflow.js. The production legacy artifact at
+// dist/workflow.js is never touched by this build. The Codex compiler emits the sibling
+// dist/cross-workflow/codex/runner.mjs from that exact program and unwraps the portable harness envelope
+// back to the same raw result shape. Both manifests are generated beside their artifacts. `npm run
+// verify` rebuilds every candidate target in a disposable directory and byte-compares all four files,
+// while separately pinning the legacy production artifact until an equivalence-gated pointer switch.
 //
 // build.js itself runs under Node at BUILD time — its fs/path/child_process use never enters the
 // bundle (only the stripped module source does). Edit src/, run `npm run build`, commit both.
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { stripTypeScriptTypes } from 'node:module';
 import { parse } from 'acorn';
+import {
+  compileHarnessProgramClaudeNative,
+  compileHarnessProgramCodexNative,
+} from 'cross-workflow';
+import { createWaveWalkerDefinition } from './cross-workflow.config.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = join(HERE, 'src');
-// STAGING PATH for this port. Eventual target once promoted: ../../../../.claude/workflows/wave-walker.js
-const OUT = join(HERE, 'dist', 'workflow.js');
+const OUT = join(HERE, 'dist', 'cross-workflow', 'claude', 'workflow.js');
 
 // the true entry (everything load-bearing is reachable from here) + the one pinned-first exception
 // (meta.ts is never imported by any bundled module — only by the dev-only src/index.ts).
@@ -289,10 +289,13 @@ function ensureDetectableModuleType(outPath) {
   if (!existsSync(pkgPath) || readFileSync(pkgPath, 'utf8') !== pkg) writeFileSync(pkgPath, pkg);
 }
 
-export function runBuild(outPath) {
+const encodedManifest = (value) => JSON.stringify(value, null, 2) + '\n';
+
+export async function runBuild(outPath, { emitAllTargets = false } = {}) {
   const finalOrder = discoverOrder();
   assertReachability(finalOrder);
   assertImportsPrecedeUse(finalOrder);
+  mkdirSync(dirname(outPath), { recursive: true });
   ensureDetectableModuleType(outPath);
 
   let bundle = '';
@@ -309,14 +312,31 @@ export function runBuild(outPath) {
   });
   bundle += TAIL;
 
-  writeFileSync(outPath, bundle);
-  return bundle;
+  const definition = createWaveWalkerDefinition(bundle);
+  const claudeArtifact = await compileHarnessProgramClaudeNative(definition);
+  writeFileSync(outPath, claudeArtifact.code);
+
+  if (emitAllTargets) {
+    const claudeDir = dirname(outPath);
+    const targetRoot = dirname(claudeDir);
+    const codexDir = join(targetRoot, 'codex');
+    mkdirSync(codexDir, { recursive: true });
+    const codexArtifact = await compileHarnessProgramCodexNative(definition);
+    writeFileSync(join(claudeDir, 'manifest.json'), encodedManifest(claudeArtifact.manifest));
+    writeFileSync(join(codexDir, 'runner.mjs'), codexArtifact.code);
+    writeFileSync(join(codexDir, 'manifest.json'), encodedManifest(codexArtifact.manifest));
+  }
+  return claudeArtifact.code;
 }
 
 // CLI entry — only when run directly (`node build.js`), not when imported by verify.js.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const bundle = runBuild(OUT);
+  const bundle = await runBuild(OUT, { emitAllTargets: true });
   console.log('bundled → ' + OUT + ' · ' + bundle.split('\n').length + ' lines');
+  console.log('compiled → ' + join(HERE, 'dist', 'cross-workflow', 'codex', 'runner.mjs'));
   // chain the validator — a non-zero exit here fails `npm run build` loudly
-  execSync('node ' + JSON.stringify(join(HERE, 'validate-bundle.js')), { stdio: 'inherit' });
+  execSync(
+    'node ' + JSON.stringify(join(HERE, 'validate-bundle.js')) + ' ' + JSON.stringify(OUT),
+    { stdio: 'inherit' },
+  );
 }

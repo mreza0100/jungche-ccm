@@ -727,6 +727,11 @@ export class WaveWalker {
       return { status: 'FAILED', detail: 'all wave-0 probes died — nothing to reason over' };
     ingest(state, results, 0);
     await auditNew(0);
+    if (!state.ledger.size)
+      return {
+        status: 'FAILED',
+        detail: 'wave-0 probes returned no auditable claims — an empty ledger is not an investigation',
+      };
 
     let coord: CoordOut | null = null;
     let stopReason = 'wave-cap';

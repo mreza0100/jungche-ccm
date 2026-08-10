@@ -1,5 +1,5 @@
 // source-schemas.ts — every StructuredOutput schema object TRANSCRIBED VERBATIM from the 730-line source
-// (.claude/workflows/wave-walker.js), independent of the port. schemas.test.ts deep-equals each ported
+// (the authoritative generated dist/workflow.js), independent of each modular schema. schemas.test.ts deep-equals each ported
 // seat schema against its entry here — any drift between the port and the source fails loudly.
 /* eslint-disable */
 
