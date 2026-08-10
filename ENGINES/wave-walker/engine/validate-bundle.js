@@ -1,8 +1,10 @@
-// validate-bundle.js — enforces the Workflow sandbox contract on the built dist/workflow.js.
+// validate-bundle.js — enforces the Workflow sandbox contract on an explicit bundle path, defaulting
+// to the legacy production dist/workflow.js for operator checks.
 // Run by build.js after every bundle. Any violation throws → `npm run build` fails loudly.
 //
-// dist/workflow.js is this port's STAGING bundle — the eventual promotion target is
-// the consuming project's .claude/workflows/wave-walker.js, written by a separate step later.
+// dist/workflow.js is the immutable legacy default for operator checks. New builds land at
+// dist/cross-workflow/claude/workflow.js and are validated explicitly before the active pointer moves.
+// This validator remains the authoritative restricted-harness/project-leak gate for both.
 
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -11,7 +13,7 @@ import { execSync } from 'node:child_process'
 import { parse } from 'acorn'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
-const BUNDLE = join(SRC, 'dist', 'workflow.js')
+const BUNDLE = process.argv[2] || join(SRC, 'dist', 'workflow.js')
 const src = readFileSync(BUNDLE, 'utf8')
 const fail = (msg) => { console.error('✗ bundle invalid — ' + msg); process.exit(1) }
 

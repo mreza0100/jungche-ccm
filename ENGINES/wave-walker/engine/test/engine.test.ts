@@ -44,7 +44,16 @@ const BLOB = {
   rationale: '',
   categoriesSwept: [] as string[],
   filesOpened: [] as string[],
-  claims: [] as unknown[],
+  claims: [
+    {
+      id: 'c1',
+      statement: 'X holds',
+      anchors: [
+        { anchor: 'a.ts:1', quote: 'q1' },
+        { anchor: 'b.ts:2', quote: 'q2' },
+      ],
+    },
+  ] as unknown[],
   conflictChecks: [] as unknown[],
   claimId: 'c1',
   evidence: [] as unknown[],
@@ -1116,6 +1125,7 @@ describe('WaveWalker — INVESTIGATE mode, brainer-steered loop', () => {
       brainerDies?: boolean;
       synthDies?: boolean;
       brainerNoLanes?: boolean;
+      emptyClaims?: boolean;
       synthConfidence?: string;
     },
   ) {
@@ -1125,15 +1135,17 @@ describe('WaveWalker — INVESTIGATE mode, brainer-steered loop', () => {
       if (prompt.startsWith('[probe · '))
         return {
           laneId: 'w0-1',
-          claims: [
-            {
-              statement: 'X holds',
-              anchors: [
-                { anchor: 'a.ts:1', quote: 'q1' },
-                { anchor: 'b.ts:2', quote: 'q2' },
+          claims: opts?.emptyClaims
+            ? []
+            : [
+                {
+                  statement: 'X holds',
+                  anchors: [
+                    { anchor: 'a.ts:1', quote: 'q1' },
+                    { anchor: 'b.ts:2', quote: 'q2' },
+                  ],
+                },
               ],
-            },
-          ],
           leads: [{ what: 'follow up', files: ['c.ts'] }],
         };
       if (prompt.startsWith('[audit · ')) {
@@ -1245,6 +1257,19 @@ describe('WaveWalker — INVESTIGATE mode, brainer-steered loop', () => {
     const result = await runVerifyWith({ goal: 'why X' }, calls, stub);
     expect(result.status).toBe('FAILED');
     if (result.status === 'FAILED') expect(result.detail).toMatch(/wave-0 probes died/);
+  });
+
+  it('returns FAILED when live wave-0 probes produce no auditable claims', async () => {
+    const calls: CapturedCall[] = [];
+    const result = await runVerifyWith(
+      { goal: 'why X', lenses: ['L1 — one'] },
+      calls,
+      investigateStub(calls, { emptyClaims: true }),
+    );
+    expect(result.status).toBe('FAILED');
+    if (result.status === 'FAILED') expect(result.detail).toMatch(/no auditable claims/);
+    expect(calls.some((c) => c.prompt.startsWith('[brainer'))).toBe(false);
+    expect(calls.some((c) => c.prompt.startsWith('[synth'))).toBe(false);
   });
 
   it('stops on budget before a wave when remaining() < 80000', async () => {

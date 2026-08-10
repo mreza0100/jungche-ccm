@@ -445,7 +445,7 @@ export interface SynthOut {
 
 // one registry entry — arrives via args.invariants (see config.ts CONFIG.INVARIANTS); the doc at
 // CONFIG.INVARIANTS_DOC is the human-authored source these are transcribed from (see result doc for the
-// promotion step that parses the doc into this shape).
+// caller wiring that parses the doc into this shape).
 export interface InvariantSpec {
   id: string;
   law: string; // the invariant law VERBATIM + its source pointer (e.g. "... — services/worker/CLAUDE.md:159")

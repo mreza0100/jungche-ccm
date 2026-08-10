@@ -39,7 +39,7 @@ export class Configs {
   // INVARIANT REGISTRY FEATURE (tmp/wave-walker-investigation.md § 2.1) — provenance pointer cited in
   // the scout prompt; the JS engine never reads this file itself (no fs access in src/ — confirmed by
   // grep). The registry's DATA arrives structured via args.invariants (see INVARIANTS below); this doc
-  // path is what the /pcm promotion step's orchestrator wiring parses into that JSON.
+  // path is what Professor's caller wiring parses into that JSON.
   INVARIANTS_DOC = '.claude/commands/wave/walker-invariants.md';
 
   // ── WALK mode ──
@@ -129,7 +129,7 @@ export class Configs {
 
     // ── mode (source lines 58, 141; the returned `mode` field for verify/manifest-verify is gated on
     // args.manifestPath truthiness alone — see source line 133) ──
-    this.MANIFEST_PATH = typeof arg.manifestPath === 'string' ? arg.manifestPath : null;
+    this.MANIFEST_PATH = Configs.optionalRepoPath(arg.manifestPath, 'manifestPath');
     this.CLAIMS = Array.isArray(arg.claims) ? (arg.claims as unknown[]) : [];
     this.mode = this.MANIFEST_PATH
       ? 'manifest-verify'
@@ -140,11 +140,11 @@ export class Configs {
           : 'walk';
 
     // ── WALK mode config (source lines 31-53) ──
-    this.REPORT_PATH = typeof arg.reportPath === 'string' ? arg.reportPath : null;
-    this.BRANCH = typeof arg.branch === 'string' ? arg.branch : null;
+    this.REPORT_PATH = Configs.optionalRepoPath(arg.reportPath, 'reportPath');
+    this.BRANCH = Configs.optionalGitRevision(arg.branch, 'branch');
     this.LEDGER_PATH =
-      typeof arg.ledgerPath === 'string'
-        ? arg.ledgerPath
+      arg.ledgerPath !== undefined && arg.ledgerPath !== null
+        ? Configs.repoPath(arg.ledgerPath, 'ledgerPath')
         : this.REPORT_PATH
           ? this.REPORT_PATH.replace(/report\.md$/, '') + 'walker-ledger.json'
           : null;
@@ -165,7 +165,7 @@ export class Configs {
         "wave-walker: charter must be a string (the walk's caller-supplied duty note), got " +
           JSON.stringify(arg.charter),
       );
-    this.CHARTER = typeof arg.charter === 'string' ? arg.charter : '';
+    this.CHARTER = typeof arg.charter === 'string' ? Configs.promptText(arg.charter, 'charter') : '';
     // INVARIANT REGISTRY FEATURE — absent/null → [] (THE FLOOR: no hunter/critic, byte-identical walk).
     // A non-array, or an array with a malformed entry, throws loudly — never a silently-partial registry.
     this.INVARIANTS = Configs.parseInvariants(arg.invariants);
@@ -174,8 +174,8 @@ export class Configs {
     // sibling); an explicit args.debugPath overrides it; both null when there's no REPORT_PATH to derive from.
     this.debug = Configs.bool(arg.debug, true);
     this.DEBUG_PATH =
-      typeof arg.debugPath === 'string'
-        ? arg.debugPath
+      arg.debugPath !== undefined && arg.debugPath !== null
+        ? Configs.repoPath(arg.debugPath, 'debugPath')
         : this.REPORT_PATH
           ? this.REPORT_PATH.replace(/report\.md$/, '') + 'walker-debug.json'
           : null;
@@ -188,7 +188,8 @@ export class Configs {
     // ── VERIFY / MANIFEST-VERIFY config (source lines 59-64, plus the E2 manifest-coverage lever) ──
     this.VOTES =
       Number.isInteger(arg.votes) && (arg.votes as number) > 0 ? (arg.votes as number) : 1;
-    this.QUESTION = typeof arg.question === 'string' ? arg.question : '';
+    this.QUESTION =
+      typeof arg.question === 'string' ? Configs.promptText(arg.question, 'question') : '';
     // E2 DEFAULT CHANGE (the port's ONE behavioral delta from the source): maxClaims 24 → 96. Proven on
     // wave.md: 96 gave full 16/16-task coverage; 24 silently dropped 55 claims / 12 tasks. args.maxClaims
     // still overrides.
@@ -200,16 +201,19 @@ export class Configs {
     this.SOLO_THRESHOLD = Number.isInteger(arg.soloThreshold) ? (arg.soloThreshold as number) : 8;
 
     // ── INVESTIGATE config (source lines 142-153) ──
-    this.GOAL = arg.goal != null ? String(arg.goal) : '';
+    this.GOAL =
+      arg.goal != null ? Configs.promptText(String(arg.goal), 'goal') : '';
     this.SCOPE =
-      Array.isArray(arg.scope) && (arg.scope as unknown[]).length ? (arg.scope as string[]) : null;
+      Array.isArray(arg.scope) && (arg.scope as unknown[]).length
+        ? Configs.promptTextArray(arg.scope, 'scope')
+        : null;
     this.LENSES =
       Array.isArray(arg.lenses) && (arg.lenses as unknown[]).length
-        ? (arg.lenses as string[])
+        ? Configs.promptTextArray(arg.lenses, 'lenses')
         : DEFAULT_LENSES;
     this.MAX_WAVES = Number.isInteger(arg.maxWaves) ? (arg.maxWaves as number) : 3;
     this.MAX_LANES = Number.isInteger(arg.maxLanes) ? (arg.maxLanes as number) : 5;
-    this.REPORT_OUT = typeof arg.reportOut === 'string' ? arg.reportOut : null;
+    this.REPORT_OUT = Configs.optionalRepoPath(arg.reportOut, 'reportOut');
 
     // ── per-seat defaults, seeded verbatim off the source's per-call option objects. Several seats
     // deliberately SHARE one legacy arg (sensorModel/sensorEffort → sliceSensor + gateSweep;
@@ -440,7 +444,7 @@ export class Configs {
         throw new Error(
           'wave-walker: args.project.' + field + ' must be a string, got ' + JSON.stringify(v),
         );
-      return v;
+      return Configs.promptText(v, 'project.' + field);
     };
     const strArr = (v: unknown, field: string): string[] | undefined => {
       if (v === undefined) return undefined;
@@ -451,7 +455,7 @@ export class Configs {
             ' must be an array of strings, got ' +
             JSON.stringify(v),
         );
-      return v as string[];
+      return Configs.promptTextArray(v, 'project.' + field);
     };
     const pair = (
       v: unknown,
@@ -475,7 +479,7 @@ export class Configs {
           throw new Error(
             'wave-walker: args.project.' + field + '.' + k + ' must be a non-empty string',
           );
-        out[k] = o[k] as string;
+        out[k] = Configs.promptText(o[k] as string, 'project.' + field + '.' + k);
       }
       return out;
     };
@@ -485,9 +489,18 @@ export class Configs {
     const fenceLabels = pair(p.fenceLabels, 'fenceLabels', ['org', 'ownership']) as
       | { org: string; ownership: string }
       | undefined;
+    const rawRepoRoot = str(p.repoRoot, 'repoRoot');
+    const rawAuthDoc = str(p.authDoc, 'authDoc');
+    if (rawAuthDoc !== undefined) {
+      const [docPath] = rawAuthDoc.split(' § ');
+      Configs.repoPath(docPath || '', 'project.authDoc path', true);
+    }
     return {
-      repoRoot: str(p.repoRoot, 'repoRoot'),
-      authDoc: str(p.authDoc, 'authDoc'),
+      repoRoot:
+        rawRepoRoot === undefined
+          ? undefined
+          : Configs.repoPath(rawRepoRoot, 'project.repoRoot', true),
+      authDoc: rawAuthDoc,
       authRuleFallback: str(p.authRuleFallback, 'authRuleFallback'),
       authRuleMustContain: strArr(p.authRuleMustContain, 'authRuleMustContain'),
       roles,
@@ -511,6 +524,77 @@ export class Configs {
   // truthy value (e.g. the string "false") never accidentally flips the flag.
   private static bool(v: unknown, d: boolean): boolean {
     return typeof v === 'boolean' ? v : d;
+  }
+
+  // Runtime args cross both a shell-command prompt and file-write prompts. Mechanical tokens therefore
+  // fail closed at construction: relative repo paths only, no parent traversal, separators that change
+  // argv shape, shell metacharacters, or prompt-control bytes. The Workflow harness supplies no safe
+  // shell-quoting primitive, so accepting a wider grammar would turn caller data into executable syntax.
+  private static repoPath(raw: unknown, field: string, allowDot = false): string {
+    if (typeof raw !== 'string' || raw.length === 0)
+      throw new Error('wave-walker: args.' + field + ' must be a non-empty relative repo path');
+    if (raw.length > 512)
+      throw new Error('wave-walker: args.' + field + ' exceeds the 512-character path limit');
+    if (raw === '.' && allowDot) return raw;
+    if (
+      raw.startsWith('/') ||
+      raw.startsWith('~') ||
+      /^[A-Za-z]:/.test(raw) ||
+      raw.includes('\\') ||
+      /[\u0000-\u001f\u007f`$;&|<>(){}\[\]!?*]/.test(raw)
+    )
+      throw new Error(
+        'wave-walker: args.' + field + ' contains an absolute path, control byte, or unsafe syntax',
+      );
+    const segments = raw.split('/');
+    if (segments.some((segment) => !segment || segment === '.' || segment === '..'))
+      throw new Error('wave-walker: args.' + field + ' contains an empty, dot, or parent segment');
+    return raw;
+  }
+
+  private static optionalRepoPath(raw: unknown, field: string): string | null {
+    if (raw === undefined || raw === null) return null;
+    return Configs.repoPath(raw, field);
+  }
+
+  private static optionalGitRevision(raw: unknown, field: string): string | null {
+    if (raw === undefined || raw === null) return null;
+    if (
+      typeof raw !== 'string' ||
+      raw.length === 0 ||
+      raw.length > 200 ||
+      !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(raw) ||
+      raw.includes('..') ||
+      raw.includes('//') ||
+      raw.includes('@{') ||
+      raw.endsWith('/') ||
+      raw.endsWith('.') ||
+      raw.endsWith('.lock')
+    )
+      throw new Error('wave-walker: args.' + field + ' is not a safe git revision');
+    return raw;
+  }
+
+  private static promptText(raw: string, field: string): string {
+    const injectionDirective =
+      /(?:ignore|disregard|override|forget).{0,48}(?:prior|previous|above|system|developer|instruction)|(?:system|assistant|developer)\s*:/i;
+    if (
+      raw.length > 16_384 ||
+      /[\u0000-\u001f\u007f`<>]/.test(raw) ||
+      injectionDirective.test(raw)
+    )
+      throw new Error(
+        'wave-walker: args.' +
+          field +
+          ' contains a prompt delimiter, control byte, injection directive, or exceeds 16384 characters',
+      );
+    return raw;
+  }
+
+  private static promptTextArray(raw: unknown, field: string): string[] {
+    if (!Array.isArray(raw) || !raw.every((value) => typeof value === 'string'))
+      throw new Error('wave-walker: args.' + field + ' must be an array of strings');
+    return raw.map((value, index) => Configs.promptText(value, field + '[' + index + ']'));
   }
 }
 

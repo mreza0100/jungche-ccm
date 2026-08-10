@@ -20,7 +20,13 @@ import { runBuild } from '../build.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = dirname(HERE);
-const COMMITTED_BUNDLE = join(ENGINE_DIR, 'dist', 'workflow.js');
+const CANDIDATE_BUNDLE = join(
+  ENGINE_DIR,
+  'dist',
+  'cross-workflow',
+  'claude',
+  'workflow.js',
+);
 const VALIDATE_SCRIPT = join(ENGINE_DIR, 'validate-bundle.js');
 
 const GENERATED_BANNER =
@@ -33,11 +39,22 @@ const GENERATED_BANNER =
 const LEAK_TERM = ['int', 'uita'].join('');
 const LEAK_HOME_PATH = '/home/' + ['re', 'za'].join('');
 
+function validateSource(source: string): void {
+  const scratchDir = mkdtempSync(join(tmpdir(), 'wave-walker-validator-test-'));
+  try {
+    const bundle = join(scratchDir, 'workflow.js');
+    writeFileSync(bundle, source);
+    execFileSync('node', [VALIDATE_SCRIPT, bundle], { stdio: 'pipe' });
+  } finally {
+    rmSync(scratchDir, { recursive: true, force: true });
+  }
+}
+
 describe('build.js — GENERATED banner (d)', () => {
-  it('the built bundle BEGINS with `export const meta` and carries the banner as the line right after the meta object closes', () => {
+  it('the built bundle BEGINS with `export const meta` and carries the banner as the line right after the meta object closes', async () => {
     const scratchDir = mkdtempSync(join(tmpdir(), 'wave-walker-build-test-'));
     try {
-      const bundle = runBuild(join(scratchDir, 'workflow.js'));
+      const bundle = await runBuild(join(scratchDir, 'workflow.js'));
       expect(bundle.startsWith('export const meta = {')).toBe(true);
       const lines = bundle.split('\n');
       expect(lines[0]).toBe('export const meta = {');
@@ -46,48 +63,73 @@ describe('build.js — GENERATED banner (d)', () => {
       expect(closeIdx).toBeGreaterThan(0);
       expect(lines[closeIdx + 1]).toBe(GENERATED_BANNER);
       // deterministic — no timestamp/hash: two builds in a row produce byte-identical output
-      const bundle2 = runBuild(join(scratchDir, 'workflow2.js'));
+      const bundle2 = await runBuild(join(scratchDir, 'workflow2.js'));
       expect(bundle2).toBe(bundle);
     } finally {
       rmSync(scratchDir, { recursive: true, force: true });
     }
   });
 
-  it('the COMMITTED dist/workflow.js (what npm run build actually produced) carries the same banner', () => {
-    const committed = readFileSync(COMMITTED_BUNDLE, 'utf8');
+  it('the side-by-side cross-workflow Claude candidate carries the same banner', () => {
+    const committed = readFileSync(CANDIDATE_BUNDLE, 'utf8');
     expect(committed.startsWith('export const meta = {')).toBe(true);
     expect(committed).toContain('};\n' + GENERATED_BANNER + '\n');
+  });
+
+  it('one build compiles the same native program into Claude and Codex targets through cross-workflow', async () => {
+    const scratchDir = mkdtempSync(join(tmpdir(), 'wave-walker-cross-workflow-test-'));
+    try {
+      const targetRoot = join(scratchDir, 'cross-workflow');
+      const claudeDir = join(targetRoot, 'claude');
+      const codexDir = join(targetRoot, 'codex');
+      const bundle = await runBuild(join(claudeDir, 'workflow.js'), { emitAllTargets: true });
+      expect(readFileSync(join(claudeDir, 'workflow.js'), 'utf8')).toBe(bundle);
+      const claudeManifest = JSON.parse(
+        readFileSync(join(claudeDir, 'manifest.json'), 'utf8'),
+      );
+      const codexManifest = JSON.parse(
+        readFileSync(join(codexDir, 'manifest.json'), 'utf8'),
+      );
+      expect(claudeManifest).toMatchObject({
+        compilerVersion: '0.2.0',
+        target: 'claude',
+        workflowId: 'wave-walker',
+      });
+      expect(codexManifest).toMatchObject({
+        compilerVersion: '0.2.0',
+        target: 'codex',
+        workflowId: 'wave-walker',
+        workflowHash: claudeManifest.workflowHash,
+      });
+      const runner = readFileSync(join(codexDir, 'runner.mjs'), 'utf8');
+      expect(runner).toContain('from "cross-workflow"');
+      expect(runner).toContain('portableResult.value');
+      expect(runner).not.toContain('--checkpoint');
+    } finally {
+      rmSync(scratchDir, { recursive: true, force: true });
+    }
   });
 });
 
 describe('validate-bundle.js — permanent project-leak guard (e)', () => {
   it(`planting "${LEAK_TERM}" into the bundle makes validate-bundle.js FAIL — proving the guard actually trips, not just that its source reads right`, () => {
-    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    const original = readFileSync(CANDIDATE_BUNDLE, 'utf8');
+    let threw = false;
+    let output = '';
     try {
-      // plant the leak term in a harmless spot — end of file, after the harness TAIL. The file must stay
-      // syntactically valid JS (checks 1/1b run before the leak check) — a line comment satisfies that.
-      writeFileSync(COMMITTED_BUNDLE, original + '\n// ' + LEAK_TERM + '\n');
-      let threw = false;
-      let output = '';
-      try {
-        execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' });
-      } catch (e) {
-        threw = true;
-        const err = e as { stderr?: Buffer; stdout?: Buffer };
-        output = String(err.stderr || err.stdout || '');
-      }
-      expect(threw).toBe(true);
-      expect(output).toContain('bundle leaks project-specific term "' + LEAK_TERM + '"');
-    } finally {
-      // clean up — restore the committed bundle byte-for-byte, whether the assertions above passed or not
-      writeFileSync(COMMITTED_BUNDLE, original);
+      validateSource(original + '\n// ' + LEAK_TERM + '\n');
+    } catch (e) {
+      threw = true;
+      const err = e as { stderr?: Buffer; stdout?: Buffer };
+      output = String(err.stderr || err.stdout || '');
     }
-    // post-cleanup sanity: the guard passes again on the restored bundle
-    expect(() => execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' })).not.toThrow();
+    expect(threw).toBe(true);
+    expect(output).toContain('bundle leaks project-specific term "' + LEAK_TERM + '"');
+    expect(() => validateSource(original)).not.toThrow();
   });
 
   it('the guard covers every leak term the mission enumerates, case-insensitively', () => {
-    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    const original = readFileSync(CANDIDATE_BUNDLE, 'utf8');
     const terms = [
       LEAK_TERM,
       'THERAPIST',
@@ -99,16 +141,11 @@ describe('validate-bundle.js — permanent project-leak guard (e)', () => {
       'CORTEX',
       LEAK_HOME_PATH,
     ];
-    try {
-      for (const term of terms) {
-        writeFileSync(COMMITTED_BUNDLE, original + '\n// ' + term + '\n');
-        expect(
-          () => execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' }),
-          'expected the guard to fail on "' + term + '"',
-        ).toThrow();
-      }
-    } finally {
-      writeFileSync(COMMITTED_BUNDLE, original);
+    for (const term of terms) {
+      expect(
+        () => validateSource(original + '\n// ' + term + '\n'),
+        'expected the guard to fail on "' + term + '"',
+      ).toThrow();
     }
   });
 
@@ -116,56 +153,40 @@ describe('validate-bundle.js — permanent project-leak guard (e)', () => {
   // shipped (docs/dev/builds — the last hardcoded domain string, 8F/8C/8D/8E stakes line). 'therap' closes
   // the class of gap: sibling word-family derivations, not just the one inflection the old denylist knew.
   it('a bundle containing "Therapy" FAILS — the actual regression the old "therapist"-only entry missed', () => {
-    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    const original = readFileSync(CANDIDATE_BUNDLE, 'utf8');
+    let output = '';
     try {
-      writeFileSync(COMMITTED_BUNDLE, original + '\n// Therapy data is sacred\n');
-      let output = '';
-      try {
-        execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' });
-        throw new Error('expected validate-bundle.js to fail on a planted "Therapy"');
-      } catch (e) {
-        const err = e as { stderr?: Buffer; stdout?: Buffer };
-        output = String(err.stderr || err.stdout || '');
-      }
-      expect(output).toContain('bundle leaks project-specific term "therap"');
-    } finally {
-      writeFileSync(COMMITTED_BUNDLE, original);
+      validateSource(original + '\n// Therapy data is sacred\n');
+      throw new Error('expected validate-bundle.js to fail on a planted "Therapy"');
+    } catch (e) {
+      const err = e as { stderr?: Buffer; stdout?: Buffer };
+      output = String(err.stderr || err.stdout || '');
     }
+    expect(output).toContain('bundle leaks project-specific term "therap"');
   });
 
   // WORD-BOUNDARY REGRESSION PIN — PHI is only useful as a leak guard if it doesn't also fire on ordinary
   // prose that merely contains the substring "phi" (philosophy, philanthropic, ...).
   it('a bundle containing "PHI" in a sentence FAILS', () => {
-    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
+    const original = readFileSync(CANDIDATE_BUNDLE, 'utf8');
+    let output = '';
     try {
-      writeFileSync(COMMITTED_BUNDLE, original + '\n// PHI (8F), auth (8C) get the deepest pass\n');
-      let output = '';
-      try {
-        execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' });
-        throw new Error('expected validate-bundle.js to fail on a planted "PHI"');
-      } catch (e) {
-        const err = e as { stderr?: Buffer; stdout?: Buffer };
-        output = String(err.stderr || err.stdout || '');
-      }
-      expect(output).toContain('bundle leaks project-specific term "phi"');
-    } finally {
-      writeFileSync(COMMITTED_BUNDLE, original);
+      validateSource(original + '\n// PHI (8F), auth (8C) get the deepest pass\n');
+      throw new Error('expected validate-bundle.js to fail on a planted "PHI"');
+    } catch (e) {
+      const err = e as { stderr?: Buffer; stdout?: Buffer };
+      output = String(err.stderr || err.stdout || '');
     }
+    expect(output).toContain('bundle leaks project-specific term "phi"');
   });
 
   // LOAD-BEARING FALSE-POSITIVE PIN — this is WHY word-boundary matching exists: the engine's own source
   // says "same philosophy as isGateRelevant" (src/engine.ts). A naive substring rule on 'phi' would fail
   // every build on this line; word-boundary matching must let it through.
   it('a bundle containing "philosophy" PASSES — the false positive a substring rule on "phi" would trip', () => {
-    const original = readFileSync(COMMITTED_BUNDLE, 'utf8');
-    try {
-      writeFileSync(
-        COMMITTED_BUNDLE,
-        original + '\n// same philosophy as isGateRelevant\n',
-      );
-      expect(() => execFileSync('node', [VALIDATE_SCRIPT], { stdio: 'pipe' })).not.toThrow();
-    } finally {
-      writeFileSync(COMMITTED_BUNDLE, original);
-    }
+    const original = readFileSync(CANDIDATE_BUNDLE, 'utf8');
+    expect(() =>
+      validateSource(original + '\n// same philosophy as isGateRelevant\n'),
+    ).not.toThrow();
   });
 });
