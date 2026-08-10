@@ -1,0 +1,132 @@
+package gather
+
+import (
+	"fmt"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// DetectAgents returns strict session identities for Claude processes using a
+// non-primary config directory.
+func DetectAgents(proc ProcFS, home string, panes []Pane) ([]Agent, error) {
+	pids, err := proc.PIDs()
+	if err != nil {
+		return nil, fmt.Errorf("list processes for agent scan: %w", err)
+	}
+	sort.Ints(pids)
+	paneByPID := panesByPID(panes)
+	primaryRoot := filepath.Clean(filepath.Join(home, ".claude"))
+	seenSessions := make(map[string]struct{})
+	agents := make([]Agent, 0)
+
+	for _, pid := range pids {
+		cmdline, err := proc.Cmdline(pid)
+		if err != nil || !isClaudeCommand(cmdline) {
+			continue
+		}
+		sessionIDs := claudeSessionIDs(cmdline)
+		if len(sessionIDs) == 0 {
+			continue
+		}
+		environment, err := proc.Environ(pid)
+		if err != nil {
+			continue
+		}
+		configDir := environment["CLAUDE_CONFIG_DIR"]
+		if configDir == "" {
+			configDir = primaryRoot
+		}
+		if filepath.Clean(configDir) == primaryRoot {
+			continue
+		}
+
+		stat, _ := proc.Stat(pid)
+		pane, paneFound := paneForProcess(proc, pid, paneByPID)
+		for _, sessionID := range sessionIDs {
+			if _, duplicate := seenSessions[sessionID]; duplicate {
+				continue
+			}
+			seenSessions[sessionID] = struct{}{}
+			agent := Agent{
+				PID:       pid,
+				SessionID: sessionID,
+				ConfigDir: configDir,
+				StartTime: stat.StartTime,
+			}
+			if paneFound {
+				agent.PanePID = pane.PID
+				agent.Socket = pane.Socket
+				agent.PaneID = pane.PaneID
+			}
+			agents = append(agents, agent)
+		}
+	}
+	sort.Slice(agents, func(left, right int) bool {
+		return agents[left].SessionID < agents[right].SessionID
+	})
+	return agents, nil
+}
+
+func isClaudeCommand(cmdline []string) bool {
+	if len(cmdline) == 0 {
+		return false
+	}
+	executable := filepath.ToSlash(cmdline[0])
+	return filepath.Base(executable) == "claude" ||
+		strings.Contains(executable, "/claude/versions/")
+}
+
+func claudeSessionIDs(cmdline []string) []string {
+	seen := make(map[string]struct{})
+	sessionIDs := make([]string, 0, 2)
+	for index := 1; index < len(cmdline); index++ {
+		argument := cmdline[index]
+		var value string
+		switch {
+		case argument == "--session-id" || argument == "--resume":
+			if index+1 >= len(cmdline) {
+				continue
+			}
+			index++
+			value = cmdline[index]
+		case strings.HasPrefix(argument, "--session-id="):
+			value = strings.TrimPrefix(argument, "--session-id=")
+		case strings.HasPrefix(argument, "--resume="):
+			value = strings.TrimPrefix(argument, "--resume=")
+		default:
+			continue
+		}
+		value = strings.TrimSuffix(filepath.Base(value), filepath.Ext(value))
+		if !isUUID(value) {
+			continue
+		}
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
+		sessionIDs = append(sessionIDs, value)
+	}
+	return sessionIDs
+}
+
+func isUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, character := range value {
+		switch index {
+		case 8, 13, 18, 23:
+			if character != '-' {
+				return false
+			}
+		default:
+			if !((character >= '0' && character <= '9') ||
+				(character >= 'a' && character <= 'f') ||
+				(character >= 'A' && character <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}

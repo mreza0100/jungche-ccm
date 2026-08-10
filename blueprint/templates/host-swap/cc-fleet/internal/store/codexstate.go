@@ -1,0 +1,274 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// CodexThread is one conversation as the Codex CLI's own SQLite state store
+// records it. Codex 0.146.1 moved thread identity into that store and a
+// paginated thread may never write a rollout file, so the state store is the
+// authority on which Codex conversations exist and what they are named.
+// Rollout files remain the authority on sizes and content.
+type CodexThread struct {
+	ID          string
+	Name        string
+	FirstPrompt string
+	CWD         string
+	RolloutPath string
+	// CreatedAt and ActivityAt are epoch seconds, the unit Codex stores.
+	CreatedAt  int64
+	ActivityAt int64
+	UserThread bool
+	Archived   bool
+	// Prompted records that the store holds evidence of at least one user
+	// message, which is all a thread without a rollout file can prove.
+	Prompted bool
+	// StateFile is the state_<N>.sqlite generation the row came from.
+	StateFile string
+}
+
+// Listed reports whether the thread belongs to the population the picker
+// shows: the user's own conversations that were never archived in Codex.
+func (thread CodexThread) Listed() bool {
+	return thread.UserThread && !thread.Archived
+}
+
+// CodexStateFiles lists the Codex state stores under codexRoot, newest
+// generation first. Codex leaves older generations behind when it migrates,
+// and the highest N is the live store.
+func CodexStateFiles(codexRoot string) ([]string, error) {
+	if codexRoot == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(codexRoot)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read Codex root %q: %w", codexRoot, err)
+	}
+	type generation struct {
+		number int
+		path   string
+	}
+	generations := make([]generation, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		number, ok := codexStateGeneration(entry.Name())
+		if !ok {
+			continue
+		}
+		generations = append(generations, generation{
+			number: number,
+			path:   filepath.Join(codexRoot, entry.Name()),
+		})
+	}
+	sort.Slice(generations, func(left, right int) bool {
+		if generations[left].number != generations[right].number {
+			return generations[left].number > generations[right].number
+		}
+		return generations[left].path < generations[right].path
+	})
+	files := make([]string, 0, len(generations))
+	for _, entry := range generations {
+		files = append(files, entry.path)
+	}
+	return files, nil
+}
+
+func codexStateGeneration(name string) (int, bool) {
+	rest, found := strings.CutPrefix(name, "state_")
+	if !found {
+		return 0, false
+	}
+	rest, found = strings.CutSuffix(rest, ".sqlite")
+	if !found {
+		return 0, false
+	}
+	number, err := strconv.Atoi(rest)
+	if err != nil || number < 0 {
+		return 0, false
+	}
+	return number, true
+}
+
+// ReadCodexThreads unions the threads of every state store in files, which
+// CodexStateFiles orders newest generation first: a thread id recorded by
+// several generations keeps the newest generation's row. A store that cannot
+// be opened or whose threads table is too old to classify is skipped, because
+// one unreadable generation must never blank the Codex half of the fleet.
+func ReadCodexThreads(ctx context.Context, files []string) ([]CodexThread, error) {
+	threadByID := make(map[string]CodexThread)
+	for _, file := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		threads, err := readCodexState(ctx, file)
+		if err != nil {
+			continue
+		}
+		for _, thread := range threads {
+			if _, newer := threadByID[thread.ID]; newer {
+				continue
+			}
+			threadByID[thread.ID] = thread
+		}
+	}
+	threads := make([]CodexThread, 0, len(threadByID))
+	for _, thread := range threadByID {
+		threads = append(threads, thread)
+	}
+	sort.Slice(threads, func(left, right int) bool {
+		return threads[left].ID < threads[right].ID
+	})
+	return threads, nil
+}
+
+// readCodexState reads one state store. The handle is read-only through the
+// mode=ro URI and never immutable=1, which would hide the -wal and serve a
+// stale snapshot of a store Codex is actively writing.
+func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
+	dsn := "file:" + file + "?mode=ro&_pragma=busy_timeout(2000)"
+	db, err := sql.Open(driverName, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open Codex state store %q: %w", file, err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	defer db.Close()
+
+	columns, err := codexStateColumns(ctx, db)
+	if err != nil {
+		return nil, fmt.Errorf("read Codex state schema %q: %w", file, err)
+	}
+	for _, required := range []string{"id", "cwd", "created_at", "thread_source"} {
+		if _, found := columns[required]; !found {
+			return nil, fmt.Errorf(
+				"Codex state store %q has no threads.%s column",
+				file,
+				required,
+			)
+		}
+	}
+
+	query := "SELECT id, COALESCE(cwd, ''), COALESCE(created_at, 0), " +
+		codexStateColumn(columns, "thread_source", "''") + ", " +
+		codexStateColumn(columns, "archived", "0") + ", " +
+		codexStateColumn(columns, "rollout_path", "''") + ", " +
+		codexStateColumn(columns, "name", "''") + ", " +
+		codexStateColumn(columns, "title", "''") + ", " +
+		codexStateColumn(columns, "first_user_message", "''") + ", " +
+		codexStateColumn(columns, "preview", "''") + ", " +
+		codexStateColumn(columns, "updated_at", "0") + ", " +
+		codexStateColumn(columns, "recency_at", "0") + ", " +
+		codexStateColumn(columns, "tokens_used", "0") +
+		" FROM threads ORDER BY id"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query Codex state store %q: %w", file, err)
+	}
+	defer rows.Close()
+
+	threads := make([]CodexThread, 0)
+	for rows.Next() {
+		var thread CodexThread
+		var source, title, firstUserMessage, preview string
+		var archived, updatedAt, recencyAt, tokensUsed int64
+		if err := rows.Scan(
+			&thread.ID,
+			&thread.CWD,
+			&thread.CreatedAt,
+			&source,
+			&archived,
+			&thread.RolloutPath,
+			&thread.Name,
+			&title,
+			&firstUserMessage,
+			&preview,
+			&updatedAt,
+			&recencyAt,
+			&tokensUsed,
+		); err != nil {
+			return nil, fmt.Errorf("scan Codex state store %q: %w", file, err)
+		}
+		if thread.ID == "" {
+			continue
+		}
+		thread.UserThread = source == "user"
+		thread.Archived = archived != 0
+		thread.FirstPrompt = firstNonEmptyText(firstUserMessage, title, preview)
+		thread.Prompted = thread.FirstPrompt != "" || tokensUsed > 0
+		thread.ActivityAt = max(thread.CreatedAt, max(updatedAt, recencyAt))
+		thread.StateFile = file
+		threads = append(threads, thread)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate Codex state store %q: %w", file, err)
+	}
+	return threads, nil
+}
+
+// codexStateColumns reports the threads columns this generation actually has.
+// Codex grows the table over releases, so an older store is read through the
+// columns it carries instead of failing the whole pass.
+func codexStateColumns(ctx context.Context, db *sql.DB) (map[string]struct{}, error) {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(threads)")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns := make(map[string]struct{})
+	for rows.Next() {
+		var identifier int
+		var name, columnType string
+		var notNull, primaryKey int
+		var defaultValue sql.NullString
+		if err := rows.Scan(
+			&identifier,
+			&name,
+			&columnType,
+			&notNull,
+			&defaultValue,
+			&primaryKey,
+		); err != nil {
+			return nil, err
+		}
+		columns[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return columns, nil
+}
+
+func codexStateColumn(
+	columns map[string]struct{},
+	name string,
+	fallback string,
+) string {
+	if _, found := columns[name]; found {
+		return "COALESCE(" + name + ", " + fallback + ")"
+	}
+	return fallback
+}
+
+func firstNonEmptyText(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}

@@ -1,0 +1,5 @@
+{"type":"user","cwd":"/work/alpha","message":{"content":"Alpha first"}}
+{"type":"ai-title","aiTitle":"AI old"}
+{"type":"custom-title","customTitle":"Manual alpha"}
+{"type":"ai-title","aiTitle":"AI latest"}
+{"type":"user","cwd":"/work/alpha","message":{"content":[{"type":"text","text":"Alpha"},{"type":"tool_result","content":"never include"},{"type":"text","text":"last"}]}}

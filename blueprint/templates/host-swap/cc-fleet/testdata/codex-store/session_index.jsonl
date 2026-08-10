@@ -1,0 +1,4 @@
+{"id":"parent-root","thread_name":"Parent thread name"}
+{"id":"session-root","thread_name":"Session thread name"}
+{"id":"cx-user","thread_name":"Own old name"}
+{"id":"cx-user","thread_name":"Own latest name"}

@@ -1,0 +1,179 @@
+package index
+
+import (
+	"context"
+	"path/filepath"
+	"time"
+
+	"hostops/cc-fleet/internal/store"
+)
+
+// readCodexThreads loads the Codex CLI's own view of its conversations, newest
+// state generation first.
+func readCodexThreads(
+	ctx context.Context,
+	codexRoot string,
+) ([]store.CodexThread, error) {
+	files, err := store.CodexStateFiles(codexRoot)
+	if err != nil {
+		return nil, err
+	}
+	threads, err := store.ReadCodexThreads(ctx, files)
+	if err != nil {
+		return nil, err
+	}
+	return threads, nil
+}
+
+// reconcileCodexState folds the Codex state store into this pass's rollout
+// rows. The store decides which conversations exist and how they are
+// classified; a conversation that never wrote a rollout file still gets a row,
+// so it can be listed, named, resumed, and hidden like any other. Rows whose
+// rollout file was parsed keep their file-derived size and prompt count.
+func reconcileCodexState(
+	threads []store.CodexThread,
+	codexRoot string,
+	updates []store.Rollout,
+	existing map[string]store.Rollout,
+	presentIDs map[string]struct{},
+	counters *Counters,
+) []store.Rollout {
+	positionByID := make(map[string]int, len(updates))
+	for position, rollout := range updates {
+		positionByID[rollout.ID] = position
+	}
+	for _, thread := range threads {
+		if thread.Listed() {
+			counters.CodexThreads++
+			// The rollout file may be absent or already deleted; the store
+			// still vouches for the conversation, so the row must survive the
+			// pass that prunes rows without files.
+			presentIDs[thread.ID] = struct{}{}
+		}
+		if position, found := positionByID[thread.ID]; found {
+			updates[position] = applyCodexThread(updates[position], thread)
+			continue
+		}
+		if row, found := existing[thread.ID]; found {
+			adjusted := applyCodexThread(row, thread)
+			if adjusted != row {
+				positionByID[thread.ID] = len(updates)
+				updates = append(updates, adjusted)
+			}
+			continue
+		}
+		if !thread.Listed() {
+			continue
+		}
+		counters.CodexRowsCreated++
+		positionByID[thread.ID] = len(updates)
+		updates = append(updates, codexStoreRollout(thread, codexRoot))
+	}
+	return updates
+}
+
+// applyCodexThread lets the store correct what only it knows: whether the
+// conversation is a listed user thread, and the directory a truncated rollout
+// file never named. Content stays the parsed file's whenever one exists, so
+// only a row with no parsed bytes takes the store's prompt evidence.
+func applyCodexThread(
+	rollout store.Rollout,
+	thread store.CodexThread,
+) store.Rollout {
+	rollout.UserThread = thread.Listed()
+	if rollout.CWD == "" {
+		rollout.CWD = thread.CWD
+	}
+	if rollout.Size == 0 {
+		if rollout.FirstPrompt == "" {
+			rollout.FirstPrompt = thread.FirstPrompt
+		}
+		if rollout.PromptCount == 0 && thread.Prompted {
+			rollout.PromptCount = 1
+		}
+	}
+	return rollout
+}
+
+// codexStoreRollout builds the row for a conversation with no rollout file.
+// Size stays zero because no bytes exist to measure; activity comes from the
+// store's own recency, which is the only timestamp such a thread has.
+func codexStoreRollout(
+	thread store.CodexThread,
+	codexRoot string,
+) store.Rollout {
+	path := thread.RolloutPath
+	if path == "" {
+		// The rollout row's path is a unique key as well as a location. A
+		// placeholder keeps the key without claiming a file that Codex never
+		// wrote; walkCodexRollouts only ever collects rollout-*.jsonl names.
+		path = filepath.Join(codexRoot, "sessions", thread.ID+".jsonl")
+	}
+	activityNS := int64(0)
+	if thread.ActivityAt > 0 {
+		activityNS = thread.ActivityAt * int64(time.Second)
+	}
+	promptCount := int64(0)
+	if thread.Prompted {
+		promptCount = 1
+	}
+	return store.Rollout{
+		ID:          thread.ID,
+		Path:        path,
+		MTimeNS:     activityNS,
+		CWD:         thread.CWD,
+		UserThread:  true,
+		LineageRoot: thread.ID,
+		FirstPrompt: thread.FirstPrompt,
+		PromptCount: promptCount,
+	}
+}
+
+// reconcileCodexNames makes a rename performed inside Codex reach the picker.
+// The state store owns a thread's explicit name; session_index.jsonl remains
+// the cache and the fallback for threads the store never named.
+func reconcileCodexNames(
+	ctx context.Context,
+	database *store.Store,
+	threads []store.CodexThread,
+	counters *Counters,
+) error {
+	if len(threads) == 0 {
+		return nil
+	}
+	names, err := database.CxNames(ctx)
+	if err != nil {
+		return err
+	}
+	updates := make([]store.CxName, 0)
+	for _, thread := range threads {
+		if !thread.Listed() || thread.Name == "" {
+			continue
+		}
+		if names[thread.ID] == thread.Name {
+			continue
+		}
+		updates = append(updates, store.CxName{
+			ID:         thread.ID,
+			ThreadName: thread.Name,
+		})
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	if err := database.Batch(ctx, len(updates), func(
+		tx *store.ImmediateTx,
+		start, end int,
+	) error {
+		for _, name := range updates[start:end] {
+			if err := tx.UpsertCxName(ctx, name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	counters.RowsTouched += len(updates)
+	return nil
+}

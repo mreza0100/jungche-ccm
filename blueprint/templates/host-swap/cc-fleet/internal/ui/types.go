@@ -1,0 +1,94 @@
+package ui
+
+import (
+	"context"
+	"io"
+
+	"hostops/cc-fleet/internal/compose"
+)
+
+// Picker is the common boundary used by the interactive, plain, and TSV
+// frontends. Interactive effects are described by Outcome; implementations do
+// not mutate fleet state themselves.
+type Picker interface {
+	Pick(ctx context.Context, snapshot Snapshot) (Outcome, error)
+}
+
+// Snapshot is all state needed for a frame. Rendering never probes the
+// filesystem, processes, tmux, or the clock.
+type Snapshot struct {
+	Rows            []compose.Row
+	View            compose.View
+	HiddenCount     int
+	SuppressedCount int
+	Refreshing      bool
+	PrimaryAccount  int
+	Cache1H         bool
+	Rotation        int
+	NowNS           int64
+	Width           int
+	Height          int
+	InitialQuery    string
+	InitialCursorID string
+}
+
+// OutcomeKind identifies why an interactive picker stopped.
+type OutcomeKind uint8
+
+const (
+	OutcomeNone OutcomeKind = iota
+	OutcomeSelected
+	OutcomeReload
+	OutcomeReboot
+	OutcomeCancelled
+)
+
+// HideChange is one final desired hidden state accumulated while the picker
+// remained open.
+type HideChange struct {
+	ID     string
+	Engine string
+	Hidden bool
+}
+
+// Outcome contains the selected action plus every in-memory modifier. The
+// caller owns persistence and action execution after the TUI has restored the
+// terminal.
+type Outcome struct {
+	Kind           OutcomeKind
+	Row            compose.Row
+	PrimaryAccount int
+	Cache1H        bool
+	Rotation       int
+	Query          string
+	HideChanges    []HideChange
+}
+
+// RefreshMsg replaces the cached compose snapshot without doing I/O in Model.
+type RefreshMsg struct {
+	Snapshot Snapshot
+}
+
+// PlainPicker renders a human-readable noninteractive twin.
+type PlainPicker struct {
+	Writer io.Writer
+}
+
+// TSVPicker renders the stable machine-readable twin.
+type TSVPicker struct {
+	Writer io.Writer
+}
+
+// ReadWriteCloser is the narrow terminal handle BubblePicker needs.
+type ReadWriteCloser interface {
+	io.Reader
+	io.Writer
+	io.Closer
+}
+
+// BubblePicker runs the fancy picker exclusively on /dev/tty. OpenTTY is
+// injectable for scratch-terminal tests; Updates may deliver fresh snapshots.
+type BubblePicker struct {
+	OpenTTY func() (ReadWriteCloser, error)
+	Updates <-chan Snapshot
+}

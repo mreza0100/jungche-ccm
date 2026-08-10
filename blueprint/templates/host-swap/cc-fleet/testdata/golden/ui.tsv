@@ -1,0 +1,9 @@
+kind	id	project	cwd	name	prompts	size	activity_ns	account	hidden	socket
+live-claude	11111111-1111-4111-8111-111111111111	alpha	/work/alpha	123456789012345678901234567890X	42	1536	1799999995000000000	2	false	cc-1800000000-1-1
+live-codex	22222222-2222-4222-8222-222222222222	alpha	/work/alpha	RR	9	3145728	1799998800000000000	0	false	cx-1799999900-1-1
+live-split		alpha	/work/alpha	🚀🧭🛠️📦🧪✨ fleet	21	7200	1799992800000000000	0	false	cc-1799999800-1-1
+agent	33333333-3333-4333-8333-333333333333	beta	/work/beta	Agent 界面 needle 列对齐测试名字	7	820	1799906400000000000	3	true	
+resume-claude	44444444-4444-4444-8444-444444444444	beta	/work/beta	Resume Claude	12	81920	1799740800000000000	1	false	
+resume-codex	55555555-5555-4555-8555-555555555555	beta	/work/beta	Resume Codex	4	5120	1799654400000000000	0	false	
+new-claude		gamma	/work/gamma	New Claude chat	0	0	1799481600000000000	0	false	
+new-codex		gamma	/work/gamma	New Codex chat	0	0	1799395200000000000	0	false	

@@ -1,0 +1,40 @@
+# cc-fleet shadow-check allowlist
+#
+# Exact tuple rule — five TAB-separated fields:
+# direction	id-glob	kind-glob	project-glob	reason
+#
+# direction is legacy-only, go-only, or either. The next three fields use
+# path.Match globs. Every active entry MUST identify a reviewed deviation
+# narrowly (normally by exact chat ID) and MUST carry a non-empty reason.
+#
+# Verified semantic rule — three TAB-separated fields:
+# class	class-name	reason
+#
+# Class entries are enforced by code-side verification, not tuple globs:
+# - codex-120-bound: the Go-only lineage is absent from the actual newest 120,
+#   and exactly one Go-only row exists for that lineage
+#   rollout files (legacy applies head before user/subagent classification);
+# - *-prompt-semantics: opposite-side tuples have identical id/kind/project
+#   and differ only in prompt count;
+# - dormant-account: the Go row was resolved to account 2 or 3;
+# - live-prompt-drift: a live identity/project pair changed count between the
+#   two necessarily sequential snapshots.
+# - legacy-dead-server: legacy emitted a live-codex socket for which the
+#   independently gathered fd-walk found no living Codex process.
+# - codex-legacy-source: the file is inside the legacy newest-120 bound but
+#   its first line uses a newer interactive source schema that legacy ignores.
+# - legacy-nonfleet-multiwindow: legacy emitted duplicate zero-prompt Claude
+#   windows for a named socket outside the cc-/cx- fleet namespace that Go
+#   deliberately does not probe.
+#
+# Example (commented; replace with an observed exact ID, never a wildcard):
+# go-only	00000000-0000-0000-0000-000000000000	resume-codex	my-project	legacy 120-rollout candidate bound
+
+class	codex-120-bound	legacy examines only its newest 120 rollout files; exactly one Go row is allowed per verified thread lineage
+class	codex-prompt-semantics	legacy grep counts token-bearing rollout lines while Go counts parsed complete user_message records
+class	claude-prompt-semantics	legacy byte-tail grep and Go parsed complete-record prompt counts differ at partial or injected records
+class	live-prompt-drift	a live chat gained a prompt between the sequential legacy and Go snapshots
+class	dormant-account	legacy walks only account 1 while Go intentionally indexes dormant account 2 and 3 chats
+class	legacy-dead-server	legacy lists a responsive or stale cx socket even though the fd-walk found no living Codex process
+class	codex-legacy-source	legacy requires thread_source:user on the first line while Go recognizes newer interactive Codex source schemas
+class	legacy-nonfleet-multiwindow	legacy probes every named tmux socket while Go deliberately excludes duplicate windows outside the cc-/cx- fleet namespace

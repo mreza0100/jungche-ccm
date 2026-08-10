@@ -1,0 +1,9 @@
+kind	id	project	cwd	name	prompts	size	activity_ns	account	hidden	socket
+new-claude		agent	/work/agent	New Claude chat	0	0	0	2	false	
+new-codex		agent	/work/agent	New Codex chat	0	0	0	0	false	
+resume-claude	agent	agent	/work/agent	Agent manual name	1	127	1700000000000000000	1	false	
+resume-claude	alpha	alpha	/work/alpha	Manual alpha	2	376	1700000000000000000	1	false	
+resume-codex	session-root	codex	/work/codex	Own latest name	2	402	1700000000000000000	0	false	
+resume-claude	compact	compact	/work/compact	Real compact prompt	1	200	1700000000000000000	1	false	
+resume-claude	junk	junk	/work/junk	<X uppercase is real	2	396	1700000000000000000	1	false	
+resume-claude	shrunk	shrunk	/work/shrunk	Old title before rewrite	2	454	1700000000000000000	1	false	

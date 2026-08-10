@@ -1,0 +1,2 @@
+{"type":"session_meta","thread_source":"subagent","payload":{"id":"cx-sub","cwd":"/work/subagent","session_id":"sub-session","parent_thread_id":"cx-user"}}
+{"type":"response_item","payload":{"type":"tool_result","message":"not a user message"}}

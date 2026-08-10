@@ -1,0 +1,5 @@
+{"type":"user","cwd":"/work/junk","message":{"content":"<local-command injected"}}
+{"type":"user","cwd":"/work/junk","message":{"content":"Caveat: injected"}}
+{"type":"user","cwd":"/work/junk","message":{"content":"[Request injected"}}
+{"type":"user","cwd":"/work/junk","message":{"content":"<X uppercase is real"}}
+{"type":"user","cwd":"/work/junk","message":{"content":"Ordinary real prompt"}}

@@ -1,0 +1,3 @@
+{"type":"custom-title","customTitle":"Old title before rewrite"}
+{"type":"user","cwd":"/work/shrunk","message":{"content":"Old first prompt"}}
+{"type":"user","cwd":"/work/shrunk","message":{"content":"Old second prompt with deliberately long padding xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
