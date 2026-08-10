@@ -1,0 +1,200 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestResolveCodexLineageUsesNewestAndMonotonicPromptMaximum(t *testing.T) {
+	rollouts := lineageFixtureRollouts()
+	lineages, roots := ResolveCodexLineages(rollouts)
+	if len(lineages) != 1 {
+		t.Fatalf("lineages = %#v, want one", lineages)
+	}
+	lineage := lineages[0]
+	if lineage.RootID != "root" ||
+		lineage.Newest.ID != "child-newest" ||
+		lineage.PromptCount != 11 {
+		t.Fatalf("lineage = %#v", lineage)
+	}
+	for _, id := range []string{"root", "child-old", "child-newest", "subagent"} {
+		if roots[id] != "root" {
+			t.Fatalf("root[%q] = %q, want root", id, roots[id])
+		}
+	}
+}
+
+func TestV2MigrationCollapsesExistingCodexHidesToLineageRoot(t *testing.T) {
+	dbPath := setStoreTestJail(t)
+	ctx := context.Background()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open(driverName, dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, schemaV1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, "PRAGMA user_version=1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, rollout := range lineageFixtureRollouts() {
+		if _, err := database.ExecContext(ctx, `
+INSERT INTO rollouts (
+  id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
+  parent_thread, first_prompt, prompt_count
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			rollout.ID,
+			rollout.Path,
+			rollout.Size,
+			rollout.MTimeNS,
+			rollout.ParsedOffset,
+			rollout.CWD,
+			boolInteger(rollout.UserThread),
+			rollout.SessionID,
+			rollout.ParentThread,
+			rollout.FirstPrompt,
+			rollout.PromptCount,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, hidden := range []Hidden{
+		{
+			ID:              "root",
+			Engine:          "cx",
+			HiddenAt:        100,
+			BaselinePrompts: int64Pointer(10),
+		},
+		{
+			ID:              "child-old",
+			Engine:          "cx",
+			HiddenAt:        200,
+			BaselinePrompts: int64Pointer(10),
+		},
+		{
+			ID:              "child-newest",
+			Engine:          "cx",
+			HiddenAt:        300,
+			BaselinePrompts: int64Pointer(11),
+		},
+	} {
+		if _, err := database.ExecContext(ctx, `
+INSERT INTO hidden (id, engine, hidden_at, baseline_prompts)
+VALUES (?, ?, ?, ?)`,
+			hidden.ID,
+			hidden.Engine,
+			hidden.HiddenAt,
+			hidden.BaselinePrompts,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated := openTestStore(t)
+	assertSchemaVersion(t, migrated, 2)
+	rollouts, err := migrated.Rollouts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rollout := range rollouts {
+		if rollout.LineageRoot != "root" {
+			t.Fatalf("%s lineage_root = %q", rollout.ID, rollout.LineageRoot)
+		}
+	}
+	hidden, err := migrated.HiddenChats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hidden) != 1 ||
+		hidden[0].ID != "root" ||
+		hidden[0].Engine != "cx" ||
+		hidden[0].HiddenAt != 300 ||
+		hidden[0].BaselinePrompts == nil ||
+		*hidden[0].BaselinePrompts != 11 {
+		t.Fatalf("migrated hides = %#v", hidden)
+	}
+	counts, err := migrated.Counts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.OrphanedHides != 0 {
+		t.Fatalf("migrated orphaned hides = %d", counts.OrphanedHides)
+	}
+	if err := migrated.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := openTestStore(t)
+	t.Cleanup(func() { _ = reopened.Close() })
+	hidden, err = reopened.HiddenChats(ctx)
+	if err != nil || len(hidden) != 1 ||
+		hidden[0].ID != "root" ||
+		hidden[0].BaselinePrompts == nil ||
+		*hidden[0].BaselinePrompts != 11 {
+		t.Fatalf("idempotent reopen hides = %#v, err=%v", hidden, err)
+	}
+}
+
+func lineageFixtureRollouts() []Rollout {
+	return []Rollout{
+		{
+			ID:          "root",
+			Path:        "/codex/root.jsonl",
+			Size:        100,
+			MTimeNS:     100,
+			CWD:         "/work/web",
+			UserThread:  true,
+			SessionID:   "root",
+			FirstPrompt: "WEB root",
+			PromptCount: 10,
+		},
+		{
+			ID:           "child-old",
+			Path:         "/codex/child-old.jsonl",
+			Size:         110,
+			MTimeNS:      200,
+			CWD:          "/work/web",
+			UserThread:   true,
+			SessionID:    "root",
+			ParentThread: "root",
+			FirstPrompt:  "WEB root",
+			PromptCount:  10,
+		},
+		{
+			ID:           "child-newest",
+			Path:         "/codex/child-newest.jsonl",
+			Size:         120,
+			MTimeNS:      300,
+			CWD:          "/work/web",
+			UserThread:   true,
+			SessionID:    "root",
+			ParentThread: "child-old",
+			FirstPrompt:  "WEB root",
+			PromptCount:  11,
+		},
+		{
+			ID:           "subagent",
+			Path:         "/codex/subagent.jsonl",
+			Size:         90,
+			MTimeNS:      400,
+			CWD:          "/work/web",
+			SessionID:    "root",
+			ParentThread: "child-newest",
+			FirstPrompt:  "delegated",
+			PromptCount:  99,
+		},
+	}
+}
+
+func int64Pointer(value int64) *int64 {
+	return &value
+}

@@ -1,0 +1,126 @@
+package inject
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+)
+
+// CommandTmux invokes tmux against an explicit socket pathname.
+type CommandTmux struct {
+	Binary string
+}
+
+func (tmux CommandTmux) Capture(
+	ctx context.Context,
+	socketPath, target string,
+	styled bool,
+	scrollback int,
+) (string, error) {
+	arguments := []string{"capture-pane", "-t", target, "-p", "-J"}
+	if styled {
+		arguments = append(arguments, "-e")
+	}
+	if scrollback > 0 {
+		arguments = append(arguments, "-S", fmt.Sprintf("-%d", scrollback))
+	}
+	output, err := tmux.command(ctx, socketPath, arguments...).Output()
+	return string(output), err
+}
+
+func (tmux CommandTmux) SendLiteral(
+	ctx context.Context,
+	socketPath, target, text string,
+) error {
+	return tmux.command(
+		ctx,
+		socketPath,
+		"send-keys",
+		"-t",
+		target,
+		"-l",
+		"--",
+		text,
+	).Run()
+}
+
+func (tmux CommandTmux) SendKey(
+	ctx context.Context,
+	socketPath, target, key string,
+) error {
+	return tmux.command(
+		ctx,
+		socketPath,
+		"send-keys",
+		"-t",
+		target,
+		key,
+	).Run()
+}
+
+func (tmux CommandTmux) CancelCopyMode(
+	ctx context.Context,
+	socketPath, target string,
+) error {
+	return tmux.command(
+		ctx,
+		socketPath,
+		"send-keys",
+		"-t",
+		target,
+		"-X",
+		"cancel",
+	).Run()
+}
+
+func (tmux CommandTmux) PaneInMode(
+	ctx context.Context,
+	socketPath, target string,
+) (bool, error) {
+	output, err := tmux.command(
+		ctx,
+		socketPath,
+		"display-message",
+		"-t",
+		target,
+		"-p",
+		"#{pane_in_mode}",
+	).Output()
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(string(output)) == "1", nil
+}
+
+func (tmux CommandTmux) CurrentSession(
+	ctx context.Context,
+	socketPath string,
+) (string, error) {
+	output, err := tmux.command(
+		ctx,
+		socketPath,
+		"display-message",
+		"-p",
+		"#{session_name}",
+	).Output()
+	return strings.TrimSpace(string(output)), err
+}
+
+func (tmux CommandTmux) command(
+	ctx context.Context,
+	socketPath string,
+	arguments ...string,
+) *exec.Cmd {
+	binary := tmux.Binary
+	if binary == "" {
+		binary = "tmux"
+	}
+	commandArguments := make([]string, 0, len(arguments)+2)
+	commandArguments = append(commandArguments, "-S", socketPath)
+	commandArguments = append(commandArguments, arguments...)
+	command := exec.CommandContext(ctx, binary, commandArguments...)
+	command.Env = append(os.Environ(), "TMUX=")
+	return command
+}

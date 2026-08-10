@@ -1,0 +1,13 @@
+T	agent	claude/project-alpha/agent.jsonl	127	127	/work/agent	Agent manual name		Agent prompt	Agent prompt	1	false
+T	alpha	claude/project-alpha/alpha.jsonl	376	376	/work/alpha	Manual alpha	AI latest	Alpha first	Alpha last	2	false
+T	bg-twin	claude/project-alpha/bg-twin.jsonl	102	102	/work/background			Background prompt	Background prompt	1	true
+T	compact	claude/project-beta/compact.jsonl	200	200	/work/compact			Real compact prompt	Real compact prompt	1	false
+T	junk	claude/project-beta/junk.jsonl	396	396	/work/junk			<X uppercase is real	Ordinary real prompt	2	false
+T	large-line	claude/project-alpha/large-line.jsonl	76861	76861	/work/large			sha256:c993db69d41213f66add4b33bc93393bb3ee9ef08f8821d44a61b06a311abc7d:76800	sha256:c993db69d41213f66add4b33bc93393bb3ee9ef08f8821d44a61b06a311abc7d:76800	1	false
+T	partial	claude/project-beta/partial.jsonl	152	86	/work/partial			Complete before partial	Complete before partial	1	false
+T	shrunk	claude/project-beta/shrunk.jsonl	454	454	/work/shrunk	Old title before rewrite		Old first prompt	sha256:86b0ecb9001ea76187200f682cac070bb7832c05f1aa9c9b96bef175f28bc995:249	2	false
+R	cx-sub	codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-cx-sub.jsonl	245	245	/work/subagent	false	sub-session	cx-user		0
+R	cx-user	codex/sessions/2026/01/01/rollout-2026-01-01T00-00-01-cx-user.jsonl	402	402	/work/codex	true	session-root	parent-root	Codex first	2
+N	cx-user	Own latest name
+N	parent-root	Parent thread name
+N	session-root	Session thread name

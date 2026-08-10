@@ -1,0 +1,350 @@
+package hide
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"hostops/cc-fleet/internal/index"
+	"hostops/cc-fleet/internal/store"
+)
+
+type hideTmuxJail struct {
+	root       string
+	tmuxDir    string
+	sidDir     string
+	home       string
+	claudeRoot string
+	codexRoot  string
+	sockets    []string
+}
+
+func newHideTmuxJail(t *testing.T) *hideTmuxJail {
+	t.Helper()
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux binary is not installed")
+	}
+	root, err := os.MkdirTemp("/tmp", "cch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jail := &hideTmuxJail{
+		root:       root,
+		tmuxDir:    filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid())),
+		sidDir:     filepath.Join(root, "sid"),
+		home:       filepath.Join(root, "home"),
+		claudeRoot: filepath.Join(root, "claude"),
+		codexRoot:  filepath.Join(root, "codex"),
+	}
+	for _, directory := range []string{
+		jail.tmuxDir,
+		jail.sidDir,
+		jail.home,
+		jail.claudeRoot,
+		jail.codexRoot,
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", jail.home)
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_TMPDIR", jail.root)
+	t.Setenv("CC_FLEET_HOME", jail.home)
+	t.Setenv("CC_FLEET_DB", filepath.Join(root, "fleet.db"))
+	t.Setenv("CC_FLEET_SID_DIR", jail.sidDir)
+	t.Setenv("CC_FLEET_CLAUDE_ROOTS", jail.claudeRoot)
+	t.Setenv("CC_FLEET_CODEX_ROOT", jail.codexRoot)
+	t.Setenv("CC_FLEET_TMUX_DIR", jail.tmuxDir)
+	t.Cleanup(func() {
+		for _, socket := range jail.sockets {
+			_ = jail.command("-L", socket, "kill-server").Run()
+		}
+		if err := os.RemoveAll(jail.root); err != nil {
+			t.Errorf("remove hide tmux jail: %v", err)
+		}
+	})
+	return jail
+}
+
+func (jail *hideTmuxJail) command(arguments ...string) *exec.Cmd {
+	command := exec.Command("tmux", arguments...)
+	command.Env = append(
+		os.Environ(),
+		"HOME="+jail.home,
+		"TMUX=",
+		"TMUX_TMPDIR="+jail.root,
+	)
+	return command
+}
+
+func (jail *hideTmuxJail) startReader(
+	t *testing.T,
+	socket, session, transcriptPath string,
+	appendPrompt bool,
+) string {
+	t.Helper()
+	scriptPath := filepath.Join(jail.root, socket+".sh")
+	content := "#!/bin/sh\nIFS= read -r line\n"
+	if appendPrompt {
+		content += "printf '%s\\n' " +
+			shellQuote(`{"type":"user","cwd":"/work/exit","message":{"content":"goodbye flush"}}`) +
+			" >> " + shellQuote(transcriptPath) + "\n"
+	}
+	content += "exit 0\n"
+	if err := os.WriteFile(scriptPath, []byte(content), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := jail.command(
+		"-f",
+		"/dev/null",
+		"-L",
+		socket,
+		"new-session",
+		"-d",
+		"-s",
+		session,
+		scriptPath,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("start reader %s: %v: %s", socket, err, output)
+	}
+	jail.sockets = append(jail.sockets, socket)
+	output, err := jail.command(
+		"-L",
+		socket,
+		"list-panes",
+		"-F",
+		"#{pane_id}",
+	).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+func TestJailedHideExitFlushesAndSweeps(t *testing.T) {
+	jail := newHideTmuxJail(t)
+	ctx := context.Background()
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	id := "88888888-8888-4888-8888-888888888888"
+	projectDir := filepath.Join(jail.claudeRoot, "project")
+	transcriptPath := filepath.Join(projectDir, id+".jsonl")
+	writeTestFile(
+		t,
+		transcriptPath,
+		`{"type":"user","cwd":"/work/exit","message":{"content":"before"}}`+"\n",
+	)
+	indexer, err := index.New(database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := indexer.Run(ctx, index.Options{}); err != nil {
+		t.Fatal(err)
+	}
+
+	socketName := "cc-800-1-1"
+	paneID := jail.startReader(
+		t,
+		socketName,
+		"exit-session",
+		transcriptPath,
+		true,
+	)
+	socketPath := filepath.Join(jail.tmuxDir, socketName)
+	writeTestFile(t, filepath.Join(jail.sidDir, socketName), transcriptPath)
+	writeTestFile(
+		t,
+		filepath.Join(jail.sidDir, socketName+"."+paneID),
+		transcriptPath,
+	)
+	detachedPath := filepath.Join(
+		jail.home,
+		".claude",
+		".cc-new-children",
+		id,
+	)
+	paneChildrenPath := filepath.Join(
+		jail.home,
+		".claude",
+		".cc-pane-children",
+		id,
+	)
+	writeTestFile(t, detachedPath, "cc-does-not-exist\n")
+	writeTestFile(t, paneChildrenPath, "cc-does-not-exist\t%77\n")
+
+	spawner := &captureSpawner{}
+	manager, err := New(database, Dependencies{
+		ProcFS:  &fakeProc{},
+		Tmux:    CommandTmux{},
+		Spawner: spawner,
+		Now:     func() time.Time { return time.Unix(500, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Hide(ctx, Request{
+		Self: true,
+		Exit: true,
+		Environment: SelfEnvironment{
+			TMUX:            socketPath + ",1,0",
+			TMUXPane:        paneID,
+			ClaudeSessionID: id,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(spawner.args) != 1 {
+		t.Fatalf("spawn args = %#v", spawner.args)
+	}
+
+	finisher, err := NewFinisher(database, Dependencies{
+		Tmux:         CommandTmux{},
+		Delay:        10 * time.Millisecond,
+		PollEvery:    10 * time.Millisecond,
+		PollAttempts: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := finisher.Run(ctx, spawner.args[0]); err != nil {
+		t.Fatal(err)
+	}
+	if (CommandTmux{}).PaneExists(ctx, socketPath, paneID) {
+		t.Fatal("target pane survived hide-exit")
+	}
+	for _, path := range []string{
+		filepath.Join(jail.sidDir, socketName),
+		filepath.Join(jail.sidDir, socketName+"."+paneID),
+		detachedPath,
+		paneChildrenPath,
+	} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s remains: %v", path, err)
+		}
+	}
+	assertHidden(t, database, id, ClaudeEngine, 500)
+}
+
+func TestStressTenSimultaneousHideExits(t *testing.T) {
+	jail := newHideTmuxJail(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const count = 10
+	args := make([]ExitArgs, 0, count)
+	for index := 0; index < count; index++ {
+		id := fmt.Sprintf("hide-exit-%02d", index)
+		path := filepath.Join(jail.claudeRoot, id+".jsonl")
+		if err := database.UpsertTranscript(ctx, store.Transcript{
+			UUID:        id,
+			Path:        path,
+			PromptCount: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.Hide(ctx, store.Hidden{
+			ID:       id,
+			Engine:   ClaudeEngine,
+			HiddenAt: int64(index + 1),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		socketName := fmt.Sprintf("cc-%d-1-1", 900+index)
+		paneID := jail.startReader(
+			t,
+			socketName,
+			fmt.Sprintf("hide-%02d", index),
+			path,
+			false,
+		)
+		writeTestFile(t, filepath.Join(jail.sidDir, socketName), path)
+		writeTestFile(
+			t,
+			filepath.Join(jail.sidDir, socketName+"."+paneID),
+			path,
+		)
+		args = append(args, ExitArgs{
+			Engine:     ClaudeEngine,
+			ID:         id,
+			DataPath:   path,
+			SocketPath: filepath.Join(jail.tmuxDir, socketName),
+			SocketName: socketName,
+			PaneID:     paneID,
+		})
+	}
+	finisher, err := NewFinisher(database, Dependencies{
+		Tmux:         CommandTmux{},
+		Refresher:    refreshFunc(func(context.Context) error { return nil }),
+		Delay:        5 * time.Millisecond,
+		PollEvery:    5 * time.Millisecond,
+		PollAttempts: 200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	var group sync.WaitGroup
+	errorsByIndex := make([]error, len(args))
+	for index := range args {
+		index := index
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			errorsByIndex[index] = finisher.Run(ctx, args[index])
+		}()
+	}
+	group.Wait()
+	elapsed := time.Since(started)
+	for index, runErr := range errorsByIndex {
+		if runErr != nil {
+			t.Fatalf("finisher %d: %v", index, runErr)
+		}
+		if (CommandTmux{}).PaneExists(
+			context.Background(),
+			args[index].SocketPath,
+			args[index].PaneID,
+		) {
+			t.Fatalf("pane %d survived", index)
+		}
+		for _, crumb := range []string{
+			filepath.Join(jail.sidDir, args[index].SocketName),
+			filepath.Join(
+				jail.sidDir,
+				args[index].SocketName+"."+args[index].PaneID,
+			),
+		} {
+			if _, statErr := os.Stat(crumb); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("crumb %s remains: %v", crumb, statErr)
+			}
+		}
+	}
+	t.Logf(
+		"STRESS hide-exit panes=%d dead=%d crumbs_remaining=0 elapsed=%s",
+		count,
+		count,
+		elapsed,
+	)
+}

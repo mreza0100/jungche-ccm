@@ -1,0 +1,13 @@
+[alpha]
+● 12345678901234567890123456789…  ⚠3srv 🥈 ⚡ ⇄ ←here  42p  1.5K  5s
+● RR  ⬢  9p  3.0M  20m
+● 🚀🧭🛠️📦🧪✨ fleet  ⊞3 🥇 🥉  21p  7.0K  2h
+
+[beta]
+⚙ Agent 界面 needle 列对齐测试名字  ⚙ agent 🥉 ·hidden  7p  820B  1d
+↻ Resume Claude  🥇  12p  80K  3d
+↻ Resume Codex  ⬢  4p  5.0K  4d
+
+[gamma]
+✦ New Claude chat  0p  0B  6d
+✦ New Codex chat  ⬢  0p  0B  7d

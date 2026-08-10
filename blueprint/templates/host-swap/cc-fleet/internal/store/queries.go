@@ -1,0 +1,544 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"sort"
+)
+
+const transcriptColumns = `
+uuid, path, size, mtime_ns, parsed_offset, cwd, custom_title, ai_title,
+first_prompt, last_prompt, prompt_count, is_bg`
+
+const rolloutColumns = `
+id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
+parent_thread, lineage_root, first_prompt, prompt_count`
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+// CachedCounts separates explicit hides from rows omitted because
+// they are empty, background, or beyond the default resume caps.
+type CachedCounts struct {
+	Hidden     int
+	Suppressed int
+}
+
+// DefaultCandidates reads only the rows capable of appearing in the default
+// cached first frame. SQL applies the same hide and empty/background
+// predicates as compose, avoiding a full corpus decode before the TUI opens.
+func (s *Store) DefaultCandidates(
+	ctx context.Context,
+	transcriptLimit, rolloutLimit int,
+) ([]Transcript, []Rollout, CachedCounts, error) {
+	transcripts, err := s.defaultTranscripts(ctx, transcriptLimit)
+	if err != nil {
+		return nil, nil, CachedCounts{}, err
+	}
+	rollouts, err := s.defaultRollouts(ctx, rolloutLimit)
+	if err != nil {
+		return nil, nil, CachedCounts{}, err
+	}
+	counts, err := s.defaultCounts(ctx, transcriptLimit, rolloutLimit)
+	if err != nil {
+		return nil, nil, CachedCounts{}, err
+	}
+	return transcripts, rollouts, counts, nil
+}
+
+func (s *Store) defaultTranscripts(
+	ctx context.Context,
+	limit int,
+) ([]Transcript, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT `+transcriptColumns+`
+FROM transcripts AS t
+LEFT JOIN hidden AS h ON h.id=t.uuid AND h.engine='cc'
+WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.id IS NULL
+ORDER BY t.mtime_ns DESC, t.uuid
+LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query cached transcript candidates: %w", err)
+	}
+	defer rows.Close()
+	transcripts := make([]Transcript, 0, limit)
+	for rows.Next() {
+		transcript, err := scanTranscript(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan cached transcript: %w", err)
+		}
+		transcripts = append(transcripts, transcript)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate cached transcripts: %w", err)
+	}
+	return transcripts, nil
+}
+
+func (s *Store) defaultRollouts(
+	ctx context.Context,
+	limit int,
+) ([]Rollout, error) {
+	lineages, hiddenByID, err := s.codexLineageRows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rollouts := make([]Rollout, 0, min(limit, len(lineages)))
+	for _, lineage := range lineages {
+		if _, found := hiddenByID[lineage.RootID]; found {
+			continue
+		}
+		if lineage.Newest.Size <= 0 || lineage.PromptCount <= 0 {
+			continue
+		}
+		rollouts = append(rollouts, lineage.Newest)
+		if len(rollouts) == limit {
+			break
+		}
+	}
+	return rollouts, nil
+}
+
+func (s *Store) defaultCounts(
+	ctx context.Context,
+	transcriptLimit, rolloutLimit int,
+) (CachedCounts, error) {
+	var counts CachedCounts
+	var claudeEligible, codexEligible int
+	err := s.db.QueryRowContext(ctx, `
+SELECT
+  COALESCE(SUM(CASE WHEN h.id IS NOT NULL THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE
+    WHEN h.id IS NULL AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
+    THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE
+    WHEN h.id IS NULL AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
+    THEN 1 ELSE 0 END), 0)
+FROM transcripts AS t
+LEFT JOIN hidden AS h ON h.id=t.uuid AND h.engine='cc'`,
+	).Scan(&counts.Hidden, &counts.Suppressed, &claudeEligible)
+	if err != nil {
+		return CachedCounts{}, fmt.Errorf("count cached transcripts: %w", err)
+	}
+	lineages, hiddenByID, err := s.codexLineageRows(ctx)
+	if err != nil {
+		return CachedCounts{}, err
+	}
+	var codexHidden, codexSuppressed int
+	for _, lineage := range lineages {
+		if _, found := hiddenByID[lineage.RootID]; found {
+			codexHidden++
+			continue
+		}
+		if lineage.Newest.Size <= 0 || lineage.PromptCount <= 0 {
+			codexSuppressed++
+			continue
+		}
+		codexEligible++
+	}
+	counts.Hidden += codexHidden
+	counts.Suppressed += codexSuppressed
+	if claudeEligible > transcriptLimit {
+		counts.Suppressed += claudeEligible - transcriptLimit
+	}
+	if codexEligible > rolloutLimit {
+		counts.Suppressed += codexEligible - rolloutLimit
+	}
+	return counts, nil
+}
+
+func (s *Store) codexLineageRows(
+	ctx context.Context,
+) ([]CodexLineage, map[string]Hidden, error) {
+	rollouts, err := s.Rollouts(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query cached rollout lineages: %w", err)
+	}
+	lineages, _ := ResolveCodexLineages(rollouts)
+	sort.Slice(lineages, func(left, right int) bool {
+		if lineages[left].Newest.MTimeNS != lineages[right].Newest.MTimeNS {
+			return lineages[left].Newest.MTimeNS > lineages[right].Newest.MTimeNS
+		}
+		return lineages[left].RootID < lineages[right].RootID
+	})
+	hiddenRows, err := s.HiddenChats(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query cached lineage hides: %w", err)
+	}
+	hiddenByID := make(map[string]Hidden, len(hiddenRows))
+	for _, hidden := range hiddenRows {
+		if hidden.Engine == "cx" {
+			hiddenByID[hidden.ID] = hidden
+		}
+	}
+	return lineages, hiddenByID, nil
+}
+
+// UpsertTranscript inserts or replaces all indexed fields for a transcript.
+func (s *Store) UpsertTranscript(ctx context.Context, transcript Transcript) error {
+	return upsertTranscript(ctx, s.db, transcript)
+}
+
+// UpsertTranscript inserts or replaces all indexed fields within tx.
+func (tx *ImmediateTx) UpsertTranscript(ctx context.Context, transcript Transcript) error {
+	return upsertTranscript(ctx, tx, transcript)
+}
+
+func upsertTranscript(ctx context.Context, db queryExecer, transcript Transcript) error {
+	_, err := execWrite(ctx, db, `
+INSERT INTO transcripts (
+  uuid, path, size, mtime_ns, parsed_offset, cwd, custom_title, ai_title,
+  first_prompt, last_prompt, prompt_count, is_bg
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(uuid) DO UPDATE SET
+  path=excluded.path,
+  size=excluded.size,
+  mtime_ns=excluded.mtime_ns,
+  parsed_offset=excluded.parsed_offset,
+  cwd=excluded.cwd,
+  custom_title=excluded.custom_title,
+  ai_title=excluded.ai_title,
+  first_prompt=excluded.first_prompt,
+  last_prompt=excluded.last_prompt,
+  prompt_count=excluded.prompt_count,
+  is_bg=excluded.is_bg`,
+		transcript.UUID,
+		transcript.Path,
+		transcript.Size,
+		transcript.MTimeNS,
+		transcript.ParsedOffset,
+		transcript.CWD,
+		transcript.CustomTitle,
+		transcript.AITitle,
+		transcript.FirstPrompt,
+		transcript.LastPrompt,
+		transcript.PromptCount,
+		boolInteger(transcript.IsBG),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert transcript %q: %w", transcript.UUID, err)
+	}
+	return nil
+}
+
+// Transcript returns a transcript by UUID.
+func (s *Store) Transcript(
+	ctx context.Context,
+	uuid string,
+) (Transcript, bool, error) {
+	transcript, err := scanTranscript(s.db.QueryRowContext(
+		ctx,
+		"SELECT "+transcriptColumns+" FROM transcripts WHERE uuid=?",
+		uuid,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Transcript{}, false, nil
+	}
+	if err != nil {
+		return Transcript{}, false, fmt.Errorf("query transcript %q: %w", uuid, err)
+	}
+	return transcript, true, nil
+}
+
+// Transcripts returns all transcripts ordered by UUID.
+func (s *Store) Transcripts(ctx context.Context) ([]Transcript, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		"SELECT "+transcriptColumns+" FROM transcripts ORDER BY uuid",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query transcripts: %w", err)
+	}
+	defer rows.Close()
+
+	var transcripts []Transcript
+	for rows.Next() {
+		transcript, err := scanTranscript(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan transcript: %w", err)
+		}
+		transcripts = append(transcripts, transcript)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate transcripts: %w", err)
+	}
+	return transcripts, nil
+}
+
+func scanTranscript(row rowScanner) (Transcript, error) {
+	var transcript Transcript
+	var isBG int
+	err := row.Scan(
+		&transcript.UUID,
+		&transcript.Path,
+		&transcript.Size,
+		&transcript.MTimeNS,
+		&transcript.ParsedOffset,
+		&transcript.CWD,
+		&transcript.CustomTitle,
+		&transcript.AITitle,
+		&transcript.FirstPrompt,
+		&transcript.LastPrompt,
+		&transcript.PromptCount,
+		&isBG,
+	)
+	transcript.IsBG = isBG != 0
+	return transcript, err
+}
+
+// DeleteTranscript deletes a transcript by UUID.
+func (s *Store) DeleteTranscript(ctx context.Context, uuid string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM transcripts WHERE uuid=?", uuid); err != nil {
+		return fmt.Errorf("delete transcript %q: %w", uuid, err)
+	}
+	return nil
+}
+
+// DeleteTranscript deletes a transcript by UUID within tx.
+func (tx *ImmediateTx) DeleteTranscript(ctx context.Context, uuid string) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM transcripts WHERE uuid=?", uuid); err != nil {
+		return fmt.Errorf("delete transcript %q: %w", uuid, err)
+	}
+	return nil
+}
+
+// UpsertRollout inserts or replaces all indexed fields for a rollout.
+func (s *Store) UpsertRollout(ctx context.Context, rollout Rollout) error {
+	return upsertRollout(ctx, s.db, rollout)
+}
+
+// UpsertRollout inserts or replaces all indexed fields within tx.
+func (tx *ImmediateTx) UpsertRollout(ctx context.Context, rollout Rollout) error {
+	return upsertRollout(ctx, tx, rollout)
+}
+
+func upsertRollout(ctx context.Context, db queryExecer, rollout Rollout) error {
+	_, err := execWrite(ctx, db, `
+INSERT OR REPLACE INTO rollouts (
+  id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
+  parent_thread, lineage_root, first_prompt, prompt_count
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rollout.ID,
+		rollout.Path,
+		rollout.Size,
+		rollout.MTimeNS,
+		rollout.ParsedOffset,
+		rollout.CWD,
+		boolInteger(rollout.UserThread),
+		rollout.SessionID,
+		rollout.ParentThread,
+		initialLineageRoot(rollout),
+		rollout.FirstPrompt,
+		rollout.PromptCount,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert rollout %q: %w", rollout.ID, err)
+	}
+	return nil
+}
+
+// Rollout returns a rollout by ID.
+func (s *Store) Rollout(ctx context.Context, id string) (Rollout, bool, error) {
+	rollout, err := scanRollout(s.db.QueryRowContext(
+		ctx,
+		"SELECT "+rolloutColumns+" FROM rollouts WHERE id=?",
+		id,
+	))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Rollout{}, false, nil
+	}
+	if err != nil {
+		return Rollout{}, false, fmt.Errorf("query rollout %q: %w", id, err)
+	}
+	return rollout, true, nil
+}
+
+// Rollouts returns all rollouts ordered by ID.
+func (s *Store) Rollouts(ctx context.Context) ([]Rollout, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		"SELECT "+rolloutColumns+" FROM rollouts ORDER BY id",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query rollouts: %w", err)
+	}
+	defer rows.Close()
+
+	var rollouts []Rollout
+	for rows.Next() {
+		rollout, err := scanRollout(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan rollout: %w", err)
+		}
+		rollouts = append(rollouts, rollout)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate rollouts: %w", err)
+	}
+	return rollouts, nil
+}
+
+func scanRollout(row rowScanner) (Rollout, error) {
+	var rollout Rollout
+	var userThread int
+	err := row.Scan(
+		&rollout.ID,
+		&rollout.Path,
+		&rollout.Size,
+		&rollout.MTimeNS,
+		&rollout.ParsedOffset,
+		&rollout.CWD,
+		&userThread,
+		&rollout.SessionID,
+		&rollout.ParentThread,
+		&rollout.LineageRoot,
+		&rollout.FirstPrompt,
+		&rollout.PromptCount,
+	)
+	rollout.UserThread = userThread != 0
+	return rollout, err
+}
+
+// DeleteRollout deletes a rollout by ID.
+func (s *Store) DeleteRollout(ctx context.Context, id string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM rollouts WHERE id=?", id); err != nil {
+		return fmt.Errorf("delete rollout %q: %w", id, err)
+	}
+	return nil
+}
+
+// DeleteRollout deletes a rollout by ID within tx.
+func (tx *ImmediateTx) DeleteRollout(ctx context.Context, id string) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM rollouts WHERE id=?", id); err != nil {
+		return fmt.Errorf("delete rollout %q: %w", id, err)
+	}
+	return nil
+}
+
+// UpsertCxName inserts or replaces a Codex thread name.
+func (s *Store) UpsertCxName(ctx context.Context, name CxName) error {
+	return upsertCxName(ctx, s.db, name)
+}
+
+// UpsertCxName inserts or replaces a Codex thread name within tx.
+func (tx *ImmediateTx) UpsertCxName(ctx context.Context, name CxName) error {
+	return upsertCxName(ctx, tx, name)
+}
+
+func upsertCxName(ctx context.Context, db queryExecer, name CxName) error {
+	_, err := execWrite(ctx, db, `
+INSERT INTO cx_names (id, thread_name) VALUES (?, ?)
+ON CONFLICT(id) DO UPDATE SET thread_name=excluded.thread_name`,
+		name.ID,
+		name.ThreadName,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert cx name %q: %w", name.ID, err)
+	}
+	return nil
+}
+
+// ReplaceCxNames atomically replaces the session_index name mirror.
+func (s *Store) ReplaceCxNames(ctx context.Context, names []CxName) error {
+	return s.WithImmediateTx(ctx, func(tx *ImmediateTx) error {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM cx_names"); err != nil {
+			return fmt.Errorf("clear cx names: %w", err)
+		}
+		for _, name := range names {
+			if err := tx.UpsertCxName(ctx, name); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// CxNames returns the session_index name mirror keyed by rollout ID.
+func (s *Store) CxNames(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT id, thread_name FROM cx_names ORDER BY id")
+	if err != nil {
+		return nil, fmt.Errorf("query cx names: %w", err)
+	}
+	defer rows.Close()
+
+	names := make(map[string]string)
+	for rows.Next() {
+		var id, threadName string
+		if err := rows.Scan(&id, &threadName); err != nil {
+			return nil, fmt.Errorf("scan cx name: %w", err)
+		}
+		names[id] = threadName
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate cx names: %w", err)
+	}
+	return names, nil
+}
+
+// SetMeta inserts or replaces a metadata value.
+func (s *Store) SetMeta(ctx context.Context, key, value string) error {
+	return setMeta(ctx, s.db, key, value)
+}
+
+// SetMeta inserts or replaces a metadata value within tx.
+func (tx *ImmediateTx) SetMeta(ctx context.Context, key, value string) error {
+	return setMeta(ctx, tx, key, value)
+}
+
+func setMeta(ctx context.Context, db queryExecer, key, value string) error {
+	_, err := execWrite(ctx, db, `
+INSERT INTO meta (key, value) VALUES (?, ?)
+ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+		key,
+		value,
+	)
+	if err != nil {
+		return fmt.Errorf("set meta %q: %w", key, err)
+	}
+	return nil
+}
+
+// Meta returns a metadata value by key.
+func (s *Store) Meta(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	err := s.db.QueryRowContext(ctx, "SELECT value FROM meta WHERE key=?", key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("query meta %q: %w", key, err)
+	}
+	return value, true, nil
+}
+
+// DeleteMeta deletes a metadata value by key.
+func (s *Store) DeleteMeta(ctx context.Context, key string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM meta WHERE key=?", key); err != nil {
+		return fmt.Errorf("delete meta %q: %w", key, err)
+	}
+	return nil
+}
+
+// IncrementMeta increments one decimal counter, creating it at one.
+func (s *Store) IncrementMeta(ctx context.Context, key string) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO meta (key, value) VALUES (?, '1')
+ON CONFLICT(key) DO UPDATE SET
+  value=CAST(meta.value AS INTEGER)+1`,
+		key,
+	)
+	if err != nil {
+		return fmt.Errorf("increment meta %q: %w", key, err)
+	}
+	return nil
+}
+
+func boolInteger(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
