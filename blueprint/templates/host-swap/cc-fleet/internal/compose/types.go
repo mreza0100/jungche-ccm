@@ -108,24 +108,14 @@ type Row struct {
 	SplitCount  int
 }
 
-// BaselineUpdate is retired plumbing: hides are permanent, so Compose never
-// emits one. The type and the two Output fields below stay until the callers
-// that still drain them are removed.
-type BaselineUpdate struct {
-	ID              string
-	Engine          string
-	BaselinePrompts int64
-}
-
-// Output contains the rows plus pure persistence intents and project metadata.
+// Output contains the rows plus project metadata. A hide is permanent, so a
+// composition pass carries no persistence intent: it only reads the hide list.
 type Output struct {
 	Rows            []Row
 	ProjectDirs     map[string]string
 	ProjectOrder    []string
 	HiddenCount     int
 	SuppressedCount int
-	BaselineUpdates []BaselineUpdate
-	UnhideIDs       []string
 
 	includeNewClaude bool
 	includeNewCodex  bool

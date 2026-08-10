@@ -2,6 +2,7 @@ package legacy
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -56,7 +57,10 @@ func TestImportHidesEveryKnownIDAndLeavesSourcesUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Imported != 2 || result.AlreadyActive != 0 || result.Unknown != 1 {
+	// All three ids import — the union is the contract — and the one no index
+	// row claims is reported as unknown so `hidden --prune-orphans` can offer
+	// to clear it.
+	if result.Imported != 3 || result.Unknown != 1 {
 		t.Fatalf("Import() = %#v", result)
 	}
 	rows, err := database.HiddenChats(ctx)
@@ -64,9 +68,10 @@ func TestImportHidesEveryKnownIDAndLeavesSourcesUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	// "active" grew past its legacy byte baseline and still imports hidden.
-	if len(rows) != 2 ||
+	if len(rows) != 3 ||
 		rows[0].ID != "active" || rows[0].BaselinePrompts != nil ||
-		rows[1].ID != "quiet" || rows[1].BaselinePrompts != nil {
+		rows[1].ID != "quiet" || rows[1].BaselinePrompts != nil ||
+		rows[2].ID != "unknown" || rows[2].Engine != "" {
 		t.Fatalf("hidden rows = %#v", rows)
 	}
 	for path, want := range map[string][]byte{
@@ -80,10 +85,9 @@ func TestImportHidesEveryKnownIDAndLeavesSourcesUntouched(t *testing.T) {
 	}
 }
 
-func TestExportWritesSortedCurrentByteBaselines(t *testing.T) {
+func TestExportWritesSortedHideListAndNoByteBaselines(t *testing.T) {
 	root, database := legacyJail(t)
 	ctx := context.Background()
-	baseline := int64(3)
 	if err := database.UpsertTranscript(ctx, store.Transcript{
 		UUID: "zeta",
 		Path: "/jail/zeta.jsonl",
@@ -99,13 +103,24 @@ func TestExportWritesSortedCurrentByteBaselines(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, hidden := range []store.Hidden{
-		{ID: "zeta", Engine: "cc", BaselinePrompts: &baseline},
-		{ID: "alpha", Engine: "cx", BaselinePrompts: &baseline},
+		{ID: "zeta", Engine: "cc"},
+		{ID: "alpha", Engine: "cx"},
 	} {
 		if err := database.Hide(ctx, hidden); err != nil {
 			t.Fatal(err)
 		}
 	}
+	hiddenPath := filepath.Join(root, "home", ".claude", ".cc-ls-hidden")
+	if err := os.MkdirAll(filepath.Dir(hiddenPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A stale .at from before the ratchet was retired must be neither
+	// rewritten nor removed: nothing reads it, so Export ignores it.
+	stale := []byte("gamma\t7\n")
+	if err := os.WriteFile(hiddenPath+".at", stale, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	result, err := Export(ctx, database)
 	if err != nil {
 		t.Fatal(err)
@@ -113,9 +128,38 @@ func TestExportWritesSortedCurrentByteBaselines(t *testing.T) {
 	if result.Exported != 2 {
 		t.Fatalf("Export() = %#v", result)
 	}
-	hiddenPath := filepath.Join(root, "home", ".claude", ".cc-ls-hidden")
 	assertLegacyContent(t, hiddenPath, "alpha\nzeta\n")
-	assertLegacyContent(t, hiddenPath+".at", "alpha\t456\nzeta\t123\n")
+	assertLegacyContent(t, hiddenPath+".at", string(stale))
+}
+
+func TestExportNeverCreatesTheByteBaselineFile(t *testing.T) {
+	root, database := legacyJail(t)
+	ctx := context.Background()
+	if err := database.UpsertTranscript(ctx, store.Transcript{
+		UUID: "zeta",
+		Path: "/jail/zeta.jsonl",
+		Size: 123,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Hide(ctx, store.Hidden{
+		ID:     "zeta",
+		Engine: "cc",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Export(ctx, database); err != nil {
+		t.Fatal(err)
+	}
+	baselinePath := filepath.Join(
+		root,
+		"home",
+		".claude",
+		".cc-ls-hidden.at",
+	)
+	if _, err := os.Stat(baselinePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Export wrote the retired %s: err=%v", baselinePath, err)
+	}
 }
 
 func TestImportCodexChildHideCanonicalizesToLineageRoot(t *testing.T) {
@@ -165,16 +209,22 @@ func TestImportCodexChildHideCanonicalizesToLineageRoot(t *testing.T) {
 	if result.Imported != 1 {
 		t.Fatalf("Import() = %#v", result)
 	}
+	// The root is what the picker hides and unhides, so the child id
+	// canonicalizes to it. Both stay hidden: dropping the child id would be an
+	// unhide, and an import never unhides.
 	hidden, err := database.HiddenChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 1 ||
-		hidden[0].ID != "root-thread" ||
-		hidden[0].BaselinePrompts != nil {
+	if len(hidden) != 2 ||
+		hidden[0].ID != "child-rollout" ||
+		hidden[1].ID != "root-thread" ||
+		hidden[1].BaselinePrompts != nil {
 		t.Fatalf("lineage import hides = %#v", hidden)
 	}
-	assertLegacyContent(t, hiddenPath, "child-rollout\n")
+	// The canonicalized root is appended beside the child it came from: every
+	// writer of the shared table writes the carrier file too.
+	assertLegacyContent(t, hiddenPath, "child-rollout\nroot-thread\n")
 }
 
 func legacyJail(t *testing.T) (string, *store.Store) {

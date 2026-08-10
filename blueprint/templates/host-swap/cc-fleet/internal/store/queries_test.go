@@ -118,6 +118,8 @@ func TestPlainQueries(t *testing.T) {
 		t.Fatalf("Meta() after delete found = %v, error = %v; want false, nil", found, err)
 	}
 
+	// A caller may still hand over a baseline; the shared schema has no place
+	// to put one, so it reads back nil and the hide is permanent regardless.
 	baseline := int64(7)
 	hidden := Hidden{
 		ID:              "cc-1",
@@ -132,8 +134,9 @@ func TestPlainQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Hidden() error = %v", err)
 	}
-	if !found || !reflect.DeepEqual(gotHidden, hidden) {
-		t.Fatalf("Hidden() = %#v, %v, want %#v, true", gotHidden, found, hidden)
+	wantHidden := Hidden{ID: "cc-1", Engine: "cc", HiddenAt: 1234}
+	if !found || !reflect.DeepEqual(gotHidden, wantHidden) {
+		t.Fatalf("Hidden() = %#v, %v, want %#v, true", gotHidden, found, wantHidden)
 	}
 	if err := store.Hide(ctx, Hidden{ID: "cx-1", Engine: "cx", HiddenAt: 2345}); err != nil {
 		t.Fatalf("Hide() with lazy baseline error = %v", err)

@@ -82,8 +82,8 @@ func TestJailedCodexLineageCollapseHideSiblingStaysHidden(t *testing.T) {
 	}
 	hidden := runLineageCLI(t, "hidden")
 	if !strings.HasPrefix(hidden, rootID+"\tcx\t") ||
-		!strings.HasSuffix(hidden, "\t\n") {
-		t.Fatalf("lineage hide = %q, want the baseline column empty", hidden)
+		strings.Count(hidden, "\t") != 2 {
+		t.Fatalf("lineage hide = %q, want id/engine/hidden_at only", hidden)
 	}
 
 	// A real new prompt is still no escape: only unhide lifts a hide.

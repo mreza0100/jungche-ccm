@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/paths"
 	"hostops/cc-fleet/internal/resolve"
+	"hostops/cc-fleet/internal/shared"
 	"hostops/cc-fleet/internal/store"
 )
 
@@ -120,6 +120,7 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 		CodexName: func(path string) string {
 			return codexNamesByPath[filepath.Clean(path)]
 		},
+		CodexThread: store.NewCodexThreadResolver(ctx, current.paths.CodexRoot),
 	})
 	if err != nil {
 		return LSOutput{}, err
@@ -160,14 +161,11 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 			View:           view,
 			CurrentDir:     cwd,
 			CurrentSocket:  filepath.Base(currentSocket()),
-			PrimaryAccount: primaryAccount(current.paths.Home),
+			PrimaryAccount: primaryAccount(ctx, current.paths),
 			CodexAvailable: codexAvailable(current.paths.CodexRoot),
 			NowNS:          time.Now().UnixNano(),
 		},
 	})
-	if err := current.applyComposeIntents(ctx, hidden, output); err != nil {
-		return LSOutput{}, err
-	}
 
 	rows := make([]ChatRow, 0, len(output.Rows))
 	filter := strings.ToLower(strings.TrimSpace(input.Project))
@@ -254,38 +252,6 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 	}, nil
 }
 
-func (current *backend) applyComposeIntents(
-	ctx context.Context,
-	hidden []store.Hidden,
-	output compose.Output,
-) error {
-	byID := make(map[string]store.Hidden, len(hidden))
-	for _, row := range hidden {
-		byID[row.ID] = row
-	}
-	for _, update := range output.BaselineUpdates {
-		hiddenAt := time.Now().Unix()
-		if existing, found := byID[update.ID]; found {
-			hiddenAt = existing.HiddenAt
-		}
-		baseline := update.BaselinePrompts
-		if err := current.database.Hide(ctx, store.Hidden{
-			ID:              update.ID,
-			Engine:          update.Engine,
-			HiddenAt:        hiddenAt,
-			BaselinePrompts: &baseline,
-		}); err != nil {
-			return err
-		}
-	}
-	for _, id := range output.UnhideIDs {
-		if err := current.database.Unhide(ctx, id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func accountRoots(values []string) []compose.AccountRoot {
 	roots := make([]compose.AccountRoot, 0, len(values))
 	for index, value := range values {
@@ -303,16 +269,13 @@ func accountRoots(values []string) []compose.AccountRoot {
 	return roots
 }
 
-func primaryAccount(home string) int {
-	content, err := os.ReadFile(filepath.Join(home, ".claude-primary"))
-	if err != nil {
-		return 1
+// primaryAccount reads the shared state store (db first, ~/.claude-primary
+// mirror second) so chat_ls and the picker can never disagree on the primary.
+func primaryAccount(ctx context.Context, values paths.Values) int {
+	if account, ok := shared.PrimaryAccount(ctx, values); ok {
+		return account
 	}
-	account, err := strconv.Atoi(strings.TrimSpace(string(content)))
-	if err != nil || account < 1 || account > 3 {
-		return 1
-	}
-	return account
+	return 1
 }
 
 func codexAvailable(root string) bool {

@@ -67,12 +67,10 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 	fmt.Fprintf(output, "SCENARIO\t%s\n", name)
 	fmt.Fprintf(
 		output,
-		"META\thidden=%d\tempty=%d\tprojects=%s\tbaselines=%s\tunhide=%s\n",
+		"META\thidden=%d\tempty=%d\tprojects=%s\n",
 		result.HiddenCount,
 		result.SuppressedCount,
 		strings.Join(result.ProjectOrder, ","),
-		renderBaselines(result.BaselineUpdates),
-		strings.Join(result.UnhideIDs, ","),
 	)
 	projects := make([]string, 0, len(result.ProjectDirs))
 	for project := range result.ProjectDirs {
@@ -109,19 +107,6 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 		)
 	}
 	output.WriteByte('\n')
-}
-
-func renderBaselines(updates []BaselineUpdate) string {
-	values := make([]string, 0, len(updates))
-	for _, update := range updates {
-		values = append(values, fmt.Sprintf(
-			"%s:%s:%d",
-			update.ID,
-			update.Engine,
-			update.BaselinePrompts,
-		))
-	}
-	return strings.Join(values, ",")
 }
 
 func renderInts(values []int) string {

@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"hostops/cc-fleet/internal/inject"
 	"hostops/cc-fleet/internal/resolve"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+const (
+	// defaultCaptureBytes bounds a whole-scrollback capture for the default
+	// caller; maxCaptureBytes is the ceiling an explicit max_bytes may ask for.
+	defaultCaptureBytes = 256 << 10
+	maxCaptureBytes     = 4 << 20
 )
 
 // Service owns one MCP server and its long-lived SQLite handle.
@@ -74,9 +82,14 @@ func (service *Service) register() {
 	}, service.chatInject)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_capture",
-		Description: "Capture the visible screen of a resolved live chat.",
+		Description: "Capture the whole retained scrollback of a resolved live chat, bounded by tail_lines and max_bytes.",
 		Annotations: readOnly,
 	}, service.chatCapture)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name:        "chat_whoami",
+		Description: "Print THIS chat's own tmux session name — its identity, and the address another chat injects to.",
+		Annotations: readOnly,
+	}, service.chatWhoami)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_find",
 		Description: "Find indexed Claude/Codex transcripts by literal name or prompt excerpt with file confirmation.",
@@ -138,6 +151,7 @@ func (service *Service) chatInject(
 		Target:   input.Target,
 		Message:  input.Message,
 		ForceNow: input.ForceNow,
+		Then:     input.Then,
 	})
 	return nil, InjectOutput{
 		Status:        result.Status,
@@ -151,7 +165,45 @@ func (service *Service) chatInject(
 		DraftStashed:  result.DraftStashed,
 		Typed:         result.Typed,
 		SubmitRetries: result.SubmitRetries,
+		Steers:        result.Steers,
+		SteerLog:      result.SteerLog,
+		Unsigned:      result.Unsigned,
 	}, err
+}
+
+// chatWhoami answers with this process's own chat identity. It takes no
+// arguments on purpose: identity is derived from the caller's own process
+// chain, never accepted from a caller.
+func (service *Service) chatWhoami(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	_ WhoamiInput,
+) (*mcp.CallToolResult, WhoamiOutput, error) {
+	identifier, err := resolve.NewWhoami(resolve.WhoamiDependencies{})
+	if err != nil {
+		return nil, WhoamiOutput{}, err
+	}
+	identity, err := identifier.Identify(ctx)
+	if err != nil {
+		return nil, WhoamiOutput{
+			Status:  "not_found",
+			Engine:  identity.Engine,
+			ID:      identity.ID,
+			Source:  identity.Source,
+			Message: err.Error(),
+		}, nil
+	}
+	return nil, WhoamiOutput{
+		Status:     "ok",
+		Session:    identity.Session,
+		SocketPath: identity.SocketPath,
+		SocketName: identity.SocketName,
+		Pane:       identity.Pane,
+		Engine:     identity.Engine,
+		ID:         identity.ID,
+		Source:     identity.Source,
+		Recovered:  identity.Recovered,
+	}, nil
 }
 
 func (service *Service) chatCapture(
@@ -168,6 +220,16 @@ func (service *Service) chatCapture(
 			"tail_lines must be between 1 and 1000",
 		)
 	}
+	maxBytes := input.MaxBytes
+	if maxBytes == 0 {
+		maxBytes = defaultCaptureBytes
+	}
+	if maxBytes < 1 || maxBytes > maxCaptureBytes {
+		return nil, CaptureOutput{}, fmt.Errorf(
+			"max_bytes must be between 1 and %d",
+			maxCaptureBytes,
+		)
+	}
 	target, text, code, detail, err := service.backend.injector.Capture(
 		ctx,
 		input.Target,
@@ -177,6 +239,13 @@ func (service *Service) chatCapture(
 	if code != 0 {
 		status = "not_found"
 	}
+	// The engine captures the WHOLE scrollback; the byte bound is applied here,
+	// after the capture, keeping the most recent screen when it has to cut.
+	truncated := false
+	if len(text) > maxBytes {
+		text = tailBytes(text, maxBytes)
+		truncated = true
+	}
 	return nil, CaptureOutput{
 		Status:     status,
 		Code:       code,
@@ -184,7 +253,21 @@ func (service *Service) chatCapture(
 		Pane:       target.Pane,
 		Text:       text,
 		Message:    detail,
+		Bytes:      len(text),
+		Truncated:  truncated,
 	}, err
+}
+
+// tailBytes keeps the last budget bytes of text without splitting a rune.
+func tailBytes(text string, budget int) string {
+	if len(text) <= budget {
+		return text
+	}
+	cut := len(text) - budget
+	for cut < len(text) && !utf8.RuneStart(text[cut]) {
+		cut++
+	}
+	return text[cut:]
 }
 
 func (service *Service) chatFind(

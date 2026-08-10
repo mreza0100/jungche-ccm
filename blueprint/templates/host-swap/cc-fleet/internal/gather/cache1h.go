@@ -5,8 +5,18 @@ import (
 	"sort"
 )
 
-// DetectCache1H returns sockets containing a Claude process explicitly born
-// with ENABLE_PROMPT_CACHING_1H=1.
+// DetectCache1H returns the sockets whose Claude chat runs the ⚡1h cache.
+//
+// The rule is an opt-OUT, not an opt-in (cc-fleet.zsh:349-366, _cc_c1h_tty):
+// since Claude Code 2.1.215 the 1h window is the harness DEFAULT, so a chat
+// reads as 5m only when it was explicitly born with FORCE_PROMPT_CACHING_5M=1.
+// Env binds at birth, so the live process environment is the only truth — an
+// ENABLE_PROMPT_CACHING_1H=1 birth and a flagless elder both run 1h.
+//
+// An unreadable environment also reads as 1h: macOS lets no process read
+// another's environment, and "unreadable" and "flagless" mean the same thing
+// under a 1h default. The badge is then wrong only for a chat deliberately born
+// 5m, and it errs by NOT promising a cheaper window than the chat actually has.
 func DetectCache1H(proc ProcFS, panes []Pane) ([]string, error) {
 	pids, err := proc.PIDs()
 	if err != nil {
@@ -14,26 +24,35 @@ func DetectCache1H(proc ProcFS, panes []Pane) ([]string, error) {
 	}
 	sort.Ints(pids)
 	paneByPID := panesByPID(panes)
-	sockets := make(map[string]struct{})
+	sockets := make(map[string]bool)
 
 	for _, pid := range pids {
 		cmdline, err := proc.Cmdline(pid)
 		if err != nil || !isClaudeCommand(cmdline) {
 			continue
 		}
-		environment, err := proc.Environ(pid)
-		if err != nil || environment["ENABLE_PROMPT_CACHING_1H"] != "1" {
+		pane, found := paneForProcess(proc, pid, paneByPID)
+		if !found {
 			continue
 		}
-		pane, found := paneForProcess(proc, pid, paneByPID)
-		if found {
-			sockets[pane.Socket] = struct{}{}
+		environment, err := proc.Environ(pid)
+		forced5M := err == nil &&
+			environment["FORCE_PROMPT_CACHING_5M"] == "1"
+		// One forced-5m process settles the socket: a shared socket is 5m as
+		// soon as any Claude on it was born that way, and a later 1h sibling
+		// must not talk the badge back on.
+		if forced5M {
+			sockets[pane.Socket] = false
+		} else if _, seen := sockets[pane.Socket]; !seen {
+			sockets[pane.Socket] = true
 		}
 	}
 
 	result := make([]string, 0, len(sockets))
-	for socket := range sockets {
-		result = append(result, socket)
+	for socket, cache1H := range sockets {
+		if cache1H {
+			result = append(result, socket)
+		}
 	}
 	sort.Strings(result)
 	return result, nil

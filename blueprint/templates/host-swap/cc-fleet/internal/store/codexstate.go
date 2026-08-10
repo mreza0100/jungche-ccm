@@ -11,6 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+
+	"hostops/cc-fleet/internal/resolve"
 )
 
 // CodexThread is one conversation as the Codex CLI's own SQLite state store
@@ -133,6 +136,47 @@ func ReadCodexThreads(ctx context.Context, files []string) ([]CodexThread, error
 		return threads[left].ID < threads[right].ID
 	})
 	return threads, nil
+}
+
+// NewCodexThreadResolver names the Codex conversation behind a live process
+// that holds no rollout file descriptor. The state stores are read once, on
+// the first such process, so an ordinary scan never pays for the query. The
+// returned function is what gather.Dependencies.CodexThread and
+// gather.DetectCodexThreads expect.
+func NewCodexThreadResolver(
+	ctx context.Context,
+	codexRoot string,
+) func(exported, cwd string, birth int64) (id string, rolloutPath string) {
+	candidates := sync.OnceValue(func() []resolve.CodexThread {
+		files, err := CodexStateFiles(codexRoot)
+		if err != nil {
+			return nil
+		}
+		threads, err := ReadCodexThreads(ctx, files)
+		if err != nil {
+			return nil
+		}
+		rows := make([]resolve.CodexThread, 0, len(threads))
+		for _, thread := range threads {
+			if !thread.Listed() {
+				continue
+			}
+			rows = append(rows, resolve.CodexThread{
+				ID:          thread.ID,
+				CWD:         thread.CWD,
+				CreatedAt:   thread.CreatedAt,
+				RolloutPath: thread.RolloutPath,
+			})
+		}
+		return rows
+	})
+	return func(exported, cwd string, birth int64) (string, string) {
+		thread, err := resolve.CodexThreadID(exported, cwd, birth, candidates())
+		if err != nil {
+			return "", ""
+		}
+		return thread.ID, thread.RolloutPath
+	}
 }
 
 // readCodexState reads one state store. The handle is read-only through the

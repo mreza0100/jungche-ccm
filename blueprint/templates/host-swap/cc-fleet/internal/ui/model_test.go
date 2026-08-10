@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"hostops/cc-fleet/internal/action"
 	"hostops/cc-fleet/internal/compose"
 )
 
@@ -45,14 +46,15 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	if model.Cache1H() {
 		t.Fatal("ctrl+e did not toggle 1h off")
 	}
-	for want := 3; want <= 4; want++ {
+	// ⌃S cycles the roster and wraps: the fixture starts on 2, the last account,
+	// so the very next press must come back to 1. A cycle hardcoded wider than
+	// the roster is what froze the account picker on an account nothing accepts.
+	for step := 0; step < action.MaxAccount+1; step++ {
+		before := model.PrimaryAccount()
 		model, _ = applyKey(t, model, controlKey('s'))
-		account := want
-		if account == 4 {
-			account = 1
-		}
-		if model.PrimaryAccount() != account {
-			t.Fatalf("account=%d want=%d", model.PrimaryAccount(), account)
+		want := before%action.MaxAccount + 1
+		if model.PrimaryAccount() != want {
+			t.Fatalf("account=%d want=%d", model.PrimaryAccount(), want)
 		}
 	}
 
@@ -71,7 +73,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		snapshot := Snapshot{
 			Rows:           []compose.Row{row},
 			View:           compose.AllView,
-			PrimaryAccount: 3,
+			PrimaryAccount: action.MaxAccount,
 			Cache1H:        true,
 			NowNS:          fixtureNowNS,
 		}
@@ -81,12 +83,14 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		if command == nil ||
 			result.Kind != OutcomeSelected ||
 			rowKey(result.Row) != rowKey(row) ||
-			result.PrimaryAccount != 3 ||
+			result.PrimaryAccount != action.MaxAccount ||
 			!result.Cache1H {
 			t.Fatalf("%s enter command=%v result=%#v", row.Kind, command, result)
 		}
 
-		reboot, rebootCommand := applyKey(t, model, controlKey('b'))
+		// Reboot is ⌃O, never ⌃B: the picker always runs inside tmux, and C-b is
+		// tmux's prefix — it never reaches the picker (cc-fleet.zsh:1394-1400).
+		reboot, rebootCommand := applyKey(t, model, controlKey('o'))
 		if isLive(row.Kind) {
 			if rebootCommand == nil ||
 				reboot.Result().Kind != OutcomeReboot ||
@@ -95,6 +99,31 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 			}
 		} else if rebootCommand != nil || reboot.Result().Kind != OutcomeNone {
 			t.Fatalf("%s unexpectedly rebooted: %#v", row.Kind, reboot.Result())
+		}
+
+		stale, staleCommand := applyKey(t, model, controlKey('b'))
+		if staleCommand != nil || stale.Result().Kind != OutcomeNone {
+			t.Fatalf("%s rebooted on the tmux prefix key: %#v", row.Kind, stale.Result())
+		}
+	}
+}
+
+func TestAccountsOffTheRosterFallBackToTheFirst(t *testing.T) {
+	// The roster is cc-db.sh's (1-2). A stale ~/.claude-primary naming a retired
+	// account must open the picker on account 1, not on an account no launcher
+	// can reach.
+	for _, account := range []int{0, -1, action.MaxAccount + 1, 9} {
+		snapshot := fixtureSnapshot(120)
+		snapshot.PrimaryAccount = account
+		if got := NewModel(snapshot).PrimaryAccount(); got != 1 {
+			t.Fatalf("account %d became %d, want 1", account, got)
+		}
+	}
+	for account := 1; account <= action.MaxAccount; account++ {
+		snapshot := fixtureSnapshot(120)
+		snapshot.PrimaryAccount = account
+		if got := NewModel(snapshot).PrimaryAccount(); got != account {
+			t.Fatalf("account %d became %d", account, got)
 		}
 	}
 }

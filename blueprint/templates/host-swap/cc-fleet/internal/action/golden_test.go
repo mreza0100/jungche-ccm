@@ -62,17 +62,17 @@ func replaceGoldenRun(line, run string) string {
 func goldenSourceComment(route Route) string {
 	switch route {
 	case NewClaude:
-		return "# N — cc-fleet.zsh:45-76 (_cc_run), 1133-1148 (PROJDIR), 1236-1239 (dispatch)"
+		return "# N — cc-fleet.zsh:67-124 (CC_AUTONOMY_FLAGS, CC_ENDPOINT_UNSET, _cc_run), 893-894 (PROJDIR), 1430-1433 (dispatch)"
 	case NewCodex:
-		return "# C — cc-fleet.zsh:86-103 (cx), 1133-1148 (PROJDIR), 1240-1244 (dispatch)"
+		return "# C — cc-fleet.zsh:145-157 (cx), 893-894 (PROJDIR), 1434-1438 (dispatch)"
 	case Live:
-		return "# L — cc-fleet.zsh:253-286 (_cc_selfswitch), 608-655 (_cc_solo), 1254-1262 (dispatch)"
+		return "# L — cc-fleet.zsh:326-347 (_cc_selfswitch), 753-801 (_cc_solo), 1448-1456 (dispatch)"
 	case Agent:
-		return "# A — cc-fleet.zsh:1204-1208 (cache env), 1263-1273 (agent router); WP7 failure-net extension"
+		return "# A — cc-fleet.zsh:1380-1384 (cache env), 1457-1467 (agent router); WP7 failure-net extension"
 	case ResumeClaude:
-		return "# R — cc-fleet.zsh:45-76 (_cc_run hygiene), 1274-1290 (resume + agent failure net)"
+		return "# R — cc-fleet.zsh:86-124 (_cc_run hygiene), 1468-1487 (resume + agent failure net)"
 	case ResumeCodex:
-		return "# X — cc-fleet.zsh:86-116 (_cx_server), 1245-1253 (Codex resume)"
+		return "# X — cc-fleet.zsh:163-168 (_cx_server), 1439-1447 (Codex resume)"
 	default:
 		panic("unknown golden route")
 	}

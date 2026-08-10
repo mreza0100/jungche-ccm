@@ -1,5 +1,5 @@
 SCENARIO	default
-META	hidden=3	empty=3	projects=codex,newest,agents,alpha,beta	baselines=	unhide=
+META	hidden=3	empty=3	projects=codex,newest,agents,alpha,beta
 DIR	agents	/work/agents
 DIR	alpha	/work/alpha
 DIR	beta	/work/beta
@@ -17,7 +17,7 @@ ROW	live-claude	live-socket	Socket Live	alpha	/work/alpha	cc-100-1-1	%1	100	5	90
 ROW	resume-codex	cx-resume	Codex Resume	beta	/work/beta			250	6	650	4350	0		0	0	0	0	0	0	0
 
 SCENARIO	all
-META	hidden=3	empty=3	projects=codex,newest,agents,alpha,beta,gamma,delta	baselines=	unhide=
+META	hidden=3	empty=3	projects=codex,newest,agents,alpha,beta,gamma,delta
 DIR	agents	/work/agents
 DIR	alpha	/work/alpha
 DIR	beta	/work/beta
@@ -41,7 +41,7 @@ ROW	resume-claude	grown	Grown Hidden	gamma	/work/gamma			100	5	700	4300	1		1	0	0
 ROW	resume-claude	promptless	Promptless	delta	/work/delta			100	0	400	4600	1		0	0	0	0	0	0	0
 
 SCENARIO	hidden
-META	hidden=3	empty=3	projects=beta,gamma	baselines=	unhide=
+META	hidden=3	empty=3	projects=beta,gamma
 DIR	agents	/work/agents
 DIR	alpha	/work/alpha
 DIR	beta	/work/beta
@@ -54,7 +54,7 @@ ROW	resume-codex	cx-hidden	Codex Hidden	beta	/work/beta			150	2	550	4450	0		1	0	
 ROW	resume-claude	grown	Grown Hidden	gamma	/work/gamma			100	5	700	4300	1		1	0	0	0	0	0	0
 
 SCENARIO	split-and-multiserver
-META	hidden=0	empty=0	projects=dup,split	baselines=	unhide=
+META	hidden=0	empty=0	projects=dup,split
 DIR	dup	/work/dup
 DIR	split	/work/split
 ROW	new-claude		New Claude chat	dup	/work/dup			0	0	0	0	1		0	0	0	0	0	0	0
@@ -62,7 +62,7 @@ ROW	live-claude	duplicate	Duplicate	dup	/work/dup	cc-300-1-1	%4	500	8	300	0	1		0
 ROW	live-split		One+Two	split	/work/split	cc-100-1-1		350	5	200	0	0	1,2	0	0	0	0	0	1	2
 
 SCENARIO	caps-overflow
-META	hidden=0	empty=10	projects=caps	baselines=	unhide=
+META	hidden=0	empty=10	projects=caps
 DIR	caps	/work/caps
 ROW	new-claude		New Claude chat	caps	/work/caps			0	0	0	0	1		0	0	0	0	0	0	0
 ROW	resume-claude	claude-34	Claude-34	caps	/work/caps			100	1	35	0	1		0	0	0	0	0	0	0

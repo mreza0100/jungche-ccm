@@ -58,6 +58,22 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		check,
 	)
 
+	// Which store the hides are actually in. They live in the fleet's shared
+	// database, not this binary's cache, and the operator needs to see that the
+	// two are the files they think they are before reading any count below.
+	sharedState := "ok"
+	if degraded := database.SharedDegraded(); degraded != nil {
+		warnings++
+		sharedState = degraded.Error()
+	}
+	fmt.Fprintf(
+		stdout,
+		"doctor: shared store=%s carrier=%s state=%s\n",
+		database.SharedPath(),
+		database.CarrierPath(),
+		sharedState,
+	)
+
 	counts, err := database.Counts(ctx)
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy row counts: %v\n", err)
@@ -176,21 +192,40 @@ func crumbHealth(path string) (entries, invalid int, err error) {
 	}
 	for _, entry := range directory {
 		entries++
+		name := entry.Name()
+		// A dot prefix marks sid bookkeeping rather than a crumb: the .lock
+		// files and the open-lock directories the zsh creates with mkdir.
+		if name == "" || name[0] == '.' {
+			continue
+		}
 		if entry.IsDir() {
 			invalid++
 			continue
 		}
-		if _, _, ok := gather.ParseCrumbName(entry.Name()); ok {
+		if _, _, ok := gather.ParseCrumbName(name); ok {
 			continue
 		}
-		if filepath.Ext(entry.Name()) == ".lock" ||
-			entry.Name()[0] == '.' ||
-			knownSIDMetadata(entry.Name()) {
+		if filepath.Ext(name) == ".lock" ||
+			nonFleetServerCrumb(name) ||
+			knownSIDMetadata(name) {
 			continue
 		}
 		invalid++
 	}
 	return entries, invalid, nil
+}
+
+// nonFleetServerCrumb reports whether a crumb names a tmux server the fleet
+// deliberately excludes. The statusline writes a crumb for every Claude chat
+// it sees, including chats on the vsct bunker and the revive dashboards, so
+// those names are ordinary sid traffic rather than rot.
+func nonFleetServerCrumb(name string) bool {
+	socket := name
+	if marker := strings.LastIndex(name, ".%"); marker >= 0 {
+		socket = name[:marker]
+	}
+	return strings.HasPrefix(socket, "vsct") ||
+		strings.HasPrefix(socket, "revive")
 }
 
 func knownSIDMetadata(name string) bool {

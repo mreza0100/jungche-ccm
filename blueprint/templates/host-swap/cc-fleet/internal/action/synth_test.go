@@ -47,7 +47,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 			ID:   id,
 			CWD:  "/work/a project's $(dir)",
 		},
-		PrimaryAccount: 3,
+		PrimaryAccount: 2,
 		Cache1H:        true,
 		Bunker:         true,
 		Home:           "/home/test",
@@ -63,10 +63,17 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 		t.Fatalf("resume plan = %#v", plan)
 	}
 	wantPrefix := hygiene +
-		" CLAUDE_CONFIG_DIR='/home/test/.cc/3'" +
+		" CLAUDE_CONFIG_DIR='/home/test/.cc/2'" +
 		" ENABLE_PROMPT_CACHING_1H=1 claude"
 	if !strings.HasPrefix(plan.Run, wantPrefix) {
 		t.Fatalf("resume run = %q, want prefix %q", plan.Run, wantPrefix)
+	}
+	// A resumed chat keeps full autonomy, on every account (cc-fleet.zsh:872).
+	if !strings.Contains(
+		plan.Run,
+		"claude '--resume' "+Quote(id)+" "+autonomyFlags,
+	) {
+		t.Fatalf("resume run missed the autonomy flags: %q", plan.Run)
 	}
 	for _, name := range []string{
 		"CLAUDE_CODE_SESSION_ID",
@@ -74,6 +81,16 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 		"CLAUDE_CONFIG_DIR",
 		"ENABLE_PROMPT_CACHING_1H",
 		"FORCE_PROMPT_CACHING_5M",
+		// CC_ENDPOINT_UNSET (cc-fleet.zsh:80-84) — a chat born inside another
+		// chat must never inherit a translating proxy's endpoint.
+		"ANTHROPIC_BASE_URL",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_MODEL",
+		"ANTHROPIC_SMALL_FAST_MODEL",
+		"CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+		"CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK",
+		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
 	} {
 		if !strings.Contains(plan.Run, "-u "+name) {
 			t.Fatalf("resume run missed env scrub %s: %q", name, plan.Run)
@@ -90,8 +107,68 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Line != "(cd -- '/rotated/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc3)" {
+	// A fresh launch calls the shell launcher, whose _cc_run prepends the
+	// autonomy flags — repeating them here would duplicate them in argv
+	// (cc-fleet.zsh:138).
+	if plan.Line != "(cd -- '/rotated/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc2)" {
 		t.Fatalf("new Claude line = %q", plan.Line)
+	}
+	if strings.Contains(plan.Line, "skip-permissions") {
+		t.Fatalf("new Claude line duplicated the autonomy flags: %q", plan.Line)
+	}
+}
+
+func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
+	// The roster is cc-db.sh's: primary-set refuses anything but 1 or 2, so an
+	// account the fleet cannot launch must never reach a command line.
+	for _, account := range []int{0, MaxAccount + 1, 9} {
+		_, err := Synthesize(Request{
+			Row: compose.Row{
+				Kind: compose.NewClaude,
+				CWD:  "/work/project",
+			},
+			PrimaryAccount: account,
+			Home:           "/home/test",
+		})
+		if err == nil || !strings.Contains(err.Error(), "primary account") {
+			t.Fatalf("account %d error = %v, want a roster rejection", account, err)
+		}
+	}
+	for account := 1; account <= MaxAccount; account++ {
+		if _, err := Synthesize(Request{
+			Row: compose.Row{
+				Kind: compose.NewClaude,
+				CWD:  "/work/project",
+			},
+			PrimaryAccount: account,
+			Home:           "/home/test",
+		}); err != nil {
+			t.Fatalf("account %d rejected: %v", account, err)
+		}
+	}
+}
+
+func TestScriptsResolveToTheInstalledBundle(t *testing.T) {
+	// install.sh symlinks the bundle's scripts into ~/.claude/bin; the repo copy
+	// under work/host-ops/ is a pre-move path that no longer exists on the host.
+	plan, err := Synthesize(Request{
+		Row: compose.Row{
+			Kind: compose.Agent,
+			ID:   "33333333-3333-4333-8333-333333333333",
+			CWD:  "/work/project",
+		},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+		FreshSocket:    "cc-1700000001-123-456",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.Run, Quote("/home/test/.claude/bin/cc-agent-open.sh")) {
+		t.Fatalf("agent run = %q", plan.Run)
+	}
+	if strings.Contains(plan.Run, "host-ops") {
+		t.Fatalf("agent run still points at the pre-move tree: %q", plan.Run)
 	}
 }
 
@@ -142,6 +219,9 @@ func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
   printf 'cfg=%s\n' "${CLAUDE_CONFIG_DIR-unset}"
   printf 'enable=%s\n' "${ENABLE_PROMPT_CACHING_1H-unset}"
   printf 'force=%s\n' "${FORCE_PROMPT_CACHING_5M-unset}"
+  printf 'base=%s\n' "${ANTHROPIC_BASE_URL-unset}"
+  printf 'token=%s\n' "${ANTHROPIC_AUTH_TOKEN-unset}"
+  printf 'gateway=%s\n' "${CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY-unset}"
 } > "$ACTION_RESULT"
 `, 0o700)
 	id := "22222222-2222-4222-8222-222222222222"
@@ -152,7 +232,7 @@ func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 			CWD:       "/work/agent",
 			ConfigDir: "/home/test/.cc/2",
 		},
-		PrimaryAccount: 3,
+		PrimaryAccount: 2,
 		Cache1H:        true,
 		Home:           "/home/test",
 		FreshSocket:    "cc-1700000001-123-456",
@@ -171,6 +251,9 @@ func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 		"CLAUDE_CONFIG_DIR=/poison",
 		"ENABLE_PROMPT_CACHING_1H=poison",
 		"FORCE_PROMPT_CACHING_5M=poison",
+		"ANTHROPIC_BASE_URL=http://127.0.0.1:9/proxy",
+		"ANTHROPIC_AUTH_TOKEN=poison",
+		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("run agent failure net: %v: %s", err, output)
@@ -180,12 +263,15 @@ func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := strings.Join([]string{
-		"argv=--resume " + id,
+		"argv=--resume " + id + " " + autonomyFlags,
 		"sid=unset",
 		"code=unset",
-		"cfg=/home/test/.cc/3",
+		"cfg=/home/test/.cc/2",
 		"enable=1",
 		"force=unset",
+		"base=unset",
+		"token=unset",
+		"gateway=unset",
 		"",
 	}, "\n")
 	if string(content) != want {

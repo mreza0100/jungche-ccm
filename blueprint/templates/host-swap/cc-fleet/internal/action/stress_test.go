@@ -89,10 +89,10 @@ func stressRequests() []Request {
 			CWD:  "/work/project",
 		},
 	}
-	requests := make([]Request, 0, len(rows)*2*3*2)
+	requests := make([]Request, 0, len(rows)*2*MaxAccount*2)
 	for _, row := range rows {
 		for _, bunker := range []bool{false, true} {
-			for account := 1; account <= 3; account++ {
+			for account := 1; account <= MaxAccount; account++ {
 				for _, cache1H := range []bool{false, true} {
 					freshPrefix := "cc"
 					if row.Kind == compose.ResumeCodex {

@@ -7,14 +7,85 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"hostops/cc-fleet/internal/naming"
+	"hostops/cc-fleet/internal/resolve"
 )
 
-const maxFindExcerpt = 8 << 10
+// maxNeedleScanBytes bounds one transcript's needle scan so a pathological
+// file cannot pin the server.
+const maxNeedleScanBytes = 64 << 20
+
+const (
+	maxFindExcerpt = 8 << 10
+	// chat.sh:455-456 keeps the five LONGEST excerpt lines of at least 20
+	// characters as needles, and ranks a transcript by how many of them it
+	// contains. A short line is not distinctive enough to vote.
+	maxNeedles    = 5
+	minNeedleRune = 20
+)
+
+// extractNeedles mirrors chat.sh's awk needle pass (chat.sh:455-456): strip a
+// trailing CR, strip leading quote/list decoration and trailing blanks, keep
+// lines of 20+ characters, and take the five longest, longest first.
+func extractNeedles(excerpt string) []string {
+	type candidate struct {
+		text   string
+		length int
+	}
+	candidates := make([]candidate, 0)
+	seen := make(map[string]struct{})
+	for _, line := range strings.Split(excerpt, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		line = strings.TrimLeft(line, " \t>#*-")
+		line = strings.TrimRight(line, " \t")
+		length := utf8.RuneCountInString(line)
+		if length < minNeedleRune {
+			continue
+		}
+		if _, duplicate := seen[line]; duplicate {
+			continue
+		}
+		seen[line] = struct{}{}
+		candidates = append(candidates, candidate{text: line, length: length})
+	}
+	sort.SliceStable(candidates, func(left, right int) bool {
+		return candidates[left].length > candidates[right].length
+	})
+	if len(candidates) > maxNeedles {
+		candidates = candidates[:maxNeedles]
+	}
+	needles := make([]string, 0, len(candidates))
+	for _, item := range candidates {
+		needles = append(needles, item.text)
+	}
+	return needles
+}
+
+// selfIDs are the transcripts belonging to the ASKING session. chat.sh drops
+// its own transcript from every candidate list (chat.sh:462) — a session that
+// pasted an excerpt of its own conversation would otherwise always find
+// itself, which answers nothing.
+func selfIDs(includeSelf bool) map[string]struct{} {
+	excluded := make(map[string]struct{}, 2)
+	if includeSelf {
+		return excluded
+	}
+	for _, value := range []string{
+		os.Getenv(resolve.ClaudeSessionEnv),
+		os.Getenv(resolve.CodexThreadEnv),
+	} {
+		if value != "" {
+			excluded[value] = struct{}{}
+		}
+	}
+	return excluded
+}
 
 type searchable struct {
 	id       string
@@ -56,9 +127,12 @@ func (current *backend) find(
 		return FindOutput{}, err
 	}
 	lowerQuery := strings.ToLower(query)
+	needles := extractNeedles(query)
+	excluded := selfIDs(input.IncludeSelf)
 	type ranked struct {
 		row       searchable
 		rank      int
+		hits      int
 		confirmed bool
 		excerpt   string
 	}
@@ -67,12 +141,33 @@ func (current *backend) find(
 		if err := ctx.Err(); err != nil {
 			return FindOutput{}, err
 		}
+		if _, self := excluded[row.id]; self {
+			continue
+		}
+		if _, self := excluded[transcriptID(row.path)]; self {
+			continue
+		}
 		metadataMatch := strings.Contains(strings.ToLower(row.metadata), lowerQuery)
 		confirmed, excerpt, err := confirmLiteral(ctx, row.path, query)
 		if err != nil && !os.IsNotExist(err) {
 			continue
 		}
-		if !metadataMatch && !confirmed {
+		hits := 0
+		if confirmed {
+			// The whole excerpt is present verbatim, so every needle cut from
+			// it is present too — a full-house vote, without re-reading.
+			hits = len(needles)
+		} else if len(needles) > 0 {
+			counted, best, countErr := countNeedles(ctx, row.path, needles)
+			if countErr != nil && !os.IsNotExist(countErr) {
+				continue
+			}
+			hits = counted
+			if excerpt == "" {
+				excerpt = best
+			}
+		}
+		if !metadataMatch && !confirmed && hits == 0 {
 			continue
 		}
 		rank := 1
@@ -84,11 +179,17 @@ func (current *backend) find(
 		matches = append(matches, ranked{
 			row:       row,
 			rank:      rank,
+			hits:      hits,
 			confirmed: confirmed,
 			excerpt:   excerpt,
 		})
 	}
+	// Votes first (chat.sh:462 `uniq -c | sort -rn`), then the existing
+	// name/metadata rank, then recency, then a stable id tiebreak.
 	sort.Slice(matches, func(left, right int) bool {
+		if matches[left].hits != matches[right].hits {
+			return matches[left].hits > matches[right].hits
+		}
 		if matches[left].rank != matches[right].rank {
 			return matches[left].rank < matches[right].rank
 		}
@@ -115,9 +216,66 @@ func (current *backend) find(
 			Date:      date,
 			Excerpt:   match.excerpt,
 			Confirmed: match.confirmed,
+			Hits:      match.hits,
 		})
 	}
-	return FindOutput{Candidates: candidates, Count: len(candidates)}, nil
+	selfID := ""
+	for id := range excluded {
+		if selfID == "" || id < selfID {
+			selfID = id
+		}
+	}
+	return FindOutput{
+		Candidates: candidates,
+		Count:      len(candidates),
+		Needles:    needles,
+		SelfID:     selfID,
+	}, nil
+}
+
+// transcriptID is the session id a transcript file is named for, the form
+// chat.sh excludes by (`grep -v "/$current.jsonl$"`).
+func transcriptID(path string) string {
+	base := filepath.Base(path)
+	return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+// countNeedles counts how many distinct needles a transcript contains — one
+// vote each, chat.sh's per-file tally — and returns the surrounding text of
+// the first hit as the excerpt.
+func countNeedles(
+	ctx context.Context,
+	path string,
+	needles []string,
+) (int, string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxNeedleScanBytes))
+	if err != nil {
+		return 0, "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, "", err
+	}
+	lowered := bytes.ToLower(content)
+	hits := 0
+	excerpt := ""
+	for _, needle := range needles {
+		index := bytes.Index(lowered, bytes.ToLower([]byte(needle)))
+		if index < 0 {
+			continue
+		}
+		hits++
+		if excerpt == "" {
+			start := maxInt(0, index-80)
+			end := minInt(len(content), index+len(needle)+80)
+			excerpt = strings.TrimSpace(string(content[start:end]))
+		}
+	}
+	return hits, excerpt, nil
 }
 
 func (current *backend) searchableRows(

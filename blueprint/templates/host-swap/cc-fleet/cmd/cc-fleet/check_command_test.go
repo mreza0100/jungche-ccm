@@ -3,9 +3,55 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"hostops/cc-fleet/internal/compose"
+	"hostops/cc-fleet/internal/gather"
 )
+
+func TestSocketSquattersCountsOnlyDifferentlyNamedSessions(t *testing.T) {
+	// cc-parked lost its chat but kept its tmux server, and three dev servers
+	// were started on it. cc-chat is an ordinary chat: one session, named after
+	// its socket, split across two panes.
+	got := socketSquatters([]gather.Pane{
+		{Socket: "cc-parked", SessionName: "projb-dev-backend-4100"},
+		{Socket: "cc-parked", SessionName: "projb-dev-frontend-5273"},
+		{Socket: "cc-parked", SessionName: "projb-dev-cortex-8100"},
+		{Socket: "cc-chat", SessionName: "cc-chat"},
+		{Socket: "cc-chat", SessionName: "cc-chat"},
+		{Socket: "cc-mixed", SessionName: "cc-mixed"},
+		{Socket: "cc-mixed", SessionName: "parked-server"},
+		{Socket: "cc-mixed", SessionName: "parked-server"},
+		{Socket: "cc-nameless", SessionName: ""},
+	})
+	want := map[string]int{"cc-parked": 3, "cc-mixed": 1}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("socketSquatters() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDormantAccountIDsIgnoreRootsThatCanonicaliseIntoAccountOne(t *testing.T) {
+	rows := []compose.Row{
+		{Kind: compose.ResumeClaude, ID: "on-one", Account: 1},
+		{Kind: compose.ResumeClaude, ID: "on-shared-two", Account: 2},
+		{Kind: compose.ResumeClaude, ID: "on-separate-three", Account: 3},
+		{Kind: compose.ResumeCodex, ID: "codex-two", Account: 2},
+	}
+	// Account 2's root is the symlink shape this fleet actually has: it
+	// canonicalises onto account 1's store, so the legacy picker DOES walk it.
+	roots := []compose.AccountRoot{
+		{Account: 1, Path: "/home/user/.claude/projects"},
+		{Account: 2, Path: "/home/user/.claude/projects"},
+		{Account: 3, Path: "/home/user/.cc/3/projects"},
+	}
+	got := dormantAccountIDs(rows, roots)
+	want := map[string]struct{}{"on-separate-three": {}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dormantAccountIDs() = %#v, want %#v", got, want)
+	}
+}
 
 func TestResolveCheckAllowlistOrder(t *testing.T) {
 	root := t.TempDir()

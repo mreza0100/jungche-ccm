@@ -119,10 +119,10 @@ func (model Model) renderQuery(width int) string {
 
 func (model Model) renderFooter(width int) string {
 	first := " ↑↓ move  enter open  esc cancel  type to fuzzy-find"
-	second := " ⌃T reload  ⌃R projects  ⌃X hide  ⌃E 1h  ⌃S account  ⌃B reboot"
+	second := " ⌃T reload  ⌃R projects  ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot"
 	if width < 96 {
 		first = " ↑↓ move · enter open · esc cancel · type find"
-		second = " ⌃T reload · ⌃R rotate · ⌃X hide · ⌃E 1h · ⌃S acct · ⌃B reboot"
+		second = " ⌃T reload · ⌃R rotate · ⌃X hide · ⌃E 1h · ⌃S acct · ⌃O reboot"
 	}
 	return dimStyle.Render(fillLine(first, width)) + "\n" +
 		dimStyle.Render(fillLine(second, width))

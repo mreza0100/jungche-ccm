@@ -203,6 +203,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		"chat_ls",
 		"chat_read",
 		"chat_resolve",
+		"chat_whoami",
 	}
 	if !reflect.DeepEqual(toolNames, wantTools) {
 		t.Fatalf("tools = %q, want %q", toolNames, wantTools)

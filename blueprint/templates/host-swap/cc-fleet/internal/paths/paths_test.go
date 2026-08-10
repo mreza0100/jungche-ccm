@@ -21,9 +21,11 @@ func TestResolveOverrides(t *testing.T) {
 	codexRoot := filepath.Join(testRoot, "codex")
 	tmuxDir := filepath.Join(testRoot, "tmux")
 	procRoot := filepath.Join(testRoot, "proc")
+	sharedDB := filepath.Join(testRoot, "shared", "fleet.db")
 
 	t.Setenv(EnvHome, home)
 	t.Setenv(EnvDB, db)
+	t.Setenv(EnvSharedDB, sharedDB)
 	t.Setenv(EnvSIDDir, sidDir)
 	t.Setenv(EnvClaudeRoots, strings.Join(claudeRoots, string(os.PathListSeparator)))
 	t.Setenv(EnvCodexRoot, codexRoot)
@@ -36,15 +38,43 @@ func TestResolveOverrides(t *testing.T) {
 	}
 	want := Values{
 		DB:          db,
+		SharedDB:    sharedDB,
 		SIDDir:      sidDir,
 		ClaudeRoots: claudeRoots,
 		CodexRoot:   codexRoot,
 		TmuxDir:     tmuxDir,
 		Home:        home,
-		ProcRoot:    procRoot,
+		// The carrier has no override of its own: it is defined relative to
+		// Home, and jailing Home jails it.
+		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
+		ProcRoot:      procRoot,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Resolve() = %#v, want %#v", got, want)
+	}
+}
+
+// The shared state store is the fleet's, not this binary's: it defaults beside
+// the zsh half's ~/.cc/fleet.db and NEVER to the private cache's directory.
+// CC_FLEET_DB is cc-db.sh's own override name for that shared file (cc-db.sh:41),
+// so the two must not resolve to the same place when only CC_FLEET_DB is set.
+func TestResolveSharedStoreDefaultsBesideTheZshHalf(t *testing.T) {
+	testRoot := t.TempDir()
+	home := filepath.Join(testRoot, "home")
+	t.Setenv(EnvHome, home)
+	t.Setenv(EnvDB, filepath.Join(testRoot, "cache", "fleet.db"))
+	t.Setenv(EnvSharedDB, "")
+
+	got, err := Resolve()
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	want := filepath.Join(home, ".cc", "fleet.db")
+	if got.SharedDB != want {
+		t.Fatalf("Resolve().SharedDB = %q, want %q", got.SharedDB, want)
+	}
+	if got.SharedDB == got.DB {
+		t.Fatalf("shared store and private cache resolved to the same file %q", got.DB)
 	}
 }
 

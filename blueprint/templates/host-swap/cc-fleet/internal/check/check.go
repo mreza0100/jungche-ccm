@@ -18,6 +18,10 @@ import (
 const (
 	legacyRowMarker   = "__CC_FLEET_ROW__"
 	legacyTupleMarker = "__CC_FLEET_TUPLE__"
+
+	// unknownProjectName is what both pickers print when a row's working
+	// directory is unknown.
+	unknownProjectName = "?"
 )
 
 // Tuple is the deliberately small parity contract shared by both pickers.
@@ -267,7 +271,7 @@ func parseDisplayLine(line string) (LegacyRow, error) {
 		return LegacyRow{}, fmt.Errorf("unknown legacy row glyph in %q", head)
 	}
 	if project == "" {
-		project = "?"
+		project = unknownProjectName
 	}
 	return LegacyRow{
 		Tuple: Tuple{
@@ -377,13 +381,15 @@ func ParseAllowlist(reader io.Reader) ([]AllowRule, error) {
 func validClass(class string) bool {
 	switch class {
 	case "codex-120-bound",
+		"codex-store-only",
+		"codex-legacy-source",
 		"codex-prompt-semantics",
 		"claude-prompt-semantics",
 		"live-prompt-drift",
-		"dormant-account",
-		"legacy-dead-server",
-		"codex-legacy-source",
-		"legacy-nonfleet-multiwindow":
+		"legacy-cache-empty-cwd",
+		"legacy-socket-squatter",
+		"agent-without-transcript",
+		"dormant-account":
 		return true
 	default:
 		return false
@@ -393,11 +399,30 @@ func validClass(class string) bool {
 // Verification contains the live facts required by semantic allowlist
 // classes. A class is never accepted merely because a tuple looks similar.
 type Verification struct {
+	// CodexCandidateIDs is the newest-N rollout files the legacy Codex scan
+	// bounds itself to.
 	CodexCandidateIDs map[string]struct{}
+	// CodexRolloutFileIDs is every conversation that owns a rollout file at
+	// all, with no bound.
+	CodexRolloutFileIDs map[string]struct{}
+	// CodexLegacySource is the bounded files whose first line lacks the exact
+	// thread_source:user marker the legacy classifier requires.
 	CodexLegacySource map[string]struct{}
+	// CodexLineageRoots maps a rollout id to the root of its resume lineage,
+	// which is the unit compose emits exactly one row for.
 	CodexLineageRoots map[string]string
+	// LegacyEmptyCWDIDs is the transcripts whose row in the legacy picker's own
+	// name cache carries an empty working directory.
+	LegacyEmptyCWDIDs map[string]struct{}
+	// SocketSquatters counts, per tmux socket, the sessions running on it whose
+	// name is not the socket's own — work parked on a chat server, never a chat.
+	SocketSquatters map[string]int
+	// ClaudeTranscriptIDs is every transcript file present in the Claude store,
+	// which is the population the legacy picker names its rows from.
+	ClaudeTranscriptIDs map[string]struct{}
+	// DormantAccountIDs is the Claude rows resolved to an account root the
+	// legacy picker demonstrably does not walk.
 	DormantAccountIDs map[string]struct{}
-	LiveCodexSockets  map[string]struct{}
 }
 
 // Diff returns the symmetric tuple difference in deterministic order.
@@ -489,41 +514,16 @@ func DiffVerified(
 		}
 	}
 
-	legacyEmptyWindows := make(map[string]int)
-	ownLiveClaude := make(map[string]struct{})
-	for _, tuple := range legacy {
-		if tuple.Kind == compose.LiveClaude.String() && tuple.Prompts == 0 {
-			legacyEmptyWindows[tuple.ID]++
-		}
-	}
-	for _, tuple := range own {
-		if tuple.Kind == compose.LiveClaude.String() {
-			ownLiveClaude[tuple.ID] = struct{}{}
-		}
-	}
-	if reason, allowed := classReasons["legacy-nonfleet-multiwindow"]; allowed {
-		for index := range differences {
-			difference := &differences[index]
-			if difference.Allowed ||
-				difference.Direction != LegacyOnly ||
-				difference.Tuple.Kind != compose.LiveClaude.String() ||
-				difference.Tuple.Prompts != 0 ||
-				legacyEmptyWindows[difference.Tuple.ID] < 2 ||
-				isFleetSocketID(difference.Tuple.ID) {
-				continue
-			}
-			if _, live := ownLiveClaude[difference.Tuple.ID]; !live {
-				markClass(
-					difference,
-					"legacy-nonfleet-multiwindow",
-					reason,
-				)
-			}
-		}
-	}
+	markCacheEmptyCWD(differences, classReasons, verification)
+	markSocketSquatters(differences, classReasons, verification)
+	markAgentWithoutTranscript(differences, classReasons, verification)
 
 	candidateRoots := verifiedCodexRoots(
 		verification.CodexCandidateIDs,
+		verification.CodexLineageRoots,
+	)
+	rolloutFileRoots := verifiedCodexRoots(
+		verification.CodexRolloutFileIDs,
 		verification.CodexLineageRoots,
 	)
 	legacySourceRoots := verifiedCodexRoots(
@@ -546,20 +546,7 @@ func DiffVerified(
 
 	for index := range differences {
 		difference := &differences[index]
-		if difference.Allowed {
-			continue
-		}
-		if difference.Direction == LegacyOnly &&
-			difference.Tuple.Kind == compose.LiveCodex.String() &&
-			verification.LiveCodexSockets != nil {
-			if _, live := verification.LiveCodexSockets[difference.Tuple.ID]; !live {
-				if reason, allowed := classReasons["legacy-dead-server"]; allowed {
-					markClass(difference, "legacy-dead-server", reason)
-				}
-			}
-			continue
-		}
-		if difference.Direction != GoOnly {
+		if difference.Allowed || difference.Direction != GoOnly {
 			continue
 		}
 		if difference.Tuple.Kind == compose.ResumeCodex.String() {
@@ -567,13 +554,28 @@ func DiffVerified(
 				difference.Tuple.ID,
 				verification.CodexLineageRoots,
 			)
-			if _, insideBound := candidateRoots[root]; !insideBound {
-				if reason, allowed := classReasons["codex-120-bound"]; allowed &&
-					verification.CodexCandidateIDs != nil &&
-					goOnlyByLineage[root] == 1 {
+			// Every Codex class below shares one structural bound: compose emits
+			// exactly ONE row per resume lineage, so a class may absolve at most
+			// one Go-only row per lineage. A second row for the same lineage is a
+			// duplication regression and must stay visible.
+			if goOnlyByLineage[root] != 1 {
+				continue
+			}
+			_, hasFile := rolloutFileRoots[root]
+			_, insideBound := candidateRoots[root]
+			_, unrecognized := legacySourceRoots[root]
+			switch {
+			case verification.CodexRolloutFileIDs != nil && !hasFile:
+				// No rollout file exists anywhere in this lineage, so the legacy
+				// scan — which walks rollout files — cannot reach it by any path.
+				if reason, allowed := classReasons["codex-store-only"]; allowed {
+					markClass(difference, "codex-store-only", reason)
+				}
+			case verification.CodexCandidateIDs != nil && !insideBound:
+				if reason, allowed := classReasons["codex-120-bound"]; allowed {
 					markClass(difference, "codex-120-bound", reason)
 				}
-			} else if _, unrecognized := legacySourceRoots[root]; unrecognized {
+			case unrecognized:
 				if reason, allowed := classReasons["codex-legacy-source"]; allowed {
 					markClass(difference, "codex-legacy-source", reason)
 				}
@@ -588,6 +590,132 @@ func DiffVerified(
 		}
 	}
 	return differences
+}
+
+// markCacheEmptyCWD pairs the two halves of one stale legacy cache row: the
+// legacy side renders the project as "?" because its name cache holds an empty
+// cwd, the Go side re-derives the directory from the transcript. Bounded by
+// construction — the pair must share id, kind and prompt count, so at most one
+// legacy row and one Go row per transcript are absolved, and a row missing from
+// either side has no partner to pair with.
+func markCacheEmptyCWD(
+	differences []Difference,
+	classReasons map[string]string,
+	verification Verification,
+) {
+	reason, allowed := classReasons["legacy-cache-empty-cwd"]
+	if !allowed || len(verification.LegacyEmptyCWDIDs) == 0 {
+		return
+	}
+	type identity struct {
+		ID      string
+		Kind    string
+		Prompts int64
+	}
+	unknownProject := make(map[identity][]int)
+	namedProject := make(map[identity][]int)
+	for index, difference := range differences {
+		if difference.Allowed ||
+			difference.Tuple.Kind != compose.ResumeClaude.String() {
+			continue
+		}
+		if _, stale := verification.LegacyEmptyCWDIDs[difference.Tuple.ID]; !stale {
+			continue
+		}
+		key := identity{
+			ID:      difference.Tuple.ID,
+			Kind:    difference.Tuple.Kind,
+			Prompts: difference.Tuple.Prompts,
+		}
+		switch {
+		case difference.Direction == LegacyOnly &&
+			difference.Tuple.Project == unknownProjectName:
+			unknownProject[key] = append(unknownProject[key], index)
+		case difference.Direction == GoOnly &&
+			difference.Tuple.Project != unknownProjectName:
+			namedProject[key] = append(namedProject[key], index)
+		}
+	}
+	for key, left := range unknownProject {
+		right := namedProject[key]
+		for position := range min(len(left), len(right)) {
+			markClass(&differences[left[position]], "legacy-cache-empty-cwd", reason)
+			markClass(&differences[right[position]], "legacy-cache-empty-cwd", reason)
+		}
+	}
+}
+
+// markAgentWithoutTranscript absolves a live agent whose transcript file does
+// not exist yet. Go rows an agent straight from the running process; the legacy
+// picker names its ⚙ rows out of the transcript STORE, so a session born
+// between the two necessarily sequential snapshots — a subagent spawning while
+// the check runs — is on one side and not the other until Claude flushes the
+// file. Verified against the store on disk, and bounded to one row per session
+// id, so a duplicated agent row still surfaces.
+func markAgentWithoutTranscript(
+	differences []Difference,
+	classReasons map[string]string,
+	verification Verification,
+) {
+	reason, allowed := classReasons["agent-without-transcript"]
+	if !allowed || verification.ClaudeTranscriptIDs == nil {
+		return
+	}
+	spent := make(map[string]struct{})
+	for index := range differences {
+		difference := &differences[index]
+		if difference.Allowed ||
+			difference.Direction != GoOnly ||
+			difference.Tuple.Kind != compose.Agent.String() {
+			continue
+		}
+		if _, onDisk := verification.ClaudeTranscriptIDs[difference.Tuple.ID]; onDisk {
+			continue
+		}
+		if _, already := spent[difference.Tuple.ID]; already {
+			continue
+		}
+		spent[difference.Tuple.ID] = struct{}{}
+		markClass(difference, "agent-without-transcript", reason)
+	}
+}
+
+// markSocketSquatters absolves the rows the legacy picker prints for work
+// PARKED on a chat socket. A fleet chat's tmux session is always named after
+// its socket, so a session under any other name is a squatter — a dev server on
+// a dead chat's surviving server — and carries no transcript, which is why it
+// reaches the tuple as a zero-prompt row identified by the socket itself.
+//
+// The bound is a count taken from the live probe: at most one row per squatter
+// session on that socket. A real chat's row can never be absorbed, because its
+// session name is the socket name and it is therefore not counted here.
+func markSocketSquatters(
+	differences []Difference,
+	classReasons map[string]string,
+	verification Verification,
+) {
+	reason, allowed := classReasons["legacy-socket-squatter"]
+	if !allowed || len(verification.SocketSquatters) == 0 {
+		return
+	}
+	budget := make(map[string]int, len(verification.SocketSquatters))
+	for socket, count := range verification.SocketSquatters {
+		budget[socket] = count
+	}
+	for index := range differences {
+		difference := &differences[index]
+		if difference.Allowed ||
+			difference.Direction != LegacyOnly ||
+			difference.Tuple.Kind != compose.LiveClaude.String() ||
+			difference.Tuple.Prompts != 0 {
+			continue
+		}
+		if budget[difference.Tuple.ID] <= 0 {
+			continue
+		}
+		budget[difference.Tuple.ID]--
+		markClass(difference, "legacy-socket-squatter", reason)
+	}
 }
 
 func verifiedCodexRoots(
@@ -609,10 +737,6 @@ func verifiedCodexRoot(id string, roots map[string]string) string {
 		return root
 	}
 	return id
-}
-
-func isFleetSocketID(value string) bool {
-	return strings.HasPrefix(value, "cc-") || strings.HasPrefix(value, "cx-")
 }
 
 func promptMismatchClass(kind string) string {

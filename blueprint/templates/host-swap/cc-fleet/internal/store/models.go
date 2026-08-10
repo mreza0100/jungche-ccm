@@ -1,5 +1,13 @@
 package store
 
+// ClaudeEngine and CodexEngine name the two chat engines. They are the source
+// of the same pair in internal/hide, which aliases them rather than repeating
+// the literals.
+const (
+	ClaudeEngine = "cc"
+	CodexEngine  = "cx"
+)
+
 // Transcript is one indexed Claude transcript.
 type Transcript struct {
 	UUID         string
@@ -40,12 +48,22 @@ type CxName struct {
 
 // Hidden records a permanent hide for a Claude or Codex chat: it lifts only
 // on an explicit unhide.
+//
+// The row itself lives in the fleet's shared store, keyed by uuid and nothing
+// else — cc-db.sh's schema (cc-db.sh:75-79), which the zsh half writes too.
 type Hidden struct {
-	ID       string
-	Engine   string
+	ID string
+	// Engine is DERIVED at read time, not stored: "cc" when the id resolves to
+	// an indexed transcript, "cx" when it resolves to a rollout or a Codex
+	// lineage root, and empty when neither table knows it. An empty engine
+	// means "hidden whatever the engine" — it never lifts a hide.
+	Engine string
+	// HiddenAt is the shared row's hidden_at, or 0 for a hide that reached only
+	// the carrier file, which records no time.
 	HiddenAt int64
-	// BaselinePrompts is the retired auto-unhide baseline. Nothing reads it
-	// and new hides write NULL; the column survives so the schema and old
-	// rows are left untouched.
+	// BaselinePrompts is the retired auto-unhide baseline, cc-db.sh's
+	// at_payload column. Nothing reads it and nothing writes it any more; it
+	// survives on the type only so old rows and the shared schema are left
+	// untouched.
 	BaselinePrompts *int64
 }

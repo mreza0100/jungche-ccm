@@ -10,31 +10,81 @@
 # Verified semantic rule — three TAB-separated fields:
 # class	class-name	reason
 #
-# Class entries are enforced by code-side verification, not tuple globs:
-# - codex-120-bound: the Go-only lineage is absent from the actual newest 120,
-#   and exactly one Go-only row exists for that lineage
-#   rollout files (legacy applies head before user/subagent classification);
-# - *-prompt-semantics: opposite-side tuples have identical id/kind/project
-#   and differ only in prompt count;
-# - dormant-account: the Go row was resolved to account 2 or 3;
-# - live-prompt-drift: a live identity/project pair changed count between the
-#   two necessarily sequential snapshots.
-# - legacy-dead-server: legacy emitted a live-codex socket for which the
-#   independently gathered fd-walk found no living Codex process.
-# - codex-legacy-source: the file is inside the legacy newest-120 bound but
-#   its first line uses a newer interactive source schema that legacy ignores.
-# - legacy-nonfleet-multiwindow: legacy emitted duplicate zero-prompt Claude
-#   windows for a named socket outside the cc-/cx- fleet namespace that Go
-#   deliberately does not probe.
+# THE RULE FOR EVERY CLASS BELOW: it must be structurally unable to absorb a
+# regression. Each one names the live fact that admits it (gathered
+# independently of the diff, in internal/check/candidates.go and
+# cmd/cc-fleet/check_command.go) and the bound that caps how many rows it can
+# ever cover. A class with a predicate but no bound is how a duplication
+# regression hid here once; a class with a bound but no predicate is a glob
+# wearing a name.
+#
+# ── Codex resume rows ────────────────────────────────────────────────────────
+# All three share one bound: compose emits exactly ONE row per resume lineage,
+# so at most one Go-only row per lineage is absolved and a second is a
+# duplication regression that stays visible.
+#
+# - codex-store-only: NO rollout file exists anywhere in the lineage
+#   (CodexRolloutFileIDs walks ~/.codex/sessions). The legacy Codex source is a
+#   scan of rollout files, so it cannot reach such a thread by any path; Codex
+#   0.146.1 stopped writing one for a paginated thread and the state store is
+#   now the only record. Verified from the filesystem, never from the diff.
+# - codex-120-bound: the lineage owns rollout files, but its root is outside the
+#   newest 120 the legacy scan bounds itself to (CodexCandidateIDs, same mtime
+#   ordering as `cc_find_meta … | head -120`).
+# - codex-legacy-source: the lineage is inside that bound, but the file's first
+#   line lacks the exact thread_source:user marker the legacy classifier
+#   requires, so it is filed as a subagent worker. Go takes the state store's
+#   classification instead.
+#
+# ── prompt-count semantics ───────────────────────────────────────────────────
+# Bounded by 1:1 pairing — the two rows must agree on id, kind and project and
+# differ only in count, so a row missing from one side has no partner and stays
+# visible.
+#
+# - codex-prompt-semantics / claude-prompt-semantics: the legacy count is a grep
+#   over token-bearing lines, Go's is parsed complete records; they part company
+#   at a partial or injected record.
+# - live-prompt-drift: a live chat gained a prompt between the two necessarily
+#   sequential snapshots.
+# - agent-without-transcript: the whole-row form of the same drift. Go rows a
+#   live agent straight from the running process, while the legacy picker names
+#   its ⚙ rows out of the transcript STORE — so a subagent spawned while the
+#   check runs is on one side until Claude flushes its file. Verified against
+#   the store on disk (ClaudeTranscriptIDs walks exactly what `cc_find_meta
+#   "$store" -maxdepth 2` walks) and bounded to one row per session id.
+#
+# ── legacy-side artifacts ────────────────────────────────────────────────────
+# - legacy-cache-empty-cwd: the legacy picker's own name cache holds an EMPTY
+#   cwd for this transcript (read read-only from ~/.cc/fleet.db), so it prints
+#   the project as "?" while Go re-derives the directory from the file.
+#   _cc_metac's incremental branch copies a cached cwd forward untouched, so a
+#   chat first seen before it had a parseable user record keeps the blank for
+#   life. Bounded by 1:1 pairing on id + kind + prompt count.
+# - legacy-socket-squatter: work PARKED on a chat socket — a dev server on the
+#   surviving tmux server of a dead chat. Every fleet chat is launched with
+#   `new-session -s "$sock"`, so a session under any other name is not a chat;
+#   it carries no transcript, which is why it reaches the tuple as a zero-prompt
+#   row identified by the socket itself. Bounded by a count taken from the live
+#   probe: at most one row per differently named session on that socket, so a
+#   real chat's row can never be absorbed.
+#
+# ── account roster ───────────────────────────────────────────────────────────
+# - dormant-account: the Go row lives under an account root the shadow harness
+#   never points the reference script at. Verified against the CANONICAL root
+#   path, because ~/.cc/2/projects and ~/.cc/3/projects are symlinks back to
+#   account 1's store on this fleet — counting those as unreachable would hide a
+#   chat the legacy picker does list.
 #
 # Example (commented; replace with an observed exact ID, never a wildcard):
 # go-only	00000000-0000-0000-0000-000000000000	resume-codex	my-project	legacy 120-rollout candidate bound
 
+class	codex-store-only	the lineage owns no rollout file at all, and the legacy Codex source can only scan rollout files
 class	codex-120-bound	legacy examines only its newest 120 rollout files; exactly one Go row is allowed per verified thread lineage
+class	codex-legacy-source	legacy requires thread_source:user on the first line while Go takes the state store's classification of the thread
 class	codex-prompt-semantics	legacy grep counts token-bearing rollout lines while Go counts parsed complete user_message records
 class	claude-prompt-semantics	legacy byte-tail grep and Go parsed complete-record prompt counts differ at partial or injected records
 class	live-prompt-drift	a live chat gained a prompt between the sequential legacy and Go snapshots
-class	dormant-account	legacy walks only account 1 while Go intentionally indexes dormant account 2 and 3 chats
-class	legacy-dead-server	legacy lists a responsive or stale cx socket even though the fd-walk found no living Codex process
-class	codex-legacy-source	legacy requires thread_source:user on the first line while Go recognizes newer interactive Codex source schemas
-class	legacy-nonfleet-multiwindow	legacy probes every named tmux socket while Go deliberately excludes duplicate windows outside the cc-/cx- fleet namespace
+class	agent-without-transcript	the agent's process is live but its transcript is not in the store yet, so legacy has nothing to name a row from
+class	legacy-cache-empty-cwd	the legacy name cache holds an empty cwd for this transcript, so it prints project "?" while Go reads the directory from the file
+class	legacy-socket-squatter	legacy lists every tmux session on a chat socket; a session not named after its socket is parked work, not a chat, and Go does not row it
+class	dormant-account	legacy walks only account 1 while Go indexes account roots that canonicalise elsewhere

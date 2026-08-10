@@ -87,8 +87,7 @@ func TestComposeStress(t *testing.T) {
 
 	repeatedOne := Compose(stabilityInput)
 	repeatedTwo := Compose(stabilityInput)
-	if !reflect.DeepEqual(repeatedOne.BaselineUpdates, repeatedTwo.BaselineUpdates) ||
-		!reflect.DeepEqual(repeatedOne.UnhideIDs, repeatedTwo.UnhideIDs) ||
+	if !reflect.DeepEqual(rowIDs(repeatedOne.Rows), rowIDs(repeatedTwo.Rows)) ||
 		repeatedOne.HiddenCount != repeatedTwo.HiddenCount ||
 		repeatedOne.SuppressedCount != repeatedTwo.SuppressedCount {
 		t.Fatal("hide decisions changed across identical stress composes")

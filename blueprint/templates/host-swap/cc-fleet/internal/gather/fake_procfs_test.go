@@ -8,9 +8,12 @@ import (
 type fakeProcess struct {
 	cmdline []string
 	environ map[string]string
-	fdLinks []FDLink
-	stat    ProcStat
-	birth   int64
+	// environErr models a process whose environment cannot be read — the
+	// normal case on macOS, where SIP hides one process's env from another.
+	environErr bool
+	fdLinks    []FDLink
+	stat       ProcStat
+	birth      int64
 }
 
 type fakeProcFS struct {
@@ -38,6 +41,9 @@ func (proc *fakeProcFS) Environ(pid int) (map[string]string, error) {
 	process, found := proc.processes[pid]
 	if !found {
 		return nil, fs.ErrNotExist
+	}
+	if process.environErr {
+		return nil, fs.ErrPermission
 	}
 	environment := make(map[string]string, len(process.environ))
 	for key, value := range process.environ {

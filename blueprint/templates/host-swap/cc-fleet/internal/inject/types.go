@@ -13,6 +13,13 @@ const (
 	CodexInlineMax = 1500
 	// AbsoluteMessageMax keeps adversarial MCP arguments from reaching tmux.
 	AbsoluteMessageMax = 256 << 10
+	// CompactFocusMax is chat.sh's COMPACT_FOCUS_MAX: a longer /compact body is
+	// typed as a bracketed paste, the TUI collapses it, and the compaction
+	// never fires.
+	CompactFocusMax = 600
+	// FullScrollback asks Capture for the entire retained buffer, chat.sh's
+	// `capture-pane -S -`, instead of the visible fold.
+	FullScrollback = -1
 )
 
 // Target is one resolved tmux destination.
@@ -27,6 +34,12 @@ type Request struct {
 	Target   string
 	Message  string
 	ForceNow bool
+	// Then carries follow-up steers delivered, in order, by a DETACHED waiter
+	// once the primary turn settles busy -> idle-stable (chat.sh --then).
+	Then []string
+	// Chain marks this delivery as a hop of an existing steer chain, so the
+	// waiter's log is appended to instead of truncated (chat.sh CHAT_THEN_CHAIN).
+	Chain bool
 }
 
 // Result is a non-ambiguous delivery verdict.
@@ -42,6 +55,9 @@ type Result struct {
 	DraftStashed  bool   `json:"draft_stashed,omitempty"`
 	Typed         bool   `json:"typed,omitempty"`
 	SubmitRetries int    `json:"submit_retries,omitempty"`
+	Steers        int    `json:"steers,omitempty"`
+	SteerLog      string `json:"steer_log,omitempty"`
+	Unsigned      bool   `json:"unsigned,omitempty"`
 }
 
 // Sender is appended to every non-command plain-text delivery.
@@ -54,6 +70,12 @@ type Sender struct {
 // Resolver is the existing chat.sh-compatible namespace resolver.
 type Resolver interface {
 	Resolve(context.Context, resolve.Kind, string) (resolve.Outcome, error)
+}
+
+// SelfIdentifier answers who the SENDER is — chat.sh's self_tmux, including
+// its ancestry recovery — so an inject from a codex-origin shell still signs.
+type SelfIdentifier interface {
+	Identify(ctx context.Context) (resolve.Identity, error)
 }
 
 // Tmux supplies every operation used in the guarded critical section.
@@ -69,6 +91,25 @@ type Tmux interface {
 	CancelCopyMode(ctx context.Context, socketPath, target string) error
 	PaneInMode(ctx context.Context, socketPath, target string) (bool, error)
 	CurrentSession(ctx context.Context, socketPath string) (string, error)
+	// WindowName backs chat.sh's codex label fallback: a codex chat has no 🔖
+	// statusline, so its human thread name is the tmux window name.
+	WindowName(ctx context.Context, socketPath, target string) (string, error)
+}
+
+// ThenSpawner starts the detached waiter that delivers --then steers. It must
+// outlive the caller: for a self-inject the waiter waits on the very turn that
+// spawned it, so a synchronous wait would deadlock.
+type ThenSpawner interface {
+	Spawn(ctx context.Context, request SteerSpawn) error
+}
+
+// SteerSpawn is one detached follow-up delivery.
+type SteerSpawn struct {
+	SocketPath string
+	Target     string
+	Steers     []string
+	LogPath    string
+	Append     bool
 }
 
 // Options controls bounded retries. Zero values select chat.sh defaults.
@@ -89,14 +130,26 @@ type Options struct {
 	LockMaxHold      time.Duration
 	CodexInlineMax   int
 	AbsoluteByteMax  int
+	CompactFocusMax  int
 	LockRoot         string
 	Sender           *Sender
 	DisableSignature bool
+
+	// --then waiter cadence, mirroring chat.sh's __then subcommand.
+	ThenMin        time.Duration
+	ThenBusyTries  int
+	ThenIdlePoll   time.Duration
+	ThenIdleTries  int
+	ThenIdleStable int
+	ThenSettle     time.Duration
+	ThenLogRoot    string
 }
 
 // Dependencies are injectable for jailed and adversarial tests.
 type Dependencies struct {
-	Resolver Resolver
-	Tmux     Tmux
-	Options  Options
+	Resolver   Resolver
+	Tmux       Tmux
+	Spawner    ThenSpawner
+	Identifier SelfIdentifier
+	Options    Options
 }

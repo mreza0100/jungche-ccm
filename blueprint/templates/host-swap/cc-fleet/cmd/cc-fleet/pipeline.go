@@ -9,15 +9,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"hostops/cc-fleet/internal/action"
 	"hostops/cc-fleet/internal/compose"
 	"hostops/cc-fleet/internal/gather"
 	fleetindex "hostops/cc-fleet/internal/index"
 	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/paths"
-	"hostops/cc-fleet/internal/resolve"
+	"hostops/cc-fleet/internal/shared"
 	"hostops/cc-fleet/internal/store"
 	"hostops/cc-fleet/internal/ui"
 )
@@ -26,6 +26,7 @@ const (
 	testFreshSocketEnv = "CC_FLEET_TEST_FRESH_SOCKET"
 	testNowNSEnv       = "CC_FLEET_TEST_NOW_NS"
 	codexAvailableEnv  = "CC_FLEET_CODEX_AVAILABLE"
+	dbScriptEnv        = "CC_FLEET_DB_SCRIPT"
 )
 
 type scanRequest struct {
@@ -102,18 +103,7 @@ func scanFleet(
 	if err != nil {
 		return scanResult{}, err
 	}
-	result, err := composeFleet(
-		ctx,
-		database,
-		environment,
-		request,
-		data,
-		live,
-		!request.ReadOnly,
-	)
-	if err != nil {
-		return scanResult{}, err
-	}
+	result := composeFleet(environment, request, data, live)
 	result.Counters = counters
 	result.Live = live
 	return result, nil
@@ -137,18 +127,7 @@ func scanFleetCached(
 	if err != nil {
 		return scanResult{}, err
 	}
-	result, err := composeFleet(
-		ctx,
-		database,
-		environment,
-		request,
-		data,
-		gather.Snapshot{},
-		false,
-	)
-	if err != nil {
-		return scanResult{}, err
-	}
+	result := composeFleet(environment, request, data, gather.Snapshot{})
 	result.Snapshot.Refreshing = true
 	return result, nil
 }
@@ -174,7 +153,7 @@ func resolveScanEnvironment() (scanEnvironment, error) {
 		paths:      resolved,
 		currentDir: currentDir,
 		nowNS:      nowNS,
-		primary:    readPrimaryAccount(resolved.Home),
+		primary:    readPrimaryAccount(resolved),
 	}, nil
 }
 
@@ -258,7 +237,7 @@ func gatherFleet(
 		CodexName: func(rolloutPath string) string {
 			return codexNamesByPath[filepath.Clean(rolloutPath)]
 		},
-		CodexThread: codexThreadResolver(ctx, resolved.CodexRoot),
+		CodexThread: store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
 		ReadOnly:    readOnly,
 	})
 	if err != nil {
@@ -288,54 +267,12 @@ func gatherFleet(
 	return live, nil
 }
 
-// codexThreadResolver identifies a live Codex session that holds no rollout
-// file descriptor. The state store is read on the first such process, so an
-// ordinary scan never pays for the query.
-func codexThreadResolver(
-	ctx context.Context,
-	codexRoot string,
-) gather.CodexThreadResolver {
-	candidates := sync.OnceValue(func() []resolve.CodexThread {
-		files, err := store.CodexStateFiles(codexRoot)
-		if err != nil {
-			return nil
-		}
-		threads, err := store.ReadCodexThreads(ctx, files)
-		if err != nil {
-			return nil
-		}
-		rows := make([]resolve.CodexThread, 0, len(threads))
-		for _, thread := range threads {
-			if !thread.Listed() {
-				continue
-			}
-			rows = append(rows, resolve.CodexThread{
-				ID:          thread.ID,
-				CWD:         thread.CWD,
-				CreatedAt:   thread.CreatedAt,
-				RolloutPath: thread.RolloutPath,
-			})
-		}
-		return rows
-	})
-	return func(exported, cwd string, birth int64) (string, string) {
-		thread, err := resolve.CodexThreadID(exported, cwd, birth, candidates())
-		if err != nil {
-			return "", ""
-		}
-		return thread.ID, thread.RolloutPath
-	}
-}
-
 func composeFleet(
-	ctx context.Context,
-	database *store.Store,
 	environment scanEnvironment,
 	request scanRequest,
 	data fleetData,
 	live gather.Snapshot,
-	applyIntents bool,
-) (scanResult, error) {
+) scanResult {
 	output := compose.Compose(compose.Input{
 		Snapshot:     live,
 		Transcripts:  data.transcripts,
@@ -357,11 +294,6 @@ func composeFleet(
 		output.HiddenCount = data.cachedCounts.Hidden
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
-	if applyIntents {
-		if err := applyComposeIntents(ctx, database, data.hidden, output); err != nil {
-			return scanResult{}, err
-		}
-	}
 	snapshot := ui.Snapshot{
 		Rows:            output.Rows,
 		View:            request.View,
@@ -377,7 +309,7 @@ func composeFleet(
 		Output:   output,
 		Snapshot: snapshot,
 		Paths:    environment.paths,
-	}, nil
+	}
 }
 
 func streamFleetRefreshes(
@@ -437,7 +369,7 @@ func streamFleetRefreshesWith(
 		fmt.Fprintf(stderr, "cc-fleet refresh live cache: %v\n", err)
 		return
 	}
-	if !sendRefresh(ctx, database, environment, request, data, live, true, updates) {
+	if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 		return
 	}
 
@@ -465,16 +397,7 @@ func streamFleetRefreshesWith(
 			fmt.Fprintf(stderr, "cc-fleet refresh: %v\n", err)
 			return
 		}
-		if !sendRefresh(
-			ctx,
-			database,
-			environment,
-			request,
-			data,
-			live,
-			true,
-			updates,
-		) {
+		if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 			return
 		}
 	}
@@ -492,19 +415,7 @@ func streamFleetRefreshesWith(
 		return
 	}
 	request.ForceFull = false
-	result, err := composeFleet(
-		ctx,
-		database,
-		environment,
-		request,
-		data,
-		live,
-		!request.ReadOnly,
-	)
-	if err != nil {
-		fmt.Fprintf(stderr, "cc-fleet refresh compose: %v\n", err)
-		return
-	}
+	result := composeFleet(environment, request, data, live)
 	result.Snapshot.Refreshing = false
 	select {
 	case updates <- result.Snapshot:
@@ -596,7 +507,6 @@ func rolloutIDFromPath(path string) string {
 
 func sendRefresh(
 	ctx context.Context,
-	database *store.Store,
 	environment scanEnvironment,
 	request scanRequest,
 	data fleetData,
@@ -604,18 +514,7 @@ func sendRefresh(
 	refreshing bool,
 	updates chan<- ui.Snapshot,
 ) bool {
-	result, err := composeFleet(
-		ctx,
-		database,
-		environment,
-		request,
-		data,
-		live,
-		!request.ReadOnly,
-	)
-	if err != nil {
-		return false
-	}
+	result := composeFleet(environment, request, data, live)
 	result.Snapshot.Refreshing = refreshing
 	select {
 	case updates <- result.Snapshot:
@@ -623,39 +522,6 @@ func sendRefresh(
 	case <-ctx.Done():
 		return false
 	}
-}
-
-func applyComposeIntents(
-	ctx context.Context,
-	database *store.Store,
-	hidden []store.Hidden,
-	output compose.Output,
-) error {
-	hiddenByID := make(map[string]store.Hidden, len(hidden))
-	for _, row := range hidden {
-		hiddenByID[row.ID] = row
-	}
-	for _, update := range output.BaselineUpdates {
-		hiddenAt := time.Now().Unix()
-		if existing, found := hiddenByID[update.ID]; found {
-			hiddenAt = existing.HiddenAt
-		}
-		baseline := update.BaselinePrompts
-		if err := database.Hide(ctx, store.Hidden{
-			ID:              update.ID,
-			Engine:          update.Engine,
-			HiddenAt:        hiddenAt,
-			BaselinePrompts: &baseline,
-		}); err != nil {
-			return err
-		}
-	}
-	for _, id := range output.UnhideIDs {
-		if err := database.Unhide(ctx, id); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func accountRoots(values []string) []compose.AccountRoot {
@@ -675,21 +541,70 @@ func accountRoots(values []string) []compose.AccountRoot {
 	return roots
 }
 
-func readPrimaryAccount(home string) int {
-	content, err := os.ReadFile(filepath.Join(home, ".claude-primary"))
-	if err != nil {
-		return 1
-	}
-	account, err := strconv.Atoi(strings.TrimSpace(string(content)))
-	if err != nil || account < 1 || account > 3 {
+// readPrimaryAccount resolves the primary Claude account the way cc-db.sh's
+// primary-get does (cc-db.sh:262-267): the shared database's meta row is the
+// value, ~/.claude-primary is the mirror consulted only when the database has
+// none, and anything off the roster reads as account 1.
+//
+// Reading the mirror alone is how the picker came up showing a different
+// account from the one the launchers used: primary-set writes both, but a
+// database restored without the file, or a file left behind by a rollback,
+// makes them disagree, and only one of the two is authoritative.
+func readPrimaryAccount(values paths.Values) int {
+	account, found := shared.PrimaryAccount(context.Background(), values)
+	if !found || account < 1 || account > action.MaxAccount {
 		return 1
 	}
 	return account
 }
 
+// ccDBScript is the fleet state store's CLI, as install.sh symlinks it into
+// place. CC_FLEET_DB_SCRIPT points a test jail at a stand-in.
+func ccDBScript(home string) string {
+	if value := os.Getenv(dbScriptEnv); value != "" {
+		return value
+	}
+	return filepath.Join(home, ".claude", "bin", "cc-db.sh")
+}
+
+// writePrimaryAccount routes the choice through cc-db.sh primary-set, which
+// validates it against the roster and mirrors it into ~/.claude-primary for the
+// statusline (cc-db.sh:268-275). Writing that file behind cc-db.sh's back would
+// leave the database saying one account and the file another.
+//
+// When cc-db.sh is absent the legacy file is written directly instead: that is
+// cc-db.sh's own fallback, and the picker must never be down because a state
+// store is missing.
 func writePrimaryAccount(home string, account int) error {
-	if account < 1 || account > 3 {
-		return fmt.Errorf("primary account must be 1, 2, or 3")
+	if account < 1 || account > action.MaxAccount {
+		return fmt.Errorf("primary account must be 1-%d", action.MaxAccount)
+	}
+	script := ccDBScript(home)
+	if _, err := os.Stat(script); err == nil {
+		command := exec.Command(
+			"bash",
+			script,
+			"primary-set",
+			strconv.Itoa(account),
+		)
+		// HOME steers cc-db.sh at the same tree cc-fleet resolved; CC_FLEET_DB
+		// is dropped because cc-db.sh reads that same name for ITS OWN database
+		// (cc-db.sh:41), and CC_FLEET_HOME because cc-db.sh reads it as its
+		// bundle directory (cc-db.sh:36-38) — a jail's value would make it
+		// source cc-portable.sh from the jail.
+		command.Env = append(
+			environWithout("HOME", paths.EnvDB, paths.EnvHome),
+			"HOME="+home,
+		)
+		if output, err := command.CombinedOutput(); err != nil {
+			return fmt.Errorf(
+				"cc-db.sh primary-set %d: %w: %s",
+				account,
+				err,
+				strings.TrimSpace(string(output)),
+			)
+		}
+		return nil
 	}
 	path := filepath.Join(home, ".claude-primary")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -713,6 +628,28 @@ func writePrimaryAccount(home string, account int) error {
 		return err
 	}
 	return os.Rename(tempPath, path)
+}
+
+// environWithout copies the environment minus the named variables, so a child
+// process cannot be steered by a name this binary reads for its own purposes.
+func environWithout(names ...string) []string {
+	dropped := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		dropped[name] = struct{}{}
+	}
+	environment := os.Environ()
+	kept := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name := entry
+		if equals := strings.IndexByte(entry, '='); equals >= 0 {
+			name = entry[:equals]
+		}
+		if _, found := dropped[name]; found {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
 }
 
 func currentSocket() string {

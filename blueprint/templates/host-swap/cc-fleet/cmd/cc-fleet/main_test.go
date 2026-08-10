@@ -82,9 +82,8 @@ func TestHideHiddenUnhideCLI(t *testing.T) {
 		t.Fatalf("hidden code=%d stderr=%q", code, stderr.String())
 	}
 	fields := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\t")
-	if len(fields) != 4 || fields[0] != id ||
-		fields[1] != "cc" || fields[3] != "" {
-		t.Fatalf("hidden stdout=%q, want an empty baseline column", stdout.String())
+	if len(fields) != 3 || fields[0] != id || fields[1] != "cc" {
+		t.Fatalf("hidden stdout=%q, want id/engine/hidden_at only", stdout.String())
 	}
 
 	stdout.Reset()
@@ -132,10 +131,13 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 	if code := run([]string{"hidden", "--prune-orphans"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("prune dry run code=%d stderr=%q", code, stderr.String())
 	}
+	// The engine column is empty for every orphan, and that IS the report: an
+	// engine is derived from whichever index table claims the id, and an orphan
+	// is precisely a hide no index table claims any more.
 	dryRun := stdout.String()
-	if !strings.Contains(dryRun, "would prune\t"+orphan+"\tcc\t20\n") ||
-		!strings.Contains(dryRun, "would prune\t"+orphan2+"\tcx\t30\n") ||
-		!strings.Contains(dryRun, "2 orphaned hide ratchet(s); re-run with --yes to delete\n") {
+	if !strings.Contains(dryRun, "would prune\t"+orphan+"\t\t20\n") ||
+		!strings.Contains(dryRun, "would prune\t"+orphan2+"\t\t30\n") ||
+		!strings.Contains(dryRun, "2 orphaned hide(s); re-run with --yes to delete\n") {
 		t.Fatalf("prune dry run stdout=%q", dryRun)
 	}
 	if strings.Contains(dryRun, live) {
@@ -157,8 +159,8 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 		t.Fatalf("prune code=%d stderr=%q", code, stderr.String())
 	}
 	pruned := stdout.String()
-	if !strings.Contains(pruned, "pruned\t"+orphan+"\tcc\t20\n") ||
-		!strings.Contains(pruned, "pruned 2 orphaned hide ratchet(s)\n") {
+	if !strings.Contains(pruned, "pruned\t"+orphan+"\t\t20\n") ||
+		!strings.Contains(pruned, "pruned 2 orphaned hide(s)\n") {
 		t.Fatalf("prune stdout=%q", pruned)
 	}
 
@@ -167,7 +169,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 	if code := run([]string{"hidden"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hidden after prune code=%d stderr=%q", code, stderr.String())
 	}
-	if got := stdout.String(); !strings.HasPrefix(got, live+"\tcc\t10\t") ||
+	if got := stdout.String(); !strings.HasPrefix(got, live+"\tcc\t10\n") ||
 		strings.Count(got, "\n") != 1 {
 		t.Fatalf("hidden after prune stdout=%q, want only the live hide", got)
 	}
@@ -323,9 +325,15 @@ func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
 	}
 }
 
-func TestCheckAllowlistsLegacyDeadCodexServerOnlyAfterFDWalk(t *testing.T) {
+// TestCheckRefusesALiveCodexSocketMissingFromTheGoRows is the regression this
+// checker existed to catch and did not. A legacy-only live-codex row means the
+// Go side lost a live Codex chat — which is exactly what happened when the pane
+// probe handed the thread resolver a BASENAME instead of a directory. The old
+// legacy-dead-server class restated that symptom as its own justification and
+// absolved it; there is no class for this shape any more, and there must not be.
+func TestCheckRefusesALiveCodexSocketMissingFromTheGoRows(t *testing.T) {
 	root := jailTest(t)
-	legacy := filepath.Join(root, "legacy-dead-codex.txt")
+	legacy := filepath.Join(root, "legacy-live-codex.txt")
 	const socket = "cx-1785120110-1697775-48706"
 	if err := os.WriteFile(
 		legacy,
@@ -335,10 +343,58 @@ func TestCheckAllowlistsLegacyDeadCodexServerOnlyAfterFDWalk(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	// The SHIPPED allowlist, not a stand-in: the assertion is that no class this
+	// tree carries can cover a lost live Codex row.
+	allowlist := filepath.Join(root, "allowlist.txt")
+	content, err := os.ReadFile(
+		filepath.Join("..", "..", "testdata", checkAllowlistFile),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(allowlist, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CC_FLEET_CHECK_LEGACY_OUTPUT", legacy)
+	t.Setenv(checkAllowlistEnv, allowlist)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"ls", "--check"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf(
+			"a live Codex socket missing from the Go rows was allowlisted: %q",
+			stdout.String(),
+		)
+	}
+	if !strings.Contains(stdout.String(), "- legacy-only\t"+socket+"\tlive-codex") {
+		t.Fatalf("missing live Codex row was not reported: %q", stdout.String())
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "~ allowed[") && strings.Contains(line, socket) {
+			t.Fatalf("a class absolved the lost live Codex row: %q", line)
+		}
+	}
+}
+
+// TestCheckSpendsNoSquatterBudgetWithoutALiveProbe holds the other half of the
+// squatter class's bound end to end: the budget comes from the live tmux probe,
+// so in a jail with no server on that socket the class has nothing to spend and
+// the row stays visible. The class is a count, never a shape.
+func TestCheckSpendsNoSquatterBudgetWithoutALiveProbe(t *testing.T) {
+	root := jailTest(t)
+	legacy := filepath.Join(root, "legacy-parked.txt")
+	const socket = "cc-1785850688-1928450-3031"
+	if err := os.WriteFile(
+		legacy,
+		[]byte("__CC_FLEET_TUPLE__\t"+socket+"\tlive-claude\tprojb-be\t0\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 	allowlist := filepath.Join(root, "allowlist.txt")
 	if err := os.WriteFile(
 		allowlist,
-		[]byte("class\tlegacy-dead-server\tfd-walk found no living Codex process\n"),
+		[]byte("class\tlegacy-socket-squatter\tparked work, not a chat\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -347,19 +403,17 @@ func TestCheckAllowlistsLegacyDeadCodexServerOnlyAfterFDWalk(t *testing.T) {
 	t.Setenv(checkAllowlistEnv, allowlist)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"ls", "--check"}, &stdout, &stderr); code != 0 {
+	code := run([]string{"ls", "--check"}, &stdout, &stderr)
+	// The jail has no tmux server on that socket, so the probe counts no parked
+	// sessions and the class has no budget to spend: the row stays visible.
+	if code == 0 {
 		t.Fatalf(
-			"dead-server check code=%d stdout=%q stderr=%q",
-			code,
+			"squatter class spent a budget the probe never granted: %q",
 			stdout.String(),
-			stderr.String(),
 		)
 	}
-	if !strings.Contains(
-		stdout.String(),
-		"allowed[legacy-dead-server] legacy-only\t"+socket,
-	) || !strings.Contains(stdout.String(), "fd-walk found no living Codex process") {
-		t.Fatalf("dead-server class was not reported: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "- legacy-only\t"+socket) {
+		t.Fatalf("unbudgeted squatter row was not reported: %q", stdout.String())
 	}
 }
 
@@ -401,6 +455,50 @@ func TestDoctorRecognizesThenFailedAsSatelliteMetadata(t *testing.T) {
 	}
 	if entries != 4 || invalid != 1 {
 		t.Fatalf("crumbHealth() entries=%d invalid=%d", entries, invalid)
+	}
+}
+
+// The live sid directory holds two classes doctor must not call rot: crumbs
+// the statusline writes for chats on servers the fleet excludes (the vsct
+// bunker, the revive dashboards) and the dot-prefixed lock DIRECTORIES the
+// zsh creates with mkdir to serialize opens.
+func TestDoctorIgnoresBunkerCrumbsAndOpenLockDirectories(t *testing.T) {
+	root := jailTest(t)
+	sidDir := filepath.Join(root, "sid")
+	for name, content := range map[string]string{
+		"cc-1-2-3":    "/transcripts/live.jsonl",
+		"vsct":        "/transcripts/bunker.jsonl",
+		"vsct.%187":   "/transcripts/bunker.jsonl",
+		"revive-vsct": "/transcripts/revive.jsonl",
+		"rotten":      "neither a crumb nor sid metadata",
+	} {
+		if err := os.WriteFile(
+			filepath.Join(sidDir, name),
+			[]byte(content),
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, directory := range []string{
+		".open.88888888-8888-4888-8888-888888888888",
+		"rotten-directory",
+	} {
+		if err := os.Mkdir(filepath.Join(sidDir, directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	entries, invalid, err := crumbHealth(sidDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries != 7 || invalid != 2 {
+		t.Fatalf(
+			"crumbHealth() entries=%d invalid=%d, want 7 and 2 (rotten + rotten-directory)",
+			entries,
+			invalid,
+		)
 	}
 }
 

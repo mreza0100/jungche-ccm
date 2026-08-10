@@ -10,6 +10,7 @@ import (
 
 	fleetcheck "hostops/cc-fleet/internal/check"
 	"hostops/cc-fleet/internal/compose"
+	"hostops/cc-fleet/internal/gather"
 	"hostops/cc-fleet/internal/paths"
 	"hostops/cc-fleet/internal/store"
 )
@@ -79,15 +80,23 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "cc-fleet ls --check: verify Codex source schema: %v\n", err)
 		return 1
 	}
-	dormantAccounts := make(map[string]struct{})
-	for _, row := range scan.Output.Rows {
-		if row.Kind == compose.ResumeClaude && row.Account > 1 {
-			dormantAccounts[row.ID] = struct{}{}
-		}
+	codexRolloutFiles, err := fleetcheck.CodexRolloutFileIDs(resolved.CodexRoot)
+	if err != nil {
+		fmt.Fprintf(stderr, "cc-fleet ls --check: verify Codex rollout files: %v\n", err)
+		return 1
 	}
-	liveCodexSockets := make(map[string]struct{})
-	for _, process := range scan.Live.Codex {
-		liveCodexSockets[process.Socket] = struct{}{}
+	legacyEmptyCWD, err := fleetcheck.LegacyCacheEmptyCWDIDs(
+		ctx,
+		resolved.SharedDB,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "cc-fleet ls --check: verify legacy name cache: %v\n", err)
+		return 1
+	}
+	claudeTranscripts, err := fleetcheck.ClaudeTranscriptIDs(resolved.ClaudeRoots)
+	if err != nil {
+		fmt.Fprintf(stderr, "cc-fleet ls --check: verify Claude store: %v\n", err)
+		return 1
 	}
 	rollouts, err := database.Rollouts(ctx)
 	if err != nil {
@@ -100,11 +109,17 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 		own,
 		allowlist,
 		fleetcheck.Verification{
-			CodexCandidateIDs: codexCandidates,
-			CodexLegacySource: codexLegacySource,
-			CodexLineageRoots: codexLineageRoots,
-			DormantAccountIDs: dormantAccounts,
-			LiveCodexSockets:  liveCodexSockets,
+			CodexCandidateIDs:   codexCandidates,
+			CodexRolloutFileIDs: codexRolloutFiles,
+			CodexLegacySource:   codexLegacySource,
+			CodexLineageRoots:   codexLineageRoots,
+			LegacyEmptyCWDIDs:   legacyEmptyCWD,
+			SocketSquatters:     socketSquatters(scan.Live.Panes),
+			ClaudeTranscriptIDs: claudeTranscripts,
+			DormantAccountIDs: dormantAccountIDs(
+				scan.Output.Rows,
+				accountRoots(resolved.ClaudeRoots),
+			),
 		},
 	)
 	unallowed := 0
@@ -161,6 +176,66 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 		allowed,
 	)
 	return 0
+}
+
+// socketSquatters counts the sessions on each tmux socket whose name is not the
+// socket's own. Every fleet chat is launched with `new-session -s "$sock"`, so
+// a differently named session is other work parked on that server — the bound
+// for the legacy-socket-squatter class, and never a chat.
+func socketSquatters(panes []gather.Pane) map[string]int {
+	sessions := make(map[string]map[string]struct{})
+	for _, pane := range panes {
+		if pane.SessionName == "" || pane.SessionName == pane.Socket {
+			continue
+		}
+		names := sessions[pane.Socket]
+		if names == nil {
+			names = make(map[string]struct{})
+			sessions[pane.Socket] = names
+		}
+		names[pane.SessionName] = struct{}{}
+	}
+	result := make(map[string]int, len(sessions))
+	for socket, names := range sessions {
+		result[socket] = len(names)
+	}
+	return result
+}
+
+// dormantAccountIDs names the Claude rows the legacy picker cannot reach
+// because they live under an account root it never walks. The shadow harness
+// points the reference script at account 1's root alone, so "account > 1" is
+// only a real absence when that account's root CANONICALISES somewhere else:
+// on this fleet ~/.cc/2/projects and ~/.cc/3/projects are symlinks back to
+// account 1's store, and treating a row there as unreachable would hide a chat
+// the legacy picker does list.
+func dormantAccountIDs(
+	rows []compose.Row,
+	roots []compose.AccountRoot,
+) map[string]struct{} {
+	walked := ""
+	for _, root := range roots {
+		if root.Account == 1 {
+			walked = root.Path
+			break
+		}
+	}
+	separate := make(map[int]struct{}, len(roots))
+	for _, root := range roots {
+		if root.Account > 1 && root.Path != walked {
+			separate[root.Account] = struct{}{}
+		}
+	}
+	result := make(map[string]struct{})
+	for _, row := range rows {
+		if row.Kind != compose.ResumeClaude {
+			continue
+		}
+		if _, unreachable := separate[row.Account]; unreachable {
+			result[row.ID] = struct{}{}
+		}
+	}
+	return result
 }
 
 // resolveCheckAllowlist locates the shadow-check allowlist without knowing

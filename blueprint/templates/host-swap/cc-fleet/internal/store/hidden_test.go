@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,58 +24,104 @@ const (
 	helperWriteCount = 200
 )
 
-func TestHiddenBusyPolicyWarnsAndSucceeds(t *testing.T) {
+// A hide taken while a concurrent writer holds the shared database must not
+// fail, must say so loudly, and must SURVIVE: the carrier file is written
+// whether or not the row lands, which is cc-db.sh's own order (cc-db.sh:133-137)
+// and the reason a busy database costs a warning instead of a lost decision.
+func TestHiddenBusyPolicyWarnsAndKeepsTheHide(t *testing.T) {
 	setStoreTestJail(t)
-	blocker := openTestStore(t)
-	t.Cleanup(func() { _ = blocker.Close() })
 
 	var warnings bytes.Buffer
 	writer := openTestStore(t, WithWarningWriter(&warnings))
 	t.Cleanup(func() { _ = writer.Close() })
 	ctx := context.Background()
 
-	if _, err := writer.db.ExecContext(ctx, "PRAGMA busy_timeout=1"); err != nil {
-		t.Fatalf("shorten busy timeout: %v", err)
+	if err := writer.Hide(ctx, Hidden{ID: "busy-unhide", HiddenAt: 2}); err != nil {
+		t.Fatalf("seed Hide() error = %v", err)
 	}
-	if err := blocker.WithImmediateTx(ctx, func(tx *ImmediateTx) error {
-		if err := tx.SetMeta(ctx, "hold_writer_lock", "yes"); err != nil {
-			return err
-		}
-		return writer.Hide(ctx, Hidden{
-			ID:       "busy-hide",
-			Engine:   "cc",
-			HiddenAt: 1,
-		})
-	}); err != nil {
+	if err := writer.state.SetBusyTimeout(ctx, 1); err != nil {
+		t.Fatalf("shorten shared busy timeout: %v", err)
+	}
+	release := holdSharedWriteLock(t, writer.SharedPath())
+
+	if err := writer.Hide(ctx, Hidden{ID: "busy-hide", HiddenAt: 1}); err != nil {
 		t.Fatalf("Hide() under persistent SQLITE_BUSY error = %v, want nil", err)
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
-		!strings.Contains(got, "NOT saved") {
-		t.Fatalf("busy warning = %q, want loud not-saved warning", got)
+		!strings.Contains(got, "was NOT") {
+		t.Fatalf("busy warning = %q, want a loud not-written warning", got)
 	}
-	if _, found, err := writer.Hidden(ctx, "busy-hide"); err != nil || found {
-		t.Fatalf("Hidden() after dropped busy write found = %v, error = %v; want false, nil", found, err)
+	if _, found, err := writer.Hidden(ctx, "busy-hide"); err != nil || !found {
+		t.Fatalf(
+			"Hidden() after a busy hide found = %v, error = %v; want true, nil — the carrier keeps it",
+			found,
+			err,
+		)
 	}
+	assertCarrierHas(t, writer.CarrierPath(), "busy-hide")
 
-	if err := writer.Hide(ctx, Hidden{ID: "busy-unhide", Engine: "cx", HiddenAt: 2}); err != nil {
-		t.Fatalf("seed Hide() error = %v", err)
-	}
 	warnings.Reset()
-	if err := blocker.WithImmediateTx(ctx, func(tx *ImmediateTx) error {
-		if err := tx.SetMeta(ctx, "hold_writer_lock_again", "yes"); err != nil {
-			return err
-		}
-		return writer.Unhide(ctx, "busy-unhide")
-	}); err != nil {
+	if err := writer.Unhide(ctx, "busy-unhide"); err != nil {
 		t.Fatalf("Unhide() under persistent SQLITE_BUSY error = %v, want nil", err)
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
-		!strings.Contains(got, "NOT saved") {
-		t.Fatalf("busy warning = %q, want loud not-saved warning", got)
+		!strings.Contains(got, "was NOT") {
+		t.Fatalf("busy warning = %q, want a loud not-written warning", got)
 	}
+	// The delete never reached the row, so the chat is still hidden. Reporting
+	// otherwise would be the drift this store exists to end.
 	if _, found, err := writer.Hidden(ctx, "busy-unhide"); err != nil || !found {
-		t.Fatalf("Hidden() after dropped busy unhide found = %v, error = %v; want true, nil", found, err)
+		t.Fatalf("Hidden() after a busy unhide found = %v, error = %v; want true, nil", found, err)
 	}
+	release()
+}
+
+// holdSharedWriteLock takes the shared database's write lock from a separate
+// connection and keeps it until the returned function runs.
+func holdSharedWriteLock(t *testing.T, path string) func() {
+	t.Helper()
+
+	blocker, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open blocking handle: %v", err)
+	}
+	connection, err := blocker.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("acquire blocking connection: %v", err)
+	}
+	if _, err := connection.ExecContext(
+		context.Background(),
+		"BEGIN IMMEDIATE",
+	); err != nil {
+		t.Fatalf("begin blocking transaction: %v", err)
+	}
+	released := false
+	release := func() {
+		if released {
+			return
+		}
+		released = true
+		_, _ = connection.ExecContext(context.Background(), "ROLLBACK")
+		_ = connection.Close()
+		_ = blocker.Close()
+	}
+	t.Cleanup(release)
+	return release
+}
+
+func assertCarrierHas(t *testing.T, carrier, id string) {
+	t.Helper()
+
+	content, err := os.ReadFile(carrier)
+	if err != nil {
+		t.Fatalf("read carrier %s: %v", carrier, err)
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		if line == id {
+			return
+		}
+	}
+	t.Fatalf("carrier %s = %q, want a line %q", carrier, content, id)
 }
 
 func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {

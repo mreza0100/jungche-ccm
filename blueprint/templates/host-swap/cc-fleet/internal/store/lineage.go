@@ -235,6 +235,10 @@ func (s *Store) ReconcileCodexLineageRoots(ctx context.Context) error {
 	})
 }
 
+// migrateCodexLineageHides denormalizes every rollout's lineage root and
+// collapses the v1 per-rollout Codex hides onto that root, keeping the newest
+// hidden_at. The merged row's baseline_prompts is NULL: the column is retired
+// and a hide is permanent, so nothing may resurrect an auto-unhide baseline.
 func migrateCodexLineageHides(
 	ctx context.Context,
 	tx *ImmediateTx,
@@ -243,11 +247,7 @@ func migrateCodexLineageHides(
 	if err != nil {
 		return err
 	}
-	lineages, roots := ResolveCodexLineages(rollouts)
-	lineageByRoot := make(map[string]CodexLineage, len(lineages))
-	for _, lineage := range lineages {
-		lineageByRoot[lineage.RootID] = lineage
-	}
+	_, roots := ResolveCodexLineages(rollouts)
 	for _, rollout := range rollouts {
 		root := roots[rollout.ID]
 		if root == "" {
@@ -301,7 +301,7 @@ ORDER BY id`)
 		if target == nil {
 			target = &migratedHide{hidden: Hidden{
 				ID:       root,
-				Engine:   "cx",
+				Engine:   CodexEngine,
 				HiddenAt: hidden.HiddenAt,
 			}}
 			migrated[root] = target
@@ -309,12 +309,6 @@ ORDER BY id`)
 		target.ids = append(target.ids, hidden.ID)
 		if hidden.HiddenAt > target.hidden.HiddenAt {
 			target.hidden.HiddenAt = hidden.HiddenAt
-		}
-		if lineage, found := lineageByRoot[root]; found {
-			baseline := lineage.PromptCount
-			target.hidden.BaselinePrompts = &baseline
-		} else {
-			target.hidden.BaselinePrompts = hidden.BaselinePrompts
 		}
 	}
 	for _, target := range migrated {

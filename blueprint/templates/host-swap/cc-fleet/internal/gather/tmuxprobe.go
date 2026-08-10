@@ -34,6 +34,14 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 	if binary == "" {
 		binary = "tmux"
 	}
+	// pane_current_path is asked for WHOLE, never through tmux's b: basename
+	// modifier. Pane.CurrentPath is a directory: it becomes a row's CWD, and it
+	// is the directory the Codex thread resolver matches against the state
+	// store's absolute threads.cwd. A basename matched nothing there, so every
+	// live Codex session that holds no rollout descriptor — the normal shape
+	// since Codex 0.146.1 — silently lost its live row. The project name is
+	// derived in Go (compose.projectName), where the full path is still there
+	// to derive it from.
 	format := strings.Join([]string{
 		"#{session_name}",
 		"#{window_id}",
@@ -43,7 +51,7 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		"#{pane_pid}",
 		"#{pane_id}",
 		"#{?session_attached,1,0}",
-		"#{b:pane_current_path}",
+		"#{pane_current_path}",
 	}, "\x1f")
 	command := exec.CommandContext(
 		ctx,
@@ -68,7 +76,7 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		legacyFormat := strings.Join([]string{
 			"#{session_name}",
 			"#{s/^[^ ]* //:pane_title}",
-			"#{b:pane_current_path}",
+			"#{pane_current_path}",
 			"#{session_windows}",
 			"#{?session_attached,1,0}",
 			"#{session_created}",

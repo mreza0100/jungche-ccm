@@ -1,19 +1,24 @@
-// Package legacy converts the retired flat-file hide list to and from the
-// SQLite representation without modifying source files during import.
+// Package legacy repairs the two halves of the shared hidden set against each
+// other: the carrier file ~/.claude/.cc-ls-hidden and the `hidden` table in
+// ~/.cc/fleet.db.
+//
+// Both commands are near-no-ops in normal operation, and that is the point.
+// Every hide now writes the database row AND the carrier line in the same call,
+// so the two cannot drift on their own. They drift when something outside that
+// path touches one of them — a database restored from backup, a carrier file
+// edited by hand, a run where SQLite was unopenable and only the file was
+// written. Import and Export are the repair for exactly those, kept for the day
+// it happens and no longer part of any normal run.
 package legacy
 
 import (
 	"context"
 	"errors"
-	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"hostops/cc-fleet/internal/paths"
+	"hostops/cc-fleet/internal/shared"
 	"hostops/cc-fleet/internal/store"
 )
 
@@ -22,27 +27,29 @@ const ImportDoneMeta = "legacy_import_done"
 // Result summarizes a legacy conversion.
 type Result struct {
 	Imported int
-	// AlreadyActive stays zero: a hide is permanent, so a legacy id whose
-	// chat grew still imports as hidden. The counter survives for the
-	// command's output format.
-	AlreadyActive int
-	Unknown       int
-	Exported      int
+	Unknown  int
+	Exported int
 }
 
-// Import converts ~/.claude/.cc-ls-hidden. Every listed id that is indexed
-// imports as hidden, whatever the retired .at byte baselines claim. The legacy
-// files are opened read-only and left byte-for-byte untouched.
+// Import unions the carrier file into the shared hidden table: every id the
+// file lists ends up as a row, and nothing is removed. A Codex id resolves to
+// its lineage root first, because that is the id the picker hides and unhides.
+//
+// Unknown counts the ids no index row claims. They are imported all the same —
+// the union is the whole contract, and an id in the carrier file is already
+// hidden as far as every reader is concerned — but they are worth reporting,
+// because that is what `hidden --prune-orphans` will offer to clear.
+//
+// The carrier file is never rewritten here. Ids it already holds re-append as
+// no-ops; a canonicalized lineage root is appended beside the child id it came
+// from, and the child id stays, because removing it is an unhide and Import is
+// not an unhide.
 func Import(ctx context.Context, database *store.Store) (Result, error) {
 	if database == nil {
 		return Result{}, errors.New("legacy store is nil")
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return Result{}, err
-	}
-	hiddenPath := filepath.Join(resolved.Home, ".claude", ".cc-ls-hidden")
-	ids, err := readHiddenIDs(hiddenPath)
+	state := database.Shared()
+	ids, err := carrierIDs(state)
 	if err != nil {
 		return Result{}, err
 	}
@@ -50,19 +57,15 @@ func Import(ctx context.Context, database *store.Store) (Result, error) {
 	result := Result{}
 	now := time.Now().Unix()
 	for _, id := range ids {
-		targetID, engine, found, err := indexedTarget(ctx, database, id)
+		targetID, _, found, err := indexedTarget(ctx, database, id)
 		if err != nil {
 			return result, err
 		}
 		if !found {
 			result.Unknown++
-			continue
+			targetID = id
 		}
-		if err := database.Hide(ctx, store.Hidden{
-			ID:       targetID,
-			Engine:   engine,
-			HiddenAt: now,
-		}); err != nil {
+		if err := state.Hide(ctx, targetID, now); err != nil {
 			return result, err
 		}
 		result.Imported++
@@ -73,78 +76,46 @@ func Import(ctx context.Context, database *store.Store) (Result, error) {
 	return result, nil
 }
 
-// Export atomically rewrites the two legacy hide files from current SQLite
-// state. The .at file keeps carrying the targets' current sizes for any old
-// reader, even though import no longer consults it.
+// Export rewrites the carrier file from the shared hidden table, sorted, under
+// the same lock cc-db.sh's _leg_del takes.
+//
+// It unions the file into the table first. A whole-file rewrite is the one
+// operation here that can DELETE a hide, and a hide the file holds but the
+// table does not is precisely the state a repair command is called for — an
+// export that dropped it would destroy the thing it was run to save. After the
+// union the rewrite is lossless by construction.
+//
+// Only the id list is written: the retired .at byte-baseline file fed the
+// auto-unhide ratchet, which no longer exists, and nothing reads it.
 func Export(ctx context.Context, database *store.Store) (Result, error) {
 	if database == nil {
 		return Result{}, errors.New("legacy store is nil")
 	}
-	resolved, err := paths.Resolve()
+	state := database.Shared()
+	if _, err := Import(ctx, database); err != nil {
+		return Result{}, err
+	}
+	ids, err := state.DatabaseHiddenIDs(ctx)
 	if err != nil {
 		return Result{}, err
 	}
-	rows, err := database.HiddenChats(ctx)
-	if err != nil {
+	sort.Strings(ids)
+	if err := state.RewriteCarrier(ids); err != nil {
 		return Result{}, err
 	}
-	sort.Slice(rows, func(left, right int) bool {
-		return rows[left].ID < rows[right].ID
-	})
-
-	var hiddenContent strings.Builder
-	var baselineContent strings.Builder
-	for _, row := range rows {
-		hiddenContent.WriteString(row.ID)
-		hiddenContent.WriteByte('\n')
-		size := int64(0)
-		if row.Engine == "cc" {
-			if transcript, found, err := database.Transcript(ctx, row.ID); err != nil {
-				return Result{}, err
-			} else if found {
-				size = transcript.Size
-			}
-		} else if row.Engine == "cx" {
-			if lineage, found, err := database.CodexLineage(
-				ctx,
-				row.ID,
-			); err != nil {
-				return Result{}, err
-			} else if found {
-				size = lineage.Newest.Size
-			} else if rollout, found, err := database.Rollout(
-				ctx,
-				row.ID,
-			); err != nil {
-				return Result{}, err
-			} else if found {
-				size = rollout.Size
-			}
-		}
-		fmt.Fprintf(&baselineContent, "%s\t%d\n", row.ID, size)
-	}
-
-	hiddenPath := filepath.Join(resolved.Home, ".claude", ".cc-ls-hidden")
-	if err := atomicWrite(hiddenPath, []byte(hiddenContent.String())); err != nil {
-		return Result{}, err
-	}
-	if err := atomicWrite(hiddenPath+".at", []byte(baselineContent.String())); err != nil {
-		return Result{}, err
-	}
-	return Result{Exported: len(rows)}, nil
+	return Result{Exported: len(ids)}, nil
 }
 
-func readHiddenIDs(path string) ([]string, error) {
-	content, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
+// carrierIDs reads the carrier file's ids, deduplicated and sorted so an import
+// is deterministic whatever order the file grew in.
+func carrierIDs(state *shared.Store) ([]string, error) {
+	lines, err := state.CarrierIDs()
 	if err != nil {
-		return nil, fmt.Errorf("read legacy hidden file: %w", err)
+		return nil, err
 	}
-	seen := make(map[string]struct{})
-	var ids []string
-	for _, line := range strings.Split(string(content), "\n") {
+	seen := make(map[string]struct{}, len(lines))
+	ids := make([]string, 0, len(lines))
+	for _, line := range lines {
 		id := strings.TrimSpace(line)
 		if id == "" {
 			continue
@@ -186,31 +157,4 @@ func indexedTarget(
 		return id, "cx", true, nil
 	}
 	return "", "", false, nil
-}
-
-func atomicWrite(path string, content []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create legacy directory: %w", err)
-	}
-	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("create legacy temporary file: %w", err)
-	}
-	tempPath := file.Name()
-	defer os.Remove(tempPath)
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := file.Write(content); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tempPath, path); err != nil {
-		return fmt.Errorf("replace legacy file: %w", err)
-	}
-	return nil
 }

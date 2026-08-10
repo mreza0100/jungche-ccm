@@ -13,6 +13,7 @@ import (
 
 	"hostops/cc-fleet/internal/index"
 	"hostops/cc-fleet/internal/paths"
+	"hostops/cc-fleet/internal/shared"
 	"hostops/cc-fleet/internal/store"
 )
 
@@ -165,36 +166,48 @@ func (finisher *Finisher) recordPostExitHide(
 	return nil
 }
 
+// reapTeammates takes down the chats this chat spawned, reading them from the
+// shared store's `children` table — the same rows chat.sh writes with `cc-db.sh
+// child-add new` for a detached teammate (chat.sh:1362) and `child-add pane`
+// for one sharing this server (chat.sh:435). The flat files under
+// ~/.claude/.cc-{new,pane}-children are the fallback the children helper
+// describes; the live fleet stopped writing them, and reading them alone is why
+// teammates outlived their orchestrator.
+//
+// A detached teammate owns its socket, so it dies by kill-server. A pane
+// teammate shares this chat's server, so it dies by kill-pane and never by
+// kill-server, which would take this chat's neighbours down with it
+// (chat.sh:428-431).
 func (finisher *Finisher) reapTeammates(
 	ctx context.Context,
 	id string,
 ) error {
 	var reapErrors []error
+	state := finisher.database.Shared()
+
 	detachedPath := filepath.Join(
 		finisher.paths.home,
 		".claude",
 		".cc-new-children",
 		id,
 	)
-	if file, err := os.Open(detachedPath); err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			socket := strings.TrimSpace(scanner.Text())
-			if socket == "" {
-				continue
-			}
-			socketPath := filepath.Join(finisher.paths.tmuxDir, socket)
-			_ = finisher.tmux.KillServer(ctx, socketPath)
-			if err := os.Remove(socketPath); err != nil &&
-				!errors.Is(err, fs.ErrNotExist) {
-				reapErrors = append(reapErrors, err)
-			}
+	detached, err := finisher.children(ctx, shared.KindNew, id, detachedPath)
+	if err != nil {
+		reapErrors = append(reapErrors, err)
+	}
+	for _, socket := range detached {
+		socket = strings.TrimSpace(socket)
+		if socket == "" {
+			continue
 		}
-		if err := scanner.Err(); err != nil {
+		socketPath := filepath.Join(finisher.paths.tmuxDir, socket)
+		_ = finisher.tmux.KillServer(ctx, socketPath)
+		if err := os.Remove(socketPath); err != nil &&
+			!errors.Is(err, fs.ErrNotExist) {
 			reapErrors = append(reapErrors, err)
 		}
-		_ = file.Close()
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	}
+	if err := state.ClearChildren(ctx, shared.KindNew, id); err != nil {
 		reapErrors = append(reapErrors, err)
 	}
 	if err := os.Remove(detachedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -207,30 +220,73 @@ func (finisher *Finisher) reapTeammates(
 		".cc-pane-children",
 		id,
 	)
-	if file, err := os.Open(panePath); err == nil {
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			socket, pane, found := strings.Cut(scanner.Text(), "\t")
-			if !found || pane == "" {
-				continue
-			}
-			_ = finisher.tmux.KillPane(
-				ctx,
-				filepath.Join(finisher.paths.tmuxDir, socket),
-				pane,
-			)
+	panes, err := finisher.children(ctx, shared.KindPane, id, panePath)
+	if err != nil {
+		reapErrors = append(reapErrors, err)
+	}
+	for _, value := range panes {
+		socket, pane, found := strings.Cut(value, "\t")
+		if !found || pane == "" {
+			continue
 		}
-		if err := scanner.Err(); err != nil {
-			reapErrors = append(reapErrors, err)
-		}
-		_ = file.Close()
-	} else if !errors.Is(err, fs.ErrNotExist) {
+		_ = finisher.tmux.KillPane(
+			ctx,
+			filepath.Join(finisher.paths.tmuxDir, socket),
+			pane,
+		)
+	}
+	if err := state.ClearChildren(ctx, shared.KindPane, id); err != nil {
 		reapErrors = append(reapErrors, err)
 	}
 	if err := os.Remove(panePath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		reapErrors = append(reapErrors, err)
 	}
 	return errors.Join(reapErrors...)
+}
+
+// children resolves one kind of teammate for a chat: the shared table's rows,
+// or the flat file when the table has nothing to say.
+//
+// "Nothing to say" covers both an unreachable table and a table with no row for
+// this chat. The second case is the one that matters in practice: a chat that
+// registered its teammates through the old flat-file path and exits after the
+// cutover has a file and no rows, and reading only the table would leave its
+// teammates running forever. A chat registered through the table has rows and
+// no file, so the file is never consulted for it.
+func (finisher *Finisher) children(
+	ctx context.Context,
+	kind, id, flatPath string,
+) ([]string, error) {
+	values, _, err := finisher.database.Shared().Children(ctx, kind, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(values) > 0 {
+		return values, nil
+	}
+	return readChildFile(flatPath)
+}
+
+// readChildFile reads one flat teammate file, whose lines are exactly the
+// values cc-db.sh's fallback appends (cc-db.sh:283-284).
+func readChildFile(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	var values []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		values = append(values, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return values, nil
 }
 
 func waitContext(ctx context.Context, duration time.Duration) error {

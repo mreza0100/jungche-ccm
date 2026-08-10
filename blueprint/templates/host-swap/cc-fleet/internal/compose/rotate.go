@@ -59,8 +59,6 @@ func cloneOutput(output Output) Output {
 	for project, directory := range output.ProjectDirs {
 		copy.ProjectDirs[project] = directory
 	}
-	copy.BaselineUpdates = append([]BaselineUpdate(nil), output.BaselineUpdates...)
-	copy.UnhideIDs = append([]string(nil), output.UnhideIDs...)
 	return copy
 }
 

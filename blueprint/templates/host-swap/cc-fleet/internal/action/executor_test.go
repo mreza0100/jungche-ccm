@@ -302,6 +302,19 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 		t.Fatalf("swap runner = %q %q", runner.name, runner.args)
 	}
 
+	// Without an override the swap script resolves to the installed bundle;
+	// the repo copy under work/host-ops/ is a pre-move path that is gone.
+	bare := request
+	bare.SwapScript = ""
+	runner.args = nil
+	if _, err := executor.Open(context.Background(), bare); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.args) == 0 ||
+		runner.args[0] != "/home/test/.claude/bin/cc-swap-chat.sh" {
+		t.Fatalf("default swap script = %q", runner.args)
+	}
+
 	request.CurrentTMUX = "/tmp/jail/cc-100-1-1,1,0"
 	line, err = executor.Open(context.Background(), request)
 	if err != nil {
