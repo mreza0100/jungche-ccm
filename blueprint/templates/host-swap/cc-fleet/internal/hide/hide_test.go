@@ -2,6 +2,7 @@ package hide
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,6 +16,8 @@ import (
 	"hostops/cc-fleet/internal/compose"
 	"hostops/cc-fleet/internal/gather"
 	"hostops/cc-fleet/internal/index"
+	"hostops/cc-fleet/internal/resolve"
+	"hostops/cc-fleet/internal/shared"
 	"hostops/cc-fleet/internal/store"
 )
 
@@ -241,6 +244,133 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	if _, found, err := database.Hidden(ctx, claudeID); err != nil || found {
 		t.Fatalf("Hidden(Claude) found=%v err=%v, want absent", found, err)
 	}
+}
+
+// A Codex session that writes no rollout file — the normal shape of a
+// paginated thread since Codex 0.146.1 — holds no rollout file descriptor,
+// so pid ancestry alone cannot name it. It must still be able to hide ITSELF.
+func TestManagerStoreOnlyCodexSelfHides(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	threadID := "55555555-5555-4555-8555-555555555555"
+	writeCodexStateThread(
+		t,
+		filepath.Join(jail.codexRoot, "state_0.sqlite"),
+		threadID,
+		"/work/store-only",
+		"",
+		1_700_000_000,
+	)
+
+	tmux := &fakeTmux{panePID: 11}
+	proc := &fakeProc{
+		pids:    []int{30},
+		cmdline: map[int][]string{30: {"codex"}},
+		links: map[int][]gather.FDLink{
+			30: {{FD: 3, Target: "/dev/null"}},
+		},
+		stats: map[int]gather.ProcStat{30: {ParentPID: 11}},
+		environ: map[int]map[string]string{
+			30: {resolve.CodexThreadEnv: threadID},
+		},
+	}
+	now := time.Unix(1_700_000_500, 0)
+	manager, err := New(database, Dependencies{
+		ProcFS:  proc,
+		Tmux:    tmux,
+		Spawner: &captureSpawner{},
+		Now:     func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := manager.Hide(ctx, Request{
+		Self: true,
+		Environment: SelfEnvironment{
+			TMUX:     filepath.Join(jail.tmuxDir, "cx-600-1-1") + ",4,0",
+			TMUXPane: "%9",
+		},
+	})
+	if err != nil {
+		t.Fatalf("store-only Codex self-hide: %v", err)
+	}
+	if target.ID != threadID || target.Engine != CodexEngine {
+		t.Fatalf("store-only Codex target = %#v", target)
+	}
+	// No rollout row exists for this thread — it lives only in Codex's own
+	// state sqlite — so the fleet index cannot name its engine.
+	assertHidden(t, database, threadID, "", now.Unix())
+}
+
+// A paginated thread that wrote a rollout file earlier but no longer holds it
+// open is named by the state store's own rollout_path, not by a file walk.
+func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	threadID := "55555555-5555-4555-8555-555555555555"
+	rolloutID := "66666666-6666-4666-8666-666666666666"
+	rolloutPath := filepath.Join(
+		jail.codexRoot,
+		"sessions",
+		"2026",
+		"07",
+		"rollout-2026-07-27T10-00-00-"+rolloutID+".jsonl",
+	)
+	writeCodexStateThread(
+		t,
+		filepath.Join(jail.codexRoot, "state_0.sqlite"),
+		threadID,
+		"/work/paginated",
+		rolloutPath,
+		1_700_000_000,
+	)
+
+	now := time.Unix(1_700_000_500, 0)
+	manager, err := New(database, Dependencies{
+		ProcFS: &fakeProc{
+			pids:    []int{30},
+			cmdline: map[int][]string{30: {"codex"}},
+			links: map[int][]gather.FDLink{
+				30: {{FD: 3, Target: "/dev/null"}},
+			},
+			stats: map[int]gather.ProcStat{30: {ParentPID: 11}},
+			environ: map[int]map[string]string{
+				30: {resolve.CodexThreadEnv: threadID},
+			},
+		},
+		Tmux:    &fakeTmux{panePID: 11},
+		Spawner: &captureSpawner{},
+		Now:     func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target, err := manager.Hide(ctx, Request{
+		Self: true,
+		Environment: SelfEnvironment{
+			TMUX:     filepath.Join(jail.tmuxDir, "cx-700-1-1") + ",5,0",
+			TMUXPane: "%9",
+		},
+	})
+	if err != nil {
+		t.Fatalf("paginated Codex self-hide: %v", err)
+	}
+	if target.ID != rolloutID || target.DataPath != rolloutPath {
+		t.Fatalf(
+			"paginated Codex target = %#v, want id %q from the state store",
+			target,
+			rolloutID,
+		)
+	}
+	assertHidden(t, database, rolloutID, "", now.Unix())
 }
 
 func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
@@ -506,6 +636,92 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	assertHidden(t, database, id, ClaudeEngine, 100)
 }
 
+// The live fleet registers teammates through `cc-db.sh child-add` (chat.sh:435,
+// chat.sh:1362) and writes no flat file at all. Reading only those files is why
+// teammates outlived the chat that spawned them, so the reaper must take the
+// table as its source and reach the same two kills from it: kill-server for a
+// detached teammate on its own socket, kill-pane for one sharing this server.
+func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+	id := "77777777-7777-4777-8777-777777777777"
+	transcriptPath := filepath.Join(jail.claudeRoot, id+".jsonl")
+	if err := database.UpsertTranscript(ctx, store.Transcript{
+		UUID:        id,
+		Path:        transcriptPath,
+		PromptCount: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state := database.Shared()
+	if err := state.AddChild(ctx, shared.KindNew, id, "cc-501-1-1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.AddChild(ctx, shared.KindPane, id, "cc-502-1-1\t%21", 1); err != nil {
+		t.Fatal(err)
+	}
+	// A teammate of a DIFFERENT chat must survive this reap.
+	if err := state.AddChild(
+		ctx,
+		shared.KindNew,
+		"neighbour",
+		"cc-503-1-1",
+		1,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	socketName := "cc-500-1-1"
+	paneID := "%9"
+	tmux := &fakeTmux{existsFor: 1}
+	finisher, err := NewFinisher(database, Dependencies{
+		Tmux:         tmux,
+		Refresher:    refreshFunc(func(context.Context) error { return nil }),
+		Delay:        time.Millisecond,
+		PollEvery:    time.Millisecond,
+		PollAttempts: 2,
+		Now:          func() time.Time { return time.Unix(300, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := finisher.Run(ctx, ExitArgs{
+		Engine:     ClaudeEngine,
+		ID:         id,
+		DataPath:   transcriptPath,
+		SocketPath: filepath.Join(jail.tmuxDir, socketName),
+		SocketName: socketName,
+		PaneID:     paneID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tmux.killedServers, []string{"cc-501-1-1"}) {
+		t.Fatalf("killed servers = %q, want only the detached teammate", tmux.killedServers)
+	}
+	if !reflect.DeepEqual(tmux.killedPanes, []string{
+		socketName + "\t" + paneID,
+		"cc-502-1-1\t%21",
+	}) {
+		t.Fatalf("killed panes = %q", tmux.killedPanes)
+	}
+	// The reaped rows are gone, cc-db.sh's child-clear (cc-db.sh:296-303), and
+	// the neighbour's are untouched.
+	if values, _, err := state.Children(ctx, shared.KindNew, id); err != nil ||
+		len(values) != 0 {
+		t.Fatalf("children after reap = %v, %v", values, err)
+	}
+	if values, _, err := state.Children(ctx, shared.KindPane, id); err != nil ||
+		len(values) != 0 {
+		t.Fatalf("pane children after reap = %v, %v", values, err)
+	}
+	values, _, err := state.Children(ctx, shared.KindNew, "neighbour")
+	if err != nil || !reflect.DeepEqual(values, []string{"cc-503-1-1"}) {
+		t.Fatalf("neighbour children = %v, %v", values, err)
+	}
+}
+
 func TestFinisherCodexUsesQuit(t *testing.T) {
 	jail := newHideJail(t)
 	database := jail.open(t)
@@ -684,8 +900,53 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
+// writeCodexStateThread builds a scratch Codex state store holding one live
+// user thread, using the real schema captured from a live 0.146.1 store. The
+// "sqlite" driver is registered by the store package this test already links.
+func writeCodexStateThread(
+	t *testing.T,
+	path, id, cwd, rolloutPath string,
+	createdAt int64,
+) {
+	t.Helper()
+	schema, err := os.ReadFile(
+		filepath.Join("..", "..", "testdata", "codex-state-schema.sql"),
+	)
+	if err != nil {
+		t.Fatalf("read Codex state schema: %v", err)
+	}
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("create scratch Codex state store: %v", err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.ExecContext(ctx, string(schema)); err != nil {
+		t.Fatalf("apply Codex state schema: %v", err)
+	}
+	if _, err := database.ExecContext(ctx, `
+INSERT INTO threads (
+  id, rollout_path, created_at, updated_at, source, model_provider, cwd,
+  title, sandbox_policy, approval_mode, thread_source, history_mode
+) VALUES (?, ?, ?, ?, 'cli', 'openai', ?, '', 'workspace-write',
+  'on-request', 'user', 'legacy')`,
+		id,
+		rolloutPath,
+		createdAt,
+		createdAt,
+		cwd,
+	); err != nil {
+		t.Fatalf("insert scratch Codex thread %q: %v", id, err)
+	}
+}
+
 // assertHidden also pins the retired ratchet column to NULL: a hide is
 // permanent, so no prompt baseline is ever written.
+//
+// The engine argument is the DERIVED one. A chat the fleet index has never
+// seen — a Codex thread known only to Codex's own state store, say — derives
+// no engine at all, and the caller passes "" for it: the hide holds either way,
+// because an empty engine means "hidden whatever the engine".
 func assertHidden(
 	t *testing.T,
 	database *store.Store,

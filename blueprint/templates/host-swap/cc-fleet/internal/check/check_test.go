@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -140,12 +141,13 @@ func TestAllowlistRejectsBroadOrUnexplainedSyntax(t *testing.T) {
 func TestVerifiedAllowlistClasses(t *testing.T) {
 	rules, err := ParseAllowlist(strings.NewReader(strings.Join([]string{
 		"class\tcodex-120-bound\tverified bound",
+		"class\tcodex-store-only\tverified store-only thread",
 		"class\tcodex-prompt-semantics\tverified prompt semantics",
 		"class\tlive-prompt-drift\tverified live drift",
 		"class\tdormant-account\tverified dormant account",
-		"class\tlegacy-dead-server\tverified missing codex process",
 		"class\tcodex-legacy-source\tverified newer source schema",
-		"class\tlegacy-nonfleet-multiwindow\tverified non-fleet multiwindow",
+		"class\tlegacy-cache-empty-cwd\tverified stale cache cwd",
+		"class\tlegacy-socket-squatter\tverified parked session",
 	}, "\n")))
 	if err != nil {
 		t.Fatal(err)
@@ -153,118 +155,297 @@ func TestVerifiedAllowlistClasses(t *testing.T) {
 	legacy := []Tuple{
 		{ID: "within-120", Kind: "resume-codex", Project: "proja", Prompts: 9},
 		{ID: "live", Kind: "live-claude", Project: "host-ops", Prompts: 10},
-		{ID: "cx-dead", Kind: "live-codex", Project: "host-ops", Prompts: 0},
+		{ID: "stale-cwd", Kind: "resume-claude", Project: "?", Prompts: 4},
+		{ID: "cc-1-2-3", Kind: "live-claude", Project: "parked", Prompts: 0},
 	}
 	own := []Tuple{
 		{ID: "within-120", Kind: "resume-codex", Project: "proja", Prompts: 8},
 		{ID: "outside-120", Kind: "resume-codex", Project: "proja", Prompts: 2},
+		{ID: "no-file", Kind: "resume-codex", Project: "proja", Prompts: 5},
 		{ID: "live", Kind: "live-claude", Project: "host-ops", Prompts: 11},
 		{ID: "account-2", Kind: "resume-claude", Project: "extra", Prompts: 3},
 		{ID: "new-source", Kind: "resume-codex", Project: "extra", Prompts: 1},
+		{ID: "stale-cwd", Kind: "resume-claude", Project: "projc", Prompts: 4},
 	}
 	differences := DiffVerified(legacy, own, rules, Verification{
 		CodexCandidateIDs: map[string]struct{}{
 			"within-120": {},
 			"new-source": {},
 		},
+		CodexRolloutFileIDs: map[string]struct{}{
+			"within-120":  {},
+			"outside-120": {},
+			"new-source":  {},
+		},
 		CodexLegacySource: map[string]struct{}{"new-source": {}},
+		LegacyEmptyCWDIDs: map[string]struct{}{"stale-cwd": {}},
+		SocketSquatters:   map[string]int{"cc-1-2-3": 1},
 		DormantAccountIDs: map[string]struct{}{"account-2": {}},
-		LiveCodexSockets:  map[string]struct{}{},
 	})
-	if len(differences) != 8 {
+	if len(differences) != 11 {
 		t.Fatalf("DiffVerified() returned %d differences: %#v", len(differences), differences)
 	}
+	classes := make(map[string]int)
 	for _, difference := range differences {
 		if !difference.Allowed || difference.Class == "" ||
 			!strings.HasPrefix(difference.Reason, "verified ") {
 			t.Fatalf("unverified semantic difference = %#v", difference)
 		}
+		classes[difference.Class]++
 	}
-	differences = DiffVerified(
-		[]Tuple{{
-			ID: "cx-live", Kind: "live-codex", Project: "host-ops",
-		}},
-		nil,
-		rules,
-		Verification{LiveCodexSockets: map[string]struct{}{"cx-live": {}}},
-	)
-	if len(differences) != 1 || differences[0].Allowed {
-		t.Fatalf("living Codex socket was allowlisted as dead: %#v", differences)
+	want := map[string]int{
+		"codex-120-bound":        1,
+		"codex-store-only":       1,
+		"codex-legacy-source":    1,
+		"codex-prompt-semantics": 2,
+		"live-prompt-drift":      2,
+		"dormant-account":        1,
+		"legacy-cache-empty-cwd": 2,
+		"legacy-socket-squatter": 1,
+	}
+	if !reflect.DeepEqual(classes, want) {
+		t.Fatalf("class census = %#v, want %#v", classes, want)
 	}
 
-	// An ID still inside the newest-120 population must not be hidden by the
-	// bound class when it is missing entirely from legacy output.
+	// An ID still inside the newest-120 population, whose lineage owns a rollout
+	// file, must not be hidden by either Codex class when it is missing entirely
+	// from legacy output.
 	differences = DiffVerified(
 		nil,
 		[]Tuple{{
 			ID: "within-120", Kind: "resume-codex", Project: "proja", Prompts: 8,
 		}},
 		rules,
-		Verification{CodexCandidateIDs: map[string]struct{}{"within-120": {}}},
+		Verification{
+			CodexCandidateIDs:   map[string]struct{}{"within-120": {}},
+			CodexRolloutFileIDs: map[string]struct{}{"within-120": {}},
+		},
 	)
 	if len(differences) != 1 || differences[0].Allowed {
 		t.Fatalf("within-bound missing tuple was allowlisted: %#v", differences)
 	}
 }
 
-func TestNonFleetMultiWindowClassRequiresExcludedSocketShape(t *testing.T) {
+func TestCodexStoreOnlyClassRequiresAnAbsentRolloutFile(t *testing.T) {
+	rules, err := ParseAllowlist(strings.NewReader(strings.Join([]string{
+		"class\tcodex-store-only\tverified store-only thread",
+		"class\tcodex-120-bound\tverified bound",
+	}, "\n")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := map[string]string{"child": "root", "root": "root"}
+	rowsWithoutFile := DiffVerified(
+		nil,
+		[]Tuple{{ID: "child", Kind: "resume-codex", Project: "web", Prompts: 3}},
+		rules,
+		Verification{
+			CodexCandidateIDs:   map[string]struct{}{"child": {}},
+			CodexRolloutFileIDs: map[string]struct{}{},
+			CodexLineageRoots:   roots,
+		},
+	)
+	if len(rowsWithoutFile) != 1 ||
+		rowsWithoutFile[0].Class != "codex-store-only" {
+		t.Fatalf("store-only difference = %#v", rowsWithoutFile)
+	}
+
+	// A file ANYWHERE in the lineage disqualifies the class: the legacy scan
+	// walks files, so such a lineage is reachable and must be judged by the
+	// newest-N bound instead.
+	siblingHasFile := DiffVerified(
+		nil,
+		[]Tuple{{ID: "child", Kind: "resume-codex", Project: "web", Prompts: 3}},
+		rules,
+		Verification{
+			CodexCandidateIDs:   map[string]struct{}{"child": {}},
+			CodexRolloutFileIDs: map[string]struct{}{"root": {}},
+			CodexLineageRoots:   roots,
+		},
+	)
+	if len(siblingHasFile) != 1 || siblingHasFile[0].Allowed {
+		t.Fatalf("lineage with a rollout file was allowlisted: %#v", siblingHasFile)
+	}
+
+	// The one-row-per-lineage bound applies to the store-only class too.
+	duplicated := DiffVerified(
+		nil,
+		[]Tuple{
+			{ID: "child", Kind: "resume-codex", Project: "web", Prompts: 3},
+			{ID: "root", Kind: "resume-codex", Project: "web", Prompts: 4},
+		},
+		rules,
+		Verification{
+			CodexRolloutFileIDs: map[string]struct{}{},
+			CodexLineageRoots:   roots,
+		},
+	)
+	if len(duplicated) != 2 {
+		t.Fatalf("duplicated store-only lineage = %#v", duplicated)
+	}
+	for _, difference := range duplicated {
+		if difference.Allowed {
+			t.Fatalf("duplicated store-only lineage was allowlisted: %#v", duplicated)
+		}
+	}
+}
+
+func TestAgentClassNeedsAnAbsentTranscriptFile(t *testing.T) {
 	rules, err := ParseAllowlist(strings.NewReader(
-		"class\tlegacy-nonfleet-multiwindow\tverified non-fleet multiwindow\n",
+		"class\tagent-without-transcript\tverified newborn agent\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	own := []Tuple{
+		{ID: "newborn", Kind: "agent", Project: "?", Prompts: 0},
+		{ID: "flushed", Kind: "agent", Project: "host-ops", Prompts: 3},
+	}
+	differences := DiffVerified(nil, own, rules, Verification{
+		ClaudeTranscriptIDs: map[string]struct{}{"flushed": {}},
+	})
+	if len(differences) != 2 {
+		t.Fatalf("DiffVerified() returned %d differences: %#v", len(differences), differences)
+	}
+	for _, difference := range differences {
+		newborn := difference.Tuple.ID == "newborn"
+		if difference.Allowed != newborn {
+			t.Fatalf("agent-without-transcript verdict for %#v", difference)
+		}
+	}
+
+	// Two rows for ONE newborn agent is a duplication regression: the class
+	// covers the first and the second stays visible.
+	duplicated := DiffVerified(
+		nil,
+		[]Tuple{
+			{ID: "newborn", Kind: "agent", Project: "?", Prompts: 0},
+			{ID: "newborn", Kind: "agent", Project: "host-ops", Prompts: 0},
+		},
+		rules,
+		Verification{ClaudeTranscriptIDs: map[string]struct{}{}},
+	)
+	unallowed := 0
+	for _, difference := range duplicated {
+		if !difference.Allowed {
+			unallowed++
+		}
+	}
+	if unallowed != 1 {
+		t.Fatalf("duplicated newborn agent rows unallowed = %d: %#v",
+			unallowed, duplicated)
+	}
+
+	// A legacy-only agent row is the opposite fault — Go LOST a row — and has
+	// no class at all.
+	lost := DiffVerified(
+		[]Tuple{{ID: "newborn", Kind: "agent", Project: "?", Prompts: 0}},
+		nil,
+		rules,
+		Verification{ClaudeTranscriptIDs: map[string]struct{}{}},
+	)
+	if len(lost) != 1 || lost[0].Allowed {
+		t.Fatalf("a legacy-only agent row was allowlisted: %#v", lost)
+	}
+}
+
+func TestCacheEmptyCWDClassNeedsTheStaleCacheRow(t *testing.T) {
+	rules, err := ParseAllowlist(strings.NewReader(
+		"class\tlegacy-cache-empty-cwd\tverified stale cache cwd\n",
 	))
 	if err != nil {
 		t.Fatal(err)
 	}
 	legacy := []Tuple{
-		{
-			ID:      "projc-dev",
-			Kind:    "live-claude",
-			Project: "backend",
-			Prompts: 0,
-		},
-		{
-			ID:      "projc-dev",
-			Kind:    "live-claude",
-			Project: "frontend",
-			Prompts: 0,
-		},
+		{ID: "stale", Kind: "resume-claude", Project: "?", Prompts: 6},
+		{ID: "fresh", Kind: "resume-claude", Project: "?", Prompts: 6},
 	}
-	differences := DiffVerified(
-		legacy,
-		nil,
+	own := []Tuple{
+		{ID: "stale", Kind: "resume-claude", Project: "projc", Prompts: 6},
+		{ID: "fresh", Kind: "resume-claude", Project: "projc", Prompts: 6},
+	}
+	differences := DiffVerified(legacy, own, rules, Verification{
+		LegacyEmptyCWDIDs: map[string]struct{}{"stale": {}},
+	})
+	if len(differences) != 4 {
+		t.Fatalf("DiffVerified() returned %d differences: %#v", len(differences), differences)
+	}
+	for _, difference := range differences {
+		allowed := difference.Tuple.ID == "stale"
+		if difference.Allowed != allowed {
+			t.Fatalf("cache-empty-cwd verdict for %#v", difference)
+		}
+	}
+
+	// A prompt-count disagreement is a different fault and must not ride along:
+	// the pair no longer matches on count, so neither side is absolved.
+	unpaired := DiffVerified(
+		[]Tuple{{ID: "stale", Kind: "resume-claude", Project: "?", Prompts: 6}},
+		[]Tuple{{ID: "stale", Kind: "resume-claude", Project: "projc", Prompts: 7}},
 		rules,
-		Verification{},
+		Verification{LegacyEmptyCWDIDs: map[string]struct{}{"stale": {}}},
 	)
-	if len(differences) != 2 {
+	if len(unpaired) != 2 {
+		t.Fatalf("unpaired differences = %#v", unpaired)
+	}
+	for _, difference := range unpaired {
+		if difference.Allowed {
+			t.Fatalf("count mismatch rode the cache class: %#v", unpaired)
+		}
+	}
+}
+
+func TestSocketSquatterClassIsCappedByTheLiveSessionCount(t *testing.T) {
+	rules, err := ParseAllowlist(strings.NewReader(
+		"class\tlegacy-socket-squatter\tverified parked session\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Three sessions are parked on a dead chat's surviving server, each in its
+	// own directory, none of them named after the socket.
+	legacy := []Tuple{
+		{ID: "cc-1-2-3", Kind: "live-claude", Project: "projb-be", Prompts: 0},
+		{ID: "cc-1-2-3", Kind: "live-claude", Project: "projb-fe", Prompts: 0},
+		{ID: "cc-1-2-3", Kind: "live-claude", Project: "projb-cortex", Prompts: 0},
+	}
+	differences := DiffVerified(legacy, nil, rules, Verification{
+		SocketSquatters: map[string]int{"cc-1-2-3": 3},
+	})
+	if len(differences) != 3 {
 		t.Fatalf("DiffVerified() returned %d differences: %#v", len(differences), differences)
 	}
 	for _, difference := range differences {
 		if !difference.Allowed ||
-			difference.Class != "legacy-nonfleet-multiwindow" ||
-			difference.Reason != "verified non-fleet multiwindow" {
-			t.Fatalf("non-fleet multiwindow difference = %#v", difference)
+			difference.Class != "legacy-socket-squatter" ||
+			difference.Reason != "verified parked session" {
+			t.Fatalf("socket squatter difference = %#v", difference)
 		}
 	}
 
-	for name, input := range map[string][]Tuple{
-		"fleet socket": {
-			{
-				ID:      "cc-1-2-3",
-				Kind:    "live-claude",
-				Project: "backend",
-				Prompts: 0,
-			},
-			{
-				ID:      "cc-1-2-3",
-				Kind:    "live-claude",
-				Project: "frontend",
-				Prompts: 0,
-			},
+	// One row beyond the live session count is a row the probe cannot account
+	// for, and the class must not cover it.
+	overBudget := DiffVerified(legacy, nil, rules, Verification{
+		SocketSquatters: map[string]int{"cc-1-2-3": 2},
+	})
+	unallowed := 0
+	for _, difference := range overBudget {
+		if !difference.Allowed {
+			unallowed++
+		}
+	}
+	if unallowed != 1 {
+		t.Fatalf("over-budget squatter rows unallowed = %d: %#v", unallowed, overBudget)
+	}
+
+	for name, verification := range map[string]Verification{
+		"no parked sessions": {SocketSquatters: map[string]int{}},
+		"another socket": {
+			SocketSquatters: map[string]int{"cc-9-9-9": 3},
 		},
-		"single window": {legacy[0]},
 	} {
 		t.Run(name, func(t *testing.T) {
-			differences := DiffVerified(input, nil, rules, Verification{})
-			for _, difference := range differences {
+			for _, difference := range DiffVerified(legacy, nil, rules, verification) {
 				if difference.Allowed {
 					t.Fatalf("unverified difference was allowlisted: %#v", difference)
 				}
@@ -272,16 +453,17 @@ func TestNonFleetMultiWindowClassRequiresExcludedSocketShape(t *testing.T) {
 		})
 	}
 
-	differences = DiffVerified(
-		legacy,
-		[]Tuple{legacy[0]},
+	// A chat that HAS spoken is never a squatter, whatever the socket hosts.
+	prompted := DiffVerified(
+		[]Tuple{{
+			ID: "cc-1-2-3", Kind: "live-claude", Project: "projb-be", Prompts: 4,
+		}},
+		nil,
 		rules,
-		Verification{},
+		Verification{SocketSquatters: map[string]int{"cc-1-2-3": 3}},
 	)
-	for _, difference := range differences {
-		if difference.Allowed {
-			t.Fatalf("partially live server difference was allowlisted: %#v", difference)
-		}
+	if len(prompted) != 1 || prompted[0].Allowed {
+		t.Fatalf("prompted live row was allowlisted as a squatter: %#v", prompted)
 	}
 }
 

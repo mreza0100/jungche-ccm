@@ -130,7 +130,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
 			return 1
 		}
-		if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths.Home) {
+		if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
 			if err := writePrimaryAccount(scan.Paths.Home, outcome.PrimaryAccount); err != nil {
 				fmt.Fprintf(stderr, "cc-fleet ls: save primary account: %v\n", err)
 				return 1
@@ -207,7 +207,7 @@ func openID(ctx context.Context, id string, stdout, stderr io.Writer) int {
 			return openRow(
 				ctx,
 				row,
-				readPrimaryAccount(scan.Paths.Home),
+				readPrimaryAccount(scan.Paths),
 				initialCache1H(),
 				stdout,
 				stderr,
@@ -457,9 +457,9 @@ func runRevive(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// pruneOrphanedHides reports, and only with confirm deletes, the hide ratchets
-// doctor counts as orphaned_hidden. A hide ratchet cannot be recovered once
-// deleted, so the dry run is the default and the count is always printed.
+// pruneOrphanedHides reports, and only with confirm deletes, the hides doctor
+// counts as orphaned_hidden. A hide cannot be recovered once deleted, so the
+// dry run is the default and the count is always printed.
 func pruneOrphanedHides(
 	ctx context.Context,
 	database *store.Store,
@@ -483,7 +483,7 @@ func pruneOrphanedHides(
 		}
 		fmt.Fprintf(
 			stdout,
-			"cc-fleet hidden: %d orphaned hide ratchet(s); re-run with --yes to delete\n",
+			"cc-fleet hidden: %d orphaned hide(s); re-run with --yes to delete\n",
 			len(orphans),
 		)
 		return 0
@@ -504,12 +504,17 @@ func pruneOrphanedHides(
 	}
 	fmt.Fprintf(
 		stdout,
-		"cc-fleet hidden: pruned %d orphaned hide ratchet(s)\n",
+		"cc-fleet hidden: pruned %d orphaned hide(s)\n",
 		deleted,
 	)
 	return 0
 }
 
+// runLegacy repairs the carrier file against the shared hidden table.
+//
+// Neither half is a migration any more: a hide writes both in one call, so both
+// commands normally report the state they found. They are re-runnable on
+// purpose — a repair you may only run once is not a repair.
 func runLegacy(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "usage: cc-fleet legacy import|export")
@@ -535,13 +540,8 @@ func runLegacy(args []string, stdout, stderr io.Writer) int {
 	defer database.Close()
 	ctx := context.Background()
 	if args[0] == "import" {
-		if done, found, err := database.Meta(ctx, legacy.ImportDoneMeta); err != nil {
-			fmt.Fprintf(stderr, "cc-fleet legacy import: %v\n", err)
-			return 1
-		} else if found && done == "1" {
-			fmt.Fprintln(stdout, "legacy import: already complete")
-			return 0
-		}
+		// A full index first: import canonicalizes a Codex id to its lineage
+		// root, and it can only do that for chats the index knows.
 		indexer, err := fleetindex.New(database)
 		if err != nil {
 			fmt.Fprintf(stderr, "cc-fleet legacy import: %v\n", err)
@@ -559,9 +559,8 @@ func runLegacy(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(
 			stdout,
-			"legacy import: imported=%d active=%d unknown=%d; %s\n",
+			"legacy import: imported=%d unknown=%d; %s\n",
 			result.Imported,
-			result.AlreadyActive,
 			result.Unknown,
 			formatCounters(counters),
 		)

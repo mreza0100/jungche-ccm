@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 
 	"hostops/cc-fleet/internal/hide"
 	"hostops/cc-fleet/internal/mcpserv"
@@ -51,6 +50,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runHidden(args[1:], stdout, stderr)
 	case "resolve":
 		return runResolve(args[1:], stdout, stderr)
+	case "whoami":
+		return runWhoami(args[1:], stdout, stderr)
 	case "mcp":
 		return runMCP(args[1:], stderr)
 	case "internal":
@@ -175,7 +176,7 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 	pruneOrphans := flags.Bool(
 		"prune-orphans",
 		false,
-		"report hide ratchets whose chat no longer exists",
+		"report hides whose chat no longer exists",
 	)
 	confirm := flags.Bool(
 		"yes",
@@ -209,18 +210,7 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	for _, row := range rows {
-		baseline := ""
-		if row.BaselinePrompts != nil {
-			baseline = strconv.FormatInt(*row.BaselinePrompts, 10)
-		}
-		fmt.Fprintf(
-			stdout,
-			"%s\t%s\t%d\t%s\n",
-			row.ID,
-			row.Engine,
-			row.HiddenAt,
-			baseline,
-		)
+		fmt.Fprintf(stdout, "%s\t%s\t%d\n", row.ID, row.Engine, row.HiddenAt)
 	}
 	return 0
 }
@@ -258,8 +248,11 @@ func runResolve(args []string, stdout, stderr io.Writer) int {
 }
 
 func runInternal(args []string, stderr io.Writer) int {
+	if len(args) != 0 && args[0] == "then" {
+		return runInternalThen(args[1:], stderr)
+	}
 	if len(args) == 0 || args[0] != "hide-exit" {
-		fmt.Fprintln(stderr, "usage: cc-fleet internal hide-exit [options]")
+		fmt.Fprintln(stderr, "usage: cc-fleet internal hide-exit|then [options]")
 		return 2
 	}
 	flags := newFlagSet(
@@ -349,12 +342,13 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  open      open an indexed chat by id")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  hide      hide a chat, optionally closing it")
-	fmt.Fprintln(w, "  unhide    remove a chat hide ratchet")
-	fmt.Fprintln(w, "  hidden    list or prune hidden chat ratchets")
+	fmt.Fprintln(w, "  unhide    remove a chat hide")
+	fmt.Fprintln(w, "  hidden    list or prune chat hides")
 	fmt.Fprintln(w, "  resolve   resolve a chat.sh target")
+	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
 	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
 	fmt.Fprintln(w, "  revive    list resumable chats by project")
-	fmt.Fprintln(w, "  legacy    import or export legacy hide files")
+	fmt.Fprintln(w, "  legacy    repair the hide carrier file against the shared store")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the cc-fleet version")
 }

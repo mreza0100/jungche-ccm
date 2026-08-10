@@ -60,6 +60,45 @@ func TestResolveLabelExactCaseInsensitiveAndMirrorSkip(t *testing.T) {
 	assertOutcome(t, outcome, 1, "", "")
 }
 
+// Every account medal marks a 🔖 label line, including 🍀 — the retired
+// account-4 medal. The account is gone, but chats labelled while it was live
+// still render it, and a chat whose label the resolver cannot see is a chat
+// nothing can address.
+func TestResolveLabelAcceptsEveryMedalIncludingTheRetiredOne(t *testing.T) {
+	for _, medal := range []string{"🥇", "🥈", "🥉", "🍀"} {
+		panes := []Pane{{
+			SocketPath:     "/jail/cc-100-1-1",
+			PaneID:         "%1",
+			CurrentCommand: "claude",
+		}}
+		resolver := &Resolver{tmux: fakeTmux{captures: map[string]string{
+			"/jail/cc-100-1-1\x00%1": "noise\n" + medal + " │ 🔖 Elder │ main\n",
+		}}}
+		outcome, err := resolver.resolveLabel(
+			context.Background(),
+			"elder",
+			panes,
+		)
+		if err != nil {
+			t.Fatalf("medal %s resolveLabel() error = %v", medal, err)
+		}
+		assertOutcome(t, outcome, 0, "/jail/cc-100-1-1\t%1\n", "")
+	}
+	// A 🔖 line with no medal at all is still not a label line.
+	resolver := &Resolver{tmux: fakeTmux{captures: map[string]string{
+		"/jail/cc-100-1-1\x00%1": "🔖 Elder │ main\n",
+	}}}
+	outcome, err := resolver.resolveLabel(context.Background(), "elder", []Pane{{
+		SocketPath:     "/jail/cc-100-1-1",
+		PaneID:         "%1",
+		CurrentCommand: "claude",
+	}})
+	if err != nil {
+		t.Fatalf("medalless resolveLabel() error = %v", err)
+	}
+	assertOutcome(t, outcome, 1, "", "")
+}
+
 func TestResolveLabelAmbiguityAndSameChatNewestTieBreak(t *testing.T) {
 	sidDir := t.TempDir()
 	oldSocket := "/jail/cc-100-1-1"

@@ -23,7 +23,12 @@ func (tmux CommandTmux) Capture(
 	if styled {
 		arguments = append(arguments, "-e")
 	}
-	if scrollback > 0 {
+	switch {
+	case scrollback == FullScrollback:
+		// chat.sh:1219 — `-S -` starts at the top of the retained buffer, so
+		// the whole scrollback is captured, not just the visible fold.
+		arguments = append(arguments, "-S", "-")
+	case scrollback > 0:
 		arguments = append(arguments, "-S", fmt.Sprintf("-%d", scrollback))
 	}
 	output, err := tmux.command(ctx, socketPath, arguments...).Output()
@@ -104,6 +109,24 @@ func (tmux CommandTmux) CurrentSession(
 		"display-message",
 		"-p",
 		"#{session_name}",
+	).Output()
+	return strings.TrimSpace(string(output)), err
+}
+
+// WindowName reads the tmux window name backing a target, the human thread
+// name cc-fleet sets on codex panes.
+func (tmux CommandTmux) WindowName(
+	ctx context.Context,
+	socketPath, target string,
+) (string, error) {
+	output, err := tmux.command(
+		ctx,
+		socketPath,
+		"display-message",
+		"-t",
+		target,
+		"-p",
+		"#{window_name}",
 	).Output()
 	return strings.TrimSpace(string(output)), err
 }

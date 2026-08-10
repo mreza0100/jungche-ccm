@@ -10,7 +10,44 @@ import (
 	"hostops/cc-fleet/internal/compose"
 )
 
-const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M"
+// MaxAccount is the size of the Claude account roster. SOURCE OF TRUTH:
+// cc-db.sh's primary-get / primary-set, whose `case "$n" in 1|2)` guard is a
+// shell case statement with no machine-readable form — so the roster is
+// mirrored here as a constant and every account check in this tree derives
+// from it. Hardcoding a roster in each caller is what froze the picker's
+// account cycle at 2 the day the roster stopped being three.
+const MaxAccount = 2
+
+// hygiene is the launch-environment strip every fleet-born process carries
+// (cc-fleet.zsh:105, :119 for claude and :151 for codex). A chat born inside
+// another chat's Bash tool inherits that chat's session identity, config dir
+// and cache mode, so each one is unset and then re-decided by the launcher.
+//
+// The ANTHROPIC_*/CLAUDE_CODE_* tail is CC_ENDPOINT_UNSET (cc-fleet.zsh:80-84):
+// a shell pointed at a local translating proxy would otherwise hand the next
+// launch a foreign endpoint, and it would answer from a foreign model under an
+// Anthropic medal. The launcher's verdict is the account; the environment gets
+// no vote.
+const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR" +
+	" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M" +
+	" -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL" +
+	" -u ANTHROPIC_SMALL_FAST_MODEL -u CLAUDE_CODE_AUTO_COMPACT_WINDOW" +
+	" -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" +
+	" -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK" +
+	" -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+
+// autonomyFlags is CC_AUTONOMY_FLAGS (cc-fleet.zsh:75) — the full-autonomy
+// posture every path that STARTS a Claude chat carries. `--allow-…` is the
+// enabling half (the harness refuses the bypass without it), `--dangerously-…`
+// the acting half; both are required. Chats run unattended overnight, so a
+// mid-task approval prompt is a stalled chat with nobody awake to clear it.
+//
+// The resume routes append them AFTER the transcript argument, exactly as
+// cc-fleet.zsh:872 and :1481 do. The fresh-launch routes emit a `cc1`/`cc2`
+// call instead, and _cc_run already prepends the flags there — passing them
+// again would duplicate them in argv (cc-fleet.zsh:138). Codex carries its own
+// bypass flag and never these.
+const autonomyFlags = "--allow-dangerously-skip-permissions --dangerously-skip-permissions"
 
 // Synthesize produces a deterministic action plan without touching tmux,
 // processes, the filesystem, stdin, stdout, or /dev/tty.
@@ -19,9 +56,10 @@ func Synthesize(request Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	if request.PrimaryAccount < 1 || request.PrimaryAccount > 3 {
+	if request.PrimaryAccount < 1 || request.PrimaryAccount > MaxAccount {
 		return Plan{}, fmt.Errorf(
-			"primary account must be 1, 2, or 3, got %d",
+			"primary account must be 1-%d, got %d",
+			MaxAccount,
 			request.PrimaryAccount,
 		)
 	}
@@ -182,7 +220,9 @@ func claudeCommand(
 ) string {
 	var command strings.Builder
 	command.WriteString(hygiene)
-	if account == 2 || account == 3 {
+	// Account 1 is the default config dir (hygiene already unset it); every
+	// other account is an explicit CLAUDE_CONFIG_DIR (cc-fleet.zsh:88).
+	if account >= 2 && account <= MaxAccount {
 		command.WriteString(" CLAUDE_CONFIG_DIR=")
 		command.WriteString(Quote(filepath.Join(home, ".cc", strconv.Itoa(account))))
 	}
@@ -196,6 +236,8 @@ func claudeCommand(
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
 	}
+	command.WriteByte(' ')
+	command.WriteString(autonomyFlags)
 	return command.String()
 }
 
@@ -239,14 +281,10 @@ func agentScriptPath(request Request) string {
 	if request.AgentScript != "" {
 		return request.AgentScript
 	}
-	return filepath.Join(
-		request.Home,
-		"work",
-		"host-ops",
-		"oldbox",
-		"scripts",
-		"cc-agent-open.sh",
-	)
+	// The installed location: install.sh symlinks the bundle's scripts into
+	// ~/.claude/bin. The repo copy under work/host-ops/ was a pre-move path
+	// that no longer exists on the host.
+	return filepath.Join(request.Home, ".claude", "bin", "cc-agent-open.sh")
 }
 
 func newSessionLine(socket, cwd, run string, bunker bool) string {

@@ -114,12 +114,13 @@ VALUES (?, ?, ?, ?)`,
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The merged row keeps the newest hidden_at and drops the retired
+	// baseline: the column is NULL for every hide the fleet writes.
 	if len(hidden) != 1 ||
 		hidden[0].ID != "root" ||
 		hidden[0].Engine != "cx" ||
 		hidden[0].HiddenAt != 300 ||
-		hidden[0].BaselinePrompts == nil ||
-		*hidden[0].BaselinePrompts != 11 {
+		hidden[0].BaselinePrompts != nil {
 		t.Fatalf("migrated hides = %#v", hidden)
 	}
 	counts, err := migrated.Counts(ctx)
@@ -138,8 +139,7 @@ VALUES (?, ?, ?, ?)`,
 	hidden, err = reopened.HiddenChats(ctx)
 	if err != nil || len(hidden) != 1 ||
 		hidden[0].ID != "root" ||
-		hidden[0].BaselinePrompts == nil ||
-		*hidden[0].BaselinePrompts != 11 {
+		hidden[0].BaselinePrompts != nil {
 		t.Fatalf("idempotent reopen hides = %#v, err=%v", hidden, err)
 	}
 }

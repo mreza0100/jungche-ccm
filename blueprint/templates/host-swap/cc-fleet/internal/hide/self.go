@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"hostops/cc-fleet/internal/gather"
+	"hostops/cc-fleet/internal/store"
 )
 
 // IdentifySelf maps the caller environment to its exact indexed identity.
@@ -105,7 +106,10 @@ func (manager *Manager) identifyCodexSelf(
 	if err != nil {
 		return Target{}, fmt.Errorf("read Codex pane pid: %w", err)
 	}
-	live, err := gather.DetectCodex(
+	// The state-store resolver is what lets a chat whose Codex session writes
+	// no rollout file hide ITSELF; a rollout-backed pane still resolves
+	// through its open file descriptor exactly as before.
+	live, err := gather.DetectCodexThreads(
 		manager.proc,
 		manager.paths.codexRoot,
 		[]gather.Pane{{
@@ -113,13 +117,14 @@ func (manager *Manager) identifyCodexSelf(
 			PaneID: paneID,
 			PID:    panePID,
 		}},
+		store.NewCodexThreadResolver(ctx, manager.paths.codexRoot),
 	)
 	if err != nil {
 		return Target{}, err
 	}
 	if len(live) != 1 {
 		return Target{}, errors.New(
-			"could not identify Codex chat: no live rollout under this pane",
+			"could not identify Codex chat: no live Codex session under this pane",
 		)
 	}
 	rolloutPath := live[0].RolloutPath
@@ -127,10 +132,16 @@ func (manager *Manager) identifyCodexSelf(
 	if rollout, found := rolloutByPath(manager, ctx, rolloutPath); found {
 		id = rollout
 	}
+	// A thread the state store knows but no rollout file names is identified
+	// by its thread id, the only identity such a session has.
+	if id == "" {
+		id = live[0].ThreadID
+	}
 	if !looksLikeSessionID(id) {
 		return Target{}, fmt.Errorf(
-			"could not parse Codex rollout id from %q",
+			"could not parse a Codex chat id from rollout %q and thread %q",
 			rolloutPath,
+			live[0].ThreadID,
 		)
 	}
 	target, err := manager.codexTarget(ctx, id, rolloutPath)

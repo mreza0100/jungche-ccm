@@ -1,8 +1,6 @@
 package inject
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -20,6 +18,22 @@ type targetLock struct {
 	now  func() time.Time
 }
 
+// lockDirName mirrors chat.sh's _inject_lock_acquire filename scheme byte for
+// byte (chat.sh:146-147): the "<socket>:<pane>" key with every '/', ':', '.',
+// and ' ' turned into '_', suffixed ".lock". A Go inject and a chat.sh inject
+// into the same pane must land on the SAME lock directory, or the two
+// implementations would interleave keystrokes into one mangled turn.
+func lockDirName(key string) string {
+	sanitized := strings.Map(func(character rune) rune {
+		switch character {
+		case '/', ':', '.', ' ':
+			return '_'
+		}
+		return character
+	}, key)
+	return sanitized + ".lock"
+}
+
 func acquireTargetLock(
 	root, key string,
 	timeout, poll, maxHold time.Duration,
@@ -27,8 +41,7 @@ func acquireTargetLock(
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("create inject lock root: %w", err)
 	}
-	sum := sha256.Sum256([]byte(key))
-	path := filepath.Join(root, hex.EncodeToString(sum[:16])+".lock")
+	path := filepath.Join(root, lockDirName(key))
 	pid := os.Getpid()
 	deadline := time.Now().Add(timeout)
 	for {
@@ -51,9 +64,13 @@ func acquireTargetLock(
 			return nil, fmt.Errorf("create inject target lock: %w", err)
 		}
 
+		// chat.sh:164-168 steals a held lock only when its owner process is
+		// gone or the hold has run past MAXHOLD, and measures the hold in whole
+		// seconds with a STRICT >. An unreadable or malformed owner file is
+		// never stale: the contender waits out its deadline instead.
 		ownerPID, epoch, ok := readLockOwner(path)
 		stale := ok && (processDead(ownerPID) ||
-			time.Since(time.Unix(epoch, 0)) > maxHold)
+			time.Now().Unix()-epoch > int64(maxHold/time.Second))
 		if stale {
 			_ = os.RemoveAll(path)
 			continue
@@ -98,9 +115,12 @@ func readLockOwner(path string) (pid int, epoch int64, ok bool) {
 	return pid, epoch, err == nil
 }
 
+// processDead mirrors chat.sh's `! kill -0 "$opid"` test: any failure of the
+// zero signal — the pid is gone (ESRCH) or belongs to another user (EPERM) —
+// counts as a dead owner whose lock may be stolen.
 func processDead(pid int) bool {
 	err := syscall.Kill(pid, 0)
-	return errors.Is(err, syscall.ESRCH)
+	return err != nil
 }
 
 func minDuration(left, right time.Duration) time.Duration {

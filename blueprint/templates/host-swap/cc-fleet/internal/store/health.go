@@ -15,16 +15,21 @@ type RowCounts struct {
 	OrphanedHides int
 }
 
-// orphanedHiddenSource is the single definition of an orphaned hide row:
-// a hidden row whose chat resolves to no transcript and no rollout, directly
-// or through a Codex lineage root. Counts, the listing, and the prune all read
-// it, so doctor and `hidden --prune-orphans` can never disagree.
+// orphanedHiddenSource is the single definition of an orphaned hide: a chat in
+// the shared store's hidden set that resolves to no transcript and no rollout,
+// directly or through a Codex lineage root. Counts, the listing, and the prune
+// all read it, so doctor and `hidden --prune-orphans` can never disagree.
+//
+// It reads the effective mirror, so a hide the zsh half wrote counts here too;
+// every caller refills that mirror first. The engine test the v1 query carried
+// is gone with the column: an id matching a lineage root is a live Codex hide
+// whatever engine anyone once recorded for it.
 const orphanedHiddenSource = `
-FROM hidden h
-WHERE NOT EXISTS (SELECT 1 FROM transcripts t WHERE t.uuid=h.id)
+FROM ` + effectiveHidden + ` h
+WHERE NOT EXISTS (SELECT 1 FROM transcripts t WHERE t.uuid=h.uuid)
   AND NOT EXISTS (
     SELECT 1 FROM rollouts r
-    WHERE r.id=h.id OR (h.engine='cx' AND r.lineage_root=h.id)
+    WHERE r.id=h.uuid OR r.lineage_root=h.uuid
   )`
 
 // QuickCheck runs SQLite's bounded integrity probe.
@@ -36,8 +41,12 @@ func (s *Store) QuickCheck(ctx context.Context) (string, error) {
 	return result, nil
 }
 
-// Counts reports table sizes and hide rows whose target row vanished.
+// Counts reports table sizes and hides whose target row vanished. Hidden and
+// OrphanedHides come from the shared store; the rest are this binary's cache.
 func (s *Store) Counts(ctx context.Context) (RowCounts, error) {
+	if err := s.syncEffectiveHidden(ctx); err != nil {
+		return RowCounts{}, err
+	}
 	var counts RowCounts
 	queries := []struct {
 		query string
@@ -46,7 +55,7 @@ func (s *Store) Counts(ctx context.Context) (RowCounts, error) {
 		{"SELECT count(*) FROM transcripts", &counts.Transcripts},
 		{"SELECT count(*) FROM rollouts", &counts.Rollouts},
 		{"SELECT count(*) FROM cx_names", &counts.CxNames},
-		{"SELECT count(*) FROM hidden", &counts.Hidden},
+		{"SELECT count(*) FROM " + effectiveHidden, &counts.Hidden},
 		{"SELECT count(*) " + orphanedHiddenSource, &counts.OrphanedHides},
 	}
 	for _, query := range queries {
@@ -57,54 +66,78 @@ func (s *Store) Counts(ctx context.Context) (RowCounts, error) {
 	return counts, nil
 }
 
-// OrphanedHides lists the rows Counts reports as OrphanedHides, ordered by
-// chat ID.
+// OrphanedHides lists the hides Counts reports as OrphanedHides, ordered by
+// chat ID. The engine is derived, and for an orphan it derives empty by
+// definition: no index row is left to name it.
 func (s *Store) OrphanedHides(ctx context.Context) ([]Hidden, error) {
+	if err := s.syncEffectiveHidden(ctx); err != nil {
+		return nil, err
+	}
+	ids, err := s.orphanedHideIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	hiddenAt, err := s.state.HiddenAt(ctx)
+	if err != nil {
+		return nil, err
+	}
+	orphans := make([]Hidden, 0, len(ids))
+	for _, id := range ids {
+		orphans = append(orphans, Hidden{ID: id, HiddenAt: hiddenAt[id]})
+	}
+	return orphans, nil
+}
+
+func (s *Store) orphanedHideIDs(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT h.id, h.engine, h.hidden_at, h.baseline_prompts "+
-			orphanedHiddenSource+" ORDER BY h.id",
+		"SELECT h.uuid "+orphanedHiddenSource+" ORDER BY h.uuid",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query orphaned hidden chats: %w", err)
 	}
 	defer rows.Close()
 
-	var orphans []Hidden
+	var ids []string
 	for rows.Next() {
-		hidden, err := scanHidden(rows)
-		if err != nil {
+		var id string
+		if err := rows.Scan(&id); err != nil {
 			return nil, fmt.Errorf("scan orphaned hidden chat: %w", err)
 		}
-		orphans = append(orphans, hidden)
+		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate orphaned hidden chats: %w", err)
 	}
-	return orphans, nil
+	return ids, nil
 }
 
-// DeleteOrphanedHides removes exactly the rows OrphanedHides lists and reports
-// how many were deleted.
+// DeleteOrphanedHides removes exactly the hides OrphanedHides lists and reports
+// how many were removed.
+//
+// This is the one path besides an unhide that takes a row out of the shared
+// store, and it is gated behind `hidden --prune-orphans --confirm`. Each removal
+// goes through the ordinary unhide, so the carrier file loses the id too: half a
+// removal is the drift this store exists to end. There is no transaction around
+// the set — the shared store is written concurrently by cc-db.sh, and holding
+// its write lock across hundreds of rows would stall every other chat.
 func (s *Store) DeleteOrphanedHides(ctx context.Context) (int, error) {
-	deleted := 0
-	err := s.WithImmediateTx(ctx, func(tx *ImmediateTx) error {
-		result, err := tx.ExecContext(
-			ctx,
-			"DELETE FROM hidden WHERE id IN (SELECT h.id "+orphanedHiddenSource+")",
-		)
-		if err != nil {
-			return fmt.Errorf("delete orphaned hidden chats: %w", err)
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("count deleted orphaned hidden chats: %w", err)
-		}
-		deleted = int(affected)
-		return nil
-	})
+	if err := s.syncEffectiveHidden(ctx); err != nil {
+		return 0, err
+	}
+	ids, err := s.orphanedHideIDs(ctx)
 	if err != nil {
 		return 0, err
+	}
+	deleted := 0
+	for _, id := range ids {
+		if err := s.state.Unhide(ctx, id); err != nil {
+			return deleted, err
+		}
+		deleted++
 	}
 	return deleted, nil
 }

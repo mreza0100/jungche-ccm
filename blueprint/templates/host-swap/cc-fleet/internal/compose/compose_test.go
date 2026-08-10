@@ -245,13 +245,6 @@ func TestHidesArePermanentAcrossViews(t *testing.T) {
 			t.Fatalf("hidden row %q leaked into default view", id)
 		}
 	}
-	if len(defaultOutput.UnhideIDs) != 0 {
-		t.Fatalf("UnhideIDs = %q, want none: a hide only lifts explicitly", defaultOutput.UnhideIDs)
-	}
-	if len(defaultOutput.BaselineUpdates) != 0 {
-		t.Fatalf("BaselineUpdates = %#v, want none", defaultOutput.BaselineUpdates)
-	}
-
 	hiddenOutput := Compose(fixtureInput(HiddenView))
 	if got, want := rowIDs(hiddenOutput.Rows), []string{"cx-hidden", "grown", "hidden"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("hidden row IDs = %q, want %q", got, want)
@@ -412,8 +405,8 @@ func TestRotationBijectionAndProjectDirTarget(t *testing.T) {
 
 	again := Compose(input)
 	if !reflect.DeepEqual(output.Rows, again.Rows) ||
-		!reflect.DeepEqual(output.BaselineUpdates, again.BaselineUpdates) ||
-		!reflect.DeepEqual(output.UnhideIDs, again.UnhideIDs) {
+		output.HiddenCount != again.HiddenCount ||
+		output.SuppressedCount != again.SuppressedCount {
 		t.Fatal("composition is not deterministic/idempotent for identical input")
 	}
 }

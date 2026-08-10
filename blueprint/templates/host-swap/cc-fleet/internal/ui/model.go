@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/sahilm/fuzzy"
 
+	"hostops/cc-fleet/internal/action"
 	"hostops/cc-fleet/internal/compose"
 )
 
@@ -105,7 +106,7 @@ func positiveOr(value, fallback int) int {
 }
 
 func validAccount(account int) int {
-	if account < 1 || account > 3 {
+	if account < 1 || account > action.MaxAccount {
 		return 1
 	}
 	return account
@@ -157,9 +158,12 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		model.cache1H = !model.cache1H
 		return model, nil
 	case "ctrl+s":
-		model.primary = model.primary%3 + 1
+		model.primary = model.primary%action.MaxAccount + 1
 		return model, nil
-	case "ctrl+b":
+	// ⌃O, not ⌃B: the picker always runs inside tmux and C-b is tmux's PREFIX,
+	// so tmux swallowed the keystroke before the picker ever saw it. Any
+	// replacement must stay clear of the tmux prefix (cc-fleet.zsh:1394-1406).
+	case "ctrl+o":
 		if row, ok := model.selectedRow(); ok && isLive(row.Kind) {
 			model.outcome = OutcomeReboot
 			model.outcomeRow = row

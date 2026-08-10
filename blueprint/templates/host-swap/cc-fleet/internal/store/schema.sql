@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS cx_names (
   thread_name TEXT NOT NULL
 );
 
+-- RETIRED. Hides live in the fleet's shared store now (~/.cc/fleet.db, table
+-- `hidden`, keyed by uuid) because cc-db.sh and the zsh picker write there too
+-- and a hide only one half could see is a hide that came back. This table is
+-- created, populated by databases predating the move, adopted once into the
+-- shared store on first open, and then never read again. It stays as the
+-- rollback path: an older binary still finds its hides here.
 CREATE TABLE IF NOT EXISTS hidden (
   id TEXT PRIMARY KEY,
   engine TEXT NOT NULL CHECK (engine IN ('cc', 'cx')),

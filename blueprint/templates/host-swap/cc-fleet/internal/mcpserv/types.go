@@ -48,9 +48,10 @@ type ResolveOutput struct {
 
 // InjectInput requests guarded live delivery.
 type InjectInput struct {
-	Target   string `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
-	Message  string `json:"message" jsonschema:"message to type and submit"`
-	ForceNow bool   `json:"force_now,omitempty" jsonschema:"interrupt a busy target with Escape before delivery"`
+	Target   string   `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
+	Message  string   `json:"message" jsonschema:"message to type and submit"`
+	ForceNow bool     `json:"force_now,omitempty" jsonschema:"interrupt a busy target with Escape before delivery"`
+	Then     []string `json:"then,omitempty" jsonschema:"follow-up steers delivered by a detached waiter after the primary turn settles to idle; in order, one settled turn apart. A /compact message REQUIRES at least one, and no steer may itself start with /compact"`
 }
 
 // InjectOutput is a stable MCP representation of inject.Result.
@@ -66,12 +67,17 @@ type InjectOutput struct {
 	DraftStashed  bool   `json:"draft_stashed,omitempty"`
 	Typed         bool   `json:"typed,omitempty"`
 	SubmitRetries int    `json:"submit_retries,omitempty"`
+	Steers        int    `json:"steers,omitempty"`
+	SteerLog      string `json:"steer_log,omitempty"`
+	Unsigned      bool   `json:"unsigned,omitempty"`
 }
 
-// CaptureInput requests a visible pane snapshot.
+// CaptureInput requests a pane snapshot of the whole retained scrollback,
+// bounded by the caller after the capture.
 type CaptureInput struct {
 	Target    string `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
-	TailLines int    `json:"tail_lines,omitempty" jsonschema:"return at most this many non-empty lines; default 40"`
+	TailLines int    `json:"tail_lines,omitempty" jsonschema:"return at most this many non-empty lines of the scrollback; default 40"`
+	MaxBytes  int    `json:"max_bytes,omitempty" jsonschema:"maximum returned text bytes, default 262144 and maximum 4194304"`
 }
 
 // CaptureOutput is chat_capture's structured response.
@@ -82,12 +88,33 @@ type CaptureOutput struct {
 	Pane       string `json:"pane,omitempty"`
 	Text       string `json:"text,omitempty"`
 	Message    string `json:"message,omitempty"`
+	Bytes      int    `json:"bytes,omitempty"`
+	Truncated  bool   `json:"truncated,omitempty"`
+}
+
+// WhoamiInput takes no arguments: identity is derived from this process, never
+// accepted from a caller.
+type WhoamiInput struct{}
+
+// WhoamiOutput is chat.sh whoami's answer plus the engine identity behind it.
+type WhoamiOutput struct {
+	Status     string `json:"status"`
+	Session    string `json:"session,omitempty"`
+	SocketPath string `json:"socket_path,omitempty"`
+	SocketName string `json:"socket_name,omitempty"`
+	Pane       string `json:"pane,omitempty"`
+	Engine     string `json:"engine,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Source     string `json:"source,omitempty"`
+	Recovered  bool   `json:"recovered,omitempty"`
+	Message    string `json:"message,omitempty"`
 }
 
 // FindInput searches indexed transcript files.
 type FindInput struct {
-	Excerpt string `json:"excerpt" jsonschema:"literal name or prompt excerpt to find"`
-	Limit   int    `json:"limit,omitempty" jsonschema:"maximum candidates, default 10 and maximum 50"`
+	Excerpt     string `json:"excerpt" jsonschema:"literal name or prompt excerpt to find; a multi-line excerpt is split into needles and candidates are ranked by how many they hit"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"maximum candidates, default 10 and maximum 50"`
+	IncludeSelf bool   `json:"include_self,omitempty" jsonschema:"also match the asking session's own transcript, which is excluded by default"`
 }
 
 // FindCandidate is one confirmed indexed transcript match.
@@ -100,12 +127,15 @@ type FindCandidate struct {
 	Date      string `json:"date"`
 	Excerpt   string `json:"excerpt,omitempty"`
 	Confirmed bool   `json:"confirmed"`
+	Hits      int    `json:"hits"`
 }
 
 // FindOutput is chat_find's structured response.
 type FindOutput struct {
 	Candidates []FindCandidate `json:"candidates"`
 	Count      int             `json:"count"`
+	Needles    []string        `json:"needles,omitempty"`
+	SelfID     string          `json:"self_id,omitempty"`
 }
 
 // ReadInput requests bounded recent transcript turns.

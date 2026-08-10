@@ -173,12 +173,13 @@ func (executor *Executor) prepareLive(
 		if reboot {
 			script := request.SwapScript
 			if script == "" {
+				// The installed location: install.sh symlinks the bundle's
+				// scripts into ~/.claude/bin. The repo copy under
+				// work/host-ops/ was a pre-move path that no longer exists.
 				script = filepath.Join(
 					request.Home,
-					"work",
-					"host-ops",
-					"oldbox",
-					"scripts",
+					".claude",
+					"bin",
 					"cc-swap-chat.sh",
 				)
 			}

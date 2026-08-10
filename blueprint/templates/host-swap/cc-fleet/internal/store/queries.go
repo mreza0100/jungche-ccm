@@ -8,9 +8,11 @@ import (
 	"sort"
 )
 
+// transcriptColumns is alias-qualified because every transcript query joins
+// the effective-hidden mirror, whose key column is also named uuid.
 const transcriptColumns = `
-uuid, path, size, mtime_ns, parsed_offset, cwd, custom_title, ai_title,
-first_prompt, last_prompt, prompt_count, is_bg`
+t.uuid, t.path, t.size, t.mtime_ns, t.parsed_offset, t.cwd, t.custom_title,
+t.ai_title, t.first_prompt, t.last_prompt, t.prompt_count, t.is_bg`
 
 const rolloutColumns = `
 id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
@@ -34,6 +36,12 @@ func (s *Store) DefaultCandidates(
 	ctx context.Context,
 	transcriptLimit, rolloutLimit int,
 ) ([]Transcript, []Rollout, CachedCounts, error) {
+	// One refill for all three queries below: they run back to back on the
+	// same connection, and re-reading the shared store between them could only
+	// make the frame disagree with itself.
+	if err := s.syncEffectiveHidden(ctx); err != nil {
+		return nil, nil, CachedCounts{}, err
+	}
 	transcripts, err := s.defaultTranscripts(ctx, transcriptLimit)
 	if err != nil {
 		return nil, nil, CachedCounts{}, err
@@ -56,8 +64,8 @@ func (s *Store) defaultTranscripts(
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+transcriptColumns+`
 FROM transcripts AS t
-LEFT JOIN hidden AS h ON h.id=t.uuid AND h.engine='cc'
-WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.id IS NULL
+LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid
+WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.uuid IS NULL
 ORDER BY t.mtime_ns DESC, t.uuid
 LIMIT ?`, limit)
 	if err != nil {
@@ -110,15 +118,15 @@ func (s *Store) defaultCounts(
 	var claudeEligible, codexEligible int
 	err := s.db.QueryRowContext(ctx, `
 SELECT
-  COALESCE(SUM(CASE WHEN h.id IS NOT NULL THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN h.uuid IS NOT NULL THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.id IS NULL AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
+    WHEN h.uuid IS NULL AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
     THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.id IS NULL AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
+    WHEN h.uuid IS NULL AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
     THEN 1 ELSE 0 END), 0)
 FROM transcripts AS t
-LEFT JOIN hidden AS h ON h.id=t.uuid AND h.engine='cc'`,
+LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
 	).Scan(&counts.Hidden, &counts.Suppressed, &claudeEligible)
 	if err != nil {
 		return CachedCounts{}, fmt.Errorf("count cached transcripts: %w", err)
@@ -168,9 +176,13 @@ func (s *Store) codexLineageRows(
 	if err != nil {
 		return nil, nil, fmt.Errorf("query cached lineage hides: %w", err)
 	}
+	// Anything but a derived "cc" counts. An engine derives empty when neither
+	// index table claims the id, and an empty engine means "hidden whatever the
+	// engine" everywhere else in the tree (compose.go:665) — a hide must not
+	// quietly lapse because the row that named its engine was pruned.
 	hiddenByID := make(map[string]Hidden, len(hiddenRows))
 	for _, hidden := range hiddenRows {
-		if hidden.Engine == "cx" {
+		if hidden.Engine != ClaudeEngine {
 			hiddenByID[hidden.ID] = hidden
 		}
 	}
@@ -231,7 +243,7 @@ func (s *Store) Transcript(
 ) (Transcript, bool, error) {
 	transcript, err := scanTranscript(s.db.QueryRowContext(
 		ctx,
-		"SELECT "+transcriptColumns+" FROM transcripts WHERE uuid=?",
+		"SELECT "+transcriptColumns+" FROM transcripts AS t WHERE t.uuid=?",
 		uuid,
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -247,7 +259,7 @@ func (s *Store) Transcript(
 func (s *Store) Transcripts(ctx context.Context) ([]Transcript, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT "+transcriptColumns+" FROM transcripts ORDER BY uuid",
+		"SELECT "+transcriptColumns+" FROM transcripts AS t ORDER BY t.uuid",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query transcripts: %w", err)

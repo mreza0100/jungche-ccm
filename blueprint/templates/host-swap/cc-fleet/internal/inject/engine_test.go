@@ -40,12 +40,37 @@ type fakeTmux struct {
 	capture       string
 	styled        string
 	literal       string
+	literals      []string
+	windowName    string
 	keys          []string
 	dead          bool
 	busyUntilEsc  bool
 	stashClears   bool
 	submitOnEnter bool
 	inMode        bool
+}
+
+// fakeSpawner records the detached --then waiter instead of starting one.
+type fakeSpawner struct {
+	mu    sync.Mutex
+	calls []SteerSpawn
+	err   error
+}
+
+func (fake *fakeSpawner) Spawn(_ context.Context, request SteerSpawn) error {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if fake.err != nil {
+		return fake.err
+	}
+	fake.calls = append(fake.calls, request)
+	return nil
+}
+
+func (fake *fakeSpawner) spawned() []SteerSpawn {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return append([]SteerSpawn(nil), fake.calls...)
 }
 
 func (fake *fakeTmux) Capture(
@@ -76,6 +101,7 @@ func (fake *fakeTmux) SendLiteral(
 		return errors.New("dead")
 	}
 	fake.literal = text
+	fake.literals = append(fake.literals, text)
 	marker := "❯"
 	if strings.Contains(fake.capture, "›") &&
 		!strings.Contains(fake.capture, "❯") {
@@ -140,15 +166,38 @@ func (*fakeTmux) CurrentSession(context.Context, string) (string, error) {
 	return "sender-session", nil
 }
 
+func (fake *fakeTmux) WindowName(
+	context.Context,
+	string,
+	string,
+) (string, error) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return fake.windowName, nil
+}
+
 func newTestEngine(t *testing.T, socket string, tmux *fakeTmux) *Engine {
 	t.Helper()
+	return newTestEngineWith(t, socket, tmux, &fakeSpawner{})
+}
+
+func newTestEngineWith(
+	t *testing.T,
+	socket string,
+	tmux *fakeTmux,
+	spawner ThenSpawner,
+) *Engine {
+	t.Helper()
 	t.Setenv("CC_FLEET_HOME", t.TempDir())
+	t.Setenv("TMUX", "")
+	t.Setenv("CHAT_INJECT_SOCKET", "")
 	engine, err := New(Dependencies{
 		Resolver: fakeResolver{
 			socket: filepath.Join("/tmp", "tmux-jail", socket),
 			target: "%1",
 		},
-		Tmux: tmux,
+		Tmux:    tmux,
+		Spawner: spawner,
 		Options: Options{
 			Poll:            time.Nanosecond,
 			EnterGap:        time.Nanosecond,
@@ -163,6 +212,7 @@ func newTestEngine(t *testing.T, socket string, tmux *fakeTmux) *Engine {
 			LockPoll:        time.Nanosecond,
 			LockMaxHold:     time.Second,
 			LockRoot:        t.TempDir(),
+			ThenLogRoot:     t.TempDir(),
 			Sender:          &Sender{Session: "sender", Label: "Founder", UUID: "1234567890"},
 			CodexInlineMax:  CodexInlineMax,
 			AbsoluteByteMax: AbsoluteMessageMax,

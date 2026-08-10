@@ -423,10 +423,15 @@ func bookmarkLabel(capture string) string {
 	return label
 }
 
+// containsMedal reports whether a captured line carries an account medal, the
+// marker that tells a 🔖 label line apart from ordinary transcript text. 🍀 is
+// the retired account-4 medal: the account is gone, but chats labelled while it
+// was live still render it, and without it here those chats are unresolvable.
 func containsMedal(value string) bool {
 	return strings.Contains(value, "🥇") ||
 		strings.Contains(value, "🥈") ||
-		strings.Contains(value, "🥉")
+		strings.Contains(value, "🥉") ||
+		strings.Contains(value, "🍀")
 }
 
 func isClaudePaneCommand(command string) bool {

@@ -13,7 +13,14 @@ var (
 	busyPattern       = regexp.MustCompile(`(?i)esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens`)
 	menuHintPattern   = regexp.MustCompile(`(?i)enter to (confirm|continue|select)|esc to (cancel|go back)`)
 	ansiPattern       = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	compactPattern    = regexp.MustCompile(`^[[:space:]]*/compact([[:space:]]|$)`)
 )
+
+// isCompactCommand mirrors chat.sh's `grep -qE '^[[:space:]]*/compact([[:space:]]|$)'`
+// test, used both for the primary message and for every then steer.
+func isCompactCommand(message string) bool {
+	return compactPattern.MatchString(message)
+}
 
 // IsBusy mirrors chat.sh's live spinner-detail test.
 func IsBusy(capture string) bool {
