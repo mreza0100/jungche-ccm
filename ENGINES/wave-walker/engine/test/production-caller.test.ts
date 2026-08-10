@@ -43,10 +43,7 @@ function optionValue(args, name) {
 
 describe('production caller seams over the real generated Claude bundle', () => {
   it('A1 records the caller policy and rejects connectors or Bash outside the declared grammar', async () => {
-    const bundle = await readFile(
-      resolve('dist/cross-workflow/claude/workflow.js'),
-      'utf8',
-    );
+    const bundle = await readFile(resolve('dist/cross-workflow/claude/workflow.js'), 'utf8');
     const cliArgs = claudeCodeReadOnlyArguments();
     expect(optionValue(cliArgs, '--tools')).toBe(CODE_READ_BUILTIN_TOOLS.join(','));
     expect(optionValue(cliArgs, '--allowedTools')).toBe(CODE_READ_ALLOWED_TOOLS.join(','));
@@ -54,9 +51,7 @@ describe('production caller seams over the real generated Claude bundle', () => 
     expect(optionValue(cliArgs, '--permission-mode')).toBe('dontAsk');
     expect(cliArgs).toContain('--strict-mcp-config');
     expect(CODE_READ_DENIED_TOOLS).toContain('mcp__*');
-    expect(() => assertFaithfulCodeReadPolicy()).toThrow(
-      /claude_bash_not_pre_execution_fenced/u,
-    );
+    expect(() => assertFaithfulCodeReadPolicy()).toThrow(/claude_bash_not_pre_execution_fenced/u);
 
     let calls = 0;
     const result = await executeHarnessBundle(
@@ -106,7 +101,10 @@ describe('production caller seams over the real generated Claude bundle', () => 
         started: 1,
         returned: 1,
         incomplete: 0,
-        toolCounts: { ...Object.fromEntries(CODE_READ_AGENT_TOOLS.map((name) => [name, 1])), mcp__harvester__fetch: 1 },
+        toolCounts: {
+          ...Object.fromEntries(CODE_READ_AGENT_TOOLS.map((name) => [name, 1])),
+          mcp__harvester__fetch: 1,
+        },
         bashCommands: [],
       }),
     ).toThrow(/connector set is not empty/u);
@@ -122,10 +120,7 @@ describe('production caller seams over the real generated Claude bundle', () => 
   });
 
   it('A2 turns a partial generated-bundle walk window into explicit incomplete-agent accounting', async () => {
-    const bundle = await readFile(
-      resolve('dist/cross-workflow/claude/workflow.js'),
-      'utf8',
-    );
+    const bundle = await readFile(resolve('dist/cross-workflow/claude/workflow.js'), 'utf8');
     const scout = {
       headSha: '1976348c63a3dc2e4c122c5f33c7f6cb2b5fa635',
       territories: ['BE'],
@@ -157,6 +152,8 @@ describe('production caller seams over the real generated Claude bundle', () => 
         project: { repoRoot: '.' },
       },
       globals: globals(async (_prompt, options) => {
+        // the TIME CHECKPOINT's t0 reading is the walk's first agent call, before the scout
+        if (options.label.startsWith('clock · ')) return { epochSeconds: 1_000_000 };
         if (options.label === 'scout') return scout;
         return await new Promise(() => {});
       }),
@@ -166,17 +163,13 @@ describe('production caller seams over the real generated Claude bundle', () => 
     expect(result.error.code).toBe('phase2_incomplete_agents');
     expect(result.error.reason).toBe('runtime_window_exhausted');
     expect(result.agents.started).toBeGreaterThan(result.agents.returned);
-    expect(result.agents.returned).toBe(1);
-    expect(result.agents.incomplete).toBe(
-      result.agents.started - result.agents.returned,
-    );
+    // two seats complete before the window closes: the t0 clock reading and the scout
+    expect(result.agents.returned).toBe(2);
+    expect(result.agents.incomplete).toBe(result.agents.started - result.agents.returned);
   });
 
   it('A3 parses native generated-bundle results and makes malformed shapes explicit', async () => {
-    const bundle = await readFile(
-      resolve('dist/cross-workflow/claude/workflow.js'),
-      'utf8',
-    );
+    const bundle = await readFile(resolve('dist/cross-workflow/claude/workflow.js'), 'utf8');
     const nativeResult = await executeHarnessBundle(
       bundle,
       {

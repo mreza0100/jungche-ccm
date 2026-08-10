@@ -58,7 +58,8 @@ export type Seat =
   | 'claimAuditor'
   | 'synthesiser'
   | 'invariantHunter'
-  | 'coverageCritic';
+  | 'coverageCritic'
+  | 'clockProbe';
 
 // ── scout (source lines 400-415) ──
 export interface ScoutArgs {
@@ -306,6 +307,10 @@ export interface InvariantHunterArgs {
 // ── coverageCritic — one call after Phase 1, before the final judge (§ 2.4); only dispatched when the
 // registry is non-empty (CONFIG.INVARIANTS.length > 0) — the floor invariant's "no critic dispatched
 // on an absent/empty registry" holds by construction. ──
+// ── clockProbe — the walk's only wall-clock instrument (the Workflow runtime forbids in-script clock
+// reads). Takes no arguments: its prompt is a fixed one-command read. ──
+export type ClockProbeArgs = Record<string, never>;
+
 export interface CoverageCriticArgs {
   changedFiles: string[];
   threadNames: { id: string; type?: string; name?: string }[];

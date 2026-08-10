@@ -489,6 +489,9 @@ export interface CoverageCriticOut {
   gaps: CoverageGap[]; // ≤8 — territories THIS WALK could not see
   summary: string;
 }
+export interface ClockProbeOut {
+  epochSeconds: number; // `date +%s` — 0 or absent means the reading failed; the caller treats it as null
+}
 
 // ── verdict contradictions (walker.md § Orchestration — the contradiction escalation) ──
 // Two or more seats walking the SAME file and returning opposite verdicts is not a spread to average:

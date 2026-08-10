@@ -40,4 +40,6 @@ export { invariantHunter, INVARIANT_HUNT } from './invariantHunter/index.js';
 export { runInvariantHunter } from './invariantHunter/run.js';
 export { coverageCritic, COVERAGE_CRITIC } from './coverageCritic/index.js';
 export { runCoverageCritic } from './coverageCritic/run.js';
+export { clockProbe, CLOCK_PROBE } from './clockProbe/index.js';
+export { runClockProbe } from './clockProbe/run.js';
 export { RO } from './shared.js';

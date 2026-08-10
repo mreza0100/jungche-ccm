@@ -214,6 +214,10 @@ function verifyStub(calls: CapturedCall[], opts?: { verdictFor?: (claimId: strin
       };
     }
     if (prompt.startsWith('[conflict-judge]')) return { conflicts: [], summary: 'ok' };
+    // TIME CHECKPOINT — both readings return the SAME instant, so elapsed is 0 and no lens is ever
+    // shed. Every pre-existing expectation therefore holds unchanged; the shed path is exercised by
+    // its own tests, which vary the two readings deliberately.
+    if (prompt.startsWith('[clock · ')) return { epochSeconds: 1_000_000 };
     throw new Error('unexpected agent call in verify stub: ' + prompt.slice(0, 60));
   };
 }
@@ -611,6 +615,7 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
       }
       if (prompt.startsWith('[fold]'))
         return { verdict: 'ROUGH SEAS', actionItems: ['/jc fix w'], review: '# review' };
+      if (rawPrompt.startsWith('[clock · ')) return { epochSeconds: 1_000_000 };
       throw new Error('unexpected agent call in walk stub: ' + rawPrompt.slice(0, 40));
     };
   }
@@ -666,7 +671,10 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
     globalThis.args = { reportPath: 'r.md', maxFieldsPerJob: 1, maxSensors: 2 };
     globalThis.log = (m?: unknown) => logs.push(String(m));
     globalThis.phase = () => {};
-    globalThis.agent = walkStub(calls, { authRule: 'too short', finalJudgeDies: true });
+    // The judge LIVES here: this test's subject is job splitting, the sensor cap, and the auth-rule
+    // fallback, all of which need the walk to reach DONE. A dead judge now FAILS the walk by design
+    // (engine.ts § DEAD-JUDGE GUARD) and has its own test below.
+    globalThis.agent = walkStub(calls, { authRule: 'too short' });
     globalThis.parallel = async <T>(thunks: Array<() => Promise<T>>): Promise<T[]> =>
       Promise.all(thunks.map((t) => t()));
     globalThis.budget = { total: null, spent: () => 0, remaining: () => Infinity };
@@ -683,8 +691,9 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
     // unusable scout authRule + no args.project → loud fallback warning naming the missing profile
     expect(logs.some((l) => l.includes('no usable auth-pattern extract'))).toBe(true);
     expect(logs.some((l) => l.includes('no args.project.authDoc configured'))).toBe(true);
-    // final judge died → no reinstatement, fold still writes the review
-    expect(result.finalJudge).toBeNull();
+    // the judge ruled, so the walk reaches a verdict at all — the dead-judge path is FAILED by design
+    // now (§ DEAD-JUDGE GUARD) and is pinned separately below, never incidentally from this fixture
+    expect(result.finalJudge).not.toBeNull();
     expect(result.verdict).toBe('ROUGH SEAS');
   });
 
@@ -696,6 +705,65 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
     const result = await runVerifyWith({ reportPath: 'r.md' }, calls, stub);
     expect(result.status).toBe('FAILED');
     if (result.status === 'FAILED') expect(result.detail).toMatch(/fold died twice/);
+  });
+
+  // ─── DEAD-JUDGE GUARD + TIME CHECKPOINT — the final judge is the ONE seat that rules the whole wave,
+  // and it runs LAST, so it is the seat the runtime window starves first. Two laws are pinned here: a
+  // walk that lost its judge must FAIL rather than fold a verdict without one, and a walk that sees its
+  // window running short must shed discretionary lenses LOUDLY — as a coverage gap the judge is told
+  // about — rather than spend the reserve and lose the ruling. ───
+  it('returns FAILED when the final judge dies — an unjudged walk is never a verdict', async () => {
+    const calls: CapturedCall[] = [];
+    const base = walkStub(calls);
+    const stub = async (prompt: string, callOpts: unknown) =>
+      labelOf(prompt) === 'final-judge' ? null : base(prompt, callOpts);
+    const result = await runVerifyWith({ reportPath: 'r.md' }, calls, stub);
+    expect(result.status).toBe('FAILED');
+    if (result.status !== 'FAILED') throw new Error('expected a FAILED walk');
+    expect(result.detail).toMatch(/final judge died/);
+    expect(result.detail).toMatch(/An unjudged walk is never a verdict/);
+    // the failure carries its accounting — a walk that did real work says how much of it survived
+    expect(result.detail).toMatch(/completed \d+\/\d+ threads and \d+ ledger anomalies/);
+    // and it never reached the fold: no review is written over an unruled wave
+    expect(calls.some((c) => c.opts.label === 'fold')).toBe(false);
+  });
+
+  it('sheds discretionary lenses when the window runs short, and NAMES the shed to the final judge', async () => {
+    const calls: CapturedCall[] = [];
+    const base = walkStub(calls);
+    let clockReadings = 0;
+    // t0 = 1_000_000; checkpoint = +520s → 80s left of a 600s window, under the 150s judge reserve.
+    const stub = async (prompt: string, callOpts: unknown) => {
+      if (labelOf(prompt).startsWith('clock · ')) {
+        clockReadings++;
+        return { epochSeconds: clockReadings === 1 ? 1_000_000 : 1_000_520 };
+      }
+      return base(prompt, callOpts);
+    };
+    const result = await runVerifyWith({ reportPath: 'r.md' }, calls, stub);
+    expect(clockReadings).toBe(2);
+    // the discretionary seat never ran...
+    expect(calls.some((c) => c.opts.label === 'digest')).toBe(false);
+    // ...but the judge DID, and was told the walk had been narrowed — a shed lens is a named hole,
+    // never a silent omission.
+    const judge = calls.find((c) => c.opts.label === 'final-judge');
+    expect(judge).toBeDefined();
+    expect(judge?.prompt).toMatch(/SHED/);
+    expect(judge?.prompt).toMatch(/NARROWER than a full walk/);
+    expect(result.status).toBe('DONE');
+  });
+
+  it('a clock reading that fails sheds NOTHING — an unmeasurable window never costs a lens', async () => {
+    const calls: CapturedCall[] = [];
+    const base = walkStub(calls);
+    const stub = async (prompt: string, callOpts: unknown) =>
+      labelOf(prompt).startsWith('clock · ') ? null : base(prompt, callOpts);
+    const result = await runVerifyWith({ reportPath: 'r.md' }, calls, stub);
+    // failing open: the judge is told nothing about a shed that never happened
+    const judge = calls.find((c) => c.opts.label === 'final-judge');
+    expect(judge).toBeDefined();
+    expect(judge?.prompt).not.toMatch(/SHED/);
+    expect(result.status).toBe('DONE');
   });
 
   // ─── AUDIT 2026-07-28 (docs/dev/audits/wave-walker-instrument-defects-2026-07-28.md) — engine-level
@@ -952,19 +1020,12 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
           patterns,
         ),
       ).toBe(true);
-      expect(isGateRelevant(['app-be/src/infrastructure/auth/jwt.ts'], 0, 0, patterns)).toBe(
+      expect(isGateRelevant(['app-be/src/infrastructure/auth/jwt.ts'], 0, 0, patterns)).toBe(true);
+      expect(isGateRelevant(['app-be/src/infrastructure/graphql/schema.ts'], 0, 0, patterns)).toBe(
         true,
       );
       expect(
-        isGateRelevant(['app-be/src/infrastructure/graphql/schema.ts'], 0, 0, patterns),
-      ).toBe(true);
-      expect(
-        isGateRelevant(
-          ['app-be/src/application/services/patient.service.ts'],
-          0,
-          0,
-          patterns,
-        ),
+        isGateRelevant(['app-be/src/application/services/patient.service.ts'], 0, 0, patterns),
       ).toBe(true);
       expect(isGateRelevant(['app-fe/app/screen.tsx'], 1, 0, patterns)).toBe(true); // scheduled fields
       expect(isGateRelevant(['app-fe/app/screen.tsx'], 0, 1, patterns)).toBe(true); // scheduled jobs
@@ -1077,6 +1138,7 @@ describe('WaveWalker — WALK mode, populated pipeline', () => {
           return { verdict: 'SHIPWRECK', missedRisks: [], rationale: 'r' };
         if (prompt.startsWith('[fold]'))
           return { verdict: 'SHIPWRECK', actionItems: [], review: '# review' };
+        if (rawPrompt.startsWith('[clock · ')) return { epochSeconds: 1_000_000 };
         throw new Error('unexpected agent call in R6-pin stub: ' + rawPrompt.slice(0, 60));
       };
       const result = await runVerifyWith(
@@ -1416,6 +1478,7 @@ describe('WaveWalker — INVARIANT REGISTRY FEATURE', () => {
           actionItems: ['/jc fix chunk_cache.py'],
           review: '# review',
         };
+      if (rawPrompt.startsWith('[clock · ')) return { epochSeconds: 1_000_000 };
       throw new Error('unexpected call in invStub: ' + rawPrompt.slice(0, 80));
     };
   }
@@ -1677,6 +1740,7 @@ describe('WaveWalker — INVARIANT REGISTRY FEATURE', () => {
             actionItems: ['/jc restore the NL policy'],
             review: '# review',
           };
+        if (rawPrompt.startsWith('[clock · ')) return { epochSeconds: 1_000_000 };
         throw new Error('unexpected agent call in contradiction stub: ' + rawPrompt.slice(0, 40));
       };
     };
@@ -1927,6 +1991,8 @@ describe('WaveWalker — WALK TELEMETRY (debug step)', () => {
             '# review' + (rawPrompt.includes('### Walk Telemetry') ? '\n[TELEMETRY APPENDED]' : ''),
         };
       }
+      // TIME CHECKPOINT — one fixed instant for both readings: elapsed 0, nothing shed.
+      if (label.startsWith('clock · ')) return { epochSeconds: 1_000_000 };
       throw new Error('unexpected call in teleStub: ' + rawPrompt.slice(0, 80));
     };
   }
