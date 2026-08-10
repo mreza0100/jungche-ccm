@@ -49,7 +49,7 @@ export CLAUDE_CODE_STOP_HOOK_BLOCK_CAP=2
 # One /login each, ever — no credential copying (a copied OAuth token forks
 # and dies). Launches inside tmux so agents survive SSH drops. ~/.claude-primary
 # holds which acct bare `cc` opens (default 1). cc-swap <1|2> changes it.
-# cc1/cc2/cc3 force an account.
+# cc1/cc2 force an account.
 # _cc_arm1h — 1 when THIS launch should be born with the ⚡1h-cache: CC_ARM_1H=1 (the picker's
 # explicit per-pick verdict) or ENABLE_PROMPT_CACHING_1H=1 from a NON-chat shell (the documented
 # `ENABLE_PROMPT_CACHING_1H=1 cc` interface). Inside a chat's tool shell (CLAUDECODE set) the
@@ -134,7 +134,6 @@ _cc_primary() { local n; n="$(bash "$CC_DB" primary-get 2>/dev/null)"; case "$n"
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
-cc3() { _cc_run 3 1 "$@"; }                  # tmux + account 3
 # _cc_run prepends CC_AUTONOMY_FLAGS for every account, so a launcher must NOT pass them again
 # (that would duplicate the flags in argv). A caller's own flags still follow and win, so
 # `cc1 --permission-mode manual` remains the escape hatch for a supervised chat.
@@ -470,14 +469,6 @@ _cx_name() {
   print -r -- "${${nm//[$'\t\n']/ }[1,60]}"
 }
 
-# _cx_newprompts <rollout> <fromsize> — count user_message events in the bytes appended past
-# <fromsize>; the codex side of the auto-unhide delta scan (codex event lines need no jq filter).
-_cx_newprompts() {
-  tail -c +$(($2+1)) "$1" 2>/dev/null \
-    | awk 'NR==1 && substr($0,1,1)!="{" {next} {print}' \
-    | grep -c '"type":"user_message"'
-}
-
 # _cx_metac <id> <rollout> <mtime> <size> — cached codex meta; REPLY="cwd\tcount" (count = real
 # user_message events), cwd="§sub§" marks a subagent worker thread (not a chat — callers skip).
 # Shares the NC cache in the claude 5-field shape (mt\tsz\tcwd\tname\tcount, name unused) so one
@@ -620,15 +611,6 @@ _cc_lastprompt() {
   tac "$1" 2>/dev/null | jq -rc --arg j "$_CC_JUNK" "$_CC_TEXTQ"' | ($t|gsub("[\n\t]+";" "))' 2>/dev/null | head -1
 }
 
-# _cc_newprompts <transcript> <fromsize> — count REAL prompts in the bytes appended past
-# <fromsize> (the auto-unhide trigger: scan the delta, never the whole file). The first delta
-# line may be a record cut mid-append — dropped unless it starts one, like _cc_metac's delta.
-_cc_newprompts() {
-  tail -c +$(($2+1)) "$1" 2>/dev/null \
-    | awk 'NR==1 && substr($0,1,1)!="{" {next} {print}' \
-    | jq -rc --arg j "$_CC_JUNK" "$_CC_TEXTQ"' | 1' 2>/dev/null | grep -c .
-}
-
 # _cc_isbg <transcript> — true when this is a background SESSION (its records carry
 # sessionKind:"bg"), the harness's async twin of a real chat rather than a chat itself. Only the
 # head is read: the marker repeats on every record, and reading a fixed 64K keeps the test O(1)
@@ -684,9 +666,8 @@ _cc_meta() {
 # fresh /rename title wins; a first prompt arriving names a promptless chat) — an active
 # multi-MB chat otherwise re-parsed wholesale every couple of minutes, which is what made
 # cc-ls crawl. Unchanged-only, NOT a staleness window: the old `mt-emt<120` compared file
-# mtimes, so two writes <120s apart made the cache permanently stale — auto-unhide counts
-# ride on this, and a resurrection prompt landing <2min after the last noise write was
-# swallowed forever.
+# mtimes, so two writes <120s apart made the cache permanently stale and the prompt count of a
+# briskly-written chat stopped advancing.
 _cc_metac() {
   local u="$1" tp="$2" mt="$3" sz="$4" e emt esz rest
   e="${NC[$u]}"
@@ -930,23 +911,38 @@ cc-ls() {
   while IFS= read -r rest; do u="${rest%%$'\t'*}"; NC[$u]="${rest#*$'\t'}"; done < <(bash "$CC_DB" chat-load 2>/dev/null)
   # ⚡1h-cache ⌃E scratch lives at "$tmpd/1h" — keyed to THIS picker run (a fresh tmpd is
   # inherently OFF; concurrent pickers can no longer stomp each other's armed state)
-  # hide list: transcript uuids dropped with ⌃X (reversible — file kept; cc-ls -a reveals, edit "$hf" to undo)
-  local hf="$HOME/.claude/.cc-ls-hidden" h
-  typeset -A HID; while IFS= read -r h; do [[ -n "$h" ]] && HID[$h]=1; done < <(bash "$CC_DB" hidden-list 2>/dev/null)
-  # auto-unhide: a hidden chat that gains a NEW REAL PROMPT after hiding = someone is talking to
-  # it again → comes back to the list. Byte growth alone NEVER unhides — a live chat's transcript
-  # grows from pure noise (tool results, task notifications, its own autonomous grinding), and
-  # byte-based unhide resurrected every hidden live chat within minutes. Instead, when a hidden
-  # transcript grows past its size baseline, ONLY the appended bytes are scanned for a real
-  # junk-filtered prompt (_cc_newprompts); a noise-only delta ratchets the baseline forward, so
-  # each byte of a hidden chat is scanned at most once — never a full-file parse (this store is
-  # multi-GB; full parses of hidden 70MB transcripts once wedged cc-ls for minutes).
-  local af="$hf.at" auuid asize hideskip; typeset -A AT UNHIDE
-  # read defensively: extra fields fold into $_ (an interim build shipped 3-field rows) and a
-  # non-numeric size is re-baselined — a stray tab in a math value blows up zsh's (( )) parser
-  while IFS=$'\t' read -r auuid asize _; do
-    [[ -n "$auuid" && "$asize" == <-> ]] && AT[$auuid]="$asize"
-  done < <(bash "$CC_DB" hidden-at-list 2>/dev/null)
+  # ── the hide list ────────────────────────────────────────────────────────────────────────────
+  # Hiding is PERMANENT and unconditional: a hidden chat stays gone whether it is dead, live, or
+  # actively being typed into. Only ⌃X puts it back (cc-ls --hidden lists them, cc-ls -a reveals).
+  # There is no activity-based return — a "hidden chat that gained a new prompt comes back" rule
+  # meant a chat you were still using could never be hidden at all, which is the opposite of what
+  # hiding is for; it also cost a delta scan of every hidden transcript on every single run.
+  #
+  # "$hf" is the hidden set as it stands BETWEEN runs, and the db is its durable copy. The picker
+  # is the last thing cc-ls does, so a ⌃X toggle lands after every line of this function has run:
+  # the file is the only thing that can carry it, and the next run is what commits it. Read the
+  # file, commit it, and the round trip closes — hide, unhide, and a /hide from another pane all
+  # travel the same path. (Reading the db instead and treating the file as an output looks
+  # equivalent and silently reverts every toggle, since the toggle is always newer than the db.)
+  local hf="$HOME/.claude/.cc-ls-hidden" h hideskip
+  typeset -A HID
+  [[ -f "$hf" ]] && while IFS= read -r h; do [[ -n "$h" ]] && HID[$h]=1; done < "$hf"
+  # Fold in the db when the file cannot be trusted to hold everything: it is missing (nothing has
+  # carried the set yet) or this box has never adopted. Adoption is the one-time merge of the two
+  # stores that drifted apart while ⌃X wrote only the file and cc-ls read only the db — 35 hides
+  # on one side, 33 on the other, no overlap. Merge once, stamp it, and never diverge again.
+  if [[ ! -f "$hf" || ! -e "$hf.adopted" ]]; then
+    while IFS= read -r h; do [[ -n "$h" ]] && HID[$h]=1; done < <(bash "$CC_DB" hidden-list 2>/dev/null)
+    : > "$hf.adopted"
+  fi
+  ( flock 9 2>/dev/null || true                      # same lock every hide-list writer takes
+    { for h in ${(k)HID}; do print -r -- "$h"; done } > "$hf.m.$$" 2>/dev/null && mv "$hf.m.$$" "$hf" \
+      || rm -f "$hf.m.$$"
+  ) 9>"$hf.lock"
+  # Commit the set in ONE transaction — this is where the previous picker's ⌃X toggles become
+  # durable. cc-ls is not the only writer (cc-hide.sh/cx-hide.sh add straight to the db and to
+  # the file), which is why they mirror into the file too: this sync deletes whatever it omits.
+  { for h in ${(k)HID}; do print -r -- "$h"$'\t'; done } | bash "$CC_DB" hidden-sync 2>/dev/null
   _cc_agents   # CCAGENT: uuid → config dir for LIVE agents (bg/forked). Resuming these fails; cc-ls attaches instead.
   _cx_scan     # CXRL: pane/ancestor pid → live codex user-thread rollout, one /proc pass for every cx row
   # chat window names (→ VS Code tabs) converge in the background; cc-name-sync.sh is their
@@ -1020,17 +1016,8 @@ cc-ls() {
         fi
         # window names (→ the VS Code tab) belong to cc-name-sync.sh, fired in the background
         # at sweep start — the single writer; an inline rename here fought it on same-cwd chats
-        hideskip=0                          # hidden? same delta-scan rule as Claude rows
-        if [[ -n "$cxid" && -n "${HID[$cxid]}" ]]; then
-          if [[ -n "${AT[$cxid]}" ]] && (( ${cxbytes:-0} > AT[$cxid] )); then
-            if (( $(_cx_newprompts "$cxrl" "${AT[$cxid]}") > 0 )); then UNHIDE[$cxid]=1
-            else AT[$cxid]=${cxbytes:-0}; hideskip=1; fi
-          else
-            [[ -z "${AT[$cxid]}" ]] && AT[$cxid]=${cxbytes:-0}
-            (( ${cxbytes:-0} < ${AT[$cxid]:-0} )) && AT[$cxid]=${cxbytes:-0}
-            hideskip=1
-          fi
-        fi
+        hideskip=0                          # hidden stays hidden, live or not — ⌃X is the only way back
+        [[ -n "$cxid" && -n "${HID[$cxid]}" ]] && hideskip=1
         if (( hideskip )); then (( strict )) && { hidden=$((hidden+1)); continue; }
         elif (( onlyhidden )); then continue; fi
         dispname="⬢ ${cxnm:-Codex chat}"
@@ -1105,17 +1092,8 @@ cc-ls() {
       if [[ -n "$tpath" && -r "$tpath" ]]; then
         _cc_stat "$tpath"; stt="$REPLY"; bytes="${stt%% *}"; lmt="${stt##* }"; hsize="$(_cc_hsize "${bytes:-0}")"
       fi
-      hideskip=0                                   # hidden? a new REAL prompt in the delta → auto-unhide
-      if [[ -n "$tpath" && -n "${HID[$uuid]}" ]]; then
-        if [[ -n "${AT[$uuid]}" ]] && (( ${bytes:-0} > AT[$uuid] )) && [[ -r "$tpath" ]]; then
-          if (( $(_cc_newprompts "$tpath" "${AT[$uuid]}") > 0 )); then UNHIDE[$uuid]=1
-          else AT[$uuid]=${bytes:-0}; hideskip=1; fi   # noise-only delta → ratchet, never rescan it
-        else
-          [[ -z "${AT[$uuid]}" ]] && AT[$uuid]=${bytes:-0}                          # lazy baseline
-          (( ${bytes:-0} < ${AT[$uuid]:-0} )) && AT[$uuid]=${bytes:-0}              # rewritten → re-baseline
-          hideskip=1
-        fi
-      fi
+      hideskip=0                                   # hidden stays hidden, live or not — ⌃X is the only way back
+      [[ -n "$tpath" && -n "${HID[$uuid]}" ]] && hideskip=1
       if (( hideskip )); then (( strict )) && { hidden=$((hidden+1)); continue; }
       elif (( onlyhidden )); then continue; fi   # default hides ⌃X'd · --hidden shows ONLY them
       (( ${bytes:-0} == 0 && strict )) && { hidden=$((hidden+1)); continue; }   # hide orphans (reveal: cc-ls -a)
@@ -1200,17 +1178,8 @@ cc-ls() {
     [[ -n "${live[$uuid]}" ]] && continue   # already shown as a live tmux session
     isagent=0; acfg="${CCAGENT[$uuid]}"; [[ -n "$acfg" ]] && isagent=1   # live bg/forked agent → attach (below), never resume
     # (the sessionKind:"bg" skip moved BELOW, where the prompt count exists — see there)
-    hideskip=0                                   # hidden? a new REAL prompt in the delta → auto-unhide
-    if [[ -n "${HID[$uuid]}" ]]; then
-      if [[ -n "${AT[$uuid]}" ]] && (( sz > AT[$uuid] )); then
-        if (( $(_cc_newprompts "$fp" "${AT[$uuid]}") > 0 )); then UNHIDE[$uuid]=1
-        else AT[$uuid]=$sz; hideskip=1; fi         # noise-only delta → ratchet, never rescan it
-      else
-        [[ -z "${AT[$uuid]}" ]] && AT[$uuid]=$sz                                    # lazy baseline
-        (( sz < ${AT[$uuid]:-0} )) && AT[$uuid]=$sz                                 # rewritten → re-baseline
-        hideskip=1
-      fi
-    fi
+    hideskip=0                                   # hidden stays hidden, live or not — ⌃X is the only way back
+    [[ -n "${HID[$uuid]}" ]] && hideskip=1
     if (( hideskip )); then (( strict )) && { hidden=$((hidden+1)); continue; }
     elif (( onlyhidden )); then continue; fi   # default hides ⌃X'd · --hidden shows ONLY them
     (( sz == 0 && ! isagent )) && continue
@@ -1285,17 +1254,8 @@ cc-ls() {
       (( sz == 0 )) && continue
       _cx_metac "$uuid" "$fp" "$mt" "$sz"; cwd="${REPLY%%$'\t'*}"; ct="${REPLY##*$'\t'}"
       [[ "$cwd" == "§sub§" ]] && continue            # subagent worker thread, not a chat
-      hideskip=0
-      if [[ -n "${HID[$uuid]}" ]]; then              # hidden? same delta-scan rule as Claude rows
-        if [[ -n "${AT[$uuid]}" ]] && (( sz > AT[$uuid] )); then
-          if (( $(_cx_newprompts "$fp" "${AT[$uuid]}") > 0 )); then UNHIDE[$uuid]=1
-          else AT[$uuid]=$sz; hideskip=1; fi
-        else
-          [[ -z "${AT[$uuid]}" ]] && AT[$uuid]=$sz
-          (( sz < ${AT[$uuid]:-0} )) && AT[$uuid]=$sz
-          hideskip=1
-        fi
-      fi
+      hideskip=0                                   # hidden stays hidden, live or not — ⌃X is the only way back
+      [[ -n "${HID[$uuid]}" ]] && hideskip=1
       if (( hideskip )); then (( strict )) && { hidden=$((hidden+1)); continue; }
       elif (( onlyhidden )); then continue; fi
       (( ct == 0 && strict )) && continue            # promptless husk (reveal: cc-ls -a)
@@ -1312,22 +1272,6 @@ cc-ls() {
     done
   fi
   { for u in ${(k)NC}; do print -r -- "$u"$'\t'"${NC[$u]}"; done } | bash "$CC_DB" chat-save 2>/dev/null   # persist cache (one transaction)
-  if (( ${#UNHIDE} )); then            # chats that grew since hidden → drop from the hide-list (auto-return)
-    # grep exits 1 when EVERY line is dropped (the common one-hidden-chat case) — that's a
-    # valid empty result, not a failure; only >1 (real error) may veto the mv
-    (   # one flock across ALL hide-list writers (⌃X toggle, this auto-unhide, cc-hide append)
-        # so a concurrent append landing inside this read-modify-write is not lost; per-pid temp
-        flock 9 2>/dev/null || true
-        grep -vxF -f =(print -l -- ${(k)UNHIDE}) "$hf" > "$hf.t.$$" 2>/dev/null
-        (( $? <= 1 )) && mv "$hf.t.$$" "$hf" || rm -f "$hf.t.$$"
-    ) 9>"$hf.lock"
-    for u in ${(k)UNHIDE}; do unset "AT[$u]"; done
-  fi
-  # ONE transaction replaces the old flock'd two-file rewrite, whose own comment conceded
-  # "last-writer-wins" — the exact mechanism by which a concurrent picker's hides disappeared.
-  # Send the full intended hidden set (uuid + baseline); the db makes it so atomically.
-  { for u in ${(k)HID}; do print -r -- "$u"$'\t'"${AT[$u]:-}"; done } | bash "$CC_DB" hidden-sync 2>/dev/null
-
   if (( ${#rows} == 0 )); then
     if   (( onlyhidden )); then echo "cc-ls: no hidden chats"
     elif (( hidden ));     then echo "cc-ls: $hidden hidden — cc-ls -a (all) · cc-ls --hidden (just those)"
@@ -1497,7 +1441,7 @@ LBL
     (( c1h )) && echo "⚡1h-cache is Claude-only — ignored for a Codex resume"
     local xs="cx-$(date +%s)-$$-$RANDOM"
     echo "Resuming Codex thread $uuid in $xcwd → new tmux -L $xs"
-    _cx_server "$xs" "$xcwd" "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M codex --dangerously-bypass-approvals-and-sandbox resume ${(q)uuid}" || return
+    _cx_server "$xs" "$xcwd" "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox resume ${(q)uuid}" || return
     if _cc_in_bunker; then TMUX= exec tmux -L "$xs" attach   # viewport dies with the tab
     else TMUX= tmux -L "$xs" attach; fi
   elif [[ "$kind" == L ]]; then               # live → attach across its socket

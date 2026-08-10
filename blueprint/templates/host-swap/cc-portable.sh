@@ -355,3 +355,28 @@ cc_sed_i() {
   sed "$_expr" "$_f" > "$_t" 2>/dev/null || { rm -f "$_t"; return 1; }
   mv -f "$_t" "$_f"
 }
+
+# ── codex thread identity ────────────────────────────────────────────────────
+# A codex chat's identity lives in ~/.codex/state_<N>.sqlite, table `threads` — NOT in a rollout
+# file. A thread running in `paginated` history mode may leave no rollout behind at all, so every
+# resolver that matches a chat through ~/.codex/sessions/ silently misses the new ones and, worse,
+# falls back to a stale sibling instead of failing. The filename is versioned; take the highest.
+CX_BIRTH_SLOP="${CX_BIRTH_SLOP:-120}"
+
+# cx_thread_id <cwd> <start-epoch> — the thread the pane owns, empty when the store holds none
+# that close (an elder or resumed chat). Matched by BIRTH TIME, not newest-in-cwd: codex records
+# a thread within seconds of its process starting, so the user thread in the pane's cwd born
+# nearest the pane's own start is that pane's thread. Newest-in-cwd mislabels every chat the
+# moment two of them share a directory.
+# Read-only and WAL-aware — `mode=ro`, never `immutable`, which hides every row still in the -wal.
+cx_thread_id() {
+  _cxdb="$(ls -1 "${CODEX_HOME:-$HOME/.codex}"/state_*.sqlite 2>/dev/null \
+    | sed 's/.*state_\([0-9]*\)\.sqlite$/\1 &/' | sort -rn | head -1 | cut -d' ' -f2-)"
+  [ -n "$_cxdb" ] && [ -n "${2:-}" ] || return 0
+  _cxcwd="$(printf '%s' "$1" | sed "s/'/''/g")"
+  sqlite3 -readonly "file:$_cxdb?mode=ro" \
+    "SELECT id FROM threads
+      WHERE thread_source='user' AND archived=0 AND cwd='$_cxcwd'
+        AND abs(created_at - $2) <= $CX_BIRTH_SLOP
+      ORDER BY abs(created_at - $2) LIMIT 1;" 2>/dev/null
+}

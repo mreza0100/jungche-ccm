@@ -42,9 +42,11 @@ prim="$(bash "$CC_FLEET_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
 case "$prim" in 2) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
 
 cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit a host chat's identity
+  # Autonomy flags match _cc_run's CC_AUTONOMY_FLAGS — an agent-router open must not stop to
+  # ask permissions. Caller flags follow and win, so a supervised open stays possible.
   local cfg="$1"; shift
-  if [ -n "$cfg" ]; then env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE CLAUDE_CONFIG_DIR="$cfg" claude "$@"
-  else env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR claude "$@"; fi
+  if [ -n "$cfg" ]; then env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE CLAUDE_CONFIG_DIR="$cfg" claude --allow-dangerously-skip-permissions --dangerously-skip-permissions "$@"
+  else env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR claude --allow-dangerously-skip-permissions --dangerously-skip-permissions "$@"; fi
 }
 
 # find this session in the agent registry (owning account if known, else both accounts).
