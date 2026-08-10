@@ -18,7 +18,7 @@ hf="$HOME/.claude/.cc-ls-hidden"
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 CC_DB="$CC_FLEET_HOME/cc-db.sh"   # fleet state store; falls back to $hf on its own
-. "$CC_FLEET_HOME/cc-portable.sh" # GNU/BSD seam — cc_size and friends
+. "$CC_FLEET_HOME/cc-portable.sh" # GNU/BSD seam — cc_detach and friends
 sock=""; pane=""
 if [ -n "${TMUX:-}" ]; then
   sock="${TMUX%%,*}"; sock="${sock##*/}"          # this chat's -L socket
@@ -58,8 +58,6 @@ mkdir -p "$(dirname "$hf")"
 if bash "$CC_DB" hidden-has "$u" 2>/dev/null; then
   echo "cc-hide: already hidden ($u)"
 else
-  # append under the shared hide-list lock — cc-ls's ⌃X toggle / auto-unhide do a
-  # read-modify-write of the same file, and an unlocked append landing in that window is lost
   bash "$CC_DB" hidden-add "$u"   # transactional — no flock, no lost update
   echo "cc-hide: hidden $u — gone from cc-ls (cc-ls --hidden to manage · ⌃X to restore)"
 fi
@@ -94,15 +92,10 @@ if [ "$do_exit" = 1 ]; then
     # a standalone chat still fully closes. Detached + delayed so this turn finishes first;
     # graceful /exit lets Claude flush its transcript and run Stop hooks — polled until the
     # pane closes itself (up to 20s; compaction can blow past a fixed grace), then kill-pane
-    # is the backstop. Sweep the cc-sid breadcrumb only if this was the last pane on the
-    # server. Finally record the POST-exit transcript size as the auto-unhide baseline. cc-ls
-    # scans only the bytes past this baseline for a NEW REAL PROMPT (noise never unhides), so
-    # baselining after the /exit flush keeps those flush bytes out of every future delta scan.
+    # is the backstop. Sweep the cc-sid breadcrumb only if this was the last pane on the server.
     last=0; [ "$(tmux -L "$sock" list-panes -a 2>/dev/null | wc -l | tr -d ' ')" = "1" ] && last=1
     echo "cc-hide: closing this chat (auto /exit, then kill-pane $pane)…"
-    $(cc_detach) env SOCK="$sock" PANE="$pane" LAST="$last" U="$u" \
-      AF="$HOME/.claude/.cc-ls-hidden.at" PROJ="$HOME/.claude/projects" CCDB="$CC_DB" \
-      CCPORT="$CC_FLEET_HOME/cc-portable.sh" bash -c '
+    $(cc_detach) env SOCK="$sock" PANE="$pane" LAST="$last" bash -c '
       sleep 1.5
       tmux -L "$SOCK" send-keys -t "$PANE" -l -- /exit
       tmux -L "$SOCK" send-keys -t "$PANE" Enter
@@ -113,12 +106,6 @@ if [ "$do_exit" = 1 ]; then
       tmux -L "$SOCK" kill-pane -t "$PANE" 2>/dev/null
       rm -f "/tmp/cc-sid/$SOCK.$PANE"                     # the pane-keyed breadcrumb
       [ "$LAST" = 1 ] && rm -f "/tmp/cc-sid/$SOCK"
-      . "$CCPORT"                                         # the GNU/BSD seam, in this detached shell too
-      tp="$(ls "$PROJ"/*/"$U".jsonl 2>/dev/null | head -1)"
-      if [ -n "$tp" ]; then
-        sz="$(cc_size0 "$tp")"
-        bash "$CCDB" hidden-add "$U" "$sz"   # upsert the baseline in one statement
-      fi
     ' >/dev/null 2>&1 &
   elif [ -n "$sock" ]; then
     echo "cc-hide: in tmux but \$TMUX_PANE unset — type /exit yourself"

@@ -107,35 +107,47 @@ cmd_hidden_list() {
   if have_db; then _q "SELECT uuid FROM hidden ORDER BY hidden_at DESC;"
   else [ -f "$LEG_HID" ] && grep . "$LEG_HID" || true; fi
 }
+# $LEG_HID is not a legacy leftover: it is the hidden set as it stands between cc-ls runs. The
+# picker is the last thing cc-ls does, so a ⌃X toggle can only be carried in that file and
+# committed by the next run — which means the next run READS it, and a hide that reached only the
+# db would be deleted by that run's sync. So every writer of the db writes the file too, here, in
+# one place. Locked against the picker's own read-modify-writes; flock is absent on macOS, where
+# a plain append is still atomic for a line this short.
+_leg_add() {
+  mkdir -p "$(dirname "$LEG_HID")" 2>/dev/null
+  ( flock 9 2>/dev/null || true
+    grep -qxF -- "$1" "$LEG_HID" 2>/dev/null || printf '%s\n' "$1" >> "$LEG_HID"
+  ) 9>"$LEG_HID.lock"
+}
+_leg_del() {
+  [ -f "$LEG_HID" ] || return 0
+  ( flock 9 2>/dev/null || true
+    grep -vxF -- "$1" "$LEG_HID" > "$LEG_HID.n.$$" 2>/dev/null
+    [ "$?" -le 1 ] && mv "$LEG_HID.n.$$" "$LEG_HID" || rm -f "$LEG_HID.n.$$"
+  ) 9>"$LEG_HID.lock"
+}
 cmd_hidden_add() {
   local u="${1:?uuid}" p="${2:-}"
-  if have_db; then
-    # COALESCE, not a bare assignment. /bb hides in two steps: cc-hide.sh adds the row with no
-    # payload, then a DETACHED post-exit writer re-adds it with the transcript size once the chat
-    # has flushed. A conflict clause that only touched hidden_at threw that size away, leaving the
-    # auto-unhide baseline NULL — which is precisely the state in which noise resurrects a hidden
-    # chat. COALESCE takes a new payload when one is supplied and keeps the old one when it is not,
-    # so neither ordering of those two calls can lose the baseline.
-    _q "INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES('$(_esc "$u")',$NOW,$( [ -n "$p" ] && printf '%s' "$p" || printf 'NULL' ))
+  # COALESCE, not a bare assignment: a second add for the same chat must not blank a payload an
+  # earlier one supplied, whichever order the two land in.
+  have_db && _q "INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES('$(_esc "$u")',$NOW,$( [ -n "$p" ] && printf '%s' "$p" || printf 'NULL' ))
         ON CONFLICT(uuid) DO UPDATE SET
           hidden_at=$NOW,
           at_payload=COALESCE(excluded.at_payload, hidden.at_payload);"
-  else
-    grep -qxF "$u" "$LEG_HID" 2>/dev/null || printf '%s\n' "$u" >> "$LEG_HID"
-  fi
+  _leg_add "$u"
 }
 cmd_hidden_del() {
   local u="${1:?uuid}"
-  if have_db; then _q "DELETE FROM hidden WHERE uuid='$(_esc "$u")';"
-  else [ -f "$LEG_HID" ] && { grep -vxF "$u" "$LEG_HID" > "$LEG_HID.n" && mv "$LEG_HID.n" "$LEG_HID"; }; fi
+  have_db && _q "DELETE FROM hidden WHERE uuid='$(_esc "$u")';"
+  _leg_del "$u"
 }
 cmd_hidden_has() {
   local u="${1:?uuid}"
   if have_db; then [ -n "$(_q "SELECT 1 FROM hidden WHERE uuid='$(_esc "$u")';")" ]
   else grep -qxF "$u" "$LEG_HID" 2>/dev/null; fi
 }
-# The auto-unhide pass, as ONE transaction. This is the whole reason the database exists: the old
-# read-file / edit / write-file version lost every concurrent edit. Pass the live uuid set on stdin.
+# Prune the hidden set to the uuids still on disk, as ONE transaction — pass the live set on stdin.
+# Housekeeping for hides whose transcript is gone; hidden-sync is what cc-ls uses.
 cmd_hidden_reap() {
   have_db || { echo "reap needs the db" >&2; return 1; }
   local tmp; tmp="$(mktemp)"; cat > "$tmp"
@@ -175,8 +187,12 @@ cmd_hidden_sync() {
       _esc_v "$u"; echo "INSERT OR REPLACE INTO want VALUES('$_E',$p);"
     done < "$t"
     echo "DELETE FROM hidden WHERE uuid NOT IN (SELECT uuid FROM want);"
+    # WHERE true is load-bearing, not decoration. On an INSERT..SELECT the parser cannot tell an
+    # upsert's ON CONFLICT from a join's ON, so SQLite requires a WHERE clause to end the SELECT
+    # first; without it the statement is a syntax error, the -batch run aborts mid-transaction,
+    # and the whole sync rolls back. cc-ls pipes here with 2>/dev/null, so it failed in silence.
     echo "INSERT INTO hidden(uuid,hidden_at,at_payload)
-            SELECT uuid,$NOW,payload FROM want
+            SELECT uuid,$NOW,payload FROM want WHERE true
           ON CONFLICT(uuid) DO UPDATE SET at_payload=excluded.at_payload;"
     echo "COMMIT;"
   } | sqlite3 -batch -cmd '.timeout 5000' "$DB"

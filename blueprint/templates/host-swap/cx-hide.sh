@@ -20,7 +20,7 @@ hf="$HOME/.claude/.cc-ls-hidden"
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 CC_DB="$CC_FLEET_HOME/cc-db.sh"   # fleet state store; falls back to $hf on its own
-. "$CC_FLEET_HOME/cc-portable.sh" # GNU/BSD seam — cc_pane_of, cc_penv, cc_size0, cc_detach
+. "$CC_FLEET_HOME/cc-portable.sh" # GNU/BSD seam — cc_pane_of, cc_penv, cc_detach
 
 # RECOVER $TMUX FROM ANCESTRY. Codex spawns its tool shell WITHOUT passing tmux context through,
 # so a /bb run from inside a Codex chat measures TMUX=unset and this script used to abort with
@@ -154,8 +154,6 @@ mkdir -p "$(dirname "$hf")"
 if bash "$CC_DB" hidden-has "$u" 2>/dev/null; then
   echo "cx-hide: already hidden ($u)"
 else
-  # append under the shared hide-list lock — cc-ls's ⌃X toggle / auto-unhide do a
-  # read-modify-write of the same file, and an unlocked append landing in that window is lost
   bash "$CC_DB" hidden-add "$u"   # transactional — no flock, no lost update
   echo "cx-hide: hidden $u — gone from cc-ls (cc-ls --hidden to manage · ⌃X to restore)"
 fi
@@ -170,12 +168,9 @@ if [ "$do_exit" = 1 ]; then
   # it too (the same bug cc-hide.sh already fixes this way). Killing the last pane ends the server on
   # its own, so a standalone chat still fully closes. Detached + delayed so this turn finishes first;
   # a graceful /quit lets codex flush its rollout, polled until the pane closes itself (up to 20s),
-  # then kill-pane is the backstop. Finally record the POST-quit rollout size as the auto-unhide
-  # baseline (cc-ls scans only bytes past this baseline for a NEW REAL PROMPT — noise never
-  # unhides — so baselining after the /quit flush keeps flush bytes out of every future delta scan).
+  # then kill-pane is the backstop.
   echo "cx-hide: closing this Codex chat (auto /quit, then kill-pane $pane)…"
-  $(cc_detach) env SOCKPATH="$sockpath" SOCK="$sock" PANE="$pane" RL="$rl" U="$u" \
-    AF="$hf.at" HF="$hf" CCDB="$CC_DB" CCPORT="$CC_FLEET_HOME/cc-portable.sh" bash -c '
+  $(cc_detach) env SOCKPATH="$sockpath" PANE="$pane" bash -c '
     sleep 1.5
     tmux -S "$SOCKPATH" send-keys -t "$PANE" -l -- /quit
     tmux -S "$SOCKPATH" send-keys -t "$PANE" Enter
@@ -184,10 +179,5 @@ if [ "$do_exit" = 1 ]; then
       sleep 1; n=$((n+1))
     done
     tmux -S "$SOCKPATH" kill-pane -t "$PANE" 2>/dev/null
-    . "$CCPORT"                                       # the GNU/BSD seam, in this detached shell too
-    if [ -r "$RL" ]; then
-      sz="$(cc_size0 "$RL")"
-      bash "$CCDB" hidden-add "$U" "$sz"   # upsert the baseline in one statement
-    fi
   ' >/dev/null 2>&1 &
 fi

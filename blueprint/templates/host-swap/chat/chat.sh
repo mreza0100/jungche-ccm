@@ -1096,12 +1096,19 @@ case "$cmd" in
     fi
     if [[ "$all" == 1 ]]; then echo "live chats everywhere (session · state · dir · last activity):"
     else echo "live chats in this repo (session · state · last activity):"; fi
-    found=0; elsewhere=0
+    found=0; elsewhere=0; hiddenrows=0
+    # A hidden chat is hidden EVERYWHERE, not just in cc-ls's picker: hiding says "this one is
+    # done with me", and a listing that keeps offering it makes the hide meaningless. Read the
+    # same set cc-ls reads, in the same precedence — the file is the hidden set as it stands
+    # between picker runs and can be one ⌃X ahead of the db, so it wins when it exists.
+    hidefile="$HOME/.claude/.cc-ls-hidden"
+    if [[ -f "$hidefile" ]]; then hidden_ids="$(grep . "$hidefile" 2>/dev/null || true)"
+    else hidden_ids="$(bash "$CC_FLEET_HOME/cc-db.sh" hidden-list 2>/dev/null || true)"; fi
     # Enumerate panes on EVERY socket (one socket per chat now); each row is prefixed
     # with its socket so per-pane capture/display hit the right server. A dead socket
     # is skipped (|| true), never aborting the listing. Self-match compares BOTH socket
     # and session — session names are globally unique, so the session stays the handle.
-    while IFS='|' read -r sock sess path pcmd wactive pactive win; do
+    while IFS='|' read -r sock sess path pcmd wactive pactive paneid panepid win; do
       [[ "$wactive" == "1" && "$pactive" == "1" ]] || continue
       # Codex rows: gated on the cx-* SOCKET basename, never on bare `node` (that would
       # list unrelated node processes); the codex TUI renders as `codex` or `node` (its
@@ -1121,6 +1128,24 @@ case "$cmd" in
         case "$pcmd" in tmux) continue ;; *) ;; esac
       else
         case "$pcmd" in [0-9]* | claude) ;; *) continue ;; esac
+      fi
+      # Drop hidden chats before anything else counts them — a hidden chat must not even swell
+      # the "+N live in other dirs" tally. Each engine answers "which chat is this pane" its own
+      # way: Claude leaves a pane-keyed breadcrumb, codex records the thread in its store and is
+      # matched by birth time (cx_thread_id). A pane whose id will not resolve is LISTED, never
+      # dropped — failing open keeps a live chat visible, and that is the safe direction.
+      rowid=""
+      if [[ "$sockbase" == cx-* ]]; then
+        rowid="$(cx_thread_id "$path" "$(cc_pstart "$panepid" 2>/dev/null)" 2>/dev/null || true)"
+      else
+        for crumb in "/tmp/cc-sid/$sockbase.$paneid" "/tmp/cc-sid/$sockbase"; do
+          [[ -r "$crumb" ]] || continue
+          rowid="$(basename -- "$(cat "$crumb" 2>/dev/null)" .jsonl 2>/dev/null)"
+          [[ -n "$rowid" ]] && break
+        done
+      fi
+      if [[ -n "$rowid" ]] && printf '%s\n' "$hidden_ids" | grep -qxF -- "$rowid"; then
+        hiddenrows=$((hiddenrows + 1)); continue
       fi
       in_repo=1; case "$path" in "$repo" | "$repo"/*) ;; *) in_repo=0 ;; esac
       [[ "$all" == 0 && "$in_repo" == 0 ]] && { elsewhere=$((elsewhere + 1)); continue; }
@@ -1145,7 +1170,7 @@ case "$cmd" in
     done < <(
       while IFS= read -r sock; do
         [[ -n "$sock" ]] || continue
-        tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}|#{window_name}' 2>/dev/null || true
+        tmux -S "$sock" list-panes -a -F "$sock"'|#{session_name}|#{pane_current_path}|#{pane_current_command}|#{window_active}|#{pane_active}|#{pane_id}|#{pane_pid}|#{window_name}' 2>/dev/null || true
       done < <(_sockets) | sort -t'|' -k2 -n
     )
     if [[ "$found" -eq 0 ]]; then
@@ -1155,6 +1180,8 @@ case "$cmd" in
     if [[ "$all" == 0 && "$elsewhere" -gt 0 ]]; then
       echo "  (+$elsewhere live in other dirs — chat.sh ls --all to see them)"
     fi
+    # Say what was withheld. A listing that quietly drops rows reads as "this is everything".
+    [[ "$hiddenrows" -gt 0 ]] && echo "  (+$hiddenrows hidden — cc-ls --hidden to manage)"
     ;;
 
   capture)

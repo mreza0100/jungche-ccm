@@ -122,7 +122,7 @@ ok "load->save->load is stable" "$(diff -q "$T/r1" "$T/r2" >/dev/null && echo sa
 bash "$CC" chat-prune
 ok "prune drops rows with no transcript" "$(bash "$CC" chat-load | wc -l | n)" "0"
 
-echo "=== 10. /bb two-step hide must not lose the auto-unhide baseline ==="
+echo "=== 10. a two-step hide must not lose a payload the first step supplied ==="
 bash "$CC" init >/dev/null 2>&1
 sqlite3 "$CC_FLEET_DB" "DELETE FROM hidden;"
 bash "$CC" hidden-add bb-0000-0000-0000-000000000001            # step 1: cc-hide.sh, no payload
