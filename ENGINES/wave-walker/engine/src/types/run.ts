@@ -54,6 +54,9 @@ export interface RawArgs {
   lenses?: unknown;
   maxWaves?: unknown;
   maxLanes?: unknown;
+  // TIME CHECKPOINT knobs — the runtime window and the slice held back for terminal judgment.
+  windowSeconds?: unknown;
+  judgeReserveSeconds?: unknown;
   probeModel?: unknown;
   probeEffort?: unknown;
   brainerModel?: unknown;

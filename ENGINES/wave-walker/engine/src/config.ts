@@ -98,6 +98,12 @@ export class Configs {
   MAX_LANES: number;
   REPORT_OUT: string | null;
 
+  // ── TIME CHECKPOINT — the runtime window the walk must finish inside, and the slice held back for
+  // terminal judgment. The graph cannot read a clock (the Workflow runtime forbids it), so both are
+  // declared here and compared against a clockProbe reading. See engine.ts § TIME CHECKPOINT. ──
+  WINDOW_SECONDS: number;
+  JUDGE_RESERVE_SECONDS: number;
+
   // ── per-seat model TIER + reasoning EFFORT — keyed by seat name (types/agents.ts Seat). Frontier
   // seats (brainer, finalJudge, secondOpinion) default to 'opus' and warn loudly on any downgrade —
   // see the `agents` override loop below. ──
@@ -165,7 +171,8 @@ export class Configs {
         "wave-walker: charter must be a string (the walk's caller-supplied duty note), got " +
           JSON.stringify(arg.charter),
       );
-    this.CHARTER = typeof arg.charter === 'string' ? Configs.promptText(arg.charter, 'charter') : '';
+    this.CHARTER =
+      typeof arg.charter === 'string' ? Configs.promptText(arg.charter, 'charter') : '';
     // INVARIANT REGISTRY FEATURE — absent/null → [] (THE FLOOR: no hunter/critic, byte-identical walk).
     // A non-array, or an array with a malformed entry, throws loudly — never a silently-partial registry.
     this.INVARIANTS = Configs.parseInvariants(arg.invariants);
@@ -201,8 +208,7 @@ export class Configs {
     this.SOLO_THRESHOLD = Number.isInteger(arg.soloThreshold) ? (arg.soloThreshold as number) : 8;
 
     // ── INVESTIGATE config (source lines 142-153) ──
-    this.GOAL =
-      arg.goal != null ? Configs.promptText(String(arg.goal), 'goal') : '';
+    this.GOAL = arg.goal != null ? Configs.promptText(String(arg.goal), 'goal') : '';
     this.SCOPE =
       Array.isArray(arg.scope) && (arg.scope as unknown[]).length
         ? Configs.promptTextArray(arg.scope, 'scope')
@@ -214,6 +220,13 @@ export class Configs {
     this.MAX_WAVES = Number.isInteger(arg.maxWaves) ? (arg.maxWaves as number) : 3;
     this.MAX_LANES = Number.isInteger(arg.maxLanes) ? (arg.maxLanes as number) : 5;
     this.REPORT_OUT = Configs.optionalRepoPath(arg.reportOut, 'reportOut');
+    // Defaults measured against the observed starvation: the final judge was reached at 589.9s of an
+    // approximately 600s window and was killed 15.9s later. 150s is the smallest reserve that lets one
+    // Opus ruling over a whole wave actually land.
+    this.WINDOW_SECONDS = Number.isInteger(arg.windowSeconds) ? (arg.windowSeconds as number) : 600;
+    this.JUDGE_RESERVE_SECONDS = Number.isInteger(arg.judgeReserveSeconds)
+      ? (arg.judgeReserveSeconds as number)
+      : 150;
 
     // ── per-seat defaults, seeded verbatim off the source's per-call option objects. Several seats
     // deliberately SHARE one legacy arg (sensorModel/sensorEffort → sliceSensor + gateSweep;
@@ -273,6 +286,8 @@ export class Configs {
       synthesiser: synthModel,
       invariantHunter: invariantHunterModel,
       coverageCritic: coverageCriticModel,
+      // COLLECTOR SEAT — one `date +%s` read. No judgment, no repository access, no salience.
+      clockProbe: 'haiku',
     };
     this.EFFORT = {
       scout: 'high',
@@ -294,6 +309,7 @@ export class Configs {
       synthesiser: 'xhigh', // hardcoded in the source (no synthEffort arg) — source line 265
       invariantHunter: 'high',
       coverageCritic: 'high',
+      clockProbe: 'medium', // one command, one integer — reasoning effort buys nothing here
     };
 
     // ── PER-SEAT OVERRIDE (`agents` arg) — retune any seat's model/effort without touching source,
@@ -484,11 +500,9 @@ export class Configs {
       return out;
     };
     const roles = pair(p.roles, 'roles', ['owner', 'elevated']) as
-      | { owner: string; elevated: string }
-      | undefined;
+      { owner: string; elevated: string } | undefined;
     const fenceLabels = pair(p.fenceLabels, 'fenceLabels', ['org', 'ownership']) as
-      | { org: string; ownership: string }
-      | undefined;
+      { org: string; ownership: string } | undefined;
     const rawRepoRoot = str(p.repoRoot, 'repoRoot');
     const rawAuthDoc = str(p.authDoc, 'authDoc');
     if (rawAuthDoc !== undefined) {
@@ -578,11 +592,7 @@ export class Configs {
   private static promptText(raw: string, field: string): string {
     const injectionDirective =
       /(?:ignore|disregard|override|forget).{0,48}(?:prior|previous|above|system|developer|instruction)|(?:system|assistant|developer)\s*:/i;
-    if (
-      raw.length > 16_384 ||
-      /[\u0000-\u001f\u007f`<>]/.test(raw) ||
-      injectionDirective.test(raw)
-    )
+    if (raw.length > 16_384 || /[\u0000-\u001f\u007f`<>]/.test(raw) || injectionDirective.test(raw))
       throw new Error(
         'wave-walker: args.' +
           field +

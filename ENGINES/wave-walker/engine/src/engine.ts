@@ -13,6 +13,7 @@ import {
   runClaimVerifier,
   runClaimVerifierBatch,
   runConsistencyJudge,
+  runClockProbe,
   runCoverageCritic,
   runFinalJudge,
   runFold,
@@ -730,7 +731,8 @@ export class WaveWalker {
     if (!state.ledger.size)
       return {
         status: 'FAILED',
-        detail: 'wave-0 probes returned no auditable claims — an empty ledger is not an investigation',
+        detail:
+          'wave-0 probes returned no auditable claims — an empty ledger is not an investigation',
       };
 
     let coord: CoordOut | null = null;
@@ -871,6 +873,10 @@ export class WaveWalker {
     // anything the scout returns), so the scout's own gateFiles instruction can be honest about whether
     // this project even HAS a configured gate-resolver surface (see computeGateArming above).
     const gateArming = computeGateArming(CONFIG.PROJECT);
+    // TIME CHECKPOINT (t0) — the walk's start reading, taken BEFORE the scout so it covers the whole
+    // run. The Workflow runtime forbids in-script clock reads, so a seat with a shell is the only
+    // instrument that can answer this; null means the reading failed and no shed will ever fire.
+    const walkStartedAt = await runClockProbe('clock · t0', 'Scout');
     const scoutArgs = {
       reportPath,
       branch,
@@ -1022,7 +1028,9 @@ export class WaveWalker {
     if (!authOk)
       log(
         '⚠ scout returned no usable auth-pattern extract — R6/second-opinion run on the configured fallback' +
-          (authDoc ? ' (verify it against ' + authDoc + ')' : ' (no args.project.authDoc configured)'),
+          (authDoc
+            ? ' (verify it against ' + authDoc + ')'
+            : ' (no args.project.authDoc configured)'),
       );
     const authRule = authOk
       ? (authDoc ? authDoc + ' (live, scout-extracted): "' : '(live, scout-extracted): "') +
@@ -1111,8 +1119,8 @@ export class WaveWalker {
         (f) => () =>
           runGateSweep({
             file: f,
-            resourceClasses: CONFIG.PROJECT?.resourceClasses ||
-              CONFIG.PROJECT?.fencedResourceClasses || [],
+            resourceClasses:
+              CONFIG.PROJECT?.resourceClasses || CONFIG.PROJECT?.fencedResourceClasses || [],
             fenceLabels: CONFIG.PROJECT?.fenceLabels || { org: 'org', ownership: 'ownership' },
           }) as Promise<Barrier>,
       ),
@@ -1269,6 +1277,32 @@ export class WaveWalker {
         ')',
     );
 
+    // ─── TIME CHECKPOINT — hold back the JUDGE RESERVE ───────────────────────────────────────────
+    // Phase 3's discretionary work (territory digests, the coverage critic, the second-opinion
+    // escalation below) is what pushes the final judge past the runtime window: the judge runs LAST,
+    // so every second spent here is a second it may not get. One clock reading decides whether the
+    // window still covers the reserve. Shedding is NOT silence — each shed lens is recorded as a named
+    // coverage gap and rides into the final judgment, so the verdict is ruled knowing the walk was
+    // narrowed. A failed reading sheds NOTHING: a clock you cannot trust must never cost a lens.
+    const checkpointAt =
+      walkStartedAt === null ? null : await runClockProbe('clock · checkpoint', 'Judge');
+    const remainingSeconds =
+      walkStartedAt !== null && checkpointAt !== null
+        ? CONFIG.WINDOW_SECONDS - (checkpointAt - walkStartedAt)
+        : null;
+    const shedForTime =
+      remainingSeconds !== null && remainingSeconds < CONFIG.JUDGE_RESERVE_SECONDS;
+    if (shedForTime)
+      log(
+        '⚠ TIME CHECKPOINT: ' +
+          remainingSeconds +
+          's left of a ' +
+          CONFIG.WINDOW_SECONDS +
+          's window (judge reserve ' +
+          CONFIG.JUDGE_RESERVE_SECONDS +
+          's) — shedding digests, coverage critic, and second-opinion escalation so the final judge can rule',
+      );
+
     // ─── Phase 3: judges (ledger anomalies) + digests; Opus second opinion on killed security/near-certain ─
     const cardById = new Map(cards.map((c) => [c.id, c]));
     const byRule: Record<string, Anomaly[]> = {};
@@ -1280,17 +1314,20 @@ export class WaveWalker {
     // 'AI' territory slice — driven by the STRUCTURED sidesCovered a card already carries (zipCards tags
     // every card with the job kinds that touched it), a strictly more reliable signal than grepping
     // extracted free text for a magic string.
-    const digestJobs = cards.length
-      ? (scout.territories || [])
-          .map((t) => ({
-            territory: t,
-            slice:
-              t === 'AI'
-                ? cards.filter((c) => (c.sidesCovered || []).includes('ai')).map((c) => project(c, 'AI'))
-                : cards.map((c) => project(c, t === 'BE' ? 'BE' : 'FE')),
-          }))
-          .filter((j) => j.slice.length)
-      : [];
+    const digestJobs =
+      cards.length && !shedForTime
+        ? (scout.territories || [])
+            .map((t) => ({
+              territory: t,
+              slice:
+                t === 'AI'
+                  ? cards
+                      .filter((c) => (c.sidesCovered || []).includes('ai'))
+                      .map((c) => project(c, 'AI'))
+                  : cards.map((c) => project(c, t === 'BE' ? 'BE' : 'FE')),
+            }))
+            .filter((j) => j.slice.length)
+        : [];
     // INVARIANT REGISTRY FEATURE (§ 2.4) — the external denominator, dispatched alongside judges/digests
     // (all three depend only on Phase-1 outputs, none on each other) so it completes before the final
     // judge needs it. Only runs when the registry is non-empty — an absent/empty registry dispatches
@@ -1326,7 +1363,7 @@ export class WaveWalker {
             runTerritoryDigest({ territory: j.territory, slice: j.slice, charter: CONFIG.CHARTER }),
         ),
       ),
-      CONFIG.INVARIANTS.length
+      CONFIG.INVARIANTS.length && !shedForTime
         ? runCoverageCritic({
             changedFiles: scout.changedFiles || [],
             threadNames: threads.map((t) => ({ id: t.id, type: t.type, name: t.name })),
@@ -1345,10 +1382,27 @@ export class WaveWalker {
       .flatMap((r) => r.verdicts || []);
     const digests = digestResults.filter((d): d is NonNullable<typeof d> => !!d);
     const coverageGaps: CoverageGap[] = coverageCriticResult ? coverageCriticResult.gaps || [] : [];
+    // A shed lens is a coverage FACT, and the final judge is the seat that must weigh it — so it is
+    // recorded as a named gap rather than quietly missing. A narrowed walk that does not say it was
+    // narrowed is the same failure as an empty enumeration reported as a clean result.
+    if (shedForTime)
+      coverageGaps.push({
+        territory: 'WHOLE WALK',
+        why:
+          'runtime window ran short (' +
+          remainingSeconds +
+          's left against a ' +
+          CONFIG.JUDGE_RESERVE_SECONDS +
+          's judge reserve): territory digests, the coverage critic, and the second-opinion escalation over KILLED security/near-certain verdicts were SHED so the final judge could rule at all. This walk is NARROWER than a full walk: scrutinise the killed verdicts yourself before ruling, and weigh the verdict knowing these lenses never ran.',
+      });
     if (CONFIG.INVARIANTS.length)
       log(
         'Coverage critic: ' +
-          (coverageCriticResult ? coverageGaps.length + ' gap(s) named' : 'DIED — a coverage hole'),
+          (shedForTime
+            ? 'SHED to protect the judge reserve — a deliberate narrowing, not a death'
+            : coverageCriticResult
+              ? coverageGaps.length + ' gap(s) named'
+              : 'DIED — a coverage hole'),
       );
     const anomalyById = new Map(anomalies.map((x) => [x.id, x]));
     // killed security/near-certain (existing) — a wrong KILL hides here.
@@ -1369,7 +1423,16 @@ export class WaveWalker {
       return !!x && x.rule === 'R9-INV' && ['high', 'critical'].includes(x.severityHint);
     });
     const escalatable = [...killedEscalatable, ...confirmedInvEscalatable];
-    if (escalatable.length) {
+    // SHED — the final judge is told to scrutinise these itself (the pushed coverage gap says so), and
+    // it holds the reinstatement power the second opinion would have exercised. Losing the escalation
+    // costs one safety net; losing the judge costs the ruling.
+    if (escalatable.length && shedForTime)
+      log(
+        '⚠ Escalation SHED to protect the judge reserve: ' +
+          escalatable.length +
+          ' killed security/near-certain verdict(s) went unreviewed — recorded as a coverage gap the final judge must weigh',
+      );
+    if (escalatable.length && !shedForTime) {
       log(
         'Escalation: ' +
           escalatable.length +
@@ -1477,8 +1540,34 @@ export class WaveWalker {
       coverageGaps,
       contradictions: contradictionScan.contradictions,
     });
+    // DEAD-JUDGE GUARD — the zero-thread guard above states the law ("an empty enumeration is
+    // never a verdict") and this is the SAME law at the top of the walk: Phase 3.5 is the ONE
+    // ruling over the whole wave, so a walk whose judge never returned has not been found clean —
+    // it has proven the judge could not rule. Without this, Phase 4 folds and renders a verdict
+    // with the frontier seat absent, disclosed only by `finalJudgeDied` in telemetry. The seat
+    // dies for a structural reason: it runs LAST, and a wide merge can spend the whole ~10-minute
+    // Workflow window before it is reached (observed: reached at 589.9s, killed 15.9s later). The
+    // engine cannot measure that window — the Workflow runtime forbids every wall-clock read, so
+    // no reserve can be computed here — so it refuses the verdict rather than guess at one.
+    if (!finalJudge)
+      return {
+        status: 'FAILED',
+        detail:
+          'final judge died after its retries — the walk completed ' +
+          walks.length +
+          '/' +
+          threads.length +
+          ' threads and ' +
+          anomalies.length +
+          ' ledger anomalies, but NO seat ruled the wave. An unjudged walk is never a verdict. ' +
+          'The judge runs last and can be starved by the Workflow runtime window — re-run over a ' +
+          'narrower merge range, or split the walk.',
+        threads: threads.length,
+        anomalies: anomalies.length,
+        confirmed: confirmed.length,
+      };
     let finalJudgeReinstatedCount = 0;
-    if (finalJudge && (finalJudge.reinstated || []).length) {
+    if (finalJudge.reinstated && finalJudge.reinstated.length) {
       const re = new Map(finalJudge.reinstated!.map((r) => [r.anomalyId, r]));
       verdicts = verdicts.map((v) =>
         re.has(v.anomalyId) && v.verdict === 'FALSE'
@@ -1495,14 +1584,13 @@ export class WaveWalker {
       finalJudgeReinstatedCount = finalJudge.reinstated!.length;
       log('Final judge reinstated ' + finalJudge.reinstated!.length + ' killed verdict(s)');
     }
-    if (finalJudge)
-      log(
-        'Final judgment: ' +
-          finalJudge.verdict +
-          ' · ' +
-          finalJudge.missedRisks.length +
-          ' missed risk(s)',
-      );
+    log(
+      'Final judgment: ' +
+        finalJudge.verdict +
+        ' · ' +
+        finalJudge.missedRisks.length +
+        ' missed risk(s)',
+    );
 
     // ─── Phase 4: Fold — merge thread walks + confirmed anomalies + digests → the wave review ─────
     const coverageSummary =
