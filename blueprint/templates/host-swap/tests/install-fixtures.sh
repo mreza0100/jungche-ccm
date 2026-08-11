@@ -47,7 +47,7 @@ ok "bb.md linked (suffix dropped)" "$(readlink -f "$CMD/bb.md")" "$BUNDLE/bb.com
 ok "chat/ls.md linked"             "$(readlink -f "$CMD/chat/ls.md")" "$BUNDLE/chat/ls.command.md"
 ok "chat/self/compact.md linked"   "$(readlink -f "$CMD/chat/self/compact.md")" "$BUNDLE/chat/self/compact.command.md"
 ok "chat.sh linked"                "$(readlink -f "$CMD/chat/chat.sh")" "$BUNDLE/chat/chat.sh"
-ok "zshrc sources the bundle"      "$(grep -c "$BUNDLE/cc-fleet.zsh" "$HOME/.zshrc")" "1"
+ok "zshrc sources the bundle"      "$(grep -c "$BUNDLE/cc-fleet/shim/cc-fleet.zsh" "$HOME/.zshrc")" "1"
 ok "codex bb skill dir linked"     "$(readlink -f "$HOME/.agents/skills/bb")" "$BUNDLE/codex-skills/bb"
 
 echo "=== the point of it all: edit the clone, the live command changes ==="
@@ -94,7 +94,7 @@ echo "=== a ~/.zshrc pointing at another copy is REWRITTEN, not appended to ==="
 printf '# my shell\n[[ -r "/somewhere/else/cc-fleet.zsh" ]] && source "/somewhere/else/cc-fleet.zsh"\nalias x=y\n' > "$HOME/.zshrc"
 out="$(run --apply)"
 ok "still exactly one source line" "$(grep -c 'cc-fleet\.zsh' "$HOME/.zshrc")" "1"
-ok "it points at this bundle"      "$(grep -c "$BUNDLE/cc-fleet.zsh" "$HOME/.zshrc")" "1"
+ok "it points at this bundle"      "$(grep -c "$BUNDLE/cc-fleet/shim/cc-fleet.zsh" "$HOME/.zshrc")" "1"
 ok "unrelated lines survive"       "$(grep -c 'alias x=y' "$HOME/.zshrc")" "1"
 # EXISTENCE, not a count: the property is "the file it rewrote was preserved first". Earlier
 # sections in this fixture also apply, and each rewrite banks its own timestamped backup, so a

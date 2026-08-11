@@ -316,6 +316,56 @@ func TestResumeCapsApplyAfterFiltering(t *testing.T) {
 	}
 }
 
+// TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding is the compose-level
+// half of the booting-chat fix: a crumbless-live entry gather emits must turn
+// into exactly one Booting row, visible in DefaultView (unlike an ordinary
+// empty-transcript live row, which the emptiness test would suppress), and
+// immune to a hide entry that happens to share its socket-as-id — a booting
+// row is never hideable because its "id" stops meaning anything the moment
+// the crumb lands and the row becomes an ordinary live one.
+func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
+	input := Input{
+		Snapshot: gather.Snapshot{
+			CrumblessLive: []gather.CrumblessLive{{
+				Socket:        "cc-new-CC_FLEET_1",
+				SessionName:   "cc-new-CC_FLEET_1",
+				WindowID:      "@1",
+				WindowName:    "claude",
+				PaneID:        "%1",
+				PID:           900,
+				CWD:           "/work/booting-project",
+				PaneStartUnix: 0,
+			}},
+		},
+		Hidden:  []store.Hidden{{ID: "cc-new-CC_FLEET_1", Engine: "cc"}},
+		Options: Options{View: DefaultView, CurrentDir: "/work/host-ops"},
+	}
+
+	output := Compose(input)
+	row, found := rowByID(output.Rows, "cc-new-CC_FLEET_1")
+	if !found {
+		t.Fatalf(
+			"DefaultView omitted the booting row: %#v",
+			rowsByKind(output.Rows, Booting),
+		)
+	}
+	if row.Kind != Booting ||
+		row.Socket != "cc-new-CC_FLEET_1" ||
+		row.PaneID != "%1" ||
+		row.Name != "booting…" ||
+		row.Project != "booting-project" ||
+		row.CWD != "/work/booting-project" ||
+		row.Hidden {
+		t.Fatalf("booting row = %#v", row)
+	}
+	if output.HiddenCount != 0 {
+		t.Fatalf(
+			"a hide entry keyed on the crumbless socket was honored: hidden=%d",
+			output.HiddenCount,
+		)
+	}
+}
+
 func TestLiveCodexRequiresProcessAndCurrentPane(t *testing.T) {
 	input := fixtureInput(AllView)
 	input.Snapshot.Codex = nil

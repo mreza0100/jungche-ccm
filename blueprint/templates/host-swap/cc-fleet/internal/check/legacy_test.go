@@ -391,3 +391,20 @@ func homeForTest() string {
 	}
 	return home
 }
+
+// TestZshrcLegacyScriptTranslatesTheShimToItsBundleOracle pins the
+// post-cutover resolution: a shell that sources the Go shim still yields the
+// legacy cc-fleet.zsh beside the shim's tree root, never the shim itself.
+func TestZshrcLegacyScriptTranslatesTheShimToItsBundleOracle(t *testing.T) {
+	home := t.TempDir()
+	zshrc := filepath.Join(home, ".zshrc")
+	line := `[[ -r "` + home + `/bundle/cc-fleet/shim/cc-fleet.zsh" ]] && source "` + home + `/bundle/cc-fleet/shim/cc-fleet.zsh"`
+	if err := os.WriteFile(zshrc, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := zshrcLegacyScript(zshrc)
+	want := filepath.Join(home, "bundle", "cc-fleet.zsh")
+	if got != want {
+		t.Fatalf("zshrcLegacyScript = %q, want the bundle oracle %q", got, want)
+	}
+}

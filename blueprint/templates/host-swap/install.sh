@@ -188,7 +188,11 @@ fi
 say ""
 
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──
-SRC_LINE="[[ -r \"$BUNDLE/cc-fleet.zsh\" ]] && source \"$BUNDLE/cc-fleet.zsh\""
+# The shim evals one-line actions from the Go engine; it aborts loudly if ~/.local/bin/cc-fleet
+# is missing (build it from $BUNDLE/cc-fleet — see CUTOVER.md §1). The legacy cc-fleet.zsh
+# stays in the bundle unsourced as the parity checker's shadow oracle.
+SRC_LINE="[[ -r \"$BUNDLE/cc-fleet/shim/cc-fleet.zsh\" ]] && source \"$BUNDLE/cc-fleet/shim/cc-fleet.zsh\""
+[ -x "$HOME/.local/bin/cc-fleet" ] || say "  warn    ~/.local/bin/cc-fleet is not installed — the shim will refuse; build it per $BUNDLE/cc-fleet/CUTOVER.md"
 say "shell -> $ZSHRC"
 if [ "$DO" = uninstall ]; then
   if [ -f "$ZSHRC" ] && grep -q 'cc-fleet\.zsh' "$ZSHRC"; then

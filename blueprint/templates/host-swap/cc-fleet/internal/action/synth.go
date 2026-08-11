@@ -201,6 +201,15 @@ func routeForKind(kind compose.Kind) (Route, error) {
 		return NewCodex, nil
 	case compose.LiveClaude, compose.LiveCodex, compose.LiveSplit:
 		return Live, nil
+	// A booting row carries no other identity than its socket, so Enter can
+	// only ever attach it — the same Live route an ordinary live row takes,
+	// which is exactly the "no other operations" the fix promises: it is
+	// never resumable (no transcript exists yet to resume) and Open's own
+	// mismatched-account gate and dead-socket resume fallback stay unreached
+	// because this Kind is deliberately absent from the Kind list Open()
+	// special-cases (executor.go).
+	case compose.Booting:
+		return Live, nil
 	case compose.Agent:
 		return Agent, nil
 	case compose.ResumeClaude:

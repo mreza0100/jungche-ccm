@@ -142,6 +142,50 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 	}
 }
 
+// TestBootingRowIgnoresHideAndRebootButSelectsOnEnter is the pure-model half
+// of the booting-row fix: ⌃X and ⌃O must both be no-ops on a booting row —
+// its "id" is a crumbless socket, not a chat identity, and stops meaning
+// anything once the crumb lands — while Enter still selects it normally, the
+// one live operation (attach) this Kind supports.
+func TestBootingRowIgnoresHideAndRebootButSelectsOnEnter(t *testing.T) {
+	row := compose.Row{
+		Kind:    compose.Booting,
+		ID:      "cc-new-CC_FLEET_1",
+		Socket:  "cc-new-CC_FLEET_1",
+		Name:    "booting…",
+		Project: "booting-project",
+	}
+	snapshot := Snapshot{
+		Rows:           []compose.Row{row},
+		View:           compose.DefaultView,
+		PrimaryAccount: 1,
+		NowNS:          fixtureNowNS,
+	}
+	model := NewModel(snapshot)
+
+	model, command := applyKey(t, model, controlKey('x'))
+	if command != nil || len(model.Result().HideChanges) != 0 || model.rows[0].Hidden {
+		t.Fatalf(
+			"⌃X on a booting row was not a no-op: command=%v result=%#v",
+			command,
+			model.Result(),
+		)
+	}
+
+	reboot, rebootCommand := applyKey(t, model, controlKey('o'))
+	if rebootCommand != nil || reboot.Result().Kind != OutcomeNone {
+		t.Fatalf("⌃O on a booting row was not a no-op: %#v", reboot.Result())
+	}
+
+	selected, selectCommand := applyKey(t, model, specialKey(tea.KeyEnter))
+	result := selected.Result()
+	if selectCommand == nil ||
+		result.Kind != OutcomeSelected ||
+		rowKey(result.Row) != rowKey(row) {
+		t.Fatalf("Enter on a booting row = command=%v result=%#v", selectCommand, result)
+	}
+}
+
 func TestAccountsOffTheRosterFallBackToTheFirst(t *testing.T) {
 	// The roster is cc-db.sh's (1-2). A stale ~/.claude-primary naming a retired
 	// account must open the picker on account 1, not on an account no launcher

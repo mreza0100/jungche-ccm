@@ -467,6 +467,89 @@ func TestSocketSquatterClassIsCappedByTheLiveSessionCount(t *testing.T) {
 	}
 }
 
+// TestBootingPaneClassPairsTheStructuralKindSplit is the checker half of the
+// booting-row fix, covered by a unit test rather than a live repro (no
+// booting-shaped chat was live during this run): a crumbless-live pane
+// structurally produces one go-only "booting" tuple (Go's new Kind, keyed on
+// the socket) and one legacy-only "live-claude" tuple that ReconcileIDs could
+// never resolve to a real id, because no Go tuple carries kind "live-claude"
+// for that chat anymore. Reasoned from check.go's own tuple construction
+// (TuplesFromRows keys every row on row.Kind.String(); ReconcileIDs matches
+// candidates by kind) and verified here exactly as the live checker would
+// verify it — against BootingProjects, a count taken from Go's own compose
+// pass, never from the diff's shape.
+func TestBootingPaneClassPairsTheStructuralKindSplit(t *testing.T) {
+	rules, err := ParseAllowlist(strings.NewReader(
+		"class\tbooting-pane\tverified crumbless live pane\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := []Tuple{
+		{ID: "unresolved-display-row-1", Kind: "live-claude", Project: "projb-fe", Prompts: 0},
+	}
+	own := []Tuple{
+		{ID: "cc-new-CC_FLEET_1", Kind: "booting", Project: "projb-fe", Prompts: 0},
+	}
+	differences := DiffVerified(legacy, own, rules, Verification{
+		BootingProjects: map[string]int{"projb-fe": 1},
+	})
+	if len(differences) != 2 {
+		t.Fatalf("DiffVerified() returned %d differences: %#v", len(differences), differences)
+	}
+	for _, difference := range differences {
+		if !difference.Allowed || difference.Class != "booting-pane" {
+			t.Fatalf("booting-pane verdict for %#v", difference)
+		}
+	}
+
+	// A second, unrelated go-only booting row beyond the verified per-project
+	// budget is a duplication regression and must stay visible.
+	overBudget := DiffVerified(
+		legacy,
+		append(append([]Tuple(nil), own...), Tuple{
+			ID: "cc-new-CC_FLEET_2", Kind: "booting", Project: "projb-fe", Prompts: 0,
+		}),
+		rules,
+		Verification{BootingProjects: map[string]int{"projb-fe": 1}},
+	)
+	unallowed := 0
+	for _, difference := range overBudget {
+		if !difference.Allowed {
+			unallowed++
+		}
+	}
+	if unallowed != 1 {
+		t.Fatalf("over-budget booting rows unallowed = %d: %#v", unallowed, overBudget)
+	}
+
+	// A legacy-only live-claude row that DID resolve to a real id is a
+	// genuine miss, not the reconciliation sentinel, and must never ride
+	// along even when a booting row exists in the same project.
+	resolved := DiffVerified(
+		[]Tuple{{ID: "real-id", Kind: "live-claude", Project: "projb-fe", Prompts: 0}},
+		own,
+		rules,
+		Verification{BootingProjects: map[string]int{"projb-fe": 1}},
+	)
+	for _, difference := range resolved {
+		if difference.Tuple.ID == "real-id" && difference.Allowed {
+			t.Fatalf("resolved legacy row was absolved as booting: %#v", resolved)
+		}
+	}
+
+	// Without the class enabled, the split stays a plain unallowlisted
+	// difference on both sides.
+	bare := DiffVerified(legacy, own, nil, Verification{
+		BootingProjects: map[string]int{"projb-fe": 1},
+	})
+	for _, difference := range bare {
+		if difference.Allowed {
+			t.Fatalf("booting-pane absolved without the class rule: %#v", bare)
+		}
+	}
+}
+
 func TestCodexBoundClassRejectsDuplicateRowsInOneLineage(t *testing.T) {
 	rules, err := ParseAllowlist(strings.NewReader(
 		"class\tcodex-120-bound\tverified one-per-lineage bound\n",

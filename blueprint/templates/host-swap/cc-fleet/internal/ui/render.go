@@ -339,6 +339,8 @@ func rowMarker(kind compose.Kind) string {
 	switch kind {
 	case compose.LiveClaude, compose.LiveCodex, compose.LiveSplit:
 		return "●"
+	case compose.Booting:
+		return "◐"
 	case compose.Agent:
 		return "⚙"
 	case compose.ResumeClaude, compose.ResumeCodex:

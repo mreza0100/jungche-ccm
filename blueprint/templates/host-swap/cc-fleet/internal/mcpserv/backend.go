@@ -164,7 +164,7 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 	rows := make([]ChatRow, 0, len(output.Rows))
 	filter := strings.ToLower(strings.TrimSpace(input.Project))
 	for _, row := range output.Rows {
-		if row.Kind == compose.NewClaude || row.Kind == compose.NewCodex {
+		if excludedFromChatLS(row.Kind) {
 			continue
 		}
 		if filter != "" &&
@@ -292,6 +292,20 @@ func currentSocket() string {
 		value = value[:comma]
 	}
 	return value
+}
+
+// excludedFromChatLS names the row kinds chat_ls never lists. NewClaude and
+// NewCodex are synthetic launch actions with no chat behind them yet.
+// Booting is a real live chat, but it carries no crumb or transcript yet —
+// only a crumbless socket — so it has no stable identity for the MCP tool
+// contract to hand a caller; whoami/find/resume all key on an id this row
+// does not have one of. It stays excluded here until that identity exists,
+// the same reason the picker's ⌃X hide guard (ui/model.go) and compose's
+// applyHide refuse it too.
+func excludedFromChatLS(kind compose.Kind) bool {
+	return kind == compose.NewClaude ||
+		kind == compose.NewCodex ||
+		kind == compose.Booting
 }
 
 func isLive(kind compose.Kind) bool {

@@ -1,8 +1,14 @@
-# cc-fleet WP11 cutover and rollback
+# cc-fleet cutover and rollback
 
-This is the execution runbook for WP11. WP10 only prepares and tests it.
-Nothing in this document is performed until the supervisor explicitly orders
-WP11. The gitter agent owns every commit.
+The cutover is EXECUTED: `~/.zshrc` sources `cc-fleet/shim/cc-fleet.zsh`, the
+hide scripts are `exec cc-fleet hide --self` delegates, and the legacy
+`cc-fleet.zsh` stays in the bundle unsourced as the parity checker's shadow
+oracle (a copy of the pre-cutover files is archived in
+`/tmp/cc-fleet-legacy-2026-08-11.tar.gz`). MCP registration is deliberately
+OFF. The steps below remain as the rollback reference and the recipe for
+provisioning a fresh box. The gitter agent owns every commit. Paths: the
+bundle lives at `~/.professor/blueprint/templates/host-swap/`; read every
+`oldbox/scripts/` reference below as that bundle directory.
 
 ## Preconditions
 

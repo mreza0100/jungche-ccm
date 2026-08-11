@@ -46,6 +46,11 @@ func Compose(input Input) Output {
 	liveCodex := current.liveCodexRows()
 	liveRows := collapseLiveServers(append(liveClaude, liveCodex...))
 	liveRows = append(liveRows, splits...)
+	// Booting rows are already deduped by socket in gather (DetectCrumblessLive
+	// skips any socket a crumb resolves for), so they bypass
+	// collapseLiveServers — that function's multi-server winner selection
+	// exists for LiveClaude/LiveCodex identity collapse, a different problem.
+	liveRows = append(liveRows, current.bootingRows()...)
 	agentRows := current.agentRows()
 
 	output := Output{
@@ -536,6 +541,48 @@ func (current *composer) liveCodexRows() []Row {
 	return rows
 }
 
+// bootingRows synthesizes one row per crumbless-live entry gather found: a
+// chat with a live pane and process but no SID crumb yet, because its
+// statusline has not rendered a first time. There is no transcript identity
+// to key on — the socket IS the identity, exactly as a fresh cc-new-* socket
+// has no other name either.
+func (current *composer) bootingRows() []Row {
+	entries := current.input.Snapshot.CrumblessLive
+	if len(entries) == 0 {
+		return nil
+	}
+	rows := make([]Row, 0, len(entries))
+	for _, entry := range entries {
+		row := Row{
+			Kind:        Booting,
+			ID:          entry.Socket,
+			Socket:      entry.Socket,
+			PaneID:      entry.PaneID,
+			SessionName: entry.SessionName,
+			WindowName:  entry.WindowName,
+			Name:        "booting…",
+			CWD:         entry.CWD,
+			Project:     projectName(entry.CWD),
+			ServerCount: 1,
+			Here:        entry.Socket == current.input.Options.CurrentSocket,
+			ActivityNS:  paneStartActivityNS(entry.PaneStartUnix),
+		}
+		_, row.C1H = current.cacheSockets[entry.Socket]
+		if row.ActivityNS == 0 {
+			row.ActivityNS = socketEpochNS(entry.Socket)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func paneStartActivityNS(paneStartUnix int64) int64 {
+	if paneStartUnix <= 0 {
+		return 0
+	}
+	return paneStartUnix * 1_000_000_000
+}
+
 func (current *composer) agentRows() []Row {
 	agents := make(map[string]gather.Agent)
 	for _, agent := range current.input.Snapshot.Agents {
@@ -672,7 +719,13 @@ func (current *composer) lineageRoot(rollout store.Rollout) string {
 }
 
 func (current *composer) applyHide(row Row, engine string) Row {
-	if row.Kind == LiveSplit || row.ID == "" {
+	// A Booting row's ID is the crumbless socket name, not a chat identity —
+	// unlike LiveSplit's empty-ID case, it WOULD pass the id check below, so
+	// it needs its own guard. The socket is reused by the picker's own
+	// hide-eligibility test (ui/model.go's toggleHidden): neither side may let
+	// a hide land on an identity that stops meaning anything the moment the
+	// crumb appears and the row becomes an ordinary live one.
+	if row.Kind == LiveSplit || row.Kind == Booting || row.ID == "" {
 		return row
 	}
 	// A hide is permanent until an explicit unhide, so the stored
@@ -790,6 +843,13 @@ func defaultEligible(row Row) bool {
 	// ALONE: it is rowed from its running process, so its transcript is often
 	// still zero bytes with no prompt parsed out of it.
 	if row.Kind == Agent {
+		return true
+	}
+	// A booting row has no transcript at all — it exists BECAUSE the crumb
+	// that would normally lead compose to one has not been written yet — so
+	// the emptiness test below would suppress every one of them from the
+	// default view and silently defeat this entire fix.
+	if row.Kind == Booting {
 		return true
 	}
 	return !row.BG && row.Size > 0 && row.PromptCount > 0

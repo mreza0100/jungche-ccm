@@ -205,6 +205,63 @@ func TestCodexLiveUsesOnlyVerifiedWindow(t *testing.T) {
 	}
 }
 
+// TestBootingRowAttachesLikeAnOrdinaryLiveRow proves Enter on a booting row
+// takes the exact same Live attach route a normal live row does — the
+// "existing Live attach synthesis" the fix promises, with no other operation
+// reachable through this row's Kind.
+func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
+	bootingLine, err := Synthesize(Request{
+		Row: compose.Row{
+			Kind:        compose.Booting,
+			ID:          "cc-new-CC_FLEET_1",
+			Socket:      "cc-new-CC_FLEET_1",
+			SessionName: "cc-new-CC_FLEET_1",
+		},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveLine, err := Synthesize(Request{
+		Row: compose.Row{
+			Kind:        compose.LiveClaude,
+			Socket:      "cc-new-CC_FLEET_1",
+			SessionName: "cc-new-CC_FLEET_1",
+		},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bootingLine.Route != Live {
+		t.Fatalf("booting route = %v, want Live", bootingLine.Route)
+	}
+	if bootingLine.Line != liveLine.Line {
+		t.Fatalf(
+			"booting attach line = %q, want the ordinary live attach line %q",
+			bootingLine.Line,
+			liveLine.Line,
+		)
+	}
+	if want := "TMUX= tmux -L " + Quote("cc-new-CC_FLEET_1") +
+		" attach -t " + Quote("cc-new-CC_FLEET_1"); bootingLine.Line != want {
+		t.Fatalf("booting attach line = %q, want %q", bootingLine.Line, want)
+	}
+
+	// A socket-less booting row (should never happen, but the guard is shared
+	// with every other Live kind) still refuses cleanly rather than emitting a
+	// bare "attach" with no target.
+	if _, err := Synthesize(Request{
+		Row:            compose.Row{Kind: compose.Booting},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+	}); err == nil {
+		t.Fatal("socket-less booting row synthesized a plan instead of erroring")
+	}
+}
+
 func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 	root := t.TempDir()
 	agentScript := filepath.Join(root, "agent-open")

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	fleetcheck "hostops/cc-fleet/internal/check"
 	"hostops/cc-fleet/internal/compose"
 	"hostops/cc-fleet/internal/gather"
 )
@@ -62,7 +63,7 @@ func TestResolveCheckAllowlistOrder(t *testing.T) {
 	underWorking := filepath.Join(working, "testdata", checkAllowlistFile)
 	t.Setenv(checkAllowlistEnv, "")
 
-	if _, err := resolveCheckAllowlist(executable, working); err == nil {
+	if _, err := resolveCheckAllowlist(executable, working, ""); err == nil {
 		t.Fatal("resolveCheckAllowlist() with no allowlist on disk error = nil, want error")
 	} else if !strings.Contains(err.Error(), beside) ||
 		!strings.Contains(err.Error(), underWorking) {
@@ -70,13 +71,13 @@ func TestResolveCheckAllowlistOrder(t *testing.T) {
 	}
 
 	writeCheckAllowlist(t, underWorking)
-	got, err := resolveCheckAllowlist(executable, working)
+	got, err := resolveCheckAllowlist(executable, working, "")
 	if err != nil || got != underWorking {
 		t.Fatalf("resolveCheckAllowlist() = %q, %v; want %q, nil", got, err, underWorking)
 	}
 
 	writeCheckAllowlist(t, beside)
-	got, err = resolveCheckAllowlist(executable, working)
+	got, err = resolveCheckAllowlist(executable, working, "")
 	if err != nil || got != beside {
 		t.Fatalf(
 			"resolveCheckAllowlist() with both candidates = %q, %v; want %q, nil",
@@ -88,7 +89,7 @@ func TestResolveCheckAllowlistOrder(t *testing.T) {
 
 	writeCheckAllowlist(t, override)
 	t.Setenv(checkAllowlistEnv, override)
-	got, err = resolveCheckAllowlist(executable, working)
+	got, err = resolveCheckAllowlist(executable, working, "")
 	if err != nil || got != override {
 		t.Fatalf("resolveCheckAllowlist() with %s = %q, %v; want %q, nil",
 			checkAllowlistEnv, got, err, override)
@@ -102,7 +103,7 @@ func TestResolveCheckAllowlistSkipsMissingDirectories(t *testing.T) {
 	writeCheckAllowlist(t, underWorking)
 	t.Setenv(checkAllowlistEnv, "")
 
-	got, err := resolveCheckAllowlist("", working)
+	got, err := resolveCheckAllowlist("", working, "")
 	if err != nil || got != underWorking {
 		t.Fatalf(
 			"resolveCheckAllowlist() with unknown executable = %q, %v; want %q, nil",
@@ -112,27 +113,69 @@ func TestResolveCheckAllowlistSkipsMissingDirectories(t *testing.T) {
 		)
 	}
 
-	if _, err := resolveCheckAllowlist("", ""); err == nil {
+	if _, err := resolveCheckAllowlist("", "", ""); err == nil {
 		t.Fatal("resolveCheckAllowlist() with no directories error = nil, want error")
 	}
 }
 
-func TestResolveCheckAllowlistIgnoresHome(t *testing.T) {
+func TestResolveCheckAllowlistFallsBackToTheBundleOracle(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
+	bundle := filepath.Join(home, "bundle")
+	// The bundle the founder's shell sources post-cutover: a shim line in
+	// ~/.zshrc, the legacy oracle beside the shim's tree, and the allowlist
+	// inside that tree. With no allowlist beside the binary or the working
+	// directory, the resolver must land on the bundle's copy.
 	writeCheckAllowlist(
 		t,
-		filepath.Join(home, "work", "host-ops", "cc-fleet", "testdata", checkAllowlistFile),
+		filepath.Join(bundle, "cc-fleet", "testdata", checkAllowlistFile),
 	)
+	shim := filepath.Join(bundle, "cc-fleet", "shim", "cc-fleet.zsh")
+	if err := os.MkdirAll(filepath.Dir(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{
+		shim,
+		filepath.Join(bundle, "cc-fleet.zsh"),
+		filepath.Join(bundle, "cc-portable.sh"),
+	} {
+		if err := os.WriteFile(file, []byte("# fixture\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	line := `[[ -r "` + shim + `" ]] && source "` + shim + `"`
+	if err := os.WriteFile(
+		filepath.Join(home, ".zshrc"),
+		[]byte(line+"\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv(checkAllowlistEnv, "")
-	t.Setenv("CC_FLEET_HOME", home)
-	t.Setenv("HOME", home)
+	// Pin the oracle to the jail: in a test binary the legacy resolver's
+	// compile-time source rung outranks the jail's zshrc and would name the
+	// real tree. The zshrc→shim translation itself is covered in
+	// internal/check.
+	t.Setenv(fleetcheck.LegacyScriptEnv, filepath.Join(bundle, "cc-fleet.zsh"))
 
+	got, err := resolveCheckAllowlist(
+		filepath.Join(root, "bin"),
+		filepath.Join(root, "tree"),
+		home,
+	)
+	want := filepath.Join(bundle, "cc-fleet", "testdata", checkAllowlistFile)
+	if err != nil || got != want {
+		t.Fatalf("resolveCheckAllowlist() = %q, %v; want the bundle oracle %q", got, err, want)
+	}
+
+	// An empty home skips the rung entirely — the hermetic contract the other
+	// tests rely on.
 	if got, err := resolveCheckAllowlist(
 		filepath.Join(root, "bin"),
 		filepath.Join(root, "tree"),
+		"",
 	); err == nil {
-		t.Fatalf("resolveCheckAllowlist() = %q, want an error rather than a home-relative path", got)
+		t.Fatalf("resolveCheckAllowlist() with no home = %q, want an error", got)
 	}
 }
 
