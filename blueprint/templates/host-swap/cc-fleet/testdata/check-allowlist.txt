@@ -81,6 +81,20 @@
 #   probe: at most one row per differently named session on that socket, so a
 #   real chat's row can never be absorbed.
 #
+# ── booting panes (a split kind, not a legacy-side artifact) ─────────────────
+# - booting-pane: a chat still sitting at a startup prompt (folder trust, MCP
+#   approval) has a live pane and process but no SID crumb yet, so Go rows it
+#   under the new Booting kind (id the crumbless socket) while the legacy
+#   picker's pane scan still prints it as an ordinary live-claude row.
+#   ReconcileIDs can never resolve that legacy row to a real id — no Go tuple
+#   carries kind live-claude for this chat anymore — so it stamps the
+#   reconciliation sentinel "unresolved-display-row-N" instead, which is what
+#   this class keys on so it never absolves a legacy live-claude row that DID
+#   resolve to a real id. Bounded by a count taken from Go's OWN compose pass
+#   (BootingProjects, cmd/cc-fleet/check_command.go's bootingProjects), never
+#   from the diff's own shape: at most that many go-only booting rows AND at
+#   most that many paired legacy-only misses are absolved per project.
+#
 # ── account roster ───────────────────────────────────────────────────────────
 # - dormant-account: the Go row lives under an account root the shadow harness
 #   never points the reference script at. Verified against the CANONICAL root
@@ -102,3 +116,4 @@ class	agent-without-transcript	the agent's process is live but its transcript is
 class	legacy-cache-empty-cwd	the legacy name cache holds an empty cwd for this transcript, so it prints project "?" while Go reads the directory from the file
 class	legacy-socket-squatter	legacy lists every tmux session on a chat socket; a session not named after its socket is parked work, not a chat, and Go does not row it
 class	dormant-account	legacy walks only account 1 while Go indexes account roots that canonicalise elsewhere
+class	booting-pane	a chat at a startup prompt has no SID crumb yet; Go rows it Booting by socket while legacy's pane scan reconciles to no real id, verified per project against Go's own live compose pass

@@ -79,6 +79,26 @@ type WindowRename struct {
 	TargetName  string
 }
 
+// CrumblessLive is a live Claude pane whose socket carries no crumb yet: a
+// chat still sitting at a startup prompt (folder trust, MCP approval) has a
+// process the tree walk already finds, but the statusline writes the SID
+// crumb only once boot completes. Crumb-driven gather is otherwise blind to
+// it, so compose needs these fields to synthesize a placeholder row until the
+// crumb lands. PaneStartUnix is the pane's own process birth (0 when the
+// ProcFS in use cannot report one), which stands in for the socket-epoch
+// activity fallback compose gives an ordinary live row — a cc-new-* socket
+// carries no epoch of its own to fall back to.
+type CrumblessLive struct {
+	Socket        string
+	SessionName   string
+	WindowID      string
+	WindowName    string
+	PaneID        string
+	PID           int
+	CWD           string
+	PaneStartUnix int64
+}
+
 // Snapshot is one immutable-by-convention gather result.
 type Snapshot struct {
 	Panes           []Pane
@@ -88,6 +108,7 @@ type Snapshot struct {
 	Agents          []Agent
 	Cache1HSockets  []string
 	Renames         []WindowRename
+	CrumblessLive   []CrumblessLive
 	CorpseSwept     []string
 	StaleSwept      []string
 	Warnings        []string

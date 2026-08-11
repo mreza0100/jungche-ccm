@@ -162,6 +162,13 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
+	crumblessLive := DetectCrumblessLive(
+		gatherer.proc,
+		claudeProcesses,
+		crumbs.Crumbs,
+		tmuxProbe.Panes,
+	)
+
 	return Snapshot{
 		Panes:           append([]Pane(nil), tmuxProbe.Panes...),
 		Crumbs:          append([]Crumb(nil), crumbs.Crumbs...),
@@ -175,9 +182,10 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 			gatherer.codexName,
 			gatherer.codexIDName,
 		),
-		CorpseSwept: append([]string(nil), tmuxProbe.CorpseSwept...),
-		StaleSwept:  append([]string(nil), crumbs.StaleSwept...),
-		Warnings:    append([]string(nil), tmuxProbe.ProbeWarnings...),
+		CrumblessLive: append([]CrumblessLive(nil), crumblessLive...),
+		CorpseSwept:   append([]string(nil), tmuxProbe.CorpseSwept...),
+		StaleSwept:    append([]string(nil), crumbs.StaleSwept...),
+		Warnings:      append([]string(nil), tmuxProbe.ProbeWarnings...),
 	}, nil
 }
 

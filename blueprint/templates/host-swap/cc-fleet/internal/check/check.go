@@ -390,7 +390,8 @@ func validClass(class string) bool {
 		"legacy-socket-squatter",
 		"agent-without-transcript",
 		"dormant-account",
-		"codex-machine-spawned":
+		"codex-machine-spawned",
+		"booting-pane":
 		return true
 	default:
 		return false
@@ -430,6 +431,15 @@ type Verification struct {
 	// BG; the legacy picker has no such concept and lists it like any other
 	// resumable rollout.
 	CodexMachineSpawnedIDs map[string]struct{}
+	// BootingProjects counts, per project, the crumbless-live Booting rows
+	// Go's OWN compose pass produced (own's Kind == "booting" tuples) — a live
+	// fact read straight off that pass, independent of any particular diff
+	// entry, exactly like SocketSquatters is a count taken from the live pane
+	// probe rather than inferred from the diff's shape. It bounds
+	// booting-pane: at most this many go-only booting rows, and at most this
+	// many paired legacy-only reconciliation misses, are ever absolved per
+	// project.
+	BootingProjects map[string]int
 }
 
 // Diff returns the symmetric tuple difference in deterministic order.
@@ -524,6 +534,7 @@ func DiffVerified(
 	markCacheEmptyCWD(differences, classReasons, verification)
 	markSocketSquatters(differences, classReasons, verification)
 	markAgentWithoutTranscript(differences, classReasons, verification)
+	markBootingPane(differences, classReasons, verification)
 
 	candidateRoots := verifiedCodexRoots(
 		verification.CodexCandidateIDs,
@@ -715,6 +726,64 @@ func markAgentWithoutTranscript(
 		}
 		spent[difference.Tuple.ID] = struct{}{}
 		markClass(difference, "agent-without-transcript", reason)
+	}
+}
+
+// markBootingPane pairs the two halves of one booting-pane split. A chat
+// stuck at a startup prompt has a live pane and no SID crumb yet, so Go rows
+// it under the new Booting kind (ID the crumbless socket, Kind "booting")
+// while the legacy picker's uninstrumented fallback still prints it as an
+// ordinary live-claude row from its pane scan. ReconcileIDs can never resolve
+// that legacy row to a real id, because no Go tuple carries kind
+// "live-claude" for this chat anymore — it stamps the row
+// "unresolved-display-row-N" instead, which is the sentinel this class keys
+// on so it never absolves a legacy live-claude row that DID resolve to a real
+// id (a genuine miss).
+//
+// Bounded by a count taken from Go's OWN compose pass (BootingProjects), not
+// from the diff's shape: at most that many pairs are absolved per project, so
+// an unrelated ambiguous live-claude row, or one booting pane more than the
+// live scan accounts for, stays visible.
+func markBootingPane(
+	differences []Difference,
+	classReasons map[string]string,
+	verification Verification,
+) {
+	reason, allowed := classReasons["booting-pane"]
+	if !allowed || len(verification.BootingProjects) == 0 {
+		return
+	}
+	bootingGoOnly := make(map[string][]int)
+	unresolvedLegacyOnly := make(map[string][]int)
+	for index, difference := range differences {
+		if difference.Allowed {
+			continue
+		}
+		switch {
+		case difference.Direction == GoOnly &&
+			difference.Tuple.Kind == compose.Booting.String():
+			bootingGoOnly[difference.Tuple.Project] = append(
+				bootingGoOnly[difference.Tuple.Project],
+				index,
+			)
+		case difference.Direction == LegacyOnly &&
+			difference.Tuple.Kind == compose.LiveClaude.String() &&
+			difference.Tuple.Prompts == 0 &&
+			strings.HasPrefix(difference.Tuple.ID, "unresolved-display-row-"):
+			unresolvedLegacyOnly[difference.Tuple.Project] = append(
+				unresolvedLegacyOnly[difference.Tuple.Project],
+				index,
+			)
+		}
+	}
+	for project, goIndexes := range bootingGoOnly {
+		legacyIndexes := unresolvedLegacyOnly[project]
+		budget := verification.BootingProjects[project]
+		pairs := min(len(goIndexes), len(legacyIndexes), budget)
+		for position := 0; position < pairs; position++ {
+			markClass(&differences[goIndexes[position]], "booting-pane", reason)
+			markClass(&differences[legacyIndexes[position]], "booting-pane", reason)
+		}
 	}
 }
 

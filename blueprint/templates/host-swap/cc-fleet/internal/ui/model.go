@@ -278,7 +278,14 @@ func (model *Model) toggleHidden() {
 	}
 	fallback := model.cursor
 	index := model.filtered[model.cursor]
-	if model.rows[index].ID == "" || model.rows[index].Kind == compose.LiveSplit {
+	// A booting row's ID is its crumbless socket, not a chat identity — unlike
+	// LiveSplit's empty-ID case it would otherwise pass the check above, so it
+	// needs its own guard here too (compose's applyHide carries the same
+	// exclusion on the read side; neither may let a hide land on an identity
+	// that stops meaning anything once the crumb appears).
+	if model.rows[index].ID == "" ||
+		model.rows[index].Kind == compose.LiveSplit ||
+		model.rows[index].Kind == compose.Booting {
 		return
 	}
 	follow := rowKey(model.rows[index])

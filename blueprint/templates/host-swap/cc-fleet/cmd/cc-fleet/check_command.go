@@ -57,7 +57,7 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 		fleetcheck.ReconcileIDs(legacyRows, own),
 	)
 
-	allowlistPath, err := resolveCheckAllowlist(executableDir(), workingDir())
+	allowlistPath, err := resolveCheckAllowlist(executableDir(), workingDir(), userHome())
 	if err != nil {
 		fmt.Fprintf(stderr, "cc-fleet ls --check: %v\n", err)
 		return 1
@@ -130,6 +130,7 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 				accountRoots(resolved.ClaudeRoots),
 			),
 			CodexMachineSpawnedIDs: codexMachineSpawned,
+			BootingProjects:        bootingProjects(scan.Output.Rows),
 		},
 	)
 	unallowed := 0
@@ -248,15 +249,36 @@ func dormantAccountIDs(
 	return result
 }
 
+// bootingProjects counts, per project, the live Booting rows Go's OWN compose
+// pass produced — a fact read straight off that pass, independent of the
+// diff's shape, exactly like socketSquatters counts straight off the live
+// pane probe. It is the bound fleetcheck.DiffVerified's booting-pane class
+// spends: a booting row's ID is a crumbless socket the legacy picker's
+// uninstrumented fallback can never print (it has no transcript to name a row
+// from until the crumb lands), so the class exists to absolve exactly the
+// structural split this creates and nothing wider.
+func bootingProjects(rows []compose.Row) map[string]int {
+	result := make(map[string]int)
+	for _, row := range rows {
+		if row.Kind != compose.Booting {
+			continue
+		}
+		result[row.Project]++
+	}
+	return result
+}
+
 // resolveCheckAllowlist locates the shadow-check allowlist without knowing
 // where the tree lives: the environment override, then testdata/ beside the
-// running binary, then testdata/ under the working directory. The tree moves;
-// neither the binary nor the working directory lies about where it went.
-func resolveCheckAllowlist(executable, working string) (string, error) {
+// running binary, then testdata/ under the working directory, then the tree
+// beside the legacy oracle the checker already resolved — the installed
+// binary runs from ~/.local/bin with any working directory, and the bundle
+// is the one place the tree provably lives.
+func resolveCheckAllowlist(executable, working, home string) (string, error) {
 	if path := os.Getenv(checkAllowlistEnv); path != "" {
 		return path, nil
 	}
-	candidates := make([]string, 0, 2)
+	candidates := make([]string, 0, 3)
 	for _, directory := range []string{executable, working} {
 		if directory == "" {
 			continue
@@ -265,6 +287,14 @@ func resolveCheckAllowlist(executable, working string) (string, error) {
 			candidates,
 			filepath.Join(directory, "testdata", checkAllowlistFile),
 		)
+	}
+	if home != "" {
+		if legacyScript, err := fleetcheck.ResolveLegacyScript(home); err == nil {
+			candidates = append(candidates, filepath.Join(
+				filepath.Dir(legacyScript),
+				"cc-fleet", "testdata", checkAllowlistFile,
+			))
+		}
 	}
 	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
@@ -307,4 +337,14 @@ func loadCheckAllowlist(path string) ([]fleetcheck.AllowRule, error) {
 		return nil, fmt.Errorf("parse check allowlist %q: %w", path, err)
 	}
 	return rules, nil
+}
+
+// userHome is the ambient home for the bundle-oracle allowlist rung; empty
+// when the environment cannot name one (the rung is then skipped).
+func userHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }

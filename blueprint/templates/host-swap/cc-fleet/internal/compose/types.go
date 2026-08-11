@@ -17,6 +17,13 @@ const (
 	ResumeCodex
 	NewClaude
 	NewCodex
+	// Booting is a chat still sitting at a startup prompt (folder trust, MCP
+	// approval): its pane and process are live but its statusline has not
+	// written a SID crumb yet, so no transcript identity exists to key an
+	// ordinary live row on. Not hideable, not resumable — Enter is the only
+	// live operation it supports (attach), matching the socket-only identity
+	// it carries.
+	Booting
 )
 
 func (kind Kind) String() string {
@@ -37,6 +44,8 @@ func (kind Kind) String() string {
 		return "new-claude"
 	case NewCodex:
 		return "new-codex"
+	case Booting:
+		return "booting"
 	default:
 		return "unknown"
 	}

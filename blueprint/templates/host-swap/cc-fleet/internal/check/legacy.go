@@ -176,9 +176,20 @@ func zshrcLegacyScript(zshrc string) string {
 			continue
 		}
 		match := legacySourceLinePattern.FindStringSubmatch(line)
-		if match != nil && filepath.IsAbs(match[1]) {
-			return match[1]
+		if match == nil || !filepath.IsAbs(match[1]) {
+			continue
 		}
+		sourced := match[1]
+		// Post-cutover the shell sources <bundle>/cc-fleet/shim/cc-fleet.zsh.
+		// The shim is the Go engine's wrapper, not the legacy oracle this
+		// checker diffs against — that oracle stays at <bundle>/cc-fleet.zsh,
+		// beside the shim's tree root.
+		shimDir := filepath.Dir(sourced)
+		if filepath.Base(shimDir) == "shim" {
+			treeRoot := filepath.Dir(shimDir)
+			return filepath.Join(filepath.Dir(treeRoot), LegacyScriptName)
+		}
+		return sourced
 	}
 	return ""
 }
