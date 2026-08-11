@@ -73,14 +73,20 @@ func reconcileCodexState(
 }
 
 // applyCodexThread lets the store correct what only it knows: whether the
-// conversation is a listed user thread, and the directory a truncated rollout
-// file never named. Content stays the parsed file's whenever one exists, so
-// only a row with no parsed bytes takes the store's prompt evidence.
+// conversation is a listed user thread, whether a machine or a person started
+// it, and the directory a truncated rollout file never named. Content stays
+// the parsed file's whenever one exists, so only a row with no parsed bytes
+// takes the store's prompt evidence.
+//
+// is_bg is re-derived on every pass rather than only on a reparse, so rows
+// indexed before this classification existed repair themselves the next time
+// the state store is read — no parser-version bump and no full rescan.
 func applyCodexThread(
 	rollout store.Rollout,
 	thread store.CodexThread,
 ) store.Rollout {
 	rollout.UserThread = thread.Listed()
+	rollout.IsBG = thread.MachineSpawned()
 	if rollout.CWD == "" {
 		rollout.CWD = thread.CWD
 	}
@@ -126,6 +132,7 @@ func codexStoreRollout(
 		LineageRoot: thread.ID,
 		FirstPrompt: thread.FirstPrompt,
 		PromptCount: promptCount,
+		IsBG:        thread.MachineSpawned(),
 	}
 }
 

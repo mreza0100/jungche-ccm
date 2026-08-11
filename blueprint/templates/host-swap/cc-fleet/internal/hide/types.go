@@ -34,8 +34,15 @@ type Target struct {
 
 // Request describes a public hide invocation.
 type Request struct {
-	ID          string
-	Self        bool
+	ID   string
+	Self bool
+	// Engine names the chat engine when the caller already knows it because it
+	// is looking at the row — the picker. It vouches for a chat the index has
+	// not caught up with, which is every freshly spawned agent: their
+	// transcripts reach the store only after Claude flushes the file. Left
+	// empty, an unknown id is still an error, so a mistyped `cc-fleet hide`
+	// argument cannot quietly record a hide for nothing.
+	Engine      string
 	Exit        bool
 	Environment SelfEnvironment
 }

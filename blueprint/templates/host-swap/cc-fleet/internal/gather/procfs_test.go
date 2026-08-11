@@ -283,7 +283,12 @@ func TestWindowConvergenceClipsRunesOnlyHere(t *testing.T) {
 		RolloutPath: "/codex/rollout.jsonl",
 	}}
 
-	renames := computeWindowRenames(panes, codex, func(string) string { return longName })
+	renames := computeWindowRenames(
+		panes,
+		codex,
+		func(string) string { return longName },
+		nil,
+	)
 	if len(renames) != 1 {
 		t.Fatalf("computeWindowRenames() = %#v, want one", renames)
 	}

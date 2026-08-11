@@ -98,6 +98,15 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "cc-fleet ls --check: verify Claude store: %v\n", err)
 		return 1
 	}
+	codexMachineSpawned, err := fleetcheck.CodexMachineSpawnedIDs(ctx, resolved.CodexRoot)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"cc-fleet ls --check: verify Codex machine-spawned threads: %v\n",
+			err,
+		)
+		return 1
+	}
 	rollouts, err := database.Rollouts(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "cc-fleet ls --check: verify Codex lineages: %v\n", err)
@@ -120,6 +129,7 @@ func runLSCheck(ctx context.Context, stdout, stderr io.Writer) int {
 				scan.Output.Rows,
 				accountRoots(resolved.ClaudeRoots),
 			),
+			CodexMachineSpawnedIDs: codexMachineSpawned,
 		},
 	)
 	unallowed := 0

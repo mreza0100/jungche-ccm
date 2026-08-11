@@ -535,6 +535,138 @@ func listedByDefault(t *testing.T, database *store.Store, id string) bool {
 	return composed
 }
 
+// TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide is the Codex twin of
+// TestHiddenChatStaysHiddenAsItGrowsUntilUnhide, guarding a different
+// regression: cx-hide.sh writes the RAW id of whatever rollout file the live
+// process currently holds (cx-hide.sh:147), which on a resumed multi-file
+// lineage is the CHILD's id, not the ROOT every Codex row is keyed on
+// (composer.rolloutRow). The hide below is written exactly that way — no
+// lineage math, straight into the shared store, the same shape cc-db.sh's
+// hidden-add produces — and must still hide the row; the unhide that follows
+// is issued on the ROOT, the only id the picker ever shows, and must still
+// lift it.
+func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	rootID := "88888888-8888-4888-8888-888888888888"
+	childID := "99999999-9999-4999-8999-999999999999"
+	if err := database.UpsertRollout(ctx, store.Rollout{
+		ID:          rootID,
+		Path:        filepath.Join(jail.codexRoot, "sessions", "rollout-"+rootID+".jsonl"),
+		Size:        100,
+		MTimeNS:     100,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   rootID,
+		PromptCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The resumed child: same conversation, a LATER rollout file, linked back
+	// to the root by session_id — exactly what `codex resume` produces.
+	if err := database.UpsertRollout(ctx, store.Rollout{
+		ID:          childID,
+		Path:        filepath.Join(jail.codexRoot, "sessions", "rollout-"+childID+".jsonl"),
+		Size:        200,
+		MTimeNS:     200,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   rootID,
+		PromptCount: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !listedCodexByDefault(t, database, rootID) {
+		t.Fatal("indexed lineage is missing from the default listing")
+	}
+
+	// cx-hide.sh's exact write shape (cx-hide.sh:147): the raw id straight
+	// into the shared store, keyed on whatever rollout file the live process
+	// happened to hold — the CHILD, since it is the newer file a resumed
+	// session appends to.
+	if err := database.Hide(ctx, store.Hidden{
+		ID:       childID,
+		Engine:   CodexEngine,
+		HiddenAt: 50,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if listedCodexByDefault(t, database, rootID) {
+		t.Fatal("a hide written raw on the resumed child left the lineage listed")
+	}
+
+	// Unhide is issued on the id the picker actually shows: the root. It must
+	// still clear the child-keyed hide, or the row would come right back
+	// hidden the next time this same lineage is composed.
+	manager, err := New(database, Dependencies{
+		ProcFS:  &fakeProc{},
+		Tmux:    &fakeTmux{},
+		Spawner: &captureSpawner{},
+		Now:     func() time.Time { return time.Unix(50, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Unhide(ctx, rootID); err != nil {
+		t.Fatal(err)
+	}
+	if !listedCodexByDefault(t, database, rootID) {
+		t.Fatal("unhide via the root did not bring the lineage back")
+	}
+	hidden, err := database.HiddenChats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hidden) != 0 {
+		t.Fatalf("hides survived unhide: %#v", hidden)
+	}
+}
+
+// listedCodexByDefault is listedByDefault's Codex twin: it answers whether
+// rootID's resume lineage is in the default listing through the cached SQL
+// candidate query and through compose, and fails if they disagree.
+func listedCodexByDefault(t *testing.T, database *store.Store, rootID string) bool {
+	t.Helper()
+	ctx := context.Background()
+	_, candidates, _, err := database.DefaultCandidates(ctx, 50, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cached := false
+	for _, candidate := range candidates {
+		cached = cached || candidate.LineageRoot == rootID
+	}
+	rollouts, err := database.Rollouts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := database.HiddenChats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := compose.Compose(compose.Input{
+		Rollouts: rollouts,
+		Hidden:   hidden,
+		Options:  compose.Options{View: compose.DefaultView},
+	})
+	composed := false
+	for _, row := range output.Rows {
+		composed = composed || row.ID == rootID
+	}
+	if cached != composed {
+		t.Fatalf(
+			"cached candidates (%t) and compose (%t) disagree about %q",
+			cached,
+			composed,
+			rootID,
+		)
+	}
+	return composed
+}
+
 func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	jail := newHideJail(t)
 	database := jail.open(t)
@@ -972,4 +1104,139 @@ func tmuxHiddenAt(t *testing.T, database *store.Store, id string) int64 {
 		t.Fatalf("Hidden(%q) found=%v err=%v", id, found, err)
 	}
 	return hidden.HiddenAt
+}
+
+// THE AGENT-ROW REGRESSION. ⌃X on a live agent row wrote NOTHING: the agent's
+// transcript had not reached the index yet, and the hide refused every id the
+// index could not name. The row is composed straight from the running process,
+// so "not indexed" is its NORMAL state, not an error — and the hide must land
+// on the agent's own session uuid, reach the shared store and the carrier like
+// every other hide, and hold while the process is still alive.
+func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	// Exactly the reported shape: project "?", no transcript row, no file.
+	agentID := "ad195f37-5a8f-4513-94a6-d3616afe566e"
+	socket := "cc-1786319281-1986650-21068"
+	paneID := "%4"
+	if _, found, err := database.Transcript(ctx, agentID); err != nil || found {
+		t.Fatalf("agent transcript found = %v, error = %v; want an unindexed id", found, err)
+	}
+
+	snapshot := gather.Snapshot{
+		Agents: []gather.Agent{{
+			PID:       424242,
+			Socket:    socket,
+			PaneID:    paneID,
+			SessionID: agentID,
+		}},
+		Panes: []gather.Pane{{
+			Socket:      socket,
+			SessionName: socket,
+			PaneID:      paneID,
+		}},
+	}
+	agentRow := func(t *testing.T) (compose.Row, bool) {
+		t.Helper()
+		hidden, err := database.HiddenChats(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output := compose.Compose(compose.Input{
+			Snapshot: snapshot,
+			Hidden:   hidden,
+			Options:  compose.Options{View: compose.DefaultView},
+		})
+		for _, row := range output.Rows {
+			if row.Kind == compose.Agent && row.ID == agentID {
+				return row, true
+			}
+		}
+		return compose.Row{}, false
+	}
+
+	if row, listed := agentRow(t); !listed || row.Project != "?" {
+		t.Fatalf("agent row before the hide = %#v listed=%t", row, listed)
+	}
+
+	manager, err := New(database, Dependencies{
+		ProcFS:  &fakeProc{},
+		Tmux:    &fakeTmux{},
+		Spawner: &captureSpawner{},
+		Now:     func() time.Time { return time.Unix(4242, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The picker's own call: it holds the row, so it names the engine.
+	target, err := manager.Hide(ctx, Request{ID: agentID, Engine: ClaudeEngine})
+	if err != nil {
+		t.Fatalf("Hide() on a live agent row error = %v", err)
+	}
+	if target.ID != agentID || target.Engine != ClaudeEngine {
+		t.Fatalf("Hide() target = %#v, want the agent's own session uuid", target)
+	}
+
+	// Write-through: the shared database row AND the carrier file, the two
+	// halves the zsh picker reads. An unindexed id derives no engine.
+	assertHidden(t, database, agentID, "", 4242)
+	assertCarrierHas(t, database.CarrierPath(), agentID)
+
+	// STICK: the process is still live and the row is still composed, so the
+	// hide has to beat the live-agent short-circuit, not be skipped by it.
+	if row, listed := agentRow(t); listed {
+		t.Fatalf("hidden agent row is still listed while its process lives: %#v", row)
+	}
+	if err := manager.Unhide(ctx, agentID); err != nil {
+		t.Fatal(err)
+	}
+	if _, listed := agentRow(t); !listed {
+		t.Fatal("unhide did not bring the agent row back")
+	}
+}
+
+// A bare id the index cannot name is still an error, so a mistyped
+// `cc-fleet hide` argument cannot quietly record a hide for nothing. Only a
+// caller holding the row vouches for it.
+func TestHidingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	manager, err := New(database, Dependencies{
+		ProcFS:  &fakeProc{},
+		Tmux:    &fakeTmux{},
+		Spawner: &captureSpawner{},
+		Now:     func() time.Time { return time.Unix(4242, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Hide(ctx, Request{ID: "no-such-chat"}); err == nil {
+		t.Fatal("Hide() accepted an id no caller vouched for")
+	}
+	if _, found, err := database.Hidden(ctx, "no-such-chat"); err != nil || found {
+		t.Fatalf("Hidden() found = %v, error = %v; want nothing recorded", found, err)
+	}
+}
+
+// assertCarrierHas proves a hide reached ~/.claude/.cc-ls-hidden, the half of
+// the shared state the zsh picker reads.
+func assertCarrierHas(t *testing.T, carrier, id string) {
+	t.Helper()
+
+	content, err := os.ReadFile(carrier)
+	if err != nil {
+		t.Fatalf("read carrier %s: %v", carrier, err)
+	}
+	for _, line := range strings.Split(string(content), "\n") {
+		if line == id {
+			return
+		}
+	}
+	t.Fatalf("carrier %s = %q, want a line %q", carrier, content, id)
 }

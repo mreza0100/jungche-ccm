@@ -1384,7 +1384,7 @@ case "$cmd" in
     # to select the deny/"No" option. NEVER used to accept — blind-accepting defeats the guard.
     [[ $# -ge 3 && "${2:-}" == "deny" && "${3:-}" =~ ^[0-9]+$ ]] || { echo "usage: chat.sh modal <tmux-session> deny <down-count>   # deny-only: N Downs + Enter onto the deny option" >&2; exit 1; }
     target="$1"; downs="$3"
-    sock="/tmp/tmux-$(id -u)/$target"
+    sock="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$target"
     [[ -S "$sock" ]] || { echo "ERROR: no tmux socket for session '$target'" >&2; exit 1; }
     # Lock on the SAME socket-scoped key inject uses ("${sock}:${target}") — inject locks on
     # "${socketpath}:${live_tmux}", so a bare-"$target" key computed a DIFFERENT lockdir and
@@ -1395,11 +1395,11 @@ case "$cmd" in
       exit 4
     fi
     trap _inject_lock_release EXIT
-    for ((i = 0; i < downs; i++)); do tmux -S "$sock" send-keys Down; sleep 0.2; done
-    tmux -S "$sock" send-keys Enter
+    for ((i = 0; i < downs; i++)); do tmux -S "$sock" send-keys -t "$target" Down; sleep 0.2; done
+    tmux -S "$sock" send-keys -t "$target" Enter
     sleep 1
     echo "--- modal answered (deny, ${downs} Down) : screen of '$target' ---"
-    tmux -S "$sock" capture-pane -p | tail -25
+    tmux -S "$sock" capture-pane -t "$target" -p | tail -25
     echo "--- end proof ---"
     ;;
 

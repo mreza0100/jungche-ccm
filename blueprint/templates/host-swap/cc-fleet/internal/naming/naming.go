@@ -2,8 +2,46 @@ package naming
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
+
+	"hostops/cc-fleet/internal/store"
 )
+
+// CodexNameIndex builds the two lookups a live Codex pane can be named
+// through: by the rollout file it holds, and by the thread id it was
+// identified by. A resumed or paginated session writes no rollout file and has
+// only the second, so the id index also carries every thread the Codex session
+// index names but no rollout row covers.
+func CodexNameIndex(
+	rollouts []store.Rollout,
+	cxNames map[string]string,
+) (byPath map[string]string, byID map[string]string) {
+	byPath = make(map[string]string, len(rollouts))
+	byID = make(map[string]string, len(rollouts)+len(cxNames))
+	for _, rollout := range rollouts {
+		name := CxName(
+			rollout.ID,
+			rollout.SessionID,
+			rollout.ParentThread,
+			cxNames,
+			rollout.FirstPrompt,
+		)
+		byPath[filepath.Clean(rollout.Path)] = name
+		if name != "" {
+			byID[rollout.ID] = name
+		}
+	}
+	for id := range cxNames {
+		if byID[id] != "" {
+			continue
+		}
+		if name := CxName(id, "", "", cxNames, ""); name != "" {
+			byID[id] = name
+		}
+	}
+	return byPath, byID
+}
 
 // DisplayName applies transcript naming precedence. The caller supplies the
 // last custom title, last AI title, and first real prompt found by the indexer.

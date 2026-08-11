@@ -102,7 +102,7 @@ tpmb=$(( $(cc_size0 "$tpf") / 1048576 ))   # scales the --then input-box wait
 # its birth env runs 1h — so an unreadable env and a flagless chat produce the same verdict, and
 # the one case a Mac gets wrong (a chat deliberately born 5m) is rebooted 1h rather than
 # silently billed the 2x write premium it never asked for. Wrong only in the cheap direction.
-c1h=1
+c1h=1; cp=""
 ptty="$(tmux -L "$sock" display-message -p -t "$pane" '#{pane_tty}' 2>/dev/null)"
 for cp in $(ps -o pid=,comm= -t "${ptty#/dev/}" 2>/dev/null | awk '$2=="claude" || $2 ~ /^[0-9]+\./ {print $1}'); do
   [ "$(cc_penv "$cp" FORCE_PROMPT_CACHING_5M)" = "1" ] && { c1h=0; break; }
@@ -110,10 +110,11 @@ done
 [ -n "$c1h_arg" ] && c1h="$c1h_arg"   # --1h on|off overrides (the picker's reboot-to-match gate)
 
 # account: an explicit <n> wins; else (--1h-only reboot) KEEP the chat's current account —
-# from the live process env, falling back to the caller's own (a self-swap's tool shell
+# from the live process env (same claude pid the c1h loop above found, via cc_penv — reused
+# rather than a second /proc read), falling back to the caller's own (a self-swap's tool shell
 # carries the chat's config dir). Symlinked accounts collapse via pwd -P (~/.cc/2 → ~/.claude3).
 if [ -z "$n" ]; then
-  tcfg="$(printf '%s\n' "$tenv" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
+  tcfg=""; [ -n "$cp" ] && tcfg="$(cc_penv "$cp" CLAUDE_CONFIG_DIR)"
   [ -n "$tcfg" ] || tcfg="${CLAUDE_CONFIG_DIR:-}"
   p=""; [ -n "$tcfg" ] && [ -d "$tcfg" ] && p="$(cd "$tcfg" && pwd -P)"
   case "$p" in

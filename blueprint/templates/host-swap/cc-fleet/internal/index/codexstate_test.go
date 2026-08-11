@@ -3,8 +3,12 @@ package index
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -20,12 +24,15 @@ type codexStateThread struct {
 	Title            string
 	FirstUserMessage string
 	Name             string
-	ThreadSource     string
-	HistoryMode      string
-	CreatedAt        int64
-	UpdatedAt        int64
-	TokensUsed       int64
-	Archived         bool
+	// Source is threads.source, the entry point Codex was started through. It
+	// defaults to "cli", the interactive terminal front end.
+	Source       string
+	ThreadSource string
+	HistoryMode  string
+	CreatedAt    int64
+	UpdatedAt    int64
+	TokensUsed   int64
+	Archived     bool
 }
 
 // buildCodexState writes a scratch Codex state store using the real schema
@@ -58,17 +65,22 @@ func buildCodexState(t *testing.T, path string, threads ...codexStateThread) {
 		if thread.Name != "" {
 			name = thread.Name
 		}
+		source := thread.Source
+		if source == "" {
+			source = "cli"
+		}
 		if _, err := database.Exec(`
 INSERT INTO threads (
   id, rollout_path, created_at, updated_at, source, model_provider, cwd,
   title, sandbox_policy, approval_mode, tokens_used, archived,
   first_user_message, preview, thread_source, recency_at, history_mode, name
-) VALUES (?, ?, ?, ?, 'cli', 'openai', ?, ?, 'workspace-write', 'on-request',
+) VALUES (?, ?, ?, ?, ?, 'openai', ?, ?, 'workspace-write', 'on-request',
   ?, ?, ?, '', ?, ?, ?, ?)`,
 			thread.ID,
 			thread.RolloutPath,
 			thread.CreatedAt,
 			thread.UpdatedAt,
+			source,
 			thread.CWD,
 			thread.Title,
 			thread.TokensUsed,
@@ -336,6 +348,63 @@ func TestCodexStateStoreDrivesListingAndNames(t *testing.T) {
 	}
 }
 
+// The 2026-08-11 shape: a thread resumed through the picker and renamed twice
+// in Codex 0.147, which writes the name to session_index.jsonl ALONE and
+// leaves threads.name empty. The index is append-only, so the LAST entry for
+// an id is the current name, and a nameless store row must not blank it.
+func TestCodexSessionIndexRenamesKeepTheLastWordOverANamelessStoreRow(t *testing.T) {
+	fixture := setupCodexStateFixture(t)
+	execCodexState(t, fixture.statePath, `
+INSERT INTO threads (
+  id, rollout_path, created_at, updated_at, source, model_provider, cwd,
+  title, sandbox_policy, approval_mode, tokens_used, archived,
+  first_user_message, preview, thread_source, recency_at, history_mode, name
+) VALUES ('resumed-thread', '', 500, 600, 'cli', 'openai', '/work/resumed',
+  '', 'workspace-write', 'on-request', 7, 0, 'verify the dispatch claim', '',
+  'user', 600, 'paginated', NULL)`)
+	indexPath := filepath.Join(fixture.codexRoot, "session_index.jsonl")
+	appendJSONLine(t, indexPath, map[string]any{
+		"id":          "resumed-thread",
+		"thread_name": "AWCX",
+		"updated_at":  "2026-08-10T23:19:20.801437897Z",
+	})
+	appendJSONLine(t, indexPath, map[string]any{
+		"id":          "resumed-thread",
+		"thread_name": "AWD",
+		"updated_at":  "2026-08-10T23:27:52.914145697Z",
+	})
+
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("initial Run() error = %v", err)
+	}
+
+	names, err := database.CxNames(ctx)
+	if err != nil {
+		t.Fatalf("CxNames() error = %v", err)
+	}
+	if names["resumed-thread"] != "AWD" {
+		t.Fatalf(
+			"resumed-thread name = %q, want the LAST session_index rename",
+			names["resumed-thread"],
+		)
+	}
+	rows := codexRows(t, database)
+	byID := make(map[string]compose.Row, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if row := byID["resumed-thread"]; row.Name != "AWD" {
+		t.Fatalf("resumed-thread row = %#v, want the session_index name", row)
+	}
+}
+
 // A rename inside Codex reaches the picker, and archiving a conversation
 // there retires the row the store alone was holding up.
 func TestCodexStateRenameAndArchivePropagate(t *testing.T) {
@@ -472,4 +541,242 @@ func TestCodexStateKeepsThreadWhoseRolloutFileIsDeleted(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("composed Codex rows = %#v, want both conversations", rows)
 	}
+}
+
+// setupMachineSpawnedFixture builds a Codex root holding four conversations
+// that are IDENTICAL on every column the fleet used to classify by — all four
+// are thread_source='user', unarchived, with a rollout file carrying one
+// prompt — so nothing but the entry point and the owner's rename can tell them
+// apart:
+//
+//   - verify-twin-a / verify-twin-b: the wave-walker verify twins. Two
+//     `codex exec` threads created a second apart with the SAME first prompt,
+//     each its own lineage root. Hiding one used to leave the other listed.
+//   - agent-worktree: an exec thread whose cwd is a workflow worktree.
+//   - real-chat: an interactive terminal chat.
+//   - adopted-exec: an exec thread the owner adopted by renaming it, which is
+//     the one thing that makes title differ from the first prompt.
+func setupMachineSpawnedFixture(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	codexRoot := filepath.Join(root, "codex")
+	sessions := filepath.Join(codexRoot, "sessions", "2026", "08", "10")
+	const twinPrompt = "Trace one planned API field through directly evidenced repos"
+
+	threads := []codexStateThread{
+		{
+			ID:               "verify-twin-a",
+			CWD:              "/work/cross-workflow",
+			Source:           "exec",
+			Title:            twinPrompt,
+			FirstUserMessage: twinPrompt,
+			ThreadSource:     "user",
+			CreatedAt:        100,
+			UpdatedAt:        100,
+		},
+		{
+			ID:               "verify-twin-b",
+			CWD:              "/work/cross-workflow",
+			Source:           "exec",
+			Title:            twinPrompt,
+			FirstUserMessage: twinPrompt,
+			ThreadSource:     "user",
+			CreatedAt:        101,
+			UpdatedAt:        101,
+		},
+		{
+			ID:               "agent-worktree",
+			CWD:              "/tmp/cross-workflow-agent-vhxIa3",
+			Source:           "exec",
+			Title:            "Return the fixed portable-effect plan",
+			FirstUserMessage: "Return the fixed portable-effect plan",
+			ThreadSource:     "user",
+			CreatedAt:        102,
+			UpdatedAt:        102,
+		},
+		{
+			ID:               "real-chat",
+			CWD:              "/work/proja",
+			Source:           "cli",
+			Title:            "help me with the picker",
+			FirstUserMessage: "help me with the picker",
+			ThreadSource:     "user",
+			CreatedAt:        103,
+			UpdatedAt:        103,
+		},
+		{
+			ID:               "adopted-exec",
+			CWD:              "/work/proja",
+			Source:           "exec",
+			Title:            "AWCX",
+			FirstUserMessage: "[verify] you are an INDEPENDENT VERIFIER",
+			ThreadSource:     "user",
+			CreatedAt:        104,
+			UpdatedAt:        104,
+		},
+	}
+	for index := range threads {
+		path := filepath.Join(
+			sessions,
+			fmt.Sprintf(
+				"rollout-2026-08-10T00-00-0%d-%s.jsonl",
+				index,
+				threads[index].ID,
+			),
+		)
+		threads[index].RolloutPath = path
+		writeLines(t, path,
+			`{"type":"session_meta","payload":{"id":"`+threads[index].ID+
+				`","thread_source":"user","cwd":"`+threads[index].CWD+`"}}`,
+			`{"type":"event_msg","payload":{"type":"user_message","message":`+
+				strconv.Quote(threads[index].FirstUserMessage)+`}}`,
+		)
+	}
+	buildCodexState(t, filepath.Join(codexRoot, "state_5.sqlite"), threads...)
+
+	t.Setenv("TMUX_TMPDIR", filepath.Join(root, "t"))
+	t.Setenv(paths.EnvDB, filepath.Join(root, "state", "fleet.db"))
+	t.Setenv(paths.EnvSharedDB, filepath.Join(root, "cc", "fleet.db"))
+	t.Setenv(paths.EnvSIDDir, filepath.Join(root, "sid"))
+	t.Setenv(paths.EnvClaudeRoots, filepath.Join(root, "claude"))
+	t.Setenv(paths.EnvCodexRoot, codexRoot)
+	t.Setenv(paths.EnvTmuxDir, filepath.Join(root, "tmux"))
+	t.Setenv(paths.EnvHome, filepath.Join(root, "home"))
+	return codexRoot
+}
+
+// THE TWIN REGRESSION. A workflow's verify twins used to list as two of the
+// owner's own Codex chats, so hiding one left its identical sibling sitting in
+// the picker and the hide looked like it had "come back". They are background
+// work and the entry point says so; the chats around them stay listed.
+func TestMachineSpawnedCodexThreadsAreBackground(t *testing.T) {
+	setupMachineSpawnedFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("initial Run() error = %v", err)
+	}
+
+	wantBG := map[string]bool{
+		"verify-twin-a":  true,
+		"verify-twin-b":  true,
+		"agent-worktree": true,
+		"real-chat":      false,
+		"adopted-exec":   false,
+	}
+	for id, want := range wantBG {
+		rollout, found, err := database.Rollout(ctx, id)
+		if err != nil || !found {
+			t.Fatalf("Rollout(%q) found = %v, error = %v", id, found, err)
+		}
+		if rollout.IsBG != want {
+			t.Fatalf("Rollout(%q).IsBG = %t, want %t", id, rollout.IsBG, want)
+		}
+		if !rollout.UserThread || rollout.Size <= 0 || rollout.PromptCount <= 0 {
+			t.Fatalf(
+				"Rollout(%q) = %#v; the fixture must differ ONLY in is_bg",
+				id,
+				rollout,
+			)
+		}
+	}
+
+	listed := defaultCodexIDs(t, database)
+	if !reflect.DeepEqual(listed, []string{"adopted-exec", "real-chat"}) {
+		t.Fatalf(
+			"default Codex listing = %v, want only the owner's two chats",
+			listed,
+		)
+	}
+	if all := len(codexRows(t, database)); all != 5 {
+		t.Fatalf("all-view Codex rows = %d, want all five kept and merely suppressed", all)
+	}
+}
+
+// A row indexed before the classification existed carries is_bg=0 while the
+// state store says otherwise. The next ORDINARY pass repairs it: the reconcile
+// re-derives is_bg from the store on every run, so no parser-version bump and
+// no full reparse is needed to clear the twins out.
+func TestCodexBackgroundRepairsWithoutAFullReparse(t *testing.T) {
+	setupMachineSpawnedFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("initial Run() error = %v", err)
+	}
+
+	stale, found, err := database.Rollout(ctx, "verify-twin-a")
+	if err != nil || !found {
+		t.Fatalf("verify-twin-a Rollout() found = %v, error = %v", found, err)
+	}
+	stale.IsBG = false
+	if err := database.UpsertRollout(ctx, stale); err != nil {
+		t.Fatalf("UpsertRollout() error = %v", err)
+	}
+
+	counters, err := indexer.Run(ctx, Options{})
+	if err != nil {
+		t.Fatalf("repair Run() error = %v", err)
+	}
+	if counters.FullParsed != 0 || counters.DeltaParsed != 0 {
+		t.Fatalf("repair counters = %+v, want no file reparsed", counters)
+	}
+	repaired, found, err := database.Rollout(ctx, "verify-twin-a")
+	if err != nil || !found || !repaired.IsBG {
+		t.Fatalf("repaired row = %#v found=%t err=%v, want is_bg set", repaired, found, err)
+	}
+}
+
+// defaultCodexIDs answers the visibility question twice — through the cached
+// SQL candidate query and through compose — and fails if they disagree, which
+// is how a chat comes back on the rescan after the cached first frame dropped
+// it.
+func defaultCodexIDs(t *testing.T, database *store.Store) []string {
+	t.Helper()
+
+	ctx := context.Background()
+	_, candidates, _, err := database.DefaultCandidates(ctx, 50, 50)
+	if err != nil {
+		t.Fatalf("DefaultCandidates() error = %v", err)
+	}
+	cached := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		cached = append(cached, candidate.LineageRoot)
+	}
+	sort.Strings(cached)
+
+	rollouts, err := database.Rollouts(ctx)
+	if err != nil {
+		t.Fatalf("Rollouts() error = %v", err)
+	}
+	output := compose.Compose(compose.Input{
+		Rollouts: rollouts,
+		Options:  compose.Options{View: compose.DefaultView},
+	})
+	composed := make([]string, 0, len(output.Rows))
+	for _, row := range output.Rows {
+		if row.Kind == compose.ResumeCodex {
+			composed = append(composed, row.ID)
+		}
+	}
+	sort.Strings(composed)
+	if !reflect.DeepEqual(cached, composed) {
+		t.Fatalf(
+			"cached candidates %v and compose %v disagree about the default listing",
+			cached,
+			composed,
+		)
+	}
+	return composed
 }

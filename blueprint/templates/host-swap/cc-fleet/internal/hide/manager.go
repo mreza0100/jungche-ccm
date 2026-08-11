@@ -76,7 +76,7 @@ func (manager *Manager) Hide(
 	case request.Self:
 		target, err = manager.IdentifySelf(ctx, request.Environment)
 	case request.ID != "":
-		target, err = manager.lookupTarget(ctx, request.ID)
+		target, err = manager.lookupTarget(ctx, request.ID, request.Engine)
 	default:
 		err = errors.New("hide requires --self or an id")
 	}
@@ -111,6 +111,17 @@ func (manager *Manager) Hide(
 }
 
 // Unhide removes one hide through the store's non-fatal busy policy.
+//
+// A Codex hide is not always keyed on the id this call receives: cx-hide.sh
+// writes the RAW id of whatever rollout file the live process currently
+// holds (cx-hide.sh:147), which can be a resumed CHILD's id, while every id
+// the picker shows the user is the lineage ROOT — compose keys every Codex
+// row on it (composer.rolloutRow). Resolving id to the root and unhiding
+// only that key would leave a child-keyed hide standing: the row would come
+// right back hidden (composer.hiddenMatch, store.codexLineageHidden both
+// check every member). So every id in the lineage is unhidden, root and
+// members alike; the shared store's Unhide is a safe no-op for an id that
+// carries no hide.
 func (manager *Manager) Unhide(ctx context.Context, id string) error {
 	if id == "" {
 		return errors.New("unhide id is empty")
@@ -124,10 +135,30 @@ func (manager *Manager) Unhide(ctx context.Context, id string) error {
 		); err != nil {
 			return err
 		} else if found {
-			id = lineage.RootID
+			return manager.unhideLineage(ctx, lineage)
 		}
 	}
 	return manager.database.Unhide(ctx, id)
+}
+
+// unhideLineage clears every id in a Codex resume lineage, root and members
+// alike — see Unhide's own comment for why the root alone is not enough.
+func (manager *Manager) unhideLineage(
+	ctx context.Context,
+	lineage store.CodexLineage,
+) error {
+	if err := manager.database.Unhide(ctx, lineage.RootID); err != nil {
+		return err
+	}
+	for _, member := range lineage.MemberIDs {
+		if member == lineage.RootID {
+			continue
+		}
+		if err := manager.database.Unhide(ctx, member); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Hidden returns every current hide in stable ID order.
@@ -135,9 +166,11 @@ func (manager *Manager) Hidden(ctx context.Context) ([]store.Hidden, error) {
 	return manager.database.HiddenChats(ctx)
 }
 
+// lookupTarget resolves the chat a hide is aimed at. engine is the caller's
+// own answer to "which engine?", supplied only by a caller holding the row.
 func (manager *Manager) lookupTarget(
 	ctx context.Context,
-	id string,
+	id, engine string,
 ) (Target, error) {
 	transcript, found, err := manager.database.Transcript(ctx, id)
 	if err != nil {
@@ -160,6 +193,16 @@ func (manager *Manager) lookupTarget(
 			ID:       lineage.RootID,
 			DataPath: lineage.Newest.Path,
 		}, nil
+	}
+	if engine != "" {
+		// A LIVE agent, almost always: its row is composed straight from the
+		// running process, so the picker shows it long before its transcript
+		// reaches the index — and the index is what the two lookups above ask.
+		// Refusing here is what made ⌃X on an agent row a silent no-op. The
+		// shared hidden store is keyed by uuid alone and derives the engine
+		// back out of the index, so the agent's own session uuid is the whole
+		// key this hide needs.
+		return Target{Engine: engine, ID: id}, nil
 	}
 	return Target{}, fmt.Errorf("chat %q is not indexed", id)
 }

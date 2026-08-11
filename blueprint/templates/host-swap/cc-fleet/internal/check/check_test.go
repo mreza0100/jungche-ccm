@@ -524,6 +524,80 @@ func TestCodexBoundClassRejectsDuplicateRowsInOneLineage(t *testing.T) {
 	}
 }
 
+func TestCodexMachineSpawnedClassNeedsTheStatePredicate(t *testing.T) {
+	rules, err := ParseAllowlist(strings.NewReader(
+		"class\tcodex-machine-spawned\tverified machine-spawned thread\n",
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A legacy-only resume-codex row whose thread the state store classifies
+	// as machine-spawned is absolved.
+	verified := DiffVerified(
+		[]Tuple{{
+			ID: "worker", Kind: "resume-codex", Project: "proja", Prompts: 1,
+		}},
+		nil,
+		rules,
+		Verification{CodexMachineSpawnedIDs: map[string]struct{}{"worker": {}}},
+	)
+	if len(verified) != 1 ||
+		!verified[0].Allowed ||
+		verified[0].Class != "codex-machine-spawned" {
+		t.Fatalf("machine-spawned legacy-only row = %#v", verified)
+	}
+
+	// The bound stays honest: a legacy-only row whose thread the state store
+	// does NOT classify as machine-spawned (or that the store simply never
+	// mentions) fails the check exactly as any other real regression would.
+	unverified := DiffVerified(
+		[]Tuple{{
+			ID: "renamed", Kind: "resume-codex", Project: "proja", Prompts: 1,
+		}},
+		nil,
+		rules,
+		Verification{CodexMachineSpawnedIDs: map[string]struct{}{"worker": {}}},
+	)
+	if len(unverified) != 1 || unverified[0].Allowed {
+		t.Fatalf("non-machine-spawned legacy-only row was allowlisted: %#v", unverified)
+	}
+
+	// The predicate is normalized through the lineage root, same as every
+	// other Codex class: a legacy-only row named by a MEMBER id still matches
+	// a machine-spawned root.
+	rooted := DiffVerified(
+		[]Tuple{{
+			ID: "child", Kind: "resume-codex", Project: "proja", Prompts: 1,
+		}},
+		nil,
+		rules,
+		Verification{
+			CodexMachineSpawnedIDs: map[string]struct{}{"root": {}},
+			CodexLineageRoots:      map[string]string{"child": "root", "root": "root"},
+		},
+	)
+	if len(rooted) != 1 || !rooted[0].Allowed {
+		t.Fatalf("lineage-rooted machine-spawned row = %#v", rooted)
+	}
+
+	// The class is legacy-only by construction: a GO-only row can never ride
+	// it, whatever the state store says about the thread — is_bg keeps a
+	// background thread out of the DEFAULT listing, never out of --check's
+	// own AllView scan, so a Go-only surplus here is a real regression.
+	goOnly := DiffVerified(
+		nil,
+		[]Tuple{{
+			ID: "worker", Kind: "resume-codex", Project: "proja", Prompts: 1,
+		}},
+		rules,
+		Verification{CodexMachineSpawnedIDs: map[string]struct{}{"worker": {}}},
+	)
+	if len(goOnly) != 1 || goOnly[0].Allowed {
+		t.Fatalf("go-only row rode the legacy-only machine-spawned class: %#v", goOnly)
+	}
+}
+
 func TestANSIUTF8FuzzNoPhantomRows(t *testing.T) {
 	var builder strings.Builder
 	for index := 0; index < 1000; index++ {

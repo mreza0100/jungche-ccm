@@ -304,7 +304,13 @@ func applyPickerChanges(
 	}
 	for _, change := range outcome.HideChanges {
 		if change.Hidden {
-			if _, err := manager.Hide(ctx, hide.Request{ID: change.ID}); err != nil {
+			// The picker was showing the row, so it vouches for the engine: a
+			// live agent whose transcript the index has not seen yet still
+			// hides.
+			if _, err := manager.Hide(ctx, hide.Request{
+				ID:     change.ID,
+				Engine: change.Engine,
+			}); err != nil {
 				return err
 			}
 		} else if err := manager.Unhide(ctx, change.ID); err != nil {

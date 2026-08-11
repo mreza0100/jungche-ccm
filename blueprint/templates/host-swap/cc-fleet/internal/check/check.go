@@ -389,7 +389,8 @@ func validClass(class string) bool {
 		"legacy-cache-empty-cwd",
 		"legacy-socket-squatter",
 		"agent-without-transcript",
-		"dormant-account":
+		"dormant-account",
+		"codex-machine-spawned":
 		return true
 	default:
 		return false
@@ -423,6 +424,12 @@ type Verification struct {
 	// DormantAccountIDs is the Claude rows resolved to an account root the
 	// legacy picker demonstrably does not walk.
 	DormantAccountIDs map[string]struct{}
+	// CodexMachineSpawnedIDs is every thread id the Codex state store
+	// classifies as machine-spawned (CodexThread.MachineSpawned): a workflow
+	// lane or agent runner started it, never a person at a picker. Go rows it
+	// BG; the legacy picker has no such concept and lists it like any other
+	// resumable rollout.
+	CodexMachineSpawnedIDs map[string]struct{}
 }
 
 // Diff returns the symmetric tuple difference in deterministic order.
@@ -587,6 +594,37 @@ func DiffVerified(
 					markClass(difference, "dormant-account", reason)
 				}
 			}
+		}
+	}
+
+	// codex-machine-spawned is the mirror-image class: a LEGACY-only row,
+	// never a Go-only one. is_bg keeps a thread out of the DEFAULT listing,
+	// never out of --check's own AllView scan, so this class does not exist
+	// to cover the ordinary case; it exists for a thread the Codex state
+	// store excludes from Go's lineage set entirely (its thread_source
+	// disagreeing with the rollout file's own meta line, for instance) while
+	// the rollout file alone still satisfies the legacy scan. Verified per
+	// row against a fresh read-only read of the state store
+	// (CodexMachineSpawnedIDs, candidates.go), never against the diff's own
+	// shape, so a legacy-only resume-codex row that is NOT machine-spawned
+	// stays visible.
+	machineSpawnedRoots := verifiedCodexRoots(
+		verification.CodexMachineSpawnedIDs,
+		verification.CodexLineageRoots,
+	)
+	for index := range differences {
+		difference := &differences[index]
+		if difference.Allowed ||
+			difference.Direction != LegacyOnly ||
+			difference.Tuple.Kind != compose.ResumeCodex.String() {
+			continue
+		}
+		root := verifiedCodexRoot(difference.Tuple.ID, verification.CodexLineageRoots)
+		if _, machineSpawned := machineSpawnedRoots[root]; !machineSpawned {
+			continue
+		}
+		if reason, allowed := classReasons["codex-machine-spawned"]; allowed {
+			markClass(difference, "codex-machine-spawned", reason)
 		}
 	}
 	return differences

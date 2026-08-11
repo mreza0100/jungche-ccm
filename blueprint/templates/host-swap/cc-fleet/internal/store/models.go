@@ -38,6 +38,10 @@ type Rollout struct {
 	LineageRoot  string
 	FirstPrompt  string
 	PromptCount  int64
+	// IsBG marks machine work — a workflow lane or agent runner started this
+	// conversation, not a person. It is the Codex twin of Transcript.IsBG and
+	// keeps such rows out of the default listing.
+	IsBG bool
 }
 
 // CxName mirrors one Codex session_index name.

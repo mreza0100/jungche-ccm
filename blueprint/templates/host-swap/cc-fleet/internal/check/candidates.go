@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 
+	"hostops/cc-fleet/internal/store"
+
 	// The legacy picker's name cache is a SQLite database; reading it needs the
 	// same driver the fleet store already links.
 	_ "modernc.org/sqlite"
@@ -103,6 +105,36 @@ func CodexRolloutFileIDs(codexRoot string) (map[string]struct{}, error) {
 	for _, candidate := range candidates {
 		if candidate.id != "" {
 			result[candidate.id] = struct{}{}
+		}
+	}
+	return result, nil
+}
+
+// CodexMachineSpawnedIDs returns every Codex thread id the state store
+// classifies as machine-spawned — threads.source='exec' and never renamed
+// (CodexThread.MachineSpawned, store/codexstate.go). A workflow lane or agent
+// runner started such a thread, never a person at a picker, so Go rows it BG
+// and the default listing suppresses it; the legacy picker has no such
+// concept and lists it like any other resumable rollout. Read fresh from the
+// read-only state store on every check run — never inferred from the diff —
+// so the class this feeds re-verifies each absolved row against live
+// evidence instead of trusting the diff's shape.
+func CodexMachineSpawnedIDs(
+	ctx context.Context,
+	codexRoot string,
+) (map[string]struct{}, error) {
+	files, err := store.CodexStateFiles(codexRoot)
+	if err != nil {
+		return nil, fmt.Errorf("locate Codex state stores: %w", err)
+	}
+	threads, err := store.ReadCodexThreads(ctx, files)
+	if err != nil {
+		return nil, fmt.Errorf("read Codex state stores: %w", err)
+	}
+	result := make(map[string]struct{})
+	for _, thread := range threads {
+		if thread.MachineSpawned() {
+			result[thread.ID] = struct{}{}
 		}
 	}
 	return result, nil

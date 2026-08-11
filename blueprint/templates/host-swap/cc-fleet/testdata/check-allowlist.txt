@@ -36,6 +36,19 @@
 #   requires, so it is filed as a subagent worker. Go takes the state store's
 #   classification instead.
 #
+# ── Codex machine-spawned rows (the mirror-image, legacy-only) ────────────────
+# - codex-machine-spawned: the row is LEGACY-only, never Go-only — is_bg keeps
+#   a thread out of the DEFAULT listing, never out of --check's own AllView
+#   scan, so this class does not exist to cover the ordinary background-thread
+#   case (that one already matches on both sides). It exists for a thread the
+#   Codex state store excludes from Go's lineage set entirely — its
+#   threads.thread_source disagreeing with the rollout file's own meta line,
+#   for instance — while the rollout file alone still satisfies the legacy
+#   scan. Verified per row against a fresh read-only read of the state store
+#   (CodexMachineSpawnedIDs walks threads.source='exec' AND unrenamed,
+#   CodexThread.MachineSpawned), never from the diff's own shape: a
+#   legacy-only resume-codex row that is NOT machine-spawned stays visible.
+#
 # ── prompt-count semantics ───────────────────────────────────────────────────
 # Bounded by 1:1 pairing — the two rows must agree on id, kind and project and
 # differ only in count, so a row missing from one side has no partner and stays
@@ -81,6 +94,7 @@
 class	codex-store-only	the lineage owns no rollout file at all, and the legacy Codex source can only scan rollout files
 class	codex-120-bound	legacy examines only its newest 120 rollout files; exactly one Go row is allowed per verified thread lineage
 class	codex-legacy-source	legacy requires thread_source:user on the first line while Go takes the state store's classification of the thread
+class	codex-machine-spawned	the state store excludes this thread from Go's lineage set while the rollout file alone still satisfies the legacy scan; verified per row against a fresh read of the state store
 class	codex-prompt-semantics	legacy grep counts token-bearing rollout lines while Go counts parsed complete user_message records
 class	claude-prompt-semantics	legacy byte-tail grep and Go parsed complete-record prompt counts differ at partial or injected records
 class	live-prompt-drift	a live chat gained a prompt between the sequential legacy and Go snapshots

@@ -99,14 +99,15 @@ printf '{"id":"cccccccc-0000-0000-0000-000000000003","thread_name":"RESUMED_ANCE
 "$SYNC" >/dev/null
 ok "ancestor's name via parent_thread_id" "$(win cx-350)" "RESUMED_ANCESTOR"
 
-echo "=== codex: an elder-thread pane (nothing born near its start) falls back to newest-in-cwd ==="
-# the rollout is an hour old, the pane just started — closest-birth finds nothing acceptable
+echo "=== codex: an elder-thread pane (nothing born near its start) is left alone ==="
+# the rollout is an hour old, the pane just started — outside the ±120s birth bound, and
+# there is no newest-in-cwd guess anymore: no match means no rename
 mkdir -p "$T/projC"
 tmux -S "$TMUX_TMPDIR/cx-400" new-session -d -s cx-400 -n Codex -c "$T/projC" 'sleep 300'
 rollout "2026-08-02T00-00-13" "eeeeeeee-0000-0000-0000-000000000005" "$((NOW-3600))" "$T/projC"
 printf '{"id":"eeeeeeee-0000-0000-0000-000000000005","thread_name":"ELDER"}\n' >> "$CODEX_HOME/session_index.jsonl"
 "$SYNC" >/dev/null
-ok "elder pane still gets a name"         "$(win cx-400)" "ELDER"
+ok "elder pane is left alone"             "$(win cx-400)" "Codex"
 
 echo "=== codex: a name whose 24-char cut lands on a space is trimmed ==="
 mkdir -p "$T/projE"
@@ -176,14 +177,15 @@ if command -v sqlite3 >/dev/null 2>&1; then
   "$SYNC" >/dev/null
   ok "no name anywhere → first prompt"      "$(win cx-700)" "Wire the queue up and re"
 
-  # an elder pane the store cannot place (nothing born near its start) still reaches the scan
+  # an elder pane the store cannot place (nothing born near its start) is left alone —
+  # the rollout scan is bounded by the same ±120s birth rule, no fallback guess
   mkdir -p "$T/projJ"
   tmux -S "$TMUX_TMPDIR/cx-800" new-session -d -s cx-800 -n Codex -c "$T/projJ" 'sleep 300'
   dbrow "aaaa0004-0000-0000-0000-00000000000d" "$T/projJ" "$((NOW-7200))" "TOO_OLD"
   rollout "2026-08-02T00-00-19" "aaaa0005-0000-0000-0000-00000000000e" "$((NOW-3600))" "$T/projJ"
   printf '{"id":"aaaa0005-0000-0000-0000-00000000000e","thread_name":"ELDER_ROLLOUT"}\n' >> "$CODEX_HOME/session_index.jsonl"
   "$SYNC" >/dev/null
-  ok "store miss falls back to the scan"    "$(win cx-800)" "ELDER_ROLLOUT"
+  ok "elder pane is left alone (store miss)" "$(win cx-800)" "Codex"
 else
   echo "  — sqlite3 absent, store cases skipped"
 fi

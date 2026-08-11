@@ -180,7 +180,7 @@ func (current *composer) buildIndexes() {
 	wantedRolloutIDs := make(map[string]struct{}, len(current.input.Snapshot.Codex))
 	for _, process := range current.input.Snapshot.Codex {
 		wantedRolloutPaths[cleanPath(process.RolloutPath)] = struct{}{}
-		wantedRolloutIDs[rolloutIDFromPath(process.RolloutPath)] = struct{}{}
+		wantedRolloutIDs[liveCodexID(process)] = struct{}{}
 	}
 	current.transcriptByID = make(
 		map[string]store.Transcript,
@@ -501,13 +501,11 @@ func (current *composer) liveCodexRows() []Row {
 		}
 		rollout, found := current.rolloutByPath[cleanPath(process.RolloutPath)]
 		if !found {
-			rollout, found = current.rolloutByID[rolloutIDFromPath(
-				process.RolloutPath,
-			)]
+			rollout, found = current.rolloutByID[liveCodexID(process)]
 		}
 		if !found {
 			rollout = store.Rollout{
-				ID:   rolloutIDFromPath(process.RolloutPath),
+				ID:   liveCodexID(process),
 				Path: process.RolloutPath,
 			}
 		}
@@ -638,6 +636,7 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 		Size:        rollout.Size,
 		PromptCount: rollout.PromptCount,
 		ActivityNS:  rollout.MTimeNS,
+		BG:          rollout.IsBG,
 	}
 }
 
@@ -661,15 +660,53 @@ func (current *composer) applyHide(row Row, engine string) Row {
 	if row.Kind == LiveSplit || row.ID == "" {
 		return row
 	}
-	hidden, found := current.hiddenByID[row.ID]
-	if found && hidden.Engine != "" && hidden.Engine != engine {
-		found = false
-	}
 	// A hide is permanent until an explicit unhide, so the stored
 	// baseline_prompts column is never consulted: a hidden chat stays hidden
 	// however far its prompt count grows.
-	row.Hidden = found
+	row.Hidden = current.hiddenMatch(row.ID, engine)
 	return row
+}
+
+// hiddenMatch reports whether id — or, for a Codex row, ANY id in its resume
+// lineage — carries a hide whose engine agrees.
+//
+// cx-hide.sh writes the RAW id of whatever rollout file the live Codex
+// process currently holds (cx-hide.sh:147), which is the resumed CHILD's id
+// on a multi-file lineage, not the ROOT this row is keyed on (rolloutRow,
+// liveCodexRows) — a hide written that way lands on a key nothing else here
+// reads unless every member id is checked too. A hide the `hide` manager
+// itself writes is already normalized onto the root
+// (internal/hide/manager.go), so this lineage walk only ever WIDENS what
+// matches, never narrows it.
+//
+// See also codexLineageHidden (store/queries.go), the cached first frame's
+// copy of this same question — the two must never disagree about what the
+// user sees.
+func (current *composer) hiddenMatch(id, engine string) bool {
+	if hideMatchesID(current.hiddenByID, id, engine) {
+		return true
+	}
+	if engine != "cx" {
+		return false
+	}
+	lineage, found := current.lineageByRoot[id]
+	if !found {
+		return false
+	}
+	for _, member := range lineage.MemberIDs {
+		if hideMatchesID(current.hiddenByID, member, engine) {
+			return true
+		}
+	}
+	return false
+}
+
+func hideMatchesID(hiddenByID map[string]store.Hidden, id, engine string) bool {
+	hidden, found := hiddenByID[id]
+	if !found {
+		return false
+	}
+	return hidden.Engine == "" || hidden.Engine == engine
 }
 
 func (current *composer) selectResumeRows(
@@ -722,13 +759,21 @@ func (current *composer) finalize(row Row) Row {
 	return row
 }
 
+// defaultEligible answers whether a row belongs in the default listing.
+//
+// THE HIDE IS TESTED FIRST, before any liveness short-circuit: hidden is dead,
+// live or not. A split row is the one row with no single id to hide — compose
+// never marks it — so it short-circuits above the test rather than around it.
 func defaultEligible(row Row) bool {
-	if row.Kind == LiveSplit {
-		return true
-	}
 	if row.Hidden {
 		return false
 	}
+	if row.Kind == LiveSplit {
+		return true
+	}
+	// A live agent is exempt from the emptiness tests below and from those
+	// ALONE: it is rowed from its running process, so its transcript is often
+	// still zero bytes with no prompt parsed out of it.
 	if row.Kind == Agent {
 		return true
 	}
@@ -831,8 +876,28 @@ func transcriptIDFromPath(path string) string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
+// liveCodexID names the conversation behind a live Codex process. The rollout
+// filename carries it whenever the process holds a rollout file, and gather's
+// own resolution is the only identity a session that writes no rollout file
+// has — Codex 0.146.1 stopped writing one for a paginated thread.
+//
+// Deriving it from the path ALONE mints the empty id for such a process, and
+// an empty id is a row that cannot be hidden (applyHide and the picker both
+// refuse one) and that never marks its conversation live — so the very same
+// chat also comes back as a resume row underneath itself.
+func liveCodexID(process gather.LiveCodex) string {
+	if id := rolloutIDFromPath(process.RolloutPath); id != "" {
+		return id
+	}
+	return process.ThreadID
+}
+
 func rolloutIDFromPath(path string) string {
-	stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	// The extension comes off the BASE, not off the whole path: for the empty
+	// path Base is "." and Ext of the whole path is "", which left the stem as
+	// "." — a bogus non-empty id that every pathless live process shared.
+	base := filepath.Base(path)
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
 	rest := strings.TrimPrefix(stem, "rollout-")
 	if len(rest) > 20 &&
 		rest[4] == '-' &&
