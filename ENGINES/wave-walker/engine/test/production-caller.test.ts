@@ -1,4 +1,5 @@
 // @ts-nocheck — production-caller.js is the Node-only headless seam around the generated bundle.
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -9,6 +10,7 @@ import {
   CODE_READ_ALLOWED_TOOLS,
   CODE_READ_BUILTIN_TOOLS,
   CODE_READ_DENIED_TOOLS,
+  CODE_READ_FENCE_SCRIPT,
   assertCodeReadObservation,
   assertFaithfulCodeReadPolicy,
   claudeCodeReadOnlyArguments,
@@ -51,7 +53,12 @@ describe('production caller seams over the real generated Claude bundle', () => 
     expect(optionValue(cliArgs, '--permission-mode')).toBe('dontAsk');
     expect(cliArgs).toContain('--strict-mcp-config');
     expect(CODE_READ_DENIED_TOOLS).toContain('mcp__*');
-    expect(() => assertFaithfulCodeReadPolicy()).toThrow(/claude_bash_not_pre_execution_fenced/u);
+    // The fence is now WIRED, so the policy assertion passes — and it passes because the argv actually
+    // binds the pre-execution hook to Bash, not because the check was relaxed.
+    expect(() => assertFaithfulCodeReadPolicy()).not.toThrow();
+    const settings = JSON.parse(optionValue(cliArgs, '--settings'));
+    expect(settings.hooks.PreToolUse[0].matcher).toBe('Bash');
+    expect(settings.hooks.PreToolUse[0].hooks[0].command).toBe(CODE_READ_FENCE_SCRIPT);
 
     let calls = 0;
     const result = await executeHarnessBundle(
@@ -117,6 +124,35 @@ describe('production caller seams over the real generated Claude bundle', () => 
         bashCommands: [{ agentId: 'test', command: 'git show HEAD:file > /tmp/file' }],
       }),
     ).toThrow(/outside the declared read grammar/u);
+  });
+
+  it('the pre-execution fence denies every Bash payload outside the declared grammar', () => {
+    // Executes the REAL hook script the caller wires, over the exact payload shape Claude Code sends.
+    // A mock here would prove only that the author agreed with themselves.
+    const fence = (payload: string) =>
+      spawnSync(process.execPath, [CODE_READ_FENCE_SCRIPT], { input: payload, encoding: 'utf8' });
+    const bash = (command: string) => JSON.stringify({ tool_name: 'Bash', tool_input: { command } });
+
+    // The two legitimate read shapes run.
+    expect(fence(bash('git rev-parse HEAD')).status).toBe(0);
+    expect(fence(bash('rg pattern .')).status).toBe(0);
+
+    // The exact leak from the failed production walk: a redirect into global /tmp.
+    const redirect = fence(bash('git show HEAD:file > /tmp/file'));
+    expect(redirect.status).toBe(2);
+    expect(JSON.parse(redirect.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+    // The denial names the rule, never the command text — a reason string is a log line.
+    expect(redirect.stdout).not.toContain('/tmp/file');
+
+    expect(fence(bash('cat /etc/passwd')).status).toBe(2);
+    expect(fence(bash('git diff --output=/tmp/x HEAD')).status).toBe(2);
+    expect(fence(bash('git log ; rm -rf /tmp/x')).status).toBe(2);
+
+    // Non-Bash tools are not this fence's business.
+    expect(fence(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: '/etc/passwd' } })).status).toBe(0);
+
+    // Unparseable input is NOT permission to run — an error must never render as an allow.
+    expect(fence('not json').status).toBe(2);
   });
 
   it('A2 turns a partial generated-bundle walk window into explicit incomplete-agent accounting', async () => {

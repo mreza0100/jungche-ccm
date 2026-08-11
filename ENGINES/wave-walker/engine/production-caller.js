@@ -1,5 +1,11 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The PreToolUse fence that makes the read grammar a BOUNDARY rather than an observation. Derived from
+// this module's own location — never hardcoded, so moving the engine cannot silently unwire it.
+export const CODE_READ_FENCE_SCRIPT = fileURLToPath(new URL('./code-read-fence.mjs', import.meta.url));
 
 export const CODE_READ_BUILTIN_TOOLS = Object.freeze([
   'Workflow',
@@ -38,6 +44,21 @@ export const CODE_READ_DENIED_TOOLS = Object.freeze([
   'NotebookEdit',
 ]);
 
+// Wiring for the pre-execution fence, passed inline so there is no settings FILE to drift out of sync
+// with this module and no path to hardcode. `--settings` accepts a JSON string as well as a path.
+export function codeReadFenceSettings() {
+  return {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: 'Bash',
+          hooks: [{ type: 'command', command: CODE_READ_FENCE_SCRIPT }],
+        },
+      ],
+    },
+  };
+}
+
 export function claudeCodeReadOnlyArguments() {
   return [
     '--tools',
@@ -51,13 +72,45 @@ export function claudeCodeReadOnlyArguments() {
     '--strict-mcp-config',
     '--no-chrome',
     '--disable-slash-commands',
+    '--settings',
+    JSON.stringify(codeReadFenceSettings()),
   ];
 }
 
+// Raw Bash IS granted — the walk needs git and rg reads, and there is no narrower builtin that provides
+// them. What makes that safe is not the allow-list (which only PRE-APPROVES; it never removes a tool)
+// but the PreToolUse fence, which runs BEFORE the command and denies anything outside the grammar. So
+// this assertion verifies the FENCE, not the tool list: the script must exist on disk and the argv must
+// actually wire it to Bash. A fence that is merely intended is the failure this whole check exists for.
 export function assertFaithfulCodeReadPolicy() {
-  if (CODE_READ_BUILTIN_TOOLS.includes('Bash')) {
+  if (!existsSync(CODE_READ_FENCE_SCRIPT)) {
     throw new Error(
-      'claude_bash_not_pre_execution_fenced: raw Bash is available; permission allow-patterns do not prove nonmatching commands unavailable. Configure a deterministic pre-tool command gate or a bounded executor before another production walk.',
+      `claude_bash_not_pre_execution_fenced: the fence script is missing at ${CODE_READ_FENCE_SCRIPT}; raw Bash would run unchecked.`,
+    );
+  }
+  const args = claudeCodeReadOnlyArguments();
+  const index = args.indexOf('--settings');
+  if (index < 0 || index + 1 >= args.length) {
+    throw new Error('claude_bash_not_pre_execution_fenced: no --settings payload wires the pre-tool fence.');
+  }
+  let settings;
+  try {
+    settings = JSON.parse(args[index + 1]);
+  } catch (caught) {
+    throw new Error('claude_bash_not_pre_execution_fenced: the --settings payload is not valid JSON.', {
+      cause: caught,
+    });
+  }
+  const wired = (settings?.hooks?.PreToolUse ?? []).some(
+    (entry) =>
+      entry?.matcher === 'Bash' &&
+      (entry?.hooks ?? []).some(
+        (hook) => hook?.type === 'command' && hook?.command === CODE_READ_FENCE_SCRIPT,
+      ),
+  );
+  if (!wired) {
+    throw new Error(
+      'claude_bash_not_pre_execution_fenced: the --settings payload does not bind the fence script to PreToolUse(Bash).',
     );
   }
 }
