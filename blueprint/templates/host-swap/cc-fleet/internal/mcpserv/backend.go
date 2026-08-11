@@ -103,22 +103,16 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 		return LSOutput{}, err
 	}
 
-	codexNamesByPath := make(map[string]string, len(rollouts))
-	for _, rollout := range rollouts {
-		codexNamesByPath[filepath.Clean(rollout.Path)] = naming.CxName(
-			rollout.ID,
-			rollout.SessionID,
-			rollout.ParentThread,
-			cxNames,
-			rollout.FirstPrompt,
-		)
-	}
+	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(rollouts, cxNames)
 	tmuxClient := gather.CommandTmux{TmuxTmpDir: filepath.Dir(current.paths.TmuxDir)}
 	gatherer, err := gather.New(gather.Dependencies{
 		Tmux:       tmuxClient,
 		TmuxTmpDir: filepath.Dir(current.paths.TmuxDir),
 		CodexName: func(path string) string {
 			return codexNamesByPath[filepath.Clean(path)]
+		},
+		CodexIDName: func(threadID string) string {
+			return codexNamesByID[threadID]
 		},
 		CodexThread: store.NewCodexThreadResolver(ctx, current.paths.CodexRoot),
 	})

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -400,6 +401,149 @@ func TestJailedTmuxProbeAndGather(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(jail.sidDir, ccSocket+".then-failed")); err != nil {
 		t.Fatalf("sentinel was touched by Gather(): %v", err)
+	}
+}
+
+// TestJailedResumedCodexPaneNamingAndConflicts fixtures the 2026-08-11
+// mislabel on real tmux servers. A pane resumed into an elder thread holds no
+// rollout file and no rollout descriptor, so the rename used to key on nothing
+// and the window kept a sibling's name. Its argv states the thread outright.
+// The same pass also proves the two guards around that rung: two windows that
+// would take ONE name take neither, and a pane holding a rollout descriptor
+// still converges through the path it always did.
+func TestJailedResumedCodexPaneNamingAndConflicts(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux binary is not installed")
+	}
+
+	jail := newTmuxJail(t)
+	const (
+		resumedSocket = "cx-901-1-1"
+		firstTwin     = "cx-902-2-2"
+		secondTwin    = "cx-903-3-3"
+		freshSocket   = "cx-904-4-4"
+		// the thread the owner resumed through the picker, named in
+		// session_index alone: AWCX, then AWD — the last write is the name.
+		resumedThread = "019feb1b-1215-7f30-b18b-e227e5ca26e5"
+		firstTwinID   = "019fed7f-aac7-7650-8a8b-96ab595179ab"
+		secondTwinID  = "019fedaa-1111-7650-8a8b-96ab59517abc"
+	)
+	for _, socket := range []string{
+		resumedSocket,
+		firstTwin,
+		secondTwin,
+		freshSocket,
+	} {
+		jail.startServer(t, socket, socket, "BUILDER_WF", "codex-pane")
+	}
+
+	now := time.Now()
+	client := CommandTmux{Binary: "tmux", TmuxTmpDir: jail.root}
+	probe, err := ProbeTmux(context.Background(), jail.tmuxDir, client, now)
+	if err != nil {
+		t.Fatalf("ProbeTmux() error = %v", err)
+	}
+	paneBySocket := make(map[string]Pane, len(probe.Panes))
+	for _, pane := range probe.Panes {
+		paneBySocket[pane.Socket] = pane
+	}
+
+	rolloutPath := filepath.Join(
+		jail.codexRoot,
+		"sessions",
+		"2026",
+		"rollout-fresh.jsonl",
+	)
+	processes := map[int]fakeProcess{}
+	for _, socket := range []string{
+		resumedSocket,
+		firstTwin,
+		secondTwin,
+		freshSocket,
+	} {
+		pane, found := paneBySocket[socket]
+		if !found {
+			t.Fatalf("ProbeTmux() lost jailed socket %q", socket)
+		}
+		processes[pane.PID] = fakeProcess{}
+	}
+	resumedPID := paneBySocket[resumedSocket].PID + 100000
+	processes[resumedPID] = fakeProcess{
+		cmdline: []string{
+			"/opt/codex",
+			"--dangerously-bypass-approvals-and-sandbox",
+			"resume",
+			resumedThread,
+		},
+		stat: ProcStat{ParentPID: paneBySocket[resumedSocket].PID},
+	}
+	for _, twin := range []struct {
+		socket string
+		thread string
+	}{
+		{socket: firstTwin, thread: firstTwinID},
+		{socket: secondTwin, thread: secondTwinID},
+	} {
+		processes[paneBySocket[twin.socket].PID+100000] = fakeProcess{
+			cmdline: []string{"/opt/codex", "resume", twin.thread},
+			stat:    ProcStat{ParentPID: paneBySocket[twin.socket].PID},
+		}
+	}
+	processes[paneBySocket[freshSocket].PID+100000] = fakeProcess{
+		cmdline: []string{"/opt/codex"},
+		fdLinks: []FDLink{{FD: 3, Target: rolloutPath}},
+		stat:    ProcStat{ParentPID: paneBySocket[freshSocket].PID},
+	}
+
+	namesByID := map[string]string{
+		resumedThread: "AWD",
+		firstTwinID:   "TWIN",
+		secondTwinID:  "TWIN",
+	}
+	gatherer, err := New(Dependencies{
+		ProcFS:      &fakeProcFS{processes: processes},
+		Tmux:        client,
+		Now:         func() time.Time { return now },
+		CodexName:   func(path string) string { return map[string]string{rolloutPath: "FRESH_THREAD"}[path] },
+		CodexIDName: func(threadID string) string { return namesByID[threadID] },
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	snapshot, err := gatherer.Gather(context.Background())
+	if err != nil {
+		t.Fatalf("Gather() error = %v", err)
+	}
+
+	codexBySocket := make(map[string]LiveCodex, len(snapshot.Codex))
+	for _, live := range snapshot.Codex {
+		codexBySocket[live.Socket] = live
+	}
+	if resumed := codexBySocket[resumedSocket]; resumed.ThreadID != resumedThread ||
+		resumed.RolloutPath != "" {
+		t.Fatalf(
+			"resumed pane = %#v, want the argv thread id and no rollout file",
+			resumed,
+		)
+	}
+
+	got := make([][2]string, 0, len(snapshot.Renames))
+	for _, rename := range snapshot.Renames {
+		got = append(got, [2]string{rename.Socket, rename.TargetName})
+	}
+	want := [][2]string{
+		{resumedSocket, "AWD"},
+		{freshSocket, "FRESH_THREAD"},
+	}
+	sort.Slice(want, func(left, right int) bool {
+		return want[left][0] < want[right][0]
+	})
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf(
+			"Gather().Renames = %v, want the resumed and fresh panes only "+
+				"(the twins share one name and must take neither)",
+			got,
+		)
 	}
 }
 

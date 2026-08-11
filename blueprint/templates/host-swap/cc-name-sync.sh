@@ -5,10 +5,13 @@
 #
 #   codex  window <- the thread's name in the codex state store (`threads` table), else the
 #          thread_name in ~/.codex/session_index.jsonl (what `codex resume <name>` accepts),
-#          else its first real prompt. The pane is matched to its thread by BIRTH TIME, not
-#          newest-in-cwd: codex records the thread within seconds of the process starting, so
-#          the user thread in the pane's cwd born closest to the pane's own start is that pane's
-#          thread. Newest-in-cwd mislabeled every chat when two shared a directory.
+#          else its first real prompt. The pane is matched to its thread by its own ARGV when it
+#          was launched to resume one (`codex … resume <uuid>` names the thread outright), else
+#          by BIRTH TIME within BIRTH_SLOP: codex records a thread within seconds of the process
+#          starting, so the user thread in the pane's cwd born that close to the pane's own start
+#          is that pane's thread. Nothing that close → the window is LEFT ALONE. Newest-in-cwd
+#          mislabeled every chat when two shared a directory, and an unbounded closest-in-cwd
+#          then stamped a sibling born hours away onto a resumed pane.
 #   claude window <- the 🔖 label scraped off the pane's own statusline (the /rename name),
 #          anchored on 🔖 + an account badge exactly as chat.sh resolves labels. The tab needs
 #          no help here — Claude Code sets it by OSC — the window name is for the DNS.
@@ -61,65 +64,117 @@ fi
 # ── the codex thread store: ~/.codex/state_<N>.sqlite, table `threads` ────────────────────────
 # Codex moved a thread's identity into sqlite: a thread running in `paginated` history mode keeps
 # its history in the store and may leave NO rollout file behind at all. Matching a pane through
-# rollout files therefore missed every new chat, and the miss was silent — cx_rollout_for fell
-# back to "newest rollout in this cwd" and stamped a long-dead sibling's name on the window, so a
-# codex rename never reached the tab. The table answers the same question exactly, in one query:
-# id, name, cwd, created_at. The filename is versioned, so take the highest; a codex too old to
-# have the store leaves CXDB empty and the rollout scan below serves alone.
+# rollout files therefore missed every new chat, and the miss was silent — the rollout scan fell
+# back to a sibling in the same directory and stamped ITS name on the window, so a codex rename
+# never reached the tab (that fallback is gone now; see cx_rollout_for). The table answers the
+# same question exactly: id, name, cwd, created_at. The filename is versioned, so take the
+# highest; a codex too old to have the store leaves CXDB empty and the rollout scan serves alone.
 CXDB="$(ls -1 "$CODEX_DIR"/state_*.sqlite 2>/dev/null \
   | sed 's/.*state_\([0-9]*\)\.sqlite$/\1 &/' | sort -rn | head -1 | cut -d' ' -f2-)"
 
-# cx_db_name <cwd> <start-epoch> — the display name of the thread that pane owns, "" if the store
-# has none that close (an elder or resumed thread) and the rollout scan should try. Read-only and
+# cx_name_for_id <thread-id> — one thread's display name, by id, in the fleet's precedence:
+# the store's own `name` (what codex writes on a rename), then the thread_name in the index —
+# which holds the renames of threads that predate that column AND the ones codex 0.147 writes
+# THERE ALONE, leaving threads.name empty — then the thread's first prompt. Read-only and
 # WAL-aware: never `immutable`, which would hide every row still sitting in the -wal.
-# Name precedence: the store's own `name` (what codex writes on a rename), then the index — which
-# still holds the renames of threads that predate that column — then the thread's first prompt.
-cx_db_name() {
-  [ -n "$CXDB" ] || return 0
-  local cwd start id nm fum ttl row
-  cwd=${1//\'/\'\'}; start="$2"
-  row="$(sqlite3 -readonly -separator "$(printf '\037')" "file:$CXDB?mode=ro" \
-    "select id, coalesce(name,''),
-            replace(replace(coalesce(first_user_message,''),char(9),' '),char(10),' '),
-            replace(replace(coalesce(title,''),char(9),' '),char(10),' ')
-       from threads
-      where thread_source='user' and archived=0 and cwd='$cwd'
-        and abs(created_at - $start) <= $BIRTH_SLOP
-      order by abs(created_at - $start) limit 1;" 2>/dev/null)" || return 0
-  [ -n "$row" ] || return 0
-  # \037 (unit separator), not a tab: tab is IFS whitespace, so `read` would fold the run of
-  # separators an empty column produces and shift every later field one to the left.
-  IFS="$(printf '\037')" read -r id nm fum ttl <<EOF
+cx_name_for_id() {
+  local id sql nm fum ttl row
+  id="${1:-}"; [ -n "$id" ] || return 0
+  sql=${id//\'/\'\'}
+  if [ -n "$CXDB" ]; then
+    row="$(sqlite3 -readonly -separator "$(printf '\037')" "file:$CXDB?mode=ro" \
+      "select coalesce(name,''),
+              replace(replace(coalesce(first_user_message,''),char(9),' '),char(10),' '),
+              replace(replace(coalesce(title,''),char(9),' '),char(10),' ')
+         from threads where id='$sql' limit 1;" 2>/dev/null)" || row=""
+    if [ -n "${row:-}" ]; then
+      # \037 (unit separator), not a tab: tab is IFS whitespace, so `read` would fold the run of
+      # separators an empty column produces and shift every later field one to the left.
+      IFS="$(printf '\037')" read -r nm fum ttl <<EOF
 $row
 EOF
-  [ -n "${nm:-}" ] && { printf '%s' "$nm"; return 0; }
-  nm="${CXNM[${id:-}]:-}"
+      [ -n "${nm:-}" ] && { printf '%s' "$nm"; return 0; }
+    fi
+  fi
+  nm="${CXNM[$id]:-}"
   [ -n "$nm" ] && { printf '%s' "$nm"; return 0; }
   printf '%s' "${fum:-${ttl:-}}"
 }
 
+# cx_db_id <cwd> <start-epoch> — the id of the thread that pane owns, "" if the store has none
+# born within BIRTH_SLOP of the pane (an elder thread, or a resume — which the argv rung has
+# already named, since a resumed thread predates its pane by hours or days and no birth match
+# can ever reach it).
+cx_db_id() {
+  [ -n "$CXDB" ] || return 0
+  local cwd start
+  cwd=${1//\'/\'\'}; start="$2"
+  sqlite3 -readonly "file:$CXDB?mode=ro" \
+    "select id from threads
+      where thread_source='user' and archived=0 and cwd='$cwd'
+        and abs(created_at - $start) <= $BIRTH_SLOP
+      order by abs(created_at - $start) limit 1;" 2>/dev/null
+}
+
+# cx_pargs <pid> — one process's whole argv on one line, "" when it is gone. /proc holds it
+# NUL-delimited on Linux; `ps -o args=` is the spelling a Mac answers.
+cx_pargs() {
+  [ -r "/proc/$1/cmdline" ] && { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null; return 0; }
+  ps -o args= -p "$1" 2>/dev/null | head -1
+}
+
+# cx_resume_id <pane-pid> — the thread id the pane was LAUNCHED to resume, "" when it was not a
+# resume. This is the one DETERMINISTIC rung, and the only one that can be right for a resume:
+# the thread was created hours or days before the pane, so every birth match below is
+# structurally unable to reach it, and codex may write no rollout file for the resume at all.
+# A resumed pane is a small process tree — the launcher shim, then the codex binary under it,
+# each carrying the same argv — so walk a few generations rather than trusting one pid.
+cx_resume_id() {
+  local depth pid id args level next
+  level="$1"
+  for depth in 1 2 3; do
+    next=""
+    for pid in $level; do
+      args="$(cx_pargs "$pid")"
+      case "$args" in
+        *" resume "*)
+          # only a uuid: `codex resume --last` and `codex resume <name>` name no thread here
+          id="$(printf '%s\n' "$args" | grep -Eo \
+            '[[:space:]]resume[[:space:]]+[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}' \
+            | head -1)"
+          id="${id##* }"
+          [ -n "$id" ] && { printf '%s' "$id"; return 0; }
+          ;;
+      esac
+      next="$next $(pgrep -P "$pid" 2>/dev/null | tr '\n' ' ')"
+    done
+    level="$next"
+    [ -n "${level// /}" ] || return 0
+  done
+}
+
 # cx_rollout_for <cwd> <start-epoch> — the pane's own rollout: among user-thread rollouts whose
-# meta cwd matches, the one whose birth (meta timestamp, UTC) lies closest to the pane's start
-# and not before start-BIRTH_SLOP. None that close (an elder thread, clock trouble) → the newest
-# match, the pre-disambiguation behavior.
+# meta cwd matches, the one whose birth (meta timestamp, UTC) lies within BIRTH_SLOP of the
+# pane's start. None that close → "", and the caller leaves the window ALONE. The old fallbacks
+# — closest-in-cwd with no upper bound, then newest-in-cwd — are what stamped a sibling born
+# 2.2h from the pane onto a resumed chat: a directory is not an identity, and a wrong window
+# name is worse than a stale one, because the window name is how the fleet addresses a chat.
 cx_rollout_for() {
-  local cwd="$1" start="$2" f meta ts birth d best="" bestd=999999999 newest=""
+  local cwd="$1" start="$2" f meta ts birth d best="" bestd=999999999
   while IFS= read -r f; do
     meta="$(head -1 "$f" 2>/dev/null)" || continue
     case "$meta" in *'"thread_source":"user"'*) ;; *) continue ;; esac
     case "$meta" in *"\"cwd\":\"$cwd\""*) ;; *) continue ;; esac
-    [ -n "$newest" ] || newest="$f"
     # the birth is payload.timestamp. Codex wraps the meta record in an envelope carrying its own
     # WRITE time (seen 35 minutes past the thread's birth, and rewritten as the thread runs), so
     # reading the first "timestamp" in the line dated the thread by when it was last written.
     # A record with no payload leaves the string untouched and the first timestamp still serves.
     ts="${meta#*\"payload\":\{}"; ts="${ts#*\"timestamp\":\"}"; ts="${ts%%\"*}"
     birth="$(cc_epoch "$ts")"; [ -n "$birth" ] || continue
-    (( birth >= start - BIRTH_SLOP )) || continue
     d=$(( birth - start )); (( d < 0 )) && d=$(( -d ))
+    (( d <= BIRTH_SLOP )) || continue
     (( d < bestd )) && { bestd=$d; best="$f"; }
   done < <(cc_find_newest "$CODEX_DIR/sessions" -name 'rollout-*.jsonl' | head -60)
-  [ -n "$best" ] || best="$newest"
   [ -n "$best" ] && printf '%s' "$best"
 }
 
@@ -179,9 +234,19 @@ for sockpath in "$TMUXDIR"/cc-* "$TMUXDIR"/cx-*; do
         # check rides along, since a dead pid yields no start time on either platform (the old
         # `[ -d /proc/$ppid ]` gate was Linux's spelling of exactly that check).
         start="$(cc_pstart "$ppid")"; [ -n "$start" ] || continue
-        # the store first — it knows the threads that write no rollout file; the rollout scan
-        # then covers the elder threads recorded before the store existed.
-        nm="$(cx_db_name "$pcwd" "$start")"
+        # the pane's own argv first: a `codex … resume <uuid>` pane states its thread outright,
+        # and no clock can name it — its thread is older than the pane by design.
+        tid="$(cx_resume_id "$ppid")"
+        if [ -n "$tid" ]; then
+          nm="$(cx_name_for_id "$tid")"
+          [ -n "$nm" ] || continue
+          rename "$sockpath" "$win" "$wname" "${nm:0:$MAXLEN}" codex
+          continue
+        fi
+        # then the store — it knows the threads that write no rollout file; the rollout scan
+        # then covers the elder threads recorded before the store existed. Both are bounded by
+        # BIRTH_SLOP, and a pane neither can place keeps the name it has.
+        nm="$(cx_name_for_id "$(cx_db_id "$pcwd" "$start")")"
         if [ -z "$nm" ]; then
           rl="$(cx_rollout_for "$pcwd" "$start")" || true
           [ -n "$rl" ] && [ -r "$rl" ] || continue

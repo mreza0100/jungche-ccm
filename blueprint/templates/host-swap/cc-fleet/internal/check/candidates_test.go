@@ -213,3 +213,111 @@ INSERT INTO chat(uuid, cwd) VALUES
 		t.Fatalf("chat-less cache = %#v, err = %v", tableless, err)
 	}
 }
+
+// codexStateFixtureThread is the subset of threads columns
+// TestCodexMachineSpawnedIDsMatchesTheStatePredicate needs to exercise
+// CodexThread.MachineSpawned (store/codexstate.go): source and whether title
+// differs from the seeded first prompt.
+type codexStateFixtureThread struct {
+	id               string
+	source           string
+	title            string
+	firstUserMessage string
+}
+
+// buildCodexStateFixture writes a scratch Codex state store from the real
+// schema (testdata/codex-state-schema.sql), the same file
+// store.buildCodexState uses, so this test exercises the actual column set
+// rather than a hand-trimmed guess.
+func buildCodexStateFixture(
+	t *testing.T,
+	path string,
+	threads ...codexStateFixtureThread,
+) {
+	t.Helper()
+	schema, err := os.ReadFile(
+		filepath.Join("..", "..", "testdata", "codex-state-schema.sql"),
+	)
+	if err != nil {
+		t.Fatalf("read Codex state schema: %v", err)
+	}
+	database, err := sql.Open(legacyCacheDriver, path)
+	if err != nil {
+		t.Fatalf("create scratch Codex state store: %v", err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	if _, err := database.ExecContext(ctx, string(schema)); err != nil {
+		t.Fatalf("apply Codex state schema: %v", err)
+	}
+	for _, thread := range threads {
+		if _, err := database.ExecContext(ctx, `
+INSERT INTO threads (
+  id, rollout_path, created_at, updated_at, source, model_provider, cwd,
+  title, sandbox_policy, approval_mode, thread_source, first_user_message
+) VALUES (?, ?, 0, 0, ?, 'openai', '/work', ?, 'workspace-write',
+  'on-request', 'user', ?)`,
+			thread.id,
+			filepath.Join("/codex/sessions", "rollout-"+thread.id+".jsonl"),
+			thread.source,
+			thread.title,
+			thread.firstUserMessage,
+		); err != nil {
+			t.Fatalf("insert scratch Codex thread %q: %v", thread.id, err)
+		}
+	}
+}
+
+func TestCodexMachineSpawnedIDsMatchesTheStatePredicate(t *testing.T) {
+	root := t.TempDir()
+	buildCodexStateFixture(t, filepath.Join(root, "state_1.sqlite"),
+		// A workflow lane: exec-sourced, title still the seeded first prompt.
+		codexStateFixtureThread{
+			id:               "worker",
+			source:           "exec",
+			title:            "do the thing",
+			firstUserMessage: "do the thing",
+		},
+		// The one exec thread the owner adopted by naming it — MachineSpawned
+		// is false whatever started it (store/codexstate.go:71-76).
+		codexStateFixtureThread{
+			id:               "adopted",
+			source:           "exec",
+			title:            "AWD",
+			firstUserMessage: "do the other thing",
+		},
+		// An ordinary interactive chat.
+		codexStateFixtureThread{
+			id:               "interactive",
+			source:           "cli",
+			title:            "chat title",
+			firstUserMessage: "chat title",
+		},
+	)
+	ids, err := CodexMachineSpawnedIDs(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("machine-spawned IDs = %#v, want exactly {worker}", ids)
+	}
+	if _, found := ids["worker"]; !found {
+		t.Fatalf("worker thread missing from machine-spawned IDs: %#v", ids)
+	}
+	if _, found := ids["adopted"]; found {
+		t.Fatal("a renamed exec thread was reported machine-spawned")
+	}
+	if _, found := ids["interactive"]; found {
+		t.Fatal("an interactive chat was reported machine-spawned")
+	}
+
+	// A box with no Codex state store at all has no machine-spawned threads,
+	// not a broken check.
+	absent, err := CodexMachineSpawnedIDs(
+		context.Background(),
+		filepath.Join(root, "absent"),
+	)
+	if err != nil || len(absent) != 0 {
+		t.Fatalf("absent state store = %#v, err = %v", absent, err)
+	}
+}

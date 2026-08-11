@@ -22,7 +22,8 @@ type CodexThreadResolver func(
 ) (id string, rolloutPath string)
 
 // DetectCodex maps live codex processes to panes using pid ancestry. It sees
-// only sessions that hold a rollout file descriptor.
+// only sessions that hold a rollout file descriptor or state the thread they
+// resumed in their own argv.
 func DetectCodex(proc ProcFS, codexRoot string, panes []Pane) ([]LiveCodex, error) {
 	return DetectCodexThreads(proc, codexRoot, panes, nil)
 }
@@ -65,7 +66,18 @@ func DetectCodexThreads(
 				break
 			}
 		}
-		if rolloutPath == "" && identify == nil {
+		// The process's own argv is the deterministic identity, and the only
+		// one a RESUMED session has: its thread was created hours or days
+		// before the process, so no birth match can reach it, and the resume
+		// may write no rollout file at all. It outranks the exported
+		// CODEX_THREAD_ID because that variable is INHERITED — a `codex resume`
+		// launched from inside another Codex session's shell carries the
+		// parent's thread id in its environment and its own in its argv.
+		threadID := codexResumeArgv(cmdline)
+		if threadID == "" && identify != nil {
+			threadID = codexThreadEnv(proc, pid)
+		}
+		if rolloutPath == "" && threadID == "" && identify == nil {
 			continue
 		}
 
@@ -73,11 +85,7 @@ func DetectCodexThreads(
 		if !found {
 			continue
 		}
-		threadID := ""
-		if identify != nil {
-			threadID = codexThreadEnv(proc, pid)
-		}
-		if rolloutPath == "" {
+		if rolloutPath == "" && identify != nil {
 			id, path := identify(threadID, pane.CurrentPath, processBirth(proc, pid))
 			if id == "" {
 				continue
@@ -101,6 +109,21 @@ func DetectCodexThreads(
 		return live[left].PID < live[right].PID
 	})
 	return live, nil
+}
+
+// codexResumeArgv reads the conversation a Codex process was launched to
+// resume: `codex … resume <uuid>` names it outright. Only a uuid counts —
+// `codex resume --last` and `codex resume <name>` identify nothing here.
+func codexResumeArgv(cmdline []string) string {
+	for index := 0; index+1 < len(cmdline); index++ {
+		if cmdline[index] != "resume" {
+			continue
+		}
+		if candidate := cmdline[index+1]; isUUID(candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // codexThreadEnv reads the identity a Codex session exports into the shells

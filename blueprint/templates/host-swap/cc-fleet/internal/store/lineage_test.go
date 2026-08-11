@@ -100,7 +100,10 @@ VALUES (?, ?, ?, ?)`,
 	}
 
 	migrated := openTestStore(t)
-	assertSchemaVersion(t, migrated, 2)
+	// The whole chain runs, v1 through the newest: the lineage collapse below
+	// has to survive every later migration, not only the one that introduced
+	// it.
+	assertSchemaVersion(t, migrated, SchemaVersion)
 	rollouts, err := migrated.Rollouts(ctx)
 	if err != nil {
 		t.Fatal(err)

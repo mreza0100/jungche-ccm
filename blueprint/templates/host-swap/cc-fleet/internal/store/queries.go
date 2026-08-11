@@ -16,7 +16,7 @@ t.ai_title, t.first_prompt, t.last_prompt, t.prompt_count, t.is_bg`
 
 const rolloutColumns = `
 id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
-parent_thread, lineage_root, first_prompt, prompt_count`
+parent_thread, lineage_root, first_prompt, prompt_count, is_bg`
 
 type rowScanner interface {
 	Scan(...any) error
@@ -96,10 +96,10 @@ func (s *Store) defaultRollouts(
 	}
 	rollouts := make([]Rollout, 0, min(limit, len(lineages)))
 	for _, lineage := range lineages {
-		if _, found := hiddenByID[lineage.RootID]; found {
+		if codexLineageHidden(lineage, hiddenByID) {
 			continue
 		}
-		if lineage.Newest.Size <= 0 || lineage.PromptCount <= 0 {
+		if codexLineageSuppressed(lineage) {
 			continue
 		}
 		rollouts = append(rollouts, lineage.Newest)
@@ -137,11 +137,11 @@ LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
 	}
 	var codexHidden, codexSuppressed int
 	for _, lineage := range lineages {
-		if _, found := hiddenByID[lineage.RootID]; found {
+		if codexLineageHidden(lineage, hiddenByID) {
 			codexHidden++
 			continue
 		}
-		if lineage.Newest.Size <= 0 || lineage.PromptCount <= 0 {
+		if codexLineageSuppressed(lineage) {
 			codexSuppressed++
 			continue
 		}
@@ -156,6 +156,42 @@ LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
 		counts.Suppressed += codexEligible - rolloutLimit
 	}
 	return counts, nil
+}
+
+// codexLineageSuppressed is the cached frame's copy of compose's
+// default-eligibility test for a Codex conversation, and the two must stay
+// identical: a row the SQL half omits and compose keeps (or the reverse) is a
+// chat that flickers between the cached first frame and the rescan.
+func codexLineageSuppressed(lineage CodexLineage) bool {
+	return lineage.Newest.IsBG ||
+		lineage.Newest.Size <= 0 ||
+		lineage.PromptCount <= 0
+}
+
+// codexLineageHidden is the cached frame's copy of compose's own hide test
+// for a Codex conversation (composer.hiddenMatch, compose/compose.go), and
+// the two must stay identical for the same reason codexLineageSuppressed
+// does: a lineage the SQL half counts hidden and compose does not (or the
+// reverse) is a chat that flickers between the cached first frame and the
+// rescan.
+//
+// cx-hide.sh writes the RAW id of whatever rollout file the live Codex
+// process currently holds (cx-hide.sh:147) — the resumed CHILD's id on a
+// multi-file lineage, not the root this cache keys hides on — so the root
+// alone is not enough; every member id must be checked too. A hide the
+// `hide` manager writes is already normalized onto the root
+// (internal/hide/manager.go), so this is only ever a WIDER match, never a
+// narrower one.
+func codexLineageHidden(lineage CodexLineage, hiddenByID map[string]Hidden) bool {
+	if _, found := hiddenByID[lineage.RootID]; found {
+		return true
+	}
+	for _, member := range lineage.MemberIDs {
+		if _, found := hiddenByID[member]; found {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) codexLineageRows(
@@ -331,8 +367,8 @@ func upsertRollout(ctx context.Context, db queryExecer, rollout Rollout) error {
 	_, err := execWrite(ctx, db, `
 INSERT OR REPLACE INTO rollouts (
   id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
-  parent_thread, lineage_root, first_prompt, prompt_count
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  parent_thread, lineage_root, first_prompt, prompt_count, is_bg
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		rollout.ID,
 		rollout.Path,
 		rollout.Size,
@@ -345,6 +381,7 @@ INSERT OR REPLACE INTO rollouts (
 		initialLineageRoot(rollout),
 		rollout.FirstPrompt,
 		rollout.PromptCount,
+		boolInteger(rollout.IsBG),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert rollout %q: %w", rollout.ID, err)
@@ -395,7 +432,7 @@ func (s *Store) Rollouts(ctx context.Context) ([]Rollout, error) {
 
 func scanRollout(row rowScanner) (Rollout, error) {
 	var rollout Rollout
-	var userThread int
+	var userThread, isBG int
 	err := row.Scan(
 		&rollout.ID,
 		&rollout.Path,
@@ -409,8 +446,10 @@ func scanRollout(row rowScanner) (Rollout, error) {
 		&rollout.LineageRoot,
 		&rollout.FirstPrompt,
 		&rollout.PromptCount,
+		&isBG,
 	)
 	rollout.UserThread = userThread != 0
+	rollout.IsBG = isBG != 0
 	return rollout, err
 }
 

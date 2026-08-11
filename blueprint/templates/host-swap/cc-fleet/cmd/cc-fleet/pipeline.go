@@ -218,16 +218,10 @@ func gatherFleet(
 	readOnly bool,
 	stderr io.Writer,
 ) (gather.Snapshot, error) {
-	codexNamesByPath := make(map[string]string, len(data.rollouts))
-	for _, rollout := range data.rollouts {
-		codexNamesByPath[filepath.Clean(rollout.Path)] = naming.CxName(
-			rollout.ID,
-			rollout.SessionID,
-			rollout.ParentThread,
-			data.cxNames,
-			rollout.FirstPrompt,
-		)
-	}
+	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(
+		data.rollouts,
+		data.cxNames,
+	)
 	tmuxClient := gather.CommandTmux{
 		TmuxTmpDir: filepath.Dir(resolved.TmuxDir),
 	}
@@ -236,6 +230,9 @@ func gatherFleet(
 		TmuxTmpDir: filepath.Dir(resolved.TmuxDir),
 		CodexName: func(rolloutPath string) string {
 			return codexNamesByPath[filepath.Clean(rolloutPath)]
+		},
+		CodexIDName: func(threadID string) string {
+			return codexNamesByID[threadID]
 		},
 		CodexThread: store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
 		ReadOnly:    readOnly,

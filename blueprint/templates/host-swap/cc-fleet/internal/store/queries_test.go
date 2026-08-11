@@ -302,3 +302,60 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultRolloutsHiddenOnAnyLineageMember is codexLineageHidden's own
+// fixture, and it guards cx-hide.sh's actual write shape (cx-hide.sh:147): a
+// hide keyed on a MEMBER id — never the lineage root — must still pull the
+// whole conversation out of the cached first frame. "child-old" is neither
+// the root nor the newest file, so a fix that only special-cases those two
+// would still miss it.
+func TestDefaultRolloutsHiddenOnAnyLineageMember(t *testing.T) {
+	setStoreTestJail(t)
+	database := openTestStore(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	for _, rollout := range lineageFixtureRollouts() {
+		if err := database.UpsertRollout(ctx, rollout); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, rollouts, counts, err := database.DefaultCandidates(ctx, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rollouts) != 1 || rollouts[0].LineageRoot != "root" {
+		t.Fatalf("unhidden lineage = %#v, want exactly the root-lineage row", rollouts)
+	}
+	if counts.Hidden != 0 {
+		t.Fatalf("counts before hide = %+v, want zero hidden", counts)
+	}
+
+	if err := database.Hide(ctx, Hidden{ID: "child-old", Engine: "cx"}); err != nil {
+		t.Fatal(err)
+	}
+	_, rollouts, counts, err = database.DefaultCandidates(ctx, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rollouts) != 0 {
+		t.Fatalf(
+			"a hide on a non-root, non-newest member left the lineage listed: %#v",
+			rollouts,
+		)
+	}
+	if counts.Hidden != 1 {
+		t.Fatalf("counts after member hide = %+v, want hidden=1", counts)
+	}
+
+	if err := database.Unhide(ctx, "child-old"); err != nil {
+		t.Fatal(err)
+	}
+	_, rollouts, _, err = database.DefaultCandidates(ctx, 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rollouts) != 1 || rollouts[0].LineageRoot != "root" {
+		t.Fatalf("unhide did not bring the lineage back: %#v", rollouts)
+	}
+}

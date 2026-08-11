@@ -700,3 +700,159 @@ func idNumber(prefix string, number int) string {
 		digits[number%10],
 	})
 }
+
+// A paginated Codex conversation writes NO rollout file, so the live process
+// holds no rollout path and only gather's own resolution names it. Deriving
+// the row's id from the path alone minted the EMPTY id: an unhideable row
+// (applyHide refuses an empty id) that never marked its conversation live, so
+// the same chat came back a second time as a resume row underneath itself.
+func TestLiveCodexWithoutARolloutFileIsOneHideableRow(t *testing.T) {
+	paginated := store.Rollout{
+		ID:          "019fed79-74c9-7c62-a224-4581ba81d4f6",
+		Path:        "/codex/sessions/019fed79-74c9-7c62-a224-4581ba81d4f6.jsonl",
+		CWD:         "/work/proja",
+		UserThread:  true,
+		LineageRoot: "019fed79-74c9-7c62-a224-4581ba81d4f6",
+		FirstPrompt: "paginated first prompt",
+		PromptCount: 1,
+		MTimeNS:     1_700_000_000_000_000_000,
+		Size:        0,
+	}
+	output := Compose(Input{
+		Rollouts: []store.Rollout{paginated},
+		Snapshot: gather.Snapshot{
+			Codex: []gather.LiveCodex{{
+				PID:      300,
+				Socket:   "cx-300-1-1",
+				PaneID:   "%3",
+				ThreadID: paginated.ID,
+			}},
+			Panes: []gather.Pane{{
+				Socket:      "cx-300-1-1",
+				SessionName: "cx-300-1-1",
+				PaneID:      "%3",
+				CurrentPath: "/work/proja",
+			}},
+		},
+		Options: Options{View: AllView},
+	})
+
+	codexRows := make([]Row, 0, len(output.Rows))
+	for _, row := range output.Rows {
+		if row.Kind == LiveCodex || row.Kind == ResumeCodex {
+			codexRows = append(codexRows, row)
+		}
+	}
+	if len(codexRows) != 1 {
+		t.Fatalf("Codex rows = %#v, want the conversation rowed exactly once", codexRows)
+	}
+	if codexRows[0].Kind != LiveCodex || codexRows[0].ID != paginated.ID {
+		t.Fatalf("live Codex row = %#v, want the resolved thread id", codexRows[0])
+	}
+	if codexRows[0].PromptCount != 1 || codexRows[0].CWD != "/work/proja" {
+		t.Fatalf("live Codex row lost its indexed content: %#v", codexRows[0])
+	}
+
+	// An id is what a hide keys on, so the row is hideable now.
+	hidden := Compose(Input{
+		Rollouts: []store.Rollout{paginated},
+		Hidden:   []store.Hidden{{ID: paginated.ID, Engine: store.CodexEngine}},
+		Snapshot: gather.Snapshot{
+			Codex: []gather.LiveCodex{{
+				PID:      300,
+				Socket:   "cx-300-1-1",
+				PaneID:   "%3",
+				ThreadID: paginated.ID,
+			}},
+			Panes: []gather.Pane{{
+				Socket:      "cx-300-1-1",
+				SessionName: "cx-300-1-1",
+				PaneID:      "%3",
+				CurrentPath: "/work/proja",
+			}},
+		},
+		Options: Options{View: DefaultView},
+	})
+	for _, row := range hidden.Rows {
+		if row.Kind == LiveCodex || row.Kind == ResumeCodex {
+			t.Fatalf("hidden live Codex row is still listed: %#v", row)
+		}
+	}
+}
+
+// TestHideOnAnyLineageMemberHidesTheWholeRow guards cx-hide.sh's actual write
+// shape (cx-hide.sh:147): it hides the RAW id of whatever rollout file the
+// live process currently holds, which on a resumed multi-file lineage is the
+// CHILD's id, never the ROOT compose keys every Codex row on
+// (composer.rolloutRow). A hide the `hide` manager itself writes is already
+// normalized onto the root; this proves the read side honors a hide that
+// isn't.
+func TestHideOnAnyLineageMemberHidesTheWholeRow(t *testing.T) {
+	root := store.Rollout{
+		ID:          "root-thread",
+		Path:        "/codex/sessions/rollout-2026-01-01T00-00-00-root-thread.jsonl",
+		Size:        100,
+		MTimeNS:     100,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   "root-thread",
+		FirstPrompt: "root prompt",
+		PromptCount: 1,
+	}
+	// The resumed child: same conversation, a LATER file, linked back to the
+	// root by session_id — exactly what `codex resume` produces.
+	child := store.Rollout{
+		ID:          "child-thread",
+		Path:        "/codex/sessions/rollout-2026-01-02T00-00-00-child-thread.jsonl",
+		Size:        200,
+		MTimeNS:     200,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   "root-thread",
+		FirstPrompt: "root prompt",
+		PromptCount: 2,
+	}
+	rollouts := []store.Rollout{root, child}
+
+	visible := Compose(Input{
+		Rollouts: rollouts,
+		Options:  Options{View: DefaultView},
+	})
+	if _, found := rowByID(visible.Rows, "root-thread"); !found {
+		t.Fatalf("unhidden lineage is missing: %#v", visible.Rows)
+	}
+
+	// The hide lands on the CHILD id, raw, exactly as cx-hide.sh writes it —
+	// never normalized onto the root.
+	hiddenOnChild := Compose(Input{
+		Rollouts: rollouts,
+		Hidden:   []store.Hidden{{ID: "child-thread", Engine: store.CodexEngine}},
+		Options:  Options{View: DefaultView},
+	})
+	if _, found := rowByID(hiddenOnChild.Rows, "root-thread"); found {
+		t.Fatalf(
+			"a hide written raw on the resumed child left the lineage listed: %#v",
+			hiddenOnChild.Rows,
+		)
+	}
+
+	// HiddenView must show the same lineage, still keyed on the root — a
+	// child-keyed hide is not a second, orphaned hidden row.
+	hiddenView := Compose(Input{
+		Rollouts: rollouts,
+		Hidden:   []store.Hidden{{ID: "child-thread", Engine: store.CodexEngine}},
+		Options:  Options{View: HiddenView},
+	})
+	row, found := rowByID(hiddenView.Rows, "root-thread")
+	if !found || !row.Hidden {
+		t.Fatalf("HiddenView lost the child-keyed hide: %#v", hiddenView.Rows)
+	}
+	for _, other := range hiddenView.Rows {
+		if other.ID == "child-thread" {
+			t.Fatalf(
+				"a child-keyed hide rowed a second, orphaned entry: %#v",
+				hiddenView.Rows,
+			)
+		}
+	}
+}

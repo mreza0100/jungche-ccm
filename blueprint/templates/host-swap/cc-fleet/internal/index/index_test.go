@@ -712,7 +712,7 @@ func dumpIndex(
 	for _, rollout := range rollouts {
 		fmt.Fprintf(
 			&output,
-			"R\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%d\n",
+			"R\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
 			rollout.ID,
 			fixtureRelativePath(rollout.Path, codexRoot, "codex"),
 			rollout.Size,
@@ -723,6 +723,7 @@ func dumpIndex(
 			rollout.ParentThread,
 			goldenText(rollout.FirstPrompt),
 			rollout.PromptCount,
+			strconv.FormatBool(rollout.IsBG),
 		)
 	}
 	nameIDs := make([]string, 0, len(names))

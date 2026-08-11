@@ -16,6 +16,12 @@ import (
 // CodexNameResolver resolves the indexed display name for a rollout path.
 type CodexNameResolver func(rolloutPath string) string
 
+// CodexIDNameResolver resolves the indexed display name for a Codex thread id.
+// It is the only naming rung a session that writes no rollout file has, and
+// the index behind it owns the precedence: the thread's own name, then the
+// session_index name, then its first prompt.
+type CodexIDNameResolver func(threadID string) string
+
 // Dependencies supplies probe interfaces and process-local policy.
 type Dependencies struct {
 	ProcFS      ProcFS
@@ -24,6 +30,7 @@ type Dependencies struct {
 	TmuxTmpDir  string
 	Now         func() time.Time
 	CodexName   CodexNameResolver
+	CodexIDName CodexIDNameResolver
 	CodexThread CodexThreadResolver
 	ReadOnly    bool
 }
@@ -35,6 +42,7 @@ type Gatherer struct {
 	tmux        TmuxClient
 	now         func() time.Time
 	codexName   CodexNameResolver
+	codexIDName CodexIDNameResolver
 	codexThread CodexThreadResolver
 	readOnly    bool
 }
@@ -73,6 +81,7 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 		tmux:        tmux,
 		now:         now,
 		codexName:   dependencies.CodexName,
+		codexIDName: dependencies.CodexIDName,
 		codexThread: dependencies.CodexThread,
 		readOnly:    dependencies.ReadOnly,
 	}, nil
@@ -160,19 +169,25 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 		ClaudeProcesses: append([]ClaudeProcess(nil), claudeProcesses...),
 		Agents:          append([]Agent(nil), agents...),
 		Cache1HSockets:  append([]string(nil), cacheSockets...),
-		Renames:         computeWindowRenames(tmuxProbe.Panes, codex, gatherer.codexName),
-		CorpseSwept:     append([]string(nil), tmuxProbe.CorpseSwept...),
-		StaleSwept:      append([]string(nil), crumbs.StaleSwept...),
-		Warnings:        append([]string(nil), tmuxProbe.ProbeWarnings...),
+		Renames: computeWindowRenames(
+			tmuxProbe.Panes,
+			codex,
+			gatherer.codexName,
+			gatherer.codexIDName,
+		),
+		CorpseSwept: append([]string(nil), tmuxProbe.CorpseSwept...),
+		StaleSwept:  append([]string(nil), crumbs.StaleSwept...),
+		Warnings:    append([]string(nil), tmuxProbe.ProbeWarnings...),
 	}, nil
 }
 
 func computeWindowRenames(
 	panes []Pane,
 	codex []LiveCodex,
-	resolve CodexNameResolver,
+	resolveRollout CodexNameResolver,
+	resolveID CodexIDNameResolver,
 ) []WindowRename {
-	if resolve == nil {
+	if resolveRollout == nil && resolveID == nil {
 		return nil
 	}
 	paneByTarget := make(map[string]Pane, len(panes))
@@ -180,13 +195,13 @@ func computeWindowRenames(
 		paneByTarget[pane.Socket+"\x00"+pane.PaneID] = pane
 	}
 	seenWindows := make(map[string]struct{})
-	renames := make([]WindowRename, 0)
+	planned := make([]WindowRename, 0)
 	for _, live := range codex {
 		pane, found := paneByTarget[live.Socket+"\x00"+live.PaneID]
 		if !found {
 			continue
 		}
-		target := clipRunes(resolve(live.RolloutPath), 24)
+		target := clipRunes(codexWindowName(live, resolveRollout, resolveID), 24)
 		if target == "" || pane.WindowName == target || pane.WindowID == "" {
 			continue
 		}
@@ -195,13 +210,29 @@ func computeWindowRenames(
 			continue
 		}
 		seenWindows[key] = struct{}{}
-		renames = append(renames, WindowRename{
+		planned = append(planned, WindowRename{
 			Socket:      pane.Socket,
 			SessionName: pane.SessionName,
 			WindowID:    pane.WindowID,
 			CurrentName: pane.WindowName,
 			TargetName:  target,
 		})
+	}
+
+	// Two windows converging on ONE name is an ambiguity, not a rename: the
+	// window name is how the fleet addresses a chat, so two chats answering to
+	// it is worse than either keeping the name it has. Skip BOTH, exactly as
+	// the zsh half leaves a window with two differently-labeled panes alone.
+	windowsByTarget := make(map[string]int, len(planned))
+	for _, rename := range planned {
+		windowsByTarget[rename.TargetName]++
+	}
+	renames := make([]WindowRename, 0, len(planned))
+	for _, rename := range planned {
+		if windowsByTarget[rename.TargetName] > 1 {
+			continue
+		}
+		renames = append(renames, rename)
 	}
 	sort.Slice(renames, func(left, right int) bool {
 		if renames[left].Socket != renames[right].Socket {
@@ -210,6 +241,27 @@ func computeWindowRenames(
 		return renames[left].WindowID < renames[right].WindowID
 	})
 	return renames
+}
+
+// codexWindowName walks the naming rungs for one live Codex pane: the rollout
+// file it holds, then the thread id it was identified by. A resumed or
+// paginated session has only the second — keying the rename on the rollout
+// path alone left every such window carrying the name it was born with, or,
+// worse, a sibling's.
+func codexWindowName(
+	live LiveCodex,
+	resolveRollout CodexNameResolver,
+	resolveID CodexIDNameResolver,
+) string {
+	if resolveRollout != nil && live.RolloutPath != "" {
+		if name := resolveRollout(live.RolloutPath); name != "" {
+			return name
+		}
+	}
+	if resolveID != nil && live.ThreadID != "" {
+		return resolveID(live.ThreadID)
+	}
+	return ""
 }
 
 func clipRunes(value string, limit int) string {

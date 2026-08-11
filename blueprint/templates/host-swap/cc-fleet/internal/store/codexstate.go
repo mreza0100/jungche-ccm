@@ -35,14 +35,47 @@ type CodexThread struct {
 	// Prompted records that the store holds evidence of at least one user
 	// message, which is all a thread without a rollout file can prove.
 	Prompted bool
+	// Source is the threads.source column: the entry point Codex was started
+	// through. "cli" and "vscode" are the interactive front ends; "exec" is
+	// `codex exec`, the one-shot non-interactive entry.
+	Source string
+	// Renamed records that the owner gave this thread a name of their own.
+	// Codex seeds threads.title with the first prompt verbatim, so a title
+	// that differs from that prompt is a rename and nothing else.
+	Renamed bool
 	// StateFile is the state_<N>.sqlite generation the row came from.
 	StateFile string
 }
+
+// codexExecSource is the threads.source value Codex writes for `codex exec`,
+// its one-shot non-interactive entry point.
+const codexExecSource = "exec"
 
 // Listed reports whether the thread belongs to the population the picker
 // shows: the user's own conversations that were never archived in Codex.
 func (thread CodexThread) Listed() bool {
 	return thread.UserThread && !thread.Archived
+}
+
+// MachineSpawned reports whether a workflow lane or agent runner started this
+// conversation instead of a person, which makes it background work rather than
+// one of the owner's chats.
+//
+// Codex records the entry point in threads.source, and thread_source stays
+// "user" for every one of them: a workflow's verify twins, its probe lanes and
+// its worktree agents all arrive as thread_source='user' and are
+// indistinguishable from a real chat by that column alone. The entry point is
+// not: every interactive chat comes through "cli" or "vscode", and "exec" is
+// `codex exec`, which no person types at a picker.
+//
+// The one exec thread that IS a chat is the one the owner adopted by naming
+// it, and a rename is the only thing that makes threads.title differ from the
+// first prompt Codex seeds it with. So a renamed thread is a real chat
+// whatever started it — the exemption errs toward listing, which is the safe
+// direction: a machine row that stays visible is noise, a chat that vanishes
+// is a loss.
+func (thread CodexThread) MachineSpawned() bool {
+	return thread.Source == codexExecSource && !thread.Renamed
 }
 
 // CodexStateFiles lists the Codex state stores under codexRoot, newest
@@ -207,6 +240,7 @@ func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
 	}
 
 	query := "SELECT id, COALESCE(cwd, ''), COALESCE(created_at, 0), " +
+		codexStateColumn(columns, "source", "''") + ", " +
 		codexStateColumn(columns, "thread_source", "''") + ", " +
 		codexStateColumn(columns, "archived", "0") + ", " +
 		codexStateColumn(columns, "rollout_path", "''") + ", " +
@@ -227,13 +261,14 @@ func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
 	threads := make([]CodexThread, 0)
 	for rows.Next() {
 		var thread CodexThread
-		var source, title, firstUserMessage, preview string
+		var threadSource, title, firstUserMessage, preview string
 		var archived, updatedAt, recencyAt, tokensUsed int64
 		if err := rows.Scan(
 			&thread.ID,
 			&thread.CWD,
 			&thread.CreatedAt,
-			&source,
+			&thread.Source,
+			&threadSource,
 			&archived,
 			&thread.RolloutPath,
 			&thread.Name,
@@ -249,8 +284,12 @@ func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
 		if thread.ID == "" {
 			continue
 		}
-		thread.UserThread = source == "user"
+		thread.UserThread = threadSource == "user"
 		thread.Archived = archived != 0
+		// Codex seeds title with the first prompt verbatim, so any difference
+		// is the owner's own rename. An empty title is Codex's own blank, not
+		// a name.
+		thread.Renamed = title != "" && title != firstUserMessage
 		thread.FirstPrompt = firstNonEmptyText(firstUserMessage, title, preview)
 		thread.Prompted = thread.FirstPrompt != "" || tokensUsed > 0
 		thread.ActivityAt = max(thread.CreatedAt, max(updatedAt, recencyAt))
