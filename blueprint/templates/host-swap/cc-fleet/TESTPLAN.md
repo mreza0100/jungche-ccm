@@ -455,11 +455,14 @@ they count as covered.
 
 ## Residual known divergences
 
-1. **Store-only resumed threads carry no parent link** (`index/codexstate.go`): the codex
-   `threads` schema has no parent column for `thread_source='user'` rows, so a store-only row's
-   `LineageRoot` is its own id and a resumed store-only thread cannot join its ancestor's
-   lineage. Structural — needs a new evidence source (real-engine observation of what codex
-   writes on a paginated resume), not a code-only fix.
+1. **Store-only rows carry no parent link** (`index/codexstate.go`) — evidence-audited and
+   found to have no real-world instance: a full sweep of the live state store (213 user
+   threads) shows zero cases of a resume minting a second row, and the direct positive case
+   (a picker-resumed, twice-renamed thread) kept a single row throughout. Codex ≥0.146 resume
+   CONTINUES the same thread id, so there is never an ancestor lineage to merge; the one
+   fixture that "reproduced" the split inserted two synthetic rows by hand. Re-opens only if
+   codex changes resume behavior — the audit query (same cwd + same non-empty first message,
+   grouped) is the detector.
 2. **Account roster disagrees three ways.** `paths.go:64-68` builds THREE Claude roots,
    `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
    `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
@@ -478,6 +481,20 @@ they count as covered.
 7. **`chat.sh:1104-1106` prefers the carrier FILE over the db** ("the file wins when it
    exists"), while `shared/shared.go:241-277` takes the UNION. A db-only hide is invisible to
    `chat.sh ls`.
+8. **`cc-agent-open.sh:62` registry lookup degrades to "not found" on timeout** (`cc_timeout
+   20` vs real `claude agents --json` latency of 10-20s under load) — and the fallback then
+   runs `claude --resume` on the LIVE session, which claude 2.1.224 does NOT refuse: a second
+   claude boots on the same transcript (observed live; killed before it wrote). The
+   tmux-resident attach branch is unreachable behind the same miss. Fix wants a longer/retried
+   lookup and a live-pid guard before any fresh resume.
+9. **A booting chat is invisible to the Go picker until its first statusline render** writes
+   the SID crumb — a spawn wedged at a startup prompt (folder trust, MCP approval) is listed
+   by legacy (pane scan) and missed by Go (crumb scan) indefinitely. Observed live on a
+   `cc-new-*` teammate at the MCP prompt; the row appeared the moment the prompt was answered.
+10. **`chat.sh branch` reports success and registers the child before verifying the fork
+    survived.** A branch of a never-prompted chat always dies ("No conversation found" —
+    transcripts are written on the first message) yet prints the success line and leaves a
+    corpse child registration.
 
 ---
 
