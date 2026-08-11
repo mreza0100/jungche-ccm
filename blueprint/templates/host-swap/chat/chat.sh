@@ -1313,6 +1313,23 @@ case "$cmd" in
     [[ -n "$model" ]] && fork="$fork --model '$model'"
     [[ -n "$name" ]]  && fork="$fork --name '$name'"
     child_pane="$(tmux split-window -h -P -F '#{pane_id}' -c "$PWD" "$fork")"
+    # A fork can die at birth (a never-prompted session has no transcript yet — claude writes
+    # it on the first message — so --resume finds nothing). Hold the corpse and look before
+    # reporting success or registering a child that never lived.
+    tmux set-option -p -t "$child_pane" remain-on-exit on 2>/dev/null || true
+    # 9s: a doomed fork boots for several seconds BEFORE it errors and exits (observed ~5-7s
+    # live) — a shorter watch declares victory on a pane that is still busy dying
+    for _ in $(seq 1 18); do
+      [[ "$(tmux display-message -p -t "$child_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]] && break
+      sleep 0.5
+    done
+    if [[ "$(tmux display-message -p -t "$child_pane" '#{pane_dead}' 2>/dev/null)" == 1 ]]; then
+      why="$(tmux capture-pane -t "$child_pane" -p 2>/dev/null | grep -vE '^\s*$' | head -2)"
+      tmux kill-pane -t "$child_pane" 2>/dev/null
+      echo "ERROR: the fork died at birth${why:+ — $why}" >&2
+      exit 1
+    fi
+    tmux set-option -p -t "$child_pane" remain-on-exit off 2>/dev/null || true
     _register_pane_child "$child_pane"   # so this chat's /bb takes the fork down with it
     echo "Branched ${sid:0:8}…${name:+ as '$name'}${model:+ on $model} into a new pane beside this one — original chat still live in the left pane (tmux prefix + ←/→)."
     ;;

@@ -23,7 +23,9 @@ cwd="${2:-$PWD}"; owncfg="${3:-}"
 # Held for the script's life (the fd survives the `exec` attach and the foreground resume),
 # so a second open can't race in while this one owns the session.
 mkdir -p /tmp/cc-sid 2>/dev/null; chmod 700 /tmp/cc-sid 2>/dev/null || true
-exec 8>"/tmp/cc-sid/.takeover-$u.lock" 2>/dev/null || true
+# braces scope the 2>/dev/null to this one line — a bare `exec 8>f 2>/dev/null` rebinds the
+# SCRIPT'S stderr to /dev/null for good, eating every diagnostic below
+{ exec 8>"/tmp/cc-sid/.takeover-$u.lock"; } 2>/dev/null || true
 if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
   echo "cc-agent-open: another open/takeover of $u is already in flight — let it settle, then retry (or attach its window)."
   sleep 3   # this runs as a tmux window's command — hold the message on screen before the pane dies
@@ -57,14 +59,19 @@ cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit 
 # the whole stream, hiding every row after the first id-bearing one.
 hit=""; hitcfg=""
 if [ -n "$owncfg" ]; then cands=("$owncfg"); else cands=("" "$HOME/.cc/2"); fi
-for cfg in "${cands[@]}"; do
-  # judge by parseable output, not exit code — a registry that answers is a registry that counts
-  j="$(cc_timeout 20 bash -c '
-    if [ -n "$1" ]; then CLAUDE_CONFIG_DIR="$1" claude agents --json
-    else env -u CLAUDE_CONFIG_DIR claude agents --json; fi' _ "$cfg" 2>/dev/null)"
-  row="$(printf '%s' "$j" | jq -c --arg u "$u" \
-    '.[] | objects | select((.sessionId==$u) or (.id!=null and (.id as $i | $u|startswith($i))))' 2>/dev/null | head -1)"
-  [ -n "$row" ] && { hit="$row"; hitcfg="$cfg"; break; }
+# Two passes at 40s: `claude agents --json` takes 10-20s under load, and a query capped
+# below that reads a SLOW registry as an ABSENT one — whose fallback fresh-resumes a chat
+# that is in fact live. claude does not refuse the second resume; pay latency, not that.
+for _pass in 1 2; do
+  for cfg in "${cands[@]}"; do
+    # judge by parseable output, not exit code — a registry that answers is a registry that counts
+    j="$(cc_timeout 40 bash -c '
+      if [ -n "$1" ]; then CLAUDE_CONFIG_DIR="$1" claude agents --json
+      else env -u CLAUDE_CONFIG_DIR claude agents --json; fi' _ "$cfg" 2>/dev/null)"
+    row="$(printf '%s' "$j" | jq -c --arg u "$u" \
+      '.[] | objects | select((.sessionId==$u) or (.id!=null and (.id as $i | $u|startswith($i))))' 2>/dev/null | head -1)"
+    [ -n "$row" ] && { hit="$row"; hitcfg="$cfg"; break 2; }
+  done
 done
 
 resume_fresh() {
@@ -74,6 +81,24 @@ resume_fresh() {
 }
 
 if [ -z "$hit" ]; then   # not in any registry (stale ⚙ label) → plain fresh resume
+  # …UNLESS a live process demonstrably holds this session: a resumed chat carries the uuid
+  # in its argv, and the registry can still miss what a process table proves. This guard is
+  # what stands between a slow registry and a transcript double-writer.
+  # Token-exact argv walk, not `pgrep -f` — a substring match reads any caller whose PATH or
+  # cwd merely CONTAINS "claude" (plus the uuid in its args) as a holder, including this
+  # script's own wrapper.
+  holder=""
+  for _cf in /proc/[0-9]*/cmdline; do
+    holder="$(tr '\0' '\n' < "$_cf" 2>/dev/null | awk -v u="$u" '
+      $0 == u { has_u = 1 }
+      { n = split($0, seg, "/"); if (seg[n] == "claude") has_c = 1 }
+      END { if (has_u && has_c) print "y" }')"
+    [ -n "$holder" ] && break
+  done
+  if [ -n "$holder" ]; then
+    echo "no registry row for $u, but a live claude holds it — refusing the double-resume"
+    exit 1
+  fi
   echo "no live agent found for $u — resuming fresh (account $prim)"
   resume_fresh
 fi
