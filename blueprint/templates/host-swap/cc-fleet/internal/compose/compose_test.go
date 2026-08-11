@@ -856,3 +856,90 @@ func TestHideOnAnyLineageMemberHidesTheWholeRow(t *testing.T) {
 		}
 	}
 }
+
+// threeHopLineage builds root ← mid ← leaf, the exact repro chain: each
+// rollout's SessionID names its own immediate parent (resolveCodexRoot in
+// store/lineage.go walks that one hop at a time), so root is TWO hops from
+// leaf — outside CxName's own one-hop own→session→parent walk. leaf is the
+// newest by MTimeNS, so lineage.Newest is leaf.
+func threeHopLineage() (root, mid, leaf store.Rollout) {
+	root = store.Rollout{
+		ID:          "root-thread",
+		Path:        "/codex/sessions/rollout-2026-01-01T00-00-00-root-thread.jsonl",
+		Size:        100,
+		MTimeNS:     100,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   "root-thread",
+		FirstPrompt: "root prompt",
+		PromptCount: 1,
+	}
+	mid = store.Rollout{
+		ID:          "mid-thread",
+		Path:        "/codex/sessions/rollout-2026-01-02T00-00-00-mid-thread.jsonl",
+		Size:        200,
+		MTimeNS:     200,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   "root-thread",
+		FirstPrompt: "mid prompt",
+		PromptCount: 2,
+	}
+	leaf = store.Rollout{
+		ID:          "leaf-thread",
+		Path:        "/codex/sessions/rollout-2026-01-03T00-00-00-leaf-thread.jsonl",
+		Size:        300,
+		MTimeNS:     300,
+		CWD:         "/work/proja",
+		UserThread:  true,
+		SessionID:   "mid-thread",
+		FirstPrompt: "leaf prompt",
+		PromptCount: 3,
+	}
+	return root, mid, leaf
+}
+
+// TestDeepCodexLineageNamesFromItsRoot is BUG 3's red-first repro: a lineage
+// named only at its root, three hops deep, must display the root's name, not
+// the newest member's first prompt. rolloutRow swapped rollout = lineage.Newest
+// BEFORE calling naming.CxName, and CxName walks only one hop
+// (own → session → parent) — so a name two hops up, at the root, was
+// unreachable and the row fell back to the leaf's own first prompt.
+func TestDeepCodexLineageNamesFromItsRoot(t *testing.T) {
+	root, mid, leaf := threeHopLineage()
+	rollouts := []store.Rollout{root, mid, leaf}
+
+	output := Compose(Input{
+		Rollouts: rollouts,
+		CxNames:  map[string]string{root.ID: "Root Name"},
+		Options:  Options{View: AllView},
+	})
+	row, found := rowByID(output.Rows, root.ID)
+	if !found {
+		t.Fatalf("lineage row missing: %#v", output.Rows)
+	}
+	if row.Name != "Root Name" {
+		t.Fatalf("row name = %q, want the root's name %q", row.Name, "Root Name")
+	}
+	// The newest member still drives everything else about the row: renaming
+	// only fixed the NAME lookup, not which file's stats the row reports.
+	if row.Path != leaf.Path || row.CWD != leaf.CWD ||
+		row.Size != leaf.Size || row.PromptCount != leaf.PromptCount ||
+		row.ActivityNS != leaf.MTimeNS {
+		t.Fatalf("row lost the newest member's own fields: %#v", row)
+	}
+
+	// A chain named only at the MID hop (one hop from leaf, root itself
+	// unnamed) must still resolve — the root-first lookup falling through to
+	// the newest member's own one-hop walk must not regress the case that
+	// already worked.
+	midNamed := Compose(Input{
+		Rollouts: rollouts,
+		CxNames:  map[string]string{mid.ID: "Mid Name"},
+		Options:  Options{View: AllView},
+	})
+	midRow, found := rowByID(midNamed.Rows, root.ID)
+	if !found || midRow.Name != "Mid Name" {
+		t.Fatalf("mid-named row = %#v, want name %q", midRow, "Mid Name")
+	}
+}

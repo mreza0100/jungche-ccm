@@ -20,7 +20,7 @@ import (
 
 const (
 	// SchemaVersion is the newest database schema understood by this binary.
-	SchemaVersion = 3
+	SchemaVersion = 4
 
 	driverName = "sqlite"
 )
@@ -34,10 +34,14 @@ var schemaV2 string
 //go:embed migration_v3.sql
 var schemaV3 string
 
+//go:embed migration_v4.sql
+var schemaV4 string
+
 var migrations = [...]string{
 	schemaV1,
 	schemaV2,
 	schemaV3,
+	schemaV4,
 }
 
 // Store is a single-connection handle to the cc-fleet SQLite database.

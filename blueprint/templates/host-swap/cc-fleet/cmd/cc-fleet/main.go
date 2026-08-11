@@ -127,12 +127,21 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	defer database.Close()
+	ctx := context.Background()
 	id := ""
+	engine := ""
 	if flags.NArg() == 1 {
 		id = flags.Arg(0)
+		// The index may not have caught up with the row the picker already
+		// shows — a fresh agent's transcript, a live Codex pane holding no
+		// rollout file yet. A compose pass is the picker's own source of
+		// truth for what exists right now, so resolving against it vouches
+		// for exactly the ids the picker would let you ⌃X, and nothing else.
+		engine = resolveRowEngine(ctx, database, id, stderr)
 	}
-	target, err := manager.Hide(context.Background(), hide.Request{
+	target, err := manager.Hide(ctx, hide.Request{
 		ID:          id,
+		Engine:      engine,
 		Self:        *self,
 		Exit:        *exit,
 		Environment: hide.Environment(),

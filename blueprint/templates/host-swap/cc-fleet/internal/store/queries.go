@@ -480,11 +480,23 @@ func (tx *ImmediateTx) UpsertCxName(ctx context.Context, name CxName) error {
 }
 
 func upsertCxName(ctx context.Context, db queryExecer, name CxName) error {
+	// An empty Source is a caller that predates this provenance (or a test
+	// fixture that never set it); it reads back as the column default,
+	// CxNameSourceSessionIndex, which is also the safer of the two guesses.
+	source := name.Source
+	if source == "" {
+		source = CxNameSourceSessionIndex
+	}
 	_, err := execWrite(ctx, db, `
-INSERT INTO cx_names (id, thread_name) VALUES (?, ?)
-ON CONFLICT(id) DO UPDATE SET thread_name=excluded.thread_name`,
+INSERT INTO cx_names (id, thread_name, source, renamed_at) VALUES (?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  thread_name=excluded.thread_name,
+  source=excluded.source,
+  renamed_at=excluded.renamed_at`,
 		name.ID,
 		name.ThreadName,
+		source,
+		name.RenamedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert cx name %q: %w", name.ID, err)
@@ -507,26 +519,51 @@ func (s *Store) ReplaceCxNames(ctx context.Context, names []CxName) error {
 	})
 }
 
-// CxNames returns the session_index name mirror keyed by rollout ID.
+// CxNames returns the session_index name mirror keyed by rollout ID. Most
+// callers only ever display the name; CxNameRecords is for the one caller
+// that must also see where a name came from.
 func (s *Store) CxNames(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, thread_name FROM cx_names ORDER BY id")
+	records, err := s.CxNameRecords(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("query cx names: %w", err)
+		return nil, err
+	}
+	names := make(map[string]string, len(records))
+	for id, record := range records {
+		names[id] = record.ThreadName
+	}
+	return names, nil
+}
+
+// CxNameRecords returns the full Codex name mirror, keyed by rollout ID,
+// including the provenance reconcileCodexNames needs to arbitrate a store
+// name against a session_index rename.
+func (s *Store) CxNameRecords(ctx context.Context) (map[string]CxName, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		"SELECT id, thread_name, source, renamed_at FROM cx_names ORDER BY id",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query cx name records: %w", err)
 	}
 	defer rows.Close()
 
-	names := make(map[string]string)
+	records := make(map[string]CxName)
 	for rows.Next() {
-		var id, threadName string
-		if err := rows.Scan(&id, &threadName); err != nil {
-			return nil, fmt.Errorf("scan cx name: %w", err)
+		var record CxName
+		if err := rows.Scan(
+			&record.ID,
+			&record.ThreadName,
+			&record.Source,
+			&record.RenamedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan cx name record: %w", err)
 		}
-		names[id] = threadName
+		records[record.ID] = record
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate cx names: %w", err)
+		return nil, fmt.Errorf("iterate cx name records: %w", err)
 	}
-	return names, nil
+	return records, nil
 }
 
 // SetMeta inserts or replaces a metadata value.

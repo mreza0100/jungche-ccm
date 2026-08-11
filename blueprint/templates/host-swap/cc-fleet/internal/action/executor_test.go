@@ -436,6 +436,59 @@ func TestExecutorCodexWindowVerificationAndDeadFallback(t *testing.T) {
 	}
 }
 
+// TestOpenDeadLiveSplitWithNoResumableIDHardErrors covers the one live kind
+// Open's dead-socket branch cannot demote: a LiveSplit row IS the several
+// chats sharing one server, so it carries no single chat id a demotion could
+// resume as ResumeClaude/ResumeCodex — unlike a dead LiveClaude or LiveCodex
+// row (TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare,
+// TestExecutorCodexWindowVerificationAndDeadFallback), which always has one.
+// Open must hard error instead of reaching the demotion code beneath the
+// id check.
+func TestOpenDeadLiveSplitWithNoResumableIDHardErrors(t *testing.T) {
+	jailAction(t)
+	tmux := &fakeActionTmux{alive: map[string]bool{}}
+	var stderr bytes.Buffer
+	executor, err := New(Dependencies{
+		Tmux:      tmux,
+		Processes: &fakeProcesses{},
+		Gate:      fixedGate(false),
+		Runner:    &captureRunner{},
+		Stderr:    &stderr,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := Request{
+		Row: compose.Row{
+			Kind:   compose.LiveSplit,
+			ID:     "",
+			Socket: "cc-dead-split-1-1-1",
+		},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+		FreshSocket:    "cc-900-1-1",
+	}
+	line, err := executor.Open(context.Background(), request)
+	if line != "" {
+		t.Fatalf("dead split line = %q, want empty", line)
+	}
+	wantErr := `live socket "cc-dead-split-1-1-1" died and its split row has no resumable id`
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("dead split error = %v, want %q", err, wantErr)
+	}
+	// No demotion: the "disappeared; resuming" message and every tmux side
+	// effect belong only to the demotion branch just past the id check, which
+	// a LiveSplit row with no id must never reach.
+	if stderr.Len() != 0 {
+		t.Fatalf("dead split with no id wrote stderr: %q", stderr.String())
+	}
+	if len(tmux.selected) != 0 || len(tmux.created) != 0 ||
+		len(tmux.killedPanes) != 0 || len(tmux.killedServer) != 0 ||
+		len(tmux.sized) != 0 {
+		t.Fatalf("dead split with no id caused tmux side effects: %#v", tmux)
+	}
+}
+
 func jailAction(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

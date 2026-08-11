@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"time"
 
 	"hostops/cc-fleet/internal/store"
 )
@@ -17,6 +18,25 @@ import (
 type cxIndexRecord struct {
 	ID         string `json:"id"`
 	ThreadName string `json:"thread_name"`
+	// UpdatedAt is the rename time Codex 0.147 began stamping on every
+	// session_index.jsonl entry. Older entries carry none.
+	UpdatedAt string `json:"updated_at"`
+}
+
+// parseCxRenameTime reads a session_index.jsonl entry's updated_at. An empty
+// or unparsable value means no rename time is known for this entry, not that
+// the rename happened at the Unix epoch — reconcileCodexNames treats the two
+// cases identically (RenamedAt of 0), so returning 0 here is the correct
+// "unknown" sentinel, not a wrong guess.
+func parseCxRenameTime(raw string) int64 {
+	if raw == "" {
+		return 0
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return 0
+	}
+	return parsed.UnixNano()
 }
 
 func reloadCxNames(
@@ -48,12 +68,20 @@ func reloadCxNames(
 		return nil
 	}
 
-	names := make(map[string]string)
+	names := make(map[string]store.CxName)
 	if size >= 0 {
 		_, bytesRead, err := readCompleteLines(path, 0, func(line []byte) {
 			var record cxIndexRecord
 			if err := json.Unmarshal(line, &record); err == nil && record.ID != "" {
-				names[record.ID] = record.ThreadName
+				// The file is append-only, so the LAST entry for an id — the
+				// one this overwrite leaves standing — is the freshest rename
+				// intent, whether or not it carries a timestamp.
+				names[record.ID] = store.CxName{
+					ID:         record.ID,
+					ThreadName: record.ThreadName,
+					Source:     store.CxNameSourceSessionIndex,
+					RenamedAt:  parseCxRenameTime(record.UpdatedAt),
+				}
 			}
 		})
 		if err != nil {
@@ -72,10 +100,7 @@ func reloadCxNames(
 			return fmt.Errorf("clear Codex names: %w", err)
 		}
 		for _, id := range ids {
-			if err := tx.UpsertCxName(ctx, store.CxName{
-				ID:         id,
-				ThreadName: names[id],
-			}); err != nil {
+			if err := tx.UpsertCxName(ctx, names[id]); err != nil {
 				return err
 			}
 		}

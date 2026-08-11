@@ -1,0 +1,105 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"net"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"hostops/cc-fleet/internal/store"
+	"hostops/cc-fleet/internal/ui"
+)
+
+// createDeadSocket fabricates a real orphaned unix socket special file: a
+// listener bound then closed without unlinking, so a live tmux client hangs
+// nothing but still fails to connect — the fixture the gather package's own
+// jail tests use to raise a tmux probe warning deterministically
+// (internal/gather/tmux_jail_test.go:createCorpseSocket does the same thing
+// for the same reason; duplicated here rather than exported across a
+// package boundary a test-only helper has no other reason to cross).
+func createDeadSocket(t *testing.T, path string) {
+	t.Helper()
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatalf("create dead socket %q: %v", path, err)
+	}
+	listener.SetUnlinkOnClose(false)
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close dead socket %q: %v", path, err)
+	}
+}
+
+// TestInteractiveRefreshBuffersGatherWarningsUntilFlushed is BUG 4's
+// red-first fixture: pipeline.go used to write a tmux probe warning straight
+// to stderr from gatherFleet (cmd/cc-fleet/pipeline.go, the loop over
+// live.Warnings) regardless of who called it — including the background
+// refresh goroutine streamFleetRefreshesWith runs WHILE the interactive
+// picker owns the tty (runLS starts it right before Pick). That write
+// corrupts Bubble Tea's alt-screen frame. The fix threads a warn callback
+// through instead of the direct write: the interactive path buffers, the
+// plain/tsv/check/one-shot paths keep printing immediately.
+func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxDir := filepath.Join(root, "tmux")
+	const socketName = "cc-dead-1-2-3"
+	createDeadSocket(t, filepath.Join(tmuxDir, socketName))
+
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	// The interactive path: streamFleetRefreshesWith is exactly what runLS
+	// starts in the background while BubblePicker.Pick owns the terminal.
+	var warnings bufferedWarnings
+	var interactiveStderr bytes.Buffer
+	updates := make(chan ui.Snapshot, 4)
+	go streamFleetRefreshesWith(
+		context.Background(),
+		database,
+		scanRequest{},
+		warnings.add,
+		&interactiveStderr,
+		updates,
+		refreshDependencies{
+			newIndexer: func(*store.Store) (indexRunner, error) {
+				return immediateIndexRunner{}, nil
+			},
+		},
+	)
+	for range updates {
+	}
+	if interactiveStderr.Len() != 0 {
+		t.Fatalf(
+			"interactive refresh wrote to stderr before the picker released the terminal: %q",
+			interactiveStderr.String(),
+		)
+	}
+	warnings.flush(&interactiveStderr)
+	if got := interactiveStderr.String(); !strings.Contains(got, "tmux probe warning: "+socketName) {
+		t.Fatalf("flush did not emit the buffered warning: %q", got)
+	}
+
+	// The plain/tsv/check/one-shot path: scanFleet must keep printing
+	// immediately — buffering is specific to the interactive picker owning a
+	// real tty, not a blanket behavior change.
+	var directStderr bytes.Buffer
+	if _, err := scanFleet(
+		context.Background(),
+		database,
+		scanRequest{},
+		&directStderr,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if got := directStderr.String(); !strings.Contains(got, "tmux probe warning: "+socketName) {
+		t.Fatalf("scanFleet stopped printing immediately: %q", got)
+	}
+}

@@ -139,6 +139,17 @@ func codexStoreRollout(
 // reconcileCodexNames makes a rename performed inside Codex reach the picker.
 // The state store owns a thread's explicit name; session_index.jsonl remains
 // the cache and the fallback for threads the store never named.
+//
+// The store keeps NO rename clock — threads.name changes in place with no
+// timestamp of its own, so a non-empty store name only proves it is A name,
+// never that it is the CURRENT one. Codex 0.147 writes every rename to
+// session_index.jsonl and lets threads.name go stale the moment a thread is
+// renamed a second time, so a dated session_index entry for the same id
+// outranks the store name: it is the only evidence of the two that can prove
+// it is newer. A store name loses only to a DATED session_index entry —
+// against an undated one, or no entry at all, it still wins, which is what
+// keeps the store the authority for a thread session_index has never heard
+// of.
 func reconcileCodexNames(
 	ctx context.Context,
 	database *store.Store,
@@ -148,7 +159,7 @@ func reconcileCodexNames(
 	if len(threads) == 0 {
 		return nil
 	}
-	names, err := database.CxNames(ctx)
+	names, err := database.CxNameRecords(ctx)
 	if err != nil {
 		return err
 	}
@@ -157,12 +168,21 @@ func reconcileCodexNames(
 		if !thread.Listed() || thread.Name == "" {
 			continue
 		}
-		if names[thread.ID] == thread.Name {
+		existing, found := names[thread.ID]
+		if found &&
+			existing.Source == store.CxNameSourceSessionIndex &&
+			existing.RenamedAt > 0 {
+			continue
+		}
+		if found &&
+			existing.Source == store.CxNameSourceStore &&
+			existing.ThreadName == thread.Name {
 			continue
 		}
 		updates = append(updates, store.CxName{
 			ID:         thread.ID,
 			ThreadName: thread.Name,
+			Source:     store.CxNameSourceStore,
 		})
 	}
 	if len(updates) == 0 {

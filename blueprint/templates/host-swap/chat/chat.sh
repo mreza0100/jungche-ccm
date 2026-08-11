@@ -83,14 +83,24 @@ tmux_from_ancestry() {
   printf '%s\n' "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)/$sk,0,0"
 }
 
+# self_tmux_value: the resolved $TMUX-shaped string — ambient, or ancestry-recovered — never
+# exported (see the no-export note below). "" when neither source has one. This is the ONE
+# place that does the ambient-or-ancestry resolution; self_tmux (session name) and self_label
+# (socket-scoped lookups) both call it so a single self_label invocation walks ancestry AT MOST
+# ONCE, however many tmux calls it goes on to make with the answer.
+self_tmux_value() {
+  local t="${TMUX:-}"
+  [[ -n "$t" ]] || t="$(tmux_from_ancestry 2>/dev/null || true)"
+  printf '%s' "$t"
+}
+
 # NEVER export a recovered value globally. An empty $TMUX is not always a defect to repair:
 # this script CLEARS it deliberately when probing another chat's socket, and a global re-export
 # points every such probe at the SENDER's own session instead (measured: every codex chat
 # vanished from `ls` and became uninjectable). The fallback is scoped per call, to the one
 # command that needs it, and is never exported.
 self_tmux() {
-  local t="${TMUX:-}"
-  [[ -n "$t" ]] || t="$(tmux_from_ancestry 2>/dev/null || true)"
+  local t; t="$(self_tmux_value)"
   [[ -n "$t" ]] || { echo "ERROR: this chat is not inside tmux (\$TMUX unset, and no ancestor carries it)" >&2; return 1; }
   TMUX="$t" tmux display-message -p '#{session_name}'
 }
@@ -108,16 +118,19 @@ self_tmux() {
 # founder gave the chat, and a recipient replying by that label must resolve; the cx-…
 # reply handle already says which engine it is). The 🔖+badge anchor always wins when
 # present — the Claude path is unchanged.
+# ANCESTRY-SAFE: a codex-origin inject runs with $TMUX unset (self_tmux recovers it via
+# ancestry) — re-testing ambient ${TMUX:-} here to decide cx-* was ALWAYS false in exactly
+# that scenario, so the fallback below never fired for the case it exists for. Both the cx-*
+# check and the window-name lookup now drive off $t, the SAME resolved value self_tmux used
+# (via self_tmux_value, called once) — never off ambient $TMUX directly.
 self_label() {
-  local s lbl sockbase
-  s="$(self_tmux 2>/dev/null || true)"; [[ -n "$s" ]] || return 0
-  lbl="$(tmux capture-pane -t "$s" -p -J 2>/dev/null | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 \
+  local t s lbl
+  t="$(self_tmux_value)"; [[ -n "$t" ]] || return 0
+  s="$(TMUX="$t" tmux display-message -p '#{session_name}' 2>/dev/null || true)"; [[ -n "$s" ]] || return 0
+  lbl="$(TMUX="$t" tmux capture-pane -t "$s" -p -J 2>/dev/null | grep -F '🔖' | grep -E '🥇|🥈|🥉|🍀' | tail -1 \
     | sed 's/.*🔖 *//; s/ *│.*//; s/[[:space:]]*$//' || true)"
-  if [[ -z "$lbl" && -n "${TMUX:-}" ]]; then
-    sockbase="${TMUX%%,*}"; sockbase="${sockbase##*/}"
-    if [[ "$sockbase" == cx-* ]]; then
-      lbl="$(tmux display-message -p '#{window_name}' 2>/dev/null || true)"
-    fi
+  if [[ -z "$lbl" && "$s" == cx-* ]]; then
+    lbl="$(TMUX="$t" tmux display-message -p '#{window_name}' 2>/dev/null || true)"
   fi
   printf '%s\n' "$lbl"
 }
@@ -1181,7 +1194,9 @@ case "$cmd" in
       echo "  (+$elsewhere live in other dirs — chat.sh ls --all to see them)"
     fi
     # Say what was withheld. A listing that quietly drops rows reads as "this is everything".
-    [[ "$hiddenrows" -gt 0 ]] && echo "  (+$hiddenrows hidden — cc-ls --hidden to manage)"
+    # `|| true` guards the false case under set -e — a bare `[[ ]] && echo` makes the arm's
+    # own exit status the test's, and rc flips to 1 on the (common) zero-hidden run.
+    [[ "$hiddenrows" -gt 0 ]] && echo "  (+$hiddenrows hidden — cc-ls --hidden to manage)" || true
     ;;
 
   capture)

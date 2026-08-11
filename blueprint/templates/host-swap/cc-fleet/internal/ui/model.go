@@ -54,6 +54,7 @@ type Model struct {
 	suppressedCount int
 	refreshing      bool
 	primary         int
+	initialPrimary  int
 	cache1H         bool
 	rotation        int
 	query           textinput.Model
@@ -83,6 +84,7 @@ func NewModel(snapshot Snapshot) Model {
 		suppressedCount: snapshot.SuppressedCount,
 		refreshing:      snapshot.Refreshing,
 		primary:         validAccount(snapshot.PrimaryAccount),
+		initialPrimary:  validAccount(snapshot.PrimaryAccount),
 		cache1H:         snapshot.Cache1H,
 		rotation:        snapshot.Rotation,
 		query:           input,
@@ -470,8 +472,21 @@ func isLive(kind compose.Kind) bool {
 		kind == compose.LiveSplit
 }
 
-// Result returns the effects accumulated by the pure model.
+// Result returns the effects accumulated by the pure model. Cancelled empties
+// HideChanges and reverts PrimaryAccount to what the picker opened with —
+// defense in depth alongside the command loop's own gate on OutcomeCancelled,
+// so a pending ⌃X hide or ⌃S account switch can never be applied by either
+// side alone drifting out of sync with the other.
 func (model Model) Result() Outcome {
+	if model.outcome == OutcomeCancelled {
+		return Outcome{
+			Kind:           OutcomeCancelled,
+			PrimaryAccount: model.initialPrimary,
+			Cache1H:        model.cache1H,
+			Rotation:       model.rotation,
+			Query:          model.query.Value(),
+		}
+	}
 	changes := make([]HideChange, 0, len(model.hideChanges))
 	for _, change := range model.hideChanges {
 		changes = append(changes, change)

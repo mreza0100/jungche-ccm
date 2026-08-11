@@ -1,0 +1,181 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch reproduces the
+// picker-cancel bug: Esc/⌃C must cancel the interactive picker without
+// applying a pending ⌃X hide or a pending ⌃S primary-account switch. It
+// drives the REAL Bubble Tea picker inside a scratch tmux pane — the same
+// subprocess-reexec technique TestJailedEvalAttachFromPlainAndNestedTmux uses
+// (attach_e2e_test.go) — because the bug lives in the command loop wired
+// around the picker (runLS), not in the pure Model in isolation.
+func TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+
+	jail := newPickerCancelJail(t)
+	index := exec.Command(jail.binary, "index", "--full")
+	index.Env = jail.env
+	if output, err := index.CombinedOutput(); err != nil {
+		t.Fatalf("index picker-cancel fixture: %v: %s", err, output)
+	}
+
+	socket := "probe-picker-cancel-" + strconv.Itoa(os.Getpid())
+	marker := filepath.Join(jail.root, "done")
+	scriptPath := filepath.Join(jail.root, "run.sh")
+	script := "#!/bin/sh\n" +
+		shellQuote(jail.binary) + " ls\n" +
+		"echo RC=$? > " + shellQuote(marker) + "\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	session := exec.Command(
+		"tmux", "-L", socket, "-f", "/dev/null",
+		"new-session", "-d", "-s", "picker", scriptPath,
+	)
+	session.Env = jail.env
+	if output, err := session.CombinedOutput(); err != nil {
+		t.Fatalf("start picker session: %v: %s", err, output)
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("tmux", "-L", socket, "kill-server").Run()
+	})
+
+	// The picker paints its cached first frame, then promotes the row once
+	// the async gather goroutine finishes. Pressing keys before that settles
+	// risks landing on a frame that has not drawn the row yet
+	// (attach_e2e_test.go:proveAttach uses the same wait for the same reason).
+	time.Sleep(5 * time.Second)
+	for _, key := range []string{"C-x", "C-s", "Escape"} {
+		send := exec.Command("tmux", "-L", socket, "send-keys", "-t", "picker", key)
+		send.Env = jail.env
+		if output, err := send.CombinedOutput(); err != nil {
+			t.Fatalf("send-keys %s: %v: %s", key, err, output)
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	if !waitForAttachFile(marker, 10*time.Second) {
+		t.Fatal("picker did not exit after Esc")
+	}
+	content, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(content)); got != "RC=0" {
+		t.Fatalf("picker exit = %q, want RC=0", got)
+	}
+
+	if _, err := os.Stat(filepath.Join(jail.home, ".claude-primary")); !os.IsNotExist(err) {
+		t.Fatalf(
+			"Esc wrote ~/.claude-primary after a pending ⌃S switch: stat err = %v",
+			err,
+		)
+	}
+
+	hidden := exec.Command(jail.binary, "hidden")
+	hidden.Env = jail.env
+	output, err := hidden.CombinedOutput()
+	if err != nil {
+		t.Fatalf("cc-fleet hidden: %v: %s", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "" {
+		t.Fatalf("Esc left a hide behind: %q", got)
+	}
+}
+
+type pickerCancelJail struct {
+	root   string
+	home   string
+	binary string
+	env    []string
+}
+
+func newPickerCancelJail(t *testing.T) *pickerCancelJail {
+	t.Helper()
+	root, err := os.MkdirTemp("/tmp", "ccfpc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("remove picker-cancel jail: %v", err)
+		}
+	})
+	home := filepath.Join(root, "h")
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
+	sidDir := filepath.Join(root, "sid")
+	claudeRoot := filepath.Join(root, "claude")
+	project := filepath.Join(root, "work", "picker-cancel-project")
+	procRoot := filepath.Join(root, "proc")
+	codexRoot := filepath.Join(root, "codex")
+	for _, directory := range []string{
+		filepath.Join(home, ".local", "bin"),
+		tmuxDir,
+		sidDir,
+		claudeRoot,
+		project,
+		procRoot,
+		codexRoot,
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const id = "c2222222-2222-4222-8222-222222222222"
+	transcriptDir := filepath.Join(claudeRoot, "picker-cancel-project")
+	if err := os.MkdirAll(transcriptDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	transcript := filepath.Join(transcriptDir, id+".jsonl")
+	content := `{"type":"user","cwd":` + strconv.Quote(project) +
+		`,"message":{"content":"PICKERCANCEL proof"}}` + "\n"
+	if err := os.WriteFile(transcript, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := "#!/bin/sh\nexec " + shellQuote(executable) +
+		" -test.run '^TestCCFleetAttachHelper$' -- \"$@\"\n"
+	binary := filepath.Join(home, ".local", "bin", "cc-fleet")
+	if err := os.WriteFile(binary, []byte(wrapper), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, ".local", "bin") + string(os.PathListSeparator) +
+		os.Getenv("PATH")
+	env := replaceAttachEnv(os.Environ(), map[string]string{
+		attachHelperEnv:            "1",
+		"HOME":                     home,
+		"PATH":                     path,
+		"TERM":                     "xterm-256color",
+		"TMUX":                     "",
+		"TMUX_TMPDIR":              root,
+		"CC_FLEET_HOME":            home,
+		"CC_FLEET_DB":              filepath.Join(root, "fleet.db"),
+		"CC_FLEET_SID_DIR":         sidDir,
+		"CC_FLEET_CLAUDE_ROOTS":    claudeRoot,
+		"CC_FLEET_CODEX_ROOT":      codexRoot,
+		"CC_FLEET_TMUX_DIR":        tmuxDir,
+		"CC_FLEET_PROC_ROOT":       procRoot,
+		"CC_FLEET_CODEX_AVAILABLE": "0",
+	})
+	return &pickerCancelJail{
+		root:   root,
+		home:   home,
+		binary: binary,
+		env:    env,
+	}
+}

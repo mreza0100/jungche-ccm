@@ -65,9 +65,6 @@ printf 'alpha\t%s\ncompact\t%s\n' \
   "$alpha_legacy_size" \
   "$compact_legacy_size" \
   > "$HOME_DIR/.claude/.cc-ls-hidden.at"
-legacy_before="$(sha256sum \
-  "$HOME_DIR/.claude/.cc-ls-hidden" \
-  "$HOME_DIR/.claude/.cc-ls-hidden.at")"
 
 assert_file() {
   local actual="$1" expected="$2" label="$3"
@@ -208,8 +205,18 @@ if ! "$BIN" hidden | awk -F $'\t' '$1 == "alpha" { found=1 } END { exit !found }
 fi
 printf 'e2e: hide/unhide/permanent-hide round-trip passed\n'
 
+# Captured HERE, not at the top of the script: the hide/unhide/hide-again
+# round trip just above legitimately reorders the carrier file (unhide
+# rewrites it minus the id, the re-hide appends it back at the end), so a
+# baseline from before that dance would never match no matter what `legacy
+# import` itself does. The carrier's SOURCE — the id set `legacy import`
+# must not touch — is its state right before the command runs.
+legacy_before="$(sha256sum \
+  "$HOME_DIR/.claude/.cc-ls-hidden" \
+  "$HOME_DIR/.claude/.cc-ls-hidden.at")"
+
 legacy_out="$("$BIN" legacy import)"
-[[ "$legacy_out" == legacy\ import:\ imported=2\ active=0\ unknown=0\;* ]]
+[[ "$legacy_out" == legacy\ import:\ imported=2\ unknown=0\;\ * ]]
 legacy_after="$(sha256sum \
   "$HOME_DIR/.claude/.cc-ls-hidden" \
   "$HOME_DIR/.claude/.cc-ls-hidden.at")"

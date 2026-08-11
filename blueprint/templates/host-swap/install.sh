@@ -22,13 +22,20 @@ set -uo pipefail
 _ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
 BUNDLE="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
 
-MODE=dry
+# DO (install|uninstall) and APPLY (0|1) are INDEPENDENT — one flag each, order-insensitive.
+# A single MODE variable (dry|apply|uninstall) used to carry BOTH "which action" and "dry vs
+# real" at once: --uninstall and --apply each overwrote the SAME variable, so whichever came
+# LAST won outright. `--uninstall --apply` collapsed to MODE=apply and ran a normal install;
+# `--apply --uninstall` collapsed to MODE=uninstall and printed remove/restore lines that
+# act() (gated on MODE=apply) never executed. Two variables can't cannibalize each other.
+DO=install
+APPLY=0
 CLAUDE_DIR=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --apply)       MODE=apply ;;
-    --uninstall)   MODE=uninstall ;;
-    --dry-run)     MODE=dry ;;
+    --apply)       APPLY=1 ;;
+    --uninstall)   DO=uninstall ;;
+    --dry-run)     APPLY=0 ;;
     --config-dir)  shift; CLAUDE_DIR="${1:?--config-dir needs a path}" ;;
     *) echo "install.sh: unknown argument '$1' (want --apply, --uninstall, --config-dir DIR)" >&2; exit 2 ;;
   esac
@@ -48,7 +55,7 @@ TS="$(date +%Y%m%d-%H%M%S)"
 n_ok=0; n_link=0; n_backup=0; n_skip=0
 
 say() { printf '%s\n' "$*"; }
-act() { [ "$MODE" = apply ] || return 1; return 0; }
+act() { [ "$APPLY" = 1 ] || return 1; return 0; }
 
 # link SRC DST — point DST at SRC, preserving anything real that was already there.
 link() {
@@ -96,8 +103,11 @@ unlink_one() {
 
 say "Professor fleet bundle: $BUNDLE"
 say "Target config dir:      $CLAUDE_DIR"
-[ "$MODE" = dry ] && say "MODE: dry run — nothing will change. Re-run with --apply to commit."
-[ "$MODE" = uninstall ] && say "MODE: uninstall"
+# Independent again: DO says WHAT (install/uninstall), APPLY says whether it is real — so
+# `--uninstall` bare prints BOTH "uninstall" and "dry run" (it is a dry-run uninstall preview),
+# matching the same dry-run-by-default contract --apply already had.
+[ "$DO" = uninstall ] && say "MODE: uninstall"
+[ "$APPLY" = 0 ] && say "MODE: dry run — nothing will change. Re-run with --apply to commit."
 say ""
 
 # ── the fleet scripts: one stable address, ~/.claude/bin, independent of where the clone lives ──
@@ -108,13 +118,13 @@ FLEET_SCRIPTS="cc-portable.sh cc-db.sh cc-hide.sh cx-hide.sh cc-agent-open.sh cc
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
 for f in $FLEET_SCRIPTS; do
-  if [ "$MODE" = uninstall ]; then unlink_one "$BIN/$f"; else link "$BUNDLE/$f" "$BIN/$f"; fi
+  if [ "$DO" = uninstall ]; then unlink_one "$BIN/$f"; else link "$BUNDLE/$f" "$BIN/$f"; fi
 done
 say ""
 
 # ── the slash commands: host-level, so they resolve in every repo AND every worktree ──
 say "commands -> $CMD"
-if [ "$MODE" = uninstall ]; then
+if [ "$DO" = uninstall ]; then
   unlink_one "$CMD/bb.md"; unlink_one "$CMD/swap.md"
 else
   link "$BUNDLE/bb.command.md"   "$CMD/bb.md"
@@ -126,15 +136,15 @@ fi
 for src in "$BUNDLE"/chat/*.command.md; do
   [ -e "$src" ] || continue
   base="$(basename "$src" .command.md)"
-  if [ "$MODE" = uninstall ]; then unlink_one "$CMD/chat/$base.md"; else link "$src" "$CMD/chat/$base.md"; fi
+  if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/$base.md"; else link "$src" "$CMD/chat/$base.md"; fi
 done
 for src in "$BUNDLE"/chat/self/*.command.md; do
   [ -e "$src" ] || continue
   base="$(basename "$src" .command.md)"
-  if [ "$MODE" = uninstall ]; then unlink_one "$CMD/chat/self/$base.md"; else link "$src" "$CMD/chat/self/$base.md"; fi
+  if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/self/$base.md"; else link "$src" "$CMD/chat/self/$base.md"; fi
 done
 for f in chat.sh history.sh; do
-  if [ "$MODE" = uninstall ]; then unlink_one "$CMD/chat/$f"; else link "$BUNDLE/chat/$f" "$CMD/chat/$f"; fi
+  if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/$f"; else link "$BUNDLE/chat/$f" "$CMD/chat/$f"; fi
 done
 say ""
 
@@ -146,7 +156,7 @@ say "codex skills -> $SKILLS_DIR"
 for d in "$BUNDLE"/codex-skills/*/; do
   [ -d "$d" ] || continue
   nm="$(basename "$d")"
-  if [ "$MODE" = uninstall ]; then unlink_one "$SKILLS_DIR/$nm"; else link "${d%/}" "$SKILLS_DIR/$nm"; fi
+  if [ "$DO" = uninstall ]; then unlink_one "$SKILLS_DIR/$nm"; else link "${d%/}" "$SKILLS_DIR/$nm"; fi
 done
 say ""
 
@@ -158,7 +168,7 @@ SYSD="$HOME/.config/systemd/user"
 UNITS="cc-name-sync.service cc-name-sync.path cc-name-sync.timer"
 say "systemd user units -> $SYSD"
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
-  if [ "$MODE" = uninstall ]; then
+  if [ "$DO" = uninstall ]; then
     act && systemctl --user disable --now cc-name-sync.path cc-name-sync.timer >/dev/null 2>&1
     for u in $UNITS; do unlink_one "$SYSD/$u"; done
     act && systemctl --user daemon-reload
@@ -180,7 +190,7 @@ say ""
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──
 SRC_LINE="[[ -r \"$BUNDLE/cc-fleet.zsh\" ]] && source \"$BUNDLE/cc-fleet.zsh\""
 say "shell -> $ZSHRC"
-if [ "$MODE" = uninstall ]; then
+if [ "$DO" = uninstall ]; then
   if [ -f "$ZSHRC" ] && grep -q 'cc-fleet\.zsh' "$ZSHRC"; then
     say "  remove  the cc-fleet.zsh source line"
     act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; sed -i.bak '/cc-fleet\.zsh/d' "$ZSHRC" && rm -f "$ZSHRC.bak"; }
@@ -207,10 +217,14 @@ fi
 
 say ""
 say "ok=$n_ok  linked/changed=$n_link  backed-up=$n_backup  skipped=$n_skip"
-if [ "$MODE" = dry ]; then
+if [ "$APPLY" = 0 ]; then
   say ""
-  say "Dry run — nothing changed. Run: $0 --apply"
-elif [ "$MODE" = apply ]; then
+  if [ "$DO" = uninstall ]; then say "Dry run — nothing changed. Run: $0 --uninstall --apply"
+  else say "Dry run — nothing changed. Run: $0 --apply"; fi
+elif [ "$DO" = uninstall ]; then
+  say ""
+  say "Uninstalled. Each link was either restored from its newest .pre-professor-<ts> backup or removed outright where none existed."
+else
   say ""
   say "Installed. Open a new shell (or: source $ZSHRC) then run  cc-ls."
   say "Backups from this run carry the suffix .pre-professor-$TS"

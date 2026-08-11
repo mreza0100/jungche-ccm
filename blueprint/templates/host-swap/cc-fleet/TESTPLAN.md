@@ -41,7 +41,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 10. [J — Satellite scripts](#j--satellite-scripts) — 42 flows
 11. [K — Installer and systemd units](#k--installer-and-systemd-units) — 12 flows
 12. [Flows that CANNOT be jailed](#flows-that-cannot-be-jailed)
-13. [Already visibly wrong (found by reading)](#already-visibly-wrong-found-by-reading)
+13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
 **Total: 290 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
@@ -368,7 +368,7 @@ still wires the legacy one.
 | `cc-name-sync.sh` single-writer lock, no double run | JAIL+sh | `cc-name-sync.sh:44-52` | |
 | `cx_db_name` precedence: store `name` → `session_index` → first prompt | JAIL+sh | `cc-name-sync.sh:77-99` | **B4** |
 | `cx_db_name` birth window ±120s — a RESUMED thread cannot match | JAIL+sh | `cc-name-sync.sh:87` | **B1** |
-| `cx_rollout_for` fallback picks the NEWEST rollout in the cwd when nothing is close | JAIL+sh | `cc-name-sync.sh:105-124` | **B1** |
+| `cx_rollout_for` has NO fallback: nothing within ±120s of pane birth → window left alone | JAIL+sh | `cc-name-sync.sh:105-124` | **B1** |
 | Claude window name from the 🔖 + medal scrape; conflicted split window left alone | JAIL+tmux | `cc-name-sync.sh:193-210` | |
 | Sessions are never renamed; squatters skipped | JAIL+tmux | `cc-name-sync.sh:172` | |
 | `cc-agent-open.sh` per-uuid takeover flock; loser exits 1 | JAIL+sh | `cc-agent-open.sh:18-31` | |
@@ -377,7 +377,7 @@ still wires the legacy one.
 | `cc-agent-open.sh` tmux-resident lock-holder → attach its window instead | JAIL+tmux | `cc-agent-open.sh:90-105` | |
 | `cc-swap-chat.sh` account+`--1h` arg parsing and the usage bail | JAIL+sh | `cc-swap-chat.sh:21-33` | |
 | `cc-swap-chat.sh --sock` refuses a multi-pane server | JAIL+sh | `cc-swap-chat.sh:46-53` | |
-| `cc-swap-chat.sh` `--1h`-only path (no account) — **currently dies on `$tenv`** | JAIL+sh | `cc-swap-chat.sh:115-125` | |
+| `cc-swap-chat.sh` `--1h`-only path (no account) keeps the chat's account from its live process env | JAIL+sh | `cc-swap-chat.sh:115-125` | |
 | `cc-swap-chat.sh` no-transcript chat → fresh reboot, not a dead `--resume` | JAIL+sh | `cc-swap-chat.sh:79-90` | |
 | `cc-swap-chat.sh` per-pane swap flock, open-menu abort, `/exit` timeout refusal | JAIL+tmux | `cc-swap-chat.sh:134-186` | |
 | `cc-swap-chat.sh --then` trust-prompt handling, typed-render proof, submit confirm | **REAL-SESSION** | `cc-swap-chat.sh:204-260` | |
@@ -453,55 +453,31 @@ they count as covered.
 
 ---
 
-## Already visibly wrong (found by reading)
+## Residual known divergences
 
-1. **`cc-swap-chat.sh:116` — `$tenv` is never assigned.** Under `set -u` (line 13) the
-   `--1h`-only path (no account argument) dies with `tenv: unbound variable` before it can read
-   the chat's current account. `/swap --1h on` is broken today; the picker's gate escapes only
-   because `action/executor.go:190-199` always passes an explicit account.
-2. **`compose/compose.go:510` mints row ID `"."`.** When a live codex resolves to a thread with
-   an empty `RolloutPath` (`resolve/codex.go:42-48` returns `CodexThread{ID: exported}`, or the
-   state store's row is archived / not `Listed()`), `rolloutIDFromPath("")` returns `"."` via
-   `filepath.Base("")`. That row cannot be hidden (`compose.go:661`), cannot be toggled
-   (`ui/model.go:279`), and does not mark its lineage live — so the same conversation ALSO shows
-   as a resume row. This is the doppelgänger shape (**B2**).
-3. **`gather.LiveCodex.ThreadID` is computed and then ignored.** `compose` never reads it
-   (`gather/codexproc.go:94` writes it; the only consumer is `hide/self.go:138`). The identity
-   the resolver worked out is discarded in favour of a path parse.
-4. **`index/codexstate.go:120-129` never sets `SessionID`/`ParentThread`.** A store-only row's
-   `LineageRoot` is its own id, so a resumed store-only thread can never join its ancestor's
-   lineage — guaranteed twin rows and a guaranteed name miss (**B1**, **B2**).
-5. **Store name always beats `session_index.jsonl`** (`index/index.go:256-265`). A rename that
-   lands only in the file is overwritten by `reconcileCodexNames` on the very next pass whenever
-   the store holds any older `name` (**B4**).
-6. **`hide/manager.go:164` errors on an unindexed id**, and `commands.go:129-132` turns that into
-   `cc-fleet ls` rc 1 after the TUI has already closed. An agent row synthesized at
-   `compose/compose.go:566` has exactly that shape (**B3**).
-7. **`cx-hide.sh:147` hides the raw rollout id**, while `compose/compose.go:116` keys Codex rows
-   on `lineage.RootID`. A `/bb` from a resumed Codex chat writes a hide nothing matches (**B2**).
-8. **Account roster disagrees three ways.** `paths.go:64-68` builds THREE Claude roots,
+1. **Store-only resumed threads carry no parent link** (`index/codexstate.go`): the codex
+   `threads` schema has no parent column for `thread_source='user'` rows, so a store-only row's
+   `LineageRoot` is its own id and a resumed store-only thread cannot join its ancestor's
+   lineage. Structural — needs a new evidence source (real-engine observation of what codex
+   writes on a paginated resume), not a code-only fix.
+2. **Account roster disagrees three ways.** `paths.go:64-68` builds THREE Claude roots,
    `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
-   `action/synth.go:19` caps at 2 and the shim has no `cc3` (`shim/cc-fleet.zsh:105-108`). A
-   transcript under `~/.cc/3/projects` gets `Account: 3` and then launches on account 1.
-9. **`chat.sh:1387` hardcodes `/tmp/tmux-$(id -u)`** for `modal`, ignoring `$TMUX_TMPDIR` that
-   `_sockets()` (`chat.sh:207`) honours — `modal` cannot address a chat under a non-default
-   tmux tmpdir.
-10. **`chat.sh:1398-1400` sends `Down`/`Enter` without `-t`** — the keys land on the socket's
-    ACTIVE pane, not the resolved target. Every other send in the file is `-t`-targeted.
-11. **`bb.command.md` documents `kill-server`**, but `cc-hide.sh:88-109` deliberately does
-    kill-PANE (and the doc's claim would take split siblings down). Stale contract.
-12. **`install.sh:181` wires the legacy `cc-fleet.zsh`** and installs neither the Go binary nor
-    `cc-fleet/shim/cc-fleet.zsh`, contradicting `CUTOVER.md:44-55`. `install.sh:107` also still
-    links the pre-cutover `cc-hide.sh`/`cx-hide.sh` rather than the `exec cc-fleet hide --self`
-    delegates `CUTOVER.md:69-84` specifies.
-13. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
-    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
-14. **CWD encoding divergence:** `index/index.go:307` replaces only path separators, while
-    `chat.sh:394`, `chat.sh:1232` and `chat.sh:1253` do `tr '/.' '--'`. A project path containing
-    a dot resolves differently in the two halves.
-15. **`chat.sh:1104-1106` prefers the carrier FILE over the db** ("the file wins when it
-    exists"), while `shared/shared.go:241-277` takes the UNION. A db-only hide is invisible to
-    `chat.sh ls`.
+   `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
+   off-roster values upstream, so launches stay correct; the divergence is dormant, not dead.
+3. **`bb.command.md` documents `kill-server`**, but `cc-hide.sh:88-109` deliberately does
+   kill-PANE (and the doc's claim would take split siblings down). Stale contract.
+4. **`install.sh:181` wires the legacy `cc-fleet.zsh`** and installs neither the Go binary nor
+   `cc-fleet/shim/cc-fleet.zsh`; `install.sh:107` links the pre-cutover `cc-hide.sh`/`cx-hide.sh`
+   rather than the `exec cc-fleet hide --self` delegates `CUTOVER.md:69-84` specifies. This is
+   the cutover decision itself — flips only on the owner's word.
+5. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
+   An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
+6. **CWD encoding divergence:** `index/index.go:307` replaces only path separators, while
+   `chat.sh:394`, `chat.sh:1232` and `chat.sh:1253` do `tr '/.' '--'`. A project path containing
+   a dot resolves differently in the two halves.
+7. **`chat.sh:1104-1106` prefers the carrier FILE over the db** ("the file wins when it
+   exists"), while `shared/shared.go:241-277` takes the UNION. A db-only hide is invisible to
+   `chat.sh ls`.
 
 ---
 
@@ -512,12 +488,12 @@ state, and live-vs-indexed disagreement.
 
 | # | flow | why it hides bugs |
 | --- | --- | --- |
-| 1 | **Live codex → indexed row join** (`compose/compose.go:492-513`) | The join key is a PATH parse, not the identity the resolver produced. Empty path → id `"."`; wrong path → a twin. Every Codex row bug tonight passes through here. |
+| 1 | **Live codex → indexed row join** (`compose/compose.go:492-513`) | The join walks path → resolver ThreadID (`liveCodexID`); a process neither resolves is still a guess. Every Codex row bug passes through here. |
 | 2 | **Store-only thread lineage** (`index/codexstate.go:98-130`) | A resumed store-only thread is given itself as its lineage root, so it can never merge with the conversation it continues. Hides, names and prompt counts all split. |
-| 3 | **Codex name precedence across three writers** (`index/index.go:239-265`, `cc-name-sync.sh:77-99`, `naming/naming.go:88-106`) | Three implementations of "what is this thread called", two orderings, one destructive `DELETE FROM cx_names`. B4 lives here and there is more of it. |
-| 4 | **Agent-row identity** (`gather/agents.go:12-69` → `compose/compose.go:541-590` → `hide/manager.go:138-165`) | An agent row is the only kind whose ID can exist with no index row behind it. Every id-keyed operation (hide, open, unhide, MCP state) has to cope and only some do. |
+| 3 | **Codex name precedence across three writers** (`index/index.go`, `cc-name-sync.sh:77-99`, `naming/naming.go`) | Name provenance (`cx_names.source`/`renamed_at`, schema v4) settles store-vs-file, but three walkers still differ on lineage breadth, and `reloadCxNames` still wipes and re-folds in two transactions. |
+| 4 | **Agent-row identity** (`gather/agents.go:12-69` → `compose/compose.go:541-590` → `hide/manager.go:138-165`) | An agent row is the only kind whose ID can exist with no index row behind it. Every id-keyed operation must vouch an engine for it; a new call site that forgets recreates the silent-refusal bug. |
 | 5 | **Hide across the two writers** (`shared/shared.go:193-277`, `cc-db.sh:106-148`, `chat.sh:1100-1106`) | Four readers with three different precedence rules (union / file-wins / db-only). A hide that half the fleet honours is exactly how a chat "comes back". |
-| 6 | **Codex thread ↔ pane pairing by birth window** (`resolve/codex.go:49-85`, `cc-portable.sh` `cx_thread_id`, `cc-name-sync.sh:87`) | The 120-second window is a heuristic that is structurally wrong for every resumed thread, and its failure mode differs per caller: drop the row, mislabel it, or fail open. |
+| 6 | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `cc-portable.sh` `cx_thread_id`, `cc-name-sync.sh:87`) | The argv `resume <uuid>` rung now leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window, and the failure mode differs per caller. |
 | 7 | **Live-vs-indexed refresh race in the picker** (`pipeline.go:315-424`, `ui/model.go:247-271`) | Three snapshots stream into an open TUI while the user is toggling hides. A row that changes identity between frames takes the pending hide with it. |
 | 8 | **`collapseLiveServers` + `ServerCount`** (`compose/compose.go:759-803`) | Silently merges rows by `engine+ID`. Two genuinely different chats that resolve to the same id (see #1) disappear into one row; the loser is unreachable. |
 | 9 | **`--exit` finisher choreography** (`hide/finisher.go:94-245`) | Detached, delayed, and it re-asserts a hide AFTER an index refresh. It races the engine's own transcript flush and reaps teammates by an id that may already have been canonicalized. |

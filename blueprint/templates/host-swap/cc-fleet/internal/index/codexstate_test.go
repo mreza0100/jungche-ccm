@@ -405,6 +405,88 @@ INSERT INTO threads (
 	}
 }
 
+// THE BUG. file-thread already carries a non-empty, STALE store name ("STORE
+// NAME" from setupCodexStateFixture) — the store keeps no rename clock, so a
+// non-empty threads.name only proves it is A name, never the CURRENT one. A
+// second, DATED session_index.jsonl entry for the same id is the only
+// evidence that proves which of the two is newer, and it must win over the
+// undated store name.
+func TestCodexSessionIndexRenameBeatsStaleStoreName(t *testing.T) {
+	fixture := setupCodexStateFixture(t)
+	indexPath := filepath.Join(fixture.codexRoot, "session_index.jsonl")
+	appendJSONLine(t, indexPath, map[string]any{
+		"id":          "file-thread",
+		"thread_name": "FRESH RENAME",
+		"updated_at":  "2026-08-10T23:27:52.914145697Z",
+	})
+
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	names, err := database.CxNames(ctx)
+	if err != nil {
+		t.Fatalf("CxNames() error = %v", err)
+	}
+	if names["file-thread"] != "FRESH RENAME" {
+		t.Fatalf(
+			"file-thread name = %q, want the dated session_index rename to beat "+
+				"the stale store name %q",
+			names["file-thread"],
+			"STORE NAME",
+		)
+	}
+	rows := codexRows(t, database)
+	byID := make(map[string]compose.Row, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	if row := byID["file-thread"]; row.Name != "FRESH RENAME" {
+		t.Fatalf("file-thread row = %#v, want the dated session_index rename", row)
+	}
+}
+
+// A store name with no session_index entry at all — store-only never wrote
+// one, since it has no rollout file to seed session_index.jsonl — still
+// wins, and is tagged with its provenance so a later dated rename could
+// still outrank it.
+func TestCodexStoreNameSurvivesWithNoSessionIndexEntry(t *testing.T) {
+	setupCodexStateFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	records, err := database.CxNameRecords(ctx)
+	if err != nil {
+		t.Fatalf("CxNameRecords() error = %v", err)
+	}
+	record, found := records["store-only"]
+	if !found ||
+		record.ThreadName != "PAGINATED NAME" ||
+		record.Source != store.CxNameSourceStore {
+		t.Fatalf(
+			"store-only record = %#v, found = %t, want the store name tagged %q",
+			record,
+			found,
+			store.CxNameSourceStore,
+		)
+	}
+}
+
 // A rename inside Codex reaches the picker, and archiving a conversation
 // there retires the row the store alone was holding up.
 func TestCodexStateRenameAndArchivePropagate(t *testing.T) {

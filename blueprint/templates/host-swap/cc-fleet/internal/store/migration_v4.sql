@@ -1,0 +1,5 @@
+ALTER TABLE cx_names
+  ADD COLUMN source TEXT NOT NULL DEFAULT 'session_index';
+
+ALTER TABLE cx_names
+  ADD COLUMN renamed_at INTEGER NOT NULL DEFAULT 0;

@@ -39,7 +39,7 @@ case "${1:-}" in
   *) echo "cc-reap: unknown arg '$1' (use --kill or --list)"; exit 2 ;;
 esac
 
-TMUXDIR="/tmp/tmux-$(id -u)"
+TMUXDIR="${TMUX_TMPDIR:-/tmp/tmux-$(id -u)}"
 MYSOCK=""
 [ -n "${TMUX:-}" ] && { MYSOCK="${TMUX%%,*}"; MYSOCK="${MYSOCK##*/}"; }
 
