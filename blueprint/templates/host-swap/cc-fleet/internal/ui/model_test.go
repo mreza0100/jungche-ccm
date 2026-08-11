@@ -68,6 +68,40 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	}
 }
 
+// TestCancelDropsPendingHideAndPrimaryChanges is the pure-model half of the
+// picker-cancel fix: Result() itself must empty HideChanges and revert
+// PrimaryAccount on OutcomeCancelled, as defense in depth alongside the
+// command loop's own gate (cmd/cc-fleet/commands.go) — a pending ⌃X hide or
+// ⌃S account switch must never survive Esc/⌃C, from either side alone.
+func TestCancelDropsPendingHideAndPrimaryChanges(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.PrimaryAccount = 1
+	model := NewModel(snapshot)
+
+	model, _ = applyKey(t, model, controlKey('x'))
+	if len(model.Result().HideChanges) != 1 {
+		t.Fatalf("setup: hide toggle result=%#v", model.Result())
+	}
+	model, _ = applyKey(t, model, controlKey('s'))
+	if model.PrimaryAccount() == 1 {
+		t.Fatal("setup: ⌃S did not change the account")
+	}
+
+	cancelled, command := applyKey(t, model, specialKey(tea.KeyEscape))
+	if command == nil {
+		t.Fatal("cancel returned no quit command")
+	}
+	result := cancelled.Result()
+	if result.Kind != OutcomeCancelled ||
+		len(result.HideChanges) != 0 ||
+		result.PrimaryAccount != 1 {
+		t.Fatalf(
+			"cancel result=%#v, want Cancelled/no hide changes/account 1",
+			result,
+		)
+	}
+}
+
 func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 	for _, row := range fixtureSnapshot(120).Rows {
 		snapshot := Snapshot{

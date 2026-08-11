@@ -106,10 +106,16 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 			}
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
+			// Bubble Tea owns the tty for as long as Pick runs: a probe warning
+			// the background refresh raises mid-frame corrupts the alt-screen,
+			// so it is buffered here and flushed only once Pick has released
+			// the terminal.
+			var warnings bufferedWarnings
 			go streamFleetRefreshes(
 				refreshContext,
 				database,
 				request,
+				warnings.add,
 				stderr,
 				updates,
 			)
@@ -118,6 +124,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				scan.Snapshot,
 			)
 			refreshCancel()
+			warnings.flush(stderr)
 		}
 		if err != nil {
 			fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
@@ -126,14 +133,21 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		if *plain || *tsv {
 			return 0
 		}
-		if err := applyPickerChanges(ctx, database, outcome); err != nil {
-			fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
-			return 1
-		}
-		if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
-			if err := writePrimaryAccount(scan.Paths.Home, outcome.PrimaryAccount); err != nil {
-				fmt.Fprintf(stderr, "cc-fleet ls: save primary account: %v\n", err)
+		// Esc/⌃C must cancel outright: a pending ⌃X hide or ⌃S account switch
+		// typed before backing out must never land. Model already empties
+		// HideChanges and resets PrimaryAccount on Cancelled (Result()) as
+		// defense in depth, but the write is gated here too so the two can
+		// never drift apart.
+		if outcome.Kind != ui.OutcomeCancelled {
+			if err := applyPickerChanges(ctx, database, outcome); err != nil {
+				fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
 				return 1
+			}
+			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
+				if err := writePrimaryAccount(scan.Paths.Home, outcome.PrimaryAccount); err != nil {
+					fmt.Fprintf(stderr, "cc-fleet ls: save primary account: %v\n", err)
+					return 1
+				}
 			}
 		}
 		rotation = outcome.Rotation

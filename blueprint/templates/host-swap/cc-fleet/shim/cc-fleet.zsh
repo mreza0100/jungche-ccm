@@ -119,7 +119,10 @@ cx() {
   # --dangerously-bypass-approvals-and-sandbox: founder's standing order (2026-07-24) — a fleet
   # codex runs with FULL autonomy, never stopping to ask approval (wave builders stalled on
   # mid-task approval prompts). This box's codex work is already gated by repo trust + the fleet.
-  local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(q)@}"
+  # PER-ELEMENT quoting, then join — same fix as _cc_run (lines 89-93): "${(q)@}" joins the
+  # array into ONE word FIRST and quotes that, so `cx --resume abc123` arrives as a single
+  # escaped argv element ("--resume\ abc123") and codex rejects it as one unknown flag.
+  local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(j: :)${(@q)@}}"
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab

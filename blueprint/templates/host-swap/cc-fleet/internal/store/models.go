@@ -44,11 +44,30 @@ type Rollout struct {
 	IsBG bool
 }
 
-// CxName mirrors one Codex session_index name.
+// CxName mirrors one Codex thread's name and where cc-fleet learned it.
 type CxName struct {
 	ID         string
 	ThreadName string
+	// Source records which half of Codex's own bookkeeping supplied
+	// ThreadName: the state store's threads.name (CxNameSourceStore) or a
+	// session_index.jsonl rename record (CxNameSourceSessionIndex).
+	Source string
+	// RenamedAt is the epoch-nanosecond time session_index.jsonl recorded for
+	// this rename, or 0 when no rename time is known. That covers every store
+	// name — the state store keeps no rename clock at all — and a
+	// session_index entry written before Codex began stamping updated_at.
+	RenamedAt int64
 }
+
+// CxNameSourceStore and CxNameSourceSessionIndex are the two CxName.Source
+// values. CxNameSourceSessionIndex is also the column default: a name
+// written before this provenance existed reads back as an undated
+// session_index entry, which is the safer assumption of the two — it can
+// never outrank a dated rename, matching how such a row already behaved.
+const (
+	CxNameSourceStore        = "store"
+	CxNameSourceSessionIndex = "session_index"
+)
 
 // Hidden records a permanent hide for a Claude or Codex chat: it lifts only
 // on an explicit unhide.

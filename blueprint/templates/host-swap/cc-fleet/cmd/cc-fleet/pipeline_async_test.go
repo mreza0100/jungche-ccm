@@ -149,6 +149,7 @@ func TestCachedFirstPaintWhileIndexRefreshIsSlow(t *testing.T) {
 		refreshContext,
 		database,
 		request,
+		printWarn(&stderr),
 		&stderr,
 		updates,
 		refreshDependencies{
@@ -258,11 +259,13 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 	const storms = 100
 	for storm := 0; storm < storms; storm++ {
 		updates := make(chan ui.Snapshot, 1)
+		stormStderr := &bytes.Buffer{}
 		go streamFleetRefreshesWith(
 			context.Background(),
 			database,
 			request,
-			&bytes.Buffer{},
+			printWarn(stormStderr),
+			stormStderr,
 			updates,
 			refreshDependencies{
 				newIndexer: func(*store.Store) (indexRunner, error) {

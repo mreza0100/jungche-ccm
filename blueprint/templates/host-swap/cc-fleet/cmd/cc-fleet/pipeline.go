@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"hostops/cc-fleet/internal/action"
@@ -28,6 +29,49 @@ const (
 	codexAvailableEnv  = "CC_FLEET_CODEX_AVAILABLE"
 	dbScriptEnv        = "CC_FLEET_DB_SCRIPT"
 )
+
+// gatherWarn reports one tmux probe warning raised during a gather pass.
+// scanFleet's callers — plain, tsv, check, and every one-shot command — print
+// immediately through printWarn; the interactive picker instead buffers
+// through bufferedWarnings, because Bubble Tea owns the tty for as long as it
+// runs and a warning written straight to stderr mid-refresh lands on top of
+// its alt-screen frame.
+type gatherWarn func(warning string)
+
+// printWarn reports a warning immediately, matching every non-interactive
+// caller's existing behavior.
+func printWarn(stderr io.Writer) gatherWarn {
+	return func(warning string) {
+		fmt.Fprintf(stderr, "cc-fleet: tmux probe warning: %s\n", warning)
+	}
+}
+
+// bufferedWarnings collects gather warnings raised from the background
+// refresh goroutine while an interactive picker owns the terminal (runLS),
+// releasing them to stderr only once flush is called after Pick returns.
+type bufferedWarnings struct {
+	mu       sync.Mutex
+	warnings []string
+}
+
+func (buffer *bufferedWarnings) add(warning string) {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	buffer.warnings = append(buffer.warnings, warning)
+}
+
+// flush prints every warning collected so far and clears the buffer, so a
+// caller that flushes between picker frames — the reload loop in runLS — never
+// prints the same warning twice.
+func (buffer *bufferedWarnings) flush(stderr io.Writer) {
+	buffer.mu.Lock()
+	pending := buffer.warnings
+	buffer.warnings = nil
+	buffer.mu.Unlock()
+	for _, warning := range pending {
+		fmt.Fprintf(stderr, "cc-fleet: tmux probe warning: %s\n", warning)
+	}
+}
 
 type scanRequest struct {
 	View      compose.View
@@ -98,6 +142,7 @@ func scanFleet(
 		environment.paths,
 		data,
 		request.ReadOnly,
+		printWarn(stderr),
 		stderr,
 	)
 	if err != nil {
@@ -107,6 +152,46 @@ func scanFleet(
 	result.Counters = counters
 	result.Live = live
 	return result, nil
+}
+
+// resolveRowEngine looks id up in a compose pass over CURRENT database state
+// plus a live gather — the picker's own source of truth for what exists right
+// now — and reports the engine of the row that carries it. It finds exactly
+// the ids the picker displays, including a live agent row and a live Codex
+// pane the index has not caught up with; an id nothing composes returns "",
+// which leaves an ordinary hide free to refuse it as unindexed. Errors from
+// the pass itself are swallowed the same way: a failed vouch attempt falls
+// through to that same refusal rather than replacing the hide's own error.
+//
+// This deliberately skips the indexer scanFleet runs: a caller resolving one
+// id for a hide has no business reconciling the whole filesystem index, and
+// a delta run can prune a transcript row whose file is not there YET — the
+// exact row a hide right after spawning a chat is racing to catch.
+func resolveRowEngine(
+	ctx context.Context,
+	database *store.Store,
+	id string,
+	stderr io.Writer,
+) string {
+	environment, err := resolveScanEnvironment()
+	if err != nil {
+		return ""
+	}
+	data, err := loadFleetData(ctx, database)
+	if err != nil {
+		return ""
+	}
+	live, err := gatherFleet(ctx, environment.paths, data, false, printWarn(stderr), stderr)
+	if err != nil {
+		return ""
+	}
+	result := composeFleet(environment, scanRequest{View: compose.AllView}, data, live)
+	for _, row := range result.Output.Rows {
+		if row.ID == id {
+			return compose.EngineForKind(row.Kind)
+		}
+	}
+	return ""
 }
 
 func scanFleetCached(
@@ -216,6 +301,7 @@ func gatherFleet(
 	resolved paths.Values,
 	data fleetData,
 	readOnly bool,
+	warn gatherWarn,
 	stderr io.Writer,
 ) (gather.Snapshot, error) {
 	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(
@@ -245,7 +331,7 @@ func gatherFleet(
 		return gather.Snapshot{}, err
 	}
 	for _, warning := range live.Warnings {
-		fmt.Fprintf(stderr, "cc-fleet: tmux probe warning: %s\n", warning)
+		warn(warning)
 	}
 	if !readOnly {
 		for _, rename := range live.Renames {
@@ -313,6 +399,7 @@ func streamFleetRefreshes(
 	ctx context.Context,
 	database *store.Store,
 	request scanRequest,
+	warn gatherWarn,
 	stderr io.Writer,
 	updates chan<- ui.Snapshot,
 ) {
@@ -320,6 +407,7 @@ func streamFleetRefreshes(
 		ctx,
 		database,
 		request,
+		warn,
 		stderr,
 		updates,
 		refreshDependencies{},
@@ -330,6 +418,7 @@ func streamFleetRefreshesWith(
 	ctx context.Context,
 	database *store.Store,
 	request scanRequest,
+	warn gatherWarn,
 	stderr io.Writer,
 	updates chan<- ui.Snapshot,
 	dependencies refreshDependencies,
@@ -355,6 +444,7 @@ func streamFleetRefreshesWith(
 		environment.paths,
 		data,
 		request.ReadOnly,
+		warn,
 		stderr,
 	)
 	if err != nil {

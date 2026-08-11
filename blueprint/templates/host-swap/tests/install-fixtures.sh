@@ -102,11 +102,37 @@ ok "unrelated lines survive"       "$(grep -c 'alias x=y' "$HOME/.zshrc")" "1"
 # — it broke the moment a new case was added above, pointing at install.sh, which was innocent.
 ok "the old zshrc was backed up"   "$([ -n "$(ls -1 "$HOME/".zshrc.pre-professor-* 2>/dev/null)" ] && echo yes || echo no)" "yes"
 
-echo "=== --uninstall puts the operator's files back ==="
-out="$(run --uninstall --apply 2>/dev/null || run --uninstall)"
-# --uninstall is itself a dry run unless applied; drive it explicitly
-MODE_OUT="$(bash "$BUNDLE/install.sh" --uninstall 2>&1)"
-ok "uninstall dry-runs by default" "$([ -L "$BIN/cc-hide.sh" ] && echo yes || echo no)" "yes"
+echo "=== bare --uninstall dry-runs by default: banner, and NOTHING changes ==="
+out="$(run --uninstall)"
+ok "banner names the action (uninstall)"     "$(printf '%s' "$out" | grep -c '^MODE: uninstall$')" "1"
+ok "banner names it a dry run"               "$(printf '%s' "$out" | grep -c 'dry run')" "1"
+ok "bare --uninstall: cc-hide.sh still linked" "$([ -L "$BIN/cc-hide.sh" ] && echo yes || echo no)" "yes"
+ok "bare --uninstall: chat/ls.md still linked" "$([ -L "$CMD/chat/ls.md" ] && echo yes || echo no)" "yes"
+
+echo "=== --uninstall --apply: a link with NO backup is DROPPED, a link WITH one is RESTORED ==="
+# cc-hide.sh has never had a competing real file placed at its destination (only chat/ls.md did,
+# in the "REAL file at the destination" case above) -- so it carries no .pre-professor-* backup
+# and must be dropped outright, while chat/ls.md's backup must come back byte for byte. ONE
+# uninstall run covers the whole fleet at once, so both "before" snapshots are taken first and
+# both outcomes are checked against that SAME run.
+hide_target_before="$([ -L "$BIN/cc-hide.sh" ] && readlink -f "$BIN/cc-hide.sh" || echo none)"
+ls_bk_content_before="$(cat "$(ls -1 "$CMD/chat/"ls.md.pre-professor-* 2>/dev/null | tail -1)" 2>/dev/null)"
+run --uninstall --apply >/dev/null
+hide_after="$([ -e "$BIN/cc-hide.sh" ] && echo "still-present:$(readlink -f "$BIN/cc-hide.sh" 2>/dev/null)" || echo gone)"
+ok "cc-hide.sh had a real symlink before"    "$hide_target_before" "$BUNDLE/cc-hide.sh"
+ok "cc-hide.sh (no backup) removed, not silently reinstalled" "$hide_after" "gone"
+ok "chat/ls.md is no longer a symlink (restored in place)" "$([ -L "$CMD/chat/ls.md" ] && echo still-a-link || echo restored)" "restored"
+ok "restored content matches the pre-install backup"       "$(cat "$CMD/chat/ls.md" 2>/dev/null)" "$ls_bk_content_before"
+
+echo "=== --apply --uninstall (OPPOSITE flag order) behaves IDENTICALLY ==="
+run --apply >/dev/null   # re-link everything (including cc-hide.sh) before the order check
+ok "re-apply relinked cc-hide.sh" "$([ -L "$BIN/cc-hide.sh" ] && echo yes || echo no)" "yes"
+run --apply --uninstall >/dev/null
+ok "--apply --uninstall also removes cc-hide.sh (no backup)" "$([ -e "$BIN/cc-hide.sh" ] && echo still-present || echo gone)" "gone"
+
+# leave a clean, linked install behind — this is the last section in the file, but a fixture
+# should never end mid-uninstall in case a case is appended below later.
+run --apply >/dev/null
 
 echo
 printf 'PASS %d   FAIL %d\n' "$pass" "$fail"

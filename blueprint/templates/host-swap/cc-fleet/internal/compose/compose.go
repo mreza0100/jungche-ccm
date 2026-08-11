@@ -60,7 +60,7 @@ func Compose(input Input) Output {
 	}
 
 	for _, row := range append(liveRows, agentRows...) {
-		row = current.applyHide(row, engineForKind(row.Kind))
+		row = current.applyHide(row, EngineForKind(row.Kind))
 		countOmitted(row, &output.HiddenCount, &output.SuppressedCount)
 		if visibleInView(row, input.Options.View) {
 			output.Rows = append(output.Rows, current.finalize(row))
@@ -616,27 +616,42 @@ func (current *composer) transcriptRow(
 
 func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 	root := current.lineageRoot(rollout)
+	newest := rollout
 	if lineage, found := current.lineageByRoot[root]; found {
-		rollout = lineage.Newest
-		rollout.PromptCount = lineage.PromptCount
+		newest = lineage.Newest
+		newest.PromptCount = lineage.PromptCount
+	}
+	// The newest member's own one-hop walk (own → session → parent) still
+	// wins first, exactly as before — a rename ON the live conversation must
+	// outrank an older name upstream of it. Only when THAT walk finds nothing
+	// does the true lineage root get a look: a ≥3-hop chain named only at its
+	// root sits beyond the one-hop walk's reach (newest's own SessionID
+	// reaches only its immediate parent, never further), so without this
+	// fallback such a chain fell all the way to the newest member's first
+	// prompt. The first call passes "" instead of newest.FirstPrompt so an
+	// empty result unambiguously means "nothing named", not "fell back to the
+	// prompt already" — that fallback belongs to the SECOND call only.
+	name := naming.CxName(
+		newest.ID,
+		newest.SessionID,
+		newest.ParentThread,
+		current.input.CxNames,
+		"",
+	)
+	if name == "" {
+		name = naming.CxName(root, "", "", current.input.CxNames, newest.FirstPrompt)
 	}
 	return Row{
-		Kind: kind,
-		ID:   root,
-		Path: rollout.Path,
-		Name: naming.CxName(
-			rollout.ID,
-			rollout.SessionID,
-			rollout.ParentThread,
-			current.input.CxNames,
-			rollout.FirstPrompt,
-		),
-		Project:     projectName(rollout.CWD),
-		CWD:         rollout.CWD,
-		Size:        rollout.Size,
-		PromptCount: rollout.PromptCount,
-		ActivityNS:  rollout.MTimeNS,
-		BG:          rollout.IsBG,
+		Kind:        kind,
+		ID:          root,
+		Path:        newest.Path,
+		Name:        name,
+		Project:     projectName(newest.CWD),
+		CWD:         newest.CWD,
+		Size:        newest.Size,
+		PromptCount: newest.PromptCount,
+		ActivityNS:  newest.MTimeNS,
+		BG:          newest.IsBG,
 	}
 }
 
@@ -813,7 +828,7 @@ func collapseLiveServers(rows []Row) []Row {
 			standalone = append(standalone, row)
 			continue
 		}
-		key := engineForKind(row.Kind) + "\x00" + row.ID
+		key := EngineForKind(row.Kind) + "\x00" + row.ID
 		incumbent, found := winners[key]
 		if !found {
 			winners[key] = winner{row: row, count: 1}
@@ -951,7 +966,10 @@ func accountForPath(path string, roots []AccountRoot) int {
 	return account
 }
 
-func engineForKind(kind Kind) string {
+// EngineForKind reports the engine ("cc" or "cx") a row's kind belongs to —
+// exported so a caller resolving an id against a compose pass (cmd/cc-fleet's
+// CLI hide) can vouch for the same engine the picker itself would.
+func EngineForKind(kind Kind) string {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:
 		return "cx"
