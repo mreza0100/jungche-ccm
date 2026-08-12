@@ -9,6 +9,10 @@ import (
 )
 
 const (
+	// CodeBusy is the verdict a caller retries rather than escalates: the pane
+	// was working, so nothing was typed. Everything else means the message
+	// will never arrive without a change of plan.
+	CodeBusy = 7
 	// CodexInlineMax is chat.sh's hard limit for inline Codex delivery.
 	CodexInlineMax = 1500
 	// AbsoluteMessageMax keeps adversarial MCP arguments from reaching tmux.

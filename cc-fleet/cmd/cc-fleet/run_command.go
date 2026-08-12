@@ -7,9 +7,11 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"hostops/cc-fleet/internal/action"
 	"hostops/cc-fleet/internal/compose"
+	"hostops/cc-fleet/internal/headless"
 	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/paths"
 	"hostops/cc-fleet/internal/spawn"
@@ -28,7 +30,8 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
 		"headless run",
 		"usage: cc-fleet headless run --name NAME [--engine cc|cx] [--cwd DIR] "+
-			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] [prompt]",
+			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] "+
+			"[--await [--timeout SECS] [--settle SECS] [--progress]] [prompt]",
 		stderr,
 	)
 	name := flags.String("name", "", "chat name (a _HIDE… name stays out of the list)")
@@ -39,10 +42,14 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	model := flags.String("model", "", "model the seat is born with")
 	effort := flags.String("effort", "", "reasoning effort the seat is born with")
 	promptFile := flags.String("prompt-file", "", "read the launch prompt from a file")
+	await := flags.Bool("await", false, "wait for the first answer and print it (the launch summary moves to stderr)")
+	timeout := flags.Int("timeout", askTimeoutSeconds, "with --await: seconds to wait (0 waits forever)")
+	settle := flags.Int("settle", askSettleSeconds, "with --await: seconds of quiet before an answer is finished")
+	progress := flags.Bool("progress", false, "with --await: print the chat's turns to stderr while waiting")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if *name == "" {
+	if *name == "" || *timeout < 0 || *settle < 0 {
 		flags.Usage()
 		return 2
 	}
@@ -118,11 +125,100 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(stderr, "cc-fleet headless run: %s\n", warning)
 	}
-	printRunResult(stdout, engineName, result)
+	// With --await the reply owns stdout, so the launch summary steps aside:
+	// `answer=$(cc-fleet headless run --await …)` must be the answer and
+	// nothing else.
+	summary := stdout
+	if *await {
+		summary = stderr
+	}
+	printRunResult(summary, engineName, result)
 	if !result.Named {
 		return 1
 	}
-	return 0
+	if prompt == "" {
+		return 0
+	}
+	var progressOut io.Writer
+	if *progress && *await {
+		progressOut = stderr
+	}
+	return awaitLaunch(
+		context.Background(),
+		*name,
+		*await,
+		headless.AwaitOptions{
+			Grace:    launchGrace,
+			Settle:   time.Duration(*settle) * time.Second,
+			Timeout:  time.Duration(*timeout) * time.Second,
+			Progress: progressOut,
+		},
+		result,
+		stdout,
+		stderr,
+	)
+}
+
+// launchGrace is how long a chat that was just created is allowed to be
+// missing from a fleet scan before the wait calls it gone. Naming, indexing
+// and the engine's first write all have to happen first.
+//
+// launchProofWindow bounds the delivery proof. It is not a wait for the
+// ANSWER — only for the engine's own record of having been asked — so it is
+// short enough that a script does not hang on it.
+//
+// Both are variables so a test can drive the refusal path in seconds instead
+// of minutes; nothing outside a test changes them.
+var (
+	launchGrace       = 45 * time.Second
+	launchProofWindow = 90 * time.Second
+)
+
+// awaitLaunch proves the launch prompt reached the model, and — with
+// --await — brings back the answer.
+//
+// A prompt that was typed is not a prompt that was delivered: the keystrokes
+// can go into a startup overlay, a modal, or an engine that dropped the Enter,
+// and every one of those looks like success from the sending end. The engine's
+// own transcript is the proof, and this refuses to report a delivery it cannot
+// find there.
+func awaitLaunch(
+	ctx context.Context,
+	name string,
+	await bool,
+	options headless.AwaitOptions,
+	result spawn.Result,
+	stdout, stderr io.Writer,
+) int {
+	handle := chatHandle(result.Socket, name)
+	if await {
+		return awaitAnswer(ctx, "run", name, handle, options, false, stdout, stderr)
+	}
+	proof := options
+	proof.StopOnDelivery = true
+	proof.Timeout = launchProofWindow
+	turn, err := headless.Await(
+		ctx,
+		func(ctx context.Context) (headless.Chat, bool, error) {
+			return resolveChat(ctx, handle, io.Discard)
+		},
+		proof,
+	)
+	if turn.Delivered {
+		return 0
+	}
+	fmt.Fprintf(
+		stderr,
+		"cc-fleet headless run: %s never recorded the prompt — it was typed but "+
+			"the model was never asked; attach it and look: tmux -L %s attach -t %s\n",
+		name,
+		result.Socket,
+		result.Session,
+	)
+	if err != nil && !errors.Is(err, headless.ErrAwaitTimeout) {
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
+	}
+	return codeUndelivered
 }
 
 // promptForTUI is the prompt the spawner must type, which is empty whenever

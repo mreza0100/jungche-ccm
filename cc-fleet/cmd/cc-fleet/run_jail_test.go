@@ -5,10 +5,73 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+// stubRecorder is the half of a stub engine that makes it a CHAT rather than a
+// screen: it writes the engine's own transcript and the evidence that binds it
+// to this tmux socket — a sid crumb for Claude, an open rollout descriptor
+// under a jailed /proc for Codex.
+//
+// Without it a stub can only prove that keystrokes were sent. cc-fleet now
+// refuses to call a prompt delivered until the ENGINE has recorded being
+// asked, so a jail that writes no transcript can no longer tell a delivered
+// prompt from one that vanished into a modal — which is the whole failure
+// being defended against.
+const stubRecorder = `
+_esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+_sock() { if [ -n "$TMUX" ]; then basename "${TMUX%%,*}"; else printf '%s' "$STUB_SOCKET"; fi; }
+_append() { printf '%s\n' "$1" >> "$STUB_TRANSCRIPT"; }
+cx_user()  { _append "{\"timestamp\":\"2026-08-12T00:00:00.000Z\",\"payload\":{\"type\":\"user_message\",\"message\":\"$(_esc "$1")\"}}"; }
+cx_agent() { _append "{\"timestamp\":\"2026-08-12T00:00:01.000Z\",\"payload\":{\"type\":\"agent_message\",\"message\":\"$(_esc "$1")\"}}"; }
+cc_user()  { _append "{\"type\":\"user\",\"cwd\":\"$(_esc "$PWD")\",\"message\":{\"content\":\"$(_esc "$1")\"}}"; }
+cc_agent() { _append "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"$(_esc "$1")\"}]}}"; }
+answer() {
+  if [ "$STUB_KIND" = cx ]; then cx_agent "${STUB_REPLY:-ack}: $1"; else cc_agent "${STUB_REPLY:-ack}: $1"; fi
+}
+turn() {
+  [ -z "$STUB_TRANSCRIPT" ] && return 0
+  if [ "$STUB_KIND" = cx ]; then cx_user "$1"; else cc_user "$1"; fi
+  [ -n "$STUB_MUTE" ] && return 0
+  if [ -n "$STUB_DELAY" ]; then ( sleep "$STUB_DELAY"; answer "$1" ) & else answer "$1"; fi
+  return 0
+}
+_fakeproc() {
+  [ -z "$CC_FLEET_PROC_ROOT" ] && return 0
+  mkdir -p "$CC_FLEET_PROC_ROOT/$$/fd"
+  printf '%s\0--jailed\0' "$1" > "$CC_FLEET_PROC_ROOT/$$/cmdline"
+  printf '%s (%s) S %s 1 1 0 -1 0 0 0 0 0 0 0 0 0 0 0 20 0 100\n' "$$" "$1" "$PPID" \
+    > "$CC_FLEET_PROC_ROOT/$$/stat"
+  : > "$CC_FLEET_PROC_ROOT/$$/environ"
+  # The entry goes when the engine does, so a chat that exits stops looking
+  # alive to the very scan that has to notice it died.
+  trap 'rm -rf "$CC_FLEET_PROC_ROOT/$$"' EXIT
+  return 0
+}
+codex_live() {
+  STUB_KIND=cx
+  [ -z "$CX_STUB_ROLLOUT" ] && return 0
+  STUB_TRANSCRIPT="$CX_STUB_ROLLOUT"
+  mkdir -p "$(dirname "$STUB_TRANSCRIPT")"
+  : >> "$STUB_TRANSCRIPT"
+  _fakeproc codex
+  ln -sf "$STUB_TRANSCRIPT" "$CC_FLEET_PROC_ROOT/$$/fd/7"
+  return 0
+}
+claude_live() {
+  STUB_KIND=cc
+  [ -z "$CC_STUB_TRANSCRIPT" ] && return 0
+  STUB_TRANSCRIPT="$CC_STUB_TRANSCRIPT"
+  mkdir -p "$(dirname "$STUB_TRANSCRIPT")" "$CC_FLEET_SID_DIR"
+  : >> "$STUB_TRANSCRIPT"
+  printf '%s' "$STUB_TRANSCRIPT" > "$CC_FLEET_SID_DIR/$(_sock)"
+  _fakeproc claude
+  return 0
+}
+`
 
 // stubCodex is a Codex TUI reduced to the four states cc-fleet's rename
 // choreography navigates, driven over a REAL tty inside a REAL tmux server:
@@ -17,7 +80,9 @@ import (
 // repaints the screen so a marker that should be gone really leaves the
 // capture.
 const stubCodex = `#!/usr/bin/env bash
-stty -icanon -echo min 1 time 0 2>/dev/null
+stty -icanon -echo -ixon min 1 time 0 2>/dev/null
+` + stubRecorder + `
+codex_live
 stage=composer; buf=""; name=""
 status='  019f · ~/work · Full Access · Context 0% used · 0 in · 0 out
 '
@@ -53,8 +118,14 @@ while IFS= read -r -N1 ch; do
       case "$stage" in
         offered) stage=prompt; buf="" ;;
         prompt)  name="$buf"; printf '%s' "$buf" > "$CX_STUB_NAME"; stage=composer; buf="" ;;
-        *)       printf '%s\n' "$buf" >> "$CX_STUB_PROMPT"; buf="" ;;
+        *)       if [ -n "$buf" ]; then
+                   printf '%s\n' "$buf" >> "$CX_STUB_PROMPT"
+                   turn "$buf"
+                 fi
+                 buf="" ;;
       esac ;;
+    $'\023')
+      : ;;
     $'\177'|$'\b')
       buf="${buf%?}" ;;
     *)
@@ -66,19 +137,56 @@ while IFS= read -r -N1 ch; do
 done
 `
 
-// stubClaude records the argv it was launched with and then holds the pane
-// open, which is all the Claude route needs: its name travels on the command
-// line, so nothing is ever typed into it.
+// stubClaude records the argv it was launched with, answers the prompt that
+// travelled on it, and then behaves like a composer: Claude's name and first
+// prompt need no keystrokes, but every LATER message does, and a chat that
+// cannot be spoken to a second time is not a conversation.
+//
+// CC_STUB_DEAF models the failure this whole verification exists for: the
+// launch prompt arrives on the command line and is never recorded, exactly as
+// a startup dialog eating it would look from the outside.
 const stubClaude = `#!/usr/bin/env bash
 printf '%s\n' "$*" > "$CC_STUB_ARGV"
-printf 'claude ready\n'
-while IFS= read -r _; do :; done
+stty -icanon -echo -ixon min 1 time 0 2>/dev/null
+` + stubRecorder + `
+claude_live
+prompt=""
+skip=0
+for argument in "$@"; do
+  if [ "$skip" = 1 ]; then skip=0; continue; fi
+  case "$argument" in
+    --name|--model|--effort) skip=1 ;;
+    -*) ;;
+    *) prompt="$argument"; break ;;
+  esac
+done
+buf=""; note=""
+render() {
+  printf '\033[2J\033[H'; printf 'claude ready\n'
+  [ -n "$note" ] && printf '%s\n' "$note"
+  printf '❯ %s\n' "$buf"
+}
+if [ -n "$prompt" ] && [ -z "$CC_STUB_DEAF" ]; then turn "$prompt"; fi
+render
+while IFS= read -r -N1 ch; do
+  case "$ch" in
+    $'\n'|$'\r') if [ -n "$buf" ]; then turn "$buf"; fi; buf=""; note="" ;;
+    $'\023') buf=""; note="  draft stashed" ;;
+    $'\177'|$'\b') buf="${buf%?}" ;;
+    *) buf="$buf$ch" ;;
+  esac
+  render
+done
 `
 
 type runJail struct {
 	root    string
 	tmuxDir string
 	binDir  string
+	// The transcripts the stub engines write, and which cc-fleet reads back as
+	// the proof a prompt was delivered.
+	rollout    string
+	transcript string
 }
 
 func newRunJail(t *testing.T) *runJail {
@@ -92,9 +200,22 @@ func newRunJail(t *testing.T) *runJail {
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 
 	jail := &runJail{
-		root:    root,
-		tmuxDir: filepath.Join(root, "tmux"),
+		root: root,
+		// tmux-<uid> is tmux's own convention under TMUX_TMPDIR, and the fleet
+		// scan reaches a server with `-L <socket>` while spawn creates it with
+		// `-S <dir>/<socket>`. Naming the directory anything else makes those
+		// two disagree, and a chat cc-fleet just started becomes one it cannot
+		// find.
+		tmuxDir: filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid())),
 		binDir:  filepath.Join(root, "bin"),
+		rollout: filepath.Join(
+			root, "codex", "sessions",
+			"rollout-2026-08-12T00-00-00-019ff700-0000-7000-8000-000000000001.jsonl",
+		),
+		transcript: filepath.Join(
+			root, "claude", "stub",
+			"b1111111-1111-4111-8111-111111111111.jsonl",
+		),
 	}
 	for _, directory := range []string{
 		jail.tmuxDir,
@@ -142,6 +263,8 @@ func newRunJail(t *testing.T) *runJail {
 	t.Setenv("CX_STUB_NAME", filepath.Join(root, "cx-name"))
 	t.Setenv("CX_STUB_PROMPT", filepath.Join(root, "cx-prompt"))
 	t.Setenv("CC_STUB_ARGV", filepath.Join(root, "cc-argv"))
+	t.Setenv("CX_STUB_ROLLOUT", jail.rollout)
+	t.Setenv("CC_STUB_TRANSCRIPT", jail.transcript)
 	return jail
 }
 

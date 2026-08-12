@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -195,24 +196,29 @@ func TestStreamFollowEndsWhenTheChatDies(t *testing.T) {
 // answers and then disappears.
 func TestWatchAnnouncesIdleThenExit(t *testing.T) {
 	path := writeChat(t, userLine("go"), assistantLine("done"))
-	live := true
-	exists := true
+	// The seat's liveness is written by the goroutine below and read by the
+	// watcher's own, so it is atomic: the fixture models a chat that dies
+	// under its watcher, which is exactly a cross-goroutine change.
+	var live atomic.Bool
+	live.Store(true)
 	idleHooks := 0
 	exitHooks := 0
 	watcher := Watcher{
 		Name: "seat",
 		Resolve: func(context.Context) (Chat, bool, error) {
-			if !exists {
-				return Chat{}, false, nil
-			}
-			return Chat{Name: "seat", Engine: "cc", Path: path, Live: live}, true, nil
+			return Chat{
+				Name:   "seat",
+				Engine: "cc",
+				Path:   path,
+				Live:   live.Load(),
+			}, true, nil
 		},
 	}
 	var out bytes.Buffer
 	go func() {
 		// The chat answers, then its server goes away.
 		time.Sleep(20 * time.Millisecond)
-		live = false
+		live.Store(false)
 	}()
 	status, err := watcher.Watch(context.Background(), WatchOptions{
 		Poll:   time.Millisecond,
@@ -234,7 +240,6 @@ func TestWatchAnnouncesIdleThenExit(t *testing.T) {
 	if status.Alive() {
 		t.Fatalf("final status = %#v", status)
 	}
-	_ = exists
 }
 
 // TestWatchReportsAChatThatVanishesAsDead separates the two deaths: a chat
