@@ -20,6 +20,14 @@ type fakeCodex struct {
 	offersRename bool
 	opensPrompt  bool
 	refusesEmpty bool
+	// startupModals is how many full-screen overlays stand between boot and
+	// the composer, each cleared by one Escape. A real Codex has at least one
+	// (hooks review, trust, plugin notices) and they swallow every keystroke
+	// sent to them — the state no stub modelled the first time around.
+	startupModals   int
+	stuckModal      bool
+	modalAfterReads int
+	reads           int
 
 	sessions []SessionSpec
 	keys     []string
@@ -27,6 +35,10 @@ type fakeCodex struct {
 	stage    string
 	name     string
 }
+
+// fakeStatusLine is the idle-composer status row, whose token meter is the
+// half of readiness a modal cannot fake.
+const fakeStatusLine = "  019f · ~/work/alpha · Full Access · Context 0% used · 0 in · 0 out\n"
 
 func newFakeCodex() *fakeCodex {
 	return &fakeCodex{offersRename: true, opensPrompt: true, stage: "composer"}
@@ -42,22 +54,41 @@ func (fake *fakeCodex) NewSession(_ context.Context, spec SessionSpec) error {
 func (fake *fakeCodex) Capture(_ context.Context, _, _ string) (string, error) {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
+	// modalAfterReads reproduces the exact live failure: Codex paints its
+	// composer first and raises its startup modal a beat LATER, so the
+	// composer is visible for a flash before the screen is stolen.
+	if fake.modalAfterReads > 0 {
+		fake.reads++
+		if fake.reads > fake.modalAfterReads {
+			fake.modalAfterReads = 0
+			fake.startupModals++
+		}
+	}
+	if fake.startupModals > 0 || fake.stuckModal {
+		// No composer glyph anywhere: this screen eats keystrokes.
+		// The selection cursor is the SAME glyph the composer uses — the live
+		// false positive this fake exists to reproduce.
+		return "codex\n  Hooks\n  1 hook needs review before it can run.\n" +
+			"› 2. Trust all and continue\n" +
+			"  Press enter to confirm or esc to go back\n", nil
+	}
 	switch fake.stage {
 	case "offered":
-		return "codex\n> " + fake.composer +
-			"\n  rename  rename the current thread\n", nil
+		return "codex\n› " + fake.composer +
+			"\n  /rename  rename the current thread\n" + fakeStatusLine, nil
 	case "prompt":
-		return "codex\nRename thread\nType a name and press Enter\n> " +
-			fake.composer + "\n", nil
+		// The rename modal paints over the composer, exactly as the real one
+		// does — no composer glyph on screen while it is up.
+		return "codex\n▌ Name thread\n▌\n▌ Type a name and press Enter\n", nil
 	case "empty":
-		return "codex\nRename thread\nType a name and press Enter\n" +
+		return "codex\n▌ Name thread\n▌ Type a name and press Enter\n" +
 			"Thread name cannot be empty.\n", nil
 	default:
 		header := "codex"
 		if fake.name != "" {
-			header = "codex · " + fake.name
+			header = "• Session renamed to " + fake.name + ".\ncodex · " + fake.name
 		}
-		return header + "\n> " + fake.composer + "\n", nil
+		return header + "\n› " + fake.composer + "\n" + fakeStatusLine, nil
 	}
 }
 
@@ -82,10 +113,13 @@ func (fake *fakeCodex) SendKey(_ context.Context, _, _, key string) error {
 	case "Enter":
 		switch fake.stage {
 		case "offered":
-			fake.composer = ""
+			// The real rename modal opens PRE-FILLED with the thread's
+			// current name, so a spawn that types straight into it appends.
+			fake.composer = fake.name
 			if fake.opensPrompt {
 				fake.stage = "prompt"
 			} else {
+				fake.composer = ""
 				fake.stage = "composer"
 			}
 		case "prompt":
@@ -105,10 +139,31 @@ func (fake *fakeCodex) SendKey(_ context.Context, _, _, key string) error {
 			fake.composer = string(runes[:len(runes)-1])
 		}
 	case "Escape":
+		if fake.startupModals > 0 {
+			fake.startupModals--
+			return nil
+		}
 		fake.composer = ""
 		fake.stage = "composer"
 	}
 	return nil
+}
+
+// collapseClears folds a run of BSpace presses into one "clear" token: the
+// count is a bound on the field's length, not a contract.
+func collapseClears(keys []string) []string {
+	collapsed := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key == "key:BSpace" {
+			if len(collapsed) > 0 && collapsed[len(collapsed)-1] == "clear" {
+				continue
+			}
+			collapsed = append(collapsed, "clear")
+			continue
+		}
+		collapsed = append(collapsed, key)
+	}
+	return collapsed
 }
 
 func testTimings() Timings {
@@ -116,7 +171,7 @@ func testTimings() Timings {
 		Poll:  time.Millisecond,
 		Boot:  200 * time.Millisecond,
 		Step:  200 * time.Millisecond,
-		Typed: 0,
+		Typed: time.Nanosecond,
 	}
 }
 
@@ -150,13 +205,92 @@ func TestCodexThreadIsRenamedThenPrompted(t *testing.T) {
 	want := []string{
 		"literal:/rename",
 		"key:Enter",
+		"clear",
 		"literal:_HIDE codex worker",
 		"key:Enter",
 		"literal:read the incident report",
 		"key:Enter",
 	}
-	if strings.Join(fake.keys, "|") != strings.Join(want, "|") {
-		t.Fatalf("keystrokes\n got: %v\nwant: %v", fake.keys, want)
+	if got := collapseClears(fake.keys); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("keystrokes\n got: %v\nwant: %v", got, want)
+	}
+}
+
+// TestCodexBootsThroughStartupModals is the regression for the bug a stub
+// without overlays could never catch: a real Codex boots into a full-screen
+// hooks/trust modal that SWALLOWS keystrokes, so a spawn that starts typing at
+// the first settled screen loses both the rename and the first prompt. The
+// modals must be dismissed and the composer seen before anything is typed.
+func TestCodexBootsThroughStartupModals(t *testing.T) {
+	fake := newFakeCodex()
+	fake.startupModals = 2
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Named || !result.Prompted || len(result.Warnings) != 0 {
+		t.Fatalf("result = %#v", result)
+	}
+	if fake.name != "_HIDE codex worker" {
+		t.Fatalf("thread name = %q", fake.name)
+	}
+	escapes := 0
+	for index, key := range fake.keys {
+		if key != "key:Escape" {
+			// Every keystroke that is not one of the dismissals must come
+			// AFTER the last of them: nothing may be typed into a modal.
+			if escapes < 2 {
+				t.Fatalf("keystroke %d (%s) was typed before the modals cleared: %v",
+					index, key, fake.keys)
+			}
+			continue
+		}
+		escapes++
+	}
+	if escapes != 2 {
+		t.Fatalf("dismissals = %d, want 2: %v", escapes, fake.keys)
+	}
+}
+
+// TestCodexComposerFlashBeforeAModalIsNotReadiness is the live bug itself: the
+// composer appeared, the modal painted over it a beat later, and the rename
+// went into the modal. One sighting of a composer is not a ready chat.
+func TestCodexComposerFlashBeforeAModalIsNotReadiness(t *testing.T) {
+	fake := newFakeCodex()
+	fake.modalAfterReads = 2
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Named || !result.Prompted || len(result.Warnings) != 0 {
+		t.Fatalf("result = %#v (warnings must be empty — the modal was survivable)", result)
+	}
+	if fake.name != "_HIDE codex worker" {
+		t.Fatalf("thread name = %q", fake.name)
+	}
+}
+
+// TestCodexStuckAtAStartupScreenTypesNothing: when the overlay will not clear,
+// the chat is left strictly alone — an unnamed, unprompted, LIVE chat the user
+// is told to go clear by hand beats a name and a prompt fed to a modal.
+func TestCodexStuckAtAStartupScreenTypesNothing(t *testing.T) {
+	fake := newFakeCodex()
+	fake.stuckModal = true
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Named || result.Prompted {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(result.Warnings) != 1 ||
+		!strings.Contains(result.Warnings[0], "startup screen") {
+		t.Fatalf("warnings = %#v", result.Warnings)
+	}
+	for _, key := range fake.keys {
+		if key != "key:Escape" {
+			t.Fatalf("something was typed into a startup modal: %v", fake.keys)
+		}
 	}
 }
 

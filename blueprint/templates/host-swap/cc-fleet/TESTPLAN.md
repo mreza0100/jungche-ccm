@@ -29,7 +29,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 
 ## Table of contents
 
-1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 43 flows
+1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 47 flows
 2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
 3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
 4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
@@ -44,7 +44,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 300 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+**Total: 304 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
 scheduling list below expands those into **32 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
@@ -74,8 +74,12 @@ authentic engine run to be conclusive.
 | `open <id>` whose CWD vanished → falls back to `$PWD` for non-live kinds | JAIL | `commands.go:233-241` | |
 | `run --name X [prompt]` → detached chat on a fresh fleet socket with the full launch ceremony, rc 0 | JAIL+tmux | `run_command.go`, `action/headless.go`, `spawn/spawn.go`; `run_jail_test.go` | |
 | `run` without `--name` → rc 2; unknown `--engine` → rc 2 | JAIL | `run_command.go`, `action.NormalizeEngine` | |
-| `run --engine cx` → thread named through Codex's own `/rename` UI, THEN prompted | JAIL+tmux | `spawn/spawn.go` (`renameCodexThread`) | |
+| `run --engine cx` → thread named through Codex's own `/rename` UI, THEN prompted | JAIL+tmux | `spawn/spawn.go` (`nameCodexThread`) | |
 | `run --engine cx` on a Codex build without `/rename` → live chat, `UNNAMED`, warning, rc 1, composer cleared | JAIL+tmux | `TestRunReportsACodexBuildThatCannotBeRenamed` | |
+| Codex boots through startup overlays (hooks review, trust) — Escape, then a composer that HOLDS, before a keystroke | JAIL+tmux | `TestCodexBootsThroughStartupModals`, `TestCodexComposerFlashBeforeAModalIsNotReadiness` | |
+| A startup screen that never clears → nothing typed, chat live, `UNNAMED`, rc 1 | JAIL | `TestCodexStuckAtAStartupScreenTypesNothing` | |
+| The rename field is CLEARED before typing (Codex pre-fills it with the current name) | JAIL | `TestCodexThreadIsRenamedThenPrompted` (clear token) | |
+| The rename Enter is re-sent until the status line carries the name; zero typing gap DROPS it | JAIL | `spawn/types.go` (`orDefaults`), `spawn/spawn.go` (`confirmPresses`) | |
 | `run` on a chat that dies at birth → `died at birth`, rc 1 | JAIL | `spawn/spawn.go` (`waitForBoot`) | |
 | `index` → counters line on stdout | JAIL | `commands.go:351-398`, `formatCounters` `commands.go:400-412` | B4 |
 | `index --full` → reparse all + `last_full_index_at` meta | JAIL | `commands.go:386-392` | B4 |
@@ -439,13 +443,12 @@ they count as covered.
 12. Codex-origin `chat.sh` signature via ancestry recovery.
 13. `chat_ls` state=`busy` for a genuinely generating codex pane.
 14. `cx` launcher self-switch when already inside its own server.
-15. `cc-fleet run --engine cx --name X` against the REAL codex TUI: the whole
-    rename choreography is driven from strings read out of the codex 0.147
-    binary (`rename` / `rename the current thread` / `Type a name and press
-    Enter`), and the jail proves only that a TUI behaving that way is renamed
-    correctly. A Codex that words it differently reports `UNNAMED` with a
-    warning — loud, never silent — which is exactly what this experiment
-    confirms or clears.
+15. ✅ DONE — `cc-fleet run --engine cx --name X` against the REAL codex TUI
+    (0.147): confirmed live end to end. It found three things no stub had: the
+    TUI boots into a hooks/trust modal that swallows keystrokes, its modal
+    selection cursor is the SAME glyph as the composer (so readiness needs the
+    status line too), and the rename field arrives pre-filled. All three are
+    fixtured now. Re-run this experiment on any codex upgrade.
 
 **Needs a real `claude` process (13):**
 16. Agent row: a real non-primary-config-dir claude with `--session-id`.
