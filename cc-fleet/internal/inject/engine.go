@@ -397,7 +397,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			}
 		}
 		if base.Busy {
-			base.Code = 7
+			base.Code = CodeBusy
 			base.Message = "ABORT: target pane is busy; nothing was typed (retry when idle or use force_now)"
 			return base, nil
 		}

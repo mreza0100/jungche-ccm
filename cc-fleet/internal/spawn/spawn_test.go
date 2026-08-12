@@ -28,6 +28,12 @@ type fakeCodex struct {
 	stuckModal      bool
 	modalAfterReads int
 	reads           int
+	// dropsEnters is how many of the prompt's Enters the composer swallows
+	// before one takes, and deafComposer swallows every one of them. This is
+	// the live failure that made a chat sit there holding its orders: the
+	// keystroke was sent, the engine never took it, and nothing checked.
+	dropsEnters  int
+	deafComposer bool
 
 	sessions []SessionSpec
 	keys     []string
@@ -111,6 +117,15 @@ func (fake *fakeCodex) SendKey(_ context.Context, _, _, key string) error {
 	fake.keys = append(fake.keys, "key:"+key)
 	switch key {
 	case "Enter":
+		if fake.stage == "composer" && fake.name != "" &&
+			(fake.deafComposer || fake.dropsEnters > 0) {
+			// A busy engine reading its input in bursts drops the newline that
+			// arrives glued to the text.
+			if fake.dropsEnters > 0 {
+				fake.dropsEnters--
+			}
+			return nil
+		}
 		switch fake.stage {
 		case "offered":
 			// The real rename modal opens PRE-FILLED with the thread's
@@ -440,5 +455,45 @@ func TestWindowName(t *testing.T) {
 		if got := WindowName(testCase.in); got != testCase.want {
 			t.Fatalf("WindowName(%q) = %q, want %q", testCase.in, got, testCase.want)
 		}
+	}
+}
+
+// TestCodexPromptIsResentUntilItLeavesTheComposer is the failure this package
+// shipped with: the prompt was typed, one Enter was sent, the engine dropped
+// it, and cc-fleet reported a working chat that had never been asked anything.
+func TestCodexPromptIsResentUntilItLeavesTheComposer(t *testing.T) {
+	fake := newFakeCodex()
+	fake.dropsEnters = 2
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Prompted || len(result.Warnings) != 0 {
+		t.Fatalf("result = %#v, want a delivered prompt and no warning", result)
+	}
+	if fake.composer != "" {
+		t.Fatalf("composer still holds %q", fake.composer)
+	}
+}
+
+// TestCodexPromptThatNeverSubmitsIsReportedUndelivered: when the composer will
+// not let go of the text, the chat is still up — and the report says plainly
+// that the prompt is sitting in it.
+func TestCodexPromptThatNeverSubmitsIsReportedUndelivered(t *testing.T) {
+	fake := newFakeCodex()
+	fake.deafComposer = true
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Named {
+		t.Fatalf("result = %#v, want the rename to have landed", result)
+	}
+	if result.Prompted {
+		t.Fatal("Prompted = true for a prompt the composer never released")
+	}
+	if len(result.Warnings) != 1 ||
+		!strings.Contains(result.Warnings[0], "not delivered") {
+		t.Fatalf("warnings = %q, want one naming the undelivered prompt", result.Warnings)
 	}
 }

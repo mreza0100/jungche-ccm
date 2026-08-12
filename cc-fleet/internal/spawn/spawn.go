@@ -66,6 +66,19 @@ const (
 	// the keystroke: dismiss it and try the whole rename again rather than
 	// declaring a Codex that plainly has /rename incapable of it.
 	renameAttempts = 3
+
+	// promptSubmitTries is how many times the launch prompt's Enter is re-sent
+	// before delivery is called unproven — the same lesson confirmPresses
+	// carries, applied to the message that MATTERS. A rename that silently
+	// fails leaves a working chat with a poor name; a prompt whose Enter is
+	// swallowed leaves a chat that costs a seat, answers nothing, and reports
+	// success. One unverified keystroke is not a delivery.
+	promptSubmitTries = 4
+
+	// composerNeedleMax bounds the fingerprint taken from a prompt's first
+	// line: long enough not to collide with a placeholder hint, short enough
+	// to survive a composer that wraps or elides.
+	composerNeedleMax = 48
 )
 
 // Run creates the detached session and, for Codex, drives its rename UI. The
@@ -154,7 +167,15 @@ func Run(
 		)
 		return result, nil
 	}
-	if err := typeLine(ctx, tmux, request.Socket, target, request.Prompt, timings); err != nil {
+	if err := submitPrompt(
+		ctx,
+		tmux,
+		request.Socket,
+		target,
+		request.Prompt,
+		timings,
+		trace,
+	); err != nil {
 		result.Warnings = append(
 			result.Warnings,
 			fmt.Sprintf("the first prompt was not delivered: %v", err),
@@ -162,7 +183,7 @@ func Run(
 		return result, nil
 	}
 	result.Prompted = true
-	trace.step("prompt delivered")
+	trace.step("prompt submitted")
 	return result, nil
 }
 
@@ -412,22 +433,93 @@ func confirmWait(timings Timings) time.Duration {
 	return wait
 }
 
-// typeLine sends text as literal keys and then Enter. The pause between them
-// is what keeps a TUI from receiving the newline before it has processed the
-// text — the same gap chat.sh leaves when it injects.
-func typeLine(
+// submitPrompt types the launch prompt and PROVES it left the composer.
+//
+// The pause between the text and the Enter is what keeps a TUI from receiving
+// the newline before it has processed the text — the same gap chat.sh leaves
+// when it injects. The re-sends after it are what keep a dropped newline from
+// passing as a delivery: an engine still finishing its MCP boot reads its
+// input in bursts, and the burst that carries a lone Enter is the one it
+// misses.
+func submitPrompt(
 	ctx context.Context,
 	tmux Tmux,
 	socket, target, text string,
 	timings Timings,
+	trace tracer,
 ) error {
 	if err := tmux.SendLiteral(ctx, socket, target, text); err != nil {
 		return err
 	}
-	if err := sleep(ctx, timings.Typed); err != nil {
-		return err
+	needle := composerNeedle(text)
+	step := Timings{Poll: timings.Poll, Step: confirmWait(timings)}
+	if !pollCapture(ctx, tmux, socket, target, step, func(capture string) bool {
+		return composerHolds(capture, needle)
+	}) {
+		// Not fatal on its own: a composer that elides or re-wraps what it was
+		// given can hide the fingerprint. It is recorded because it makes the
+		// difference between "the Enter was dropped" and "the text never
+		// arrived" readable after the fact.
+		trace.step("the composer never showed the prompt")
 	}
-	return tmux.SendKey(ctx, socket, target, "Enter")
+	for press := 0; press < promptSubmitTries; press++ {
+		if err := sleep(ctx, timings.Typed); err != nil {
+			return err
+		}
+		if err := tmux.SendKey(ctx, socket, target, "Enter"); err != nil {
+			return err
+		}
+		if pollCapture(ctx, tmux, socket, target, step, func(capture string) bool {
+			return !composerHolds(capture, needle)
+		}) {
+			trace.step("prompt left the composer on press %d", press+1)
+			return nil
+		}
+		trace.step("submit press %d did not take", press+1)
+	}
+	return fmt.Errorf(
+		"the composer still holds it after %d attempts to submit",
+		promptSubmitTries,
+	)
+}
+
+// composerNeedle is the fingerprint of a prompt as the composer would draw it:
+// its first line, whitespace-collapsed and clipped. The FIRST line, because a
+// multi-line prompt puts every later line below the composer's own marker,
+// where this test cannot see it.
+func composerNeedle(text string) string {
+	first := text
+	if index := strings.IndexAny(first, "\r\n"); index >= 0 {
+		first = first[:index]
+	}
+	return clipRunes(flatten(first), composerNeedleMax)
+}
+
+// composerHolds reports whether the composer — the LAST marker line, below
+// every submitted turn Codex keeps on screen — still carries the fingerprint.
+func composerHolds(capture, needle string) bool {
+	if needle == "" {
+		return false
+	}
+	line := lastLineContaining(capture, codexComposer)
+	if line == "" {
+		return false
+	}
+	return strings.Contains(flatten(line), needle)
+}
+
+func lastLineContaining(capture, marker string) string {
+	last := ""
+	for _, line := range strings.Split(capture, "\n") {
+		if strings.Contains(line, marker) {
+			last = line
+		}
+	}
+	return last
+}
+
+func flatten(value string) string {
+	return strings.Join(strings.Fields(value), " ")
 }
 
 // clearComposer erases text this package typed but will not submit, so an

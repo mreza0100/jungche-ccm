@@ -25,6 +25,13 @@ import (
 const (
 	codeUnknownChat = 4
 	codeDeadChat    = 3
+	// codeAwaitTimeout says the message was delivered and the chat is still
+	// working — a different fact from every failure, and the one a caller
+	// retries rather than escalates.
+	codeAwaitTimeout = 5
+	// codeUndelivered says nothing reached the model. The chat may be fine;
+	// the message is not in it.
+	codeUndelivered = 6
 )
 
 func runHeadless(args []string, stdout, stderr io.Writer) int {
@@ -46,6 +53,8 @@ func runHeadless(args []string, stdout, stderr io.Writer) int {
 		return runHeadlessStream(rest, stdout, stderr)
 	case "inject":
 		return runHeadlessInject(rest, stdout, stderr)
+	case "ask":
+		return runHeadlessAsk(rest, stdout, stderr)
 	case "watch":
 		return runHeadlessWatch(rest, stdout, stderr)
 	case "ls":
@@ -71,7 +80,11 @@ func printHeadlessUsage(w io.Writer) {
 	fmt.Fprintln(w, "  transcript  read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
 	fmt.Fprintln(w, "  inject      deliver a message to the chat")
+	fmt.Fprintln(w, "  ask         deliver a message and wait for the answer")
 	fmt.Fprintln(w, "  watch       block, reporting IDLE / EXIT / DEAD")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
+	fmt.Fprintln(w, "            5 answer timed out · 6 message not delivered")
 }
 
 // resolveChat finds a chat by name, id, or socket over a live compose pass —

@@ -46,7 +46,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 320 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+**Total: 334 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
 scheduling list below expands those into **32 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
@@ -92,6 +92,20 @@ authentic engine run to be conclusive.
 | `headless stream <name> [--filter RE] [--margin N]` → grep -C over the live transcript | JAIL | `TestStreamFilterWithMargin` | |
 | `headless stream` ends when the chat dies instead of hanging on a quiet file | JAIL | `TestStreamFollowEndsWhenTheChatDies` | |
 | `headless inject <name> <message>` → the existing guarded delivery, addressed by socket | JAIL+tmux | `headless_command.go`, `internal/inject` | |
+| `headless ask <name> <message>` → deliver, wait, print the ANSWER on stdout alone | JAIL+tmux | `ask_command.go`, `headless/converse.go`; `TestAskHoldsATwoWayConversation` | |
+| `ask` answers the question just asked — the frontier is taken BEFORE delivery, so an older answer cannot be returned | UNIT | `TestAwaitReturnsTheAnswerToTheQuestionJustAsked` | |
+| `ask` waits through tool work: an assistant line followed by a tool call is a preamble, not an answer | UNIT | `TestAwaitWaitsThroughToolWork` | |
+| `ask --timeout N` → rc 5 with the message still DELIVERED (a different fact from unheard) | JAIL+tmux | `TestAskReportsATimeoutWithoutLosingDelivery` | |
+| `ask --json` → name/delivered/answer/state/tools/waited_seconds; `--progress` → condensed turns on stderr | JAIL+UNIT | `headless/converse.go`; `TestAwaitStreamsProgress` | |
+| `ask` on a WORKING chat re-offers the message until it lands (inject rc 7) instead of aborting; `--now` interrupts | LIVE | `ask_command.go` (`busyRetry`, `inject.CodeBusy`) | |
+| `ask` reports `superseded` when a second human turn lands mid-wait — the answer may be theirs | UNIT | `TestAwaitFlagsAnAnswerSomebodyElseMayOwn` | |
+| `--timeout` bounds the WHOLE exchange: time spent waiting for a busy chat is spent from the same budget | JAIL | `ask_command.go` (`remaining`) | |
+| `ask` on a chat that dies mid-answer keeps what it said, then reports it gone | UNIT | `TestAwaitKeepsWhatADyingChatManagedToSay` | |
+| `run` with a prompt PROVES delivery from the engine's transcript; unproven → rc 6 + attach hint, chat left running | JAIL+tmux | `awaitLaunch`; `TestRunRefusesToCallAnUnheardPromptDelivered` | |
+| `run --await` → the first answer on stdout, launch summary moved to stderr | JAIL+tmux | `TestRunAwaitsTheAnswerItAskedFor` | |
+| The prompt's Enter is re-sent until the composer releases it; a composer that never does → `Prompted=false` + warning | UNIT | `TestCodexPromptIsResentUntilItLeavesTheComposer`, `TestCodexPromptThatNeverSubmitsIsReportedUndelivered` | |
+| A wait re-reads the transcript every poll but re-scans the fleet only every `ResolveEvery` | UNIT | `headless/converse.go` (`ResolveEvery`) | |
+| `transcript.From` never consumes a half-written record, and restarts when the file shrinks | UNIT | `TestFromHoldsAPartialLine`, `TestFromRestartsWhenTheFileShrinks` | |
 | `headless watch <name>` → `IDLE`/`EXIT`/`DEAD` lines + `--on-idle`/`--on-exit` hooks | JAIL | `TestWatchAnnouncesIdleThenExit`, `TestWatchReportsAChatThatVanishesAsDead` | |
 | `headless ls [--json]` → every live seat with its state and last line | JAIL | `headless_command.go` | |
 | An unknown name → rc 4 with `not-found` on stdout, on EVERY verb — never empty at rc 0 | JAIL | `TestUnknownChatIsRc4WithAMachineShape` | |
@@ -467,6 +481,12 @@ they count as covered.
     modal selection cursor is the SAME glyph as the composer (so readiness
     needs the status line too), and the rename field arrives pre-filled. All
     three are fixtured now. Re-run this experiment on any codex upgrade.
+16. ✅ DONE — the two-way surface against BOTH real engines: `run --await`
+    (inline and `--prompt-file`, multi-line), three-turn `ask` conversations on
+    a codex and a claude seat, `--json`, `--progress`, a `--timeout` that
+    expires with the question still in the record, and the read verbs over the
+    same live chats. 22 checks, all green. Re-run on any engine upgrade —
+    `ask` is only as true as the transcript shapes both engines write.
 
 **Needs a real `claude` process (13):**
 16. Agent row: a real non-primary-config-dir claude with `--session-id`.
