@@ -29,7 +29,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 
 ## Table of contents
 
-1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 38 flows
+1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 43 flows
 2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
 3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
 4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
@@ -44,8 +44,8 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 295 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
-scheduling list below expands those into **31 distinct real-engine experiments**, because several
+**Total: 300 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+scheduling list below expands those into **32 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
 
@@ -72,6 +72,11 @@ authentic engine run to be conclusive.
 | `ls --check` → shadow-run legacy zsh picker, diff verified tuples, rc 1 on unallowed | LIVE-READ | `check_command.go:23-179`, `internal/check/legacy.go:49-80` | |
 | `open <id>` on an unindexed id → `is not indexed`, rc 1 | JAIL | `commands.go:217-218` | B3 |
 | `open <id>` whose CWD vanished → falls back to `$PWD` for non-live kinds | JAIL | `commands.go:233-241` | |
+| `run --name X [prompt]` → detached chat on a fresh fleet socket with the full launch ceremony, rc 0 | JAIL+tmux | `run_command.go`, `action/headless.go`, `spawn/spawn.go`; `run_jail_test.go` | |
+| `run` without `--name` → rc 2; unknown `--engine` → rc 2 | JAIL | `run_command.go`, `action.NormalizeEngine` | |
+| `run --engine cx` → thread named through Codex's own `/rename` UI, THEN prompted | JAIL+tmux | `spawn/spawn.go` (`renameCodexThread`) | |
+| `run --engine cx` on a Codex build without `/rename` → live chat, `UNNAMED`, warning, rc 1, composer cleared | JAIL+tmux | `TestRunReportsACodexBuildThatCannotBeRenamed` | |
+| `run` on a chat that dies at birth → `died at birth`, rc 1 | JAIL | `spawn/spawn.go` (`waitForBoot`) | |
 | `index` → counters line on stdout | JAIL | `commands.go:351-398`, `formatCounters` `commands.go:400-412` | B4 |
 | `index --full` → reparse all + `last_full_index_at` meta | JAIL | `commands.go:386-392` | B4 |
 | `index --progress` → start/elapsed on stderr | JAIL | `commands.go:378-379,394-396` | |
@@ -414,12 +419,12 @@ still wires the legacy one.
 
 ## Flows that CANNOT be jailed
 
-Schedule these deliberately on a scratch project directory. **31 experiments.** The 10 table rows
+Schedule these deliberately on a scratch project directory. **32 experiments.** The 10 table rows
 tagged `REAL-SESSION` are here verbatim; the rest are `JAIL+tmux` rows whose jail proves only the
 mechanics (synthetic screen text, fake `/proc`) and which need one authentic engine run before
 they count as covered.
 
-**Needs a real `codex` process (14):**
+**Needs a real `codex` process (15):**
 1. live-codex store-only **resumed** thread — identity, name, window (`resolve/codex.go:49-85`).
 2. live-codex store-only **fresh** thread that exports `CODEX_THREAD_ID`.
 3. Codex writing a rollout and immediately closing it (the fd-scan blind spot).
@@ -434,27 +439,34 @@ they count as covered.
 12. Codex-origin `chat.sh` signature via ancestry recovery.
 13. `chat_ls` state=`busy` for a genuinely generating codex pane.
 14. `cx` launcher self-switch when already inside its own server.
+15. `cc-fleet run --engine cx --name X` against the REAL codex TUI: the whole
+    rename choreography is driven from strings read out of the codex 0.147
+    binary (`rename` / `rename the current thread` / `Type a name and press
+    Enter`), and the jail proves only that a TUI behaving that way is renamed
+    correctly. A Codex that words it differently reports `UNNAMED` with a
+    warning — loud, never silent — which is exactly what this experiment
+    confirms or clears.
 
 **Needs a real `claude` process (13):**
-15. Agent row: a real non-primary-config-dir claude with `--session-id`.
-16. Agent takeover through `cc-agent-open.sh` (`claude agents --json`).
-17. The daemon-agent guard on the resume-inject path (`chat.sh:1017-1026`).
-18. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index.
-19. Open gate: a live chat whose birth account ≠ primary.
-20. `cc-swap-chat.sh` full reboot-in-place (`respawn-pane -k`) + `--then` delivery.
-21. Trust-prompt handling on a fresh config-dir/cwd pair.
-22. `/chat:branch` fork (`--fork-session`) and its pane-child registration.
-23. `/chat:new` and `/chat:new --detach` teammate spawn + numbering.
-24. `⚡1h` badge read from a live process's `/proc` environ.
-25. `[Pasted text #N]` collapse in a real Claude composer.
-26. Dim-SGR placeholder vs a real draft (mash guard).
-27. Selector/permission modal + `chat.sh modal deny`.
+16. Agent row: a real non-primary-config-dir claude with `--session-id`.
+17. Agent takeover through `cc-agent-open.sh` (`claude agents --json`).
+18. The daemon-agent guard on the resume-inject path (`chat.sh:1017-1026`).
+19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index.
+20. Open gate: a live chat whose birth account ≠ primary.
+21. `cc-swap-chat.sh` full reboot-in-place (`respawn-pane -k`) + `--then` delivery.
+22. Trust-prompt handling on a fresh config-dir/cwd pair.
+23. `/chat:branch` fork (`--fork-session`) and its pane-child registration.
+24. `/chat:new` and `/chat:new --detach` teammate spawn + numbering.
+25. `⚡1h` badge read from a live process's `/proc` environ.
+26. `[Pasted text #N]` collapse in a real Claude composer.
+27. Dim-SGR placeholder vs a real draft (mash guard).
+28. Selector/permission modal + `chat.sh modal deny`.
 
 **Needs real multi-account state (4):**
-28. `_cc_label` reading `oauthAccount.emailAddress` per account.
-29. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`.
-30. Transcripts under a SEPARATE account root (not a symlink back to account 1).
-31. Statusline badge computation across accounts.
+29. `_cc_label` reading `oauthAccount.emailAddress` per account.
+30. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`.
+31. Transcripts under a SEPARATE account root (not a symlink back to account 1).
+32. Statusline badge computation across accounts.
 
 ---
 

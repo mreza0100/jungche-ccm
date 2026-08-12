@@ -227,8 +227,21 @@ func claudeCommand(
 	cache1H bool,
 	args ...string,
 ) string {
+	return claudeCommandWith(hygiene, home, account, cache1H, args...)
+}
+
+// claudeCommandWith is claudeCommand over a caller-chosen environment strip,
+// so the headless route can widen the strip without owning a second copy of
+// the account, cache and autonomy decisions.
+func claudeCommandWith(
+	environmentStrip string,
+	home string,
+	account int,
+	cache1H bool,
+	args ...string,
+) string {
 	var command strings.Builder
-	command.WriteString(hygiene)
+	command.WriteString(environmentStrip)
 	// Account 1 is the default config dir (hygiene already unset it); every
 	// other account is an explicit CLAUDE_CONFIG_DIR (cc-fleet.zsh:88).
 	if account >= 2 && account <= MaxAccount {
@@ -251,8 +264,12 @@ func claudeCommand(
 }
 
 func codexCommand(args ...string) string {
+	return codexCommandWith(hygiene, args...)
+}
+
+func codexCommandWith(environmentStrip string, args ...string) string {
 	var command strings.Builder
-	command.WriteString(hygiene)
+	command.WriteString(environmentStrip)
 	command.WriteString(" codex --dangerously-bypass-approvals-and-sandbox")
 	for _, argument := range args {
 		command.WriteByte(' ')
