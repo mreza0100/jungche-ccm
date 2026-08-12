@@ -4,7 +4,9 @@ Every pathway through the fleet tooling: the Go engine (`cc-fleet/`), the zsh su
 (`cc-fleet.zsh`, `cc-fleet/shim/cc-fleet.zsh`), `chat/chat.sh`, `cc-db.sh`, the satellites,
 the MCP server, and the installer. One row per flow. The experiment wave drives this map.
 
-All paths are relative to `~/.professor/blueprint/templates/host-swap/` unless absolute.
+Go paths are relative to `~/.professor/cc-fleet/` (the engine lives at the repo root — it is a
+program, not a template); the zsh/satellite paths are relative to the bundle,
+`~/.professor/blueprint/templates/host-swap/`. Absolute paths are absolute.
 
 ## Legend — the SAFETY column
 
@@ -490,6 +492,15 @@ they count as covered.
 ---
 
 ## Residual known divergences
+
+0. **The legacy oracle is blind to sqlite-resident Codex threads** — `ls --check` reports
+   go-only `live-codex` rows for them. VERIFIED not a Go defect: the three flagged on
+   2026-08-12 (`BUILD_DREAMER`, `CC_FLEET_BUILDER`, `CROSS_WORKFLOW_BUILDER`) were real,
+   named, live chats with running codex panes on their sockets. The zsh walk is
+   rollout-file-based and codex ≥0.146.1 keeps a paginated thread in
+   `~/.codex/state_<N>.sqlite`, so the ORACLE is wrong, not the engine. Every unallowed
+   diff gets this treatment — verified against live state, then written down — because a
+   red check nobody explains is a red check everybody learns to ignore.
 
 1. **Store-only rows carry no parent link** (`index/codexstate.go`) — evidence-audited and
    found to have no real-world instance: a full sweep of the live state store (213 user

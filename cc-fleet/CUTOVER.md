@@ -7,7 +7,8 @@ oracle (a copy of the pre-cutover files is archived in
 `/tmp/cc-fleet-legacy-2026-08-11.tar.gz`). MCP registration is deliberately
 OFF. The steps below remain as the rollback reference and the recipe for
 provisioning a fresh box. The gitter agent owns every commit. Paths: the
-bundle lives at `~/.professor/blueprint/templates/host-swap/`; read every
+engine lives at `~/.professor/cc-fleet/` and the satellite bundle at
+`~/.professor/blueprint/templates/host-swap/`; read every
 `oldbox/scripts/` reference below as that bundle directory.
 
 ## Preconditions

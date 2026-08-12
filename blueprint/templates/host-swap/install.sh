@@ -189,10 +189,18 @@ say ""
 
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──
 # The shim evals one-line actions from the Go engine; it aborts loudly if ~/.local/bin/cc-fleet
-# is missing (build it from $BUNDLE/cc-fleet — see CUTOVER.md §1). The legacy cc-fleet.zsh
-# stays in the bundle unsourced as the parity checker's shadow oracle.
-SRC_LINE="[[ -r \"$BUNDLE/cc-fleet/shim/cc-fleet.zsh\" ]] && source \"$BUNDLE/cc-fleet/shim/cc-fleet.zsh\""
-[ -x "$HOME/.local/bin/cc-fleet" ] || say "  warn    ~/.local/bin/cc-fleet is not installed — the shim will refuse; build it per $BUNDLE/cc-fleet/CUTOVER.md"
+# is missing (build it from $ENGINE — see CUTOVER.md §1). The legacy cc-fleet.zsh stays in the
+# bundle unsourced as the parity checker's shadow oracle.
+#
+# The engine is a PROGRAM, not a template, so it lives at the repo root rather than inside the
+# bundle: $BUNDLE is <repo>/blueprint/templates/host-swap, three levels down from it. A clone
+# that is only the bundle (no repo above it) keeps working — the fallback is the old in-bundle
+# location, and a missing shim is reported rather than sourced blindly.
+ENGINE="$(cd -P "$BUNDLE/../../.." 2>/dev/null && pwd)/cc-fleet"
+[ -r "$ENGINE/shim/cc-fleet.zsh" ] || ENGINE="$BUNDLE/cc-fleet"
+SRC_LINE="[[ -r \"$ENGINE/shim/cc-fleet.zsh\" ]] && source \"$ENGINE/shim/cc-fleet.zsh\""
+[ -r "$ENGINE/shim/cc-fleet.zsh" ] || say "  warn    no cc-fleet shim found at $ENGINE/shim/cc-fleet.zsh"
+[ -x "$HOME/.local/bin/cc-fleet" ] || say "  warn    ~/.local/bin/cc-fleet is not installed — the shim will refuse; build it per $ENGINE/CUTOVER.md"
 say "shell -> $ZSHRC"
 if [ "$DO" = uninstall ]; then
   if [ -f "$ZSHRC" ] && grep -q 'cc-fleet\.zsh' "$ZSHRC"; then

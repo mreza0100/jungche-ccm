@@ -136,17 +136,28 @@ func TestResolveLegacyScriptPrefersTheExplicitOverride(t *testing.T) {
 	}
 }
 
-func TestResolveLegacyScriptFindsTheTreeSibling(t *testing.T) {
+// TestResolveLegacyScriptFindsTheBundleFromTheTree runs against the real
+// checkout: the engine sits at the repo root, so the oracle it is the parity
+// contract for is found in the bundle below it — or, in a bundle-only clone,
+// flat beside the tree. Both layouts are legitimate; neither may resolve to
+// something else.
+func TestResolveLegacyScriptFindsTheBundleFromTheTree(t *testing.T) {
 	t.Setenv(LegacyScriptEnv, "")
 	resolved, err := ResolveLegacyScript("")
 	if err != nil {
-		t.Skipf("no live bundle beside this tree: %v", err)
+		t.Skipf("no live bundle near this tree: %v", err)
 	}
-	sibling := filepath.Join(filepath.Dir(treeSourceDir()), LegacyScriptName)
-	if resolved != sibling {
-		t.Fatalf("ResolveLegacyScript() = %q, want the tree sibling %q",
-			resolved, sibling)
+	parent := filepath.Dir(treeSourceDir())
+	want := []string{
+		filepath.Join(parent, "blueprint", "templates", "host-swap", LegacyScriptName),
+		filepath.Join(parent, LegacyScriptName),
 	}
+	for _, candidate := range want {
+		if resolved == candidate {
+			return
+		}
+	}
+	t.Fatalf("ResolveLegacyScript() = %q, want one of %v", resolved, want)
 }
 
 func TestResolveLegacyScriptFollowsTheInstalledLinkFarm(t *testing.T) {
