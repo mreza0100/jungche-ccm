@@ -75,8 +75,17 @@ func reconcileCodexState(
 // applyCodexThread lets the store correct what only it knows: whether the
 // conversation is a listed user thread, whether a machine or a person started
 // it, and the directory a truncated rollout file never named. Content stays
-// the parsed file's whenever one exists, so only a row with no parsed bytes
-// takes the store's prompt evidence.
+// the parsed file's whenever the file actually found any, field by field, so
+// the store's evidence only ever fills what the parse left empty.
+//
+// Each field is gated on ITS OWN emptiness rather than on the whole file's
+// Size: a header-only rollout — a session_meta line and no user_message
+// events, exactly what Codex >=0.146.1 leaves behind for a paginated thread
+// whose content lives in the state store instead — has nonzero Size from
+// those header bytes alone, so gating on Size left prompt_count at the file's
+// own zero forever. Gating per field lets a real header-only chat's
+// tokens_used/first_user_message evidence reach the row exactly as it would
+// for a thread with no rollout file at all (codexStoreRollout, below).
 //
 // is_bg is re-derived on every pass rather than only on a reparse, so rows
 // indexed before this classification existed repair themselves the next time
@@ -90,13 +99,11 @@ func applyCodexThread(
 	if rollout.CWD == "" {
 		rollout.CWD = thread.CWD
 	}
-	if rollout.Size == 0 {
-		if rollout.FirstPrompt == "" {
-			rollout.FirstPrompt = thread.FirstPrompt
-		}
-		if rollout.PromptCount == 0 && thread.Prompted {
-			rollout.PromptCount = 1
-		}
+	if rollout.FirstPrompt == "" {
+		rollout.FirstPrompt = thread.FirstPrompt
+	}
+	if rollout.PromptCount == 0 && thread.Prompted {
+		rollout.PromptCount = 1
 	}
 	return rollout
 }

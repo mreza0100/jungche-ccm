@@ -852,6 +852,22 @@ func defaultEligible(row Row) bool {
 	if row.Kind == Booting {
 		return true
 	}
+	// A live Codex row is exempt from the SIZE/PROMPT half of the test below
+	// for the same reason: Codex >=0.146.1 keeps a paginated thread's content
+	// in its own sqlite state store, so the rollout file gather and the index
+	// parse from can carry prompt_count=0 and size=0 even while the chat is
+	// genuinely running in tmux right now. The index enriches such a row from
+	// the state store once it catches up (applyCodexThread); until then, a
+	// row this self-evidently real must never be judged by a test built to
+	// catch an abandoned zero-byte spawn.
+	//
+	// The BG half is NOT waived: a machine-spawned thread (codex exec, never
+	// renamed) caught live in a pane is still background work, not a chat,
+	// exactly like its resume-shape twin — the exemption is for genuinely
+	// empty content, never for who started the conversation.
+	if row.Kind == LiveCodex {
+		return !row.BG
+	}
 	return !row.BG && row.Size > 0 && row.PromptCount > 0
 }
 
