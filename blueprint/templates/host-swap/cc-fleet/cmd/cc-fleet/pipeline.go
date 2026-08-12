@@ -156,12 +156,19 @@ func scanFleet(
 
 // resolveRowEngine looks id up in a compose pass over CURRENT database state
 // plus a live gather — the picker's own source of truth for what exists right
-// now — and reports the engine of the row that carries it. It finds exactly
-// the ids the picker displays, including a live agent row and a live Codex
-// pane the index has not caught up with; an id nothing composes returns "",
-// which leaves an ordinary hide free to refuse it as unindexed. Errors from
-// the pass itself are swallowed the same way: a failed vouch attempt falls
-// through to that same refusal rather than replacing the hide's own error.
+// now — and reports the engine and rollout path of the row that carries it.
+// It finds exactly the ids the picker displays, including a live agent row
+// and a live Codex pane the index has not caught up with; an id nothing
+// composes returns "", "", which leaves an ordinary hide free to refuse it as
+// unindexed. Errors from the pass itself are swallowed the same way: a
+// failed vouch attempt falls through to that same refusal rather than
+// replacing the hide's own error.
+//
+// The rollout path lets hide.Manager resolve an UNINDEXED Codex lineage
+// member to its root through the file's own session_meta header
+// (resolveUnindexedCodexParent) instead of hiding under the member's own id
+// — the id compose never carries once a full lineage IS indexed, since a
+// Codex row is always keyed on its lineage root, never a member.
 //
 // This deliberately skips the indexer scanFleet runs: a caller resolving one
 // id for a hide has no business reconciling the whole filesystem index, and
@@ -172,26 +179,26 @@ func resolveRowEngine(
 	database *store.Store,
 	id string,
 	stderr io.Writer,
-) string {
+) (string, string) {
 	environment, err := resolveScanEnvironment()
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	data, err := loadFleetData(ctx, database)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	live, err := gatherFleet(ctx, environment.paths, data, false, printWarn(stderr), stderr)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	result := composeFleet(environment, scanRequest{View: compose.AllView}, data, live)
 	for _, row := range result.Output.Rows {
 		if row.ID == id {
-			return compose.EngineForKind(row.Kind)
+			return compose.EngineForKind(row.Kind), row.Path
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func scanFleetCached(
