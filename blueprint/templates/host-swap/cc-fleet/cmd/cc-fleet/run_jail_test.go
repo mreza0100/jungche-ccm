@@ -103,6 +103,7 @@ func newRunJail(t *testing.T) *runJail {
 		filepath.Join(root, "claude"),
 		filepath.Join(root, "codex"),
 		filepath.Join(root, "sid"),
+		filepath.Join(root, "proc"),
 		filepath.Join(root, "work"),
 	} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -200,7 +201,7 @@ func TestRunSpawnsANamedHeadlessCodexChat(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"run",
+		"headless", "run",
 		"--engine", "codex",
 		"--name", "_HIDE codex worker",
 		"--cwd", filepath.Join(jail.root, "work"),
@@ -249,7 +250,7 @@ func TestRunReportsACodexBuildThatCannotBeRenamed(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"run",
+		"headless", "run",
 		"--engine", "cx",
 		"--name", "worker",
 		"--cwd", filepath.Join(jail.root, "work"),
@@ -286,7 +287,7 @@ func TestRunSpawnsAHeadlessClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"run",
+		"headless", "run",
 		"--name", "worker 7",
 		"--cwd", filepath.Join(jail.root, "work"),
 		"audit the firewall",

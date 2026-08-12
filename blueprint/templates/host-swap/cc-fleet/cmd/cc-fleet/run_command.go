@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,9 +26,9 @@ const spawnTraceEnv = "CC_FLEET_SPAWN_TRACE"
 // works from a script, a cron job, or another chat's Bash tool.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"run",
-		"usage: cc-fleet run --name NAME [--engine cc|cx] [--cwd DIR] "+
-			"[--account N] [--1h] [prompt]",
+		"headless run",
+		"usage: cc-fleet headless run --name NAME [--engine cc|cx] [--cwd DIR] "+
+			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] [prompt]",
 		stderr,
 	)
 	name := flags.String("name", "", "chat name (a _HIDE… name stays out of the list)")
@@ -35,6 +36,9 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	cwd := flags.String("cwd", "", "project directory (default: the current one)")
 	account := flags.Int("account", 0, "Claude account (default: the primary one)")
 	cache1H := flags.Bool("1h", false, "arm 1h prompt caching")
+	model := flags.String("model", "", "model the seat is born with")
+	effort := flags.String("effort", "", "reasoning effort the seat is born with")
+	promptFile := flags.String("prompt-file", "", "read the launch prompt from a file")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -44,35 +48,42 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	engineName, ok := action.NormalizeEngine(*engine)
 	if !ok {
-		fmt.Fprintf(stderr, "cc-fleet run: unknown engine %q\n", *engine)
+		fmt.Fprintf(stderr, "cc-fleet headless run: unknown engine %q\n", *engine)
 		return 2
 	}
 
 	resolved, err := paths.Resolve()
 	if err != nil {
-		fmt.Fprintf(stderr, "cc-fleet run: %v\n", err)
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
 		return 1
 	}
 	directory, err := runDirectory(*cwd)
 	if err != nil {
-		fmt.Fprintf(stderr, "cc-fleet run: %v\n", err)
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
 		return 1
 	}
 	claudeAccount := *account
 	if claudeAccount == 0 {
 		claudeAccount = readPrimaryAccount(resolved)
 	}
+	prompt, err := runPrompt(*promptFile, flags.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
+		return 2
+	}
 	plan, err := action.HeadlessRun(action.HeadlessRequest{
 		Engine:         engineName,
 		Name:           *name,
 		CWD:            directory,
-		Prompt:         strings.Join(flags.Args(), " "),
+		Prompt:         prompt,
+		Model:          *model,
+		Effort:         *effort,
 		Home:           resolved.Home,
 		PrimaryAccount: claudeAccount,
 		Cache1H:        *cache1H,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "cc-fleet run: %v\n", err)
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
 		return 2
 	}
 
@@ -96,16 +107,16 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		Socket: freshSocket(kind),
 		CWD:    directory,
 		Run:    plan.Run,
-		Prompt: promptForTUI(plan, flags.Args()),
+		Prompt: promptForTUI(plan, prompt),
 		Width:  action.HeadlessWidth,
 		Height: action.HeadlessHeight,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "cc-fleet run: %v\n", err)
+		fmt.Fprintf(stderr, "cc-fleet headless run: %v\n", err)
 		return 1
 	}
 	for _, warning := range result.Warnings {
-		fmt.Fprintf(stderr, "cc-fleet run: %s\n", warning)
+		fmt.Fprintf(stderr, "cc-fleet headless run: %s\n", warning)
 	}
 	printRunResult(stdout, engineName, result)
 	if !result.Named {
@@ -116,11 +127,34 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 
 // promptForTUI is the prompt the spawner must type, which is empty whenever
 // the engine already took it on its command line.
-func promptForTUI(plan action.HeadlessPlan, args []string) string {
+func promptForTUI(plan action.HeadlessPlan, prompt string) string {
 	if plan.PromptOnCommandLine {
 		return ""
 	}
-	return strings.Join(args, " ")
+	return prompt
+}
+
+// runPrompt takes the launch prompt from a file or from the command line,
+// never from both: an inline argument caps out around what a shell will carry,
+// which is why --prompt-file exists, and silently preferring one over the
+// other would make a truncated brief look delivered.
+func runPrompt(path string, args []string) (string, error) {
+	inline := strings.Join(args, " ")
+	if path == "" {
+		return inline, nil
+	}
+	if inline != "" {
+		return "", errors.New("--prompt-file and an inline prompt are mutually exclusive")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read prompt file: %w", err)
+	}
+	prompt := strings.TrimRight(string(content), "\n")
+	if strings.TrimSpace(prompt) == "" {
+		return "", fmt.Errorf("prompt file %s is empty", path)
+	}
+	return prompt, nil
 }
 
 func runDirectory(requested string) (string, error) {

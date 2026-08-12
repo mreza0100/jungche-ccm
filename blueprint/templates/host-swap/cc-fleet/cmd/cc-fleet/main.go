@@ -34,8 +34,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLS(args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
-	case "run":
-		return runRun(args[1:], stdout, stderr)
+	case "headless":
+		return runHeadless(args[1:], stdout, stderr)
 	case "index":
 		return runIndex(args[1:], stdout, stderr)
 	case "doctor":
@@ -347,13 +347,36 @@ func parseFlags(flags *flag.FlagSet, args []string) (int, bool) {
 	return 0, true
 }
 
+// parseFlagsAnywhere accepts flags before OR after the positional arguments,
+// because that is how the family is documented and how a human types it:
+// `status seat --json` must not read as three positionals. Go's flag package
+// stops at the first non-flag token, so the remainder is re-parsed until only
+// positionals are left.
+func parseFlagsAnywhere(
+	flags *flag.FlagSet,
+	args []string,
+) ([]string, int, bool) {
+	positional := make([]string, 0, 2)
+	for {
+		if code, ok := parseFlags(flags, args); !ok {
+			return nil, code, false
+		}
+		rest := flags.Args()
+		if len(rest) == 0 {
+			return positional, 0, true
+		}
+		positional = append(positional, rest[0])
+		args = rest[1:]
+	}
+}
+
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: cc-fleet <command> [options]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
 	fmt.Fprintln(w, "  open      open an indexed chat by id")
-	fmt.Fprintln(w, "  run       start a named chat headlessly on its own server")
+	fmt.Fprintln(w, "  headless  drive spawned chats: run, status, last, stream, inject, watch")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  hide      hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide    remove a chat hide")
