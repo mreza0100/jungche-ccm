@@ -820,6 +820,209 @@ func TestCodexBackgroundRepairsWithoutAFullReparse(t *testing.T) {
 	}
 }
 
+// setupPaginatedContentFixture builds a Codex root with three conversations
+// that are IDENTICAL in shape on disk — a header-only rollout file, a single
+// session_meta line and NO user_message events, exactly what Codex >=0.146.1
+// leaves behind for a paginated thread whose content lives in its own sqlite
+// state store instead of the file — and differ only in what the state store
+// says about them:
+//
+//   - real-paginated: an interactive chat the store has real content
+//     evidence for (tokens_used=500). The file alone parses to prompt_count=0.
+//   - exec-paginated: the SAME evidence, but source='exec' and never
+//     renamed — background work, not a chat.
+//   - empty-spawn: no content evidence at all (tokens_used=0, no first user
+//     message, no title) — a genuinely empty spawn, not merely a paginated
+//     one whose content the file cannot show.
+func setupPaginatedContentFixture(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	codexRoot := filepath.Join(root, "codex")
+	sessions := filepath.Join(codexRoot, "sessions", "2026", "08", "12")
+
+	threads := []codexStateThread{
+		{
+			ID:           "real-paginated",
+			CWD:          "/work/paginated",
+			Source:       "cli",
+			ThreadSource: "user",
+			TokensUsed:   500,
+			CreatedAt:    100,
+			UpdatedAt:    100,
+		},
+		{
+			ID:           "exec-paginated",
+			CWD:          "/work/paginated",
+			Source:       "exec",
+			ThreadSource: "user",
+			TokensUsed:   500,
+			CreatedAt:    101,
+			UpdatedAt:    101,
+		},
+		{
+			ID:           "empty-spawn",
+			CWD:          "/work/paginated",
+			Source:       "cli",
+			ThreadSource: "user",
+			CreatedAt:    102,
+			UpdatedAt:    102,
+		},
+	}
+	for index := range threads {
+		path := filepath.Join(
+			sessions,
+			fmt.Sprintf(
+				"rollout-2026-08-12T00-00-0%d-%s.jsonl",
+				index,
+				threads[index].ID,
+			),
+		)
+		threads[index].RolloutPath = path
+		writeLines(t, path,
+			`{"type":"session_meta","payload":{"id":"`+threads[index].ID+
+				`","thread_source":"user","cwd":"`+threads[index].CWD+`"}}`,
+		)
+	}
+	buildCodexState(t, filepath.Join(codexRoot, "state_5.sqlite"), threads...)
+
+	t.Setenv("TMUX_TMPDIR", filepath.Join(root, "t"))
+	t.Setenv(paths.EnvDB, filepath.Join(root, "state", "fleet.db"))
+	t.Setenv(paths.EnvSharedDB, filepath.Join(root, "cc", "fleet.db"))
+	t.Setenv(paths.EnvSIDDir, filepath.Join(root, "sid"))
+	t.Setenv(paths.EnvClaudeRoots, filepath.Join(root, "claude"))
+	t.Setenv(paths.EnvCodexRoot, codexRoot)
+	t.Setenv(paths.EnvTmuxDir, filepath.Join(root, "tmux"))
+	t.Setenv(paths.EnvHome, filepath.Join(root, "home"))
+	return codexRoot
+}
+
+// THE BUG. A header-only rollout file has nonzero Size once parsed — bytes on
+// disk, zero prompts among them — so applyCodexThread's old `if rollout.Size
+// == 0` gate skipped it entirely: the state store's own content evidence
+// never reached the row, and prompt_count stayed at the file's own zero
+// forever, right alongside compose's emptiness test that then suppressed it
+// from the default listing (497 such rows on the live fleet, 19 of them
+// carrying a name and alive in tmux).
+func TestHeaderOnlyRolloutIsEnrichedFromTheStateStore(t *testing.T) {
+	setupPaginatedContentFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	real, found, err := database.Rollout(ctx, "real-paginated")
+	if err != nil || !found {
+		t.Fatalf("real-paginated Rollout() found = %v, error = %v", found, err)
+	}
+	if real.Size <= 0 {
+		t.Fatalf(
+			"real-paginated row = %#v, want a header-only file's nonzero size",
+			real,
+		)
+	}
+	if real.PromptCount == 0 {
+		t.Fatalf(
+			"real-paginated row = %#v, want the state store's content evidence "+
+				"(tokens_used=500) to fill prompt_count",
+			real,
+		)
+	}
+
+	listed := defaultCodexIDs(t, database)
+	found = false
+	for _, id := range listed {
+		if id == "real-paginated" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("default Codex listing = %v, want real-paginated listed", listed)
+	}
+}
+
+// A machine-spawned thread carrying the SAME content evidence must stay
+// suppressed by is_bg, whatever prompt_count the state store fills in — the
+// enrichment fix must never smuggle background work into the owner's chats.
+func TestHeaderOnlyMachineSpawnedStaysSuppressed(t *testing.T) {
+	setupPaginatedContentFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	execRow, found, err := database.Rollout(ctx, "exec-paginated")
+	if err != nil || !found {
+		t.Fatalf("exec-paginated Rollout() found = %v, error = %v", found, err)
+	}
+	if !execRow.IsBG {
+		t.Fatalf("exec-paginated row = %#v, want is_bg", execRow)
+	}
+
+	listed := defaultCodexIDs(t, database)
+	for _, id := range listed {
+		if id == "exec-paginated" {
+			t.Fatalf(
+				"default Codex listing = %v, want exec-paginated suppressed",
+				listed,
+			)
+		}
+	}
+	if all := len(codexRows(t, database)); all != 3 {
+		t.Fatalf(
+			"all-view Codex rows = %d, want all three kept and merely suppressed",
+			all,
+		)
+	}
+}
+
+// A genuinely empty spawn — no content evidence anywhere in the state store —
+// must stay suppressed: the enrichment fix must never manufacture a prompt
+// out of nothing.
+func TestGenuinelyEmptySpawnStaysSuppressed(t *testing.T) {
+	setupPaginatedContentFixture(t)
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := New(database)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := indexer.Run(ctx, Options{}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	empty, found, err := database.Rollout(ctx, "empty-spawn")
+	if err != nil || !found {
+		t.Fatalf("empty-spawn Rollout() found = %v, error = %v", found, err)
+	}
+	if empty.PromptCount != 0 {
+		t.Fatalf("empty-spawn row = %#v, want prompt_count to stay 0", empty)
+	}
+
+	listed := defaultCodexIDs(t, database)
+	for _, id := range listed {
+		if id == "empty-spawn" {
+			t.Fatalf(
+				"default Codex listing = %v, want empty-spawn suppressed",
+				listed,
+			)
+		}
+	}
+}
+
 // defaultCodexIDs answers the visibility question twice — through the cached
 // SQL candidate query and through compose — and fails if they disagree, which
 // is how a chat comes back on the rescan after the cached first frame dropped

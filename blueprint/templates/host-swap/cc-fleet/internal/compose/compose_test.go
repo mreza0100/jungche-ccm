@@ -830,6 +830,77 @@ func TestLiveCodexWithoutARolloutFileIsOneHideableRow(t *testing.T) {
 	}
 }
 
+// THE BUG. Codex >=0.146.1 keeps a paginated thread's content in its own
+// sqlite state store; such a thread's rollout .jsonl stays empty or
+// header-only, so gather/index parse it to prompt_count=0 and first_prompt=""
+// before the index has any chance to enrich it from the store. A row that is
+// still genuinely live in tmux must never be suppressed by an emptiness test
+// meant to catch abandoned zero-byte spawns — Agent and Booting rows already
+// carry this exemption (compose.go's own comment says so); a live Codex row
+// needs it for exactly the same reason.
+func TestLiveCodexIsExemptFromEmptinessSuppression(t *testing.T) {
+	const threadID = "019fed7f-aac7-7650-8a8b-96ab595179ab"
+	output := Compose(Input{
+		Snapshot: gather.Snapshot{
+			Codex: []gather.LiveCodex{{
+				PID:      400,
+				Socket:   "cx-400-1-1",
+				PaneID:   "%4",
+				ThreadID: threadID,
+			}},
+			Panes: []gather.Pane{{
+				Socket:      "cx-400-1-1",
+				SessionName: "cx-400-1-1",
+				PaneID:      "%4",
+				CurrentPath: "/work/paginated",
+			}},
+		},
+		Options: Options{View: DefaultView},
+	})
+	row, found := rowByID(output.Rows, threadID)
+	if !found || row.Kind != LiveCodex {
+		t.Fatalf(
+			"live Codex row with prompt_count=0 vanished from the default view: found=%t row=%#v",
+			found,
+			row,
+		)
+	}
+}
+
+// A live Codex row inherits background classification from its rollout: a
+// machine-spawned thread caught live in a pane must stay suppressed exactly
+// like its resume-shape twin (index's TestMachineSpawnedCodexThreadsAreBackground)
+// — the liveness exemption above waives the emptiness test, not the
+// background one.
+func TestLiveMachineSpawnedCodexStaysSuppressed(t *testing.T) {
+	const threadID = "019fed7f-aac7-7650-8a8b-96ab595179ac"
+	output := Compose(Input{
+		Rollouts: []store.Rollout{{
+			ID:         threadID,
+			UserThread: true,
+			IsBG:       true,
+		}},
+		Snapshot: gather.Snapshot{
+			Codex: []gather.LiveCodex{{
+				PID:      401,
+				Socket:   "cx-401-1-1",
+				PaneID:   "%5",
+				ThreadID: threadID,
+			}},
+			Panes: []gather.Pane{{
+				Socket:      "cx-401-1-1",
+				SessionName: "cx-401-1-1",
+				PaneID:      "%5",
+				CurrentPath: "/work/machine",
+			}},
+		},
+		Options: Options{View: DefaultView},
+	})
+	if _, found := rowByID(output.Rows, threadID); found {
+		t.Fatal("a live machine-spawned Codex row leaked into the default view")
+	}
+}
+
 // TestHideOnAnyLineageMemberHidesTheWholeRow guards cx-hide.sh's actual write
 // shape (cx-hide.sh:147): it hides the RAW id of whatever rollout file the
 // live process currently holds, which on a resumed multi-file lineage is the
