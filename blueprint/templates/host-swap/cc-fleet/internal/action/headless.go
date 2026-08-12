@@ -33,6 +33,18 @@ type HeadlessRequest struct {
 	Home           string
 	PrimaryAccount int
 	Cache1H        bool
+	// Model and Effort pin the seat's tier at birth. A seat that inherits
+	// whatever the account config holds that day is a seat whose cost and
+	// quality nobody chose.
+	Model  string
+	Effort string
+}
+
+// claudeEfforts is the roster claude's own --help states. An unknown value is
+// refused here rather than at the engine, where it would surface as a chat
+// that died at birth for no stated reason.
+var claudeEfforts = map[string]struct{}{
+	"low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {},
 }
 
 // HeadlessPlan is the pure result: the command the tmux session runs, and
@@ -84,7 +96,21 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 				request.PrimaryAccount,
 			)
 		}
+		if request.Effort != "" {
+			if _, known := claudeEfforts[strings.ToLower(request.Effort)]; !known {
+				return HeadlessPlan{}, fmt.Errorf(
+					"unknown Claude effort %q (want low, medium, high, xhigh or max)",
+					request.Effort,
+				)
+			}
+		}
 		arguments := []string{"--name", request.Name}
+		if request.Model != "" {
+			arguments = append(arguments, "--model", request.Model)
+		}
+		if request.Effort != "" {
+			arguments = append(arguments, "--effort", strings.ToLower(request.Effort))
+		}
 		if request.Prompt != "" {
 			arguments = append(arguments, request.Prompt)
 		}
@@ -103,7 +129,22 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 		// for a thread name (codex 0.147 --help), so the name is set through
 		// the TUI's own rename, and a prompt given here would have the model
 		// working before that can land.
-		return HeadlessPlan{Run: codexCommandWith(headlessHygiene)}, nil
+		codexArguments := make([]string, 0, 4)
+		if request.Model != "" {
+			codexArguments = append(codexArguments, "--model", request.Model)
+		}
+		if request.Effort != "" {
+			// Codex takes reasoning effort as a config override, not a flag
+			// (codex --help: -c key=value); the value is quoted as TOML.
+			codexArguments = append(
+				codexArguments,
+				"-c",
+				`model_reasoning_effort="`+strings.ToLower(request.Effort)+`"`,
+			)
+		}
+		return HeadlessPlan{
+			Run: codexCommandWith(headlessHygiene, codexArguments...),
+		}, nil
 	}
 	return HeadlessPlan{}, fmt.Errorf("unsupported engine %q", request.Engine)
 }

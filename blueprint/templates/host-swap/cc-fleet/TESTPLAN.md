@@ -29,7 +29,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 
 ## Table of contents
 
-1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 47 flows
+1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 63 flows
 2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
 3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
 4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
@@ -44,7 +44,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 304 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+**Total: 320 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
 scheduling list below expands those into **32 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
@@ -72,15 +72,31 @@ authentic engine run to be conclusive.
 | `ls --check` → shadow-run legacy zsh picker, diff verified tuples, rc 1 on unallowed | LIVE-READ | `check_command.go:23-179`, `internal/check/legacy.go:49-80` | |
 | `open <id>` on an unindexed id → `is not indexed`, rc 1 | JAIL | `commands.go:217-218` | B3 |
 | `open <id>` whose CWD vanished → falls back to `$PWD` for non-live kinds | JAIL | `commands.go:233-241` | |
-| `run --name X [prompt]` → detached chat on a fresh fleet socket with the full launch ceremony, rc 0 | JAIL+tmux | `run_command.go`, `action/headless.go`, `spawn/spawn.go`; `run_jail_test.go` | |
-| `run` without `--name` → rc 2; unknown `--engine` → rc 2 | JAIL | `run_command.go`, `action.NormalizeEngine` | |
-| `run --engine cx` → thread named through Codex's own `/rename` UI, THEN prompted | JAIL+tmux | `spawn/spawn.go` (`nameCodexThread`) | |
-| `run --engine cx` on a Codex build without `/rename` → live chat, `UNNAMED`, warning, rc 1, composer cleared | JAIL+tmux | `TestRunReportsACodexBuildThatCannotBeRenamed` | |
+| `headless run --name X [prompt]` → detached chat on a fresh fleet socket with the full launch ceremony, rc 0 | JAIL+tmux | `run_command.go`, `action/headless.go`, `spawn/spawn.go`; `run_jail_test.go` | |
+| `headless run` without `--name` → rc 2; unknown `--engine` → rc 2; unknown `--effort` → rc 2 | JAIL | `headless_matrix_test.go` | |
+| `headless run --engine cx` → thread named through Codex's own `/rename` UI, THEN prompted | JAIL+tmux | `spawn/spawn.go` (`nameCodexThread`) | |
+| `headless run --engine cx` on a Codex without `/rename` → live chat, `UNNAMED`, warning, rc 1, composer cleared | JAIL+tmux | `TestRunReportsACodexBuildThatCannotBeRenamed` | |
 | Codex boots through startup overlays (hooks review, trust) — Escape, then a composer that HOLDS, before a keystroke | JAIL+tmux | `TestCodexBootsThroughStartupModals`, `TestCodexComposerFlashBeforeAModalIsNotReadiness` | |
 | A startup screen that never clears → nothing typed, chat live, `UNNAMED`, rc 1 | JAIL | `TestCodexStuckAtAStartupScreenTypesNothing` | |
 | The rename field is CLEARED before typing (Codex pre-fills it with the current name) | JAIL | `TestCodexThreadIsRenamedThenPrompted` (clear token) | |
 | The rename Enter is re-sent until the status line carries the name; zero typing gap DROPS it | JAIL | `spawn/types.go` (`orDefaults`), `spawn/spawn.go` (`confirmPresses`) | |
-| `run` on a chat that dies at birth → `died at birth`, rc 1 | JAIL | `spawn/spawn.go` (`waitForBoot`) | |
+| `headless run --prompt-file PATH` → prompt read from the file; with an inline prompt → rc 2 | JAIL | `TestRunPromptSourcesAreExclusive` | |
+| `headless run --model M --effort E` → `--model`/`--effort` (cc) and `--model`/`-c model_reasoning_effort` (cx) | JAIL | `TestModelAndEffortReachBothEngines` | |
+| `headless run` on a chat that dies at birth → `died at birth`, rc 1 | JAIL | `spawn/spawn.go` (`waitForBoot`) | |
+| `headless status <name> [--json]` → state/idle_seconds/engine/model/cwd/session_id/context_pct | JAIL | `headless/headless.go`; `headless_test.go` | |
+| working vs idle comes from the TRANSCRIPT (assistant spoke last = idle), never from a timer | JAIL | `TestStateComesFromTheTranscriptNotAClock` | |
+| `headless transcript <name> [--tail N] [--condensed] [--json]` | JAIL | `transcript/transcript.go`; `transcript_test.go` | |
+| `headless last <name>` → the last assistant message, bare | JAIL | `TestLastFindsTheNewestAssistantTurn` | |
+| `headless stream <name> [--filter RE] [--margin N]` → grep -C over the live transcript | JAIL | `TestStreamFilterWithMargin` | |
+| `headless stream` ends when the chat dies instead of hanging on a quiet file | JAIL | `TestStreamFollowEndsWhenTheChatDies` | |
+| `headless inject <name> <message>` → the existing guarded delivery, addressed by socket | JAIL+tmux | `headless_command.go`, `internal/inject` | |
+| `headless watch <name>` → `IDLE`/`EXIT`/`DEAD` lines + `--on-idle`/`--on-exit` hooks | JAIL | `TestWatchAnnouncesIdleThenExit`, `TestWatchReportsAChatThatVanishesAsDead` | |
+| `headless ls [--json]` → every live seat with its state and last line | JAIL | `headless_command.go` | |
+| An unknown name → rc 4 with `not-found` on stdout, on EVERY verb — never empty at rc 0 | JAIL | `TestUnknownChatIsRc4WithAMachineShape` | |
+| A dead (non-live) chat → rc 3, explicitly, never silence | JAIL | `headless_command.go` (`codeDeadChat`) | |
+| Flags parse BEFORE or AFTER the name (`status seat --json`) | JAIL | `main.go` (`parseFlagsAnywhere`); `TestHeadlessArgumentMatrix` | |
+| `headless inject` takes its message verbatim — a leading dash is not a flag | JAIL | `runHeadlessInject` | |
+| Name resolution: name, id-prefix, socket; live row beats its resume twin; ambiguity refused | JAIL | `TestChatMatchingPrefersTheLiveSeat` | |
 | `index` → counters line on stdout | JAIL | `commands.go:351-398`, `formatCounters` `commands.go:400-412` | B4 |
 | `index --full` → reparse all + `last_full_index_at` meta | JAIL | `commands.go:386-392` | B4 |
 | `index --progress` → start/elapsed on stderr | JAIL | `commands.go:378-379,394-396` | |
@@ -443,12 +459,12 @@ they count as covered.
 12. Codex-origin `chat.sh` signature via ancestry recovery.
 13. `chat_ls` state=`busy` for a genuinely generating codex pane.
 14. `cx` launcher self-switch when already inside its own server.
-15. ✅ DONE — `cc-fleet run --engine cx --name X` against the REAL codex TUI
-    (0.147): confirmed live end to end. It found three things no stub had: the
-    TUI boots into a hooks/trust modal that swallows keystrokes, its modal
-    selection cursor is the SAME glyph as the composer (so readiness needs the
-    status line too), and the rename field arrives pre-filled. All three are
-    fixtured now. Re-run this experiment on any codex upgrade.
+15. ✅ DONE — `cc-fleet headless run --engine cx --name X` against the REAL
+    codex TUI (0.147): confirmed live end to end. It found three things no stub
+    had: the TUI boots into a hooks/trust modal that swallows keystrokes, its
+    modal selection cursor is the SAME glyph as the composer (so readiness
+    needs the status line too), and the rename field arrives pre-filled. All
+    three are fixtured now. Re-run this experiment on any codex upgrade.
 
 **Needs a real `claude` process (13):**
 16. Agent row: a real non-primary-config-dir claude with `--session-id`.
