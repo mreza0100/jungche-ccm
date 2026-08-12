@@ -3,15 +3,13 @@ package mcpserv
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
-	"hostops/cc-fleet/internal/naming"
+	"hostops/cc-fleet/internal/transcript"
 )
 
 const (
@@ -20,31 +18,6 @@ const (
 	defaultReadBytes = 64 << 10
 	maxReadBytes     = 1 << 20
 )
-
-type transcriptRecord struct {
-	Type             string          `json:"type"`
-	Timestamp        string          `json:"timestamp"`
-	Summary          string          `json:"summary"`
-	IsSidechain      bool            `json:"isSidechain"`
-	IsCompactSummary bool            `json:"isCompactSummary"`
-	Message          messageRecord   `json:"message"`
-	Payload          payloadRecord   `json:"payload"`
-	Content          json.RawMessage `json:"content"`
-	Role             string          `json:"role"`
-}
-
-type messageRecord struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
-}
-
-type payloadRecord struct {
-	Type      string          `json:"type"`
-	Message   json.RawMessage `json:"message"`
-	Role      string          `json:"role"`
-	Content   json.RawMessage `json:"content"`
-	Timestamp string          `json:"timestamp"`
-}
 
 func (current *backend) read(
 	ctx context.Context,
@@ -196,115 +169,21 @@ func extractTurns(
 	return kept, truncated, nil
 }
 
+// extractTurn maps one parsed transcript entry onto mcpserv's Turn contract.
+// Tool calls are deliberately dropped here: chat_read has always returned
+// spoken turns only, and its consumers page through them by count.
 func extractTurn(line []byte, engine string) (Turn, bool) {
-	var record transcriptRecord
-	if err := json.Unmarshal(line, &record); err != nil || record.IsSidechain {
+	entry, ok := transcript.Parse(line, engine)
+	if !ok || entry.Role == transcript.RoleTool {
 		return Turn{}, false
 	}
-	if engine == "cx" {
-		return extractCodexTurn(record)
-	}
-	switch record.Type {
-	case "summary":
-		if record.Summary == "" {
-			return Turn{}, false
-		}
-		return Turn{
-			Role:      "summary",
-			Text:      record.Summary,
-			Timestamp: record.Timestamp,
-		}, true
-	case "user", "assistant":
-		if record.IsCompactSummary {
-			return Turn{}, false
-		}
-		text := visibleContent(record.Message.Content)
-		if text == "" {
-			return Turn{}, false
-		}
-		if record.Type == "user" && naming.IsJunkPrompt(text) {
-			return Turn{}, false
-		}
-		return Turn{
-			Role:      record.Type,
-			Text:      text,
-			Timestamp: record.Timestamp,
-		}, true
-	default:
-		return Turn{}, false
-	}
-}
-
-func extractCodexTurn(record transcriptRecord) (Turn, bool) {
-	role := ""
-	var content json.RawMessage
-	switch record.Payload.Type {
-	case "user_message":
-		role = "user"
-		content = record.Payload.Message
-	case "agent_message":
-		role = "assistant"
-		content = record.Payload.Message
-	case "message":
-		role = record.Payload.Role
-		content = record.Payload.Content
-	default:
-		if record.Type == "user_message" {
-			role = "user"
-			content = record.Message.Content
-			if len(content) == 0 {
-				content = record.Content
-			}
-		}
-	}
-	if role != "user" && role != "assistant" {
-		return Turn{}, false
-	}
-	text := visibleContent(content)
-	if text == "" || (role == "user" && naming.IsJunkPrompt(text)) {
-		return Turn{}, false
-	}
-	timestamp := record.Timestamp
-	if timestamp == "" {
-		timestamp = record.Payload.Timestamp
-	}
-	return Turn{Role: role, Text: text, Timestamp: timestamp}, true
-}
-
-func visibleContent(raw json.RawMessage) string {
-	var text string
-	if err := json.Unmarshal(raw, &text); err == nil {
-		if strings.HasPrefix(text, "<system-reminder>") {
-			return ""
-		}
-		return text
-	}
-	var blocks []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(raw, &blocks); err != nil {
-		return ""
-	}
-	texts := make([]string, 0, len(blocks))
-	for _, block := range blocks {
-		switch block.Type {
-		case "text", "input_text", "output_text":
-			if block.Text != "" && !strings.HasPrefix(block.Text, "<system-reminder>") {
-				texts = append(texts, block.Text)
-			}
-		}
-	}
-	return strings.Join(texts, "\n\n")
+	return Turn{
+		Role:      entry.Role,
+		Text:      entry.Text,
+		Timestamp: entry.Timestamp,
+	}, true
 }
 
 func truncateUTF8(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	value = value[:limit]
-	for !utf8.ValidString(value) && len(value) > 0 {
-		value = value[:len(value)-1]
-	}
-	return value
+	return transcript.Truncate(value, limit)
 }
