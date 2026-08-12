@@ -34,6 +34,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLS(args[1:], stdout, stderr)
 	case "open":
 		return runOpen(args[1:], stdout, stderr)
+	case "run":
+		return runRun(args[1:], stdout, stderr)
 	case "index":
 		return runIndex(args[1:], stdout, stderr)
 	case "doctor":
@@ -351,6 +353,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
 	fmt.Fprintln(w, "  open      open an indexed chat by id")
+	fmt.Fprintln(w, "  run       start a named chat headlessly on its own server")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  hide      hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide    remove a chat hide")
