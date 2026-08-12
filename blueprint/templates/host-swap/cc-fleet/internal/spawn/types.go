@@ -4,6 +4,9 @@ package spawn
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"strings"
 	"time"
 )
 
@@ -40,6 +43,51 @@ type Request struct {
 	Width   int
 	Height  int
 	Timings Timings
+	// Trace, when set, receives one line per step of the choreography. A TUI
+	// this code cannot see is the whole difficulty of driving one, so the
+	// screen it decided on is printed with the decision.
+	Trace io.Writer
+}
+
+// tracer prints the choreography's own view of the screen.
+type tracer struct {
+	writer io.Writer
+	start  time.Time
+}
+
+func newTracer(writer io.Writer, now time.Time) tracer {
+	return tracer{writer: writer, start: now}
+}
+
+func (trace tracer) step(format string, arguments ...any) {
+	if trace.writer == nil {
+		return
+	}
+	fmt.Fprintf(
+		trace.writer,
+		"spawn %6dms  %s\n",
+		time.Since(trace.start).Milliseconds(),
+		fmt.Sprintf(format, arguments...),
+	)
+}
+
+// screen renders a capture as one greppable line: blank lines dropped, the
+// last few rows kept, truncated. Enough to tell a composer from a modal.
+func screen(capture string) string {
+	lines := make([]string, 0, 8)
+	for _, line := range strings.Split(capture, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	if len(lines) > 3 {
+		lines = lines[len(lines)-3:]
+	}
+	joined := strings.Join(lines, " ⏎ ")
+	if len(joined) > 160 {
+		joined = joined[:160] + "…"
+	}
+	return joined
 }
 
 // Timings bound every wait. Tests set them to microseconds; the CLI leaves
@@ -59,7 +107,7 @@ func Defaults() Timings {
 		Poll:  250 * time.Millisecond,
 		Boot:  30 * time.Second,
 		Step:  15 * time.Second,
-		Typed: 150 * time.Millisecond,
+		Typed: 250 * time.Millisecond,
 	}
 }
 
@@ -74,7 +122,11 @@ func (timings Timings) orDefaults() Timings {
 	if timings.Step <= 0 {
 		timings.Step = defaults.Step
 	}
-	if timings.Typed < 0 {
+	// <= 0, not < 0: a caller that leaves Timings zero must get the default
+	// gap. With a zero gap the Enter rides in the same input burst as the text
+	// and Codex's rename modal DROPS it — the chat then runs unnamed while
+	// every keystroke looks delivered.
+	if timings.Typed <= 0 {
 		timings.Typed = defaults.Typed
 	}
 	return timings

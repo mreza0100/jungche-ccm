@@ -15,6 +15,9 @@ import (
 	"hostops/cc-fleet/internal/store"
 )
 
+// spawnTraceEnv turns on the spawn choreography trace on stderr.
+const spawnTraceEnv = "CC_FLEET_SPAWN_TRACE"
+
 // runRun starts a chat with the fleet's whole launch ceremony — the
 // environment strip, the account's config dir, the cache mode, the autonomy
 // flags, its own tmux server on a fleet socket — and then walks away from it.
@@ -77,9 +80,17 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	if engineName == store.CodexEngine {
 		kind = compose.NewCodex
 	}
+	// CC_FLEET_SPAWN_TRACE turns on a step-by-step log of the TUI
+	// choreography: what was typed, which screen came back, which overlay was
+	// dismissed. A chat driven blind is a chat debugged blind.
+	var trace io.Writer
+	if os.Getenv(spawnTraceEnv) != "" {
+		trace = stderr
+	}
 	result, err := spawn.Run(context.Background(), spawn.CommandTmux{
 		TmuxDir: resolved.TmuxDir,
 	}, spawn.Request{
+		Trace:  trace,
 		Engine: engineName,
 		Name:   *name,
 		Socket: freshSocket(kind),

@@ -19,16 +19,35 @@ import (
 const stubCodex = `#!/usr/bin/env bash
 stty -icanon -echo min 1 time 0 2>/dev/null
 stage=composer; buf=""; name=""
+status='  019f · ~/work · Full Access · Context 0% used · 0 in · 0 out
+'
+modals="${CX_STUB_MODALS:-1}"
 render() {
   printf '\033[2J\033[H'
+  if [ "$modals" -gt 0 ]; then
+    # The selection cursor is the same glyph the composer draws, and the
+    # status line is gone: the exact screen that fooled the first fix.
+    printf 'codex\n  Hooks\n  1 hook needs review before it can run.\n'
+    printf '\u203a 2. Trust all and continue\n'
+    printf '  Press enter to confirm or esc to go back\n'
+    return
+  fi
   case "$stage" in
-    offered) printf 'codex\n> %s\n  rename  rename the current thread\n' "$buf" ;;
-    prompt)  printf 'codex\nRename thread\nType a name and press Enter\n> %s\n' "$buf" ;;
-    *)       printf 'codex %s\n> %s\n' "$name" "$buf" ;;
+    offered) printf 'codex\n› %s\n  /rename  rename the current thread\n%s' "$buf" "$status" ;;
+    prompt)  printf 'codex\n| Name thread\n| Type a name and press Enter\n' ;;
+    *)       if [ -n "$name" ]; then printf '* Session renamed to %s.\n' "$name"; fi
+             printf 'codex\n› %s\n%s' "$buf" "$status" ;;
   esac
 }
 render
 while IFS= read -r -N1 ch; do
+  if [ "$modals" -gt 0 ]; then
+    # A startup overlay: ONLY Escape gets out of it, everything else vanishes
+    # into it exactly as the real hooks/trust modals swallow keystrokes.
+    [ "$ch" = $'\033' ] && modals=$((modals - 1))
+    render
+    continue
+  fi
   case "$ch" in
     $'\n'|$'\r')
       case "$stage" in
