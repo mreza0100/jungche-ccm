@@ -109,6 +109,10 @@ type Row struct {
 	Account     int
 	Accounts    []int
 	Hidden      bool
+	// NameHidden marks a row hidden by its "_HIDE…" label rather than by a
+	// store row: the picker's hide key cannot toggle it, because the label —
+	// not the hidden table — is what keeps it out of the list.
+	NameHidden  bool
 	BG          bool
 	C1H         bool
 	Attached    bool

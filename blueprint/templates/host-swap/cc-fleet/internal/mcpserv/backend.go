@@ -103,7 +103,10 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 		return LSOutput{}, err
 	}
 
-	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(rollouts, cxNames)
+	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(
+		store.CodexThreads(rollouts),
+		cxNames,
+	)
 	tmuxClient := gather.CommandTmux{TmuxTmpDir: filepath.Dir(current.paths.TmuxDir)}
 	gatherer, err := gather.New(gather.Dependencies{
 		Tmux:       tmuxClient,

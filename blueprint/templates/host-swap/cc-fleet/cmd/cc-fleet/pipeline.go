@@ -312,7 +312,7 @@ func gatherFleet(
 	stderr io.Writer,
 ) (gather.Snapshot, error) {
 	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(
-		data.rollouts,
+		store.CodexThreads(data.rollouts),
 		data.cxNames,
 	)
 	tmuxClient := gather.CommandTmux{

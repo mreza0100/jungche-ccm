@@ -33,7 +33,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
 3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
 4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
-5. [E — Hide / unhide and the two-writer shared state](#e--hide--unhide-and-the-two-writer-shared-state) — 20 flows
+5. [E — Hide / unhide and the two-writer shared state](#e--hide--unhide-and-the-two-writer-shared-state) — 25 flows
 6. [F — Action synthesis and launch](#f--action-synthesis-and-launch) — 20 flows
 7. [G — MCP server (7 tools)](#g--mcp-server-7-tools) — 22 flows
 8. [H — `chat.sh`: subcommands, guards, `--then`, exit codes](#h--chatsh-subcommands-guards---then-exit-codes) — 46 flows
@@ -44,7 +44,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 290 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+**Total: 295 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
 scheduling list below expands those into **31 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
@@ -210,6 +210,11 @@ tonight's four bugs all live in.
 | `legacy import` counts unknown ids but imports them anyway | JAIL | `legacy/legacy.go:47-77` | |
 | `legacy export` unions before rewriting so no hide is destroyed | JAIL | `legacy/legacy.go:90-107` | |
 | Two concurrent pickers hiding different chats → both survive (WAL + transaction) | JAIL | `shared/shared.go:135-157`, `cc-db.sh:53-57` | |
+| A `_HIDE…` LABEL hides a chat with no store row, live or resumable, either case | JAIL | `naming.LabelHidden`, `compose/compose.go` (`applyHide`); `compose/label_hide_test.go` | |
+| A label-hidden chat still shows under `-a` and `-H`, and counts as hidden | JAIL | `compose/label_hide_test.go` | |
+| A split row is never label-hidden — its name is a join, not a label | JAIL | `compose/label_hide_test.go` | |
+| Label-hidden rows never spend a cached-frame candidate slot (30/15) | JAIL | `store/queries.go` (`labelHiddenSQL`, `codexLineageLabelHidden`); `store/label_candidates_test.go` | |
+| Picker hide key refuses a label-hidden row — renaming is the unhide | JAIL | `ui/model.go` (`toggleHidden`); `ui/label_hide_test.go` | |
 
 ## F — Action synthesis and launch
 

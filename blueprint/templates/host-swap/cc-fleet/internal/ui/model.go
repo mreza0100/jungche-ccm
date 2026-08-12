@@ -283,9 +283,14 @@ func (model *Model) toggleHidden() {
 	// needs its own guard here too (compose's applyHide carries the same
 	// exclusion on the read side; neither may let a hide land on an identity
 	// that stops meaning anything once the crumb appears).
+	// A "_HIDE…" label is refused for a different reason than the three above:
+	// the row IS hideable, but its label is what hides it, so an unhide
+	// written here would delete a store row that is not holding it down and
+	// the chat would stay hidden anyway. Renaming it is the unhide.
 	if model.rows[index].ID == "" ||
 		model.rows[index].Kind == compose.LiveSplit ||
-		model.rows[index].Kind == compose.Booting {
+		model.rows[index].Kind == compose.Booting ||
+		model.rows[index].NameHidden {
 		return
 	}
 	follow := rowKey(model.rows[index])
