@@ -68,9 +68,12 @@ func LegacyOutput(ctx context.Context, resolved paths.Values) (string, error) {
 //
 //  1. $CC_FLEET_LEGACY_ZSH — the explicit answer. Taken as given; an unreadable
 //     path is an error rather than a silent fall-through to a different script.
-//  2. ../cc-fleet.zsh beside this Go tree's own source directory. This is the
-//     clone's layout (host-swap/cc-fleet.zsh next to host-swap/cc-fleet/), and
-//     it is right whenever the checker is run from a checkout.
+//  2. The bundle beside this Go tree's own source directory. The engine is a
+//     PROGRAM and lives at the repo root, so from <repo>/cc-fleet the script is
+//     <repo>/blueprint/templates/host-swap/cc-fleet.zsh; the flat form
+//     (../cc-fleet.zsh) is kept for a bundle-only clone, where the two still
+//     sit side by side. Either way this is right whenever the checker runs
+//     from a checkout.
 //  3. ../cc-fleet.zsh beside the running binary, then the binary's own
 //     directory. cc-fleet.dev is built into the tree root, so the first form
 //     covers a binary copied out with the tree; the second covers one dropped
@@ -93,10 +96,14 @@ func ResolveLegacyScript(home string) (string, error) {
 			override,
 		)
 	}
-	candidates := make([]string, 0, 5)
+	candidates := make([]string, 0, 6)
 	if treeDir := treeSourceDir(); treeDir != "" {
 		candidates = append(
 			candidates,
+			filepath.Join(
+				filepath.Dir(treeDir),
+				"blueprint", "templates", "host-swap", LegacyScriptName,
+			),
 			filepath.Join(filepath.Dir(treeDir), LegacyScriptName),
 		)
 	}
