@@ -668,26 +668,14 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 		newest = lineage.Newest
 		newest.PromptCount = lineage.PromptCount
 	}
-	// The newest member's own one-hop walk (own → session → parent) still
-	// wins first, exactly as before — a rename ON the live conversation must
-	// outrank an older name upstream of it. Only when THAT walk finds nothing
-	// does the true lineage root get a look: a ≥3-hop chain named only at its
-	// root sits beyond the one-hop walk's reach (newest's own SessionID
-	// reaches only its immediate parent, never further), so without this
-	// fallback such a chain fell all the way to the newest member's first
-	// prompt. The first call passes "" instead of newest.FirstPrompt so an
-	// empty result unambiguously means "nothing named", not "fell back to the
-	// prompt already" — that fallback belongs to the SECOND call only.
-	name := naming.CxName(
+	name := naming.CodexRowName(
 		newest.ID,
 		newest.SessionID,
 		newest.ParentThread,
+		root,
+		newest.FirstPrompt,
 		current.input.CxNames,
-		"",
 	)
-	if name == "" {
-		name = naming.CxName(root, "", "", current.input.CxNames, newest.FirstPrompt)
-	}
 	return Row{
 		Kind:        kind,
 		ID:          root,
@@ -719,6 +707,16 @@ func (current *composer) lineageRoot(rollout store.Rollout) string {
 }
 
 func (current *composer) applyHide(row Row, engine string) Row {
+	// A "_HIDE…" label is a hide the user writes by renaming the chat, so it
+	// needs no id, no store row and no picker keystroke — which is why it is
+	// tested BEFORE every id-shaped guard below and applies to a live chat the
+	// index has never seen. A split row is the one exclusion: its Name is a
+	// join of its panes' names, not a label anyone set on one chat.
+	if row.Kind != LiveSplit && naming.LabelHidden(row.Name) {
+		row.Hidden = true
+		row.NameHidden = true
+		return row
+	}
 	// A Booting row's ID is the crumbless socket name, not a chat identity —
 	// unlike LiveSplit's empty-ID case, it WOULD pass the id check below, so
 	// it needs its own guard. The socket is reused by the picker's own

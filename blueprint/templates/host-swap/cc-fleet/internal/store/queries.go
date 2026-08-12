@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
+
+	"hostops/cc-fleet/internal/naming"
 )
 
 // transcriptColumns is alias-qualified because every transcript query joins
@@ -17,6 +20,20 @@ t.ai_title, t.first_prompt, t.last_prompt, t.prompt_count, t.is_bg`
 const rolloutColumns = `
 id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
 parent_thread, lineage_root, first_prompt, prompt_count, is_bg`
+
+// transcriptLabelSQL is naming.DisplayName's precedence in SQL, and
+// labelHiddenSQL is naming.LabelHidden over it. Both are built from the
+// naming constants rather than spelled out, so the cached frame cannot drift
+// from compose's applyHide when the prefix changes. upper() is ASCII-only in
+// SQLite, which is exactly the case-folding LabelHidden does.
+const transcriptLabelSQL = `COALESCE(NULLIF(t.custom_title,''), NULLIF(t.ai_title,''), t.first_prompt)`
+
+var labelHiddenSQL = fmt.Sprintf(
+	`upper(substr(%s, 1, %d))=%s`,
+	transcriptLabelSQL,
+	len(naming.HidePrefix),
+	"'"+strings.ToUpper(naming.HidePrefix)+"'",
+)
 
 type rowScanner interface {
 	Scan(...any) error
@@ -66,6 +83,7 @@ SELECT `+transcriptColumns+`
 FROM transcripts AS t
 LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid
 WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.uuid IS NULL
+  AND NOT `+labelHiddenSQL+`
 ORDER BY t.mtime_ns DESC, t.uuid
 LIMIT ?`, limit)
 	if err != nil {
@@ -90,13 +108,14 @@ func (s *Store) defaultRollouts(
 	ctx context.Context,
 	limit int,
 ) ([]Rollout, error) {
-	lineages, hiddenByID, err := s.codexLineageRows(ctx)
+	lineages, hiddenByID, cxNames, err := s.codexLineageRows(ctx)
 	if err != nil {
 		return nil, err
 	}
 	rollouts := make([]Rollout, 0, min(limit, len(lineages)))
 	for _, lineage := range lineages {
-		if codexLineageHidden(lineage, hiddenByID) {
+		if codexLineageHidden(lineage, hiddenByID) ||
+			codexLineageLabelHidden(lineage, cxNames) {
 			continue
 		}
 		if codexLineageSuppressed(lineage) {
@@ -116,14 +135,21 @@ func (s *Store) defaultCounts(
 ) (CachedCounts, error) {
 	var counts CachedCounts
 	var claudeEligible, codexEligible int
+	// A label-hidden row counts as HIDDEN, not suppressed, and never as
+	// eligible — compose's countOmitted tests row.Hidden first for the same
+	// reason: hidden is dead, empty or not.
 	err := s.db.QueryRowContext(ctx, `
 SELECT
-  COALESCE(SUM(CASE WHEN h.uuid IS NOT NULL THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.uuid IS NULL AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
+    WHEN h.uuid IS NOT NULL OR `+labelHiddenSQL+`
     THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.uuid IS NULL AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
+    WHEN h.uuid IS NULL AND NOT `+labelHiddenSQL+`
+      AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
+    THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE
+    WHEN h.uuid IS NULL AND NOT `+labelHiddenSQL+`
+      AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
     THEN 1 ELSE 0 END), 0)
 FROM transcripts AS t
 LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
@@ -131,13 +157,14 @@ LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
 	if err != nil {
 		return CachedCounts{}, fmt.Errorf("count cached transcripts: %w", err)
 	}
-	lineages, hiddenByID, err := s.codexLineageRows(ctx)
+	lineages, hiddenByID, cxNames, err := s.codexLineageRows(ctx)
 	if err != nil {
 		return CachedCounts{}, err
 	}
 	var codexHidden, codexSuppressed int
 	for _, lineage := range lineages {
-		if codexLineageHidden(lineage, hiddenByID) {
+		if codexLineageHidden(lineage, hiddenByID) ||
+			codexLineageLabelHidden(lineage, cxNames) {
 			codexHidden++
 			continue
 		}
@@ -194,12 +221,31 @@ func codexLineageHidden(lineage CodexLineage, hiddenByID map[string]Hidden) bool
 	return false
 }
 
+// codexLineageLabelHidden is the cached frame's copy of the "_HIDE…" label
+// test compose's applyHide runs on the row it composes, and the two must stay
+// identical for the same reason codexLineageHidden does. Both name the lineage
+// through naming.CodexRowName, so only the test itself lives twice, never the
+// naming walk.
+func codexLineageLabelHidden(
+	lineage CodexLineage,
+	cxNames map[string]string,
+) bool {
+	return naming.LabelHidden(naming.CodexRowName(
+		lineage.Newest.ID,
+		lineage.Newest.SessionID,
+		lineage.Newest.ParentThread,
+		lineage.RootID,
+		lineage.Newest.FirstPrompt,
+		cxNames,
+	))
+}
+
 func (s *Store) codexLineageRows(
 	ctx context.Context,
-) ([]CodexLineage, map[string]Hidden, error) {
+) ([]CodexLineage, map[string]Hidden, map[string]string, error) {
 	rollouts, err := s.Rollouts(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("query cached rollout lineages: %w", err)
+		return nil, nil, nil, fmt.Errorf("query cached rollout lineages: %w", err)
 	}
 	lineages, _ := ResolveCodexLineages(rollouts)
 	sort.Slice(lineages, func(left, right int) bool {
@@ -210,7 +256,11 @@ func (s *Store) codexLineageRows(
 	})
 	hiddenRows, err := s.HiddenChats(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("query cached lineage hides: %w", err)
+		return nil, nil, nil, fmt.Errorf("query cached lineage hides: %w", err)
+	}
+	cxNames, err := s.CxNames(ctx)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("query cached lineage names: %w", err)
 	}
 	// Anything but a derived "cc" counts. An engine derives empty when neither
 	// index table claims the id, and an empty engine means "hidden whatever the
@@ -222,7 +272,24 @@ func (s *Store) codexLineageRows(
 			hiddenByID[hidden.ID] = hidden
 		}
 	}
-	return lineages, hiddenByID, nil
+	return lineages, hiddenByID, cxNames, nil
+}
+
+// CodexThreads projects rollout rows onto the naming package's own thread
+// shape, so the Codex name index can be built without naming depending on
+// this package.
+func CodexThreads(rollouts []Rollout) []naming.CodexThread {
+	threads := make([]naming.CodexThread, 0, len(rollouts))
+	for _, rollout := range rollouts {
+		threads = append(threads, naming.CodexThread{
+			ID:           rollout.ID,
+			SessionID:    rollout.SessionID,
+			ParentThread: rollout.ParentThread,
+			Path:         rollout.Path,
+			FirstPrompt:  rollout.FirstPrompt,
+		})
+	}
+	return threads
 }
 
 // UpsertTranscript inserts or replaces all indexed fields for a transcript.
