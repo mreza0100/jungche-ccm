@@ -76,7 +76,7 @@ func (manager *Manager) Hide(
 	case request.Self:
 		target, err = manager.IdentifySelf(ctx, request.Environment)
 	case request.ID != "":
-		target, err = manager.lookupTarget(ctx, request.ID, request.Engine)
+		target, err = manager.lookupTarget(ctx, request.ID, request.Engine, request.RolloutPath)
 	default:
 		err = errors.New("hide requires --self or an id")
 	}
@@ -167,10 +167,13 @@ func (manager *Manager) Hidden(ctx context.Context) ([]store.Hidden, error) {
 }
 
 // lookupTarget resolves the chat a hide is aimed at. engine is the caller's
-// own answer to "which engine?", supplied only by a caller holding the row.
+// own answer to "which engine?", supplied only by a caller holding the row;
+// rolloutPath is that same caller's own answer to "which file?" for a Codex
+// id, used only to resolve an UNINDEXED lineage member to its root before
+// falling back to naming the member's own (wrong) id.
 func (manager *Manager) lookupTarget(
 	ctx context.Context,
-	id, engine string,
+	id, engine, rolloutPath string,
 ) (Target, error) {
 	transcript, found, err := manager.database.Transcript(ctx, id)
 	if err != nil {
@@ -194,6 +197,11 @@ func (manager *Manager) lookupTarget(
 			DataPath: lineage.Newest.Path,
 		}, nil
 	}
+	if engine == CodexEngine {
+		if target, resolved := manager.resolveUnindexedCodexParent(ctx, rolloutPath); resolved {
+			return target, nil
+		}
+	}
 	if engine != "" {
 		// A LIVE agent, almost always: its row is composed straight from the
 		// running process, so the picker shows it long before its transcript
@@ -216,6 +224,9 @@ func (manager *Manager) codexTarget(
 		return Target{}, err
 	}
 	if !found {
+		if target, resolved := manager.resolveUnindexedCodexParent(ctx, fallbackPath); resolved {
+			return target, nil
+		}
 		return Target{
 			Engine:   CodexEngine,
 			ID:       id,
@@ -231,6 +242,33 @@ func (manager *Manager) codexTarget(
 		ID:       lineage.RootID,
 		DataPath: path,
 	}, nil
+}
+
+// resolveUnindexedCodexParent reads rolloutPath's own session_meta header —
+// the shared shape identifyCodexSelf and the CLI's own row lookup both hit —
+// for the conversation it resumes from: the ONLY place that link exists
+// before the indexer has parsed the file into the fleet database. It
+// answers found=true only when THAT parent id itself resolves to a real,
+// already-indexed lineage; a parent that is ALSO unindexed (a deeper resume
+// chain the indexer has not reached at all) falls through to the caller's
+// own fallback rather than guessing further.
+func (manager *Manager) resolveUnindexedCodexParent(
+	ctx context.Context,
+	rolloutPath string,
+) (Target, bool) {
+	parent := readCodexLineageParent(rolloutPath)
+	if parent == "" {
+		return Target{}, false
+	}
+	lineage, found, err := manager.database.CodexLineage(ctx, parent)
+	if err != nil || !found {
+		return Target{}, false
+	}
+	return Target{
+		Engine:   CodexEngine,
+		ID:       lineage.RootID,
+		DataPath: lineage.Newest.Path,
+	}, true
 }
 
 func parseTMUX(value string) (socketPath, socketName string) {

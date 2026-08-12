@@ -42,7 +42,14 @@ type Request struct {
 	// transcripts reach the store only after Claude flushes the file. Left
 	// empty, an unknown id is still an error, so a mistyped `cc-fleet hide`
 	// argument cannot quietly record a hide for nothing.
-	Engine      string
+	Engine string
+	// RolloutPath names the Codex rollout file the caller's own row carries,
+	// when known. It lets an unindexed lineage member resolve to its root
+	// through the file's own session_meta header (resolveUnindexedCodexParent)
+	// instead of hiding under the member's own id — the id the picker's
+	// composed row, keyed on the root, never carries. Ignored for Claude ids
+	// and whenever the caller does not have a path to offer.
+	RolloutPath string
 	Exit        bool
 	Environment SelfEnvironment
 }
