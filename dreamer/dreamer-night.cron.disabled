@@ -1,0 +1,1 @@
+0 7 * * * bash /home/user/.professor/dreamer/dreamer-morning.sh >> /home/user/work/proja/tmp/dreamer-night.log 2>&1
