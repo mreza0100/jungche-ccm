@@ -57,10 +57,27 @@ export function extractWorkflowInvocation(transcript, expected) {
         throw new Error(`Claude transcript row ${index} is not JSON`, { cause: caught });
       }
     });
-  const toolUses = rows.flatMap((row) =>
+  // A tool_use whose result came back as an error LAUNCHED NOTHING — it is an attempt, not an invocation.
+  // Counting attempts made a live model's ordinary self-correction (calling Workflow by name, being told
+  // no such workflow exists, then calling it correctly) look like two production runs. What must be
+  // unique is the run that actually STARTED, so errored attempts are excluded — and the survivor must
+  // still be exactly one, which is the property this check exists to hold.
+  const erroredToolUseIds = new Set(
+    rows.flatMap((row) =>
+      messageBlocks(row)
+        .filter((block) => block?.type === 'tool_result' && block.is_error === true)
+        .map((block) => block.tool_use_id),
+    ),
+  );
+  const attempts = rows.flatMap((row) =>
     messageBlocks(row).filter((block) => block?.type === 'tool_use' && block.name === 'Workflow'),
   );
-  if (toolUses.length !== 1) throw new Error('Claude transcript must contain exactly one Workflow tool use');
+  const toolUses = attempts.filter((block) => !erroredToolUseIds.has(block.id));
+  if (toolUses.length !== 1)
+    throw new Error(
+      'Claude transcript must contain exactly one launched Workflow tool use ' +
+        `(${toolUses.length} launched, ${attempts.length - toolUses.length} errored attempt(s))`,
+    );
   const toolUse = toolUses[0];
   let actualArgs;
   let expectedArgs;
@@ -250,5 +267,45 @@ export function assertHeadlessEvidence(value, expected) {
     result.verdicts.some((item) => item.evidencePresent !== true || item.reasoningPresent !== true)
   )
     throw new Error('headless Claude equivalence evidence is stale or incomplete');
+  return evidence;
+}
+
+// ONE home for "is the deterministic equivalence evidence good enough to move the pointer". This lived
+// as three inline copies (equivalence.js, verify.js, activate.js) that all demanded byte-identical agent
+// calls — which meant a candidate could never carry a deliberate fix, because fixing a legacy defect
+// necessarily changes the call sequence. The gate was not wrong to refuse divergence; it was wrong that
+// it could not tell a DECLARED divergence from an undeclared one.
+//
+// So a divergence is admissible only if it was named IN ADVANCE, by agent label, in the evidence itself:
+// the candidate may ADD the declared seats and change nothing else. Everything outside that declaration
+// still fails, and a declaration that goes unused fails too — a standing allowance nobody exercises is
+// how a gate quietly becomes decorative.
+export function assertEquivalenceEvidence(value, expected) {
+  const evidence = record(value, 'deterministic equivalence evidence');
+  const declared = evidence.declaredAddedCalls ?? [];
+  const observed = evidence.observedAddedCalls ?? [];
+  const wellFormedDeclaration =
+    Array.isArray(declared) &&
+    Array.isArray(observed) &&
+    declared.every((label) => typeof label === 'string' && label.length > 0) &&
+    observed.every((label) => typeof label === 'string' && label.length > 0);
+  const callsAdmissible = wellFormedDeclaration
+    ? evidence.exactCallsEqual === true
+      ? declared.length === 0 && observed.length === 0
+      : declared.length > 0 &&
+        observed.length > 0 &&
+        observed.every((label) => declared.includes(label)) &&
+        declared.every((label) => observed.includes(label)) &&
+        evidence.callsEqualIgnoringDeclaredAdditions === true
+    : false;
+  if (
+    evidence.format !== 'wave-walker-equivalence/1' ||
+    callsAdmissible !== true ||
+    evidence.exactResultEqual !== true ||
+    evidence.verdictShapeEqual !== true ||
+    evidence.legacySha256 !== expected.legacySha256 ||
+    evidence.candidateSha256 !== expected.candidateSha256
+  )
+    throw new Error('candidate equivalence evidence is stale or incomplete');
   return evidence;
 }

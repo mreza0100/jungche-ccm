@@ -17,7 +17,6 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -27,6 +26,10 @@ import {
   extractWorkflowInvocation,
   sha256Json,
 } from './headless-equivalence-lib.js';
+// ONE home for "where does the harness write transcripts". Hardcoding ~/.claude here made this script
+// look for evidence a run never wrote, under any account that sets CLAUDE_CONFIG_DIR — and then blame
+// the run for being unbindable instead of blaming its own assumption.
+import { claudeConfigRoot } from './production-caller.js';
 
 const execute = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +94,17 @@ function repositorySnapshot(repository) {
   const hash = createHash('sha256');
   for (const relativePath of listed) {
     const absolute = join(repository, relativePath);
-    const stat = lstatSync(absolute);
+    let stat;
+    try {
+      stat = lstatSync(absolute);
+    } catch (caught) {
+      if (caught?.code !== 'ENOENT') throw caught;
+      // Indexed but absent from the working tree — an ordinary staged deletion. Record it as ABSENT
+      // rather than crashing or skipping: skipping would make a file that vanishes mid-run invisible
+      // to the very hash whose only job is to notice change.
+      hash.update(relativePath).update('\0absent\0');
+      continue;
+    }
     hash.update(relativePath).update('\0');
     if (stat.isSymbolicLink()) hash.update('link\0').update(readlinkSync(absolute));
     else if (stat.isFile())
@@ -108,8 +121,7 @@ function projectSlug(repository) {
 
 function agentContracts(repository, sessionId, runId, output) {
   const runDirectory = join(
-    homedir(),
-    '.claude',
+    claudeConfigRoot(),
     'projects',
     projectSlug(repository),
     sessionId,
@@ -190,8 +202,7 @@ async function runHeadless(repository, bundle, workflowArgs, promptTemplate) {
   assert.equal(cli.is_error, false, 'headless Claude CLI reported an error');
   assert.equal(typeof cli.session_id, 'string', 'headless Claude CLI did not return a session ID');
   const transcriptPath = join(
-    homedir(),
-    '.claude',
+    claudeConfigRoot(),
     'projects',
     projectSlug(repository),
     `${cli.session_id}.jsonl`,
@@ -201,8 +212,7 @@ async function runHeadless(repository, bundle, workflowArgs, promptTemplate) {
     bundle,
     argsJson: JSON.stringify(workflowArgs),
     runRoot: join(
-      homedir(),
-      '.claude',
+      claudeConfigRoot(),
       'projects',
       projectSlug(repository),
       cli.session_id,
