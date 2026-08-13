@@ -21,7 +21,7 @@ Written once at install. Every caller reads this section and passes both values 
 **Script path** — the built bundle, one copy per machine, never copied into this repo:
 
 ```
-{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine/dist/workflow.js
+{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine/dist/active-workflow.js
 ```
 
 Absolute, because the Workflow harness does not expand `~` (a tilde path resolves against the repo root). The clone's `git pull` is this file's whole update story; the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner and any hand edit is overwritten by the next `npm run build` in `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`.

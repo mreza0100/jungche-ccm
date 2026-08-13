@@ -1,6 +1,6 @@
 ---
 name: wave:walker
-description: Wave walk that verifies the code works — one scout enumerates feature-flow/seam/invariant threads AND schedules sensors over the {API_PROTOCOL} fields+gates the wave touched; Sonnet walkers confirm each thread reaches its terminal state while a zero-token rule engine diffs the extracted field/gate cards for disconnects, encoding/casing mismatches, type drift, and auth-fence gaps; judges adjudicate only the flagged anomalies, and one final Opus judgment rules the whole walk before the review is written. Auto-invoked post-merge on main by /wave:orchestrator (§ O6, merge-SHA mode, concurrent with GATE-2) and post-commit by /wave:live; branch mode serves manual pre-merge walks. Also runs standalone code investigation (args.goal — any open code question) and orchestrator/schedule claim-verification panels (args.claims, args.manifestPath). Fast mode ("walker fast <mission>", "fast walk") — inline consumer-tree trace of any target (writers → every consumer → every hop → terminals) via one Sonnet lead + parallel Haiku tracers, no Workflow; § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
+description: Wave walk that verifies the code works — one scout enumerates feature-flow/seam/invariant threads AND schedules sensors over the {API_PROTOCOL} fields+gates the wave touched; Sonnet walkers confirm each thread reaches its terminal state while a zero-token rule engine diffs the extracted field/gate cards for disconnects, encoding/casing mismatches, type drift, and auth-fence gaps; judges adjudicate only the flagged anomalies, and one final Opus judgment rules the whole walk before the review is written. Auto-invoked post-merge on main by /wave:orchestrator (§ O6, merge-SHA mode, concurrent with GATE-2) and post-commit by /wave:live; branch mode serves manual pre-merge walks. Also runs standalone code investigation (args.goal — any open code question) and orchestrator/schedule claim-verification panels (args.claims, args.manifestPath). Fast mode ("walker fast <mission>", "fast walk") — inline consumer-tree trace of any target (writers → every consumer → every hop → terminals), delegated to the `tracer` agent, no Workflow; § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
 ---
 
 # Wave Walker — Thread Walk + Mechanical Ledger, One Fold
@@ -34,109 +34,19 @@ An absent or invalid profile makes the gate machinery report `gates: SKIPPED —
 
 ## Fast mode — `walker fast <mission>`
 
-An inline trace, minutes-scale, no Workflow: given any target (a table, a {API_PROTOCOL} field, a prompt
-slot, a queue message, an API entry), map every writer and every consumer hop-by-hop to its
-terminal. Deliverable: ONE consumer tree — file:line per node, fields per edge, quote-pinned
-edges, terminals typed, closed-world coverage accounting. Raw map only — no recommendations,
-no verdicts. Read-only, like every walk.
+Inline consumer-tree trace, minutes-scale, no Workflow: every writer and every consumer of a target
+(a table, a {API_PROTOCOL} field, a prompt slot, a queue message, an API entry), hop-by-hop to
+terminals. Deliverable: ONE consumer tree — file:line per node, fields per edge, quote-pinned edges,
+terminals typed, closed-world coverage accounting. Raw map only, read-only, like every walk.
 
-**Gear selection:** "where does X go / who feeds X / map it NOW" → fast mode. An open question
+It runs as the registered **`tracer`** agent — spawn `subagent_type: tracer` with the
+mission in the prompt; it holds the lead protocol, the tracer prompt, the hop recipes, and the knobs,
+and dispatches its own Haiku tracers. Relay its map; persist to `tmp/walks/{slug}.md` when it
+outgrows chat.
+
+**Gear selection:** "where does X go / who feeds X / map it NOW" → `tracer`. An open question
 needing adjudicated evidence → investigate (`args.goal`). Post-merge wave verification → the full
-walk. Fast mode's map may FEED a judgment; it never makes one.
-
-Spawn ONE Sonnet lead (`subagent_type: general-purpose`) with the Lead prompt; it spawns Haiku
-tracers per the protocol. Relay its map; persist to `tmp/walks/{slug}.md` when it outgrows chat.
-
-### Lead prompt
-
-Walk this code trace inline: "«mission»". Repo «root» («project list»). READ-ONLY —
-Read/Grep/Glob/git inspection only; you and every agent you spawn never edit or write files.
-
-THE SYNC-TREE LAW (absolute): dispatch ALL tracer Agent calls of a wave in ONE message and wait
-for their results IN THIS TURN. Never background, never a "monitor", never end your turn while a
-dispatched result is missing. A failed/empty dispatch = a COVERAGE HOLE named loudly (thread +
-full bucket) — never silently absent, and never fabricate progress you have not received.
-
-1. SCOUT + INVENTORY. Stamp git state (HEAD short-SHA + dirty-line count) into the report header
-   — the repo may mutate mid-walk. Resolve the target's canonical anchors and emit its SPELLING
-   SET — every spelling the edge wears (snake_case table, camelCase ORM symbol, type names, SQL
-   and queue string literals, jsonb keys, {API_PROTOCOL} fields). Build the INVENTORY: grep -rln the
-   mission's term set across every project (excluding tests/, generated/, node_modules/,
-   **pycache**/, .claude/, docs/, tmp/) — every hit file is inventory; count test files per
-   project (one line, never opened). Enumerate ≤8 THREADS (merge trivial; never split for count),
-   classify hop types, assign EVERY inventory file to exactly one bucket — the inventory ends
-   fully assigned. MANDATORY thread: any status/step/jsonb SIDE-CHANNEL the writers touch gets
-   its own thread traced to ITS surfaces — a side-channel is a data path, not a footnote.
-2. DISPATCH one HAIKU tracer per thread — all in ONE message, awaited in-turn — each carrying:
-   mission, thread entry (file:line + hop type + recipe lines), depth=1, SPELLING SET, its
-   bucket, and the trunk anchors so no tracer re-walks the trunk. Prefix every tracer's
-   description with a short run slug (e.g. "ccrt-dive:T3 …") — token attribution slices runs by
-   label, and colliding labels across runs merge their costs.
-3. MOP-UP (one round, same sync law): reassign NOT-MINE files, dead tracers' buckets, and
-   FRONTIER to fresh Haiku tracers; one Sonnet resolver takes the AMBIGUOUS set. A tracer that
-   corrected an earlier claim: re-verify that tracer's SIBLING claims yourself — a correction
-   replaces only the corrected claim. Then stop; the unwalked stays a named FRONTIER leaf.
-4. MERGE. Dedupe converged nodes by anchor (file:symbol) — mark convergence. One consumer tree:
-   writer → target → each reader → every hop → terminal (RENDERED-SURFACE | LLM-CONTEXT | EGRESS
-   | DEAD-END | FRONTIER + resume grep). Duties: (a) every "consumed" claim NAMES its reader at
-   file:line — a writer output with no named reader is a DEAD-END, said explicitly; (b)
-   same-named types across projects: field-by-field diff or write "shapes NOT diffed" — never
-   "consistent" from a glance; (c) every FE query document and every component in the inventory:
-   mounted/imported-at file:line or DEAD-END-unmounted; (d) auth/guard chains are QUOTED per
-   resolver — never "mirrors X". COVERAGE: git stamp · inventory accounting (assigned /
-   dispositioned / leftover, per thread, tracer-verified vs lead-verified vs presence-grep-only)
-   · terms + dirs · every hole and frontier named. TELEMETRY: tracers dispatched vs reports
-   received (must reconcile), mop-up rounds, corrections.
-
-### Tracer prompt
-
-Trace ONE thread of «mission», depth «d» of 3. READ-ONLY. Budget ≤20 tool calls — beyond it,
-return what you have, rest as FRONTIER. Entry: «file:line — hop type». Recipes: «lines».
-SPELLING SET (grep every spelling before any absence claim): «spellings». Trunk (do NOT
-re-walk): «anchors». BUCKET (every file returns with a disposition): «files».
-
-1. EVERY edge quotes ≤2 verbatim lines of the code that makes it, with file:line — no edge
-   without its quote. A docstring/comment mention is a LEAD, never an edge.
-2. Disposition each bucket file: EDGE (quoted) | RED-HERRING (term present, no live edge — one
-   line of proof) | NOT-MINE (return, don't walk) | FRONTIER (real edge, unfinished) |
-   FAILED-TO-LOOK (a tool call failed — NEVER reported as "no edge").
-3. Big files: grep with line numbers, then Read the matching RANGES — never "clean" from a
-   truncated read.
-4. An opened function or node: ALL branches (success/skip/fail/reuse) + EVERY side-effect write.
-5. Cross-cutting property (audit/auth/logging/AI-marking/i18n) absent? Only after finding the
-   repo's MECHANISM and checking its registry — else AMBIGUOUS, not absent.
-6. Edges ride STRING LITERALS too (queue type strings, step keys, jsonb keys) — grep the
-   literal, not just the symbol. Unpinnable (dynamic dispatch) → AMBIGUOUS with evidence.
-7. Fan-out outside your bucket: 1-2 new entries → walk them yourself; 3+ and depth<3 → one HAIKU
-   child each, ALL in ONE message awaited in-turn; at depth 3 → FRONTIER leaves.
-8. RETURN raw material, never conclusions: subtree (quotes, fields per edge, children merged),
-   candidate terminals with evidence, full bucket dispositions, Frontier, ONE coverage line.
-   The lead rules dead ends; you report what you saw.
-
-### Recipes (stamped per hop type — adopter anchors)
-
-> Genericized anchors below — swap `{project}` and the per-project paths for YOUR OWN repo's
-> layout at setup; the hop-type taxonomy and recipe SHAPE are what transfers, the paths are not.
-
-| Hop type              | Recipe                                                                                                                                                                                                                             |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| DB-TABLE               | table name + {ORM} symbol (`{project}/.../{ORM}/schema.ts`) + {AI_PROJECT} repository layer (`{AI_PROJECT}/src/**/db/`) — all spellings repo-wide; migrations `{project}/schema/{ORM}/*.sql`                                     |
-| GRAPH-NODE             | factory + `add_node`/`add_edge` in your pipeline's graph-definition module (edges IN and OUT) + all branches + every step_status/jsonb write                                                                                      |
-| SIDE-CHANNEL           | the column/key written → every reader of the key AND of the PAYLOAD inside it → their surfaces                                                                                                                                    |
-| {API_PROTOCOL}-FIELD   | SDL → resolver (guard chain QUOTED) → query → FE query documents (`{project}/src/graphql/queries.ts` + `generated/`) → consumers; FE screens live in BOTH `{project}/app/` (file-based routes) AND `{project}/src/components/`   |
-| PROMPT-SLOT            | content `{AI_PROJECT}/knowledge/prompts/**/*.md`; loader shims `{AI_PROJECT}/src/**/prompts/**` — BOTH before any claim; terminal LLM-CONTEXT, and a tool-using agent's reply may continue to a rendered chat surface — follow it |
-| CROSS-CUTTING          | BE audit = the audit-log plugin's op-name map wired via its hook in the app entrypoint; BE auth = guard helpers + middleware; {AI_PROJECT} LLM = the LLM factory + its provider config; FE i18n = the locales directory           |
-| {QUEUE}                | message TYPE string literal → publishers → consumer → downstream write                                                                                                                                                            |
-| WS/SSE                 | event name → emit → subscriber → rendering component                                                                                                                                                                              |
-| IMPORT-CALL            | symbol imports + call sites repo-wide, all spellings                                                                                                                                                                               |
-| SEED-EXPORT            | `{project}/seeding/**` + export paths (round-trip)                                                                                                                                                                                 |
-
-**Knobs:** threads ≤8 (default 6 — fewer, wider tracers cut wall-clock), tracer budget ≤20 tool
-calls, depth ≤3, one mop-up round. Cost shape (measured): ~$5 full tree — Haiku tracers
-~$0.10-0.15 each, the Sonnet LEAD is the cost center (cache-read growth over its tool calls), so
-the token lever is a short lead context: the lead delegates instead of self-grepping and tracers
-return compact raw material. ~15-20 min; the heavy engine remains the tool for adjudicated
-verdicts.
+walk. The tracer's map may FEED a judgment; it never makes one.
 
 ## § Orchestration (the `wave-walker` workflow)
 
