@@ -1,0 +1,13 @@
+{
+  "name": "professor-dreamer",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test dist-tests/tests/test-dreamer-night.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
