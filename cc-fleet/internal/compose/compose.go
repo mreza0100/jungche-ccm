@@ -153,6 +153,7 @@ func Compose(input Input) Output {
 	}
 
 	output.Rows, output.ProjectOrder = sortProjectRows(output.Rows)
+	output = leadWithCurrentProject(output, input.Options.CurrentDir)
 	output = withNewRows(output)
 	if input.Options.Rotation != 0 {
 		output = Rotate(output, input.Options.Rotation)

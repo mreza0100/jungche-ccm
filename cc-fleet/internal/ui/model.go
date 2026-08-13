@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -62,6 +63,11 @@ type Model struct {
 	outcomeRow      compose.Row
 	initialHidden   map[string]bool
 	hideChanges     map[string]HideChange
+	// applyHide performs a ⌃X the instant it is typed. hideError holds what
+	// went wrong if it could not, so a refused hide is visible instead of a
+	// keystroke that appeared to do nothing.
+	applyHide func(HideChange) error
+	hideError string
 }
 
 // NewModel builds the first frame entirely from cached state.
@@ -90,6 +96,7 @@ func NewModel(snapshot Snapshot) Model {
 		query:           input,
 		initialHidden:   make(map[string]bool),
 		hideChanges:     make(map[string]HideChange),
+		applyHide:       snapshot.ApplyHide,
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -293,21 +300,53 @@ func (model *Model) toggleHidden() {
 		model.rows[index].NameHidden {
 		return
 	}
-	follow := rowKey(model.rows[index])
-	model.rows[index].Hidden = !model.rows[index].Hidden
-	model.adjustHiddenCount(model.rows[index].Hidden)
+	row := model.rows[index]
 	change := HideChange{
-		ID:     model.rows[index].ID,
-		Engine: rowEngine(model.rows[index].Kind),
-		Hidden: model.rows[index].Hidden,
+		ID:     row.ID,
+		Engine: rowEngine(row.Kind),
+		Hidden: !row.Hidden,
+		Socket: row.Socket,
+		Live:   isLive(row.Kind),
+		Name:   row.Name,
 	}
-	if initial, found := model.initialHidden[change.ID]; found &&
-		initial == change.Hidden {
-		delete(model.hideChanges, change.ID)
-	} else {
-		model.hideChanges[change.ID] = change
+	// ⌃X lands NOW — the store write, and the kill when the row is live. It
+	// used to be held until the picker quit, which meant only the exits that
+	// launched something ever applied it: closing the list the natural way
+	// discarded every mark that had just been typed.
+	if model.applyHide != nil {
+		if err := model.applyHide(change); err != nil {
+			model.hideError = fmt.Sprintf("%s: %v", change.Name, err)
+			return
+		}
+	}
+	model.hideError = ""
+	follow := rowKey(row)
+	model.rows[index].Hidden = change.Hidden
+	model.adjustHiddenCount(change.Hidden)
+	model.hideChanges[change.ID] = change
+	// The chat was running and has just been ended: demote the row rather than
+	// leave it claiming a server that no longer exists.
+	if change.Hidden && change.Live {
+		model.rows[index] = demoteToResumable(model.rows[index])
 	}
 	model.rebuild(follow, fallback)
+}
+
+// demoteToResumable rewrites a row whose server has just been killed, mirroring
+// what a reboot does to one: the chat is still resumable from its transcript,
+// but every handle to the dead server is gone.
+func demoteToResumable(row compose.Row) compose.Row {
+	if row.Kind == compose.LiveCodex {
+		row.Kind = compose.ResumeCodex
+	} else {
+		row.Kind = compose.ResumeClaude
+	}
+	row.Socket = ""
+	row.PaneID = ""
+	row.SessionName = ""
+	row.WindowName = ""
+	row.Attached = false
+	return row
 }
 
 func (model *Model) adjustHiddenCount(hidden bool) {
@@ -484,11 +523,13 @@ func isLive(kind compose.Kind) bool {
 		kind == compose.LiveSplit
 }
 
-// Result returns the effects accumulated by the pure model. Cancelled empties
-// HideChanges and reverts PrimaryAccount to what the picker opened with —
-// defense in depth alongside the command loop's own gate on OutcomeCancelled,
-// so a pending ⌃X hide or ⌃S account switch can never be applied by either
-// side alone drifting out of sync with the other.
+// Result returns the effects accumulated by the pure model. Cancelled reverts
+// PrimaryAccount to what the picker opened with, since a ⌃S account switch is
+// only a pending intent until the picker exits deliberately.
+//
+// HideChanges survives a cancel: it is no longer a request to apply anything,
+// it is the RECEIPT of what ⌃X already did while the picker was open. Esc
+// closes the list; it does not resurrect a chat that was hidden and killed.
 func (model Model) Result() Outcome {
 	if model.outcome == OutcomeCancelled {
 		return Outcome{
@@ -497,15 +538,9 @@ func (model Model) Result() Outcome {
 			Cache1H:        model.cache1H,
 			Rotation:       model.rotation,
 			Query:          model.query.Value(),
+			HideChanges:    model.appliedChanges(),
 		}
 	}
-	changes := make([]HideChange, 0, len(model.hideChanges))
-	for _, change := range model.hideChanges {
-		changes = append(changes, change)
-	}
-	sort.Slice(changes, func(left, right int) bool {
-		return changes[left].ID < changes[right].ID
-	})
 	return Outcome{
 		Kind:           model.outcome,
 		Row:            model.outcomeRow,
@@ -513,8 +548,19 @@ func (model Model) Result() Outcome {
 		Cache1H:        model.cache1H,
 		Rotation:       model.rotation,
 		Query:          model.query.Value(),
-		HideChanges:    changes,
+		HideChanges:    model.appliedChanges(),
 	}
+}
+
+func (model Model) appliedChanges() []HideChange {
+	changes := make([]HideChange, 0, len(model.hideChanges))
+	for _, change := range model.hideChanges {
+		changes = append(changes, change)
+	}
+	sort.Slice(changes, func(left, right int) bool {
+		return changes[left].ID < changes[right].ID
+	})
+	return changes
 }
 
 // VisibleRows returns a copy for model tests and noninteractive adapters.

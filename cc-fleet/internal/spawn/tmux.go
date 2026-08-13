@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+
+	"hostops/cc-fleet/internal/paths"
 )
 
 // CommandTmux invokes tmux only through the configured socket directory, the
@@ -23,8 +25,7 @@ func (tmux CommandTmux) NewSession(
 	ctx context.Context,
 	spec SessionSpec,
 ) error {
-	arguments := []string{
-		"-f", "/dev/null",
+	arguments := append(paths.TmuxConfigArguments(),
 		"new-session", "-d",
 		"-s", spec.Session,
 		"-n", spec.Window,
@@ -32,7 +33,7 @@ func (tmux CommandTmux) NewSession(
 		"-x", strconv.Itoa(spec.Width),
 		"-y", strconv.Itoa(spec.Height),
 		spec.Run,
-	}
+	)
 	if output, err := tmux.command(
 		ctx,
 		spec.Socket,

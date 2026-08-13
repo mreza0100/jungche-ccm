@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,22 @@ func createDeadSocket(t *testing.T, path string) {
 	}
 }
 
+// stubFailingTmux puts a tmux on PATH that fails the way a REAL anomaly does —
+// not "no server running", which is now the ordinary end of a chat and stays
+// silent, but a failure an operator has to see.
+func stubFailingTmux(t *testing.T, root string) {
+	t.Helper()
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o700); err != nil {
+		t.Fatalf("create stub bin dir: %v", err)
+	}
+	stub := "#!/bin/sh\necho 'tmux: connect failed: permission denied' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte(stub), 0o700); err != nil {
+		t.Fatalf("write tmux stub: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // TestInteractiveRefreshBuffersGatherWarningsUntilFlushed is BUG 4's
 // red-first fixture: pipeline.go used to write a tmux probe warning straight
 // to stderr from gatherFleet (cmd/cc-fleet/pipeline.go, the loop over
@@ -49,6 +66,10 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 	tmuxDir := filepath.Join(root, "tmux")
 	const socketName = "cc-dead-1-2-3"
 	createDeadSocket(t, filepath.Join(tmuxDir, socketName))
+	// A socket with no server behind it is swept in SILENCE now, so it can no
+	// longer be the warning this test buffers. Stand in a tmux that fails for a
+	// reason worth reading instead — the anomaly class buffering exists for.
+	stubFailingTmux(t, root)
 
 	database, err := store.Open()
 	if err != nil {
