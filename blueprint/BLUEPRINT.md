@@ -53,7 +53,7 @@ Every command, agent, and rule sorts into one of three tiers:
 
 ### The plumbing (Tier C — invisible)
 
-- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter` — root agents. Role-defined, not character-defined.
+- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer` — root agents. Role-defined, not character-defined.
 - `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
 - `statusline-command.sh` — two-line status bar (model, context, git, cost, rate limits). Installed to `~/.claude/`.
 - `settings-global.json` — a handful of keys merged (never overwritten) into the adopter's own `~/.claude/settings.json`. Currently one key, `cleanupPeriodDays: 36500`, which turns off Claude Code's default 30-day auto-delete of session transcripts and orphaned git worktrees.
@@ -222,7 +222,7 @@ your-project/
 │   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — it's host-level, opt-in via `blueprint/templates/host-swap/`)
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-wait.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
-│   ├── workflows/                     ← saved Workflow scripts: wave-walker (post-merge functional + hygiene walk), documenter-fanout (parallel doc consolidation), audit-ai-output-sessions (per-session AI-output audit fan-out)
+│   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
 │   ├── skills/                        ← source-fetched at install from sources.json (rr, ghostwriter, vision-factory); the former bundled p:* skills (rnd, 360, quality:*, audit:*, wave:refine, wave:walker) now ship as nested commands under commands/
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) pointer layer over .claude/ — never a restatement of it
