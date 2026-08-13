@@ -55,6 +55,9 @@ func newActionTmuxJail(t *testing.T) *actionTmuxJail {
 	t.Setenv("CC_FLEET_CLAUDE_ROOTS", filepath.Join(root, "claude"))
 	t.Setenv("CC_FLEET_CODEX_ROOT", filepath.Join(root, "codex"))
 	t.Setenv("CC_FLEET_TMUX_DIR", jail.tmuxDir)
+	// A chat server loads the user's ~/.tmux.conf in real life; a fixture must
+	// not, or the machine it runs on steers the test.
+	t.Setenv("CC_FLEET_TMUX_CONF", "/dev/null")
 	t.Cleanup(func() {
 		for _, socket := range jail.sockets {
 			_ = jail.command("-L", socket, "kill-server").Run()

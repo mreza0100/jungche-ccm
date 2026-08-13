@@ -228,6 +228,7 @@ _cc_selfswitch() {
 # cc-fleet chat database.
 vsct-revive() {
   local -a projs=("$@"); (( $# )) || projs=("${PWD:t}")
+  projs=("${projs[@]//[.:]/_}")   # tmux stored '.' and ':' as '_' when the bunker was born
   local srv="revive-vsct" out="rv-${(j:+:)projs}"
   local s att n=0 pid kids p hit
   tmux -L "$srv" kill-session -t "=$out" 2>/dev/null    # rebuild the dashboard each run

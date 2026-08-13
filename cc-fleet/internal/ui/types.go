@@ -30,6 +30,13 @@ type Snapshot struct {
 	Height          int
 	InitialQuery    string
 	InitialCursorID string
+	// ApplyHide performs a ⌃X the instant it is typed — the store write, and
+	// the kill when the row is live. It is deliberately NOT deferred to quit:
+	// the only exits that ever applied a batched hide were the ones that
+	// launched something (Enter, ⌃T, ⌃O), so closing the picker the natural
+	// way threw every mark away. Nil leaves the picker read-only (the plain
+	// twin, tests).
+	ApplyHide func(HideChange) error
 }
 
 // OutcomeKind identifies why an interactive picker stopped.
@@ -43,12 +50,17 @@ const (
 	OutcomeCancelled
 )
 
-// HideChange is one final desired hidden state accumulated while the picker
-// remained open.
+// HideChange is one hidden-state change, applied the moment it is typed.
 type HideChange struct {
 	ID     string
 	Engine string
 	Hidden bool
+	// Socket, Live and Name carry what hiding a RUNNING chat needs beyond the
+	// store write: hiding it ends it, and only the picker knows the row was
+	// live, which server it owns, and what to call it in the receipt.
+	Socket string
+	Live   bool
+	Name   string
 }
 
 // Outcome contains the selected action plus every in-memory modifier. The

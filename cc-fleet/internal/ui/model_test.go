@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -37,9 +39,13 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	if !reflect.DeepEqual(snapshot.Rows, beforeRows) {
 		t.Fatal("pure model mutated input snapshot")
 	}
+	// A second ⌃X is an UNHIDE, applied like the first one. The receipt keeps
+	// the row's final state rather than cancelling out to nothing: both writes
+	// really happened.
 	model, _ = applyKey(t, model, controlKey('x'))
-	if len(model.Result().HideChanges) != 0 {
-		t.Fatalf("double toggle did not cancel: %#v", model.Result())
+	undo := model.Result()
+	if len(undo.HideChanges) != 1 || undo.HideChanges[0].Hidden {
+		t.Fatalf("second ⌃X did not record an unhide: %#v", undo)
 	}
 
 	model, _ = applyKey(t, model, controlKey('e'))
@@ -68,19 +74,25 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	}
 }
 
-// TestCancelDropsPendingHideAndPrimaryChanges is the pure-model half of the
-// picker-cancel fix: Result() itself must empty HideChanges and revert
-// PrimaryAccount on OutcomeCancelled, as defense in depth alongside the
-// command loop's own gate (cmd/cc-fleet/commands.go) — a pending ⌃X hide or
-// ⌃S account switch must never survive Esc/⌃C, from either side alone.
-func TestCancelDropsPendingHideAndPrimaryChanges(t *testing.T) {
+// TestCancelKeepsAppliedHidesAndDropsPrimaryChange pins the split that ⌃X
+// acting immediately creates: Esc still abandons a ⌃S account switch, which is
+// only ever a pending intent, but it can no longer take back a hide. Batching
+// the hide until quit meant the only exits that applied one were the ones that
+// launched something, so closing the list the natural way silently threw every
+// ⌃X away.
+func TestCancelKeepsAppliedHidesAndDropsPrimaryChange(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.PrimaryAccount = 1
+	var applied []HideChange
+	snapshot.ApplyHide = func(change HideChange) error {
+		applied = append(applied, change)
+		return nil
+	}
 	model := NewModel(snapshot)
 
 	model, _ = applyKey(t, model, controlKey('x'))
-	if len(model.Result().HideChanges) != 1 {
-		t.Fatalf("setup: hide toggle result=%#v", model.Result())
+	if len(applied) != 1 || !applied[0].Hidden {
+		t.Fatalf("⌃X did not apply on the keypress: %#v", applied)
 	}
 	model, _ = applyKey(t, model, controlKey('s'))
 	if model.PrimaryAccount() == 1 {
@@ -93,12 +105,75 @@ func TestCancelDropsPendingHideAndPrimaryChanges(t *testing.T) {
 	}
 	result := cancelled.Result()
 	if result.Kind != OutcomeCancelled ||
-		len(result.HideChanges) != 0 ||
+		len(result.HideChanges) != 1 ||
+		!result.HideChanges[0].Hidden ||
 		result.PrimaryAccount != 1 {
 		t.Fatalf(
-			"cancel result=%#v, want Cancelled/no hide changes/account 1",
+			"cancel result=%#v, want Cancelled/hide kept/account reverted to 1",
 			result,
 		)
+	}
+	if len(applied) != 1 {
+		t.Fatalf("Esc re-applied or reverted the hide: %#v", applied)
+	}
+}
+
+// TestHideAppliesImmediatelyAndEndsALiveChat is the whole point of the change:
+// the keypress writes the hide AND kills the chat's server, and the row stops
+// claiming a server that is gone.
+func TestHideAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	var live compose.Row
+	for _, row := range snapshot.Rows {
+		if row.Kind == compose.LiveClaude && row.Socket != "" {
+			live = row
+			break
+		}
+	}
+	if live.ID == "" {
+		t.Skip("fixture has no live claude row with a socket")
+	}
+	snapshot.Rows = []compose.Row{live}
+	snapshot.InitialCursorID = live.ID
+	var applied []HideChange
+	snapshot.ApplyHide = func(change HideChange) error {
+		applied = append(applied, change)
+		return nil
+	}
+	model := NewModel(snapshot)
+
+	model, _ = applyKey(t, model, controlKey('x'))
+	if len(applied) != 1 {
+		t.Fatalf("⌃X did not apply on the keypress: %#v", applied)
+	}
+	if !applied[0].Live || applied[0].Socket != live.Socket {
+		t.Fatalf("the kill had nothing to aim at: %#v", applied[0])
+	}
+	if got := model.rows[0]; got.Kind != compose.ResumeClaude ||
+		got.Socket != "" || got.PaneID != "" {
+		t.Fatalf("killed row still claims a live server: %#v", got)
+	}
+}
+
+// TestHideThatCannotLandLeavesTheRowAlone: a ⌃X that fails must not pretend it
+// worked. The row keeps its state and the failure takes the status line.
+func TestHideThatCannotLandLeavesTheRowAlone(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.ApplyHide = func(HideChange) error {
+		return errors.New("store is locked")
+	}
+	model := NewModel(snapshot)
+	before := model.rows[model.filtered[model.cursor]].Hidden
+
+	model, _ = applyKey(t, model, controlKey('x'))
+	if model.rows[model.filtered[model.cursor]].Hidden != before {
+		t.Fatal("a failed ⌃X flipped the row anyway")
+	}
+	if len(model.Result().HideChanges) != 0 {
+		t.Fatalf("a failed ⌃X was recorded: %#v", model.Result().HideChanges)
+	}
+	if !strings.Contains(model.View().Content, "store is locked") {
+		t.Fatal("a failed ⌃X was invisible to the user")
 	}
 }
 

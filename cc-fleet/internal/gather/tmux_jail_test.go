@@ -2,6 +2,7 @@ package gather
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -96,6 +97,9 @@ func setGatherTestEnv(t *testing.T, root, tmuxDir string) {
 	t.Setenv(paths.EnvClaudeRoots, filepath.Join(root, "claude-projects"))
 	t.Setenv(paths.EnvCodexRoot, codexRoot)
 	t.Setenv(paths.EnvTmuxDir, tmuxDir)
+	// A chat server loads the user's ~/.tmux.conf in real life; a fixture must
+	// not, or the machine it runs on steers the test.
+	t.Setenv(paths.EnvTmuxConf, "/dev/null")
 }
 
 func (jail *tmuxJail) command(arguments ...string) *exec.Cmd {
@@ -192,6 +196,74 @@ func TestProbeTmuxReadOnlyLeavesOldCorpse(t *testing.T) {
 	}
 }
 
+// TestDeadSocketIsSweptWithoutAWarning: a socket whose server has exited is a
+// chat that ended, and every picker close used to shout one
+// "tmux probe warning: <sock>: exit status 1" per leftover. The corpse is still
+// swept — silently — while a genuine probe failure still speaks up.
+func TestDeadSocketIsSweptWithoutAWarning(t *testing.T) {
+	tmuxDir := t.TempDir()
+	path := filepath.Join(tmuxDir, "cc-7-8-9")
+	now := time.Now()
+	createCorpseSocket(t, path, now.Add(-2*time.Hour))
+
+	probe, err := ProbeTmux(context.Background(), tmuxDir, goneServerTmux{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(probe.ProbeWarnings) != 0 {
+		t.Fatalf("a dead socket still warned: %#v", probe.ProbeWarnings)
+	}
+	if len(probe.CorpseSwept) != 1 || probe.CorpseSwept[0] != "cc-7-8-9" {
+		t.Fatalf("dead socket was not swept: %#v", probe.CorpseSwept)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("corpse socket survived the sweep: %v", err)
+	}
+
+	// The contrast: anything that is NOT "no server" is still an anomaly.
+	other := t.TempDir()
+	createCorpseSocket(t, filepath.Join(other, "cc-7-8-9"), now.Add(-2*time.Hour))
+	loud, err := ProbeTmux(context.Background(), other, alwaysFailTmux{}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loud.ProbeWarnings) != 1 {
+		t.Fatalf("a real probe failure went silent: %#v", loud)
+	}
+}
+
+// TestServerGoneReadsTmuxOwnWords runs the real tmux against a socket with
+// nothing behind it: the exit status alone says nothing (every failure is 1),
+// so the classifier has to read the stderr exec keeps on the ExitError.
+func TestServerGoneReadsTmuxOwnWords(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not installed")
+	}
+	dir := t.TempDir()
+	command := exec.Command("tmux", "-L", "cc-no-such-server-9999", "list-panes", "-a")
+	command.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+dir)
+	_, err := command.Output()
+	if err == nil {
+		t.Fatal("probing an absent tmux server unexpectedly succeeded")
+	}
+	if err.Error() != "exit status 1" {
+		t.Logf("note: tmux error text is %q", err.Error())
+	}
+	if !serverGone(err) {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			t.Fatalf("tmux said %q and serverGone missed it", string(exit.Stderr))
+		}
+		t.Fatalf("serverGone missed %v", err)
+	}
+}
+
+type goneServerTmux struct{}
+
+func (goneServerTmux) ListPanes(_ context.Context, socket string) ([]Pane, error) {
+	return nil, fmt.Errorf("%w: %s", ErrServerGone, socket)
+}
+
 func TestProbeTmuxRetriesOneTransientReadFailure(t *testing.T) {
 	tmuxDir := t.TempDir()
 	path := filepath.Join(tmuxDir, "cc-1-2-3")
@@ -281,8 +353,12 @@ func TestJailedTmuxProbeAndGather(t *testing.T) {
 	if !reflect.DeepEqual(probe.CorpseSwept, []string{oldCorpse}) {
 		t.Fatalf("ProbeTmux().CorpseSwept = %q, want old corpse", probe.CorpseSwept)
 	}
-	if len(probe.ProbeWarnings) != 2 {
-		t.Fatalf("ProbeTmux().ProbeWarnings = %q, want two corpse warnings", probe.ProbeWarnings)
+	// Both corpses are swept in SILENCE: a socket with no server behind it is
+	// a chat that ended, which is the most ordinary thing in a fleet. It used
+	// to raise one warning apiece, so every picker close ended in a wall of
+	// "exit status 1" that buried the failures worth reading.
+	if len(probe.ProbeWarnings) != 0 {
+		t.Fatalf("ProbeTmux().ProbeWarnings = %q, want silence for corpses", probe.ProbeWarnings)
 	}
 	if _, err := os.Stat(oldCorpsePath); !os.IsNotExist(err) {
 		t.Fatalf("old corpse still exists: %v", err)

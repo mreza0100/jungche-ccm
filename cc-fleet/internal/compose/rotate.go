@@ -116,6 +116,58 @@ func newTarget(output Output) (string, string) {
 	return project, directory
 }
 
+// leadWithCurrentProject puts the project the picker was OPENED IN at the top,
+// ahead of activity order, and keeps every other project ranked by activity
+// behind it.
+//
+// Without it the busiest project leads, and since the two generated new-chat
+// rows target ProjectOrder[0], opening the list inside one project offered a
+// "New chat" that would launch in ANOTHER — the picker answering a question
+// nobody asked. The current project leads even with no chats of its own: it is
+// still where a new chat belongs.
+func leadWithCurrentProject(output Output, currentDir string) Output {
+	if currentDir == "" {
+		return output
+	}
+	current := projectName(currentDir)
+	if current == "" || current == "?" {
+		return output
+	}
+	if len(output.ProjectOrder) > 0 && output.ProjectOrder[0] == current {
+		return output
+	}
+
+	order := make([]string, 0, len(output.ProjectOrder)+1)
+	order = append(order, current)
+	for _, project := range output.ProjectOrder {
+		if project != current {
+			order = append(order, project)
+		}
+	}
+
+	rowsByProject := make(map[string][]Row, len(order))
+	for _, row := range output.Rows {
+		if row.Kind == NewClaude || row.Kind == NewCodex {
+			continue
+		}
+		rowsByProject[row.Project] = append(rowsByProject[row.Project], row)
+	}
+	rows := make([]Row, 0, len(output.Rows))
+	for _, project := range order {
+		rows = append(rows, rowsByProject[project]...)
+	}
+
+	output.Rows = rows
+	output.ProjectOrder = order
+	if _, found := output.ProjectDirs[current]; !found {
+		if output.ProjectDirs == nil {
+			output.ProjectDirs = make(map[string]string, 1)
+		}
+		output.ProjectDirs[current] = cleanPath(currentDir)
+	}
+	return output
+}
+
 func sortProjectRows(rows []Row) ([]Row, []string) {
 	rowsByProject := make(map[string][]Row)
 	for _, row := range rows {

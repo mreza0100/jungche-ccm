@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"hostops/cc-fleet/internal/paths"
 )
 
 // CommandTmux invokes tmux only through the configured jailed socket directory.
@@ -122,11 +124,7 @@ func (tmux CommandTmux) CreateCodexServer(
 	ctx context.Context,
 	server CodexServer,
 ) error {
-	if output, err := tmux.command(
-		ctx,
-		server.Socket,
-		"-f",
-		"/dev/null",
+	arguments := append(paths.TmuxConfigArguments(),
 		"new-session",
 		"-d",
 		"-s",
@@ -136,6 +134,11 @@ func (tmux CommandTmux) CreateCodexServer(
 		"-n",
 		"Codex",
 		server.Run,
+	)
+	if output, err := tmux.command(
+		ctx,
+		server.Socket,
+		arguments...,
 	).CombinedOutput(); err != nil {
 		return fmt.Errorf("create Codex server: %w: %s", err, output)
 	}

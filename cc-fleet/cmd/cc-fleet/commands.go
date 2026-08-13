@@ -104,6 +104,12 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
 				return 1
 			}
+			applier, err := hideApplier(ctx, database, scan.Paths)
+			if err != nil {
+				fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
+				return 1
+			}
+			scan.Snapshot.ApplyHide = applier
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
 			// Bubble Tea owns the tty for as long as Pick runs: a probe warning
@@ -133,16 +139,13 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		if *plain || *tsv {
 			return 0
 		}
-		// Esc/⌃C must cancel outright: a pending ⌃X hide or ⌃S account switch
-		// typed before backing out must never land. Model already empties
-		// HideChanges and resets PrimaryAccount on Cancelled (Result()) as
-		// defense in depth, but the write is gated here too so the two can
-		// never drift apart.
+		// Every ⌃X already landed the moment it was typed, so there is nothing
+		// here to apply and no exit key that can lose one. What remains is the
+		// receipt, printed once the picker has released the terminal.
+		reportHides(outcome.HideChanges, stderr)
+		// A ⌃S account switch IS still a pending intent, and backing out with
+		// Esc/⌃C must not write it.
 		if outcome.Kind != ui.OutcomeCancelled {
-			if err := applyPickerChanges(ctx, database, outcome); err != nil {
-				fmt.Fprintf(stderr, "cc-fleet ls: %v\n", err)
-				return 1
-			}
 			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
 				if err := writePrimaryAccount(scan.Paths.Home, outcome.PrimaryAccount); err != nil {
 					fmt.Fprintf(stderr, "cc-fleet ls: save primary account: %v\n", err)
@@ -307,28 +310,84 @@ func initialCache1H() bool {
 		os.Getenv("CLAUDECODE") == ""
 }
 
-func applyPickerChanges(
+// reportHides is the receipt for what ⌃X did while the picker was open. A
+// hide that ENDED a running chat is worth saying out loud — it is the one
+// picker keystroke that destroys something.
+func reportHides(changes []ui.HideChange, stderr io.Writer) {
+	hidden, killed := 0, 0
+	for _, change := range changes {
+		if !change.Hidden {
+			continue
+		}
+		hidden++
+		if change.Live && change.Socket != "" {
+			killed++
+			fmt.Fprintf(stderr, "cc-fleet ls: ended %s (%s)\n", change.Name, change.Socket)
+		}
+	}
+	if killed > 0 {
+		fmt.Fprintf(stderr, "cc-fleet ls: hid %d, ended %d\n", hidden, killed)
+	}
+}
+
+// hideApplier performs a picker ⌃X the instant it is typed: the store write,
+// and the kill when the row is live. Hiding a running chat ENDS it — a chat
+// that has left the list is a chat nobody can reach to stop.
+//
+// It reports failure by returning it, never by writing to stderr: Bubble Tea
+// owns the terminal for as long as the picker is open.
+func hideApplier(
 	ctx context.Context,
 	database *store.Store,
-	outcome ui.Outcome,
-) error {
+	resolved paths.Values,
+) (func(ui.HideChange) error, error) {
 	manager, err := hide.New(database, hide.Dependencies{})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, change := range outcome.HideChanges {
-		if change.Hidden {
-			// The picker was showing the row, so it vouches for the engine: a
-			// live agent whose transcript the index has not seen yet still
-			// hides.
-			if _, err := manager.Hide(ctx, hide.Request{
-				ID:     change.ID,
-				Engine: change.Engine,
-			}); err != nil {
-				return err
-			}
-		} else if err := manager.Unhide(ctx, change.ID); err != nil {
+	return func(change ui.HideChange) error {
+		if !change.Hidden {
+			return manager.Unhide(ctx, change.ID)
+		}
+		// The picker was showing the row, so it vouches for the engine: a live
+		// agent whose transcript the index has not seen yet still hides.
+		if _, err := manager.Hide(ctx, hide.Request{
+			ID:     change.ID,
+			Engine: change.Engine,
+		}); err != nil {
 			return err
+		}
+		if change.Live && change.Socket != "" {
+			return killChatServer(ctx, resolved, change.Socket)
+		}
+		return nil
+	}, nil
+}
+
+// killChatServer ends one chat's tmux server and removes every handle that
+// would otherwise keep pointing at it — the socket file, and the sid crumbs
+// that resolve a chat to its server. It is the single kill sequence: ⌃O
+// reboots a chat through it, ⌃X ends one through it.
+func killChatServer(
+	ctx context.Context,
+	resolved paths.Values,
+	socket string,
+) error {
+	tmux := action.CommandTmux{TmuxDir: resolved.TmuxDir}
+	if err := tmux.KillServer(ctx, socket); err != nil {
+		// Killing a corpse fails loudly for no reason — a socket file outlives
+		// its server. The goal is "not running", so ask whether it is rather
+		// than reporting a failure the user cannot act on.
+		if tmux.SocketAlive(ctx, socket) {
+			return err
+		}
+	}
+	_ = os.Remove(filepath.Join(resolved.TmuxDir, socket))
+	entries, _ := os.ReadDir(resolved.SIDDir)
+	for _, entry := range entries {
+		if name, _, ok := gather.ParseCrumbName(entry.Name()); ok &&
+			name == socket {
+			_ = os.Remove(filepath.Join(resolved.SIDDir, entry.Name()))
 		}
 	}
 	return nil
@@ -343,17 +402,8 @@ func rebootRow(
 	if row.Kind == compose.LiveSplit || row.ID == "" {
 		return compose.Row{}, errors.New("a split live row cannot be rebooted as one chat")
 	}
-	tmux := action.CommandTmux{TmuxDir: resolved.TmuxDir}
-	if err := tmux.KillServer(ctx, row.Socket); err != nil {
+	if err := killChatServer(ctx, resolved, row.Socket); err != nil {
 		fmt.Fprintf(stderr, "cc-fleet: reboot kill-server %s: %v\n", row.Socket, err)
-	}
-	_ = os.Remove(filepath.Join(resolved.TmuxDir, row.Socket))
-	entries, _ := os.ReadDir(resolved.SIDDir)
-	for _, entry := range entries {
-		socket, _, ok := gather.ParseCrumbName(entry.Name())
-		if ok && socket == row.Socket {
-			_ = os.Remove(filepath.Join(resolved.SIDDir, entry.Name()))
-		}
 	}
 	if row.Kind == compose.LiveCodex {
 		row.Kind = compose.ResumeCodex

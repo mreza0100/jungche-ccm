@@ -17,8 +17,24 @@ const (
 	EnvTmuxDir     = "CC_FLEET_TMUX_DIR"
 	EnvHome        = "CC_FLEET_HOME"
 	EnvProcRoot    = "CC_FLEET_PROC_ROOT"
-	defaultTmpDir  = "/tmp"
+	// EnvTmuxConf pins the config a chat's tmux server is born with. Unset —
+	// the way a real chat runs — the server loads ~/.tmux.conf like every other
+	// terminal on the machine, because a chat IS a terminal the user lives in:
+	// one that ignores their config wears tmux's default green status bar at
+	// the bottom while every other window wears theirs on top. Jails set it to
+	// /dev/null so a machine's real config can never steer a fixture.
+	EnvTmuxConf   = "CC_FLEET_TMUX_CONF"
+	defaultTmpDir = "/tmp"
 )
+
+// TmuxConfigArguments returns the `-f <config>` a chat server is created with,
+// or nothing at all so tmux loads the user's own config.
+func TmuxConfigArguments() []string {
+	if config := os.Getenv(EnvTmuxConf); config != "" {
+		return []string{"-f", config}
+	}
+	return nil
+}
 
 // Values contains the filesystem locations used by cc-fleet.
 //

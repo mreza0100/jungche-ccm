@@ -804,5 +804,8 @@ func jailTest(t *testing.T) string {
 	t.Setenv("CC_FLEET_TMUX_DIR", filepath.Join(root, "tmux"))
 	t.Setenv("CC_FLEET_HOME", filepath.Join(root, "home"))
 	t.Setenv("CC_FLEET_PROC_ROOT", filepath.Join(root, "proc"))
+	// A chat server loads the user's ~/.tmux.conf in real life; a fixture must
+	// not, or the machine it runs on steers the test.
+	t.Setenv("CC_FLEET_TMUX_CONF", "/dev/null")
 	return root
 }

@@ -22,6 +22,28 @@ type TmuxClient interface {
 	ListPanes(ctx context.Context, socket string) ([]Pane, error)
 }
 
+// ErrServerGone marks a probe that failed because the socket has no server
+// behind it — a chat that ended. It is the most ordinary outcome there is: the
+// socket file outlives the server, so every pass finds leftovers. Reporting it
+// as a probe warning buried the anomalies that matter (a missing tmux binary, a
+// permission failure) under a wall of "exit status 1" after every picker close.
+var ErrServerGone = errors.New("no tmux server on socket")
+
+// serverGone reads tmux's own words for a socket with nothing behind it. The
+// exit status alone cannot say it — tmux exits 1 for every failure and writes
+// the reason to stderr, which exec keeps on the ExitError rather than in the
+// error message.
+func serverGone(err error) bool {
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		return false
+	}
+	stderr := string(exit.Stderr)
+	return strings.Contains(stderr, "no server running") ||
+		strings.Contains(stderr, "error connecting to") ||
+		strings.Contains(stderr, "No such file or directory")
+}
+
 // CommandTmux invokes a tmux binary inside a caller-supplied TMUX_TMPDIR.
 type CommandTmux struct {
 	Binary     string
@@ -98,6 +120,12 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		legacyCommand.Env = command.Env
 		legacyOutput, legacyErr := legacyCommand.Output()
 		if legacyErr != nil {
+			// Both probes agree there is nothing behind the socket: say so in a
+			// form the caller can classify, since the bare ExitError reads only
+			// "exit status 1".
+			if serverGone(err) && serverGone(legacyErr) {
+				return nil, fmt.Errorf("%w: %s", ErrServerGone, socket)
+			}
 			return nil, err
 		}
 		return parseLegacyPaneOutput(socket, legacyOutput)
@@ -320,12 +348,17 @@ func probeTmux(
 				return groupCtx.Err()
 			}
 
-			mutex.Lock()
-			result.ProbeWarnings = append(
-				result.ProbeWarnings,
-				fmt.Sprintf("%s: %v", socket.name, err),
-			)
-			mutex.Unlock()
+			// A socket with no server behind it is a chat that ended, not a
+			// fault — it is swept below and stays silent. Everything else is a
+			// real anomaly and still gets said out loud.
+			if !errors.Is(err, ErrServerGone) {
+				mutex.Lock()
+				result.ProbeWarnings = append(
+					result.ProbeWarnings,
+					fmt.Sprintf("%s: %v", socket.name, err),
+				)
+				mutex.Unlock()
+			}
 			info, statErr := os.Stat(socket.path)
 			if sweep && statErr == nil && now.Sub(info.ModTime()) > time.Hour {
 				if removeErr := os.Remove(socket.path); removeErr == nil ||

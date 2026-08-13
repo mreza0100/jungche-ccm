@@ -108,6 +108,11 @@ func (model Model) renderQuery(width int) string {
 		len(model.order),
 		model.rotation,
 	)
+	// A ⌃X that could not land takes the status line: it acts immediately, so
+	// its failure has to be as immediate as its success.
+	if model.hideError != "" {
+		status = "⌃X failed — " + model.hideError
+	}
 	available := maxInt(8, width-lipgloss.Width(status)-2)
 	input = ansi.Truncate(input, available, "…")
 	line := input + strings.Repeat(
