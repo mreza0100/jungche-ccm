@@ -28,7 +28,7 @@ claude
 > Conduct the interview before touching any files.
 ```
 
-> **Note:** `/path/to/professor` is wherever you cloned the repo — `~/tools/professor`, `~/repos/professor`, `/tmp/professor`, anywhere. The blueprint reads from there during install; afterwards you can keep it around for future `/pcm update` or delete it (updates can re-fetch via git tags).
+> **Note:** `/path/to/professor` is the permanent absolute clone path used by the installed Wave Walker. Put it somewhere durable (conventionally `~/.professor`), keep it after installation, and use the same path for future `/pcm update` runs. A temporary clone would leave every Wave caller pointing at a dead engine.
 
 Claude runs Phase 1 (interview), then Phase 2 (customization), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
 
@@ -270,6 +270,8 @@ Claude takes your answers and:
 | `/audit:code-hygiene`  | Command `templates/commands/audit/code-hygiene.md`              | Hydrated by RR (Phase 2.5)                                           |
 | `/audit:security`      | Command `templates/commands/audit/security.md`                  | Hydrated by RR (Phase 2.5)                                           |
 
+7b. **Prepares the dual-runtime Wave Walker engine** — requires Node `>=22.13`, keeps the blueprint clone at the permanent `{BLUEPRINT_CLONE_PATH}` embedded in `walker-invariants.md`, runs `npm ci --prefix {BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`, then runs that engine's `npm run verify`. The engine consumes its integrity-pinned `cross-workflow` package at build/runtime; Claude callers execute the equivalence-gated `dist/active-workflow.js` pointer, while Codex callers execute `dist/cross-workflow/codex/runner.mjs`. Never copy either target into the project: one engine source and one clone own both.
+
 7c. **Installs statusline** — copies `statusline-command.sh` to `~/.claude/statusline-command.sh` and adds the statusline config block to `~/.claude/settings.json`. Two-line status bar with model, context, git, cost, rate limits. Requires `jq`.
 
 7c-i. **Installs global settings** — merge `blueprint/templates/settings-global.json`'s keys into the adopter's OWN `~/.claude/settings.json`. **Merge, never overwrite**: this is the adopter's personal, machine-wide config file — it almost certainly already carries their own `model`, `theme`, MCP permissions, and hooks, and a blind copy would destroy them. Do a key-by-key JSON merge (add/update only the keys this template ships), the same discipline as step 7c's statusline block. The template currently ships exactly one key:
@@ -414,6 +416,8 @@ After install, Claude runs a tiny `/wave:builder` to verify the pipeline works e
 ```
 
 Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pcm` to fix it at the source.
+
+Before the pipeline smoke, rerun `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`'s `npm run verify` and confirm its Claude and Codex manifests carry the same `workflowHash`. This proves the permanent paths and pinned library survived materialization.
 
 ---
 
