@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { runBuild } from './build.js';
-import { assertHeadlessEvidence } from './headless-equivalence-lib.js';
+import { assertEquivalenceEvidence, assertHeadlessEvidence } from './headless-equivalence-lib.js';
 import { assertProductionWalkEvidence } from './production-walk-evidence.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -80,15 +80,11 @@ try {
     const candidateSha = createHash('sha256')
       .update(readFileSync(join(HERE, 'dist', activeTarget)))
       .digest('hex');
-    if (
-      evidence.format !== 'wave-walker-equivalence/1' ||
-      evidence.exactCallsEqual !== true ||
-      evidence.exactResultEqual !== true ||
-      evidence.verdictShapeEqual !== true ||
-      evidence.legacySha256 !== legacySha ||
-      evidence.candidateSha256 !== candidateSha
-    )
-      fail('active candidate equivalence evidence is stale or incomplete');
+    try {
+      assertEquivalenceEvidence(evidence, { legacySha256: legacySha, candidateSha256: candidateSha });
+    } catch (e) {
+      fail('active candidate equivalence evidence is stale or incomplete: ' + e.message);
+    }
     let runtimeSmoke;
     try {
       runtimeSmoke = JSON.parse(readFileSync(RUNTIME_SMOKE, 'utf8'));

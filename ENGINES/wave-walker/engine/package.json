@@ -8,6 +8,7 @@
     "build": "node --disable-warning=ExperimentalWarning build.js",
     "verify": "node --disable-warning=ExperimentalWarning verify.js",
     "equivalence:headless": "node headless-equivalence.js",
+    "production-walk": "node production-walk.js",
     "activate:legacy": "node activate.js legacy",
     "activate:candidate": "node activate.js candidate",
     "pretest": "npm run verify",

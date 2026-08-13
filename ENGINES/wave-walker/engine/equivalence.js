@@ -12,21 +12,38 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { assertClaudeBundle, executeHarnessBundle } from 'cross-workflow';
 
+import { assertEquivalenceEvidence } from './headless-equivalence-lib.js';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEGACY = resolve(HERE, 'dist', 'workflow.js');
 const CANDIDATE = resolve(HERE, 'dist', 'cross-workflow', 'claude', 'workflow.js');
 
 function parseArguments(argv) {
-  const options = { repository: undefined, mergeSha: undefined, reportPath: undefined, output: undefined };
+  const options = {
+    repository: undefined,
+    mergeSha: undefined,
+    reportPath: undefined,
+    output: undefined,
+    // Agent labels the candidate may ADD relative to legacy — declared here, by name, BEFORE the
+    // comparison runs. A divergence nobody named in advance is still a failure.
+    allowAddedCalls: [],
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const name = argv[index];
     const value = argv[index + 1];
-    if (!['--repository', '--merge-sha', '--report-path', '--output'].includes(name) || value === undefined)
-      throw new Error('Usage: node equivalence.js --repository DIR --merge-sha SHA --report-path FILE --output FILE');
+    if (
+      !['--repository', '--merge-sha', '--report-path', '--output', '--allow-added-call'].includes(name) ||
+      value === undefined
+    )
+      throw new Error(
+        'Usage: node equivalence.js --repository DIR --merge-sha SHA --report-path FILE --output FILE' +
+          ' [--allow-added-call LABEL ...]',
+      );
     index += 1;
     if (name === '--repository') options.repository = resolve(value);
     else if (name === '--merge-sha') options.mergeSha = value;
     else if (name === '--report-path') options.reportPath = value;
+    else if (name === '--allow-added-call') options.allowAddedCalls.push(value);
     else options.output = resolve(value);
   }
   if (!options.repository || !options.mergeSha || !options.reportPath || !options.output)
@@ -116,8 +133,14 @@ const exactResultEqual = isDeepStrictEqual(legacy.result, candidate.result);
 const legacyShape = shape(legacy.result);
 const candidateShape = shape(candidate.result);
 const verdictShapeEqual = isDeepStrictEqual(legacyShape, candidateShape);
-if (!exactCallsEqual || !exactResultEqual || !verdictShapeEqual)
-  throw new Error('legacy and candidate walk behavior diverged');
+const callLabel = (call) => (typeof call?.options?.label === 'string' ? call.options.label : '<unlabeled>');
+const legacyLabels = legacy.calls.map(callLabel);
+const observedAddedCalls = [...new Set(candidate.calls.map(callLabel).filter((label) => !legacyLabels.includes(label)))].sort();
+// Remove ONLY the declared seats, then demand the remainder be byte-identical to legacy. A repeated
+// label, a changed prompt, or a reordering all survive this filter and still fail — the allowance
+// admits added seats, never edited ones.
+const retainedCandidateCalls = candidate.calls.filter((call) => !options.allowAddedCalls.includes(callLabel(call)));
+const callsEqualIgnoringDeclaredAdditions = isDeepStrictEqual(legacy.calls, retainedCandidateCalls);
 
 const evidence = {
   format: 'wave-walker-equivalence/1',
@@ -128,6 +151,9 @@ const evidence = {
   legacySha256: sha256(legacySource),
   candidateSha256: sha256(candidateSource),
   exactCallsEqual,
+  declaredAddedCalls: [...options.allowAddedCalls].sort(),
+  observedAddedCalls,
+  callsEqualIgnoringDeclaredAdditions,
   exactResultEqual,
   verdictShapeEqual,
   agentCalls: legacy.calls.length,
@@ -136,5 +162,29 @@ const evidence = {
   verdict: legacy.result?.verdict ?? null,
   verdictShape: legacyShape,
 };
+// The producer is judged by the CONSUMER's rule, not a private copy of it: evidence that would not
+// satisfy activate.js must never be written in the first place. And the refusal NAMES what diverged —
+// a bare "diverged" is a verdict with no coverage line, which is exactly the shape of an empty
+// enumeration pretending to be a finding.
+try {
+  assertEquivalenceEvidence(evidence, {
+    legacySha256: evidence.legacySha256,
+    candidateSha256: evidence.candidateSha256,
+  });
+} catch (caught) {
+  process.stderr.write(
+    'legacy and candidate walk behavior diverged\n' +
+      `  exactCallsEqual                    : ${exactCallsEqual}\n` +
+      `  exactResultEqual                   : ${exactResultEqual}\n` +
+      `  verdictShapeEqual                  : ${verdictShapeEqual}\n` +
+      `  declaredAddedCalls                 : ${JSON.stringify(evidence.declaredAddedCalls)}\n` +
+      `  observedAddedCalls                 : ${JSON.stringify(observedAddedCalls)}\n` +
+      `  callsEqualIgnoringDeclaredAdditions: ${callsEqualIgnoringDeclaredAdditions}\n` +
+      `  legacy call labels                 : ${JSON.stringify(legacyLabels)}\n` +
+      `  candidate call labels              : ${JSON.stringify(candidate.calls.map(callLabel))}\n` +
+      `  ${caught.message}\n`,
+  );
+  process.exit(1);
+}
 writeFileSync(options.output, JSON.stringify(evidence, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
 process.stdout.write(JSON.stringify(evidence, null, 2) + '\n');

@@ -123,7 +123,37 @@ describe('production caller seams over the real generated Claude bundle', () => 
         toolCounts: { Bash: 1 },
         bashCommands: [{ agentId: 'test', command: 'git show HEAD:file > /tmp/file' }],
       }),
-    ).toThrow(/outside the declared read grammar/u);
+    ).toThrow(/escaped the declared read grammar/u);
+
+    // An out-of-grammar command the fence DENIED never ran, so it is the control working — not a breach.
+    // Reporting a working control as a violation is what failed the 2026-08-11 walk.
+    expect(
+      assertCodeReadObservation(
+        {
+          started: 1,
+          returned: 1,
+          incomplete: 0,
+          toolCounts: { Bash: 1 },
+          bashCommands: [
+            { agentId: 'test', command: 'git show HEAD:file > /tmp/file', fenceDenied: true },
+          ],
+        },
+        { requireEveryMechanic: false },
+      ).started,
+    ).toBe(1);
+
+    // ...but an attempt whose verdict could not be established is UNKNOWN, and unknown fails closed.
+    expect(() =>
+      assertCodeReadObservation({
+        started: 1,
+        returned: 1,
+        incomplete: 0,
+        toolCounts: { Bash: 1 },
+        bashCommands: [
+          { agentId: 'test', command: 'git show HEAD:file > /tmp/file', fenceDenied: null },
+        ],
+      }),
+    ).toThrow(/escaped the declared read grammar/u);
   });
 
   it('the pre-execution fence denies every Bash payload outside the declared grammar', () => {

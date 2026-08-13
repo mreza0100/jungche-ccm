@@ -7,7 +7,7 @@ import { existsSync, lstatSync, readFileSync, renameSync, symlinkSync, unlinkSyn
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertHeadlessEvidence } from './headless-equivalence-lib.js';
+import { assertEquivalenceEvidence, assertHeadlessEvidence } from './headless-equivalence-lib.js';
 import { assertProductionWalkEvidence } from './production-walk-evidence.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,16 +33,10 @@ function sha256(path) {
 function assertCandidateProven() {
   if (!existsSync(EVIDENCE))
     throw new Error('candidate activation requires dist/cross-workflow/equivalence.json');
-  const evidence = JSON.parse(readFileSync(EVIDENCE, 'utf8'));
-  if (
-    evidence.format !== 'wave-walker-equivalence/1' ||
-    evidence.exactCallsEqual !== true ||
-    evidence.exactResultEqual !== true ||
-    evidence.verdictShapeEqual !== true ||
-    evidence.legacySha256 !== sha256(LEGACY) ||
-    evidence.candidateSha256 !== sha256(CANDIDATE)
-  )
-    throw new Error('candidate equivalence evidence is stale or incomplete');
+  assertEquivalenceEvidence(JSON.parse(readFileSync(EVIDENCE, 'utf8')), {
+    legacySha256: sha256(LEGACY),
+    candidateSha256: sha256(CANDIDATE),
+  });
   if (!existsSync(HEADLESS_EQUIVALENCE))
     throw new Error('candidate activation requires dist/cross-workflow/headless-equivalence.json');
   const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));

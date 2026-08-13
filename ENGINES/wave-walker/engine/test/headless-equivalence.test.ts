@@ -159,7 +159,34 @@ describe('headless old-vs-new equivalence normalization', () => {
         runRoot: '/runs',
         taskRoot: '/tasks',
       }),
-    ).toThrow(/exactly one Workflow tool use/u);
+    ).toThrow(/exactly one launched Workflow tool use/u);
+
+    // A live model self-corrects: it calls Workflow the wrong way, gets an error, and calls it again.
+    // The errored attempt launched NOTHING, so the run is still unique and must be accepted — counting
+    // attempts instead of launches is what blocked the 2026-08-11 Phase A re-run.
+    const selfCorrected = [
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ ...workflow, id: 'toolu_failed' }] },
+      }),
+      JSON.stringify({
+        type: 'user',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_failed', is_error: true, content: 'not found' },
+          ],
+        },
+      }),
+      JSON.stringify({ type: 'assistant', message: { content: [workflow] } }),
+    ].join('\n');
+    expect(() =>
+      extractWorkflowInvocation(selfCorrected, {
+        bundle: '/engine/workflow.js',
+        argsJson: '{}',
+        runRoot: '/runs',
+        taskRoot: '/tasks',
+      }),
+    ).not.toThrow(/exactly one launched Workflow tool use/u);
 
     const changedArgs = JSON.stringify({
       type: 'assistant',
