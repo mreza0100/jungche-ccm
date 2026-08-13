@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS chat(
 );
 CREATE INDEX IF NOT EXISTS chat_mtime ON chat(mtime);
 INSERT OR IGNORE INTO meta(key,val,updated_at) VALUES('schema_version','1',strftime('%s','now'));
+-- chat_gen (see CHAT_GEN below): stamp it ONLY on a db with no chat rows yet. A fresh install
+-- has nothing to repair and should not pay a purge; a db that already holds rows predates this
+-- marker, may hold rows a shipped bug wrote, and must be left unstamped so the next chat-load
+-- drops them. Which is why this is a conditional SELECT and not a plain VALUES: `migrate` calls
+-- init, and an adopter re-running migrate would otherwise stamp the poison as current.
+INSERT OR IGNORE INTO meta(key,val,updated_at)
+  SELECT 'chat_gen','2',strftime('%s','now') WHERE NOT EXISTS(SELECT 1 FROM chat);
 SQL
 }
 
@@ -203,8 +210,30 @@ cmd_hidden_sync() {
 # Wire format is cc-ls's own NC record: uuid<TAB>mtime<TAB>bytes<TAB>cwd<TAB>label<TAB>prompts.
 # Keeping the shape identical means the picker needs a one-line change at each end, not a rewrite.
 CHATCACHE="${CC_CHATCACHE:-/tmp/cc-sid/.namecache.v5}"
+
+# CHAT_GEN — the derived-cache generation. BUMP IT whenever a shipped bug could have written
+# WRONG rows here, and the poison clears itself on every host at the next picker run.
+#
+# This exists because a cache that outlives the bug that filled it is worse than no cache. A
+# macOS mtime-parse fault (see cc_find_meta) shifted every field of the rows it wrote: cwd became
+# a path prefix, label became the byte count, and prompts became 0 — and a 0-prompt chat is one
+# the picker HIDES. Fixing the parse did not bring those chats back, because the next run found a
+# cache entry whose mtime and size still matched the file and trusted it. The table is 100%
+# derived, so the honest repair is to drop it once and let the scan rebuild.
+#
+# 1 → the pre-marker state (any db written before this check existed)
+# 2 → after the macOS mtime-parse fix
+CHAT_GEN=2
+_chat_gen_ok() {
+  [ "$(_q "SELECT COALESCE((SELECT val FROM meta WHERE key='chat_gen'),'1');" 2>/dev/null)" = "$CHAT_GEN" ] && return 0
+  _q "DELETE FROM chat;
+      INSERT INTO meta(key,val,updated_at) VALUES('chat_gen','$CHAT_GEN',strftime('%s','now'))
+        ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at;" >/dev/null 2>&1
+}
 cmd_chat_load() {
-  if have_db; then sqlite3 -batch -noheader -separator "$(printf '\t')" -cmd '.timeout 5000' "$DB" \
+  if have_db; then
+    _chat_gen_ok
+    sqlite3 -batch -noheader -separator "$(printf '\t')" -cmd '.timeout 5000' "$DB" \
       "SELECT uuid,mtime,bytes,COALESCE(cwd,''),COALESCE(label,''),prompts FROM chat;"
   else [ -f "$CHATCACHE" ] && cat "$CHATCACHE" || true; fi
 }
@@ -224,6 +253,14 @@ cmd_chat_save() {
       cwd="${rest%%$'\t'*}"; rest="${rest#*$'\t'}"
       lbl="${rest%%$'\t'*}"; ct="${rest#*$'\t'}"
       [ -n "$u" ] || continue
+      # A tab still in the LAST field means the record carried more than six, which only happens
+      # when a caller packed a tab-bearing value into one of them. Refuse it rather than store the
+      # shifted row: that is exactly how a bad mtime turned into cwd="$HOME/", label=<bytes>
+      # and prompts=0, and a 0-prompt row makes the picker hide a chat that is perfectly fine.
+      # Dropping it costs one re-parse; keeping it costs the chat. `$'\t'` and not a command
+      # substitution — see the note on _esc_v: a fork per row is the cost this function exists
+      # to avoid.
+      case "$ct" in *$'\t'*) continue ;; esac
       case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
       case "$sz" in ''|*[!0-9]*) sz=0 ;; esac
       case "$ct" in ''|*[!0-9]*) ct=0 ;; esac
