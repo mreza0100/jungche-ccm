@@ -76,7 +76,7 @@ claude
 > Conduct the interview before touching any files.
 ```
 
-> Replace `/path/to/professor` with wherever you cloned the repo. Keep it around for future updates, or delete it — `/pcm update` can re-fetch from git tags.
+> Replace `/path/to/professor` with a permanent clone path, conventionally `~/.professor`. Keep it: installed Wave callers execute the engine in this clone, and `/pcm update` updates the same authority in place.
 
 Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/wave:builder` smoke-test reveals anything missed.
 

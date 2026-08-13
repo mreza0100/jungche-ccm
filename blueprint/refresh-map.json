@@ -562,11 +562,6 @@
     "templates/workflows/documenter-fanout.js": {
       "curated": true
     },
-    "templates/workflows/wave-walker.js": {
-      "sources": {
-        ".claude/workflows/wave-walker.js": "e26a7e84ffa3867b51d6dc39daa8f05828ed60e301b4468a52f2ef32a5c092ef"
-      }
-    },
     "templates/commands/wave/watcher.md": {
       "sources": {
         ".claude/commands/wave/watcher.md": "2281fe829f53838e7d86ba28eb72906dab712322722aec588463e53639491f8a"
