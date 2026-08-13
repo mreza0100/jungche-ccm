@@ -14,7 +14,7 @@ CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")/.." && pwd)}"
 # $HOME/.claude/commands/chat/ (global — shared by every repo; repo .claude/commands/chat
 # entries are symlinks here); each chat/<name>.md command calls `chat.sh <name>`.
 #
-#   whoami                                    print THIS chat's own tmux session
+#   whoami [--label]                          print THIS chat's own tmux session (--label: its 🔖 label, session-name fallback)
 #   find    <excerpt-file>                    resolve a pasted excerpt to a session
 #   read    <excerpt-file>                    extract a matched chat's transcript
 #   inject  [--force-now] [--then <steer>]... <self|tmux|label|session-id|path> <message...>  force a turn (live / resume; steers chain in order)
@@ -493,7 +493,15 @@ _find() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   whoami)
-    self_tmux
+    if [[ "${1:-}" == "--label" ]]; then
+      # Identity string: the 🔖 label when the chat has one (codex: window name via
+      # self_label's fallback), else the tmux session name. The group bus keys
+      # membership and cursors on exactly this.
+      lbl="$(self_label)"
+      if [[ -n "$lbl" ]]; then printf '%s\n' "$lbl"; else self_tmux; fi
+    else
+      self_tmux
+    fi
     ;;
 
   find)
