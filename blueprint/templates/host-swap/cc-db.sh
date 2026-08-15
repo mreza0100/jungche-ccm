@@ -30,15 +30,15 @@
 #   cc-db.sh swap-log LINE
 set -uo pipefail
 
-# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
+# PFM_HOME — this bundle's own directory, resolved THROUGH symlinks, because install.sh
 # links this script into ~/.claude/bin and $BASH_SOURCE is then the link. Plain `readlink`
 # (never -f) because macOS ships BSD readlink.
-_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
-CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
-. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam
+_pfms="${BASH_SOURCE[0]}"; while [ -L "$_pfms" ]; do _pfmd="$(cd -P "$(dirname "$_pfms")" && pwd)"; _pfms="$(readlink "$_pfms")"; case "$_pfms" in /*) ;; *) _pfms="$_pfmd/$_pfms" ;; esac; done
+PFM_HOME="${PFM_HOME:-$(cd -P "$(dirname "$_pfms")" && pwd)}"
+. "$PFM_HOME/cc-portable.sh"   # GNU/BSD seam
 
 
-DB="${CC_FLEET_DB:-$HOME/.cc/fleet.db}"
+DB="${PFM_DB:-$HOME/.cc/fleet.db}"
 LEG_HID="$HOME/.claude/.cc-ls-hidden"
 LEG_AT="$HOME/.claude/.cc-ls-hidden.at"
 LEG_PRIM="$HOME/.claude-primary"

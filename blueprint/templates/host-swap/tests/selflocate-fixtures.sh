@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixtures for CC_FLEET_HOME — the bundle's self-location. The install layer symlinks these
+# Fixtures for PFM_HOME — the bundle's self-location. The install layer symlinks these
 # scripts into ~/.claude/bin, so a resolver that stops at the first dirname silently points the
 # whole fleet at the wrong tree: cc-db.sh "not found", hidden chats resurrecting, no error.
 # Every case below runs the EXACT lines the shipped scripts carry (extracted, never retyped) so
@@ -17,13 +17,13 @@ ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else 
 
 # The shipped resolver, lifted verbatim out of cc-db.sh (the walk line + the assignment). Any
 # bash satellite carries the same two lines; cc-db.sh is the one every other one depends on.
-BASH_RESOLVER="$(grep -E '^_ccfs=|^CC_FLEET_HOME=' "$BUNDLE/cc-db.sh")"
+BASH_RESOLVER="$(grep -E '^_pfms=|^PFM_HOME=' "$BUNDLE/cc-db.sh")"
 [ -n "$BASH_RESOLVER" ] || { echo "FATAL: could not extract the bash resolver from cc-db.sh"; exit 1; }
 ZSH_RESOLVER="$(grep -E '^typeset -g CC_FLEET_HOME=' "$BUNDLE/cc-fleet.zsh")"
 [ -n "$ZSH_RESOLVER" ] || { echo "FATAL: could not extract the zsh resolver from cc-fleet.zsh"; exit 1; }
 
 mkdir -p "$T/real" "$T/links" "$T/links2" "$T/rel"
-printf '#!/usr/bin/env bash\n%s\necho "$CC_FLEET_HOME"\n' "$BASH_RESOLVER" > "$T/real/probe.sh"
+printf '#!/usr/bin/env bash\n%s\necho "$PFM_HOME"\n' "$BASH_RESOLVER" > "$T/real/probe.sh"
 chmod +x "$T/real/probe.sh"
 printf '%s\necho "$CC_FLEET_HOME"\n' "$ZSH_RESOLVER" > "$T/real/probe.zsh"
 
@@ -45,7 +45,7 @@ ln -sf "../real/probe.sh" "$T/rel/probe.sh"
 ok "relative target re-anchors on the link's dir" "$(cd / && bash "$T/rel/probe.sh")" "$T/real"
 
 echo "=== bash: env override wins ==="
-ok "CC_FLEET_HOME from the env is respected" "$(CC_FLEET_HOME=/opt/fleet bash "$T/links/probe.sh")" "/opt/fleet"
+ok "PFM_HOME from the env is respected" "$(PFM_HOME=/opt/fleet bash "$T/links/probe.sh")" "/opt/fleet"
 
 echo "=== bash: a path with spaces ==="
 mkdir -p "$T/dir with spaces" "$T/links3"
@@ -62,7 +62,7 @@ if command -v zsh >/dev/null 2>&1; then
   ok "symlinked source resolves to the real dir" "$(zsh -fc "source '$T/links/probe.zsh'")" "$T/real"
 
   echo "=== zsh: env override wins ==="
-  ok "CC_FLEET_HOME from the env is respected" "$(CC_FLEET_HOME=/opt/fleet zsh -fc "source '$T/links/probe.zsh'")" "/opt/fleet"
+  ok "oracle CC_FLEET_HOME from the env is respected" "$(CC_FLEET_HOME=/opt/fleet zsh -fc "source '$T/links/probe.zsh'")" "/opt/fleet"
 else
   echo "=== zsh: SKIPPED (no zsh on PATH) ==="
 fi
@@ -74,7 +74,7 @@ for sib in cc-db.sh cc-swap-chat.sh cc-agent-open.sh; do
 done
 # The invariant that matters, stated without naming any one install path: no script may reach a
 # sibling through a hand-written absolute path — that is exactly what breaks when the bundle moves.
-ok "siblings are reached only via CC_FLEET_HOME" "$(grep -lE '\$HOME/[^"]*/(cc-db|cc-swap-chat|cc-agent-open)\.sh' "$BUNDLE"/*.sh "$BUNDLE"/*.zsh 2>/dev/null | wc -l | tr -d ' ')" "0"
+ok "siblings are reached only via PFM_HOME" "$(grep -lE '\$HOME/[^"]*/(cc-db|cc-swap-chat|cc-agent-open)\.sh' "$BUNDLE"/*.sh "$BUNDLE"/*.zsh 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo
 printf 'PASS %d   FAIL %d\n' "$pass" "$fail"

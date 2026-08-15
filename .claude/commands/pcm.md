@@ -47,7 +47,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 ### Inventory (derive, never recall)
 
-- **Projects:** `blueprint/` (markdown + shell, no build), `cc-fleet/` (Go), `dreamer/` (npm), `ENGINES/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
+- **Projects:** `blueprint/` (markdown + shell, no build), `pfm/` (Go), `dreamer/` (npm), `ENGINES/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
 - **Agents:** `ls .claude/agents/` — model tiers per CLAUDE.md § Model Selection
 - **Commands, skills, output styles:** `ls -R .claude/commands/ .claude/skills/ .claude/output-styles/`
 - **Shipped surface:** `find blueprint/templates -type f | wc -l` — the count that matters to adopters

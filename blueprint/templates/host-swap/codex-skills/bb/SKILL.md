@@ -7,7 +7,7 @@ Run exactly this one shell command, then STOP — no summary, no explanation, no
 commentary (the chat is about to close):
 
 ```
-~/.local/bin/cc-fleet hide --self --exit
+~/.local/bin/pfm hide --self --exit
 ```
 
 It adds THIS Codex chat's rollout to the fleet's hide list, then gracefully closes the

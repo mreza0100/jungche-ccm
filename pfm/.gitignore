@@ -1,0 +1,4 @@
+/pfm
+/pfm.dev
+*.test
+/cmd/pfm/pfm

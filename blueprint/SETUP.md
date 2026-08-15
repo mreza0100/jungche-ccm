@@ -256,19 +256,19 @@ Claude takes your answers and:
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`. Fills the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh` from the roster so they iterate the real entries, with each entry's setup logic and port ranges pinned. A single-project roster fills the array with one entry (or drops the loop).
    7a. **Installs skills.** The blueprint no longer vendors any skill — every skill it installs is **source-fetched**: cloned from its canonical public repo (listed in `blueprint/templates/skills/sources.json`) into `.claude/skills/{name}/`, so the blueprint can't hold a copy that drifts; the installer clones each, parameterizes where needed, and removes the `.git/` directory so they're plain files in your project. The reasoning protocols that once shipped as bundled skills — `/p:rnd`, `/p:360`, `/wave:refine`, `/wave:walker`, `/quality:prompt`, `/quality:doc`, `/audit:code-hygiene`, `/audit:security` — are now **commands** under `templates/commands/` and install with the other command files (steps 3–4). The table records each subject's source path and its parameterization.
 
-| Skill / command        | Source                                                          | Parameterization                                                     |
-| ---------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `rr`                   | source-fetched (sources.json) https://github.com/mreza0100/rr   | None                                                                 |
-| `ghostwriter`          | source-fetched (sources.json) https://github.com/mreza0100/ghost-writer | None                                                         |
-| `vision-factory`       | source-fetched (sources.json) https://github.com/mreza0100/vision-factory | None                                                       |
-| `/p:360`               | Command `templates/commands/p/360.md`                           | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `/p:rnd`               | Command `templates/commands/p/rnd.md`                           | None                                                                 |
-| `/wave:refine`         | Command `templates/commands/wave/refine.md`                     | None (pipeline-coupled)                                              |
-| `/wave:walker`         | Command `templates/commands/wave/walker.md`                     | None (pipeline-coupled)                                              |
-| `/quality:prompt`      | Command `templates/commands/quality/prompt.md`                  | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
-| `/quality:doc`         | Command `templates/commands/quality/doc.md`                     | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
-| `/audit:code-hygiene`  | Command `templates/commands/audit/code-hygiene.md`              | Hydrated by RR (Phase 2.5)                                           |
-| `/audit:security`      | Command `templates/commands/audit/security.md`                  | Hydrated by RR (Phase 2.5)                                           |
+| Skill / command       | Source                                                                    | Parameterization                                                     |
+| --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `rr`                  | source-fetched (sources.json) https://github.com/mreza0100/rr             | None                                                                 |
+| `ghostwriter`         | source-fetched (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
+| `vision-factory`      | source-fetched (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
+| `/p:360`              | Command `templates/commands/p/360.md`                                     | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `/p:rnd`              | Command `templates/commands/p/rnd.md`                                     | None                                                                 |
+| `/wave:refine`        | Command `templates/commands/wave/refine.md`                               | None (pipeline-coupled)                                              |
+| `/wave:walker`        | Command `templates/commands/wave/walker.md`                               | None (pipeline-coupled)                                              |
+| `/quality:prompt`     | Command `templates/commands/quality/prompt.md`                            | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
+| `/quality:doc`        | Command `templates/commands/quality/doc.md`                               | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
+| `/audit:code-hygiene` | Command `templates/commands/audit/code-hygiene.md`                        | Hydrated by RR (Phase 2.5)                                           |
+| `/audit:security`     | Command `templates/commands/audit/security.md`                            | Hydrated by RR (Phase 2.5)                                           |
 
 7b. **Prepares the dual-runtime Wave Walker engine** — requires Node `>=22.13`, keeps the blueprint clone at the permanent `{BLUEPRINT_CLONE_PATH}` embedded in `walker-invariants.md`, runs `npm ci --prefix {BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`, then runs that engine's `npm run verify`. The engine consumes its integrity-pinned `cross-workflow` package at build/runtime; Claude callers execute the equivalence-gated `dist/active-workflow.js` pointer, while Codex callers execute `dist/cross-workflow/codex/runner.mjs`. Never copy either target into the project: one engine source and one clone own both.
 
@@ -337,7 +337,7 @@ Claude takes your answers and:
 
 7f. **(Opt-in) Installs VSCode tmux launcher** — with the user's consent (it edits _global_ editor + shell config), merges `blueprint/templates/vscode/terminal-profile.json`'s two keys into the VSCode user `settings.json` and appends `zshrc-cc.snippet.sh` to `~/.zshrc`, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy). New VSCode terminals then open into tmux + Claude; `/exit` returns to a normal shell. The `cc` function is `typeset -f`-guarded so an existing `cc` is left untouched. Skipped if the user declines.
 
-7g. **(Opt-in) Installs multi-account fleet tooling** (Linux and macOS — plain per-account config dirs, no Keychain) — with the user's consent (it edits global shell config and `~/.claude/`), clones the blueprint to `~/.professor` and runs `blueprint/templates/host-swap/install.sh --apply`. That symlinks every fleet script into `~/.claude/bin` and every slash command into `~/.claude/commands` — the `cc`/`cc1`/`cc2`/`cc3` launchers and `cc-swap` picker, `cc-ls`, `/bb`, `/swap` **with its engine**, and the SQLite state store (the fleet's own housekeeping — `reap`, `archive`, `heal`, `name-sync` — lives in the `cc-fleet` binary) — then adds one `source` line to `~/.zshrc`. The clone IS the install, so `git -C ~/.professor pull` updates every command at once with no second copy to drift. Dry-run first (`install.sh` with no flags) and read it; a real file at a destination is backed up, never destroyed; `--uninstall` reverses it. The adopter MUST then edit the account table (labels/account count) in `cc-fleet.zsh` per `blueprint/templates/host-swap/README.md`. If using the Professor statusline, merge `statusline-badge.snippet.sh` into the statusline script — the one piece still hand-merged, because it edits a file the adopter owns. Skipped if the user declines.
+7g. **(Opt-in) Installs multi-account fleet tooling** (Linux and macOS — plain per-account config dirs, no Keychain) — with the user's consent (it edits global shell config and `~/.claude/`), clones the blueprint, builds `pfm` (Professor-Fleet-Manager) from `pfm/cmd/pfm` into `~/.local/bin/pfm`, and runs `blueprint/templates/host-swap/install.sh --apply`. That symlinks every fleet script into `~/.claude/bin` and every slash command into `~/.claude/commands` — the two-account `cc`/`cc1`/`cc2` launcher surface and `cc-swap` picker, `cc-ls`, `/bb`, `/swap` **with its engine**, and the SQLite state store (the fleet's own housekeeping — `reap`, `archive`, `heal`, `name-sync` — lives in the `pfm` binary) — then adds one `source` line to `~/.zshrc`. The clone IS the install, so updating the clone updates every command at once with no second copy to drift. Dry-run first (`install.sh` with no flags) and read it; a real file at a destination is backed up, never destroyed; `--uninstall` reverses it. If using the Professor statusline, merge `statusline-badge.snippet.sh` into the statusline script — the one piece still hand-merged, because it edits a file the adopter owns. Skipped if the user declines.
 
 7g-i. **(Opt-in, host-level) The `/chat:*` family** — installed by the same `install.sh` in 7g, as symlinks from `~/.claude/commands/chat/` into the clone (each `*.command.md` linked as `*.md`). Installed to the user's HOME, deliberately, not the repo: `~/.claude/commands/` resolves the same in every project and every worktree, which is exactly why `chat:*` lives there — a project-level copy is a set of relative symlinks that break inside a worktree at a different directory depth. Joins `/bb` and `/swap` as the third host-level command family.
 
@@ -439,10 +439,26 @@ If **yes**, walk the procedure (full detail + every gotcha in `blueprint/referen
    {
      "hooks": {
        "SessionStart": [
-         { "matcher": "", "hooks": [ { "type": "command", "command": "sh $HOME/.claude/scripts/cc-memory-wire.sh" } ] }
+         {
+           "matcher": "",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "sh $HOME/.claude/scripts/cc-memory-wire.sh"
+             }
+           ]
+         }
        ],
        "SessionEnd": [
-         { "matcher": "", "hooks": [ { "type": "command", "command": "sh $HOME/.claude/scripts/memory-sync.sh" } ] }
+         {
+           "matcher": "",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "sh $HOME/.claude/scripts/memory-sync.sh"
+             }
+           ]
+         }
        ]
      }
    }
