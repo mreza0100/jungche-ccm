@@ -12,30 +12,33 @@ import (
 	"hostops/pfm/internal/compose"
 )
 
-// TestHeadlessArgumentMatrix drives every verb's argument shapes through the
-// real dispatcher. None of these reach an engine — they are the refusals, and
-// a refusal that returns 0 is how a script silently does nothing.
-func TestHeadlessArgumentMatrix(t *testing.T) {
+func TestHeadlessCompatibilityAliasIsHiddenAndDeprecated(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"headless", "help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit = %d, stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "deprecated") ||
+		strings.Contains(stdout.String(), "headless") {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestChatArgumentMatrix(t *testing.T) {
 	for _, testCase := range []struct {
 		name string
 		args []string
 		want int
 	}{
-		{"no verb", []string{"headless"}, 2},
-		{"unknown verb", []string{"headless", "frobnicate"}, 2},
-		{"help", []string{"headless", "help"}, 0},
-		{"run without a name", []string{"headless", "run"}, 2},
-		{"run with an unknown engine", []string{"headless", "run", "--name", "x", "--engine", "gpt"}, 2},
-		{"run with a bad effort", []string{"headless", "run", "--name", "x", "--effort", "turbo"}, 2},
-		{"status without a name", []string{"headless", "status"}, 2},
-		{"status with two names", []string{"headless", "status", "a", "b"}, 2},
-		{"transcript with tail 0", []string{"headless", "transcript", "x", "--tail", "0"}, 2},
-		{"stream with a bad regexp", []string{"headless", "stream", "x", "--filter", "("}, 2},
-		{"stream with a negative margin", []string{"headless", "stream", "x", "--margin", "-1"}, 2},
-		{"inject without a message", []string{"headless", "inject", "x"}, 2},
-		{"watch with a bad poll", []string{"headless", "watch", "x", "--poll", "0"}, 2},
-		{"watch with a negative idle", []string{"headless", "watch", "x", "--idle-after", "-5"}, 2},
-		{"ls with a stray argument", []string{"headless", "ls", "extra"}, 2},
+		{"no verb", []string{"chat"}, 2},
+		{"unknown verb", []string{"chat", "frobnicate"}, 2},
+		{"help", []string{"chat", "help"}, 0},
+		{"new without a name", []string{"chat", "new"}, 2},
+		{"new with an unknown engine", []string{"chat", "new", "--name", "x", "--engine", "gpt"}, 2},
+		{"status without a target", []string{"chat", "status"}, 2},
+		{"read with tail 0", []string{"chat", "read", "x", "--tail", "0"}, 2},
+		{"stream with a bad regexp", []string{"chat", "stream", "x", "--filter", "("}, 2},
+		{"inject without a message", []string{"chat", "inject", "x"}, 2},
+		{"watch with a bad poll", []string{"chat", "watch", "x", "--poll", "0"}, 2},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -179,12 +182,12 @@ func TestUnknownChatIsRc4WithAMachineShape(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"status", []string{"headless", "status", "ghost"}},
-		{"last", []string{"headless", "last", "ghost"}},
-		{"transcript", []string{"headless", "transcript", "ghost"}},
-		{"stream", []string{"headless", "stream", "ghost"}},
-		{"inject", []string{"headless", "inject", "ghost", "hello"}},
-		{"watch", []string{"headless", "watch", "ghost"}},
+		{"status", []string{"chat", "status", "ghost"}},
+		{"last", []string{"chat", "last", "ghost"}},
+		{"read", []string{"chat", "read", "ghost"}},
+		{"stream", []string{"chat", "stream", "ghost"}},
+		{"inject", []string{"chat", "inject", "ghost", "hello"}},
+		{"watch", []string{"chat", "watch", "ghost"}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -199,7 +202,7 @@ func TestUnknownChatIsRc4WithAMachineShape(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"headless", "status", "ghost", "--json"}, &stdout, &stderr); code != codeUnknownChat {
+	if code := run([]string{"chat", "status", "ghost", "--json"}, &stdout, &stderr); code != codeUnknownChat {
 		t.Fatalf("json exit = %d", code)
 	}
 	var status map[string]any

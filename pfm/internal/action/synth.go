@@ -19,11 +19,11 @@ import (
 const MaxAccount = 2
 
 // hygiene is the launch-environment strip every fleet-born process carries
-// (cc-fleet.zsh:105, :119 for claude and :151 for codex). A chat born inside
+// for both Claude and Codex. A chat born inside
 // another chat's Bash tool inherits that chat's session identity, config dir
 // and cache mode, so each one is unset and then re-decided by the launcher.
 //
-// The ANTHROPIC_*/CLAUDE_CODE_* tail is CC_ENDPOINT_UNSET (cc-fleet.zsh:80-84):
+// The ANTHROPIC_*/CLAUDE_CODE_* tail is CC_ENDPOINT_UNSET:
 // a shell pointed at a local translating proxy would otherwise hand the next
 // launch a foreign endpoint, and it would answer from a foreign model under an
 // Anthropic medal. The launcher's verdict is the account; the environment gets
@@ -36,16 +36,16 @@ const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DI
 	" -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK" +
 	" -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
 
-// autonomyFlags is CC_AUTONOMY_FLAGS (cc-fleet.zsh:75) — the full-autonomy
+// autonomyFlags is CC_AUTONOMY_FLAGS — the full-autonomy
 // posture every path that STARTS a Claude chat carries. `--allow-…` is the
 // enabling half (the harness refuses the bypass without it), `--dangerously-…`
 // the acting half; both are required. Chats run unattended overnight, so a
 // mid-task approval prompt is a stalled chat with nobody awake to clear it.
 //
 // The resume routes append them AFTER the transcript argument, exactly as
-// cc-fleet.zsh:872 and :1481 do. The fresh-launch routes emit a `cc1`/`cc2`
+// the interactive launcher does. The fresh-launch routes emit a `cc1`/`cc2`
 // call instead, and _cc_run already prepends the flags there — passing them
-// again would duplicate them in argv (cc-fleet.zsh:138). Codex carries its own
+// again would duplicate them in argv. Codex carries its own
 // bypass flag and never these.
 const autonomyFlags = "--allow-dangerously-skip-permissions --dangerously-skip-permissions"
 
@@ -244,7 +244,7 @@ func claudeCommandWith(
 	var command strings.Builder
 	command.WriteString(environmentStrip)
 	// Account 1 is the default config dir (hygiene already unset it); every
-	// other account is an explicit CLAUDE_CONFIG_DIR (cc-fleet.zsh:88).
+	// other account is an explicit CLAUDE_CONFIG_DIR.
 	if account >= 2 && account <= MaxAccount {
 		command.WriteString(" CLAUDE_CONFIG_DIR=")
 		command.WriteString(Quote(filepath.Join(home, ".cc", strconv.Itoa(account))))

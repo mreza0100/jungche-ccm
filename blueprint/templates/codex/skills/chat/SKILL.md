@@ -1,6 +1,6 @@
 ---
 name: chat
-description: Message the tmux-based agent chats in this repo (orchestrator, watcher, builder lanes) via chat.sh — inject a turn into a teammate's pane, find your own address, read delivery receipts. Use when a protocol says "ping", "inject", or "reply to {session}".
+description: Message the tmux-based agent chats in this repo through `pfm chat` — inject a turn into a teammate's pane, find your own address, and read delivery receipts. Use when a protocol says "ping", "inject", or "reply to {session}".
 ---
 
 <!--
@@ -13,27 +13,27 @@ per-subcommand pointer. This card fills that gap with the one page a lane
 actually needs mid-wave.
 -->
 
-# chat.sh essentials (Codex shape)
+# pfm chat essentials (Codex shape)
 
-Canonical tool: `$HOME/.claude/commands/chat/chat.sh` — always the full path, never a bare `chat.sh`.
+Canonical tool: `$HOME/.local/bin/pfm chat`.
 
 ## Send (inject)
 
-`chat.sh inject {target} '{one-line message}'`
+`$HOME/.local/bin/pfm chat inject {target} '{one-line message}'`
 
 - `{target}` = exact tmux session name or a pane label; resolution scans every socket. Builder lanes get the orchestrator's address from the BRIEF / `$WAVES/lanes.md`.
 - ONE line per message — send N injects for N lines. Plain text is auto-signed with your reply address; a `/`-prefixed harness command travels unsigned.
 - Success prints `injected LIVE … Enter confirmed` plus a delivery-proof screen capture — read it; that is your receipt. Queued-on-busy is normal (a busy pane queues your turn).
-- exit 3 = typed but NOT submitted (target mid-turn): the text sits in its input and sends on its next Enter — re-run only when the target idles.
-- exit 4 = target has an OPEN selector menu: NOTHING was typed. Wait for the menu's owner to answer, then retry — never force it; an Enter into a menu forges their answer.
+- exit 3 = the target chat is dead.
+- exit 4 = no matching chat; exit 6 = the message was not delivered.
 
 ## Who am I
 
-`chat.sh whoami` → your own address; include it in pings so verdicts route back.
+`$HOME/.local/bin/pfm whoami` → your own address; include it in pings so verdicts route back.
 
 ## Builder ping discipline (both channels, every time)
 
-1. `chat.sh inject {orchestrator} '{ping}'` — the fast path. Under the default
+1. `$HOME/.local/bin/pfm chat inject {orchestrator} '{ping}'` — the fast path. Under the default
    workspace-write sandbox this FAILS (unix-socket connects are kernel-blocked);
    that is expected, and it is exactly why step 2 is not optional.
 2. Append the one-line event to `tmp/wave-sensor/events.log` — the guaranteed

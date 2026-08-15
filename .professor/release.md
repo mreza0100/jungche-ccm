@@ -8,12 +8,19 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
 
-- Tier A: `pfm`, framework inventory, and `templates/host-swap` — standardize the fleet manager as
-  `pfm` (Professor-Fleet-Manager) across the Go module/binary, shim, test-jail overrides, installer,
-  systemd units, hooks, fixtures, and operator docs; the installer migrates prior state and wiring
-  while the retired zsh oracle remains available for parity, and repo-only Codex regeneration can
-  redirect global outputs through `CODEX_BUILD_HOME` instead of touching the live store. (cost:
-  binary, module, environment, unit, hook, and shim paths renamed)
+- Tier A: `pfm` and `templates/host-swap` — complete the Professor-Fleet-Manager cutover: the
+  parity oracle/checker is retired; bare `pfm` opens the picker; per-chat work lives under
+  `pfm chat` with named creation, immutable socket identities, target resolution, group/BB
+  wiring, and inline name convergence; `ls --hidden` exposes the hide ledger; the old
+  per-chat command names are removed except for one hidden compatibility alias. Chat command
+  cards call the binary directly, while the executable `chat.sh` transition shim keeps the old
+  path available until a capable binary is installed. Codex rename events drive the path unit,
+  Claude name writes converge in-process, and the timer is a 15-minute drift fallback. The
+  installer rewires both UserPromptSubmit hooks to fail-open `pfm chat` verbs. (cost: CLI,
+  binary, unit, hook, and chat-command paths changed)
+
+  #### → For: build and install the new `pfm` binary first, then run
+  `blueprint/templates/host-swap/install.sh --apply` once to rewire hooks and units.
 
 - Tier C: `templates/scripts/build-codex.mjs` — the compiler now carries a **never-register set**
   and skips `gitter`. Before this it emitted `.codex/agents/gitter.toml` from `.claude/agents/gitter.md`
@@ -40,8 +47,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
   `.claude/agents/` dirs. Reworded so a roster of one reads correctly (`PLACEHOLDERS.md`
   § Single-project collapse says a template must).
 
-- Tier A: `pfm` parity QA and `templates/host-swap` installer fixtures — jail the frozen oracle's
-  old/new database spellings and fallback cache on one private snapshot, adapt its obsolete
-  find-metadata split only in the disposable shadow, resolve the check allowlist from both shipped
-  layouts, reject stale pre-rename `pfm.dev` binaries, and make installer fixtures sever and prove
-  the user systemd bus unreachable before their first installer call.
+- Tier A: `pfm` and installer QA — reject stale pre-rename `pfm.dev` binaries; cover bare-picker
+  attach, all public exit codes, BB/group fail-open hooks, inline Claude naming, and Codex
+  `session_index.jsonl` window convergence on isolated `probe-*` tmux servers; installer fixtures
+  sever and prove the user systemd bus unreachable before their first installer call.

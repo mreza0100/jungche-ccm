@@ -30,7 +30,7 @@ const bbBlockPrompt = 2
 // worse than a chat left open. So an unreadable stdin, a payload that is not
 // JSON, and any prompt that is not exactly /bb all exit 0 in silence.
 func runBB(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	flags := newFlagSet("bb", "usage: pfm bb < hook-payload.json", stderr)
+	flags := newFlagSet("chat bb", "usage: pfm chat bb < hook-payload.json", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}

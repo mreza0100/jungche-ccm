@@ -224,7 +224,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 
 	// A real 🔖 statusline always wins — the Claude path is unchanged.
 	labelled := &fakeTmux{
-		capture:       "🥇 │ 🔖 Founder │ status\nconversation\n❯ ",
+		capture:       "🥇 │ 🔖 Operator │ status\nconversation\n❯ ",
 		windowName:    "Fleet Porter",
 		submitOnEnter: true,
 	}
@@ -242,7 +242,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(lastLiteral(labelled), "🔖 Founder") ||
+	if !strings.Contains(lastLiteral(labelled), "🔖 Operator") ||
 		strings.Contains(lastLiteral(labelled), "Fleet Porter") {
 		t.Fatalf("statusline label lost to the window name: %q", lastLiteral(labelled))
 	}
@@ -252,12 +252,12 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 // account is gone, but chats labelled while it was live still render it.
 func TestCaptureLabelAcceptsTheRetiredMedal(t *testing.T) {
 	for _, medal := range []string{"🥇", "🥈", "🥉", "🍀"} {
-		line := medal + " │ 🔖 Founder │ ctx 12%"
-		if label := captureLabel("noise\n" + line + "\nmore"); label != "Founder" {
-			t.Fatalf("captureLabel(%q) = %q, want Founder", line, label)
+		line := medal + " │ 🔖 Operator │ ctx 12%"
+		if label := captureLabel("noise\n" + line + "\nmore"); label != "Operator" {
+			t.Fatalf("captureLabel(%q) = %q, want Operator", line, label)
 		}
 	}
-	if label := captureLabel("🔖 Founder │ no medal here"); label != "" {
+	if label := captureLabel("🔖 Operator │ no medal here"); label != "" {
 		t.Fatalf("medal-less line produced a label: %q", label)
 	}
 }

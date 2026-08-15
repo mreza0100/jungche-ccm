@@ -2,9 +2,43 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestChatBBPassesThroughAnUnownedPrompt(t *testing.T) {
+	jailTest(t)
+	var stdout, stderr bytes.Buffer
+	if code := runChat(
+		[]string{"bb"},
+		strings.NewReader(`{"prompt":"keep working"}`),
+		&stdout,
+		&stderr,
+	); code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("chat bb rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestChatGroupHookFailsOpenWhenItsBackendIsMissing(t *testing.T) {
+	root := jailTest(t)
+	t.Setenv("PFM_HOME", filepath.Join(root, "missing-bundle"))
+	work := filepath.Join(root, "empty-work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+	var stdout, stderr bytes.Buffer
+	if code := runChat(
+		[]string{"group", "hook"},
+		strings.NewReader(`{"prompt":"hello"}`),
+		&stdout,
+		&stderr,
+	); code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("group hook rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
 
 // The /bb hook's first duty is to NOT eat prompts. It sees every prompt typed
 // into every chat, so anything that is not exactly /bb has to pass through
@@ -95,7 +129,7 @@ func TestBBWithoutAChatHidesNothing(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hidden rc = %d: %s", code, stderr.String())
 	}
 	if stdout.Len() != 0 {

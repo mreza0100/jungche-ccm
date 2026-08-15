@@ -3,7 +3,7 @@ Description=Periodic pfm name-sync (claude /rename drift between picker runs)
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=2min
+OnUnitInactiveSec=15min
 Unit=pfm-name-sync.service
 
 [Install]

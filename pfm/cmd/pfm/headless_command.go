@@ -15,6 +15,7 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
 )
@@ -35,16 +36,30 @@ const (
 )
 
 func runHeadless(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "run":
+			args[0] = "new"
+		case "transcript":
+			args[0] = "read"
+		}
+	}
+	return runChat(args, os.Stdin, stdout, stderr)
+}
+
+func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		printHeadlessUsage(stderr)
+		printChatUsage(stderr)
 		return 2
 	}
 	verb, rest := args[0], args[1:]
 	switch verb {
-	case "run":
+	case "new":
 		return runRun(rest, stdout, stderr)
-	case "transcript":
-		return runHeadlessTranscript(rest, stdout, stderr)
+	case "open":
+		return runChatOpen(rest, stdout, stderr)
+	case "read":
+		return runChatRead(rest, stdin, stdout, stderr)
 	case "last":
 		return runHeadlessLast(rest, stdout, stderr)
 	case "status":
@@ -57,31 +72,54 @@ func runHeadless(args []string, stdout, stderr io.Writer) int {
 		return runHeadlessAsk(rest, stdout, stderr)
 	case "watch":
 		return runHeadlessWatch(rest, stdout, stderr)
-	case "ls":
-		return runHeadlessLS(rest, stdout, stderr)
+	case "capture":
+		return runChatCapture(rest, stdout, stderr)
+	case "name":
+		return runChatName(rest, stdout, stderr)
+	case "hide":
+		return runChatHide(rest, stdout, stderr)
+	case "unhide":
+		return runChatUnhide(rest, stdout, stderr)
+	case "bb":
+		return runBB(rest, stdin, stdout, stderr)
+	case "end":
+		return runChatEnd(rest, stdout, stderr)
+	case "find", "save", "load", "branch", "history", "ls":
+		return runChatSatellite(verb, rest, stdin, stdout, stderr)
+	case "group":
+		return runChatGroup(rest, stdin, stdout, stderr)
+	case "resolve":
+		return runChatResolve(rest, stdout, stderr)
 	case "help", "-h", "--help":
-		printHeadlessUsage(stdout)
+		printChatUsage(stdout)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "pfm headless: unknown command %q\n", verb)
-		printHeadlessUsage(stderr)
+		fmt.Fprintf(stderr, "pfm chat: unknown command %q\n", verb)
+		printChatUsage(stderr)
 		return 2
 	}
 }
 
-func printHeadlessUsage(w io.Writer) {
-	fmt.Fprintln(w, "usage: pfm headless <command> [options]")
+func printChatUsage(w io.Writer) {
+	fmt.Fprintln(w, "usage: pfm chat <command> [options]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "commands:")
-	fmt.Fprintln(w, "  run         start a named chat detached on its own server")
-	fmt.Fprintln(w, "  ls          list headless-reachable chats")
+	fmt.Fprintln(w, "  new         start a named chat on its own server")
+	fmt.Fprintln(w, "  open        open a chat by name, socket, or id")
 	fmt.Fprintln(w, "  status      one line (or --json) on a chat's state")
 	fmt.Fprintln(w, "  last        the chat's last assistant message")
-	fmt.Fprintln(w, "  transcript  read the chat's transcript")
+	fmt.Fprintln(w, "  read        read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
 	fmt.Fprintln(w, "  inject      deliver a message to the chat")
 	fmt.Fprintln(w, "  ask         deliver a message and wait for the answer")
 	fmt.Fprintln(w, "  watch       block, reporting IDLE / EXIT / DEAD")
+	fmt.Fprintln(w, "  capture     print a live chat's tmux scrollback")
+	fmt.Fprintln(w, "  name        rename a chat and converge its window")
+	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
+	fmt.Fprintln(w, "  unhide      remove a chat hide")
+	fmt.Fprintln(w, "  bb          the /bb UserPromptSubmit hook")
+	fmt.Fprintln(w, "  end         end a chat's tmux server")
+	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
 	fmt.Fprintln(w, "            5 answer timed out · 6 message not delivered")
@@ -98,6 +136,24 @@ func resolveChat(
 	name string,
 	warn io.Writer,
 ) (headless.Chat, bool, error) {
+	if name == "self" || name == "me" {
+		identifier, err := resolve.NewWhoami(resolve.WhoamiDependencies{})
+		if err != nil {
+			return headless.Chat{}, false, err
+		}
+		identity, err := identifier.Identify(ctx)
+		if err != nil {
+			return headless.Chat{}, false, err
+		}
+		switch {
+		case identity.ID != "":
+			name = identity.ID
+		case identity.SocketName != "":
+			name = identity.SocketName
+		default:
+			name = identity.Session
+		}
+	}
 	database, err := store.Open(store.WithWarningWriter(warn))
 	if err != nil {
 		return headless.Chat{}, false, err
@@ -180,6 +236,7 @@ func chatFromRow(row compose.Row) headless.Chat {
 		CWD:     row.CWD,
 		Socket:  row.Socket,
 		Session: row.SessionName,
+		Pane:    row.PaneID,
 		Live:    isLiveKind(row.Kind),
 	}
 }
@@ -194,7 +251,7 @@ func headlessTarget(
 ) (headless.Chat, int) {
 	chat, found, err := resolveChat(ctx, name, io.Discard)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat: %v\n", err)
 		return headless.Chat{}, 2
 	}
 	if !found {
@@ -203,7 +260,7 @@ func headlessTarget(
 		} else {
 			fmt.Fprintf(stdout, "%s\t%s\n", name, headless.StateMissing)
 		}
-		fmt.Fprintf(stderr, "pfm headless: no chat named %q\n", name)
+		fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", name)
 		return headless.Chat{}, codeUnknownChat
 	}
 	return chat, 0
@@ -211,8 +268,8 @@ func headlessTarget(
 
 func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless status",
-		"usage: pfm headless status <name> [--json]",
+		"chat status",
+		"usage: pfm chat status <target> [--json]",
 		stderr,
 	)
 	asJSON := flags.Bool("json", false, "emit one JSON object")
@@ -231,7 +288,7 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
 	}
 	status, err := headless.Inspect(ctx, chat, time.Now())
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless status: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat status: %v\n", err)
 		return 1
 	}
 	if *asJSON {
@@ -247,8 +304,8 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
 
 func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless transcript",
-		"usage: pfm headless transcript <name> [--tail N] [--condensed] [--json]",
+		"chat read",
+		"usage: pfm chat read <target> [--tail N] [--condensed] [--json]",
 		stderr,
 	)
 	tail := flags.Int("tail", 1, "how many entries to read, newest last")
@@ -268,12 +325,12 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if chat.Path == "" {
-		fmt.Fprintf(stderr, "pfm headless transcript: %q has not written a transcript yet\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat read: %q has not written a transcript yet\n", chat.Name)
 		return codeDeadChat
 	}
 	entries, truncated, err := transcript.Tail(ctx, chat.Path, chat.Engine, *tail, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless transcript: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat read: %v\n", err)
 		return 1
 	}
 	switch {
@@ -299,8 +356,8 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
 
 func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless last",
-		"usage: pfm headless last <name>",
+		"chat last",
+		"usage: pfm chat last <target>",
 		stderr,
 	)
 	names, code, ok := parseFlagsAnywhere(flags, args)
@@ -317,19 +374,19 @@ func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if chat.Path == "" {
-		fmt.Fprintf(stderr, "pfm headless last: %q has not written a transcript yet\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat last: %q has not written a transcript yet\n", chat.Name)
 		return codeDeadChat
 	}
 	// A wide window, then the newest assistant entry within it: the last thing
 	// SAID, however many tool calls have happened since.
 	entries, _, err := transcript.Tail(ctx, chat.Path, chat.Engine, 200, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless last: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat last: %v\n", err)
 		return 1
 	}
 	entry, found := transcript.Last(entries, transcript.RoleAssistant)
 	if !found {
-		fmt.Fprintf(stderr, "pfm headless last: %q has not answered yet\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat last: %q has not answered yet\n", chat.Name)
 		return codeDeadChat
 	}
 	fmt.Fprintln(stdout, entry.Text)
@@ -338,8 +395,8 @@ func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
 
 func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless stream",
-		"usage: pfm headless stream <name> [--filter REGEX] [--margin N] "+
+		"chat stream",
+		"usage: pfm chat stream <target> [--filter REGEX] [--margin N] "+
 			"[--from-start] [--raw] [--no-follow]",
 		stderr,
 	)
@@ -360,7 +417,7 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 	if *filter != "" {
 		compiled, err := regexp.Compile(*filter)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm headless stream: bad --filter: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat stream: bad --filter: %v\n", err)
 			return 2
 		}
 		pattern = compiled
@@ -371,7 +428,7 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if chat.Path == "" {
-		fmt.Fprintf(stderr, "pfm headless stream: %q has not written a transcript yet\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat stream: %q has not written a transcript yet\n", chat.Name)
 		return codeDeadChat
 	}
 	name := chat.Name
@@ -388,10 +445,10 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 	}, stdout)
 	if err != nil {
 		if err == headless.ErrChatGone {
-			fmt.Fprintf(stderr, "pfm headless stream: %s is gone\n", name)
+			fmt.Fprintf(stderr, "pfm chat stream: %s is gone\n", name)
 			return codeDeadChat
 		}
-		fmt.Fprintf(stderr, "pfm headless stream: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat stream: %v\n", err)
 		return 1
 	}
 	return 0
@@ -399,19 +456,45 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 
 func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless inject",
-		"usage: pfm headless inject <name> <message>",
+		"chat inject",
+		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] <target> <message>",
 		stderr,
 	)
-	force := flags.Bool("now", false, "interrupt a working chat instead of waiting")
+	var force bool
+	flags.BoolVar(&force, "now", false, "interrupt a working chat instead of waiting")
+	flags.BoolVar(&force, "force-now", false, "interrupt a working chat instead of waiting")
+	messageFile := flags.String("file", "", "read the message from a file")
+	var steers steerList
+	flags.Var(&steers, "then", "follow-up steer; repeat for a chain")
 	// Only the flags BEFORE the name are parsed: everything after it is the
 	// message, verbatim. A message may legitimately start with a dash, and an
 	// order silently eaten as a flag is an order never delivered.
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() < 2 {
+	minimum := 2
+	if *messageFile != "" {
+		minimum = 1
+	}
+	if flags.NArg() < minimum {
 		flags.Usage()
+		return 2
+	}
+	message := strings.Join(flags.Args()[1:], " ")
+	if *messageFile != "" {
+		if flags.NArg() != 1 {
+			flags.Usage()
+			return 2
+		}
+		content, err := os.ReadFile(*messageFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat inject: read --file: %v\n", err)
+			return 2
+		}
+		message = string(content)
+	}
+	if strings.TrimSpace(message) == "" {
+		fmt.Fprintln(stderr, "pfm chat inject: refusing to inject an empty message")
 		return 2
 	}
 	ctx := context.Background()
@@ -420,12 +503,12 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if !chat.Live {
-		fmt.Fprintf(stderr, "pfm headless inject: %q is not running\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat inject: %q is not running\n", chat.Name)
 		return codeDeadChat
 	}
 	engine, err := inject.New(inject.Dependencies{})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless inject: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
 		return 1
 	}
 	// The socket is addressed directly: this command already knows exactly
@@ -433,11 +516,12 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 	// could land on a different one.
 	result, err := engine.Inject(ctx, inject.Request{
 		Target:   chat.Socket,
-		Message:  strings.Join(flags.Args()[1:], " "),
-		ForceNow: *force,
+		Message:  message,
+		ForceNow: force,
+		Then:     steers,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless inject: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
 		return 1
 	}
 	if result.Unsigned {
@@ -459,8 +543,8 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 
 func runHeadlessWatch(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless watch",
-		"usage: pfm headless watch <name> [--idle-after SECS] "+
+		"chat watch",
+		"usage: pfm chat watch <target> [--idle-after SECS] "+
 			"[--on-idle CMD] [--on-exit CMD] [--once]",
 		stderr,
 	)
@@ -496,7 +580,7 @@ func runHeadlessWatch(args []string, stdout, stderr io.Writer) int {
 		OnExit:    hookRunner(*onExit, stderr),
 	}, stdout)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless watch: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat watch: %v\n", err)
 		return 1
 	}
 	if !status.Alive() {
@@ -524,64 +608,10 @@ func hookRunner(command string, stderr io.Writer) func(headless.Status) error {
 		process.Stdout = stderr
 		process.Stderr = stderr
 		if err := process.Run(); err != nil {
-			fmt.Fprintf(stderr, "pfm headless watch: hook failed: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat watch: hook failed: %v\n", err)
 		}
 		return nil
 	}
-}
-
-func runHeadlessLS(args []string, stdout, stderr io.Writer) int {
-	flags := newFlagSet(
-		"headless ls",
-		"usage: pfm headless ls [--json]",
-		stderr,
-	)
-	asJSON := flags.Bool("json", false, "emit a JSON array")
-	names, code, ok := parseFlagsAnywhere(flags, args)
-	if !ok {
-		return code
-	}
-	if len(names) != 0 {
-		flags.Usage()
-		return 2
-	}
-	ctx := context.Background()
-	database, err := store.Open(store.WithWarningWriter(io.Discard))
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless ls: %v\n", err)
-		return 1
-	}
-	defer database.Close()
-	scan, err := scanFleet(
-		ctx,
-		database,
-		scanRequest{View: compose.AllView, ReadOnly: true},
-		io.Discard,
-	)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless ls: %v\n", err)
-		return 1
-	}
-	statuses := make([]headless.Status, 0, len(scan.Output.Rows))
-	now := time.Now()
-	for _, row := range scan.Output.Rows {
-		if !isLiveKind(row.Kind) || row.ID == "" {
-			continue
-		}
-		status, err := headless.Inspect(ctx, chatFromRow(row), now)
-		if err != nil {
-			continue
-		}
-		statuses = append(statuses, status)
-	}
-	if *asJSON {
-		writeJSON(stdout, statuses)
-		return 0
-	}
-	for _, status := range statuses {
-		fmt.Fprintln(stdout, status.Line())
-	}
-	return 0
 }
 
 func entryText(entry transcript.Entry) string {

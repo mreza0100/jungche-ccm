@@ -34,6 +34,7 @@ type Chat struct {
 	CWD     string
 	Socket  string
 	Session string
+	Pane    string
 	Live    bool
 }
 

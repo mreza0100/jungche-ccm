@@ -29,7 +29,7 @@ _pfm_eval() {
 
 cc-ls() {
   case " $* " in
-    *" --check "*|*" --plain "*|*" --tsv "*)
+    *" --plain "*|*" --tsv "*)
       "$_PFM_BIN" ls "$@"
       return $?
       ;;
@@ -45,16 +45,16 @@ cc-revive() { "$_PFM_BIN" revive "$@"; }
 # into ~/.claude-primary, which the statusline still reads (cc-db.sh:262-275).
 typeset -gr _CC_DB="$HOME/.claude/bin/cc-db.sh"
 
-# The launch/account functions below mirror the legacy cc-fleet.zsh oracle; the
-# Go action protocol emits lines that call them.
+# The launch/account functions below are the shell owner of fresh interactive
+# launches; the Go action protocol emits lines that call them.
 # CC_AUTONOMY_FLAGS — the FULL-AUTONOMY posture, applied by EVERY path that starts a chat, on
-# every account (cc-fleet.zsh:67-75). Chats run unattended overnight, so a mid-task approval
+# every account. Chats run unattended overnight, so a mid-task approval
 # prompt is a stalled chat with nobody awake to clear it. `--allow-…` is the enabling half (the
 # harness refuses the bypass without it), `--dangerously-…` the acting half; both are required.
 # Blast radius is total and deliberate — PreToolUse hooks sit outside the permission system and
 # are the only brake left, so a guard that matters belongs in a hook, not in a permission rule.
 typeset -ga CC_AUTONOMY_FLAGS=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
-# CC_ENDPOINT_UNSET — every launch strips any inherited API endpoint (cc-fleet.zsh:76-84). A chat
+# CC_ENDPOINT_UNSET — every launch strips any inherited API endpoint. A chat
 # born inside another chat's Bash tool inherits that chat's environment, so a shell pointed at a
 # local translating proxy would hand the next launch a foreign endpoint and it would answer from a
 # foreign model under an Anthropic medal. The launcher's verdict is the account; the environment
@@ -93,8 +93,7 @@ _cc_run() {
     if [[ "$arm1h" == 1 ]]; then run+=" ENABLE_PROMPT_CACHING_1H=1"; else run+=" FORCE_PROMPT_CACHING_5M=1"; fi
     # PER-ELEMENT quoting, then join. "${(q)@}" joins the array into ONE word FIRST and quotes
     # that, so two flags arrive as a single argv element with an escaped space, claude rejects the
-    # unknown option, and the tmux session dies at birth — which reads as "the launcher doesn't
-    # open" (cc-fleet.zsh:108-113).
+    # unknown option, and the tmux session dies at birth.
     run+=" claude ${(j: :)${(@q)CC_AUTONOMY_FLAGS}} ${(j: :)${(@q)@}}"
     # A bare terminal hands itself to the chat (_cc_own_terminal); a bunker pane is EXEC'd into
     # the viewport, which is the same law by another route. Inside another chat, neither: a
@@ -130,7 +129,7 @@ cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
 cx() {
   local sock="cx-$(date +%s)-$$-$RANDOM"
   # same launch hygiene as claude: a codex born inside a Claude chat must not inherit its identity.
-  # --dangerously-bypass-approvals-and-sandbox: founder's standing order (2026-07-24) — a fleet
+  # --dangerously-bypass-approvals-and-sandbox: operator-approved fleet policy — a fleet
   # codex runs with FULL autonomy, never stopping to ask approval (wave builders stalled on
   # mid-task approval prompts). This box's codex work is already gated by repo trust + the fleet.
   # PER-ELEMENT quoting, then join — same fix as _cc_run (lines 89-93): "${(q)@}" joins the
@@ -161,7 +160,7 @@ _cx_server() {
 _cc_label() {
   local n="$1" dir medal email
   case "$n" in 1) dir="$HOME/.claude"; medal="🥇" ;; 2) dir="$HOME/.cc/2"; medal="🥈" ;; esac
-  # ACCOUNT 1'S IDENTITY IS NOT INSIDE ITS CONFIG DIR (cc-fleet.zsh:174-182). Claude Code writes
+  # ACCOUNT 1'S IDENTITY IS NOT INSIDE ITS CONFIG DIR. Claude Code writes
   # the default account's .claude.json BESIDE the config dir; ~/.claude/.claude.json also exists
   # but carries only machine state and no oauthAccount. A uniform "$dir/.claude.json" therefore
   # reads a real file, finds no email, and renders the primary account "(not logged in)" while
@@ -278,13 +277,13 @@ _cc_selfswitch() {
   # lowest window index first within each tier. An exact engine name is proof; `node` and the bare
   # version string are only hints — codex renders as its node wrapper and claude as a bare version
   # in some states, but a shell window running any node process wears the same shape, and matching
-  # it first would switch the founder to that shell, i.e. the very "wrong window" this fixes.
+  # it first would switch the operator to that shell, i.e. the very "wrong window" this fixes.
   local panes; panes="$(tmux -L "$sock" list-panes -a -F '#{window_index}'$'\t''#{pane_current_command}' 2>/dev/null | sort -n)"
   w="$(print -r -- "$panes" | awk -F'\t' '$2 ~ /^(claude|codex)$/ { print $1; exit }')"
   [[ -n "$w" ]] || w="$(print -r -- "$panes" | awk -F'\t' '$2 ~ /^node$/ || $2 ~ /^[0-9]+\./ { print $1; exit }')"
   # engine window unidentifiable (an unexpected pane command) → the lowest window index, where every
   # cc-/cx- server puts the chat at birth. Announce only what actually happened: claiming a switch
-  # that never ran would send the founder back to a screen that did not change.
+  # that never ran would send the operator back to a screen that did not change.
   [[ -n "$w" ]] || w="$(print -r -- "$panes" | awk -F'\t' 'NR==1 { print $1 }')"
   if [[ -n "$w" ]] && tmux select-window -t "$w" 2>/dev/null; then
     print -u2 -- "cc: already inside this chat's tmux — switched to its window (a session must never nest inside itself)"

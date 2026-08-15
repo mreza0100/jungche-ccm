@@ -19,13 +19,9 @@ ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else 
 # bash satellite carries the same two lines; cc-db.sh is the one every other one depends on.
 BASH_RESOLVER="$(grep -E '^_pfms=|^PFM_HOME=' "$BUNDLE/cc-db.sh")"
 [ -n "$BASH_RESOLVER" ] || { echo "FATAL: could not extract the bash resolver from cc-db.sh"; exit 1; }
-ZSH_RESOLVER="$(grep -E '^typeset -g CC_FLEET_HOME=' "$BUNDLE/cc-fleet.zsh")"
-[ -n "$ZSH_RESOLVER" ] || { echo "FATAL: could not extract the zsh resolver from cc-fleet.zsh"; exit 1; }
-
 mkdir -p "$T/real" "$T/links" "$T/links2" "$T/rel"
 printf '#!/usr/bin/env bash\n%s\necho "$PFM_HOME"\n' "$BASH_RESOLVER" > "$T/real/probe.sh"
 chmod +x "$T/real/probe.sh"
-printf '%s\necho "$CC_FLEET_HOME"\n' "$ZSH_RESOLVER" > "$T/real/probe.zsh"
 
 echo "=== bash: direct invocation ==="
 ok "runs from its own dir" "$(bash "$T/real/probe.sh")" "$T/real"
@@ -52,20 +48,6 @@ mkdir -p "$T/dir with spaces" "$T/links3"
 cp "$T/real/probe.sh" "$T/dir with spaces/probe.sh"
 ln -sf "$T/dir with spaces/probe.sh" "$T/links3/probe.sh"
 ok "spaces in the resolved path survive" "$(bash "$T/links3/probe.sh")" "$T/dir with spaces"
-
-if command -v zsh >/dev/null 2>&1; then
-  echo "=== zsh: sourced directly ==="
-  ok "sourced from its own dir" "$(zsh -fc "source '$T/real/probe.zsh'")" "$T/real"
-
-  echo "=== zsh: sourced THROUGH a symlink ==="
-  ln -sf "$T/real/probe.zsh" "$T/links/probe.zsh"
-  ok "symlinked source resolves to the real dir" "$(zsh -fc "source '$T/links/probe.zsh'")" "$T/real"
-
-  echo "=== zsh: env override wins ==="
-  ok "oracle CC_FLEET_HOME from the env is respected" "$(CC_FLEET_HOME=/opt/fleet zsh -fc "source '$T/links/probe.zsh'")" "/opt/fleet"
-else
-  echo "=== zsh: SKIPPED (no zsh on PATH) ==="
-fi
 
 echo "=== the shipped bundle locates its own siblings ==="
 # The point of the whole exercise: from the resolved home, every sibling the scripts call must exist.

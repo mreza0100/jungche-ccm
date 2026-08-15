@@ -6,4 +6,4 @@ argument-hint: [--all]
 
 # Chat LS — live chats
 
-Run `$HOME/.claude/commands/chat/chat.sh ls` (pass `--all` through when the user asked for chats across all dirs/projects) and report what it lists, noting which row is this chat. The repo-scoped view ends with a `(+N live in other dirs …)` hint when chats exist elsewhere — mention it so the user knows `--all` reaches them. Any listed session name is directly addressable from here: `/chat:inject <session> <message>` works across projects.
+Run `$HOME/.local/bin/pfm chat ls` (pass `--all` through when the user asked for chats across all dirs/projects) and report what it lists, noting which row is this chat. The repo-scoped view ends with a `(+N live in other dirs …)` hint when chats exist elsewhere — mention it so the user knows `--all` reaches them. Any listed session name is directly addressable from here: `/chat:inject <session> <message>` works across projects.

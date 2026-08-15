@@ -83,11 +83,11 @@ func TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch(t *testing.T) {
 		)
 	}
 
-	hidden := exec.Command(jail.binary, "hidden")
+	hidden := exec.Command(jail.binary, "ls", "--hidden")
 	hidden.Env = jail.env
 	output, err := hidden.CombinedOutput()
 	if err != nil {
-		t.Fatalf("pfm hidden: %v: %s", err, output)
+		t.Fatalf("pfm ls --hidden: %v: %s", err, output)
 	}
 	if got := strings.TrimSpace(string(output)); got != "" {
 		t.Fatalf("Esc left a hide behind: %q", got)

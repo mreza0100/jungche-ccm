@@ -6,4 +6,4 @@ argument-hint: "{group} [label]"
 
 # Chat Group Subscribe
 
-Run `$HOME/.claude/commands/chat/group.sh subscribe {group} [label]` (label defaults to this chat's tmux session name). Membership starts at the current ledger position — only future messages arrive. Report the join confirmation.
+Run `$HOME/.local/bin/pfm chat group subscribe {group} [label]` (label defaults to this chat's tmux session name). Membership starts at the current ledger position — only future messages arrive. Report the join confirmation.

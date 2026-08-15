@@ -37,7 +37,6 @@ var forbiddenDreamImports = map[string]struct{}{
 	modulePath + "/internal/hide":    {},
 	modulePath + "/internal/mcpserv": {},
 	modulePath + "/internal/gather":  {},
-	modulePath + "/internal/check":   {},
 }
 
 type listedPackage struct {

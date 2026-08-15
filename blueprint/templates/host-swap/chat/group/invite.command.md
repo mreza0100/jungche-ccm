@@ -6,4 +6,4 @@ argument-hint: "{group} {label}"
 
 # Chat Group Invite
 
-Run `$HOME/.claude/commands/chat/group.sh invite {group} {label}` and report whether the invitation landed. The target joins by running subscribe itself — self-registration keeps its member identity equal to its own whoami; a chat that never acts on the invite is not a member.
+Run `$HOME/.local/bin/pfm chat group invite {group} {label}` and report whether the invitation landed. The target joins by running subscribe itself — self-registration keeps its member identity equal to its own whoami; a chat that never acts on the invite is not a member.

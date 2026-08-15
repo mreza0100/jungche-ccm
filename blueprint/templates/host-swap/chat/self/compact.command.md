@@ -1,12 +1,12 @@
 ---
 name: chat:self:compact
-description: Compact THIS chat's own context, then keep working — the ONLY sanctioned way a chat compacts itself. Route here on ANY self-compact phrasing from the founder or your own plan — "compact yourself", "give yourself a compact", "self-compact", "clean up / free your context", "compact and continue" — or when context is filling before a long next phase. Reads the session first, authors the /compact focus (never a raw passthrough), and fires it through chat.sh inject on this chat's own pane with a MANDATORY post-compact steer, so the reborn chat resumes unprompted. Transport is chat.sh ONLY — raw tmux keystrokes, forced injects, and detached timers are permission-blocked by design. Trigger — /chat:self:compact <hold> || <steer> [|| <steer 2> ...].
+description: Compact THIS chat's own context, then keep working — the ONLY sanctioned way a chat compacts itself. Route here on ANY self-compact phrasing from the operator or your own plan — "compact yourself", "give yourself a compact", "self-compact", "clean up / free your context", "compact and continue" — or when context is filling before a long next phase. Reads the session first, authors the /compact focus (never a raw passthrough), and fires it through `pfm chat inject` on this chat's own pane with a MANDATORY post-compact steer, so the reborn chat resumes unprompted. Trigger — /chat:self:compact <hold> || <steer> [|| <steer 2> ...].
 argument-hint: <what to hold> || <post-compact steer> [|| <next steer> ...]
 ---
 
 # Chat Self-Compact — author a focused /compact, then steer what comes after
 
-You cannot run the harness `/compact` on yourself — it is a user-typed command, not a tool you hold. The one transport is `$HOME/.claude/commands/chat/chat.sh inject` targeting `self` (this chat's own pane); each inject queues a turn that runs after the current one, in the order injected. The permission system blocks every improvised alternative — raw `tmux send-keys`, forced injects, detached timers typing keystrokes — so treat a wall as proof you left the sanctioned path, never as a reason to get creative with transport.
+You cannot run the harness `/compact` on yourself — it is a user-typed command, not a tool you hold. The one transport is `pfm chat inject` targeting `self` (this chat's own pane); each inject queues a turn that runs after the current one, in the order injected. The permission system blocks every improvised alternative — raw `tmux send-keys`, forced injects, detached timers typing keystrokes — so treat a wall as proof you left the sanctioned path, never as a reason to get creative with transport.
 
 `$ARGUMENTS` carries prompts split on `||`:
 
@@ -28,10 +28,10 @@ Fold the left arg together with the next step and key state you found into one s
 
 ## Step 3 — Fire the compaction, carry the steer
 
-One inject does it all. `--then` holds the steer and delivers it the moment compaction finishes and the pane settles to idle — a follow-up typed while compaction runs is swallowed, so `chat.sh` waits out the busy→idle transition for you, in a detached waiter that survives this turn ending. Repeat `--then` once per extra `||`-segment, in order — the chain delivers each steer as its own turn after the previous one settles:
+One inject does it all. `--then` holds the steer and delivers it the moment compaction finishes and the pane settles to idle — a follow-up typed while compaction runs is swallowed, so pfm waits out the busy→idle transition for you, in a detached waiter that survives this turn ending. Repeat `--then` once per extra `||`-segment, in order — the chain delivers each steer as its own turn after the previous one settles:
 
 ```bash
-$HOME/.claude/commands/chat/chat.sh inject --then "{post-compact steer}" [--then "{next steer}" ...] self "/compact {authored focus}"
+$HOME/.local/bin/pfm chat inject --then "{post-compact steer}" [--then "{next steer}" ...] self "/compact {authored focus}"
 ```
 
 The `/compact` primary is auto-exempt from the sender signature (any `/`-prefixed command travels unsigned; plain text is always signed); a plain-text steer arrives signed by this same chat, which is harmless on `self`. Each lands as a single line. Report that compaction is queued with its steer to follow.

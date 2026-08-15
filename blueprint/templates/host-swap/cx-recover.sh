@@ -143,4 +143,4 @@ printf '%s\n' \
   "  $out/transcript.md" \
   "" \
   "Brief a replacement seat with:" \
-  "  chat.sh inject <socket> 'RECOVERY: read $out/brief.md, then compaction-memory.md, then the tail of transcript.md.'"
+  "  pfm chat inject <socket> 'RECOVERY: read $out/brief.md, then compaction-memory.md, then the end of transcript.md.'"

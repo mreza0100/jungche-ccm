@@ -38,7 +38,7 @@ func TestBootingRowJailedTSV(t *testing.T) {
 
 	epochSocket := "cc-" + strconv.FormatInt(time.Now().Unix(), 10) +
 		"-" + strconv.Itoa(os.Getpid()) + "-1"
-	newSocket := "cc-new-CC_FLEET_1"
+	newSocket := "cc-new-fixture-1"
 
 	epochPanePID := startBootingPane(t, epochSocket)
 	writeFakeProcess(t, jail.procRoot, fakeProcessSpec{
@@ -200,11 +200,11 @@ func TestBootingRowInteractivePickerJailed(t *testing.T) {
 			strings.TrimSpace(string(content)) != "RC=0" {
 			t.Fatalf("hide-probe picker exit marker = %q, err=%v", content, err)
 		}
-		hidden := exec.Command(jail.binary, "hidden")
+		hidden := exec.Command(jail.binary, "ls", "--hidden")
 		hidden.Env = jail.env
 		output, err := hidden.CombinedOutput()
 		if err != nil {
-			t.Fatalf("pfm hidden: %v: %s", err, output)
+			t.Fatalf("pfm ls --hidden: %v: %s", err, output)
 		}
 		if got := strings.TrimSpace(string(output)); got != "" {
 			t.Fatalf("⌃X on the booting row wrote a hide: %q", got)

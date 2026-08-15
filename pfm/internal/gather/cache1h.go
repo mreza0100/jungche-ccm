@@ -7,7 +7,7 @@ import (
 
 // DetectCache1H returns the sockets whose Claude chat runs the ⚡1h cache.
 //
-// The rule is an opt-OUT, not an opt-in (cc-fleet.zsh:349-366, _cc_c1h_tty):
+// The rule is an opt-OUT, not an opt-in:
 // since Claude Code 2.1.215 the 1h window is the harness DEFAULT, so a chat
 // reads as 5m only when it was explicitly born with FORCE_PROMPT_CACHING_5M=1.
 // Env binds at birth, so the live process environment is the only truth — an

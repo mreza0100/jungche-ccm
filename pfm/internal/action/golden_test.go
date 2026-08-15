@@ -62,17 +62,17 @@ func replaceGoldenRun(line, run string) string {
 func goldenSourceComment(route Route) string {
 	switch route {
 	case NewClaude:
-		return "# N — cc-fleet.zsh:67-124 (CC_AUTONOMY_FLAGS, CC_ENDPOINT_UNSET, _cc_run), 893-894 (PROJDIR), 1430-1433 (dispatch)"
+		return "# N — fresh Claude launch"
 	case NewCodex:
-		return "# C — cc-fleet.zsh:145-157 (cx), 893-894 (PROJDIR), 1434-1438 (dispatch)"
+		return "# C — fresh Codex launch"
 	case Live:
-		return "# L — cc-fleet.zsh:326-347 (_cc_selfswitch), 753-801 (_cc_solo), 1448-1456 (dispatch)"
+		return "# L — live chat attach"
 	case Agent:
-		return "# A — cc-fleet.zsh:1380-1384 (cache env), 1457-1467 (agent router); WP7 failure-net extension"
+		return "# A — agent chat attach or resume"
 	case ResumeClaude:
-		return "# R — cc-fleet.zsh:86-124 (_cc_run hygiene), 1468-1487 (resume + agent failure net)"
+		return "# R — Claude resume"
 	case ResumeCodex:
-		return "# X — cc-fleet.zsh:163-168 (_cx_server), 1439-1447 (Codex resume)"
+		return "# X — Codex resume"
 	default:
 		panic("unknown golden route")
 	}

@@ -68,7 +68,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	if !strings.HasPrefix(plan.Run, wantPrefix) {
 		t.Fatalf("resume run = %q, want prefix %q", plan.Run, wantPrefix)
 	}
-	// A resumed chat keeps full autonomy, on every account (cc-fleet.zsh:872).
+	// A resumed chat keeps full autonomy, on every account.
 	if !strings.Contains(
 		plan.Run,
 		"claude '--resume' "+Quote(id)+" "+autonomyFlags,
@@ -81,7 +81,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 		"CLAUDE_CONFIG_DIR",
 		"ENABLE_PROMPT_CACHING_1H",
 		"FORCE_PROMPT_CACHING_5M",
-		// CC_ENDPOINT_UNSET (cc-fleet.zsh:80-84) — a chat born inside another
+		// CC_ENDPOINT_UNSET — a chat born inside another
 		// chat must never inherit a translating proxy's endpoint.
 		"ANTHROPIC_BASE_URL",
 		"ANTHROPIC_AUTH_TOKEN",
@@ -109,7 +109,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	}
 	// A fresh launch calls the shell launcher, whose _cc_run prepends the
 	// autonomy flags — repeating them here would duplicate them in argv
-	// (cc-fleet.zsh:138).
+	// by the launcher.
 	if plan.Line != "(cd -- '/rotated/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc2)" {
 		t.Fatalf("new Claude line = %q", plan.Line)
 	}
@@ -213,9 +213,9 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 	bootingLine, err := Synthesize(Request{
 		Row: compose.Row{
 			Kind:        compose.Booting,
-			ID:          "cc-new-CC_FLEET_1",
-			Socket:      "cc-new-CC_FLEET_1",
-			SessionName: "cc-new-CC_FLEET_1",
+			ID:          "cc-new-fixture-1",
+			Socket:      "cc-new-fixture-1",
+			SessionName: "cc-new-fixture-1",
 		},
 		PrimaryAccount: 1,
 		Home:           "/home/test",
@@ -226,8 +226,8 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 	liveLine, err := Synthesize(Request{
 		Row: compose.Row{
 			Kind:        compose.LiveClaude,
-			Socket:      "cc-new-CC_FLEET_1",
-			SessionName: "cc-new-CC_FLEET_1",
+			Socket:      "cc-new-fixture-1",
+			SessionName: "cc-new-fixture-1",
 		},
 		PrimaryAccount: 1,
 		Home:           "/home/test",
@@ -245,8 +245,8 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 			liveLine.Line,
 		)
 	}
-	if want := "TMUX= tmux -L " + Quote("cc-new-CC_FLEET_1") +
-		" attach -t " + Quote("cc-new-CC_FLEET_1"); bootingLine.Line != want {
+	if want := "TMUX= tmux -L " + Quote("cc-new-fixture-1") +
+		" attach -t " + Quote("cc-new-fixture-1"); bootingLine.Line != want {
 		t.Fatalf("booting attach line = %q, want %q", bootingLine.Line, want)
 	}
 

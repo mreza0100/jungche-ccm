@@ -28,10 +28,10 @@ const spawnTraceEnv = "PFM_SPAWN_TRACE"
 // works from a script, a cron job, or another chat's Bash tool.
 func runRun(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless run",
-		"usage: pfm headless run --name NAME [--engine cc|cx] [--cwd DIR] "+
+		"chat new",
+		"usage: pfm chat new --name NAME [--engine cc|cx] [--cwd DIR] "+
 			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] "+
-			"[--await [--timeout SECS] [--settle SECS] [--progress]] [prompt]",
+			"[--await [--timeout SECS] [--settle SECS] [--progress]] [--attach] [prompt]",
 		stderr,
 	)
 	name := flags.String("name", "", "chat name (a _HIDE… name stays out of the list)")
@@ -46,36 +46,42 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	timeout := flags.Int("timeout", askTimeoutSeconds, "with --await: seconds to wait (0 waits forever)")
 	settle := flags.Int("settle", askSettleSeconds, "with --await: seconds of quiet before an answer is finished")
 	progress := flags.Bool("progress", false, "with --await: print the chat's turns to stderr while waiting")
+	attach := flags.Bool("attach", false, "attach this terminal after launch")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if *name == "" || *timeout < 0 || *settle < 0 {
+	positional := flags.Args()
+	if *name == "" && len(positional) > 0 {
+		*name = positional[0]
+		positional = positional[1:]
+	}
+	if *name == "" || *timeout < 0 || *settle < 0 || (*attach && *await) {
 		flags.Usage()
 		return 2
 	}
 	engineName, ok := action.NormalizeEngine(*engine)
 	if !ok {
-		fmt.Fprintf(stderr, "pfm headless run: unknown engine %q\n", *engine)
+		fmt.Fprintf(stderr, "pfm chat new: unknown engine %q\n", *engine)
 		return 2
 	}
 
 	resolved, err := paths.Resolve()
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 1
 	}
 	directory, err := runDirectory(*cwd)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 1
 	}
 	claudeAccount := *account
 	if claudeAccount == 0 {
 		claudeAccount = readPrimaryAccount(resolved)
 	}
-	prompt, err := runPrompt(*promptFile, flags.Args())
+	prompt, err := runPrompt(*promptFile, positional)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 2
 	}
 	plan, err := action.HeadlessRun(action.HeadlessRequest{
@@ -90,7 +96,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		Cache1H:        *cache1H,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 2
 	}
 
@@ -119,14 +125,14 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		Height: action.HeadlessHeight,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 1
 	}
 	for _, warning := range result.Warnings {
-		fmt.Fprintf(stderr, "pfm headless run: %s\n", warning)
+		fmt.Fprintf(stderr, "pfm chat new: %s\n", warning)
 	}
 	// With --await the reply owns stdout, so the launch summary steps aside:
-	// `answer=$(pfm headless run --await …)` must be the answer and
+	// `answer=$(pfm chat new --await …)` must be the answer and
 	// nothing else.
 	summary := stdout
 	if *await {
@@ -137,13 +143,13 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if prompt == "" {
-		return 0
+		return attachRunResult(*attach, result, stdout, stderr)
 	}
 	var progressOut io.Writer
 	if *progress && *await {
 		progressOut = stderr
 	}
-	return awaitLaunch(
+	code := awaitLaunch(
 		context.Background(),
 		*name,
 		*await,
@@ -157,6 +163,23 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		stdout,
 		stderr,
 	)
+	if code != 0 {
+		return code
+	}
+	return attachRunResult(*attach, result, stdout, stderr)
+}
+
+func attachRunResult(attach bool, result spawn.Result, stdout, stderr io.Writer) int {
+	if !attach {
+		return 0
+	}
+	line := "TMUX= tmux -L " + action.Quote(result.Socket) +
+		" attach -t " + action.Quote(result.Session)
+	if err := dispatchAction(stdout, line); err != nil {
+		fmt.Fprintf(stderr, "pfm chat new: attach: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 // launchGrace is how long a chat that was just created is allowed to be
@@ -209,14 +232,14 @@ func awaitLaunch(
 	}
 	fmt.Fprintf(
 		stderr,
-		"pfm headless run: %s never recorded the prompt — it was typed but "+
+		"pfm chat new: %s never recorded the prompt — it was typed but "+
 			"the model was never asked; attach it and look: tmux -L %s attach -t %s\n",
 		name,
 		result.Socket,
 		result.Session,
 	)
 	if err != nil && !errors.Is(err, headless.ErrAwaitTimeout) {
-		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 	}
 	return codeUndelivered
 }

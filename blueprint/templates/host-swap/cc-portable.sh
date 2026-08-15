@@ -3,9 +3,7 @@
 # whose answer differs between Linux and macOS is asked HERE, once, and nowhere else.
 #
 # Sourced, never executed: `. "$PFM_HOME/cc-portable.sh"`. Written in POSIX sh
-# with no arrays and no [[ ]], because the callers are bash scripts AND cc-fleet.zsh,
-# which is sourced into the founder's interactive shell — a bashism here would surface
-# as a syntax error at every new terminal.
+# with no arrays and no [[ ]] so every shell satellite can use it.
 #
 # THE RULE FOR EVERY FUNCTION BELOW: try the Linux form first, fall back to the BSD
 # form, and return a documented empty/zero value when neither can answer. Linux is
@@ -101,10 +99,8 @@ cc_children_args() {
   ps -o args= -p "$_k" 2>/dev/null || true
 }
 
-# NOTE for everything below that walks a list: never `for x in $(cmd)`. This file is sourced by
-# bash scripts AND by cc-fleet.zsh, and zsh does not word-split an unquoted command substitution
-# the way bash does — the same loop would iterate once over one giant string there and produce a
-# silently empty result. `while IFS= read -r` behaves identically in both shells.
+# NOTE for everything below that walks a list: never `for x in $(cmd)`; use
+# `while IFS= read -r` so paths are not silently split.
 
 # cc_penv PID VAR — the value of VAR in ANOTHER process's environment. "" when unknown.
 #
@@ -345,9 +341,8 @@ cc_unlock() {
 # truncates AFTER the sort, so only the printed field loses the fraction, never the order. On BSD
 # two files written in the same second tie and order by size — nothing in this bundle can tell.
 #
-# The probe result is cached in CC_FIND_PRINTF: the active shell callers and the legacy
-# cc-fleet.zsh oracle can load this library repeatedly, and a fork per load to re-learn which
-# find is installed is a cost with no payer.
+# The probe result is cached in CC_FIND_PRINTF because callers may source this
+# library repeatedly and should not fork on every load to rediscover `find`.
 cc_find_meta() {
   _d="$1"; shift
   [ -d "$_d" ] || return 0

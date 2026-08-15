@@ -16,7 +16,7 @@ Talk to a finished session. Epics and memory store what was decided; the transcr
 
 ## Discover the session
 
-Sessions live at `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/*.jsonl` (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`). The sanitized cwd is `pwd | tr '/.' '--'` — the same derivation `chat.sh` itself uses.
+Sessions live at `$CLAUDE_CONFIG_DIR/projects/<sanitized-cwd>/*.jsonl` (`CLAUDE_CONFIG_DIR` defaults to `~/.claude`). The sanitized cwd is `pwd | tr '/.' '--'` — the same derivation pfm uses.
 
 ```bash
 DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(pwd | tr '/.' '--')"
@@ -41,11 +41,11 @@ claude --fork-session --resume <uuid> -p "<your question>"
 
 ## Examples
 
-Founder: ask — why did the research agent drop the Dolt ledger idea?
+Operator: ask — why did the research agent drop the Dolt ledger idea?
 Command: ls -t finds the gastown-study session (uuid 9f3c…). →
 claude --fork-session --resume 9f3c… -p "Why did you recommend against adopting Dolt for the work ledger?"
 Returns: "Heavy new runtime for a TS/Python shop; the JSONL event-log + checkpoint gets 80% of the value without it."
 
-Founder: ask the predecessor what it decided about the couple-session speaker labels
+Operator: ask the predecessor what it decided about the couple-session speaker labels
 Command: Reads $DOCS archived audit-trail.json → session uuid a17b… →
 claude --fork-session --resume a17b… -p "What did you decide about speaker labelling for couple sessions, and why?"
