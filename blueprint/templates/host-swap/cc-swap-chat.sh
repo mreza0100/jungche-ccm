@@ -11,13 +11,13 @@
 # the reborn chat once it reaches its input box — the chat continues working unattended
 # (the limit-rescue path: a chat swaps ITSELF to a fresh account and hands itself the baton).
 set -u
-# CC_FLEET_HOME — this bundle's OWN directory, resolved THROUGH symlinks. install.sh links these
+# PFM_HOME — this bundle's OWN directory, resolved THROUGH symlinks. install.sh links these
 # scripts into ~/.claude/bin, so $BASH_SOURCE is the link, not the file: taking its dirname
 # straight would hunt for siblings in the link's directory. Plain `readlink` (never -f) because
 # macOS ships BSD readlink, which has no -f.
-_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
-CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
-. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_size0, cc_penv, cc_detach
+_pfms="${BASH_SOURCE[0]}"; while [ -L "$_pfms" ]; do _pfmd="$(cd -P "$(dirname "$_pfms")" && pwd)"; _pfms="$(readlink "$_pfms")"; case "$_pfms" in /*) ;; *) _pfms="$_pfmd/$_pfms" ;; esac; done
+PFM_HOME="${PFM_HOME:-$(cd -P "$(dirname "$_pfms")" && pwd)}"
+. "$PFM_HOME/cc-portable.sh"   # GNU/BSD seam — cc_size0, cc_penv, cc_detach
 n=""; then_prompt=""; sock_arg=""; c1h_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -40,7 +40,7 @@ esac
 
 # identify the chat. --sock targets ANOTHER chat's server (cc-ls's gate): the caller's env
 # (session id, $TMUX) describes the CALLER, so only the target's breadcrumbs may speak here.
-# Self-swap (/swap): same chain as `cc-fleet hide --self` — env session id (only when its transcript
+# Self-swap (/swap): same chain as `pfm hide --self` — env session id (only when its transcript
 # exists), then the pane-keyed breadcrumb, then the socket breadcrumb.
 sock=""; pane=""; u=""
 if [ -n "$sock_arg" ]; then
@@ -259,5 +259,5 @@ $(cc_detach) env SOCK="$sock" PANE="$pane" U="$u" CFG="$cfg" CWD="$rcwd" THEN="$
     tmux -L "$SOCK" display-message -t "$PANE" "swap --then typed but submit unconfirmed — press Enter" 2>/dev/null
     echo "then: typed but submit unconfirmed — press Enter in the pane"
   fi
-' 2>&1 | bash "$CC_FLEET_HOME/cc-db.sh" swap-log &   # append: concurrent swaps must not truncate each other's log
+' 2>&1 | bash "$PFM_HOME/cc-db.sh" swap-log &   # append: concurrent swaps must not truncate each other's log
 exit 0

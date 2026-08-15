@@ -1,0 +1,303 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+
+	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/headless"
+	"hostops/pfm/internal/naming"
+	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/spawn"
+	"hostops/pfm/internal/store"
+)
+
+// spawnTraceEnv turns on the spawn choreography trace on stderr.
+const spawnTraceEnv = "PFM_SPAWN_TRACE"
+
+// runRun starts a chat with the fleet's whole launch ceremony — the
+// environment strip, the account's config dir, the cache mode, the autonomy
+// flags, its own tmux server on a fleet socket — and then walks away from it.
+// No terminal is attached and nothing is eval'd by the caller's shell, so it
+// works from a script, a cron job, or another chat's Bash tool.
+func runRun(args []string, stdout, stderr io.Writer) int {
+	flags := newFlagSet(
+		"headless run",
+		"usage: pfm headless run --name NAME [--engine cc|cx] [--cwd DIR] "+
+			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] "+
+			"[--await [--timeout SECS] [--settle SECS] [--progress]] [prompt]",
+		stderr,
+	)
+	name := flags.String("name", "", "chat name (a _HIDE… name stays out of the list)")
+	engine := flags.String("engine", "cc", "engine: cc|claude or cx|codex")
+	cwd := flags.String("cwd", "", "project directory (default: the current one)")
+	account := flags.Int("account", 0, "Claude account (default: the primary one)")
+	cache1H := flags.Bool("1h", false, "arm 1h prompt caching")
+	model := flags.String("model", "", "model the seat is born with")
+	effort := flags.String("effort", "", "reasoning effort the seat is born with")
+	promptFile := flags.String("prompt-file", "", "read the launch prompt from a file")
+	await := flags.Bool("await", false, "wait for the first answer and print it (the launch summary moves to stderr)")
+	timeout := flags.Int("timeout", askTimeoutSeconds, "with --await: seconds to wait (0 waits forever)")
+	settle := flags.Int("settle", askSettleSeconds, "with --await: seconds of quiet before an answer is finished")
+	progress := flags.Bool("progress", false, "with --await: print the chat's turns to stderr while waiting")
+	if code, ok := parseFlags(flags, args); !ok {
+		return code
+	}
+	if *name == "" || *timeout < 0 || *settle < 0 {
+		flags.Usage()
+		return 2
+	}
+	engineName, ok := action.NormalizeEngine(*engine)
+	if !ok {
+		fmt.Fprintf(stderr, "pfm headless run: unknown engine %q\n", *engine)
+		return 2
+	}
+
+	resolved, err := paths.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		return 1
+	}
+	directory, err := runDirectory(*cwd)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		return 1
+	}
+	claudeAccount := *account
+	if claudeAccount == 0 {
+		claudeAccount = readPrimaryAccount(resolved)
+	}
+	prompt, err := runPrompt(*promptFile, flags.Args())
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		return 2
+	}
+	plan, err := action.HeadlessRun(action.HeadlessRequest{
+		Engine:         engineName,
+		Name:           *name,
+		CWD:            directory,
+		Prompt:         prompt,
+		Model:          *model,
+		Effort:         *effort,
+		Home:           resolved.Home,
+		PrimaryAccount: claudeAccount,
+		Cache1H:        *cache1H,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		return 2
+	}
+
+	kind := compose.NewClaude
+	if engineName == store.CodexEngine {
+		kind = compose.NewCodex
+	}
+	// PFM_SPAWN_TRACE turns on a step-by-step log of the TUI
+	// choreography: what was typed, which screen came back, which overlay was
+	// dismissed. A chat driven blind is a chat debugged blind.
+	var trace io.Writer
+	if os.Getenv(spawnTraceEnv) != "" {
+		trace = stderr
+	}
+	result, err := spawn.Run(context.Background(), spawn.CommandTmux{
+		TmuxDir: resolved.TmuxDir,
+	}, spawn.Request{
+		Trace:  trace,
+		Engine: engineName,
+		Name:   *name,
+		Socket: freshSocket(kind),
+		CWD:    directory,
+		Run:    plan.Run,
+		Prompt: promptForTUI(plan, prompt),
+		Width:  action.HeadlessWidth,
+		Height: action.HeadlessHeight,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+		return 1
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(stderr, "pfm headless run: %s\n", warning)
+	}
+	// With --await the reply owns stdout, so the launch summary steps aside:
+	// `answer=$(pfm headless run --await …)` must be the answer and
+	// nothing else.
+	summary := stdout
+	if *await {
+		summary = stderr
+	}
+	printRunResult(summary, engineName, result)
+	if !result.Named {
+		return 1
+	}
+	if prompt == "" {
+		return 0
+	}
+	var progressOut io.Writer
+	if *progress && *await {
+		progressOut = stderr
+	}
+	return awaitLaunch(
+		context.Background(),
+		*name,
+		*await,
+		headless.AwaitOptions{
+			Grace:    launchGrace,
+			Settle:   time.Duration(*settle) * time.Second,
+			Timeout:  time.Duration(*timeout) * time.Second,
+			Progress: progressOut,
+		},
+		result,
+		stdout,
+		stderr,
+	)
+}
+
+// launchGrace is how long a chat that was just created is allowed to be
+// missing from a fleet scan before the wait calls it gone. Naming, indexing
+// and the engine's first write all have to happen first.
+//
+// launchProofWindow bounds the delivery proof. It is not a wait for the
+// ANSWER — only for the engine's own record of having been asked — so it is
+// short enough that a script does not hang on it.
+//
+// Both are variables so a test can drive the refusal path in seconds instead
+// of minutes; nothing outside a test changes them.
+var (
+	launchGrace       = 45 * time.Second
+	launchProofWindow = 90 * time.Second
+)
+
+// awaitLaunch proves the launch prompt reached the model, and — with
+// --await — brings back the answer.
+//
+// A prompt that was typed is not a prompt that was delivered: the keystrokes
+// can go into a startup overlay, a modal, or an engine that dropped the Enter,
+// and every one of those looks like success from the sending end. The engine's
+// own transcript is the proof, and this refuses to report a delivery it cannot
+// find there.
+func awaitLaunch(
+	ctx context.Context,
+	name string,
+	await bool,
+	options headless.AwaitOptions,
+	result spawn.Result,
+	stdout, stderr io.Writer,
+) int {
+	handle := chatHandle(result.Socket, name)
+	if await {
+		return awaitAnswer(ctx, "run", name, handle, options, false, stdout, stderr)
+	}
+	proof := options
+	proof.StopOnDelivery = true
+	proof.Timeout = launchProofWindow
+	turn, err := headless.Await(
+		ctx,
+		func(ctx context.Context) (headless.Chat, bool, error) {
+			return resolveChat(ctx, handle, io.Discard)
+		},
+		proof,
+	)
+	if turn.Delivered {
+		return 0
+	}
+	fmt.Fprintf(
+		stderr,
+		"pfm headless run: %s never recorded the prompt — it was typed but "+
+			"the model was never asked; attach it and look: tmux -L %s attach -t %s\n",
+		name,
+		result.Socket,
+		result.Session,
+	)
+	if err != nil && !errors.Is(err, headless.ErrAwaitTimeout) {
+		fmt.Fprintf(stderr, "pfm headless run: %v\n", err)
+	}
+	return codeUndelivered
+}
+
+// promptForTUI is the prompt the spawner must type, which is empty whenever
+// the engine already took it on its command line.
+func promptForTUI(plan action.HeadlessPlan, prompt string) string {
+	if plan.PromptOnCommandLine {
+		return ""
+	}
+	return prompt
+}
+
+// runPrompt takes the launch prompt from a file or from the command line,
+// never from both: an inline argument caps out around what a shell will carry,
+// which is why --prompt-file exists, and silently preferring one over the
+// other would make a truncated brief look delivered.
+func runPrompt(path string, args []string) (string, error) {
+	inline := strings.Join(args, " ")
+	if path == "" {
+		return inline, nil
+	}
+	if inline != "" {
+		return "", errors.New("--prompt-file and an inline prompt are mutually exclusive")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read prompt file: %w", err)
+	}
+	prompt := strings.TrimRight(string(content), "\n")
+	if strings.TrimSpace(prompt) == "" {
+		return "", fmt.Errorf("prompt file %s is empty", path)
+	}
+	return prompt, nil
+}
+
+func runDirectory(requested string) (string, error) {
+	directory := requested
+	if directory == "" {
+		current, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("read current directory: %w", err)
+		}
+		return current, nil
+	}
+	info, err := os.Stat(directory)
+	if err != nil {
+		return "", fmt.Errorf("project directory %s: %w", directory, err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("project directory %s is not a directory", directory)
+	}
+	return directory, nil
+}
+
+func printRunResult(
+	stdout io.Writer,
+	engineName string,
+	result spawn.Result,
+) {
+	state := "named"
+	if !result.Named {
+		state = "UNNAMED"
+	}
+	listing := "listed"
+	if naming.LabelHidden(result.Name) {
+		listing = "hidden by its " + naming.HidePrefix + " name"
+	}
+	fmt.Fprintf(
+		stdout,
+		"%s\t%s\t%s\t%s\t%s\n",
+		engineName,
+		result.Name,
+		result.Socket,
+		state,
+		listing,
+	)
+	fmt.Fprintf(
+		stdout,
+		"attach: tmux -L %s attach -t %s\n",
+		result.Socket,
+		result.Session,
+	)
+}

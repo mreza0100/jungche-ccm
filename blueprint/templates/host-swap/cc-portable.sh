@@ -2,7 +2,7 @@
 # cc-portable.sh — the GNU/BSD seam. Every place this bundle asks the OS a question
 # whose answer differs between Linux and macOS is asked HERE, once, and nowhere else.
 #
-# Sourced, never executed: `. "$CC_FLEET_HOME/cc-portable.sh"`. Written in POSIX sh
+# Sourced, never executed: `. "$PFM_HOME/cc-portable.sh"`. Written in POSIX sh
 # with no arrays and no [[ ]], because the callers are bash scripts AND cc-fleet.zsh,
 # which is sourced into the founder's interactive shell — a bashism here would surface
 # as a syntax error at every new terminal.
@@ -345,8 +345,9 @@ cc_unlock() {
 # truncates AFTER the sort, so only the printed field loses the fraction, never the order. On BSD
 # two files written in the same second tie and order by size — nothing in this bundle can tell.
 #
-# The probe result is cached in CC_FIND_PRINTF: cc-fleet.zsh is sourced by every interactive
-# shell, and a fork per shell start to re-learn which find is installed is a cost with no payer.
+# The probe result is cached in CC_FIND_PRINTF: the active shell callers and the legacy
+# cc-fleet.zsh oracle can load this library repeatedly, and a fork per load to re-learn which
+# find is installed is a cost with no payer.
 cc_find_meta() {
   _d="$1"; shift
   [ -d "$_d" ] || return 0

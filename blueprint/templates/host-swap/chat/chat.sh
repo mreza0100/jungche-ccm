@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CC_FLEET_HOME — the fleet bundle this script belongs to. chat.sh sits one level under it
+# PFM_HOME — the fleet bundle this script belongs to. chat.sh sits one level under it
 # (bundle/chat/chat.sh alongside bundle/cc-db.sh), and install.sh symlinks it into
 # ~/.claude/commands/chat/, so resolve THROUGH the link before stepping up a directory —
 # $BASH_SOURCE is the link, and its dirname is the install path, not the bundle. Plain
 # `readlink` (never -f) because macOS ships BSD readlink, which has no -f.
-_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
-CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")/.." && pwd)}"
-. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_pane_of, cc_session_live, cc_timeout, cc_detach
+_pfms="${BASH_SOURCE[0]}"; while [ -L "$_pfms" ]; do _pfmd="$(cd -P "$(dirname "$_pfms")" && pwd)"; _pfms="$(readlink "$_pfms")"; case "$_pfms" in /*) ;; *) _pfms="$_pfmd/$_pfms" ;; esac; done
+PFM_HOME="${PFM_HOME:-$(cd -P "$(dirname "$_pfms")/.." && pwd)}"
+. "$PFM_HOME/cc-portable.sh"   # GNU/BSD seam — cc_pane_of, cc_session_live, cc_timeout, cc_detach
 
 # chat.sh — the chat: family engine, one script with subcommands. Lives in
 # $HOME/.claude/commands/chat/ (global — shared by every repo; repo .claude/commands/chat
@@ -99,7 +99,7 @@ self_tmux_value() {
 # rather than in its own pane. `codex app-server` is reparented to init (measured: ppid 1)
 # and serves every seat from one process, so a tool shell it spawns has no tmux anywhere in
 # its ancestry — ancestry recovery has nothing to walk back to, and every message that seat
-# injected went out UNSIGNED. What such a shell DOES carry is CODEX_THREAD_ID, and cc-fleet
+# injected went out UNSIGNED. What such a shell DOES carry is CODEX_THREAD_ID, and pfm
 # already binds a thread to the socket hosting it. Thread → socket → the same $TMUX-shaped
 # string every other rung returns, so session name, window name, and label all resolve
 # downstream unchanged.
@@ -119,10 +119,10 @@ tmux_from_codex_thread() {
   fi
   _codex_seat_tried=1
   [[ -n "$tid" && -z "${CLAUDE_CODE_SESSION_ID:-}" ]] || return 1
-  command -v cc-fleet >/dev/null 2>&1 || return 1
+  command -v pfm >/dev/null 2>&1 || return 1
   # Column 2 is the thread id, 11 the socket; an empty socket means the seat is not live,
   # and a dead seat is no identity — better UNSIGNED than a handle nobody can reply to.
-  sock="$(cc-fleet ls --tsv 2>/dev/null | awk -F'\t' -v id="$tid" '$2==id && $11!="" {print $11; exit}')"
+  sock="$(pfm ls --tsv 2>/dev/null | awk -F'\t' -v id="$tid" '$2==id && $11!="" {print $11; exit}')"
   [[ -n "$sock" ]] || return 1
   dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
   [[ -S "$dir/$sock" ]] || return 1
@@ -150,7 +150,7 @@ self_tmux() {
 # CODEX FALLBACK: a codex chat has no 🔖 statusline, which left codex-origin signatures
 # opaque (bare cx-… handle, no name). When the scrape finds nothing AND this chat's own
 # socket basename is cx-*, fall back to the tmux window name — the human thread name, set
-# by cc-fleet — returned BARE (no ⬢ prefix: the signature must carry exactly the label the
+# by pfm — returned BARE (no ⬢ prefix: the signature must carry exactly the label the
 # founder gave the chat, and a recipient replying by that label must resolve; the cx-…
 # reply handle already says which engine it is). The 🔖+badge anchor always wins when
 # present — the Claude path is unchanged.
@@ -474,14 +474,14 @@ _spawn_envpfx() {
 }
 
 # _register_pane_child <pane-id>: record a teammate PANE this chat spawned (via branch or
-# new pane mode) under this chat's session uuid, as "<socket>\t<pane>", so /bb (cc-fleet bb)
+# new pane mode) under this chat's session uuid, as "<socket>\t<pane>", so /bb (pfm bb)
 # kills that pane when this chat closes. A pane teammate shares this chat's tmux server, so
 # /bb must take it down by PANE — never kill-server, which would drop this chat's neighbours.
 _register_pane_child() {
   local cp="$1" sock_name
   [[ -n "$cp" && -n "${CLAUDE_CODE_SESSION_ID:-}" && -n "${TMUX:-}" ]] || return 0
   sock_name="${TMUX%%,*}"; sock_name="${sock_name##*/}"
-  bash "$CC_FLEET_HOME/cc-db.sh" child-add pane "$CLAUDE_CODE_SESSION_ID" "$(printf '%s\t%s' "$sock_name" "$cp")" 2>/dev/null || true
+  bash "$PFM_HOME/cc-db.sh" child-add pane "$CLAUDE_CODE_SESSION_ID" "$(printf '%s\t%s' "$sock_name" "$cp")" 2>/dev/null || true
 }
 
 # _find <excerpt-file>: resolve to the past session containing the excerpt across
@@ -706,7 +706,7 @@ case "$cmd" in
       sender_lbl="$(self_label 2>/dev/null || true)"
       sender_uuid="${CLAUDE_CODE_SESSION_ID:-}"
       # A seat resolved through its codex thread can name that thread — the one token a
-      # recipient can VERIFY (`cc-fleet ls --tsv`, column 2) rather than take on trust.
+      # recipient can VERIFY (`pfm ls --tsv`, column 2) rather than take on trust.
       # Only when the handle came from that rung: an id merely inherited by some other
       # chat's shell must never be signed as if it were that chat's own.
       [[ -z "$sender_uuid" && -n "${_codex_seat_tmux:-}" ]] && sender_uuid="${CODEX_THREAD_ID:-}"
@@ -1194,7 +1194,7 @@ case "$cmd" in
     # between picker runs and can be one ⌃X ahead of the db, so it wins when it exists.
     hidefile="$HOME/.claude/.cc-ls-hidden"
     if [[ -f "$hidefile" ]]; then hidden_ids="$(grep . "$hidefile" 2>/dev/null || true)"
-    else hidden_ids="$(bash "$CC_FLEET_HOME/cc-db.sh" hidden-list 2>/dev/null || true)"; fi
+    else hidden_ids="$(bash "$PFM_HOME/cc-db.sh" hidden-list 2>/dev/null || true)"; fi
     # Enumerate panes on EVERY socket (one socket per chat now); each row is prefixed
     # with its socket so per-pane capture/display hit the right server. A dead socket
     # is skipped (|| true), never aborting the listing. Self-match compares BOTH socket
@@ -1242,7 +1242,7 @@ case "$cmd" in
       [[ "$all" == 0 && "$in_repo" == 0 ]] && { elsewhere=$((elsewhere + 1)); continue; }
       if [[ "$codexrow" == 1 ]]; then
         # Codex: no Claude statusline to scrape — the human thread name lives in the
-        # tmux window name (cc-fleet sets and converges it). ⬢ marks the engine.
+        # tmux window name (pfm sets and converges it). ⬢ marks the engine.
         state="⬢"; topic="$win"
       else
         cap="$(tmux -S "$sock" capture-pane -t "$sess" -p 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
@@ -1465,11 +1465,11 @@ case "$cmd" in
       # renders un-truncated for name resolution. -d keeps it headless; -c opens in repo.
       socket="cc-new-${name}"
       tmux -L "$socket" new-session -d -s "$name" -c "$PWD" -x "${CHAT_NEW_COLS:-220}" -y "${CHAT_NEW_ROWS:-50}" "$spawn"
-      # Register it under THIS chat so /bb (cc-fleet bb) reaps it on bye-bye — a detached
+      # Register it under THIS chat so /bb (pfm bb) reaps it on bye-bye — a detached
       # teammate is its own tmux server and would otherwise outlive its orchestrator
-      # headless. Keyed by session uuid, which is exactly the id cc-fleet hide --self resolves.
+      # headless. Keyed by session uuid, which is exactly the id pfm hide --self resolves.
       if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
-        bash "$CC_FLEET_HOME/cc-db.sh" child-add new "$CLAUDE_CODE_SESSION_ID" "$socket" 2>/dev/null || true
+        bash "$PFM_HOME/cc-db.sh" child-add new "$CLAUDE_CODE_SESSION_ID" "$socket" 2>/dev/null || true
       fi
       echo "Spawned background teammate '$name'${model:+ on $model} as a detached session on socket '$socket' — headless, not in this terminal. Give it work: /chat:inject $name <task>  (inject returns its screen as proof). Watch it live: tmux -L $socket attach -t $name. Reaped when this chat runs /bb."
     else

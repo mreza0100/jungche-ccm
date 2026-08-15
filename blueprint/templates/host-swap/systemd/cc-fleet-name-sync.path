@@ -1,9 +1,0 @@
-[Unit]
-Description=Fire cc-fleet name-sync when a codex rename lands in session_index.jsonl
-
-[Path]
-PathModified=%h/.codex/session_index.jsonl
-Unit=cc-fleet-name-sync.service
-
-[Install]
-WantedBy=default.target

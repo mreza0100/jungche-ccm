@@ -1,5 +1,5 @@
 {
-  "_comment": "Professor install state. This repo is the blueprint's own upstream, so the install is SELF-HOSTED: source is this working tree at the SHA below, not a downloaded tag. There is no /pcm:update here \u2014 there is nothing upstream of upstream.",
+  "_comment": "Professor install state. This repo is the blueprint's own upstream, so the install is SELF-HOSTED: source is this working tree at the SHA below, not a downloaded tag. There is no /pcm:update here — there is nothing upstream of upstream.",
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
@@ -21,7 +21,7 @@
         "ports": []
       },
       {
-        "dir": "cc-fleet",
+        "dir": "pfm",
         "role": "fleet engine",
         "stack": "Go 1.24.13",
         "pkg_mgr": "go",
@@ -60,7 +60,7 @@
       "Pragmatics & linguistics",
       "Cognitive load and attention"
     ],
-    "intersection_lens": "prompt engineering x epistemology of evidence \u2014 the judge must never be the thing being judged",
+    "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
       "drift between .claude/** and its blueprint/templates/** twin",
@@ -74,8 +74,8 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line \u2014 no private brand, founder PII, client domain content, or machine-absolute path in any tracked file",
-      "the publication line \u2014 push/tag/release only on an explicit in-turn request"
+      "the leak line — no private brand, founder PII, client domain content, or machine-absolute path in any tracked file",
+      "the publication line — push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
     "codex": true,
@@ -111,44 +111,44 @@
         "repo": "https://github.com/mreza0100/rr",
         "sha": "4056d38b2f1e8afc91a493f6ffb98d6784aad0db",
         "tracked": false,
-        "reason": "sources.json law \u2014 never vendored; gitignored"
+        "reason": "sources.json law — never vendored; gitignored"
       }
     },
     "deliberately_absent": {
-      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile \u2014 the pipeline ships as blueprint/templates source, it is not this repo's own workflow",
+      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile — the pipeline ships as blueprint/templates source, it is not this repo's own workflow",
       "/pcm:update": "this repo IS upstream; there is no newer tag to consume",
-      "/jc": "no separate hotfix route needed without a worktree pipeline \u2014 work lands on main under /dev + gitter",
+      "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
       "format-md.sh + notify.sh + limits-hook.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
       "docs/agents/ cluster + /documenter": "no permanent cross-project doc tree in a template repo"
     }
   },
   "file_hashes": {
-    "CLAUDE.md": "769a9a5bcbd8c9e62b44fcf1ff426047054ba9583663ed0f63282db50f955273",
-    "AGENTS.md": "a24a4912513c05fb2990c07c2e2c69e5cbfbbdef31707c5c41dfb9afb8705b88",
-    "cc-fleet/CLAUDE.md": "6142d7d4528eb57cd143edb53f5f706fcfff0190e8588b9e279a5aef1126b067",
-    "cc-fleet/AGENTS.md": "0d700a7130ecc600b4e8317ed9e5b1072d51b8924b22a2c302d5a8d7b54bbc1c",
-    ".gitignore": "775cc94016edca51736b0af2e54b0243d7458737e2423a4481c89e27a21251dd",
-    ".claude/agents/gitter.md": "cc03106748c2f89d808ec62b7555944a0dc7b3a9afd5cc44d1bc042e3fdc6d77",
-    ".claude/agents/tracer.md": "f025dad9810e2eaf65477086d5e6678e85211ac796a481c0718f7a238741b584",
-    ".claude/commands/dev.md": "90069e915a5850efd936376dc9a1685d9209261c90627900f7f0ddbfa7c4550d",
+    ".claude/agents/gitter.md": "86815e2c064343245023925d6cb360594231629ea0ad4011f6a11c0539daaa4f",
+    ".claude/agents/tracer.md": "a2982c9580abc60b48cb8335d1fa32d8257cef303224bfe47dbbb55b32ffeeb3",
+    ".claude/commands/dev.md": "6781a3bf6bf2903e1c45d0998db84245c60f215b2f5a84c7d241cb5c4ca0efb1",
     ".claude/commands/git.md": "1bb6b76b91a8d958fc3ad296ffe0c2c86312700537df3556b78bdc420ffcade2",
+    ".claude/commands/pcm.md": "bb82691f89bc023200b3b951d30928dd7498ba64d9ad0693bc977b394981d33c",
     ".claude/commands/pcm/context-meter.md": "3d7d51f60a4218c7bf0f51bc3a10d2c7b21f50e9de0bf1c92f9bbc790bc3ae48",
     ".claude/commands/pcm/release.md": "4f3f130658435f66e97ab507013d6d8f571ecedae0dabce22338f44d1931d8a3",
-    ".claude/commands/pcm.md": "24c914dbe46ef94399d7b58167dfd6f977dd1411340b69e3979b91ef3d1cbe14",
-    ".claude/commands/quality/doc.md": "a0b22566f554cb66e39619759e570e4153cabcadb7487a7a0e6e60ee7884c046",
+    ".claude/commands/quality/doc.md": "1828bf8058e08d5167278d036d7404f5530fa1eee1086f036ad9acfe1f004101",
     ".claude/commands/quality/prompt.md": "6ff2d270f774f2af57a001d3281bd97a673b10675549c8c67c7eb08e84002353",
     ".claude/output-styles/dr-house.md": "435dbccab1ae38970336ece2366143d86551841b7a2b65d33188089dc9140e67",
-    ".claude/output-styles/professor.md": "4974abfbd93f847549524d6736ef20552a087a87c2be8db4ed1c496967bb63e9",
-    ".claude/scripts/build-codex.mjs": "d9668cbc69b725b27c162b7d25c6884db4ca163a13a5312457eb59167fc1d948",
+    ".claude/output-styles/professor.md": "914c50c1d7efc105ad6d455af68884fcf0b9037faed072f7b494f4b72fe5e28f",
+    ".claude/scripts/build-codex.mjs": "26095a8d62579b940b730c8d9b6a1cf94ba93e76f834f758b45f5e2607bd5aea",
     ".claude/scripts/codex-sync.sh": "72141e693c5e14b62b5909facaba4a43b4cd75ddbdc6b350d9ed544dd5ce3bcd",
-    ".claude/scripts/dev.sh": "61fa0ca957f977a8381853b7ba5c021bda326f2a43d325ac769c23e7571d0b68",
+    ".claude/scripts/dev.sh": "0d1daceebece4dc55b951e59d2994333f7139ce3c9d837f0e210d8cc1a4b1325",
     ".claude/scripts/guard-stamp.sh": "75c321c1de53675175b1f7889f112fe10c73e7b2ecd502b91ae3c3285898d72c",
     ".claude/scripts/pcm-guard.sh": "622a943732f07612adc6d22238083a3ab4ded72486632da7e158e0b240c2d634",
     ".claude/settings.json": "ad17ec024bdc08aee00872c844c7235e56722d1d216305c0dd6c11e7cb930e3d",
-    ".codex/agents/tracer.toml": "8eaea6f1603621567f333523f83f16cc8ee8d920bdea1fdf6f54de6bb892e831",
+    ".codex/agents/tracer.toml": "8a379d247be6b77977705bee94661f091e1d8bd0756c8e108885782dfd49e9ab",
     ".codex/config.toml": "9743ae3a83da8fd684d48c1d50da7161be247a2bd1e8a5207bb4b622f71ad387",
     ".codex/rules/repo-law.rules": "87be43cbc6b4279730e50380a7fbcfe065fa5b12d6c7f1c806360cbd21a8dba6",
-    "docs/commands/pcm/references/audit-scopes.md": "4ab0d00f0f637a2a3de16650dd35e50b9a0502b6296810fb0f8eca73ed72fc0b",
-    "docs/commands/pcm/references/refresh.md": "fb59599b5168d4a698b13a41e44ff2b697f1a5a3dba7710abbe11422715299b1"
+    ".gitignore": "775cc94016edca51736b0af2e54b0243d7458737e2423a4481c89e27a21251dd",
+    "AGENTS.md": "3a14d4fe1f3cfe4f6dc4c155c6021f61a297f04c93318d3d1f172f660a6f9ba4",
+    "CLAUDE.md": "59136c773d375891825e09f3efd0f323c57055c8fb16aa1dea740a9f1c8c97d8",
+    "docs/commands/pcm/references/audit-scopes.md": "e4f1ab08e03e8cf8893267410485db35cdb8d749b0dd18ce5d1ddf402a8c2892",
+    "docs/commands/pcm/references/refresh.md": "fb59599b5168d4a698b13a41e44ff2b697f1a5a3dba7710abbe11422715299b1",
+    "pfm/AGENTS.md": "3a8f5fa12e4e234089ea77d50ea0b3283d3fae5629c1a58cb14c22b15e77c072",
+    "pfm/CLAUDE.md": "b76def7327285211c7de7575294a96fc0417ba29d6135305781d773e189551d0"
   }
 }

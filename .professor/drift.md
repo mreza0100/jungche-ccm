@@ -10,7 +10,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 
 | Date | Version | Mode | Notes |
 | --- | --- | --- | --- |
-| 2026-08-13 | 0.53.0 | install (self-hosted, `minimal` profile) | Source is this working tree at `f07e6c0`, not a downloaded tag. 27 framework files written. Roster: `blueprint/`, `cc-fleet/`, `dreamer/`, `ENGINES/wave-walker/engine/`. |
+| 2026-08-13 | 0.53.0 | install (self-hosted, `minimal` profile) | Source is this working tree at `f07e6c0`, not a downloaded tag. 27 framework files written. Roster: `blueprint/`, `pfm/`, `dreamer/`, `ENGINES/wave-walker/engine/`. |
 
 ## Post-install customizations
 

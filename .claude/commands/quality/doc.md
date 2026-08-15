@@ -7,7 +7,7 @@ description: Use BEFORE writing or restructuring any permanent reference doc und
 
 Reference docs under `docs/` are read by LLM agents (whole-file `Read`, `grep`), not by humans in a rendered viewer. Shape them for that reader, at write-time.
 
-**When to load:** before hand-editing or restructuring anything under `docs/`, an engine's spec (`cc-fleet/*.md`, `dreamer/SPEC-*.md`, `ENGINES/**/design.md`), or `blueprint/{BLUEPRINT,SETUP,PLACEHOLDERS}.md`. These are read by agents with `Read` and `grep`, not by a human in a rendered viewer.
+**When to load:** before hand-editing or restructuring anything under `docs/`, an engine's spec (`pfm/*.md`, `dreamer/SPEC-*.md`, `ENGINES/**/design.md`), or `blueprint/{BLUEPRINT,SETUP,PLACEHOLDERS}.md`. These are read by agents with `Read` and `grep`, not by a human in a rendered viewer.
 
 ## The deciding principle
 

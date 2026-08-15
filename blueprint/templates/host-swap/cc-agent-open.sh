@@ -32,15 +32,15 @@ if command -v flock >/dev/null 2>&1 && ! flock -n 8; then
   exit 1
 fi
 
-# CC_FLEET_HOME — this bundle's OWN directory, resolved THROUGH symlinks. install.sh links these
+# PFM_HOME — this bundle's OWN directory, resolved THROUGH symlinks. install.sh links these
 # scripts into ~/.claude/bin, so $BASH_SOURCE is the link, not the file: taking its dirname
 # straight would hunt for siblings in the link's directory. Plain `readlink` (never -f) because
 # macOS ships BSD readlink, which has no -f.
-_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
-CC_FLEET_HOME="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
-. "$CC_FLEET_HOME/cc-portable.sh"   # GNU/BSD seam — cc_timeout, cc_pane_of
+_pfms="${BASH_SOURCE[0]}"; while [ -L "$_pfms" ]; do _pfmd="$(cd -P "$(dirname "$_pfms")" && pwd)"; _pfms="$(readlink "$_pfms")"; case "$_pfms" in /*) ;; *) _pfms="$_pfmd/$_pfms" ;; esac; done
+PFM_HOME="${PFM_HOME:-$(cd -P "$(dirname "$_pfms")" && pwd)}"
+. "$PFM_HOME/cc-portable.sh"   # GNU/BSD seam — cc_timeout, cc_pane_of
 
-prim="$(bash "$CC_FLEET_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
+prim="$(bash "$PFM_HOME/cc-db.sh" primary-get 2>/dev/null || echo 1)"
 case "$prim" in 2) pcfg="$HOME/.cc/$prim" ;; *) prim=1; pcfg="" ;; esac
 
 cc() {  # run claude under a config dir ("" = account 1 / unset); never inherit a host chat's identity

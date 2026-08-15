@@ -16,13 +16,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-PROJECTS=(blueprint cc-fleet dreamer walker)
+PROJECTS=(blueprint pfm dreamer walker)
 
 # project -> directory
 proj_dir() {
   case "$1" in
     blueprint) echo "blueprint" ;;
-    cc-fleet)  echo "cc-fleet" ;;
+    pfm)  echo "pfm" ;;
     dreamer)   echo "dreamer" ;;
     walker)    echo "ENGINES/wave-walker/engine" ;;
     *) return 1 ;;
@@ -81,7 +81,7 @@ cmd_status() {
     case "$p" in
       blueprint)
         ok "$p — $d/ ($(find "$d/templates" -type f | wc -l | tr -d ' ') template files, no build)" ;;
-      cc-fleet)
+      pfm)
         ok "$p — $d/ (go $(sed -n 's/^go //p' "$d/go.mod" | head -1))" ;;
       dreamer|walker)
         if [[ -d "$d/node_modules" ]]; then
@@ -159,15 +159,15 @@ act_blueprint() { # the shipped product: mechanical gates, no build
   esac
 }
 
-act_cc_fleet() {
-  local action="$1" d; d="$(proj_dir cc-fleet)"
-  need_tool go cc-fleet || return 0
+act_pfm() {
+  local action="$1" d; d="$(proj_dir pfm)"
+  need_tool go pfm || return 0
   case "$action" in
-    install) run "cc-fleet: go mod download" -- go -C "$d" mod download ;;
-    build)   run "cc-fleet: go build" -- go -C "$d" build ./... ;;
-    typecheck|verify) run "cc-fleet: go vet" -- go -C "$d" vet ./... ;;
-    test)    run "cc-fleet: go test" -- go -C "$d" test ./... ;;
-    all)     act_cc_fleet build; act_cc_fleet verify; act_cc_fleet test ;;
+    install) run "pfm: go mod download" -- go -C "$d" mod download ;;
+    build)   run "pfm: go build" -- go -C "$d" build ./... ;;
+    typecheck|verify) run "pfm: go vet" -- go -C "$d" vet ./... ;;
+    test)    run "pfm: go test" -- go -C "$d" test ./... ;;
+    all)     act_pfm build; act_pfm verify; act_pfm test ;;
   esac
 }
 
@@ -218,7 +218,7 @@ act_walker() {
 dispatch() { # dispatch <project> <action>
   case "$1" in
     blueprint) act_blueprint "$2" ;;
-    cc-fleet)  act_cc_fleet "$2" ;;
+    pfm)  act_pfm "$2" ;;
     dreamer)   act_dreamer "$2" ;;
     walker)    act_walker "$2" ;;
   esac

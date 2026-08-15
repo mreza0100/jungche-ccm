@@ -1,6 +1,6 @@
 ---
 name: bb
-description: Bye-bye — hide this chat from cc-ls and fully close it (cc-fleet hide --self --exit; the chat auto-/exits, then its own tmux server is killed). Also reaps any detached /chat:new --detach teammates this chat spawned.
+description: Bye-bye — hide this chat from cc-ls and fully close it (pfm hide --self --exit; the chat auto-/exits, then its own tmux server is killed). Also reaps any detached /chat:new --detach teammates this chat spawned.
 disable-model-invocation: true
 ---
 
@@ -10,7 +10,7 @@ Run this once via the shell tool and report its output in one short line — the
 either harness, because the engine identifies which chat is calling it:
 
 ```
-~/.local/bin/cc-fleet hide --self --exit
+~/.local/bin/pfm hide --self --exit
 ```
 
 It adds the **current** chat's transcript to `cc-ls`'s hide list (`~/.claude/.cc-ls-hidden`), then

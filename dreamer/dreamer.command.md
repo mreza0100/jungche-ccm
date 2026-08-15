@@ -1,6 +1,6 @@
 ---
 name: dreamer
-description: Run the Dreamer night through cc-fleet. Modes — /dreamer (one night — seats, gates, HOLD before apply), /dreamer apply {stage} (apply a signed night), /dreamer lane {agent-type} (harvest one agent type into its lane), /dreamer morning (every configured repository). Triggers — "dreamer", "dream", "consolidate memory", the 🌙 nudge.
+description: Run the Dreamer night through pfm. Modes — /dreamer (one night — seats, gates, HOLD before apply), /dreamer apply {stage} (apply a signed night), /dreamer lane {agent-type} (harvest one agent type into its lane), /dreamer morning (every configured repository). Triggers — "dreamer", "dream", "consolidate memory", the 🌙 nudge.
 argument-hint: '[apply {stage}|lane {agent-type}|morning]'
 ---
 
@@ -8,14 +8,14 @@ argument-hint: '[apply {stage}|lane {agent-type}|morning]'
 
 $ARGUMENTS
 
-The engine is `cc-fleet dream`. Run it; never reconstruct its flow in chat and never route it through an agent, workflow, or SDK.
+The engine is `pfm dream`. Run it; never reconstruct its flow in chat and never route it through an agent, workflow, or SDK.
 
 Dispatch:
 
-1. No mode → `cc-fleet dream night`. It runs the seats, applies the four gates, and stops at HOLD, printing a signed apply command when maps survive. A night never applies itself, so there is no separate supervise mode.
+1. No mode → `pfm dream night`. It runs the seats, applies the four gates, and stops at HOLD, printing a signed apply command when maps survive. A night never applies itself, so there is no separate supervise mode.
 2. `apply {stage}` → run the signed command the night printed, verbatim.
 3. `lane {agent-type}` → add `--agent {agent-type}`; the lane needs a profile at `lanes/{lane}.md`, organ-local first and then the engine's, or the runner refuses.
-4. `morning` → `cc-fleet dream morning` walks every repository in `repos.list` and exits non-zero when a listed repository fails to produce a night.
+4. `morning` → `pfm dream morning` walks every repository in `repos.list` and exits non-zero when a listed repository fails to produce a night.
 
 Another repository takes `--repo {root}`.
 

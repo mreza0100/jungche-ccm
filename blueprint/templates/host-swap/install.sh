@@ -17,10 +17,10 @@
 # before the link replaces it — this never destroys something you wrote.
 set -uo pipefail
 
-# CC_FLEET_HOME — this bundle's own directory, resolved THROUGH symlinks, so the installer works
+# PFM_HOME — this bundle's own directory, resolved THROUGH symlinks, so the installer works
 # whether it is run from the clone, from a link, or from another directory entirely.
-_ccfs="${BASH_SOURCE[0]}"; while [ -L "$_ccfs" ]; do _ccfd="$(cd -P "$(dirname "$_ccfs")" && pwd)"; _ccfs="$(readlink "$_ccfs")"; case "$_ccfs" in /*) ;; *) _ccfs="$_ccfd/$_ccfs" ;; esac; done
-BUNDLE="${CC_FLEET_HOME:-$(cd -P "$(dirname "$_ccfs")" && pwd)}"
+_pfms="${BASH_SOURCE[0]}"; while [ -L "$_pfms" ]; do _pfmd="$(cd -P "$(dirname "$_pfms")" && pwd)"; _pfms="$(readlink "$_pfms")"; case "$_pfms" in /*) ;; *) _pfms="$_pfmd/$_pfms" ;; esac; done
+BUNDLE="${PFM_HOME:-$(cd -P "$(dirname "$_pfms")" && pwd)}"
 
 # DO (install|uninstall) and APPLY (0|1) are INDEPENDENT — one flag each, order-insensitive.
 # A single MODE variable (dry|apply|uninstall) used to carry BOTH "which action" and "dry vs
@@ -113,14 +113,15 @@ say ""
 # ── the fleet scripts: one stable address, ~/.claude/bin, independent of where the clone lives ──
 # cc-portable.sh is a sourced library, not a command — it is linked with the rest so the bundle
 # has ONE published address per file and an operator reading ~/.claude/bin sees the whole set.
-# Nothing depends on the link: every script finds it through CC_FLEET_HOME, in the clone.
-# RETIRED into the Go engine (each is now a cc-fleet subcommand, and the links
+# Nothing depends on the link: every script finds it through PFM_HOME, in the clone.
+# RETIRED into the Go engine (each is now a pfm subcommand, and the links
 # below are removed from ~/.claude/bin on the next --apply): cc-hide.sh /
-# cx-hide.sh → `cc-fleet hide --self [--exit]`, bb-hook.sh → `cc-fleet bb`,
-# cc-reap.sh → `cc-fleet reap`, cc-archive.sh → `cc-fleet archive`,
-# cc-name-sync.sh → `cc-fleet name-sync`, cx-heal.sh → `cc-fleet heal`.
+# cx-hide.sh → `pfm hide --self [--exit]`, bb-hook.sh → `pfm bb`,
+# cc-reap.sh → `pfm reap`, cc-archive.sh → `pfm archive`,
+# cc-name-sync.sh → `pfm name-sync`, cx-heal.sh → `pfm heal`.
 FLEET_SCRIPTS="cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh"
 RETIRED_SCRIPTS="cc-hide.sh cx-hide.sh bb-hook.sh cc-archive.sh cc-reap.sh cc-name-sync.sh cx-heal.sh"
+RETIRED_ARTIFACTS="cx-recover.sh.pre-professor-20260815-193920"
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
 for f in $FLEET_SCRIPTS; do
@@ -129,10 +130,16 @@ done
 # A retired satellite's link is REMOVED, not left dangling: the script is gone
 # from the bundle, so the link resolves to nothing and anything still calling
 # it fails in a way that reads as "the fleet is broken" rather than "this moved
-# into cc-fleet".
+# into pfm".
 for f in $RETIRED_SCRIPTS; do
   [ -L "$BIN/$f" ] || continue
-  say "  retire  $BIN/$f  (now a cc-fleet subcommand)"
+  say "  retire  $BIN/$f  (now a pfm subcommand)"
+  act && rm -f "$BIN/$f"
+  n_link=$((n_link+1))
+done
+for f in $RETIRED_ARTIFACTS; do
+  [ -e "$BIN/$f" ] || [ -L "$BIN/$f" ] || continue
+  say "  retire  $BIN/$f"
   act && rm -f "$BIN/$f"
   n_link=$((n_link+1))
 done
@@ -178,36 +185,53 @@ say ""
 
 # ── systemd user units: the name-sync triggers (a codex rename lands on the tab in under a
 # second via the path watch; the timer converges claude /rename drift). They invoke the BINARY —
-# `cc-fleet name-sync` — because window naming lives in the engine now and a unit pointing at a
+# `pfm name-sync` — because window naming lives in the engine now and a unit pointing at a
 # retired .sh is a trigger that fires into nothing. The predecessor cc-name-sync.* units are
 # disabled and unlinked on every run, so a host that had them converges without being asked.
 # Skipped cleanly where systemd --user is absent (a jail, a container) — there the sync still
 # fires from every cc-ls run. ──
+OLD_STATE="$HOME/.local/state/cc-fleet"
+STATE="$HOME/.local/state/pfm"
+migrate_state() {
+  [ "$DO" = install ] || return
+  if [ -d "$OLD_STATE" ] && [ ! -e "$STATE" ]; then
+    say "  migrate $OLD_STATE -> $STATE"
+    act && { mkdir -p "$(dirname "$STATE")"; mv "$OLD_STATE" "$STATE"; }
+    n_link=$((n_link+1))
+  elif [ -e "$OLD_STATE" ] && [ -e "$STATE" ]; then
+    say "  warn    both $OLD_STATE and $STATE exist — left both in place"
+    n_skip=$((n_skip+1))
+  fi
+}
+
 SYSD="$HOME/.config/systemd/user"
-UNITS="cc-fleet-name-sync.service cc-fleet-name-sync.path cc-fleet-name-sync.timer"
-RETIRED_UNITS="cc-name-sync.path cc-name-sync.timer cc-name-sync.service"
+UNITS="pfm-name-sync.service pfm-name-sync.path pfm-name-sync.timer"
+RETIRED_UNITS="cc-fleet-name-sync.path cc-fleet-name-sync.timer cc-fleet-name-sync.service cc-name-sync.path cc-name-sync.timer cc-name-sync.service"
 say "systemd user units -> $SYSD"
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   # The retirement runs in BOTH directions: install replaces the old triggers, uninstall
   # removes whatever is left of either generation.
   for u in $RETIRED_UNITS; do
-    if [ -e "$SYSD/$u" ] || [ -L "$SYSD/$u" ]; then
-      say "  retire  $SYSD/$u  (superseded by cc-fleet-name-sync)"
-      # stop + reset-failed as well as disable: a unit systemd has already
-      # LOADED stays active (or failed) in its runtime after the file is gone,
-      # and then `list-units` reports a not-found unit still waiting on a path
-      # that fires into nothing.
-      act && {
-        systemctl --user disable --now "$u" >/dev/null 2>&1
-        systemctl --user stop "$u" >/dev/null 2>&1
-        systemctl --user reset-failed "$u" >/dev/null 2>&1
-        rm -f "$SYSD/$u"
-      }
-      n_link=$((n_link+1))
+    if [ ! -e "$SYSD/$u" ] && [ ! -L "$SYSD/$u" ] &&
+       ! systemctl --user is-active --quiet "$u" &&
+       ! systemctl --user is-enabled --quiet "$u" &&
+       ! systemctl --user is-failed --quiet "$u"; then
+      continue
     fi
+    say "  retire  $SYSD/$u  (superseded by pfm-name-sync)"
+    # A loaded unit can survive its file, so every old name is disabled,
+    # stopped, reset, and unlinked whether or not the file is still visible.
+    act && {
+      systemctl --user disable --now "$u" >/dev/null 2>&1
+      systemctl --user stop "$u" >/dev/null 2>&1
+      systemctl --user reset-failed "$u" >/dev/null 2>&1
+      rm -f "$SYSD/$u"
+    }
+    n_link=$((n_link+1))
   done
+  migrate_state
   if [ "$DO" = uninstall ]; then
-    act && systemctl --user disable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer >/dev/null 2>&1
+    act && systemctl --user disable --now pfm-name-sync.path pfm-name-sync.timer >/dev/null 2>&1
     for u in $UNITS; do unlink_one "$SYSD/$u"; done
     act && systemctl --user daemon-reload
   else
@@ -215,22 +239,25 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     for u in $UNITS; do link "$BUNDLE/systemd/$u" "$SYSD/$u"; done
     if act; then
       systemctl --user daemon-reload
-      systemctl --user enable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer >/dev/null 2>&1 \
-        || say "  warn    could not enable cc-fleet-name-sync.path/.timer — run: systemctl --user enable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer"
+      systemctl --user enable --now pfm-name-sync.path pfm-name-sync.timer >/dev/null 2>&1 \
+        || say "  warn    could not enable pfm-name-sync.path/.timer — run: systemctl --user enable --now pfm-name-sync.path pfm-name-sync.timer"
     fi
   fi
 else
   say "  skip    systemd --user unavailable — codex renames land on the next cc-ls run instead"
   n_skip=$((n_skip+1))
+  migrate_state
 fi
 say ""
 
 # ── the /bb hook: settings.json is the ONE place a UserPromptSubmit hook is declared, and this
-# installer is the only writer of it. The hook calls the BINARY (`cc-fleet bb`), never a .sh —
-# the shell hook is retired. jq rewrites the one command string in place, leaving every other
-# hook in the file untouched; without jq the file is left alone and the operator is told. ──
+# installer is the only writer of it. The hook calls the BINARY (`pfm bb`), never a .sh —
+# the shell hook is retired. jq also migrates every hook command that starts with the old binary
+# path while preserving its arguments; without jq the file is left alone and the operator is told. ──
 SETTINGS="$CLAUDE_DIR/settings.json"
-BB_COMMAND="$HOME/.local/bin/cc-fleet bb"
+OLD_BINARY="$HOME/.local/bin/cc-fleet"
+PFM_BINARY="$HOME/.local/bin/pfm"
+BB_COMMAND="$HOME/.local/bin/pfm bb"
 say "/bb hook -> $SETTINGS"
 if ! command -v jq >/dev/null 2>&1; then
   say "  skip    jq is not installed — wire the UserPromptSubmit hook to '$BB_COMMAND' by hand"
@@ -239,14 +266,23 @@ elif [ ! -f "$SETTINGS" ]; then
   say "  skip    no settings.json yet — it is written by Claude Code, not by this installer"
   n_skip=$((n_skip+1))
 else
-  bb_state="$(jq -r --arg want "$BB_COMMAND" '
+  bb_state="$(jq -r --arg want "$BB_COMMAND" --arg old "$OLD_BINARY" '
     [ .hooks.UserPromptSubmit[]?.hooks[]?.command // empty ] as $commands
     | if ($commands | index($want)) then "ok"
-      elif ($commands | map(select(test("bb-hook\\.sh"))) | length) > 0 then "rewire"
+      elif ($commands | map(select(. == ($old + " bb") or test("bb-hook\\.sh"))) | length) > 0 then "rewire"
       else "add" end' "$SETTINGS" 2>/dev/null)" || bb_state=""
+  old_hook_count="$(jq -r --arg old "$OLD_BINARY" '
+    [ .hooks[]?[]?.hooks[]?.command // empty
+      | select(. == $old or startswith($old + " ")) ] | length
+  ' "$SETTINGS" 2>/dev/null)" || old_hook_count=0
   case "$bb_state" in
     ok)
-      say "  ok      the hook already runs '$BB_COMMAND'"; n_ok=$((n_ok+1)) ;;
+      if [ "$old_hook_count" -gt 0 ]; then
+        say "  rewire  $old_hook_count hook command(s) from '$OLD_BINARY' to '$PFM_BINARY'"
+        n_link=$((n_link+1))
+      else
+        say "  ok      the hook already runs '$BB_COMMAND'"; n_ok=$((n_ok+1))
+      fi ;;
     rewire|add)
       if [ "$DO" = uninstall ]; then
         say "  remove  the '$BB_COMMAND' UserPromptSubmit hook"
@@ -269,16 +305,26 @@ else
         ] | .hooks.UserPromptSubmit |= map(select((.hooks | length) > 0))
       ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
     fi
-  elif [ "$bb_state" = rewire ] || [ "$bb_state" = add ]; then
+  elif [ "$bb_state" = rewire ] || [ "$bb_state" = add ] || [ "$old_hook_count" -gt 0 ]; then
     if act; then
       cp -p "$SETTINGS" "$SETTINGS.pre-professor-$TS"
-      if [ "$bb_state" = rewire ]; then
-        jq --arg want "$BB_COMMAND" '
+      if [ "$bb_state" = rewire ] || [ "$old_hook_count" -gt 0 ]; then
+        jq --arg want "$BB_COMMAND" --arg old "$OLD_BINARY" --arg new "$PFM_BINARY" '
+          (.hooks[]?[]?.hooks[]?.command) |=
+            (if type == "string" and (. == $old or startswith($old + " "))
+             then $new + .[($old | length):] else . end)
+          |
           (.hooks.UserPromptSubmit[]?.hooks[]?
            | select((.command // "") | test("bb-hook\\.sh"))
            | .command) = $want
           | (.hooks.UserPromptSubmit[]?.hooks[]?
              | select(.command == $want) | .type) = "command"
+          | if any(.hooks.UserPromptSubmit[]?.hooks[]?; .command == $want)
+            then .
+            else .hooks.UserPromptSubmit += [{
+              "matcher": "",
+              "hooks": [{"type": "command", "command": $want}]
+            }] end
         ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
       else
         jq --arg want "$BB_COMMAND" '
@@ -295,7 +341,7 @@ fi
 say ""
 
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──
-# The shim evals one-line actions from the Go engine; it aborts loudly if ~/.local/bin/cc-fleet
+# The shim evals one-line actions from the Go engine; it aborts loudly if ~/.local/bin/pfm
 # is missing (build it from $ENGINE — see CUTOVER.md §1). The legacy cc-fleet.zsh stays in the
 # bundle unsourced as the parity checker's shadow oracle.
 #
@@ -303,16 +349,19 @@ say ""
 # bundle: $BUNDLE is <repo>/blueprint/templates/host-swap, three levels down from it. A clone
 # that is only the bundle (no repo above it) keeps working — the fallback is the old in-bundle
 # location, and a missing shim is reported rather than sourced blindly.
-ENGINE="$(cd -P "$BUNDLE/../../.." 2>/dev/null && pwd)/cc-fleet"
-[ -r "$ENGINE/shim/cc-fleet.zsh" ] || ENGINE="$BUNDLE/cc-fleet"
-SRC_LINE="[[ -r \"$ENGINE/shim/cc-fleet.zsh\" ]] && source \"$ENGINE/shim/cc-fleet.zsh\""
-[ -r "$ENGINE/shim/cc-fleet.zsh" ] || say "  warn    no cc-fleet shim found at $ENGINE/shim/cc-fleet.zsh"
-[ -x "$HOME/.local/bin/cc-fleet" ] || say "  warn    ~/.local/bin/cc-fleet is not installed — the shim will refuse; build it per $ENGINE/CUTOVER.md"
+ENGINE="$(cd -P "$BUNDLE/../../.." 2>/dev/null && pwd)/pfm"
+[ -r "$ENGINE/shim/pfm.zsh" ] || ENGINE="$BUNDLE/pfm"
+SRC_LINE="[[ -r \"$ENGINE/shim/pfm.zsh\" ]] && source \"$ENGINE/shim/pfm.zsh\""
+FLEET_SOURCE_RE='^[[:space:]]*([^#].*)?source[[:space:]].*(cc-fleet|pfm)[.]zsh'
+PFM_SOURCE_RE='^[[:space:]]*([^#].*)?source[[:space:]].*pfm[.]zsh'
+STALE_FLEET_COMMENT_RE='^[[:space:]]*# (The shim evals one-line actions from the Go engine \(~/.local/bin/cc-fleet\); the legacy|cc-fleet[.]zsh stays on disk unsourced as the parity checker)'
+[ -r "$ENGINE/shim/pfm.zsh" ] || say "  warn    no pfm shim found at $ENGINE/shim/pfm.zsh"
+[ -x "$HOME/.local/bin/pfm" ] || say "  warn    ~/.local/bin/pfm is not installed — the shim will refuse; build it per $ENGINE/CUTOVER.md"
 say "shell -> $ZSHRC"
 if [ "$DO" = uninstall ]; then
-  if [ -f "$ZSHRC" ] && grep -q 'cc-fleet\.zsh' "$ZSHRC"; then
-    say "  remove  the cc-fleet.zsh source line"
-    act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; sed -i.bak '/cc-fleet\.zsh/d' "$ZSHRC" && rm -f "$ZSHRC.bak"; }
+  if [ -f "$ZSHRC" ] && grep -Eq "$PFM_SOURCE_RE" "$ZSHRC"; then
+    say "  remove  the pfm.zsh source line"
+    act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; awk '!/^[[:space:]]*#/ && /source[[:space:]]/ && /pfm[.]zsh/ {next} {print}' "$ZSHRC" > "$ZSHRC.tmp.$$" && mv "$ZSHRC.tmp.$$" "$ZSHRC"; }
   else
     say "  ok      no source line present"; n_ok=$((n_ok+1))
   fi
@@ -320,13 +369,27 @@ elif [ ! -f "$ZSHRC" ]; then
   say "  create  $ZSHRC with the source line"
   act && printf '%s\n' "$SRC_LINE" > "$ZSHRC"
   n_link=$((n_link+1))
-elif grep -qF "$SRC_LINE" "$ZSHRC"; then
+elif [ "$(grep -cF "$SRC_LINE" "$ZSHRC")" -eq 1 ] &&
+     [ "$(grep -Ec "$FLEET_SOURCE_RE" "$ZSHRC")" -eq 1 ] &&
+     ! grep -Eq "$STALE_FLEET_COMMENT_RE" "$ZSHRC"; then
   say "  ok      source line already points here"; n_ok=$((n_ok+1))
-elif grep -q 'cc-fleet\.zsh' "$ZSHRC"; then
+elif grep -Eq "$FLEET_SOURCE_RE" "$ZSHRC"; then
   # An older install pointed somewhere else. Rewrite in place — never append a second line, or
   # the shell sources two copies of the fleet and the later one silently wins.
-  say "  rewrite the existing cc-fleet.zsh source line to this bundle"
-  act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; awk -v repl="$SRC_LINE" '/cc-fleet\.zsh/ && !done {print repl; done=1; next} {print}' "$ZSHRC" > "$ZSHRC.tmp.$$" && mv "$ZSHRC.tmp.$$" "$ZSHRC"; }
+  say "  rewrite the existing fleet source line to this bundle"
+  act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; awk -v repl="$SRC_LINE" '
+    /^#[[:space:]]*The shim evals one-line actions from the Go engine \(~\/.local\/bin\/cc-fleet\); the legacy/ {
+      print "# The shell launchers delegate to the pfm engine; the legacy oracle remains unsourced."
+      next
+    }
+    /^#[[:space:]]*cc-fleet[.]zsh stays on disk unsourced as the parity checker/ {next}
+    !/^[[:space:]]*#/ && /source[[:space:]]/ && /(cc-fleet|pfm)[.]zsh/ {
+      if (!done) print repl
+      done=1
+      next
+    }
+    {print}
+  ' "$ZSHRC" > "$ZSHRC.tmp.$$" && mv "$ZSHRC.tmp.$$" "$ZSHRC"; }
   n_backup=$((n_backup+1))
 else
   say "  append  the source line"

@@ -51,7 +51,7 @@ Format: `**Verdict:** {what was done/decided} — {what's next or what to watch}
 
 For "analyze X" / "system analysis" / "architecture review" → cross-disciplinary analysis. Run it, never improvise it. Root `CLAUDE.md` § "Cross-Disciplinary System Analysis" carries the three lenses (CS / instruction design / adopter safety) + intersections; this is the procedure:
 
-- **Orient** — read `blueprint/BLUEPRINT.md` (the philosophy) and `blueprint/SETUP.md` § the relevant phase; for an engine, read its own spec (`cc-fleet/PLAN.md`, `dreamer/SPEC-*.md`, `ENGINES/wave-walker/engine/design.md`) before its code.
+- **Orient** — read `blueprint/BLUEPRINT.md` (the philosophy) and `blueprint/SETUP.md` § the relevant phase; for an engine, read its own spec (`pfm/PLAN.md`, `dreamer/SPEC-*.md`, `ENGINES/wave-walker/engine/design.md`) before its code.
 - **Map before judging** — spawn `subagent_type: tracer` with the target; it returns writers → consumers → terminals, quote-pinned, with a stated coverage boundary. A map is never a verdict; it FEEDS one.
 - **Deep dive** — read implementations + tests (what's tested vs NOT) + the prompt files that drive them; for a prompt, read what it makes an agent DO, not what it claims.
 - **Report** — verdict HEALTHY | NEEDS ATTENTION | CRITICAL ISSUES; findings per lens (Critical/Important/Suggestions); a Cross-Disciplinary Insights section; a recommendations table.

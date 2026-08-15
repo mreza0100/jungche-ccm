@@ -67,7 +67,7 @@ No installed file may reference a repo checkout path — those differ per machin
 restructure.
 
 The executables themselves are **self-locating**: each resolves its own real directory through
-any chain of symlinks (`CC_FLEET_HOME`, overridable from the environment) and finds its siblings
+any chain of symlinks (`PFM_HOME`, overridable from the environment) and finds its siblings
 there. This is what makes the symlink install possible — a script linked into `~/.claude/bin`
 must not look for its neighbours in `~/.claude/bin`.
 
@@ -94,10 +94,10 @@ build renders one artifact per harness. Consequences:
 
 ## Values, not forks
 
-Anything host- or project-specific — account tables, project rosters, model names — is a
+Anything host- or project-specific — account rosters, project rosters, model names — is a
 **value**, supplied at install time from the setup interview and stored in a values file the
 adopter owns. Templates consume values; no file is ever copied and locally edited into a
-divergent fork **(designed — today the account table is an edit-this-block in `cc-fleet.zsh`)**.
+divergent fork **(designed — today the `pfm` launcher surface ships with a fixed two-account roster)**.
 
 A render manifest records the hash of every rendered artifact. An artifact whose on-disk hash
 matches neither its manifest entry nor a fresh render was hand-edited: the build reports it and
@@ -107,7 +107,7 @@ refuses to clobber, and the fix moves the edit into the template or the values f
 
 | Tier             | Contents                                                       | Install mode                             | Values needed         |
 | ---------------- | -------------------------------------------------------------- | ---------------------------------------- | --------------------- |
-| Host executables | `cc-*.sh`, `cx-recover.sh`, `cc-fleet.zsh`, `chat.sh`          | symlink, never templated                 | runtime config only   |
+| Host executables | `pfm`, `pfm.zsh`, `cc-*.sh`, `cx-recover.sh`, `chat.sh`        | symlink, never templated                 | runtime config only   |
 | Host commands    | `/bb`, `/swap`, `chat:*` for Claude **and** Codex              | symlink to committed per-harness renders | none                  |
 | Repo files       | per-project agents, QA protocols, Codex TOMLs, child CLAUDE.md | rendered from the adopter's values       | roster, stack, models |
 

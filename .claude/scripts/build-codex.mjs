@@ -45,7 +45,9 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const HOME = process.env.HOME;
+// Tests and repo-only regeneration can redirect the global-output surface away
+// from the live Codex store while preserving the normal installer-facing default.
+const HOME = process.env.CODEX_BUILD_HOME ?? process.env.HOME;
 const MODE = process.argv[2] ?? 'generate';
 if (!['generate', 'check'].includes(MODE)) {
   console.error(`usage: build-codex.mjs [generate|check]`);

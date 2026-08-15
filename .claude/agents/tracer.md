@@ -105,7 +105,7 @@ this repo" rather than treating it as absent.
 | template → installed file | `blueprint/SETUP.md` Phase 2 (which path it lands at) → `blueprint/refresh-map.json` (its live source) → the installed copy under `.claude/` if this repo carries one |
 | command / agent name | frontmatter `name:` → every `/name` and `subagent_type:` reference across `blueprint/templates/**` and `.claude/**` → `README.md` / `BLUEPRINT.md` cast tables |
 | hook → script | `settings.json` / `settings-global.json` `hooks` block → the script path → what the script reads and what it writes on failure |
-| Go symbol | `cc-fleet/internal/**` definition → `grep -rn` callers → `cmd/cc-fleet` entry → `shim/cc-fleet.zsh` if it crosses the shell boundary |
+| Go symbol | `pfm/internal/**` definition → `grep -rn` callers → `cmd/pfm` entry → `shim/pfm.zsh` if it crosses the shell boundary |
 | TS/JS export | `src/*.ts` export → importers → the compiled entry (`dreamer/dist*`, walker `build.js` output) → its shell wrapper |
 | release claim | `releases/vX.Y.Z.md` line → the file it names → the actual diff at that tag |
 
