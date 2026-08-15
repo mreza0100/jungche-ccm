@@ -110,7 +110,16 @@ type Dependencies struct {
 	Gate      Gate
 	Runner    CommandRunner
 	Stderr    io.Writer
+	// Heal repairs a Codex thread's history projection before it is resumed,
+	// reporting in one line what it repaired and saying nothing when there
+	// was nothing to repair. It is injected rather than imported because the
+	// repair reads Codex's own SQLite stores, and action must stay free of
+	// the store layer. A nil Heal simply skips the check.
+	Heal HealFunc
 }
+
+// HealFunc is the pre-resume Codex projection repair.
+type HealFunc func(ctx context.Context, threadID string) string
 
 // Executor performs preparations and returns the only line the caller may
 // write to stdout.
@@ -121,4 +130,5 @@ type Executor struct {
 	runner    CommandRunner
 	stderr    io.Writer
 	sidDir    string
+	heal      HealFunc
 }

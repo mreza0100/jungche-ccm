@@ -128,10 +128,13 @@ func writeLineageRollout(
 	}}
 	for _, prompt := range prompts {
 		records = append(records, map[string]any{
-			"type": "event_msg",
+			"type": "response_item",
 			"payload": map[string]any{
-				"type":    "user_message",
-				"message": prompt,
+				"type": "message",
+				"role": "user",
+				"content": []map[string]any{
+					{"type": "input_text", "text": prompt},
+				},
 			},
 		})
 	}
@@ -155,10 +158,13 @@ func writeLineageRollout(
 func appendLineagePrompt(t *testing.T, path, prompt string) {
 	t.Helper()
 	record, err := json.Marshal(map[string]any{
-		"type": "event_msg",
+		"type": "response_item",
 		"payload": map[string]any{
-			"type":    "user_message",
-			"message": prompt,
+			"type": "message",
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "input_text", "text": prompt},
+			},
 		},
 	})
 	if err != nil {

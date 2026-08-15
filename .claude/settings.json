@@ -1,0 +1,71 @@
+{
+  "outputStyle": "The Professor",
+  "permissions": {
+    "allow": [
+      "Bash(.claude/scripts/dev.sh:*)",
+      "Bash(scripts/leak-check.sh:*)",
+      "Bash(scripts/refresh-scope.sh:*)",
+      "Bash(node .claude/scripts/build-codex.mjs:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(go vet:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Read(*)",
+      "Grep(*)",
+      "Glob(*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/pcm-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/guard-stamp.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/codex-sync.sh mark"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/guard-stamp.sh stop"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/codex-sync.sh sync",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

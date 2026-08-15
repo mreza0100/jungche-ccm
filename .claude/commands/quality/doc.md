@@ -1,0 +1,75 @@
+---
+name: quality:doc
+description: Use BEFORE writing or restructuring any permanent reference doc under docs/ (command reference cards, engine specs, blueprint spec docs), or to certify an existing doc via the Approval gate (APPROVED/REJECTED). Defines how to shape reference docs for LLM Read/grep consumption — the cluster model, the ~500-line topic-file target (~80 KB hard cap), navigation indexes, the table-vs-sections record-format rule, grep-true naming, current-state-only content, and the no-byline rule. Load it yourself before any large reference-doc edit; /pcm loads it before touching docs/commands/**.
+---
+
+# Doc Format
+
+Reference docs under `docs/` are read by LLM agents (whole-file `Read`, `grep`), not by humans in a rendered viewer. Shape them for that reader, at write-time.
+
+**When to load:** before hand-editing or restructuring anything under `docs/`, an engine's spec (`cc-fleet/*.md`, `dreamer/SPEC-*.md`, `ENGINES/**/design.md`), or `blueprint/{BLUEPRINT,SETUP,PLACEHOLDERS}.md`. These are read by agents with `Read` and `grep`, not by a human in a rendered viewer.
+
+## The deciding principle
+
+Format choice barely affects whether the model _understands_ the content — model capability dominates. Decide on the mechanics the reader actually pays for: token cost, grep context, edit/diff locality, prettier stability. Optimize those; comprehension takes care of itself.
+
+## The cluster model
+
+A reference doc is a cluster — a directory, not a monolith. A consumer reads `_index.md` (cheap), then opens the one topic file it needs; two cheap reads replace one impossible one.
+
+- `_index.md`: navigation only — a pointer table `| Topic | File | Covers |` listing exactly the topic files on disk, ≤150 lines, no prose.
+- Topic file: one self-contained slice, readable in one `Read`. Target ≤500 lines, hard cap ~80 KB. Table of Contents at the top of any topic file over ~100 lines, so a partial read still shows its scope.
+- Split when ANY holds: over ~500 lines; covers more than one subject; sections have different edit cadence; the content reads as a per-pipeline append-log (`New X (wave-23)`) rather than current state. A file between the target and the cap is a split that hasn't happened yet.
+- Split by moving the largest self-contained section into a sibling topic file and registering it in `_index.md`.
+
+## Record format — table vs sections
+
+The highest-leverage rule. Decide by field shape, not habit:
+
+- Short, uniform cells (port maps, access matrices, the `_index.md` pointer tables themselves) → markdown table: genuinely tabular, no padding waste, one grep hit shows the whole record on one line.
+- Any long free-text field (descriptions, rationale, prose) → heading-per-record sections: one `###` per record, a one-line bold metadata strip for the short fields (`**Projects:** {project}, {project} — **Status:** Active`), then the long field as a prose paragraph.
+
+Long prose belongs in a section, never a table cell. Prettier aligns every column to its widest cell with no config option to disable it, and a PostToolUse hook runs `prettier --write` over every Professor-owned `.md`, so a "compact unpadded table" re-bloats on the next save: one 600-char description pads every other row in that column to 600 chars, and editing one record reflows the entire column into a giant diff. Sections cost zero padding, keep a one-record edit local, and give each record its own greppable `###` anchor.
+
+## Edit locality
+
+A change to one record touches only that record's lines — zero reflow of its neighbors. This is the rule behind sections-over-tables, delete-don't-annotate, and one-record-per-`###`. If editing one fact rewrites unrelated lines, the format is wrong.
+
+## Current-state only — delete, don't annotate
+
+A reference doc describes what IS, now. When a record is removed, delete it — no `~~strikethrough~~`, no "Removed {date}" / "Deprecated" / "Added in wave-N" note, and no grouping of records by the build that added them. Stale annotations poison retrieval: the agent reads a dead endpoint as real and builds on it. Rationale prose ("Background", "Why we chose X in 2024") goes the same way — encode the current rule, drop the story. History lives in `git log` and epic manifests.
+
+Authorship follows the same law: no `> Author:` / `> Last updated:` / `> Wave:` byline. Git owns authorship and last-edited date; the path owns ownership.
+
+## Name fidelity — docs are grep-true
+
+Every identifier is the exact code/DB name, verbatim: a Go symbol is its package-qualified name, a template its repo-relative path, a command its frontmatter `name:`, a placeholder its exact `{TOKEN}` spelling. When a record maps to a code symbol, the `###` heading IS that symbol (`### tracer`, `### refresh-scope.sh`) — the grep landmark and the name are one string. Claude Code's grep is exact-match (ripgrep, no fuzzy), so a heading that paraphrases the symbol is invisible to the search that would find it. When the code renames, the doc renames in the same edit.
+
+## Navigation contract — one hop
+
+A topic file is self-contained. Point to another cluster only for the authoritative source; when a record depends on another cluster's detail, inline the essential fact instead of sending the reader on a doc → doc → doc chase (each extra read costs tokens and reasoning steps, and the agent often stops before reaching the end).
+
+Consumer routes: one operation or contract → grep the cluster, read the matching topic file. One subsystem, or whole-domain context → read the cluster `_index.md`, then the topic files that matter.
+
+When a split moves a doc that consumers reference by its old path, leave a one-line redirect stub at the old path naming the new `{cluster}/_index.md`, until those consumers are repointed.
+
+## Finish
+
+Run `npx prettier --write --prose-wrap preserve <file>` on everything touched. The format hook covers Edit/Write on root-owned paths (`CLAUDE.md`, `.claude/`, `docs/`); child-project docs (`{project}/docs/`) and Bash-written files need the manual run.
+
+## Approval — certify a document
+
+Every reference doc must pass this gate before it is considered done; run it over an existing doc, not just at write-time. A doc is **APPROVED** only when ALL hold; otherwise it is **REJECTED** with the failing checks named, and the fix is applied before re-checking.
+
+| #   | Check         | REJECT when                                                                                                                    |
+| --- | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Size          | a topic file is >500 lines (split) or any file >80 KB                                                                          |
+| 2   | ToC           | a file >100 lines lacks a top Table of Contents                                                                                |
+| 3   | Record format | long prose sits in a table cell instead of a `###` section                                                                     |
+| 4   | Grep-true     | a `###` heading paraphrases a code symbol the record maps to, instead of being that symbol verbatim                            |
+| 5   | Current-state | a tombstone, `~~strikethrough~~`, "removed/added/deprecated {date or wave}" note, or per-pipeline changelog framing is present |
+| 6   | One hop       | a record sends the reader on a doc → doc → doc chase instead of inlining the essential fact                                    |
+| 7   | Index         | the cluster `_index.md` does not list exactly the files on disk                                                                |
+| 8   | Byline        | a `> Author:` / `> Last updated:` / `> Wave:` line is present                                                                  |
+
+Emit the verdict per doc as `APPROVED: {path}` or `REJECTED: {path} — checks {n,…}`. A cluster is approved only when its `_index.md` and every topic file are approved.

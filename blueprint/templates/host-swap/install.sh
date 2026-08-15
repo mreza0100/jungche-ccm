@@ -114,11 +114,27 @@ say ""
 # cc-portable.sh is a sourced library, not a command — it is linked with the rest so the bundle
 # has ONE published address per file and an operator reading ~/.claude/bin sees the whole set.
 # Nothing depends on the link: every script finds it through CC_FLEET_HOME, in the clone.
-FLEET_SCRIPTS="cc-portable.sh cc-db.sh cc-hide.sh cx-hide.sh bb-hook.sh cc-agent-open.sh cc-swap-chat.sh cc-archive.sh cc-reap.sh cc-name-sync.sh"
+# RETIRED into the Go engine (each is now a cc-fleet subcommand, and the links
+# below are removed from ~/.claude/bin on the next --apply): cc-hide.sh /
+# cx-hide.sh → `cc-fleet hide --self [--exit]`, bb-hook.sh → `cc-fleet bb`,
+# cc-reap.sh → `cc-fleet reap`, cc-archive.sh → `cc-fleet archive`,
+# cc-name-sync.sh → `cc-fleet name-sync`, cx-heal.sh → `cc-fleet heal`.
+FLEET_SCRIPTS="cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh"
+RETIRED_SCRIPTS="cc-hide.sh cx-hide.sh bb-hook.sh cc-archive.sh cc-reap.sh cc-name-sync.sh cx-heal.sh"
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
 for f in $FLEET_SCRIPTS; do
   if [ "$DO" = uninstall ]; then unlink_one "$BIN/$f"; else link "$BUNDLE/$f" "$BIN/$f"; fi
+done
+# A retired satellite's link is REMOVED, not left dangling: the script is gone
+# from the bundle, so the link resolves to nothing and anything still calling
+# it fails in a way that reads as "the fleet is broken" rather than "this moved
+# into cc-fleet".
+for f in $RETIRED_SCRIPTS; do
+  [ -L "$BIN/$f" ] || continue
+  say "  retire  $BIN/$f  (now a cc-fleet subcommand)"
+  act && rm -f "$BIN/$f"
+  n_link=$((n_link+1))
 done
 say ""
 
@@ -160,16 +176,38 @@ for d in "$BUNDLE"/codex-skills/*/; do
 done
 say ""
 
-# ── systemd user units: the cc-name-sync triggers (a codex rename lands on the tab in under a
-# second via the path watch; the timer converges claude /rename drift). Linked like everything
-# else; enable is what makes systemd read them. Skipped cleanly where systemd --user is absent
-# (a jail, a container) — there the sync still fires from every cc-ls run. ──
+# ── systemd user units: the name-sync triggers (a codex rename lands on the tab in under a
+# second via the path watch; the timer converges claude /rename drift). They invoke the BINARY —
+# `cc-fleet name-sync` — because window naming lives in the engine now and a unit pointing at a
+# retired .sh is a trigger that fires into nothing. The predecessor cc-name-sync.* units are
+# disabled and unlinked on every run, so a host that had them converges without being asked.
+# Skipped cleanly where systemd --user is absent (a jail, a container) — there the sync still
+# fires from every cc-ls run. ──
 SYSD="$HOME/.config/systemd/user"
-UNITS="cc-name-sync.service cc-name-sync.path cc-name-sync.timer"
+UNITS="cc-fleet-name-sync.service cc-fleet-name-sync.path cc-fleet-name-sync.timer"
+RETIRED_UNITS="cc-name-sync.path cc-name-sync.timer cc-name-sync.service"
 say "systemd user units -> $SYSD"
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  # The retirement runs in BOTH directions: install replaces the old triggers, uninstall
+  # removes whatever is left of either generation.
+  for u in $RETIRED_UNITS; do
+    if [ -e "$SYSD/$u" ] || [ -L "$SYSD/$u" ]; then
+      say "  retire  $SYSD/$u  (superseded by cc-fleet-name-sync)"
+      # stop + reset-failed as well as disable: a unit systemd has already
+      # LOADED stays active (or failed) in its runtime after the file is gone,
+      # and then `list-units` reports a not-found unit still waiting on a path
+      # that fires into nothing.
+      act && {
+        systemctl --user disable --now "$u" >/dev/null 2>&1
+        systemctl --user stop "$u" >/dev/null 2>&1
+        systemctl --user reset-failed "$u" >/dev/null 2>&1
+        rm -f "$SYSD/$u"
+      }
+      n_link=$((n_link+1))
+    fi
+  done
   if [ "$DO" = uninstall ]; then
-    act && systemctl --user disable --now cc-name-sync.path cc-name-sync.timer >/dev/null 2>&1
+    act && systemctl --user disable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer >/dev/null 2>&1
     for u in $UNITS; do unlink_one "$SYSD/$u"; done
     act && systemctl --user daemon-reload
   else
@@ -177,13 +215,82 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     for u in $UNITS; do link "$BUNDLE/systemd/$u" "$SYSD/$u"; done
     if act; then
       systemctl --user daemon-reload
-      systemctl --user enable --now cc-name-sync.path cc-name-sync.timer >/dev/null 2>&1 \
-        || say "  warn    could not enable cc-name-sync.path/.timer — run: systemctl --user enable --now cc-name-sync.path cc-name-sync.timer"
+      systemctl --user enable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer >/dev/null 2>&1 \
+        || say "  warn    could not enable cc-fleet-name-sync.path/.timer — run: systemctl --user enable --now cc-fleet-name-sync.path cc-fleet-name-sync.timer"
     fi
   fi
 else
   say "  skip    systemd --user unavailable — codex renames land on the next cc-ls run instead"
   n_skip=$((n_skip+1))
+fi
+say ""
+
+# ── the /bb hook: settings.json is the ONE place a UserPromptSubmit hook is declared, and this
+# installer is the only writer of it. The hook calls the BINARY (`cc-fleet bb`), never a .sh —
+# the shell hook is retired. jq rewrites the one command string in place, leaving every other
+# hook in the file untouched; without jq the file is left alone and the operator is told. ──
+SETTINGS="$CLAUDE_DIR/settings.json"
+BB_COMMAND="$HOME/.local/bin/cc-fleet bb"
+say "/bb hook -> $SETTINGS"
+if ! command -v jq >/dev/null 2>&1; then
+  say "  skip    jq is not installed — wire the UserPromptSubmit hook to '$BB_COMMAND' by hand"
+  n_skip=$((n_skip+1))
+elif [ ! -f "$SETTINGS" ]; then
+  say "  skip    no settings.json yet — it is written by Claude Code, not by this installer"
+  n_skip=$((n_skip+1))
+else
+  bb_state="$(jq -r --arg want "$BB_COMMAND" '
+    [ .hooks.UserPromptSubmit[]?.hooks[]?.command // empty ] as $commands
+    | if ($commands | index($want)) then "ok"
+      elif ($commands | map(select(test("bb-hook\\.sh"))) | length) > 0 then "rewire"
+      else "add" end' "$SETTINGS" 2>/dev/null)" || bb_state=""
+  case "$bb_state" in
+    ok)
+      say "  ok      the hook already runs '$BB_COMMAND'"; n_ok=$((n_ok+1)) ;;
+    rewire|add)
+      if [ "$DO" = uninstall ]; then
+        say "  remove  the '$BB_COMMAND' UserPromptSubmit hook"
+      elif [ "$bb_state" = rewire ]; then
+        say "  rewire  the bb-hook.sh UserPromptSubmit hook -> '$BB_COMMAND'"
+      else
+        say "  add     a UserPromptSubmit hook running '$BB_COMMAND'"
+      fi
+      n_link=$((n_link+1)) ;;
+    *)
+      say "  skip    could not read $SETTINGS as JSON — left untouched"; n_skip=$((n_skip+1)) ;;
+  esac
+  if [ "$DO" = uninstall ]; then
+    if act && [ "$bb_state" != "" ] && [ "$bb_state" != "skip" ]; then
+      cp -p "$SETTINGS" "$SETTINGS.pre-professor-$TS"
+      jq --arg want "$BB_COMMAND" '
+        .hooks.UserPromptSubmit = [
+          .hooks.UserPromptSubmit[]?
+          | .hooks = [ .hooks[]? | select(.command != $want) ]
+        ] | .hooks.UserPromptSubmit |= map(select((.hooks | length) > 0))
+      ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
+    fi
+  elif [ "$bb_state" = rewire ] || [ "$bb_state" = add ]; then
+    if act; then
+      cp -p "$SETTINGS" "$SETTINGS.pre-professor-$TS"
+      if [ "$bb_state" = rewire ]; then
+        jq --arg want "$BB_COMMAND" '
+          (.hooks.UserPromptSubmit[]?.hooks[]?
+           | select((.command // "") | test("bb-hook\\.sh"))
+           | .command) = $want
+          | (.hooks.UserPromptSubmit[]?.hooks[]?
+             | select(.command == $want) | .type) = "command"
+        ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
+      else
+        jq --arg want "$BB_COMMAND" '
+          .hooks //= {} | .hooks.UserPromptSubmit //= []
+          | .hooks.UserPromptSubmit += [{
+              "matcher": "",
+              "hooks": [{"type": "command", "command": $want}]
+            }]
+        ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
+      fi
+    fi
+  fi
 fi
 say ""
 

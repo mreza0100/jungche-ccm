@@ -1,8 +1,0 @@
-[Unit]
-Description=Fire cc-name-sync when a codex rename lands in session_index.jsonl
-
-[Path]
-PathModified=%h/.codex/session_index.jsonl
-
-[Install]
-WantedBy=default.target

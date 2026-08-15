@@ -3,6 +3,7 @@ package index
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 
 	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/store"
@@ -29,6 +30,8 @@ type codexPayload struct {
 	ParentThreadID string          `json:"parent_thread_id"`
 	ThreadSource   string          `json:"thread_source"`
 	Message        json.RawMessage `json:"message"`
+	Role           string          `json:"role"`
+	Content        json.RawMessage `json:"content"`
 }
 
 func parseCodex(
@@ -75,13 +78,36 @@ func parseCodex(
 			sourceKnown = true
 		}
 
+		// A submitted prompt is the response_item user message — the record
+		// every Codex era writes. The user_message event is extinct in current
+		// rollouts (app-server threads never wrote it; the TUI stopped by
+		// 0.14x), and where it does appear it pairs with a response_item, so
+		// counting it too would double-count. Queued injects delivered
+		// mid-turn write ONLY the response_item.
+		if record.Type == "response_item" && record.Payload.Type == "message" &&
+			record.Payload.Role == "user" {
+			prompt := naming.FlattenPromptText(record.Payload.Content)
+			if prompt == "" || protocolPrompt(prompt) {
+				return
+			}
+			if !sourceKnown {
+				rollout.UserThread = true
+			}
+			rollout.PromptCount++
+			if rollout.FirstPrompt == "" {
+				rollout.FirstPrompt = prompt
+			}
+			return
+		}
 		if record.Type != "user_message" && record.Payload.Type != "user_message" {
 			return
 		}
+		// Legacy user_message event: seeds the name for eras whose
+		// response_items predate the block shapes FlattenPromptText reads;
+		// the count is taken from the paired response_item above.
 		if !sourceKnown {
 			rollout.UserThread = true
 		}
-		rollout.PromptCount++
 		message := record.Payload.Message
 		if len(message) == 0 {
 			message = record.Message
@@ -111,7 +137,27 @@ func relevantCodexLine(line []byte) bool {
 		bytes.Contains(line, []byte(`"thread_source"`)) ||
 		bytes.Contains(line, []byte(`"session_id"`)) ||
 		bytes.Contains(line, []byte(`"parent_thread`)) ||
-		bytes.Contains(line, []byte(`"user_message"`))
+		bytes.Contains(line, []byte(`"user_message"`)) ||
+		bytes.Contains(line, []byte(`"role":"user"`))
+}
+
+// protocolPrompt reports whether a user-role message is Codex protocol
+// furniture rather than something a person (or an orchestrating chat) typed:
+// the per-thread instruction preamble and the environment context Codex
+// re-sends on the user role.
+func protocolPrompt(prompt string) bool {
+	for _, prefix := range []string{
+		"# AGENTS.md instructions",
+		"<permissions instructions",
+		"<user_instructions",
+		"<environment_context",
+		"<ENVIRONMENT_CONTEXT",
+	} {
+		if strings.HasPrefix(prompt, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstNonEmpty(values ...string) string {

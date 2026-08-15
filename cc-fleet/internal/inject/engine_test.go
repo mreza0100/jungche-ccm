@@ -191,6 +191,7 @@ func newTestEngineWith(
 	t.Setenv("CC_FLEET_HOME", t.TempDir())
 	t.Setenv("TMUX", "")
 	t.Setenv("CHAT_INJECT_SOCKET", "")
+	clearStatedSender(t)
 	engine, err := New(Dependencies{
 		Resolver: fakeResolver{
 			socket: filepath.Join("/tmp", "tmux-jail", socket),

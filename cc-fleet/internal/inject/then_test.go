@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/cc-fleet/internal/resolve"
 )
 
 // TestCompactFocusRuleRefusesBeforeAnyKey covers chat.sh:591-625: a /compact
@@ -142,6 +144,111 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 			result,
 			spawner.spawned(),
 		)
+	}
+}
+
+// TestWaiterCarriesTheSenderTheChatResolved covers the hop identity is lost
+// at: the waiter runs detached, so it must be TOLD who armed it. The primary
+// here is a /compact — exempt from signing — which is exactly the case that
+// hid the defect: the chat never needed its own identity for the message it
+// typed, only for the steer a severed process would deliver minutes later.
+func TestWaiterCarriesTheSenderTheChatResolved(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "codex conversation\n› ",
+		windowName:    "WAVE_ORCHESTRATOR",
+		submitOnEnter: true,
+	}
+	spawner := &fakeSpawner{}
+	engine := newSignatureEngineWith(t, "cc-1-2-3", fake, fakeIdentifier{
+		identity: resolve.Identity{
+			Session:    "cx-1700000000-1-1",
+			SocketPath: "/tmp/tmux-jail/cx-1700000000-1-1",
+			SocketName: "cx-1700000000-1-1",
+			Pane:       "%3",
+			Engine:     resolve.CodexEngine,
+			ID:         "019ffd1e-300f",
+			Source:     "ancestry",
+			Recovered:  true,
+		},
+	}, spawner)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "/compact hold: read /tmp/hold.md",
+		Then:    []string{"resume the wave"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Steers != 1 {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	spawned := spawner.spawned()
+	if len(spawned) != 1 {
+		t.Fatalf("spawned %d waiters, want exactly one", len(spawned))
+	}
+	sender := spawned[0].Sender
+	if sender.Session != "cx-1700000000-1-1" ||
+		sender.Label != "WAVE_ORCHESTRATOR" ||
+		sender.UUID != "019ffd1e-300f" {
+		t.Fatalf("waiter carries sender %+v", sender)
+	}
+}
+
+// TestCommandThenSpawnerStatesTheSenderToTheWaiter proves the identity survives
+// the process boundary: the detached waiter derives nothing, so the three
+// CHAT_SENDER_* names are the whole of what it knows about who armed it.
+func TestCommandThenSpawnerStatesTheSenderToTheWaiter(t *testing.T) {
+	scratch := t.TempDir()
+	dump := filepath.Join(scratch, "environment.txt")
+	stub := filepath.Join(scratch, "setsid-stub")
+	script := "#!/bin/sh\nenv > " + dump + "\n"
+	if err := os.WriteFile(stub, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// An inherited definition must lose to the one this spawn states, or a
+	// chain hop signs as whoever spawned the hop before it.
+	t.Setenv(SenderSessionEnv, "cc-STALE-HOP")
+	t.Setenv(SenderLabelEnv, "STALE_LABEL")
+	spawner := CommandThenSpawner{
+		Executable: filepath.Join(scratch, "cc-fleet"),
+		Setsid:     stub,
+	}
+	err := spawner.Spawn(context.Background(), SteerSpawn{
+		SocketPath: filepath.Join(scratch, "cx-1-2-3"),
+		Target:     "%3",
+		Steers:     []string{"resume the wave"},
+		LogPath:    filepath.Join(scratch, "steer.log"),
+		Sender: Sender{
+			Session: "cx-1700000000-1-1",
+			UUID:    "019ffd1e-300f",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(dump)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := string(raw)
+	for _, want := range []string{
+		SenderSessionEnv + "=cx-1700000000-1-1",
+		SenderIDEnv + "=019ffd1e-300f",
+	} {
+		if !strings.Contains(environment, want) {
+			t.Fatalf("waiter environment lacks %q", want)
+		}
+	}
+	// The label was not resolved by this chat, so nothing is stated for it:
+	// an inherited one would sign this message with another chat's name.
+	for _, unwanted := range []string{
+		"cc-STALE-HOP",
+		"STALE_LABEL",
+		SenderLabelEnv + "=",
+	} {
+		if strings.Contains(environment, unwanted) {
+			t.Fatalf("waiter environment still carries %q", unwanted)
+		}
 	}
 }
 

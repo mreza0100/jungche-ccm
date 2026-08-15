@@ -1,17 +1,23 @@
 package gather
 
 // Pane is one live tmux pane from a chat socket.
+//
+// CurrentCommand is the pane's foreground command. It tells a chat pane apart
+// from a VIEWPORT — a pane running `tmux attach` against another chat's socket,
+// which mirrors that chat's statusline and would otherwise donate the inner
+// chat's 🔖 label to the outer window's name.
 type Pane struct {
-	Socket      string
-	SessionName string
-	WindowID    string
-	WindowName  string
-	PaneTitle   string
-	CurrentPath string
-	TTY         string
-	PID         int
-	PaneID      string
-	Attached    bool
+	Socket         string
+	SessionName    string
+	WindowID       string
+	WindowName     string
+	PaneTitle      string
+	CurrentPath    string
+	CurrentCommand string
+	TTY            string
+	PID            int
+	PaneID         string
+	Attached       bool
 }
 
 // TmuxProbe is the live pane result plus recoverable sweep diagnostics.

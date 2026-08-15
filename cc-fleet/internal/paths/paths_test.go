@@ -44,9 +44,10 @@ func TestResolveOverrides(t *testing.T) {
 		CodexRoot:   codexRoot,
 		TmuxDir:     tmuxDir,
 		Home:        home,
-		// The carrier has no override of its own: it is defined relative to
-		// Home, and jailing Home jails it.
+		// The carrier and the archive have no override of their own: both are
+		// defined relative to Home, and jailing Home jails them.
 		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
+		ArchiveDir:    filepath.Join(home, ".claude-archive"),
 		ProcRoot:      procRoot,
 	}
 	if !reflect.DeepEqual(got, want) {

@@ -63,11 +63,12 @@ type Model struct {
 	outcomeRow      compose.Row
 	initialHidden   map[string]bool
 	hideChanges     map[string]HideChange
-	// applyHide performs a ⌃X the instant it is typed. hideError holds what
-	// went wrong if it could not, so a refused hide is visible instead of a
-	// keystroke that appeared to do nothing.
-	applyHide func(HideChange) error
-	hideError string
+	// applyHide performs a ⌃X the instant it is typed. hideStatus is the
+	// receipt: what landed, or why the keystroke was refused. A ⌃X NEVER goes
+	// silent — a keystroke that appears to do nothing reads as a hide that
+	// took, and the row's return on the next open reads as data loss.
+	applyHide  func(HideChange) error
+	hideStatus string
 }
 
 // NewModel builds the first frame entirely from cached state.
@@ -285,22 +286,32 @@ func (model *Model) toggleHidden() {
 	}
 	fallback := model.cursor
 	index := model.filtered[model.cursor]
-	// A booting row's ID is its crumbless socket, not a chat identity — unlike
-	// LiveSplit's empty-ID case it would otherwise pass the check above, so it
-	// needs its own guard here too (compose's applyHide carries the same
-	// exclusion on the read side; neither may let a hide land on an identity
-	// that stops meaning anything once the crumb appears).
-	// A "_HIDE…" label is refused for a different reason than the three above:
-	// the row IS hideable, but its label is what hides it, so an unhide
-	// written here would delete a store row that is not holding it down and
-	// the chat would stay hidden anyway. Renaming it is the unhide.
-	if model.rows[index].ID == "" ||
-		model.rows[index].Kind == compose.LiveSplit ||
-		model.rows[index].Kind == compose.Booting ||
-		model.rows[index].NameHidden {
+	row := model.rows[index]
+	// Refusals are SPOKEN, never silent: a swallowed ⌃X looks identical to a
+	// hide that landed, and the row's return on the next open then reads as
+	// the store losing the order.
+	// A booting row's ID is its crumbless socket, not a chat identity — a hide
+	// keyed by it stops meaning anything once the crumb appears (compose's
+	// applyHide carries the same exclusion on the read side).
+	// A "_HIDE…" label is refused for a different reason: the row IS hideable,
+	// but its label is what hides it, so an unhide written here would delete a
+	// store row that is not holding it down and the chat would stay hidden
+	// anyway. Renaming it is the unhide.
+	switch {
+	case row.Kind == compose.Booting:
+		model.hideStatus = "⌃X refused — " + row.Name +
+			" is still booting (no identity yet); retry once it settles"
+		return
+	case row.Kind == compose.LiveSplit:
+		model.hideStatus = "⌃X refused — split live window; hide its chats individually"
+		return
+	case row.NameHidden:
+		model.hideStatus = "⌃X refused — hidden by its _HIDE label; rename it to unhide"
+		return
+	case row.ID == "":
+		model.hideStatus = "⌃X refused — " + row.Name + " is not a chat yet"
 		return
 	}
-	row := model.rows[index]
 	change := HideChange{
 		ID:     row.ID,
 		Engine: rowEngine(row.Kind),
@@ -313,13 +324,24 @@ func (model *Model) toggleHidden() {
 	// used to be held until the picker quit, which meant only the exits that
 	// launched something ever applied it: closing the list the natural way
 	// discarded every mark that had just been typed.
-	if model.applyHide != nil {
-		if err := model.applyHide(change); err != nil {
-			model.hideError = fmt.Sprintf("%s: %v", change.Name, err)
-			return
-		}
+	// A nil applier means nothing can persist this keystroke: refuse rather
+	// than paint a cosmetic hide the next open would take back.
+	if model.applyHide == nil {
+		model.hideStatus = "⌃X refused — this picker cannot write hides"
+		return
 	}
-	model.hideError = ""
+	if err := model.applyHide(change); err != nil {
+		model.hideStatus = fmt.Sprintf("⌃X failed — %s: %v", change.Name, err)
+		return
+	}
+	switch {
+	case change.Hidden && change.Live:
+		model.hideStatus = "ended + hidden — " + change.Name
+	case change.Hidden:
+		model.hideStatus = "hidden — " + change.Name
+	default:
+		model.hideStatus = "unhidden — " + change.Name
+	}
 	follow := rowKey(row)
 	model.rows[index].Hidden = change.Hidden
 	model.adjustHiddenCount(change.Hidden)

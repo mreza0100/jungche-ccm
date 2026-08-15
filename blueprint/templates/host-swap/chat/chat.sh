@@ -91,7 +91,43 @@ tmux_from_ancestry() {
 self_tmux_value() {
   local t="${TMUX:-}"
   [[ -n "$t" ]] || t="$(tmux_from_ancestry 2>/dev/null || true)"
+  [[ -n "$t" ]] || t="$(tmux_from_codex_thread 2>/dev/null || true)"
   printf '%s' "$t"
+}
+
+# tmux_from_codex_thread: the identity of a codex seat whose turns run in the APP-SERVER
+# rather than in its own pane. `codex app-server` is reparented to init (measured: ppid 1)
+# and serves every seat from one process, so a tool shell it spawns has no tmux anywhere in
+# its ancestry — ancestry recovery has nothing to walk back to, and every message that seat
+# injected went out UNSIGNED. What such a shell DOES carry is CODEX_THREAD_ID, and cc-fleet
+# already binds a thread to the socket hosting it. Thread → socket → the same $TMUX-shaped
+# string every other rung returns, so session name, window name, and label all resolve
+# downstream unchanged.
+#
+# Fires ONLY after both other rungs come back empty. CODEX_THREAD_ID is INHERITED by
+# children, so a process that has a pane of its own must never be renamed by an id it merely
+# inherited; a Claude tool shell is excluded outright, since it carries its own session id.
+# A codex SUBAGENT shell inherits its parent seat's id and therefore signs as that seat —
+# correct here: the subagent has no pane of its own, and the parent seat is the chat a reply
+# has to reach.
+_codex_seat_tmux=""; _codex_seat_tried=""
+tmux_from_codex_thread() {
+  local tid="${CODEX_THREAD_ID:-}" sock dir
+  if [[ -n "$_codex_seat_tried" ]]; then
+    [[ -n "$_codex_seat_tmux" ]] || return 1
+    printf '%s\n' "$_codex_seat_tmux"; return 0
+  fi
+  _codex_seat_tried=1
+  [[ -n "$tid" && -z "${CLAUDE_CODE_SESSION_ID:-}" ]] || return 1
+  command -v cc-fleet >/dev/null 2>&1 || return 1
+  # Column 2 is the thread id, 11 the socket; an empty socket means the seat is not live,
+  # and a dead seat is no identity — better UNSIGNED than a handle nobody can reply to.
+  sock="$(cc-fleet ls --tsv 2>/dev/null | awk -F'\t' -v id="$tid" '$2==id && $11!="" {print $11; exit}')"
+  [[ -n "$sock" ]] || return 1
+  dir="${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)"
+  [[ -S "$dir/$sock" ]] || return 1
+  _codex_seat_tmux="$dir/$sock,0,0"
+  printf '%s\n' "$_codex_seat_tmux"
 }
 
 # NEVER export a recovered value globally. An empty $TMUX is not always a defect to repair:
@@ -438,7 +474,7 @@ _spawn_envpfx() {
 }
 
 # _register_pane_child <pane-id>: record a teammate PANE this chat spawned (via branch or
-# new pane mode) under this chat's session uuid, as "<socket>\t<pane>", so /bb (cc-hide.sh)
+# new pane mode) under this chat's session uuid, as "<socket>\t<pane>", so /bb (cc-fleet bb)
 # kills that pane when this chat closes. A pane teammate shares this chat's tmux server, so
 # /bb must take it down by PANE — never kill-server, which would drop this chat's neighbours.
 _register_pane_child() {
@@ -655,9 +691,27 @@ case "$cmd" in
     # Two footer forms: a one-line one for the LIVE typed path (a bare newline
     # submits in Claude Code, so the typed message must stay single-line), and a
     # block one for the RESUME transcript (pure text, not typed).
-    sender_handle="$(self_tmux 2>/dev/null || true)"
-    sender_lbl="$(self_label 2>/dev/null || true)"
-    sender_uuid="${CLAUDE_CODE_SESSION_ID:-}"; sender_uuid8="${sender_uuid:0:8}"
+    # The chat that spawned this process may have STATED its identity. Derivation only
+    # works where the chat is: the --then waiter is DETACHED (cc_detach), which severs
+    # the process chain ancestry recovery walks, and a codex tool shell carries neither
+    # $TMUX nor a session id of its own — so a codex-origin waiter can derive NOTHING,
+    # and every steer it delivered went out UNSIGNED. The chat resolves its identity
+    # while it still can and hands it down. Read from our OWN environment only, never
+    # from a flag or the message: a chat states who IT is, never who somebody else is.
+    sender_handle="${CHAT_SENDER_SESSION:-}"
+    sender_lbl="${CHAT_SENDER_LABEL:-}"
+    sender_uuid="${CHAT_SENDER_SID:-}"
+    if [[ -z "${sender_handle}${sender_lbl}${sender_uuid}" ]]; then
+      sender_handle="$(self_tmux 2>/dev/null || true)"
+      sender_lbl="$(self_label 2>/dev/null || true)"
+      sender_uuid="${CLAUDE_CODE_SESSION_ID:-}"
+      # A seat resolved through its codex thread can name that thread — the one token a
+      # recipient can VERIFY (`cc-fleet ls --tsv`, column 2) rather than take on trust.
+      # Only when the handle came from that rung: an id merely inherited by some other
+      # chat's shell must never be signed as if it were that chat's own.
+      [[ -z "$sender_uuid" && -n "${_codex_seat_tmux:-}" ]] && sender_uuid="${CODEX_THREAD_ID:-}"
+    fi
+    sender_uuid8="${sender_uuid:0:8}"
     sigparts=()
     [[ -n "$sender_uuid8" ]]  && sigparts+=("sid ${sender_uuid8}")
     [[ -n "$sender_handle" ]] && sigparts+=("to reply: /chat:inject ${sender_handle} <message>")
@@ -667,15 +721,22 @@ case "$cmd" in
     if [[ -n "$sig" ]]; then
       footer_inline="  — ${sig}"; footer_block=$'\n\n'"— ${sig}"
     else
-      # Identity underivable — every derivation source came back empty (no TMUX in
-      # this shell, no CLAUDE_CODE_SESSION_ID). Dropping the footer silently makes an
-      # unsigned message indistinguishable from a signed one at the recipient, so the
-      # absence is STATED instead: the failure renders as a failure, never as absence.
+      # Identity underivable — every derivation source came back empty. Dropping the
+      # footer silently makes an unsigned message indistinguishable from a signed one at
+      # the recipient, so the absence is STATED instead: the failure renders as a
+      # failure, never as absence.
+      #
+      # Report what was TRIED, never what happens to be unset. Ambient $TMUX is empty in
+      # every tool shell a chat engine scrubs, so reporting that variable alone told a
+      # codex chat sitting in a live pane it had "no tmux context" — true of the
+      # variable, false of the chat, and it pointed the reader away from the real
+      # failure (ancestry recovery). The RESOLVED handle is the honest witness.
       unsig="UNSIGNED — sender identity underivable"
-      [[ -z "${TMUX:-}" ]] && unsig="${unsig}; no tmux context"
-      [[ -z "${CLAUDE_CODE_SESSION_ID:-}" ]] && unsig="${unsig}; no session id"
+      [[ -z "$sender_handle" ]] && unsig="${unsig}; no tmux session (ambient or via ancestry)"
+      [[ -z "$sender_uuid8" ]]  && unsig="${unsig}; no session id"
       footer_inline="  — ${unsig}"; footer_block=$'\n\n'"— ${unsig}"
-      echo "WARNING: sender signature underivable (TMUX='${TMUX:-}' CLAUDE_CODE_SESSION_ID='${CLAUDE_CODE_SESSION_ID:+set}') — message sent, marked UNSIGNED." >&2
+      echo "WARNING: sender signature underivable (handle='${sender_handle}' label='${sender_lbl}' TMUX='${TMUX:-}' CLAUDE_CODE_SESSION_ID='${CLAUDE_CODE_SESSION_ID:+set}') — message sent, marked UNSIGNED." >&2
+      echo "         If this ran DETACHED (setsid/nohup/disowned), that is why: detaching severs the process chain the handle is recovered from. Send from the chat itself, or state it: CHAT_SENDER_SESSION=\$(chat.sh whoami) CHAT_SENDER_LABEL=<🔖 label> <command>." >&2
     fi
     # Signature policy (founder law): the sender signature is MANDATORY on every
     # normal prompt — an unsigned message hides who is speaking. The MESSAGE PREFIX
@@ -963,10 +1024,19 @@ case "$cmd" in
           # waiter, marked by CHAT_THEN_CHAIN) appends — truncating here would wipe the
           # chain's earlier hops WHILE the exec'ing inject still writes into the same
           # file, garbling the record (seen in fixture).
+          # The waiter is detached, so it can derive NO identity of its own — it
+          # signs with what we resolved above, or its steer goes out UNSIGNED. The
+          # values travel as environment, so they survive the waiter's own exec back
+          # into `inject`.
+          sender_env=(
+            "CHAT_SENDER_SESSION=${sender_handle}"
+            "CHAT_SENDER_LABEL=${sender_lbl}"
+            "CHAT_SENDER_SID=${sender_uuid}"
+          )
           if [[ -n "${CHAT_THEN_CHAIN:-}" ]]; then
-            $(cc_detach) bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >>"$steer_log" 2>&1 </dev/null &
+            $(cc_detach) env "${sender_env[@]}" bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >>"$steer_log" 2>&1 </dev/null &
           else
-            $(cc_detach) bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >"$steer_log" 2>&1 </dev/null &
+            $(cc_detach) env "${sender_env[@]}" bash "$0" __then "$socketpath" "$live_tmux" "${then_steers[@]}" >"$steer_log" 2>&1 </dev/null &
           fi
           note="${note} — ${#then_steers[@]} --then steer(s) queued; deliver in order, one settled turn apart (log: $steer_log)"
         fi
@@ -1395,9 +1465,9 @@ case "$cmd" in
       # renders un-truncated for name resolution. -d keeps it headless; -c opens in repo.
       socket="cc-new-${name}"
       tmux -L "$socket" new-session -d -s "$name" -c "$PWD" -x "${CHAT_NEW_COLS:-220}" -y "${CHAT_NEW_ROWS:-50}" "$spawn"
-      # Register it under THIS chat so /bb (cc-hide.sh) reaps it on bye-bye — a detached
+      # Register it under THIS chat so /bb (cc-fleet bb) reaps it on bye-bye — a detached
       # teammate is its own tmux server and would otherwise outlive its orchestrator
-      # headless. Keyed by session uuid, which is exactly the id cc-hide.sh resolves.
+      # headless. Keyed by session uuid, which is exactly the id cc-fleet hide --self resolves.
       if [[ -n "${CLAUDE_CODE_SESSION_ID:-}" ]]; then
         bash "$CC_FLEET_HOME/cc-db.sh" child-add new "$CLAUDE_CODE_SESSION_ID" "$socket" 2>/dev/null || true
       fi

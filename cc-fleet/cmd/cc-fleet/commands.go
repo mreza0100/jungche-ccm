@@ -15,6 +15,7 @@ import (
 	"hostops/cc-fleet/internal/action"
 	"hostops/cc-fleet/internal/compose"
 	"hostops/cc-fleet/internal/gather"
+	"hostops/cc-fleet/internal/heal"
 	"hostops/cc-fleet/internal/hide"
 	fleetindex "hostops/cc-fleet/internal/index"
 	"hostops/cc-fleet/internal/legacy"
@@ -256,7 +257,15 @@ func openRow(
 			}
 		}
 	}
-	executor, err := action.New(action.Dependencies{Stderr: stderr})
+	// The Codex projection repair rides the resume path itself: a wedged
+	// thread is repaired in the same breath that opens it, with no shell
+	// helper in the run string to be missing, unexecutable, or stale.
+	executor, err := action.New(action.Dependencies{
+		Stderr: stderr,
+		Heal: func(ctx context.Context, threadID string) string {
+			return heal.Thread(ctx, resolved.CodexRoot, threadID)
+		},
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "cc-fleet open: %v\n", err)
 		return 1

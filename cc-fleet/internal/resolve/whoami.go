@@ -343,6 +343,14 @@ type CommandPaneOwners struct {
 }
 
 // PaneOwners returns every pane on the socket with the pid running in it.
+//
+// Space-delimited, never a tab. tmux hands a control character in a format
+// string back as "_" unless the caller's environment carries a UTF-8 locale or
+// merely DEFINES $TMUX — the empty one set below happens to satisfy that, which
+// is the whole reason a tab worked here while the same tab in a scrubbed tool
+// shell left ancestry recovery answering "not in tmux". A pane pid is digits and
+// a pane id is %N, so a space cannot be ambiguous and nothing rests on the
+// accident.
 func (lister CommandPaneOwners) PaneOwners(
 	ctx context.Context,
 	socketPath string,
@@ -359,7 +367,7 @@ func (lister CommandPaneOwners) PaneOwners(
 		"list-panes",
 		"-a",
 		"-F",
-		"#{pane_pid}\t#{pane_id}",
+		"#{pane_pid} #{pane_id}",
 	)
 	command.Env = append(os.Environ(), "TMUX=")
 	output, err := command.Output()
@@ -368,7 +376,7 @@ func (lister CommandPaneOwners) PaneOwners(
 	}
 	owners := make([]PaneOwner, 0)
 	for _, line := range strings.Split(string(output), "\n") {
-		fields := strings.Split(strings.TrimSpace(line), "\t")
+		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) != 2 {
 			continue
 		}

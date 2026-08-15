@@ -97,6 +97,55 @@ func (tmux CommandTmux) KillPane(
 	return tmux.command(ctx, socketPath, "kill-pane", "-t", paneID).Run()
 }
 
+// ClientTTYs lists the terminals attached to this server. A chat's clients ARE
+// its viewports — the panes a person is watching it through.
+func (tmux CommandTmux) ClientTTYs(
+	ctx context.Context,
+	socketPath string,
+) ([]string, error) {
+	output, err := tmux.command(
+		ctx, socketPath, "list-clients", "-F", "#{client_tty}",
+	).Output()
+	if err != nil {
+		return nil, err
+	}
+	var ttys []string
+	for _, line := range strings.Split(string(output), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			ttys = append(ttys, line)
+		}
+	}
+	return ttys, nil
+}
+
+// PanesByTTY maps each pane on this server to the terminal it runs in — the
+// join that traces a viewport client back to the pane hosting it.
+//
+// Space-delimited, never a tab: tmux hands a control character in a format
+// string back as "_" unless the caller's environment carries a UTF-8 locale or
+// merely defines $TMUX, and a row that arrives "_"-joined is silently
+// unsplittable. A tty is /dev/pts/N and a pane is %N, so a space cannot be
+// ambiguous.
+func (tmux CommandTmux) PanesByTTY(
+	ctx context.Context,
+	socketPath string,
+) (map[string]string, error) {
+	output, err := tmux.command(
+		ctx, socketPath, "list-panes", "-a", "-F", "#{pane_tty} #{pane_id}",
+	).Output()
+	if err != nil {
+		return nil, err
+	}
+	panes := make(map[string]string)
+	for _, line := range strings.Split(string(output), "\n") {
+		tty, paneID, found := strings.Cut(strings.TrimSpace(line), " ")
+		if found && tty != "" && paneID != "" {
+			panes[tty] = paneID
+		}
+	}
+	return panes, nil
+}
+
 func (tmux CommandTmux) KillServer(
 	ctx context.Context,
 	socketPath string,

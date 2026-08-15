@@ -1,0 +1,31 @@
+# Professor repo-level Codex config — loads only when this project is trusted in
+# ~/.codex/config.toml (Codex asks for trust once, per repo). Scope: sandbox
+# reach and model pins for any Codex session started inside this repo.
+#
+# LANE LAUNCH FLAGS DO NOT BELONG HERE. `-s workspace-write -a never` and the
+# rest of the per-launch policy live with the LAUNCHER — this file is also read
+# by interactive sessions, and it must never change their defaults out from
+# under the founder.
+
+# ─── Model ───────────────────────────────────────────────────────────────────
+# Mirrors CLAUDE.md § Model Selection. The alias→model mapping the compiler
+# applies lives in .claude/scripts/build-codex.mjs (MODEL_MAP):
+#   opus (frontier-judgment) → gpt-5.6-sol
+#   sonnet (spec-execution)  → gpt-5.6-luna
+#   haiku (collector)        → gpt-5.6-luna   ← NAMED GAP: no cheaper tier on
+#     this host. Mapped to the spec model rather than to an invented id, because
+#     a fabricated model name fails at spawn and reads as a harness bug.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+
+[sandbox_workspace_write]
+# This repo builds Go and npm projects; `go mod download` and `npm ci` both need
+# the network from inside workspace-write or every build fails at fetch.
+network_access = true
+
+# ─── MCP servers ─────────────────────────────────────────────────────────────
+# This repo ships no .mcp.json, so the compiler's managed fence is empty. If one
+# is added, `build-codex.mjs generate` writes the [mcp_servers] block between its
+# own markers — everything outside them stays hand-written. PIN every version:
+# an unpinned server changes under you between sessions, and a protocol that
+# changed shape mid-task gets blamed on your own code first.

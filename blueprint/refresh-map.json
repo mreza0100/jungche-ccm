@@ -584,19 +584,10 @@
     "templates/host-swap/cc-agent-open.sh": {
       "curated": true
     },
-    "templates/host-swap/cc-archive.sh": {
-      "curated": true
-    },
     "templates/host-swap/cc-db.sh": {
       "curated": true
     },
     "templates/host-swap/cc-fleet.zsh": {
-      "curated": true
-    },
-    "templates/host-swap/cc-hide.sh": {
-      "curated": true
-    },
-    "templates/host-swap/cc-reap.sh": {
       "curated": true
     },
     "templates/host-swap/cc-swap-chat.sh": {
@@ -650,9 +641,6 @@
     "templates/host-swap/chat/whoami.command.md": {
       "curated": true
     },
-    "templates/host-swap/cx-hide.sh": {
-      "curated": true
-    },
     "templates/host-swap/install.sh": {
       "curated": true
     },
@@ -669,21 +657,6 @@
       "curated": true
     },
     "templates/host-swap/tests/selflocate-fixtures.sh": {
-      "curated": true
-    },
-    "templates/host-swap/cc-name-sync.sh": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/cc-name-sync.service": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/cc-name-sync.path": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/cc-name-sync.timer": {
-      "curated": true
-    },
-    "templates/host-swap/tests/name-sync-fixtures.sh": {
       "curated": true
     },
     "templates/host-swap/codex-skills/bb/SKILL.md": {
@@ -751,6 +724,15 @@
       "sources": {
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
       }
+    },
+    "templates/host-swap/systemd/cc-fleet-name-sync.service": {
+      "curated": true
+    },
+    "templates/host-swap/systemd/cc-fleet-name-sync.path": {
+      "curated": true
+    },
+    "templates/host-swap/systemd/cc-fleet-name-sync.timer": {
+      "curated": true
     }
   }
 }

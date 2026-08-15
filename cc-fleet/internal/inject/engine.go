@@ -7,12 +7,24 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
 
+	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/paths"
 	"hostops/cc-fleet/internal/resolve"
+)
+
+// SenderSessionEnv, SenderLabelEnv, and SenderIDEnv are how a chat states its
+// own identity to a process that cannot derive one — the --then waiter, and
+// any dispatcher a chat detaches from itself. Both implementations read the
+// same three names, so a chat.sh waiter and a cc-fleet waiter sign alike.
+const (
+	SenderSessionEnv = "CHAT_SENDER_SESSION"
+	SenderLabelEnv   = "CHAT_SENDER_LABEL"
+	SenderIDEnv      = "CHAT_SENDER_SID"
 )
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
@@ -22,6 +34,10 @@ type Engine struct {
 	spawner  ThenSpawner
 	options  Options
 	whoami   SelfIdentifier
+	// senderSelf is this process's own identity, resolved at most once: it
+	// costs a tmux capture, and it cannot change while we run.
+	senderOnce sync.Once
+	senderSelf Sender
 }
 
 // New constructs a jailed-path-aware injection engine.
@@ -609,6 +625,9 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			Steers:     request.Then,
 			LogPath:    base.SteerLog,
 			Append:     request.Chain,
+			// Resolved HERE, in the chat, because the waiter cannot: it is
+			// detached from us and derives nothing.
+			Sender: engine.sender(ctx),
 		}); err != nil {
 			base.Status = "delivered"
 			base.Code = 8
@@ -739,12 +758,7 @@ func (engine *Engine) signedMessage(
 	if interrupted {
 		marker = " — ⚠ FORCE-DELIVERED via Esc (your running flow was interrupted; re-check any in-progress action)"
 	}
-	sender := Sender{}
-	if engine.options.Sender != nil {
-		sender = *engine.options.Sender
-	} else {
-		sender = engine.detectSender(ctx)
-	}
+	sender := engine.sender(ctx)
 	parts := make([]string, 0, 3)
 	if sender.UUID != "" {
 		parts = append(parts, "sid "+headRunes(sender.UUID, 8))
@@ -762,20 +776,67 @@ func (engine *Engine) signedMessage(
 		// chat.sh:648-657 — every derivation source came back empty. Dropping
 		// the footer silently makes an unsigned message indistinguishable from
 		// a signed one at the recipient, so the absence is STATED instead.
-		return message + marker + "  — " + unsignedFooter(), true
+		return message + marker + "  — " + unsignedFooter(sender), true
 	}
 	return message + marker + "  — " + strings.Join(parts, " · "), false
 }
 
-func unsignedFooter() string {
+// unsignedFooter states what was TRIED, never what happens to be unset. Reading
+// $TMUX told a codex chat sitting in a live pane it had "no tmux context" —
+// true of the variable, false of the chat, since a scrubbed tool shell never
+// carries one and ANCESTRY is what resolves the handle there. The resolved
+// sender is the honest witness.
+func unsignedFooter(sender Sender) string {
 	footer := "UNSIGNED — sender identity underivable"
-	if os.Getenv("TMUX") == "" {
-		footer += "; no tmux context"
+	if sender.Session == "" {
+		footer += "; no tmux session (ambient or via ancestry)"
 	}
-	if os.Getenv("CLAUDE_CODE_SESSION_ID") == "" {
+	if sender.UUID == "" {
 		footer += "; no session id"
 	}
 	return footer
+}
+
+// sender answers who WE are, resolved at most once per process: the caller's
+// override (tests, the MCP surface), then the STATED sender, then live
+// derivation from this process.
+//
+// The stated rung exists because derivation is only possible where the chat
+// is. A --then waiter is spawned with setsid, which severs the process chain
+// ancestry recovery walks; a codex tool shell carries no $TMUX and no session
+// id of its own (codex scrubs its command environment), so a codex-origin
+// waiter has NOTHING left to derive from and every steer it delivered went out
+// UNSIGNED. The origin resolves identity while it still can and hands it down,
+// which is why this is also resolved for a `/`-prefixed primary: that message
+// is exempt from signing, but its steers are not.
+func (engine *Engine) sender(ctx context.Context) Sender {
+	engine.senderOnce.Do(func() {
+		if engine.options.Sender != nil {
+			engine.senderSelf = *engine.options.Sender
+			return
+		}
+		if stated, ok := statedSender(); ok {
+			engine.senderSelf = stated
+			return
+		}
+		engine.senderSelf = engine.detectSender(ctx)
+	})
+	return engine.senderSelf
+}
+
+// statedSender reads the identity a spawning chat handed this process. It is
+// read from our OWN environment only — never from a message or a caller flag,
+// so a chat can state who IT is and never who somebody else is.
+func statedSender() (Sender, bool) {
+	stated := Sender{
+		Session: os.Getenv(SenderSessionEnv),
+		Label:   os.Getenv(SenderLabelEnv),
+		UUID:    os.Getenv(SenderIDEnv),
+	}
+	if stated.Session == "" && stated.Label == "" && stated.UUID == "" {
+		return Sender{}, false
+	}
+	return stated, true
 }
 
 // detectSender derives this chat's own identity the way chat.sh does — from
@@ -932,24 +993,8 @@ func sleepContext(ctx context.Context, duration time.Duration) {
 	}
 }
 
+// captureLabel reads this chat's own 🔖 label through naming, the one package
+// that owns that scrape (K3).
 func captureLabel(capture string) string {
-	label := ""
-	for _, line := range strings.Split(capture, "\n") {
-		// 🍀 is the retired account-4 medal — chats labelled while it was live
-		// still render it, so it stays a valid label marker.
-		if !strings.Contains(line, "🔖") ||
-			(!strings.Contains(line, "🥇") &&
-				!strings.Contains(line, "🥈") &&
-				!strings.Contains(line, "🥉") &&
-				!strings.Contains(line, "🍀")) {
-			continue
-		}
-		index := strings.LastIndex(line, "🔖")
-		candidate := strings.TrimSpace(line[index+len("🔖"):])
-		if separator := strings.Index(candidate, "│"); separator >= 0 {
-			candidate = strings.TrimSpace(candidate[:separator])
-		}
-		label = candidate
-	}
-	return label
+	return naming.BookmarkLabel(capture)
 }

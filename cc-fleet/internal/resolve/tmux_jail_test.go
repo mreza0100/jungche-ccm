@@ -414,3 +414,68 @@ func assertTarget(
 		t.Fatalf("target = %#v", outcome)
 	}
 }
+
+// TestPaneOwnersSurvivesAStrippedEnvironment pins the delimiter choice in the
+// pane format.
+//
+// tmux hands a control character in a format string back as "_" unless the
+// CALLER's environment either carries a UTF-8 locale or merely DEFINES $TMUX —
+// an empty $TMUX is enough. Both hold for a normal fleet call and neither holds
+// in the tool shell a chat engine spawns from a scrubbed environment, which is
+// the one place ancestry recovery has to work: there a tab made every row
+// unsplittable, recovery answered "not in tmux", and codex-origin messages went
+// out UNSIGNED.
+//
+// The second half runs the tab against an environment stripped of both, so the
+// trap is proven live and a rewrite back to a tab cannot pass quietly.
+func TestPaneOwnersSurvivesAStrippedEnvironment(t *testing.T) {
+	jail := newResolveJail(t)
+	jail.start(t, "cc-500-1-1", "locale-session", "locale", "Locale Label")
+
+	// Cleared only AFTER the session is up: the readiness probe reads an emoji
+	// label back off the pane, which a stripped client would mangle too.
+	t.Setenv("LANG", "")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LC_CTYPE", "")
+
+	socketPath := filepath.Join(jail.tmuxDir, "cc-500-1-1")
+	owners, err := CommandPaneOwners{TmuxDir: jail.tmuxDir}.PaneOwners(
+		context.Background(),
+		socketPath,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(owners) == 0 {
+		t.Fatal("PaneOwners() returned no rows for a live server")
+	}
+	for _, owner := range owners {
+		if owner.PanePID <= 0 || !strings.HasPrefix(owner.PaneID, "%") {
+			t.Fatalf("PaneOwners() row = %#v", owner)
+		}
+	}
+
+	stripped := exec.Command(
+		"tmux",
+		"-S",
+		socketPath,
+		"list-panes",
+		"-a",
+		"-F",
+		"#{pane_pid}\t#{pane_id}",
+	)
+	stripped.Env = []string{
+		"HOME=" + jail.home,
+		"PATH=" + os.Getenv("PATH"),
+	}
+	tabbed, err := stripped.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(tabbed), "\t") {
+		t.Fatalf(
+			"a tab survived a stripped caller (%q) — this test no longer guards anything",
+			string(tabbed),
+		)
+	}
+}

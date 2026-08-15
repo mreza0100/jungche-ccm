@@ -68,13 +68,29 @@ func DetectAgents(proc ProcFS, home string, panes []Pane) ([]Agent, error) {
 	return agents, nil
 }
 
-func isClaudeCommand(cmdline []string) bool {
+// IsClaudeCommand reports whether an argv belongs to a Claude Code process.
+// The reaper asks the same question the agent scan does — a process tree
+// hosting a chat is not a process tree hosting somebody's dev server — so
+// there is one spelling of it (K3).
+func IsClaudeCommand(cmdline []string) bool {
 	if len(cmdline) == 0 {
 		return false
 	}
 	executable := filepath.ToSlash(cmdline[0])
 	return filepath.Base(executable) == "claude" ||
 		strings.Contains(executable, "/claude/versions/")
+}
+
+// IsCodexCommand reports whether an argv belongs to a Codex process.
+func IsCodexCommand(cmdline []string) bool {
+	if len(cmdline) == 0 {
+		return false
+	}
+	return filepath.Base(filepath.ToSlash(cmdline[0])) == "codex"
+}
+
+func isClaudeCommand(cmdline []string) bool {
+	return IsClaudeCommand(cmdline)
 }
 
 func claudeSessionIDs(cmdline []string) []string {

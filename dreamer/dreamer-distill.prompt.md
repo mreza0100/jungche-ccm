@@ -8,7 +8,7 @@ Distill durable, reusable maps from the listed agent transcripts. The `## Lane` 
 3. HARVEST CONDUCT, not subject alone — and answer for all three kinds before you finish. A transcript of WORK holds two kinds of knowledge and you reliably take only one. The SUBJECT — what the agent learned about the territory — is what you already write. The CONDUCT — what it learned about WORKING there — outlives the territory and is thrown away every night:
 
 - **A technique**: the method that established a fact instead of assuming it — the command that made a system report what it actually does, the check that would have exposed the claim had it been wrong.
-- **A corrected prior**: the belief the agent carried in that the evidence refuted. The wrong turn ships WITH the truth; the next reader meets the same evidence and forms the same belief, and a map that states only the destination does not stop them.
+- **A corrected prior**: what will mislead the next reader — the belief the evidence refuted, or the trap that bites without anyone having believed anything. The wrong turn ships WITH the truth; a map stating only the destination does not stop the next reader walking into the same hole.
 - **A baseline**: what NORMAL looks like here — the standing condition a future run would otherwise mistake for a finding, and what makes it normal.
 
 A conduct map's Question is about the WORK, not about a file, and it anchors like any other map — to whatever INSTANTIATES it: the committed control, the test, the config that makes it true. Its worked examples live in the lane profile; this rule is the law.
@@ -41,6 +41,10 @@ Carry the CARDINALITY, not merely the command — `{command} → {N}` — and if
 ```text
 # {clean title}
 
+## Lesson
+
+{one line, at most 240 characters}
+
 ## Question
 
 {question}
@@ -59,6 +63,18 @@ Provenance: {run date} · sid {first 8 characters of the transcript session dire
 
 - `{repo-relative path}[:lines]` — blob `{object hash, exactly 12 lowercase hex characters}`
 ```
+
+The `## Lesson` is one line and the only part of the map most readers ever see: the lane surface floats it in every future agent's context with the map path beside it, so the body is opened by the few who need the derivation. Write the rule, not the topic — name the trigger, then what to do about it. A reader who never opens the body still acts correctly.
+
+✗ `Cortex unit selection plugin trap` — a subject line. The reader learns a trap exists and nothing else, and pays a file read to find out which.
+✓ `Selecting Cortex unit tests by path pulls the plugin's own conftest into the run — select by marker, or integration units execute inside a unit gate.`
+
+One lesson is ONE rule. A line chaining several with semicolons is a map summary, and a reader acts on none of them — when the map teaches more than one rule its Question is too wide, the same signal as an honest anchor set running past eight rows.
+
+✗ `An open HARD conflict is not globally relevant: require ACL-gated topic or witnessed-quote relevance, then hold same-scope divergence, parallelize distinct confirmed scopes, and scope-pin named queries.` — four rules in one line; the reader carries none of them out.
+✓ `An open HARD conflict is not globally relevant — gate it on ACL-scoped topic or witnessed-quote relevance before holding it.`
+
+A line worth reading only as a pointer means the map has no lesson yet: find the rule it teaches, or drop the map. The same bar kills the restatement of a standing repository rule, the observation true of every codebase, and the summary of what the agent did rather than what it learned.
 
 Anchors are REVIEW TRIGGERS, not citations. Ask of every candidate: if this file or directory changes, does this map have to be re-derived? Pin exactly those — the ones whose edit would make the Answer wrong, stale, or incomplete — and nothing else. A file you merely read on the way to the answer is not an anchor. When the map's subject is what a directory CONTAINS, anchor the directory with `tree`: a file added there moves the tree hash while no anchored file changes.
 

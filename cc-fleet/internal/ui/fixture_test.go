@@ -21,6 +21,9 @@ func fixtureSnapshot(width int) Snapshot {
 		NowNS:          fixtureNowNS,
 		Width:          width,
 		Height:         17,
+		// The production picker always wires an applier (a ⌃X with nowhere to
+		// persist is refused), so the fixture carries one too.
+		ApplyHide: func(HideChange) error { return nil },
 		Rows: []compose.Row{
 			{
 				Kind:        compose.LiveClaude,

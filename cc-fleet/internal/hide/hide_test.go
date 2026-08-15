@@ -70,6 +70,32 @@ type fakeTmux struct {
 	sent          []string
 	killedPanes   []string
 	killedServers []string
+	// viewport wiring: which terminals watch the chat, and which pane each of
+	// those terminals is. Both empty means nothing is watching it.
+	clientTTYs []string
+	panesByTTY map[string]string
+}
+
+func (tmux *fakeTmux) ClientTTYs(
+	_ context.Context,
+	_ string,
+) ([]string, error) {
+	tmux.mutex.Lock()
+	defer tmux.mutex.Unlock()
+	return append([]string(nil), tmux.clientTTYs...), nil
+}
+
+func (tmux *fakeTmux) PanesByTTY(
+	_ context.Context,
+	_ string,
+) (map[string]string, error) {
+	tmux.mutex.Lock()
+	defer tmux.mutex.Unlock()
+	panes := make(map[string]string, len(tmux.panesByTTY))
+	for tty, paneID := range tmux.panesByTTY {
+		panes[tty] = paneID
+	}
+	return panes, nil
 }
 
 func (tmux *fakeTmux) PanePID(

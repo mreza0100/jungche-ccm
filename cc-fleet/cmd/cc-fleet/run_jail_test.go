@@ -25,7 +25,7 @@ const stubRecorder = `
 _esc() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
 _sock() { if [ -n "$TMUX" ]; then basename "${TMUX%%,*}"; else printf '%s' "$STUB_SOCKET"; fi; }
 _append() { printf '%s\n' "$1" >> "$STUB_TRANSCRIPT"; }
-cx_user()  { _append "{\"timestamp\":\"2026-08-12T00:00:00.000Z\",\"payload\":{\"type\":\"user_message\",\"message\":\"$(_esc "$1")\"}}"; }
+cx_user()  { _append "{\"timestamp\":\"2026-08-12T00:00:00.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"$(_esc "$1")\"}]}}"; }
 cx_agent() { _append "{\"timestamp\":\"2026-08-12T00:00:01.000Z\",\"payload\":{\"type\":\"agent_message\",\"message\":\"$(_esc "$1")\"}}"; }
 cc_user()  { _append "{\"type\":\"user\",\"cwd\":\"$(_esc "$PWD")\",\"message\":{\"content\":\"$(_esc "$1")\"}}"; }
 cc_agent() { _append "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"$(_esc "$1")\"}]}}"; }

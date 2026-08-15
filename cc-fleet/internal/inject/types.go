@@ -114,6 +114,9 @@ type SteerSpawn struct {
 	Steers     []string
 	LogPath    string
 	Append     bool
+	// Sender is the spawning chat's own identity, carried down because the
+	// waiter runs detached and can derive none of its own.
+	Sender Sender
 }
 
 // Options controls bounded retries. Zero values select chat.sh defaults.
