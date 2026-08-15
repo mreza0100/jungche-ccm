@@ -440,6 +440,19 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "cc-fleet headless inject: %v\n", err)
 		return 1
 	}
+	if result.Unsigned {
+		// The recipient is told the message is unsigned; the SENDER is the one
+		// who can do something about it, and only if the reason reaches them.
+		fmt.Fprintln(
+			stderr,
+			"WARNING: sent UNSIGNED — this process derived no identity of its"+
+				" own. If it ran DETACHED (setsid/nohup/disowned), that is"+
+				" why: detaching severs the process chain the handle is"+
+				" recovered from. Send from the chat itself, or state it: "+
+				inject.SenderSessionEnv+"=$(cc-fleet whoami) "+
+				inject.SenderLabelEnv+"=<label> <command>.",
+		)
+	}
 	fmt.Fprintln(stdout, result.Message)
 	return result.Code
 }

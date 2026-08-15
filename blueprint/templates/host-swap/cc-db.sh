@@ -11,8 +11,8 @@
 # session_index.jsonl and .claude.json stay exactly where they are — Claude and Codex read those
 # files themselves, and a database they cannot see would blind them.
 #
-# CALLED FROM BOTH SHELLS: this is a bash executable, not a zsh library, because cc-hide.sh and
-# cx-hide.sh are bash and could not source a .zsh file.
+# CALLED FROM BOTH SHELLS: this is a bash executable, not a zsh library, so bash satellites and
+# the zsh surface can both reach it (a .zsh library could only be sourced by one of them).
 #
 # FALLBACK: no sqlite3, or an unopenable db, means every read falls back to the legacy file and
 # every write appends to it. The picker must never be down because a database is unhappy.

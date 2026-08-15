@@ -70,10 +70,13 @@ func TestHideCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
 			"cwd":           "/work/lineage",
 		},
 	}, map[string]any{
-		"type": "event_msg",
+		"type": "response_item",
 		"payload": map[string]any{
-			"type":    "user_message",
-			"message": "root prompt",
+			"type": "message",
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "input_text", "text": "root prompt"},
+			},
 		},
 	})
 
@@ -95,10 +98,13 @@ func TestHideCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
 			"cwd":           "/work/lineage",
 		},
 	}, map[string]any{
-		"type": "event_msg",
+		"type": "response_item",
 		"payload": map[string]any{
-			"type":    "user_message",
-			"message": "resumed prompt",
+			"type": "message",
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "input_text", "text": "resumed prompt"},
+			},
 		},
 	})
 

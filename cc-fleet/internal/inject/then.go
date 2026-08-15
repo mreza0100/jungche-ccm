@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 // DeliverThen is the waiter half of chat.sh's __then subcommand
@@ -121,11 +122,16 @@ func (spawner CommandThenSpawner) Spawn(
 		arguments = append(arguments, "--steer", steer)
 	}
 	command := exec.CommandContext(ctx, setsid, arguments...)
-	command.Env = append(
-		os.Environ(),
-		"CHAT_INJECT_SOCKET="+request.SocketPath,
+	stated := []string{
+		"CHAT_INJECT_SOCKET=" + request.SocketPath,
 		"CHAT_THEN_CHAIN=1",
-	)
+	}
+	stated = append(stated, senderEnvironment(request.Sender)...)
+	// Any inherited definition of these names is dropped first: os.Getenv
+	// answers with the FIRST match, so appending over an inherited value would
+	// leave the inherited one winning, and a chain hop would sign as whoever
+	// spawned the hop before it.
+	command.Env = append(withoutNames(os.Environ(), stated), stated...)
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("open null device for then waiter: %w", err)
@@ -151,4 +157,51 @@ func (spawner CommandThenSpawner) Spawn(
 		return fmt.Errorf("start detached then waiter: %w", err)
 	}
 	return nil
+}
+
+// senderEnvironment states the spawning chat's identity to the waiter. An
+// empty field is left unset rather than exported empty, so a chat that could
+// not derive its own identity hands down nothing and the waiter's message
+// still says UNSIGNED out loud instead of signing as a nameless sender.
+func senderEnvironment(sender Sender) []string {
+	stated := make([]string, 0, 3)
+	for _, pair := range [][2]string{
+		{SenderSessionEnv, sender.Session},
+		{SenderLabelEnv, sender.Label},
+		{SenderIDEnv, sender.UUID},
+	} {
+		if pair[1] != "" {
+			stated = append(stated, pair[0]+"="+pair[1])
+		}
+	}
+	return stated
+}
+
+// withoutNames drops every definition of the names the given NAME=value pairs
+// set, so the caller's own definitions are the only ones in the child.
+func withoutNames(environment []string, pairs []string) []string {
+	names := make(map[string]bool, len(pairs))
+	for _, pair := range pairs {
+		if name, _, ok := strings.Cut(pair, "="); ok {
+			names[name] = true
+		}
+	}
+	// The full set is dropped, not just the ones being set: a waiter that
+	// inherits CHAT_SENDER_LABEL from an earlier hop while this hop states
+	// only a session would sign with two different chats' fields.
+	for _, name := range []string{
+		SenderSessionEnv,
+		SenderLabelEnv,
+		SenderIDEnv,
+	} {
+		names[name] = true
+	}
+	kept := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if !names[name] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept
 }

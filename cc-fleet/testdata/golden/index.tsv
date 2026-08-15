@@ -7,7 +7,7 @@ T	large-line	claude/project-alpha/large-line.jsonl	76861	76861	/work/large			sha
 T	partial	claude/project-beta/partial.jsonl	152	86	/work/partial			Complete before partial	Complete before partial	1	false
 T	shrunk	claude/project-beta/shrunk.jsonl	454	454	/work/shrunk	Old title before rewrite		Old first prompt	sha256:86b0ecb9001ea76187200f682cac070bb7832c05f1aa9c9b96bef175f28bc995:249	2	false
 R	cx-sub	codex/sessions/2026/01/01/rollout-2026-01-01T00-00-00-cx-sub.jsonl	245	245	/work/subagent	false	sub-session	cx-user		0	false
-R	cx-user	codex/sessions/2026/01/01/rollout-2026-01-01T00-00-01-cx-user.jsonl	402	402	/work/codex	true	session-root	parent-root	Codex first	2	false
+R	cx-user	codex/sessions/2026/01/01/rollout-2026-01-01T00-00-01-cx-user.jsonl	471	471	/work/codex	true	session-root	parent-root	Codex first	2	false
 N	cx-user	Own latest name
 N	parent-root	Parent thread name
 N	session-root	Session thread name

@@ -15,9 +15,10 @@ trap 'rm -rf "$T"' EXIT
 pass=0; fail=0
 ok(){ if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ✓ %s\n' "$1"; else fail=$((fail+1)); printf '  ✗ %s\n     want=[%s]\n     got =[%s]\n' "$1" "$3" "$2"; fi; }
 
-# The shipped resolver, lifted verbatim out of cc-hide.sh (the walk line + the assignment).
-BASH_RESOLVER="$(grep -E '^_ccfs=|^CC_FLEET_HOME=' "$BUNDLE/cc-hide.sh")"
-[ -n "$BASH_RESOLVER" ] || { echo "FATAL: could not extract the bash resolver from cc-hide.sh"; exit 1; }
+# The shipped resolver, lifted verbatim out of cc-db.sh (the walk line + the assignment). Any
+# bash satellite carries the same two lines; cc-db.sh is the one every other one depends on.
+BASH_RESOLVER="$(grep -E '^_ccfs=|^CC_FLEET_HOME=' "$BUNDLE/cc-db.sh")"
+[ -n "$BASH_RESOLVER" ] || { echo "FATAL: could not extract the bash resolver from cc-db.sh"; exit 1; }
 ZSH_RESOLVER="$(grep -E '^typeset -g CC_FLEET_HOME=' "$BUNDLE/cc-fleet.zsh")"
 [ -n "$ZSH_RESOLVER" ] || { echo "FATAL: could not extract the zsh resolver from cc-fleet.zsh"; exit 1; }
 

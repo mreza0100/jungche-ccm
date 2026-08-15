@@ -116,7 +116,16 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 	var claudeProcesses []ClaudeProcess
 	var agents []Agent
 	var cacheSockets []string
+	var paneLabels []PaneLabel
 	group, _ := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		capturer, ok := gatherer.tmux.(PaneCapturer)
+		if !ok {
+			return nil
+		}
+		paneLabels = CaptureClaudeLabels(ctx, capturer, tmuxProbe.Panes)
+		return nil
+	})
 	group.Go(func() error {
 		var err error
 		if gatherer.readOnly {
@@ -179,6 +188,7 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 		Renames: computeWindowRenames(
 			tmuxProbe.Panes,
 			codex,
+			paneLabels,
 			gatherer.codexName,
 			gatherer.codexIDName,
 		),
@@ -189,13 +199,20 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 	}, nil
 }
 
+// computeWindowRenames converges BOTH engines' window names — the fleet's DNS
+// records — in one pass. A codex window follows the thread's indexed name; a
+// claude window follows the 🔖 label its own statusline renders, which is what
+// /rename set and what chat.sh resolves a chat by. Two writers of one name is
+// how a chat ends up answering to something nobody typed, so this is the only
+// one.
 func computeWindowRenames(
 	panes []Pane,
 	codex []LiveCodex,
+	labels []PaneLabel,
 	resolveRollout CodexNameResolver,
 	resolveID CodexIDNameResolver,
 ) []WindowRename {
-	if resolveRollout == nil && resolveID == nil {
+	if resolveRollout == nil && resolveID == nil && len(labels) == 0 {
 		return nil
 	}
 	paneByTarget := make(map[string]Pane, len(panes))
@@ -226,6 +243,10 @@ func computeWindowRenames(
 			TargetName:  target,
 		})
 	}
+	planned = append(
+		planned,
+		claudeWindowRenames(paneByTarget, labels, seenWindows)...,
+	)
 
 	// Two windows converging on ONE name is an ambiguity, not a rename: the
 	// window name is how the fleet addresses a chat, so two chats answering to
@@ -248,6 +269,78 @@ func computeWindowRenames(
 		}
 		return renames[left].WindowID < renames[right].WindowID
 	})
+	return renames
+}
+
+// claudeWindowRenames plans the claude half: one window takes the 🔖 label its
+// own panes render.
+//
+// A window is left ALONE — never renamed — when its panes disagree about the
+// label (two /chat:branch siblings share a window and a window name cannot
+// carry both) or when any of its panes could not be captured at all. A failed
+// capture is not an absent label: renaming from the sibling that DID answer
+// would stamp one chat's name on a window hosting two.
+func claudeWindowRenames(
+	paneByTarget map[string]Pane,
+	labels []PaneLabel,
+	seenWindows map[string]struct{},
+) []WindowRename {
+	type windowPlan struct {
+		pane  Pane
+		label string
+		skip  bool
+	}
+	order := make([]string, 0, len(labels))
+	plans := make(map[string]*windowPlan, len(labels))
+	for _, label := range labels {
+		key := label.Socket + "\x00" + label.WindowID
+		plan, found := plans[key]
+		if !found {
+			plan = &windowPlan{}
+			plans[key] = plan
+			order = append(order, key)
+		}
+		if label.Failed {
+			plan.skip = true
+			continue
+		}
+		if label.Label == "" {
+			continue
+		}
+		clipped := clipRunes(label.Label, 24)
+		if plan.label != "" && plan.label != clipped {
+			plan.skip = true
+			continue
+		}
+		pane, found := paneByTarget[label.Socket+"\x00"+label.PaneID]
+		if !found {
+			continue
+		}
+		plan.label = clipped
+		plan.pane = pane
+	}
+
+	renames := make([]WindowRename, 0, len(order))
+	for _, key := range order {
+		plan := plans[key]
+		if plan.skip || plan.label == "" || plan.pane.WindowID == "" {
+			continue
+		}
+		if plan.pane.WindowName == plan.label {
+			continue
+		}
+		if _, duplicate := seenWindows[key]; duplicate {
+			continue
+		}
+		seenWindows[key] = struct{}{}
+		renames = append(renames, WindowRename{
+			Socket:      plan.pane.Socket,
+			SessionName: plan.pane.SessionName,
+			WindowID:    plan.pane.WindowID,
+			CurrentName: plan.pane.WindowName,
+			TargetName:  plan.label,
+		})
+	}
 	return renames
 }
 

@@ -1,3 +1,3 @@
 {"type":"session_meta","thread_source":"user","payload":{"id":"cx-user","cwd":"/work/codex","session_id":"session-root","parent_thread_id":"parent-root"}}
-{"type":"event_msg","payload":{"type":"user_message","message":"Codex first"}}
-{"type":"event_msg","payload":{"type":"user_message","message":[{"type":"text","text":"Codex"},{"type":"tool_result","text":"ignored"},{"type":"text","text":"last"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Codex first"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Codex"},{"type":"tool_result","text":"ignored"},{"type":"input_text","text":"last"}]}}

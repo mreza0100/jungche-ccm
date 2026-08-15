@@ -145,10 +145,13 @@ func TestIndexGoldenAndIncrementalTransitions(t *testing.T) {
 	}
 
 	codexAppend := appendJSONLine(t, fixture.userRolloutPath, map[string]any{
-		"type": "event_msg",
+		"type": "response_item",
 		"payload": map[string]any{
-			"type":    "user_message",
-			"message": "Codex appended",
+			"type": "message",
+			"role": "user",
+			"content": []map[string]any{
+				{"type": "input_text", "text": "Codex appended"},
+			},
 		},
 	})
 	codexDelta, err := indexer.Run(ctx, Options{})
@@ -254,7 +257,7 @@ func TestParseCodexSubagentMessagesNeverPromoteToUserThread(t *testing.T) {
 	)
 	content := strings.Join([]string{
 		`{"type":"session_meta","thread_source":"subagent","payload":{"id":"subagent-id","cwd":"/work/sub"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"delegated task"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"delegated task"}]}}`,
 		"",
 	}, "\n")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -278,7 +281,7 @@ func TestParseCodexSubagentMessagesNeverPromoteToUserThread(t *testing.T) {
 		t.Fatalf("full subagent parse = %#v", rollout)
 	}
 
-	appended := `{"type":"event_msg","payload":{"type":"user_message","message":"follow-up"}}` + "\n"
+	appended := `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"follow-up"}]}}` + "\n"
 	appendBytes(t, path, []byte(appended))
 	info, err = os.Stat(path)
 	if err != nil {

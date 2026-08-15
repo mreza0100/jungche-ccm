@@ -40,7 +40,7 @@ esac
 
 # identify the chat. --sock targets ANOTHER chat's server (cc-ls's gate): the caller's env
 # (session id, $TMUX) describes the CALLER, so only the target's breadcrumbs may speak here.
-# Self-swap (/swap): same chain as cc-hide.sh — env session id (only when its transcript
+# Self-swap (/swap): same chain as `cc-fleet hide --self` — env session id (only when its transcript
 # exists), then the pane-keyed breadcrumb, then the socket breadcrumb.
 sock=""; pane=""; u=""
 if [ -n "$sock_arg" ]; then

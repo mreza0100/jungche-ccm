@@ -1,6 +1,0 @@
-[Unit]
-Description=Converge chat names into tmux window names and terminal tabs
-
-[Service]
-Type=oneshot
-ExecStart=%h/.claude/bin/cc-name-sync.sh

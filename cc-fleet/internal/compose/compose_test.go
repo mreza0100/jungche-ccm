@@ -901,8 +901,8 @@ func TestLiveMachineSpawnedCodexStaysSuppressed(t *testing.T) {
 	}
 }
 
-// TestHideOnAnyLineageMemberHidesTheWholeRow guards cx-hide.sh's actual write
-// shape (cx-hide.sh:147): it hides the RAW id of whatever rollout file the
+// TestHideOnAnyLineageMemberHidesTheWholeRow guards the RAW-id write shape
+// an older writer produced: it hides the RAW id of whatever rollout file the
 // live process currently holds, which on a resumed multi-file lineage is the
 // CHILD's id, never the ROOT compose keys every Codex row on
 // (composer.rolloutRow). A hide the `hide` manager itself writes is already
@@ -943,7 +943,7 @@ func TestHideOnAnyLineageMemberHidesTheWholeRow(t *testing.T) {
 		t.Fatalf("unhidden lineage is missing: %#v", visible.Rows)
 	}
 
-	// The hide lands on the CHILD id, raw, exactly as cx-hide.sh writes it —
+	// The hide lands on the CHILD id, raw, exactly as that writer wrote it —
 	// never normalized onto the root.
 	hiddenOnChild := Compose(Input{
 		Rollouts: rollouts,

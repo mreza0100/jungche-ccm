@@ -365,3 +365,105 @@ func printableKey(runeValue rune) tea.KeyPressMsg {
 func specialKey(code rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg(tea.Key{Code: code})
 }
+
+// TestControlXAlwaysLeavesAReceipt is the no-silent-keystroke contract: every
+// ⌃X ends with hideStatus naming what landed or why it was refused. A swallowed
+// ⌃X looks identical to a hide that landed, and the row's return on the next
+// open then reads as the store losing the order.
+func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
+	cases := []struct {
+		name    string
+		mutate  func(*Snapshot)
+		receipt string
+		// seek moves the cursor to the first row matching it — for rows whose
+		// mutation erases the id the cursor-follow would otherwise target.
+		seek func(compose.Row) bool
+	}{
+		{
+			name: "booting row is refused by name",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.Rows[1].Kind = compose.Booting
+				snapshot.Rows[1].Name = "boot-probe"
+			},
+			receipt: "still booting",
+		},
+		{
+			// The Kind arm matches before the empty-ID arm, so the cursor can
+			// still follow the fixture id while the refusal under test fires.
+			name: "split live window is refused",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.Rows[1].Kind = compose.LiveSplit
+			},
+			receipt: "split live window",
+		},
+		{
+			name: "label-hidden row is refused",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.Rows[1].NameHidden = true
+			},
+			receipt: "_HIDE label",
+		},
+		{
+			name: "identityless row is refused",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.Rows[1].ID = ""
+				snapshot.Rows[1].Kind = compose.NewClaude
+			},
+			receipt: "not a chat yet",
+			seek: func(row compose.Row) bool {
+				return row.ID == "" && row.Kind == compose.NewClaude
+			},
+		},
+		{
+			name: "nil applier refuses instead of painting a cosmetic hide",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.ApplyHide = nil
+			},
+			receipt: "cannot write hides",
+		},
+		{
+			name: "failed store write names the chat and the error",
+			mutate: func(snapshot *Snapshot) {
+				snapshot.ApplyHide = func(HideChange) error {
+					return errors.New("store is sealed")
+				}
+			},
+			receipt: "store is sealed",
+		},
+		{
+			name:    "landed hide prints its receipt",
+			mutate:  func(snapshot *Snapshot) {},
+			receipt: "hidden — ",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			snapshot := fixtureSnapshot(120)
+			snapshot.InitialCursorID = snapshot.Rows[1].ID
+			testCase.mutate(&snapshot)
+			model := NewModel(snapshot)
+			if testCase.seek != nil {
+				for step := 0; step < len(model.filtered); step++ {
+					if testCase.seek(model.rows[model.filtered[model.cursor]]) {
+						break
+					}
+					model, _ = applyKey(t, model, specialKey(tea.KeyDown))
+				}
+				if !testCase.seek(model.rows[model.filtered[model.cursor]]) {
+					t.Fatal("seek never reached the row under test")
+				}
+			}
+			model, _ = applyKey(t, model, controlKey('x'))
+			if model.hideStatus == "" {
+				t.Fatal("⌃X left no receipt — the keystroke went silent")
+			}
+			if !strings.Contains(model.hideStatus, testCase.receipt) {
+				t.Fatalf(
+					"receipt = %q, want it to mention %q",
+					model.hideStatus,
+					testCase.receipt,
+				)
+			}
+		})
+	}
+}

@@ -31,7 +31,7 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 
 ## Table of contents
 
-1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 63 flows
+1. [A — `cc-fleet` CLI subcommands and flags](#a--cc-fleet-cli-subcommands-and-flags) — 85 flows
 2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
 3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
 4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
@@ -40,13 +40,13 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 7. [G — MCP server (7 tools)](#g--mcp-server-7-tools) — 22 flows
 8. [H — `chat.sh`: subcommands, guards, `--then`, exit codes](#h--chatsh-subcommands-guards---then-exit-codes) — 46 flows
 9. [I — zsh shell surface: launchers and revivers](#i--zsh-shell-surface-launchers-and-revivers) — 16 flows
-10. [J — Satellite scripts](#j--satellite-scripts) — 42 flows
-11. [K — Installer and systemd units](#k--installer-and-systemd-units) — 12 flows
+10. [J — Satellite scripts](#j--satellite-scripts) — 23 flows
+11. [K — Installer and systemd units](#k--installer-and-systemd-units) — 14 flows
 12. [Flows that CANNOT be jailed](#flows-that-cannot-be-jailed)
 13. [Residual known divergences](#residual-known-divergences)
 14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
 
-**Total: 334 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
+**Total: 339 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
 scheduling list below expands those into **32 distinct real-engine experiments**, because several
 `JAIL+tmux` rows only prove the *mechanics* against synthetic pane content and still need one
 authentic engine run to be conclusive.
@@ -135,6 +135,29 @@ authentic engine run to be conclusive.
 | `internal hide-exit --engine…` → detached finisher; missing flags → rc 2 | JAIL+tmux | `main.go:250-299`, `hide/finisher.go:94-144` | |
 | `internal then …` → steer waiter | JAIL+tmux | `main.go:251-253`, `inject/then.go` | |
 
+| `reap` dry run classifies every socket, changes nothing | JAIL+tmux | `cmd/cc-fleet/reap_jail_test.go:134-189`, `internal/reap/reap.go:139-160` | |
+| `reap` KEEP rules: attached, self, `cc-new-*`, busy, transcript written < 60s | JAIL | `internal/reap/reap_test.go:14-200` | |
+| `reap` never kills a socket hosting non-chat processes (dev servers, `uv`) | JAIL+tmux | `internal/reap/proc.go:78-110`, `cmd/cc-fleet/reap_jail_test.go:134-189` | |
+| `reap` exempts a chat's OWN subtree (its MCP servers, its tool shells) | JAIL | `internal/reap/proc_test.go:86-97` | |
+| `reap` fails closed when the busy query fails or a `cc-*` crumb is missing | JAIL | `internal/reap/reap_test.go:118-146` | |
+| `reap` empty socket younger than 1h left alone (a server may be starting) | JAIL+tmux | `cmd/cc-fleet/reap_jail_test.go:220-260` | |
+| `reap` never reaps from AGE alone; a wedged socket times out into SKIP | JAIL | `internal/reap/reap_test.go:203-224`, `internal/reap/runner.go:33-38` | |
+| `reap --apply` re-verifies attachment at kill time and clears crumbs | JAIL+tmux | `internal/reap/runner.go:320-360` | |
+| `reap` sweeps idle `vsct` bunkers by SESSION, never by killing the server | JAIL | `internal/reap/reap_test.go:258-296` | |
+| `archive` dry run default; `--apply`, `--subagents`, `--older-than`, `--restore` | JAIL | `internal/archive/archive_test.go:85-204` | |
+| `archive` re-checks liveness at run time (argv, codex fds, sid crumbs) | JAIL | `internal/archive/live.go:20-95`, `archive_test.go:296-340` | |
+| `archive` retires every decided hide, live ones included | JAIL | `internal/archive/archive.go:196-240` | |
+| `archive` prunes history.jsonl and the codex index for MOVED chats only | JAIL | `internal/archive/archive_test.go:180-200` | |
+| `archive --restore` puts a chat back and refuses an unknown id | JAIL | `internal/archive/archive_test.go:228-262` | |
+| `heal` report: CAUGHT_UP / CONSISTENT / WEDGED / MIDLINE / NO_ROLLOUT totals | JAIL | `internal/heal/heal_test.go:170-240`, `cmd/cc-fleet/heal_jail_test.go:108-150` | |
+| `heal` report is read-only; `--apply` heals only broken threads, backup first | JAIL | `internal/heal/heal_test.go:243-320` | |
+| `heal` skips a thread whose writer lock is held, and heals it once released | JAIL | `internal/heal/heal_test.go:322-380` | |
+| `heal --thread` is a silent exit-0 no-op on a healthy thread | JAIL | `cmd/cc-fleet/heal_jail_test.go:152-176` | |
+| ResumeCodex runs the native projection repair before the seat is created | JAIL | `internal/action/executor.go:113-127`, `testdata/golden/cmdlines.txt:47-54` | |
+| `name-sync` converges both engines' window names; `--dry-run` changes nothing | JAIL+tmux | `internal/gather/labels_jail_test.go:14-90` | |
+| `bb` blocks a bare `/bb` (rc 2) and passes every other prompt through | JAIL | `cmd/cc-fleet/bb_jail_test.go:12-100` | |
+| `bb` fails OPEN on unreadable stdin, non-JSON, or a missing prompt field | JAIL | `cmd/cc-fleet/bb_jail_test.go:12-52` | |
+
 ## B — Picker TUI: key bindings and model state
 
 | flow | safety | expected behavior (source) | regression |
@@ -191,7 +214,7 @@ tonight's four bugs all live in.
 | **agent row already live as a chat** → suppressed, never doubled | JAIL | `compose/compose.go:559-562,568` | |
 | **workflow / SDK background (claude)** → `IsBG`, hidden from DefaultView, visible under `-a` | JAIL | `index/claude.go:41-44,83-95`, `compose/compose.go:725-736` | B2 |
 | **workflow / SDK background (codex sub-thread)** → `thread_source != user` → not `Listed()` | JAIL | `store/codexstate.go:44-46,252` | B2 |
-| **squatter socket** (a session whose name ≠ its socket) → never a chat row | JAIL+tmux | `check_command.go:181-203`; name-sync `cc-name-sync.sh:172` | |
+| **squatter socket** (a session whose name ≠ its socket) → never a chat row | JAIL+tmux | `check_command.go:181-203`; naming `gather/labels.go:36-56` | |
 | **vsct bunker chat** → `vsct`/`revive` sockets excluded from the probe; open uses `exec` | JAIL+tmux | `gather/tmuxprobe.go:356-361`, `pipeline.go:666-668`, `action/synth.go:290-310` | |
 | **hidden row** → excluded from DefaultView, counted in `HiddenCount`, shown under `-H` | JAIL | `compose/compose.go:660-673,708-716,738-747` | B2, B3 |
 | **empty row** (size 0 / 0 prompts) → suppressed from DefaultView, counted in `SuppressedCount` | JAIL | `compose/compose.go:725-736` | |
@@ -243,7 +266,7 @@ tonight's four bugs all live in.
 | `hide <id>` for an id in NEITHER table → `chat %q is not indexed`, rc 1 | JAIL | `hide/manager.go:138-165` | **B3** |
 | Picker hide failure surfaces as `cc-fleet ls` rc 1, not a silent drop | JAIL | `commands.go:129-132,296-315` | **B3** |
 | `unhide` maps a Codex member id to its lineage root before deleting | JAIL | `hide/manager.go:113-131` | B2 |
-| Hide by lineage ROOT vs `cx-hide.sh` hiding by RAW rollout id | JAIL+sh | `compose/compose.go:116,645` vs `cx-hide.sh:147` | **B2** |
+| Hide by lineage ROOT vs a RAW rollout id written by an older writer | JAIL | `compose/compose.go:116,645`, `compose/compose_test.go:904-950` | **B2** |
 | `--exit` finisher: `/exit` (cc) or `/quit` (cx), poll, kill-pane, sweep crumbs | JAIL+tmux | `hide/finisher.go:104-131` | |
 | Post-exit re-hide keeps the ORIGINAL `hidden_at` | JAIL | `hide/finisher.go:149-167` | |
 | Teammate reap: `new` → kill-server, `pane` → kill-pane, never kill-server | JAIL+tmux | `hide/finisher.go:181-245` | |
@@ -403,20 +426,7 @@ still wires the legacy one.
 | `swap-log` single line and stdin-drain forms | JAIL+sh | `cc-db.sh:305-321` | |
 | `migrate` idempotent, renames legacy files aside | JAIL+sh | `cc-db.sh:323-366` | |
 | Degraded mode: no `sqlite3` → every read/write falls back to the flat files | JAIL+sh | `cc-db.sh:51,17-18` | |
-| `cc-hide.sh` id chain: env session id (only if a transcript exists) → pane crumb → socket crumb | JAIL+sh | `cc-hide.sh:31-56` | |
-| `cc-hide.sh` refuses when the id is not uuid-shaped (no newest-transcript fallback) | JAIL+sh | `cc-hide.sh:47-56` | |
-| `cc-hide.sh --exit` reaps `new` then `pane` children, then kill-PANE (not kill-server) | JAIL+tmux | `cc-hide.sh:64-115` | |
-| `cx-hide.sh` `$TMUX` ancestry recovery, trusted only for a `cx-*` socket | JAIL+sh | `cx-hide.sh:38-56` | |
-| `cx-hide.sh` cwd fallback when codex strips tmux entirely | JAIL+sh | `cx-hide.sh:66-103` | B1 |
-| `cx-hide.sh` hides by the RAW rollout id, not the lineage root | JAIL+sh | `cx-hide.sh:141-151` | **B2** |
-| `cx-hide.sh --exit` kill-PANE only | JAIL+tmux | `cx-hide.sh:161-183` | |
-| `cc-name-sync.sh --dry-run` prints, changes nothing | JAIL+sh | `cc-name-sync.sh:35-40,148-165` | B4 |
-| `cc-name-sync.sh` single-writer lock, no double run | JAIL+sh | `cc-name-sync.sh:44-52` | |
-| `cx_db_name` precedence: store `name` → `session_index` → first prompt | JAIL+sh | `cc-name-sync.sh:77-99` | **B4** |
-| `cx_db_name` birth window ±120s — a RESUMED thread cannot match | JAIL+sh | `cc-name-sync.sh:87` | **B1** |
-| `cx_rollout_for` has NO fallback: nothing within ±120s of pane birth → window left alone | JAIL+sh | `cc-name-sync.sh:105-124` | **B1** |
-| Claude window name from the 🔖 + medal scrape; conflicted split window left alone | JAIL+tmux | `cc-name-sync.sh:193-210` | |
-| Sessions are never renamed; squatters skipped | JAIL+tmux | `cc-name-sync.sh:172` | |
+| `/bb` and the Codex `$bb` skill both run `cc-fleet hide --self --exit` | JAIL+tmux | `bb.command.md`, `codex-skills/bb/SKILL.md`, `internal/hide/tmux_jail_test.go:150-240` | |
 | `cc-agent-open.sh` per-uuid takeover flock; loser exits 1 | JAIL+sh | `cc-agent-open.sh:18-31` | |
 | `cc-agent-open.sh` registry lookup by `sessionId` OR `id` prefix, both accounts | **REAL-SESSION** | `cc-agent-open.sh:52-68` | B3 |
 | `cc-agent-open.sh` routing: busy → attach, everything else → takeover | **REAL-SESSION** | `cc-agent-open.sh:107-125` | |
@@ -427,19 +437,13 @@ still wires the legacy one.
 | `cc-swap-chat.sh` no-transcript chat → fresh reboot, not a dead `--resume` | JAIL+sh | `cc-swap-chat.sh:79-90` | |
 | `cc-swap-chat.sh` per-pane swap flock, open-menu abort, `/exit` timeout refusal | JAIL+tmux | `cc-swap-chat.sh:134-186` | |
 | `cc-swap-chat.sh --then` trust-prompt handling, typed-render proof, submit confirm | **REAL-SESSION** | `cc-swap-chat.sh:204-260` | |
-| `cc-reap.sh` dry run classifies without touching anything | JAIL+tmux | `cc-reap.sh:34-40,192-194` | |
-| `cc-reap.sh` KEEP rules: attached, self, `cc-new-*`, busy, recent transcript write | JAIL+tmux | `cc-reap.sh:126-163` | |
-| `cc-reap.sh` fail-closed when the agents query fails or a crumb is missing | JAIL+tmux | `cc-reap.sh:53-69,167-182` | |
-| `cc-reap.sh` empty socket younger than 1h left alone (mid-startup) | JAIL+tmux | `cc-reap.sh:105-120` | |
-| `cc-archive.sh` dry run default; `--apply`, `--subagents`, `--older-than`, `--restore` | JAIL+sh | `cc-archive.sh:24-62` | |
-| `cc-archive.sh` re-checks liveness at run time, never from a cached list | JAIL+sh | `cc-archive.sh:8-11,80+` | |
 
 ## K — Installer and systemd units
 
 | flow | safety | expected behavior (source) | regression |
 | --- | --- | --- | --- |
 | `install.sh` dry run is the default | JAIL+sh | `install.sh:25,99,210-212` | |
-| `install.sh --apply` links the 9 fleet scripts into `~/.claude/bin` | JAIL+sh | `install.sh:107-112` | |
+| `install.sh --apply` links the 5 surviving fleet scripts into `~/.claude/bin` | JAIL+sh | `install.sh:117-137` | |
 | `install.sh` links `chat/*.command.md` → `chat/*.md`, plus `chat/self/` | JAIL+sh | `install.sh:124-138` | |
 | `install.sh` links codex skills into `~/.agents/skills` | JAIL+sh | `install.sh:141-150` | |
 | `install.sh` backs up a real file as `.pre-professor-<ts>` | JAIL+sh | `install.sh:69-79` | |
@@ -447,9 +451,11 @@ still wires the legacy one.
 | `install.sh` rewrites (never appends a second) `~/.zshrc` source line | JAIL+sh | `install.sh:180-206` | |
 | `install.sh` sources the LEGACY `cc-fleet.zsh`, not the shim, and installs no binary | JAIL+sh | `install.sh:181` vs `CUTOVER.md:44-55` | |
 | systemd units skipped cleanly where `systemctl --user` is absent | JAIL+sh | `install.sh:160-177` | |
-| `cc-name-sync.path` fires on `~/.codex/session_index.jsonl` modification | **REAL-SESSION** | `systemd/cc-name-sync.path` | **B4** |
-| `cc-name-sync.timer` 2-min drift converge | JAIL+sh | `systemd/cc-name-sync.timer` | |
-| `cc-name-sync.service` `ExecStart` points at `~/.claude/bin/cc-name-sync.sh` | JAIL+sh | `systemd/cc-name-sync.service` + `install.sh:107` | |
+| `cc-fleet-name-sync.path` fires on `~/.codex/session_index.jsonl` modification | **REAL-SESSION** | `systemd/cc-fleet-name-sync.path` | **B4** |
+| `cc-fleet-name-sync.timer` 2-min drift converge | JAIL+sh | `systemd/cc-fleet-name-sync.timer` | |
+| `cc-fleet-name-sync.service` `ExecStart` runs the BINARY, never a `.sh` | JAIL+sh | `systemd/cc-fleet-name-sync.service` | |
+| `install.sh` retires the `cc-name-sync.*` units and the ported satellites' links | JAIL+sh | `tests/install-fixtures.sh:138-156`, `install.sh:117-129` | |
+| `install.sh` rewires the `/bb` UserPromptSubmit hook to `cc-fleet bb` (jq, backup, uninstall) | JAIL+sh | `tests/install-fixtures.sh:157-190`, `install.sh:196-262` | |
 
 ---
 
@@ -470,8 +476,8 @@ they count as covered.
 7. Two codex chats born in the SAME directory within the birth window.
 8. Codex approval / plan-overlay modals during an inject.
 9. Codex composer tall-message truncation (the false-green class).
-10. `cx-hide.sh --exit` `/quit` flush.
-11. `cc-name-sync` converging a live cx window name onto the VS Code tab.
+10. `cc-fleet hide --self --exit` `/quit` flush on a REAL codex seat.
+11. `cc-fleet name-sync` converging a live cx window name onto the VS Code tab.
 12. Codex-origin `chat.sh` signature via ancestry recovery.
 13. `chat_ls` state=`busy` for a genuinely generating codex pane.
 14. `cx` launcher self-switch when already inside its own server.
@@ -488,7 +494,7 @@ they count as covered.
     same live chats. 22 checks, all green. Re-run on any engine upgrade —
     `ask` is only as true as the transcript shapes both engines write.
 
-**Needs a real `claude` process (13):**
+**Needs a real `claude` process (14):**
 16. Agent row: a real non-primary-config-dir claude with `--session-id`.
 17. Agent takeover through `cc-agent-open.sh` (`claude agents --json`).
 18. The daemon-agent guard on the resume-inject path (`chat.sh:1017-1026`).
@@ -502,6 +508,10 @@ they count as covered.
 26. `[Pasted text #N]` collapse in a real Claude composer.
 27. Dim-SGR placeholder vs a real draft (mash guard).
 28. Selector/permission modal + `chat.sh modal deny`.
+28b. `cc-fleet reap`'s busy probe against the REAL `claude agents --json` output
+     — the jail stubs that binary with `[]`, which proves the fail-closed
+     plumbing but not the JSON shape a live daemon emits. A shape change would
+     read as "nobody is busy", so re-run this on any Claude Code upgrade.
 
 **Needs real multi-account state (4):**
 29. `_cc_label` reading `oauthAccount.emailAddress` per account.
@@ -534,12 +544,11 @@ they count as covered.
    `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
    `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
    off-roster values upstream, so launches stay correct; the divergence is dormant, not dead.
-3. **`bb.command.md` documents `kill-server`**, but `cc-hide.sh:88-109` deliberately does
-   kill-PANE (and the doc's claim would take split siblings down). Stale contract.
-4. **`install.sh:181` wires the legacy `cc-fleet.zsh`** and installs neither the Go binary nor
-   `cc-fleet/shim/cc-fleet.zsh`; `install.sh:107` links the pre-cutover `cc-hide.sh`/`cx-hide.sh`
-   rather than the `exec cc-fleet hide --self` delegates `CUTOVER.md:69-84` specifies. This is
-   the cutover decision itself — flips only on the owner's word.
+3. **`bb.command.md` documents `kill-server`**, but `internal/hide/finisher.go` deliberately
+   does kill-PANE (and the doc's claim would take split siblings down). Stale contract.
+4. **`cc-fleet.zsh` stays in the bundle unsourced** as the parity checker's shadow oracle
+   (`internal/check/legacy.go`). Its retirement is the cutover decision itself — it flips only on
+   the owner's word.
 5. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
 6. **CWD encoding divergence:** `index/index.go:307` replaces only path separators, while
@@ -574,10 +583,10 @@ state, and live-vs-indexed disagreement.
 | --- | --- | --- |
 | 1 | **Live codex → indexed row join** (`compose/compose.go:492-513`) | The join walks path → resolver ThreadID (`liveCodexID`); a process neither resolves is still a guess. Every Codex row bug passes through here. |
 | 2 | **Store-only thread lineage** (`index/codexstate.go:98-130`) | A resumed store-only thread is given itself as its lineage root, so it can never merge with the conversation it continues. Hides, names and prompt counts all split. |
-| 3 | **Codex name precedence across three writers** (`index/index.go`, `cc-name-sync.sh:77-99`, `naming/naming.go`) | Name provenance (`cx_names.source`/`renamed_at`, schema v4) settles store-vs-file, but three walkers still differ on lineage breadth, and `reloadCxNames` still wipes and re-folds in two transactions. |
+| 3 | **Codex name precedence across two writers** (`index/index.go`, `naming/naming.go`) | Name provenance (`cx_names.source`/`renamed_at`, schema v4) settles store-vs-file, but three walkers still differ on lineage breadth, and `reloadCxNames` still wipes and re-folds in two transactions. |
 | 4 | **Agent-row identity** (`gather/agents.go:12-69` → `compose/compose.go:541-590` → `hide/manager.go:138-165`) | An agent row is the only kind whose ID can exist with no index row behind it. Every id-keyed operation must vouch an engine for it; a new call site that forgets recreates the silent-refusal bug. |
 | 5 | **Hide across the two writers** (`shared/shared.go:193-277`, `cc-db.sh:106-148`, `chat.sh:1100-1106`) | Four readers with three different precedence rules (union / file-wins / db-only). A hide that half the fleet honours is exactly how a chat "comes back". |
-| 6 | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `cc-portable.sh` `cx_thread_id`, `cc-name-sync.sh:87`) | The argv `resume <uuid>` rung now leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window, and the failure mode differs per caller. |
+| 6 | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `cc-portable.sh` `cx_thread_id`) | The argv `resume <uuid>` rung now leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window, and the failure mode differs per caller. |
 | 7 | **Live-vs-indexed refresh race in the picker** (`pipeline.go:315-424`, `ui/model.go:247-271`) | Three snapshots stream into an open TUI while the user is toggling hides. A row that changes identity between frames takes the pending hide with it. |
 | 8 | **`collapseLiveServers` + `ServerCount`** (`compose/compose.go:759-803`) | Silently merges rows by `engine+ID`. Two genuinely different chats that resolve to the same id (see #1) disappear into one row; the loser is unreachable. |
 | 9 | **`--exit` finisher choreography** (`hide/finisher.go:94-245`) | Detached, delayed, and it re-asserts a hide AFTER an index refresh. It races the engine's own transcript flush and reaps teammates by an id that may already have been canonicalized. |

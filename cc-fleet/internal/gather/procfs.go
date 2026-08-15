@@ -39,6 +39,14 @@ type ProcBirth interface {
 	Birth(pid int) (int64, error)
 }
 
+// ProcMemory is the optional ProcFS extension that reports a process's
+// resident set size in kilobytes. Only the reaper needs it — the RAM a socket
+// holds is the whole reason to reap one — so a ProcFS without it stays usable
+// everywhere else and the reaper reports no RAM rather than refusing to run.
+type ProcMemory interface {
+	RSSKB(pid int) (int64, error)
+}
+
 // RealProcFS reads a Linux proc filesystem. Root defaults to /proc.
 type RealProcFS struct {
 	Root string
@@ -160,6 +168,26 @@ func (proc RealProcFS) Birth(pid int) (int64, error) {
 		return 0, err
 	}
 	return info.ModTime().Unix(), nil
+}
+
+// RSSKB returns a process's resident set size in kilobytes, read from
+// /proc/<pid>/statm — the cheapest of the three files that carry it (one line,
+// no parsing beyond a field split) and the one whose page counts scale with
+// the kernel's own page size rather than assuming 4 KiB.
+func (proc RealProcFS) RSSKB(pid int) (int64, error) {
+	content, err := os.ReadFile(proc.path(pid, "statm"))
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(content))
+	if len(fields) < 2 {
+		return 0, fmt.Errorf("malformed proc statm for pid %d", pid)
+	}
+	pages, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse resident pages for %d: %w", pid, err)
+	}
+	return pages * int64(os.Getpagesize()) / 1024, nil
 }
 
 func (proc RealProcFS) path(pid int, element string) string {

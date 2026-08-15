@@ -7,3 +7,12 @@ node_modules/
 !.env.example
 /tmp/
 ENGINES/wave-walker/engine/tmp/
+.worktrees/
+# Source-fetched skills are cloned at install from their own public repos
+# (blueprint/templates/skills/sources.json) and are NEVER vendored here: a
+# tracked copy is exactly the silent drift the sources.json law exists to
+# prevent — and each carries its own upstream LICENSE with its author's name,
+# which the leak gate correctly refuses for this repo.
+.claude/skills/
+# Local Codex artifacts compiled from the Claude sources by build-codex.mjs.
+.codex/skills/

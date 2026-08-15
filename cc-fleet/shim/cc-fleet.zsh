@@ -18,6 +18,11 @@ _cc_fleet_eval() {
   rc=$?
   if (( rc == 0 )) && [[ -n "$output" ]]; then
     eval "$output"
+    local exit_status=$?
+    # An action that ATTACHED a chat handed this terminal to the harness, so the terminal ends
+    # with it. Escaping the picker emits no line at all and never reaches here — Esc still
+    # lands back at the prompt.
+    [[ "$output" != *tmux* ]] || _cc_own_terminal "$exit_status"
   fi
   return "$rc"
 }
@@ -91,15 +96,24 @@ _cc_run() {
     # unknown option, and the tmux session dies at birth — which reads as "the launcher doesn't
     # open" (cc-fleet.zsh:108-113).
     run+=" claude ${(j: :)${(@q)CC_AUTONOMY_FLAGS}} ${(j: :)${(@q)@}}"
-    if [[ "$in_tmux" == "0" ]]; then tmux -L "$sock" new-session -s "$sock" "$run"
+    # A bare terminal hands itself to the chat (_cc_own_terminal); a bunker pane is EXEC'd into
+    # the viewport, which is the same law by another route. Inside another chat, neither: a
+    # nested viewport that closed on exit would take its host chat's pane down with it.
+    if [[ "$in_tmux" == "0" ]]; then tmux -L "$sock" new-session -s "$sock" "$run"; _cc_own_terminal $?
     elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" new-session -s "$sock" "$run"   # viewport dies with the tab
-    else TMUX= tmux -L "$sock" new-session -s "$sock" "$run"
+    else
+      TMUX= tmux -L "$sock" new-session -s "$sock" "$run"
+      # Reached inside another chat, where _cc_own_terminal declines by design. It is called
+      # anyway as the net under the exec above: a bunker pane that somehow spawned its viewport
+      # as a CHILD would otherwise outlive the chat and sit there as a bare prompt.
+      _cc_own_terminal $?
     fi
   else
     local -a envargs=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
     if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
     if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
     env "${envargs[@]}" claude "${CC_AUTONOMY_FLAGS[@]}" "$@"
+    _cc_own_terminal $?
   fi
 }
 _cc_primary() { local n; n="$(bash "$_CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
@@ -126,7 +140,9 @@ cx() {
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab
-  else TMUX= tmux -L "$sock" attach
+  else
+    TMUX= tmux -L "$sock" attach
+    _cc_own_terminal $?   # bare terminal: the chat took it, the chat closes it
   fi
 }
 
@@ -198,6 +214,60 @@ cc-swap() {
 # on their own cc-* servers and are untouched. Never true inside a chat pane or a plain
 # shell — those keep child-spawned clients (a Bash-tool shell must never be exec'd away).
 _cc_in_bunker() { [[ "${TMUX%%,*}" == */vsct ]] }
+
+# _cc_own_terminal <status> — the terminal belongs to the harness that was typed into it, so
+# a harness that ENDS takes the terminal with it (the VS Code tab closes) instead of falling
+# back to a prompt nobody asked for. Three guards keep it from eating anything else: only an
+# interactive shell on a real tty is ever ended, so a script, a Bash-tool shell and a piped
+# run return untouched; only a caller that actually ran a harness calls it, so the picker
+# (cc-ls) still escapes to the prompt on Esc; and a NON-ZERO exit holds the terminal for a
+# keypress first — a crash the tab swallowed is a crash that never happened. zsh's refusal to
+# exit while jobs are suspended is the right refusal, and is left alone.
+_cc_own_terminal() {
+  local exit_status="${1:-0}"
+  [[ -o interactive && -t 0 && -t 1 ]] || return "$exit_status"
+  # A bare terminal or a bunker pane exists to hold a harness, so it goes when the harness
+  # goes. Inside any OTHER tmux — a chat pane, an ad-hoc work window — the terminal is
+  # someone else's and closing it would take the host down too.
+  [[ -z "$TMUX" ]] || _cc_in_bunker || return "$exit_status"
+  if (( exit_status )); then
+    print -u2 -- "cc-fleet: harness exited $exit_status — press any key to close this terminal"
+    read -k1 -s
+  fi
+  exit "$exit_status"
+}
+
+# _cc_tui_call — true when these arguments make the harness take over the screen. A print,
+# version or subcommand call writes its answer INTO this terminal and hands it back, so that
+# terminal is not the harness's to close. Resume flags are absent on purpose: `claude -r` and
+# `codex resume` open the full TUI and own the terminal like any other chat.
+_cc_tui_call() {
+  local argument
+  for argument in "$@"; do
+    case "$argument" in
+      -p|--print|-v|--version|-h|--help|doctor|update|install|mcp|config|migrate-installer|login|logout|exec|proto|apply)
+        return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# A harness typed straight into a terminal closes that terminal on exit, exactly as a fleet
+# chat does. `command` keeps the wrapper from recursing, and only this shell's own typing is
+# affected — cc-fleet, hooks and scripts exec the binary and never see these functions.
+claude() {
+  command claude "$@"
+  local exit_status=$?
+  _cc_tui_call "$@" && _cc_own_terminal "$exit_status"
+  return "$exit_status"
+}
+
+codex() {
+  command codex "$@"
+  local exit_status=$?
+  _cc_tui_call "$@" && _cc_own_terminal "$exit_status"
+  return "$exit_status"
+}
 
 # _cc_selfswitch is retained because cx() depends on the legacy same-server
 # recursion guard.

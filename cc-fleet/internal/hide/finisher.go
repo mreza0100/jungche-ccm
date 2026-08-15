@@ -21,6 +21,9 @@ const (
 	defaultExitDelay    = 1500 * time.Millisecond
 	defaultPollEvery    = time.Second
 	defaultPollAttempts = 20
+	// bunkerSocket is the one tmux server that hosts terminal tabs rather than
+	// chats (vsct.sh), so it is the only place a chat's viewport can be a pane.
+	bunkerSocket = "vsct"
 )
 
 type indexRefresher struct {
@@ -105,6 +108,10 @@ func (finisher *Finisher) Run(
 		return err
 	}
 
+	// Read the viewports BEFORE the chat dies: its clients vanish with its server,
+	// and they are the only evidence of which panes were watching it.
+	viewports := finisher.viewportPanes(ctx, args.SocketPath)
+
 	command := "/exit"
 	if args.Engine == CodexEngine {
 		command = "/quit"
@@ -119,6 +126,7 @@ func (finisher *Finisher) Run(
 		}
 	}
 	_ = finisher.tmux.KillPane(ctx, args.SocketPath, args.PaneID)
+	finisher.closeViewports(ctx, viewports)
 
 	var cleanupErrors []error
 	for _, crumb := range []string{
@@ -141,6 +149,52 @@ func (finisher *Finisher) Run(
 		}
 	}
 	return errors.Join(cleanupErrors...)
+}
+
+// viewportPanes returns the bunker panes this chat is being watched through.
+//
+// The join is the TTY: a viewport client RUNS IN a bunker pane, so the client's
+// terminal and the pane's terminal are the same device. That holds for both
+// shapes a viewport comes in — the pane whose shell was EXEC'd into the client,
+// and the pane whose shell merely spawned it as a child — which is why the tty
+// is used instead of inspecting processes. Only the second shape needs closing:
+// the exec'd pane dies with the client on its own. Any failure returns nothing,
+// because a chat that closes without taking its tab is far better than a hide
+// that dies trying.
+func (finisher *Finisher) viewportPanes(
+	ctx context.Context,
+	chatSocketPath string,
+) []string {
+	ttys, err := finisher.tmux.ClientTTYs(ctx, chatSocketPath)
+	if err != nil || len(ttys) == 0 {
+		return nil
+	}
+	bunkerPath := filepath.Join(finisher.paths.tmuxDir, bunkerSocket)
+	panes, err := finisher.tmux.PanesByTTY(ctx, bunkerPath)
+	if err != nil || len(panes) == 0 {
+		return nil
+	}
+	var viewports []string
+	for _, tty := range ttys {
+		if paneID, watching := panes[tty]; watching {
+			viewports = append(viewports, paneID)
+		}
+	}
+	return viewports
+}
+
+// closeViewports takes down the panes that existed only to watch the chat that
+// just ended. A pane the client's exit already closed is simply not there, and
+// killing the last pane of a bunker ends its session — which is what closes the
+// terminal tab.
+func (finisher *Finisher) closeViewports(ctx context.Context, viewports []string) {
+	if len(viewports) == 0 {
+		return
+	}
+	bunkerPath := filepath.Join(finisher.paths.tmuxDir, bunkerSocket)
+	for _, paneID := range viewports {
+		_ = finisher.tmux.KillPane(ctx, bunkerPath, paneID)
+	}
 }
 
 // recordPostExitHide re-asserts the hide after the post-exit index refresh so

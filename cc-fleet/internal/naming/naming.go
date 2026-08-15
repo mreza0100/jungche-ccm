@@ -140,7 +140,13 @@ func FlattenPromptText(content json.RawMessage) string {
 	texts := make([]string, 0, len(rawBlocks))
 	for _, rawBlock := range rawBlocks {
 		var block textBlock
-		if err := json.Unmarshal(rawBlock, &block); err != nil || block.Type != "text" {
+		if err := json.Unmarshal(rawBlock, &block); err != nil {
+			continue
+		}
+		// "text" is the Claude transcript block; "input_text" is the Codex
+		// response_item user block — the only record current Codex writes a
+		// submitted prompt into.
+		if block.Type != "text" && block.Type != "input_text" {
 			continue
 		}
 		texts = append(texts, block.Text)

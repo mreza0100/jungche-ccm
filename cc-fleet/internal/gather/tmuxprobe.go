@@ -22,6 +22,15 @@ type TmuxClient interface {
 	ListPanes(ctx context.Context, socket string) ([]Pane, error)
 }
 
+// PaneCapturer is the optional TmuxClient extension that reads a pane's
+// visible screen. Only the claude half of window-name convergence needs it —
+// the 🔖 label lives on the statusline and nowhere else — so a client that
+// cannot capture stays usable for every other probe, and the convergence
+// simply plans no claude rename rather than planning a wrong one.
+type PaneCapturer interface {
+	CapturePane(ctx context.Context, socket, paneID string) (string, error)
+}
+
 // ErrServerGone marks a probe that failed because the socket has no server
 // behind it — a chat that ended. It is the most ordinary outcome there is: the
 // socket file outlives the server, so every pass finds leftovers. Reporting it
@@ -74,6 +83,7 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		"#{pane_id}",
 		"#{?session_attached,1,0}",
 		"#{pane_current_path}",
+		"#{pane_current_command}",
 	}, "\x1f")
 	command := exec.CommandContext(
 		ctx,
@@ -140,8 +150,8 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		// tmux renders the control separator in a format string as the
 		// printable escape \037, keeping pane titles from introducing raw
 		// line-protocol control bytes.
-		fields := strings.SplitN(line, `\037`, 9)
-		if len(fields) != 9 {
+		fields := strings.SplitN(line, `\037`, 10)
+		if len(fields) != 10 {
 			return nil, fmt.Errorf(
 				"tmux %s returned %d pane fields in %q",
 				socket,
@@ -163,16 +173,17 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 			)
 		}
 		panes = append(panes, Pane{
-			Socket:      socket,
-			SessionName: fields[0],
-			WindowID:    fields[1],
-			WindowName:  fields[2],
-			PaneTitle:   fields[3],
-			CurrentPath: fields[8],
-			TTY:         fields[4],
-			PID:         pid,
-			PaneID:      fields[6],
-			Attached:    attached,
+			Socket:         socket,
+			SessionName:    fields[0],
+			WindowID:       fields[1],
+			WindowName:     fields[2],
+			PaneTitle:      fields[3],
+			CurrentPath:    fields[8],
+			CurrentCommand: fields[9],
+			TTY:            fields[4],
+			PID:            pid,
+			PaneID:         fields[6],
+			Attached:       attached,
 		})
 	}
 	return panes, nil
@@ -225,6 +236,46 @@ func parseLegacyPaneOutput(socket string, output []byte) ([]Pane, error) {
 		})
 	}
 	return panes, nil
+}
+
+// CapturePane returns one pane's visible screen inside the same jailed tmux
+// namespace used by ListPanes. Joined wrapped lines (-J) match how the label
+// resolver reads a statusline, so a label wrapped by a narrow pane still
+// reads whole.
+func (tmux CommandTmux) CapturePane(
+	ctx context.Context,
+	socket, paneID string,
+) (string, error) {
+	binary := tmux.Binary
+	if binary == "" {
+		binary = "tmux"
+	}
+	command := exec.CommandContext(
+		ctx,
+		binary,
+		"-L",
+		socket,
+		"capture-pane",
+		"-t",
+		paneID,
+		"-p",
+		"-J",
+	)
+	command.Env = append(
+		os.Environ(),
+		"TMUX=",
+		"TMUX_TMPDIR="+tmux.TmuxTmpDir,
+	)
+	output, err := command.Output()
+	if err != nil {
+		return "", fmt.Errorf(
+			"capture tmux pane %s %s: %w",
+			socket,
+			paneID,
+			err,
+		)
+	}
+	return string(output), nil
 }
 
 // RenameWindow applies one indexed Codex window-name convergence inside the
@@ -386,9 +437,17 @@ func probeTmux(
 	return result, nil
 }
 
-func isChatSocketName(name string) bool {
+// IsChatSocketName reports whether a tmux socket belongs to the chat fleet.
+// It is the single answer to that question (K3): the picker's probe and the
+// reaper's sweep must agree on which sockets are chats, or one of them acts on
+// a socket the other cannot see.
+func IsChatSocketName(name string) bool {
 	if strings.HasPrefix(name, "vsct") || strings.HasPrefix(name, "revive") {
 		return false
 	}
 	return strings.HasPrefix(name, "cc-") || strings.HasPrefix(name, "cx-")
+}
+
+func isChatSocketName(name string) bool {
+	return IsChatSocketName(name)
 }

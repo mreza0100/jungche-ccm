@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unicode"
 
+	"hostops/cc-fleet/internal/naming"
 	"hostops/cc-fleet/internal/paths"
 
 	"golang.org/x/sync/errgroup"
@@ -407,31 +407,14 @@ func (resolver *Resolver) resolveCxWindow(want string, panes []Pane) Outcome {
 	}
 }
 
+// bookmarkLabel and containsMedal read the statusline through naming, the one
+// package that owns that scrape (K3).
 func bookmarkLabel(capture string) string {
-	label := ""
-	for _, line := range strings.Split(capture, "\n") {
-		if !strings.Contains(line, "🔖") || !containsMedal(line) {
-			continue
-		}
-		index := strings.LastIndex(line, "🔖")
-		candidate := strings.TrimLeft(line[index+len("🔖"):], " ")
-		if separator := strings.Index(candidate, "│"); separator >= 0 {
-			candidate = candidate[:separator]
-		}
-		label = strings.TrimRightFunc(candidate, unicode.IsSpace)
-	}
-	return label
+	return naming.BookmarkLabel(capture)
 }
 
-// containsMedal reports whether a captured line carries an account medal, the
-// marker that tells a 🔖 label line apart from ordinary transcript text. 🍀 is
-// the retired account-4 medal: the account is gone, but chats labelled while it
-// was live still render it, and without it here those chats are unresolvable.
 func containsMedal(value string) bool {
-	return strings.Contains(value, "🥇") ||
-		strings.Contains(value, "🥈") ||
-		strings.Contains(value, "🥉") ||
-		strings.Contains(value, "🍀")
+	return naming.ContainsMedal(value)
 }
 
 func isClaudePaneCommand(command string) bool {

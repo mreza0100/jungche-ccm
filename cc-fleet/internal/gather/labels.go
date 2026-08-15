@@ -1,0 +1,86 @@
+package gather
+
+import (
+	"context"
+	"strings"
+	"sync"
+
+	"hostops/cc-fleet/internal/naming"
+)
+
+// labelCaptureLimit bounds how many capture-pane forks run at once. Every live
+// claude pane is captured on every gather pass, and an unbounded fan-out over a
+// forty-chat fleet is forty simultaneous forks for a name convergence nobody is
+// waiting on.
+const labelCaptureLimit = 8
+
+// PaneLabel is one claude pane's 🔖 statusline label, or the record that its
+// capture could not be read. Failed is not "no label": a capture that failed
+// says nothing about the pane, and a window holding one must keep the name it
+// has rather than take a sibling pane's.
+type PaneLabel struct {
+	Socket   string
+	WindowID string
+	PaneID   string
+	Label    string
+	Failed   bool
+}
+
+// CaptureClaudeLabels reads the 🔖 label off every live claude pane.
+//
+// A pane is skipped outright when it cannot carry a chat's label: a squatter
+// (its session name is not the socket name — session name IS the chat
+// discriminator everywhere in the fleet), or a viewport (a pane running tmux
+// against another chat's socket, whose screen is the INNER chat's statusline).
+func CaptureClaudeLabels(
+	ctx context.Context,
+	capturer PaneCapturer,
+	panes []Pane,
+) []PaneLabel {
+	if capturer == nil {
+		return nil
+	}
+	candidates := make([]Pane, 0, len(panes))
+	for _, pane := range panes {
+		if !strings.HasPrefix(pane.Socket, "cc-") {
+			continue
+		}
+		if pane.SessionName != pane.Socket || pane.WindowID == "" {
+			continue
+		}
+		if pane.CurrentCommand == "tmux" {
+			continue
+		}
+		candidates = append(candidates, pane)
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	labels := make([]PaneLabel, len(candidates))
+	var waitGroup sync.WaitGroup
+	slots := make(chan struct{}, labelCaptureLimit)
+	for index, pane := range candidates {
+		index, pane := index, pane
+		waitGroup.Add(1)
+		slots <- struct{}{}
+		go func() {
+			defer waitGroup.Done()
+			defer func() { <-slots }()
+			result := PaneLabel{
+				Socket:   pane.Socket,
+				WindowID: pane.WindowID,
+				PaneID:   pane.PaneID,
+			}
+			capture, err := capturer.CapturePane(ctx, pane.Socket, pane.PaneID)
+			if err != nil {
+				result.Failed = true
+			} else {
+				result.Label = naming.BookmarkLabel(capture)
+			}
+			labels[index] = result
+		}()
+	}
+	waitGroup.Wait()
+	return labels
+}

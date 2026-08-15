@@ -130,8 +130,8 @@ func setupCodexStateFixture(t *testing.T) codexStateFixture {
 	)
 	writeLines(t, fileRollout,
 		`{"type":"session_meta","payload":{"id":"file-thread","thread_source":"user","cwd":"/work/kept"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"kept first prompt"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"kept second prompt"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"kept first prompt"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"kept second prompt"}]}}`,
 	)
 	// The rollout file alone looks like a top-level chat; only the state store
 	// knows Codex spawned it as a subagent.
@@ -140,7 +140,7 @@ func setupCodexStateFixture(t *testing.T) codexStateFixture {
 		"rollout-2026-01-01T00-00-02-hidden-subagent.jsonl",
 	),
 		`{"type":"session_meta","payload":{"id":"hidden-subagent","cwd":"/work/kept"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"delegated work"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"delegated work"}]}}`,
 	)
 	writeLines(t, filepath.Join(codexRoot, "session_index.jsonl"),
 		`{"id":"file-thread","thread_name":"SESSION INDEX NAME"}`,
@@ -568,8 +568,8 @@ func TestCodexStateRowYieldsToTheRolloutFileWhenItArrives(t *testing.T) {
 
 	writeLines(t, declared.Path,
 		`{"type":"session_meta","payload":{"id":"store-only","thread_source":"user","cwd":"/work/paginated"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"paginated first prompt"}}`,
-		`{"type":"event_msg","payload":{"type":"user_message","message":"paginated second prompt"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"paginated first prompt"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"paginated second prompt"}]}}`,
 	)
 	arrived, err := indexer.Run(ctx, Options{})
 	if err != nil {
@@ -711,8 +711,8 @@ func setupMachineSpawnedFixture(t *testing.T) string {
 		writeLines(t, path,
 			`{"type":"session_meta","payload":{"id":"`+threads[index].ID+
 				`","thread_source":"user","cwd":"`+threads[index].CWD+`"}}`,
-			`{"type":"event_msg","payload":{"type":"user_message","message":`+
-				strconv.Quote(threads[index].FirstUserMessage)+`}}`,
+			`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":`+
+				strconv.Quote(threads[index].FirstUserMessage)+`}]}}`,
 		)
 	}
 	buildCodexState(t, filepath.Join(codexRoot, "state_5.sqlite"), threads...)

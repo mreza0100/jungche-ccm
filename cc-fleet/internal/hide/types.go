@@ -71,6 +71,8 @@ type TmuxClient interface {
 	SendLine(ctx context.Context, socketPath, paneID, line string) error
 	KillPane(ctx context.Context, socketPath, paneID string) error
 	KillServer(ctx context.Context, socketPath string) error
+	ClientTTYs(ctx context.Context, socketPath string) ([]string, error)
+	PanesByTTY(ctx context.Context, socketPath string) (map[string]string, error)
 }
 
 // ExitSpawner starts the detached internal finisher.

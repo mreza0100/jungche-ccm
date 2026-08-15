@@ -70,20 +70,16 @@ refresh — no separate marker to keep in sync.
 | `cc-portable.sh` | `~/.claude/bin/cc-portable.sh` | the GNU/BSD seam — every question whose answer differs between Linux and macOS (`stat`, `date`, `find -printf`, `flock`, `setsid`, `timeout`, `free`, `ss`, `/proc`) is asked here once, so the rest of the bundle is written twice-free. Sourced, not run |
 | `cc-fleet.zsh` | sourced from `~/.zshrc` | the whole fleet: `cc`/`cc1`…`cc3` launchers (each its own tmux server), `cc-swap`, and the `cc-ls` picker |
 | `cc-db.sh` | `~/.claude/bin/cc-db.sh` | the fleet's state store — one SQLite database at `~/.cc/fleet.db` holding the hide list, the primary account, spawned children, the chat index and the swap log |
-| `cc-hide.sh` | `~/.claude/bin/cc-hide.sh` | `/bb`'s engine — hide this chat from `cc-ls` then close it; **pane-aware**: kills only its own pane (never the shared server) and reaps the teammates it spawned |
-| `cx-hide.sh` | `~/.claude/bin/cx-hide.sh` | the **Codex** twin of `cc-hide.sh` — `/bb` for a `cx-*` chat, identified by rollout cwd since Codex passes no tmux context to its tool shell |
 | `cc-agent-open.sh` | `~/.claude/bin/cc-agent-open.sh` | `cc-ls`'s Enter-target for a chat locked by a live background agent: the takeover/attach chooser |
 | `cc-swap-chat.sh` | `~/.claude/bin/cc-swap-chat.sh` | `/swap`'s engine — reboot a running chat in place onto another account and/or flip its cache mode |
-| `cc-reap.sh` | `~/.claude/bin/cc-reap.sh` | reclaim RAM from the `cc-*` socket graveyard (dry-run by default; `--kill` reaps unattached orphans + stale socket files) |
-| `cc-archive.sh` | `~/.claude/bin/cc-archive.sh` | move hidden chats and old subagent transcripts out of the live pool, reversibly (dry-run by default; `--restore` puts one back) |
-| `cc-name-sync.sh` | `~/.claude/bin/cc-name-sync.sh` | the single writer of chat **window names** — codex windows follow the `session_index.jsonl` thread name (pane matched to its rollout by birth time, so same-directory chats keep their own names), claude windows follow the 🔖 statusline label; the window name is what the VS Code tab renders for codex and what `/chat:*` resolves codex chats by |
-| `systemd/` | `~/.config/systemd/user/` | `cc-name-sync` triggers: a **path unit** on `session_index.jsonl` (a codex rename reaches the tab in under a second) + a 2-min **timer** (claude `/rename` drift); `cc-ls` also fires the sync on every run |
+| `cx-recover.sh` | `~/.claude/bin/cx-recover.sh` | rebuild a Codex chat's conversation from its rollout when a resume comes up empty |
+| `systemd/` | `~/.config/systemd/user/` | `cc-fleet name-sync` triggers: a **path unit** on `session_index.jsonl` (a codex rename reaches the tab in under a second) + a 2-min **timer** (claude `/rename` drift); every `cc-ls` run converges the same names through the same engine pass |
 | `bb.command.md` | `~/.claude/commands/bb.md` | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned) |
 | `swap.command.md` | `~/.claude/commands/swap.md` | `/swap` slash command — reboot this chat onto another account, in place |
 | `chat/` | `~/.claude/commands/chat/` | the `chat:*` command family + its engine `chat.sh` |
 | `codex-skills/` | `~/.agents/skills/` | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈/🥉 account badge (the one piece that is still a manual merge — it edits a file you own) |
-| `tests/` | — | fixtures for the state store, the self-location resolver, the installer, the name sync, and the GNU/BSD seam |
+| `tests/` | — | fixtures for the state store, the self-location resolver, the installer, the hide path, and the GNU/BSD seam |
 
 ## Install
 
@@ -181,18 +177,24 @@ there's no session-dir graveyard to clean up. If Anthropic ever rotates a refres
 re-`/login` under that account's config dir (`CLAUDE_CONFIG_DIR=~/.claude2 claude`, then
 `/login`) — no other chat is affected.
 
-## Fleet management — `cc-ls`, `/bb`, `cc-reap`
+## Fleet management — `cc-ls`, `/bb`, `cc-fleet reap`
 
 The pieces above launch and bill chats; these manage the resulting fleet. They are **launcher-agnostic** — they work with any setup that runs each chat in its own `tmux -L cc-*` socket (`cc-fleet.zsh` is one such launcher) and a statusline that writes a `/tmp/cc-sid/<socket>` → transcript breadcrumb (`chmod 700` — the breadcrumbs are transcript paths and the name cache carries prompt text, not for other uids). The Professor statusline template (`blueprint/templates/statusline/statusline-command.sh`) already writes this breadcrumb, so installing it alongside these pieces is enough — no separate wiring needed.
 
 - **`cc-ls`** — one fzf list of every chat: `●` live tmux sessions (Enter attaches), `↻` resumable transcripts with no live tmux (Enter resumes in a fresh tmux), and `⚙` live background/forked agents — a `claude --bg` session, an RR brainer, a `/chat:new --detach` teammate — which have no tmux socket, so `--resume` refuses them; Enter instead opens the **takeover/attach chooser** (`cc-agent-open.sh`) — take the agent over fresh under the current primary account, or attach to the running process (see § Agent mode — takeover vs attach). `⌃T` re-sorts recent⇄prompts, `⌃R` rotates the project on top, `⌃X` hides⇄shows a chat. `cc-ls -a` shows all; `cc-ls --hidden` shows only hidden. **Hiding is permanent and unconditional** — a hidden chat stays gone whether it is finished, live, or being typed into right now, and only `⌃X` brings it back. The picker is the last thing `cc-ls` does, so a `⌃X` toggle is carried in `~/.claude/.cc-ls-hidden` and committed to the db by the *next* run; editing that file by hand between runs works for the same reason.
 - **`/bb`** (bye-bye) — hide THIS chat from `cc-ls` and close it. Pane-aware: it kills only its **own** pane (so a chat spawned beside others via `/chat:branch` or `/chat:new` never drops its neighbours) and reaps the teammates it spawned (pane teammates by `kill-pane`, detached `--detach` teammates by `kill-server`). Identifies the chat by `$CLAUDE_CODE_SESSION_ID`, so it never hides the wrong transcript on a shared socket. Closing types a real `/exit` into the pane (flushes the transcript, runs Stop hooks) and **polls** for the pane to close itself — up to 20s, since compaction can outlive a fixed grace — before a `kill-pane` backstop.
-- **`cc-reap`** — reclaim RAM from orphaned `cc-*` servers (a closed terminal tab detaches the client but leaves the server + its `claude` node alive). Dry-run report by default; `cc-reap --kill` reaps unattached orphans and removes stale socket files. KEEP guards protect more than just attached chats: a `cc-new-*` detached teammate is kept as `mate` (headless by design — its parent's `/bb` reaps it), and any session `claude agents --json` reports **busy** is kept as `busy` (deliberately detached, still grinding — socket maps to session via the `/tmp/cc-sid` breadcrumb, scanned across every configured account). Never touches an attached chat or your own socket.
+- **`cc-fleet reap`** — reclaim RAM from orphaned `cc-*`/`cx-*` servers (a closed terminal tab detaches the client but leaves the server + its `claude` process alive). Dry-run report by default; `cc-fleet reap --apply` reaps unattached orphans and removes stale socket files. KEEP guards protect far more than attached chats: a `cc-new-*` detached teammate is kept as `mate` (headless by design — its parent's `/bb` reaps it), a session `claude agents --json` reports **busy** is kept, a chat whose transcript was written in the last minute is kept as `active`, and a socket whose panes host anything that is **not a chat** (a dev server, a build, an `uv` process) is kept as `hosts` — one socket on this machine carries a project's backend, cortex and frontend beside its chats. Never touches an attached chat or your own socket; when the busy query fails, every chat with a breadcrumb is skipped.
 
-- **`cc-archive`** — the fleet's disk valve. Hidden chats and old subagent transcripts get *moved*
-  out of the live pool, not deleted, so the picker and both CLIs stop seeing them while every byte
-  stays recoverable (`--restore <uuid>` puts one back). Dry-run by default; `--apply` acts. It
-  re-checks liveness at run time and refuses to archive a transcript whose chat is still running.
+- **`cc-fleet archive`** — the fleet's disk valve. Hidden chats and old subagent transcripts get
+  *moved* out of the live pool, not deleted, so the picker and both CLIs stop seeing them while
+  every byte stays recoverable (`cc-fleet archive --restore <uuid>` puts one back). Dry-run by
+  default; `--apply` acts. It re-checks liveness at run time and refuses to archive a transcript
+  whose chat is still running.
+
+- **`cc-fleet heal`** — repair a Codex thread whose history projection is wedged, so `codex resume`
+  opens it whole instead of amnesiac at its first prompt. Report by default; `--apply` rebuilds
+  every broken projection, and the resume path runs the one-thread form itself before it opens a
+  Codex seat.
 
 `install.sh --apply` puts all of these in place. `cc-ls` needs `fzf`; nothing else here needs a
 dependency beyond `sqlite3` (and the fleet degrades to flat files without it). Pairs naturally with

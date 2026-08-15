@@ -145,6 +145,15 @@ cc_pfiles() {
 # original process may name a socket that no longer holds it. Walks up to 12 ancestors so
 # a chat several shells deep still resolves; 12 is far past any real nesting and stops a
 # pid-reuse cycle from spinning.
+#
+# SPACE-DELIMITED, never a tab. tmux hands a control character in a format string back
+# as "_" unless the caller's environment carries a UTF-8 locale or merely defines $TMUX.
+# This function runs in the one place that has NEITHER — the tool shell a chat engine
+# spawns from a scrubbed environment (codex forwards only its core variables, and LANG
+# is not among them), reached precisely because $TMUX is absent. The split then never
+# happened, no pane pid ever matched, ancestry recovery answered "not in tmux", and
+# every codex-origin message went out UNSIGNED. pane_pid is digits and pane_id is %N,
+# so a space cannot be ambiguous.
 cc_pane_of() {
   _p="$1"; _n=0
   [ -n "$_p" ] || return 0
@@ -153,7 +162,7 @@ cc_pane_of() {
     for _s in "$_dir"/*; do
       [ -S "$_s" ] || continue
       _sk="${_s##*/}"
-      tmux -L "$_sk" list-panes -a -F '#{pane_pid}	#{pane_id}' 2>/dev/null | while IFS='	' read -r _pp _pi; do
+      tmux -L "$_sk" list-panes -a -F '#{pane_pid} #{pane_id}' 2>/dev/null | while read -r _pp _pi; do
         [ "$_pp" = "$_p" ] && { printf '%s\t%s\n' "$_sk" "$_pi"; break; }
       done | grep . && return 0
     done

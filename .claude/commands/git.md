@@ -1,0 +1,19 @@
+---
+name: git
+description: Gateway to gitter, the only agent allowed to run git WRITES — routes commit/push/pull/tag to gitter phases and forwards anything else git-related as freeform. Route ALL git WRITES here; read-only git (status/diff/log/show/rev-parse) runs directly.
+argument-hint: [commit|push|pull|tag|freeform request]
+---
+
+# Git — Gitter Gateway
+
+Talk to gitter: $ARGUMENTS
+
+Spawn the `gitter` agent (`subagent_type: gitter`) with a brief read off `$ARGUMENTS`; the user's words travel verbatim — gitter interprets them, this command never does.
+
+- starts with `commit` — `Phase: COMMIT`. The brief names the **exact paths** to commit and the verification that ran (which `/dev test` passed, or "docs only"). An unnamed path set is not a commit brief.
+- starts with `push` — `Phase: PUSH`, `$MESSAGE` set to the text after `push`, or empty
+- starts with `pull` — `Phase: PULL`
+- starts with `tag` — `Phase: TAG`, carrying the version
+- anything else, empty included — name no Phase; the brief opens `The user ran /git with the following request:` and quotes `$ARGUMENTS`. Gitter handles a Phase-less brief as freeform.
+
+`/git push`, `/git tag`, or a user request that plainly says to push / publish / release, is the only thing that may name `Phase: PUSH` or `Phase: TAG` — `agents/gitter.md` § Remote Publication Boundary governs, and this repo is public.

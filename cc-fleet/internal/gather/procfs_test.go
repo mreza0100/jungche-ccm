@@ -286,6 +286,7 @@ func TestWindowConvergenceClipsRunesOnlyHere(t *testing.T) {
 	renames := computeWindowRenames(
 		panes,
 		codex,
+		nil,
 		func(string) string { return longName },
 		nil,
 	)

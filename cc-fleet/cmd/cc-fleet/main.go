@@ -40,8 +40,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runIndex(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
+	case "dream":
+		return runDream(args[1:], os.Stdin, stdout, stderr)
 	case "revive":
 		return runRevive(args[1:], stdout, stderr)
+	case "reap":
+		return runReap(args[1:], stdout, stderr)
+	case "archive":
+		return runArchive(args[1:], stdout, stderr)
+	case "heal":
+		return runHeal(args[1:], stdout, stderr)
+	case "name-sync":
+		return runNameSync(args[1:], stdout, stderr)
+	case "bb":
+		return runBB(args[1:], os.Stdin, stdout, stderr)
 	case "legacy":
 		return runLegacy(args[1:], stdout, stderr)
 	case "hide":
@@ -377,6 +389,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
 	fmt.Fprintln(w, "  open      open an indexed chat by id")
 	fmt.Fprintln(w, "  headless  drive spawned chats: run, status, last, stream, inject, watch")
+	fmt.Fprintln(w, "  dream     build and inject repository memory organs")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  hide      hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide    remove a chat hide")
@@ -385,6 +398,11 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
 	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
 	fmt.Fprintln(w, "  revive    list resumable chats by project")
+	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
+	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
+	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
+	fmt.Fprintln(w, "  name-sync converge every live chat's tmux window name")
+	fmt.Fprintln(w, "  bb        the /bb UserPromptSubmit hook: hide and close this chat")
 	fmt.Fprintln(w, "  legacy    repair the hide carrier file against the shared store")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the cc-fleet version")

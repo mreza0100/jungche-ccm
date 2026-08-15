@@ -49,6 +49,7 @@ func New(dependencies Dependencies) (*Executor, error) {
 		runner:    runner,
 		stderr:    stderr,
 		sidDir:    resolved.SIDDir,
+		heal:      dependencies.Heal,
 	}, nil
 }
 
@@ -119,6 +120,17 @@ func (executor *Executor) Open(
 	case compose.ResumeClaude:
 		if err := executor.Solo(ctx, request.Row.ID, "", false); err != nil {
 			return "", err
+		}
+	case compose.ResumeCodex:
+		// A Codex thread whose history projection is wedged resumes amnesiac
+		// at its first prompt while its rollout is whole on disk. Repairing
+		// it HERE — before the seat is created — is the one moment the thread
+		// is provably not held by a running seat. It never blocks the resume:
+		// the repair reports what it did and the chat opens either way.
+		if executor.heal != nil {
+			if message := executor.heal(ctx, request.Row.ID); message != "" {
+				fmt.Fprintln(executor.stderr, message)
+			}
 		}
 	}
 	plan, err := Synthesize(request)

@@ -1,0 +1,269 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# dev.sh — the single entry point for building, testing, and inspecting this
+# repo's four projects. /dev drives it; agents call it directly.
+#
+# WHAT THIS SCRIPT REPORTS WHEN IT IS ITSELF BROKEN:
+#   - a missing toolchain (go/node/npm) is TOOLCHAIN-MISSING and exits non-zero.
+#     It is NEVER reported as a pass or a skip: "we could not look" and "there is
+#     nothing wrong" must not print the same word.
+#   - a project with no dependencies installed is NOT-INSTALLED, not "clean".
+#   - an unknown project or command exits 2 with usage — never a silent no-op
+#     that a caller could read as success.
+#   - every command's own exit status propagates; nothing is swallowed with `|| true`.
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+PROJECTS=(blueprint cc-fleet dreamer walker)
+
+# project -> directory
+proj_dir() {
+  case "$1" in
+    blueprint) echo "blueprint" ;;
+    cc-fleet)  echo "cc-fleet" ;;
+    dreamer)   echo "dreamer" ;;
+    walker)    echo "ENGINES/wave-walker/engine" ;;
+    *) return 1 ;;
+  esac
+}
+
+RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; OFF=$'\033[0m'
+[[ -t 1 ]] || { RED=""; GREEN=""; YELLOW=""; DIM=""; OFF=""; }
+
+ok()   { printf '%s  PASS%s  %s\n' "$GREEN" "$OFF" "$*"; }
+bad()  { printf '%s  FAIL%s  %s\n' "$RED" "$OFF" "$*"; }
+warn() { printf '%s  WARN%s  %s\n' "$YELLOW" "$OFF" "$*"; }
+info() { printf '%s        %s%s\n' "$DIM" "$*" "$OFF"; }
+head_() { printf '\n%s──%s %s\n' "$DIM" "$OFF" "$*"; }
+
+FAILURES=0
+fail_step() { bad "$*"; FAILURES=$((FAILURES + 1)); }
+
+need_tool() { # need_tool <bin> <project>
+  if ! command -v "$1" >/dev/null 2>&1; then
+    fail_step "$2: TOOLCHAIN-MISSING — '$1' not on PATH; this project could not be checked"
+    return 1
+  fi
+}
+
+node_installed() { # node_installed <dir> <project>
+  if [[ ! -d "$1/node_modules" ]]; then
+    fail_step "$2: NOT-INSTALLED — no node_modules; run '$(basename "$0") install $2'"
+    return 1
+  fi
+}
+
+run() { # run <label> -- <cmd...>
+  local label="$1"; shift
+  [[ "${1:-}" == "--" ]] && shift
+  info "\$ $*"
+  if "$@"; then ok "$label"; else fail_step "$label (exit $?)"; fi
+}
+
+# ─── status ──────────────────────────────────────────────────────────────────
+
+cmd_status() {
+  head_ "toolchain"
+  for t in go node npm git jq; do
+    if command -v "$t" >/dev/null 2>&1; then
+      ok "$t — $(command -v "$t")"
+    else
+      warn "$t — MISSING (projects needing it report TOOLCHAIN-MISSING, not a pass)"
+    fi
+  done
+
+  head_ "projects"
+  for p in "${PROJECTS[@]}"; do
+    local d; d="$(proj_dir "$p")"
+    if [[ ! -d "$d" ]]; then bad "$p — directory $d/ is MISSING"; continue; fi
+    case "$p" in
+      blueprint)
+        ok "$p — $d/ ($(find "$d/templates" -type f | wc -l | tr -d ' ') template files, no build)" ;;
+      cc-fleet)
+        ok "$p — $d/ (go $(sed -n 's/^go //p' "$d/go.mod" | head -1))" ;;
+      dreamer|walker)
+        if [[ -d "$d/node_modules" ]]; then
+          ok "$p — $d/ (npm, deps installed)"
+        else
+          warn "$p — $d/ (npm, NOT-INSTALLED — 'dev.sh install $p')"
+        fi ;;
+    esac
+  done
+
+  head_ "git"
+  local dirty; dirty=$(git status --porcelain | wc -l | tr -d ' ')
+  info "branch $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD) — $dirty changed file(s)"
+  info "version $(cat VERSION 2>/dev/null || echo '?') — newest tag $(git describe --tags --abbrev=0 2>/dev/null || echo 'none')"
+
+  head_ "install"
+  for f in .professor/VERSION .professor/manifest.json CLAUDE.md AGENTS.md .claude/settings.json; do
+    [[ -e "$f" ]] && ok "$f" || warn "$f — absent"
+  done
+}
+
+# ─── per-project actions ─────────────────────────────────────────────────────
+
+act_blueprint() { # the shipped product: mechanical gates, no build
+  local action="$1"
+  case "$action" in
+    install|build|typecheck) info "blueprint: no $action step (markdown + shell)" ;;
+    verify|test|all)
+      head_ "blueprint — leak gate"
+      local changed
+      changed=$(git status --porcelain -- blueprint scripts README.md INSTALL.md CHANGELOG.md releases \
+                | awk '{print $NF}' | grep -v '/$' || true)
+      if [[ -z "$changed" ]]; then
+        info "no changed blueprint/public files — scanning the whole tracked blueprint tree instead"
+        # shellcheck disable=SC2046
+        if git ls-files blueprint README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
+          ok "leak-check clean (full tracked scan)"
+        else
+          fail_step "leak-check FAILED — brand / PII / machine-path string in a public file"
+        fi
+      else
+        # shellcheck disable=SC2086
+        if scripts/leak-check.sh --files $changed; then
+          ok "leak-check clean ($(wc -w <<<"$changed") changed file(s))"
+        else
+          fail_step "leak-check FAILED — brand / PII / machine-path string in a changed public file"
+        fi
+      fi
+
+      head_ "blueprint — placeholder registry"
+      # Scope: markdown templates only. Shell/JS templates use {VAR} for their own
+      # runtime values, which are not install placeholders and never will be.
+      local used unregistered out
+      used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint/templates 2>/dev/null | sort -u || true)
+      if [[ -z "$used" ]]; then
+        fail_step "placeholder scan produced NO tokens at all — the SCAN is broken, not the templates"
+      else
+        unregistered=$(comm -23 <(printf '%s\n' "$used") \
+                                <(grep -ohE '\{[A-Z][A-Z0-9_]+\}' blueprint/PLACEHOLDERS.md | sort -u))
+        if [[ -z "$unregistered" ]]; then
+          ok "every markdown-template token is registered in PLACEHOLDERS.md ($(wc -l <<<"$used") tokens)"
+        else
+          out="tmp/blueprint-unregistered-tokens.txt"
+          mkdir -p tmp
+          printf '%s\n' "$unregistered" > "$out"
+          warn "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md"
+          info "most frequent 10 (full list: $out):"
+          grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint/templates \
+            | grep -xFf "$out" | sort | uniq -c | sort -rn | head -10 \
+            | while read -r n tok; do info "  ${n}x  $tok"; done
+        fi
+      fi
+      ;;
+    *) return 0 ;;
+  esac
+}
+
+act_cc_fleet() {
+  local action="$1" d; d="$(proj_dir cc-fleet)"
+  need_tool go cc-fleet || return 0
+  case "$action" in
+    install) run "cc-fleet: go mod download" -- go -C "$d" mod download ;;
+    build)   run "cc-fleet: go build" -- go -C "$d" build ./... ;;
+    typecheck|verify) run "cc-fleet: go vet" -- go -C "$d" vet ./... ;;
+    test)    run "cc-fleet: go test" -- go -C "$d" test ./... ;;
+    all)     act_cc_fleet build; act_cc_fleet verify; act_cc_fleet test ;;
+  esac
+}
+
+act_npm() { # act_npm <project> <action> [extra script...]
+  local p="$1" action="$2" d; d="$(proj_dir "$p")"
+  need_tool npm "$p" || return 0
+  case "$action" in
+    install)
+      if [[ -f "$d/package-lock.json" ]]; then
+        run "$p: npm ci" -- npm --prefix "$d" ci
+      else
+        run "$p: npm install" -- npm --prefix "$d" install
+      fi ;;
+    *)
+      node_installed "$d" "$p" || return 0
+      case "$action" in
+        build)     run "$p: npm run build" -- npm --prefix "$d" run build ;;
+        typecheck) run "$p: npm run typecheck" -- npm --prefix "$d" run typecheck ;;
+        verify)
+          if npm --prefix "$d" run 2>/dev/null | grep -q '^  verify'; then
+            run "$p: npm run verify" -- npm --prefix "$d" run verify
+          else
+            info "$p: no verify script"
+          fi ;;
+        test)      run "$p: npm test" -- npm --prefix "$d" test ;;
+      esac ;;
+  esac
+}
+
+act_dreamer() {
+  local action="$1"
+  case "$action" in
+    all) act_npm dreamer typecheck; act_npm dreamer build; act_npm dreamer test ;;
+    # dreamer's test runs the COMPILED tests — build first or it tests stale output
+    test) act_npm dreamer build; act_npm dreamer test ;;
+    *) act_npm dreamer "$action" ;;
+  esac
+}
+
+act_walker() {
+  local action="$1"
+  case "$action" in
+    all) act_npm walker verify; act_npm walker typecheck; act_npm walker test ;;
+    *) act_npm walker "$action" ;;
+  esac
+}
+
+dispatch() { # dispatch <project> <action>
+  case "$1" in
+    blueprint) act_blueprint "$2" ;;
+    cc-fleet)  act_cc_fleet "$2" ;;
+    dreamer)   act_dreamer "$2" ;;
+    walker)    act_walker "$2" ;;
+  esac
+}
+
+usage() {
+  cat >&2 <<EOF
+usage: dev.sh <command> [project]
+
+commands:
+  status                 toolchain, projects, git, install state (default)
+  install                fetch dependencies
+  build                  compile
+  typecheck              vet / tsc --noEmit
+  verify                 pre-test gates (go vet, walker's verify, blueprint's leak + token gates)
+  test                   run the test suite
+  all                    verify + build + test for the project
+
+projects: ${PROJECTS[*]} | all (default)
+
+Every project that cannot be checked reports TOOLCHAIN-MISSING or NOT-INSTALLED
+and exits non-zero. A skipped check is never a pass.
+EOF
+  exit 2
+}
+
+CMD="${1:-status}"
+TARGET="${2:-all}"
+
+case "$CMD" in
+  status) cmd_status ;;
+  install|build|test|typecheck|verify|all)
+    if [[ "$TARGET" == "all" ]]; then
+      for p in "${PROJECTS[@]}"; do head_ "$p :: $CMD"; dispatch "$p" "$CMD"; done
+    else
+      proj_dir "$TARGET" >/dev/null 2>&1 || { echo "unknown project: $TARGET" >&2; usage; }
+      head_ "$TARGET :: $CMD"
+      dispatch "$TARGET" "$CMD"
+    fi ;;
+  -h|--help|help) usage ;;
+  *) echo "unknown command: $CMD" >&2; usage ;;
+esac
+
+if (( FAILURES > 0 )); then
+  printf '\n%s%d step(s) failed or could not run.%s\n' "$RED" "$FAILURES" "$OFF"
+  exit 1
+fi
+printf '\n%sall steps passed.%s\n' "$GREEN" "$OFF"

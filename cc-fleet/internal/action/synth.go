@@ -178,7 +178,8 @@ func Synthesize(request Request) (Plan, error) {
 				"Codex resume requires id, cwd, and fresh socket",
 			)
 		}
-		plan.Run = codexCommand("resume", request.Row.ID)
+		plan.Run = continuityBanner(request.Row) +
+			codexCommand("resume", request.Row.ID)
 		plan.CodexServer = &CodexServer{
 			Socket: request.FreshSocket,
 			CWD:    request.Row.CWD,
@@ -261,6 +262,55 @@ func claudeCommandWith(
 	command.WriteByte(' ')
 	command.WriteString(autonomyFlags)
 	return command.String()
+}
+
+// continuityBanner is the first thing a resumed Codex pane prints, above
+// Codex's own boot chrome.
+//
+// A resume lands on a fresh tmux server, so the pane opens with an empty
+// scrollback and Codex repaints its first-run screen. That screen is
+// indistinguishable from a cold start, and a reader who trusts it concludes
+// the seat lost its memory — an orchestrator re-briefed a seat carrying 2.5M
+// tokens as if it were a replacement.
+//
+// The banner therefore says what is CHECKABLE and asserts nothing it cannot
+// see. It must never claim the context survived: whether Codex rehydrates a
+// thread is its own decision, made after this line is printed, and a
+// `history_mode = paginated` thread reloads from Codex's history store rather
+// than from its rollout — that store can hold a handful of items for a
+// conversation whose rollout is complete, and the resume then comes up empty
+// while the transcript on disk is whole. A banner that asserted continuity
+// there would be the very failure it exists to prevent: a surface reporting a
+// state it never verified. So it names the id, points at the transcript, and
+// tells the reader which pixel decides the question.
+//
+// Codex writes its TUI into the normal buffer rather than the alternate
+// screen, so these lines stay the oldest entries in the pane's scrollback for
+// the life of the seat — the exact position a reader checks when asking "did
+// this start fresh?".
+func continuityBanner(row compose.Row) string {
+	lines := []string{
+		"═══ RESUME of " + row.ID + " — verify before trusting this pane ═══",
+		"    Loaded? Read the status line: no context/token counts means Codex" +
+			" did NOT rehydrate this thread.",
+		"    Scrollback is never restored — the prior tmux server is reaped on" +
+			" hide.",
+		"    Came up empty? The rollout is whole: cx-recover.sh " + row.ID,
+	}
+	if row.Path != "" {
+		lines = append(
+			lines,
+			"    Transcript, complete whatever this pane shows: "+row.Path,
+		)
+	}
+	var banner strings.Builder
+	banner.WriteString("printf '%s\\n'")
+	for _, line := range lines {
+		banner.WriteByte(' ')
+		banner.WriteString(Quote(line))
+	}
+	banner.WriteString("; ")
+	return banner.String()
 }
 
 func codexCommand(args ...string) string {

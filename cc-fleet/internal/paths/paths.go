@@ -54,7 +54,11 @@ type Values struct {
 	// between picker runs (cc-db.sh:110-115). It has no environment override
 	// of its own because it is defined relative to Home, which EnvHome jails.
 	HiddenCarrier string
-	ProcRoot      string
+	// ArchiveDir is ~/.claude-archive: where archived transcripts and rollouts
+	// go, with the manifest that puts them back. Defined relative to Home for
+	// the same reason as HiddenCarrier — one jail knob, not two.
+	ArchiveDir string
+	ProcRoot   string
 }
 
 // EnvOr returns a non-empty environment override, or fallback otherwise.
@@ -100,6 +104,7 @@ func Resolve() (Values, error) {
 		TmuxDir:       EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
 		Home:          home,
 		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
+		ArchiveDir:    filepath.Join(home, ".claude-archive"),
 		ProcRoot:      EnvOr(EnvProcRoot, "/proc"),
 	}, nil
 }
