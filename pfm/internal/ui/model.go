@@ -172,7 +172,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	// ⌃O, not ⌃B: the picker always runs inside tmux and C-b is tmux's PREFIX,
 	// so tmux swallowed the keystroke before the picker ever saw it. Any
-	// replacement must stay clear of the tmux prefix (cc-fleet.zsh:1394-1406).
+	// replacement must stay clear of the tmux prefix.
 	case "ctrl+o":
 		if row, ok := model.selectedRow(); ok && isLive(row.Kind) {
 			model.outcome = OutcomeReboot

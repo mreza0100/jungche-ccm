@@ -12,6 +12,6 @@ Capture works only on a LIVE pane — it returns the rendered screen: input box,
 
 ## Steps
 
-1. **Resolve the target.** `$ARGUMENTS` is `{tmux-session}`. If empty, ask the founder for the target, or run `/chat:ls` to find the session.
-2. **Capture:** `$HOME/.claude/commands/chat/chat.sh capture {tmux-session}`.
+1. **Resolve the target.** `$ARGUMENTS` is `{tmux-session}`. If empty, ask the operator for the target, or run `/chat:ls` to find the session.
+2. **Capture:** `$HOME/.local/bin/pfm chat capture {tmux-session}`.
 3. **Report** the captured window. If it reports no live pane, the chat is dormant — offer `/chat:read` for its transcript.

@@ -70,7 +70,6 @@ refresh — no separate marker to keep in sync.
 | `install.sh`                  | —                                            | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo                                                                                                                                                          |
 | `cc-portable.sh`              | `~/.claude/bin/cc-portable.sh`               | the GNU/BSD seam — every question whose answer differs between Linux and macOS (`stat`, `date`, `find -printf`, `flock`, `setsid`, `timeout`, `free`, `ss`, `/proc`) is asked here once, so the rest of the bundle is written twice-free. Sourced, not run |
 | `pfm/shim/pfm.zsh`            | sourced from `~/.zshrc`                      | the thin launcher surface: `cc`, `cc1`, `cc2`, `cx`, and `cc-swap`; fleet operations delegate to the `pfm` binary                                                                                                                                          |
-| `cc-fleet.zsh`                | not installed or sourced                     | the retired zsh implementation, retained only as the parity checker's legacy oracle                                                                                                                                                                        |
 | `cc-db.sh`                    | `~/.claude/bin/cc-db.sh`                     | the fleet's state store — one SQLite database at `~/.cc/fleet.db` holding the hide list, the primary account, spawned children, the chat index and the swap log                                                                                            |
 | `cc-agent-open.sh`            | `~/.claude/bin/cc-agent-open.sh`             | `cc-ls`'s Enter-target for a chat locked by a live background agent: the takeover/attach chooser                                                                                                                                                           |
 | `cc-swap-chat.sh`             | `~/.claude/bin/cc-swap-chat.sh`              | `/swap`'s engine — reboot a running chat in place onto another account and/or flip its cache mode                                                                                                                                                          |
@@ -167,7 +166,6 @@ cd ~/.professor/blueprint/templates/host-swap
 bash tests/db-fixtures.sh          # the state store
 bash tests/selflocate-fixtures.sh  # the bundle finds itself through symlinks
 bash tests/install-fixtures.sh     # the installer, against a scratch HOME
-bash tests/name-sync-fixtures.sh   # window-name convergence, on scratch sockets
 bash tests/portable-fixtures.sh    # the GNU/BSD seam — the SHAPE every caller depends on
 ```
 
@@ -178,13 +176,14 @@ there's no session-dir graveyard to clean up. If Anthropic ever rotates a refres
 re-`/login` under that account's config dir (`CLAUDE_CONFIG_DIR=~/.claude2 claude`, then
 `/login`) — no other chat is affected.
 
-## Fleet management — `cc-ls`, `/bb`, `pfm reap`
+## Fleet management — `pfm`, `pfm chat`, `/bb`
 
 The pieces above launch and bill chats; these manage the resulting fleet. They are **launcher-agnostic** — they work with any setup that runs each chat in its own `tmux -L cc-*` socket (`pfm/shim/pfm.zsh` is one such launcher) and a statusline that writes a `/tmp/cc-sid/<socket>` → transcript breadcrumb (`chmod 700` — the breadcrumbs are transcript paths and the name cache carries prompt text, not for other uids). The Professor statusline template (`blueprint/templates/statusline/statusline-command.sh`) already writes this breadcrumb, so installing it alongside these pieces is enough — no separate wiring needed.
 
-- **`cc-ls`** — one fzf list of every chat: `●` live tmux sessions (Enter attaches), `↻` resumable transcripts with no live tmux (Enter resumes in a fresh tmux), and `⚙` live background/forked agents — a `claude --bg` session, an RR brainer, a `/chat:new --detach` teammate — which have no tmux socket, so `--resume` refuses them; Enter instead opens the **takeover/attach chooser** (`cc-agent-open.sh`) — take the agent over fresh under the current primary account, or attach to the running process (see § Agent mode — takeover vs attach). `⌃T` re-sorts recent⇄prompts, `⌃R` rotates the project on top, `⌃X` hides⇄shows a chat. `cc-ls -a` shows all; `cc-ls --hidden` shows only hidden. **Hiding is permanent and unconditional** — a hidden chat stays gone whether it is finished, live, or being typed into right now, and only `⌃X` brings it back. The picker is the last thing `cc-ls` does, so a `⌃X` toggle is carried in `~/.claude/.cc-ls-hidden` and committed to the db by the _next_ run; editing that file by hand between runs works for the same reason.
-- **`/bb`** (bye-bye) — hide THIS chat from `cc-ls` and close it. Pane-aware: it kills only its **own** pane (so a chat spawned beside others via `/chat:branch` or `/chat:new` never drops its neighbours) and reaps the teammates it spawned (pane teammates by `kill-pane`, detached `--detach` teammates by `kill-server`). Identifies the chat by `$CLAUDE_CODE_SESSION_ID`, so it never hides the wrong transcript on a shared socket. Closing types a real `/exit` into the pane (flushes the transcript, runs Stop hooks) and **polls** for the pane to close itself — up to 20s, since compaction can outlive a fixed grace — before a `kill-pane` backstop.
-- **`pfm reap`** — reclaim RAM from orphaned `cc-*`/`cx-*` servers (a closed terminal tab detaches the client but leaves the server + its `claude` process alive). Dry-run report by default; `pfm reap --apply` reaps unattached orphans and removes stale socket files. KEEP guards protect far more than attached chats: a `cc-new-*` detached teammate is kept as `mate` (headless by design — its parent's `/bb` reaps it), a session `claude agents --json` reports **busy** is kept, a chat whose transcript was written in the last minute is kept as `active`, and a socket whose panes host anything that is **not a chat** (a dev server, a build, an `uv` process) is kept as `hosts` — one socket on this machine carries a project's backend, cortex and frontend beside its chats. Never touches an attached chat or your own socket; when the busy query fails, every chat with a breadcrumb is skipped.
+- **Bare `pfm`** — one picker for live chats, resumable transcripts, and agent rows. Enter opens the selected chat; `⌃T` re-sorts, `⌃R` rotates the leading project, and `⌃X` hides or restores a chat. `pfm ls --hidden` lists the hide ledger.
+- **`pfm chat`** — the per-chat surface: create with `pfm chat new NAME`, address by name, immutable socket, or id, and operate with `open`, `inject`, `read`, `stream`, `capture`, `name`, `hide`, `end`, and the group verbs. `--attach` on `new` opens the new chat after launch; otherwise it remains detached on its own immutable socket.
+- **`/bb`** (bye-bye) — routes through `pfm chat bb`, hides this chat, gracefully closes its pane, and reaps the teammate chats it spawned. It identifies the chat by its session id, so it never hides a sibling.
+- **`pfm reap`** — reclaim RAM from orphaned `cc-*`/`cx-*` servers. Dry-run report by default; `pfm reap --apply` acts. Attached chats, active chats, busy agents, and sockets hosting non-chat processes stay protected.
 
 - **`pfm archive`** — the fleet's disk valve. Hidden chats and old subagent transcripts get
   _moved_ out of the live pool, not deleted, so the picker and both CLIs stop seeing them while
@@ -197,13 +196,13 @@ The pieces above launch and bill chats; these manage the resulting fleet. They a
   every broken projection, and the resume path runs the one-thread form itself before it opens a
   Codex seat.
 
-`install.sh --apply` puts all of these in place. `cc-ls` needs `fzf`; nothing else here needs a
+`install.sh --apply` puts all of these in place. The picker needs `fzf`; nothing else here needs a
 dependency beyond `sqlite3` (and the fleet degrades to flat files without it). Pairs naturally with
 `/chat:branch` and `/chat:new` for spawn-and-orchestrate teammate workflows.
 
 ## Agent mode — takeover vs attach
 
-Claude Code runs a per-account **daemon** that hosts sessions headlessly (`claude daemon`, listed by `claude agents`). A session living there is a **background agent** — "agent mode." Plenty of things breed them: a `claude --bg` run, an RR brainer, a `/chat:new --detach` teammate, a forked `/chat:inject` reply. They have a transcript but **no tmux socket**, so no `/tmp/cc-sid` breadcrumb exists — yet they hold the session lock, so a plain `claude --resume <uuid>` **refuses** (`Session … is currently running as a background agent`) and a naive resume window instantly `[exited]`s.
+Claude Code runs a per-account **daemon** that hosts sessions without a tmux pane (`claude daemon`, listed by `claude agents`). A session living there is a **background agent** — "agent mode." A `claude --bg` run, an RR brainer, or a forked `/chat:inject` reply can create one. It has a transcript but **no tmux socket**, so no `/tmp/cc-sid` breadcrumb exists — yet it holds the session lock, so a plain `claude --resume <uuid>` refuses and a naive resume window exits immediately.
 
 **A live agent keeps the account, model, effort, and permission-mode it was BORN with.** `cc-swap` (or `/swap`) only affects _new_ processes — so merely _attaching_ to an agent after an account swap keeps the OLD account, model, and permissions. Reopening such a chat under a freshly-chosen account needs a fresh process, not an attach.
 
@@ -213,4 +212,4 @@ That is why `cc-ls` routes every agent-locked chat (the `⚙` rows, and any resu
 - **`a` attach** _(default when the agent is actively working — never kill in-flight work)_ — join the running process via `claude agents --cwd` under the agent's **owning** account, keeping its original everything.
 - **`q`** cancel.
 
-The default is the safe move for the agent's current state; the founder can override it at the prompt. `cc-agent-open.sh` is **N-account generic** — the current primary comes from the state store `~/.cc/fleet.db` (number N → `~/.cc/N`; 1 → the unset default `~/.claude`), and it probes the agent registry across the default account plus every `~/.claude[0-9]*` config dir on disk, so it finds the agent whichever account owns it. To reclaim a _done_ background agent's RAM, take it over and `/bb` it (or kill its pid) — `pfm reap` only sweeps `cc-*` tmux sockets, not bg-agent processes.
+The default is the safe move for the agent's current state; the operator can override it at the prompt. `cc-agent-open.sh` is **N-account generic** — the current primary comes from the state store `~/.cc/fleet.db` (number N → `~/.cc/N`; 1 → the unset default `~/.claude`), and it probes the agent registry across the default account plus every `~/.claude[0-9]*` config dir on disk, so it finds the agent whichever account owns it. To reclaim a _done_ background agent's RAM, take it over and `/bb` it (or kill its pid) — `pfm reap` only sweeps `cc-*` tmux sockets, not bg-agent processes.

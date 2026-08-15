@@ -35,7 +35,7 @@ func TestRunAwaitsTheAnswerItAskedFor(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--name", "await worker",
 		"--cwd", jail.root + "/work",
 		"--await", "--timeout", "60", "--settle", "1",
@@ -64,7 +64,7 @@ func TestAskHoldsATwoWayConversation(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--name", "talker",
 		"--cwd", jail.root + "/work",
 		"open the shop",
@@ -76,7 +76,7 @@ func TestAskHoldsATwoWayConversation(t *testing.T) {
 	for _, question := range []string{"first question", "second question"} {
 		var out, errors bytes.Buffer
 		code := run([]string{
-			"headless", "ask", "--timeout", "60", "--settle", "1",
+			"chat", "ask", "--timeout", "60", "--settle", "1",
 			socket, question,
 		}, &out, &errors)
 		if code != 0 {
@@ -102,7 +102,7 @@ func TestAskReportsATimeoutWithoutLosingDelivery(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--name", "mute worker",
 		"--cwd", jail.root + "/work",
 		"say nothing",
@@ -113,7 +113,7 @@ func TestAskReportsATimeoutWithoutLosingDelivery(t *testing.T) {
 
 	var out, errorsOut bytes.Buffer
 	code := run([]string{
-		"headless", "ask", "--timeout", "2", "--settle", "1",
+		"chat", "ask", "--timeout", "2", "--settle", "1",
 		socket, "answer me",
 	}, &out, &errorsOut)
 	if code != codeAwaitTimeout {
@@ -126,7 +126,7 @@ func TestAskReportsATimeoutWithoutLosingDelivery(t *testing.T) {
 	// The question itself must still have landed in the chat's record.
 	var transcript, transcriptErrors bytes.Buffer
 	if code := run([]string{
-		"headless", "transcript", socket, "--tail", "5", "--condensed",
+		"chat", "read", socket, "--tail", "5", "--condensed",
 	}, &transcript, &transcriptErrors); code != 0 {
 		t.Fatalf("transcript exit=%d err=%q", code, transcriptErrors.String())
 	}
@@ -151,7 +151,7 @@ func TestRunRefusesToCallAnUnheardPromptDelivered(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--name", "deaf worker",
 		"--cwd", jail.root + "/work",
 		"a prompt that will be eaten",

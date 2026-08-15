@@ -88,15 +88,15 @@ func TestDetectCrumblessLiveSocketCrumbSuppressesTheWholeSocket(t *testing.T) {
 // wedged at the MCP-approval prompt.
 func TestDetectCrumblessLiveAcceptsTheNewSocketShape(t *testing.T) {
 	panes := []Pane{{
-		Socket: "cc-new-CC_FLEET_1",
+		Socket: "cc-new-fixture-1",
 		PaneID: "%1",
 		PID:    500,
 	}}
 	claudeProcesses := []ClaudeProcess{{
-		PID: 900, PanePID: 500, Socket: "cc-new-CC_FLEET_1", PaneID: "%1",
+		PID: 900, PanePID: 500, Socket: "cc-new-fixture-1", PaneID: "%1",
 	}}
 	entries := DetectCrumblessLive(&fakeProcFS{}, claudeProcesses, nil, panes)
-	if len(entries) != 1 || entries[0].Socket != "cc-new-CC_FLEET_1" {
+	if len(entries) != 1 || entries[0].Socket != "cc-new-fixture-1" {
 		t.Fatalf("DetectCrumblessLive() = %#v, want the cc-new-* socket", entries)
 	}
 }

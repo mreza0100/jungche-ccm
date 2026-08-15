@@ -78,6 +78,9 @@ func TestJailedEvalAttachFromPlainAndNestedTmux(t *testing.T) {
 			})
 		}
 	}
+	t.Run("raw/plain/bare", func(t *testing.T) {
+		jail.proveAttach(t, "raw", "plain", "bare")
+	})
 }
 
 func newAttachJail(t *testing.T) *attachJail {
@@ -207,9 +210,11 @@ func (jail *attachJail) proveAttach(
 	})
 
 	marker := filepath.Join(jail.root, suffix+".done")
-	commandText := `pfm open ` + shellQuote(jail.id)
+	commandText := `pfm chat open ` + shellQuote(jail.id)
 	if flow == "picker" {
 		commandText = `pfm ls`
+	} else if flow == "bare" {
+		commandText = `pfm`
 	}
 	if protocol == "eval" {
 		commandText = `eval "$(` + commandText + `)"`
@@ -266,7 +271,7 @@ func (jail *attachJail) proveAttach(
 		})
 	}
 
-	if flow == "picker" {
+	if flow == "picker" || flow == "bare" {
 		// The picker paints cached resume state first, then promotes the row to
 		// live after async gather. Under a parallel full-suite stress run the
 		// gather goroutine can be CPU-starved; this functional proof must not

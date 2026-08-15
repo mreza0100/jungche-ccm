@@ -124,12 +124,12 @@ func TestHideCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"hide", memberID}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"chat", "hide", memberID}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hide %s code=%d stdout=%q stderr=%q", memberID, code, stdout.String(), stderr.String())
 	}
 
 	var hiddenOut, hiddenErr bytes.Buffer
-	if code := run([]string{"hidden"}, &hiddenOut, &hiddenErr); code != 0 {
+	if code := run([]string{"ls", "--hidden"}, &hiddenOut, &hiddenErr); code != 0 {
 		t.Fatalf("hidden code=%d stderr=%q", code, hiddenErr.String())
 	}
 	got := hiddenOut.String()

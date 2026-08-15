@@ -13,5 +13,5 @@ Mechanics: `split-window -h` runs the fork in the new pane; pass `--fork-session
 
 ## Steps
 
-1. **Branch:** `$HOME/.claude/commands/chat/chat.sh branch {name}` — pass `$ARGUMENTS` verbatim as the fork's name (omit if empty).
+1. **Branch:** `$HOME/.local/bin/pfm chat branch {name}` — pass `$ARGUMENTS` verbatim as the fork's name (omit if empty).
 2. **Report** the script's output verbatim. On error (no session id, not in tmux, `claude` not on PATH) relay the line; nothing was spawned.

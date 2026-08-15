@@ -48,7 +48,7 @@ func (adapter hideStoreAdapter) Unhide(ctx context.Context, id string) error {
 func runArchive(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
 		"archive",
-		"usage: pfm archive [--apply] [--subagents [--older-than DAYS]] [--restore id]",
+		"usage: pfm archive [--apply] [--subagents [--older-than DAYS]] [--restore id] [--prune-orphans]",
 		stderr,
 	)
 	apply := flags.Bool("apply", false, "perform the moves instead of planning them")
@@ -63,10 +63,13 @@ func runArchive(args []string, stdout, stderr io.Writer) int {
 		"with --subagents, the age in days a transcript must reach",
 	)
 	restore := flags.String("restore", "", "put one archived chat back")
+	pruneOrphans := flags.Bool("prune-orphans", false, "report orphaned hide rows")
+	yes := flags.Bool("yes", false, "with --prune-orphans, delete the reported rows")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() != 0 || *olderThan < 0 ||
+	if flags.NArg() != 0 || *olderThan < 0 || (*yes && !*pruneOrphans) ||
+		(*pruneOrphans && (*subagents || *restore != "")) ||
 		(*restore != "" && (*apply || *subagents)) {
 		flags.Usage()
 		return 2
@@ -85,6 +88,16 @@ func runArchive(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "restored %s -> %s\n", row.ID, row.Original)
 		return 0
+	}
+	if *pruneOrphans {
+		database, _, code := openHideManager(stderr)
+		if code != 0 {
+			return code
+		}
+		defer database.Close()
+		return pruneOrphanedHides(
+			context.Background(), database, *yes || *apply, stdout, stderr,
+		)
 	}
 
 	database, manager, code := openHideManager(stderr)

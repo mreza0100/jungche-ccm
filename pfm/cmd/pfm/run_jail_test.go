@@ -294,6 +294,22 @@ func (jail *runJail) read(t *testing.T, name string) string {
 	return string(content)
 }
 
+func (jail *runJail) onlyWindowName(t *testing.T) string {
+	t.Helper()
+	entries, err := os.ReadDir(jail.tmuxDir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("jailed socket count=%d err=%v", len(entries), err)
+	}
+	output, err := exec.Command(
+		"tmux", "-S", filepath.Join(jail.tmuxDir, entries[0].Name()),
+		"display-message", "-p", "#{window_name}",
+	).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(output))
+}
+
 // await polls for engine-side state. `run` returns the moment the keystrokes
 // are delivered — the engine writes its file a beat later — so a bare read
 // races the pane and would flake.
@@ -311,11 +327,11 @@ func (jail *runJail) await(t *testing.T, name, want string) string {
 	return got
 }
 
-// TestRunSpawnsANamedHeadlessCodexChat drives the CLI against a real tmux
+// TestChatNewSpawnsANamedCodexChat drives the CLI against a real tmux
 // server and a stub engine: the session is created detached, the thread is
 // renamed through the engine's own UI, and only then is the first prompt
 // delivered.
-func TestRunSpawnsANamedHeadlessCodexChat(t *testing.T) {
+func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -324,7 +340,7 @@ func TestRunSpawnsANamedHeadlessCodexChat(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--engine", "codex",
 		"--name", "_HIDE codex worker",
 		"--cwd", filepath.Join(jail.root, "work"),
@@ -357,6 +373,9 @@ func TestRunSpawnsANamedHeadlessCodexChat(t *testing.T) {
 	if !strings.HasPrefix(entries[0].Name(), "cx-") {
 		t.Fatalf("codex chat born on socket %q", entries[0].Name())
 	}
+	if got := jail.onlyWindowName(t); got != "_HIDE codex worker" {
+		t.Fatalf("codex window=%q, want inline launch name", got)
+	}
 }
 
 // TestRunReportsACodexBuildThatCannotBeRenamed is the version-drift drill: a
@@ -373,7 +392,7 @@ func TestRunReportsACodexBuildThatCannotBeRenamed(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--engine", "cx",
 		"--name", "worker",
 		"--cwd", filepath.Join(jail.root, "work"),
@@ -398,10 +417,10 @@ func TestRunReportsACodexBuildThatCannotBeRenamed(t *testing.T) {
 	}
 }
 
-// TestRunSpawnsAHeadlessClaudeChatWithItsNameOnTheCommandLine proves the other
+// TestChatNewSpawnsAClaudeChatWithItsNameOnTheCommandLine proves the other
 // route: Claude is named by its own flag, carries the autonomy flags, and is
 // never typed into.
-func TestRunSpawnsAHeadlessClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
+func TestChatNewSpawnsAClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -410,7 +429,7 @@ func TestRunSpawnsAHeadlessClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
-		"headless", "run",
+		"chat", "new",
 		"--name", "worker 7",
 		"--cwd", filepath.Join(jail.root, "work"),
 		"audit the firewall",
@@ -436,5 +455,8 @@ func TestRunSpawnsAHeadlessClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
 	if !strings.Contains(report, "cc\tworker 7\t") ||
 		!strings.Contains(report, "\tlisted\n") {
 		t.Fatalf("run report = %q", report)
+	}
+	if got := jail.onlyWindowName(t); got != "worker 7" {
+		t.Fatalf("claude window=%q, want inline launch name", got)
 	}
 }

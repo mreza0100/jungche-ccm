@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -29,6 +27,60 @@ func TestVersion(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("run(version) stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestSettledRootInterface(t *testing.T) {
+	jailTest(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--version"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("run(--version) code = %d; stderr = %q", code, stderr.String())
+	}
+	if stdout.String() != "pfm dev\n" {
+		t.Fatalf("run(--version) stdout = %q", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("run(--help) code = %d; stderr = %q", code, stderr.String())
+	}
+	help := stdout.String()
+	for _, want := range []string{"operator commands:", "  chat", "wiring commands:", "  chat bb"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("root help missing %q:\n%s", want, help)
+		}
+	}
+	for _, retired := range []string{"  open ", "  headless ", "  hide ", "  unhide ", "  hidden ", "  resolve ", "  bb "} {
+		if strings.Contains(help, retired) {
+			t.Fatalf("root help still advertises %q:\n%s", retired, help)
+		}
+	}
+}
+
+func TestLSHiddenAbsorbsTheOldHiddenListing(t *testing.T) {
+	jailTest(t)
+	const id = "88888888-8888-4888-8888-888888888888"
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Hide(context.Background(), store.Hidden{
+		ID: id, Engine: "cc", HiddenAt: 42,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("ls --hidden code=%d stderr=%q", code, stderr.String())
+	}
+	if stdout.String() != id+"\t\t42\n" {
+		t.Fatalf("ls --hidden stdout=%q", stdout.String())
 	}
 }
 
@@ -69,7 +121,7 @@ func TestHideHiddenUnhideCLI(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"hide", id}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"chat", "hide", id}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hide code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if stdout.String() != "hidden "+id+"\n" || stderr.Len() != 0 {
@@ -78,7 +130,7 @@ func TestHideHiddenUnhideCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hidden code=%d stderr=%q", code, stderr.String())
 	}
 	fields := strings.Split(strings.TrimSuffix(stdout.String(), "\n"), "\t")
@@ -88,7 +140,7 @@ func TestHideHiddenUnhideCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"unhide", id}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"chat", "unhide", id}, &stdout, &stderr); code != 0 {
 		t.Fatalf("unhide code=%d stderr=%q", code, stderr.String())
 	}
 	if stdout.String() != "unhidden "+id+"\n" {
@@ -128,7 +180,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"hidden", "--prune-orphans"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"archive", "--prune-orphans"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("prune dry run code=%d stderr=%q", code, stderr.String())
 	}
 	// The engine column is empty for every orphan, and that IS the report: an
@@ -146,7 +198,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hidden after dry run code=%d stderr=%q", code, stderr.String())
 	}
 	if lines := strings.Count(stdout.String(), "\n"); lines != 3 {
@@ -155,7 +207,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden", "--prune-orphans", "--yes"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"archive", "--prune-orphans", "--yes"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("prune code=%d stderr=%q", code, stderr.String())
 	}
 	pruned := stdout.String()
@@ -166,7 +218,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hidden after prune code=%d stderr=%q", code, stderr.String())
 	}
 	if got := stdout.String(); !strings.HasPrefix(got, live+"\tcc\t10\n") ||
@@ -176,7 +228,7 @@ func TestHiddenPruneOrphansCLI(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"hidden", "--yes"}, &stdout, &stderr); code != 2 {
+	if code := run([]string{"ls", "--hidden", "--yes"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("hidden --yes without --prune-orphans code=%d, want 2", code)
 	}
 }
@@ -205,7 +257,7 @@ func TestHideSelfResolveAndInternalCLI(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", id)
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"hide", "--self"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"chat", "hide", "self"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("hide --self code=%d stderr=%q", code, stderr.String())
 	}
 	if stdout.String() != "hidden "+id+"\n" {
@@ -215,10 +267,10 @@ func TestHideSelfResolveAndInternalCLI(t *testing.T) {
 	stdout.Reset()
 	stderr.Reset()
 	if code := run(
-		[]string{"resolve", "label", "missing"},
+		[]string{"chat", "resolve", "missing"},
 		&stdout,
 		&stderr,
-	); code != 1 {
+	); code != codeUnknownChat {
 		t.Fatalf(
 			"resolve miss code=%d stdout=%q stderr=%q",
 			code,
@@ -226,7 +278,8 @@ func TestHideSelfResolveAndInternalCLI(t *testing.T) {
 			stderr.String(),
 		)
 	}
-	if stdout.Len() != 0 || stderr.Len() != 0 {
+	if stdout.String() != "missing\tnot-found\n" ||
+		!strings.Contains(stderr.String(), "no chat named") {
 		t.Fatalf("resolve miss stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 
@@ -293,7 +346,7 @@ func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"open", id}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"chat", "open", id}, &stdout, &stderr); code != 0 {
 		t.Fatalf("open code=%d stderr=%q", code, stderr.String())
 	}
 	if lines := strings.Count(stdout.String(), "\n"); lines != 1 {
@@ -327,96 +380,6 @@ func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
 
 // TestCheckRefusesALiveCodexSocketMissingFromTheGoRows is the regression this
 // checker existed to catch and did not. A legacy-only live-codex row means the
-// Go side lost a live Codex chat — which is exactly what happened when the pane
-// probe handed the thread resolver a BASENAME instead of a directory. The old
-// legacy-dead-server class restated that symptom as its own justification and
-// absolved it; there is no class for this shape any more, and there must not be.
-func TestCheckRefusesALiveCodexSocketMissingFromTheGoRows(t *testing.T) {
-	root := jailTest(t)
-	legacy := filepath.Join(root, "legacy-live-codex.txt")
-	const socket = "cx-1785120110-1697775-48706"
-	if err := os.WriteFile(
-		legacy,
-		[]byte("__PFM_TUPLE__\t"+socket+
-			"\tlive-codex\thost-ops\t0\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	// The SHIPPED allowlist, not a stand-in: the assertion is that no class this
-	// tree carries can cover a lost live Codex row.
-	allowlist := filepath.Join(root, "allowlist.txt")
-	content, err := os.ReadFile(
-		filepath.Join("..", "..", "testdata", checkAllowlistFile),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(allowlist, content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PFM_CHECK_LEGACY_OUTPUT", legacy)
-	t.Setenv(checkAllowlistEnv, allowlist)
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"ls", "--check"}, &stdout, &stderr)
-	if code == 0 {
-		t.Fatalf(
-			"a live Codex socket missing from the Go rows was allowlisted: %q",
-			stdout.String(),
-		)
-	}
-	if !strings.Contains(stdout.String(), "- legacy-only\t"+socket+"\tlive-codex") {
-		t.Fatalf("missing live Codex row was not reported: %q", stdout.String())
-	}
-	for _, line := range strings.Split(stdout.String(), "\n") {
-		if strings.HasPrefix(line, "~ allowed[") && strings.Contains(line, socket) {
-			t.Fatalf("a class absolved the lost live Codex row: %q", line)
-		}
-	}
-}
-
-// TestCheckSpendsNoSquatterBudgetWithoutALiveProbe holds the other half of the
-// squatter class's bound end to end: the budget comes from the live tmux probe,
-// so in a jail with no server on that socket the class has nothing to spend and
-// the row stays visible. The class is a count, never a shape.
-func TestCheckSpendsNoSquatterBudgetWithoutALiveProbe(t *testing.T) {
-	root := jailTest(t)
-	legacy := filepath.Join(root, "legacy-parked.txt")
-	const socket = "cc-1785850688-1928450-3031"
-	if err := os.WriteFile(
-		legacy,
-		[]byte("__PFM_TUPLE__\t"+socket+"\tlive-claude\tprojb-be\t0\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	allowlist := filepath.Join(root, "allowlist.txt")
-	if err := os.WriteFile(
-		allowlist,
-		[]byte("class\tlegacy-socket-squatter\tparked work, not a chat\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PFM_CHECK_LEGACY_OUTPUT", legacy)
-	t.Setenv(checkAllowlistEnv, allowlist)
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"ls", "--check"}, &stdout, &stderr)
-	// The jail has no tmux server on that socket, so the probe counts no parked
-	// sessions and the class has no budget to spend: the row stays visible.
-	if code == 0 {
-		t.Fatalf(
-			"squatter class spent a budget the probe never granted: %q",
-			stdout.String(),
-		)
-	}
-	if !strings.Contains(stdout.String(), "- legacy-only\t"+socket) {
-		t.Fatalf("unbudgeted squatter row was not reported: %q", stdout.String())
-	}
-}
-
 func TestDoctorReportsDamagedDatabaseWithoutPanic(t *testing.T) {
 	root := jailTest(t)
 	dbPath := filepath.Join(root, "fleet.db")
@@ -506,9 +469,8 @@ func TestUsageErrors(t *testing.T) {
 	jailTest(t)
 	for _, args := range [][]string{
 		{"ls", "--plain", "--tsv"},
-		{"ls", "--check", "--all"},
-		{"ls", "--check", "id"},
-		{"open"},
+		{"ls", "--hidden", "--all"},
+		{"chat", "open"},
 		{"index", "--unknown"},
 		{"doctor", "extra"},
 		{"revive", "extra"},
@@ -623,160 +585,6 @@ func environmentValue(environment []string, key string) string {
 		}
 	}
 	return "\x00missing"
-}
-
-func TestLSCheckParityMutationAndReadOnly(t *testing.T) {
-	root := jailTest(t)
-	t.Setenv(codexAvailableEnv, "0")
-	project := filepath.Join(root, "work", "check-project")
-	transcriptDir := filepath.Join(root, "claude", "check-project")
-	if err := os.MkdirAll(project, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(transcriptDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	const id = "12121212-1212-4212-8212-121212121212"
-	content := `{"type":"user","cwd":` + strconv.Quote(project) +
-		`,"message":{"content":"Shadow parity"}}` + "\n"
-	if err := os.WriteFile(
-		filepath.Join(transcriptDir, id+".jsonl"),
-		[]byte(content),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"index", "--full"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("index code=%d stderr=%q", code, stderr.String())
-	}
-	fixture := filepath.Join(root, "legacy.txt")
-	allowlist := filepath.Join(root, "allowlist.txt")
-	if err := os.WriteFile(
-		fixture,
-		[]byte("__PFM_TUPLE__\t"+id+
-			"\tresume-claude\tcheck-project\t1\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(allowlist, []byte("# no deviations\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PFM_CHECK_LEGACY_OUTPUT", fixture)
-	t.Setenv(checkAllowlistEnv, allowlist)
-	before := hashJailOutsideDB(t, root)
-	for iteration := 0; iteration < 20; iteration++ {
-		stdout.Reset()
-		stderr.Reset()
-		if code := run([]string{"ls", "--check"}, &stdout, &stderr); code != 0 {
-			t.Fatalf(
-				"check iteration %d code=%d stdout=%q stderr=%q",
-				iteration,
-				code,
-				stdout.String(),
-				stderr.String(),
-			)
-		}
-		if !strings.Contains(stdout.String(), "pfm check: parity (1 tuples") {
-			t.Fatalf("check stdout=%q", stdout.String())
-		}
-	}
-	after := hashJailOutsideDB(t, root)
-	if before != after {
-		t.Fatalf("ls --check mutated jail outside database: before=%s after=%s", before, after)
-	}
-	t.Logf(
-		"STRESS check_no_mutation iterations=20 identical=true tree_hash=%s",
-		after,
-	)
-
-	if err := os.WriteFile(
-		fixture,
-		[]byte("__PFM_TUPLE__\t"+id+
-			"\tresume-claude\tcheck-project\t2\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	stdout.Reset()
-	stderr.Reset()
-	if code := run([]string{"ls", "--check"}, &stdout, &stderr); code != 1 {
-		t.Fatalf("mutated check code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if strings.Count(stdout.String(), "\n") != 3 ||
-		!strings.Contains(stdout.String(), "2 difference(s)") {
-		t.Fatalf("mutated check stdout=%q", stdout.String())
-	}
-
-	if err := os.WriteFile(
-		allowlist,
-		[]byte("either\t"+id+
-			"\tresume-claude\tcheck-project\tpartial-tail prompt count\n"),
-		0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	stdout.Reset()
-	stderr.Reset()
-	if code := run([]string{"ls", "--check"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("allowlisted check code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if strings.Count(stdout.String(), "~ allowed") != 2 ||
-		!strings.Contains(stdout.String(), "partial-tail prompt count") {
-		t.Fatalf("allowlisted check stdout=%q", stdout.String())
-	}
-}
-
-func hashJailOutsideDB(t *testing.T, root string) string {
-	t.Helper()
-	digest := sha256.New()
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if relative == "." {
-			return nil
-		}
-		if strings.HasPrefix(filepath.Base(path), "fleet.db") {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if _, err := io.WriteString(
-			digest,
-			relative+"\x00"+info.Mode().String()+"\x00",
-		); err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(path)
-			if err != nil {
-				return err
-			}
-			_, err = io.WriteString(digest, target)
-			return err
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		_, err = digest.Write(content)
-		return err
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return hex.EncodeToString(digest.Sum(nil))
 }
 
 func jailTest(t *testing.T) string {

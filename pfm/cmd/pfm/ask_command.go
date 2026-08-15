@@ -29,8 +29,8 @@ const (
 // from the previous one, which is the bug this verb exists to delete.
 func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"headless ask",
-		"usage: pfm headless ask [--timeout SECS] [--settle SECS] [--now] "+
+		"chat ask",
+		"usage: pfm chat ask [--timeout SECS] [--settle SECS] [--now] "+
 			"[--json] [--progress] <name> <message>",
 		stderr,
 	)
@@ -58,19 +58,19 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	if !chat.Live {
-		fmt.Fprintf(stderr, "pfm headless ask: %q is not running\n", chat.Name)
+		fmt.Fprintf(stderr, "pfm chat ask: %q is not running\n", chat.Name)
 		return codeDeadChat
 	}
 	// The frontier is taken BEFORE the message is delivered: an answer is only
 	// an answer if it was written after the question.
 	frontier, err := headless.Frontier(chat)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless ask: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
 	engine, err := inject.New(inject.Dependencies{})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless ask: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
 	// A chat that is working does not get typed into — inject refuses, and
@@ -94,11 +94,11 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 		})
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm headless ask: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
 	if result.Code != 0 {
-		fmt.Fprintf(stderr, "pfm headless ask: %s\n", result.Message)
+		fmt.Fprintf(stderr, "pfm chat ask: %s\n", result.Message)
 		return codeUndelivered
 	}
 	// The timeout covers the whole exchange, so waiting for a turn to end
@@ -111,7 +111,7 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 	if budget > 0 && remaining <= 0 {
 		fmt.Fprintf(
 			stderr,
-			"pfm headless ask: %s took the whole %ds to become free — "+
+			"pfm chat ask: %s took the whole %ds to become free — "+
 				"the message was delivered, the answer is not in yet\n",
 			chat.Name,
 			*timeout,
@@ -143,7 +143,7 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 // launch (`run --await`) and one continued later (`ask`) print the same thing
 // and answer with the same exit codes.
 //
-// The answer goes to stdout ALONE — `$(pfm headless ask …)` is the reply
+// The answer goes to stdout ALONE — `$(pfm chat ask …)` is the reply
 // and nothing else — while every diagnostic goes to stderr.
 func awaitAnswer(
 	ctx context.Context,
@@ -170,7 +170,7 @@ func awaitAnswer(
 	if turn.Superseded {
 		fmt.Fprintf(
 			stderr,
-			"pfm headless %s: another message reached %s while this one was "+
+			"pfm chat %s: another message reached %s while this one was "+
 				"waiting — the answer above is the newest one, and may be theirs\n",
 			verb,
 			name,
@@ -182,7 +182,7 @@ func awaitAnswer(
 	case errors.Is(err, headless.ErrAwaitTimeout):
 		fmt.Fprintf(
 			stderr,
-			"pfm headless %s: %s is still working after %ds — the message "+
+			"pfm chat %s: %s is still working after %ds — the message "+
 				"was delivered, the answer is not in yet\n",
 			verb,
 			name,
@@ -193,13 +193,13 @@ func awaitAnswer(
 		if turn.Answer != "" {
 			// It answered and then the seat went away. The answer is real and
 			// is printed; the caller is told there will be no more.
-			fmt.Fprintf(stderr, "pfm headless %s: %s answered and is now gone\n", verb, name)
+			fmt.Fprintf(stderr, "pfm chat %s: %s answered and is now gone\n", verb, name)
 			return 0
 		}
-		fmt.Fprintf(stderr, "pfm headless %s: %s is gone — it never answered\n", verb, name)
+		fmt.Fprintf(stderr, "pfm chat %s: %s is gone — it never answered\n", verb, name)
 		return codeDeadChat
 	default:
-		fmt.Fprintf(stderr, "pfm headless %s: %v\n", verb, err)
+		fmt.Fprintf(stderr, "pfm chat %s: %v\n", verb, err)
 		return 1
 	}
 }

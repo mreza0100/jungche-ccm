@@ -166,7 +166,7 @@ func TestDetectAgentsAndCache1H(t *testing.T) {
 // TestCache1HBadgeFollowsTheOptOut fixtures the OUTCOME the picker draws — the
 // ⚡ badge on or off — for each way a live Claude can be born. Since Claude Code
 // 2.1.215 the 1h window is the harness DEFAULT, so FORCE_PROMPT_CACHING_5M=1 is
-// the only thing that turns the badge off (cc-fleet.zsh:349-366).
+// the only thing that turns the badge off.
 func TestCache1HBadgeFollowsTheOptOut(t *testing.T) {
 	tests := []struct {
 		name    string

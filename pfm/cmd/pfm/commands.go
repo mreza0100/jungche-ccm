@@ -25,33 +25,33 @@ import (
 )
 
 func runLS(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && (args[0] == "--hidden" || args[0] == "-H") {
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "usage: pfm ls --hidden")
+			return 2
+		}
+		return runHidden(nil, stdout, stderr)
+	}
 	flags := newFlagSet(
 		"ls",
-		"usage: pfm ls [-a|--all] [-H|--hidden] [--plain|--tsv|--check] [id]",
+		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --hidden",
 		stderr,
 	)
-	var all, hiddenOnly bool
+	var all bool
 	flags.BoolVar(&all, "a", false, "include hidden, background, and uncapped rows")
 	flags.BoolVar(&all, "all", false, "include hidden, background, and uncapped rows")
-	flags.BoolVar(&hiddenOnly, "H", false, "show hidden rows only")
-	flags.BoolVar(&hiddenOnly, "hidden", false, "show hidden rows only")
 	plain := flags.Bool("plain", false, "render a noninteractive list")
 	tsv := flags.Bool("tsv", false, "render stable tab-separated rows")
-	checkParity := flags.Bool("check", false, "compare read-only output with legacy cc-ls")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() > 1 || (all && hiddenOnly) ||
-		boolCount(*plain, *tsv, *checkParity) > 1 ||
-		(*checkParity && (all || hiddenOnly || flags.NArg() != 0)) {
+	if flags.NArg() > 1 ||
+		boolCount(*plain, *tsv) > 1 {
 		flags.Usage()
 		return 2
 	}
-	if *checkParity {
-		return runLSCheck(context.Background(), stdout, stderr)
-	}
 	if flags.NArg() == 1 {
-		if all || hiddenOnly || *plain || *tsv {
+		if all || *plain || *tsv {
 			flags.Usage()
 			return 2
 		}
@@ -61,8 +61,6 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 	view := compose.DefaultView
 	if all {
 		view = compose.AllView
-	} else if hiddenOnly {
-		view = compose.HiddenView
 	}
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
@@ -196,28 +194,16 @@ func boolCount(values ...bool) int {
 	return count
 }
 
-func runOpen(args []string, stdout, stderr io.Writer) int {
-	flags := newFlagSet("open", "usage: pfm open id", stderr)
-	if code, ok := parseFlags(flags, args); !ok {
-		return code
-	}
-	if flags.NArg() != 1 {
-		flags.Usage()
-		return 2
-	}
-	return openID(context.Background(), flags.Arg(0), stdout, stderr)
-}
-
 func openID(ctx context.Context, id string, stdout, stderr io.Writer) int {
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm open: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	defer database.Close()
 	scan, err := scanFleet(ctx, database, scanRequest{View: compose.AllView}, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm open: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	for _, row := range scan.Output.Rows {
@@ -232,7 +218,7 @@ func openID(ctx context.Context, id string, stdout, stderr io.Writer) int {
 			)
 		}
 	}
-	fmt.Fprintf(stderr, "pfm open: chat %q is not indexed\n", id)
+	fmt.Fprintf(stderr, "pfm chat open: chat %q is not indexed\n", id)
 	return 1
 }
 
@@ -245,7 +231,7 @@ func openRow(
 ) int {
 	resolved, err := paths.Resolve()
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm open: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	if row.Kind != compose.LiveClaude &&
@@ -267,7 +253,7 @@ func openRow(
 		},
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm open: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	line, err := executor.Open(ctx, action.Request{
@@ -280,12 +266,12 @@ func openRow(
 		CurrentTMUX:    os.Getenv("TMUX"),
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm open: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	if line != "" {
 		if err := dispatchAction(stdout, line); err != nil {
-			fmt.Fprintf(stderr, "pfm open: execute action: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat open: execute action: %v\n", err)
 			return 1
 		}
 	}
@@ -547,7 +533,7 @@ func pruneOrphanedHides(
 ) int {
 	orphans, err := database.OrphanedHides(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm hidden: %v\n", err)
+		fmt.Fprintf(stderr, "pfm archive: %v\n", err)
 		return 1
 	}
 	if !confirm {
@@ -562,14 +548,14 @@ func pruneOrphanedHides(
 		}
 		fmt.Fprintf(
 			stdout,
-			"pfm hidden: %d orphaned hide(s); re-run with --yes to delete\n",
+			"pfm archive: %d orphaned hide(s); re-run with --yes to delete\n",
 			len(orphans),
 		)
 		return 0
 	}
 	deleted, err := database.DeleteOrphanedHides(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm hidden: %v\n", err)
+		fmt.Fprintf(stderr, "pfm archive: %v\n", err)
 		return 1
 	}
 	for _, orphan := range orphans {
@@ -583,7 +569,7 @@ func pruneOrphanedHides(
 	}
 	fmt.Fprintf(
 		stdout,
-		"pfm hidden: pruned %d orphaned hide(s)\n",
+		"pfm archive: pruned %d orphaned hide(s)\n",
 		deleted,
 	)
 	return 0

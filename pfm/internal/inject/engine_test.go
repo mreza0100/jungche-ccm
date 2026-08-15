@@ -214,7 +214,7 @@ func newTestEngineWith(
 			LockMaxHold:     time.Second,
 			LockRoot:        t.TempDir(),
 			ThenLogRoot:     t.TempDir(),
-			Sender:          &Sender{Session: "sender", Label: "Founder", UUID: "1234567890"},
+			Sender:          &Sender{Session: "sender", Label: "Operator", UUID: "1234567890"},
 			CodexInlineMax:  CodexInlineMax,
 			AbsoluteByteMax: AbsoluteMessageMax,
 		},

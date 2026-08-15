@@ -327,8 +327,8 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 	input := Input{
 		Snapshot: gather.Snapshot{
 			CrumblessLive: []gather.CrumblessLive{{
-				Socket:        "cc-new-CC_FLEET_1",
-				SessionName:   "cc-new-CC_FLEET_1",
+				Socket:        "cc-new-fixture-1",
+				SessionName:   "cc-new-fixture-1",
 				WindowID:      "@1",
 				WindowName:    "claude",
 				PaneID:        "%1",
@@ -337,12 +337,12 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 				PaneStartUnix: 0,
 			}},
 		},
-		Hidden:  []store.Hidden{{ID: "cc-new-CC_FLEET_1", Engine: "cc"}},
+		Hidden:  []store.Hidden{{ID: "cc-new-fixture-1", Engine: "cc"}},
 		Options: Options{View: DefaultView, CurrentDir: "/work/host-ops"},
 	}
 
 	output := Compose(input)
-	row, found := rowByID(output.Rows, "cc-new-CC_FLEET_1")
+	row, found := rowByID(output.Rows, "cc-new-fixture-1")
 	if !found {
 		t.Fatalf(
 			"DefaultView omitted the booting row: %#v",
@@ -350,7 +350,7 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 		)
 	}
 	if row.Kind != Booting ||
-		row.Socket != "cc-new-CC_FLEET_1" ||
+		row.Socket != "cc-new-fixture-1" ||
 		row.PaneID != "%1" ||
 		row.Name != "booting…" ||
 		row.Project != "booting-project" ||

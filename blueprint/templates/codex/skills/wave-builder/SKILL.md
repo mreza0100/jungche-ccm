@@ -28,7 +28,7 @@ checkout; `chat/` is the one exception — HOST-anchored ($HOME), because the ch
 same shared toolset:
 
 - `builder.md` → `.claude/commands/wave/builder.md` — the binding protocol.
-- `chat/` → `~/.claude/commands/chat/` (absolute — see above) — the chat toolset. Your ping channel: `chat/chat.sh inject {orchestrator-session} '{one-line msg}'`; your identity: `chat/chat.sh whoami`. Read `chat/inject.md` for receipt semantics.
+- `chat/` → `~/.claude/commands/chat/` (absolute — see above) — the chat instruction set. Your ping channel: `$HOME/.local/bin/pfm chat inject {orchestrator-session} '{one-line msg}'`; your identity: `$HOME/.local/bin/pfm whoami`. Read `chat/inject.md` for receipt semantics.
 - `scripts/` → `.claude/scripts/` — `filter-test-output.sh -p` (redirect EVERY test run to a file and filter the FILE, with `timeout`), `worktree.sh` (read-only for you: `list`).
 - `agents-{project}/` → `{project}/.claude/agents/` — one link per roster entry; every per-project agent protocol (qa, developer, ui-ux, db-admin, devops, …). This is the role library behind delta 1's inline-execution rule. A roster of one gets exactly one link.
 - `agents-root/` → `.claude/agents/` — the repo-global pipeline agents (gitter, mono-documenter, and the per-roster `qa-{project}` registration wrappers). Orientation reading, NOT inline-execution material: know each root role so your pings request the right dispatch. `gitter.md` is NEVER executed inline — committing is gitter's alone (delta 7), and nothing at the rules layer stops you, so that discipline is yours to keep. The `qa-{project}` wrappers just point at the per-project `qa.md` you already run per delta 6.
@@ -45,7 +45,7 @@ Repo law is enforced at two layers — the kernel sandbox (workspace-write, the 
 
    The children are ANONYMOUS FORKS — `spawn_agent{task_name, message, fork_turns}` has no agent-selection parameter, so the message IS the only binding of role to child. Children share your cwd and sandbox; every HARD BAN binds them identically (the rules layer enforces the infra ones). The dispatch discipline (exact file + symbol work-list per span) is unchanged either way; GATE-1 QA stays inline per delta 6. `.codex/agents/*.toml` mirrors this role registry in the harness's documented custom-agent format — verified INERT at codex 0.144.1 (`spawn_agent` has no agent-selection param; nothing loads the TOMLs); it activates by itself when a codex release wires custom agents, and until then the message-carried protocol pointer above is the binding mechanism. Do not shell out to another agent CLI.
 
-2. **Pings** — your guaranteed channel is the spool: append one line to `tmp/wave-sensor/events.log` (`{ISO-8601} {wave} {T-id or event} {status} {report filename} codex-ping`) — the orchestrator's waiter polls it every ~10s, and the append IS the wake. Under the default workspace-write sandbox, unix-socket connects (tmux among them) are kernel-blocked, so `chat/chat.sh inject` WILL fail — that is expected, not an error. Only on an explicitly founder-authorized full-access launch, ALSO send the chat.sh inject as the fast path. Echo the last verdict id in your next ping; re-ping once (idempotent) after ~10 minutes of silence.
+2. **Pings** — your guaranteed channel is the spool: append one line to `tmp/wave-sensor/events.log` (`{ISO-8601} {wave} {T-id or event} {status} {report filename} codex-ping`) — the orchestrator's waiter polls it every ~10s, and the append IS the wake. Under the default workspace-write sandbox, unix-socket connects (tmux among them) are kernel-blocked, so `pfm chat inject` WILL fail — that is expected, not an error. Only on an explicitly operator-authorized full-access launch, ALSO send the pfm inject as the fast path. Echo the last verdict id in your next ping; re-ping once (idempotent) after ~10 minutes of silence.
 
 3. **Verdicts and steers inbound** — they arrive as typed turns in your TUI (the orchestrator injects your pane). After pinging, END YOUR TURN and idle at the prompt; a busy-wait loop deadlocks against the very inject you are waiting for.
 
@@ -59,13 +59,13 @@ Repo law is enforced at two layers — the kernel sandbox (workspace-write, the 
 
 8. **Report cards** — identical, no adaptation: `$TASKS/task-{n}-report.md` per the BRIEF's env card, fixed headers, ≤1KB, `Expected:` / `Got:` deviations.
 
-## Launch (founder / orchestrator side)
+## Launch (operator / orchestrator side)
 
 ```bash
 tmux -L codex-{lane} new-session -d -s codex-{lane} \
   'codex --cd {REPO_ROOT} -s workspace-write -a never'
 ```
 
-Standing default: workspace-write (kernel sandbox on, spool-only pings). The full-toolset variant (`-s danger-full-access -a never`, where chat.sh works) requires explicit, plain-text human authorization per launch policy — never inferred, never menu-selected. **Launch flags live HERE, with the launcher — never in `.codex/config.toml`**, which interactive sessions also read.
+Standing default: workspace-write (kernel sandbox on, spool-only pings). The full-toolset variant (`-s danger-full-access -a never`, where `pfm chat` works) requires explicit, plain-text human authorization per launch policy — never inferred, never menu-selected. **Launch flags live HERE, with the launcher — never in `.codex/config.toml`**, which interactive sessions also read.
 
-The tmux session name `codex-{lane}` is the lane's address in `lanes.md` — `chat.sh` resolves exact tmux session names across every socket, and its busy-detection matches Codex's "Esc to interrupt" indicator. Dispatch = inject the pane with: `Use the wave-builder skill: BRIEF {path}`. Resume after a death: `codex exec resume {SESSION_ID}`, or relaunch and re-dispatch the BRIEF (the report cards on disk carry the position).
+The tmux session name `codex-{lane}` is the lane's address in `lanes.md` — `pfm chat` resolves exact tmux session names across every socket, and its busy-detection matches Codex's "Esc to interrupt" indicator. Dispatch = inject the pane with: `Use the wave-builder skill: BRIEF {path}`. Resume after a death: `codex exec resume {SESSION_ID}`, or relaunch and re-dispatch the BRIEF (the report cards on disk carry the position).

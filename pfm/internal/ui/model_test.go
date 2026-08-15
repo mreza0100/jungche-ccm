@@ -198,7 +198,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		}
 
 		// Reboot is ⌃O, never ⌃B: the picker always runs inside tmux, and C-b is
-		// tmux's prefix — it never reaches the picker (cc-fleet.zsh:1394-1400).
+		// tmux's prefix — it never reaches the picker.
 		reboot, rebootCommand := applyKey(t, model, controlKey('o'))
 		if isLive(row.Kind) {
 			if rebootCommand == nil ||
@@ -225,8 +225,8 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 func TestBootingRowIgnoresHideAndRebootButSelectsOnEnter(t *testing.T) {
 	row := compose.Row{
 		Kind:    compose.Booting,
-		ID:      "cc-new-CC_FLEET_1",
-		Socket:  "cc-new-CC_FLEET_1",
+		ID:      "cc-new-fixture-1",
+		Socket:  "cc-new-fixture-1",
 		Name:    "booting…",
 		Project: "booting-project",
 	}

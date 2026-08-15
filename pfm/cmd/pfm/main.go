@@ -11,7 +11,6 @@ import (
 
 	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/mcpserv"
-	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 )
 
@@ -23,18 +22,18 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		printUsage(stderr)
-		return 2
+		return runLS(nil, stdout, stderr)
 	}
 
 	switch args[0] {
-	case "version":
+	case "version", "--version":
 		return runVersion(args[1:], stdout, stderr)
 	case "ls":
 		return runLS(args[1:], stdout, stderr)
-	case "open":
-		return runOpen(args[1:], stdout, stderr)
+	case "chat":
+		return runChat(args[1:], os.Stdin, stdout, stderr)
 	case "headless":
+		fmt.Fprintln(stderr, "pfm: 'headless' is deprecated; use 'pfm chat'")
 		return runHeadless(args[1:], stdout, stderr)
 	case "index":
 		return runIndex(args[1:], stdout, stderr)
@@ -52,18 +51,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runHeal(args[1:], stdout, stderr)
 	case "name-sync":
 		return runNameSync(args[1:], stdout, stderr)
-	case "bb":
-		return runBB(args[1:], os.Stdin, stdout, stderr)
 	case "legacy":
 		return runLegacy(args[1:], stdout, stderr)
-	case "hide":
-		return runHide(args[1:], stdout, stderr)
-	case "unhide":
-		return runUnhide(args[1:], stdout, stderr)
-	case "hidden":
-		return runHidden(args[1:], stdout, stderr)
-	case "resolve":
-		return runResolve(args[1:], stdout, stderr)
 	case "whoami":
 		return runWhoami(args[1:], stdout, stderr)
 	case "mcp":
@@ -121,8 +110,8 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 
 func runHide(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"hide",
-		"usage: pfm hide [--self | id] [--exit]",
+		"chat hide",
+		"usage: pfm chat hide [self | id] [--exit]",
 		stderr,
 	)
 	self := flags.Bool("self", false, "hide the calling tmux chat")
@@ -163,7 +152,7 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 		Environment: hide.Environment(),
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm hide: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "hidden %s\n", target.ID)
@@ -171,7 +160,7 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 }
 
 func runUnhide(args []string, stdout, stderr io.Writer) int {
-	flags := newFlagSet("unhide", "usage: pfm unhide id", stderr)
+	flags := newFlagSet("chat unhide", "usage: pfm chat unhide id", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -185,7 +174,7 @@ func runUnhide(args []string, stdout, stderr io.Writer) int {
 	}
 	defer database.Close()
 	if err := manager.Unhide(context.Background(), flags.Arg(0)); err != nil {
-		fmt.Fprintf(stderr, "pfm unhide: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat unhide: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "unhidden %s\n", flags.Arg(0))
@@ -194,24 +183,14 @@ func runUnhide(args []string, stdout, stderr io.Writer) int {
 
 func runHidden(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
-		"hidden",
-		"usage: pfm hidden [--prune-orphans [--yes]]",
+		"ls --hidden",
+		"usage: pfm ls --hidden",
 		stderr,
-	)
-	pruneOrphans := flags.Bool(
-		"prune-orphans",
-		false,
-		"report hides whose chat no longer exists",
-	)
-	confirm := flags.Bool(
-		"yes",
-		false,
-		"with --prune-orphans, delete the reported rows instead of listing them",
 	)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() != 0 || (*confirm && !*pruneOrphans) {
+	if flags.NArg() != 0 {
 		flags.Usage()
 		return 2
 	}
@@ -220,56 +199,15 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	defer database.Close()
-	if *pruneOrphans {
-		return pruneOrphanedHides(
-			context.Background(),
-			database,
-			*confirm,
-			stdout,
-			stderr,
-		)
-	}
 	rows, err := manager.Hidden(context.Background())
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm hidden: %v\n", err)
+		fmt.Fprintf(stderr, "pfm ls --hidden: %v\n", err)
 		return 1
 	}
 	for _, row := range rows {
 		fmt.Fprintf(stdout, "%s\t%s\t%d\n", row.ID, row.Engine, row.HiddenAt)
 	}
 	return 0
-}
-
-func runResolve(args []string, stdout, stderr io.Writer) int {
-	flags := newFlagSet(
-		"resolve",
-		"usage: pfm resolve label|session|cxwin name",
-		stderr,
-	)
-	if code, ok := parseFlags(flags, args); !ok {
-		return code
-	}
-	if flags.NArg() != 2 {
-		flags.Usage()
-		return 2
-	}
-	resolver, err := resolve.New(nil)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm resolve: %v\n", err)
-		return 2
-	}
-	outcome, err := resolver.Resolve(
-		context.Background(),
-		resolve.Kind(flags.Arg(0)),
-		flags.Arg(1),
-	)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm resolve: %v\n", err)
-		return 2
-	}
-	_, _ = io.WriteString(stdout, outcome.Stdout)
-	_, _ = io.WriteString(stderr, outcome.Stderr)
-	return outcome.Code
 }
 
 func runInternal(args []string, stderr io.Writer) int {
@@ -385,25 +323,22 @@ func parseFlagsAnywhere(
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: pfm <command> [options]")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "commands:")
+	fmt.Fprintln(w, "operator commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
-	fmt.Fprintln(w, "  open      open an indexed chat by id")
-	fmt.Fprintln(w, "  headless  drive spawned chats: run, status, last, stream, inject, watch")
+	fmt.Fprintln(w, "  chat      operate on one chat: new, open, inject, ask, read, stream, name, hide, end")
 	fmt.Fprintln(w, "  dream     build and inject repository memory organs")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
-	fmt.Fprintln(w, "  hide      hide a chat, optionally closing it")
-	fmt.Fprintln(w, "  unhide    remove a chat hide")
-	fmt.Fprintln(w, "  hidden    list or prune chat hides")
-	fmt.Fprintln(w, "  resolve   resolve a chat.sh target")
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
-	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
 	fmt.Fprintln(w, "  revive    list resumable chats by project")
 	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
 	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
-	fmt.Fprintln(w, "  name-sync converge every live chat's tmux window name")
-	fmt.Fprintln(w, "  bb        the /bb UserPromptSubmit hook: hide and close this chat")
 	fmt.Fprintln(w, "  legacy    repair the hide carrier file against the shared store")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the pfm version")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "wiring commands:")
+	fmt.Fprintln(w, "  name-sync converge live chat window names")
+	fmt.Fprintln(w, "  chat bb   the /bb UserPromptSubmit hook")
+	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
 }

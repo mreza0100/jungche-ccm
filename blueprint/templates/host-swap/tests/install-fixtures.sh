@@ -60,6 +60,7 @@ ok "bb.md linked (suffix dropped)" "$(readlink -f "$CMD/bb.md")" "$BUNDLE/bb.com
 ok "chat/ls.md linked"             "$(readlink -f "$CMD/chat/ls.md")" "$BUNDLE/chat/ls.command.md"
 ok "chat/self/compact.md linked"   "$(readlink -f "$CMD/chat/self/compact.md")" "$BUNDLE/chat/self/compact.command.md"
 ok "chat.sh linked"                "$(readlink -f "$CMD/chat/chat.sh")" "$BUNDLE/chat/chat.sh"
+ok "chat-ops.sh linked"            "$(readlink -f "$CMD/chat/chat-ops.sh")" "$BUNDLE/chat/chat-ops.sh"
 ok "zshrc sources the engine shim" "$(grep -cF "$SHIM" "$HOME/.zshrc")" "1"
 ok "codex bb skill dir linked"     "$(readlink -f "$HOME/.agents/skills/bb")" "$BUNDLE/codex-skills/bb"
 
@@ -104,7 +105,7 @@ ok "stale link was relinked"       "$(printf '%s' "$out" | grep -c 'relink')" "1
 ok "now points at this bundle"     "$(readlink -f "$BIN/cc-db.sh")" "$BUNDLE/cc-db.sh"
 
 echo "=== a ~/.zshrc pointing at another copy is REWRITTEN, not appended to ==="
-printf '# my shell\n# The shim evals one-line actions from the Go engine (~/.local/bin/cc-fleet); the legacy\n# cc-fleet.zsh stays on disk unsourced as the parity checker shadow oracle.\n[[ -r "/somewhere/else/cc-fleet.zsh" ]] && source "/somewhere/else/cc-fleet.zsh"\nalias x=y\n' > "$HOME/.zshrc"
+printf '# my shell\n[[ -r "/somewhere/else/pfm.zsh" ]] && source "/somewhere/else/pfm.zsh"\nalias x=y\n' > "$HOME/.zshrc"
 out="$(run --apply)"
 ok "still exactly one source line" "$(grep -Ec '^[^#]*source .*(cc-fleet|pfm)[.]zsh' "$HOME/.zshrc")" "1"
 ok "it points at this engine shim" "$(grep -cF "$SHIM" "$HOME/.zshrc")" "1"
@@ -176,6 +177,7 @@ if command -v jq >/dev/null 2>&1; then
     "UserPromptSubmit": [
       {"matcher": "", "hooks": [{"type": "command", "command": "bash /somewhere/cc-usage-hook.sh"}]},
       {"matcher": "", "hooks": [{"type": "command", "command": "bash ~/.claude/bin/bb-hook.sh"}]},
+      {"matcher": "", "hooks": [{"type": "command", "command": "bash ~/.claude/commands/chat/group.sh hook"}]},
       {"matcher": "", "hooks": [{"type": "command", "command": "$HOME/.local/bin/cc-fleet dream hook nudge"}]}
     ]
   }
@@ -183,21 +185,25 @@ if command -v jq >/dev/null 2>&1; then
 JSON
   out="$(run)"
   ok "dry run announces the rewire"    "$(printf '%s' "$out" | grep -c 'rewire  the bb-hook.sh')" "1"
+  ok "dry run announces group rewire"  "$(printf '%s' "$out" | grep -c 'rewire  the group.sh')" "1"
   ok "dry run leaves settings.json alone" "$(grep -c 'bb-hook.sh' "$CLAUDE_DIR/settings.json")" "1"
   run --apply >/dev/null
-  ok "the hook now runs the binary"    "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm bb"))) | length' "$CLAUDE_DIR/settings.json")" "1"
-  ok "no retired hook reference remains" "$(grep -Ec 'bb-hook\.sh|/cc-fleet( |\")' "$CLAUDE_DIR/settings.json")" "0"
+  ok "the hook now runs the chat binary" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "the group hook now runs the chat binary" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat group hook$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "no retired hook reference remains" "$(grep -Ec 'bb-hook\.sh|chat/group\.sh hook|/cc-fleet( |\")' "$CLAUDE_DIR/settings.json")" "0"
   ok "the unrelated hook survived"     "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("cc-usage-hook"))) | length' "$CLAUDE_DIR/settings.json")" "1"
   ok "settings.json was backed up"     "$(ls -1 "$CLAUDE_DIR/settings.json.pre-professor-"* 2>/dev/null | wc -l | tr -d ' ')" "1"
   out="$(run)"
   ok "a second run reports it ok"      "$(printf '%s' "$out" | grep -c "ok      the hook already runs")" "1"
+  ok "a second run reports group ok"   "$(printf '%s' "$out" | grep -c "ok      the group hook already runs")" "1"
 
   echo "=== settings.json with NO bb hook at all gets one added ==="
   printf '{"hooks":{}}\n' > "$CLAUDE_DIR/settings.json"
   run --apply >/dev/null
-  ok "the hook was added"              "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm bb"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "the hook was added"              "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "group remains opt-in when absent" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat group hook$"))) | length' "$CLAUDE_DIR/settings.json")" "0"
   run --uninstall --apply >/dev/null
-  ok "uninstall removes the hook"      "$(jq -r '[.hooks.UserPromptSubmit[]?.hooks[]?.command] | map(select(test("pfm bb"))) | length' "$CLAUDE_DIR/settings.json")" "0"
+  ok "uninstall removes the hook"      "$(jq -r '[.hooks.UserPromptSubmit[]?.hooks[]?.command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "0"
   rm -f "$CLAUDE_DIR/settings.json"
 fi
 

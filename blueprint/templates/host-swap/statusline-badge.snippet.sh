@@ -6,8 +6,7 @@
 # Primary signal: the oauthAccount email cached in each account's own .claude.json (works on
 # any platform, no launcher-specific plumbing required). The `<cfgdir>/account` marker file
 # below is optional legacy support for a launcher that writes one (format: "<n> <label>
-# <email>") — the bundle's legacy cc-fleet.zsh oracle does not write this file, so that branch
-# is a no-op fallback unless your own launcher populates it.
+# <email>").
 #
 # ── EDIT: update labels and fallback emails to match your accounts ───────────
 # Account 1 gets 🥇 and account 2 gets 🥈.

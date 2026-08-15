@@ -10,8 +10,7 @@
 # into the chat cache with every field shifted one to the right, and every affected chat then
 # read as prompts=0 — which the picker HIDES. cc-ls listed nothing and reported no error.
 #
-# So the assertions here are mostly about SHAPE, and the caller's parse line is lifted verbatim
-# out of cc-fleet.zsh rather than retyped, so the test cannot drift away from the code it guards.
+# The assertions here are mostly about the portable seam's output shape.
 set -uo pipefail
 BUNDLE="$(cd "$(dirname "$0")/.." && pwd)"
 # macOS resolves /var through /private/var; resolve the scratch dir the same way the shipped
@@ -53,17 +52,6 @@ ok "field 1 is an integer epoch" \
 ok "field 1 carries no fraction" \
    "$(printf '%s\n' "$SCAN" | cut -f1 | grep -c '\.')" "0"
 
-# The caller's own parse, lifted verbatim from cc-fleet.zsh so it cannot drift, run against a
-# real scan line. This is the assertion that would have caught the bug on a Mac.
-PARSE="$(grep -F 'mt="${line%%' "$BUNDLE/cc-fleet.zsh" | head -1)"
-[ -n "$PARSE" ] || { echo "FATAL: could not extract the scan-line parse from cc-fleet.zsh"; exit 1; }
-ok "the shipped parse splits on TAB, not on '.'" \
-   "$(printf '%s' "$PARSE" | grep -c 'mt="\${line%%\$.\\t.\*}"')" "1"
-LINE="$(printf '%s\n' "$SCAN" | head -1)"
-PARSED="$(zsh -c 'line="$1"; '"$PARSE"'; print -r -- "$mt|$sz|$fp"' _ "$LINE" 2>/dev/null)"
-ok "parsed mtime is the file's mtime" "${PARSED%%|*}"  "$(cc_mtime "$NEW")"
-ok "parsed path is the whole path"    "${PARSED##*|}"  "$NEW"
-
 echo "=== cc_find_meta — the empty answers ==="
 ok "missing dir is empty, not an error" "$(cc_find_meta "$T/nope" -name '*.jsonl' | grep -c .)" "0"
 ok "missing dir exits 0"                "$(cc_find_meta "$T/nope" -name '*.jsonl' >/dev/null; echo $?)" "0"
@@ -91,11 +79,6 @@ guarded_v(){ if [ -s "$1" ]; then grep -vFf "$1"; else cat; fi; }
 ok "empty hide list drops nothing"  "$(guarded_v "$T/empty.pat" < "$T/rows" | grep -c .)" "2"
 printf 'row-a\n' > "$T/one.pat"
 ok "non-empty hide list drops that row" "$(guarded_v "$T/one.pat" < "$T/rows" | grep -c .)" "1"
-ok "cc-ls guards -s before grep -f" \
-   "$(grep -c "if \[ -s '\$hfz' \]" "$BUNDLE/cc-fleet.zsh")" "2"
-ok "cc-ls no longer names the retired sidecar" \
-   "$(grep -c 'hf="\$HOME/.claude/.cc-ls-hidden"' "$BUNDLE/cc-fleet.zsh")" "0"
-
 echo "=== zsh: re-declaring a local without a value PRINTS it ==="
 # Not a GNU/BSD split — a zsh one, and it lands in the same place: on the picker's stdout.
 # `local name` with no assignment, for a name ALREADY local in this scope, is a LISTING request,
@@ -105,17 +88,6 @@ ok "the trap is real" \
    "$(zsh -c 'f(){ local a; a=1; local a; }; f' 2>&1)" "a=1"
 ok "an assignment suppresses it" \
    "$(zsh -c 'f(){ local a; a=1; local a=2; }; f' 2>&1)" ""
-# and the two names that hit it stay declared exactly once
-ok "cc-ls declares spanes once" "$(grep -c '^[[:space:]]*local .*\bspanes\b' "$BUNDLE/cc-fleet.zsh")" "1"
-# The invariant that actually matters, asserted behaviourally rather than by parsing zsh: on a
-# host with nothing to list, cc-ls prints ONE line and it is its own message. Any stray listing,
-# debug print or tool chatter shows up here as extra output. A scratch HOME with an empty tmux
-# tmpdir and its own db — nothing on the real box is read or written.
-S="$T/sandbox"; mkdir -p "$S/.claude/projects" "$S/tmuxtmp" "$S/.cc"
-SOUT="$(HOME="$S" TMUX_TMPDIR="$S/tmuxtmp" CC_FLEET_DB="$S/.cc/fleet.db" TMUX= \
-        zsh -f -c ". '$BUNDLE/cc-fleet.zsh'; cc-ls" 2>/dev/null)"
-ok "cc-ls with nothing to list prints exactly its own message" "$SOUT" "cc-ls: no chats found"
-
 echo "=== cc_sed_i / cc_timeout / cc_detach ==="
 printf 'alpha\nbeta\n' > "$T/edit.txt"
 cc_sed_i 's/alpha/ALPHA/' "$T/edit.txt"

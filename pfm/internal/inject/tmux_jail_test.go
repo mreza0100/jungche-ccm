@@ -207,7 +207,7 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 			ThenIdleTries:   80,
 			ThenIdleStable:  3,
 			ThenSettle:      100 * time.Millisecond,
-			Sender:          &Sender{Session: "sender", Label: "Founder", UUID: "abcdef123456"},
+			Sender:          &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
 			CodexInlineMax:  CodexInlineMax,
 			AbsoluteByteMax: AbsoluteMessageMax,
 		},

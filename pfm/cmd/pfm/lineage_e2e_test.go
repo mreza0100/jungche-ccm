@@ -65,7 +65,7 @@ func TestJailedCodexLineageCollapseHideSiblingStaysHidden(t *testing.T) {
 	rows := runLineageCLI(t, "ls", "--tsv")
 	assertOneWEBLineage(t, rows, rootID, 3)
 
-	hideOutput := runLineageCLI(t, "hide", childTwo)
+	hideOutput := runLineageCLI(t, "chat", "hide", childTwo)
 	if hideOutput != "hidden "+rootID+"\n" {
 		t.Fatalf("hide child output = %q", hideOutput)
 	}
@@ -80,7 +80,7 @@ func TestJailedCodexLineageCollapseHideSiblingStaysHidden(t *testing.T) {
 	if rows := runLineageCLI(t, "ls", "--tsv"); strings.Contains(rows, "\tWEB\t") {
 		t.Fatalf("new sibling unhid lineage:\n%s", rows)
 	}
-	hidden := runLineageCLI(t, "hidden")
+	hidden := runLineageCLI(t, "ls", "--hidden")
 	if !strings.HasPrefix(hidden, rootID+"\tcx\t") ||
 		strings.Count(hidden, "\t") != 2 {
 		t.Fatalf("lineage hide = %q, want id/engine/hidden_at only", hidden)
@@ -92,14 +92,14 @@ func TestJailedCodexLineageCollapseHideSiblingStaysHidden(t *testing.T) {
 	if rows := runLineageCLI(t, "ls", "--tsv"); strings.Contains(rows, "\tWEB\t") {
 		t.Fatalf("a real new prompt unhid the lineage:\n%s", rows)
 	}
-	if hidden := runLineageCLI(t, "hidden"); !strings.HasPrefix(hidden, rootID+"\tcx\t") {
+	if hidden := runLineageCLI(t, "ls", "--hidden"); !strings.HasPrefix(hidden, rootID+"\tcx\t") {
 		t.Fatalf("lineage hide vanished: %q", hidden)
 	}
 
-	runLineageCLI(t, "unhide", rootID)
+	runLineageCLI(t, "chat", "unhide", rootID)
 	rows = runLineageCLI(t, "ls", "--tsv")
 	assertOneWEBLineage(t, rows, rootID, 4)
-	if hidden := runLineageCLI(t, "hidden"); hidden != "" {
+	if hidden := runLineageCLI(t, "ls", "--hidden"); hidden != "" {
 		t.Fatalf("unhide left a hide behind: %q", hidden)
 	}
 }

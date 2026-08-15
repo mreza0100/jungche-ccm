@@ -8,7 +8,7 @@ argument-hint: [target-chat?] [super goal] | epic [epic-name]
 
 Super goal: $ARGUMENTS
 
-You define the goal; the target session does the work. The deliverable is a **fired `/goal`** — a goal is ALWAYS inline text, **≤4,000 characters, single-line at fire time, never a path to a file** (deep context rides as repo-file pointers INSIDE the text). The target is any live chat by its tmux name (`/chat:ls`), **including the chat calling this command** — self-inject is the only way to fire `/goal` on yourself, since it is a user-typed command (§ Launch). If `$ARGUMENTS` starts with `epic`, run § Subcommand: epic instead of Steps 1–4. When `$ARGUMENTS` is empty, take what the founder has been driving at in this chat as the super-goal and refine it in Step 1; ask for a one-line goal only when the chat gives you nothing. **Non-interactive lane:** a caller that already holds the finished goal (e.g. `/wave:orchestrator` firing the builder's train-wide goal) skips Steps 1–3 and runs § Launch directly with its own ≤4k string — no interrogation, no record-copy detour.
+You define the goal; the target session does the work. The deliverable is a **fired `/goal`** — a goal is ALWAYS inline text, **≤4,000 characters, single-line at fire time, never a path to a file** (deep context rides as repo-file pointers INSIDE the text). The target is any live chat by its tmux name (`/chat:ls`), **including the chat calling this command** — self-inject is the only way to fire `/goal` on yourself, since it is a user-typed command (§ Launch). If `$ARGUMENTS` starts with `epic`, run § Subcommand: epic instead of Steps 1–4. When `$ARGUMENTS` is empty, take what the operator has been driving at in this chat as the super-goal and refine it in Step 1; ask for a one-line goal only when the chat gives you nothing. **Non-interactive lane:** a caller that already holds the finished goal (e.g. `/wave:orchestrator` firing the builder's train-wide goal) skips Steps 1–3 and runs § Launch directly with its own ≤4k string — no interrogation, no record-copy detour.
 
 ## Step 1 — Interrogate
 
@@ -17,8 +17,8 @@ The goal as stated — or as read from the chat — is never the whole goal. Sta
 - **Outcome** — what does done look like? What is different in the product or system when this succeeds?
 - **Scope** — what is explicitly in, what is explicitly out?
 - **Constraints** — deadlines, sacred ground (tenant isolation, permissions, audit trails, money paths), tech choices already made.
-- **Evidence** — what proof will the founder accept? Tests, metrics, demo, report.
-- **Endgame** — is the finish line shipped code, validated knowledge, or a decision? When a founder-gated step (paid spend, sacred ground, an irreversible action) sits on the critical path, the endgame is phased — autonomous up to the gate, then an explicit founder stop — not a "fully autonomous to done" mandate that contradicts its own gate.
+- **Evidence** — what proof will the operator accept? Tests, metrics, demo, report.
+- **Endgame** — is the finish line shipped code, validated knowledge, or a decision? When an operator-gated step (paid spend, sacred ground, an irreversible action) sits on the critical path, the endgame is phased — autonomous up to the gate, then an explicit operator stop — not a "fully autonomous to done" mandate that contradicts its own gate.
 
 Ask only questions whose answer would change the prompt; when the remaining unknowns are things the executor can discover from the repo, stop asking and move on.
 
@@ -29,7 +29,7 @@ The executor is a fresh Professor session in this repo with no memory of this co
 - Locate the surfaces the goal touches (start at `docs/agents/_index.md` and the relevant child `CLAUDE.md`); collect the 3–8 entry-point files or docs the executor should read first.
 - Check `docs/epics/` and recent waves for prior work the goal builds on or collides with.
 - Identify the natural first move for the executor: a command (`/wave:builder`, `/jc`, `/wave:orchestrator`, `/wave:refine`, `/p:rnd`), a skill (`rr`), or direct analysis.
-- Distill what the executor cannot infer from the repo: founder intent, tradeoffs already decided, context from this conversation.
+- Distill what the executor cannot infer from the repo: operator intent, tradeoffs already decided, context from this conversation.
 
 ## Step 3 — Compile the goal string (≤4,000 chars)
 
@@ -47,7 +47,7 @@ This is a super-goal — few who attempt it succeed. Work accordingly:
 1. Read this entire prompt first, build a mental model of the end state, and write it to a short northstar note (`docs/epics/{goal-slug}/mental-model/build-northstar.md`) — see far ahead before touching anything; no build work exists until that note does.
 2. Plan in smart workflows: decompose toward the end state, but decide each next step dynamically from what the last step taught you — the plan serves the mental model, never the reverse.
 3. When you hit a real dead end, look back: reconsider earlier decisions, revise the plan, and re-approach. Backtracking a wrong decision is progress; repeating it is not.
-4. Chain the work to done: after each green milestone continue straight to the next; surface to the founder at genuine decision gates and blockers, not to report progress. Done is the Success criteria below — not a green slice, and not a `/goal` "achieved"/"could-not-be-achieved" banner (that ends a harness instance, not the mission). If a banner fires with the criteria still unmet, continue, or resume on the next re-injection.
+4. Chain the work to done: after each green milestone continue straight to the next; surface to the operator at genuine decision gates and blockers, not to report progress. Done is the Success criteria below — not a green slice, and not a `/goal` "achieved"/"could-not-be-achieved" banner (that ends a harness instance, not the mission). If a banner fires with the criteria still unmet, continue, or resume on the next re-injection.
 5. On resume and after any `/compact`, re-form the mental model from your northstar note before reading "the next step" — jumping straight to the next step is the drift that loses the end-state.
 
 ## Mission
@@ -73,7 +73,7 @@ This is a super-goal — few who attempt it succeed. Work accordingly:
 
 ## Success criteria
 
-{the evidence the founder will accept — a working end-to-end increment plus independent or held-out proof, not self-graded per-component green}
+{the evidence the operator will accept — a working end-to-end increment plus independent or held-out proof, not self-graded per-component green}
 
 ## Suggested route
 
@@ -87,24 +87,24 @@ Resume after any stop: fire the `# Prompt` of `docs/epics/{goal-slug}/prompts/re
 
 ## Open questions
 
-{what the executor must confirm with the founder before irreversible moves}
+{what the executor must confirm with the operator before irreversible moves}
 ```
 
 Prompt rules: self-contained — the executor has the repo, not this chat; point at files rather than pasting file bodies; no secrets, credentials, or internal URLs.
 
 ## Step 4 — Deliver
 
-Report the compiled goal string's char count, the record-copy path, and one line stating what context you embedded. Then fire it (§ Launch) — at the named target immediately when the invocation named one; otherwise offer the founder the target choice first (a chat name, or `self`).
+Report the compiled goal string's char count, the record-copy path, and one line stating what context you embedded. Then fire it (§ Launch) — at the named target immediately when the invocation named one; otherwise offer the operator the target choice first (a chat name, or `self`).
 
 ## Launch — fire /goal at the target
 
 `/goal` is a user-typed command, so a chat can never run it on itself directly — `/chat:inject` typing into a pane is the one way to fire it, and it works on ANY live chat: a teammate by tmux name, or `self` for the chat running this command.
 
 ```bash
-$HOME/.claude/commands/chat/chat.sh inject {target|self} "/goal {the compiled goal string}"
+$HOME/.local/bin/pfm chat inject {target|self} "/goal {the compiled goal string}"
 ```
 
-The inject carries the goal STRING inline — never a file path (a path is not a goal; the machinery does not read files). Single line, ≤4,000 chars — over the cap → compress the string (tighten prose, move depth into read-first pointers), never split into two goals. Capture-verify the fire: `Goal set:` echoed and the `◎ /goal active` statusline mark visible. For `self` the command queues into this pane and runs after the current turn. When the founder is present and no target was named, always offer before firing — they may want to read the goal before an autonomous loop starts. Live-verified semantics: an inline `/goal` registers cross-pane, survives `/compact`, and a successor `/goal` REPLACES harness state but not conversation memory — close a goal by delivering its terminal condition, never by overwrite.
+The inject carries the goal STRING inline — never a file path (a path is not a goal; the machinery does not read files). Single line, ≤4,000 chars — over the cap → compress the string (tighten prose, move depth into read-first pointers), never split into two goals. Capture-verify the fire: `Goal set:` echoed and the `◎ /goal active` statusline mark visible. For `self` the command queues into this pane and runs after the current turn. When the operator is present and no target was named, always offer before firing — they may want to read the goal before an autonomous loop starts. Live-verified semantics: an inline `/goal` registers cross-pane, survives `/compact`, and a successor `/goal` REPLACES harness state but not conversation memory — close a goal by delivering its terminal condition, never by overwrite.
 
 ## Subcommand: epic — write the continuation prompt for a paused or in-flight epic
 
@@ -112,11 +112,11 @@ The inject carries the goal STRING inline — never a file path (a path is not a
 
 1. **Load the epic.** Read `docs/epics/{name}/manifest.md` + `update.md` + the constitution (`goal-prompt.md`, or whichever prompt file `## Files` registers as the goal source). No `{name}` given or epic missing → `ls docs/epics/` and ask in one line.
 2. **Locate the live state**, in priority order: `update.md` `## State of work` (percent complete, in-flight position, exact next step); manifest `## Key Decisions` entries that supersede or refine the constitution (overrides outrank goal-prompt text — list them explicitly); `## Open Questions`; and any program-counter or register files those sections name (read them; cite their paths, never copy their bodies).
-3. **Write two files** to `docs/epics/{name}/prompts/` (create it if missing): the rolling `resume-latest.md` (overwrite every run — the one file the founder pastes) and a dated `resume-{YYYY-MM-DD}.md` (`-2`/`-3` on same-day collision — the archive). Both carry IDENTICAL content. Both stay unregistered in the manifest `## Files` and are never auto-loaded by `Load epic`.
+3. **Write two files** to `docs/epics/{name}/prompts/` (create it if missing): the rolling `resume-latest.md` (overwrite every run — the one file the operator pastes) and a dated `resume-{YYYY-MM-DD}.md` (`-2`/`-3` on same-day collision — the archive). Both carry IDENTICAL content. Both stay unregistered in the manifest `## Files` and are never auto-loaded by `Load epic`.
 
    The file is two sections — `# Report` then `# Prompt`:
 
-   **`# Report`** — founder-facing prose so a reader grasps the state at once: what has been done so far, the key decisions made and WHY (cite the register rows), and the current project state (percent complete, what is green and committed, what is in flight). Narrative, not a template.
+   **`# Report`** — operator-facing prose so a reader grasps the state at once: what has been done so far, the key decisions made and WHY (cite the register rows), and the current project state (percent complete, what is green and committed, what is in flight). Narrative, not a template.
 
    **`# Prompt`** — the self-contained resume prompt, **≤4,000 chars** (it fires as an inline goal — depth lives in the ordered reads, never in the prompt body); firing it into `/goal` must let a fresh session continue exactly where it stopped:
    - the **Operating mode** block from Step 3, verbatim;

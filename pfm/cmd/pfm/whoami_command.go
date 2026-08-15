@@ -8,6 +8,8 @@ import (
 	"os"
 
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 )
@@ -18,12 +20,13 @@ import (
 // caller can switch to this binary without reading differently. --json adds
 // the engine identity for callers that want more than the handle.
 func runWhoami(args []string, stdout, stderr io.Writer) int {
-	flags := newFlagSet("whoami", "usage: pfm whoami [--json]", stderr)
+	flags := newFlagSet("whoami", "usage: pfm whoami [--json | --label]", stderr)
 	asJSON := flags.Bool("json", false, "print the full identity as JSON")
+	asLabel := flags.Bool("label", false, "print the chat label, falling back to its session")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() != 0 {
+	if flags.NArg() != 0 || (*asJSON && *asLabel) {
 		flags.Usage()
 		return 2
 	}
@@ -50,6 +53,21 @@ func runWhoami(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "%s\n", encoded)
 		return 0
+	}
+	if *asLabel && identity.SocketPath != "" {
+		target := identity.Pane
+		if target == "" {
+			target = identity.Session
+		}
+		capture, captureErr := (inject.CommandTmux{}).Capture(
+			ctx, identity.SocketPath, target, true, inject.FullScrollback,
+		)
+		if captureErr == nil {
+			if label := naming.BookmarkLabel(capture); label != "" {
+				fmt.Fprintln(stdout, label)
+				return 0
+			}
+		}
 	}
 	fmt.Fprintf(stdout, "%s\n", identity.Session)
 	return 0

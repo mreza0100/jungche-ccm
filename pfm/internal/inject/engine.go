@@ -702,7 +702,7 @@ func (engine *Engine) checkSteerChain(request Request) (Result, bool) {
 	if !isCompactCommand(request.Message) {
 		return Result{}, true
 	}
-	// EVERY /compact inject must carry a steer (founder law): compaction
+	// EVERY /compact inject must carry a steer (operator rule): compaction
 	// returns to an idle prompt — no turn fires — so a steerless compact
 	// strands the target command-less (chat.sh:591-611).
 	if len(request.Then) == 0 {
@@ -862,7 +862,7 @@ func (engine *Engine) detectSender(ctx context.Context) Sender {
 // chat.sh's codex fallback (chat.sh:104-121): a codex chat has no 🔖
 // statusline, so its label is the tmux window name — the human thread name set
 // by pfm — returned BARE, since the recipient must be able to reply by
-// exactly the label the founder gave the chat.
+// exactly the label the operator gave the chat.
 func (engine *Engine) senderLabel(
 	ctx context.Context,
 	identity resolve.Identity,

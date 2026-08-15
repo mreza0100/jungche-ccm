@@ -587,9 +587,6 @@
     "templates/host-swap/cc-db.sh": {
       "curated": true
     },
-    "templates/host-swap/cc-fleet.zsh": {
-      "curated": true
-    },
     "templates/host-swap/cc-swap-chat.sh": {
       "curated": true
     },
@@ -602,7 +599,7 @@
     "templates/host-swap/chat/chat.sh": {
       "curated": true
     },
-    "templates/host-swap/chat/dump.command.md": {
+    "templates/host-swap/chat/chat-ops.sh": {
       "curated": true
     },
     "templates/host-swap/chat/find.command.md": {

@@ -116,7 +116,7 @@ say ""
 # Nothing depends on the link: every script finds it through PFM_HOME, in the clone.
 # RETIRED into the Go engine (each is now a pfm subcommand, and the links
 # below are removed from ~/.claude/bin on the next --apply): cc-hide.sh /
-# cx-hide.sh → `pfm hide --self [--exit]`, bb-hook.sh → `pfm bb`,
+# cx-hide.sh → `pfm chat hide self [--exit]`, bb-hook.sh → `pfm chat bb`,
 # cc-reap.sh → `pfm reap`, cc-archive.sh → `pfm archive`,
 # cc-name-sync.sh → `pfm name-sync`, cx-heal.sh → `pfm heal`.
 FLEET_SCRIPTS="cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh"
@@ -166,7 +166,13 @@ for src in "$BUNDLE"/chat/self/*.command.md; do
   base="$(basename "$src" .command.md)"
   if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/self/$base.md"; else link "$src" "$CMD/chat/self/$base.md"; fi
 done
-for f in chat.sh history.sh; do
+for f in dump.md; do
+  [ -L "$CMD/chat/$f" ] || continue
+  say "  retire  $CMD/chat/$f  (command removed)"
+  act && rm -f "$CMD/chat/$f"
+  n_link=$((n_link+1))
+done
+for f in chat.sh chat-ops.sh history.sh; do
   if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/$f"; else link "$BUNDLE/chat/$f" "$CMD/chat/$f"; fi
 done
 say ""
@@ -251,13 +257,13 @@ fi
 say ""
 
 # ── the /bb hook: settings.json is the ONE place a UserPromptSubmit hook is declared, and this
-# installer is the only writer of it. The hook calls the BINARY (`pfm bb`), never a .sh —
+# installer is the only writer of it. The hook calls the BINARY (`pfm chat bb`), never a .sh —
 # the shell hook is retired. jq also migrates every hook command that starts with the old binary
 # path while preserving its arguments; without jq the file is left alone and the operator is told. ──
 SETTINGS="$CLAUDE_DIR/settings.json"
 OLD_BINARY="$HOME/.local/bin/cc-fleet"
 PFM_BINARY="$HOME/.local/bin/pfm"
-BB_COMMAND="$HOME/.local/bin/pfm bb"
+BB_COMMAND="$HOME/.local/bin/pfm chat bb"
 say "/bb hook -> $SETTINGS"
 if ! command -v jq >/dev/null 2>&1; then
   say "  skip    jq is not installed — wire the UserPromptSubmit hook to '$BB_COMMAND' by hand"
@@ -266,10 +272,10 @@ elif [ ! -f "$SETTINGS" ]; then
   say "  skip    no settings.json yet — it is written by Claude Code, not by this installer"
   n_skip=$((n_skip+1))
 else
-  bb_state="$(jq -r --arg want "$BB_COMMAND" --arg old "$OLD_BINARY" '
+  bb_state="$(jq -r --arg want "$BB_COMMAND" --arg old "$OLD_BINARY" --arg pfm "$PFM_BINARY" '
     [ .hooks.UserPromptSubmit[]?.hooks[]?.command // empty ] as $commands
     | if ($commands | index($want)) then "ok"
-      elif ($commands | map(select(. == ($old + " bb") or test("bb-hook\\.sh"))) | length) > 0 then "rewire"
+      elif ($commands | map(select(. == ($old + " bb") or . == ($pfm + " bb") or test("bb-hook\\.sh"))) | length) > 0 then "rewire"
       else "add" end' "$SETTINGS" 2>/dev/null)" || bb_state=""
   old_hook_count="$(jq -r --arg old "$OLD_BINARY" '
     [ .hooks[]?[]?.hooks[]?.command // empty
@@ -315,6 +321,10 @@ else
              then $new + .[($old | length):] else . end)
           |
           (.hooks.UserPromptSubmit[]?.hooks[]?
+           | select((.command // "") == ($new + " bb"))
+           | .command) = $want
+          |
+          (.hooks.UserPromptSubmit[]?.hooks[]?
            | select((.command // "") | test("bb-hook\\.sh"))
            | .command) = $want
           | (.hooks.UserPromptSubmit[]?.hooks[]?
@@ -340,10 +350,70 @@ else
 fi
 say ""
 
+# ── the chat group receiver: migrate the existing opt-in hook to the binary surface. The
+# receiver itself is fail-open: `pfm chat group hook` drains its payload and returns success
+# even when the group backend cannot be reached. An install with no group hook stays opted out. ──
+GROUP_COMMAND="$HOME/.local/bin/pfm chat group hook"
+say "/chat group hook -> $SETTINGS"
+if ! command -v jq >/dev/null 2>&1; then
+  say "  skip    jq is not installed — rewire the group hook to '$GROUP_COMMAND' by hand"
+  n_skip=$((n_skip+1))
+elif [ ! -f "$SETTINGS" ]; then
+  say "  skip    no settings.json yet — it is written by Claude Code, not by this installer"
+  n_skip=$((n_skip+1))
+else
+  group_state="$(jq -r --arg want "$GROUP_COMMAND" '
+    [ .hooks.UserPromptSubmit[]?.hooks[]?.command // empty ] as $commands
+    | if ($commands | index($want)) then "ok"
+      elif ($commands | map(select(test("chat/group\\.sh[ ]+hook$"))) | length) > 0 then "rewire"
+      else "absent" end
+  ' "$SETTINGS" 2>/dev/null)" || group_state=""
+  case "$group_state" in
+    ok)
+      if [ "$DO" = uninstall ]; then
+        say "  remove  the '$GROUP_COMMAND' UserPromptSubmit hook"; n_link=$((n_link+1))
+      else
+        say "  ok      the group hook already runs '$GROUP_COMMAND'"; n_ok=$((n_ok+1))
+      fi ;;
+    rewire)
+      if [ "$DO" = uninstall ]; then
+        say "  skip    the legacy group hook is not owned by this install"; n_skip=$((n_skip+1))
+      else
+        say "  rewire  the group.sh UserPromptSubmit hook -> '$GROUP_COMMAND'"; n_link=$((n_link+1))
+      fi ;;
+    absent)
+      say "  ok      no group hook is configured"; n_ok=$((n_ok+1)) ;;
+    *)
+      say "  skip    could not read $SETTINGS as JSON — left group hook untouched"; n_skip=$((n_skip+1)) ;;
+  esac
+  if [ "$DO" = uninstall ] && [ "$group_state" = ok ]; then
+    if act; then
+      cp -p "$SETTINGS" "$SETTINGS.pre-professor-$TS"
+      jq --arg want "$GROUP_COMMAND" '
+        .hooks.UserPromptSubmit = [
+          .hooks.UserPromptSubmit[]?
+          | .hooks = [ .hooks[]? | select(.command != $want) ]
+        ] | .hooks.UserPromptSubmit |= map(select((.hooks | length) > 0))
+      ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
+    fi
+  elif [ "$DO" = install ] && [ "$group_state" = rewire ]; then
+    if act; then
+      cp -p "$SETTINGS" "$SETTINGS.pre-professor-$TS"
+      jq --arg want "$GROUP_COMMAND" '
+        (.hooks.UserPromptSubmit[]?.hooks[]?
+         | select((.command // "") | test("chat/group\\.sh[ ]+hook$"))
+         | .command) = $want
+        | (.hooks.UserPromptSubmit[]?.hooks[]?
+           | select(.command == $want) | .type) = "command"
+      ' "$SETTINGS" > "$SETTINGS.tmp.$$" && mv "$SETTINGS.tmp.$$" "$SETTINGS"
+    fi
+  fi
+fi
+say ""
+
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──
 # The shim evals one-line actions from the Go engine; it aborts loudly if ~/.local/bin/pfm
-# is missing (build it from $ENGINE — see CUTOVER.md §1). The legacy cc-fleet.zsh stays in the
-# bundle unsourced as the parity checker's shadow oracle.
+# is missing.
 #
 # The engine is a PROGRAM, not a template, so it lives at the repo root rather than inside the
 # bundle: $BUNDLE is <repo>/blueprint/templates/host-swap, three levels down from it. A clone
@@ -356,7 +426,7 @@ FLEET_SOURCE_RE='^[[:space:]]*([^#].*)?source[[:space:]].*(cc-fleet|pfm)[.]zsh'
 PFM_SOURCE_RE='^[[:space:]]*([^#].*)?source[[:space:]].*pfm[.]zsh'
 STALE_FLEET_COMMENT_RE='^[[:space:]]*# (The shim evals one-line actions from the Go engine \(~/.local/bin/cc-fleet\); the legacy|cc-fleet[.]zsh stays on disk unsourced as the parity checker)'
 [ -r "$ENGINE/shim/pfm.zsh" ] || say "  warn    no pfm shim found at $ENGINE/shim/pfm.zsh"
-[ -x "$HOME/.local/bin/pfm" ] || say "  warn    ~/.local/bin/pfm is not installed — the shim will refuse; build it per $ENGINE/CUTOVER.md"
+[ -x "$HOME/.local/bin/pfm" ] || say "  warn    ~/.local/bin/pfm is not installed — the shim will refuse"
 say "shell -> $ZSHRC"
 if [ "$DO" = uninstall ]; then
   if [ -f "$ZSHRC" ] && grep -Eq "$PFM_SOURCE_RE" "$ZSHRC"; then
@@ -379,12 +449,16 @@ elif grep -Eq "$FLEET_SOURCE_RE" "$ZSHRC"; then
   say "  rewrite the existing fleet source line to this bundle"
   act && { cp -p "$ZSHRC" "$ZSHRC.pre-professor-$TS"; awk -v repl="$SRC_LINE" '
     /^#[[:space:]]*The shim evals one-line actions from the Go engine \(~\/.local\/bin\/cc-fleet\); the legacy/ {
-      print "# The shell launchers delegate to the pfm engine; the legacy oracle remains unsourced."
+      print "# The shell launchers delegate to the pfm engine."
+      current_comment=1
       next
     }
     /^#[[:space:]]*cc-fleet[.]zsh stays on disk unsourced as the parity checker/ {next}
     !/^[[:space:]]*#/ && /source[[:space:]]/ && /(cc-fleet|pfm)[.]zsh/ {
-      if (!done) print repl
+      if (!done) {
+        if (!current_comment) print "# The shell launchers delegate to the pfm engine."
+        print repl
+      }
       done=1
       next
     }

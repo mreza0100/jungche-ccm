@@ -82,7 +82,7 @@ func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 
 	for _, id := range []string{agentID, codexID} {
 		var stdout, stderr bytes.Buffer
-		if code := run([]string{"hide", id}, &stdout, &stderr); code != 0 {
+		if code := run([]string{"chat", "hide", id}, &stdout, &stderr); code != 0 {
 			t.Fatalf(
 				"hide %s code=%d stdout=%q stderr=%q",
 				id, code, stdout.String(), stderr.String(),
@@ -94,7 +94,7 @@ func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"hide", unknown}, &stdout, &stderr); code != 1 {
+	if code := run([]string{"chat", "hide", unknown}, &stdout, &stderr); code != codeUnknownChat {
 		t.Fatalf(
 			"hide unknown code=%d stdout=%q stderr=%q",
 			code, stdout.String(), stderr.String(),
