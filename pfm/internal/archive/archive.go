@@ -36,9 +36,7 @@ const sidechainMarker = `"isSidechain":true`
 const headBytes = 4096
 
 // HideStore is the hidden set and the one way to leave it. Archive never
-// rewrites the hidden list itself: hides live in the shared store with a
-// carrier file beside them, and a second writer of that pair is how the two
-// disagree (K3).
+// rewrites the hidden list itself.
 type HideStore interface {
 	Hidden(ctx context.Context) ([]HiddenChat, error)
 	Unhide(ctx context.Context, id string) error
@@ -439,8 +437,6 @@ func (runner *Runner) backupSidecars() ([]string, error) {
 	}
 	stamp := runner.now().UTC().Format("20060102-150405")
 	sources := []string{
-		runner.paths.HiddenCarrier,
-		runner.paths.HiddenCarrier + ".at",
 		filepath.Join(runner.paths.Home, ".claude", "history.jsonl"),
 		filepath.Join(runner.paths.CodexRoot, "session_index.jsonl"),
 	}

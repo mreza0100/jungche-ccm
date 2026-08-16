@@ -1,12 +1,12 @@
 # pfm (Professor-Fleet-Manager) TESTPLAN — the complete flow matrix
 
-Every pathway through the fleet tooling: the Go engine (`pfm/`), the zsh launcher shim
-(`pfm/shim/pfm.zsh`), the `pfm chat` surface and its two-line compatibility delegate, the MCP
-server, the remaining group/history helpers, and the installer. One row per flow.
+Every pathway through the fleet tooling: the Go engine (`pfm/`), the embedded zsh launcher shim,
+the `pfm chat` surface and its two-line compatibility delegate, the MCP server, the history
+helper, and the self-installer. One row per flow.
 
 Go paths are relative to `~/.professor/pfm/` (the engine lives at the repo root — it is a
-program, not a template); the zsh/helper paths are relative to the bundle,
-`~/.professor/blueprint/templates/host-swap/`. Absolute paths are absolute.
+program, not a template); embedded helper paths live under `internal/installer/assets/`.
+Absolute paths are absolute.
 
 ## Legend — the SAFETY column
 
@@ -14,7 +14,7 @@ program, not a template); the zsh/helper paths are relative to the bundle,
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `JAIL`             | Fully exercisable in a path jail: `paths.go:11-21` env overrides (`PFM_HOME`, `PFM_DB`, `PFM_SHARED_DB`, `PFM_SID_DIR`, `PFM_CLAUDE_ROOTS`, `PFM_CODEX_ROOT`, `PFM_TMUX_DIR`, `PFM_PROC_ROOT`) plus `PFM_TEST_NOW_NS` / `PFM_TEST_FRESH_SOCKET` / `PFM_CODEX_AVAILABLE` / `PFM_DB_SCRIPT` (`pipeline.go:25-30`). Reference harness: `pfm/testdata/e2e.sh:1-56`. |
 | `JAIL+tmux`        | Needs a real tmux **server on a scratch socket inside the jail's `TMUX_TMPDIR`** — never a live fleet socket. Reference harness: `internal/*/tmux_jail_test.go` (e.g. `internal/hide/tmux_jail_test.go:58-66`).                                                                                                                                                 |
-| `JAIL+sh`          | zsh/bash fixture with a fake `$HOME`, scratch db and an EMPTY socket dir. References: `pfm/shim/shim_test.go` and `tests/install-fixtures.sh`. Window-name convergence is covered by the Go `probe-*` tmux jails.                                                                                                                                               |
+| `JAIL+sh`          | zsh/bash fixture with a fake `$HOME`, scratch db and an EMPTY socket dir. References: `shim/shim_test.go` and `internal/installer/installer_test.go`. Window-name convergence is covered by the Go `probe-*` tmux jails.                                                                                                                                          |
 | `LIVE-READ`        | Read-only observation of live state (`pfm ls --tsv`, `--plain`, `--hidden`, `doctor`, `sqlite3 -readonly`). Never mutates.                                                                                                                                                                                                                                      |
 | **`REAL-SESSION`** | ⚠ **CANNOT be jailed.** Needs a genuine `claude` / `codex` process, a real transcript/rollout writer, or a real Claude-account login. The supervisor must schedule these deliberately on a scratch project directory.                                                                                                                                           |
 
@@ -122,9 +122,6 @@ The four identity/state regressions that established this plan. A tagged row mus
 | `chat resolve <target>` → socket/session/id tuple; missing target rc 4                                                | JAIL+tmux | `chat_command.go`, `resolve/resolve.go`                                                                   |            |
 | `resolve` with a bad kind → rc 2                                                                                      | JAIL      | `resolve/resolve.go:92-93`, `main.go:241-244`                                                             |            |
 | `whoami` → this process's own tmux session name                                                                       | JAIL+tmux | `main.go:53`, `resolve/whoami.go:165-213`                                                                 |            |
-| `legacy import` → cold full index, then carrier→table union                                                           | JAIL      | `commands.go:542-567`, `legacy/legacy.go:47-77`                                                           | B2         |
-| `legacy export` → import first, then whole-file carrier rewrite                                                       | JAIL      | `commands.go:569-574`, `legacy/legacy.go:90-107`                                                          |            |
-| `legacy` with no/unknown verb → rc 2                                                                                  | JAIL      | `commands.go:519-533`                                                                                     |            |
 | `doctor` → db + jail health                                                                                           | LIVE-READ | `main.go:39-40`; `internal/store/health.go`                                                               |            |
 | `mcp` → stdio server; any arg → rc 2                                                                                  | JAIL      | `main.go:69-93`                                                                                           |            |
 | `internal hide-exit --engine…` → detached finisher; missing flags → rc 2                                              | JAIL+tmux | `main.go:250-299`, `hide/finisher.go:94-144`                                                              |            |
@@ -249,11 +246,10 @@ tonight's four bugs all live in.
 
 | flow                                                                                | safety    | expected behavior (source)                                                                         | regression |
 | ----------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------- | ---------- |
-| A hide writes the SQLite row then the compatibility carrier line, unconditionally   | JAIL      | `shared/shared.go:193-220`                                                                         |            |
-| `HiddenAt` returns the UNION of db rows and carrier ids                             | JAIL      | `shared/shared.go:241-277`                                                                         | B2         |
-| Carrier-only id reports `hidden_at` 0, never an invented time                       | JAIL      | `shared/shared.go:243,271-275`                                                                     |            |
-| Persistent `SQLITE_BUSY` on hide → warn, count, carry on (carrier already holds it) | JAIL      | `store/hidden.go:53-94`                                                                            |            |
-| Persistent `SQLITE_BUSY` on **unhide** → the row survives, the chat stays hidden    | JAIL      | `store/hidden.go:76-89` (documented asymmetry — pin it)                                            |            |
+| A hide writes one SQLite row and never recreates the retired carrier                | JAIL      | `shared/shared.go`, `shared/shared_test.go`                                                         | B2         |
+| `HiddenAt` returns SQLite rows or reports the lookup failure                        | JAIL      | `shared/shared.go`, `shared/shared_test.go`                                                         | B2         |
+| Persistent `SQLITE_BUSY` on hide → retry, warn, count, return the write error       | JAIL      | `store/hidden.go:43-79`                                                                            |            |
+| Persistent `SQLITE_BUSY` on unhide follows the same nonzero failure contract       | JAIL      | `store/hidden.go:43-79`                                                                            |            |
 | Engine derived from the index, not stored; transcript wins a collision              | JAIL      | `store/hidden.go:171-241`                                                                          | B3         |
 | Hidden id no index knows → empty engine = "hidden whatever the engine"              | JAIL      | `store/hidden.go:171-177`, `compose/compose.go:664-668`                                            | B3         |
 | `applyHide` skips split rows and ID-less rows                                       | JAIL      | `compose/compose.go:660-663`                                                                       | B2         |
@@ -266,8 +262,6 @@ tonight's four bugs all live in.
 | Post-exit re-hide keeps the ORIGINAL `hidden_at`                                    | JAIL      | `hide/finisher.go:149-167`                                                                         |            |
 | Teammate reap: `new` → kill-server, `pane` → kill-pane, never kill-server           | JAIL+tmux | `hide/finisher.go:181-245`                                                                         |            |
 | Teammate reap falls back to the flat file when the table has no row                 | JAIL      | `hide/finisher.go:256-290`                                                                         |            |
-| `legacy import` counts unknown ids but imports them anyway                          | JAIL      | `legacy/legacy.go:47-77`                                                                           |            |
-| `legacy export` unions before rewriting so no hide is destroyed                     | JAIL      | `legacy/legacy.go:90-107`                                                                          |            |
 | Two concurrent pickers hiding different chats → both survive (WAL + transaction)    | JAIL      | `shared/shared.go:135-157`, `shared/shared_test.go`                                                |            |
 | A `_HIDE…` LABEL hides a chat with no store row, live or resumable, either case     | JAIL      | `naming.LabelHidden`, `compose/compose.go` (`applyHide`); `compose/label_hide_test.go`             |            |
 | A label-hidden chat still shows under `-a` and `-H`, and counts as hidden           | JAIL      | `compose/label_hide_test.go`                                                                       |            |
@@ -352,16 +346,16 @@ tonight's four bugs all live in.
 | `chat bb` and `chat group hook` drain stdin and fail open at rc 0                                                    | JAIL      | `bb_jail_test.go`, `chat_command.go`                                        |                        |
 | `chat end` kills only the resolved chat server                                                                       | JAIL+tmux | `chat_command.go`                                                           |                        |
 | `chat find`, `save`, `load`, `branch`, and `ls` are native Go; `history` retains its helper contract                 | JAIL+sh   | `chat_satellite_command.go`, `chat_satellite_command_test.go`, `history.sh` |                        |
-| `chat group {create,ls,send,read,subscribe,invite,hook}` is the complete group bus                                   | JAIL+sh   | `chat_command.go`, `group.sh`                                               |                        |
+| `chat group {create,ls,send,read,subscribe,invite,hook}` is the complete group bus                                   | JAIL      | `chat_command.go`, `chat_group_command.go`                                  |                        |
 | `chat resolve <target>` prints immutable socket, tmux session and chat id                                            | JAIL      | `chat_command.go`                                                           | B1                     |
 | exit contract: 0 delivered/queued, 2 usage, 3 dead, 4 unknown, 5 answer timeout, 6 undelivered                       | JAIL      | `headless_command.go`, `headless_matrix_test.go`, `inject_cli_jail_test.go` |                        |
 | hidden root compatibility alias emits a deprecation; `run`, `dump`, and the old stream verb are gone                 | JAIL      | `main.go`, `headless_matrix_test.go`                                        |                        |
-| `chat.sh` is an executable two-line compatibility delegate to `pfm chat`                                             | JAIL+sh   | `chat.sh`, `tests/install-fixtures.sh`                                      |                        |
+| embedded `chat.sh` is an executable two-line compatibility delegate to `pfm chat`                                    | JAIL+sh   | `internal/installer/assets/chat/chat.sh`, installer tests                   |                        |
 
 ## I — zsh shell surface: launchers and revivers
 
-`pfm/shim/pfm.zsh` owns fresh interactive launchers and delegates fleet
-operations to the Go binary. `install.sh` wires this single active shim.
+The embedded `internal/installer/assets/shim/pfm.zsh` owns fresh interactive launchers and
+delegates fleet operations to the Go binary. `pfm install` wires this single active shim.
 
 | flow                                                                              | safety    | expected behavior (source)                       | regression |
 | --------------------------------------------------------------------------------- | --------- | ------------------------------------------------ | ---------- |
@@ -387,7 +381,7 @@ operations to the Go binary. `install.sh` wires this single active shim.
 | flow                                                                                                  | safety           | expected behavior (source)                                               | regression |
 | ----------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- |
 | shared-store open is idempotent, initializes schema, enables WAL and sets a busy timeout              | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            |            |
-| hide add/delete/lookup keep the SQLite row and compatibility carrier coherent                         | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            | B2         |
+| hide add/delete/lookup use SQLite exclusively and never recreate the retired carrier                  | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            | B2         |
 | hide sync and orphan pruning replace only the intended set, in one transaction                        | JAIL             | `internal/shared/shared.go`, `internal/store/hidden_test.go`             |            |
 | chat cache load/save/prune preserves tab-bearing prompt text and exact ids                            | JAIL             | `internal/store`, `internal/store/queries_test.go`                       |            |
 | hidden `internal primary-get/set` validates the 1/2 roster and keeps its mirror coherent              | JAIL             | `cmd/pfm/main.go`, `internal/shared/shared_test.go`, `shim/shim_test.go` |            |
@@ -406,21 +400,19 @@ operations to the Go binary. `install.sh` wires this single active shim.
 
 | flow                                                                                                              | safety           | expected behavior (source)                | regression |
 | ----------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------- | ---------- |
-| `install.sh` dry run is the default                                                                               | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| installer fixtures unset the session bus and prove user systemd unreachable before run                            | JAIL+sh          | `tests/install-fixtures.sh`               |            |
-| `install.sh --apply` removes retired links and leaves `~/.claude/bin` empty                                       | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh` links `chat/*.command.md` → `chat/*.md`, plus `chat/self/`                                           | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh` links codex skills into `~/.agents/skills`                                                           | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh` backs up a real file as `.pre-professor-<ts>`                                                        | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh --uninstall` restores the newest backup                                                               | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh` rewrites (never appends a second) `~/.zshrc` source line                                             | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| `install.sh` sources `pfm/shim/pfm.zsh`; no parity oracle is installed                                            | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
-| systemd units skipped cleanly where `systemctl --user` is absent                                                  | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh` |            |
+| `pfm install` dry run is the default and writes nothing                                                          | JAIL             | `internal/installer`, installer tests     |            |
+| a reachable user bus refuses before any write with rc 97                                                         | JAIL             | `install_command_test.go`, installer tests |            |
+| apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
+| command cards, helpers, Codex skill, shim and units link to the managed asset tree                               | JAIL+sh          | `internal/installer`, installer tests     |            |
+| real destinations are backed up; uninstall restores the newest backup                                             | JAIL             | `internal/installer`, installer tests     |            |
+| zshrc and canonical settings converge without duplicate commands                                                  | JAIL+sh          | `internal/installer`, installer tests     |            |
+| immediate second apply reports `changed=0`                                                                        | JAIL             | `TestApplyIsSelfContainedIdempotentAndReversible` |            |
+| systemd units and `.wants/` links converge without a manager; live transitions use only the injected manager     | JAIL             | installer idempotence and unit-transition tests |            |
 | `pfm-name-sync.path` fires on `~/.codex/session_index.jsonl` modification                                         | **REAL-SESSION** | `systemd/pfm-name-sync.path`              | **B4**     |
 | `pfm-name-sync.timer` 15-min drift fallback                                                                       | JAIL+sh          | `systemd/pfm-name-sync.timer`             |            |
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
-| `install.sh` retires the old units, script links, statusline shell, segments, and Python refreshers               | JAIL+sh          | `tests/install-fixtures.sh`, `install.sh` |            |
-| `install.sh` rewires `/bb`, group, statusline, and usage hooks to native `pfm` commands across canonical accounts | JAIL+sh          | `tests/install-fixtures.sh`, `install.sh` |            |
+| installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
+| installer rewires BB, group, statusline, usage and dream hooks across canonical accounts                         | JAIL             | `internal/installer`, installer tests     |            |
 
 ---
 
@@ -461,10 +453,8 @@ they count as covered.
     `ask` is only as true as the transcript shapes both engines write.
 
 **Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. `[Pasted text #N]` collapse in a real Claude composer. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
-28b. `pfm reap`'s busy probe against the REAL `claude agents --json` output
-— the jail stubs that binary with `[]`, which proves the fail-closed
-plumbing but not the JSON shape a live daemon emits. A shape change would
-read as "nobody is busy", so re-run this on any Claude Code upgrade.
+28b. `pfm reap`'s busy probe against REAL `claude agents --json`; the jail proves fail-closed
+plumbing but not the live daemon's JSON shape, so re-run it on any Claude Code upgrade.
 
 **Needs real multi-account state:** 29. `_cc_label` reading `oauthAccount.emailAddress` per account. 30. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`. 31. Transcripts under a SEPARATE account root (not a symlink back to account 1). 32. Statusline badge computation across accounts.
 
@@ -472,14 +462,9 @@ read as "nobody is busy", so re-run this on any Claude Code upgrade.
 
 ## Residual known divergences
 
-1. **Store-only rows carry no parent link** (`index/codexstate.go`) — evidence-audited and
-   found to have no real-world instance: a full sweep of the live state store (213 user
-   threads) shows zero cases of a resume minting a second row, and the direct positive case
-   (a picker-resumed, twice-renamed thread) kept a single row throughout. Codex ≥0.146 resume
-   CONTINUES the same thread id, so there is never an ancestor lineage to merge; the one
-   fixture that "reproduced" the split inserted two synthetic rows by hand. Re-opens only if
-   codex changes resume behavior — the audit query (same cwd + same non-empty first message,
-   grouped) is the detector.
+1. **Store-only rows carry no parent link** (`index/codexstate.go`) — a live-state audit found
+   no real instance because Codex ≥0.146 resume continues the same thread id. Re-open if Codex
+   changes that behavior; detect it by grouping same-cwd rows with the same first message.
 2. **Account roster disagrees three ways.** `paths.go:64-68` builds THREE Claude roots,
    `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
    `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
@@ -493,7 +478,7 @@ read as "nobody is busy", so re-run this on any Claude Code upgrade.
 
 ## Highest-risk joins
 
-Ranked by identity resolution across resume/store/fork edges, compatibility-carrier drift, and
+Ranked by identity resolution across resume/store/fork edges, hide-store integrity, and
 live-vs-indexed disagreement.
 
 | #   | flow                                                                                                         | why it hides bugs                                                                                                                                                                                       |
@@ -502,9 +487,8 @@ live-vs-indexed disagreement.
 | 2   | **Store-only thread lineage** (`index/codexstate.go:98-130`)                                                 | A resumed store-only thread is given itself as its lineage root, so it can never merge with the conversation it continues. Hides, names and prompt counts all split.                                    |
 | 3   | **Codex name precedence across two writers** (`index/index.go`, `naming/naming.go`)                          | Name provenance (`cx_names.source`/`renamed_at`, schema v4) settles store-vs-file, but three walkers still differ on lineage breadth, and `reloadCxNames` still wipes and re-folds in two transactions. |
 | 4   | **Agent-row identity** (`gather/agents.go:12-69` → `compose/compose.go:541-590` → `hide/manager.go:138-165`) | An agent row is the only kind whose ID can exist with no index row behind it. Every id-keyed operation must vouch an engine for it; a new call site that forgets recreates the silent-refusal bug.      |
-| 5   | **Hide store ↔ compatibility carrier** (`shared/shared.go:193-277`, `legacy/legacy.go`)                      | The Go writer keeps both representations coherent, but external damage can still create db-only or carrier-only state. Every reader must preserve the union until `pfm legacy` repairs it.              |
-| 6   | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `gather/codexproc.go`)                            | The argv `resume <uuid>` rung leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window.                                            |
-| 7   | **Live-vs-indexed refresh race in the picker** (`pipeline.go:315-424`, `ui/model.go:247-271`)                | Three snapshots stream into an open TUI while the user is toggling hides. A row that changes identity between frames takes the pending hide with it.                                                    |
-| 8   | **`collapseLiveServers` + `ServerCount`** (`compose/compose.go:759-803`)                                     | Silently merges rows by `engine+ID`. Two genuinely different chats that resolve to the same id (see #1) disappear into one row; the loser is unreachable.                                               |
-| 9   | **`--exit` finisher choreography** (`hide/finisher.go:94-245`)                                               | Detached, delayed, and it re-asserts a hide AFTER an index refresh. It races the engine's own transcript flush and reaps teammates by an id that may already have been canonicalized.                   |
-| 10  | **Primary-account round trip** (`pipeline.go:553-631`, `shared/shared.go:441-482`, `shim/pfm.zsh`)           | The shared store and compatibility mirror must stay coherent, while the picker and launcher must enforce the same account roster.                                                                       |
+| 5   | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `gather/codexproc.go`)                            | The argv `resume <uuid>` rung leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window.                                            |
+| 6   | **Live-vs-indexed refresh race in the picker** (`pipeline.go:315-424`, `ui/model.go:247-271`)                | Three snapshots stream into an open TUI while the user is toggling hides. A row that changes identity between frames takes the pending hide with it.                                                    |
+| 7   | **`collapseLiveServers` + `ServerCount`** (`compose/compose.go:759-803`)                                     | Silently merges rows by `engine+ID`. Two genuinely different chats that resolve to the same id (see #1) disappear into one row; the loser is unreachable.                                               |
+| 8   | **`--exit` finisher choreography** (`hide/finisher.go:94-245`)                                               | Detached, delayed, and it re-asserts a hide AFTER an index refresh. It races the engine's own transcript flush and reaps teammates by an id that may already have been canonicalized.                   |
+| 9   | **Primary-account round trip** (`pipeline.go:553-631`, `shared/shared.go:441-482`, `shim/pfm.zsh`)           | The store and launcher must enforce the same account roster.                                                                              |

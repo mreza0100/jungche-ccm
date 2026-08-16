@@ -127,7 +127,7 @@ A few of these deserve a sentence, because their names undersell them:
 
 ## The host layer — a fleet of chats that talk to each other
 
-Opt-in, and the most unusual thing in the box: `blueprint/templates/host-swap/` treats _chats_ as infrastructure. Every command and script installs as a **symlink into the clone**, so `git pull` updates the whole fleet at once and no second copy can drift.
+Opt-in, and the most unusual thing in the box: `pfm` treats _chats_ as infrastructure. The binary embeds its command cards and helpers, while `blueprint/templates/host-swap/` retains only the launcher shim and systemd units as inspectable source.
 
 - **Bare `pfm`** — one fuzzy-picker over every live chat, resumable transcript, and running background agent across all your accounts. A chat is never lost because a terminal tab closed; `pfm ls --hidden` exposes the hide ledger.
 - **`/swap <n>`** — reboots a _running_ chat in place onto another account: same pane, same conversation, new billing identity. With `--then "<prompt>"`, a chat running out of budget swaps itself and hands itself the baton, unattended.
@@ -135,6 +135,15 @@ Opt-in, and the most unusual thing in the box: `blueprint/templates/host-swap/` 
 - **`pfm chat` + `/chat:*`** — the per-chat interface and its instruction cards. `inject` types a real turn into another pane under a per-target lock, protecting drafts and refusing unsafe dialogs; `new` starts a named chat on an immutable socket; `read`, `stream`, `capture`, `name`, `hide`, `end`, and the group verbs share one target resolver. `/chat:branch` forks this session beside it, and `/chat:interrogate` resumes a finished session to ask it _why_.
 
 **Read before opting in:** the fleet assumes `tmux`, `zsh`, `fzf`, and `jq`, leans on Linux facilities (`/proc`, systemd user units) with macOS mostly working and Windows unsupported — and it launches chats with permission prompts disabled by explicit design, leaving PreToolUse hooks as the remaining brake. That trade-off is documented in the bundle, not hidden; make it consciously.
+
+Bootstrap a stable clone, build the binary, review its dry run, then apply once:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+go -C "$HOME/.professor/pfm" build -o "$HOME/.local/bin/pfm" ./cmd/pfm
+"$HOME/.local/bin/pfm" install --dry-run
+"$HOME/.local/bin/pfm" install --apply
+```
 
 ---
 
@@ -235,7 +244,7 @@ professor/
         ├── output-styles/  personas, full and compact
         ├── skills/         sources.json + the legal reference shelf
         ├── vscode/, themes/, epics/
-        ├── host-swap/      multi-account fleet + chat bus (+ its own test fixtures)
+        ├── host-swap/      fleet launcher shim + name-sync systemd units
         └── codex/          optional dual-runtime layer
 ```
 

@@ -18,7 +18,7 @@ const (
 	busyRetryDelay = 25 * time.Millisecond
 
 	// effectiveHidden is a per-connection mirror of the shared store's hidden
-	// set — database rows unioned with carrier-file ids — so the cached
+	// set, so the cached
 	// first-frame queries can still express "not hidden" as a join. It is
 	// refilled from the shared store on every read that consults it, which is
 	// what lets a concurrent hide show up with no sync step in between.
@@ -31,18 +31,16 @@ CREATE TABLE IF NOT EXISTS ` + effectiveHidden + `(
 )`
 )
 
-// Hide records a permanent hide in the shared store: the SQLite row, then the
-// carrier file. A persistent SQLITE_BUSY is warned about and deliberately
-// suppressed so hide choreography never aborts.
+// Hide records a permanent hide in the shared store. A persistent SQLITE_BUSY
+// is retried, reported, and returned so a caller never reports an unrecorded
+// decision as durable.
 func (s *Store) Hide(ctx context.Context, hidden Hidden) error {
 	return s.hiddenWrite(ctx, "hide", hidden.ID, func() error {
 		return s.state.Hide(ctx, hidden.ID, hidden.HiddenAt)
 	})
 }
 
-// Unhide removes a hide from the shared store and the carrier file. A
-// persistent SQLITE_BUSY is warned about and deliberately suppressed so callers
-// still exit successfully.
+// Unhide removes a hide from the shared store under the same busy policy.
 func (s *Store) Unhide(ctx context.Context, id string) error {
 	return s.hiddenWrite(ctx, "unhide", id, func() error {
 		return s.state.Unhide(ctx, id)
@@ -73,22 +71,17 @@ func (s *Store) hiddenWrite(
 		return err
 	}
 
-	// The carrier file was written either way, whether or not the row lands. A
-	// hide survives this and an unhide does not: the row the delete missed is
-	// still in the database, and the union will keep reporting it hidden.
 	s.warningf(
 		"WARNING: pfm could not %s %q in %s: SQLite remained busy after "+
-			"retry; %s still carries the change but the database row was NOT "+
-			"written\n",
+			"retry; the change was NOT written\n",
 		action,
 		id,
 		s.state.Path(),
-		s.state.Carrier(),
 	)
 	counterCtx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	_ = s.IncrementMeta(counterCtx, "busy_"+action+"_warnings")
-	return nil
+	return err
 }
 
 func isBusy(err error) bool {
@@ -140,8 +133,7 @@ func (s *Store) Hidden(ctx context.Context, id string) (Hidden, bool, error) {
 	return Hidden{ID: id, Engine: engines[id], HiddenAt: at}, true, nil
 }
 
-// HiddenChats returns the effective hidden set — shared database rows unioned
-// with carrier-file ids — ordered by chat ID.
+// HiddenChats returns the shared database's hidden rows ordered by chat ID.
 func (s *Store) HiddenChats(ctx context.Context) ([]Hidden, error) {
 	hiddenAt, err := s.state.HiddenAt(ctx)
 	if err != nil {

@@ -48,10 +48,9 @@ func TestResolveOverrides(t *testing.T) {
 		Home:        home,
 		// The carrier and the archive have no override of their own: both are
 		// defined relative to Home, and jailing Home jails them.
-		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
-		ArchiveDir:    filepath.Join(home, ".claude-archive"),
-		ProcRoot:      procRoot,
-		CgroupRoot:    cgroupRoot,
+		ArchiveDir: filepath.Join(home, ".claude-archive"),
+		ProcRoot:   procRoot,
+		CgroupRoot: cgroupRoot,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Resolve() = %#v, want %#v", got, want)

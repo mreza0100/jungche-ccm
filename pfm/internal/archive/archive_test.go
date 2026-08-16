@@ -46,14 +46,13 @@ func archiveJail(t *testing.T) paths.Values {
 	t.Helper()
 	root := t.TempDir()
 	values := paths.Values{
-		Home:          filepath.Join(root, "home"),
-		ClaudeRoots:   []string{filepath.Join(root, "home", ".cc", "1", "projects")},
-		CodexRoot:     filepath.Join(root, "home", ".codex"),
-		SIDDir:        filepath.Join(root, "sid"),
-		HiddenCarrier: filepath.Join(root, "home", ".claude", ".cc-ls-hidden"),
-		ArchiveDir:    filepath.Join(root, "home", ".claude-archive"),
-		TmuxDir:       filepath.Join(root, "tmux"),
-		ProcRoot:      filepath.Join(root, "proc"),
+		Home:        filepath.Join(root, "home"),
+		ClaudeRoots: []string{filepath.Join(root, "home", ".cc", "1", "projects")},
+		CodexRoot:   filepath.Join(root, "home", ".codex"),
+		SIDDir:      filepath.Join(root, "sid"),
+		ArchiveDir:  filepath.Join(root, "home", ".claude-archive"),
+		TmuxDir:     filepath.Join(root, "tmux"),
+		ProcRoot:    filepath.Join(root, "proc"),
 	}
 	for _, directory := range []string{
 		filepath.Join(values.ClaudeRoots[0], "-home-user-work-x"),
@@ -85,15 +84,13 @@ func writeFile(t *testing.T, path, content string) {
 func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 	values := archiveJail(t)
 	const (
-		deadID   = "11111111-1111-4111-8111-111111111111"
-		liveID   = "22222222-2222-4222-8222-222222222222"
-		ghostID  = "33333333-3333-4333-8333-333333333333"
-		codexID  = "44444444-4444-4444-8444-444444444444"
-		rollout  = "rollout-2026-08-15T10-00-00-44444444-4444-4444-8444-444444444444.jsonl"
-		project  = "-home-user-work-x"
-		sidecars = "history"
+		deadID  = "11111111-1111-4111-8111-111111111111"
+		liveID  = "22222222-2222-4222-8222-222222222222"
+		ghostID = "33333333-3333-4333-8333-333333333333"
+		codexID = "44444444-4444-4444-8444-444444444444"
+		rollout = "rollout-2026-08-15T10-00-00-44444444-4444-4444-8444-444444444444.jsonl"
+		project = "-home-user-work-x"
 	)
-	_ = sidecars
 	transcripts := filepath.Join(values.ClaudeRoots[0], project)
 	writeFile(t, filepath.Join(transcripts, deadID+".jsonl"), "{}\n")
 	writeFile(t, filepath.Join(transcripts, liveID+".jsonl"), "{}\n")
@@ -121,7 +118,6 @@ func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 		`{"id":"`+codexID+`","thread_name":"gone"}`+"\n"+
 			`{"id":"55555555-5555-4555-8555-555555555555","thread_name":"kept"}`+"\n",
 	)
-	writeFile(t, values.HiddenCarrier, deadID+"\n"+liveID+"\n")
 
 	hides := &fakeHides{rows: []HiddenChat{
 		{ID: deadID, Engine: "cc"},
@@ -198,8 +194,8 @@ func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 	if !strings.Contains(string(index), "kept") {
 		t.Fatal("the codex index lost an untouched row")
 	}
-	if len(report.SidecarBackups) != 3 {
-		t.Fatalf("sidecar backups = %v, want three files copied", report.SidecarBackups)
+	if len(report.SidecarBackups) != 2 {
+		t.Fatalf("sidecar backups = %v, want two files copied", report.SidecarBackups)
 	}
 }
 

@@ -1174,8 +1174,8 @@ func tmuxHiddenAt(t *testing.T, database *store.Store, id string) int64 {
 // transcript had not reached the index yet, and the hide refused every id the
 // index could not name. The row is composed straight from the running process,
 // so "not indexed" is its NORMAL state, not an error — and the hide must land
-// on the agent's own session uuid, reach the shared store and the carrier like
-// every other hide, and hold while the process is still alive.
+// on the agent's own session uuid, reach the shared store, and hold while the
+// process is still alive.
 func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 	jail := newHideJail(t)
 	database := jail.open(t)
@@ -1244,10 +1244,8 @@ func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 		t.Fatalf("Hide() target = %#v, want the agent's own session uuid", target)
 	}
 
-	// Write-through: the shared database row AND the carrier file, the two
-	// halves the zsh picker reads. An unindexed id derives no engine.
+	// An unindexed id derives no engine, but its shared database row is durable.
 	assertHidden(t, database, agentID, "", 4242)
-	assertCarrierHas(t, database.CarrierPath(), agentID)
 
 	// STICK: the process is still live and the row is still composed, so the
 	// hide has to beat the live-agent short-circuit, not be skipped by it.
@@ -1286,21 +1284,4 @@ func TestHidingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
 	if _, found, err := database.Hidden(ctx, "no-such-chat"); err != nil || found {
 		t.Fatalf("Hidden() found = %v, error = %v; want nothing recorded", found, err)
 	}
-}
-
-// assertCarrierHas proves a hide reached ~/.claude/.cc-ls-hidden, the half of
-// the shared state the zsh picker reads.
-func assertCarrierHas(t *testing.T, carrier, id string) {
-	t.Helper()
-
-	content, err := os.ReadFile(carrier)
-	if err != nil {
-		t.Fatalf("read carrier %s: %v", carrier, err)
-	}
-	for _, line := range strings.Split(string(content), "\n") {
-		if line == id {
-			return
-		}
-	}
-	t.Fatalf("carrier %s = %q, want a line %q", carrier, content, id)
 }

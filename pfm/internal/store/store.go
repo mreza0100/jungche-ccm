@@ -49,7 +49,7 @@ var migrations = [...]string{
 // It holds TWO databases, and the split is the whole point. `db` is this
 // binary's private cache — transcripts, rollouts, Codex names — every row of it
 // derived from files on disk and rebuildable by a rescan. `state` is the
-// fleet's shared store: ~/.cc/fleet.db plus ~/.claude/.cc-ls-hidden. It holds
+// fleet's shared store at ~/.cc/fleet.db. It holds
 // operator decisions such as hides, teammates, and the primary account.
 type Store struct {
 	db    *sql.DB
@@ -121,10 +121,9 @@ func OpenContext(ctx context.Context, options ...OpenOption) (*Store, error) {
 	if degraded := store.state.Degraded(); degraded != nil {
 		store.warningf(
 			"WARNING: pfm could not open the shared state store at %s: %v; "+
-				"hides fall back to %s alone\n",
+				"operator-state operations will fail\n",
 			store.state.Path(),
 			degraded,
-			store.state.Carrier(),
 		)
 	}
 	if err := store.adoptLocalHides(ctx); err != nil {
@@ -136,14 +135,11 @@ func OpenContext(ctx context.Context, options ...OpenOption) (*Store, error) {
 // SharedPath reports the shared state database this Store writes hides to.
 func (s *Store) SharedPath() string { return s.state.Path() }
 
-// CarrierPath reports the carrier file this Store writes hides through.
-func (s *Store) CarrierPath() string { return s.state.Carrier() }
-
 // SharedDegraded reports why the shared database half is unavailable, or nil.
 func (s *Store) SharedDegraded() error { return s.state.Degraded() }
 
 // Shared exposes the shared state store for the few callers that need it
-// directly: the teammate reaper, and `legacy import`/`export`.
+// directly, including the teammate reaper.
 func (s *Store) Shared() *shared.Store { return s.state }
 
 func (s *Store) applyPragmas(ctx context.Context) error {
@@ -208,12 +204,9 @@ func (s *Store) migrate(ctx context.Context) error {
 const adoptedHidesMeta = "shared_hidden_adopted"
 
 // adoptLocalHides merges, once, the hides this binary used to keep to itself
-// into the shared store and its carrier file, then stops consulting the local
-// table for good.
+// into the shared store, then stops consulting the local table for good.
 //
-// UNIONS ONLY, IN BOTH DIRECTIONS. Local rows become shared rows, and carrier
-// ids the shared database has never seen become shared rows too. Nothing is
-// deleted: a hide is
+// Local rows become shared rows. Nothing is deleted: a hide is
 // permanent and an unhide is the only removal, so a startup that could drop a
 // row is a startup that could lose a decision.
 //
@@ -261,29 +254,6 @@ func (s *Store) adoptLocalHides(ctx context.Context) error {
 		if err := s.state.Hide(ctx, id, adopted[id]); err != nil {
 			return err
 		}
-	}
-	// A carrier id the database never recorded: hidden_at 0 because the file
-	// keeps no time, and inventing "now" would date a years-old hide today.
-	carrier, err := s.state.CarrierIDs()
-	if err != nil {
-		return err
-	}
-	databaseIDs, err := s.state.DatabaseHiddenIDs(ctx)
-	if err != nil {
-		return err
-	}
-	inDatabase := make(map[string]struct{}, len(databaseIDs))
-	for _, id := range databaseIDs {
-		inDatabase[id] = struct{}{}
-	}
-	for _, id := range carrier {
-		if _, found := inDatabase[id]; found {
-			continue
-		}
-		if err := s.state.Hide(ctx, id, 0); err != nil {
-			return err
-		}
-		inDatabase[id] = struct{}{}
 	}
 	return s.SetMeta(ctx, adoptedHidesMeta, "1")
 }

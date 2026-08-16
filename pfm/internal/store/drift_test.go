@@ -2,16 +2,13 @@ package store
 
 import (
 	"context"
-	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
 // TestSharedHidesNeedNoBridgeInEitherDirection pins the shared-state boundary:
 // a raw SQLite writer is visible through an already-open Go store, and a Go
-// hide is immediately visible in both the database and carrier file.
+// hide is immediately visible to a fresh SQLite reader.
 func TestSharedHidesNeedNoBridgeInEitherDirection(t *testing.T) {
 	sqlite3 := lookSQLite3(t)
 	setStoreTestJail(t)
@@ -57,11 +54,10 @@ ON CONFLICT(uuid) DO UPDATE SET
 		t.Fatalf("cached hidden count = %d, want 1", counts.Hidden)
 	}
 
-	// Go → carrier file.
+	// Go → shared SQLite.
 	if err := database.Hide(ctx, Hidden{ID: "go-hid", HiddenAt: 1700000001}); err != nil {
 		t.Fatal(err)
 	}
-	assertCarrierHas(t, database.CarrierPath(), "go-hid")
 
 	// Go → a fresh external SQLite reader.
 	listed := runSQLite3(
@@ -74,7 +70,7 @@ ON CONFLICT(uuid) DO UPDATE SET
 		t.Fatalf("external hidden listing = %q, want both hides", listed)
 	}
 
-	// And an unhide clears both halves, because half a removal is drift too.
+	// And an unhide clears the authoritative row.
 	if err := database.Unhide(ctx, "go-hid"); err != nil {
 		t.Fatal(err)
 	}
@@ -86,55 +82,10 @@ ON CONFLICT(uuid) DO UPDATE SET
 	); listed != "zsh-hid\n" {
 		t.Fatalf("hidden rows after unhide = %q", listed)
 	}
-	carrier, err := os.ReadFile(database.CarrierPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(carrier), "go-hid") {
-		t.Fatalf("carrier still carries an unhidden chat: %q", carrier)
-	}
 }
 
-// A hide that reached only the carrier file — a run where SQLite was
-// unopenable is still a hide. The union is the read, so no repair command
-// stands between that file and the listing.
-func TestCarrierOnlyHideIsHiddenWithoutAnImport(t *testing.T) {
-	setStoreTestJail(t)
-	database := openTestStore(t)
-	t.Cleanup(func() { _ = database.Close() })
-	ctx := context.Background()
-
-	if err := database.UpsertTranscript(ctx, Transcript{
-		UUID:        "carried",
-		Path:        "/jail/carried.jsonl",
-		Size:        10,
-		PromptCount: 1,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	carrier := database.CarrierPath()
-	if err := os.MkdirAll(filepath.Dir(carrier), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(carrier, []byte("carried\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, found, err := database.Hidden(ctx, "carried"); err != nil || !found {
-		t.Fatalf("Hidden() for a carrier-only hide = %v, %v; want true, nil", found, err)
-	}
-	transcripts, _, _, err := database.DefaultCandidates(ctx, 30, 15)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(transcripts) != 0 {
-		t.Fatalf("cached frame = %#v, want the carrier-only hide filtered out", transcripts)
-	}
-}
-
-// The one-time adoption is a UNION, in both directions, and it runs once. It
-// must never be able to delete: a startup that could drop a row is a startup
-// that could lose a decision.
+// The one-time adoption unions the retired local table into shared SQLite and
+// runs once. It never deletes the rollback rows.
 func TestAdoptingLocalHidesUnionsOnceAndDeletesNothing(t *testing.T) {
 	setStoreTestJail(t)
 
@@ -145,14 +96,6 @@ func TestAdoptingLocalHidesUnionsOnceAndDeletesNothing(t *testing.T) {
 	if _, err := first.db.ExecContext(ctx, `
 INSERT INTO hidden(id, engine, hidden_at, baseline_prompts)
 VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
-		t.Fatal(err)
-	}
-	// And a carrier-only hide with no database row.
-	carrier := first.CarrierPath()
-	if err := os.MkdirAll(filepath.Dir(carrier), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(carrier, []byte("carrier-hide\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.SetMeta(ctx, adoptedHidesMeta, ""); err != nil {
@@ -167,14 +110,10 @@ VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 2 ||
-		hidden[0].ID != "cache-hide" || hidden[0].HiddenAt != 4242 ||
-		hidden[1].ID != "carrier-hide" {
+	if len(hidden) != 1 ||
+		hidden[0].ID != "cache-hide" || hidden[0].HiddenAt != 4242 {
 		t.Fatalf("adopted hides = %#v", hidden)
 	}
-	// The carrier file gained the adopted row and kept the one it had.
-	assertCarrierHas(t, carrier, "cache-hide")
-	assertCarrierHas(t, carrier, "carrier-hide")
 	// The retired table is left populated: it is the rollback, not a leak.
 	var remaining int
 	if err := second.db.QueryRowContext(
@@ -201,7 +140,7 @@ VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 1 || hidden[0].ID != "carrier-hide" {
+	if len(hidden) != 0 {
 		t.Fatalf("hides after reopen = %#v, want the unhide to have stuck", hidden)
 	}
 }

@@ -309,9 +309,8 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 	home := t.TempDir()
 	values := paths.Values{
-		Home:          home,
-		SharedDB:      filepath.Join(home, ".cc", "fleet.db"),
-		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
+		Home:     home,
+		SharedDB: filepath.Join(home, ".cc", "fleet.db"),
 	}
 	if err := writePrimaryAccount(values, 2); err != nil {
 		t.Fatalf("writePrimaryAccount() = %v", err)
@@ -339,9 +338,8 @@ func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	bareValues := paths.Values{
-		Home:          bare,
-		SharedDB:      filepath.Join(blocked, "fleet.db"),
-		HiddenCarrier: filepath.Join(bare, ".claude", ".cc-ls-hidden"),
+		Home:     bare,
+		SharedDB: filepath.Join(blocked, "fleet.db"),
 	}
 	if err := writePrimaryAccount(bareValues, 2); err != nil {
 		t.Fatalf("fallback writePrimaryAccount() = %v", err)

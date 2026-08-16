@@ -57,14 +57,6 @@ export PFM_TEST_NOW_NS=1800000000000000000
 
 printf '2\n' > "$HOME_DIR/.claude-primary"
 ALPHA="$CLAUDE_ROOT/project-alpha/alpha.jsonl"
-COMPACT="$CLAUDE_ROOT/project-beta/compact.jsonl"
-alpha_legacy_size="$(wc -c < "$ALPHA" | tr -d ' ')"
-compact_legacy_size="$(wc -c < "$COMPACT" | tr -d ' ')"
-printf 'alpha\ncompact\n' > "$HOME_DIR/.claude/.cc-ls-hidden"
-printf 'alpha\t%s\ncompact\t%s\n' \
-  "$alpha_legacy_size" \
-  "$compact_legacy_size" \
-  > "$HOME_DIR/.claude/.cc-ls-hidden.at"
 
 assert_file() {
   local actual="$1" expected="$2" label="$3"
@@ -164,7 +156,7 @@ if [[ "${PFM_STRESS:-0}" == 1 ]]; then
     printf 'e2e: concurrent CLI emitted a busy warning\n' >&2
     exit 1
   fi
-  [[ -z "$("$BIN" hidden)" ]]
+  [[ "$("$BIN" ls --hidden --tsv | wc -l | tr -d ' ')" == 1 ]]
   "$BIN" ls --tsv > "$JAIL/concurrent-final.tsv"
   assert_file \
     "$JAIL/concurrent-final.tsv" \
@@ -199,35 +191,11 @@ delta="$("$BIN" index)"
 [[ "$delta" == files=8\ skipped=7\ delta=1\ full=0\ deleted=0\ touched=1\ bytes=*" cx_names=false" ]]
 "$BIN" ls --tsv > "$JAIL/still-hidden.tsv"
 assert_tsv_lacks "$JAIL/still-hidden.tsv" alpha
-if ! "$BIN" hidden | awk -F $'\t' '$1 == "alpha" { found=1 } END { exit !found }'; then
+if ! "$BIN" ls --hidden --tsv | awk -F $'\t' '$1 == "alpha" { found=1 } END { exit !found }'; then
   printf 'e2e: alpha stopped being hidden after a new prompt\n' >&2
   exit 1
 fi
 printf 'e2e: hide/unhide/permanent-hide round-trip passed\n'
-
-# Captured HERE, not at the top of the script: the hide/unhide/hide-again
-# round trip just above legitimately reorders the carrier file (unhide
-# rewrites it minus the id, the re-hide appends it back at the end), so a
-# baseline from before that dance would never match no matter what `legacy
-# import` itself does. The carrier's SOURCE — the id set `legacy import`
-# must not touch — is its state right before the command runs.
-legacy_before="$(sha256sum \
-  "$HOME_DIR/.claude/.cc-ls-hidden" \
-  "$HOME_DIR/.claude/.cc-ls-hidden.at")"
-
-legacy_out="$("$BIN" legacy import)"
-[[ "$legacy_out" == legacy\ import:\ imported=2\ unknown=0\;\ * ]]
-legacy_after="$(sha256sum \
-  "$HOME_DIR/.claude/.cc-ls-hidden" \
-  "$HOME_DIR/.claude/.cc-ls-hidden.at")"
-[[ "$legacy_after" == "$legacy_before" ]]
-"$BIN" hidden > "$JAIL/imported.hidden"
-awk -F $'\t' '
-  $1 == "compact" && $2 == "cc" && $4 == "" { compact=1 }
-  $1 == "alpha" && $2 == "cc" && $4 == "" { alpha=1 }
-  END { exit !(compact && alpha) }
-' "$JAIL/imported.hidden"
-printf 'e2e: legacy import hid_every_known_id=true source_untouched=true\n'
 
 "$BIN" doctor | tee "$JAIL/doctor.out"
 printf 'e2e: PASS\n'

@@ -468,12 +468,12 @@ func locateChatScript(name string) (string, error) {
 	if resolved, err := paths.Resolve(); err == nil {
 		candidates = append(candidates,
 			filepath.Join(resolved.Home, ".claude", "commands", "chat", name),
-			filepath.Join(resolved.Home, ".professor", "blueprint", "templates", "host-swap", "chat", name),
+			filepath.Join(resolved.Home, ".professor", "pfm", "internal", "installer", "assets", "chat", name),
 		)
 	}
 	candidates = append(candidates,
-		filepath.Join("blueprint", "templates", "host-swap", "chat", name),
-		filepath.Join("..", "blueprint", "templates", "host-swap", "chat", name),
+		filepath.Join("pfm", "internal", "installer", "assets", "chat", name),
+		filepath.Join("internal", "installer", "assets", "chat", name),
 	)
 	for _, candidate := range candidates {
 		info, err := os.Stat(candidate)

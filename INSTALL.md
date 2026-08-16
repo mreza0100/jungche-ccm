@@ -129,7 +129,7 @@ Structure is a **roster of 1..N projects**. One project is valid and first-class
     - **Notify hooks** — "Professor is done — your turn" on 30s+ turns (macOS built-in; Linux swaps in `notify-send`).
     - **Markdown formatter hook** — prettier on framework-owned `.md` files after every edit.
     - **VSCode tmux launcher** — new terminals open into tmux + Claude (needs `tmux`).
-    - **Multi-account fleet + `/chat:*`** — only offer if the user runs multiple accounts or several parallel chats; requires `tmux`, `zsh`, `fzf`, and a permanent clone (**the clone IS the install** — every command symlinks back into it, `git pull` is the update story). Full protocol: `blueprint/templates/host-swap/README.md`. Disclose plainly: fleet-launched chats run with permission prompts disabled by design.
+    - **Multi-account fleet + `/chat:*`** — only offer if the user runs multiple accounts or several parallel chats; requires Go 1.24+, `tmux`, `zsh`, `fzf`, and a permanent clone. Build `pfm` first; its self-installer embeds the host command cards and helpers. Review `pfm install --dry-run`, then run `pfm install --apply`. Disclose plainly: fleet-launched chats run with permission prompts disabled by design.
     - **Theme** — Tokyo Night, source-fetched to `~/.claude/themes/`.
     - **Memory backup** — SessionStart/SessionEnd hooks sync Claude's project memory to a private git vault the user creates first. Protocol: `blueprint/references/memory-backup.md`.
 

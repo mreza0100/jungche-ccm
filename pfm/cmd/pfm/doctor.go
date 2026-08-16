@@ -68,9 +68,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		check,
 	)
 
-	// Which store the hides are actually in. They live in the fleet's shared
-	// database, not this binary's cache, and the operator needs to see that the
-	// two are the files they think they are before reading any count below.
+	// Hides live in the fleet's shared database, not this binary's cache.
 	sharedState := "ok"
 	if degraded := database.SharedDegraded(); degraded != nil {
 		warnings++
@@ -78,9 +76,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(
 		stdout,
-		"doctor: shared store=%s carrier=%s state=%s\n",
+		"doctor: shared store=%s state=%s\n",
 		database.SharedPath(),
-		database.CarrierPath(),
 		sharedState,
 	)
 

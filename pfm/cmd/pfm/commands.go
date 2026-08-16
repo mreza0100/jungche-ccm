@@ -18,7 +18,6 @@ import (
 	"hostops/pfm/internal/heal"
 	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
-	"hostops/pfm/internal/legacy"
 	"hostops/pfm/internal/paths"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
@@ -585,70 +584,5 @@ func pruneOrphanedHides(
 		"pfm archive: pruned %d orphaned hide(s)\n",
 		deleted,
 	)
-	return 0
-}
-
-// runLegacy repairs the carrier file against the shared hidden table.
-//
-// Neither half is a migration any more: a hide writes both in one call, so both
-// commands normally report the state they found. They are re-runnable on
-// purpose — a repair you may only run once is not a repair.
-func runLegacy(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: pfm legacy import|export")
-		return 2
-	}
-	flags := newFlagSet(
-		"legacy "+args[0],
-		"usage: pfm legacy import|export",
-		stderr,
-	)
-	if code, ok := parseFlags(flags, args[1:]); !ok {
-		return code
-	}
-	if flags.NArg() != 0 || (args[0] != "import" && args[0] != "export") {
-		flags.Usage()
-		return 2
-	}
-	database, err := store.Open(store.WithWarningWriter(stderr))
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm legacy %s: %v\n", args[0], err)
-		return 1
-	}
-	defer database.Close()
-	ctx := context.Background()
-	if args[0] == "import" {
-		// A full index first: import canonicalizes a Codex id to its lineage
-		// root, and it can only do that for chats the index knows.
-		indexer, err := fleetindex.New(database)
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm legacy import: %v\n", err)
-			return 1
-		}
-		counters, err := indexer.Run(ctx, fleetindex.Options{Full: true})
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm legacy import: %v\n", err)
-			return 1
-		}
-		result, err := legacy.Import(ctx, database)
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm legacy import: %v\n", err)
-			return 1
-		}
-		fmt.Fprintf(
-			stdout,
-			"legacy import: imported=%d unknown=%d; %s\n",
-			result.Imported,
-			result.Unknown,
-			formatCounters(counters),
-		)
-		return 0
-	}
-	result, err := legacy.Export(ctx, database)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm legacy export: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(stdout, "legacy export: exported=%d\n", result.Exported)
 	return 0
 }
