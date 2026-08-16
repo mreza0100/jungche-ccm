@@ -21,8 +21,12 @@ const (
 	// was working, so nothing was typed. It is internal retry telemetry; the
 	// CLI maps it to CodeUndelivered and never exposes rc 7.
 	CodeBusy = 7
-	// CodexInlineMax is chat.sh's hard limit for inline Codex delivery.
-	CodexInlineMax = 1500
+	// ClaudeAutoFileMax and CodexAutoFileMax are 10% below the earliest
+	// empirically observed composer failure for each engine. Claude's smaller
+	// bracketed-paste edge is 801 characters; Codex's inline and paste edge is
+	// 1001. TESTPLAN.md records the authentic probe method and both transports.
+	ClaudeAutoFileMax = 720
+	CodexAutoFileMax  = 900
 	// AbsoluteMessageMax keeps adversarial MCP arguments from reaching tmux.
 	AbsoluteMessageMax = 256 << 10
 	// CompactFocusMax is chat.sh's COMPACT_FOCUS_MAX: a longer /compact body is
@@ -75,6 +79,7 @@ type Result struct {
 	Steers         int    `json:"steers,omitempty"`
 	SteerLog       string `json:"steer_log,omitempty"`
 	Unsigned       bool   `json:"unsigned,omitempty"`
+	AutoFilePath   string `json:"auto_file_path,omitempty"`
 }
 
 // Sender is appended to every non-command plain-text delivery.
@@ -139,26 +144,30 @@ type SteerSpawn struct {
 
 // Options controls bounded retries. Zero values select chat.sh defaults.
 type Options struct {
-	Poll             time.Duration
-	EnterGap         time.Duration
-	EnterSettle      time.Duration
-	ProofSettle      time.Duration
-	BusyTries        int
-	InterruptTries   int
-	StashTries       int
-	SettleTries      int
-	EnterTries       int
-	Scrollback       int
-	ProofLines       int
-	LockTimeout      time.Duration
-	LockPoll         time.Duration
-	LockMaxHold      time.Duration
-	CodexInlineMax   int
-	AbsoluteByteMax  int
-	CompactFocusMax  int
-	LockRoot         string
-	Sender           *Sender
-	DisableSignature bool
+	Poll              time.Duration
+	EnterGap          time.Duration
+	EnterSettle       time.Duration
+	ProofSettle       time.Duration
+	BusyTries         int
+	InterruptTries    int
+	StashTries        int
+	SettleTries       int
+	EnterTries        int
+	Scrollback        int
+	ProofLines        int
+	LockTimeout       time.Duration
+	LockPoll          time.Duration
+	LockMaxHold       time.Duration
+	ClaudeAutoFileMax int
+	CodexAutoFileMax  int
+	AbsoluteByteMax   int
+	CompactFocusMax   int
+	LockRoot          string
+	BodyRoot          string
+	BodyMaxAge        time.Duration
+	Now               func() time.Time
+	Sender            *Sender
+	DisableSignature  bool
 
 	// --then waiter cadence, mirroring chat.sh's __then subcommand.
 	ThenMin        time.Duration

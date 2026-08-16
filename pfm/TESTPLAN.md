@@ -179,6 +179,10 @@ The four identity/state regressions that established this plan. A tagged row mus
 | Refresh that DROPS the selected row → cursor falls back safely                    | JAIL      | `ui/model.go:390-399`                                    | B2         |
 | Window resize re-widths the query field                                           | JAIL      | `ui/model.go:123-127`                                    |            |
 | Footer legend matches the real bindings                                           | JAIL      | `ui/render.go:122-125`                                   |            |
+| every Stats subtab renders labeled column headers                                 | JAIL      | `ui/stats_test.go`, `ui/render.go`                        |            |
+| Stats Chats renders lifetime `TOKENS` and elapsed-lifetime `TOK/H` per chat        | JAIL      | `stats/stats_test.go`, `stats/tokens.go`, `ui/stats_test.go` |            |
+| Stats Docker begins with cached container `NAME` and `IMAGE`, then cgroup metrics | JAIL      | `stats/docker_identity_test.go`, `stats/docker_identity.go`, `ui/stats_test.go` |            |
+| the two-second Stats sampler delta-parses transcript growth and performs at most one Docker API identity lookup per new cgroup id | JAIL | `stats/stats_test.go`, `stats/docker_identity_test.go` |            |
 
 ## C — Row-kind × operation cross-matrix
 
@@ -314,7 +318,7 @@ tonight's four bugs all live in.
 | `chat_inject` `/compact` without `then` → refused code 6                          | JAIL      | `inject/engine.go:683-694`                                         |            |
 | `chat_inject` a `then` steer that is itself `/compact` → refused code 1           | JAIL      | `inject/engine.go:668-682`                                         |            |
 | `chat_inject` long `/compact` focus → refused code 6                              | JAIL      | `inject/engine.go:696-708`                                         |            |
-| `chat_inject` codex inline cap by RUNE count                                      | JAIL+tmux | `inject/engine.go:327-336`                                         |            |
+| `chat_inject` long bodies cross the measured per-engine boundary into an auto-file pointer by RUNE count | JAIL+tmux | `inject/body.go`, `inject/engine_test.go`                           |            |
 | `chat_inject` absolute byte cap before anything resolves                          | JAIL      | `inject/engine.go:301-310`                                         |            |
 | `chat_capture` `tail_lines` 1..1000, `max_bytes` 1..4Mi, rune-safe tail cut       | JAIL+tmux | `mcpserv/server.go:209-271`                                        |            |
 | `chat_whoami` takes NO arguments; identity from this process only                 | JAIL+tmux | `mcpserv/server.go:177-207`, `mcpserv/types.go:95-97`              |            |
@@ -333,7 +337,9 @@ tonight's four bugs all live in.
 | `chat open <name                                                                                                     | socket    | id                                                                          | self>` → attach action | JAIL+tmux | `chat_command.go`, `attach_e2e_test.go` |     |
 | `chat inject` ladder: self → any-socket live session → label → Codex thread → id/path/excerpt                        | JAIL+tmux | `headless_command.go`, `inject_resume.go`, `internal/inject/resolve`        | B1                     |
 | busy Codex and Claude inject through the safe composer queue without Esc; receipts distinguish queued from delivered | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`, `engine_test.go`              |                        |
-| `chat inject --file` uses bracketed paste, preserving long/multi-line/shell-syntax bodies past the Codex inline cap  | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                                |                        |
+| `chat inject` stores an over-threshold body under `~/.local/state/pfm/inject-bodies/`, sends only a signed caption+path pointer, and names both facts in the receipt | JAIL+tmux | `internal/inject/body.go`, `engine_test.go`, `inject_cli_jail_test.go` |                        |
+| a short `chat inject --file` keeps bracketed paste for byte-safe multi-line input; an over-threshold `--file` is copied into the canonical auto-file store | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                                |                        |
+| auto-file boundaries: one character under stays inline, one over becomes a pointer; an 8 KiB body never enters either composer | JAIL+tmux | `TestInjectAutoFileBoundaryAndKillerBody`, CLI probe fixture               |                        |
 | repeated `chat inject --then` waits busy→stable-idle and survives caller exit                                        | JAIL+tmux | `internal/inject/then.go`, waiter jail tests                                |                        |
 | `/compact` without `--then`, or a `/compact` steer, is refused before delivery                                       | JAIL      | `internal/inject`                                                           |                        |
 | `--force-now` interrupts only a busy live target and marks the forced delivery                                       | JAIL+tmux | `internal/inject`                                                           |                        |
@@ -351,6 +357,31 @@ tonight's four bugs all live in.
 | exit contract: 0 delivered/queued, 2 usage, 3 dead, 4 unknown, 5 answer timeout, 6 undelivered                       | JAIL      | `headless_command.go`, `headless_matrix_test.go`, `inject_cli_jail_test.go` |                        |
 | hidden root compatibility alias emits a deprecation; `run`, `dump`, and the old stream verb are gone                 | JAIL      | `main.go`, `headless_matrix_test.go`                                        |                        |
 | embedded `chat.sh` is an executable two-line compatibility delegate to `pfm chat`                                    | JAIL+sh   | `internal/installer/assets/chat/chat.sh`, installer tests                   |                        |
+
+### Measured composer edges — Claude Code 2.1.224 / Codex CLI 0.147.0
+
+Measured 2026-08-16 against authentic TUIs in a scratch working directory, each on a fresh
+`probe-*` socket under `/tmp/tmux-1000/`. Every payload carried distinct head/tail markers.
+For submitted samples, the Claude transcript or Codex rollout was the byte-count oracle; pane
+capture supplied the composer symptom and `#{pane_dead}` proved whether the TUI survived. No
+fleet socket was addressed. A failure edge is the first size that collapses into a paste block
+and does not reach the transcript/rollout on one Enter; the panes stayed alive.
+
+| engine | transport | last intact composer body | first failure | observed symptom |
+| ------ | --------- | ------------------------- | ------------- | ---------------- |
+| Claude | literal `send-keys -l` | 1,024 chars | 1,025 chars | `[Pasted text #N]`; one Enter left the block in the composer |
+| Claude | bracketed `paste-buffer -p` | 800 chars | 801 chars | `[Pasted text #N]`; one Enter left the block in the composer |
+| Codex | literal `send-keys -l` | 1,000 chars | 1,001 chars | `[Pasted Content N chars]`; one Enter left the block in the composer |
+| Codex | bracketed `paste-buffer -p` | 1,000 chars | 1,001 chars | `[Pasted Content N chars]`; one Enter left the block in the composer |
+
+The per-engine auto-file boundary uses the smaller transport edge and rounds down at 90%:
+Claude `floor(801 × 0.9) = 720` runes; Codex `floor(1001 × 0.9) = 900` runes. The comparison is
+against the complete signed wire message, so a signature consumes part of the safety margin.
+Above the boundary, pfm writes the original body byte-exact with mode 0600, prunes `.md` bodies
+older than seven days, and sends a bounded first-line caption plus `read <path> fully`. The
+pointer itself must also fit the same boundary or delivery refuses before typing. An 8 KiB raw
+probe reproduced the stranded collapsed composer; the regression fixture now proves that size
+travels only as the short pointer.
 
 ## I — zsh shell surface: launchers and revivers
 
@@ -433,7 +464,7 @@ they count as covered.
 6. `codex resume <name>` creating a paginated thread that writes no rollout.
 7. Two codex chats born in the SAME directory within the birth window.
 8. Codex approval / plan-overlay modals during an inject.
-9. Codex composer tall-message truncation (the false-green class).
+9. ✅ DONE — Codex composer edge measured for literal and bracketed-paste transport; the auto-file boundary fixtures cover the false-green class. Re-run on any Codex upgrade.
 10. `pfm chat hide self --exit` `/quit` flush on a REAL codex seat.
 11. `pfm name-sync` converging a live cx window name onto the VS Code tab.
 12. Codex-origin `pfm chat inject` signature via ancestry recovery.
@@ -452,7 +483,7 @@ they count as covered.
     same live chats. 22 checks, all green. Re-run on any engine upgrade —
     `ask` is only as true as the transcript shapes both engines write.
 
-**Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. `[Pasted text #N]` collapse in a real Claude composer. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
+**Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. ✅ DONE — `[Pasted text #N]` collapse measured for literal and bracketed-paste transport in a real Claude composer; auto-file fixtures cover the edge. Re-run on any Claude Code upgrade. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
 28b. `pfm reap`'s busy probe against REAL `claude agents --json`; the jail proves fail-closed
 plumbing but not the live daemon's JSON shape, so re-run it on any Claude Code upgrade.
 

@@ -56,11 +56,18 @@ func New(dependencies Dependencies) (*Engine, error) {
 	if dependencies.Spawner == nil {
 		dependencies.Spawner = CommandThenSpawner{}
 	}
-	if _, err := paths.Resolve(); err != nil {
+	resolved, err := paths.Resolve()
+	if err != nil {
 		return nil, err
 	}
 	options := withDefaults(dependencies.Options)
 	applyEnvironment(&options)
+	if options.BodyRoot == "" {
+		options.BodyRoot = filepath.Join(
+			resolved.Home,
+			".local", "state", "pfm", "inject-bodies",
+		)
+	}
 	// chat.sh:147 locks under ${TMPDIR:-/tmp}/chat-inject-locks. The Go engine
 	// shares that namespace so a Go inject and a chat.sh inject into the same
 	// pane mutually exclude instead of interleaving keystrokes.
@@ -133,7 +140,6 @@ func applyEnvironment(options *Options) {
 		{"CHAT_INJECT_ENTER_TRIES", &options.EnterTries},
 		{"CHAT_INJECT_SCROLLBACK", &options.Scrollback},
 		{"CHAT_INJECT_PROOF_LINES", &options.ProofLines},
-		{"CHAT_INJECT_CX_INLINE_MAX", &options.CodexInlineMax},
 		{"PFM_MCP_MAX_MESSAGE_BYTES", &options.AbsoluteByteMax},
 		{"COMPACT_FOCUS_MAX", &options.CompactFocusMax},
 		{"CHAT_THEN_BUSY_TRIES", &options.ThenBusyTries},
@@ -195,14 +201,23 @@ func withDefaults(options Options) Options {
 	if options.LockMaxHold == 0 {
 		options.LockMaxHold = 60 * time.Second
 	}
-	if options.CodexInlineMax == 0 {
-		options.CodexInlineMax = CodexInlineMax
+	if options.ClaudeAutoFileMax == 0 {
+		options.ClaudeAutoFileMax = ClaudeAutoFileMax
+	}
+	if options.CodexAutoFileMax == 0 {
+		options.CodexAutoFileMax = CodexAutoFileMax
 	}
 	if options.AbsoluteByteMax == 0 {
 		options.AbsoluteByteMax = AbsoluteMessageMax
 	}
 	if options.CompactFocusMax == 0 {
 		options.CompactFocusMax = CompactFocusMax
+	}
+	if options.BodyMaxAge == 0 {
+		options.BodyMaxAge = defaultBodyMaxAge
+	}
+	if options.Now == nil {
+		options.Now = time.Now
 	}
 	// chat.sh:1063-1077 __then cadence.
 	if options.ThenMin == 0 {
@@ -392,16 +407,6 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		if verifiedEngine != "" {
 			target.Engine = verifiedEngine
 		}
-	}
-	if target.Engine == "cx" && !request.FileBacked &&
-		utf8.RuneCountInString(request.Message) > engine.options.CodexInlineMax {
-		base.Code = CodeUndelivered
-		base.Message = fmt.Sprintf(
-			"ABORT: message is %d chars — over the %d-char inline cap for codex panes; nothing was typed",
-			utf8.RuneCountInString(request.Message),
-			engine.options.CodexInlineMax,
-		)
-		return base, nil
 	}
 	// Both TUIs own a safe composer queue while a turn is running. A normal
 	// inject types there and submits without interrupting the active turn;
@@ -601,10 +606,23 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	}
 
 	preSubmitCapture := capture
-	message, unsigned := engine.signedMessage(ctx, request.Message, base.Interrupted)
-	base.Unsigned = unsigned
+	prepared, prepareErr := engine.prepareLiveMessage(
+		ctx,
+		target,
+		request.Message,
+		base.Interrupted,
+	)
+	if prepareErr != nil {
+		base.Code = CodeUndelivered
+		base.Message = fmt.Sprintf("could not persist long inject body: %v", prepareErr)
+		return base, nil
+	}
+	message := prepared.Message
+	base.Unsigned = prepared.Unsigned
+	base.AutoFilePath = prepared.AutoFilePath
+	pasteTransport := request.FileBacked && prepared.AutoFilePath == ""
 	var sendErr error
-	if request.FileBacked {
+	if pasteTransport {
 		sendErr = engine.tmux.SendPaste(
 			ctx,
 			target.SocketPath,
@@ -629,7 +647,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		_ = lock.beat()
 		capture, err = engine.capture(ctx, target, 0)
 		if err == nil && (strings.Contains(normalizeSpace(capture), needle) ||
-			(request.FileBacked && hasPastePlaceholder(capture))) {
+			(pasteTransport && hasPastePlaceholder(capture))) {
 			break
 		}
 		sleepContext(ctx, engine.options.Poll)
@@ -765,6 +783,13 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	}
 	base.Code = 0
 	switch {
+	case queueing && prepared.AutoFilePath != "":
+		base.Message = fmt.Sprintf(
+			"queued AUTO-FILE pointer into %q — full body saved at %s; busy %s accepted the pointer without interruption (Enter confirmed, input cleared)",
+			target.Pane,
+			prepared.AutoFilePath,
+			engineName(target.Engine),
+		)
 	case queueing && request.FileBacked:
 		base.Message = fmt.Sprintf(
 			"queued FILE-BACKED into %q — busy %s accepted the bracketed-paste block without interruption (Enter confirmed, input cleared)",
@@ -776,6 +801,12 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			"queued into %q — busy %s accepted the turn without interruption (Enter confirmed, input cleared)",
 			target.Pane,
 			engineName(target.Engine),
+		)
+	case prepared.AutoFilePath != "":
+		base.Message = fmt.Sprintf(
+			"injected LIVE AUTO-FILE pointer into %q — full body saved at %s (Enter confirmed, input cleared)",
+			target.Pane,
+			prepared.AutoFilePath,
 		)
 	case request.FileBacked:
 		base.Message = fmt.Sprintf(
@@ -801,13 +832,16 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			base.SteerLog,
 		)
 	}
+	for _, warning := range prepared.Warnings {
+		base.Message += " — WARNING: " + warning
+	}
 	base.Proof = lastNonEmptyLines(proof, engine.options.ProofLines)
 	if !deliveryProven(
 		preSubmitCapture,
 		proof,
-		request.Message,
+		message,
 		queueing,
-		request.FileBacked,
+		pasteTransport,
 	) {
 		base.Status = "delivered_unproven"
 		base.Message = fmt.Sprintf(

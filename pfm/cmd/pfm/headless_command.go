@@ -598,23 +598,47 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 			if len(steers) > 0 {
 				fmt.Fprintf(stderr, "pfm chat inject: --then ignored for a dormant RESUME target (%d steer(s))\n", len(steers))
 			}
-			signed, unsigned := engine.SignForResume(ctx, message)
-			receipt, appendErr := appendResumeInjection(ctx, resolved, target, signed)
+			prepared, prepareErr := engine.PrepareForResume(
+				ctx,
+				target.ID,
+				"cc",
+				message,
+			)
+			if prepareErr != nil {
+				fmt.Fprintf(stderr, "pfm chat inject: prepare resume body: %v\n", prepareErr)
+				return codeUndelivered
+			}
+			receipt, appendErr := appendResumeInjection(ctx, resolved, target, prepared.Message)
 			if appendErr != nil {
 				fmt.Fprintf(stderr, "pfm chat inject: %v\n", appendErr)
 				return codeUndelivered
 			}
-			if unsigned {
+			if prepared.Unsigned {
 				writeUnsignedInjectWarning(stderr)
 			}
-			fmt.Fprintf(
-				stdout,
-				"injected RESUME user turn %s (parent %s) into session %s — answered on next reopen; backup: %s\n",
-				receipt.EventID,
-				receipt.ParentID,
-				receipt.SessionID,
-				receipt.Backup,
-			)
+			if prepared.AutoFilePath != "" {
+				fmt.Fprintf(
+					stdout,
+					"injected RESUME AUTO-FILE pointer %s (parent %s) into session %s — full body saved at %s; answered on next reopen; backup: %s\n",
+					receipt.EventID,
+					receipt.ParentID,
+					receipt.SessionID,
+					prepared.AutoFilePath,
+					receipt.Backup,
+				)
+			} else {
+				fmt.Fprintf(
+					stdout,
+					"injected RESUME user turn %s (parent %s) into session %s — answered on next reopen; backup: %s\n",
+					receipt.EventID,
+					receipt.ParentID,
+					receipt.SessionID,
+					receipt.Backup,
+				)
+			}
+			for _, warning := range prepared.Warnings {
+				fmt.Fprintf(stderr, "pfm chat inject: WARNING: %s\n", warning)
+			}
 			return 0
 		}
 	}
