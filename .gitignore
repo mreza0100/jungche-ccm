@@ -7,6 +7,13 @@ node_modules/
 !.env.example
 /tmp/
 ENGINES/wave-walker/engine/tmp/
+ENGINES/wave-walker/engine/dist/
+ENGINES/wave-walker/engine/headless-equivalence-input.json
+ENGINES/wave-walker/engine/runtime-smoke-input.json
+dreamer/RULING-*.md
+dreamer/SPEC-dream-module.md
+dreamer/morning.log
+dreamer/repos.list
 .worktrees/
 # Source-fetched skills are cloned at install from their own public repos
 # (blueprint/templates/skills/sources.json) and are NEVER vendored here: a

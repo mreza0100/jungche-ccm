@@ -68,7 +68,7 @@ describe('Configs — untrusted program args fail before prompt or write-target 
     );
   });
 
-  it('accepts the real Projb mechanical profile grammar', () => {
+  it('accepts a complete mechanical profile grammar', () => {
     expect(
       () =>
         new Configs({
