@@ -28,7 +28,7 @@ func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 	}
 	jail := newHideCLIJail(t)
 
-	socket := "cc-hidecli-" + strconv.Itoa(os.Getpid())
+	socket := "probe-hidecli-" + strconv.Itoa(os.Getpid())
 	session := exec.Command(
 		"tmux", "-L", socket, "-f", "/dev/null",
 		"new-session", "-d", "-s", "bg", "sleep", "120",
@@ -91,6 +91,30 @@ func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 		if got, want := stdout.String(), "hidden "+id+"\n"; got != want {
 			t.Fatalf("hide %s stdout=%q, want %q", id, got, want)
 		}
+	}
+
+	// A Codex tool shell has the thread id but no tmux environment. It still
+	// resolves `self` to the live composed row instead of falling into the
+	// tmux-only self identifier used by Claude hooks.
+	var unhideOut, unhideErr bytes.Buffer
+	if code := run([]string{"chat", "unhide", codexID}, &unhideOut, &unhideErr); code != 0 {
+		t.Fatalf("unhide Codex fixture code=%d stderr=%q", code, unhideErr.String())
+	}
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", codexID)
+	var selfOut, selfErr bytes.Buffer
+	if code := run([]string{"chat", "hide", "self"}, &selfOut, &selfErr); code != 0 {
+		t.Fatalf(
+			"Codex app-server hide self code=%d stdout=%q stderr=%q",
+			code,
+			selfOut.String(),
+			selfErr.String(),
+		)
+	}
+	if got, want := selfOut.String(), "hidden "+codexID+"\n"; got != want {
+		t.Fatalf("Codex app-server hide self stdout=%q, want %q", got, want)
 	}
 
 	var stdout, stderr bytes.Buffer
@@ -194,5 +218,6 @@ func newHideCLIJail(t *testing.T) *hideCLIJail {
 	t.Setenv("PFM_CODEX_ROOT", codexRoot)
 	t.Setenv("PFM_TMUX_DIR", tmuxDir)
 	t.Setenv("PFM_PROC_ROOT", procRoot)
+	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
 	return &hideCLIJail{root: root, home: home, procRoot: procRoot}
 }

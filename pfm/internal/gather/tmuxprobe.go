@@ -445,6 +445,13 @@ func IsChatSocketName(name string) bool {
 	if strings.HasPrefix(name, "vsct") || strings.HasPrefix(name, "revive") {
 		return false
 	}
+	// Real tmux integration tests are forbidden from minting a live-looking
+	// cc-/cx- socket. Their explicit jail environment opts probe-* sockets into
+	// discovery so the production probe path is still exercised end to end.
+	if os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" &&
+		strings.HasPrefix(name, "probe-") {
+		return true
+	}
 	return strings.HasPrefix(name, "cc-") || strings.HasPrefix(name, "cx-")
 }
 

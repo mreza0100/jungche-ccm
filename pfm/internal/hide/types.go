@@ -50,6 +50,13 @@ type Request struct {
 	// composed row, keyed on the root, never carries. Ignored for Claude ids
 	// and whenever the caller does not have a path to offer.
 	RolloutPath string
+	// SocketName and PaneID carry a live address already resolved by the fleet
+	// composer. Codex tool shells have no ambient TMUX, so this is the only way
+	// their `hide self --exit` call can name the pane it owns. SocketName stays
+	// the immutable tmux socket name; the manager derives its path inside the
+	// configured tmux directory and accepts no caller-supplied path.
+	SocketName  string
+	PaneID      string
 	Exit        bool
 	Environment SelfEnvironment
 }

@@ -53,14 +53,12 @@ ok "--config-dir overrides on purpose" "$(run --config-dir "$T/elsewhere" | grep
 
 echo "=== --apply wires everything ==="
 out="$(run --apply)"
-ok "cc-db.sh is a symlink"         "$([ -L "$BIN/cc-db.sh" ] && echo yes || echo no)" "yes"
-ok "cc-db.sh resolves to bundle"   "$(readlink -f "$BIN/cc-db.sh")" "$BUNDLE/cc-db.sh"
-ok "cc-agent-open.sh linked"       "$([ -L "$BIN/cc-agent-open.sh" ] && echo yes || echo no)" "yes"
+ok "fleet bin is empty"            "$(find "$BIN" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l | tr -d ' ')" "0"
 ok "bb.md linked (suffix dropped)" "$(readlink -f "$CMD/bb.md")" "$BUNDLE/bb.command.md"
 ok "chat/ls.md linked"             "$(readlink -f "$CMD/chat/ls.md")" "$BUNDLE/chat/ls.command.md"
 ok "chat/self/compact.md linked"   "$(readlink -f "$CMD/chat/self/compact.md")" "$BUNDLE/chat/self/compact.command.md"
 ok "chat.sh linked"                "$(readlink -f "$CMD/chat/chat.sh")" "$BUNDLE/chat/chat.sh"
-ok "chat-ops.sh linked"            "$(readlink -f "$CMD/chat/chat-ops.sh")" "$BUNDLE/chat/chat-ops.sh"
+ok "chat-ops.sh is retired"        "$([ -e "$CMD/chat/chat-ops.sh" ] || [ -L "$CMD/chat/chat-ops.sh" ] && echo present || echo absent)" "absent"
 ok "zshrc sources the engine shim" "$(grep -cF "$SHIM" "$HOME/.zshrc")" "1"
 ok "codex bb skill dir linked"     "$(readlink -f "$HOME/.agents/skills/bb")" "$BUNDLE/codex-skills/bb"
 
@@ -86,7 +84,7 @@ run --apply >/dev/null 2>&1
 echo "=== re-running is free (idempotent) ==="
 out="$(run --apply)"
 ok "second apply relinks nothing"  "$(printf '%s' "$out" | grep -cE '^  (link|relink|backup) ')" "0"
-ok "second apply reports ok rows"  "$([ "$(printf '%s' "$out" | grep -c '^  ok ')" -gt 20 ] && echo many || echo few)" "many"
+ok "second apply reports surviving links ok" "$([ "$(printf '%s' "$out" | grep -cF "  ok      $CMD/chat/chat.sh")" -eq 1 ] && [ "$(printf '%s' "$out" | grep -cF "  ok      $CMD/bb.md")" -eq 1 ] && [ "$(printf '%s' "$out" | grep -cF "  ok      $HOME/.agents/skills/bb")" -eq 1 ] && echo yes || echo no)" "yes"
 ok "zshrc still has ONE source line" "$(grep -c 'pfm\.zsh' "$HOME/.zshrc")" "1"
 
 echo "=== a REAL file at the destination is preserved, never destroyed ==="
@@ -98,11 +96,11 @@ ok "backup keeps the content"      "$(cat "$bk" 2>/dev/null)" "my own version"
 ok "destination is now the link"   "$(readlink -f "$CMD/chat/ls.md")" "$BUNDLE/chat/ls.command.md"
 
 echo "=== a link from an OLDER clone is repointed ==="
-mkdir -p "$T/oldclone"; printf 'old\n' > "$T/oldclone/cc-db.sh"
-ln -sfn "$T/oldclone/cc-db.sh" "$BIN/cc-db.sh"
+mkdir -p "$T/oldclone"; printf 'old\n' > "$T/oldclone/chat.sh"
+ln -sfn "$T/oldclone/chat.sh" "$CMD/chat/chat.sh"
 out="$(run --apply)"
 ok "stale link was relinked"       "$(printf '%s' "$out" | grep -c 'relink')" "1"
-ok "now points at this bundle"     "$(readlink -f "$BIN/cc-db.sh")" "$BUNDLE/cc-db.sh"
+ok "now points at this bundle"     "$(readlink -f "$CMD/chat/chat.sh")" "$BUNDLE/chat/chat.sh"
 
 echo "=== a ~/.zshrc pointing at another copy is REWRITTEN, not appended to ==="
 printf '# my shell\n[[ -r "/somewhere/else/pfm.zsh" ]] && source "/somewhere/else/pfm.zsh"\nalias x=y\n' > "$HOME/.zshrc"
@@ -120,49 +118,51 @@ echo "=== bare --uninstall dry-runs by default: banner, and NOTHING changes ==="
 out="$(run --uninstall)"
 ok "banner names the action (uninstall)"     "$(printf '%s' "$out" | grep -c '^MODE: uninstall$')" "1"
 ok "banner names it a dry run"               "$(printf '%s' "$out" | grep -c 'dry run')" "1"
-ok "bare --uninstall: cx-recover.sh still linked" "$([ -L "$BIN/cx-recover.sh" ] && echo yes || echo no)" "yes"
+ok "bare --uninstall: history.sh still linked" "$([ -L "$CMD/chat/history.sh" ] && echo yes || echo no)" "yes"
 ok "bare --uninstall: chat/ls.md still linked" "$([ -L "$CMD/chat/ls.md" ] && echo yes || echo no)" "yes"
 
 echo "=== --uninstall --apply: a link with NO backup is DROPPED, a link WITH one is RESTORED ==="
-# cx-recover.sh has never had a competing real file placed at its destination (only chat/ls.md did,
+# history.sh has never had a competing real file placed at its destination (only chat/ls.md did,
 # in the "REAL file at the destination" case above) -- so it carries no .pre-professor-* backup
 # and must be dropped outright, while chat/ls.md's backup must come back byte for byte. ONE
 # uninstall run covers the whole fleet at once, so both "before" snapshots are taken first and
 # both outcomes are checked against that SAME run.
-hide_target_before="$([ -L "$BIN/cx-recover.sh" ] && readlink -f "$BIN/cx-recover.sh" || echo none)"
+history_target_before="$([ -L "$CMD/chat/history.sh" ] && readlink -f "$CMD/chat/history.sh" || echo none)"
 ls_bk_content_before="$(cat "$(ls -1 "$CMD/chat/"ls.md.pre-professor-* 2>/dev/null | tail -1)" 2>/dev/null)"
 run --uninstall --apply >/dev/null
-hide_after="$([ -e "$BIN/cx-recover.sh" ] && echo "still-present:$(readlink -f "$BIN/cx-recover.sh" 2>/dev/null)" || echo gone)"
-ok "cx-recover.sh had a real symlink before"    "$hide_target_before" "$BUNDLE/cx-recover.sh"
-ok "cx-recover.sh (no backup) removed, not silently reinstalled" "$hide_after" "gone"
+history_after="$([ -e "$CMD/chat/history.sh" ] && echo "still-present:$(readlink -f "$CMD/chat/history.sh" 2>/dev/null)" || echo gone)"
+ok "history.sh had a real symlink before"    "$history_target_before" "$BUNDLE/chat/history.sh"
+ok "history.sh (no backup) removed, not silently reinstalled" "$history_after" "gone"
 ok "chat/ls.md is no longer a symlink (restored in place)" "$([ -L "$CMD/chat/ls.md" ] && echo still-a-link || echo restored)" "restored"
 ok "restored content matches the pre-install backup"       "$(cat "$CMD/chat/ls.md" 2>/dev/null)" "$ls_bk_content_before"
 
 echo "=== --apply --uninstall (OPPOSITE flag order) behaves IDENTICALLY ==="
-run --apply >/dev/null   # re-link everything (including cx-recover.sh) before the order check
-ok "re-apply relinked cx-recover.sh" "$([ -L "$BIN/cx-recover.sh" ] && echo yes || echo no)" "yes"
+run --apply >/dev/null   # re-link everything before the order check
+ok "re-apply relinked history.sh" "$([ -L "$CMD/chat/history.sh" ] && echo yes || echo no)" "yes"
 run --apply --uninstall >/dev/null
-ok "--apply --uninstall also removes cx-recover.sh (no backup)" "$([ -e "$BIN/cx-recover.sh" ] && echo still-present || echo gone)" "gone"
+ok "--apply --uninstall also removes history.sh (no backup)" "$([ -e "$CMD/chat/history.sh" ] && echo still-present || echo gone)" "gone"
 
-echo "=== retired satellites: their ~/.claude/bin links are REMOVED, not left dangling ==="
+echo "=== retired scripts: their ~/.claude/bin links are REMOVED, not left dangling ==="
 # Every one of these became a pfm subcommand. A host that installed them before still has
 # the links, so the installer has to take them away on the next run: a link to a script that no
 # longer exists fails as "the fleet is broken" instead of "this moved into the engine".
 mkdir -p "$BIN"
-for stale in cc-hide.sh cx-hide.sh bb-hook.sh cc-reap.sh cc-archive.sh cc-name-sync.sh cx-heal.sh; do
+for stale in cc-hide.sh cx-hide.sh bb-hook.sh cc-reap.sh cc-archive.sh cc-name-sync.sh cx-heal.sh cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh; do
   ln -sfn "$BUNDLE/$stale" "$BIN/$stale"
 done
+ln -sfn "$BUNDLE/chat/chat-ops.sh" "$CMD/chat/chat-ops.sh"
 printf 'stray backup\n' > "$BIN/cx-recover.sh.pre-professor-20260815-193920"
 out="$(run)"
 ok "dry run announces the retirement"  "$(printf '%s' "$out" | grep -c 'retire .*bb-hook.sh')" "1"
 ok "dry run removes nothing"           "$([ -L "$BIN/cc-reap.sh" ] && echo yes || echo no)" "yes"
 run --apply >/dev/null
 left=0
-for stale in cc-hide.sh cx-hide.sh bb-hook.sh cc-reap.sh cc-archive.sh cc-name-sync.sh cx-heal.sh cx-recover.sh.pre-professor-20260815-193920; do
+for stale in cc-hide.sh cx-hide.sh bb-hook.sh cc-reap.sh cc-archive.sh cc-name-sync.sh cx-heal.sh cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh cx-recover.sh.pre-professor-20260815-193920; do
   [ -e "$BIN/$stale" ] || [ -L "$BIN/$stale" ] && left=$((left+1))
 done
+[ -e "$CMD/chat/chat-ops.sh" ] || [ -L "$CMD/chat/chat-ops.sh" ] && left=$((left+1))
 ok "every retired artifact is gone after --apply" "$left" "0"
-ok "a live satellite is still linked"          "$([ -L "$BIN/cc-db.sh" ] && echo yes || echo no)" "yes"
+ok "fleet bin remains empty" "$(find "$BIN" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 echo "=== the /bb hook is rewired from bb-hook.sh to the pfm binary ==="
 # settings.json is the one declaration of that hook and this installer is its only writer.

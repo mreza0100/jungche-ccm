@@ -737,8 +737,8 @@ func (current *composer) applyHide(row Row, engine string) Row {
 // hiddenMatch reports whether id — or, for a Codex row, ANY id in its resume
 // lineage — carries a hide whose engine agrees.
 //
-// cx-hide.sh writes the RAW id of whatever rollout file the live Codex
-// process currently holds (cx-hide.sh:147), which is the resumed CHILD's id
+// A live Codex process exposes the raw id of its current rollout, which can be
+// the resumed CHILD's id
 // on a multi-file lineage, not the ROOT this row is keyed on (rolloutRow,
 // liveCodexRows) — a hide written that way lands on a key nothing else here
 // reads unless every member id is checked too. A hide the `hide` manager

@@ -21,8 +21,7 @@ const (
 	// set — database rows unioned with carrier-file ids — so the cached
 	// first-frame queries can still express "not hidden" as a join. It is
 	// refilled from the shared store on every read that consults it, which is
-	// what lets a hide written by the zsh half a second ago show up here with
-	// no sync step in between.
+	// what lets a concurrent hide show up with no sync step in between.
 	effectiveHidden = "temp.effective_hidden"
 
 	effectiveHiddenDDL = `
@@ -74,8 +73,7 @@ func (s *Store) hiddenWrite(
 		return err
 	}
 
-	// The carrier file was written either way — shared.Store writes it whether
-	// or not the row lands, exactly as cc-db.sh does (cc-db.sh:133-137). So a
+	// The carrier file was written either way, whether or not the row lands. A
 	// hide survives this and an unhide does not: the row the delete missed is
 	// still in the database, and the union will keep reporting it hidden.
 	s.warningf(
@@ -101,7 +99,7 @@ func isBusy(err error) bool {
 
 // UpsertHidden inserts or replaces a row in the RETIRED local hidden table.
 // Only the v1→v2 Codex lineage migration calls it, and only to tidy rows that
-// the shared store then adopts; no live hide reaches this table.
+// the shared store adopts during migration; no live hide reaches this table.
 func (tx *ImmediateTx) UpsertHidden(ctx context.Context, hidden Hidden) error {
 	return upsertHidden(ctx, tx, hidden)
 }
@@ -169,9 +167,8 @@ func (s *Store) HiddenChats(ctx context.Context) ([]Hidden, error) {
 }
 
 // deriveEngines answers "Claude or Codex?" from the index rather than from a
-// stored column. The shared hidden table is keyed by uuid alone — cc-db.sh has
-// never had an engine column and a second writer cannot be asked to maintain
-// one — so the engine is read back out of whichever index table claims the id:
+// stored column. The shared hidden table is keyed by uuid alone, so the engine
+// is read back out of whichever index table claims the id:
 // a transcript is "cc", a rollout or a Codex lineage root is "cx". An id
 // neither table knows is an orphaned hide and keeps an empty engine, which
 // compose reads as "hidden whatever the engine".

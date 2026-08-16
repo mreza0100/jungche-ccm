@@ -13,8 +13,12 @@ and `(cost)` on any env / hook / permission / model-config delta.
   `pfm chat` with named creation, immutable socket identities, target resolution, group/BB
   wiring, and inline name convergence; `ls --hidden` exposes the hide ledger; the old
   per-chat command names are removed except for one hidden compatibility alias. Chat command
-  cards call the binary directly, while the executable `chat.sh` transition shim keeps the old
-  path available until a capable binary is installed. Codex rename events drive the path unit,
+  cards call the binary directly, while executable `chat.sh` is now a two-line compatibility
+  delegate. Hidden Go wiring owns primary-account state and agent opening; `pfm chat swap` and
+  `pfm chat recover` replace their shell engines, and the installer removes all retired links.
+  Inject restores the full target ladder, signed sender ancestry, safe busy-composer queueing,
+  detached `--then` delivery, long `--file` transport and explicit refusal exit codes across both
+  engines. Codex rename events drive the path unit,
   Claude name writes converge in-process, and the timer is a 15-minute drift fallback. The
   installer rewires both UserPromptSubmit hooks to fail-open `pfm chat` verbs. (cost: CLI,
   binary, unit, hook, and chat-command paths changed)

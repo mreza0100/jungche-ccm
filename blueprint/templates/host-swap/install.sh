@@ -9,8 +9,8 @@
 #   install.sh --uninstall        replace every link this script made with its backup (or drop it)
 #   install.sh --config-dir DIR   target DIR instead of ~/.claude (rarely wanted; see below)
 #
-# DRY RUN IS THE DEFAULT, matching cc-reap.sh and cc-archive.sh in this bundle: a run that
-# rewrites files under ~/.claude should have to be asked for twice.
+# DRY RUN IS THE DEFAULT: a run that rewrites files under ~/.claude should have to be asked
+# for twice.
 #
 # Idempotent. A link already pointing at the right file is reported "ok" and left alone, so
 # re-running after a pull is free. A REAL file in the way is moved to <name>.pre-professor-<ts>
@@ -110,17 +110,14 @@ say "Target config dir:      $CLAUDE_DIR"
 [ "$APPLY" = 0 ] && say "MODE: dry run — nothing will change. Re-run with --apply to commit."
 say ""
 
-# ── the fleet scripts: one stable address, ~/.claude/bin, independent of where the clone lives ──
-# cc-portable.sh is a sourced library, not a command — it is linked with the rest so the bundle
-# has ONE published address per file and an operator reading ~/.claude/bin sees the whole set.
-# Nothing depends on the link: every script finds it through PFM_HOME, in the clone.
+# ── retired fleet scripts: ~/.claude/bin is empty after the Go cutover ──
 # RETIRED into the Go engine (each is now a pfm subcommand, and the links
 # below are removed from ~/.claude/bin on the next --apply): cc-hide.sh /
 # cx-hide.sh → `pfm chat hide self [--exit]`, bb-hook.sh → `pfm chat bb`,
 # cc-reap.sh → `pfm reap`, cc-archive.sh → `pfm archive`,
 # cc-name-sync.sh → `pfm name-sync`, cx-heal.sh → `pfm heal`.
-FLEET_SCRIPTS="cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh"
-RETIRED_SCRIPTS="cc-hide.sh cx-hide.sh bb-hook.sh cc-archive.sh cc-reap.sh cc-name-sync.sh cx-heal.sh"
+FLEET_SCRIPTS=""
+RETIRED_SCRIPTS="cc-hide.sh cx-hide.sh bb-hook.sh cc-archive.sh cc-reap.sh cc-name-sync.sh cx-heal.sh cc-portable.sh cc-db.sh cx-recover.sh cc-agent-open.sh cc-swap-chat.sh"
 RETIRED_ARTIFACTS="cx-recover.sh.pre-professor-20260815-193920"
 say "fleet scripts -> $BIN"
 act && mkdir -p "$BIN"
@@ -172,9 +169,14 @@ for f in dump.md; do
   act && rm -f "$CMD/chat/$f"
   n_link=$((n_link+1))
 done
-for f in chat.sh chat-ops.sh history.sh; do
+for f in chat.sh history.sh; do
   if [ "$DO" = uninstall ]; then unlink_one "$CMD/chat/$f"; else link "$BUNDLE/chat/$f" "$CMD/chat/$f"; fi
 done
+if [ -L "$CMD/chat/chat-ops.sh" ]; then
+  say "  retire  $CMD/chat/chat-ops.sh  (chat subtree now lives in pfm)"
+  act && rm -f "$CMD/chat/chat-ops.sh"
+  n_link=$((n_link+1))
+fi
 say ""
 
 # ── codex agent skills: codex ≥0.146 dropped ~/.codex/prompts custom prompts entirely; agent

@@ -72,8 +72,7 @@ const (
 // Hidden records a permanent hide for a Claude or Codex chat: it lifts only
 // on an explicit unhide.
 //
-// The row itself lives in the fleet's shared store, keyed by uuid and nothing
-// else — cc-db.sh's schema (cc-db.sh:75-79), which the zsh half writes too.
+// The row lives in the fleet's shared store, keyed by uuid and nothing else.
 type Hidden struct {
 	ID string
 	// Engine is DERIVED at read time, not stored: "cc" when the id resolves to
@@ -84,7 +83,7 @@ type Hidden struct {
 	// HiddenAt is the shared row's hidden_at, or 0 for a hide that reached only
 	// the carrier file, which records no time.
 	HiddenAt int64
-	// BaselinePrompts is the retired auto-unhide baseline, cc-db.sh's
+	// BaselinePrompts is the retired auto-unhide baseline in the
 	// at_payload column. Nothing reads it and nothing writes it any more; it
 	// survives on the type only so old rows and the shared schema are left
 	// untouched.

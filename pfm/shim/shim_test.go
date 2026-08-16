@@ -88,15 +88,21 @@ func TestShimLaunchPosture(t *testing.T) {
 	fakeBin := filepath.Join(home, "fake-bin")
 	for _, directory := range []string{
 		filepath.Join(home, ".local", "bin"),
-		filepath.Join(home, ".claude", "bin"),
 		fakeBin,
 	} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	writeShimFile(t, filepath.Join(home, ".local", "bin", "pfm"),
-		"#!/bin/sh\nexit 0\n")
+	writeShimFile(t, filepath.Join(home, ".local", "bin", "pfm"), `#!/bin/sh
+case "$1 $2" in
+  "internal primary-get") cat "$SHIM_DB_STATE" 2>/dev/null || printf '1\n' ;;
+  "internal primary-set")
+    case "$3" in 1|2) ;; *) printf 'account must be 1-2\n' >&2; exit 2 ;; esac
+    printf '%s\n' "$3" > "$SHIM_DB_STATE"
+    printf 'primary-set %s\n' "$3" >> "$SHIM_DB_LOG" ;;
+esac
+`)
 	// The launched engine records its argv and the environment it was born with.
 	writeShimFile(t, filepath.Join(fakeBin, "claude"), `#!/bin/sh
 {
@@ -114,20 +120,6 @@ func TestShimLaunchPosture(t *testing.T) {
 	writeShimFile(t, filepath.Join(fakeBin, "tmux"), `#!/bin/sh
 for argument in "$@"; do printf '%s\n' "$argument"; done > "$SHIM_TMUX_RESULT"
 `)
-	// cc-db.sh stands in for the fleet's state store: it is the only writer of
-	// the primary account, and the only reader the launchers consult.
-	writeShimFile(t, filepath.Join(home, ".claude", "bin", "cc-db.sh"),
-		`#!/usr/bin/env bash
-case "$1" in
-  primary-get) cat "$SHIM_DB_STATE" 2>/dev/null || printf '1\n' ;;
-  primary-set)
-    case "$2" in 1|2) ;; *) printf 'account must be 1-2\n' >&2; exit 2 ;; esac
-    printf '%s\n' "$2" > "$SHIM_DB_STATE"
-    printf 'primary-set %s\n' "$2" >> "$SHIM_DB_LOG" ;;
-  *) exit 2 ;;
-esac
-`)
-
 	claudeResult := filepath.Join(home, "claude-result")
 	tmuxResult := filepath.Join(home, "tmux-result")
 	dbState := filepath.Join(home, "db-state")
@@ -208,13 +200,13 @@ print -r -- "primary=$(_cc_primary)"
 		}
 	}
 
-	// The primary account is cc-db.sh's to validate and record; the shim never
+	// The pfm store validates and records the primary account; the shim never
 	// writes ~/.claude-primary itself.
 	if log := readShimFile(t, dbLog); log != "primary-set 1\n" {
-		t.Fatalf("cc-db.sh log = %q", log)
+		t.Fatalf("pfm primary-set log = %q", log)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".claude-primary")); !os.IsNotExist(err) {
-		t.Fatalf("shim wrote ~/.claude-primary behind cc-db.sh: %v", err)
+		t.Fatalf("shim wrote ~/.claude-primary behind pfm: %v", err)
 	}
 	got := string(output)
 	// The roster is two accounts, so there is no cc3 launcher to reach a third.

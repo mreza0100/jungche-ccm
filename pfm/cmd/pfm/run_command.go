@@ -14,6 +14,7 @@ import (
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
 )
@@ -142,6 +143,11 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	if !result.Named {
 		return 1
 	}
+	if parent := parentChatID(); parent != "" {
+		if err := registerDetachedChild(resolved, parent, result.Socket); err != nil {
+			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for bb cleanup: %v\n", err)
+		}
+	}
 	if prompt == "" {
 		return attachRunResult(*attach, result, stdout, stderr)
 	}
@@ -167,6 +173,28 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return code
 	}
 	return attachRunResult(*attach, result, stdout, stderr)
+}
+
+func parentChatID() string {
+	if id := os.Getenv("CLAUDE_CODE_SESSION_ID"); id != "" {
+		return id
+	}
+	return os.Getenv("CODEX_THREAD_ID")
+}
+
+func registerDetachedChild(resolved paths.Values, parent, socket string) error {
+	state := shared.Open(context.Background(), resolved)
+	defer state.Close()
+	if state.Degraded() != nil {
+		return state.Degraded()
+	}
+	return state.AddChild(
+		context.Background(),
+		shared.KindNew,
+		parent,
+		socket,
+		time.Now().Unix(),
+	)
 }
 
 func attachRunResult(attach bool, result spawn.Result, stdout, stderr io.Writer) int {

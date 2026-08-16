@@ -170,6 +170,47 @@ func (function refreshFunc) Refresh(ctx context.Context) error {
 	return function(ctx)
 }
 
+// A Codex tool shell is served by app-server and therefore has no ambient
+// TMUX/TMUX_PANE even though its thread still owns a live fleet seat. The CLI
+// resolves that seat before it reaches Manager.Hide; the manager must preserve
+// the resolved address so `pfm chat hide self --exit` can hand the exact pane
+// to the detached finisher.
+func TestManagerCanExitResolvedCodexSelfWithoutAmbientTmux(t *testing.T) {
+	jail := newHideJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	spawner := &captureSpawner{}
+	manager, err := New(database, Dependencies{
+		Spawner: spawner,
+		Now:     func() time.Time { return time.Unix(600, 0) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const id = "20202020-2020-4020-8020-202020202020"
+	target, err := manager.Hide(context.Background(), Request{
+		ID:         id,
+		Engine:     CodexEngine,
+		Exit:       true,
+		SocketName: "probe-codex-self",
+		PaneID:     "%7",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.ID != id || len(spawner.args) != 1 {
+		t.Fatalf("target=%#v spawn=%#v", target, spawner.args)
+	}
+	if got, want := spawner.args[0].SocketPath,
+		filepath.Join(jail.tmuxDir, "probe-codex-self"); got != want {
+		t.Fatalf("socket path=%q, want %q", got, want)
+	}
+	if spawner.args[0].PaneID != "%7" {
+		t.Fatalf("pane=%q, want %%7", spawner.args[0].PaneID)
+	}
+}
+
 func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	jail := newHideJail(t)
 	database := jail.open(t)
@@ -563,12 +604,11 @@ func listedByDefault(t *testing.T, database *store.Store, id string) bool {
 
 // TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide is the Codex twin of
 // TestHiddenChatStaysHiddenAsItGrowsUntilUnhide, guarding a different
-// regression: cx-hide.sh writes the RAW id of whatever rollout file the live
-// process currently holds (cx-hide.sh:147), which on a resumed multi-file
-// lineage is the CHILD's id, not the ROOT every Codex row is keyed on
+// regression: a live resumed process can expose the CHILD rollout id rather
+// than the ROOT every Codex row is keyed on
 // (composer.rolloutRow). The hide below is written exactly that way — no
-// lineage math, straight into the shared store, the same shape cc-db.sh's
-// hidden-add produces — and must still hide the row; the unhide that follows
+// lineage math, straight into the shared store — and must still hide the row;
+// the unhide that follows
 // is issued on the ROOT, the only id the picker ever shows, and must still
 // lift it.
 func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
@@ -609,8 +649,8 @@ func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
 		t.Fatal("indexed lineage is missing from the default listing")
 	}
 
-	// cx-hide.sh's exact write shape (cx-hide.sh:147): the raw id straight
-	// into the shared store, keyed on whatever rollout file the live process
+	// Write the raw child id straight into the shared store, keyed on whichever
+	// rollout file the live process
 	// happened to hold — the CHILD, since it is the newer file a resumed
 	// session appends to.
 	if err := database.Hide(ctx, store.Hidden{
@@ -794,10 +834,9 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	assertHidden(t, database, id, ClaudeEngine, 100)
 }
 
-// The live fleet registers teammates through `cc-db.sh child-add` (chat.sh:435,
-// chat.sh:1362) and writes no flat file at all. Reading only those files is why
-// teammates outlived the chat that spawned them, so the reaper must take the
-// table as its source and reach the same two kills from it: kill-server for a
+// The live fleet registers teammates in the shared store and writes no flat
+// file. The reaper must take the table as its source and reach the same two
+// kills from it: kill-server for a
 // detached teammate on its own socket, kill-pane for one sharing this server.
 func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
 	jail := newHideJail(t)
@@ -864,8 +903,7 @@ func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
 	}) {
 		t.Fatalf("killed panes = %q", tmux.killedPanes)
 	}
-	// The reaped rows are gone, cc-db.sh's child-clear (cc-db.sh:296-303), and
-	// the neighbour's are untouched.
+	// The reaped rows are gone and the neighbour's rows are untouched.
 	if values, _, err := state.Children(ctx, shared.KindNew, id); err != nil ||
 		len(values) != 0 {
 		t.Fatalf("children after reap = %v, %v", values, err)

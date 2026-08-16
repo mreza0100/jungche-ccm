@@ -11,22 +11,15 @@ import (
 	"syscall"
 )
 
-// carrierLockSuffix and carrierTempPrefix reproduce cc-db.sh's own filenames.
-// The lock is `9>"$LEG_HID.lock"` (cc-db.sh:120, :127) and the rewrite scratch
-// file is `"$LEG_HID.n.$$"` (cc-db.sh:125) — same directory, same shape, so a
-// half-finished Go rewrite and a half-finished bash rewrite are the same
-// leftover to a human reading the directory.
+// carrierLockSuffix and carrierTempInfix name the lock and atomic-rewrite
+// scratch file beside the carrier.
 const (
 	carrierLockSuffix = ".lock"
 	carrierTempInfix  = ".n."
 )
 
-// withCarrierLock runs fn holding an exclusive flock on <carrier>.lock, the
-// same descriptor cc-db.sh's _leg_add/_leg_del take (cc-db.sh:118, :124).
-//
-// A failure to lock is not a failure to write: cc-db.sh writes `flock 9 ||
-// true` because flock is absent on macOS and a lock that cannot be taken must
-// never stop a hide from being recorded. This mirrors that exactly.
+// withCarrierLock runs fn holding an exclusive flock on <carrier>.lock. A
+// platform without flock still records the hide instead of failing closed.
 func withCarrierLock(carrier string, fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(carrier), 0o700); err != nil {
 		return fmt.Errorf("create carrier directory: %w", err)
@@ -49,10 +42,8 @@ func withCarrierLock(carrier string, fn func() error) error {
 	return fn()
 }
 
-// carrierAdd is _leg_add (cc-db.sh:116-121): under the lock, append the id
-// unless the file already holds that exact line. `grep -qxF` is a whole-line
-// fixed-string match, so the Go comparison is on the trimmed line, not a
-// substring.
+// carrierAdd appends an id under the lock unless the file already holds that
+// exact line.
 func carrierAdd(carrier, id string) error {
 	if id == "" {
 		return nil
@@ -81,9 +72,8 @@ func carrierAdd(carrier, id string) error {
 	})
 }
 
-// carrierDelete is _leg_del (cc-db.sh:122-128): a missing file is success, and
-// the rewrite goes to <carrier>.n.<pid> and is renamed over the original, so a
-// reader never sees a truncated hide list.
+// carrierDelete treats a missing file as success and atomically replaces the
+// original, so a reader never sees a truncated hide list.
 func carrierDelete(carrier, id string) error {
 	if id == "" {
 		return nil
@@ -110,10 +100,7 @@ func carrierDelete(carrier, id string) error {
 }
 
 // carrierRewrite replaces the whole file with ids, under the same lock and the
-// same scratch-then-rename dance _leg_del uses. `legacy export` is its only
-// caller: no ordinary hide or unhide rewrites the carrier wholesale, because a
-// whole-file rewrite is exactly the read-modify-write that lost hides before
-// the database existed (cc-db.sh:4-8).
+// same scratch-then-rename sequence as carrierDelete.
 func carrierRewrite(carrier string, ids []string) error {
 	return withCarrierLock(carrier, func() error {
 		return rewriteCarrier(carrier, ids)
@@ -170,8 +157,7 @@ func carrierHas(carrier, id string) (bool, error) {
 	return false, nil
 }
 
-// readCarrier returns the file's ids in file order, blank lines dropped —
-// `grep .` in cc-db.sh's fallback listing (cc-db.sh:108).
+// readCarrier returns the file's ids in file order with blank lines dropped.
 func readCarrier(carrier string) ([]string, error) {
 	file, err := os.Open(carrier)
 	if errors.Is(err, fs.ErrNotExist) {

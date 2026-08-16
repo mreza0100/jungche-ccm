@@ -20,7 +20,7 @@ type RowCounts struct {
 // directly or through a Codex lineage root. Counts, the listing, and the prune
 // all read it, so doctor and `hidden --prune-orphans` can never disagree.
 //
-// It reads the effective mirror, so a hide the zsh half wrote counts here too;
+// It reads the effective mirror, so a concurrent external hide counts here too;
 // every caller refills that mirror first. The engine test the v1 query carried
 // is gone with the column: an id matching a lineage root is a live Codex hide
 // whatever engine anyone once recorded for it.
@@ -122,8 +122,8 @@ func (s *Store) orphanedHideIDs(ctx context.Context) ([]string, error) {
 // store, and it is gated behind `hidden --prune-orphans --confirm`. Each removal
 // goes through the ordinary unhide, so the carrier file loses the id too: half a
 // removal is the drift this store exists to end. There is no transaction around
-// the set — the shared store is written concurrently by cc-db.sh, and holding
-// its write lock across hundreds of rows would stall every other chat.
+// the set: holding its write lock across hundreds of rows would stall every
+// other chat.
 func (s *Store) DeleteOrphanedHides(ctx context.Context) (int, error) {
 	if err := s.syncEffectiveHidden(ctx); err != nil {
 		return 0, err

@@ -49,11 +49,8 @@ var migrations = [...]string{
 // It holds TWO databases, and the split is the whole point. `db` is this
 // binary's private cache — transcripts, rollouts, Codex names — every row of it
 // derived from files on disk and rebuildable by a rescan. `state` is the
-// fleet's shared store, the same ~/.cc/fleet.db and ~/.claude/.cc-ls-hidden
-// that cc-db.sh writes, and it holds what a PERSON decided: the hides, the
-// teammates, the primary account. A decision that lived in the private cache
-// was a decision the zsh half could not see, and re-bridging the two by hand is
-// what this split ends.
+// fleet's shared store: ~/.cc/fleet.db plus ~/.claude/.cc-ls-hidden. It holds
+// operator decisions such as hides, teammates, and the primary account.
 type Store struct {
 	db    *sql.DB
 	state *shared.Store
@@ -214,10 +211,9 @@ const adoptedHidesMeta = "shared_hidden_adopted"
 // into the shared store and its carrier file, then stops consulting the local
 // table for good.
 //
-// UNIONS ONLY, IN BOTH DIRECTIONS. Local rows become shared rows; carrier ids
-// the shared database has never seen become shared rows too, so cc-db.sh —
-// which reads the database alone once the file exists (cc-db.sh:106-109) —
-// agrees with this binary about what is hidden. NOTHING is deleted: a hide is
+// UNIONS ONLY, IN BOTH DIRECTIONS. Local rows become shared rows, and carrier
+// ids the shared database has never seen become shared rows too. Nothing is
+// deleted: a hide is
 // permanent and an unhide is the only removal, so a startup that could drop a
 // row is a startup that could lose a decision.
 //

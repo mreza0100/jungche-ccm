@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 )
+
+var pasteSequence atomic.Uint64
 
 // CommandTmux invokes tmux against an explicit socket pathname.
 type CommandTmux struct {
@@ -49,6 +52,40 @@ func (tmux CommandTmux) SendLiteral(
 		"--",
 		text,
 	).Run()
+}
+
+// SendPaste carries a file-backed message through tmux's paste buffer. The
+// -p flag asks tmux to use bracketed-paste mode when the target application
+// advertises it; Codex then keeps the full body behind one composer block
+// instead of rendering a several-screen inline draft whose submit state
+// cannot be proven. A private, one-shot buffer prevents concurrent injects
+// into different panes from sharing bytes.
+func (tmux CommandTmux) SendPaste(
+	ctx context.Context,
+	socketPath, target, text string,
+) error {
+	buffer := fmt.Sprintf("pfm-inject-%d-%d", os.Getpid(), pasteSequence.Add(1))
+	load := tmux.command(ctx, socketPath, "load-buffer", "-b", buffer, "-")
+	load.Stdin = strings.NewReader(text)
+	if err := load.Run(); err != nil {
+		return err
+	}
+	paste := tmux.command(
+		ctx,
+		socketPath,
+		"paste-buffer",
+		"-d",
+		"-p",
+		"-b",
+		buffer,
+		"-t",
+		target,
+	)
+	if err := paste.Run(); err != nil {
+		_ = tmux.command(ctx, socketPath, "delete-buffer", "-b", buffer).Run()
+		return err
+	}
+	return nil
 }
 
 func (tmux CommandTmux) SendKey(
@@ -97,6 +134,22 @@ func (tmux CommandTmux) PaneInMode(
 		return false, err
 	}
 	return strings.TrimSpace(string(output)) == "1", nil
+}
+
+func (tmux CommandTmux) PaneCommand(
+	ctx context.Context,
+	socketPath, target string,
+) (string, error) {
+	output, err := tmux.command(
+		ctx,
+		socketPath,
+		"display-message",
+		"-t",
+		target,
+		"-p",
+		"#{pane_current_command}",
+	).Output()
+	return strings.TrimSpace(string(output)), err
 }
 
 func (tmux CommandTmux) CurrentSession(

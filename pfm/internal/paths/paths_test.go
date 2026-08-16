@@ -55,11 +55,9 @@ func TestResolveOverrides(t *testing.T) {
 	}
 }
 
-// The shared state store is the fleet's, not this binary's: it defaults beside
-// the zsh half's ~/.cc/fleet.db and NEVER to the private cache's directory.
-// PFM_DB is cc-db.sh's own override name for that shared file (cc-db.sh:41),
-// so the two must not resolve to the same place when only PFM_DB is set.
-func TestResolveSharedStoreDefaultsBesideTheZshHalf(t *testing.T) {
+// The shared state store defaults to ~/.cc/fleet.db, never the private cache's
+// directory, and the two overrides must not collide.
+func TestResolveSharedStoreDefaultsOutsideThePrivateCache(t *testing.T) {
 	testRoot := t.TempDir()
 	home := filepath.Join(testRoot, "home")
 	t.Setenv(EnvHome, home)

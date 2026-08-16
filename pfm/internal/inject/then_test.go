@@ -46,7 +46,7 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 				Message: "/compact hold: read /tmp/x.md",
 				Then:    []string{" /compact again"},
 			},
-			wantCode: 1,
+			wantCode: 6,
 			wantText: "must not itself start with /compact",
 		},
 		{
@@ -56,7 +56,7 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 				Message: "plain work",
 				Then:    []string{"  "},
 			},
-			wantCode: 1,
+			wantCode: 6,
 			wantText: "must be non-empty",
 		},
 	}
@@ -138,7 +138,7 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Code != 3 || result.Steers != 0 || len(spawner.spawned()) != 0 {
+	if result.Code != 6 || result.Steers != 0 || len(spawner.spawned()) != 0 {
 		t.Fatalf(
 			"unconfirmed submit armed a steer: result=%+v spawned=%+v",
 			result,
@@ -266,7 +266,7 @@ func TestSteerSpawnFailureIsReportedNotSwallowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Code != 8 ||
+	if result.Code != 6 ||
 		result.Steers != 0 ||
 		!strings.Contains(result.Message, "could NOT arm") {
 		t.Fatalf("Inject() = %+v", result)

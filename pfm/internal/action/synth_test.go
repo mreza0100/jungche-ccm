@@ -119,8 +119,8 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 }
 
 func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
-	// The roster is cc-db.sh's: primary-set refuses anything but 1 or 2, so an
-	// account the fleet cannot launch must never reach a command line.
+	// An account outside the launcher's two-seat roster must never reach a
+	// command line.
 	for _, account := range []int{0, MaxAccount + 1, 9} {
 		_, err := Synthesize(Request{
 			Row: compose.Row{
@@ -148,9 +148,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 	}
 }
 
-func TestScriptsResolveToTheInstalledBundle(t *testing.T) {
-	// install.sh symlinks the bundle's scripts into ~/.claude/bin; the repo copy
-	// under work/host-ops/ is a pre-move path that no longer exists on the host.
+func TestAgentRouteUsesHiddenInternalWiring(t *testing.T) {
 	plan, err := Synthesize(Request{
 		Row: compose.Row{
 			Kind: compose.Agent,
@@ -164,11 +162,9 @@ func TestScriptsResolveToTheInstalledBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(plan.Run, Quote("/home/test/.claude/bin/cc-agent-open.sh")) {
+	if !strings.Contains(plan.Run, "pfm internal agent-open") ||
+		!strings.Contains(plan.Run, "--id") || !strings.Contains(plan.Run, "--cwd") {
 		t.Fatalf("agent run = %q", plan.Run)
-	}
-	if strings.Contains(plan.Run, "host-ops") {
-		t.Fatalf("agent run still points at the pre-move tree: %q", plan.Run)
 	}
 }
 
@@ -264,10 +260,13 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 
 func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 	root := t.TempDir()
-	agentScript := filepath.Join(root, "agent-open")
+	pfmScript := filepath.Join(root, "pfm")
 	claudeScript := filepath.Join(root, "claude")
 	resultPath := filepath.Join(root, "result")
-	writeActionFile(t, agentScript, "#!/bin/sh\nexit 1\n", 0o700)
+	writeActionFile(t, pfmScript, `#!/bin/sh
+if [ "$1" = internal ] && [ "$2" = agent-open ]; then exit 1; fi
+exit 2
+`, 0o700)
 	writeActionFile(t, claudeScript, `#!/bin/sh
 {
   printf 'argv=%s\n' "$*"
@@ -293,7 +292,6 @@ func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
 		Cache1H:        true,
 		Home:           "/home/test",
 		FreshSocket:    "cc-1700000001-123-456",
-		AgentScript:    agentScript,
 	})
 	if err != nil {
 		t.Fatal(err)

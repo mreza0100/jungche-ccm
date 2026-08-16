@@ -76,8 +76,8 @@ func Import(ctx context.Context, database *store.Store) (Result, error) {
 	return result, nil
 }
 
-// Export rewrites the carrier file from the shared hidden table, sorted, under
-// the same lock cc-db.sh's _leg_del takes.
+// Export rewrites the carrier file from the shared hidden table under the
+// carrier lock.
 //
 // It unions the file into the table first. A whole-file rewrite is the one
 // operation here that can DELETE a hide, and a hide the file holds but the

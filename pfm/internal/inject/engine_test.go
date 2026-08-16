@@ -41,7 +41,9 @@ type fakeTmux struct {
 	styled        string
 	literal       string
 	literals      []string
+	pasted        bool
 	windowName    string
+	paneCommand   string
 	keys          []string
 	dead          bool
 	busyUntilEsc  bool
@@ -111,6 +113,16 @@ func (fake *fakeTmux) SendLiteral(
 	return nil
 }
 
+func (fake *fakeTmux) SendPaste(
+	ctx context.Context,
+	socketPath, target, text string,
+) error {
+	fake.mu.Lock()
+	fake.pasted = true
+	fake.mu.Unlock()
+	return fake.SendLiteral(ctx, socketPath, target, text)
+}
+
 func (fake *fakeTmux) SendKey(
 	_ context.Context,
 	_, _ string,
@@ -162,6 +174,16 @@ func (fake *fakeTmux) PaneInMode(
 	return fake.inMode, nil
 }
 
+func (fake *fakeTmux) PaneCommand(
+	context.Context,
+	string,
+	string,
+) (string, error) {
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	return fake.paneCommand, nil
+}
+
 func (*fakeTmux) CurrentSession(context.Context, string) (string, error) {
 	return "sender-session", nil
 }
@@ -188,6 +210,12 @@ func newTestEngineWith(
 	spawner ThenSpawner,
 ) *Engine {
 	t.Helper()
+	if tmux.paneCommand == "" {
+		tmux.paneCommand = "claude"
+		if strings.HasPrefix(socket, "cx-") {
+			tmux.paneCommand = "codex"
+		}
+	}
 	t.Setenv("PFM_HOME", t.TempDir())
 	t.Setenv("TMUX", "")
 	t.Setenv("CHAT_INJECT_SOCKET", "")
@@ -236,13 +264,14 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 		wantStatus string
 		wantTyped  bool
 		wantKey    string
+		wantNoKey  string
 	}{
 		{
 			name:       "claude selector aborts before any key",
 			socket:     "cc-1-2-3",
 			capture:    "Question\n❯ 1. Allow\n  2. Deny\n",
 			request:    Request{Target: "chat", Message: "do work"},
-			wantCode:   4,
+			wantCode:   6,
 			wantStatus: "refused",
 		},
 		{
@@ -250,15 +279,53 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			socket:     "cx-1-2-3",
 			capture:    "› 1. Allow\n  2. Deny\nenter to confirm\n",
 			request:    Request{Target: "chat", Message: "do work"},
-			wantCode:   4,
+			wantCode:   6,
 			wantStatus: "refused",
 		},
 		{
-			name:     "busy refuses without typing",
-			socket:   "cc-1-2-3",
-			capture:  "Working (2s · 9 tokens)",
-			request:  Request{Target: "chat", Message: "do work"},
-			wantCode: 7, wantStatus: "refused",
+			name:    "busy claude queues without interrupting",
+			socket:  "cc-1-2-3",
+			capture: "Working (2s · 9 tokens)\n❯ ",
+			configure: func(fake *fakeTmux) {
+				fake.submitOnEnter = true
+			},
+			request:    Request{Target: "chat", Message: "queue this"},
+			wantCode:   0,
+			wantStatus: "queued",
+			wantTyped:  true,
+			wantNoKey:  "C-s",
+		},
+		{
+			name:       "busy claude draft refuses without typing",
+			socket:     "cc-1-2-3",
+			capture:    "Working (2s · 9 tokens)\n❯ existing draft",
+			request:    Request{Target: "chat", Message: "do work"},
+			wantCode:   6,
+			wantStatus: "refused",
+		},
+		{
+			name:    "busy codex queues without interrupting",
+			socket:  "cx-1-2-3",
+			capture: "Working (2s · 9 tokens) · esc to interrupt\n› ",
+			configure: func(fake *fakeTmux) {
+				fake.submitOnEnter = true
+			},
+			request:    Request{Target: "chat", Message: "queue this"},
+			wantCode:   0,
+			wantStatus: "queued",
+			wantTyped:  true,
+		},
+		{
+			name:    "busy codex dim placeholder is not a draft",
+			socket:  "cx-1-2-3",
+			capture: "Working (2s · 9 tokens) · esc to interrupt\n› \x1b[2mAsk Codex to do anything\x1b[0m",
+			configure: func(fake *fakeTmux) {
+				fake.submitOnEnter = true
+			},
+			request:    Request{Target: "chat", Message: "queue after placeholder"},
+			wantCode:   0,
+			wantStatus: "queued",
+			wantTyped:  true,
 		},
 		{
 			name:    "force now interrupts then delivers",
@@ -299,7 +366,7 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			socket:     "cc-1-2-3",
 			capture:    "❯ target draft",
 			request:    Request{Target: "chat", Message: "next"},
-			wantCode:   5,
+			wantCode:   6,
 			wantStatus: "refused",
 			wantKey:    "C-s",
 		},
@@ -309,7 +376,7 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			capture:    "❯ ",
 			configure:  func(fake *fakeTmux) { fake.dead = true },
 			request:    Request{Target: "chat", Message: "next"},
-			wantCode:   1,
+			wantCode:   3,
 			wantStatus: "refused",
 		},
 	}
@@ -335,6 +402,9 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			}
 			if test.wantKey != "" && !contains(fake.keys, test.wantKey) {
 				t.Fatalf("keys = %q, want %q", fake.keys, test.wantKey)
+			}
+			if test.wantNoKey != "" && contains(fake.keys, test.wantNoKey) {
+				t.Fatalf("keys = %q, must not contain %q", fake.keys, test.wantNoKey)
 			}
 			if test.wantCode == 4 && fake.capture != before {
 				t.Fatalf("selector refusal changed capture: %q -> %q", before, fake.capture)
@@ -367,22 +437,44 @@ func TestInjectCodexAndAbsoluteCapsPrecedeTyping(t *testing.T) {
 	}
 }
 
+func TestInjectFileBackedCodexUsesPasteTransportPastInlineCap(t *testing.T) {
+	fake := &fakeTmux{capture: "› ", submitOnEnter: true}
+	engine := newTestEngine(t, "cx-1-2-3", fake)
+	message := strings.Repeat("file body ", CodexInlineMax)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:     "chat",
+		Message:    message,
+		FileBacked: true,
+	})
+	if err != nil || result.Code != 0 || result.Status != "delivered" {
+		t.Fatalf("file-backed result=%+v err=%v", result, err)
+	}
+	if !fake.pasted {
+		t.Fatal("file-backed delivery used inline send-keys instead of paste transport")
+	}
+}
+
 func TestInjectAdversarialGuardStatesNeverMistypeOnRefusal(t *testing.T) {
 	states := []struct {
-		socket  string
-		capture string
-		dead    bool
-		code    int
+		socket      string
+		capture     string
+		paneCommand string
+		dead        bool
+		code        int
 	}{
-		{"cc-1-2-3", "❯ 1. Allow\n2. Deny", false, 4},
-		{"cx-1-2-3", "› 1. Allow\n2. Deny", false, 4},
-		{"cc-1-2-3", "Working (1s · 3 tokens)", false, 7},
-		{"cc-1-2-3", "❯ draft", false, 5},
-		{"cc-1-2-3", "❯ ", true, 1},
+		{"cc-1-2-3", "❯ 1. Allow\n2. Deny", "claude", false, 6},
+		{"cx-1-2-3", "› 1. Allow\n2. Deny", "codex", false, 6},
+		{"cc-1-2-3", "Working (1s · 3 tokens)", "python3", false, 7},
+		{"cc-1-2-3", "❯ draft", "claude", false, 6},
+		{"cc-1-2-3", "❯ ", "claude", true, 3},
 	}
 	for iteration := 0; iteration < 100; iteration++ {
 		state := states[iteration%len(states)]
-		fake := &fakeTmux{capture: state.capture, dead: state.dead}
+		fake := &fakeTmux{
+			capture:     state.capture,
+			paneCommand: state.paneCommand,
+			dead:        state.dead,
+		}
 		engine := newTestEngine(t, state.socket, fake)
 		before := fake.capture
 		result, err := engine.Inject(context.Background(), Request{

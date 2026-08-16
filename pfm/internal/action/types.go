@@ -28,8 +28,6 @@ type Request struct {
 	Home           string
 	FreshSocket    string
 	CurrentTMUX    string
-	AgentScript    string
-	SwapScript     string
 }
 
 // CodexServer is a detached server that must exist before its attach line is

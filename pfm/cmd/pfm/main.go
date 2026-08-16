@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 
 	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/mcpserv"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
 
@@ -58,7 +60,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "mcp":
 		return runMCP(args[1:], stderr)
 	case "internal":
-		return runInternal(args[1:], stderr)
+		return runInternal(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -210,9 +212,53 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runInternal(args []string, stderr io.Writer) int {
+func runInternal(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 && args[0] == "agent-open" {
+		return runInternalAgentOpen(args[1:], stderr)
+	}
+	if len(args) != 0 && args[0] == "swap-run" {
+		return runChatSwapWorker(args[1:], os.Stdout, stderr)
+	}
 	if len(args) != 0 && args[0] == "then" {
 		return runInternalThen(args[1:], stderr)
+	}
+	if len(args) != 0 && args[0] == "primary-get" {
+		resolved, err := paths.Resolve()
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm internal primary-get: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, readPrimaryAccount(resolved))
+		return 0
+	}
+	if len(args) != 0 && args[0] == "primary-set" {
+		flags := newFlagSet(
+			"internal primary-set",
+			"usage: pfm internal primary-set <1|2>",
+			stderr,
+		)
+		if code, ok := parseFlags(flags, args[1:]); !ok {
+			return code
+		}
+		if flags.NArg() != 1 {
+			flags.Usage()
+			return 2
+		}
+		account, err := strconv.Atoi(flags.Arg(0))
+		if err != nil {
+			flags.Usage()
+			return 2
+		}
+		resolved, err := paths.Resolve()
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm internal primary-set: %v\n", err)
+			return 1
+		}
+		if err := writePrimaryAccount(resolved, account); err != nil {
+			fmt.Fprintf(stderr, "pfm internal primary-set: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 	if len(args) == 0 || args[0] != "hide-exit" {
 		fmt.Fprintln(stderr, "usage: pfm internal hide-exit|then [options]")

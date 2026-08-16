@@ -12,8 +12,11 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/headless"
+	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/recovery"
+	"hostops/pfm/internal/resolve"
 )
 
 var chatUUIDPattern = regexp.MustCompile(
@@ -24,7 +27,7 @@ func runChatRead(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) > 0 {
 		if info, err := os.Stat(args[0]); err == nil && info.Mode().IsRegular() &&
 			filepath.Ext(args[0]) != ".jsonl" {
-			return runChatSatellite("read", args, stdin, stdout, stderr)
+			return runChatReadExcerpt(args, stdout, stderr)
 		}
 	}
 	return runHeadlessTranscript(args, stdout, stderr)
@@ -58,6 +61,21 @@ func runChatHide(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if targets[0] == "self" || targets[0] == "me" {
+		// Codex tool shells are served by app-server and carry no TMUX. Resolve
+		// their CODEX_THREAD_ID through the fleet store, then preserve the live
+		// row's immutable socket and pane for the detached exit finisher.
+		if os.Getenv("TMUX") == "" && os.Getenv(resolve.CodexThreadEnv) != "" {
+			chat, found, err := resolveChat(context.Background(), "self", io.Discard)
+			if err != nil {
+				fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+				return 1
+			}
+			if !found {
+				fmt.Fprintln(stderr, "pfm chat hide: this Codex chat has no live fleet seat")
+				return codeUnknownChat
+			}
+			return runResolvedChatHide(chat, *exit, stdout, stderr)
+		}
 		hideArgs := []string{"--self"}
 		if *exit {
 			hideArgs = append(hideArgs, "--exit")
@@ -92,6 +110,32 @@ func runChatHide(args []string, stdout, stderr io.Writer) int {
 		return codeUnknownChat
 	}
 	return code
+}
+
+func runResolvedChatHide(
+	chat headless.Chat,
+	exit bool,
+	stdout, stderr io.Writer,
+) int {
+	database, manager, code := openHideManager(stderr)
+	if code != 0 {
+		return code
+	}
+	defer database.Close()
+	target, err := manager.Hide(context.Background(), hide.Request{
+		ID:          chat.ID,
+		Engine:      chat.Engine,
+		RolloutPath: chat.Path,
+		SocketName:  chat.Socket,
+		PaneID:      chat.Pane,
+		Exit:        exit,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "hidden %s\n", target.ID)
+	return 0
 }
 
 func runChatUnhide(args []string, stdout, stderr io.Writer) int {
@@ -180,6 +224,32 @@ func runChatCapture(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runChatRecover(args []string, stdout, stderr io.Writer) int {
+	flags := newFlagSet("chat recover", "usage: pfm chat recover <thread-id|rollout-path>", stderr)
+	if code, ok := parseFlags(flags, args); !ok {
+		return code
+	}
+	if flags.NArg() != 1 {
+		flags.Usage()
+		return 2
+	}
+	resolved, err := paths.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat recover: resolve paths: %v\n", err)
+		return 1
+	}
+	result, err := recovery.Run(context.Background(), resolved.CodexRoot, flags.Arg(0))
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat recover: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "messages=%d carried=%d malformed=%d\n", result.Messages, result.Carried, result.Malformed)
+	fmt.Fprintf(stdout, "recovered thread %s\n", result.ThreadID)
+	fmt.Fprintf(stdout, "  %s\n  %s\n  %s\n", filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "brief.md"), filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "compaction-memory.md"), filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "transcript.md"))
+	fmt.Fprintf(stdout, "\nBrief a replacement seat with:\n  pfm chat inject <socket> 'RECOVERY: read %s, then compaction-memory.md, then the end of transcript.md.'\n", filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "brief.md"))
+	return 0
+}
+
 func runChatName(args []string, stdout, stderr io.Writer) int {
 	return runChatNameWith(args, stdout, stderr, deliverChatName)
 }
@@ -195,7 +265,7 @@ func deliverChatName(
 	chat headless.Chat,
 	name string,
 ) (int, string, error) {
-	engine, err := inject.New(inject.Dependencies{})
+	engine, err := newInjectEngine()
 	if err != nil {
 		return 1, "", err
 	}
@@ -345,10 +415,23 @@ func runChatSatellite(
 	stdin io.Reader,
 	stdout, stderr io.Writer,
 ) int {
-	if verb == "history" {
+	switch verb {
+	case "find":
+		return runChatFind(args, stdout, stderr)
+	case "save":
+		return runChatSave(args, stdout, stderr)
+	case "load":
+		return runChatLoad(args, stdout, stderr)
+	case "branch":
+		return runChatBranch(args, stdout, stderr)
+	case "ls":
+		return runChatLS(args, stdout, stderr)
+	case "history":
 		return runChatScript("history.sh", args, stdin, stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "pfm chat: unsupported compatibility command %q\n", verb)
+		return 2
 	}
-	return runChatScript("chat-ops.sh", append([]string{verb}, args...), stdin, stdout, stderr)
 }
 
 func runChatScript(

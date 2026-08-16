@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/inject"
@@ -110,6 +111,7 @@ func codexSeatIdentity(ctx context.Context) (resolve.Identity, bool) {
 		// is underivable than to hand back a handle nobody can reply to.
 		return resolve.Identity{
 			Session:    row.Socket,
+			SocketPath: filepath.Join(scan.Paths.TmuxDir, row.Socket),
 			SocketName: row.Socket,
 			Engine:     resolve.CodexEngine,
 			ID:         thread,
@@ -118,4 +120,23 @@ func codexSeatIdentity(ctx context.Context) (resolve.Identity, bool) {
 		}, true
 	}
 	return resolve.Identity{}, false
+}
+
+// codexSeatIdentifier adapts the fleet's thread-to-live-seat lookup to the
+// injector's final sender-identity rung. It is deliberately separate from
+// resolve.Whoami: tmux environment and process ancestry stay the first two
+// rungs, because CODEX_THREAD_ID can be inherited by a process with a seat of
+// its own.
+type codexSeatIdentifier struct{}
+
+func (codexSeatIdentifier) Identify(ctx context.Context) (resolve.Identity, error) {
+	identity, found := codexSeatIdentity(ctx)
+	if !found {
+		return resolve.Identity{}, resolve.ErrNoTmux
+	}
+	return identity, nil
+}
+
+func newInjectEngine() (*inject.Engine, error) {
+	return inject.New(inject.Dependencies{CodexSeat: codexSeatIdentifier{}})
 }

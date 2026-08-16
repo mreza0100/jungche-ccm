@@ -27,7 +27,6 @@ const (
 	testFreshSocketEnv = "PFM_TEST_FRESH_SOCKET"
 	testNowNSEnv       = "PFM_TEST_NOW_NS"
 	codexAvailableEnv  = "PFM_CODEX_AVAILABLE"
-	dbScriptEnv        = "PFM_DB_SCRIPT"
 )
 
 // gatherWarn reports one tmux probe warning raised during a gather pass.
@@ -635,10 +634,8 @@ func accountRoots(values []string) []compose.AccountRoot {
 	return roots
 }
 
-// readPrimaryAccount resolves the primary Claude account the way cc-db.sh's
-// primary-get does (cc-db.sh:262-267): the shared database's meta row is the
-// value, ~/.claude-primary is the mirror consulted only when the database has
-// none, and anything off the roster reads as account 1.
+// readPrimaryAccount resolves the shared database's meta row first, then the
+// ~/.claude-primary mirror, and maps anything off the roster to account 1.
 //
 // Reading the mirror alone is how the picker came up showing a different
 // account from the one the launchers used: primary-set writes both, but a
@@ -652,98 +649,18 @@ func readPrimaryAccount(values paths.Values) int {
 	return account
 }
 
-// ccDBScript is the fleet state store's CLI, as install.sh symlinks it into
-// place. PFM_DB_SCRIPT points a test jail at a stand-in.
-func ccDBScript(home string) string {
-	if value := os.Getenv(dbScriptEnv); value != "" {
-		return value
-	}
-	return filepath.Join(home, ".claude", "bin", "cc-db.sh")
-}
-
-// writePrimaryAccount routes the choice through cc-db.sh primary-set, which
-// validates it against the roster and mirrors it into ~/.claude-primary for the
-// statusline (cc-db.sh:268-275). Writing that file behind cc-db.sh's back would
-// leave the database saying one account and the file another.
-//
-// When cc-db.sh is absent the legacy file is written directly instead: that is
-// cc-db.sh's own fallback, and the picker must never be down because a state
-// store is missing.
-func writePrimaryAccount(home string, account int) error {
+// writePrimaryAccount validates the operator-facing roster before committing
+// the shared state row and statusline mirror as one reported operation.
+func writePrimaryAccount(values paths.Values, account int) error {
 	if account < 1 || account > action.MaxAccount {
 		return fmt.Errorf("primary account must be 1-%d", action.MaxAccount)
 	}
-	script := ccDBScript(home)
-	if _, err := os.Stat(script); err == nil {
-		command := exec.Command(
-			"bash",
-			script,
-			"primary-set",
-			strconv.Itoa(account),
-		)
-		// HOME steers cc-db.sh at the same tree pfm resolved; PFM_DB
-		// is dropped because cc-db.sh reads that same name for ITS OWN database
-		// (cc-db.sh:41), and PFM_HOME because cc-db.sh reads it as its
-		// bundle directory (cc-db.sh:36-38) — a jail's value would make it
-		// source cc-portable.sh from the jail.
-		command.Env = append(
-			environWithout("HOME", paths.EnvDB, paths.EnvHome),
-			"HOME="+home,
-		)
-		if output, err := command.CombinedOutput(); err != nil {
-			return fmt.Errorf(
-				"cc-db.sh primary-set %d: %w: %s",
-				account,
-				err,
-				strings.TrimSpace(string(output)),
-			)
-		}
-		return nil
-	}
-	path := filepath.Join(home, ".claude-primary")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".claude-primary.tmp-*")
-	if err != nil {
-		return err
-	}
-	tempPath := file.Name()
-	defer os.Remove(tempPath)
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := fmt.Fprintf(file, "%d\n", account); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tempPath, path)
-}
-
-// environWithout copies the environment minus the named variables, so a child
-// process cannot be steered by a name this binary reads for its own purposes.
-func environWithout(names ...string) []string {
-	dropped := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		dropped[name] = struct{}{}
-	}
-	environment := os.Environ()
-	kept := make([]string, 0, len(environment))
-	for _, entry := range environment {
-		name := entry
-		if equals := strings.IndexByte(entry, '='); equals >= 0 {
-			name = entry[:equals]
-		}
-		if _, found := dropped[name]; found {
-			continue
-		}
-		kept = append(kept, entry)
-	}
-	return kept
+	return shared.SetPrimaryAccount(
+		context.Background(),
+		values,
+		account,
+		time.Now().Unix(),
+	)
 }
 
 func currentSocket() string {

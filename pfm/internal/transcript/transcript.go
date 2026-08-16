@@ -323,6 +323,36 @@ func Tail(
 	return ring, total > len(ring), nil
 }
 
+// All returns every visible transcript entry in file order. It shares Parse
+// with tail/status so save and excerpt loading cannot invent a second record
+// interpretation.
+func All(ctx context.Context, path, engine string) ([]Entry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	reader := bufio.NewReaderSize(file, 64<<10)
+	var entries []Entry
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			if entry, ok := Parse(line, engine); ok {
+				entries = append(entries, entry)
+			}
+		}
+		if readErr == io.EOF {
+			return entries, nil
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+	}
+}
+
 // Last returns the newest entry with the given role.
 func Last(entries []Entry, role string) (Entry, bool) {
 	for index := len(entries) - 1; index >= 0; index-- {

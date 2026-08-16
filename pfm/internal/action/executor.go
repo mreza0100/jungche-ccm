@@ -183,32 +183,12 @@ func (executor *Executor) prepareLive(
 			return fmt.Errorf("open gate: %w", err)
 		}
 		if reboot {
-			script := request.SwapScript
-			if script == "" {
-				// The installed location: install.sh symlinks the bundle's
-				// scripts into ~/.claude/bin. The repo copy under
-				// work/host-ops/ was a pre-move path that no longer exists.
-				script = filepath.Join(
-					request.Home,
-					".claude",
-					"bin",
-					"cc-swap-chat.sh",
-				)
-			}
 			cacheValue := "0"
 			if request.Cache1H {
 				cacheValue = "1"
 			}
-			if err := executor.runner.Run(
-				ctx,
-				"bash",
-				script,
-				"--sock",
-				request.Row.Socket,
-				strconv.Itoa(request.PrimaryAccount),
-				"--1h",
-				cacheValue,
-			); err != nil {
+			arguments := []string{"chat", "swap", "--sock", request.Row.Socket, strconv.Itoa(request.PrimaryAccount), "--1h", cacheValue}
+			if err := executor.runner.Run(ctx, "pfm", arguments...); err != nil {
 				fmt.Fprintf(
 					executor.stderr,
 					"pfm: reboot-to-match failed; attaching the live chat as-is: %v\n",

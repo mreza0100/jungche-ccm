@@ -20,9 +20,8 @@ const (
 	// ClaudeSessionEnv is exported into every shell a Claude Code chat spawns.
 	ClaudeSessionEnv = "CLAUDE_CODE_SESSION_ID"
 
-	// AncestryDepth bounds the walk up the process chain, matching
-	// cc-portable.sh's cc_pane_of: 12 is far past any real nesting and stops a
-	// pid-reuse cycle from spinning.
+	// AncestryDepth bounds the walk up the process chain. Twelve is past normal
+	// nesting and stops a pid-reuse cycle from spinning.
 	AncestryDepth = 12
 )
 

@@ -55,7 +55,10 @@ func hasDraft(line string) bool {
 	if line == "" {
 		return false
 	}
-	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "❯"))
+	rest := strings.TrimSpace(line)
+	rest = strings.TrimPrefix(rest, "❯")
+	rest = strings.TrimPrefix(rest, "›")
+	rest = strings.TrimSpace(rest)
 	rest = strings.ReplaceAll(rest, "Press up to edit queued messages", "")
 	for _, character := range rest {
 		if character <= unicode.MaxASCII && unicode.IsGraphic(character) {
@@ -63,6 +66,12 @@ func hasDraft(line string) bool {
 		}
 	}
 	return false
+}
+
+func hasPastePlaceholder(value string) bool {
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "[pasted text") ||
+		strings.Contains(lower, "[pasted content")
 }
 
 func isDimPlaceholder(styledLine string) bool {

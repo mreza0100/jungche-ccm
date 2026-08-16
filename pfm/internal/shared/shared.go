@@ -1,24 +1,14 @@
-// Package shared is the fleet's ONE state store, co-owned with the zsh half.
+// Package shared is the fleet's authoritative state store.
 //
-// cc-db.sh (bash) and this binary (Go) are two front ends over the same two
-// files: the SQLite database at ~/.cc/fleet.db and the carrier file at
-// ~/.claude/.cc-ls-hidden. Everything a person can decide — which chats are
-// hidden, which teammates a chat spawned, which account is primary — lives
-// here, so neither half can hold an opinion the other cannot see. This binary's
-// own database (paths.Values.DB) stays what it always was: a derived cache of
-// transcripts and rollouts, rebuildable by a rescan.
-//
-// THE TWO-WRITER LAW (cc-db.sh:110-115). The carrier file is not a legacy
-// leftover — it is the hidden set as it stands between picker runs, because the
-// picker is the last thing a run does and a ⌃X toggle can only be carried in
-// that file. So every writer of the hidden table writes the file too, and a
-// read is the UNION of both. Only an explicit unhide removes a row: hides are
-// permanent.
+// The SQLite database at ~/.cc/fleet.db holds every operator decision: hidden
+// chats, spawned teammates, and the primary account. The carrier file at
+// ~/.claude/.cc-ls-hidden preserves hides when SQLite is unavailable and is
+// always updated with the database. The transcript database (paths.Values.DB)
+// remains a derived cache that a rescan can rebuild.
 //
 // DEGRADED MODE. No SQLite, an unopenable database, a read-only directory: the
 // store keeps working against the carrier file alone and reports the reason
-// through Degraded. cc-db.sh's fallback is the same (cc-db.sh:17-18) for the
-// same reason — the picker must never be down because a database is unhappy.
+// through Degraded. The picker stays available when the database is unhealthy.
 package shared
 
 import (
@@ -40,25 +30,17 @@ import (
 const (
 	driverName = "sqlite"
 
-	// PrimaryAccountKey is cc-db.sh's meta row for the primary Claude account
-	// (cc-db.sh:264, :271).
+	// PrimaryAccountKey is the meta row for the primary Claude account.
 	PrimaryAccountKey = "primary_account"
 
-	// KindNew and KindPane are the two children kinds cc-db.sh's CHECK
-	// constraint admits (cc-db.sh:81). `new` is a detached teammate on its own
-	// tmux socket, `pane` is a teammate sharing this chat's server as
-	// "<socket>\t<pane>" (chat.sh:435, chat.sh:1362).
+	// KindNew and KindPane are the two children kinds the schema admits. `new`
+	// is a detached teammate on its own tmux socket; `pane` is a teammate
+	// sharing this chat's server as "<socket>\t<pane>".
 	KindNew  = "new"
 	KindPane = "pane"
 )
 
-// schemaDDL is cc-db.sh's cmd_init, transcribed (cc-db.sh:72-102).
-//
-// All of it, not just the three tables Go touches: creating the file with a
-// partial schema would flip cc-db.sh's have_db to true while `chat-load` still
-// queried a table that did not exist, and the zsh picker would cold-parse every
-// transcript on every run. Whichever half creates the database, the other finds
-// the schema it expects.
+// schemaDDL initializes the complete operator-state schema atomically.
 const schemaDDL = `
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, val TEXT NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS hidden(
@@ -132,10 +114,8 @@ func openDatabase(ctx context.Context, path string) (*sql.DB, error) {
 	return db, nil
 }
 
-// applyPragmas matches what cc-db.sh asks of every statement it runs: WAL, so
-// two chats queue instead of one erasing the other's edit, and a busy timeout,
-// so a concurrent sqlite3 CLI writer is waited out rather than failed on
-// (cc-db.sh:53-57).
+// applyPragmas enables WAL so concurrent chats queue instead of erasing one
+// another's edits, plus a busy timeout for concurrent writers.
 func applyPragmas(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout=10000"); err != nil {
 		return fmt.Errorf("set shared busy_timeout: %w", err)
@@ -190,18 +170,16 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Hide records a permanent hide: the database row first, then the carrier file,
-// which is cmd_hidden_add's order (cc-db.sh:129-138).
+// Hide records a permanent hide: the database row first, then the carrier file.
 //
 // The carrier append is NOT conditional on the database write succeeding, and
-// that is deliberate — cc-db.sh runs `have_db && _q "INSERT…"` and then
-// `_leg_add` unconditionally, so a hide survives a busy or missing database.
+// that is deliberate, so a hide survives a busy or missing database.
 // The returned error reports the database half; the hide is already durable.
 func (s *Store) Hide(ctx context.Context, id string, hiddenAt int64) error {
 	var writeError error
 	if s.db != nil {
 		// COALESCE, not assignment: a second hide must not blank a payload an
-		// earlier one supplied, whichever order they land in (cc-db.sh:131-136).
+		// earlier one supplied, whichever order they land in.
 		if _, err := s.db.ExecContext(ctx, `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,NULL)
 ON CONFLICT(uuid) DO UPDATE SET
@@ -219,8 +197,8 @@ ON CONFLICT(uuid) DO UPDATE SET
 	return writeError
 }
 
-// Unhide is cmd_hidden_del (cc-db.sh:139-143): delete the row, then rewrite the
-// carrier file without the id. Unhide is the ONLY removal in this package.
+// Unhide deletes the database row, then rewrites the carrier file without the
+// id. It is the only removal in this package.
 func (s *Store) Unhide(ctx context.Context, id string) error {
 	var writeError error
 	if s.db != nil {
@@ -306,16 +284,14 @@ func (s *Store) CarrierIDs() ([]string, error) {
 	return readCarrier(s.carrier)
 }
 
-// RewriteCarrier replaces the carrier file with ids under the same lock
-// _leg_del takes. `legacy export` is the only caller.
+// RewriteCarrier replaces the carrier file with ids under the carrier lock.
 func (s *Store) RewriteCarrier(ids []string) error {
 	return carrierRewrite(s.carrier, ids)
 }
 
-// Children returns the teammates a chat spawned, as cmd_child_list does
-// (cc-db.sh:287-294). The second result is false when the shared children table
-// is unreachable, which is the caller's cue to fall back to the flat files an
-// older jail may still hold.
+// Children returns the teammates a chat spawned. The second result is false
+// when the shared children table is unreachable, which is the caller's cue to
+// fall back to flat files from an older install.
 func (s *Store) Children(
 	ctx context.Context,
 	kind, key string,
@@ -349,9 +325,7 @@ func (s *Store) Children(
 	return values, true, nil
 }
 
-// AddChild is cmd_child_add (cc-db.sh:278-286). Nothing in the Go tree spawns
-// teammates yet; it exists so the reaper's tests can seed the table the way
-// chat.sh does.
+// AddChild records one spawned teammate.
 func (s *Store) AddChild(
 	ctx context.Context,
 	kind, key, value string,
@@ -372,8 +346,7 @@ INSERT OR IGNORE INTO children(kind,key,val,created_at) VALUES(?,?,?,?)`,
 	return nil
 }
 
-// ClearChildren is cmd_child_clear (cc-db.sh:296-303): the reaper's counterpart
-// to removing the flat file once every teammate is down.
+// ClearChildren removes a chat's teammate rows once every teammate is down.
 func (s *Store) ClearChildren(ctx context.Context, kind, key string) error {
 	if s.db == nil {
 		return nil
@@ -409,7 +382,7 @@ func (s *Store) Meta(ctx context.Context, key string) (string, bool, error) {
 	return value, true, nil
 }
 
-// SetMeta writes one meta row with cc-db.sh's updated_at stamp (cc-db.sh:271).
+// SetMeta writes one timestamped meta row.
 func (s *Store) SetMeta(
 	ctx context.Context,
 	key, value string,
@@ -430,9 +403,9 @@ ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at`
 	return nil
 }
 
-// PrimaryAccount reports the primary Claude account exactly as cmd_primary_get
-// resolves it (cc-db.sh:262-267): the database value first, the ~/.claude-primary
-// mirror when the database has none, and not-found when neither parses. The
+// PrimaryAccount reports the database value first, then the
+// ~/.claude-primary mirror when the database has none, and not-found when
+// neither parses. The
 // roster bound is the CALLER's to apply — action.MaxAccount is that constant,
 // and this package cannot import it without a cycle.
 //
@@ -451,6 +424,56 @@ func PrimaryAccount(ctx context.Context, values paths.Values) (int, bool) {
 		return 0, false
 	}
 	return account, true
+}
+
+// SetPrimaryAccount updates the authoritative shared row and its statusline
+// mirror. The database is written first; a mirror failure is returned loudly
+// so a caller never reports a primary switch that only half landed.
+func SetPrimaryAccount(
+	ctx context.Context,
+	values paths.Values,
+	account int,
+	updatedAt int64,
+) error {
+	if account < 1 {
+		return fmt.Errorf("primary account must be positive, got %d", account)
+	}
+	state := Open(ctx, values)
+	defer state.Close()
+	if err := state.SetMeta(
+		ctx,
+		PrimaryAccountKey,
+		strconv.Itoa(account),
+		updatedAt,
+	); err != nil {
+		return err
+	}
+
+	path := filepath.Join(values.Home, ".claude-primary")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create primary mirror directory: %w", err)
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".claude-primary.tmp-*")
+	if err != nil {
+		return fmt.Errorf("create primary mirror scratch: %w", err)
+	}
+	tempPath := file.Name()
+	defer os.Remove(tempPath)
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("secure primary mirror scratch: %w", err)
+	}
+	if _, err := fmt.Fprintf(file, "%d\n", account); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write primary mirror: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close primary mirror: %w", err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("install primary mirror: %w", err)
+	}
+	return nil
 }
 
 func primaryFromDatabase(ctx context.Context, path string) (int, bool) {

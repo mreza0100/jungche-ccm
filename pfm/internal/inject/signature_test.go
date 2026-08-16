@@ -194,6 +194,53 @@ func TestSignatureUsesAncestryRecoveredIdentity(t *testing.T) {
 	}
 }
 
+// TestSignatureUsesCodexThreadSeatAfterAncestryMiss covers the final sender
+// rung: a Codex tool shell has a thread id but no tmux environment or useful
+// process ancestry. The fleet seat lookup must still recover its immutable
+// socket handle so the delivery is signed and replyable.
+func TestSignatureUsesCodexThreadSeatAfterAncestryMiss(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "codex conversation\n› ",
+		windowName:    "Delivery Trust",
+		submitOnEnter: true,
+	}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	t.Setenv(resolve.CodexThreadEnv, "019ffd1e-300f-7872")
+	engine.codexSeat = fakeIdentifier{identity: resolve.Identity{
+		Session:    "cc-1700000000-1-1",
+		SocketPath: "/tmp/tmux-jail/cc-1700000000-1-1",
+		SocketName: "cc-1700000000-1-1",
+		Engine:     resolve.CodexEngine,
+		ID:         "019ffd1e-300f-7872",
+		Source:     "codex-thread",
+		Recovered:  true,
+	}}
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "codex sender",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Unsigned {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	for _, want := range []string{
+		"sid 019ffd1e",
+		"to reply: /chat:inject cc-1700000000-1-1 <message>",
+		"🔖 Delivery Trust",
+	} {
+		if !strings.Contains(lastLiteral(fake), want) {
+			t.Fatalf("typed text %q lacks %q", lastLiteral(fake), want)
+		}
+	}
+}
+
 // TestSignatureCodexLabelFallsBackToTheWindowName covers chat.sh:104-121: a
 // codex chat has no 🔖 statusline, so its label is the tmux window name — the
 // human thread name — carried BARE so a reply by that label resolves.

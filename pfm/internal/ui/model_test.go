@@ -262,8 +262,8 @@ func TestBootingRowIgnoresHideAndRebootButSelectsOnEnter(t *testing.T) {
 }
 
 func TestAccountsOffTheRosterFallBackToTheFirst(t *testing.T) {
-	// The roster is cc-db.sh's (1-2). A stale ~/.claude-primary naming a retired
-	// account must open the picker on account 1, not on an account no launcher
+	// A stale ~/.claude-primary naming an off-roster account must open the
+	// picker on account 1, not on an account no launcher
 	// can reach.
 	for _, account := range []int{0, -1, action.MaxAccount + 1, 9} {
 		snapshot := fixtureSnapshot(120)

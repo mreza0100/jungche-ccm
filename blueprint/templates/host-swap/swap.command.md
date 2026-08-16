@@ -8,7 +8,7 @@ description: Reboot THIS chat IN PLACE — same pane, same tmux socket, same con
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
 ```
-bash ~/.claude/bin/cc-swap-chat.sh $ARGUMENTS
+~/.local/bin/pfm chat swap $ARGUMENTS
 ```
 
 ~1.5s later this chat auto-`/exit`s and **reboots IN PLACE — same window, same pane, same tmux
@@ -39,6 +39,6 @@ instead of stalling:
 2. **Pick a DIFFERENT account**: current = `${CLAUDE_CONFIG_DIR:-~/.claude}` — `~/.claude` → 1,
    `~/.cc/2` (legacy `~/.claude2`/`~/.claude3`) → 2.
 3. **Swap with a handoff**:
-   `bash ~/.claude/bin/cc-swap-chat.sh <other-n> --then "Continue: <what you were doing + the next concrete step>"`
+   `~/.local/bin/pfm chat swap <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you
    reads the `--then` prompt and continues on the fresh account's budget.
