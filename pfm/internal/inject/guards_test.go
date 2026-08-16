@@ -64,6 +64,17 @@ func TestIsBusyExactMarkers(t *testing.T) {
 	}
 }
 
+func TestHasDraftUsesPOSIXGraphNotUnicodeSpace(t *testing.T) {
+	// Format controls are not POSIX graph characters. The ASCII space between
+	// them must not turn an otherwise non-graph placeholder into a real draft.
+	if hasDraft("❯ \u200b \u200b") {
+		t.Fatal("ASCII space was counted as draft text")
+	}
+	if !hasDraft("❯ real draft") {
+		t.Fatal("printable ASCII draft was missed")
+	}
+}
+
 func FuzzSelectorLine(f *testing.F) {
 	for _, seed := range []string{
 		"❯ 1. allow\n2. deny",

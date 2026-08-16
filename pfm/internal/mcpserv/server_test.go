@@ -321,12 +321,6 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		)
 	}
 
-	busyBefore := callTool[CaptureOutput](
-		t,
-		session,
-		"chat_capture",
-		CaptureInput{Target: jail.busySession},
-	)
 	busy := callTool[InjectOutput](t, session, "chat_inject", InjectInput{
 		Target:  jail.busySession,
 		Message: "wait until idle",
@@ -337,15 +331,14 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		"chat_capture",
 		CaptureInput{Target: jail.busySession},
 	)
-	if busy.Code != 7 ||
-		busy.Typed ||
-		!busy.Busy ||
-		busyBefore.Text != busyAfter.Text ||
-		strings.Contains(busyAfter.Text, "MISTYPED") {
+	if busy.Code != 0 || busy.Status != "queued" ||
+		!busy.Typed || !busy.Busy ||
+		!strings.Contains(busyAfter.Text, "QUEUED:wait until idle") ||
+		strings.Contains(busyAfter.Text, "MISTYPED") ||
+		strings.Contains(busyAfter.Text, "CONTROL-S-ERROR") {
 		t.Fatalf(
-			"busy guard result=%+v before=%q after=%q",
+			"busy queue result=%+v after=%q",
 			busy,
-			busyBefore.Text,
 			busyAfter.Text,
 		)
 	}
@@ -359,9 +352,8 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 			Message: " next",
 		},
 	)
-	if numberedDraft.Code != 0 ||
-		!numberedDraft.Typed ||
-		!strings.Contains(numberedDraft.Proof, "USER:1. draft next") {
+	if numberedDraft.Code != 6 || numberedDraft.Typed ||
+		!strings.Contains(numberedDraft.Message, "draft that will not stash") {
 		t.Fatalf("numbered Codex draft result=%+v", numberedDraft)
 	}
 	codexOversize := callTool[InjectOutput](
@@ -490,7 +482,7 @@ sys.stdout.write("🔖 " + label + " │ 🥇\n")
 if mode == "selector":
     sys.stdout.write("❯ 1. Allow\n  2. Deny\n")
 elif mode == "busy":
-    sys.stdout.write("Working (2s · 9 tokens)\n")
+    sys.stdout.write("Working (2s · 9 tokens)\n" + marker + " ")
 else:
     sys.stdout.write(marker + " " + initial)
 sys.stdout.flush()
@@ -499,8 +491,12 @@ while True:
     ch = os.read(0, 1)
     if not ch:
         break
-    if mode in ("selector", "busy"):
+    if mode == "selector":
         sys.stdout.write("\nMISTYPED:" + repr(ch) + "\n")
+        sys.stdout.flush()
+        continue
+    if mode == "busy" and ch == b"\x13":
+        sys.stdout.write("\nCONTROL-S-ERROR\n")
         sys.stdout.flush()
         continue
     if ch == b"\x13":
@@ -511,7 +507,10 @@ while True:
     elif ch in (b"\r", b"\n"):
         if buf:
             text = bytes(buf).decode("utf-8", "replace")
-            sys.stdout.write("\nUSER:" + text + "\n" + marker + " ")
+            if mode == "busy":
+                sys.stdout.write("\nQUEUED:" + text + "\nPress up to edit queued messages\n" + marker + " ")
+            else:
+                sys.stdout.write("\nUSER:" + text + "\n" + marker + " ")
             sys.stdout.flush()
             buf.clear()
     elif ch == b"\x1b":

@@ -89,6 +89,7 @@ func (engine *Engine) paneBusy(
 type CommandThenSpawner struct {
 	Executable string
 	Setsid     string
+	Nohup      string
 }
 
 // Spawn launches the detached waiter and returns as soon as it is running.
@@ -104,12 +105,7 @@ func (spawner CommandThenSpawner) Spawn(
 			return fmt.Errorf("resolve pfm executable: %w", err)
 		}
 	}
-	setsid := spawner.Setsid
-	if setsid == "" {
-		setsid = "setsid"
-	}
 	arguments := []string{
-		"-f",
 		executable,
 		"internal",
 		"then",
@@ -121,7 +117,41 @@ func (spawner CommandThenSpawner) Spawn(
 	for _, steer := range request.Steers {
 		arguments = append(arguments, "--steer", steer)
 	}
-	command := exec.CommandContext(ctx, setsid, arguments...)
+	setsid := spawner.Setsid
+	if setsid == "" {
+		setsid = "setsid"
+	}
+	setsidPath, setsidErr := exec.LookPath(setsid)
+	usingNohup := setsidErr != nil
+	launcher := setsidPath
+	if usingNohup {
+		nohup := spawner.Nohup
+		if nohup == "" {
+			nohup = "nohup"
+		}
+		var err error
+		launcher, err = exec.LookPath(nohup)
+		if err != nil {
+			return fmt.Errorf(
+				"detach then waiter: setsid unavailable (%v) and nohup unavailable (%w)",
+				setsidErr,
+				err,
+			)
+		}
+	} else {
+		arguments = append([]string{"-f"}, arguments...)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var command *exec.Cmd
+	if usingNohup {
+		// The POSIX floor has no `setsid -f`; start it asynchronously and
+		// release the process handle so the waiter outlives this caller.
+		command = exec.Command(launcher, arguments...)
+	} else {
+		command = exec.CommandContext(ctx, launcher, arguments...)
+	}
 	stated := []string{
 		"CHAT_INJECT_SOCKET=" + request.SocketPath,
 		"CHAT_THEN_CHAIN=1",
@@ -153,8 +183,17 @@ func (spawner CommandThenSpawner) Spawn(
 		command.Stdout = log
 		command.Stderr = log
 	}
+	if usingNohup {
+		if err := command.Start(); err != nil {
+			return fmt.Errorf("start detached then waiter with nohup: %w", err)
+		}
+		if err := command.Process.Release(); err != nil {
+			return fmt.Errorf("release detached then waiter: %w", err)
+		}
+		return nil
+	}
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("start detached then waiter: %w", err)
+		return fmt.Errorf("start detached then waiter with setsid: %w", err)
 	}
 	return nil
 }

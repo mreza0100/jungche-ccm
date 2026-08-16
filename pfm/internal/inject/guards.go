@@ -14,6 +14,7 @@ var (
 	menuHintPattern   = regexp.MustCompile(`(?i)enter to (confirm|continue|select)|esc to (cancel|go back)`)
 	ansiPattern       = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	compactPattern    = regexp.MustCompile(`^[[:space:]]*/compact([[:space:]]|$)`)
+	queueProofPattern = regexp.MustCompile(`(?i)press up to edit queued messages|queued messages?|pending messages?|message (will be|was) (queued|submitted)|submitted after (the )?next tool call`)
 )
 
 // isCompactCommand mirrors chat.sh's `grep -qE '^[[:space:]]*/compact([[:space:]]|$)'`
@@ -61,7 +62,10 @@ func hasDraft(line string) bool {
 	rest = strings.TrimSpace(rest)
 	rest = strings.ReplaceAll(rest, "Press up to edit queued messages", "")
 	for _, character := range rest {
-		if character <= unicode.MaxASCII && unicode.IsGraphic(character) {
+		// POSIX [[:graph:]] is printable ASCII excluding space. Go's
+		// unicode.IsGraphic includes ASCII space, which turns format-only
+		// placeholders into apparent drafts.
+		if character >= 0x21 && character <= 0x7e {
 			return true
 		}
 	}
@@ -127,4 +131,56 @@ func lastNonEmptyLines(capture string, limit int) string {
 		filtered = filtered[len(filtered)-limit:]
 	}
 	return strings.Join(filtered, "\n")
+}
+
+// deliveryProven distinguishes a cleared composer from evidence that the turn
+// moved into the transcript/engine. A busy delivery needs queue-specific
+// evidence; the spinner was already present before we typed and proves only
+// the older turn.
+func deliveryProven(before, after, message string, queued, fileBacked bool) bool {
+	pastComposer := withoutLastComposerLine(after)
+	if messageVisible(pastComposer, message) ||
+		(fileBacked && hasPastePlaceholder(pastComposer)) {
+		return true
+	}
+	if queued {
+		return queueProofPattern.MatchString(after) &&
+			!queueProofPattern.MatchString(before)
+	}
+	return !IsBusy(before) && IsBusy(after)
+}
+
+func proofExpectation(queued bool) string {
+	if queued {
+		return "queue indicator"
+	}
+	return "engine processing state"
+}
+
+func withoutLastComposerLine(capture string) string {
+	composer := lastComposerLine(capture)
+	if composer == "" {
+		return capture
+	}
+	lines := strings.Split(capture, "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if lines[index] == composer {
+			lines = append(lines[:index], lines[index+1:]...)
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func messageVisible(capture, message string) bool {
+	capture = normalizeSpace(capture)
+	message = normalizeSpace(message)
+	if capture == "" || message == "" {
+		return false
+	}
+	if len([]rune(message)) <= 80 {
+		return strings.Contains(capture, message)
+	}
+	return strings.Contains(capture, headRunes(message, 40)) ||
+		strings.Contains(capture, tailRunes(message, 40))
 }
