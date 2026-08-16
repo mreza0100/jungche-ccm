@@ -1,5 +1,6 @@
 // Package stats samples host, live-chat process-tree, and Docker cgroup
-// pressure for the picker's lazy Stats tab. It performs no daemon calls.
+// pressure for the picker's lazy Stats tab. Resource counters never call a
+// daemon; Docker names and images are resolved once per newly observed ID.
 package stats
 
 import (
@@ -27,18 +28,24 @@ type Header struct {
 }
 
 type Chat struct {
-	Socket     string
-	Name       string
-	Engine     string
-	CPUPercent float64
-	CPUValid   bool
-	RSSBytes   uint64
-	RAMPercent float64
-	GearCount  int
+	Socket         string
+	Name           string
+	Engine         string
+	CPUPercent     float64
+	CPUValid       bool
+	RSSBytes       uint64
+	RAMPercent     float64
+	GearCount      int
+	TokenCount     int64
+	TokensKnown    bool
+	TokensPerHour  float64
+	TokenRateValid bool
 }
 
 type Container struct {
+	ID            string
 	Name          string
+	Image         string
 	CPUPercent    float64
 	CPUValid      bool
 	MemoryBytes   uint64
@@ -77,13 +84,18 @@ type rawSample struct {
 // Sampler keeps only the preceding raw counters needed for instantaneous
 // deltas. It is safe for Bubble Tea commands to call serially or concurrently.
 type Sampler struct {
-	ProcRoot   string
-	CgroupRoot string
-	CPUCount   int
-	Clock      func() int64
+	ProcRoot      string
+	CgroupRoot    string
+	CPUCount      int
+	Clock         func() int64
+	DockerInspect func(string) (name, image string, err error)
 
-	mu       sync.Mutex
-	previous *rawSample
+	mu               sync.Mutex
+	previous         *rawSample
+	tokenMu          sync.Mutex
+	tokenCache       map[string]*tokenCacheEntry
+	dockerMu         sync.Mutex
+	dockerIdentities map[string]dockerIdentity
 }
 
 func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
@@ -120,6 +132,13 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	dockerWarnings = append(dockerWarnings, sampler.resolveDockerIdentities(docker)...)
+	sort.Slice(docker, func(i, j int) bool {
+		if docker[i].Name != docker[j].Name {
+			return docker[i].Name < docker[j].Name
+		}
+		return docker[i].ID < docker[j].ID
+	})
 	warnings = append(warnings, dockerWarnings...)
 	current := &rawSample{
 		timeNS: now, systemTotal: total, systemIdle: idle,
@@ -144,10 +163,12 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 		header.CPUValid = true
 	}
 	chats := chatTrees(rows, processes, previous, total, cpuCount, header.MemoryBytes)
+	tokenWarnings := sampler.attachTokenUsage(rows, chats, now)
+	warnings = append(warnings, tokenWarnings...)
 	if previous != nil && now > previous.timeNS {
 		for index := range docker {
-			prior, found := previous.docker[docker[index].Name]
-			currentDocker := dockerRaw[docker[index].Name]
+			prior, found := previous.docker[docker[index].ID]
+			currentDocker := dockerRaw[docker[index].ID]
 			if !found || currentDocker.usageMicros < prior.usageMicros {
 				continue
 			}
@@ -433,7 +454,8 @@ func readDocker(root string) ([]Container, map[string]dockerSample, []string, er
 		if !entry.IsDir() || !dockerCgroup(path) {
 			return nil
 		}
-		name := dockerName(filepath.Base(path))
+		id := dockerID(filepath.Base(path))
+		name := shortDockerID(id)
 		usage, err := readKeyUint(filepath.Join(path, "cpu.stat"), "usage_usec")
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("read Docker CPU %s: %v", name, err))
@@ -457,12 +479,12 @@ func readDocker(root string) ([]Container, map[string]dockerSample, []string, er
 				return filepath.SkipDir
 			}
 		}
-		container := Container{Name: name, MemoryBytes: memory, LimitBytes: limit}
+		container := Container{ID: id, Name: name, Image: "?", MemoryBytes: memory, LimitBytes: limit}
 		if limit > 0 {
 			container.MemoryPercent = percent(memory, limit)
 		}
 		containers = append(containers, container)
-		raw[name] = dockerSample{usageMicros: usage}
+		raw[id] = dockerSample{usageMicros: usage}
 		return filepath.SkipDir
 	})
 	if err != nil {
@@ -479,12 +501,15 @@ func dockerCgroup(path string) bool {
 		(parent == "docker" && len(base) >= 12)
 }
 
-func dockerName(base string) string {
-	name := strings.TrimSuffix(strings.TrimPrefix(base, "docker-"), ".scope")
-	if len(name) > 12 {
-		name = name[:12]
+func dockerID(base string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(base, "docker-"), ".scope")
+}
+
+func shortDockerID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
 	}
-	return name
+	return id
 }
 
 func readKeyUint(path, key string) (uint64, error) {

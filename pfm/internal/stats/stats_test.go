@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"hostops/pfm/internal/compose"
 )
@@ -93,6 +94,138 @@ func TestDockerCgroupSamplingNeedsNoDaemon(t *testing.T) {
 	if got.Name != "1234567890ab" || !got.CPUValid || got.CPUPercent != 0.05 ||
 		got.MemoryBytes != 250 || got.MemoryPercent != 25 {
 		t.Fatalf("Docker cgroup sample = %#v", got)
+	}
+}
+
+func TestSamplerCountsClaudeAndCodexLifetimeTokensIncrementally(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+
+	claudePath := filepath.Join(root, "claude.jsonl")
+	codexPath := filepath.Join(root, "codex.jsonl")
+	claude := strings.Join([]string{
+		`{"timestamp":"2026-08-16T10:00:00Z","type":"user","message":{"role":"user"}}`,
+		`{"timestamp":"2026-08-16T11:00:00Z","type":"assistant","message":{"usage":{"input_tokens":100,"cache_read_input_tokens":200,"cache_creation_input_tokens":300,"output_tokens":400}}}`,
+	}, "\n") + "\n"
+	codex := strings.Join([]string{
+		`{"timestamp":"2026-08-16T10:30:00Z","type":"session_meta","payload":{}}`,
+		`{"timestamp":"2026-08-16T11:30:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":9000}}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(claudePath, []byte(claude), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codexPath, []byte(codex), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	rows := []compose.Row{
+		{Kind: compose.LiveClaude, Socket: "claude-socket", Name: "claude", Path: claudePath, PanePIDs: []int{100}},
+		{Kind: compose.LiveCodex, Socket: "codex-socket", Name: "codex", Path: codexPath, PanePIDs: []int{100}},
+	}
+	first, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats := chatsBySocket(first.Chats)
+	if got := chats["claude-socket"]; !got.TokensKnown || got.TokenCount != 1000 ||
+		!got.TokenRateValid || got.TokensPerHour != 500 {
+		t.Fatalf("Claude token accounting = %#v, want 1000 total and 500/h", got)
+	}
+	if got := chats["codex-socket"]; !got.TokensKnown || got.TokenCount != 9000 ||
+		!got.TokenRateValid || got.TokensPerHour != 6000 {
+		t.Fatalf("Codex token accounting = %#v, want 9000 total and 6000/h", got)
+	}
+
+	appendFile(t, claudePath,
+		`{"timestamp":"2026-08-16T12:00:00Z","type":"assistant","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":30,"output_tokens":40}}}`+"\n")
+	appendFile(t, codexPath,
+		`{"timestamp":"2026-08-16T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12000}}}}`+"\n")
+	now = time.Date(2026, 8, 16, 13, 0, 0, 0, time.UTC).UnixNano()
+	second, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chats = chatsBySocket(second.Chats)
+	if got := chats["claude-socket"]; got.TokenCount != 1100 || got.TokensPerHour < 366.6 || got.TokensPerHour > 366.7 {
+		t.Fatalf("incremental Claude token accounting = %#v, want 1100 total and 366.7/h", got)
+	}
+	if got := chats["codex-socket"]; got.TokenCount != 12000 || got.TokensPerHour != 4800 {
+		t.Fatalf("incremental Codex token accounting = %#v, want latest 12000 total and 4800/h", got)
+	}
+}
+
+func TestDockerIdentityIsResolvedOncePerCgroupID(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	id := "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	container := filepath.Join(cgroup, "system.slice", "docker-"+id+".scope")
+	for _, directory := range []string{filepath.Join(proc, "pressure"), container} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	writeDockerFixture(t, container, 1_000, 200, 1000)
+	inspectCalls := 0
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		DockerInspect: func(gotID string) (string, string, error) {
+			inspectCalls++
+			if gotID != id {
+				t.Fatalf("inspected container %q, want full cgroup ID %q", gotID, id)
+			}
+			return "professor-web", "registry.example/professor:web", nil
+		},
+	}
+	for sample := 0; sample < 2; sample++ {
+		snapshot, err := sampler.Sample(nil)
+		if err != nil || len(snapshot.Docker) != 1 {
+			t.Fatalf("Docker sample %d=%#v err=%v", sample, snapshot.Docker, err)
+		}
+		got := snapshot.Docker[0]
+		if got.ID != id || got.Name != "professor-web" || got.Image != "registry.example/professor:web" {
+			t.Fatalf("Docker identity = %#v", got)
+		}
+	}
+	if inspectCalls != 1 {
+		t.Fatalf("Docker identity lookup calls=%d, want one cached lookup", inspectCalls)
+	}
+}
+
+func chatsBySocket(chats []Chat) map[string]Chat {
+	result := make(map[string]Chat, len(chats))
+	for _, chat := range chats {
+		result[chat.Socket] = chat
+	}
+	return result
+}
+
+func appendFile(t *testing.T, path, content string) {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString(content); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

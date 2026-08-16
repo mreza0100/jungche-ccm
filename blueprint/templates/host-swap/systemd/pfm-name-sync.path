@@ -1,9 +1,0 @@
-[Unit]
-Description=Fire pfm name-sync when a codex rename lands in session_index.jsonl
-
-[Path]
-PathModified=%h/.codex/session_index.jsonl
-Unit=pfm-name-sync.service
-
-[Install]
-WantedBy=default.target

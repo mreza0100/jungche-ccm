@@ -58,6 +58,10 @@ blueprint/
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
 ```
 
+Host fleet tooling has one source outside the template tree: the Go engine under `../pfm/`, with
+every staged host asset under `../pfm/internal/installer/assets/`. A fresh box gets the `pfm`
+binary, then runs `pfm install --apply`; no separate host template bundle is copied.
+
 ---
 
 ## Quick start
