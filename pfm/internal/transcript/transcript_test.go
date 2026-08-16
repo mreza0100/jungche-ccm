@@ -154,3 +154,22 @@ func TestReadMetaTakesTheLiveModelAndContext(t *testing.T) {
 		t.Fatalf("context percent = %f, want 0 (unknown)", percent)
 	}
 }
+
+func TestCodexContextPercentUsesLastWindowNotLifetimeTotal(t *testing.T) {
+	path := writeTranscript(t, "rollout.jsonl",
+		`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"total_tokens":155000},"total_token_usage":{"total_tokens":155000000},"model_context_window":272000}}}`+"\n",
+	)
+	meta, err := ReadMeta(path, "cx")
+	if err != nil {
+		t.Fatalf("ReadMeta() error = %v", err)
+	}
+	if meta.ContextTokens != 155000 {
+		t.Fatalf("context tokens = %d, want current-window 155000", meta.ContextTokens)
+	}
+	if percent := meta.ContextPercent(); percent < 56.9 || percent > 57.0 {
+		t.Fatalf("context percent = %f, want ~56.99", percent)
+	}
+	if percent := (Meta{ContextTokens: 155000000, ContextWindow: 272000}).ContextPercent(); percent != 100 {
+		t.Fatalf("defensive context-percent cap = %f, want 100", percent)
+	}
+}

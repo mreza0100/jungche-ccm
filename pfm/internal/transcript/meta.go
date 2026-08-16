@@ -30,7 +30,11 @@ func (meta Meta) ContextPercent() float64 {
 	if meta.ContextWindow <= 0 || meta.ContextTokens <= 0 {
 		return 0
 	}
-	return float64(meta.ContextTokens) / float64(meta.ContextWindow) * 100
+	percent := float64(meta.ContextTokens) / float64(meta.ContextWindow) * 100
+	if percent > 100 {
+		return 100
+	}
+	return percent
 }
 
 type metaRecord struct {
@@ -48,6 +52,9 @@ type metaRecord struct {
 		Type  string `json:"type"`
 		Model string `json:"model"`
 		Info  struct {
+			LastTokenUsage struct {
+				TotalTokens int64 `json:"total_tokens"`
+			} `json:"last_token_usage"`
 			TotalTokenUsage struct {
 				TotalTokens int64 `json:"total_tokens"`
 			} `json:"total_token_usage"`
@@ -107,7 +114,13 @@ func applyMeta(meta *Meta, line []byte, engine string) {
 			meta.Model = parsed.Payload.Model
 		}
 		if parsed.Payload.Type == "token_count" {
-			if total := parsed.Payload.Info.TotalTokenUsage.TotalTokens; total > 0 {
+			// Codex emits both the current context-window use and a lifetime
+			// total. The latter grows for the whole thread and can exceed the
+			// window many times over; it is only a compatibility fallback for
+			// older rollout records that predate last_token_usage.
+			if current := parsed.Payload.Info.LastTokenUsage.TotalTokens; current > 0 {
+				meta.ContextTokens = current
+			} else if total := parsed.Payload.Info.TotalTokenUsage.TotalTokens; total > 0 {
 				meta.ContextTokens = total
 			}
 			if window := parsed.Payload.Info.ModelContextWindow; window > 0 {

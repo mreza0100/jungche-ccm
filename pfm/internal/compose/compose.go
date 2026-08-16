@@ -377,6 +377,7 @@ func (current *composer) liveClaudeRow(
 	row := current.transcriptRow(transcript, LiveClaude)
 	row.Socket = socket
 	row.PaneID = pane.PaneID
+	row.PanePIDs = []int{pane.PID}
 	row.SessionName = pane.SessionName
 	row.ServerCount = 1
 	row.Attached = pane.Attached
@@ -421,6 +422,7 @@ func (current *composer) splitRow(
 	accounts := make(map[int]struct{})
 	for _, paneID := range paneIDs {
 		pane := current.paneByTarget[targetKey(socket, paneID)]
+		row.PanePIDs = append(row.PanePIDs, pane.PID)
 		crumb := crumbs[paneID]
 		transcript, found := current.transcriptByPath[cleanPath(crumb.TranscriptPath)]
 		if !found {
@@ -522,6 +524,7 @@ func (current *composer) liveCodexRows() []Row {
 		row := current.rolloutRow(rollout, LiveCodex)
 		row.Socket = process.Socket
 		row.PaneID = process.PaneID
+		row.PanePIDs = []int{process.PanePID}
 		row.ServerCount = 1
 		row.Here = process.Socket == current.input.Options.CurrentSocket
 		row.SessionName = pane.SessionName
@@ -559,6 +562,7 @@ func (current *composer) bootingRows() []Row {
 			ID:          entry.Socket,
 			Socket:      entry.Socket,
 			PaneID:      entry.PaneID,
+			PanePIDs:    []int{entry.PID},
 			SessionName: entry.SessionName,
 			WindowName:  entry.WindowName,
 			Name:        "booting…",
@@ -619,6 +623,7 @@ func (current *composer) agentRows() []Row {
 		row.ServerCount = boolInt(agent.Socket != "")
 		row.Here = agent.Socket == current.input.Options.CurrentSocket
 		if pane, found := current.paneByTarget[targetKey(agent.Socket, agent.PaneID)]; found {
+			row.PanePIDs = []int{pane.PID}
 			row.SessionName = pane.SessionName
 			row.WindowName = pane.WindowName
 			row.Attached = pane.Attached

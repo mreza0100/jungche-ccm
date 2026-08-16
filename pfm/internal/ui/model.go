@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textinput"
@@ -12,16 +13,24 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/sky"
+	pfmstats "hostops/pfm/internal/stats"
 )
 
 const (
-	defaultWidth  = 120
-	defaultHeight = 28
+	defaultWidth         = 120
+	defaultHeight        = 28
+	statsRefreshInterval = 2 * time.Second
 )
 
 type projectGroup struct {
 	name    string
 	indices []int
+}
+
+type nameGroup struct {
+	name  string
+	count int
 }
 
 type orderedSearch struct {
@@ -41,28 +50,42 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows            []compose.Row
-	search          []string
-	groups          []projectGroup
-	order           []int
-	filtered        []int
-	cursor          int
-	width           int
-	height          int
-	nowNS           int64
-	view            compose.View
-	hiddenCount     int
-	suppressedCount int
-	refreshing      bool
-	primary         int
-	initialPrimary  int
-	cache1H         bool
-	rotation        int
-	query           textinput.Model
-	outcome         OutcomeKind
-	outcomeRow      compose.Row
-	initialHidden   map[string]bool
-	hideChanges     map[string]HideChange
+	rows              []compose.Row
+	search            []string
+	groups            []projectGroup
+	nameGroups        map[int]nameGroup
+	order             []int
+	filtered          []int
+	cursor            int
+	width             int
+	height            int
+	nowNS             int64
+	view              compose.View
+	hiddenCount       int
+	suppressedCount   int
+	refreshing        bool
+	primary           int
+	initialPrimary    int
+	cache1H           bool
+	rotation          int
+	tab               Tab
+	statsSubtab       StatsSubtab
+	statsFocus        StatsFocus
+	statsSort         StatsSort
+	statsCursor       int
+	statsDockerCursor int
+	stats             pfmstats.Snapshot
+	statsSampler      StatsSampler
+	statsGeneration   uint64
+	statsLoading      bool
+	statsError        string
+	skyEnabled        bool
+	skyEvents         []sky.Event
+	query             textinput.Model
+	outcome           OutcomeKind
+	outcomeRow        compose.Row
+	initialHidden     map[string]bool
+	hideChanges       map[string]HideChange
 	// applyHide performs a ⌃X the instant it is typed. hideStatus is the
 	// receipt: what landed, or why the keystroke was refused. A ⌃X NEVER goes
 	// silent — a keystroke that appears to do nothing reads as a hide that
@@ -98,6 +121,8 @@ func NewModel(snapshot Snapshot) Model {
 		initialHidden:   make(map[string]bool),
 		hideChanges:     make(map[string]HideChange),
 		applyHide:       snapshot.ApplyHide,
+		statsSampler:    snapshot.StatsSampler,
+		skyEnabled:      !snapshot.NoSky,
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -122,9 +147,13 @@ func validAccount(account int) int {
 	return account
 }
 
-// Init intentionally starts no timers or I/O.
-func (Model) Init() tea.Cmd {
-	return nil
+// Init starts only the pure animation clock. Stats remains fully lazy: its
+// first sampling command is created only by a key that focuses the Stats tab.
+func (model Model) Init() tea.Cmd {
+	if !model.skyEnabled {
+		return nil
+	}
+	return skyTickCmd()
 }
 
 // Update applies one message without touching the outside world.
@@ -138,6 +167,36 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case RefreshMsg:
 		model.applyRefresh(message.Snapshot)
 		return model, nil
+	case statsSampleMsg:
+		if model.tab != TabStats || message.generation != model.statsGeneration {
+			return model, nil
+		}
+		model.statsLoading = false
+		if message.err != nil {
+			model.statsError = message.err.Error()
+		} else {
+			model.statsError = ""
+			model.applyStats(message.snapshot)
+		}
+		return model, statsWaitCmd(message.generation)
+	case statsTickMsg:
+		if model.tab != TabStats || message.generation != model.statsGeneration {
+			return model, nil
+		}
+		return model, model.startStatsSample()
+	case skyTickMsg:
+		if !model.skyEnabled {
+			return model, nil
+		}
+		model.nowNS = message.nowNS
+		kept := model.skyEvents[:0]
+		for _, event := range model.skyEvents {
+			if !event.Expired(model.nowNS) {
+				kept = append(kept, event)
+			}
+		}
+		model.skyEvents = kept
+		return model, skyTickCmd()
 	case tea.PasteMsg:
 		model.updateQuery(model.query.Value() + message.Content)
 		return model, nil
@@ -150,6 +209,19 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := message.String()
+	if key == "esc" || key == "ctrl+c" {
+		model.outcome = OutcomeCancelled
+		return model, tea.Quit
+	}
+	switch key {
+	case "left":
+		return model.navigateHorizontal(-1)
+	case "right":
+		return model.navigateHorizontal(1)
+	}
+	if model.tab != TabChats {
+		return model.updateStatsKey(key)
+	}
 	switch key {
 	case "ctrl+t":
 		model.outcome = OutcomeReload
@@ -187,9 +259,6 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return model, tea.Quit
 		}
 		return model, nil
-	case "esc", "ctrl+c":
-		model.outcome = OutcomeCancelled
-		return model, tea.Quit
 	case "up", "ctrl+p":
 		if model.cursor > 0 {
 			model.cursor--
@@ -235,6 +304,161 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
+func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
+	if model.tab == TabStats && model.statsFocus == StatsFocusSubtab {
+		model.statsSubtab = StatsSubtab((int(model.statsSubtab) + int(statsSubtabCount) + direction) % int(statsSubtabCount))
+		return model, nil
+	}
+	if model.tab == TabStats && model.statsFocus == StatsFocusContent {
+		return model, nil
+	}
+	previous := model.tab
+	model.tab = Tab((int(model.tab) + int(tabCount) + direction) % int(tabCount))
+	if previous != TabStats && model.tab == TabStats {
+		model.statsFocus = StatsFocusTop
+		return model, model.startStatsSample()
+	}
+	return model, nil
+}
+
+func (model Model) updateStatsKey(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "down", "ctrl+n":
+		switch model.statsFocus {
+		case StatsFocusTop:
+			model.statsFocus = StatsFocusSubtab
+		case StatsFocusSubtab:
+			model.statsFocus = StatsFocusContent
+		case StatsFocusContent:
+			if model.statsSubtab == StatsChats && model.statsCursor+1 < len(model.stats.Chats) {
+				model.statsCursor++
+			} else if model.statsSubtab == StatsDocker && model.statsDockerCursor+1 < len(model.stats.Docker) {
+				model.statsDockerCursor++
+			}
+		}
+	case "up", "ctrl+p":
+		switch model.statsFocus {
+		case StatsFocusSubtab:
+			model.statsFocus = StatsFocusTop
+		case StatsFocusContent:
+			if model.statsSubtab == StatsChats && model.statsCursor > 0 {
+				model.statsCursor--
+			} else if model.statsSubtab == StatsDocker && model.statsDockerCursor > 0 {
+				model.statsDockerCursor--
+			} else {
+				model.statsFocus = StatsFocusSubtab
+			}
+		}
+	case "c":
+		model.statsSort = StatsSortCPU
+		model.sortStats(model.selectedStatsKey())
+	case "m":
+		model.statsSort = StatsSortRAM
+		model.sortStats(model.selectedStatsKey())
+	}
+	return model, nil
+}
+
+type statsSampleMsg struct {
+	generation uint64
+	snapshot   pfmstats.Snapshot
+	err        error
+}
+
+type statsTickMsg struct{ generation uint64 }
+
+type skyTickMsg struct{ nowNS int64 }
+
+func skyTickCmd() tea.Cmd {
+	return tea.Tick(125*time.Millisecond, func(now time.Time) tea.Msg {
+		return skyTickMsg{nowNS: now.UnixNano()}
+	})
+}
+
+func liveSockets(rows []compose.Row) map[string]bool {
+	sockets := make(map[string]bool)
+	for _, row := range rows {
+		if row.Socket != "" && isLiveNameGroupRow(row.Kind) {
+			sockets[row.Socket] = true
+		}
+	}
+	return sockets
+}
+
+func liveEngineCounts(rows []compose.Row) (claude, codex int) {
+	for _, row := range rows {
+		switch row.Kind {
+		case compose.LiveCodex:
+			codex++
+		case compose.LiveSplit:
+			claude += maxInt(1, row.SplitCount)
+		case compose.LiveClaude, compose.Agent, compose.Booting:
+			claude++
+		}
+	}
+	return claude, codex
+}
+
+func (model *Model) startStatsSample() tea.Cmd {
+	if model.statsSampler == nil || model.statsLoading {
+		return nil
+	}
+	model.statsGeneration++
+	generation := model.statsGeneration
+	model.statsLoading = true
+	rows := append([]compose.Row(nil), model.rows...)
+	sampler := model.statsSampler
+	return func() tea.Msg {
+		snapshot, err := sampler.Sample(rows)
+		return statsSampleMsg{generation: generation, snapshot: snapshot, err: err}
+	}
+}
+
+func statsWaitCmd(generation uint64) tea.Cmd {
+	return tea.Tick(statsRefreshInterval, func(time.Time) tea.Msg {
+		return statsTickMsg{generation: generation}
+	})
+}
+
+func (model *Model) applyStats(snapshot pfmstats.Snapshot) {
+	follow := model.selectedStatsKey()
+	model.stats = snapshot
+	model.sortStats(follow)
+}
+
+func (model *Model) sortStats(follow string) {
+	sort.SliceStable(model.stats.Chats, func(left, right int) bool {
+		if model.statsSort == StatsSortRAM {
+			if model.stats.Chats[left].RSSBytes != model.stats.Chats[right].RSSBytes {
+				return model.stats.Chats[left].RSSBytes > model.stats.Chats[right].RSSBytes
+			}
+		} else if model.stats.Chats[left].CPUPercent != model.stats.Chats[right].CPUPercent {
+			return model.stats.Chats[left].CPUPercent > model.stats.Chats[right].CPUPercent
+		}
+		return model.stats.Chats[left].Socket < model.stats.Chats[right].Socket
+	})
+	if len(model.stats.Chats) == 0 {
+		model.statsCursor = 0
+		return
+	}
+	if follow != "" {
+		for index := range model.stats.Chats {
+			if model.stats.Chats[index].Socket == follow {
+				model.statsCursor = index
+				return
+			}
+		}
+	}
+	model.statsCursor = minInt(model.statsCursor, len(model.stats.Chats)-1)
+}
+
+func (model Model) selectedStatsKey() string {
+	if model.statsCursor < 0 || model.statsCursor >= len(model.stats.Chats) {
+		return ""
+	}
+	return model.stats.Chats[model.statsCursor].Socket
+}
+
 func (model *Model) updateQuery(value string) {
 	follow := model.selectedKey()
 	if runes := []rune(value); len(runes) > model.query.CharLimit &&
@@ -257,6 +481,28 @@ func trimLastWord(value string) string {
 func (model *Model) applyRefresh(snapshot Snapshot) {
 	follow := model.selectedKey()
 	fallback := model.cursor
+	if model.skyEnabled {
+		before := liveSockets(model.rows)
+		after := liveSockets(snapshot.Rows)
+		eventTime := snapshot.NowNS
+		if eventTime == 0 {
+			eventTime = model.nowNS
+		}
+		for socket := range after {
+			if !before[socket] {
+				model.skyEvents = append(model.skyEvents, sky.Event{
+					Kind: sky.EventBirth, StartNS: eventTime,
+				})
+			}
+		}
+		for socket := range before {
+			if !after[socket] {
+				model.skyEvents = append(model.skyEvents, sky.Event{
+					Kind: sky.EventDeath, StartNS: eventTime,
+				})
+			}
+		}
+	}
 	model.rows = append(model.rows[:0], snapshot.Rows...)
 	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View
@@ -408,6 +654,7 @@ func (model *Model) rebuild(follow string, fallback int) {
 
 func (model *Model) rebuildOrder() {
 	model.order = model.order[:0]
+	model.nameGroups = make(map[int]nameGroup)
 	if len(model.groups) == 0 {
 		model.rotation = 0
 		return
@@ -418,12 +665,47 @@ func (model *Model) rebuildOrder() {
 	}
 	for offset := range model.groups {
 		group := model.groups[(model.rotation+offset)%len(model.groups)]
+		members := make(map[string][]int)
 		for _, index := range group.indices {
-			if model.visibleInView(model.rows[index]) {
+			row := model.rows[index]
+			if !model.visibleInView(row) || !isLiveNameGroupRow(row.Kind) {
+				continue
+			}
+			if prefix, ok := nameGroupPrefix(row.Name); ok {
+				members[prefix] = append(members[prefix], index)
+			}
+		}
+		emitted := make(map[string]bool)
+		for _, index := range group.indices {
+			if !model.visibleInView(model.rows[index]) {
+				continue
+			}
+			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
+			grouped = grouped && len(members[prefix]) >= 2
+			if !grouped {
 				model.order = append(model.order, index)
+				continue
+			}
+			if emitted[prefix] {
+				continue
+			}
+			emitted[prefix] = true
+			for _, member := range members[prefix] {
+				model.nameGroups[member] = nameGroup{name: prefix, count: len(members[prefix])}
+				model.order = append(model.order, member)
 			}
 		}
 	}
+}
+
+func nameGroupPrefix(name string) (string, bool) {
+	prefix, _, found := strings.Cut(cleanField(name), ":")
+	prefix = strings.TrimSpace(prefix)
+	return prefix, found && prefix != ""
+}
+
+func isLiveNameGroupRow(kind compose.Kind) bool {
+	return isLive(kind) || kind == compose.Agent || kind == compose.Booting
 }
 
 func (model *Model) refilter(follow string, fallback int) {
@@ -599,6 +881,7 @@ func (model Model) Rotation() int         { return model.rotation }
 func (model Model) Query() string         { return model.query.Value() }
 func (model Model) PrimaryAccount() int   { return model.primary }
 func (model Model) Cache1H() bool         { return model.cache1H }
+func (model Model) Tab() Tab              { return model.tab }
 func (model Model) SelectedKey() string   { return model.selectedKey() }
 func (model Model) GroupCount() int       { return len(model.groups) }
 func (model Model) OrderedRowCount() int  { return len(model.order) }

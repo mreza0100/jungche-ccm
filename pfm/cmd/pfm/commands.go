@@ -20,6 +20,7 @@ import (
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/legacy"
 	"hostops/pfm/internal/paths"
+	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
 )
@@ -38,6 +39,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 	flags.BoolVar(&hidden, "hidden", false, "list the hidden ledger")
 	plain := flags.Bool("plain", false, "render a noninteractive list")
 	tsv := flags.Bool("tsv", false, "render stable tab-separated rows")
+	noSky := flags.Bool("no-sky", false, "disable the interactive sky widget")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -87,6 +89,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 			Query:     query,
 			Cache1H:   cache1H,
 			ForceFull: forceFull,
+			NoSky:     *noSky,
 		}
 		var scan scanResult
 		var outcome ui.Outcome
@@ -115,6 +118,10 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				return 1
 			}
 			scan.Snapshot.ApplyHide = applier
+			scan.Snapshot.StatsSampler = &pfmstats.Sampler{
+				ProcRoot:   scan.Paths.ProcRoot,
+				CgroupRoot: scan.Paths.CgroupRoot,
+			}
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
 			// Bubble Tea owns the tty for as long as Pick runs: a probe warning

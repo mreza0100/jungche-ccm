@@ -79,6 +79,7 @@ type scanRequest struct {
 	ReadOnly  bool
 	Cache1H   bool
 	ForceFull bool
+	NoSky     bool
 }
 
 type scanResult struct {
@@ -393,6 +394,7 @@ func composeFleet(
 		Rotation:        request.Rotation,
 		NowNS:           environment.nowNS,
 		InitialQuery:    request.Query,
+		NoSky:           request.NoSky,
 	}
 	return scanResult{
 		Output:   output,
