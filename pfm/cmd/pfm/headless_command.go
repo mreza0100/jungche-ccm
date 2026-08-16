@@ -83,8 +83,6 @@ func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runChatHide(rest, stdout, stderr)
 	case "unhide":
 		return runChatUnhide(rest, stdout, stderr)
-	case "bb":
-		return runBB(rest, stdin, stdout, stderr)
 	case "end":
 		return runChatEnd(rest, stdout, stderr)
 	case "swap":
@@ -130,7 +128,6 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  name        rename a chat and converge its window")
 	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide      remove a chat hide")
-	fmt.Fprintln(w, "  bb          the /bb UserPromptSubmit hook")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
 	fmt.Fprintln(w, "  swap        reboot a Claude chat in place under another account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")

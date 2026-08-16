@@ -24,6 +24,44 @@ const (
 	helperWriteCount = 200
 )
 
+func TestPromptBaselineHideAutoUnhidesAfterTranscriptGrowth(t *testing.T) {
+	setStoreTestJail(t)
+	database := openTestStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	id := "clear-hidden"
+	if err := database.UpsertTranscript(ctx, Transcript{
+		UUID: id, Path: "/claude/clear-hidden.jsonl", PromptCount: 2,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	baseline := int64(2)
+	if err := database.Hide(ctx, Hidden{
+		ID: id, Engine: ClaudeEngine, HiddenAt: 10, BaselinePrompts: &baseline,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	hidden, found, err := database.Hidden(ctx, id)
+	if err != nil || !found || hidden.BaselinePrompts == nil || *hidden.BaselinePrompts != baseline {
+		t.Fatalf("baseline hide = %#v found=%v error=%v", hidden, found, err)
+	}
+	if err := database.UpsertTranscript(ctx, Transcript{
+		UUID: id, Path: "/claude/clear-hidden.jsonl", PromptCount: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hidden, found, err = database.Hidden(ctx, id); err != nil || found {
+		t.Fatalf("grown baseline hide = %#v found=%v error=%v", hidden, found, err)
+	}
+	raw, err := database.state.HiddenAt(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := raw[id]; found {
+		t.Fatalf("expired baseline hide remains in shared state: %#v", raw)
+	}
+}
+
 // A persistent busy database must be loud and nonzero; success would claim an
 // operator decision was durable when no row was written.
 func TestHiddenBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {

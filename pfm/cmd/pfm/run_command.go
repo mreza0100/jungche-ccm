@@ -145,7 +145,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	if parent := parentChatID(); parent != "" {
 		if err := registerDetachedChild(resolved, parent, result.Socket); err != nil {
-			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for bb cleanup: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for parent-close cleanup: %v\n", err)
 		}
 	}
 	if prompt == "" {

@@ -158,22 +158,57 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Hide records a permanent hide in SQLite.
+// HiddenRecord is one operator hide. A nil AtPayload is permanent; a prompt
+// baseline is the clear-hide ratchet and expires when that transcript grows.
+type HiddenRecord struct {
+	HiddenAt  int64
+	AtPayload *int64
+}
+
+// Hide records a permanent hide in SQLite. An explicit hide always wins over
+// an earlier clear-hide ratchet by clearing its prompt baseline.
 func (s *Store) Hide(ctx context.Context, id string, hiddenAt int64) error {
 	if s.db == nil {
 		return fmt.Errorf("record shared hide %q: %w", id, s.degraded)
 	}
-	// COALESCE, not assignment: a second hide must not blank a payload an
-	// earlier one supplied, whichever order they land in.
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,NULL)
 ON CONFLICT(uuid) DO UPDATE SET
   hidden_at=excluded.hidden_at,
-  at_payload=COALESCE(excluded.at_payload, hidden.at_payload)`,
+  at_payload=NULL`,
 		id,
 		hiddenAt,
 	); err != nil {
 		return fmt.Errorf("record shared hide %q: %w", id, err)
+	}
+	return nil
+}
+
+// HideUntilPrompt records the current prompt count for a /clear hide. A
+// permanent hide is never weakened; repeated clear events retain the greatest
+// observed baseline so delivery/index races cannot unhide too early.
+func (s *Store) HideUntilPrompt(
+	ctx context.Context,
+	id string,
+	hiddenAt, baseline int64,
+) error {
+	if s.db == nil {
+		return fmt.Errorf("record shared clear hide %q: %w", id, s.degraded)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,?)
+ON CONFLICT(uuid) DO UPDATE SET
+  hidden_at=CASE WHEN hidden.at_payload IS NULL THEN hidden.hidden_at ELSE excluded.hidden_at END,
+  at_payload=CASE
+    WHEN hidden.at_payload IS NULL THEN NULL
+    WHEN excluded.at_payload > hidden.at_payload THEN excluded.at_payload
+    ELSE hidden.at_payload
+  END`,
+		id,
+		hiddenAt,
+		baseline,
+	); err != nil {
+		return fmt.Errorf("record shared clear hide %q: %w", id, err)
 	}
 	return nil
 }
@@ -193,15 +228,41 @@ func (s *Store) Unhide(ctx context.Context, id string) error {
 	return nil
 }
 
-// HiddenAt returns every hidden row keyed by chat id.
-func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
+// UnhideIfPayload expires only the clear-hide version the caller observed.
+// A concurrent explicit hide or later /clear survives the conditional delete.
+func (s *Store) UnhideIfPayload(
+	ctx context.Context,
+	id string,
+	payload int64,
+) (bool, error) {
+	if s.db == nil {
+		return false, fmt.Errorf("expire shared clear hide %q: %w", id, s.degraded)
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM hidden WHERE uuid=? AND at_payload=?",
+		id,
+		payload,
+	)
+	if err != nil {
+		return false, fmt.Errorf("expire shared clear hide %q: %w", id, err)
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("count expired shared clear hide %q: %w", id, err)
+	}
+	return removed == 1, nil
+}
+
+// HiddenRecords returns the complete shared hide state keyed by chat id.
+func (s *Store) HiddenRecords(ctx context.Context) (map[string]HiddenRecord, error) {
 	if s.db == nil {
 		return nil, fmt.Errorf("query shared hides: %w", s.degraded)
 	}
-	hidden := make(map[string]int64)
+	records := make(map[string]HiddenRecord)
 	rows, err := s.db.QueryContext(
 		ctx,
-		"SELECT uuid, hidden_at FROM hidden",
+		"SELECT uuid, hidden_at, at_payload FROM hidden",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query shared hides: %w", err)
@@ -210,13 +271,32 @@ func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
 	for rows.Next() {
 		var id string
 		var hiddenAt int64
-		if err := rows.Scan(&id, &hiddenAt); err != nil {
+		var payload sql.NullInt64
+		if err := rows.Scan(&id, &hiddenAt, &payload); err != nil {
 			return nil, fmt.Errorf("scan shared hide: %w", err)
 		}
-		hidden[id] = hiddenAt
+		record := HiddenRecord{HiddenAt: hiddenAt}
+		if payload.Valid {
+			value := payload.Int64
+			record.AtPayload = &value
+		}
+		records[id] = record
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate shared hides: %w", err)
+	}
+	return records, nil
+}
+
+// HiddenAt returns every hidden row keyed by chat id.
+func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
+	records, err := s.HiddenRecords(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hidden := make(map[string]int64, len(records))
+	for id, record := range records {
+		hidden[id] = record.HiddenAt
 	}
 	return hidden, nil
 }

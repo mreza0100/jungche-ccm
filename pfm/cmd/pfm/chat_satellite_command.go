@@ -596,7 +596,7 @@ func runChatBranch(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if err := registerPaneChild(id, pane); err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: WARNING: child is live but could not be registered for bb cleanup: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat branch: WARNING: child is live but could not be registered for parent-close cleanup: %v\n", err)
 	}
 	fmt.Fprintf(stdout, "Branched %s…", transcript.Truncate(id, 8))
 	if name != "" {

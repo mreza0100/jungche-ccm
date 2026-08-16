@@ -27,7 +27,7 @@ const (
 	// StateKeep is an attached socket: a live tab is showing it.
 	StateKeep State = "keep"
 	// StateMate is a cc-new-* detached teammate: headless BY DESIGN, reaped
-	// by its parent chat's /bb, never by a sweep.
+	// by its parent chat's close choreography, never by a sweep.
 	StateMate State = "mate"
 	// StateBusy is a session the engine itself reports as working.
 	StateBusy State = "busy"
@@ -191,7 +191,7 @@ func planSocket(input Input, socket Socket) Decision {
 
 	if strings.HasPrefix(socket.Name, "cc-new-") {
 		decision.State = StateMate
-		decision.Reason = "detached teammate — its parent's /bb reaps it"
+		decision.Reason = "detached teammate — its parent chat's close choreography reaps it"
 		return decision
 	}
 

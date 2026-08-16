@@ -147,8 +147,8 @@ The four identity/state regressions that established this plan. A tagged row mus
 | `heal --thread` is a silent exit-0 no-op on a healthy thread | JAIL | `cmd/pfm/heal_jail_test.go:152-176` | |
 | ResumeCodex runs the native projection repair before the seat is created | JAIL | `internal/action/executor.go:113-127`, `testdata/golden/cmdlines.txt:47-54` | |
 | `name-sync` converges both engines' window names; `--dry-run` changes nothing | JAIL+tmux | `internal/gather/labels_jail_test.go:14-90` | |
-| `bb` blocks a bare `/bb` (rc 2) and passes every other prompt through | JAIL | `cmd/pfm/bb_jail_test.go:12-100` | |
-| `bb` fails OPEN on unreadable stdin, non-JSON, or a missing prompt field | JAIL | `cmd/pfm/bb_jail_test.go:12-52` | |
+| `internal clear-hide` owns only `SessionEnd(reason=clear)`, ignores `/exit`, and fails open | JAIL | `cmd/pfm/clear_hide_jail_test.go` | |
+| clear-hide refreshes the indexed transcript before recording its prompt baseline | JAIL | `cmd/pfm/clear_hide_jail_test.go`, `internal/store/hidden_test.go` | |
 
 ## B — Picker TUI: key bindings and model state
 
@@ -348,8 +348,8 @@ tonight's four bugs all live in.
 | `chat read`, `last`, `stream`, `status`, and `watch` preserve transcript/state semantics                             | JAIL      | `headless_command.go`, `internal/headless`, `internal/transcript`           |                        |
 | `chat capture` resolves the target, requires a live pane, and prints full scrollback                                 | JAIL+tmux | `chat_command.go`                                                           |                        |
 | `chat name` sends `/rename`, then converges that exact pane's window in the same process                             | JAIL+tmux | `chat_command.go`, `chat_name_jail_test.go`                                 | B4                     |
-| `chat hide` / `unhide` resolve names through the store; `self` shares the picker/BB path                             | JAIL+tmux | `chat_command.go`, `hide_cli_engine_jail_test.go`                           | B2, B3                 |
-| `chat bb` and `chat group hook` drain stdin and fail open at rc 0                                                    | JAIL      | `bb_jail_test.go`, `chat_command.go`                                        |                        |
+| `chat hide` / `unhide` resolve names through the store; `self` shares the picker path                                | JAIL+tmux | `chat_command.go`, `hide_cli_engine_jail_test.go`                           | B2, B3                 |
+| `chat group hook` drains stdin and fails open at rc 0                                                               | JAIL      | `chat_command.go`                                                           |                        |
 | `chat end` kills only the resolved chat server                                                                       | JAIL+tmux | `chat_command.go`                                                           |                        |
 | `chat find`, `save`, `load`, `branch`, and `ls` are native Go; `history` retains its helper contract                 | JAIL+sh   | `chat_satellite_command.go`, `chat_satellite_command_test.go`, `history.sh` |                        |
 | `chat group {create,ls,send,read,subscribe,invite,hook}` is the complete group bus                                   | JAIL      | `chat_command.go`, `chat_group_command.go`                                  |                        |
@@ -413,11 +413,12 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | ----------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------ | ---------- |
 | shared-store open is idempotent, initializes schema, enables WAL and sets a busy timeout              | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            |            |
 | hide add/delete/lookup use SQLite exclusively and never recreate the retired carrier                  | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            | B2         |
+| clear-hide baselines survive reads, expire after transcript growth, and cannot weaken a permanent hide | JAIL            | `internal/shared/shared_test.go`, `internal/store/hidden_test.go`, `internal/compose/compose_test.go` | |
 | hide sync and orphan pruning replace only the intended set, in one transaction                        | JAIL             | `internal/shared/shared.go`, `internal/store/hidden_test.go`             |            |
 | chat cache load/save/prune preserves tab-bearing prompt text and exact ids                            | JAIL             | `internal/store`, `internal/store/queries_test.go`                       |            |
 | hidden `internal primary-get/set` validates the 1/2 roster and keeps its mirror coherent              | JAIL             | `cmd/pfm/main.go`, `internal/shared/shared_test.go`, `shim/shim_test.go` |            |
 | child add/list/clear distinguishes `new` servers from `pane` children                                 | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            |            |
-| `/bb` and the Codex `$bb` skill both run `pfm chat hide self --exit`                                  | JAIL+tmux        | `bb.command.md`, `codex-skills/bb/SKILL.md`, hide jail tests             |            |
+| installer removes owned `/bb` cards and hook wiring, preserves unrelated files, and wires one clear hook | JAIL           | `internal/installer/installer_test.go`                                    |            |
 | hidden `internal agent-open` holds a per-id mutex; exactly one concurrent takeover wins               | JAIL             | `internal/agentopen/agentopen.go`, `agentopen_test.go`                   |            |
 | agent registry accepts `sessionId` or `id` prefixes across configured account roots                   | **REAL-SESSION** | `internal/agentopen/agentopen.go`, `agentopen_test.go`                   | B3         |
 | agent routing attaches busy/tmux-resident work and takes over idle work                               | JAIL+tmux        | `internal/agentopen`, `agentopen_test.go`                                |            |
@@ -434,7 +435,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm install` dry run is the default and writes nothing                                                          | JAIL             | `internal/installer`, installer tests     |            |
 | a reachable user bus refuses before any write with rc 97                                                         | JAIL             | `install_command_test.go`, installer tests |            |
 | apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
-| command cards, helpers, Codex skill, shim and units link to the managed asset tree                               | JAIL+sh          | `internal/installer`, installer tests     |            |
+| command cards, helpers, shim and units link to the managed asset tree                                            | JAIL+sh          | `internal/installer`, installer tests     |            |
 | real destinations are backed up; uninstall restores the newest backup                                             | JAIL             | `internal/installer`, installer tests     |            |
 | zshrc and canonical settings converge without duplicate commands                                                  | JAIL+sh          | `internal/installer`, installer tests     |            |
 | immediate second apply reports `changed=0`                                                                        | JAIL             | `TestApplyIsSelfContainedIdempotentAndReversible` |            |
@@ -443,7 +444,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm-name-sync.timer` 15-min drift fallback                                                                       | JAIL+sh          | `systemd/pfm-name-sync.timer`             |            |
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
-| installer rewires BB, group, statusline, usage and dream hooks across canonical accounts                         | JAIL             | `internal/installer`, installer tests     |            |
+| installer rewires clear-hide, group, statusline, usage and dream hooks across canonical accounts                 | JAIL             | `internal/installer`, installer tests     |            |
 
 ---
 
@@ -483,7 +484,7 @@ they count as covered.
     same live chats. 22 checks, all green. Re-run on any engine upgrade —
     `ask` is only as true as the transcript shapes both engines write.
 
-**Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. ✅ DONE — `[Pasted text #N]` collapse measured for literal and bracketed-paste transport in a real Claude composer; auto-file fixtures cover the edge. Re-run on any Claude Code upgrade. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
+**Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. ✅ DONE — `/clear` emits `SessionEnd(reason=clear)` then `SessionStart(source=clear)` while `/exit` emits `SessionEnd(reason=prompt_input_exit)`; re-run on any Claude Code upgrade. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. ✅ DONE — `[Pasted text #N]` collapse measured for literal and bracketed-paste transport in a real Claude composer; auto-file fixtures cover the edge. Re-run on any Claude Code upgrade. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
 28b. `pfm reap`'s busy probe against REAL `claude agents --json`; the jail proves fail-closed
 plumbing but not the live daemon's JSON shape, so re-run it on any Claude Code upgrade.
 
@@ -500,9 +501,7 @@ plumbing but not the live daemon's JSON shape, so re-run it on any Claude Code u
    `compose/compose.go:873` accepts accounts 1-3, `pipeline.go:536` labels them 1-3 — but
    `action/synth.go:19` caps at 2 and the shim has no `cc3`. `readPrimaryAccount` clamps
    off-roster values upstream, so launches stay correct; the divergence is dormant, not dead.
-3. **`bb.command.md` documents `kill-server`**, but `internal/hide/finisher.go` deliberately
-   does kill-PANE (and the doc's claim would take split siblings down). Stale contract.
-4. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
+3. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
 
 ---

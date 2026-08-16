@@ -121,8 +121,7 @@ func TestPlainQueries(t *testing.T) {
 		t.Fatalf("Meta() after delete found = %v, error = %v; want false, nil", found, err)
 	}
 
-	// A caller may still hand over a baseline; the shared schema has no place
-	// to put one, so it reads back nil and the hide is permanent regardless.
+	// A prompt baseline is the /clear ratchet and survives in shared state.
 	baseline := int64(7)
 	hidden := Hidden{
 		ID:              "cc-1",
@@ -137,7 +136,7 @@ func TestPlainQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Hidden() error = %v", err)
 	}
-	wantHidden := Hidden{ID: "cc-1", Engine: "cc", HiddenAt: 1234}
+	wantHidden := hidden
 	if !found || !reflect.DeepEqual(gotHidden, wantHidden) {
 		t.Fatalf("Hidden() = %#v, %v, want %#v, true", gotHidden, found, wantHidden)
 	}
@@ -249,8 +248,8 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// cc-grown carries a stale baseline its prompt count already passed: the
-	// retired ratchet must not bring it back.
+	// cc-grown carries a /clear baseline its prompt count already passed, so
+	// the cached frame must auto-unhide it.
 	stale := int64(1)
 	if err := database.UpsertTranscript(ctx, Transcript{
 		UUID: "cc-grown", Path: "/cc/grown.jsonl", Size: 100,
@@ -295,12 +294,12 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 	if len(transcripts) != 30 || len(rollouts) != 15 {
 		t.Fatalf("candidate lengths=%d/%d, want 30/15", len(transcripts), len(rollouts))
 	}
-	if counts.Hidden != 3 || counts.Suppressed != 17 {
-		t.Fatalf("cached counts=%+v, want hidden=3 suppressed=17", counts)
+	if counts.Hidden != 2 || counts.Suppressed != 18 {
+		t.Fatalf("cached counts=%+v, want hidden=2 suppressed=18", counts)
 	}
 	for _, transcript := range transcripts {
 		if transcript.IsBG || transcript.Size <= 0 || transcript.PromptCount <= 0 ||
-			transcript.UUID == "cc-hidden" || transcript.UUID == "cc-grown" {
+			transcript.UUID == "cc-hidden" {
 			t.Fatalf("ineligible cached transcript: %#v", transcript)
 		}
 	}

@@ -485,7 +485,7 @@ func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
 		t.Fatalf("Hidden() found=%v err=%v", found, err)
 	}
 	if hidden.BaselinePrompts != nil {
-		t.Fatalf("baseline = %v, want the retired column left NULL", *hidden.BaselinePrompts)
+		t.Fatalf("baseline = %v, want an explicit hide to stay permanent", *hidden.BaselinePrompts)
 	}
 }
 
@@ -747,12 +747,10 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	baseline := int64(2)
 	if err := database.Hide(ctx, store.Hidden{
-		ID:              id,
-		Engine:          ClaudeEngine,
-		HiddenAt:        100,
-		BaselinePrompts: &baseline,
+		ID:       id,
+		Engine:   ClaudeEngine,
+		HiddenAt: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1136,8 +1134,8 @@ INSERT INTO threads (
 	}
 }
 
-// assertHidden also pins the retired ratchet column to NULL: a hide is
-// permanent, so no prompt baseline is ever written.
+// assertHidden also pins the prompt baseline to NULL: these are explicit
+// hides, so none may acquire /clear's auto-unhide behavior.
 //
 // The engine argument is the DERIVED one. A chat the fleet index has never
 // seen — a Codex thread known only to Codex's own state store, say — derives
