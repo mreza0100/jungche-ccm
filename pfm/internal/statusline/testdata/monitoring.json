@@ -1,0 +1,19 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"labels": {"type": "input", "explicit_caching": ""}},
+      "resource": {"labels": {"model_user_id": "gemini-2.5-flash"}},
+      "points": [{"interval": {"endTime": "2026-08-17T00:00:00+02:00"}, "value": {"int64Value": "1000000"}}]
+    },
+    {
+      "metric": {"labels": {"type": "input", "explicit_caching": "cached"}},
+      "resource": {"labels": {"model_user_id": "gemini-2.5-flash"}},
+      "points": [{"interval": {"endTime": "2026-08-17T00:00:00+02:00"}, "value": {"int64Value": "500000"}}]
+    },
+    {
+      "metric": {"labels": {"type": "output"}},
+      "resource": {"labels": {"model_user_id": "gemini-2.5-flash"}},
+      "points": [{"interval": {"endTime": "2026-08-17T00:00:00+02:00"}, "value": {"int64Value": "100000"}}]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "skus": [
+    {
+      "description": "Gemini 2.5 Flash GA Text Input - Predictions",
+      "pricingInfo": [{"pricingExpression": {"tieredRates": [{"unitPrice": {"units": "0", "nanos": 263}}]}}]
+    },
+    {
+      "description": "Gemini 2.5 Flash GA Text Output - Predictions",
+      "pricingInfo": [{"pricingExpression": {"tieredRates": [{"unitPrice": {"units": "0", "nanos": 2194}}]}}]
+    }
+  ]
+}

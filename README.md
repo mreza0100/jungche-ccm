@@ -29,15 +29,15 @@ Claude interviews you — structure, stack, which disciplines your Professor sho
 
 ## The one idea everything else follows from
 
-The failure mode this framework exists to kill is the **honest-looking absence**: an instrument that reports *outside my coverage* as *does not exist*. A grep renders a pattern-miss as "clean." A UI renders a failed query as "no data." An agent renders a skipped suite as "passed." From the release notes, after a night of hunting exactly that class through the framework's own files:
+The failure mode this framework exists to kill is the **honest-looking absence**: an instrument that reports _outside my coverage_ as _does not exist_. A grep renders a pattern-miss as "clean." A UI renders a failed query as "no data." An agent renders a skipped suite as "passed." From the release notes, after a night of hunting exactly that class through the framework's own files:
 
 > "The only thing that ever caught it, at every altitude, was an independent instrument whose coverage was stated: **the judge must never be the thing being judged.**"
 
 What that principle looks like as machinery, not slogans:
 
-- **Merge gates read disk, not chat.** `gitter` merges only after reading the QA verdict file itself — in the gate's own words, *"a verdict asserted in the dispatch brief is a claim this gate cannot audit and NEVER satisfies it."* A completeness check then requires a verdict for every project the diff actually touched; a missing one re-runs the gate.
+- **Merge gates read disk, not chat.** `gitter` merges only after reading the QA verdict file itself — in the gate's own words, _"a verdict asserted in the dispatch brief is a claim this gate cannot audit and NEVER satisfies it."_ A completeness check then requires a verdict for every project the diff actually touched; a missing one re-runs the gate.
 - **A regression test is accepted only after it was watched failing** against the unfixed code. A test that never failed proves nothing about the fix.
-- **The post-merge walker FAILS rather than reporting clean** when its scout dies twice, when the changed-file count won't reconcile against an independently-run count, or when it finds zero threads to walk over a non-empty diff — *"that is a SCOUT FAILURE, not a clean walk."*
+- **The post-merge walker FAILS rather than reporting clean** when its scout dies twice, when the changed-file count won't reconcile against an independently-run count, or when it finds zero threads to walk over a non-empty diff — _"that is a SCOUT FAILURE, not a clean walk."_
 - **Every check must name what its own broken state reports.** A checker that answers "fine" both when things are fine and when it is broken is a coincidence detector, and the framework audits its own files for those.
 
 ---
@@ -47,8 +47,8 @@ What that principle looks like as machinery, not slogans:
 Everything else is detail. These five are load-bearing:
 
 1. **One agent owns git writes.** Only `gitter` runs `commit` / `merge` / `push` / `checkout`, through eight named phases. Read-only git is open to everyone. No races, no half-merges, and "what got committed" is auditable.
-2. **QA gates every merge — twice.** Pre-merge on the branch, post-merge on `main`. All failing tests block, including pre-existing ones: *"every pipeline leaves main cleaner than it found it."* The fix loop is hard-capped at 3 iterations, then the pipeline parks as BLOCKED-DEFERRED with its worktree preserved — no infinite churn, no silent give-up.
-3. **Worktree isolation with collision-proof ports.** Each pipeline gets its own worktree and a port tuple checked three ways — allocation lock, registry reservation, and a live listener probe. A probe that *fails to run* refuses the port rather than guessing.
+2. **QA gates every merge — twice.** Pre-merge on the branch, post-merge on `main`. All failing tests block, including pre-existing ones: _"every pipeline leaves main cleaner than it found it."_ The fix loop is hard-capped at 3 iterations, then the pipeline parks as BLOCKED-DEFERRED with its worktree preserved — no infinite churn, no silent give-up.
+3. **Worktree isolation with collision-proof ports.** Each pipeline gets its own worktree and a port tuple checked three ways — allocation lock, registry reservation, and a live listener probe. A probe that _fails to run_ refuses the port rather than guessing.
 4. **Hotfixes ship prevention.** `/jc`, the one route allowed to deliver on `main`, requires every fix to carry a hardening measure in the same commit — a convention line, a type guard, a lint rule, or a config default — or to state explicitly why this bug class can't recur. A fix without prevention is half a fix.
 5. **Self-improvement at the source, hook-enforced.** `/pcm` edits the agent definitions themselves — and the framework's files are literally write-locked by a PreToolUse guard until the session has provably read the prompt-quality law. Not policy: mechanism.
 
@@ -60,9 +60,9 @@ These are characters, not system prompts with different adjectives. The voice is
 
 **The Professor** — the root persona behind `CLAUDE.md`. A grandfatherly polymath with ten doctorates **you choose at install**, half computer science, half your domain. Every answer ends with a **Verdict** — one sentence, outcome plus next step, never a recap.
 
-**`/jc`** — the "production is on fire" hotfix path. Chill on the surface, holy at the core: *"The symptom's in the button. The disease is in the resolver. The cause? Migration. It's always the migration, dude. I see all things. 👁️"* Still finds the bug, still gates on tests, still commits through gitter.
+**`/jc`** — the "production is on fire" hotfix path. Chill on the surface, holy at the core: _"The symptom's in the button. The disease is in the resolver. The cause? Migration. It's always the migration, dude. I see all things. 👁️"_ Still finds the bug, still gates on tests, still commits through gitter.
 
-**Dr. House** — the voice `/pcm` adopts for framework surgery, and a mnemonic for its method: *"Everybody lies — verify everything. Agents claim they followed protocol; CLAUDE.md claims the tables are current. You trust `grep`, not documentation."*
+**Dr. House** — the voice `/pcm` adopts for framework surgery, and a mnemonic for its method: _"Everybody lies — verify everything. Agents claim they followed protocol; CLAUDE.md claims the tables are current. You trust `grep`, not documentation."_
 
 **The optional five** (opt-in at install, parameterized to your domain): `/officer` compliance · `/km` knowledge curation · `/pm` product · `/mentor` business · `/marketer` visibility.
 
@@ -103,36 +103,36 @@ Small change? `/jc` delivers on `main` under its own QA and prevention rule. Bat
 
 ## What ships
 
-| | |
-|---|---|
-| **Pipeline** | `/wave:builder` · `/wave:orchestrator` · `/wave:live` · `/wave:refine` · `/wave:schedule` · `/wave:walker` · `/wave:watcher` |
-| **Delivery** | `/jc` · `/dev` · `/git` · `/documenter` · `/qa:live` · `/goal-manager` |
-| **Framework** | `/pcm` · `/pcm:update` · `/pcm:release` · `/pcm:context-meter` |
-| **Thinking** | `/p:360` · `/p:rnd` · `/p:tokens` · `/p:slow-burn` · `/sleep` · `/animate` |
-| **Quality** | `/quality:doc` · `/quality:prompt` · `/audit:code-hygiene` · `/audit:security` · `/audit:ai-output` |
-| **Optional roles** | `/officer` · `/km` · `/pm` · `/mentor` · `/marketer` |
-| **Legal shelf** | `legal` skill — 11 distilled playbooks (DPA drafting, DPIA, breach response, vendor due diligence, NDA triage, a pre-delivery self-check) the Professor and `/officer` consult; attributed distillations, not legal advice |
-| **Agents** | `gitter`, `tracer`, `mono-{planner,architect,documenter}`, and per-project `planner` / `architect` / `developer` / `qa` |
-| **Source-fetched** | `rr` (research & report) · `ghostwriter` (voice fingerprinting) · `vision-factory` — cloned from their own repos at install, never vendored, so they can't silently drift |
+|                    |                                                                                                                                                                                                                            |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pipeline**       | `/wave:builder` · `/wave:orchestrator` · `/wave:live` · `/wave:refine` · `/wave:schedule` · `/wave:walker` · `/wave:watcher`                                                                                               |
+| **Delivery**       | `/jc` · `/dev` · `/git` · `/documenter` · `/qa:live` · `/goal-manager`                                                                                                                                                     |
+| **Framework**      | `/pcm` · `/pcm:update` · `/pcm:release` · `/pcm:context-meter`                                                                                                                                                             |
+| **Thinking**       | `/p:360` · `/p:rnd` · `/p:tokens` · `/p:slow-burn` · `/sleep` · `/animate`                                                                                                                                                 |
+| **Quality**        | `/quality:doc` · `/quality:prompt` · `/audit:code-hygiene` · `/audit:security` · `/audit:ai-output`                                                                                                                        |
+| **Optional roles** | `/officer` · `/km` · `/pm` · `/mentor` · `/marketer`                                                                                                                                                                       |
+| **Legal shelf**    | `legal` skill — 11 distilled playbooks (DPA drafting, DPIA, breach response, vendor due diligence, NDA triage, a pre-delivery self-check) the Professor and `/officer` consult; attributed distillations, not legal advice |
+| **Agents**         | `gitter`, `tracer`, `mono-{planner,architect,documenter}`, and per-project `planner` / `architect` / `developer` / `qa`                                                                                                    |
+| **Source-fetched** | `rr` (research & report) · `ghostwriter` (voice fingerprinting) · `vision-factory` — cloned from their own repos at install, never vendored, so they can't silently drift                                                  |
 
 A few of these deserve a sentence, because their names undersell them:
 
-- **`/quality:prompt`** is a general law for any LLM-consumed prompt, built around one question — *"Would removing this line cause the model to make a mistake?"* — and 19 named anti-patterns to cut on sight. It applies to your prompts, not just the framework's.
+- **`/quality:prompt`** is a general law for any LLM-consumed prompt, built around one question — _"Would removing this line cause the model to make a mistake?"_ — and 19 named anti-patterns to cut on sight. It applies to your prompts, not just the framework's.
 - **`/p:rnd`** enforces what separates research from confirmation: reproduce the baseline before improving it, adversarial inputs by design, production code paths verbatim, and a hard sandbox — it delivers a `PROPOSED_DIFF.md` and never lands the change itself.
 - **`/p:tokens`** attributes token spend per sub-agent and per workflow run from local transcripts — the attribution OTel can't give you, since the harness redacts custom agent names — and reports four token definitions side by side because they differ by an order of magnitude.
 - **`/audit:security`** runs eleven sections through three adversarial lenses (Saboteur, New Hire, Security Auditor); a finding two lenses raise independently is promoted a severity level.
-- **The statusline** renders three lines — identity, session, money — including a prompt-cache-window segment that answers "will my next prompt hit the cache?", with an honest third state: when it can't read the transcript, it shows `?`, because *"OUR failure must never render as ✗, which is a claim about the chat."*
+- **`pfm statusline`** renders three lines — identity, session, money — including fleet counts and a prompt-cache-window segment that answers "will my next prompt hit the cache?" When it cannot read the transcript, it shows `?`; an inspection failure never masquerades as a cold cache.
 
 ---
 
 ## The host layer — a fleet of chats that talk to each other
 
-Opt-in, and the most unusual thing in the box: `blueprint/templates/host-swap/` treats *chats* as infrastructure. Every command and script installs as a **symlink into the clone**, so `git pull` updates the whole fleet at once and no second copy can drift.
+Opt-in, and the most unusual thing in the box: `blueprint/templates/host-swap/` treats _chats_ as infrastructure. Every command and script installs as a **symlink into the clone**, so `git pull` updates the whole fleet at once and no second copy can drift.
 
 - **Bare `pfm`** — one fuzzy-picker over every live chat, resumable transcript, and running background agent across all your accounts. A chat is never lost because a terminal tab closed; `pfm ls --hidden` exposes the hide ledger.
-- **`/swap <n>`** — reboots a *running* chat in place onto another account: same pane, same conversation, new billing identity. With `--then "<prompt>"`, a chat running out of budget swaps itself and hands itself the baton, unattended.
+- **`/swap <n>`** — reboots a _running_ chat in place onto another account: same pane, same conversation, new billing identity. With `--then "<prompt>"`, a chat running out of budget swaps itself and hands itself the baton, unattended.
 - **`/bb`** — the disposal end: hide this chat, reap the teammates it spawned, exit clean.
-- **`pfm chat` + `/chat:*`** — the per-chat interface and its instruction cards. `inject` types a real turn into another pane under a per-target lock, protecting drafts and refusing unsafe dialogs; `new` starts a named chat on an immutable socket; `read`, `stream`, `capture`, `name`, `hide`, `end`, and the group verbs share one target resolver. `/chat:branch` forks this session beside it, and `/chat:interrogate` resumes a finished session to ask it *why*.
+- **`pfm chat` + `/chat:*`** — the per-chat interface and its instruction cards. `inject` types a real turn into another pane under a per-target lock, protecting drafts and refusing unsafe dialogs; `new` starts a named chat on an immutable socket; `read`, `stream`, `capture`, `name`, `hide`, `end`, and the group verbs share one target resolver. `/chat:branch` forks this session beside it, and `/chat:interrogate` resumes a finished session to ask it _why_.
 
 **Read before opting in:** the fleet assumes `tmux`, `zsh`, `fzf`, and `jq`, leans on Linux facilities (`/proc`, systemd user units) with macOS mostly working and Windows unsupported — and it launches chats with permission prompts disabled by explicit design, leaving PreToolUse hooks as the remaining brake. That trade-off is documented in the bundle, not hidden; make it consciously.
 
@@ -151,7 +151,7 @@ Structure is captured as a **roster** — an ordered list of 1..N projects, each
 - **One project** is a roster of one, and it is first-class rather than a stripped-down path. The worktree is the repo root, routing collapses, cross-project steps disappear.
 - **A monorepo** lights up per-project agents and cross-project contract routing automatically.
 
-The characters are domain-independent: a Professor holding graphics, physics, and audio doctorates for a game engine is the same archetype as one holding CS and clinical psychology for a medical tool. The blueprint's own smell test: could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team each see *their* version of this cast? If anyone has to delete personality to adopt it, the blueprint failed.
+The characters are domain-independent: a Professor holding graphics, physics, and audio doctorates for a game engine is the same archetype as one holding CS and clinical psychology for a medical tool. The blueprint's own smell test: could a neuropsychology lab, a tabletop RPG studio, and a SCADA controls team each see _their_ version of this cast? If anyone has to delete personality to adopt it, the blueprint failed.
 
 **Good fit:** anything where a broken `main` costs real time, where features cross project boundaries, or where you're one person who wants a team's discipline.
 **Overkill for:** a 200-line script, a throwaway prototype, or a repo where `main` breaking genuinely doesn't matter.
@@ -178,7 +178,7 @@ Releases are annotated git tags. Your install records a manifest — interview a
 /pcm:update --to vX.Y.Z  # pin a specific release
 ```
 
-Every file lands in one of three buckets — **auto-apply** (upstream moved, you didn't), **review** (both moved, or the change costs money: new hooks, env vars, model config are *always* reviewed, never auto-applied), **manual** (migrations, new interview questions). Customizations you record in `.professor/drift.md` are a forced KEEP-LOCAL that overrides any auto-apply. See [`CHANGELOG.md`](./CHANGELOG.md).
+Every file lands in one of three buckets — **auto-apply** (upstream moved, you didn't), **review** (both moved, or the change costs money: new hooks, env vars, model config are _always_ reviewed, never auto-applied), **manual** (migrations, new interview questions). Customizations you record in `.professor/drift.md` are a forced KEEP-LOCAL that overrides any auto-apply. See [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
@@ -187,10 +187,10 @@ Every file lands in one of three buckets — **auto-apply** (upstream moved, you
 Honesty section — the claims this repo deliberately does **not** make:
 
 - **No CI ships here.** The gates are agent-executed local runs whose evidence is persisted artifacts. Wire your own CI on top; nothing here conflicts with it.
-- **Nothing pushes on its own.** A successful merge is explicitly *not* push permission — publication happens only when you ask for it, by name.
+- **Nothing pushes on its own.** A successful merge is explicitly _not_ push permission — publication happens only when you ask for it, by name.
 - **The walker doesn't run your code.** It's a read-only wiring trace of the merged result; `/qa:live` is the command that proves live behavior.
 - **Templates are not runnable as shipped.** Placeholders are the point — the install interview fills them. A template with your values baked in would be someone else's repo.
-- **No telemetry.** The statusline, rate-limit gauge, and token ledger parse local transcript files. Nothing phones anywhere.
+- **No Professor telemetry.** The statusline, rate-limit gauge, and token ledger keep their state locally. Detached spend and quota refreshers call the providers' authenticated APIs directly; Professor receives nothing.
 
 ---
 
@@ -234,7 +234,7 @@ professor/
         ├── CLAUDE.md, agents/, commands/, workflows/, scripts/
         ├── output-styles/  personas, full and compact
         ├── skills/         sources.json + the legal reference shelf
-        ├── statusline/, vscode/, themes/, epics/
+        ├── vscode/, themes/, epics/
         ├── host-swap/      multi-account fleet + chat bus (+ its own test fixtures)
         └── codex/          optional dual-runtime layer
 ```

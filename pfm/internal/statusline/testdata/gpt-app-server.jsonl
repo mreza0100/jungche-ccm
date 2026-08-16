@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","method":"configWarning","params":{}}
+{"jsonrpc":"2.0","id":0,"result":{"userAgent":"fixture"}}
+{"jsonrpc":"2.0","id":1,"result":{"rateLimits":{"primary":{"usedPercent":41.9,"windowDurationMins":300,"resetsAt":1786845600},"secondary":{"usedPercent":57.2,"windowDurationMins":10080,"resetsAt":1787277600},"planType":"plus","credits":{"balance":"8.50"}}}}

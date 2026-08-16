@@ -531,14 +531,6 @@
     "templates/skills/sources.json": {
       "curated": true
     },
-    "templates/statusline/README.md": {
-      "curated": true
-    },
-    "templates/statusline/statusline-command.sh": {
-      "sources": {
-        "~/.claude/statusline-command.sh": "9a78109739a5a0ed3049d27dc8a08d746e235a3fc700719d9f4aa5147728439f"
-      }
-    },
     "templates/themes/sources.json": {
       "curated": true
     },
@@ -627,9 +619,6 @@
       "curated": true
     },
     "templates/host-swap/install.sh": {
-      "curated": true
-    },
-    "templates/host-swap/statusline-badge.snippet.sh": {
       "curated": true
     },
     "templates/host-swap/swap.command.md": {

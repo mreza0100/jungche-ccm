@@ -164,12 +164,19 @@ done
 ok "every retired artifact is gone after --apply" "$left" "0"
 ok "fleet bin remains empty" "$(find "$BIN" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l | tr -d ' ')" "0"
 
-echo "=== the /bb hook is rewired from bb-hook.sh to the pfm binary ==="
+echo "=== native statusline, usage, and chat hooks are rewired to the pfm binary ==="
 # settings.json is the one declaration of that hook and this installer is its only writer.
 if command -v jq >/dev/null 2>&1; then
   mkdir -p "$CLAUDE_DIR"
   cat > "$CLAUDE_DIR/settings.json" <<JSON
 {
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh",
+    "padding": 0,
+    "refreshInterval": 3,
+    "hideVimModeIndicator": true
+  },
   "hooks": {
     "PreToolUse": [
       {"matcher": "Agent", "hooks": [{"type": "command", "command": "$HOME/.local/bin/cc-fleet dream hook agent-inject"}]}
@@ -186,26 +193,52 @@ JSON
   out="$(run)"
   ok "dry run announces the rewire"    "$(printf '%s' "$out" | grep -c 'rewire  the bb-hook.sh')" "1"
   ok "dry run announces group rewire"  "$(printf '%s' "$out" | grep -c 'rewire  the group.sh')" "1"
+  ok "dry run announces statusline rewire" "$(printf '%s' "$out" | grep -c 'statusline.*pfm statusline')" "1"
+  ok "dry run announces usage rewire"  "$(printf '%s' "$out" | grep -c 'cc-usage-hook.sh.*pfm usage-hook')" "1"
   ok "dry run leaves settings.json alone" "$(grep -c 'bb-hook.sh' "$CLAUDE_DIR/settings.json")" "1"
   run --apply >/dev/null
   ok "the hook now runs the chat binary" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
   ok "the group hook now runs the chat binary" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat group hook$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
-  ok "no retired hook reference remains" "$(grep -Ec 'bb-hook\.sh|chat/group\.sh hook|/cc-fleet( |\")' "$CLAUDE_DIR/settings.json")" "0"
-  ok "the unrelated hook survived"     "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("cc-usage-hook"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "statusline now runs the binary"   "$(jq -r '.statusLine.command' "$CLAUDE_DIR/settings.json")" "$HOME/.local/bin/pfm statusline"
+  ok "usage hook now runs the binary"   "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm usage-hook$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "no retired hook or statusline reference remains" "$(grep -Ec 'bb-hook\.sh|chat/group\.sh hook|cc-usage-hook\.sh|statusline-command\.sh|/cc-fleet( |\")' "$CLAUDE_DIR/settings.json")" "0"
   ok "settings.json was backed up"     "$(ls -1 "$CLAUDE_DIR/settings.json.pre-professor-"* 2>/dev/null | wc -l | tr -d ' ')" "1"
   out="$(run)"
   ok "a second run reports it ok"      "$(printf '%s' "$out" | grep -c "ok      the hook already runs")" "1"
   ok "a second run reports group ok"   "$(printf '%s' "$out" | grep -c "ok      the group hook already runs")" "1"
+  ok "a second run reports native statusline ok" "$(printf '%s' "$out" | grep -c "statusline already runs")" "1"
+  ok "a second run reports native usage ok" "$(printf '%s' "$out" | grep -c "usage hook already runs")" "1"
+
+  echo "=== canonical account settings receive the same native wiring ==="
+  mkdir -p "$HOME/.cc/2"
+  printf '{"statusLine":{"type":"command","command":"bash ~/.claude/statusline-command.sh"},"hooks":{"UserPromptSubmit":[]}}\n' > "$HOME/.cc/2/settings.json"
+  run --apply >/dev/null
+  ok "account statusline is native" "$(jq -r '.statusLine.command' "$HOME/.cc/2/settings.json")" "$HOME/.local/bin/pfm statusline"
+  ok "account usage hook is added" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm usage-hook$"))) | length' "$HOME/.cc/2/settings.json")" "1"
 
   echo "=== settings.json with NO bb hook at all gets one added ==="
   printf '{"hooks":{}}\n' > "$CLAUDE_DIR/settings.json"
   run --apply >/dev/null
   ok "the hook was added"              "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
+  ok "native statusline was added"     "$(jq -r '.statusLine.command' "$CLAUDE_DIR/settings.json")" "$HOME/.local/bin/pfm statusline"
+  ok "native usage hook was added"     "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm usage-hook$"))) | length' "$CLAUDE_DIR/settings.json")" "1"
   ok "group remains opt-in when absent" "$(jq -r '[.hooks.UserPromptSubmit[].hooks[].command] | map(select(test("pfm chat group hook$"))) | length' "$CLAUDE_DIR/settings.json")" "0"
   run --uninstall --apply >/dev/null
   ok "uninstall removes the hook"      "$(jq -r '[.hooks.UserPromptSubmit[]?.hooks[]?.command] | map(select(test("pfm chat bb$"))) | length' "$CLAUDE_DIR/settings.json")" "0"
   rm -f "$CLAUDE_DIR/settings.json"
 fi
+
+echo "=== retired statusline shell and Python copies are swept ==="
+mkdir -p "$CLAUDE_DIR/statusline/segments.d"
+for stale in statusline-command.sh statusline/segments.d/10-vertex-spend.sh statusline/segments.d/40-gpt-account.sh statusline/vertex-spend-refresh.py statusline/gpt-usage.py statusline/vertex_daily_tokens.py; do
+  mkdir -p "$(dirname "$CLAUDE_DIR/$stale")"
+  printf 'retired\n' > "$CLAUDE_DIR/$stale"
+done
+out="$(run)"
+ok "dry run announces statusline retirement" "$(printf '%s' "$out" | grep -c 'retire .*statusline-command.sh')" "1"
+run --apply >/dev/null
+left="$(find "$CLAUDE_DIR" -type f \( -name 'statusline-command.sh' -o -name '10-vertex-spend.sh' -o -name '40-gpt-account.sh' -o -name 'vertex-spend-refresh.py' -o -name 'gpt-usage.py' -o -name 'vertex_daily_tokens.py' \) -print | wc -l | tr -d ' ')"
+ok "retired statusline files are gone" "$left" "0"
 
 # leave a clean, linked install behind — this is the last section in the file, but a fixture
 # should never end mid-uninstall in case a case is appended below later.

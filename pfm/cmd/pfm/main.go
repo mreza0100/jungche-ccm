@@ -53,6 +53,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runHeal(args[1:], stdout, stderr)
 	case "name-sync":
 		return runNameSync(args[1:], stdout, stderr)
+	case "statusline":
+		return runStatusline(args[1:], os.Stdin, stdout, stderr)
+	case "usage-hook":
+		return runUsageHook(args[1:], stdout, stderr)
 	case "legacy":
 		return runLegacy(args[1:], stdout, stderr)
 	case "whoami":
@@ -386,5 +390,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "wiring commands:")
 	fmt.Fprintln(w, "  name-sync converge live chat window names")
 	fmt.Fprintln(w, "  chat bb   the /bb UserPromptSubmit hook")
+	fmt.Fprintln(w, "  statusline render the native Claude status line")
+	fmt.Fprintln(w, "  usage-hook the fail-open usage-limit prompt hook")
 	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
 }
