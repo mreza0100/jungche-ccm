@@ -112,7 +112,7 @@ Small change? `/jc` delivers on `main` under its own QA and prevention rule. Bat
 | **Quality**        | `/quality:doc` · `/quality:prompt` · `/audit:code-hygiene` · `/audit:security` · `/audit:ai-output`                                                                                                                        |
 | **Optional roles** | `/officer` · `/km` · `/pm` · `/mentor` · `/marketer`                                                                                                                                                                       |
 | **Legal shelf**    | `legal` skill — 11 distilled playbooks (DPA drafting, DPIA, breach response, vendor due diligence, NDA triage, a pre-delivery self-check) the Professor and `/officer` consult; attributed distillations, not legal advice |
-| **Agents**         | `gitter`, `tracer`, `mono-{planner,architect,documenter}`, and per-project `planner` / `architect` / `developer` / `qa`                                                                                                    |
+| **Agents**         | `gitter`, `tracer`, `mono-{planner,architect,documenter}`, root `qa-{project}` gate wrappers, and per-project `planner` / `architect` / `developer` / `qa`                                                                |
 | **Source-fetched** | `rr` (research & report) · `ghostwriter` (voice fingerprinting) · `vision-factory` — cloned from their own repos at install, never vendored, so they can't silently drift                                                  |
 
 A few of these deserve a sentence, because their names undersell them:

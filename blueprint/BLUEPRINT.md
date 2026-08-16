@@ -43,6 +43,10 @@ Every command, agent, and rule sorts into one of three tiers:
 - **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
 - **vision-factory** — forge, validate, and stress-test a startup vision.
 
+**Bundled skills (ship with the blueprint):**
+
+- **legal** — an attributed reference shelf for the Professor and `/officer`: DPA and DPIA drafting, breach response, privacy notices, vendor due diligence, NDA/risk triage, and a pre-delivery self-check.
+
 ### The optional cast (Tier B — opt-in at install)
 
 - **/officer** — compliance enforcer. Pick your regulation(s). (GDPR, HIPAA, FDA, SOC2, ISO 27001, MiFID, none.)
@@ -53,7 +57,7 @@ Every command, agent, and rule sorts into one of three tiers:
 
 ### The plumbing (Tier C — invisible)
 
-- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer` — root agents. Role-defined, not character-defined.
+- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer`, and one `qa-{project}` gate wrapper per roster entry — root agents. Role-defined, not character-defined.
 - `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
 - `pfm statusline` — native status bar with model, fleet counts, context, git, cost, spend, and rate limits. Wired in the host settings by `pfm install`.
 - `settings-global.json` — a handful of keys merged (never overwritten) into the adopter's own `~/.claude/settings.json`. Currently one key, `cleanupPeriodDays: 36500`, which turns off Claude Code's default 30-day auto-delete of session transcripts and orphaned git worktrees.
@@ -218,12 +222,12 @@ your-project/
 │   ├── drift.md                       ← local customizations the merge keeps (human-readable)
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
-│   ├── agents/                        ← root agents (mono-planner, mono-architect, gitter, mono-documenter)
+│   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, qa-{project})
 │   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — `pfm install` installs it host-level)
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-wait.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
-│   ├── skills/                        ← source-fetched at install from sources.json (rr, ghostwriter, vision-factory); the former bundled p:* skills (rnd, 360, quality:*, audit:*, wave:refine, wave:walker) now ship as nested commands under commands/
+│   ├── skills/                        ← bundled legal shelf + source-fetched sources.json skills (rr, ghostwriter, vision-factory); reasoning protocols ship as nested commands under commands/
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)
 ├── .codex/                            ← (OPTIONAL) pointer layer over .claude/ — never a restatement of it
 │   ├── config.toml                    ← sandbox reach + the {CODEX_MODEL}/{CODEX_REASONING_EFFORT} pins
