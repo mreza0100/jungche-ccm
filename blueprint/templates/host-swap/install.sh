@@ -142,6 +142,26 @@ for f in $RETIRED_ARTIFACTS; do
 done
 say ""
 
+# ── retired statusline implementation: rendering and both detached refreshers now live in
+# `pfm statusline`. Remove only the six named predecessor files; an adopter's unrelated local
+# segment is never swept. Empty directories are tidied after the files are gone. ──
+RETIRED_STATUSLINE_FILES="statusline-command.sh statusline/segments.d/10-vertex-spend.sh statusline/segments.d/40-gpt-account.sh statusline/vertex-spend-refresh.py statusline/gpt-usage.py statusline/vertex_daily_tokens.py"
+say "retired statusline files -> $CLAUDE_DIR"
+if [ "$DO" = install ]; then
+  for f in $RETIRED_STATUSLINE_FILES; do
+    [ -e "$CLAUDE_DIR/$f" ] || [ -L "$CLAUDE_DIR/$f" ] || continue
+    say "  retire  $CLAUDE_DIR/$f  (now pfm statusline)"
+    act && rm -f "$CLAUDE_DIR/$f"
+    n_link=$((n_link+1))
+  done
+  if act; then
+    rmdir "$CLAUDE_DIR/statusline/segments.d" "$CLAUDE_DIR/statusline" 2>/dev/null || true
+  fi
+else
+  say "  ok      native statusline files are not recreated on uninstall"; n_ok=$((n_ok+1))
+fi
+say ""
+
 # ── the slash commands: host-level, so they resolve in every repo AND every worktree ──
 say "commands -> $CMD"
 if [ "$DO" = uninstall ]; then
@@ -411,6 +431,124 @@ else
     fi
   fi
 fi
+say ""
+
+# ── native high-frequency wiring: `pfm statusline` replaces the 3-second shell/Python
+# pipeline, and `pfm usage-hook` replaces the per-prompt usage shell. The host default plus
+# every existing canonical account settings file converge together; physical-path de-duplication
+# prevents ~/.cc/1 symlinks from rewriting the same file twice. A custom non-Professor
+# statusline is left alone. Both native commands are fail-open at their CLI boundary. ──
+STATUSLINE_COMMAND="$HOME/.local/bin/pfm statusline"
+USAGE_COMMAND="$HOME/.local/bin/pfm usage-hook"
+
+wire_native_settings() {
+  local target="$1" status_command status_state usage_state changed
+  say "native statusline + usage hook -> $target"
+  if ! command -v jq >/dev/null 2>&1; then
+    say "  skip    jq is not installed — wire '$STATUSLINE_COMMAND' and '$USAGE_COMMAND' by hand"
+    n_skip=$((n_skip+1)); return
+  fi
+  if [ ! -f "$target" ]; then
+    say "  skip    no settings.json at $target"
+    n_skip=$((n_skip+1)); return
+  fi
+  if ! jq -e . "$target" >/dev/null 2>&1; then
+    say "  skip    could not read $target as JSON — left native wiring untouched"
+    n_skip=$((n_skip+1)); return
+  fi
+
+  status_command="$(jq -r '.statusLine.command // ""' "$target")"
+  if [ "$DO" = uninstall ]; then
+    [ "$status_command" = "$STATUSLINE_COMMAND" ] && status_state=remove || status_state=keep
+  elif [ "$status_command" = "$STATUSLINE_COMMAND" ]; then
+    status_state=ok
+  elif [ -z "$status_command" ]; then
+    status_state=add
+  elif printf '%s' "$status_command" | grep -Eq 'statusline-command[.]sh([[:space:]]|$)'; then
+    status_state=rewire
+  else
+    status_state=custom
+  fi
+
+  usage_state="$(jq -r --arg want "$USAGE_COMMAND" '
+    [ .hooks.UserPromptSubmit[]?.hooks[]?.command // empty ] as $commands
+    | if ($commands | index($want)) then "ok"
+      elif ($commands | map(select(test("cc-usage-hook[.]sh([ ]|$)"))) | length) > 0 then "rewire"
+      else "add" end
+  ' "$target")"
+  [ "$DO" = uninstall ] && { [ "$usage_state" = ok ] && usage_state=remove || usage_state=keep; }
+
+  case "$status_state" in
+    ok) say "  ok      statusline already runs '$STATUSLINE_COMMAND'"; n_ok=$((n_ok+1)) ;;
+    add) say "  add     statusline running '$STATUSLINE_COMMAND'"; n_link=$((n_link+1)) ;;
+    rewire) say "  rewire  statusline-command.sh -> '$STATUSLINE_COMMAND'"; n_link=$((n_link+1)) ;;
+    remove) say "  remove  native statusline wiring"; n_link=$((n_link+1)) ;;
+    custom) say "  skip    custom statusline command left untouched: $status_command"; n_skip=$((n_skip+1)) ;;
+    keep) say "  ok      no native statusline wiring to remove"; n_ok=$((n_ok+1)) ;;
+  esac
+  case "$usage_state" in
+    ok) say "  ok      usage hook already runs '$USAGE_COMMAND'"; n_ok=$((n_ok+1)) ;;
+    add) say "  add     usage hook running '$USAGE_COMMAND'"; n_link=$((n_link+1)) ;;
+    rewire) say "  rewire  cc-usage-hook.sh -> '$USAGE_COMMAND'"; n_link=$((n_link+1)) ;;
+    remove) say "  remove  native usage hook wiring"; n_link=$((n_link+1)) ;;
+    keep) say "  ok      no native usage hook wiring to remove"; n_ok=$((n_ok+1)) ;;
+  esac
+
+  changed=0
+  case "$status_state" in add|rewire|remove) changed=1 ;; esac
+  case "$usage_state" in add|rewire|remove) changed=1 ;; esac
+  [ "$changed" = 1 ] || return
+  if act; then
+    cp -p "$target" "$target.pre-professor-$TS"
+    if [ "$DO" = uninstall ]; then
+      jq --arg status "$STATUSLINE_COMMAND" --arg usage "$USAGE_COMMAND" '
+        if (.statusLine.command // "") == $status then del(.statusLine) else . end
+        | .hooks.UserPromptSubmit = [
+            .hooks.UserPromptSubmit[]?
+            | .hooks = [ .hooks[]? | select(.command != $usage) ]
+          ]
+        | .hooks.UserPromptSubmit |= map(select((.hooks | length) > 0))
+      ' "$target" > "$target.tmp.$$" && mv "$target.tmp.$$" "$target"
+    else
+      jq --arg status "$STATUSLINE_COMMAND" --arg usage "$USAGE_COMMAND" \
+         --arg statusState "$status_state" '
+        if $statusState == "add" then
+          .statusLine = {
+            "type": "command", "command": $status, "padding": 0,
+            "refreshInterval": 3, "hideVimModeIndicator": true
+          }
+        elif $statusState == "rewire" then
+          .statusLine.type = "command" | .statusLine.command = $status
+        else . end
+        | .hooks //= {} | .hooks.UserPromptSubmit //= []
+        | (.hooks.UserPromptSubmit[]?.hooks[]?
+           | select((.command // "") | test("cc-usage-hook[.]sh([ ]|$)"))
+           | .command) = $usage
+        | if any(.hooks.UserPromptSubmit[]?.hooks[]?; .command == $usage)
+          then .
+          else .hooks.UserPromptSubmit += [{
+            "matcher": "", "hooks": [{"type": "command", "command": $usage}]
+          }] end
+        | (.hooks.UserPromptSubmit[]?.hooks[]?
+           | select(.command == $usage) | .type) = "command"
+      ' "$target" > "$target.tmp.$$" && mv "$target.tmp.$$" "$target"
+    fi
+  fi
+}
+
+settings_candidates="$SETTINGS"
+if [ "$CLAUDE_DIR" = "$HOME/.claude" ]; then
+  for account_dir in "$HOME/.cc/1" "$HOME/.cc/2" "$HOME/.cc/3" "$HOME/.cc/4"; do
+    [ -f "$account_dir/settings.json" ] && settings_candidates="$settings_candidates $account_dir/settings.json"
+  done
+fi
+settings_seen="|"
+for native_settings in $settings_candidates; do
+  settings_physical="$(readlink -f "$native_settings" 2>/dev/null || printf '%s' "$native_settings")"
+  case "$settings_seen" in *"|$settings_physical|"*) continue ;; esac
+  settings_seen="$settings_seen$settings_physical|"
+  wire_native_settings "$native_settings"
+done
 say ""
 
 # ── ~/.zshrc: source the launchers. One line, rewritten in place when the clone moves. ──

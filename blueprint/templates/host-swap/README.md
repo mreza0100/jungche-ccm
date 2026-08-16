@@ -52,7 +52,7 @@ Every launch gets its **own tmux server** (`-L cc-<epoch>-<pid>-<rand>`) so a si
 can't take every chat down at once, and so a chat picker or `/swap`'s engine can address one
 chat's pane precisely instead of guessing which pane in a shared server is which chat. Which
 account a bare `cc` opens (default `1`) lives in the state store, `~/.cc/fleet.db`; `cc-swap`
-writes it. The statusline badge (🥇/🥈) reads each chat's own `CLAUDE_CONFIG_DIR` on every
+writes it. The native statusline badge (🥇/🥈) reads each chat's own `CLAUDE_CONFIG_DIR` on every
 refresh — no separate marker to keep in sync.
 
 ## Files in this template
@@ -60,18 +60,17 @@ refresh — no separate marker to keep in sync.
 `install.sh` links the command, skill, unit and launcher surfaces back into this clone. The compiled
 `pfm` binary is installed separately at `~/.local/bin/pfm` — see § Install.
 
-| File                          | Installs as                                  | Purpose                                                                                                                                                                                                                                                    |
-| ----------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `install.sh`                  | —                                            | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo                                                                                                                                                          |
-| `pfm/`                        | `~/.local/bin/pfm`                            | compiled fleet manager: picker, per-chat operations, shared store, recovery, swap, agent opening, name sync and MCP                                                                                                                                         |
-| `pfm/shim/pfm.zsh`            | sourced from `~/.zshrc`                      | the thin launcher surface: `cc`, `cc1`, `cc2`, `cx`, and `cc-swap`; fleet operations delegate to the `pfm` binary                                                                                                                                          |
-| `systemd/`                    | `~/.config/systemd/user/`                    | `pfm name-sync` triggers: a **path unit** on `session_index.jsonl` (a Codex rename reaches the tab promptly) plus a 15-minute drift-fallback **timer**                                                                                                     |
-| `bb.command.md`               | `~/.claude/commands/bb.md`                   | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned)                                                                                                                                                              |
-| `swap.command.md`             | `~/.claude/commands/swap.md`                 | `/swap` slash command — reboot this chat onto another account, in place                                                                                                                                                                                    |
-| `chat/`                       | `~/.claude/commands/chat/`                   | the `chat:*` command family, a two-line `chat.sh` compatibility delegate, and the surviving group/history helpers                                                                                                                                          |
-| `codex-skills/`               | `~/.agents/skills/`                          | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill                                                            |
-| `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈 account badge (the one piece that is still a manual merge — it edits a file you own)                                                                                                                                                                 |
-| `tests/`                      | —                                            | isolated installer fixtures, including dead-user-bus proof and retirement sweeps                                                                                                                                                                           |
+| File               | Installs as                  | Purpose                                                                                                                                                                                         |
+| ------------------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `install.sh`       | —                            | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo                                                                                               |
+| `pfm/`             | `~/.local/bin/pfm`           | compiled fleet manager: picker, per-chat operations, statusline, usage hook, shared store, recovery, swap, agent opening, name sync and MCP                                                     |
+| `pfm/shim/pfm.zsh` | sourced from `~/.zshrc`      | the thin launcher surface: `cc`, `cc1`, `cc2`, `cx`, and `cc-swap`; fleet operations delegate to the `pfm` binary                                                                               |
+| `systemd/`         | `~/.config/systemd/user/`    | `pfm name-sync` triggers: a **path unit** on `session_index.jsonl` (a Codex rename reaches the tab promptly) plus a 15-minute drift-fallback **timer**                                          |
+| `bb.command.md`    | `~/.claude/commands/bb.md`   | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned)                                                                                                   |
+| `swap.command.md`  | `~/.claude/commands/swap.md` | `/swap` slash command — reboot this chat onto another account, in place                                                                                                                         |
+| `chat/`            | `~/.claude/commands/chat/`   | the `chat:*` command family, a two-line `chat.sh` compatibility delegate, and the surviving group/history helpers                                                                               |
+| `codex-skills/`    | `~/.agents/skills/`          | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill |
+| `tests/`           | —                            | isolated installer fixtures, including dead-user-bus proof and retirement sweeps                                                                                                                |
 
 ## Install
 
@@ -102,16 +101,12 @@ cd ~/.professor/blueprint/templates/host-swap
 ```
 
 It keeps the retired `~/.claude/bin` script surface empty, links commands into
-`~/.claude/commands`, links Codex skills, installs the name-sync units where supported, and adds
-one `source` line to `~/.zshrc`. Anything real already sitting at a destination is moved aside to
+`~/.claude/commands`, links Codex skills, installs the name-sync units where supported, wires the
+native statusline and fail-open usage hook, and adds one `source` line to `~/.zshrc`. Anything real already sitting at a destination is moved aside to
 `<name>.pre-professor-<timestamp>` first — it never destroys a file you wrote. Re-running after a
 `git pull` is free: links already pointing at the clone are reported `ok` and left alone.
 
-**4. Add the account badge to your statusline** (if you use the Professor statusline):
-
-Merge the block from `statusline-badge.snippet.sh` into `~/.claude/statusline-command.sh` just before the `# ── LINE 1` section (where `badge` is referenced). The badge variable is already consumed by the `l1` line — you just need the computation block.
-
-**5. Open a new shell and test:**
+**4. Open a new shell and test:**
 
 ```bash
 cc1        # should open CC under account 1, its own tmux socket
@@ -169,7 +164,7 @@ re-`/login` under that account's config dir (`CLAUDE_CONFIG_DIR=~/.claude2 claud
 
 ## Fleet management — `pfm`, `pfm chat`, `/bb`
 
-The pieces above launch and bill chats; these manage the resulting fleet. They are **launcher-agnostic** — they work with any setup that runs each chat in its own `tmux -L cc-*` socket (`pfm/shim/pfm.zsh` is one such launcher) and a statusline that writes a `/tmp/cc-sid/<socket>` → transcript breadcrumb (`chmod 700` — the breadcrumbs are transcript paths and the name cache carries prompt text, not for other uids). The Professor statusline template (`blueprint/templates/statusline/statusline-command.sh`) already writes this breadcrumb, so installing it alongside these pieces is enough — no separate wiring needed.
+The pieces above launch and bill chats; these manage the resulting fleet. They are **launcher-agnostic** — they work with any setup that runs each chat in its own `tmux -L cc-*` socket (`pfm/shim/pfm.zsh` is one such launcher). `pfm statusline` writes the private `/tmp/cc-sid/<socket>` → transcript breadcrumb that resolution needs; `install.sh` wires it into every existing canonical account settings file.
 
 - **Bare `pfm`** — one picker for live chats, resumable transcripts, and agent rows. Enter opens the selected chat; `⌃T` re-sorts, `⌃R` rotates the leading project, and `⌃X` hides or restores a chat. `pfm ls --hidden` lists the hide ledger.
 - **`pfm chat`** — the per-chat surface: create with `pfm chat new NAME`, address by name, immutable socket, or id, and operate with `open`, `inject`, `read`, `stream`, `capture`, `name`, `hide`, `end`, and the group verbs. `--attach` on `new` opens the new chat after launch; otherwise it remains detached on its own immutable socket.

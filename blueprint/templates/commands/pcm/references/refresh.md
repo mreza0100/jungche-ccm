@@ -88,11 +88,8 @@ From the project repo:
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)
         ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
-        ├── statusline/statusline-command.sh
         └── vscode/ (terminal-profile.json, zshrc-cc.snippet.sh, tmux.conf)
 ```
-
-> **Statusline:** Tier C universal mechanic with light Professor personality in emoji choices (🟢→⚡→🔥→🚨 escalation, ◆/◇/○ model symbols). Ships as-is. SETUP.md copies to `~/.claude/statusline-command.sh` + adds config to settings.json.
 
 > **VSCode tmux launcher:** Tier C universal mechanic, **opt-in** at install (it edits the user's _global_ editor + shell config, so SETUP.md asks first). New VSCode terminals open straight into `tmux + cc` — Claude Code inside a tmux session; on `/exit`, claude ends, the tmux session ends, and control falls back to a normal interactive shell — the terminal never closes on you. Ships the three files below (defined inline here — no repo source to mine); SETUP.md merges `terminal-profile.json` into the user's VSCode `settings.json`, appends `zshrc-cc.snippet.sh` to the user's shell rc, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy — the comfort tmux-in-a-terminal assumes). The `cc` launcher is `typeset -f`-guarded so it **never clobbers an existing `cc`**.
 
@@ -164,11 +161,11 @@ Exports an interview Claude conducts before touching files. Structure:
 
 Skills ship as **empty shells** when their content is project-specific — the structure (frontmatter, headings, report format) is universal, but the audit categories, detection patterns, file paths, and domain concerns must be researched per project.
 
-| Skill                  | What's universal (ships)                                                                                  | What's project-specific (hydrated by RR)                                                                                                                                                  |
-| ---------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Skill                                                     | What's universal (ships)                                                                                 | What's project-specific (hydrated by RR)                                                                                                                                                                                                                                  |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Analysis Protocol (in the Professor persona output style) | Three-lens protocol (CS + domain + compliance), step sequence, report format, AI/ML audit mode structure | Domain lens content (replaces Psychology lens), compliance framework, cross-disciplinary intersections, AI/ML audit categories + anti-patterns (if project has an AI pipeline subproject) — the refresh interview hydrates this lens directly in the persona output style |
-| `audit:code-hygiene`   | Category structure (ghost fields, dead code, stale deps, arch smells, type safety, naming, quality)       | Per-category detection patterns, file paths, known hotspots, linter coverage gaps, project-specific report examples                                                                       |
-| `audit:security`       | OWASP category structure (8A-8I), severity guide, report format                                           | Domain-specific PHI/data sensitivity rules, external API checks, framework-specific vulnerabilities, compliance-driven sub-categories                                                     |
+| `audit:code-hygiene`                                      | Category structure (ghost fields, dead code, stale deps, arch smells, type safety, naming, quality)      | Per-category detection patterns, file paths, known hotspots, linter coverage gaps, project-specific report examples                                                                                                                                                       |
+| `audit:security`                                          | OWASP category structure (8A-8I), severity guide, report format                                          | Domain-specific PHI/data sensitivity rules, external API checks, framework-specific vulnerabilities, compliance-driven sub-categories                                                                                                                                     |
 
 **Hydration process:**
 

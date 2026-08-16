@@ -47,7 +47,10 @@ func TestSettledRootInterface(t *testing.T) {
 		t.Fatalf("run(--help) code = %d; stderr = %q", code, stderr.String())
 	}
 	help := stdout.String()
-	for _, want := range []string{"operator commands:", "  chat", "wiring commands:", "  chat bb"} {
+	for _, want := range []string{
+		"operator commands:", "  chat", "wiring commands:", "  chat bb",
+		"  statusline", "  usage-hook",
+	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("root help missing %q:\n%s", want, help)
 		}

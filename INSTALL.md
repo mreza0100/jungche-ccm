@@ -16,7 +16,7 @@ A blueprint pasted blindly is a museum exhibit; a blueprint shaped to the user's
 
 - **Claude Code CLI**, logged in — you're running in it now.
 - **A git repository.** If the project isn't one, ask whether to `git init` first (recommended — it gives `git mv` history preservation for the doc re-homing step). Never `git init` silently.
-- **`jq`** — required by the statusline and several hooks. If missing, warn and point at `brew install jq` / `apt install jq`.
+- **`jq`** — required by the host installer and several hooks. If missing, warn and point at `brew install jq` / `apt install jq`.
 - Optional, per opt-in: `prettier` via `npx` (markdown auto-format), `tmux` (VSCode launcher, host fleet), `node` (Codex mirror compiler), `gh` or `glab` (git-host skill).
 - **10–15 minutes of the user's attention** for the interview.
 
@@ -119,13 +119,13 @@ Structure is a **roster of 1..N projects**. One project is valid and first-class
 17. **Persona depth: full or compact?** Same behavioral contract (the Verdict rule, sacred ground, the Analysis Protocol) — full carries the showcase voice, compact spends fewer tokens every turn.
 18. **Sacred ground** — the topics where the character drops the humor and reports flat. Be concrete: "privacy" is too vague; "patient session content and identifying details" is usable.
 
-> **Why mandatory:** strip the persona and Claude falls back to vanilla assistant tone in every interactive turn while `/jc` and `/pcm` keep their voices — tonal whiplash. Adopters rename freely; what never ships is the *source project's* domain content.
+> **Why mandatory:** strip the persona and Claude falls back to vanilla assistant tone in every interactive turn while `/jc` and `/pcm` keep their voices — tonal whiplash. Adopters rename freely; what never ships is the _source project's_ domain content.
 
 ### Batch 7 — Host-level extras (each opt-in, each touches `~/` — ask, don't assume)
 
 19. Which of these, if any?
-    - **Statusline** — three-line status bar (model, context, cache window, cost, rate limits) → `~/.claude/statusline-command.sh` (needs `jq`).
-    - **Global settings merge** — `{"cleanupPeriodDays": 36500}` merged key-by-key into `~/.claude/settings.json`; stock Claude Code silently deletes transcripts *and orphaned worktrees* after 30 days, and `0` is a validation error, not "off".
+    - **Statusline** — native `pfm statusline`: three-line status bar with model, fleet counts, context, cache window, cost, spend, and rate limits. Requires the `pfm` binary.
+    - **Global settings merge** — `{"cleanupPeriodDays": 36500}` merged key-by-key into `~/.claude/settings.json`; stock Claude Code silently deletes transcripts _and orphaned worktrees_ after 30 days, and `0` is a validation error, not "off".
     - **Notify hooks** — "Professor is done — your turn" on 30s+ turns (macOS built-in; Linux swaps in `notify-send`).
     - **Markdown formatter hook** — prettier on framework-owned `.md` files after every edit.
     - **VSCode tmux launcher** — new terminals open into tmux + Claude (needs `tmux`).
@@ -150,18 +150,18 @@ The user types **"go"** to proceed — or corrects anything first.
 
 For every file surfaced in pre-flight step 6, classify by filename hint **and** a quick content scan, then move with `git mv` (never copy-then-delete). First match wins:
 
-| Signature | Destination |
-| --- | --- |
-| `THESIS`, `VISION`, `STRATEGY`, `MISSION`, `BUSINESS_MODEL` | `docs/business/<slug>.md` |
-| `GLOSSARY`, `TERMS` | `docs/business/glossary.md` (one per project) |
-| Market / GTM / funding / risk material | `$CDOCS/mentor/…` if `/mentor` opted in |
-| `COMPETITOR`, `SEO`, `POSITION`, `BRAND_VOICE`, channels | `$CDOCS/marketer/…` if `/marketer` opted in |
-| `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `PRIVACY` | `$CDOCS/officer/…` if `/officer` opted in |
-| `PERSONA`, `USER_*`, pains, jobs-to-be-done, workflows | `$CDOCS/pm/…` if `/pm` opted in |
-| Domain primers, protocols, methodologies | `$CDOCS/km/…` if `/km` opted in |
-| Research logs, open questions, experiments, spikes | `docs/dev/research/<slug>.md` (always available) |
-| `README`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*` | **keep at root — never move** |
-| Anything ambiguous | **ask the user** (default proposal: `docs/dev/research/`) |
+| Signature                                                   | Destination                                               |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| `THESIS`, `VISION`, `STRATEGY`, `MISSION`, `BUSINESS_MODEL` | `docs/business/<slug>.md`                                 |
+| `GLOSSARY`, `TERMS`                                         | `docs/business/glossary.md` (one per project)             |
+| Market / GTM / funding / risk material                      | `$CDOCS/mentor/…` if `/mentor` opted in                   |
+| `COMPETITOR`, `SEO`, `POSITION`, `BRAND_VOICE`, channels    | `$CDOCS/marketer/…` if `/marketer` opted in               |
+| `REGULATORY`, `COMPLIANCE`, `GDPR`, `HIPAA`, `PRIVACY`      | `$CDOCS/officer/…` if `/officer` opted in                 |
+| `PERSONA`, `USER_*`, pains, jobs-to-be-done, workflows      | `$CDOCS/pm/…` if `/pm` opted in                           |
+| Domain primers, protocols, methodologies                    | `$CDOCS/km/…` if `/km` opted in                           |
+| Research logs, open questions, experiments, spikes          | `docs/dev/research/<slug>.md` (always available)          |
+| `README`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`         | **keep at root — never move**                             |
+| Anything ambiguous                                          | **ask the user** (default proposal: `docs/dev/research/`) |
 
 Within an archetype's `$CDOCS/<cmd>/` tree: `$REFS` = living must-know loaded nearly every invocation; `$RESEARCH` = looked-up analysis loaded on demand. "The rules / the canon" → `$REFS`; "I looked into X, here's what I found" → `$RESEARCH`.
 
@@ -215,7 +215,7 @@ Not part of Professor, never vendored — mention once, install only on request:
 1. **Never assume.** Every name, path, command, and port comes from the user's answers.
 2. **Never overwrite without asking.** Existing `CLAUDE.md` / `.claude/` stops the install.
 3. **Never install what wasn't picked.** No Tier B role, hook, or host extra lands silently.
-4. **Never inject the source project's domain content.** The *voice* is universal and ships by default; source-project domain references, vendor names, and jurisdiction specifics do not. Persona = "your project's flavor of Professor."
+4. **Never inject the source project's domain content.** The _voice_ is universal and ships by default; source-project domain references, vendor names, and jurisdiction specifics do not. Persona = "your project's flavor of Professor."
 5. **Never run `git add` / `git commit` / `git push`.** Files only; the user reviews and commits.
 6. **Never run destructive commands.** No `rm -rf`, no force-overwrite; back up to `tmp/` first if needed.
 7. **Confirm before write.** Batch 8's "go" is mandatory.

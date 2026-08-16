@@ -55,7 +55,7 @@ Every command, agent, and rule sorts into one of three tiers:
 
 - `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer` — root agents. Role-defined, not character-defined.
 - `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
-- `statusline-command.sh` — two-line status bar (model, context, git, cost, rate limits). Installed to `~/.claude/`.
+- `pfm statusline` — native status bar with model, fleet counts, context, git, cost, spend, and rate limits. Wired in the host settings by `templates/host-swap/install.sh`.
 - `settings-global.json` — a handful of keys merged (never overwritten) into the adopter's own `~/.claude/settings.json`. Currently one key, `cleanupPeriodDays: 36500`, which turns off Claude Code's default 30-day auto-delete of session transcripts and orphaned git worktrees.
 - `vscode/` — VSCode tmux launcher: new terminals open into tmux + Claude, `/exit` → shell. Ships a companion `tmux.conf` (mouse + clipboard). Opt-in; edits user `settings.json` + shell rc + `~/.tmux.conf`.
 - Per-project agents (`planner`, `architect`, `developer`, `qa`) — role-defined.
@@ -313,11 +313,11 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 **Division of labor:**
 
-| Task                             | Runtime | Why                                        |
-| -------------------------------- | ------- | ------------------------------------------ |
-| Planning, architecture, research | Claude  | Judgment-heavy, low token volume           |
-| Heavy implementation             | Codex   | Cheaper per token                          |
-| QA / adversarial tests           | Claude  | Codex shouldn't grade itself               |
+| Task                             | Runtime                | Why                                                                                             |
+| -------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| Planning, architecture, research | Claude                 | Judgment-heavy, low token volume                                                                |
+| Heavy implementation             | Codex                  | Cheaper per token                                                                               |
+| QA / adversarial tests           | Claude                 | Codex shouldn't grade itself                                                                    |
 | Git operations                   | Claude (`gitter`) only | Codex gets read-only git (status/log/diff/show); commits, merges, and pushes are gitter's alone |
 
 **Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/` (`config.toml`, `rules/repo-law.rules`, the `agents/` registry), runs `scripts/build-codex.mjs generate` to compile `.codex/skills/`, `.codex/agents/*.toml`, and `AGENTS.md`, and wires `scripts/codex-sync.sh` into the hooks so every later framework edit re-compiles before its turn ends. If no, the entire layer is skipped. No pipeline operation requires Codex.

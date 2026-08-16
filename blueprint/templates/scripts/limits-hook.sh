@@ -8,7 +8,7 @@
 # Every other session, every sub-80% read, a stale harvest (>15 min), or any resolve
 # failure → silent exit 0. A hook must never block or noise a prompt.
 #
-# Data source: /tmp/cc-rate-limits/acct-{n}.*.json — harvested by statusline-command.sh
+# Data source: /tmp/cc-rate-limits/acct-{n}.*.json — harvested by `pfm statusline`
 # from the stdin JSON (the only carrier of .rate_limits). Same account resolution as
 # the statusline badge.
 set -uo pipefail

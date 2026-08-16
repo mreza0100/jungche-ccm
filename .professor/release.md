@@ -8,6 +8,19 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
 
+- Tier A: `pfm statusline`, `pfm usage-hook`, and `templates/host-swap` — native Go rendering
+  replaces the high-frequency statusline shell, both local segments, and the Vertex/Codex
+  Python refreshers while preserving badges, gauges, cache TTLs, detached refresh, and the
+  dormant fourth-account view; the one-line sky snapshot adds live fleet counts. The native
+  fail-open usage hook carries the existing warn/recover/quiet contract. The installer rewires
+  every existing canonical account settings file and sweeps the six retired statusline files.
+  (cost: statusline and UserPromptSubmit command paths changed)
+
+  #### → For: build and install `pfm`, then run
+
+  `blueprint/templates/host-swap/install.sh --apply` once to rewire settings and retire the old
+  shell/Python copies.
+
 - Tier A: `pfm` and `templates/host-swap` — complete the Professor-Fleet-Manager cutover: the
   parity oracle/checker is retired; bare `pfm` opens the picker; per-chat work lives under
   `pfm chat` with named creation, immutable socket identities, target resolution, group/BB
@@ -24,6 +37,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
   binary, unit, hook, and chat-command paths changed)
 
   #### → For: build and install the new `pfm` binary first, then run
+
   `blueprint/templates/host-swap/install.sh --apply` once to rewire hooks and units.
 
 - Tier C: `templates/scripts/build-codex.mjs` — the compiler now carries a **never-register set**
