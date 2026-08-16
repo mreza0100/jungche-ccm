@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -137,6 +138,224 @@ func TestMalformedNonemptySurfaceFailsLoudly(t *testing.T) {
 	_, err := Hook(HookRequest{Kind: HookCodexSubagentInject, Input: []byte(`{"agent_type":"qa","cwd":"` + repository + `"}`)})
 	if err == nil || !strings.Contains(err.Error(), "validate lane surface") {
 		t.Fatalf("malformed surface error = %v", err)
+	}
+}
+
+func TestHooksMigrateLegacyLaneSurfacesBeforeConsult(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		kind       HookKind
+		body       string
+		wantRows   []string
+		wantMaps   []string
+		wantAnchor map[string]int
+	}{
+		{
+			name: "Claude dated",
+			kind: HookAgentInject,
+			body: lane.AgentSurfaceHeader + "\n" +
+				"- 2026-08-01 Cache policy -> Evict derived entries after the source changes.\n",
+			wantRows: []string{
+				"- Evict derived entries after the source changes. -> maps/cache-policy.md",
+			},
+			wantMaps:   []string{"cache-policy.md"},
+			wantAnchor: map[string]int{"cache-policy.md": 2},
+		},
+		{
+			name: "Codex undated",
+			kind: HookCodexSubagentInject,
+			body: lane.AgentSurfaceHeader + "\n" +
+				"- Retry boundary -> Retry only the idempotent operation.\n",
+			wantRows: []string{
+				"- Retry only the idempotent operation. -> maps/retry-boundary.md",
+			},
+			wantMaps:   []string{"retry-boundary.md"},
+			wantAnchor: map[string]int{"retry-boundary.md": 2},
+		},
+		{
+			name: "mixed modern and legacy",
+			kind: HookCodexSubagentInject,
+			body: lane.AgentSurfaceHeader + "\n" +
+				"- Keep the existing pointer. -> maps/existing.md\n" +
+				"- 2026-08-02 Queue ownership -> One worker owns each queue item.\n",
+			wantRows: []string{
+				"- Keep the existing pointer. -> maps/existing.md",
+				"- One worker owns each queue item. -> maps/queue-ownership.md",
+			},
+			wantMaps:   []string{"existing.md", "queue-ownership.md"},
+			wantAnchor: map[string]int{"queue-ownership.md": 3},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := hookRepository(t)
+			organRoot := filepath.Join(repository, ".professor", "stm")
+			surfacePath := filepath.Join(organRoot, "agents", "qa.md")
+			if strings.Contains(test.body, "maps/existing.md") {
+				firstHash := hookGit(t, repository, "rev-parse", "HEAD:anchor.txt")[:12]
+				secondHash := hookGit(t, repository, "rev-parse", "HEAD:stable.txt")[:12]
+				writeHookFile(t, filepath.Join(organRoot, "maps", "existing.md"), hookMap(firstHash, secondHash))
+			}
+			writeHookFile(t, surfacePath, test.body)
+			hookGit(t, repository, "add", ".professor/stm")
+			hookGit(t, repository, "commit", "-q", "-m", "legacy lane surface")
+			blob := hookGit(t, repository, "rev-parse", "HEAD:.professor/stm/agents/qa.md")[:12]
+
+			request := HookRequest{
+				Kind:  test.kind,
+				Input: []byte(`{"agent_type":"qa","cwd":"` + repository + `"}`),
+			}
+			if test.kind == HookAgentInject {
+				request.ProjectDirectory = repository
+				request.Input = []byte(`{"tool_input":{"subagent_type":"qa","prompt":"go"}}`)
+			}
+			output, err := Hook(request)
+			if err != nil {
+				t.Fatalf("Hook() error = %v", err)
+			}
+			for _, row := range test.wantRows {
+				if !strings.Contains(string(output), row) {
+					t.Fatalf("hook output lacks %q: %s", row, output)
+				}
+			}
+
+			surface := string(mustReadHookFile(t, surfacePath))
+			if _, err := lane.ValidSurface(surface); err != nil {
+				t.Fatalf("migrated surface is invalid: %v\n%s", err, surface)
+			}
+			assertHookMode(t, surfacePath, 0o600)
+			for _, name := range test.wantMaps {
+				path := filepath.Join(organRoot, "maps", name)
+				assertHookMode(t, path, 0o600)
+				line, migrated := test.wantAnchor[name]
+				if !migrated {
+					continue
+				}
+				body := string(mustReadHookFile(t, path))
+				wantAnchor := "- `.professor/stm/agents/qa.md:" + strconv.Itoa(line) + "` — blob `" + blob + "`"
+				if !strings.Contains(body, wantAnchor) {
+					t.Fatalf("map %s lacks source-row anchor %q:\n%s", name, wantAnchor, body)
+				}
+			}
+
+			beforeSurface := string(mustReadHookFile(t, surfacePath))
+			beforeMaps := hookMapSnapshot(t, filepath.Join(organRoot, "maps"))
+			if _, err := Hook(request); err != nil {
+				t.Fatalf("second Hook() error = %v", err)
+			}
+			if after := string(mustReadHookFile(t, surfacePath)); after != beforeSurface {
+				t.Fatalf("second hook rewrote surface:\nbefore=%q\nafter=%q", beforeSurface, after)
+			}
+			if after := hookMapSnapshot(t, filepath.Join(organRoot, "maps")); after != beforeMaps {
+				t.Fatalf("second hook changed maps:\nbefore=%q\nafter=%q", beforeMaps, after)
+			}
+		})
+	}
+}
+
+func TestLegacySurfaceMigrationPreflightsGarbageBeforeWriting(t *testing.T) {
+	repository := hookRepository(t)
+	organRoot := filepath.Join(repository, ".professor", "stm")
+	surfacePath := filepath.Join(organRoot, "agents", "qa.md")
+	body := lane.AgentSurfaceHeader + "\n" +
+		"- 2026-08-01 Safe row -> This row must not partially migrate.\n" +
+		"not a lane row\n"
+	writeHookFile(t, surfacePath, body)
+	hookGit(t, repository, "add", surfacePath)
+	hookGit(t, repository, "commit", "-q", "-m", "malformed legacy lane surface")
+
+	_, err := Hook(HookRequest{
+		Kind:  HookCodexSubagentInject,
+		Input: []byte(`{"agent_type":"qa","cwd":"` + repository + `"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "legacy lane surface") {
+		t.Fatalf("garbage migration error = %v", err)
+	}
+	if got := string(mustReadHookFile(t, surfacePath)); got != body {
+		t.Fatalf("garbage preflight rewrote surface: %q", got)
+	}
+	entries, readErr := os.ReadDir(filepath.Join(organRoot, "maps"))
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("garbage preflight created maps: entries=%v error=%v", entries, readErr)
+	}
+}
+
+func TestLegacySurfaceMigrationRequiresTrackedSurfaceAtHEAD(t *testing.T) {
+	repository := hookRepository(t)
+	organRoot := filepath.Join(repository, ".professor", "stm")
+	surfacePath := filepath.Join(organRoot, "agents", "qa.md")
+	body := lane.AgentSurfaceHeader + "\n" +
+		"- 2026-08-01 Untracked note -> Never invent a provenance anchor.\n"
+	writeHookFile(t, surfacePath, body)
+
+	_, err := Hook(HookRequest{
+		Kind:  HookCodexSubagentInject,
+		Input: []byte(`{"agent_type":"qa","cwd":"` + repository + `"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "not tracked at hook worktree HEAD") {
+		t.Fatalf("untracked migration error = %v", err)
+	}
+	if got := string(mustReadHookFile(t, surfacePath)); got != body {
+		t.Fatalf("untracked refusal rewrote surface: %q", got)
+	}
+	entries, readErr := os.ReadDir(filepath.Join(organRoot, "maps"))
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("untracked refusal created maps: entries=%v error=%v", entries, readErr)
+	}
+}
+
+func TestLegacySurfaceMigrationHandlesMapSlugCollisions(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		existingLesson string
+		wantPointer    string
+		wantNewMap     bool
+	}{
+		{
+			name:           "reuse exact lesson",
+			existingLesson: "Use one canonical cache key.",
+			wantPointer:    "maps/cache-key.md",
+		},
+		{
+			name:           "suffix different lesson",
+			existingLesson: "This is a different lesson.",
+			wantPointer:    "maps/cache-key-2.md",
+			wantNewMap:     true,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := hookRepository(t)
+			organRoot := filepath.Join(repository, ".professor", "stm")
+			anchorHash := hookGit(t, repository, "rev-parse", "HEAD:anchor.txt")[:12]
+			existingPath := filepath.Join(organRoot, "maps", "cache-key.md")
+			writeHookFile(t, existingPath, legacyHookMap("Cache key", test.existingLesson, "anchor.txt:1", anchorHash))
+			surfacePath := filepath.Join(organRoot, "agents", "qa.md")
+			writeHookFile(t, surfacePath, lane.AgentSurfaceHeader+"\n- Cache key -> Use one canonical cache key.\n")
+			hookGit(t, repository, "add", ".professor/stm")
+			hookGit(t, repository, "commit", "-q", "-m", "collision fixture")
+			beforeExisting := string(mustReadHookFile(t, existingPath))
+
+			output, err := Hook(HookRequest{
+				Kind:  HookCodexSubagentInject,
+				Input: []byte(`{"agent_type":"qa","cwd":"` + repository + `"}`),
+			})
+			if err != nil {
+				t.Fatalf("Hook() error = %v", err)
+			}
+			if !strings.Contains(string(output), "- Use one canonical cache key. -> "+test.wantPointer) {
+				t.Fatalf("collision pointer = %s", output)
+			}
+			if after := string(mustReadHookFile(t, existingPath)); after != beforeExisting {
+				t.Fatalf("collision rewrote existing map:\nbefore=%q\nafter=%q", beforeExisting, after)
+			}
+			newPath := filepath.Join(organRoot, "maps", "cache-key-2.md")
+			_, statErr := os.Stat(newPath)
+			if test.wantNewMap && statErr != nil {
+				t.Fatalf("suffixed map missing: %v", statErr)
+			}
+			if !test.wantNewMap && !os.IsNotExist(statErr) {
+				t.Fatalf("exact lesson created suffixed map: %v", statErr)
+			}
+		})
 	}
 }
 
@@ -377,6 +596,49 @@ func writeHookFile(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func mustReadHookFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func assertHookMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("mode %s = %#o, want %#o", path, got, want)
+	}
+}
+
+func hookMapSnapshot(t *testing.T, directory string) string {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot strings.Builder
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		snapshot.WriteString(entry.Name())
+		snapshot.WriteByte('\n')
+		snapshot.Write(mustReadHookFile(t, filepath.Join(directory, entry.Name())))
+	}
+	return snapshot.String()
+}
+
+func legacyHookMap(title, lesson, anchor string, blob string) string {
+	return "# " + title + "\n\n## Lesson\n\n" + lesson +
+		"\n\n## Anchors\n\n- `" + anchor + "` — blob `" + blob + "`\n"
 }
 
 func hookMap(firstHash, secondHash string) string {

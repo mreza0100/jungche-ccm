@@ -181,12 +181,12 @@ func claudeHook(input []byte, projectDirectory string) ([]byte, error) {
 		return nil, nil
 	}
 	index := filepath.Join(hookContext.Organ, "agents", laneName+".md")
-	surface, exists, err := readSurface(index)
+	surface, exists, err := readSurface(hookContext, index)
 	if err != nil {
 		return nil, err
 	}
 	if (!exists || surface == "") && laneName == "tracer" {
-		surface, exists, err = readSurface(filepath.Join(hookContext.Organ, "explorer-index.md"))
+		surface, exists, err = readSurface(hookContext, filepath.Join(hookContext.Organ, "explorer-index.md"))
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +223,7 @@ func codexHook(input []byte) ([]byte, error) {
 	if err != nil {
 		return nil, nil
 	}
-	surface, exists, err := readSurface(filepath.Join(hookContext.Organ, "agents", laneName+".md"))
+	surface, exists, err := readSurface(hookContext, filepath.Join(hookContext.Organ, "agents", laneName+".md"))
 	if err != nil {
 		return nil, err
 	}
@@ -261,7 +261,7 @@ func annotateSurfaceDrift(gitRoot, organRoot, surface string) (annotated, traile
 	return strings.TrimSuffix(drift.Surface, "\n"), ""
 }
 
-func readSurface(path string) (surface string, exists bool, err error) {
+func readSurface(hookContext organ.HookContext, path string) (surface string, exists bool, err error) {
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", false, nil
@@ -274,7 +274,14 @@ func readSurface(path string) (surface string, exists bool, err error) {
 	}
 	validated, err := lane.ValidSurface(string(raw))
 	if err != nil {
-		return "", true, fmt.Errorf("validate lane surface %s: %w", path, err)
+		migrated, migrationErr := migrateLegacySurface(hookContext, path)
+		if migrationErr != nil {
+			return "", true, errors.Join(
+				fmt.Errorf("validate lane surface %s: %w", path, err),
+				migrationErr,
+			)
+		}
+		return migrated, true, nil
 	}
 	return validated, true, nil
 }
@@ -472,4 +479,3 @@ func containsExactLine(body, want string) bool {
 	}
 	return false
 }
-
