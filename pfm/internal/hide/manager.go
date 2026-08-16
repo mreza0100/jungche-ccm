@@ -121,6 +121,33 @@ func (manager *Manager) Hide(
 	return target, nil
 }
 
+// HideCleared records a prompt-baseline hide only when id is already an
+// indexed Claude fleet chat. The SessionEnd hook supplies the id directly;
+// no tmux or cwd guess may turn an ordinary bare Claude session into a fleet
+// hide.
+func (manager *Manager) HideCleared(
+	ctx context.Context,
+	id string,
+) (Target, bool, error) {
+	if id == "" {
+		return Target{}, false, nil
+	}
+	transcript, found, err := manager.database.Transcript(ctx, id)
+	if err != nil || !found {
+		return Target{}, false, err
+	}
+	baseline := transcript.PromptCount
+	if err := manager.database.Hide(ctx, store.Hidden{
+		ID: id, Engine: ClaudeEngine, HiddenAt: manager.now().Unix(),
+		BaselinePrompts: &baseline,
+	}); err != nil {
+		return Target{}, false, err
+	}
+	return Target{
+		Engine: ClaudeEngine, ID: id, DataPath: transcript.Path,
+	}, true, nil
+}
+
 // Unhide removes one hide through the store's non-fatal busy policy.
 //
 // A Codex hide is not always keyed on the id this call receives: the live

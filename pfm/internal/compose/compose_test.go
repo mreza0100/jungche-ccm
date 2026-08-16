@@ -9,6 +9,33 @@ import (
 	"hostops/pfm/internal/store"
 )
 
+func TestPromptBaselineHideLiftsButPermanentHideDoesNot(t *testing.T) {
+	baseline := int64(2)
+	chat := transcript(
+		"clear-hidden",
+		"/accounts/1/projects/clear/clear-hidden.jsonl",
+		"/work/clear",
+		"Clear hidden",
+		100,
+		3,
+		1000,
+	)
+	input := Input{
+		Transcripts: []store.Transcript{chat},
+		Hidden: []store.Hidden{{
+			ID: "clear-hidden", Engine: store.ClaudeEngine, BaselinePrompts: &baseline,
+		}},
+		Options: Options{View: DefaultView},
+	}
+	if _, found := rowByID(Compose(input).Rows, chat.UUID); !found {
+		t.Fatal("a clear-hidden chat stayed hidden after its prompt count advanced")
+	}
+	input.Hidden[0].BaselinePrompts = nil
+	if _, found := rowByID(Compose(input).Rows, chat.UUID); found {
+		t.Fatal("an explicit permanent hide lifted after prompt growth")
+	}
+}
+
 func TestCrumbPrecedenceAndSocketTrust(t *testing.T) {
 	input := fixtureInput(DefaultView)
 	output := Compose(input)
@@ -238,15 +265,18 @@ func splitFixtureInput() Input {
 	}
 }
 
-func TestHidesArePermanentAcrossViews(t *testing.T) {
+func TestPermanentAndPromptBaselineHidesAcrossViews(t *testing.T) {
 	defaultOutput := Compose(fixtureInput(DefaultView))
-	for _, id := range []string{"hidden", "grown", "cx-hidden"} {
+	for _, id := range []string{"hidden", "cx-hidden"} {
 		if _, found := rowByID(defaultOutput.Rows, id); found {
 			t.Fatalf("hidden row %q leaked into default view", id)
 		}
 	}
+	if _, found := rowByID(defaultOutput.Rows, "grown"); !found {
+		t.Fatal("prompt-baseline hide did not lift after the transcript grew")
+	}
 	hiddenOutput := Compose(fixtureInput(HiddenView))
-	if got, want := rowIDs(hiddenOutput.Rows), []string{"cx-hidden", "grown", "hidden"}; !reflect.DeepEqual(got, want) {
+	if got, want := rowIDs(hiddenOutput.Rows), []string{"cx-hidden", "hidden"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("hidden row IDs = %q, want %q", got, want)
 	}
 	for _, row := range hiddenOutput.Rows {
@@ -274,9 +304,9 @@ func TestBGAndEmptySuppressionNeverHidesAgent(t *testing.T) {
 	if !found || agent.Kind != Agent || !agent.BG || agent.Size != 0 || agent.PromptCount != 0 {
 		t.Fatalf("empty bg agent was suppressed: %#v", agent)
 	}
-	if output.HiddenCount != 3 || output.SuppressedCount != 3 {
+	if output.HiddenCount != 2 || output.SuppressedCount != 3 {
 		t.Fatalf(
-			"honest header counts hidden/empty=%d/%d, want 3/3",
+			"honest header counts hidden/empty=%d/%d, want 2/3",
 			output.HiddenCount,
 			output.SuppressedCount,
 		)
@@ -601,8 +631,8 @@ func fixtureInput(view View) Input {
 				BaselinePrompts: &hiddenBaseline,
 			},
 			{
-				// Prompt count 5 already passed this stale baseline: the
-				// retired ratchet must not unhide the row.
+				// Prompt count 5 passed this /clear baseline, so the row is
+				// visible again in default/all views.
 				ID:              "grown",
 				Engine:          "cc",
 				BaselinePrompts: &staleBaseline,

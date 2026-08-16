@@ -69,8 +69,9 @@ const (
 	CxNameSourceSessionIndex = "session_index"
 )
 
-// Hidden records a permanent hide for a Claude or Codex chat: it lifts only
-// on an explicit unhide.
+// Hidden records a hide for a Claude or Codex chat. A nil prompt baseline is
+// permanent; a /clear hide carries the prompt count at that event and lifts
+// after the transcript grows.
 //
 // The row lives in the fleet's shared store, keyed by uuid and nothing else.
 type Hidden struct {
@@ -83,9 +84,6 @@ type Hidden struct {
 	// HiddenAt is the shared row's hidden_at, or 0 for a hide that reached only
 	// the carrier file, which records no time.
 	HiddenAt int64
-	// BaselinePrompts is the retired auto-unhide baseline in the
-	// at_payload column. Nothing reads it and nothing writes it any more; it
-	// survives on the type only so old rows and the shared schema are left
-	// untouched.
+	// BaselinePrompts is the /clear auto-unhide ratchet in at_payload.
 	BaselinePrompts *int64
 }

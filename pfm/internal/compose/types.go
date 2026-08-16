@@ -124,8 +124,8 @@ type Row struct {
 	SplitCount  int
 }
 
-// Output contains the rows plus project metadata. A hide is permanent, so a
-// composition pass carries no persistence intent: it only reads the hide list.
+// Output contains the rows plus project metadata. Composition reads the hide
+// list; the store owns persistence and expiry of /clear prompt baselines.
 type Output struct {
 	Rows            []Row
 	ProjectDirs     map[string]string

@@ -237,8 +237,8 @@ func (s *Store) ReconcileCodexLineageRoots(ctx context.Context) error {
 
 // migrateCodexLineageHides denormalizes every rollout's lineage root and
 // collapses the v1 per-rollout Codex hides onto that root, keeping the newest
-// hidden_at. The merged row's baseline_prompts is NULL: the column is retired
-// and a hide is permanent, so nothing may resurrect an auto-unhide baseline.
+// hidden_at. The merged row's baseline_prompts is NULL because these are
+// explicit permanent hides, so lineage repair must not invent /clear state.
 func migrateCodexLineageHides(
 	ctx context.Context,
 	tx *ImmediateTx,

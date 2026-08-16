@@ -732,10 +732,10 @@ func (current *composer) applyHide(row Row, engine string) Row {
 	if row.Kind == LiveSplit || row.Kind == Booting || row.ID == "" {
 		return row
 	}
-	// A hide is permanent until an explicit unhide, so the stored
-	// baseline_prompts column is never consulted: a hidden chat stays hidden
-	// however far its prompt count grows.
-	row.Hidden = current.hiddenMatch(row.ID, engine)
+	// Explicit hides carry no baseline and stay permanent. A /clear hide is a
+	// prompt-count ratchet: once this row grows past its stored baseline it is
+	// visible again, matching the store's persisted auto-unhide pass.
+	row.Hidden = current.hiddenMatch(row.ID, engine, row.PromptCount)
 	return row
 }
 
@@ -754,8 +754,8 @@ func (current *composer) applyHide(row Row, engine string) Row {
 // See also codexLineageHidden (store/queries.go), the cached first frame's
 // copy of this same question — the two must never disagree about what the
 // user sees.
-func (current *composer) hiddenMatch(id, engine string) bool {
-	if hideMatchesID(current.hiddenByID, id, engine) {
+func (current *composer) hiddenMatch(id, engine string, promptCount int64) bool {
+	if hideMatchesID(current.hiddenByID, id, engine, promptCount) {
 		return true
 	}
 	if engine != "cx" {
@@ -766,19 +766,26 @@ func (current *composer) hiddenMatch(id, engine string) bool {
 		return false
 	}
 	for _, member := range lineage.MemberIDs {
-		if hideMatchesID(current.hiddenByID, member, engine) {
+		if hideMatchesID(current.hiddenByID, member, engine, promptCount) {
 			return true
 		}
 	}
 	return false
 }
 
-func hideMatchesID(hiddenByID map[string]store.Hidden, id, engine string) bool {
+func hideMatchesID(
+	hiddenByID map[string]store.Hidden,
+	id, engine string,
+	promptCount int64,
+) bool {
 	hidden, found := hiddenByID[id]
 	if !found {
 		return false
 	}
-	return hidden.Engine == "" || hidden.Engine == engine
+	if hidden.Engine != "" && hidden.Engine != engine {
+		return false
+	}
+	return hidden.BaselinePrompts == nil || promptCount <= *hidden.BaselinePrompts
 }
 
 func (current *composer) selectResumeRows(

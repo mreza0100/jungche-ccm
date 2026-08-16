@@ -31,10 +31,16 @@ CREATE TABLE IF NOT EXISTS ` + effectiveHidden + `(
 )`
 )
 
-// Hide records a permanent hide in the shared store. A persistent SQLITE_BUSY
-// is retried, reported, and returned so a caller never reports an unrecorded
-// decision as durable.
+// Hide records a permanent hide or a /clear prompt-baseline hide in the shared
+// store. A persistent SQLITE_BUSY is retried, reported, and returned so a
+// caller never reports an unrecorded decision as durable.
 func (s *Store) Hide(ctx context.Context, hidden Hidden) error {
+	if hidden.BaselinePrompts != nil {
+		baseline := *hidden.BaselinePrompts
+		return s.hiddenWrite(ctx, "hide", hidden.ID, func() error {
+			return s.state.HideUntilPrompt(ctx, hidden.ID, hidden.HiddenAt, baseline)
+		})
+	}
 	return s.hiddenWrite(ctx, "hide", hidden.ID, func() error {
 		return s.state.Hide(ctx, hidden.ID, hidden.HiddenAt)
 	})
@@ -118,11 +124,11 @@ ON CONFLICT(id) DO UPDATE SET
 
 // Hidden reports whether one chat is hidden, by exact chat ID.
 func (s *Store) Hidden(ctx context.Context, id string) (Hidden, bool, error) {
-	hiddenAt, err := s.state.HiddenAt(ctx)
+	records, err := s.activeHiddenRecords(ctx)
 	if err != nil {
 		return Hidden{}, false, err
 	}
-	at, found := hiddenAt[id]
+	record, found := records[id]
 	if !found {
 		return Hidden{}, false, nil
 	}
@@ -130,14 +136,21 @@ func (s *Store) Hidden(ctx context.Context, id string) (Hidden, bool, error) {
 	if err != nil {
 		return Hidden{}, false, err
 	}
-	return Hidden{ID: id, Engine: engines[id], HiddenAt: at}, true, nil
+	return Hidden{
+		ID: id, Engine: engines[id], HiddenAt: record.HiddenAt,
+		BaselinePrompts: record.AtPayload,
+	}, true, nil
 }
 
 // HiddenChats returns the shared database's hidden rows ordered by chat ID.
 func (s *Store) HiddenChats(ctx context.Context) ([]Hidden, error) {
-	hiddenAt, err := s.state.HiddenAt(ctx)
+	records, err := s.activeHiddenRecords(ctx)
 	if err != nil {
 		return nil, err
+	}
+	hiddenAt := make(map[string]int64, len(records))
+	for id, record := range records {
+		hiddenAt[id] = record.HiddenAt
 	}
 	ids := shared.SortedIDs(hiddenAt)
 	engines, err := s.deriveEngines(ctx, ids)
@@ -146,16 +159,105 @@ func (s *Store) HiddenChats(ctx context.Context) ([]Hidden, error) {
 	}
 	hiddenChats := make([]Hidden, 0, len(ids))
 	for _, id := range ids {
+		record := records[id]
 		hiddenChats = append(hiddenChats, Hidden{
-			ID:       id,
-			Engine:   engines[id],
-			HiddenAt: hiddenAt[id],
+			ID:              id,
+			Engine:          engines[id],
+			HiddenAt:        record.HiddenAt,
+			BaselinePrompts: record.AtPayload,
 		})
 	}
 	if len(hiddenChats) == 0 {
 		return nil, nil
 	}
 	return hiddenChats, nil
+}
+
+// activeHiddenRecords expires prompt-baseline hides whose indexed transcript
+// has grown. The conditional shared-store delete protects a concurrent newer
+// /clear or explicit permanent hide from the stale read/delete race.
+func (s *Store) activeHiddenRecords(
+	ctx context.Context,
+) (map[string]shared.HiddenRecord, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		records, err := s.state.HiddenRecords(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]string, 0, len(records))
+		for id, record := range records {
+			if record.AtPayload != nil {
+				ids = append(ids, id)
+			}
+		}
+		counts, err := s.transcriptPromptCounts(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		raced := false
+		for id, record := range records {
+			if record.AtPayload == nil || counts[id] <= *record.AtPayload {
+				continue
+			}
+			removed := false
+			err := s.hiddenWrite(ctx, "auto-unhide", id, func() error {
+				var deleteErr error
+				removed, deleteErr = s.state.UnhideIfPayload(ctx, id, *record.AtPayload)
+				return deleteErr
+			})
+			if err != nil {
+				return nil, err
+			}
+			if removed {
+				delete(records, id)
+			} else {
+				raced = true
+			}
+		}
+		if !raced {
+			return records, nil
+		}
+	}
+	return nil, errors.New("clear-hide state changed repeatedly during auto-unhide")
+}
+
+func (s *Store) transcriptPromptCounts(
+	ctx context.Context,
+	ids []string,
+) (map[string]int64, error) {
+	counts := make(map[string]int64, len(ids))
+	for start := 0; start < len(ids); start += BatchSize {
+		end := min(start+BatchSize, len(ids))
+		chunk := ids[start:end]
+		arguments := make([]any, len(chunk))
+		for index, id := range chunk {
+			arguments[index] = id
+		}
+		rows, err := s.db.QueryContext(
+			ctx,
+			"SELECT uuid,prompt_count FROM transcripts WHERE uuid IN ("+placeholders(len(chunk))+")",
+			arguments...,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("query clear-hide prompt counts: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			var count int64
+			if err := rows.Scan(&id, &count); err != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("scan clear-hide prompt count: %w", err)
+			}
+			counts[id] = count
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("close clear-hide prompt counts: %w", err)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate clear-hide prompt counts: %w", err)
+		}
+	}
+	return counts, nil
 }
 
 // deriveEngines answers "Claude or Codex?" from the index rather than from a
@@ -265,7 +367,7 @@ func placeholders(count int) string {
 // set. Every query that joins against effectiveHidden calls this first: the
 // mirror is a query convenience, never a second copy of the truth.
 func (s *Store) syncEffectiveHidden(ctx context.Context) error {
-	hiddenAt, err := s.state.HiddenAt(ctx)
+	records, err := s.activeHiddenRecords(ctx)
 	if err != nil {
 		return err
 	}
@@ -278,8 +380,8 @@ func (s *Store) syncEffectiveHidden(ctx context.Context) error {
 	); err != nil {
 		return fmt.Errorf("clear effective hidden mirror: %w", err)
 	}
-	ids := make([]string, 0, len(hiddenAt))
-	for id := range hiddenAt {
+	ids := make([]string, 0, len(records))
+	for id := range records {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
@@ -292,7 +394,7 @@ func (s *Store) syncEffectiveHidden(ctx context.Context) error {
 				values = append(values, ',')
 			}
 			values = append(values, "(?,?)"...)
-			arguments = append(arguments, ids[index], hiddenAt[ids[index]])
+			arguments = append(arguments, ids[index], records[ids[index]].HiddenAt)
 		}
 		if _, err := s.db.ExecContext(
 			ctx,

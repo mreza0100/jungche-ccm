@@ -76,6 +76,51 @@ func TestHideDoesNotRecreateTheRetiredCarrier(t *testing.T) {
 	}
 }
 
+func TestClearHideBaselineIsMonotonicAndRaceSafe(t *testing.T) {
+	state, _ := openTestStore(t)
+	ctx := context.Background()
+	const id = "11111111-1111-4111-8111-111111111111"
+
+	if err := state.HideUntilPrompt(ctx, id, 10, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.HideUntilPrompt(ctx, id, 11, 3); err != nil {
+		t.Fatal(err)
+	}
+	records, err := state.HiddenRecords(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := records[id]; got.HiddenAt != 11 || got.AtPayload == nil || *got.AtPayload != 3 {
+		t.Fatalf("repeated clear hide = %#v, want hidden_at=11 baseline=3", got)
+	}
+	if removed, err := state.UnhideIfPayload(ctx, id, 2); err != nil || removed {
+		t.Fatalf("stale conditional unhide = %v, %v; want false, nil", removed, err)
+	}
+
+	if err := state.Hide(ctx, id, 12); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.HideUntilPrompt(ctx, id, 13, 4); err != nil {
+		t.Fatal(err)
+	}
+	records, err = state.HiddenRecords(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := records[id]; got.HiddenAt != 12 || got.AtPayload != nil {
+		t.Fatalf("clear weakened permanent hide = %#v", got)
+	}
+
+	const expiring = "22222222-2222-4222-8222-222222222222"
+	if err := state.HideUntilPrompt(ctx, expiring, 20, 5); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := state.UnhideIfPayload(ctx, expiring, 5); err != nil || !removed {
+		t.Fatalf("matching conditional unhide = %v, %v; want true, nil", removed, err)
+	}
+}
+
 func TestDegradedStoreRejectsOperatorStateChanges(t *testing.T) {
 	root := t.TempDir()
 	blocker := filepath.Join(root, "not-a-directory")

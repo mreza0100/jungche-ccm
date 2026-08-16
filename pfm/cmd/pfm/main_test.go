@@ -48,14 +48,14 @@ func TestSettledRootInterface(t *testing.T) {
 	}
 	help := stdout.String()
 	for _, want := range []string{
-		"operator commands:", "  chat", "  install", "wiring commands:", "  chat bb",
+		"operator commands:", "  chat", "  install", "wiring commands:",
 		"  statusline", "  usage-hook",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("root help missing %q:\n%s", want, help)
 		}
 	}
-	for _, retired := range []string{"  open ", "  headless ", "  hide ", "  unhide ", "  hidden ", "  resolve ", "  bb "} {
+	for _, retired := range []string{"  open ", "  headless ", "  hide ", "  unhide ", "  hidden ", "  resolve ", "  bb ", "chat bb"} {
 		if strings.Contains(help, retired) {
 			t.Fatalf("root help still advertises %q:\n%s", retired, help)
 		}

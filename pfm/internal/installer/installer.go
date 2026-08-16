@@ -89,10 +89,10 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.retirePredecessors(); err != nil {
 		return err
 	}
-	if err := installer.wireCommands(assets); err != nil {
+	if err := installer.retireBBInstall(); err != nil {
 		return err
 	}
-	if err := installer.wireSkill(); err != nil {
+	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
 	unitChanged, err := installer.wireUnits(ctx)
@@ -116,7 +116,7 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
 	}
-	if err := installer.unlinkOne(filepath.Join(installer.options.Home, ".agents", "skills", "bb")); err != nil {
+	if err := installer.retireBBInstall(); err != nil {
 		return err
 	}
 	managerAvailable := installer.userManagerAvailable(ctx)
@@ -362,8 +362,6 @@ func (installer *engine) unwireCommands(assets []assetFile) error {
 func (installer *engine) commandTarget(asset string) (string, bool) {
 	commands := filepath.Join(installer.options.ConfigDir, "commands")
 	switch asset {
-	case "bb.command.md":
-		return filepath.Join(commands, "bb.md"), true
 	case "swap.command.md":
 		return filepath.Join(commands, "swap.md"), true
 	case "chat/chat.sh", "chat/history.sh":
@@ -376,13 +374,66 @@ func (installer *engine) commandTarget(asset string) (string, bool) {
 	return "", false
 }
 
-func (installer *engine) wireSkill() error {
-	source := filepath.Join(installer.managedRoot, "codex-skills", "bb")
-	target := filepath.Join(installer.options.Home, ".agents", "skills", "bb")
-	installer.say("codex skill -> %s", target)
-	_, err := installer.ensureLink(source, target)
+func (installer *engine) retireBBInstall() error {
+	installer.say("retired /bb surfaces")
+	for _, link := range []struct{ target, source string }{
+		{
+			target: filepath.Join(installer.options.ConfigDir, "commands", "bb.md"),
+			source: filepath.Join(installer.managedRoot, "bb.command.md"),
+		},
+		{
+			target: filepath.Join(installer.options.Home, ".agents", "skills", "bb"),
+			source: filepath.Join(installer.managedRoot, "codex-skills", "bb"),
+		},
+	} {
+		current, linked := resolvedLink(link.target)
+		if !linked || current != filepath.Clean(link.source) {
+			installer.skip(link.target + " is not an installed /bb link")
+			continue
+		}
+		if err := installer.unlinkOne(link.target); err != nil {
+			return err
+		}
+	}
+	for _, relative := range []string{
+		"bb.command.md",
+		"codex-skills/bb/SKILL.md",
+		"codex-skills/bb/agents/openai.yaml",
+	} {
+		if err := installer.retire(filepath.Join(installer.managedRoot, filepath.FromSlash(relative)), "retired /bb surface"); err != nil {
+			return err
+		}
+	}
+	for _, relative := range []string{"codex-skills/bb/agents", "codex-skills/bb", "codex-skills"} {
+		if err := installer.retireEmptyDirectory(filepath.Join(installer.managedRoot, filepath.FromSlash(relative))); err != nil {
+			return err
+		}
+	}
 	installer.say("")
-	return err
+	return nil
+}
+
+func (installer *engine) retireEmptyDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refuse to retire non-directory %s", path)
+	}
+	if installer.apply {
+		entries, readErr := os.ReadDir(path)
+		if readErr != nil {
+			return readErr
+		}
+		if len(entries) != 0 {
+			return fmt.Errorf("refuse to retire non-empty directory %s", path)
+		}
+	}
+	return installer.change("remove empty "+path, func() error { return os.Remove(path) })
 }
 
 var unitNames = []string{

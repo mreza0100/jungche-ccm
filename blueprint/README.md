@@ -113,7 +113,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `rr`, `p:360`, `ghostwriter`, `vision-factory`.
 
-**Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/swap` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`cc-ls` picker, `/bb` hide-and-close, `pfm reap` orphan sweeper).
+**Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/swap` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-hide, `pfm reap` orphan sweeper).
 
 **Tier B — opt-in domain archetypes:**
 

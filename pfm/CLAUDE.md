@@ -22,7 +22,7 @@ Use `/dev build pfm` · `/dev verify pfm` · `/dev test pfm` for anything the pi
 
 ## File Structure
 
-`cmd/pfm/` holds dispatch (`main.go`, `commands.go`, `pipeline.go`) and the end-to-end jail tests. Subcommands today: `ls hidden hide unhide index resolve inject run open last revive ask headless stream transcript watch status whoami mcp doctor legacy internal version help reap archive heal name-sync bb`.
+`cmd/pfm/` holds dispatch (`main.go`, `commands.go`, `pipeline.go`) and the end-to-end jail tests. Subcommands today: `archive chat doctor dream headless heal help index install internal ls mcp name-sync reap revive statusline usage-hook version whoami`.
 
 | Package | Owns |
 | --- | --- |

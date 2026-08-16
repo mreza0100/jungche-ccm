@@ -13,7 +13,7 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
-	bbCommand := pfmBinary + " chat bb"
+	clearCommand := pfmBinary + " internal clear-hide"
 	groupCommand := pfmBinary + " chat group hook"
 	statusCommand := pfmBinary + " statusline"
 	usageCommand := pfmBinary + " usage-hook"
@@ -50,7 +50,7 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 		changed = true
 	}
 
-	entries := userPromptHooks(document, !uninstall)
+	entries := hookEntries(document, "UserPromptSubmit", !uninstall)
 	for _, entry := range entries {
 		hooks, _ := entry["hooks"].([]any)
 		kept := hooks[:0]
@@ -59,8 +59,6 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 			command, _ := hook["command"].(string)
 			original := command
 			switch {
-			case command == pfmBinary+" bb" || strings.Contains(command, "bb-hook.sh"):
-				command = bbCommand
 			case strings.Contains(command, "chat/group.sh") && strings.HasSuffix(command, " hook"):
 				command = groupCommand
 			case strings.Contains(command, "cc-usage-hook.sh"):
@@ -71,7 +69,7 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 				hook["type"] = "command"
 				changed = true
 			}
-			if uninstall && (command == bbCommand || command == groupCommand || command == usageCommand) {
+			if isRetiredBBCommand(command) || uninstall && (command == groupCommand || command == usageCommand) {
 				changed = true
 				continue
 			}
@@ -79,16 +77,35 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 		}
 		entry["hooks"] = kept
 	}
-	pruneEmptyUserPromptHooks(document)
+	pruneEmptyHooks(document, "UserPromptSubmit")
+
+	clearSeen := false
+	for _, entry := range hookEntries(document, "SessionEnd", false) {
+		hooks, _ := entry["hooks"].([]any)
+		kept := hooks[:0]
+		for _, hookValue := range hooks {
+			hook, _ := hookValue.(map[string]any)
+			command, _ := hook["command"].(string)
+			if command == clearCommand {
+				if uninstall || clearSeen {
+					changed = true
+					continue
+				}
+				clearSeen = true
+			}
+			kept = append(kept, hookValue)
+		}
+		entry["hooks"] = kept
+	}
+	pruneEmptyHooks(document, "SessionEnd")
 
 	if !uninstall {
-		entries = userPromptHooks(document, true)
-		if full && !hasHookCommand(entries, bbCommand) {
-			appendHook(document, bbCommand)
+		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), usageCommand) {
+			appendHook(document, "UserPromptSubmit", usageCommand)
 			changed = true
 		}
-		if !hasHookCommand(userPromptHooks(document, true), usageCommand) {
-			appendHook(document, usageCommand)
+		if full && !clearSeen {
+			appendHook(document, "SessionEnd", clearCommand)
 			changed = true
 		}
 	}
@@ -131,7 +148,15 @@ func rewriteCommandFields(value any, rewrite func(string) string) bool {
 	return changed
 }
 
-func userPromptHooks(document map[string]any, create bool) []map[string]any {
+func isRetiredBBCommand(command string) bool {
+	command = strings.TrimSpace(command)
+	return command == "pfm bb" || command == "pfm chat bb" ||
+		strings.HasSuffix(command, "/pfm bb") || strings.HasSuffix(command, "/pfm chat bb") ||
+		strings.HasSuffix(command, "/cc-fleet bb") || strings.HasSuffix(command, "/cc-fleet chat bb") ||
+		strings.Contains(command, "bb-hook.sh")
+}
+
+func hookEntries(document map[string]any, event string, create bool) []map[string]any {
 	hooks, _ := document["hooks"].(map[string]any)
 	if hooks == nil && create {
 		hooks = map[string]any{}
@@ -140,10 +165,10 @@ func userPromptHooks(document map[string]any, create bool) []map[string]any {
 	if hooks == nil {
 		return nil
 	}
-	values, _ := hooks["UserPromptSubmit"].([]any)
+	values, _ := hooks[event].([]any)
 	if values == nil && create {
 		values = []any{}
-		hooks["UserPromptSubmit"] = values
+		hooks[event] = values
 	}
 	entries := make([]map[string]any, 0, len(values))
 	for _, value := range values {
@@ -167,14 +192,14 @@ func hasHookCommand(entries []map[string]any, wanted string) bool {
 	return false
 }
 
-func appendHook(document map[string]any, command string) {
+func appendHook(document map[string]any, event, command string) {
 	hooks, _ := document["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = map[string]any{}
 		document["hooks"] = hooks
 	}
-	values, _ := hooks["UserPromptSubmit"].([]any)
-	hooks["UserPromptSubmit"] = append(values, map[string]any{
+	values, _ := hooks[event].([]any)
+	hooks[event] = append(values, map[string]any{
 		"matcher": "",
 		"hooks": []any{map[string]any{
 			"type": "command", "command": command,
@@ -182,12 +207,12 @@ func appendHook(document map[string]any, command string) {
 	})
 }
 
-func pruneEmptyUserPromptHooks(document map[string]any) {
+func pruneEmptyHooks(document map[string]any, event string) {
 	hooks, _ := document["hooks"].(map[string]any)
 	if hooks == nil {
 		return
 	}
-	values, _ := hooks["UserPromptSubmit"].([]any)
+	values, _ := hooks[event].([]any)
 	kept := values[:0]
 	for _, value := range values {
 		entry, _ := value.(map[string]any)
@@ -196,5 +221,5 @@ func pruneEmptyUserPromptHooks(document map[string]any) {
 			kept = append(kept, value)
 		}
 	}
-	hooks["UserPromptSubmit"] = kept
+	hooks[event] = kept
 }

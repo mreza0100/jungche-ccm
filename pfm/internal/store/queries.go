@@ -210,15 +210,20 @@ func codexLineageSuppressed(lineage CodexLineage) bool {
 // (internal/hide/manager.go), so this is only ever a WIDER match, never a
 // narrower one.
 func codexLineageHidden(lineage CodexLineage, hiddenByID map[string]Hidden) bool {
-	if _, found := hiddenByID[lineage.RootID]; found {
+	if hiddenApplies(hiddenByID[lineage.RootID], lineage.PromptCount) {
 		return true
 	}
 	for _, member := range lineage.MemberIDs {
-		if _, found := hiddenByID[member]; found {
+		if hiddenApplies(hiddenByID[member], lineage.PromptCount) {
 			return true
 		}
 	}
 	return false
+}
+
+func hiddenApplies(hidden Hidden, promptCount int64) bool {
+	return hidden.ID != "" &&
+		(hidden.BaselinePrompts == nil || promptCount <= *hidden.BaselinePrompts)
 }
 
 // codexLineageLabelHidden is the cached frame's copy of the "_HIDE…" label

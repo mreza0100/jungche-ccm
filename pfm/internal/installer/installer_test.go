@@ -65,7 +65,8 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
     ]
   }
 }`)
-	writeFixture(t, filepath.Join(home, ".cc", "2", "settings.json"), `{"hooks":{}}`)
+	secondarySettings := filepath.Join(home, ".cc", "2", "settings.json")
+	writeFixture(t, secondarySettings, `{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"pfm chat bb"},{"type":"command","command":"secondary-keep"}]}]}}`)
 	writeFixture(t, filepath.Join(config, ".cc-ls-hidden"), "hidden-b\nhidden-a\n")
 	writeFixture(t, filepath.Join(config, "bin", "cc-hide.sh"), "retired\n")
 	writeFixture(t, filepath.Join(home, ".zshrc"), "alias keep=yes\nsource /old/cc-fleet.zsh\n")
@@ -116,9 +117,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("apply report=%#v err=%v\n%s", report, err, applied.String())
 	}
 	managed := filepath.Join(home, ".local", "share", "pfm", "install")
-	assertLink(t, bbTarget, filepath.Join(managed, "bb.command.md"))
+	if content := readFixture(t, bbTarget); content != "operator copy\n" {
+		t.Fatalf("install changed operator bb.md: %q", content)
+	}
 	assertLink(t, filepath.Join(config, "commands", "chat", "group", "send.md"), filepath.Join(managed, "chat", "group", "send.command.md"))
-	assertLink(t, filepath.Join(home, ".agents", "skills", "bb"), filepath.Join(managed, "codex-skills", "bb"))
 	assertLink(t, filepath.Join(home, ".config", "systemd", "user", "pfm-name-sync.service"), filepath.Join(managed, "systemd", "pfm-name-sync.service"))
 	assertLink(t, filepath.Join(unitDirectory, "default.target.wants", "pfm-name-sync.path"), filepath.Join(unitDirectory, "pfm-name-sync.path"))
 	assertLink(t, filepath.Join(unitDirectory, "timers.target.wants", "pfm-name-sync.timer"), filepath.Join(unitDirectory, "pfm-name-sync.timer"))
@@ -127,8 +129,8 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 			t.Fatalf("retired enablement link remains at %s: %v", retired, err)
 		}
 	}
-	if content := readFixture(t, bbTarget+".pre-professor-20300102-030405"); content != "operator copy\n" {
-		t.Fatalf("bb backup = %q", content)
+	if _, err := os.Lstat(bbTarget + ".pre-professor-20300102-030405"); !os.IsNotExist(err) {
+		t.Fatalf("install backed up an unowned bb.md: %v", err)
 	}
 	for _, retired := range []string{
 		filepath.Join(config, ".cc-ls-hidden"),
@@ -142,13 +144,23 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	for _, wanted := range []string{
 		home + "/.local/bin/pfm statusline",
 		home + "/.local/bin/pfm usage-hook",
-		home + "/.local/bin/pfm chat bb",
+		home + "/.local/bin/pfm internal clear-hide",
 		home + "/.local/bin/pfm chat group hook",
 		home + "/.local/bin/pfm dream hook agent-inject",
 	} {
 		if !strings.Contains(settings, wanted) {
 			t.Fatalf("settings missing %q:\n%s", wanted, settings)
 		}
+	}
+	for _, retired := range []string{"chat bb", "pfm bb", "bb-hook.sh"} {
+		if strings.Contains(settings, retired) {
+			t.Fatalf("settings retained retired /bb wiring %q:\n%s", retired, settings)
+		}
+	}
+	secondary := readFixture(t, secondarySettings)
+	if strings.Contains(secondary, "chat bb") || strings.Contains(secondary, "internal clear-hide") ||
+		!strings.Contains(secondary, "secondary-keep") {
+		t.Fatalf("secondary settings did not retire /bb without gaining the primary clear hook:\n%s", secondary)
 	}
 	if zshrc := readFixture(t, filepath.Join(home, ".zshrc")); !strings.Contains(zshrc, sourceLine(filepath.Join(managed, "shim", "pfm.zsh"))) ||
 		strings.Contains(zshrc, "cc-fleet.zsh") {
@@ -178,11 +190,11 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("uninstall: %v\n%s", err, removed.String())
 	}
-	if _, err := os.Lstat(bbTarget); err != nil {
-		t.Fatalf("uninstall did not restore bb.md: %v", err)
-	}
 	if content := readFixture(t, bbTarget); content != "operator copy\n" {
-		t.Fatalf("restored bb.md = %q", content)
+		t.Fatalf("uninstall changed operator bb.md = %q", content)
+	}
+	if settings := readFixture(t, filepath.Join(config, "settings.json")); strings.Contains(settings, "internal clear-hide") {
+		t.Fatalf("uninstall retained clear-hide hook:\n%s", settings)
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left managed asset root: %v", err)
@@ -195,6 +207,93 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 			t.Fatalf("uninstall left enablement link at %s: %v", removed, err)
 		}
 	}
+}
+
+func TestApplyRetiresInstalledBBCardsAndHook(t *testing.T) {
+	home := t.TempDir()
+	config := filepath.Join(home, ".claude")
+	managed := filepath.Join(home, ".local", "share", "pfm", "install")
+	commandTarget := filepath.Join(config, "commands", "bb.md")
+	skillTarget := filepath.Join(home, ".agents", "skills", "bb")
+	writeFixture(t, filepath.Join(managed, "bb.command.md"), "old managed command\n")
+	writeFixture(t, filepath.Join(managed, "codex-skills", "bb", "SKILL.md"), "old managed skill\n")
+	writeFixture(t, filepath.Join(managed, "codex-skills", "bb", "agents", "openai.yaml"), "old managed metadata\n")
+	if err := os.MkdirAll(filepath.Dir(commandTarget), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(managed, "bb.command.md"), commandTarget); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, commandTarget+".pre-professor-20300102-030405", "operator command\n")
+	if err := os.MkdirAll(filepath.Dir(skillTarget), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(managed, "codex-skills", "bb"), skillTarget); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(config, "settings.json"), `{
+  "hooks": {
+    "UserPromptSubmit": [
+      {"matcher":"","hooks":[
+        {"type":"command","command":"`+home+`/.local/bin/pfm chat bb"},
+        {"type":"command","command":"fixture-keep"}
+      ]}
+    ]
+  }
+}`)
+
+	now := func() time.Time { return time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC) }
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Now: now, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if content := readFixture(t, commandTarget); content != "operator command\n" {
+		t.Fatalf("retirement did not restore operator card: %q", content)
+	}
+	for _, retired := range []string{
+		skillTarget,
+		filepath.Join(managed, "bb.command.md"),
+		filepath.Join(managed, "codex-skills"),
+	} {
+		if _, err := os.Lstat(retired); !os.IsNotExist(err) {
+			t.Fatalf("retired /bb surface remains at %s: %v", retired, err)
+		}
+	}
+	settings := readFixture(t, filepath.Join(config, "settings.json"))
+	if strings.Contains(settings, "chat bb") || !strings.Contains(settings, "fixture-keep") ||
+		!strings.Contains(settings, home+"/.local/bin/pfm internal clear-hide") {
+		t.Fatalf("settings did not retire /bb and wire clear-hide:\n%s", settings)
+	}
+
+	var second bytes.Buffer
+	report, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Now: now, Stdout: &second, Runner: &fakeRunner{},
+	})
+	if err != nil || report.Changed != 0 {
+		t.Fatalf("second apply report=%#v err=%v\n%s", report, err, second.String())
+	}
+}
+
+func TestApplyLeavesUnrelatedBBSymlinkAlone(t *testing.T) {
+	home := t.TempDir()
+	target := filepath.Join(home, ".claude", "commands", "bb.md")
+	operatorSource := filepath.Join(home, "operator", "bb.md")
+	writeFixture(t, operatorSource, "operator command\n")
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(operatorSource, target); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(home, ".claude", "settings.json"), `{}`)
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLink(t, target, operatorSource)
 }
 
 func TestUninstallDoesNotMigratePredecessorCommands(t *testing.T) {

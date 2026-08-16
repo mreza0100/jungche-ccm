@@ -132,7 +132,6 @@ func rewriteZshrc(content, wanted string, uninstall bool) string {
 			result = append(result, "")
 		}
 		result = append(result,
-			"# Professor fleet — launchers + the cc-ls chat picker",
 			"# The shell launchers delegate to the pfm engine.",
 			wanted,
 		)

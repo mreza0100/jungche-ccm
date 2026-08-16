@@ -217,6 +217,9 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 }
 
 func runInternal(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 && args[0] == "clear-hide" {
+		return runClearHide(args[1:], os.Stdin, stderr)
+	}
 	if len(args) != 0 && args[0] == "agent-open" {
 		return runInternalAgentOpen(args[1:], stderr)
 	}
@@ -265,7 +268,7 @@ func runInternal(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if len(args) == 0 || args[0] != "hide-exit" {
-		fmt.Fprintln(stderr, "usage: pfm internal hide-exit|then [options]")
+		fmt.Fprintln(stderr, "usage: pfm internal clear-hide|hide-exit|then [options]")
 		return 2
 	}
 	flags := newFlagSet(
@@ -389,7 +392,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "wiring commands:")
 	fmt.Fprintln(w, "  name-sync converge live chat window names")
-	fmt.Fprintln(w, "  chat bb   the /bb UserPromptSubmit hook")
 	fmt.Fprintln(w, "  statusline render the native Claude status line")
 	fmt.Fprintln(w, "  usage-hook the fail-open usage-limit prompt hook")
 	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
