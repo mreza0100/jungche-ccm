@@ -1,11 +1,11 @@
 # pfm (Professor-Fleet-Manager) TESTPLAN — the complete flow matrix
 
-Every pathway through the fleet tooling: the Go engine (`pfm/`), the zsh shim
-(`pfm/shim/pfm.zsh`), the `pfm chat` surface and its transition shim, `cc-db.sh`, the satellites,
-the MCP server, and the installer. One row per flow. The experiment wave drives this map.
+Every pathway through the fleet tooling: the Go engine (`pfm/`), the zsh launcher shim
+(`pfm/shim/pfm.zsh`), the `pfm chat` surface and its two-line compatibility delegate, the MCP
+server, the remaining group/history helpers, and the installer. One row per flow.
 
 Go paths are relative to `~/.professor/pfm/` (the engine lives at the repo root — it is a
-program, not a template); the zsh/satellite paths are relative to the bundle,
+program, not a template); the zsh/helper paths are relative to the bundle,
 `~/.professor/blueprint/templates/host-swap/`. Absolute paths are absolute.
 
 ## Legend — the SAFETY column
@@ -14,13 +14,13 @@ program, not a template); the zsh/satellite paths are relative to the bundle,
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `JAIL`             | Fully exercisable in a path jail: `paths.go:11-21` env overrides (`PFM_HOME`, `PFM_DB`, `PFM_SHARED_DB`, `PFM_SID_DIR`, `PFM_CLAUDE_ROOTS`, `PFM_CODEX_ROOT`, `PFM_TMUX_DIR`, `PFM_PROC_ROOT`) plus `PFM_TEST_NOW_NS` / `PFM_TEST_FRESH_SOCKET` / `PFM_CODEX_AVAILABLE` / `PFM_DB_SCRIPT` (`pipeline.go:25-30`). Reference harness: `pfm/testdata/e2e.sh:1-56`. |
 | `JAIL+tmux`        | Needs a real tmux **server on a scratch socket inside the jail's `TMUX_TMPDIR`** — never a live fleet socket. Reference harness: `internal/*/tmux_jail_test.go` (e.g. `internal/hide/tmux_jail_test.go:58-66`).                                                                                                                                                 |
-| `JAIL+sh`          | zsh/bash fixture with a fake `$HOME`, scratch db and an EMPTY socket dir. Reference: `tests/hide-fixtures.sh:1-20`, `tests/db-fixtures.sh`, `tests/install-fixtures.sh`, `tests/selflocate-fixtures.sh`. Window-name convergence is covered by the Go `probe-*` tmux jails.                                                                                              |
+| `JAIL+sh`          | zsh/bash fixture with a fake `$HOME`, scratch db and an EMPTY socket dir. References: `pfm/shim/shim_test.go` and `tests/install-fixtures.sh`. Window-name convergence is covered by the Go `probe-*` tmux jails.                                                                                                                                            |
 | `LIVE-READ`        | Read-only observation of live state (`pfm ls --tsv`, `--plain`, `--hidden`, `doctor`, `sqlite3 -readonly`). Never mutates.                                                                                                                                                                                                                                      |
 | **`REAL-SESSION`** | ⚠ **CANNOT be jailed.** Needs a genuine `claude` / `codex` process, a real transcript/rollout writer, or a real Claude-account login. The supervisor must schedule these deliberately on a scratch project directory.                                                                                                                                           |
 
 ## Legend — the REGRESSION column
 
-Tonight's four escapes. A row tagged with one of these MUST get a fixture before the wave closes.
+The four identity/state regressions that established this plan. A tagged row must retain a fixture.
 
 - **B1** — resumed store-only codex thread renders the wrong name.
 - **B2** — workflow twin threads: a hide resurrects as a doppelgänger row.
@@ -31,25 +31,20 @@ Tonight's four escapes. A row tagged with one of these MUST get a fixture before
 
 ## Table of contents
 
-1. [A — `pfm` CLI subcommands and flags](#a--pfm-cli-subcommands-and-flags) — 85 flows
-2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state) — 25 flows
-3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix) — 26 flows
-4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution) — 23 flows
-5. [E — Hide / unhide and the two-writer shared state](#e--hide--unhide-and-the-two-writer-shared-state) — 25 flows
-6. [F — Action synthesis and launch](#f--action-synthesis-and-launch) — 20 flows
-7. [G — MCP server (7 tools)](#g--mcp-server-7-tools) — 22 flows
-8. [H — `pfm chat`: subcommands, guards, `--then`, exit codes](#h--pfm-chat-subcommands-guards---then-exit-codes) — chat flows
-9. [I — zsh shell surface: launchers and revivers](#i--zsh-shell-surface-launchers-and-revivers) — 16 flows
-10. [J — Satellite scripts](#j--satellite-scripts) — 23 flows
-11. [K — Installer and systemd units](#k--installer-and-systemd-units) — 14 flows
+1. [A — `pfm` CLI subcommands and flags](#a--pfm-cli-subcommands-and-flags)
+2. [B — Picker TUI: key bindings and model state](#b--picker-tui-key-bindings-and-model-state)
+3. [C — Row-kind × operation cross-matrix](#c--row-kind--operation-cross-matrix)
+4. [D — Index, naming and identity resolution](#d--index-naming-and-identity-resolution)
+5. [E — Hide / unhide and shared state](#e--hide--unhide-and-shared-state)
+6. [F — Action synthesis and launch](#f--action-synthesis-and-launch)
+7. [G — MCP server (7 tools)](#g--mcp-server-7-tools)
+8. [H — `pfm chat`: subcommands, guards, `--then`, exit codes](#h--pfm-chat-subcommands-guards---then-exit-codes)
+9. [I — zsh shell surface: launchers and revivers](#i--zsh-shell-surface-launchers-and-revivers)
+10. [J — Internal wiring and store](#j--internal-wiring-and-store)
+11. [K — Installer and systemd units](#k--installer-and-systemd-units)
 12. [Flows that CANNOT be jailed](#flows-that-cannot-be-jailed)
 13. [Residual known divergences](#residual-known-divergences)
-14. [Top 10 — where the next bugs are hiding](#top-10--where-the-next-bugs-are-hiding)
-
-**Total: 339 flows.** 10 rows are marked `REAL-SESSION` (no jail can reach them at all); the
-scheduling list below expands those into **32 distinct real-engine experiments**, because several
-`JAIL+tmux` rows only prove the _mechanics_ against synthetic pane content and still need one
-authentic engine run to be conclusive.
+14. [Highest-risk joins](#highest-risk-joins)
 
 ---
 
@@ -106,7 +101,7 @@ authentic engine run to be conclusive.
 | A wait re-reads the transcript every poll but re-scans the fleet only every `ResolveEvery`                            | UNIT      | `headless/converse.go` (`ResolveEvery`)                                                                   |            |
 | `transcript.From` never consumes a half-written record, and restarts when the file shrinks                            | UNIT      | `TestFromHoldsAPartialLine`, `TestFromRestartsWhenTheFileShrinks`                                         |            |
 | `chat watch <target>` → `IDLE`/`EXIT`/`DEAD` lines + `--on-idle`/`--on-exit` hooks                                   | JAIL      | `TestWatchAnnouncesIdleThenExit`, `TestWatchReportsAChatThatVanishesAsDead`                               |            |
-| `chat ls [--all]` → transition-backed live-seat listing                                                              | JAIL      | `chat_command.go`, `chat-ops.sh`                                                                          |            |
+| `chat ls [--all]` → live-seat listing from the Go gather/compose pipeline                                             | JAIL      | `chat_satellite_command.go`, `chat_satellite_command_test.go`                                             |            |
 | An unknown name → rc 4 with `not-found` on stdout, on EVERY verb — never empty at rc 0                                | JAIL      | `TestUnknownChatIsRc4WithAMachineShape`                                                                   |            |
 | A dead (non-live) chat → rc 3, explicitly, never silence                                                              | JAIL      | `headless_command.go` (`codeDeadChat`)                                                                    |            |
 | Flags parse before or after the target (`status seat --json`)                                                        | JAIL      | `main.go` (`parseFlagsAnywhere`); `TestChatArgumentMatrix`                                                |            |
@@ -172,7 +167,7 @@ authentic engine run to be conclusive.
 | `⌃X` on an agent row whose transcript is not indexed → **must not silently fail** | JAIL      | `compose/compose.go:564-567` + `hide/manager.go:142-164` | **B3**     |
 | `⌃E` flip 1h cache for the next launch                                            | JAIL      | `ui/model.go:157-159`                                    |            |
 | `⌃S` cycle primary account `n%MaxAccount+1`                                       | JAIL      | `ui/model.go:160-162`, `action/synth.go:19`              |            |
-| `⌃S` change persisted via `cc-db.sh primary-set` on exit                          | JAIL+sh   | `commands.go:133-138`, `pipeline.go:578-631`             |            |
+| `⌃S` change persisted through the shared store on exit                            | JAIL      | `commands.go:133-138`, `pipeline.go:578-631`             |            |
 | `⌃O` reboot a live row → kill-server, drop crumbs, demote to resume kind          | JAIL+tmux | `ui/model.go:166-172`, `commands.go:317-349`             |            |
 | `⌃O` on a non-live row → no-op                                                    | JAIL      | `ui/model.go:167-171`                                    |            |
 | `⌃O` on a `LiveSplit` (no id) → error, never a half-reboot                        | JAIL      | `commands.go:323-325`                                    |            |
@@ -219,7 +214,7 @@ tonight's four bugs all live in.
 | **hidden row** → excluded from DefaultView, counted in `HiddenCount`, shown under `-H`                             | JAIL             | `compose/compose.go:660-673,708-716,738-747`                                     | B2, B3     |
 | **empty row** (size 0 / 0 prompts) → suppressed from DefaultView, counted in `SuppressedCount`                     | JAIL             | `compose/compose.go:725-736`                                                     |            |
 | **both accounts** — a row's account comes from the longest matching config root                                    | JAIL             | `compose/compose.go:865-887`, `pipeline.go:527-542`                              |            |
-| **primary switch** — db meta first, `~/.claude-primary` mirror second, off-roster → 1                              | JAIL+sh          | `shared/shared.go:441-482`, `pipeline.go:553-559`, `cc-db.sh:262-275`            |            |
+| **primary switch** — db meta first, `~/.claude-primary` mirror second, off-roster → 1                              | JAIL             | `shared/shared.go:441-482`, `pipeline.go:553-559`                               |            |
 | **cache badge on/off** — `C1H` from `/proc` env of the live process, per socket                                    | JAIL             | `gather/cache1h.go`, `compose/compose.go:378,413,586`                            |            |
 
 ## D — Index, naming and identity resolution
@@ -250,11 +245,11 @@ tonight's four bugs all live in.
 | Lineage cycle in the parent chain → lowest id in the cycle becomes root                           | JAIL   | `store/lineage.go:83-128`                                                   | B2         |
 | `ReconcileCodexLineageRoots` denormalizes roots after each full pass                              | JAIL   | `store/lineage.go:201-236`                                                  | B2         |
 
-## E — Hide / unhide and the two-writer shared state
+## E — Hide / unhide and shared state
 
 | flow                                                                                | safety    | expected behavior (source)                                                                         | regression |
 | ----------------------------------------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------- | ---------- |
-| A hide writes the SQLite row then the carrier line, unconditionally                 | JAIL      | `shared/shared.go:193-220`, mirrors `cc-db.sh:129-138`                                             |            |
+| A hide writes the SQLite row then the compatibility carrier line, unconditionally   | JAIL      | `shared/shared.go:193-220`                                                                         |            |
 | `HiddenAt` returns the UNION of db rows and carrier ids                             | JAIL      | `shared/shared.go:241-277`                                                                         | B2         |
 | Carrier-only id reports `hidden_at` 0, never an invented time                       | JAIL      | `shared/shared.go:243,271-275`                                                                     |            |
 | Persistent `SQLITE_BUSY` on hide → warn, count, carry on (carrier already holds it) | JAIL      | `store/hidden.go:53-94`                                                                            |            |
@@ -262,7 +257,7 @@ tonight's four bugs all live in.
 | Engine derived from the index, not stored; transcript wins a collision              | JAIL      | `store/hidden.go:171-241`                                                                          | B3         |
 | Hidden id no index knows → empty engine = "hidden whatever the engine"              | JAIL      | `store/hidden.go:171-177`, `compose/compose.go:664-668`                                            | B3         |
 | `applyHide` skips split rows and ID-less rows                                       | JAIL      | `compose/compose.go:660-663`                                                                       | B2         |
-| Hide is PERMANENT — a growing prompt count never un-hides                           | JAIL+sh   | `compose/compose.go:669-671`; `tests/hide-fixtures.sh`                                             |            |
+| Hide is PERMANENT — a growing prompt count never un-hides                           | JAIL      | `compose/compose.go:669-671`; `compose/compose_test.go`                                             |            |
 | `hide <id>` for an id in NEITHER table → `chat %q is not indexed`, rc 1             | JAIL      | `hide/manager.go:138-165`                                                                          | **B3**     |
 | Picker hide failure surfaces as `pfm ls` rc 1, not a silent drop                    | JAIL      | `commands.go:129-132,296-315`                                                                      | **B3**     |
 | `unhide` maps a Codex member id to its lineage root before deleting                 | JAIL      | `hide/manager.go:113-131`                                                                          | B2         |
@@ -273,7 +268,7 @@ tonight's four bugs all live in.
 | Teammate reap falls back to the flat file when the table has no row                 | JAIL      | `hide/finisher.go:256-290`                                                                         |            |
 | `legacy import` counts unknown ids but imports them anyway                          | JAIL      | `legacy/legacy.go:47-77`                                                                           |            |
 | `legacy export` unions before rewriting so no hide is destroyed                     | JAIL      | `legacy/legacy.go:90-107`                                                                          |            |
-| Two concurrent pickers hiding different chats → both survive (WAL + transaction)    | JAIL      | `shared/shared.go:135-157`, `cc-db.sh:53-57`                                                       |            |
+| Two concurrent pickers hiding different chats → both survive (WAL + transaction)    | JAIL      | `shared/shared.go:135-157`, `shared/shared_test.go`                                                |            |
 | A `_HIDE…` LABEL hides a chat with no store row, live or resumable, either case     | JAIL      | `naming.LabelHidden`, `compose/compose.go` (`applyHide`); `compose/label_hide_test.go`             |            |
 | A label-hidden chat still shows under `-a` and `-H`, and counts as hidden           | JAIL      | `compose/label_hide_test.go`                                                                       |            |
 | A split row is never label-hidden — its name is a join, not a label                 | JAIL      | `compose/label_hide_test.go`                                                                       |            |
@@ -302,7 +297,7 @@ tonight's four bugs all live in.
 | Self-switch: already on the target server → select the engine window, emit NO line    | JAIL+tmux        | `action/executor.go:223-278`                            |            |
 | Engine-window choice: exact `claude`/`codex` → `node`/version → lowest index          | JAIL             | `action/executor.go:264-278`                            |            |
 | Open gate: birth account/cache ≠ picker → offer reboot; failure attaches as-is        | **REAL-SESSION** | `action/executor.go:158-207`, `action/gate.go`          |            |
-| Reboot-to-match invokes `cc-swap-chat.sh --sock … <acct> --1h <0\|1>`                 | JAIL+sh          | `action/executor.go:190-199`                            |            |
+| Reboot-to-match invokes `pfm chat swap --sock … <acct> --1h <0\|1>`                   | JAIL+Go          | `action/executor.go:190-199`                            |            |
 | `_cc_solo` stray-claude sweep before an attach/resume                                 | JAIL             | `action/executor.go:208-215`, `action/solo.go`          |            |
 
 ## G — MCP server (7 tools)
@@ -342,8 +337,9 @@ tonight's four bugs all live in.
 | `chat new NAME` → detached chat on a fresh immutable `cc-*`/`cx-*` socket                             | JAIL+tmux        | `run_command.go`, `run_jail_test.go`                                   |            |
 | `chat new NAME --attach` → launch, then attach this terminal; `--await --attach` → rc 2               | JAIL+tmux        | `run_command.go`, `attach_e2e_test.go`                                 |            |
 | `chat open <name|socket|id|self>` → attach action                                                      | JAIL+tmux        | `chat_command.go`, `attach_e2e_test.go`                                |            |
-| `chat inject` target resolution: self → name → immutable socket → id                                  | JAIL+tmux        | `headless_command.go`, `internal/inject`, `internal/resolve`            | B1         |
-| `chat inject --file` preserves multi-line and shell-metacharacter bodies                              | JAIL+tmux        | `internal/inject`                                                       |            |
+| `chat inject` ladder: self → any-socket live session → label → Codex thread → id/path/excerpt | JAIL+tmux        | `headless_command.go`, `inject_resume.go`, `internal/inject/resolve`    | B1         |
+| busy Codex and Claude inject through the safe composer queue without Esc; receipts distinguish queued from delivered | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`, `engine_test.go` | |
+| `chat inject --file` uses bracketed paste, preserving long/multi-line/shell-syntax bodies past the Codex inline cap | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                     |            |
 | repeated `chat inject --then` waits busy→stable-idle and survives caller exit                         | JAIL+tmux        | `internal/inject/then.go`, waiter jail tests                            |            |
 | `/compact` without `--then`, or a `/compact` steer, is refused before delivery                        | JAIL             | `internal/inject`                                                       |            |
 | `--force-now` interrupts only a busy live target and marks the forced delivery                        | JAIL+tmux        | `internal/inject`                                                       |            |
@@ -355,12 +351,12 @@ tonight's four bugs all live in.
 | `chat hide` / `unhide` resolve names through the store; `self` shares the picker/BB path              | JAIL+tmux        | `chat_command.go`, `hide_cli_engine_jail_test.go`                       | B2, B3     |
 | `chat bb` and `chat group hook` drain stdin and fail open at rc 0                                     | JAIL             | `bb_jail_test.go`, `chat_command.go`                                    |            |
 | `chat end` kills only the resolved chat server                                                        | JAIL+tmux        | `chat_command.go`                                                       |            |
-| `chat find`, `save`, `load`, `branch`, `history`, `ls` retain their established behavior             | JAIL+sh          | `chat_command.go`, `chat-ops.sh`, `history.sh`                          |            |
+| `chat find`, `save`, `load`, `branch`, and `ls` are native Go; `history` retains its helper contract | JAIL+sh          | `chat_satellite_command.go`, `chat_satellite_command_test.go`, `history.sh` |            |
 | `chat group {create,ls,send,read,subscribe,invite,hook}` is the complete group bus                    | JAIL+sh          | `chat_command.go`, `group.sh`                                           |            |
 | `chat resolve <target>` prints immutable socket, tmux session and chat id                             | JAIL             | `chat_command.go`                                                       | B1         |
-| exit contract: 2 usage, 3 dead chat, 4 no matching chat, 5 answer timeout, 6 not delivered           | JAIL             | `headless_command.go`, `headless_matrix_test.go`                        |            |
+| exit contract: 0 delivered/queued, 2 usage, 3 dead, 4 unknown, 5 answer timeout, 6 undelivered       | JAIL             | `headless_command.go`, `headless_matrix_test.go`, `inject_cli_jail_test.go` |         |
 | hidden root compatibility alias emits a deprecation; `run`, `dump`, and the old stream verb are gone | JAIL             | `main.go`, `headless_matrix_test.go`                                    |            |
-| `chat.sh` is an executable transition shim: delegates to `pfm chat`, fallback only before cutover     | JAIL+sh          | `chat.sh`, `chat-ops.sh`, `tests/install-fixtures.sh`                   |            |
+| `chat.sh` is an executable two-line compatibility delegate to `pfm chat`                              | JAIL+sh          | `chat.sh`, `tests/install-fixtures.sh`                                  |            |
 
 ## I — zsh shell surface: launchers and revivers
 
@@ -373,7 +369,7 @@ operations to the Go binary. `install.sh` wires this single active shim.
 | `cc-ls` routes `--check/--plain/--tsv` direct, everything else through `eval`     | JAIL+sh   | `shim/pfm.zsh:25-33`                             |            |
 | `cc-open` / `cc-revive` pass-through                                              | JAIL+sh   | `shim/pfm.zsh:35-36`                             |            |
 | `_pfm_eval` evals ONLY on rc 0 and non-empty output                               | JAIL+sh   | `shim/pfm.zsh:15-23`                             |            |
-| `cc` uses the primary account from `cc-db.sh primary-get`                         | JAIL+sh   | `shim/pfm.zsh:105-106`                           |            |
+| `cc` uses the primary account from hidden `pfm internal primary-get`              | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
 | `cc1` / `cc2` force an account; account 3 has no launcher                         | JAIL+sh   | `shim/pfm.zsh:107-108`, `action/synth.go:19`     |            |
 | `_cc_run` per-element quoting of `CC_AUTONOMY_FLAGS` and user args                | JAIL+sh   | `shim/pfm.zsh:89-93`                             |            |
 | `_cc_run` env hygiene + `FORCE_PROMPT_CACHING_5M` when un-armed                   | JAIL+sh   | `shim/pfm.zsh:83-101`                            |            |
@@ -381,38 +377,30 @@ operations to the Go binary. `install.sh` wires this single active shim.
 | `cx` creates its server DETACHED with title plumbing, then attaches               | JAIL+sh   | `shim/pfm.zsh:116-139`                           | B1         |
 | `_cc_selfswitch` refuses to nest a session inside itself                          | JAIL+tmux | `shim/pfm.zsh:201-222`                           |            |
 | `_cc_in_bunker` → `exec` into the client so no husk survives                      | JAIL+sh   | `shim/pfm.zsh:95,125,197`                        |            |
-| `cc-swap <1\|2>` / fzf picker → `cc-db.sh primary-set` is the only writer         | JAIL+sh   | `shim/pfm.zsh:156-190`                           |            |
+| `cc-swap <1\|2>` / fzf picker → hidden `pfm internal primary-set` is the writer   | JAIL+sh   | `shim/pfm.zsh`, `shim/shim_test.go`              |            |
 | `_cc_label` reads account 1's identity from `~/.claude.json`, not the config dir  | JAIL+sh   | `shim/pfm.zsh:142-154`                           |            |
 | `cc-revive` lists resumable chats by project through the engine                   | JAIL+tmux | `cmd/pfm/commands.go:493-538`, `shim/pfm.zsh:41` | B1         |
 | `vsct-revive` restores orphaned bunkers, skipping viewport husks                  | JAIL+tmux | `shim/pfm.zsh:226-252`                           |            |
 
-## J — Satellite scripts
+## J — Internal wiring and store
 
-| flow                                                                                               | safety           | expected behavior (source)                                                             | regression |
-| -------------------------------------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------- | ---------- |
-| `cc-db.sh init` idempotent schema + WAL                                                            | JAIL+sh          | `cc-db.sh:68-103`                                                                      |            |
-| `cc-db.sh` `.timeout` dot-command, never `PRAGMA busy_timeout`                                     | JAIL+sh          | `cc-db.sh:53-57`                                                                       |            |
-| `hidden-add` / `-del` / `-has` write BOTH db and carrier                                           | JAIL+sh          | `cc-db.sh:106-148`                                                                     | B2         |
-| `hidden-sync` replaces the whole set in one transaction (`WHERE true`)                             | JAIL+sh          | `cc-db.sh:171-200`                                                                     |            |
-| `hidden-reap` prunes to the live set from stdin                                                    | JAIL+sh          | `cc-db.sh:149-161`                                                                     |            |
-| `hidden-at-list` (retired payload column)                                                          | JAIL+sh          | `cc-db.sh:163-169`                                                                     |            |
-| `chat-load` / `chat-save` / `chat-prune` name cache, tab-exact field split                         | JAIL+sh          | `cc-db.sh:202-259`                                                                     |            |
-| `primary-get` / `primary-set`: roster `1\|2`, mirror kept in lockstep                              | JAIL+sh          | `cc-db.sh:262-275`                                                                     |            |
-| `child-add/list/clear` for `new` and `pane` kinds                                                  | JAIL+sh          | `cc-db.sh:277-303`                                                                     |            |
-| `swap-log` single line and stdin-drain forms                                                       | JAIL+sh          | `cc-db.sh:305-321`                                                                     |            |
-| `migrate` idempotent, renames legacy files aside                                                   | JAIL+sh          | `cc-db.sh:323-366`                                                                     |            |
-| Degraded mode: no `sqlite3` → every read/write falls back to the flat files                        | JAIL+sh          | `cc-db.sh:51,17-18`                                                                    |            |
-| `/bb` and the Codex `$bb` skill both run `pfm chat hide self --exit`                               | JAIL+tmux        | `bb.command.md`, `codex-skills/bb/SKILL.md`, `internal/hide/tmux_jail_test.go:150-240` |            |
-| `cc-agent-open.sh` per-uuid takeover flock; loser exits 1                                          | JAIL+sh          | `cc-agent-open.sh:18-31`                                                               |            |
-| `cc-agent-open.sh` registry lookup by `sessionId` OR `id` prefix, both accounts                    | **REAL-SESSION** | `cc-agent-open.sh:52-68`                                                               | B3         |
-| `cc-agent-open.sh` routing: busy → attach, everything else → takeover                              | **REAL-SESSION** | `cc-agent-open.sh:107-125`                                                             |            |
-| `cc-agent-open.sh` tmux-resident lock-holder → attach its window instead                           | JAIL+tmux        | `cc-agent-open.sh:90-105`                                                              |            |
-| `cc-swap-chat.sh` account+`--1h` arg parsing and the usage bail                                    | JAIL+sh          | `cc-swap-chat.sh:21-33`                                                                |            |
-| `cc-swap-chat.sh --sock` refuses a multi-pane server                                               | JAIL+sh          | `cc-swap-chat.sh:46-53`                                                                |            |
-| `cc-swap-chat.sh` `--1h`-only path (no account) keeps the chat's account from its live process env | JAIL+sh          | `cc-swap-chat.sh:115-125`                                                              |            |
-| `cc-swap-chat.sh` no-transcript chat → fresh reboot, not a dead `--resume`                         | JAIL+sh          | `cc-swap-chat.sh:79-90`                                                                |            |
-| `cc-swap-chat.sh` per-pane swap flock, open-menu abort, `/exit` timeout refusal                    | JAIL+tmux        | `cc-swap-chat.sh:134-186`                                                              |            |
-| `cc-swap-chat.sh --then` trust-prompt handling, typed-render proof, submit confirm                 | **REAL-SESSION** | `cc-swap-chat.sh:204-260`                                                              |            |
+| flow                                                                                              | safety           | expected behavior (source)                                              | regression |
+| ------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------- | ---------- |
+| shared-store open is idempotent, initializes schema, enables WAL and sets a busy timeout         | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            |            |
+| hide add/delete/lookup keep the SQLite row and compatibility carrier coherent                     | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            | B2         |
+| hide sync and orphan pruning replace only the intended set, in one transaction                    | JAIL             | `internal/shared/shared.go`, `internal/store/hidden_test.go`             |            |
+| chat cache load/save/prune preserves tab-bearing prompt text and exact ids                        | JAIL             | `internal/store`, `internal/store/queries_test.go`                       |            |
+| hidden `internal primary-get/set` validates the 1/2 roster and keeps its mirror coherent          | JAIL             | `cmd/pfm/main.go`, `internal/shared/shared_test.go`, `shim/shim_test.go` |            |
+| child add/list/clear distinguishes `new` servers from `pane` children                             | JAIL             | `internal/shared/shared.go`, `internal/shared/shared_test.go`            |            |
+| `/bb` and the Codex `$bb` skill both run `pfm chat hide self --exit`                              | JAIL+tmux        | `bb.command.md`, `codex-skills/bb/SKILL.md`, hide jail tests             |            |
+| hidden `internal agent-open` holds a per-id mutex; exactly one concurrent takeover wins           | JAIL             | `internal/agentopen/agentopen.go`, `agentopen_test.go`                   |            |
+| agent registry accepts `sessionId` or `id` prefixes across configured account roots               | **REAL-SESSION** | `internal/agentopen/agentopen.go`, `agentopen_test.go`                   | B3         |
+| agent routing attaches busy/tmux-resident work and takes over idle work                           | JAIL+tmux        | `internal/agentopen`, `agentopen_test.go`                                |            |
+| a failed registry scan refuses a fresh resume instead of opening the same transcript twice        | JAIL             | `TestOpenRefusesFreshResumeWhenEveryRegistryQueryFails`                  |            |
+| `chat swap` parses account/cache-only forms and rejects a multi-pane server                        | JAIL+tmux        | `swap_command.go`, `swap_jail_test.go`                                   |            |
+| `chat swap` preserves current account for cache-only requests and fresh-boots without a transcript | JAIL+tmux        | `internal/swap`, `swap_test.go`                                          |            |
+| `chat swap` serializes by pane, refuses an open selector, and waits for a real prompt before `--then` | JAIL+tmux      | `internal/swap`, `swap_jail_test.go`, `swap_test.go`                     |            |
+| `chat recover` resolves id or rollout, rebuilds normal/compacted output, and is idempotent          | JAIL             | `internal/recovery`, `recover_jail_test.go`                              |            |
 
 ## K — Installer and systemd units
 
@@ -420,7 +408,7 @@ operations to the Go binary. `install.sh` wires this single active shim.
 | ---------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------- | ---------- |
 | `install.sh` dry run is the default                                                      | JAIL+sh          | `install.sh:25,99,210-212`                                |            |
 | installer fixtures unset the session bus and prove user systemd unreachable before run | JAIL+sh          | `tests/install-fixtures.sh:13-27`                         |            |
-| `install.sh --apply` links the 5 surviving fleet scripts into `~/.claude/bin`            | JAIL+sh          | `install.sh:117-137`                                      |            |
+| `install.sh --apply` removes retired links and leaves `~/.claude/bin` empty               | JAIL+sh          | `install.sh`, `tests/install-fixtures.sh`                 |            |
 | `install.sh` links `chat/*.command.md` → `chat/*.md`, plus `chat/self/`                  | JAIL+sh          | `install.sh:124-138`                                      |            |
 | `install.sh` links codex skills into `~/.agents/skills`                                  | JAIL+sh          | `install.sh:141-150`                                      |            |
 | `install.sh` backs up a real file as `.pre-professor-<ts>`                               | JAIL+sh          | `install.sh:69-79`                                        |            |
@@ -431,19 +419,19 @@ operations to the Go binary. `install.sh` wires this single active shim.
 | `pfm-name-sync.path` fires on `~/.codex/session_index.jsonl` modification                | **REAL-SESSION** | `systemd/pfm-name-sync.path`                              | **B4**     |
 | `pfm-name-sync.timer` 15-min drift fallback                                              | JAIL+sh          | `systemd/pfm-name-sync.timer`                             |            |
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                       | JAIL+sh          | `systemd/pfm-name-sync.service`                           |            |
-| `install.sh` retires the `cc-name-sync.*` units and the ported satellites' links         | JAIL+sh          | `tests/install-fixtures.sh:138-156`, `install.sh:117-129` |            |
+| `install.sh` retires the old name-sync units and all ported script links                 | JAIL+sh          | `tests/install-fixtures.sh:138-156`, `install.sh:117-129` |            |
 | `install.sh` rewires `/bb` to `pfm chat bb` and an existing group receiver to `pfm chat group hook` | JAIL+sh | `tests/install-fixtures.sh`, `install.sh` |            |
 
 ---
 
 ## Flows that CANNOT be jailed
 
-Schedule these deliberately on a scratch project directory. **32 experiments.** The 10 table rows
-tagged `REAL-SESSION` are here verbatim; the rest are `JAIL+tmux` rows whose jail proves only the
+Schedule these deliberately on a scratch project directory. Rows tagged `REAL-SESSION` are here
+verbatim; the rest are `JAIL+tmux` rows whose jail proves only the
 mechanics (synthetic screen text, fake `/proc`) and which need one authentic engine run before
 they count as covered.
 
-**Needs a real `codex` process (15):**
+**Needs a real `codex` process:**
 
 1. live-codex store-only **resumed** thread — identity, name, window (`resolve/codex.go:49-85`).
 2. live-codex store-only **fresh** thread that exports `CODEX_THREAD_ID`.
@@ -472,13 +460,13 @@ they count as covered.
     same live chats. 22 checks, all green. Re-run on any engine upgrade —
     `ask` is only as true as the transcript shapes both engines write.
 
-**Needs a real `claude` process (14):** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through `cc-agent-open.sh` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `cc-swap-chat.sh` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. `[Pasted text #N]` collapse in a real Claude composer. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
+**Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. `/bb` graceful `/exit` flush + Stop hooks + post-exit re-index. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. `/chat:branch` fork (`--fork-session`) and its pane-child registration. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. `[Pasted text #N]` collapse in a real Claude composer. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
 28b. `pfm reap`'s busy probe against the REAL `claude agents --json` output
 — the jail stubs that binary with `[]`, which proves the fail-closed
 plumbing but not the JSON shape a live daemon emits. A shape change would
 read as "nobody is busy", so re-run this on any Claude Code upgrade.
 
-**Needs real multi-account state (4):** 29. `_cc_label` reading `oauthAccount.emailAddress` per account. 30. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`. 31. Transcripts under a SEPARATE account root (not a symlink back to account 1). 32. Statusline badge computation across accounts.
+**Needs real multi-account state:** 29. `_cc_label` reading `oauthAccount.emailAddress` per account. 30. `cc-swap` fzf picker → primary flips for `cc` but not `cc1`/`cc2`. 31. Transcripts under a SEPARATE account root (not a symlink back to account 1). 32. Statusline badge computation across accounts.
 
 ---
 
@@ -500,33 +488,12 @@ read as "nobody is busy", so re-run this on any Claude Code upgrade.
    does kill-PANE (and the doc's claim would take split siblings down). Stale contract.
 4. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
-5. **CWD encoding divergence:** `index/index.go:307` replaces only path separators, while
-   `chat.sh:394`, `chat.sh:1232` and `chat.sh:1253` do `tr '/.' '--'`. A project path containing
-   a dot resolves differently in the two halves.
-6. **`chat.sh:1104-1106` prefers the carrier FILE over the db** ("the file wins when it
-   exists"), while `shared/shared.go:241-277` takes the UNION. A db-only hide is invisible to
-   `chat.sh ls`.
-7. **`cc-agent-open.sh:62` registry lookup degrades to "not found" on timeout** (`cc_timeout
-20` vs real `claude agents --json` latency of 10-20s under load) — and the fallback then
-   runs `claude --resume` on the LIVE session, which claude 2.1.224 does NOT refuse: a second
-   claude boots on the same transcript (observed live; killed before it wrote). The
-   tmux-resident attach branch is unreachable behind the same miss. Fix wants a longer/retried
-   lookup and a live-pid guard before any fresh resume.
-9. **A booting chat is invisible to the Go picker until its first statusline render** writes
-   the SID crumb — a spawn wedged at a startup prompt (folder trust, MCP approval) is listed
-   by legacy (pane scan) and missed by Go (crumb scan) indefinitely. Observed live on a
-   `cc-new-*` teammate at the MCP prompt; the row appeared the moment the prompt was answered.
-10. **`chat.sh branch` reports success and registers the child before verifying the fork
-    survived.** A branch of a never-prompted chat always dies ("No conversation found" —
-    transcripts are written on the first message) yet prints the success line and leaves a
-    corpse child registration.
-
 ---
 
-## Top 10 — where the next bugs are hiding
+## Highest-risk joins
 
-Ranked by tonight's pattern: identity resolution across resume/store/fork edges, cross-writer
-state, and live-vs-indexed disagreement.
+Ranked by identity resolution across resume/store/fork edges, compatibility-carrier drift, and
+live-vs-indexed disagreement.
 
 | #   | flow                                                                                                                       | why it hides bugs                                                                                                                                                                                         |
 | --- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -534,9 +501,9 @@ state, and live-vs-indexed disagreement.
 | 2   | **Store-only thread lineage** (`index/codexstate.go:98-130`)                                                               | A resumed store-only thread is given itself as its lineage root, so it can never merge with the conversation it continues. Hides, names and prompt counts all split.                                      |
 | 3   | **Codex name precedence across two writers** (`index/index.go`, `naming/naming.go`)                                        | Name provenance (`cx_names.source`/`renamed_at`, schema v4) settles store-vs-file, but three walkers still differ on lineage breadth, and `reloadCxNames` still wipes and re-folds in two transactions.   |
 | 4   | **Agent-row identity** (`gather/agents.go:12-69` → `compose/compose.go:541-590` → `hide/manager.go:138-165`)               | An agent row is the only kind whose ID can exist with no index row behind it. Every id-keyed operation must vouch an engine for it; a new call site that forgets recreates the silent-refusal bug.        |
-| 5   | **Hide across the two writers** (`shared/shared.go:193-277`, `cc-db.sh:106-148`, `chat.sh:1100-1106`)                      | Four readers with three different precedence rules (union / file-wins / db-only). A hide that half the fleet honours is exactly how a chat "comes back".                                                  |
-| 6   | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `cc-portable.sh` `cx_thread_id`)                                | The argv `resume <uuid>` rung now leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window, and the failure mode differs per caller. |
+| 5   | **Hide store ↔ compatibility carrier** (`shared/shared.go:193-277`, `legacy/legacy.go`)                                  | The Go writer keeps both representations coherent, but external damage can still create db-only or carrier-only state. Every reader must preserve the union until `pfm legacy` repairs it.               |
+| 6   | **Codex thread ↔ pane pairing** (`resolve/codex.go:49-85`, `gather/codexproc.go`)                                        | The argv `resume <uuid>` rung leads and the ±120s window only backstops fresh threads — but a resumed thread with a scrubbed argv still falls to the window.                                             |
 | 7   | **Live-vs-indexed refresh race in the picker** (`pipeline.go:315-424`, `ui/model.go:247-271`)                              | Three snapshots stream into an open TUI while the user is toggling hides. A row that changes identity between frames takes the pending hide with it.                                                      |
 | 8   | **`collapseLiveServers` + `ServerCount`** (`compose/compose.go:759-803`)                                                   | Silently merges rows by `engine+ID`. Two genuinely different chats that resolve to the same id (see #1) disappear into one row; the loser is unreachable.                                                 |
 | 9   | **`--exit` finisher choreography** (`hide/finisher.go:94-245`)                                                             | Detached, delayed, and it re-asserts a hide AFTER an index refresh. It races the engine's own transcript flush and reaps teammates by an id that may already have been canonicalized.                     |
-| 10  | **Primary-account round trip** (`pipeline.go:553-631`, `shared/shared.go:441-482`, `cc-db.sh:262-275`, `shim/pfm.zsh:105`) | Two files, two writers, four readers, and a roster constant that disagrees with the path layout (see finding 8). The picker and the launcher can silently differ on which account a chat is born under.   |
+| 10  | **Primary-account round trip** (`pipeline.go:553-631`, `shared/shared.go:441-482`, `shim/pfm.zsh`)                          | The shared store and compatibility mirror must stay coherent, while the picker and launcher must enforce the same account roster.                                                                      |

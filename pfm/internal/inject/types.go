@@ -9,9 +9,17 @@ import (
 )
 
 const (
+	// CodeDead means the target resolved to a live pane that disappeared or
+	// became unreadable before delivery could complete.
+	CodeDead = 3
+	// CodeUnknown means no live target matched the requested namespace.
+	CodeUnknown = 4
+	// CodeUndelivered means the target exists but the guarded transaction did
+	// not put a turn into its model input.
+	CodeUndelivered = 6
 	// CodeBusy is the verdict a caller retries rather than escalates: the pane
-	// was working, so nothing was typed. Everything else means the message
-	// will never arrive without a change of plan.
+	// was working, so nothing was typed. It is internal retry telemetry; the
+	// CLI maps it to CodeUndelivered and never exposes rc 7.
 	CodeBusy = 7
 	// CodexInlineMax is chat.sh's hard limit for inline Codex delivery.
 	CodexInlineMax = 1500
@@ -38,6 +46,10 @@ type Request struct {
 	Target   string
 	Message  string
 	ForceNow bool
+	// FileBacked says Message came from --file. It travels through tmux's
+	// bracketed-paste transport so a long Codex body is not mistaken for an
+	// inline composer whose visible head/tail cannot be proven.
+	FileBacked bool
 	// Then carries follow-up steers delivered, in order, by a DETACHED waiter
 	// once the primary turn settles busy -> idle-stable (chat.sh --then).
 	Then []string
@@ -91,9 +103,14 @@ type Tmux interface {
 		scrollback int,
 	) (string, error)
 	SendLiteral(ctx context.Context, socketPath, target, text string) error
+	SendPaste(ctx context.Context, socketPath, target, text string) error
 	SendKey(ctx context.Context, socketPath, target, key string) error
 	CancelCopyMode(ctx context.Context, socketPath, target string) error
 	PaneInMode(ctx context.Context, socketPath, target string) (bool, error)
+	// PaneCommand verifies that a busy target really is a Claude/Codex TUI
+	// before Inject types into its mid-turn composer queue. Socket spelling is
+	// an address, not proof of what process currently owns the pane.
+	PaneCommand(ctx context.Context, socketPath, target string) (string, error)
 	CurrentSession(ctx context.Context, socketPath string) (string, error)
 	// WindowName backs chat.sh's codex label fallback: a codex chat has no 🔖
 	// statusline, so its human thread name is the tmux window name.
@@ -158,5 +175,9 @@ type Dependencies struct {
 	Tmux       Tmux
 	Spawner    ThenSpawner
 	Identifier SelfIdentifier
-	Options    Options
+	// CodexSeat is the last sender-identity rung. It maps this process's
+	// CODEX_THREAD_ID to the live fleet seat after ambient tmux and ancestry
+	// recovery both fail. Nil means that lookup is unavailable.
+	CodexSeat SelfIdentifier
+	Options   Options
 }

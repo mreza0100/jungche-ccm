@@ -250,8 +250,7 @@ func computeWindowRenames(
 
 	// Two windows converging on ONE name is an ambiguity, not a rename: the
 	// window name is how the fleet addresses a chat, so two chats answering to
-	// it is worse than either keeping the name it has. Skip BOTH, exactly as
-	// the zsh half leaves a window with two differently-labeled panes alone.
+	// it is worse than either keeping the name it has. Skip both windows.
 	windowsByTarget := make(map[string]int, len(planned))
 	for _, rename := range planned {
 		windowsByTarget[rename.TargetName]++

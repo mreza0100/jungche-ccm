@@ -581,15 +581,6 @@
     "templates/host-swap/bb.command.md": {
       "curated": true
     },
-    "templates/host-swap/cc-agent-open.sh": {
-      "curated": true
-    },
-    "templates/host-swap/cc-db.sh": {
-      "curated": true
-    },
-    "templates/host-swap/cc-swap-chat.sh": {
-      "curated": true
-    },
     "templates/host-swap/chat/branch.command.md": {
       "curated": true
     },
@@ -597,9 +588,6 @@
       "curated": true
     },
     "templates/host-swap/chat/chat.sh": {
-      "curated": true
-    },
-    "templates/host-swap/chat/chat-ops.sh": {
       "curated": true
     },
     "templates/host-swap/chat/find.command.md": {
@@ -647,13 +635,7 @@
     "templates/host-swap/swap.command.md": {
       "curated": true
     },
-    "templates/host-swap/tests/db-fixtures.sh": {
-      "curated": true
-    },
     "templates/host-swap/tests/install-fixtures.sh": {
-      "curated": true
-    },
-    "templates/host-swap/tests/selflocate-fixtures.sh": {
       "curated": true
     },
     "templates/host-swap/codex-skills/bb/SKILL.md": {

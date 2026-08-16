@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS cx_names (
 );
 
 -- RETIRED. Hides live in the fleet's shared store now (~/.cc/fleet.db, table
--- `hidden`, keyed by uuid) because cc-db.sh and the zsh picker write there too
+-- `hidden`, keyed by uuid) because operator state lives in the shared database
 -- and a hide only one half could see is a hide that came back. This table is
 -- created, populated by databases predating the move, adopted once into the
 -- shared store on first open, and then never read again. It stays as the

@@ -10,12 +10,8 @@ import (
 	"hostops/pfm/internal/compose"
 )
 
-// MaxAccount is the size of the Claude account roster. SOURCE OF TRUTH:
-// cc-db.sh's primary-get / primary-set, whose `case "$n" in 1|2)` guard is a
-// shell case statement with no machine-readable form — so the roster is
-// mirrored here as a constant and every account check in this tree derives
-// from it. Hardcoding a roster in each caller is what froze the picker's
-// account cycle at 2 the day the roster stopped being three.
+// MaxAccount is the size of the Claude account roster. Every account check in
+// the Go engine and zsh launcher derives from this bound.
 const MaxAccount = 2
 
 // hygiene is the launch-environment strip every fleet-born process carries
@@ -73,7 +69,6 @@ func Synthesize(request Request) (Plan, error) {
 		request.Row.ConfigDir,
 		request.Home,
 		request.FreshSocket,
-		request.AgentScript,
 	) {
 		return Plan{}, errors.New("action values cannot contain NUL")
 	}
@@ -112,14 +107,12 @@ func Synthesize(request Request) (Plan, error) {
 				"agent action requires id, cwd, and fresh socket",
 			)
 		}
-		agentScript := agentScriptPath(request)
 		owningConfig := request.Row.ConfigDir
 		if filepath.Clean(owningConfig) == filepath.Join(request.Home, ".claude") {
 			owningConfig = ""
 		}
 		agentRun := agentCommand(
 			request.Cache1H,
-			agentScript,
 			request.Row.ID,
 			request.Row.CWD,
 			owningConfig,
@@ -157,7 +150,6 @@ func Synthesize(request Request) (Plan, error) {
 		)
 		agent := agentCommand(
 			request.Cache1H,
-			agentScriptPath(request),
 			request.Row.ID,
 			request.Row.CWD,
 		)
@@ -295,7 +287,7 @@ func continuityBanner(row compose.Row) string {
 			" did NOT rehydrate this thread.",
 		"    Scrollback is never restored — the prior tmux server is reaped on" +
 			" hide.",
-		"    Came up empty? The rollout is whole: cx-recover.sh " + row.ID,
+		"    Came up empty? The rollout is whole: pfm chat recover " + row.ID,
 	}
 	if row.Path != "" {
 		lines = append(
@@ -330,7 +322,7 @@ func codexCommandWith(environmentStrip string, args ...string) string {
 
 func agentCommand(
 	cache1H bool,
-	script, id, cwd string,
+	id, cwd string,
 	configDir ...string,
 ) string {
 	var command strings.Builder
@@ -340,27 +332,15 @@ func agentCommand(
 	} else {
 		command.WriteString(" FORCE_PROMPT_CACHING_5M=1")
 	}
-	command.WriteString(" bash ")
-	command.WriteString(Quote(script))
-	command.WriteByte(' ')
+	command.WriteString(" pfm internal agent-open --id ")
 	command.WriteString(Quote(id))
-	command.WriteByte(' ')
+	command.WriteString(" --cwd ")
 	command.WriteString(Quote(cwd))
-	if len(configDir) != 0 {
-		command.WriteByte(' ')
+	if len(configDir) != 0 && configDir[0] != "" {
+		command.WriteString(" --config ")
 		command.WriteString(Quote(configDir[0]))
 	}
 	return command.String()
-}
-
-func agentScriptPath(request Request) string {
-	if request.AgentScript != "" {
-		return request.AgentScript
-	}
-	// The installed location: install.sh symlinks the bundle's scripts into
-	// ~/.claude/bin. The repo copy under work/host-ops/ was a pre-move path
-	// that no longer exists on the host.
-	return filepath.Join(request.Home, ".claude", "bin", "cc-agent-open.sh")
 }
 
 func newSessionLine(socket, cwd, run string, bunker bool) string {

@@ -40,8 +40,7 @@ func TmuxConfigArguments() []string {
 //
 // DB is this binary's own derived cache (transcripts, rollouts, names) and
 // nothing else reads it. SharedDB and HiddenCarrier are the fleet's state,
-// co-owned with the zsh half through cc-db.sh: user-visible decisions — hides,
-// teammates, the primary account — live there and nowhere else.
+// authoritative operator state: hides, teammates, and the primary account.
 type Values struct {
 	DB          string
 	SharedDB    string
@@ -51,7 +50,7 @@ type Values struct {
 	TmuxDir     string
 	Home        string
 	// HiddenCarrier is ~/.claude/.cc-ls-hidden: the hidden set as it stands
-	// between picker runs (cc-db.sh:110-115). It has no environment override
+	// between picker runs. It has no environment override
 	// of its own because it is defined relative to Home, which EnvHome jails.
 	HiddenCarrier string
 	// ArchiveDir is ~/.claude-archive: where archived transcripts and rollouts
@@ -94,9 +93,8 @@ func Resolve() (Values, error) {
 
 	return Values{
 		DB: EnvOr(EnvDB, filepath.Join(home, ".local", "state", "pfm", "fleet.db")),
-		// cc-db.sh:41 reads the same file as $HOME/.cc/fleet.db. Its own
-		// override is named PFM_DB, which this binary already spends on
-		// its private cache, so the shared handle gets a distinct name.
+		// The shared database defaults to $HOME/.cc/fleet.db. PFM_DB already
+		// overrides the private cache, so the shared handle gets a distinct name.
 		SharedDB:      EnvOr(EnvSharedDB, filepath.Join(home, ".cc", "fleet.db")),
 		SIDDir:        EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
 		ClaudeRoots:   claudeRoots,

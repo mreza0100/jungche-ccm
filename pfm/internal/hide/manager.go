@@ -83,6 +83,17 @@ func (manager *Manager) Hide(
 	if err != nil {
 		return Target{}, err
 	}
+	if request.SocketName != "" || request.PaneID != "" {
+		if request.SocketName == "" || request.PaneID == "" {
+			return Target{}, errors.New("resolved live address requires socket and pane")
+		}
+		if filepath.Base(request.SocketName) != request.SocketName {
+			return Target{}, errors.New("resolved socket name must not contain a path")
+		}
+		target.SocketName = request.SocketName
+		target.SocketPath = filepath.Join(manager.paths.tmuxDir, request.SocketName)
+		target.PaneID = request.PaneID
+	}
 	if request.Exit && (target.SocketPath == "" || target.PaneID == "") {
 		return Target{}, errors.New("--exit requires a live --self tmux pane")
 	}
@@ -112,9 +123,8 @@ func (manager *Manager) Hide(
 
 // Unhide removes one hide through the store's non-fatal busy policy.
 //
-// A Codex hide is not always keyed on the id this call receives: cx-hide.sh
-// writes the RAW id of whatever rollout file the live process currently
-// holds (cx-hide.sh:147), which can be a resumed CHILD's id, while every id
+// A Codex hide is not always keyed on the id this call receives: the live
+// process can expose a resumed CHILD rollout id, while every id
 // the picker shows the user is the lineage ROOT — compose keys every Codex
 // row on it (composer.rolloutRow). Resolving id to the root and unhiding
 // only that key would leave a child-keyed hide standing: the row would come

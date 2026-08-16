@@ -173,7 +173,7 @@ func TestChatInjectCarriesTheThenArgument(t *testing.T) {
 		Message: "/compact hold: read /tmp/hold.md",
 		Then:    []string{"/compact again"},
 	})
-	if recursive.Code != 1 ||
+	if recursive.Code != 6 ||
 		!strings.Contains(recursive.Message, "must not itself start with /compact") {
 		t.Fatalf("recursive steer = %+v", recursive)
 	}
@@ -185,7 +185,7 @@ func TestChatInjectCarriesTheThenArgument(t *testing.T) {
 		Message: "/compact hold: read /tmp/hold.md",
 		Then:    []string{"resume the port"},
 	})
-	if unresolved.Code != 1 ||
+	if unresolved.Code != 4 ||
 		unresolved.Typed ||
 		!strings.Contains(unresolved.Message, "matched no live chat") {
 		t.Fatalf("legal steer chain = %+v", unresolved)

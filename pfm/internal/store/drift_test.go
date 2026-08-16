@@ -9,17 +9,9 @@ import (
 	"testing"
 )
 
-// THE DRIFT REGRESSION. Three hand re-bridges in one night is what this test
-// exists to prevent: the Go binary and the zsh fleet kept separate hide lists,
-// so a hide taken in one was invisible to the other until somebody copied it
-// across by hand.
-//
-// Both directions, with NO sync step anywhere in between:
-//   - a hide written the way cc-db.sh writes one — a sqlite3 CLI INSERT into
-//     ~/.cc/fleet.db plus the carrier append — is in the Go listing on the very
-//     next read, through an ALREADY-OPEN store;
-//   - a hide taken by the Go binary is in the carrier file the moment the call
-//     returns, which is the file the picker reads on its next run.
+// TestSharedHidesNeedNoBridgeInEitherDirection pins the shared-state boundary:
+// a raw SQLite writer is visible through an already-open Go store, and a Go
+// hide is immediately visible in both the database and carrier file.
 func TestSharedHidesNeedNoBridgeInEitherDirection(t *testing.T) {
 	sqlite3 := lookSQLite3(t)
 	setStoreTestJail(t)
@@ -36,8 +28,7 @@ func TestSharedHidesNeedNoBridgeInEitherDirection(t *testing.T) {
 		}
 	}
 
-	// ZSH → GO. cc-db.sh's cmd_hidden_add, transcribed (cc-db.sh:129-138): the
-	// upsert, then _leg_add's append. The Go store is open the whole time and is
+	// External SQLite writer → Go. The store is open the whole time and is
 	// never told anything happened.
 	runSQLite3(t, sqlite3, database.SharedPath(), `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES('zsh-hid',1700000000,NULL)
@@ -59,21 +50,20 @@ ON CONFLICT(uuid) DO UPDATE SET
 	}
 	for _, transcript := range transcripts {
 		if transcript.UUID == "zsh-hid" {
-			t.Fatal("the cached first frame still lists a chat the zsh half hid")
+			t.Fatal("the cached first frame still lists an externally hidden chat")
 		}
 	}
 	if counts.Hidden != 1 {
 		t.Fatalf("cached hidden count = %d, want 1", counts.Hidden)
 	}
 
-	// GO → ZSH, the carrier half: a line the picker reads on its next run.
+	// Go → carrier file.
 	if err := database.Hide(ctx, Hidden{ID: "go-hid", HiddenAt: 1700000001}); err != nil {
 		t.Fatal(err)
 	}
 	assertCarrierHas(t, database.CarrierPath(), "go-hid")
 
-	// GO → ZSH, the database half: exactly what `cc-db.sh hidden-list` runs
-	// (cc-db.sh:107), from a process that has never heard of this Go store.
+	// Go → a fresh external SQLite reader.
 	listed := runSQLite3(
 		t,
 		sqlite3,
@@ -81,7 +71,7 @@ ON CONFLICT(uuid) DO UPDATE SET
 		"SELECT uuid FROM hidden ORDER BY hidden_at DESC;",
 	)
 	if listed != "go-hid\nzsh-hid\n" {
-		t.Fatalf("cc-db.sh hidden-list = %q, want both hides", listed)
+		t.Fatalf("external hidden listing = %q, want both hides", listed)
 	}
 
 	// And an unhide clears both halves, because half a removal is drift too.
@@ -106,9 +96,8 @@ ON CONFLICT(uuid) DO UPDATE SET
 }
 
 // A hide that reached only the carrier file — a run where SQLite was
-// unopenable, or the zsh half's own no-database fallback (cc-db.sh:108) — is
-// still a hide. The union is the read, so no repair command stands between
-// that file and the listing.
+// unopenable is still a hide. The union is the read, so no repair command
+// stands between that file and the listing.
 func TestCarrierOnlyHideIsHiddenWithoutAnImport(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
@@ -158,7 +147,7 @@ INSERT INTO hidden(id, engine, hidden_at, baseline_prompts)
 VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 		t.Fatal(err)
 	}
-	// And a hide the zsh half left in the carrier file with no row anywhere.
+	// And a carrier-only hide with no database row.
 	carrier := first.CarrierPath()
 	if err := os.MkdirAll(filepath.Dir(carrier), 0o700); err != nil {
 		t.Fatal(err)
@@ -222,7 +211,7 @@ func lookSQLite3(t *testing.T) string {
 
 	path, err := exec.LookPath("sqlite3")
 	if err != nil {
-		t.Skip("sqlite3 CLI is absent: the zsh half of the store cannot be exercised")
+		t.Skip("sqlite3 CLI is absent: the external-writer seam cannot be exercised")
 	}
 	return path
 }
@@ -230,9 +219,7 @@ func lookSQLite3(t *testing.T) string {
 func runSQLite3(t *testing.T, sqlite3, database, statement string) string {
 	t.Helper()
 
-	// The same invocation cc-db.sh's _q uses (cc-db.sh:57): the .timeout DOT
-	// COMMAND, never PRAGMA busy_timeout, which would print a row of its own
-	// ahead of the real result.
+	// Use the .timeout dot command so no PRAGMA result row precedes the query.
 	command := exec.Command(
 		sqlite3,
 		"-batch",

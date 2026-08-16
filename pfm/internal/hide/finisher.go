@@ -143,10 +143,8 @@ func (finisher *Finisher) Run(
 	} else if err := finisher.recordPostExitHide(ctx, args); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
-	if args.Engine == ClaudeEngine {
-		if err := finisher.reapTeammates(ctx, args.ID); err != nil {
-			cleanupErrors = append(cleanupErrors, err)
-		}
+	if err := finisher.reapTeammates(ctx, args.ID); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
 	}
 	return errors.Join(cleanupErrors...)
 }
@@ -220,10 +218,8 @@ func (finisher *Finisher) recordPostExitHide(
 	return nil
 }
 
-// reapTeammates takes down the chats this chat spawned, reading them from the
-// shared store's `children` table — the same rows chat.sh writes with `cc-db.sh
-// child-add new` for a detached teammate (chat.sh:1362) and `child-add pane`
-// for one sharing this server (chat.sh:435). The flat files under
+// reapTeammates takes down the chats this chat spawned, reading detached and
+// shared-pane teammates from the shared store. The flat files under
 // ~/.claude/.cc-{new,pane}-children are the fallback the children helper
 // describes; the live fleet stopped writing them, and reading them alone is why
 // teammates outlived their orchestrator.
@@ -321,8 +317,7 @@ func (finisher *Finisher) children(
 	return readChildFile(flatPath)
 }
 
-// readChildFile reads one flat teammate file, whose lines are exactly the
-// values cc-db.sh's fallback appends (cc-db.sh:283-284).
+// readChildFile reads one flat teammate file from an older install.
 func readChildFile(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {

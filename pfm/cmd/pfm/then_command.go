@@ -5,8 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-
-	"hostops/pfm/internal/inject"
 )
 
 // steerList collects a repeated --steer flag in the order it was given, so a
@@ -48,7 +46,7 @@ func runInternalThen(args []string, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	engine, err := inject.New(inject.Dependencies{})
+	engine, err := newInjectEngine()
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal then: %v\n", err)
 		return 1

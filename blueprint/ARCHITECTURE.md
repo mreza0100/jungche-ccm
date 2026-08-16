@@ -107,7 +107,7 @@ refuses to clobber, and the fix moves the edit into the template or the values f
 
 | Tier             | Contents                                                       | Install mode                             | Values needed         |
 | ---------------- | -------------------------------------------------------------- | ---------------------------------------- | --------------------- |
-| Host executables | `pfm`, `pfm.zsh`, `cc-*.sh`, `cx-recover.sh`, `chat.sh`        | symlink, never templated                 | runtime config only   |
+| Host executables | `pfm`, `pfm.zsh`, and thin `chat.sh` compatibility delegates | binary + symlink, never templated        | runtime config only   |
 | Host commands    | `/bb`, `/swap`, `chat:*` for Claude **and** Codex              | symlink to committed per-harness renders | none                  |
 | Repo files       | per-project agents, QA protocols, Codex TOMLs, child CLAUDE.md | rendered from the adopter's values       | roster, stack, models |
 

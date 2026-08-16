@@ -308,7 +308,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		"chat_capture",
 		CaptureInput{Target: jail.selectorSession},
 	)
-	if selector.Code != 4 ||
+	if selector.Code != 6 ||
 		selector.Typed ||
 		selector.Status != "refused" ||
 		selectorBefore.Text != selectorAfter.Text ||

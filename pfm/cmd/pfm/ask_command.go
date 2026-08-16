@@ -68,15 +68,14 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
-	engine, err := inject.New(inject.Dependencies{})
+	engine, err := newInjectEngine()
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
-	// A chat that is working does not get typed into — inject refuses, and
-	// rightly. `ask` keeps offering the message until it lands, because a
-	// question asked of a busy teammate is queued, not abandoned; --timeout is
-	// what bounds the patience, and --now is what jumps the queue.
+	// Inject queues directly in a working Claude or Codex composer. The retry
+	// remains for an engine that cannot expose a safe queue; --timeout bounds
+	// that fallback, and --now interrupts instead of queueing.
 	start := time.Now()
 	budget := time.Duration(*timeout) * time.Second
 	result, err := engine.Inject(ctx, inject.Request{

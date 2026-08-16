@@ -26,8 +26,8 @@ const (
 
 // A hide taken while a concurrent writer holds the shared database must not
 // fail, must say so loudly, and must SURVIVE: the carrier file is written
-// whether or not the row lands, which is cc-db.sh's own order (cc-db.sh:133-137)
-// and the reason a busy database costs a warning instead of a lost decision.
+// whether or not the row lands, so a busy database costs a warning instead of
+// a lost decision.
 func TestHiddenBusyPolicyWarnsAndKeepsTheHide(t *testing.T) {
 	setStoreTestJail(t)
 

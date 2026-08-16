@@ -40,11 +40,6 @@ cc-ls() {
 cc-open() { _pfm_eval open "$@"; }
 cc-revive() { "$_PFM_BIN" revive "$@"; }
 
-# CC_DB — the fleet's state store CLI, as install.sh symlinks it into place. Every read and
-# write of the primary account goes through it: it validates the roster and mirrors the choice
-# into ~/.claude-primary, which the statusline still reads (cc-db.sh:262-275).
-typeset -gr _CC_DB="$HOME/.claude/bin/cc-db.sh"
-
 # The launch/account functions below are the shell owner of fresh interactive
 # launches; the Go action protocol emits lines that call them.
 # CC_AUTONOMY_FLAGS — the FULL-AUTONOMY posture, applied by EVERY path that starts a chat, on
@@ -115,7 +110,7 @@ _cc_run() {
     _cc_own_terminal $?
   fi
 }
-_cc_primary() { local n; n="$(bash "$_CC_DB" primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
+_cc_primary() { local n; n="$("$_PFM_BIN" internal primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
@@ -198,10 +193,7 @@ cc-swap() {
   else
     echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
   fi
-  # primary-set is the only writer: it validates $n against the roster and keeps
-  # ~/.claude-primary in lockstep for the statusline (cc-db.sh:268-275). Writing that file
-  # directly would skip both.
-  bash "$_CC_DB" primary-set "$n" || { print -u2 -- "cc-swap: cc-db.sh primary-set $n failed — primary unchanged"; return 1; }
+  "$_PFM_BIN" internal primary-set "$n" || { print -u2 -- "cc-swap: primary-set $n failed — primary unchanged"; return 1; }
   echo "Primary → account $n  ($(_cc_label $n))"
   echo "  cc       → account $n"
   echo "  cc1/cc2  → explicit account"

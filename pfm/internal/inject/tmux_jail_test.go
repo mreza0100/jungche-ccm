@@ -20,6 +20,19 @@ type injectTmuxJail struct {
 	sockets []string
 }
 
+type verifiedChatTmux struct {
+	CommandTmux
+	command string
+}
+
+func (tmux verifiedChatTmux) PaneCommand(
+	context.Context,
+	string,
+	string,
+) (string, error) {
+	return tmux.command, nil
+}
+
 func newInjectTmuxJail(t *testing.T) *injectTmuxJail {
 	t.Helper()
 	if _, err := exec.LookPath("tmux"); err != nil {
@@ -28,7 +41,11 @@ func newInjectTmuxJail(t *testing.T) *injectTmuxJail {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 is not installed")
 	}
-	root, err := os.MkdirTemp("/tmp", "ccij")
+	const tmuxJailRoot = "/tmp/tmux-1000"
+	if err := os.MkdirAll(tmuxJailRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(tmuxJailRoot, "probe-pfm-inject-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,6 +115,8 @@ while True:
     if not ch:
         break
     if ch == b"\x13":
+        if not idle:
+            sys.stdout.write("\r\nCONTROL-S-ERROR\r\n")
         buf.clear()
         sys.stdout.write("\r\x1b[2K❯ ")
         sys.stdout.flush()
@@ -109,6 +128,8 @@ while True:
             sys.stdout.flush()
             buf.clear()
     elif ch == b"\x1b":
+        if not idle:
+            sys.stdout.write("\r\nESCAPE-ERROR\r\n")
         buf.clear()
         sys.stdout.write("\r\x1b[2K❯ ")
         sys.stdout.flush()
@@ -178,13 +199,13 @@ func (jail *injectTmuxJail) startBusyPane(
 // the steer lands once, after idle, with the submit confirmed.
 func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 	jail := newInjectTmuxJail(t)
-	socket := "cc-1700000900-1-1"
+	socket := "probe-pfm-inject-then"
 	pane := jail.startBusyPane(t, socket, "steer-session", 2500*time.Millisecond)
 	socketPath := filepath.Join(jail.tmuxDir, socket)
 
 	engine, err := New(Dependencies{
 		Resolver: fakeResolver{socket: socketPath, target: pane},
-		Tmux:     CommandTmux{},
+		Tmux:     verifiedChatTmux{command: "claude"},
 		Spawner:  &fakeSpawner{},
 		Options: Options{
 			Poll:            50 * time.Millisecond,
@@ -216,20 +237,11 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The pane is busy right now: an inject must refuse instead of typing.
+	// DeliverThen is deliberately different from an ordinary inject: normal
+	// busy delivery queues in the composer, while a post-turn steer must wait
+	// until the primary turn has settled before it starts the next turn.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	busy, err := engine.Inject(ctx, Request{
-		Target:  "steer-session",
-		Message: "too early",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if busy.Code != 7 || busy.Typed {
-		t.Fatalf("busy pane accepted an inject: %+v", busy)
-	}
-
 	steer := "post compact steer landed"
 	result, err := engine.DeliverThen(ctx, socketPath, pane, []string{steer})
 	if err != nil {
@@ -256,11 +268,134 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 	}
 }
 
+func TestJailedBusyCodexQueuesAndLongFileUsesPasteTransport(t *testing.T) {
+	jail := newInjectTmuxJail(t)
+	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
+	socket := "probe-cx-pfm-inject-queue"
+	pane := jail.startBusyPane(t, socket, "queue-session", 30*time.Second)
+	socketPath := filepath.Join(jail.tmuxDir, socket)
+	engine, err := New(Dependencies{
+		Resolver: fakeResolver{socket: socketPath, target: pane},
+		Tmux:     verifiedChatTmux{command: "codex"},
+		Spawner:  &fakeSpawner{},
+		Options: Options{
+			Poll:            20 * time.Millisecond,
+			EnterGap:        20 * time.Millisecond,
+			EnterSettle:     100 * time.Millisecond,
+			ProofSettle:     50 * time.Millisecond,
+			SettleTries:     30,
+			EnterTries:      4,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "queue-locks"),
+			ThenLogRoot:     jail.root,
+			Sender:          &Sender{Session: "sender", UUID: "abcdef123456"},
+			CodexInlineMax:  CodexInlineMax,
+			AbsoluteByteMax: AbsoluteMessageMax,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	queued, err := engine.Inject(ctx, Request{Target: "queue-session", Message: "queued while working"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Code != 0 || queued.Status != "queued" || !queued.Typed || queued.Interrupted {
+		t.Fatalf("busy Codex queue result = %+v", queued)
+	}
+	if !strings.Contains(queued.Message, "queued into") {
+		t.Fatalf("queue receipt is not distinct: %q", queued.Message)
+	}
+	capture, err := CommandTmux{}.Capture(ctx, socketPath, pane, false, FullScrollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(capture, "BUSY-TYPED:queued while working") {
+		t.Fatalf("busy fixture did not receive queued body: %q", capture)
+	}
+
+	long := strings.Repeat("file-backed body ", 140)
+	fileQueued, err := engine.Inject(ctx, Request{
+		Target:     "queue-session",
+		Message:    long,
+		FileBacked: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileQueued.Code != 0 || fileQueued.Status != "queued" ||
+		!strings.Contains(fileQueued.Message, "FILE-BACKED") {
+		t.Fatalf("long file-backed queue result = %+v", fileQueued)
+	}
+}
+
+func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
+	jail := newInjectTmuxJail(t)
+	socket := "probe-pfm-inject-claude-queue"
+	pane := jail.startBusyPane(t, socket, "claude-queue-session", 30*time.Second)
+	socketPath := filepath.Join(jail.tmuxDir, socket)
+	engine, err := New(Dependencies{
+		Resolver: fakeResolver{socket: socketPath, target: pane},
+		Tmux:     verifiedChatTmux{command: "claude"},
+		Spawner:  &fakeSpawner{},
+		Options: Options{
+			Poll:            20 * time.Millisecond,
+			EnterGap:        20 * time.Millisecond,
+			EnterSettle:     100 * time.Millisecond,
+			ProofSettle:     50 * time.Millisecond,
+			SettleTries:     30,
+			EnterTries:      4,
+			LockTimeout:     5 * time.Second,
+			LockPoll:        20 * time.Millisecond,
+			LockMaxHold:     30 * time.Second,
+			LockRoot:        filepath.Join(jail.root, "claude-queue-locks"),
+			ThenLogRoot:     jail.root,
+			Sender:          &Sender{Session: "sender", UUID: "abcdef123456"},
+			CodexInlineMax:  CodexInlineMax,
+			AbsoluteByteMax: AbsoluteMessageMax,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	queued, err := engine.Inject(ctx, Request{
+		Target:  "claude-queue-session",
+		Message: "queued into claude while working",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.Code != 0 || queued.Status != "queued" ||
+		!queued.Typed || queued.Interrupted {
+		t.Fatalf("busy Claude queue result = %+v", queued)
+	}
+	if !strings.Contains(queued.Message, "busy Claude accepted") {
+		t.Fatalf("queue receipt does not identify Claude: %q", queued.Message)
+	}
+	capture, err := CommandTmux{}.Capture(ctx, socketPath, pane, false, FullScrollback)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(capture, "BUSY-TYPED:queued into claude while working") {
+		t.Fatalf("busy Claude fixture did not receive queued body: %q", capture)
+	}
+	if strings.Contains(capture, "CONTROL-S-ERROR") ||
+		strings.Contains(capture, "ESCAPE-ERROR") {
+		t.Fatalf("busy Claude queue sent a control key: %q", capture)
+	}
+}
+
 // TestJailedCaptureReturnsWholeScrollback covers chat.sh:1215-1219: capture
 // reads the entire retained buffer, not only the visible fold.
 func TestJailedCaptureReturnsWholeScrollback(t *testing.T) {
 	jail := newInjectTmuxJail(t)
-	socket := "cc-1700000901-1-1"
+	socket := "probe-pfm-inject-scrollback"
 	session := "scrollback-session"
 	command := jail.command(
 		"-f",

@@ -29,11 +29,12 @@ const (
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
-	resolver Resolver
-	tmux     Tmux
-	spawner  ThenSpawner
-	options  Options
-	whoami   SelfIdentifier
+	resolver  Resolver
+	tmux      Tmux
+	spawner   ThenSpawner
+	options   Options
+	whoami    SelfIdentifier
+	codexSeat SelfIdentifier
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -77,11 +78,12 @@ func New(dependencies Dependencies) (*Engine, error) {
 		dependencies.Identifier = identifier
 	}
 	return &Engine{
-		resolver: dependencies.Resolver,
-		tmux:     dependencies.Tmux,
-		spawner:  dependencies.Spawner,
-		options:  options,
-		whoami:   dependencies.Identifier,
+		resolver:  dependencies.Resolver,
+		tmux:      dependencies.Tmux,
+		spawner:   dependencies.Spawner,
+		options:   options,
+		whoami:    dependencies.Identifier,
+		codexSeat: dependencies.CodexSeat,
 	}, nil
 }
 
@@ -227,18 +229,27 @@ func withDefaults(options Options) Options {
 // Resolve applies chat.sh's live target ladder.
 func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, string, error) {
 	if name == "" {
-		return Target{}, 1, "empty target", nil
+		return Target{}, CodeUnknown, "empty target", nil
 	}
 	if name == "self" || name == "me" {
-		socket := currentSocketPath()
-		if socket == "" {
-			return Target{}, 1, "self target requires TMUX", nil
+		identity, err := engine.whoami.Identify(ctx)
+		if (err != nil || identity.Session == "") &&
+			engine.codexSeat != nil &&
+			os.Getenv(resolve.CodexThreadEnv) != "" {
+			identity, err = engine.codexSeat.Identify(ctx)
 		}
-		session, err := engine.tmux.CurrentSession(ctx, socket)
-		if err != nil {
-			return Target{}, 1, "", err
+		if err != nil || identity.Session == "" || identity.SocketPath == "" {
+			return Target{}, CodeUnknown, "self target has no live tmux seat", nil
 		}
-		return targetFromParts(socket, session), 0, "", nil
+		pane := identity.Session
+		if identity.Pane != "" {
+			pane = identity.Pane
+		}
+		target := targetFromParts(identity.SocketPath, pane)
+		if identity.Engine == resolve.CodexEngine {
+			target.Engine = "cx"
+		}
+		return target, 0, "", nil
 	}
 	if rawPane(name) {
 		// chat.sh:549 — pane ids are unique per tmux SERVER, not globally, so a
@@ -249,7 +260,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 			socket = currentSocketPath()
 		}
 		if socket == "" {
-			return Target{}, 1, "raw pane target requires TMUX", nil
+			return Target{}, CodeUnknown, "raw pane target requires TMUX", nil
 		}
 		return targetFromParts(socket, name), 0, "", nil
 	}
@@ -261,23 +272,27 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 	} {
 		outcome, err := engine.resolver.Resolve(ctx, kind, name)
 		if err != nil {
-			return Target{}, 2, "", err
+			return Target{}, CodeUndelivered, "", err
 		}
 		switch outcome.Code {
 		case 0:
 			socket, pane, ok := parseTargetLine(outcome.Stdout)
 			if !ok {
-				return Target{}, 2, "", fmt.Errorf(
+				return Target{}, CodeUndelivered, "", fmt.Errorf(
 					"resolver %s returned malformed target",
 					kind,
 				)
 			}
-			return targetFromParts(socket, pane), 0, outcome.Stderr, nil
+			target := targetFromParts(socket, pane)
+			if kind == resolve.CxWindow {
+				target.Engine = "cx"
+			}
+			return target, 0, outcome.Stderr, nil
 		case 2:
-			return Target{}, 2, outcome.Stderr, nil
+			return Target{}, CodeUnknown, outcome.Stderr, nil
 		}
 	}
-	return Target{}, 1, fmt.Sprintf("target %q matched no live chat", name), nil
+	return Target{}, CodeUnknown, fmt.Sprintf("target %q matched no live chat", name), nil
 }
 
 // Capture resolves and captures a pane without mutating it.
@@ -301,7 +316,7 @@ func (engine *Engine) Capture(
 		FullScrollback,
 	)
 	if err != nil {
-		return target, "", 1, "target pane is dead or unreadable", nil
+		return target, "", CodeDead, "target pane is dead or unreadable", nil
 	}
 	if tailLines > 0 {
 		capture = lastNonEmptyLines(capture, tailLines)
@@ -312,7 +327,7 @@ func (engine *Engine) Capture(
 // Inject performs the full guard/type/submit/proof transaction.
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
 	if request.Message == "" {
-		return refused(1, "refusing to inject an empty message"), nil
+		return refused(CodeUndelivered, "refusing to inject an empty message"), nil
 	}
 	if len(request.Message) > engine.options.AbsoluteByteMax {
 		return refused(
@@ -340,7 +355,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		SocketPath: target.SocketPath,
 		Pane:       target.Pane,
 	}
-	if target.Engine == "cx" &&
+	if target.Engine == "cx" && !request.FileBacked &&
 		utf8.RuneCountInString(request.Message) > engine.options.CodexInlineMax {
 		base.Code = 6
 		base.Message = fmt.Sprintf(
@@ -359,7 +374,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		engine.options.LockMaxHold,
 	)
 	if err != nil {
-		base.Code = 4
+		base.Code = CodeUndelivered
 		base.Message = fmt.Sprintf(
 			"could not acquire inject lock for %q: %v",
 			target.Pane,
@@ -371,11 +386,24 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 
 	capture, err := engine.capture(ctx, target, 0)
 	if err != nil {
-		base.Code = 1
+		base.Code = CodeDead
 		base.Message = "target pane is dead or unreadable"
 		return base, nil
 	}
 	base.Busy = IsBusy(capture)
+	// Both TUIs own a safe composer queue while a turn is running. A normal
+	// inject types there and submits without interrupting the active turn;
+	// force-now alone is allowed to send Escape. The draft guard below keeps
+	// this safe: an occupied composer is refused before any key is sent.
+	queueing := false
+	if base.Busy && !request.ForceNow {
+		command, commandErr := engine.tmux.PaneCommand(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+		)
+		queueing = commandErr == nil && queueCapableCommand(target.Engine, command)
+	}
 	if base.Busy && request.ForceNow {
 		for attempt := 0; attempt < engine.options.InterruptTries; attempt++ {
 			if !IsBusy(capture) {
@@ -393,17 +421,17 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			sleepContext(ctx, engine.options.Poll)
 			capture, err = engine.capture(ctx, target, 0)
 			if err != nil {
-				base.Code = 1
+				base.Code = CodeDead
 				base.Message = "target pane died while interrupting"
 				return base, nil
 			}
 		}
-	} else if base.Busy {
+	} else if base.Busy && !queueing {
 		for attempt := 0; attempt < engine.options.BusyTries; attempt++ {
 			sleepContext(ctx, engine.options.Poll)
 			capture, err = engine.capture(ctx, target, 0)
 			if err != nil {
-				base.Code = 1
+				base.Code = CodeDead
 				base.Message = "target pane died while waiting for idle"
 				return base, nil
 			}
@@ -430,7 +458,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		sleepContext(ctx, engine.options.Poll)
 		capture, err = engine.capture(ctx, target, 0)
 		if err != nil {
-			base.Code = 1
+			base.Code = CodeDead
 			base.Message = "target pane died while leaving copy mode"
 			return base, nil
 		}
@@ -448,14 +476,14 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		sleepContext(ctx, engine.options.Poll)
 		capture, err = engine.capture(ctx, target, 0)
 		if err != nil {
-			base.Code = 1
+			base.Code = CodeDead
 			base.Message = "target pane died while dismissing an overlay"
 			return base, nil
 		}
 	}
 
 	if menu := SelectorLine(capture); menu != "" {
-		base.Code = 4
+		base.Code = CodeUndelivered
 		base.Message = fmt.Sprintf(
 			"ABORT: %q has an OPEN selector menu (marker on a numbered option: %s); nothing was typed",
 			target.Pane,
@@ -464,37 +492,30 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		return base, nil
 	}
 
-	if err := engine.tmux.SendKey(
-		ctx,
-		target.SocketPath,
-		target.Pane,
-		"C-s",
-	); err != nil {
-		return Result{}, err
-	}
-	sleepContext(ctx, engine.options.Poll)
-	capture, err = engine.capture(ctx, target, 0)
-	if err != nil {
-		base.Code = 1
-		base.Message = "target pane died during draft guard"
-		return base, nil
-	}
-	base.DraftStashed = strings.Contains(
-		strings.ToLower(lastLines(capture, 8)),
-		"stashed",
-	)
-	draftLine := lastLineContaining(capture, "❯")
-	for attempt := 0; attempt < engine.options.StashTries && hasDraft(draftLine); attempt++ {
-		styled, _ := engine.tmux.Capture(
-			ctx,
-			target.SocketPath,
-			target.Pane,
-			true,
-			0,
-		)
-		if isDimPlaceholder(lastLineContaining(styled, "❯")) {
-			break
+	if queueing {
+		// Claude and Codex both accept a fresh composer while working. Do not
+		// run the idle Claude C-s stash guard here: C-s is not queueing, and a
+		// self-inject must never perturb the turn which invoked it.
+		draftLine := lastComposerLine(capture)
+		if hasDraft(draftLine) {
+			styled, _ := engine.tmux.Capture(
+				ctx,
+				target.SocketPath,
+				target.Pane,
+				true,
+				0,
+			)
+			if !isDimPlaceholder(lastComposerLine(styled)) {
+				base.Code = CodeUndelivered
+				base.Message = fmt.Sprintf(
+					"ABORT: busy %s pane %q already holds a draft; nothing was typed",
+					engineName(target.Engine),
+					target.Pane,
+				)
+				return base, nil
+			}
 		}
+	} else {
 		if err := engine.tmux.SendKey(
 			ctx,
 			target.SocketPath,
@@ -506,52 +527,107 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		sleepContext(ctx, engine.options.Poll)
 		capture, err = engine.capture(ctx, target, 0)
 		if err != nil {
-			break
-		}
-		if strings.Contains(strings.ToLower(lastLines(capture, 8)), "stashed") {
-			base.DraftStashed = true
-		}
-		draftLine = lastLineContaining(capture, "❯")
-	}
-	if hasDraft(draftLine) {
-		styled, _ := engine.tmux.Capture(
-			ctx,
-			target.SocketPath,
-			target.Pane,
-			true,
-			0,
-		)
-		if !isDimPlaceholder(lastLineContaining(styled, "❯")) {
-			base.Code = 5
-			base.Message = fmt.Sprintf(
-				"ABORT: %q composer holds a draft that will not stash (mash guard): %.80s; nothing was typed",
-				target.Pane,
-				strings.TrimSpace(strings.TrimPrefix(draftLine, "❯")),
-			)
+			base.Code = CodeDead
+			base.Message = "target pane died during draft guard"
 			return base, nil
+		}
+		base.DraftStashed = strings.Contains(
+			strings.ToLower(lastLines(capture, 8)),
+			"stashed",
+		)
+		draftLine := lastLineContaining(capture, "❯")
+		for attempt := 0; attempt < engine.options.StashTries && hasDraft(draftLine); attempt++ {
+			styled, _ := engine.tmux.Capture(
+				ctx,
+				target.SocketPath,
+				target.Pane,
+				true,
+				0,
+			)
+			if isDimPlaceholder(lastLineContaining(styled, "❯")) {
+				break
+			}
+			if err := engine.tmux.SendKey(
+				ctx,
+				target.SocketPath,
+				target.Pane,
+				"C-s",
+			); err != nil {
+				return Result{}, err
+			}
+			sleepContext(ctx, engine.options.Poll)
+			capture, err = engine.capture(ctx, target, 0)
+			if err != nil {
+				break
+			}
+			if strings.Contains(strings.ToLower(lastLines(capture, 8)), "stashed") {
+				base.DraftStashed = true
+			}
+			draftLine = lastLineContaining(capture, "❯")
+		}
+		if hasDraft(draftLine) {
+			styled, _ := engine.tmux.Capture(
+				ctx,
+				target.SocketPath,
+				target.Pane,
+				true,
+				0,
+			)
+			if !isDimPlaceholder(lastLineContaining(styled, "❯")) {
+				base.Code = CodeUndelivered
+				base.Message = fmt.Sprintf(
+					"ABORT: %q composer holds a draft that will not stash (mash guard): %.80s; nothing was typed",
+					target.Pane,
+					strings.TrimSpace(strings.TrimPrefix(draftLine, "❯")),
+				)
+				return base, nil
+			}
 		}
 	}
 
 	message, unsigned := engine.signedMessage(ctx, request.Message, base.Interrupted)
 	base.Unsigned = unsigned
-	if err := engine.tmux.SendLiteral(
-		ctx,
-		target.SocketPath,
-		target.Pane,
-		message,
-	); err != nil {
-		return Result{}, err
+	var sendErr error
+	if request.FileBacked {
+		sendErr = engine.tmux.SendPaste(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+			message,
+		)
+	} else {
+		sendErr = engine.tmux.SendLiteral(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+			message,
+		)
+	}
+	if sendErr != nil {
+		return Result{}, sendErr
 	}
 	base.Typed = true
 	normalized := normalizeSpace(message)
 	needle := tailRunes(normalized, 40)
+	rendered := false
 	for attempt := 0; attempt < engine.options.SettleTries; attempt++ {
 		_ = lock.beat()
 		capture, err = engine.capture(ctx, target, 0)
-		if err == nil && strings.Contains(normalizeSpace(capture), needle) {
+		if err == nil && (strings.Contains(normalizeSpace(capture), needle) ||
+			(request.FileBacked && hasPastePlaceholder(capture))) {
+			rendered = true
 			break
 		}
 		sleepContext(ctx, engine.options.Poll)
+	}
+	if !rendered {
+		base.Status = "typed_unconfirmed"
+		base.Code = CodeUndelivered
+		base.Message = fmt.Sprintf(
+			"typed text into %q but could not confirm that the composer received it; nothing was submitted",
+			target.Pane,
+		)
+		return base, nil
 	}
 
 	prefix := headRunes(normalizeSpace(message), 24)
@@ -567,7 +643,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		); err != nil {
 			return Result{}, err
 		}
-		if !base.DraftStashed {
+		if !queueing && target.Engine != "cx" && !base.DraftStashed {
 			sleepContext(ctx, engine.options.EnterGap)
 			if err := engine.tmux.SendKey(
 				ctx,
@@ -594,7 +670,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 				input = lastComposerLine(scrollback)
 			}
 		}
-		if input == "" || strings.Contains(input, "[Pasted text") {
+		if input == "" || hasPastePlaceholder(input) {
 			continue
 		}
 		if !strings.Contains(normalizeSpace(input), prefix) {
@@ -604,7 +680,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	}
 	if !submitted {
 		base.Status = "typed_unconfirmed"
-		base.Code = 3
+		base.Code = CodeUndelivered
 		base.Message = fmt.Sprintf(
 			"typed text into %q but could not confirm submission after %d Enter attempts",
 			target.Pane,
@@ -630,7 +706,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			Sender: engine.sender(ctx),
 		}); err != nil {
 			base.Status = "delivered"
-			base.Code = 8
+			base.Code = CodeUndelivered
 			base.Message = fmt.Sprintf(
 				"delivered the primary into %q but could NOT arm the %d then steer(s): %v — deliver them yourself once the pane is idle",
 				target.Pane,
@@ -653,10 +729,10 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		scrollback, _ := engine.capture(ctx, target, engine.options.Scrollback)
 		proofInput = lastComposerLine(scrollback)
 	}
-	if strings.Contains(proofInput, "[Pasted text") ||
+	if hasPastePlaceholder(proofInput) ||
 		(proofInput != "" && strings.Contains(normalizeSpace(proofInput), prefix)) {
 		base.Status = "typed_unconfirmed"
-		base.Code = 4
+		base.Code = CodeUndelivered
 		base.Message = fmt.Sprintf(
 			"PROOF-CONTRADICTION: %q composer still holds the message",
 			target.Pane,
@@ -665,11 +741,34 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		return base, nil
 	}
 	base.Status = "delivered"
+	if queueing {
+		base.Status = "queued"
+	}
 	base.Code = 0
-	base.Message = fmt.Sprintf(
-		"injected LIVE into %q — typed inline and submitted (Enter confirmed, input cleared)",
-		target.Pane,
-	)
+	switch {
+	case queueing && request.FileBacked:
+		base.Message = fmt.Sprintf(
+			"queued FILE-BACKED into %q — busy %s accepted the bracketed-paste block without interruption (Enter confirmed, input cleared)",
+			target.Pane,
+			engineName(target.Engine),
+		)
+	case queueing:
+		base.Message = fmt.Sprintf(
+			"queued into %q — busy %s accepted the turn without interruption (Enter confirmed, input cleared)",
+			target.Pane,
+			engineName(target.Engine),
+		)
+	case request.FileBacked:
+		base.Message = fmt.Sprintf(
+			"injected LIVE FILE-BACKED into %q — bracketed-paste body submitted (Enter confirmed, input cleared)",
+			target.Pane,
+		)
+	default:
+		base.Message = fmt.Sprintf(
+			"injected LIVE into %q — typed inline and submitted (Enter confirmed, input cleared)",
+			target.Pane,
+		)
+	}
 	if base.Steers > 0 {
 		base.Message += fmt.Sprintf(
 			" — %d then steer(s) queued; deliver in order, one settled turn apart (log: %s)",
@@ -681,6 +780,35 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	return base, nil
 }
 
+func engineName(engine string) string {
+	if engine == "cx" {
+		return "Codex"
+	}
+	return "Claude"
+}
+
+func queueCapableCommand(engine, command string) bool {
+	name := filepath.Base(strings.TrimSpace(command))
+	if engine == "cx" {
+		return name == "codex"
+	}
+	if strings.HasPrefix(name, "claude") {
+		return true
+	}
+	// Claude's version-managed native executable is named like 2.1.47. This
+	// is the same process-name seam the live resolver already recognizes.
+	dot := strings.IndexByte(name, '.')
+	if dot <= 0 {
+		return false
+	}
+	for _, character := range name[:dot] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // checkSteerChain applies chat.sh:596-625 before anything is resolved or
 // typed: a bad chain must die at the caller, not later in a detached waiter's
 // log where nobody is watching.
@@ -688,13 +816,13 @@ func (engine *Engine) checkSteerChain(request Request) (Result, bool) {
 	for _, steer := range request.Then {
 		if strings.TrimSpace(steer) == "" {
 			return refused(
-				1,
+				CodeUndelivered,
 				"ERROR: a then steer must be non-empty",
 			), false
 		}
 		if isCompactCommand(steer) {
 			return refused(
-				1,
+				CodeUndelivered,
 				"ERROR: a then steer must not itself start with /compact — compact-steering-into-compact recurses and loses the thread",
 			), false
 		}
@@ -759,6 +887,33 @@ func (engine *Engine) signedMessage(
 		marker = " — ⚠ FORCE-DELIVERED via Esc (your running flow was interrupted; re-check any in-progress action)"
 	}
 	sender := engine.sender(ctx)
+	parts := signatureParts(sender)
+	if len(parts) == 0 {
+		// chat.sh:648-657 — every derivation source came back empty. Dropping
+		// the footer silently makes an unsigned message indistinguishable from
+		// a signed one at the recipient, so the absence is STATED instead.
+		return message + marker + "  — " + unsignedFooter(sender), true
+	}
+	return message + marker + "  — " + strings.Join(parts, " · "), false
+}
+
+// SignForResume applies the same identity policy as a live send, but uses a
+// block footer because transcript injection is JSON text rather than terminal
+// keystrokes. Slash commands remain byte-exact.
+func (engine *Engine) SignForResume(ctx context.Context, message string) (string, bool) {
+	trimmed := strings.TrimLeftFunc(message, unicode.IsSpace)
+	if strings.HasPrefix(trimmed, "/") || engine.options.DisableSignature {
+		return message, false
+	}
+	sender := engine.sender(ctx)
+	parts := signatureParts(sender)
+	if len(parts) == 0 {
+		return message + "\n\n— " + unsignedFooter(sender), true
+	}
+	return message + "\n\n— " + strings.Join(parts, " · "), false
+}
+
+func signatureParts(sender Sender) []string {
 	parts := make([]string, 0, 3)
 	if sender.UUID != "" {
 		parts = append(parts, "sid "+headRunes(sender.UUID, 8))
@@ -772,13 +927,7 @@ func (engine *Engine) signedMessage(
 	if sender.Label != "" {
 		parts = append(parts, "🔖 "+sender.Label)
 	}
-	if len(parts) == 0 {
-		// chat.sh:648-657 — every derivation source came back empty. Dropping
-		// the footer silently makes an unsigned message indistinguishable from
-		// a signed one at the recipient, so the absence is STATED instead.
-		return message + marker + "  — " + unsignedFooter(sender), true
-	}
-	return message + marker + "  — " + strings.Join(parts, " · "), false
+	return parts
 }
 
 // unsignedFooter states what was TRIED, never what happens to be unset. Reading
@@ -847,6 +996,12 @@ func statedSender() (Sender, bool) {
 func (engine *Engine) detectSender(ctx context.Context) Sender {
 	sender := Sender{UUID: os.Getenv("CLAUDE_CODE_SESSION_ID")}
 	identity, err := engine.whoami.Identify(ctx)
+	if (err != nil || identity.Session == "") &&
+		engine.codexSeat != nil &&
+		os.Getenv(resolve.CodexThreadEnv) != "" &&
+		os.Getenv(resolve.ClaudeSessionEnv) == "" {
+		identity, err = engine.codexSeat.Identify(ctx)
+	}
 	if err != nil || identity.Session == "" {
 		return sender
 	}
@@ -911,7 +1066,9 @@ func (engine *Engine) steerLogPath(target string) string {
 
 func targetFromParts(socketPath, pane string) Target {
 	engine := "cc"
-	if strings.HasPrefix(filepath.Base(socketPath), "cx-") {
+	base := filepath.Base(socketPath)
+	if strings.HasPrefix(base, "cx-") ||
+		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-cx-")) {
 		engine = "cx"
 	}
 	return Target{SocketPath: socketPath, Pane: pane, Engine: engine}

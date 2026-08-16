@@ -5,16 +5,11 @@ already-running chat onto a different one — **without disturbing any other run
 Universal Tier C mechanic, no domain placeholders. **Linux and macOS** — each account is a plain
 config dir; nothing here depends on a Keychain or other OS credential store.
 
-Both platforms are first-class, and the seam between them is one file: `cc-portable.sh`. Where a
-tool differs (`stat -c` vs `stat -f`, `date -d` vs `date -j`, `find -printf`, and the four
-binaries macOS simply does not ship — `flock`, `setsid`, `timeout`, `free`) the GNU form is tried
-first and the BSD form backs it up. Where macOS genuinely **cannot** answer — reading another
-process's environment, which SIP has forbidden for a decade — the function returns empty and the
-caller asks a different question rather than acting on a fabricated answer; each such site says so
-in place. The one platform feature with no macOS equivalent is the `systemd/` name-sync triggers,
-and `install.sh` skips them with a line saying the sync still fires from every `cc-ls` run.
-
-Fleet-manager commands are served by `pfm` (Professor-Fleet-Manager).
+Fleet-manager commands are served by the `pfm` (Professor-Fleet-Manager) Go binary. Its path,
+process and store adapters carry the Linux/macOS differences; callers do not source a second
+portability engine. The one platform feature with no macOS equivalent is the `systemd/`
+name-sync trigger, and `install.sh` skips it explicitly. Picker runs and in-process name writes
+still converge names through the same `pfm name-sync` engine.
 
 ## What it does
 
@@ -31,9 +26,8 @@ cc-ls       ->  fzf picker over every live + resumable chat (Enter attaches or r
 that's already running. Moving an already-running chat to another account is `/swap`'s job:
 `CLAUDE_CONFIG_DIR` (and the cache-TTL env) binds once at process birth, so retargeting a live
 chat means ending that process and starting a fresh one in the same pane, not rewriting a
-credential in place. `swap.command.md` documents that reboot contract and `cc-swap-chat.sh` is the
-engine that performs it — both ship here, so `/swap` works after `install.sh --apply` with nothing
-left for you to author.
+credential in place. `swap.command.md` documents that reboot contract and `pfm chat swap` performs
+it, so `/swap` works after `install.sh --apply` with nothing left for you to author.
 
 ## How it works
 
@@ -63,24 +57,21 @@ refresh — no separate marker to keep in sync.
 
 ## Files in this template
 
-`install.sh` puts every one of these in place as a **symlink back into this clone** — see § Install.
+`install.sh` links the command, skill, unit and launcher surfaces back into this clone. The compiled
+`pfm` binary is installed separately at `~/.local/bin/pfm` — see § Install.
 
 | File                          | Installs as                                  | Purpose                                                                                                                                                                                                                                                    |
 | ----------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `install.sh`                  | —                                            | wires the whole bundle by symlink; dry-run by default, `--apply` to commit, `--uninstall` to undo                                                                                                                                                          |
-| `cc-portable.sh`              | `~/.claude/bin/cc-portable.sh`               | the GNU/BSD seam — every question whose answer differs between Linux and macOS (`stat`, `date`, `find -printf`, `flock`, `setsid`, `timeout`, `free`, `ss`, `/proc`) is asked here once, so the rest of the bundle is written twice-free. Sourced, not run |
+| `pfm/`                        | `~/.local/bin/pfm`                            | compiled fleet manager: picker, per-chat operations, shared store, recovery, swap, agent opening, name sync and MCP                                                                                                                                         |
 | `pfm/shim/pfm.zsh`            | sourced from `~/.zshrc`                      | the thin launcher surface: `cc`, `cc1`, `cc2`, `cx`, and `cc-swap`; fleet operations delegate to the `pfm` binary                                                                                                                                          |
-| `cc-db.sh`                    | `~/.claude/bin/cc-db.sh`                     | the fleet's state store — one SQLite database at `~/.cc/fleet.db` holding the hide list, the primary account, spawned children, the chat index and the swap log                                                                                            |
-| `cc-agent-open.sh`            | `~/.claude/bin/cc-agent-open.sh`             | `cc-ls`'s Enter-target for a chat locked by a live background agent: the takeover/attach chooser                                                                                                                                                           |
-| `cc-swap-chat.sh`             | `~/.claude/bin/cc-swap-chat.sh`              | `/swap`'s engine — reboot a running chat in place onto another account and/or flip its cache mode                                                                                                                                                          |
-| `cx-recover.sh`               | `~/.claude/bin/cx-recover.sh`                | rebuild a Codex chat's conversation from its rollout when a resume comes up empty                                                                                                                                                                          |
-| `systemd/`                    | `~/.config/systemd/user/`                    | `pfm name-sync` triggers: a **path unit** on `session_index.jsonl` (a codex rename reaches the tab in under a second) + a 2-min **timer** (claude `/rename` drift); every `cc-ls` run converges the same names through the same engine pass                |
+| `systemd/`                    | `~/.config/systemd/user/`                    | `pfm name-sync` triggers: a **path unit** on `session_index.jsonl` (a Codex rename reaches the tab promptly) plus a 15-minute drift-fallback **timer**                                                                                                     |
 | `bb.command.md`               | `~/.claude/commands/bb.md`                   | `/bb` slash command — bye-bye: hide + close this chat (and any detached teammates it spawned)                                                                                                                                                              |
 | `swap.command.md`             | `~/.claude/commands/swap.md`                 | `/swap` slash command — reboot this chat onto another account, in place                                                                                                                                                                                    |
-| `chat/`                       | `~/.claude/commands/chat/`                   | the `chat:*` command family + its engine `chat.sh`                                                                                                                                                                                                         |
+| `chat/`                       | `~/.claude/commands/chat/`                   | the `chat:*` command family, a two-line `chat.sh` compatibility delegate, and the surviving group/history helpers                                                                                                                                          |
 | `codex-skills/`               | `~/.agents/skills/`                          | agent skills for **Codex** chats (one symlinked dir per skill, invoked as `$<name>`) — codex ≥0.146 dropped `~/.codex/prompts` custom prompts, so `/bb` for a Codex chat is now the `$bb` skill                                                            |
 | `statusline-badge.snippet.sh` | merge into `~/.claude/statusline-command.sh` | 🥇/🥈 account badge (the one piece that is still a manual merge — it edits a file you own)                                                                                                                                                                 |
-| `tests/`                      | —                                            | fixtures for the state store, the self-location resolver, the installer, the hide path, and the GNU/BSD seam                                                                                                                                               |
+| `tests/`                      | —                                            | isolated installer fixtures, including dead-user-bus proof and retirement sweeps                                                                                                                                                                           |
 
 ## Install
 
@@ -110,8 +101,9 @@ cd ~/.professor/blueprint/templates/host-swap
 ./install.sh --apply
 ```
 
-It symlinks the scripts into `~/.claude/bin`, the commands into `~/.claude/commands`, and adds one
-`source` line to `~/.zshrc`. Anything real already sitting at a destination is moved aside to
+It keeps the retired `~/.claude/bin` script surface empty, links commands into
+`~/.claude/commands`, links Codex skills, installs the name-sync units where supported, and adds
+one `source` line to `~/.zshrc`. Anything real already sitting at a destination is moved aside to
 `<name>.pre-professor-<timestamp>` first — it never destroys a file you wrote. Re-running after a
 `git pull` is free: links already pointing at the clone are reported `ok` and left alone.
 
@@ -145,7 +137,7 @@ diverging — but it does mean a `git pull` can conflict with a local edit. Comm
 
 ## Where the fleet keeps its state
 
-One SQLite database, `~/.cc/fleet.db`, written only through `cc-db.sh`:
+One SQLite database, `~/.cc/fleet.db`, owned by `pfm`:
 
 | Table        | Holds                                                                                                                                |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -155,18 +147,17 @@ One SQLite database, `~/.cc/fleet.db`, written only through `cc-db.sh`:
 | `chat`       | the chat index — mtime, size, cwd, label, prompt count (what makes the picker fast)                                                  |
 | `swap_event` | the `/swap` log                                                                                                                      |
 
-Every write is one transaction, so concurrent chats cannot lose each other's updates — the failure
-mode the previous sidecar files had. If `sqlite3` is missing, every read falls back to the legacy
-flat files and every write appends to them: the picker is never down because a database is unhappy.
+Every write is one transaction, so concurrent chats cannot lose each other's updates. SQLite is
+embedded in the binary; no `sqlite3` CLI is required. The hide carrier file remains a compatibility
+mirror, and `pfm legacy` reports or repairs drift explicitly rather than silently choosing a second
+writer. Hidden `pfm internal primary-get` and `primary-set` operations serve the launcher shim.
 
-Run the fixtures against a scratch database any time — they never touch `~/.cc/fleet.db`:
+Run the installer fixture against a scratch home and a proven-dead user bus. Engine and store
+semantics live in the pfm suite:
 
 ```bash
 cd ~/.professor/blueprint/templates/host-swap
-bash tests/db-fixtures.sh          # the state store
-bash tests/selflocate-fixtures.sh  # the bundle finds itself through symlinks
-bash tests/install-fixtures.sh     # the installer, against a scratch HOME
-bash tests/portable-fixtures.sh    # the GNU/BSD seam — the SHAPE every caller depends on
+bash tests/install-fixtures.sh
 ```
 
 ## Maintenance
@@ -197,7 +188,7 @@ The pieces above launch and bill chats; these manage the resulting fleet. They a
   Codex seat.
 
 `install.sh --apply` puts all of these in place. The picker needs `fzf`; nothing else here needs a
-dependency beyond `sqlite3` (and the fleet degrades to flat files without it). Pairs naturally with
+external database dependency. Pairs naturally with
 `/chat:branch` and `/chat:new` for spawn-and-orchestrate teammate workflows.
 
 ## Agent mode — takeover vs attach
@@ -206,10 +197,16 @@ Claude Code runs a per-account **daemon** that hosts sessions without a tmux pan
 
 **A live agent keeps the account, model, effort, and permission-mode it was BORN with.** `cc-swap` (or `/swap`) only affects _new_ processes — so merely _attaching_ to an agent after an account swap keeps the OLD account, model, and permissions. Reopening such a chat under a freshly-chosen account needs a fresh process, not an attach.
 
-That is why `cc-ls` routes every agent-locked chat (the `⚙` rows, and any resume that refuses because the session is live somewhere the `ps` scan can't see) through **`cc-agent-open.sh`**, a chooser it opens in the new tmux window:
+That is why `cc-ls` routes every agent-locked chat (the `⚙` rows, and any resume that refuses because the session is live somewhere the process scan cannot see) through the hidden **`pfm internal agent-open`** chooser in the new tmux window:
 
 - **`t` takeover** _(default when the agent is idle / blocked / done)_ — SIGTERM the agent gracefully (15 s grace, SIGKILL backstop), then `claude --resume` the **same transcript fresh under the current primary account** — the one `cc-swap`/`/swap` last selected. A stale registry entry with no live pid just resumes directly.
 - **`a` attach** _(default when the agent is actively working — never kill in-flight work)_ — join the running process via `claude agents --cwd` under the agent's **owning** account, keeping its original everything.
 - **`q`** cancel.
 
-The default is the safe move for the agent's current state; the operator can override it at the prompt. `cc-agent-open.sh` is **N-account generic** — the current primary comes from the state store `~/.cc/fleet.db` (number N → `~/.cc/N`; 1 → the unset default `~/.claude`), and it probes the agent registry across the default account plus every `~/.claude[0-9]*` config dir on disk, so it finds the agent whichever account owns it. To reclaim a _done_ background agent's RAM, take it over and `/bb` it (or kill its pid) — `pfm reap` only sweeps `cc-*` tmux sockets, not bg-agent processes.
+The default is the safe move for the agent's current state; the operator can override it at the
+prompt. The chooser is **N-account generic** — the current primary comes from
+`~/.cc/fleet.db` (number N → `~/.cc/N`; 1 → the unset default `~/.claude`), and it probes the
+agent registry across the default account plus every configured account root, so it finds the
+agent whichever account owns it. To reclaim a _done_ background agent's RAM, take it over and
+`/bb` it (or kill its pid) — `pfm reap` only sweeps fleet tmux sockets, not background-agent
+processes.

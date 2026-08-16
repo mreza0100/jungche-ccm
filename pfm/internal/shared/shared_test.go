@@ -11,10 +11,9 @@ import (
 	"hostops/pfm/internal/paths"
 )
 
-// The schema this package creates has to BE cc-db.sh's, column for column: the
-// bash half opens the same file and its queries name these columns. A Go-shaped
-// approximation would work until the first `cc-db.sh hidden-list`.
-func TestSchemaMatchesCCDBShColumnForColumn(t *testing.T) {
+// The schema is a compatibility surface for existing fleet databases, so its
+// columns and constraints stay exact.
+func TestSharedSchemaIsComplete(t *testing.T) {
 	state, _ := openTestStore(t)
 	ctx := context.Background()
 
@@ -27,7 +26,7 @@ ORDER BY name`)
 		t.Fatalf("shared tables = %v, want %v", tables, want)
 	}
 
-	// cc-db.sh:75-79 — uuid-keyed, no engine, no baseline of its own.
+	// Hides are uuid-keyed, with no engine column.
 	columns := queryColumn(t, state, "SELECT name FROM pragma_table_info('hidden')")
 	if !reflect.DeepEqual(columns, []string{"uuid", "hidden_at", "at_payload"}) {
 		t.Fatalf("hidden columns = %v", columns)
@@ -41,8 +40,7 @@ ORDER BY name`)
 		t.Fatalf("meta columns = %v", columns)
 	}
 
-	// cc-db.sh:101 stamps this row on init; a database this package created
-	// must look to bash exactly like one `cc-db.sh init` created.
+	// Initialization stamps the schema version.
 	if version, found, err := state.Meta(ctx, "schema_version"); err != nil ||
 		!found || version != "1" {
 		t.Fatalf("schema_version = %q, %v, %v", version, found, err)
@@ -53,7 +51,7 @@ ORDER BY name`)
 		t.Fatal(err)
 	}
 	if journalMode != "wal" {
-		t.Fatalf("journal_mode = %q, want wal — cc-db.sh:73", journalMode)
+		t.Fatalf("journal_mode = %q, want wal", journalMode)
 	}
 	var busyTimeout int
 	if err := state.db.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
@@ -64,10 +62,9 @@ ORDER BY name`)
 	}
 }
 
-// _leg_add appends only when the file has no such line, and _leg_del rewrites
-// through a scratch file (cc-db.sh:116-128). Both take the lock at
-// <carrier>.lock, and neither leaves the scratch file behind.
-func TestCarrierWriteThroughFollowsLegAddAndLegDel(t *testing.T) {
+// Carrier writes deduplicate appends and use a locked atomic rewrite for
+// deletes without leaving scratch files behind.
+func TestCarrierWriteThroughIsLockedAndAtomic(t *testing.T) {
 	state, values := openTestStore(t)
 	ctx := context.Background()
 
@@ -87,7 +84,7 @@ func TestCarrierWriteThroughFollowsLegAddAndLegDel(t *testing.T) {
 	assertCarrier(t, values.HiddenCarrier, "beta\n")
 
 	// Unhiding something the file never held rewrites nothing and fails
-	// nothing: cc-db.sh's grep -vxF is a no-op for an absent line.
+	// nothing.
 	if err := state.Unhide(ctx, "never-hidden"); err != nil {
 		t.Fatalf("Unhide() of an absent id error = %v", err)
 	}
@@ -143,7 +140,7 @@ func TestHiddenAtUnionsDatabaseAndCarrier(t *testing.T) {
 }
 
 // A database that cannot be opened costs the fleet its durability, never its
-// hides: the carrier file alone still answers (cc-db.sh:17-18).
+// hides: the carrier file alone still answers.
 func TestDegradedStoreKeepsHidingThroughTheCarrier(t *testing.T) {
 	root := t.TempDir()
 	blocker := filepath.Join(root, "not-a-directory")
@@ -191,7 +188,7 @@ func TestChildrenRoundTripInCCDBShShapes(t *testing.T) {
 	if err := state.AddChild(ctx, KindPane, "chat-1", "cc-1-1-1\t%3", 11); err != nil {
 		t.Fatal(err)
 	}
-	// cc-db.sh:281 inserts OR IGNORE, so a repeat registration is one row.
+	// Repeat registration remains one row.
 	if err := state.AddChild(ctx, KindNew, "chat-1", "cc-new-worker", 12); err != nil {
 		t.Fatal(err)
 	}
@@ -224,8 +221,8 @@ func TestChildrenRoundTripInCCDBShShapes(t *testing.T) {
 	}
 }
 
-// primary-get reads the database first and the ~/.claude-primary mirror only
-// when the database has no row (cc-db.sh:262-267).
+// PrimaryAccount reads the database first and the ~/.claude-primary mirror
+// only when the database has no row.
 func TestPrimaryAccountPrefersTheDatabaseOverTheMirror(t *testing.T) {
 	state, values := openTestStore(t)
 	ctx := context.Background()
@@ -271,6 +268,28 @@ func TestPrimaryAccountNeverCreatesTheDatabase(t *testing.T) {
 	}
 	if _, err := os.Stat(values.SharedDB); !os.IsNotExist(err) {
 		t.Fatalf("reading the primary account created %s: %v", values.SharedDB, err)
+	}
+}
+
+func TestSetPrimaryAccountKeepsDatabaseAndMirrorInLockstep(t *testing.T) {
+	root := t.TempDir()
+	values := paths.Values{
+		Home:          root,
+		SharedDB:      filepath.Join(root, ".cc", "fleet.db"),
+		HiddenCarrier: filepath.Join(root, ".claude", ".cc-ls-hidden"),
+	}
+	if err := SetPrimaryAccount(context.Background(), values, 2, 123); err != nil {
+		t.Fatal(err)
+	}
+	if account, found := PrimaryAccount(context.Background(), values); !found || account != 2 {
+		t.Fatalf("PrimaryAccount()=%d,%v, want 2,true", account, found)
+	}
+	content, err := os.ReadFile(filepath.Join(root, ".claude-primary"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "2\n" {
+		t.Fatalf("mirror=%q, want 2\\n", content)
 	}
 }
 

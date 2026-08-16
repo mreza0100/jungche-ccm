@@ -304,57 +304,47 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 }
 
 // TestPrimaryAccountGoesThroughTheStateStore fixtures the OUTCOME of a picker
-// account swap: cc-db.sh is the only writer, because it validates the roster and
-// mirrors the choice into ~/.claude-primary for the statusline. A direct file
-// write would leave the database and the file disagreeing.
+// account swap: the shared store validates the roster and mirrors the choice
+// into ~/.claude-primary for the statusline.
 func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 	home := t.TempDir()
-	binDir := filepath.Join(home, ".claude", "bin")
-	if err := os.MkdirAll(binDir, 0o700); err != nil {
-		t.Fatal(err)
+	values := paths.Values{
+		Home:          home,
+		SharedDB:      filepath.Join(home, ".cc", "fleet.db"),
+		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
 	}
-	log := filepath.Join(home, "db-log")
-	script := filepath.Join(binDir, "cc-db.sh")
-	// Deliberately does NOT mirror ~/.claude-primary: the real cc-db.sh does, so
-	// the file's absence here proves the write was delegated, not duplicated.
-	if err := os.WriteFile(script, []byte(
-		"#!/usr/bin/env bash\n"+
-			"printf '%s %s db=%s\\n' \"$1\" \"$2\" \"${PFM_DB-unset}\" >> \""+log+"\"\n",
-	), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PFM_DB", "/jail/state/fleet.db")
-
-	if err := writePrimaryAccount(home, 2); err != nil {
+	if err := writePrimaryAccount(values, 2); err != nil {
 		t.Fatalf("writePrimaryAccount() = %v", err)
 	}
-	content, err := os.ReadFile(log)
+	if got := readPrimaryAccount(values); got != 2 {
+		t.Fatalf("readPrimaryAccount() = %d", got)
+	}
+	content, err := os.ReadFile(filepath.Join(home, ".claude-primary"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// PFM_DB names THIS binary's store; cc-db.sh reads that same name for
-	// its own, so the child must not inherit it.
-	if string(content) != "primary-set 2 db=unset\n" {
-		t.Fatalf("cc-db.sh log = %q", content)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".claude-primary")); !os.IsNotExist(err) {
-		t.Fatalf("wrote ~/.claude-primary behind cc-db.sh: %v", err)
+	if string(content) != "2\n" {
+		t.Fatalf("primary mirror = %q", content)
 	}
 
-	// Off-roster accounts never reach cc-db.sh.
-	if err := writePrimaryAccount(home, action.MaxAccount+1); err == nil {
+	if err := writePrimaryAccount(values, action.MaxAccount+1); err == nil {
 		t.Fatal("off-roster account accepted")
 	}
 
-	// No state store installed: the legacy file is the fallback, so the picker
-	// is never down because cc-db.sh is missing.
+	// An unavailable database degrades to the mirror, so account selection is
+	// never down because the durable store cannot open.
 	bare := t.TempDir()
-	if err := writePrimaryAccount(bare, 2); err != nil {
-		t.Fatalf("fallback writePrimaryAccount() = %v", err)
+	blocked := filepath.Join(bare, "blocked")
+	if err := os.WriteFile(blocked, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	bareValues := paths.Values{
-		Home:     bare,
-		SharedDB: filepath.Join(bare, "absent-fleet.db"),
+		Home:          bare,
+		SharedDB:      filepath.Join(blocked, "fleet.db"),
+		HiddenCarrier: filepath.Join(bare, ".claude", ".cc-ls-hidden"),
+	}
+	if err := writePrimaryAccount(bareValues, 2); err != nil {
+		t.Fatalf("fallback writePrimaryAccount() = %v", err)
 	}
 	if got := readPrimaryAccount(bareValues); got != 2 {
 		t.Fatalf("fallback readPrimaryAccount() = %d", got)

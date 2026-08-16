@@ -307,8 +307,7 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 }
 
 // TestDefaultRolloutsHiddenOnAnyLineageMember is codexLineageHidden's own
-// fixture, and it guards cx-hide.sh's actual write shape (cx-hide.sh:147): a
-// hide keyed on a MEMBER id — never the lineage root — must still pull the
+// fixture: a hide keyed on a MEMBER id — never the lineage root — must still pull the
 // whole conversation out of the cached first frame. "child-old" is neither
 // the root nor the newest file, so a fix that only special-cases those two
 // would still miss it.

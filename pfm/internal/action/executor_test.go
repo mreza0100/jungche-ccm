@@ -282,7 +282,6 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 		Cache1H:        true,
 		Home:           "/home/test",
 		FreshSocket:    "cc-900-1-1",
-		SwapScript:     "/jail/cc-swap-chat.sh",
 	}
 	line, err := executor.Open(context.Background(), request)
 	if err != nil {
@@ -291,28 +290,10 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 	if line != "TMUX= tmux -L 'cc-100-1-1' attach -t 'live-session'" {
 		t.Fatalf("live line = %q", line)
 	}
-	if runner.name != "bash" || !reflect.DeepEqual(runner.args, []string{
-		"/jail/cc-swap-chat.sh",
-		"--sock",
-		"cc-100-1-1",
-		"1",
-		"--1h",
-		"1",
+	if runner.name != "pfm" || !reflect.DeepEqual(runner.args, []string{
+		"chat", "swap", "--sock", "cc-100-1-1", "1", "--1h", "1",
 	}) {
-		t.Fatalf("swap runner = %q %q", runner.name, runner.args)
-	}
-
-	// Without an override the swap script resolves to the installed bundle;
-	// the repo copy under work/host-ops/ is a pre-move path that is gone.
-	bare := request
-	bare.SwapScript = ""
-	runner.args = nil
-	if _, err := executor.Open(context.Background(), bare); err != nil {
-		t.Fatal(err)
-	}
-	if len(runner.args) == 0 ||
-		runner.args[0] != "/home/test/.claude/bin/cc-swap-chat.sh" {
-		t.Fatalf("default swap script = %q", runner.args)
+		t.Fatalf("swap command = %q %q", runner.name, runner.args)
 	}
 
 	request.CurrentTMUX = "/tmp/jail/cc-100-1-1,1,0"

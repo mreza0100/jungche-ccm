@@ -25,21 +25,17 @@ import (
 )
 
 func runLS(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && (args[0] == "--hidden" || args[0] == "-H") {
-		if len(args) != 1 {
-			fmt.Fprintln(stderr, "usage: pfm ls --hidden")
-			return 2
-		}
-		return runHidden(nil, stdout, stderr)
-	}
 	flags := newFlagSet(
 		"ls",
-		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --hidden",
+		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --hidden [--tsv]",
 		stderr,
 	)
 	var all bool
+	var hidden bool
 	flags.BoolVar(&all, "a", false, "include hidden, background, and uncapped rows")
 	flags.BoolVar(&all, "all", false, "include hidden, background, and uncapped rows")
+	flags.BoolVar(&hidden, "H", false, "list the hidden ledger")
+	flags.BoolVar(&hidden, "hidden", false, "list the hidden ledger")
 	plain := flags.Bool("plain", false, "render a noninteractive list")
 	tsv := flags.Bool("tsv", false, "render stable tab-separated rows")
 	if code, ok := parseFlags(flags, args); !ok {
@@ -49,6 +45,16 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		boolCount(*plain, *tsv) > 1 {
 		flags.Usage()
 		return 2
+	}
+	if hidden {
+		if flags.NArg() != 0 || all || *plain {
+			flags.Usage()
+			return 2
+		}
+		// The hidden ledger is already a stable three-column TSV contract.
+		// Accepting --tsv makes that format explicit for scripts instead of
+		// returning an empty success or rejecting a harmless format request.
+		return runHidden(nil, stdout, stderr)
 	}
 	if flags.NArg() == 1 {
 		if all || *plain || *tsv {
@@ -146,7 +152,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		// Esc/⌃C must not write it.
 		if outcome.Kind != ui.OutcomeCancelled {
 			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
-				if err := writePrimaryAccount(scan.Paths.Home, outcome.PrimaryAccount); err != nil {
+				if err := writePrimaryAccount(scan.Paths, outcome.PrimaryAccount); err != nil {
 					fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
 					return 1
 				}

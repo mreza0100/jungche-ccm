@@ -15,6 +15,7 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
@@ -74,6 +75,8 @@ func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runHeadlessWatch(rest, stdout, stderr)
 	case "capture":
 		return runChatCapture(rest, stdout, stderr)
+	case "recover":
+		return runChatRecover(rest, stdout, stderr)
 	case "name":
 		return runChatName(rest, stdout, stderr)
 	case "hide":
@@ -84,8 +87,17 @@ func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runBB(rest, stdin, stdout, stderr)
 	case "end":
 		return runChatEnd(rest, stdout, stderr)
+	case "swap":
+		return runChatSwap(rest, stdout, stderr)
+	case "whoami":
+		// Compatibility for the installed chat.sh shim. The settled public
+		// command is `pfm whoami`, but the shim must remain safe while callers
+		// still invoke `chat.sh whoami` during the staged cutover.
+		return runWhoami(rest, stdout, stderr)
 	case "find", "save", "load", "branch", "history", "ls":
 		return runChatSatellite(verb, rest, stdin, stdout, stderr)
+	case "modal":
+		return runChatModal(rest, stdout, stderr)
 	case "group":
 		return runChatGroup(rest, stdin, stdout, stderr)
 	case "resolve":
@@ -114,11 +126,13 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  ask         deliver a message and wait for the answer")
 	fmt.Fprintln(w, "  watch       block, reporting IDLE / EXIT / DEAD")
 	fmt.Fprintln(w, "  capture     print a live chat's tmux scrollback")
+	fmt.Fprintln(w, "  recover     rebuild a Codex conversation from its rollout")
 	fmt.Fprintln(w, "  name        rename a chat and converge its window")
 	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide      remove a chat hide")
 	fmt.Fprintln(w, "  bb          the /bb UserPromptSubmit hook")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
+	fmt.Fprintln(w, "  swap        reboot a Claude chat in place under another account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
@@ -143,7 +157,11 @@ func resolveChat(
 		}
 		identity, err := identifier.Identify(ctx)
 		if err != nil {
-			return headless.Chat{}, false, err
+			seat, found := codexSeatIdentity(ctx)
+			if !found {
+				return headless.Chat{}, false, err
+			}
+			identity = seat
 		}
 		switch {
 		case identity.ID != "":
@@ -498,47 +516,110 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, flags.Arg(0), stdout, stderr, false)
-	if code != 0 {
-		return code
-	}
-	if !chat.Live {
-		fmt.Fprintf(stderr, "pfm chat inject: %q is not running\n", chat.Name)
-		return codeDeadChat
-	}
-	engine, err := inject.New(inject.Dependencies{})
+	engine, err := newInjectEngine()
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
-		return 1
+		return codeUndelivered
 	}
-	// The socket is addressed directly: this command already knows exactly
-	// which seat it resolved, and a second name lookup inside the injector
-	// could land on a different one.
 	result, err := engine.Inject(ctx, inject.Request{
-		Target:   chat.Socket,
-		Message:  message,
-		ForceNow: force,
-		Then:     steers,
+		Target:     flags.Arg(0),
+		Message:    message,
+		ForceNow:   force,
+		FileBacked: *messageFile != "",
+		Then:       steers,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
-		return 1
+		return codeUndelivered
+	}
+	if result.Code == inject.CodeUnknown && !strings.Contains(strings.ToLower(result.Message), "ambiguous") {
+		target, found, resolveErr := resolveResumeTarget(flags.Arg(0))
+		if resolveErr != nil {
+			fmt.Fprintf(stderr, "pfm chat inject: %v\n", resolveErr)
+			return codeUnknownChat
+		}
+		if found {
+			resolved, pathErr := paths.Resolve()
+			if pathErr != nil {
+				fmt.Fprintf(stderr, "pfm chat inject: %v\n", pathErr)
+				return codeUndelivered
+			}
+			live, liveErr := runningClaudeSession(resolved.ProcRoot, target.ID)
+			if liveErr != nil {
+				fmt.Fprintf(stderr, "pfm chat inject: %v\n", liveErr)
+				return codeUndelivered
+			}
+			if live {
+				fmt.Fprintf(
+					stderr,
+					"pfm chat inject: %q is live without a resolvable tmux pane; transcript append refused\n",
+					flags.Arg(0),
+				)
+				return codeDeadChat
+			}
+			if force {
+				fmt.Fprintln(stderr, "pfm chat inject: --force-now ignored for a dormant RESUME target")
+			}
+			if len(steers) > 0 {
+				fmt.Fprintf(stderr, "pfm chat inject: --then ignored for a dormant RESUME target (%d steer(s))\n", len(steers))
+			}
+			signed, unsigned := engine.SignForResume(ctx, message)
+			receipt, appendErr := appendResumeInjection(ctx, resolved, target, signed)
+			if appendErr != nil {
+				fmt.Fprintf(stderr, "pfm chat inject: %v\n", appendErr)
+				return codeUndelivered
+			}
+			if unsigned {
+				writeUnsignedInjectWarning(stderr)
+			}
+			fmt.Fprintf(
+				stdout,
+				"injected RESUME user turn %s (parent %s) into session %s — answered on next reopen; backup: %s\n",
+				receipt.EventID,
+				receipt.ParentID,
+				receipt.SessionID,
+				receipt.Backup,
+			)
+			return 0
+		}
 	}
 	if result.Unsigned {
 		// The recipient is told the message is unsigned; the SENDER is the one
 		// who can do something about it, and only if the reason reaches them.
-		fmt.Fprintln(
-			stderr,
-			"WARNING: sent UNSIGNED — this process derived no identity of its"+
-				" own. If it ran DETACHED (setsid/nohup/disowned), that is"+
-				" why: detaching severs the process chain the handle is"+
-				" recovered from. Send from the chat itself, or state it: "+
-				inject.SenderSessionEnv+"=$(pfm whoami) "+
-				inject.SenderLabelEnv+"=<label> <command>.",
-		)
+		writeUnsignedInjectWarning(stderr)
+	}
+	if result.Code != 0 {
+		if result.Code == inject.CodeUnknown {
+			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", flags.Arg(0))
+			if strings.Contains(strings.ToLower(result.Message), "ambiguous") {
+				fmt.Fprintln(stderr, result.Message)
+			}
+		} else {
+			fmt.Fprintln(stderr, result.Message)
+		}
+		switch result.Code {
+		case inject.CodeUnknown:
+			return codeUnknownChat
+		case inject.CodeDead:
+			return codeDeadChat
+		default:
+			return codeUndelivered
+		}
 	}
 	fmt.Fprintln(stdout, result.Message)
-	return result.Code
+	return 0
+}
+
+func writeUnsignedInjectWarning(stderr io.Writer) {
+	fmt.Fprintln(
+		stderr,
+		"WARNING: sent UNSIGNED — this process derived no identity of its"+
+			" own. If it ran DETACHED (setsid/nohup/disowned), that is"+
+			" why: detaching severs the process chain the handle is"+
+			" recovered from. Send from the chat itself, or state it: "+
+			inject.SenderSessionEnv+"=$(pfm whoami) "+
+			inject.SenderLabelEnv+"=<label> <command>.",
+	)
 }
 
 func runHeadlessWatch(args []string, stdout, stderr io.Writer) int {

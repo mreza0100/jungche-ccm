@@ -202,8 +202,8 @@ func codexLineageSuppressed(lineage CodexLineage) bool {
 // reverse) is a chat that flickers between the cached first frame and the
 // rescan.
 //
-// cx-hide.sh writes the RAW id of whatever rollout file the live Codex
-// process currently holds (cx-hide.sh:147) — the resumed CHILD's id on a
+// A live Codex process can expose the raw id of its current rollout — the
+// resumed CHILD's id on a
 // multi-file lineage, not the root this cache keys hides on — so the root
 // alone is not enough; every member id must be checked too. A hide the
 // `hide` manager writes is already normalized onto the root

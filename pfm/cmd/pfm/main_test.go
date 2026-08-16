@@ -59,6 +59,24 @@ func TestSettledRootInterface(t *testing.T) {
 	}
 }
 
+func TestChatShimWhoamiCompatibilityRoute(t *testing.T) {
+	jailTest(t)
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("CODEX_THREAD_ID", "")
+
+	var stdout, stderr bytes.Buffer
+	code := runChat([]string{"whoami"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("chat whoami code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "unknown command") ||
+		!strings.Contains(stderr.String(), "not inside tmux") {
+		t.Fatalf("chat whoami did not reach the root identity command: %q", stderr.String())
+	}
+}
+
 func TestLSHiddenAbsorbsTheOldHiddenListing(t *testing.T) {
 	jailTest(t)
 	const id = "88888888-8888-4888-8888-888888888888"
@@ -75,12 +93,18 @@ func TestLSHiddenAbsorbsTheOldHiddenListing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"ls", "--hidden"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("ls --hidden code=%d stderr=%q", code, stderr.String())
-	}
-	if stdout.String() != id+"\t\t42\n" {
-		t.Fatalf("ls --hidden stdout=%q", stdout.String())
+	for _, args := range [][]string{
+		{"ls", "--hidden"},
+		{"ls", "--hidden", "--tsv"},
+		{"ls", "--tsv", "--hidden"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("%v code=%d stderr=%q", args, code, stderr.String())
+		}
+		if stdout.String() != id+"\t\t42\n" {
+			t.Fatalf("%v stdout=%q", args, stdout.String())
+		}
 	}
 }
 
