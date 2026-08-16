@@ -21,6 +21,7 @@ func TestResolveOverrides(t *testing.T) {
 	codexRoot := filepath.Join(testRoot, "codex")
 	tmuxDir := filepath.Join(testRoot, "tmux")
 	procRoot := filepath.Join(testRoot, "proc")
+	cgroupRoot := filepath.Join(testRoot, "cgroup")
 	sharedDB := filepath.Join(testRoot, "shared", "fleet.db")
 
 	t.Setenv(EnvHome, home)
@@ -31,6 +32,7 @@ func TestResolveOverrides(t *testing.T) {
 	t.Setenv(EnvCodexRoot, codexRoot)
 	t.Setenv(EnvTmuxDir, tmuxDir)
 	t.Setenv(EnvProcRoot, procRoot)
+	t.Setenv(EnvCgroupRoot, cgroupRoot)
 
 	got, err := Resolve()
 	if err != nil {
@@ -49,6 +51,7 @@ func TestResolveOverrides(t *testing.T) {
 		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
 		ArchiveDir:    filepath.Join(home, ".claude-archive"),
 		ProcRoot:      procRoot,
+		CgroupRoot:    cgroupRoot,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Resolve() = %#v, want %#v", got, want)

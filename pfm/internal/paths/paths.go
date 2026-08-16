@@ -17,6 +17,7 @@ const (
 	EnvTmuxDir     = "PFM_TMUX_DIR"
 	EnvHome        = "PFM_HOME"
 	EnvProcRoot    = "PFM_PROC_ROOT"
+	EnvCgroupRoot  = "PFM_CGROUP_ROOT"
 	// EnvTmuxConf pins the config a chat's tmux server is born with. Unset —
 	// the way a real chat runs — the server loads ~/.tmux.conf like every other
 	// terminal on the machine, because a chat IS a terminal the user lives in:
@@ -58,6 +59,7 @@ type Values struct {
 	// the same reason as HiddenCarrier — one jail knob, not two.
 	ArchiveDir string
 	ProcRoot   string
+	CgroupRoot string
 }
 
 // EnvOr returns a non-empty environment override, or fallback otherwise.
@@ -104,5 +106,6 @@ func Resolve() (Values, error) {
 		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
 		ArchiveDir:    filepath.Join(home, ".claude-archive"),
 		ProcRoot:      EnvOr(EnvProcRoot, "/proc"),
+		CgroupRoot:    EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
 	}, nil
 }

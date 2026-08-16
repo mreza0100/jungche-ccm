@@ -90,12 +90,15 @@ type Input struct {
 
 // Row is one live, resumable, agent, or new-chat choice.
 type Row struct {
-	Kind        Kind
-	ID          string
-	Path        string
-	ConfigDir   string
-	Socket      string
-	PaneID      string
+	Kind      Kind
+	ID        string
+	Path      string
+	ConfigDir string
+	Socket    string
+	PaneID    string
+	// PanePIDs are the roots of this live socket's process tree. They are
+	// presentation-neutral live facts used only by the lazy Stats sampler.
+	PanePIDs    []int
 	SessionName string
 	WindowName  string
 	Name        string

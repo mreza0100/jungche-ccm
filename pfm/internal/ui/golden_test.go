@@ -92,6 +92,16 @@ func TestFancyRenderNeverWrapsAtFixedWidths(t *testing.T) {
 	}
 }
 
+func TestFancyRenderHasNoPreviewAtAnyWidth(t *testing.T) {
+	for _, width := range []int{40, 80, 120, 180} {
+		content := ansi.Strip(NewModel(fixtureSnapshot(width)).View().Content)
+		if strings.Contains(content, " preview ") ||
+			strings.Contains(content, "last prompt") {
+			t.Fatalf("width %d still renders the retired preview panel:\n%s", width, content)
+		}
+	}
+}
+
 func TestHeaderSeparatesHiddenEmptyAndRefreshStatus(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.HiddenCount = 12

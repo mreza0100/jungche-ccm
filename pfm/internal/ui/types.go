@@ -5,7 +5,47 @@ import (
 	"io"
 
 	"hostops/pfm/internal/compose"
+	pfmstats "hostops/pfm/internal/stats"
 )
+
+// Tab is one top-level picker body. Chats preserves the original picker and
+// remains the default; Stats is sampled only while it is focused.
+type Tab uint8
+
+const (
+	TabChats Tab = iota
+	TabStats
+	tabCount
+)
+
+type StatsSubtab uint8
+
+const (
+	StatsChats StatsSubtab = iota
+	StatsDocker
+	statsSubtabCount
+)
+
+type StatsFocus uint8
+
+const (
+	StatsFocusTop StatsFocus = iota
+	StatsFocusSubtab
+	StatsFocusContent
+)
+
+type StatsSort uint8
+
+const (
+	StatsSortCPU StatsSort = iota
+	StatsSortRAM
+)
+
+// StatsSampler is injected so model tests can prove that boot and the Chats
+// tab perform zero sampling. The real implementation reads proc/cgroup only.
+type StatsSampler interface {
+	Sample([]compose.Row) (pfmstats.Snapshot, error)
+}
 
 // Picker is the common boundary used by the interactive, plain, and TSV
 // frontends. Interactive effects are described by Outcome; implementations do
@@ -36,7 +76,9 @@ type Snapshot struct {
 	// launched something (Enter, ⌃T, ⌃O), so closing the picker the natural
 	// way threw every mark away. Nil leaves the picker read-only (the plain
 	// twin, tests).
-	ApplyHide func(HideChange) error
+	ApplyHide    func(HideChange) error
+	StatsSampler StatsSampler
+	NoSky        bool
 }
 
 // OutcomeKind identifies why an interactive picker stopped.

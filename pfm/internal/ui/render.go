@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -12,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/sky"
 )
 
 var (
@@ -60,25 +60,30 @@ func (model Model) render() string {
 	header := model.renderHeader(width)
 	query := model.renderQuery(width)
 	footer := model.renderFooter(width)
-	bodyHeight := maxInt(6, height-4)
-
-	previewWidth := 40
-	if width < 100 {
-		previewWidth = 30
+	bodyHeight := maxInt(4, height-6)
+	body := model.renderListPanel(width, bodyHeight)
+	if model.tab == TabStats {
+		body = model.renderStatsPanel(width, bodyHeight)
 	}
-	if previewWidth > width/2 {
-		previewWidth = maxInt(20, width/2)
-	}
-	listWidth := maxInt(18, width-previewWidth-1)
-	previewWidth = width - listWidth - 1
-
-	list := model.renderListPanel(listWidth, bodyHeight)
-	preview := model.renderPreviewPanel(previewWidth, bodyHeight)
-	body := joinColumns(list, preview, " ")
 	return strings.Join([]string{header, query, body, footer}, "\n")
 }
 
+func (model Model) renderTabs(width int) string {
+	chat := " Chats "
+	stats := " Stats "
+	if model.tab == TabChats {
+		chat = selectedStyle.Render(chat)
+	} else {
+		stats = selectedStyle.Render(stats)
+	}
+	return fillLine(" tabs  "+chat+" "+stats+"   ←/→", width)
+}
+
 func (model Model) renderHeader(width int) string {
+	contentWidth := width
+	if model.skyEnabled {
+		contentWidth = maxInt(1, width-18)
+	}
 	cache := "🪫 5m"
 	if model.cache1H {
 		cache = "⚡ 1h"
@@ -97,10 +102,41 @@ func (model Model) renderHeader(width int) string {
 		model.suppressedCount,
 		refresh,
 	)
-	return headerStyle.Render(fillLine(text, width))
+	lines := []string{
+		headerStyle.Render(fillLine(text, contentWidth)),
+		model.renderTabs(contentWidth),
+	}
+	if model.tab == TabStats {
+		lines = append(lines, model.renderStatsHeader(contentWidth))
+	} else {
+		lines = append(lines, dimStyle.Render(fillLine(
+			" Chats · fuzzy search and all existing chat controls",
+			contentWidth,
+		)))
+	}
+	if !model.skyEnabled {
+		return strings.Join(lines, "\n")
+	}
+	claude, codex := liveEngineCounts(model.rows)
+	widget := sky.Frame(sky.Options{
+		ClaudeCount: claude,
+		CodexCount:  codex,
+		Width:       18,
+		Height:      3,
+		TimeNS:      model.nowNS,
+		Events:      model.skyEvents,
+		Colorize:    true,
+	})
+	for index := range lines {
+		lines[index] = fillLine(lines[index], contentWidth) + widget[index]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (model Model) renderQuery(width int) string {
+	if model.tab == TabStats {
+		return model.renderStatsSubtabs(width)
+	}
 	input := model.query.View()
 	status := fmt.Sprintf(
 		"%d/%d visible · project rotation %d",
@@ -123,7 +159,51 @@ func (model Model) renderQuery(width int) string {
 	return fillLine(line, width)
 }
 
+func (model Model) renderStatsSubtabs(width int) string {
+	chats := " Chats "
+	docker := " Docker "
+	if model.statsSubtab == StatsChats {
+		chats = selectedStyle.Render(chats)
+	} else {
+		docker = selectedStyle.Render(docker)
+	}
+	prefix := " subtabs  "
+	if model.statsFocus == StatsFocusSubtab {
+		prefix = "›subtabs  "
+	}
+	return fillLine(prefix+chats+" "+docker+"   ←/→", width)
+}
+
+func (model Model) renderStatsHeader(width int) string {
+	value := func(percent float64, valid bool) string {
+		if !valid {
+			return "…"
+		}
+		return fmt.Sprintf("%.0f%%", percent)
+	}
+	header := model.stats.Header
+	line := fmt.Sprintf(
+		" CPU %s · PSI %.0f%% · RAM %.0f%% · SWAP %.0f%%",
+		value(header.CPUPercent, header.CPUValid),
+		header.PSIPercent,
+		header.RAMPercent,
+		header.SwapPercent,
+	)
+	if model.statsError != "" {
+		line += " · " + warnStyle.Render("sample failed: "+model.statsError)
+	} else if model.statsLoading {
+		line += " · " + dimStyle.Render("sampling…")
+	}
+	return fillLine(line, width)
+}
+
 func (model Model) renderFooter(width int) string {
+	if model.tab == TabStats {
+		first := " ↑↓ focus/rows  ←→ focused tab  c CPU sort  m RAM sort"
+		second := " esc cancel · live samples every 2s only while Stats is focused"
+		return dimStyle.Render(fillLine(first, width)) + "\n" +
+			dimStyle.Render(fillLine(second, width))
+	}
 	first := " ↑↓ move  enter open  esc cancel  type to fuzzy-find"
 	second := " ⌃T reload  ⌃R projects  ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot"
 	if width < 96 {
@@ -132,6 +212,72 @@ func (model Model) renderFooter(width int) string {
 	}
 	return dimStyle.Render(fillLine(first, width)) + "\n" +
 		dimStyle.Render(fillLine(second, width))
+}
+
+func (model Model) renderStatsPanel(width, height int) string {
+	innerWidth := maxInt(1, width-2)
+	innerHeight := maxInt(1, height-2)
+	lines := make([]string, 0, innerHeight)
+	if model.statsSubtab == StatsChats {
+		for index, chat := range model.stats.Chats {
+			if len(lines) >= innerHeight {
+				break
+			}
+			cpu := "…"
+			if chat.CPUValid {
+				cpu = fmt.Sprintf("%.1f%%", chat.CPUPercent)
+			}
+			gear := ""
+			if chat.GearCount > 0 {
+				gear = fmt.Sprintf(" ⚙%d", chat.GearCount)
+			}
+			line := fmt.Sprintf(
+				"  %-28s %-7s %7s %8s %5.1f%%%s",
+				clipRunes(chat.Name, 28), chat.Engine, cpu,
+				formatSize(int64(chat.RSSBytes)), chat.RAMPercent, gear,
+			)
+			line = fillLine(line, innerWidth)
+			if model.statsFocus == StatsFocusContent && index == model.statsCursor {
+				line = selectedStyle.Render("›" + ansi.Truncate(line[1:], maxInt(0, innerWidth-1), ""))
+			}
+			lines = append(lines, line)
+		}
+	} else {
+		for index, container := range model.stats.Docker {
+			if len(lines) >= innerHeight {
+				break
+			}
+			cpu := "…"
+			if container.CPUValid {
+				cpu = fmt.Sprintf("%.1f%%", container.CPUPercent)
+			}
+			limit := "max"
+			if container.LimitBytes > 0 {
+				limit = formatSize(int64(container.LimitBytes))
+			}
+			line := fillLine(fmt.Sprintf(
+				"  %-28s %7s %8s/%-8s %5.1f%%",
+				clipRunes(container.Name, 28), cpu,
+				formatSize(int64(container.MemoryBytes)), limit,
+				container.MemoryPercent,
+			), innerWidth)
+			if model.statsFocus == StatsFocusContent && index == model.statsDockerCursor {
+				line = selectedStyle.Render("›" + ansi.Truncate(line[1:], maxInt(0, innerWidth-1), ""))
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		message := "  waiting for first sample…"
+		if model.stats.Ready {
+			message = "  no live rows"
+		}
+		lines = append(lines, dimStyle.Render(fillLine(message, innerWidth)))
+	}
+	for len(lines) < innerHeight {
+		lines = append(lines, strings.Repeat(" ", innerWidth))
+	}
+	return framePanel(" stats ", lines, width)
 }
 
 func (model Model) renderListPanel(width, height int) string {
@@ -144,6 +290,7 @@ func (model Model) renderListPanel(width, height int) string {
 	} else {
 		start := maxInt(0, model.cursor-innerHeight/2)
 		previousProject := ""
+		previousNameGroup := ""
 		for position := start; position < len(model.filtered) &&
 			len(lines) < innerHeight; position++ {
 			row := model.rows[model.filtered[position]]
@@ -166,13 +313,29 @@ func (model Model) renderListPanel(width, height int) string {
 					)
 				}
 				previousProject = project
+				previousNameGroup = ""
+			}
+			if len(lines) >= innerHeight {
+				break
+			}
+			nameGroup, grouped := model.nameGroups[model.filtered[position]]
+			if grouped && nameGroup.name != previousNameGroup && len(lines) < innerHeight {
+				lines = append(lines, labelStyle.Render(fillLine(
+					"│  "+nameGroup.name+fmt.Sprintf(" (%d)", nameGroup.count),
+					innerWidth,
+				)))
+			}
+			if grouped {
+				previousNameGroup = nameGroup.name
+			} else {
+				previousNameGroup = ""
 			}
 			if len(lines) >= innerHeight {
 				break
 			}
 			lines = append(
 				lines,
-				model.renderRow(row, position == model.cursor, innerWidth),
+				model.renderGroupedRow(row, position == model.cursor, innerWidth, grouped),
 			)
 		}
 	}
@@ -196,9 +359,21 @@ func (model Model) renderRow(
 	selected bool,
 	width int,
 ) string {
+	return model.renderGroupedRow(row, selected, width, false)
+}
+
+func (model Model) renderGroupedRow(
+	row compose.Row,
+	selected bool,
+	width int,
+	grouped bool,
+) string {
 	pointer := "│ "
 	if selected {
 		pointer = "› "
+	}
+	if grouped {
+		pointer += "  "
 	}
 	name := cleanField(row.Name)
 	if name == "" {
@@ -233,72 +408,6 @@ func (model Model) renderRow(
 	}
 }
 
-func (model Model) renderPreviewPanel(width, height int) string {
-	innerWidth := maxInt(1, width-2)
-	innerHeight := maxInt(1, height-2)
-	lines := make([]string, 0, innerHeight)
-	row, ok := model.selectedRow()
-	if !ok {
-		lines = append(lines, dimStyle.Render("no highlighted row"))
-	} else {
-		lines = append(lines,
-			previewField("name", clipRunes(cleanField(row.Name), 30), innerWidth),
-			previewField("cwd", cleanField(row.CWD), innerWidth),
-			previewField("account", previewAccount(row), innerWidth),
-			previewField("size", formatSize(row.Size), innerWidth),
-			previewField("age", formatAge(row, model.nowNS), innerWidth),
-			previewField(
-				"prompts",
-				strconv.FormatInt(row.PromptCount, 10),
-				innerWidth,
-			),
-			"",
-			labelStyle.Render("last prompt"),
-			ansi.Truncate(
-				cleanField(row.LastPrompt),
-				innerWidth,
-				"…",
-			),
-		)
-		if row.LastPrompt == "" {
-			lines[len(lines)-1] = dimStyle.Render("(none cached)")
-		}
-	}
-	if len(lines) > innerHeight {
-		lines = lines[:innerHeight]
-	}
-	for len(lines) < innerHeight {
-		lines = append(lines, "")
-	}
-	for index := range lines {
-		lines[index] = fillLine(lines[index], innerWidth)
-	}
-	return framePanel(" preview ", lines, width)
-}
-
-func previewField(label, value string, width int) string {
-	prefix := labelStyle.Render(label + " ")
-	return prefix + ansi.Truncate(
-		value,
-		maxInt(1, width-lipgloss.Width(prefix)),
-		"…",
-	)
-}
-
-func previewAccount(row compose.Row) string {
-	if len(row.Accounts) != 0 {
-		values := make([]string, 0, len(row.Accounts))
-		for _, account := range row.Accounts {
-			values = append(values, accountMedal(account)+" "+strconv.Itoa(account))
-		}
-		return strings.Join(values, " · ")
-	}
-	if row.Account == 0 {
-		return "—"
-	}
-	return accountMedal(row.Account) + " " + strconv.Itoa(row.Account)
-}
-
 func framePanel(title string, lines []string, width int) string {
 	innerWidth := maxInt(1, width-2)
 	topLabel := "─" + title
@@ -317,28 +426,6 @@ func framePanel(title string, lines []string, width int) string {
 	}
 	framed = append(framed, borderStyle.Render(bottom))
 	return strings.Join(framed, "\n")
-}
-
-func joinColumns(left, right, separator string) string {
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-	height := maxInt(len(leftLines), len(rightLines))
-	leftWidth := 0
-	for _, line := range leftLines {
-		leftWidth = maxInt(leftWidth, lipgloss.Width(line))
-	}
-	lines := make([]string, height)
-	for index := range height {
-		var leftLine, rightLine string
-		if index < len(leftLines) {
-			leftLine = leftLines[index]
-		}
-		if index < len(rightLines) {
-			rightLine = rightLines[index]
-		}
-		lines[index] = fillLine(leftLine, leftWidth) + separator + rightLine
-	}
-	return strings.Join(lines, "\n")
 }
 
 func rowMarker(kind compose.Kind) string {

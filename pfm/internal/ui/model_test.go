@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
@@ -334,6 +335,51 @@ func TestDefaultHideRemovesRowAndKeepsValidCursor(t *testing.T) {
 			model.Cursor(),
 			model.SelectedKey(),
 		)
+	}
+}
+
+func TestTabsDefaultToChatsAndArrowKeysWrap(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	if model.Tab() != TabChats {
+		t.Fatalf("initial tab = %d, want Chats", model.Tab())
+	}
+	selected := model.SelectedKey()
+	model, command := applyKey(t, model, specialKey(tea.KeyRight))
+	if command != nil || model.Tab() != TabStats || model.SelectedKey() != selected {
+		t.Fatalf("right: tab=%d selected=%q command=%v", model.Tab(), model.SelectedKey(), command)
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
+	if model.Tab() != TabChats {
+		t.Fatalf("right wrap tab = %d, want Chats", model.Tab())
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
+	if model.Tab() != TabStats {
+		t.Fatalf("left wrap tab = %d, want Stats", model.Tab())
+	}
+}
+
+func TestColonNameGroupsClusterInsideProject(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.Rows = []compose.Row{
+		{Kind: compose.LiveClaude, ID: "b1", Name: "BUILDER:1", Project: "alpha", ActivityNS: 100},
+		{Kind: compose.LiveClaude, ID: "b2", Name: "BUILDER:2", Project: "alpha", ActivityNS: 90},
+		{Kind: compose.LiveCodex, ID: "flat", Name: "fix: the bug", Project: "alpha", ActivityNS: 80},
+		{Kind: compose.LiveClaude, ID: "b3", Name: "BUILDER:3", Project: "alpha", ActivityNS: 70},
+	}
+	model := NewModel(snapshot)
+	rows := model.VisibleRows()
+	want := []string{"BUILDER:1", "BUILDER:2", "BUILDER:3", "fix: the bug"}
+	if len(rows) != len(want) {
+		t.Fatalf("visible rows = %#v", rows)
+	}
+	for index := range want {
+		if rows[index].Name != want[index] {
+			t.Fatalf("row %d = %q, want %q", index, rows[index].Name, want[index])
+		}
+	}
+	plain := ansi.Strip(model.View().Content)
+	if strings.Count(plain, "BUILDER (3)") != 1 || strings.Contains(plain, "fix (1)") {
+		t.Fatalf("group rendering:\n%s", plain)
 	}
 }
 
