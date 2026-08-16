@@ -13,11 +13,7 @@ func TestShimSyntaxAndEvalProtocol(t *testing.T) {
 	if err != nil {
 		t.Skip("zsh is not installed")
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	shimPath := filepath.Join(cwd, "pfm.zsh")
+	shimPath := bundleShimPath(t)
 	if output, err := exec.Command(zsh, "-n", shimPath).CombinedOutput(); err != nil {
 		t.Fatalf("zsh -n: %v: %s", err, output)
 	}
@@ -78,11 +74,7 @@ func TestShimLaunchPosture(t *testing.T) {
 	if err != nil {
 		t.Skip("zsh is not installed")
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	shimPath := filepath.Join(cwd, "pfm.zsh")
+	shimPath := bundleShimPath(t)
 
 	home := t.TempDir()
 	fakeBin := filepath.Join(home, "fake-bin")
@@ -230,6 +222,28 @@ func readShimFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(content)
+}
+
+func bundleShimPath(t *testing.T) string {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Clean(filepath.Join(
+		cwd,
+		"..",
+		"..",
+		"blueprint",
+		"templates",
+		"host-swap",
+		"shim",
+		"pfm.zsh",
+	))
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("locate bundle shim %s: %v", path, err)
+	}
+	return path
 }
 
 func quoteZsh(value string) string {

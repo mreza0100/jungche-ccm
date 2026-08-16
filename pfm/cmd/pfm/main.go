@@ -57,8 +57,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runStatusline(args[1:], os.Stdin, stdout, stderr)
 	case "usage-hook":
 		return runUsageHook(args[1:], stdout, stderr)
-	case "legacy":
-		return runLegacy(args[1:], stdout, stderr)
+	case "install":
+		return runInstall(args[1:], stdout, stderr)
 	case "whoami":
 		return runWhoami(args[1:], stdout, stderr)
 	case "mcp":
@@ -383,7 +383,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
 	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
-	fmt.Fprintln(w, "  legacy    repair the hide carrier file against the shared store")
+	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the pfm version")
 	fmt.Fprintln(w)

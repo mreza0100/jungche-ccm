@@ -567,72 +567,6 @@
     "templates/docs-commands/build/references/qa-commons.md": {
       "curated": true
     },
-    "templates/host-swap/README.md": {
-      "curated": true
-    },
-    "templates/host-swap/bb.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/branch.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/capture.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/chat.sh": {
-      "curated": true
-    },
-    "templates/host-swap/chat/find.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/goal.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/history.sh": {
-      "curated": true
-    },
-    "templates/host-swap/chat/inject.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/interrogate.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/load.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/ls.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/new.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/read.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/save.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/self/compact.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/chat/whoami.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/install.sh": {
-      "curated": true
-    },
-    "templates/host-swap/swap.command.md": {
-      "curated": true
-    },
-    "templates/host-swap/tests/install-fixtures.sh": {
-      "curated": true
-    },
-    "templates/host-swap/codex-skills/bb/SKILL.md": {
-      "curated": true
-    },
-    "templates/host-swap/codex-skills/bb/agents/openai.yaml": {
-      "curated": true
-    },
     "templates/skills/legal/SKILL.md": {
       "sources": {
         ".claude/skills/legal/SKILL.md": "27d77b9f6e030208ce7e8a9eb7324abfd5f5b0ad9b31b29ff0b24f44ed22e94b"
@@ -692,6 +626,9 @@
       "sources": {
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
       }
+    },
+    "templates/host-swap/shim/pfm.zsh": {
+      "curated": true
     },
     "templates/host-swap/systemd/pfm-name-sync.service": {
       "curated": true

@@ -27,23 +27,23 @@ SOURCE   this repo — plain files where content is universal,
 RENDER   build step inside the repo; outputs are committed build
          artifacts, verified against their sources at release  (designed)
    │
-INSTALL  install.sh — the ONLY writer of installed paths;
-         symlinks every installed file back into the clone
+INSTALL  pfm install — the ONLY writer of fleet-installed paths;
+         stages embedded assets and links installed files to them
    │
-UPDATE   git pull — every installed file updates at once,
-         because every installed file IS the clone's file
+UPDATE   pull, build, apply — every installed asset matches the binary
 ```
 
-The clone is the install. `git clone … ~/.professor` puts the content on disk;
-`install.sh --apply` wires it into `~/.claude` (and, designed, `~/.codex`) by symlink; `git pull`
-is the whole update story. No copy of any file exists outside the clone, so no copy can drift.
+The clone supplies the binary source. Build `pfm`, then `pfm install --apply` stages the exact
+assets embedded in that binary and wires them into `~/.claude` by symlink. Updating means pulling,
+building one new candidate, and applying that candidate; the installed command surface cannot
+drift from the binary that installed it.
 
 ## Ownership law — one writer per installed path
 
-**`install.sh` is the only program that writes an installed path.** Installed paths are
-`~/.claude/bin/*`, `~/.claude/commands/**`, `~/.codex/prompts/*` (designed), and the one `source`
-line in `~/.zshrc`. Every generator, compiler, or sync script writes **only inside the repo or
-clone** — never into an install destination.
+**`pfm install` is the only program that writes a fleet-installed path.** Installed paths are
+`~/.claude/commands/**`, `~/.agents/skills/**`, user systemd unit links, managed settings entries,
+and the one fleet `source` line in `~/.zshrc`. Every generator, compiler, or sync script writes
+**only inside the repo or clone** — never into an install destination.
 
 This law exists because its absence was measured, not imagined. Three writers once shared one
 command directory: the symlink installer, a template compiler emitting real files over the links,
@@ -55,21 +55,15 @@ pointing at a dead path fails only when a user runs it.
 Corollaries:
 
 - A tool that wants to influence an installed file changes the **source in the repo**; the change
-  reaches the install through render + pull, never by writing the destination.
-- An installed file that is not a symlink into the clone is a finding. `install.sh --apply`
-  reports and repairs it (backing up, never destroying).
+  reaches the install through build + `pfm install`, never by writing the destination.
+- An installed file that is not a symlink into the managed asset tree is a finding. `pfm install
+  --apply` reports and repairs it (backing up, never destroying).
 
 ## Stable addresses
 
-Every executable installs at **`~/.claude/bin/<name>`**, and every command file references
-executables **only** at that address (or via `$HOME`-relative paths that exist on any machine).
-No installed file may reference a repo checkout path — those differ per machine and die on
-restructure.
-
-The executables themselves are **self-locating**: each resolves its own real directory through
-any chain of symlinks (`PFM_HOME`, overridable from the environment) and finds its siblings
-there. This is what makes the symlink install possible — a script linked into `~/.claude/bin`
-must not look for its neighbours in `~/.claude/bin`.
+The executable installs at **`~/.local/bin/pfm`**, and command cards reference that stable
+address. `pfm install` stages version-matched embedded assets under
+`~/.local/share/pfm/install/`; installed links point there, never at a transient checkout path.
 
 ## The harness axis — one source, per-harness renders
 
@@ -105,11 +99,11 @@ refuses to clobber, and the fix moves the edit into the template or the values f
 
 ## Tiers
 
-| Tier             | Contents                                                       | Install mode                             | Values needed         |
-| ---------------- | -------------------------------------------------------------- | ---------------------------------------- | --------------------- |
-| Host executables | `pfm`, `pfm.zsh`, and thin `chat.sh` compatibility delegates | binary + symlink, never templated        | runtime config only   |
-| Host commands    | `/bb`, `/swap`, `chat:*` for Claude **and** Codex              | symlink to committed per-harness renders | none                  |
-| Repo files       | per-project agents, QA protocols, Codex TOMLs, child CLAUDE.md | rendered from the adopter's values       | roster, stack, models |
+| Tier            | Contents                                                       | Install mode                       | Values needed         |
+| --------------- | -------------------------------------------------------------- | ---------------------------------- | --------------------- |
+| Host executable | `pfm`                                                          | built binary                       | runtime config only   |
+| Host assets     | `pfm.zsh`, `/bb`, `/swap`, `chat:*` for Claude **and** Codex  | embedded, staged, then symlinked   | none                  |
+| Repo files      | per-project agents, QA protocols, Codex TOMLs, child CLAUDE.md | rendered from the adopter's values | roster, stack, models |
 
 The host tiers are value-free by construction — proven by inspection: their templates contain
 only harness conditionals, no host variables. That is what makes committed renders possible for
@@ -121,10 +115,11 @@ machine at setup and update. Which rows are shipping versus designed is the
 
 ```bash
 git -C ~/.professor pull        # the update
-install.sh --apply              # only needed when a release ADDS files; re-run is free
+go -C ~/.professor/pfm build -o ~/.local/bin/pfm ./cmd/pfm
+pfm install --apply             # idempotent; applies the exact binary assets
 ```
 
-`install.sh` is idempotent and honest: dry-run by default, `--apply` to act, `--uninstall` to
+`pfm install` is idempotent and honest: dry-run by default, `--apply` to act, `--uninstall` to
 reverse. A real file at a destination is backed up beside the link (`.pre-professor-<timestamp>`),
 never destroyed. The `~/.zshrc` source line is rewritten in place when the clone moves — never
 appended beside an old one, so the shell never sources two copies. It targets `$HOME/.claude`
@@ -151,14 +146,13 @@ hash map; curated templates are edited here directly.
 
 ## Migration state
 
-| Surface                              | Today                                          | End state                               |
-| ------------------------------------ | ---------------------------------------------- | --------------------------------------- |
-| Host executables                     | shipped — symlinks, self-locating, 85 fixtures | unchanged                               |
-| Host commands (Claude)               | shipped — symlinks to plain files              | symlinks to committed renders           |
-| Host commands (Codex)                | hand-synced files on the maintainer's host     | `install.sh` targets, committed renders |
-| Compiler (`build.mjs` + contexts)    | archived in the origin repo's history          | `blueprint/compiler/`, release-gated    |
-| Repo tier (agents, TOMLs, CLAUDE.md) | setup-interview instantiation                  | rendered from the adopter's values file |
-| `refresh-map.json`                   | mixed derived + curated entries                | empty — every template source-authored  |
+| Surface                              | Today                                           | End state                               |
+| ------------------------------------ | ----------------------------------------------- | --------------------------------------- |
+| Host executable                      | shipped — self-installing Go binary             | unchanged                               |
+| Host assets (Claude and Codex)       | embedded and symlinked by `pfm install`         | unchanged                               |
+| Compiler (`build.mjs` + contexts)    | archived in the origin repo's history           | `blueprint/compiler/`, release-gated    |
+| Repo tier (agents, TOMLs, CLAUDE.md) | setup-interview instantiation                   | rendered from the adopter's values file |
+| `refresh-map.json`                   | mixed derived + curated entries                 | empty — every template source-authored  |
 
 ## Safety canon
 

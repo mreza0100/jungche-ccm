@@ -48,7 +48,7 @@ func TestSettledRootInterface(t *testing.T) {
 	}
 	help := stdout.String()
 	for _, want := range []string{
-		"operator commands:", "  chat", "wiring commands:", "  chat bb",
+		"operator commands:", "  chat", "  install", "wiring commands:", "  chat bb",
 		"  statusline", "  usage-hook",
 	} {
 		if !strings.Contains(help, want) {
@@ -501,7 +501,6 @@ func TestUsageErrors(t *testing.T) {
 		{"index", "--unknown"},
 		{"doctor", "extra"},
 		{"revive", "extra"},
-		{"legacy", "unknown"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := run(args, &stdout, &stderr); code != 2 {

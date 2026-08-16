@@ -1,14 +1,8 @@
 // Package shared is the fleet's authoritative state store.
 //
 // The SQLite database at ~/.cc/fleet.db holds every operator decision: hidden
-// chats, spawned teammates, and the primary account. The carrier file at
-// ~/.claude/.cc-ls-hidden preserves hides when SQLite is unavailable and is
-// always updated with the database. The transcript database (paths.Values.DB)
-// remains a derived cache that a rescan can rebuild.
-//
-// DEGRADED MODE. No SQLite, an unopenable database, a read-only directory: the
-// store keeps working against the carrier file alone and reports the reason
-// through Degraded. The picker stays available when the database is unhealthy.
+// chats, spawned teammates, and the primary account. The transcript database
+// (paths.Values.DB) remains a derived cache that a rescan can rebuild.
 package shared
 
 import (
@@ -68,21 +62,18 @@ CREATE INDEX IF NOT EXISTS chat_mtime ON chat(mtime);
 INSERT OR IGNORE INTO meta(key,val,updated_at) VALUES('schema_version','1',strftime('%s','now'));
 `
 
-// Store is a handle on the shared database plus its carrier file.
+// Store is a handle on the shared database.
 type Store struct {
 	db       *sql.DB
 	path     string
-	carrier  string
 	degraded error
 }
 
-// Open returns a usable Store in every case. When the database cannot be
-// opened or initialized the Store degrades to the carrier file and records why;
-// callers report Degraded and carry on.
+// Open records a database initialization failure in Degraded. Operations then
+// return that failure instead of pretending an operator decision was stored.
 func Open(ctx context.Context, values paths.Values) *Store {
 	store := &Store{
-		path:    values.SharedDB,
-		carrier: values.HiddenCarrier,
+		path: values.SharedDB,
 	}
 	db, err := openDatabase(ctx, values.SharedDB)
 	if err != nil {
@@ -156,13 +147,10 @@ func (s *Store) SetBusyTimeout(ctx context.Context, milliseconds int) error {
 // Path reports the shared database pathname.
 func (s *Store) Path() string { return s.path }
 
-// Carrier reports the carrier file pathname.
-func (s *Store) Carrier() string { return s.carrier }
-
 // Degraded reports why the database half is unavailable, or nil.
 func (s *Store) Degraded() error { return s.degraded }
 
-// Close releases the database handle. The carrier file holds no handle.
+// Close releases the database handle.
 func (s *Store) Close() error {
 	if s.db == nil {
 		return nil
@@ -170,123 +158,67 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// Hide records a permanent hide: the database row first, then the carrier file.
-//
-// The carrier append is NOT conditional on the database write succeeding, and
-// that is deliberate, so a hide survives a busy or missing database.
-// The returned error reports the database half; the hide is already durable.
+// Hide records a permanent hide in SQLite.
 func (s *Store) Hide(ctx context.Context, id string, hiddenAt int64) error {
-	var writeError error
-	if s.db != nil {
-		// COALESCE, not assignment: a second hide must not blank a payload an
-		// earlier one supplied, whichever order they land in.
-		if _, err := s.db.ExecContext(ctx, `
+	if s.db == nil {
+		return fmt.Errorf("record shared hide %q: %w", id, s.degraded)
+	}
+	// COALESCE, not assignment: a second hide must not blank a payload an
+	// earlier one supplied, whichever order they land in.
+	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,NULL)
 ON CONFLICT(uuid) DO UPDATE SET
   hidden_at=excluded.hidden_at,
   at_payload=COALESCE(excluded.at_payload, hidden.at_payload)`,
-			id,
-			hiddenAt,
-		); err != nil {
-			writeError = fmt.Errorf("record shared hide %q: %w", id, err)
-		}
+		id,
+		hiddenAt,
+	); err != nil {
+		return fmt.Errorf("record shared hide %q: %w", id, err)
 	}
-	if err := carrierAdd(s.carrier, id); err != nil {
-		return errors.Join(writeError, err)
-	}
-	return writeError
+	return nil
 }
 
-// Unhide deletes the database row, then rewrites the carrier file without the
-// id. It is the only removal in this package.
+// Unhide deletes one hide row.
 func (s *Store) Unhide(ctx context.Context, id string) error {
-	var writeError error
-	if s.db != nil {
-		if _, err := s.db.ExecContext(
-			ctx,
-			"DELETE FROM hidden WHERE uuid=?",
-			id,
-		); err != nil {
-			writeError = fmt.Errorf("remove shared hide %q: %w", id, err)
-		}
-	}
-	if err := carrierDelete(s.carrier, id); err != nil {
-		return errors.Join(writeError, err)
-	}
-	return writeError
-}
-
-// HiddenAt returns the effective hidden set: every database row unioned with
-// every carrier id. A carrier-only id reports hidden_at 0 — the file records no
-// time, and inventing one would claim knowledge the fleet does not have.
-func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
-	hidden := make(map[string]int64)
-	if s.db != nil {
-		rows, err := s.db.QueryContext(
-			ctx,
-			"SELECT uuid, hidden_at FROM hidden",
-		)
-		if err != nil {
-			return nil, fmt.Errorf("query shared hides: %w", err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var hiddenAt int64
-			if err := rows.Scan(&id, &hiddenAt); err != nil {
-				return nil, fmt.Errorf("scan shared hide: %w", err)
-			}
-			hidden[id] = hiddenAt
-		}
-		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("iterate shared hides: %w", err)
-		}
-	}
-	ids, err := readCarrier(s.carrier)
-	if err != nil {
-		return nil, err
-	}
-	for _, id := range ids {
-		if _, found := hidden[id]; !found {
-			hidden[id] = 0
-		}
-	}
-	return hidden, nil
-}
-
-// DatabaseHiddenIDs returns only the rows the database holds, sorted. It exists
-// for `legacy export`, which rewrites the carrier file from the store.
-func (s *Store) DatabaseHiddenIDs(ctx context.Context) ([]string, error) {
 	if s.db == nil {
-		return nil, nil
+		return fmt.Errorf("remove shared hide %q: %w", id, s.degraded)
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT uuid FROM hidden ORDER BY uuid")
+	if _, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM hidden WHERE uuid=?",
+		id,
+	); err != nil {
+		return fmt.Errorf("remove shared hide %q: %w", id, err)
+	}
+	return nil
+}
+
+// HiddenAt returns every hidden row keyed by chat id.
+func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
+	if s.db == nil {
+		return nil, fmt.Errorf("query shared hides: %w", s.degraded)
+	}
+	hidden := make(map[string]int64)
+	rows, err := s.db.QueryContext(
+		ctx,
+		"SELECT uuid, hidden_at FROM hidden",
+	)
 	if err != nil {
 		return nil, fmt.Errorf("query shared hides: %w", err)
 	}
 	defer rows.Close()
-	var ids []string
 	for rows.Next() {
 		var id string
-		if err := rows.Scan(&id); err != nil {
+		var hiddenAt int64
+		if err := rows.Scan(&id, &hiddenAt); err != nil {
 			return nil, fmt.Errorf("scan shared hide: %w", err)
 		}
-		ids = append(ids, id)
+		hidden[id] = hiddenAt
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate shared hides: %w", err)
 	}
-	return ids, nil
-}
-
-// CarrierIDs returns the carrier file's ids in file order.
-func (s *Store) CarrierIDs() ([]string, error) {
-	return readCarrier(s.carrier)
-}
-
-// RewriteCarrier replaces the carrier file with ids under the carrier lock.
-func (s *Store) RewriteCarrier(ids []string) error {
-	return carrierRewrite(s.carrier, ids)
+	return hidden, nil
 }
 
 // Children returns the teammates a chat spawned. The second result is false

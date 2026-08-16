@@ -8,6 +8,19 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
 
+- Tier A: `pfm install` and `templates/host-swap` — the self-contained binary now owns the
+  host command cards, helpers, Codex BB skill, launcher shim, settings rewrites, systemd links,
+  retired-file sweep, backups, and uninstall. Dry-run is the default; a reachable user bus
+  refuses before any write with rc 97; offline unit enablement links converge without touching the
+  user bus; an immediate second apply is a measured zero-change run.
+  SQLite is the sole hide store, so `pfm legacy` and its carrier are removed. The source bundle
+  closes at one shim plus three units, with WAL sidecars ignored. (cost: the host installer path
+  changed and the old hide carrier is retired)
+
+  #### → For: build the new `pfm` binary, review `pfm install --dry-run`, then run
+
+  `pfm install --apply` once.
+
 - Tier A: `pfm statusline`, `pfm usage-hook`, and `templates/host-swap` — native Go rendering
   replaces the high-frequency statusline shell, both local segments, and the Vertex/Codex
   Python refreshers while preserving badges, gauges, cache TTLs, detached refresh, and the
@@ -18,8 +31,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
   #### → For: build and install `pfm`, then run
 
-  `blueprint/templates/host-swap/install.sh --apply` once to rewire settings and retire the old
-  shell/Python copies.
+  `pfm install --apply` once to rewire settings and retire the old shell/Python copies.
 
 - Tier A: `pfm` and `templates/host-swap` — complete the Professor-Fleet-Manager cutover: the
   parity oracle/checker is retired; bare `pfm` opens the picker; per-chat work lives under
@@ -38,7 +50,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
   #### → For: build and install the new `pfm` binary first, then run
 
-  `blueprint/templates/host-swap/install.sh --apply` once to rewire hooks and units.
+  `pfm install --apply` once to rewire hooks and units.
 
 - Tier C: `templates/scripts/build-codex.mjs` — the compiler now carries a **never-register set**
   and skips `gitter`. Before this it emitted `.codex/agents/gitter.toml` from `.claude/agents/gitter.md`

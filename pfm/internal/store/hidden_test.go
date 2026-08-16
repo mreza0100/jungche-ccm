@@ -24,11 +24,9 @@ const (
 	helperWriteCount = 200
 )
 
-// A hide taken while a concurrent writer holds the shared database must not
-// fail, must say so loudly, and must SURVIVE: the carrier file is written
-// whether or not the row lands, so a busy database costs a warning instead of
-// a lost decision.
-func TestHiddenBusyPolicyWarnsAndKeepsTheHide(t *testing.T) {
+// A persistent busy database must be loud and nonzero; success would claim an
+// operator decision was durable when no row was written.
+func TestHiddenBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {
 	setStoreTestJail(t)
 
 	var warnings bytes.Buffer
@@ -44,25 +42,20 @@ func TestHiddenBusyPolicyWarnsAndKeepsTheHide(t *testing.T) {
 	}
 	release := holdSharedWriteLock(t, writer.SharedPath())
 
-	if err := writer.Hide(ctx, Hidden{ID: "busy-hide", HiddenAt: 1}); err != nil {
-		t.Fatalf("Hide() under persistent SQLITE_BUSY error = %v, want nil", err)
+	if err := writer.Hide(ctx, Hidden{ID: "busy-hide", HiddenAt: 1}); err == nil {
+		t.Fatal("Hide() under persistent SQLITE_BUSY reported success")
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
 		!strings.Contains(got, "was NOT") {
 		t.Fatalf("busy warning = %q, want a loud not-written warning", got)
 	}
-	if _, found, err := writer.Hidden(ctx, "busy-hide"); err != nil || !found {
-		t.Fatalf(
-			"Hidden() after a busy hide found = %v, error = %v; want true, nil — the carrier keeps it",
-			found,
-			err,
-		)
+	if _, found, err := writer.Hidden(ctx, "busy-hide"); err != nil || found {
+		t.Fatalf("Hidden() after rejected hide found=%v err=%v", found, err)
 	}
-	assertCarrierHas(t, writer.CarrierPath(), "busy-hide")
 
 	warnings.Reset()
-	if err := writer.Unhide(ctx, "busy-unhide"); err != nil {
-		t.Fatalf("Unhide() under persistent SQLITE_BUSY error = %v, want nil", err)
+	if err := writer.Unhide(ctx, "busy-unhide"); err == nil {
+		t.Fatal("Unhide() under persistent SQLITE_BUSY reported success")
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
 		!strings.Contains(got, "was NOT") {
@@ -107,21 +100,6 @@ func holdSharedWriteLock(t *testing.T, path string) func() {
 	}
 	t.Cleanup(release)
 	return release
-}
-
-func assertCarrierHas(t *testing.T, carrier, id string) {
-	t.Helper()
-
-	content, err := os.ReadFile(carrier)
-	if err != nil {
-		t.Fatalf("read carrier %s: %v", carrier, err)
-	}
-	for _, line := range strings.Split(string(content), "\n") {
-		if line == id {
-			return
-		}
-	}
-	t.Fatalf("carrier %s = %q, want a line %q", carrier, content, id)
 }
 
 func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {

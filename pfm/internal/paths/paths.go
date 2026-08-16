@@ -40,8 +40,8 @@ func TmuxConfigArguments() []string {
 // Values contains the filesystem locations used by pfm.
 //
 // DB is this binary's own derived cache (transcripts, rollouts, names) and
-// nothing else reads it. SharedDB and HiddenCarrier are the fleet's state,
-// authoritative operator state: hides, teammates, and the primary account.
+// nothing else reads it. SharedDB is the authoritative operator state: hides,
+// teammates, and the primary account.
 type Values struct {
 	DB          string
 	SharedDB    string
@@ -50,13 +50,8 @@ type Values struct {
 	CodexRoot   string
 	TmuxDir     string
 	Home        string
-	// HiddenCarrier is ~/.claude/.cc-ls-hidden: the hidden set as it stands
-	// between picker runs. It has no environment override
-	// of its own because it is defined relative to Home, which EnvHome jails.
-	HiddenCarrier string
 	// ArchiveDir is ~/.claude-archive: where archived transcripts and rollouts
-	// go, with the manifest that puts them back. Defined relative to Home for
-	// the same reason as HiddenCarrier — one jail knob, not two.
+	// go, with the manifest that puts them back. It is defined relative to Home.
 	ArchiveDir string
 	ProcRoot   string
 	CgroupRoot string
@@ -97,15 +92,14 @@ func Resolve() (Values, error) {
 		DB: EnvOr(EnvDB, filepath.Join(home, ".local", "state", "pfm", "fleet.db")),
 		// The shared database defaults to $HOME/.cc/fleet.db. PFM_DB already
 		// overrides the private cache, so the shared handle gets a distinct name.
-		SharedDB:      EnvOr(EnvSharedDB, filepath.Join(home, ".cc", "fleet.db")),
-		SIDDir:        EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
-		ClaudeRoots:   claudeRoots,
-		CodexRoot:     EnvOr(EnvCodexRoot, filepath.Join(home, ".codex")),
-		TmuxDir:       EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
-		Home:          home,
-		HiddenCarrier: filepath.Join(home, ".claude", ".cc-ls-hidden"),
-		ArchiveDir:    filepath.Join(home, ".claude-archive"),
-		ProcRoot:      EnvOr(EnvProcRoot, "/proc"),
-		CgroupRoot:    EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
+		SharedDB:    EnvOr(EnvSharedDB, filepath.Join(home, ".cc", "fleet.db")),
+		SIDDir:      EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
+		ClaudeRoots: claudeRoots,
+		CodexRoot:   EnvOr(EnvCodexRoot, filepath.Join(home, ".codex")),
+		TmuxDir:     EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
+		Home:        home,
+		ArchiveDir:  filepath.Join(home, ".claude-archive"),
+		ProcRoot:    EnvOr(EnvProcRoot, "/proc"),
+		CgroupRoot:  EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
 	}, nil
 }
