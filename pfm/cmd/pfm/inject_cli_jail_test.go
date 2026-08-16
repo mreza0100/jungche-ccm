@@ -225,18 +225,32 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	stdout.Reset()
 	stderr.Reset()
 	code = run([]string{"chat", "inject", "--file", messagePath, fileSession}, &stdout, &stderr)
-	if code != 0 || !strings.Contains(stdout.String(), "FILE-BACKED") {
+	if code != 0 || !strings.Contains(stdout.String(), "AUTO-FILE") {
 		t.Fatalf("file-backed exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "delivery proof") ||
-		!strings.Contains(stdout.String(), "file-end") {
+		!strings.Contains(stdout.String(), "file-start") ||
+		!strings.Contains(stdout.String(), "read ") {
 		t.Fatalf("file-backed receipt omitted pane proof: %q", stdout.String())
+	}
+	canonical, err := filepath.Glob(filepath.Join(
+		home, ".local", "state", "pfm", "inject-bodies", "*.md",
+	))
+	if err != nil || len(canonical) != 1 {
+		t.Fatalf("canonical inject bodies=%q err=%v", canonical, err)
+	}
+	stored, err := os.ReadFile(canonical[0])
+	if err != nil || string(stored) != longBody ||
+		!strings.Contains(stdout.String(), canonical[0]) {
+		t.Fatalf("canonical body=%d bytes err=%v receipt=%q", len(stored), err, stdout.String())
 	}
 	fileCapture := exec.Command("tmux", "-L", fileSocket, "capture-pane", "-t", fileSession, "-p", "-J", "-S", "-")
 	fileCapture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
 	fileOutput, err := fileCapture.Output()
-	if err != nil || !strings.Contains(string(fileOutput), "file-start") || !strings.Contains(string(fileOutput), "file-end") {
-		t.Fatalf("file-backed body missing: err=%v capture=%q", err, fileOutput)
+	if err != nil || !strings.Contains(string(fileOutput), "file-start") ||
+		!strings.Contains(string(fileOutput), "read ") ||
+		strings.Contains(string(fileOutput), "file-end") {
+		t.Fatalf("file-backed pointer missing or full body leaked: err=%v capture=%q", err, fileOutput)
 	}
 }
 

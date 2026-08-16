@@ -1,6 +1,6 @@
 ---
 name: chat:inject
-description: Force a turn into another chat or into this one — 'self', a live tmux session, or its 🔖 label gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. `--force-now` interrupts a busy target (Esc); `--file {path}` sends a message with shell metacharacters safely; `--then {steer}` queues a follow-up turn for after the primary lands (e.g. post-/compact); repeat it to chain several steers, delivered in order one settled turn apart. Restart all MCP servers on 'restart mcp' by self-injecting /mcp disable then /mcp enable. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
+description: Force a turn into another chat or into this one — 'self', a live tmux session, or its 🔖 label gets it typed in and submitted now (send-keys); a session-id or excerpt gets it appended to that chat's transcript, answered on resume. Long bodies automatically become durable short pointers. `--force-now` interrupts a busy target (Esc); `--file {path}` reads shell-sensitive input safely; `--then {steer}` queues a follow-up turn for after the primary lands (e.g. post-/compact); repeat it to chain several steers, delivered in order one settled turn apart. Restart all MCP servers on 'restart mcp' by self-injecting /mcp disable then /mcp enable. Trigger — /chat:inject {target} {message} (or {message} :: {target}).
 argument-hint: [[--force-now] [--then {steer}]... [--file {path}] {self | tmux-session | session-id} {message}]
 ---
 
@@ -10,7 +10,7 @@ Args: $ARGUMENTS
 
 `/chat:inject` lands a real user turn and auto-picks how:
 
-- **`self`, a live tmux session, or a 🔖 label** → typed into that pane and submitted now (LIVE) — the whole message inline, no length cap and no file, however long. A **label** is the destination's `/rename` name (the 🔖 in its status line); the script resolves it to a tmux session by scanning live panes the way `/chat:ls` does, so you can address a chat as `WAVE` or `VISION` instead of its tmux number. Matching is case-insensitive; an ambiguous label (two chats share it) errors and asks for the session id. The script owns the Enter and protects the target's draft: before typing it presses `Ctrl+S`, which stashes any unsent draft (restored automatically after the next submit) and is a no-op on an empty box — so it never has to read the input; it waits for the text to render, then double-taps Enter (0.15s apart) to defeat a swallowed first press — single-tap when a draft was stashed, so the restored draft is never re-submitted — and confirms the input cleared, so **you never press Enter yourself**. If it cannot confirm submission (target busy mid-turn or in a selector) it warns rather than leaving a half-sent turn. Keep the message a single line — a bare newline submits early in the target's input. `self` targets this chat's own pane, queuing a turn for after the current one completes.
+- **`self`, a live tmux session, or a 🔖 label** → typed into that pane and submitted now (LIVE). A short message travels inline; an over-threshold body is stored byte-exact and replaced by a signed caption+path pointer. A **label** is the destination's `/rename` name (the 🔖 in its status line); the script resolves it to a tmux session by scanning live panes the way `/chat:ls` does, so you can address a chat as `WAVE` or `VISION` instead of its tmux number. Matching is case-insensitive; an ambiguous label (two chats share it) errors and asks for the session id. The script owns the Enter and protects the target's draft: before typing it presses `Ctrl+S`, which stashes any unsent draft (restored automatically after the next submit) and is a no-op on an empty box — so it never has to read the input; it waits for the text to render, then double-taps Enter (0.15s apart) to defeat a swallowed first press — single-tap when a draft was stashed, so the restored draft is never re-submitted — and confirms the input cleared, so **you never press Enter yourself**. If it cannot confirm submission (target busy mid-turn or in a selector) it warns rather than leaving a half-sent turn. `self` targets this chat's own pane, queuing a turn for after the current one completes.
 - **session-id or excerpt** → appended to that chat's transcript (RESUME); it answers on its next reopen (backed up first).
 
 ## Steps
@@ -40,7 +40,18 @@ By default a message injected into a busy target queues behind its current turn.
 
 ## Send shell syntax safely with `--file`
 
-`$HOME/.local/bin/pfm chat inject --file {path} {target}` reads the message body from a file instead of argv. The mangler is the CALLER's shell — not tmux or pfm: a message carrying redirects, pipes, backticks, or `$` needs only one imperfect quote for the caller's shell to eat or execute part of it. A file never crosses a shell, so command forms arrive byte-exact. Use it for any message carrying shell metacharacters, and for anything spanning lines.
+`$HOME/.local/bin/pfm chat inject --file {path} {target}` reads the message body from a file instead of argv. The mangler is the CALLER's shell — not tmux or pfm: a message carrying redirects, pipes, backticks, or `$` needs only one imperfect quote for the caller's shell to eat or execute part of it. A file never crosses a shell, so command forms arrive byte-exact. A short file uses bracketed paste for multi-line safety; a long file is copied into the canonical auto-file store and only its pointer enters the chat.
+
+## Long bodies automatically become durable pointers
+
+The complete signed wire message stays at or below the empirically measured safety boundary:
+720 runes for Claude, 900 for Codex. Above it, pfm writes the original body byte-exact to
+`~/.local/state/pfm/inject-bodies/<utc-stamp>-<target>.md` (mode 0600; bodies older than seven
+days are pruned) and sends a short message: the bounded first-line caption plus
+`read <path> fully`, followed by the normal signature. The success receipt says `AUTO-FILE` and
+names the same path. An 8 KiB body therefore reaches the recipient as a harmless pointer, never
+as a composer-filling paste. Do not retry an `AUTO-FILE` receipt: the body is already durable and
+the pointer is the delivered turn.
 
 ## `--file` carries the MESSAGE, not the document
 

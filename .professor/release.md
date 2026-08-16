@@ -85,3 +85,15 @@ and `(cost)` on any env / hook / permission / model-config delta.
 - Tier A: fleet installation source — the Go installer and `internal/installer/assets/` are the
   single source of every staged host file. The duplicate host template bundle is removed; a fresh
   box gets the `pfm` binary and runs `pfm install --apply`.
+
+- Tier A: `pfm chat inject` long-body transport — authentic Claude and Codex composer probes now
+  define per-engine auto-file boundaries instead of the guessed Codex-only cap. An over-threshold
+  body is stored byte-exact under `~/.local/state/pfm/inject-bodies/`, only a signed caption+path
+  pointer enters the composer or dormant transcript, the receipt names the fallback and path, and
+  old bodies are pruned after seven days. The 8 KiB composer-killer case is fixture-covered as a
+  harmless pointer. (cost: long injects now require the recipient to read the named local file)
+
+- Tier B: picker Stats tabs — every table now has a labeled header; chat rows show lifetime token
+  spend and average tokens per hour, while Docker rows begin with container name and image. Token
+  parsing is append-cached per transcript and Docker identity lookup is cached per cgroup id, so
+  the two-second live sampler keeps resource reads on the cgroup path.

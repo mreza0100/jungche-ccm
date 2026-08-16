@@ -3,6 +3,7 @@ package inject
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -258,23 +259,24 @@ func newTestEngineWith(
 		Tmux:    tmux,
 		Spawner: spawner,
 		Options: Options{
-			Poll:            time.Nanosecond,
-			EnterGap:        time.Nanosecond,
-			EnterSettle:     time.Nanosecond,
-			ProofSettle:     time.Nanosecond,
-			BusyTries:       2,
-			InterruptTries:  2,
-			StashTries:      2,
-			SettleTries:     2,
-			EnterTries:      2,
-			LockTimeout:     time.Second,
-			LockPoll:        time.Nanosecond,
-			LockMaxHold:     time.Second,
-			LockRoot:        t.TempDir(),
-			ThenLogRoot:     t.TempDir(),
-			Sender:          &Sender{Session: "sender", Label: "Operator", UUID: "1234567890"},
-			CodexInlineMax:  CodexInlineMax,
-			AbsoluteByteMax: AbsoluteMessageMax,
+			Poll:              time.Nanosecond,
+			EnterGap:          time.Nanosecond,
+			EnterSettle:       time.Nanosecond,
+			ProofSettle:       time.Nanosecond,
+			BusyTries:         2,
+			InterruptTries:    2,
+			StashTries:        2,
+			SettleTries:       2,
+			EnterTries:        2,
+			LockTimeout:       time.Second,
+			LockPoll:          time.Nanosecond,
+			LockMaxHold:       time.Second,
+			LockRoot:          t.TempDir(),
+			ThenLogRoot:       t.TempDir(),
+			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "1234567890"},
+			ClaudeAutoFileMax: ClaudeAutoFileMax,
+			CodexAutoFileMax:  CodexAutoFileMax,
+			AbsoluteByteMax:   AbsoluteMessageMax,
 		},
 	})
 	if err != nil {
@@ -448,18 +450,10 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 	}
 }
 
-func TestInjectCodexAndAbsoluteCapsPrecedeTyping(t *testing.T) {
+func TestInjectAbsoluteCapPrecedesTyping(t *testing.T) {
 	fake := &fakeTmux{capture: "› "}
 	engine := newTestEngine(t, "cx-1-2-3", fake)
 	result, err := engine.Inject(context.Background(), Request{
-		Target:  "chat",
-		Message: strings.Repeat("x", CodexInlineMax+1),
-	})
-	if err != nil || result.Code != 6 || result.Typed || len(fake.keys) != 0 {
-		t.Fatalf("Codex cap result=%+v keys=%q err=%v", result, fake.keys, err)
-	}
-
-	result, err = engine.Inject(context.Background(), Request{
 		Target:  "chat",
 		Message: strings.Repeat("x", 1<<20),
 	})
@@ -468,10 +462,147 @@ func TestInjectCodexAndAbsoluteCapsPrecedeTyping(t *testing.T) {
 	}
 }
 
-func TestInjectFileBackedCodexUsesPasteTransportPastInlineCap(t *testing.T) {
+func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
+	tests := []struct {
+		name      string
+		socket    string
+		threshold int
+	}{
+		{name: "claude", socket: "cc-auto-file", threshold: 720},
+		{name: "codex", socket: "cx-auto-file", threshold: 900},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			underFake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+			if strings.HasPrefix(test.socket, "cx-") {
+				underFake.capture = "conversation\n› "
+			}
+			under := newTestEngine(t, test.socket, underFake)
+			under.options.DisableSignature = true
+			underBody := strings.Repeat("u", test.threshold-1)
+			underResult, err := under.Inject(context.Background(), Request{
+				Target: "chat", Message: underBody,
+			})
+			if err != nil || underResult.Code != 0 ||
+				len(underFake.literals) == 0 ||
+				underFake.literals[0] != underBody ||
+				strings.Contains(underResult.Message, "AUTO-FILE") {
+				t.Fatalf("one-under delivery result=%+v literals=%q err=%v", underResult, underFake.literals, err)
+			}
+
+			overFake := &fakeTmux{capture: underFake.capture, submitOnEnter: true}
+			over := newTestEngine(t, test.socket, overFake)
+			over.options.DisableSignature = true
+			overBody := strings.Repeat("o", test.threshold+1)
+			overResult, err := over.Inject(context.Background(), Request{
+				Target: "chat", Message: overBody,
+			})
+			if err != nil || overResult.Code != 0 ||
+				!strings.Contains(overResult.Message, "AUTO-FILE") ||
+				len(overFake.literals) == 0 ||
+				strings.Contains(overFake.literals[0], overBody) ||
+				!strings.Contains(overFake.literals[0], "read ") ||
+				!strings.Contains(overFake.literals[0], " fully") {
+				t.Fatalf("one-over delivery result=%+v literals=%q err=%v", overResult, overFake.literals, err)
+			}
+			files, globErr := filepath.Glob(filepath.Join(
+				os.Getenv("PFM_HOME"), ".local", "state", "pfm", "inject-bodies", "*.md",
+			))
+			if globErr != nil || len(files) != 1 {
+				t.Fatalf("canonical body files=%q err=%v", files, globErr)
+			}
+			stored, readErr := os.ReadFile(files[0])
+			if readErr != nil || string(stored) != overBody ||
+				!strings.Contains(overResult.Message, files[0]) {
+				t.Fatalf("stored body=%d bytes err=%v receipt=%q", len(stored), readErr, overResult.Message)
+			}
+
+			killerFake := &fakeTmux{capture: overFake.capture, submitOnEnter: true}
+			killer := newTestEngine(t, test.socket+"-killer", killerFake)
+			killer.options.DisableSignature = true
+			killerBody := "killer caption\n" + strings.Repeat("k", 8<<10)
+			killerResult, err := killer.Inject(context.Background(), Request{
+				Target: "chat", Message: killerBody,
+			})
+			if err != nil || killerResult.Code != 0 ||
+				len(killerFake.literals) == 0 ||
+				len([]rune(killerFake.literals[0])) >= test.threshold ||
+				!strings.Contains(killerResult.Message, "AUTO-FILE") {
+				t.Fatalf("killer body was not reduced to a safe pointer: result=%+v literal=%q err=%v", killerResult, killerFake.literals, err)
+			}
+		})
+	}
+}
+
+func TestPersistBodyPrunesExpiredMarkdownByAge(t *testing.T) {
+	engine := newTestEngine(t, "cc-body-prune", &fakeTmux{capture: "❯ "})
+	now := time.Date(2031, 2, 3, 4, 5, 6, 7, time.UTC)
+	engine.options.Now = func() time.Time { return now }
+	engine.options.BodyMaxAge = 24 * time.Hour
+	if err := os.MkdirAll(engine.options.BodyRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(engine.options.BodyRoot, "stale.md")
+	fresh := filepath.Join(engine.options.BodyRoot, "fresh.md")
+	nonBody := filepath.Join(engine.options.BodyRoot, "stale.txt")
+	for _, path := range []string{stale, fresh, nonBody} {
+		if err := os.WriteFile(path, []byte(path), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := now.Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(nonBody, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(fresh, now, now); err != nil {
+		t.Fatal(err)
+	}
+	path, warnings, err := engine.persistBody("exact body", "cc-1:%2")
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("persist body path=%q warnings=%q err=%v", path, warnings, err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("expired markdown survived: %v", err)
+	}
+	for _, kept := range []string{fresh, nonBody} {
+		if _, err := os.Stat(kept); err != nil {
+			t.Fatalf("non-expired/non-body file %q was pruned: %v", kept, err)
+		}
+	}
+	stored, err := os.ReadFile(path)
+	if err != nil || string(stored) != "exact body" ||
+		!strings.Contains(filepath.Base(path), "cc-1--2") {
+		t.Fatalf("canonical file path=%q body=%q err=%v", path, stored, err)
+	}
+}
+
+func TestPrepareForResumeUsesSignedAutoFilePointer(t *testing.T) {
+	engine := newTestEngine(t, "cc-resume-auto-file", &fakeTmux{capture: "❯ "})
+	body := "resume caption\n" + strings.Repeat("r", 8<<10)
+	prepared, err := engine.PrepareForResume(
+		context.Background(),
+		"11111111-2222-4333-8444-555555555555",
+		"cc",
+		body,
+	)
+	if err != nil || prepared.AutoFilePath == "" ||
+		!strings.Contains(prepared.Message, "resume caption — read ") ||
+		!strings.Contains(prepared.Message, " fully\n\n— sid 12345678") {
+		t.Fatalf("resume preparation=%+v err=%v", prepared, err)
+	}
+	stored, err := os.ReadFile(prepared.AutoFilePath)
+	if err != nil || string(stored) != body {
+		t.Fatalf("resume canonical body=%d bytes err=%v", len(stored), err)
+	}
+}
+
+func TestInjectShortExplicitFileUsesPasteTransport(t *testing.T) {
 	fake := &fakeTmux{capture: "› ", submitOnEnter: true}
 	engine := newTestEngine(t, "cx-1-2-3", fake)
-	message := strings.Repeat("file body ", CodexInlineMax)
+	message := strings.Repeat("file body ", 20)
 	result, err := engine.Inject(context.Background(), Request{
 		Target:     "chat",
 		Message:    message,
