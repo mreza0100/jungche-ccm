@@ -49,7 +49,14 @@ type fakeTmux struct {
 	busyUntilEsc  bool
 	stashClears   bool
 	submitOnEnter bool
+	submitCapture string
+	proofCapture  string
+	submitted     bool
+	postCaptures  int
 	inMode        bool
+	modeAfterEsc  bool
+	cancelModes   int
+	hideLiteral   bool
 }
 
 // fakeSpawner records the detached --then waiter instead of starting one.
@@ -86,6 +93,12 @@ func (fake *fakeTmux) Capture(
 	if fake.dead {
 		return "", errors.New("dead")
 	}
+	if fake.submitted && fake.proofCapture != "" {
+		fake.postCaptures++
+		if fake.postCaptures > 1 {
+			return fake.proofCapture, nil
+		}
+	}
 	if styled && fake.styled != "" {
 		return fake.styled, nil
 	}
@@ -104,6 +117,9 @@ func (fake *fakeTmux) SendLiteral(
 	}
 	fake.literal = text
 	fake.literals = append(fake.literals, text)
+	if fake.hideLiteral {
+		return nil
+	}
 	marker := "❯"
 	if strings.Contains(fake.capture, "›") &&
 		!strings.Contains(fake.capture, "❯") {
@@ -136,6 +152,10 @@ func (fake *fakeTmux) SendKey(
 	fake.keys = append(fake.keys, key)
 	switch key {
 	case "Escape":
+		if fake.modeAfterEsc {
+			fake.inMode = true
+			fake.modeAfterEsc = false
+		}
 		if fake.busyUntilEsc {
 			fake.capture = "turn interrupted\n❯ "
 			fake.busyUntilEsc = false
@@ -146,8 +166,17 @@ func (fake *fakeTmux) SendKey(
 		}
 	case "Enter":
 		if fake.submitOnEnter && fake.literal != "" {
-			fake.capture = "USER: " + fake.literal + "\n❯ "
+			if fake.submitCapture != "" {
+				fake.capture = strings.ReplaceAll(
+					fake.submitCapture,
+					"{{MESSAGE}}",
+					fake.literal,
+				)
+			} else {
+				fake.capture = "USER: " + fake.literal + "\n❯ "
+			}
 			fake.literal = ""
+			fake.submitted = true
 		}
 	}
 	return nil
@@ -161,6 +190,7 @@ func (fake *fakeTmux) CancelCopyMode(
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	fake.inMode = false
+	fake.cancelModes++
 	return nil
 }
 
@@ -356,6 +386,7 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			socket:  "cx-1-2-3",
 			capture: "conversation\n› 1. do this\n",
 			configure: func(fake *fakeTmux) {
+				fake.stashClears = true
 				fake.submitOnEnter = true
 			},
 			request:  Request{Target: "chat", Message: "next"},
@@ -454,6 +485,312 @@ func TestInjectFileBackedCodexUsesPasteTransportPastInlineCap(t *testing.T) {
 	}
 }
 
+// The render-settle probe is advisory. Terminal echo can disappear while the
+// TUI still accepted the literal bytes; leaving those bytes in the composer
+// without an Enter is the worst possible failure because every retry stacks a
+// second body on top of the first.
+func TestRenderSettleMissStillFallsThroughToEnter(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "conversation\n❯ ",
+		hideLiteral:   true,
+		submitOnEnter: true,
+	}
+	engine := newTestEngine(t, "cc-1-2-3", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "terminal echo is deliberately hidden",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || !contains(fake.keys, "Enter") {
+		t.Fatalf("render miss stranded typed text: result=%+v keys=%q", result, fake.keys)
+	}
+}
+
+// tmux reports the foreground descendant, not the pane launcher. Codex and
+// Claude legitimately show node/python/sleep while a tool runs, but their
+// busy composers remain safe queue surfaces.
+func TestBusyQueueIgnoresForegroundDescendant(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "Working (600s · 99 tokens)\n❯ ",
+		paneCommand:   "python3",
+		submitOnEnter: true,
+	}
+	engine := newTestEngine(t, "cc-1-2-3", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "queue while the descendant owns the foreground",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "queued" || !result.Typed {
+		t.Fatalf("busy descendant was refused: %+v", result)
+	}
+	if contains(fake.keys, "Escape") {
+		t.Fatalf("ordinary queue interrupted the pane: keys=%q", fake.keys)
+	}
+}
+
+func TestDeliveryProofClassificationMatrix(t *testing.T) {
+	tests := []struct {
+		name          string
+		socket        string
+		paneCommand   string
+		initial       string
+		afterSubmit   string
+		fileBacked    bool
+		wantStatus    string
+		wantProofText string
+	}{
+		{
+			name:          "claude idle message is past the composer",
+			socket:        "cc-proof-idle",
+			paneCommand:   "claude",
+			initial:       "conversation\n❯ ",
+			afterSubmit:   "conversation\nUSER: {{MESSAGE}}\n❯ ",
+			wantStatus:    "delivered",
+			wantProofText: "USER: proof body",
+		},
+		{
+			name:        "claude busy queue indicator",
+			socket:      "cc-proof-queue",
+			paneCommand: "claude",
+			initial:     "Working (2s · 9 tokens)\n❯ ",
+			afterSubmit: "Working (2s · 9 tokens)\nQUEUED: {{MESSAGE}}\n" +
+				"Press up to edit queued messages\n❯ ",
+			wantStatus:    "queued",
+			wantProofText: "Press up to edit queued messages",
+		},
+		{
+			name:          "codex idle message is past the composer",
+			socket:        "cx-proof-idle",
+			paneCommand:   "codex",
+			initial:       "conversation\n› ",
+			afterSubmit:   "conversation\nUSER: {{MESSAGE}}\n› ",
+			wantStatus:    "delivered",
+			wantProofText: "USER: proof body",
+		},
+		{
+			name:        "codex busy queue follows process not socket spelling",
+			socket:      "cc-proof-codex-queue",
+			paneCommand: "codex",
+			initial:     "Working (2s · 9 tokens) · esc to interrupt\n› ",
+			afterSubmit: "Working (2s · 9 tokens)\nPending message\n" +
+				"{{MESSAGE}}\n› ",
+			wantStatus:    "queued",
+			wantProofText: "Pending message",
+		},
+		{
+			name:          "file-backed body is past the composer",
+			socket:        "cx-proof-file",
+			paneCommand:   "codex",
+			initial:       "conversation\n› ",
+			afterSubmit:   "conversation\nUSER: {{MESSAGE}}\n› ",
+			fileBacked:    true,
+			wantStatus:    "delivered",
+			wantProofText: "USER: proof body",
+		},
+		{
+			name:          "cleared composer without pane evidence is honest",
+			socket:        "cc-proof-unproven",
+			paneCommand:   "claude",
+			initial:       "conversation\n❯ ",
+			afterSubmit:   "conversation unchanged\n❯ ",
+			wantStatus:    "delivered_unproven",
+			wantProofText: "conversation unchanged",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTmux{
+				capture:       test.initial,
+				paneCommand:   test.paneCommand,
+				submitOnEnter: true,
+				submitCapture: test.afterSubmit,
+			}
+			engine := newTestEngine(t, test.socket, fake)
+			result, err := engine.Inject(context.Background(), Request{
+				Target:     "chat",
+				Message:    "proof body",
+				FileBacked: test.fileBacked,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != 0 || result.Status != test.wantStatus {
+				t.Fatalf("Inject() = %+v", result)
+			}
+			if !strings.Contains(result.Proof, test.wantProofText) {
+				t.Fatalf("proof %q lacks %q", result.Proof, test.wantProofText)
+			}
+			if test.wantStatus == "delivered_unproven" &&
+				!strings.Contains(result.Message, "delivered-unproven") {
+				t.Fatalf("unproven receipt = %q", result.Message)
+			}
+		})
+	}
+}
+
+func TestBlindDeliveryProofStatesMissingComposerLine(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "conversation\n❯ ",
+		submitOnEnter: true,
+		submitCapture: "response started\n❯ ",
+		proofCapture:  "terminal redraw without a visible prompt",
+	}
+	engine := newTestEngine(t, "cc-proof-blind", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "blind proof body",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "delivered_unproven" ||
+		!strings.Contains(result.Message, "no composer line") {
+		t.Fatalf("blind proof receipt = %+v", result)
+	}
+}
+
+func TestSuccessReceiptNamesForceAndStashedDraft(t *testing.T) {
+	tests := []struct {
+		name    string
+		fake    *fakeTmux
+		request Request
+		want    string
+	}{
+		{
+			name: "force now",
+			fake: &fakeTmux{
+				capture:       "Working (3s · 4 tokens)",
+				busyUntilEsc:  true,
+				submitOnEnter: true,
+			},
+			request: Request{Target: "chat", Message: "urgent", ForceNow: true},
+			want:    "FORCE-NOW: interrupted",
+		},
+		{
+			name: "stashed draft",
+			fake: &fakeTmux{
+				capture:       "conversation\n❯ existing draft",
+				stashClears:   true,
+				submitOnEnter: true,
+			},
+			request: Request{Target: "chat", Message: "next"},
+			want:    "stashed and restored",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			engine := newTestEngine(t, "cc-receipt", test.fake)
+			result, err := engine.Inject(context.Background(), test.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != 0 || !strings.Contains(result.Message, test.want) {
+				t.Fatalf("receipt = %+v, want %q", result, test.want)
+			}
+		})
+	}
+}
+
+func TestInjectCarriesSuccessfulResolverNote(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newTestEngine(t, "cc-resolve-note", fake)
+	engine.resolver = fakeResolver{
+		socket: "/tmp/tmux-jail/cc-resolve-note",
+		target: "%1",
+		detail: "resolved 🔖 label 'QA' → pane '%1'",
+	}
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "QA",
+		Message: "next",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.ResolutionNote != "resolved 🔖 label 'QA' → pane '%1'" {
+		t.Fatalf("resolution note lost: %+v", result)
+	}
+}
+
+func TestSecondEnterDefenseCoversCodexAndBusyQueues(t *testing.T) {
+	tests := []struct {
+		name    string
+		socket  string
+		capture string
+	}{
+		{name: "idle codex", socket: "cx-enter", capture: "conversation\n› "},
+		{name: "busy claude queue", socket: "cc-enter", capture: "Working (4s · 2 tokens)\n❯ "},
+		{name: "busy codex queue", socket: "cx-enter", capture: "Working (4s · 2 tokens)\n› "},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTmux{capture: test.capture, submitOnEnter: true}
+			engine := newTestEngine(t, test.socket, fake)
+			result, err := engine.Inject(context.Background(), Request{
+				Target:  "chat",
+				Message: "submit defensively",
+			})
+			if err != nil || result.Code != 0 {
+				t.Fatalf("delivery result=%+v err=%v", result, err)
+			}
+			enters := 0
+			for _, key := range fake.keys {
+				if key == "Enter" {
+					enters++
+				}
+			}
+			if enters < 2 {
+				t.Fatalf("keys=%q, want swallowed-Enter defense", fake.keys)
+			}
+		})
+	}
+}
+
+func TestBusyPaneStashesExistingDraftBeforeQueueing(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "Working (7s · 8 tokens)\n❯ existing draft",
+		stashClears:   true,
+		submitOnEnter: true,
+	}
+	engine := newTestEngine(t, "cc-busy-draft", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "queue after preserving the draft",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "queued" || !result.DraftStashed ||
+		!contains(fake.keys, "C-s") {
+		t.Fatalf("busy draft was not preserved before queueing: result=%+v keys=%q", result, fake.keys)
+	}
+}
+
+func TestCopyModeIsCancelledAgainAfterOverlayDismissal(t *testing.T) {
+	fake := &fakeTmux{
+		capture:       "Restore the code\n❯ ",
+		inMode:        true,
+		modeAfterEsc:  true,
+		submitOnEnter: true,
+	}
+	engine := newTestEngine(t, "cc-copy-mode", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "deliver after overlays",
+	})
+	if err != nil || result.Code != 0 {
+		t.Fatalf("delivery result=%+v err=%v", result, err)
+	}
+	if fake.cancelModes != 2 || fake.inMode {
+		t.Fatalf("copy mode cancellation count=%d inMode=%t", fake.cancelModes, fake.inMode)
+	}
+}
+
 func TestInjectAdversarialGuardStatesNeverMistypeOnRefusal(t *testing.T) {
 	states := []struct {
 		socket      string
@@ -464,7 +801,6 @@ func TestInjectAdversarialGuardStatesNeverMistypeOnRefusal(t *testing.T) {
 	}{
 		{"cc-1-2-3", "❯ 1. Allow\n2. Deny", "claude", false, 6},
 		{"cx-1-2-3", "› 1. Allow\n2. Deny", "codex", false, 6},
-		{"cc-1-2-3", "Working (1s · 3 tokens)", "python3", false, 7},
 		{"cc-1-2-3", "❯ draft", "claude", false, 6},
 		{"cc-1-2-3", "❯ ", "claude", true, 3},
 	}

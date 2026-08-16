@@ -622,6 +622,7 @@ func jailTest(t *testing.T) string {
 		filepath.Join(root, "codex"),
 		filepath.Join(root, "tmux"),
 		filepath.Join(root, "home"),
+		filepath.Join(root, "home", ".local", "bin"),
 		filepath.Join(root, "proc"),
 	} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -635,6 +636,17 @@ func jailTest(t *testing.T) string {
 	t.Setenv("PFM_CODEX_ROOT", filepath.Join(root, "codex"))
 	t.Setenv("PFM_TMUX_DIR", filepath.Join(root, "tmux"))
 	t.Setenv("PFM_HOME", filepath.Join(root, "home"))
+	canonical := filepath.Join(root, "home", ".local", "bin", "pfm")
+	if err := os.WriteFile(canonical, []byte("jailed-pfm"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	testPath := []string{filepath.Dir(canonical)}
+	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
+		if _, err := os.Stat(filepath.Join(directory, "pfm")); os.IsNotExist(err) {
+			testPath = append(testPath, directory)
+		}
+	}
+	t.Setenv("PATH", strings.Join(testPath, string(os.PathListSeparator)))
 	t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
 	// A chat server loads the user's ~/.tmux.conf in real life; a fixture must
 	// not, or the machine it runs on steers the test.

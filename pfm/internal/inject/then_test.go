@@ -252,6 +252,46 @@ func TestCommandThenSpawnerStatesTheSenderToTheWaiter(t *testing.T) {
 	}
 }
 
+func TestCommandThenSpawnerFallsBackToNohup(t *testing.T) {
+	scratch := t.TempDir()
+	dump := filepath.Join(scratch, "nohup-arguments.txt")
+	nohup := filepath.Join(scratch, "nohup-stub")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" > " + dump + "\n"
+	if err := os.WriteFile(nohup, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spawner := CommandThenSpawner{
+		Executable: filepath.Join(scratch, "pfm-candidate"),
+		Setsid:     filepath.Join(scratch, "setsid-missing"),
+		Nohup:      nohup,
+	}
+	err := spawner.Spawn(context.Background(), SteerSpawn{
+		SocketPath: filepath.Join(scratch, "cc-1-2-3"),
+		Target:     "%4",
+		Steers:     []string{"continue after the primary"},
+		LogPath:    filepath.Join(scratch, "then.log"),
+	})
+	if err != nil {
+		t.Fatalf("nohup floor was not used: %v", err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		raw, readErr := os.ReadFile(dump)
+		if readErr == nil {
+			arguments := string(raw)
+			if !strings.Contains(arguments, "pfm-candidate internal then") ||
+				strings.Contains(arguments, "-f ") {
+				t.Fatalf("nohup arguments = %q", arguments)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("nohup stub never ran: %v", readErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // TestSteerSpawnFailureIsReportedNotSwallowed keeps a failed arming visible:
 // the primary landed, the follow-up did not, and the caller is told which.
 func TestSteerSpawnFailureIsReportedNotSwallowed(t *testing.T) {

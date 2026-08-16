@@ -60,20 +60,21 @@ type Request struct {
 
 // Result is a non-ambiguous delivery verdict.
 type Result struct {
-	Status        string `json:"status"`
-	Code          int    `json:"code"`
-	Message       string `json:"message"`
-	SocketPath    string `json:"socket_path,omitempty"`
-	Pane          string `json:"pane,omitempty"`
-	Proof         string `json:"proof,omitempty"`
-	Busy          bool   `json:"busy,omitempty"`
-	Interrupted   bool   `json:"interrupted,omitempty"`
-	DraftStashed  bool   `json:"draft_stashed,omitempty"`
-	Typed         bool   `json:"typed,omitempty"`
-	SubmitRetries int    `json:"submit_retries,omitempty"`
-	Steers        int    `json:"steers,omitempty"`
-	SteerLog      string `json:"steer_log,omitempty"`
-	Unsigned      bool   `json:"unsigned,omitempty"`
+	Status         string `json:"status"`
+	Code           int    `json:"code"`
+	Message        string `json:"message"`
+	SocketPath     string `json:"socket_path,omitempty"`
+	Pane           string `json:"pane,omitempty"`
+	Proof          string `json:"proof,omitempty"`
+	ResolutionNote string `json:"resolution_note,omitempty"`
+	Busy           bool   `json:"busy,omitempty"`
+	Interrupted    bool   `json:"interrupted,omitempty"`
+	DraftStashed   bool   `json:"draft_stashed,omitempty"`
+	Typed          bool   `json:"typed,omitempty"`
+	SubmitRetries  int    `json:"submit_retries,omitempty"`
+	Steers         int    `json:"steers,omitempty"`
+	SteerLog       string `json:"steer_log,omitempty"`
+	Unsigned       bool   `json:"unsigned,omitempty"`
 }
 
 // Sender is appended to every non-command plain-text delivery.
@@ -107,7 +108,7 @@ type Tmux interface {
 	SendKey(ctx context.Context, socketPath, target, key string) error
 	CancelCopyMode(ctx context.Context, socketPath, target string) error
 	PaneInMode(ctx context.Context, socketPath, target string) (bool, error)
-	// PaneCommand verifies that a busy target really is a Claude/Codex TUI
+	// PaneCommand verifies and identifies the foreground Claude/Codex TUI
 	// before Inject types into its mid-turn composer queue. Socket spelling is
 	// an address, not proof of what process currently owns the pane.
 	PaneCommand(ctx context.Context, socketPath, target string) (string, error)

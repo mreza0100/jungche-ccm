@@ -479,8 +479,10 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		stderr,
 	)
 	var force bool
+	var retiredNoSig bool
 	flags.BoolVar(&force, "now", false, "interrupt a working chat instead of waiting")
 	flags.BoolVar(&force, "force-now", false, "interrupt a working chat instead of waiting")
+	flags.BoolVar(&retiredNoSig, "no-sig", false, "retired compatibility flag; signatures remain mandatory")
 	messageFile := flags.String("file", "", "read the message from a file")
 	var steers steerList
 	flags.Var(&steers, "then", "follow-up steer; repeat for a chain")
@@ -489,6 +491,9 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 	// order silently eaten as a flag is an order never delivered.
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
+	}
+	if retiredNoSig {
+		fmt.Fprintln(stderr, "pfm chat inject: --no-sig is retired; delivery signatures remain enabled")
 	}
 	minimum := 2
 	if *messageFile != "" {
@@ -544,18 +549,48 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "pfm chat inject: %v\n", pathErr)
 				return codeUndelivered
 			}
-			live, liveErr := runningClaudeSession(resolved.ProcRoot, target.ID)
-			if liveErr != nil {
-				fmt.Fprintf(stderr, "pfm chat inject: %v\n", liveErr)
-				return codeUndelivered
-			}
-			if live {
-				fmt.Fprintf(
-					stderr,
-					"pfm chat inject: %q is live without a resolvable tmux pane; transcript append refused\n",
-					flags.Arg(0),
-				)
-				return codeDeadChat
+			if uuidSessionID(target.ID) {
+				live, liveErr := runningClaudeSession(resolved.ProcRoot, target.ID)
+				if liveErr != nil {
+					fmt.Fprintf(stderr, "pfm chat inject: %v\n", liveErr)
+					return codeUndelivered
+				}
+				if live {
+					fmt.Fprintf(
+						stderr,
+						"pfm chat inject: %q is a LIVE session held by a running process with no resolvable tmux pane; transcript append refused\n",
+						flags.Arg(0),
+					)
+					return codeDeadChat
+				}
+				crumb, live, crumbErr := liveCrumbSession(ctx, resolved, target.ID)
+				if crumbErr != nil {
+					fmt.Fprintf(stderr, "pfm chat inject: %v\n", crumbErr)
+					return codeUndelivered
+				}
+				if live {
+					fmt.Fprintf(
+						stderr,
+						"pfm chat inject: %q is a LIVE session at %s with no resolvable target on this path; transcript append refused\n",
+						flags.Arg(0),
+						crumb,
+					)
+					return codeDeadChat
+				}
+				config, live, registryErr := registeredDaemonSession(ctx, resolved, target.ID)
+				if registryErr != nil {
+					fmt.Fprintf(stderr, "pfm chat inject: %v\n", registryErr)
+					return codeUndelivered
+				}
+				if live {
+					fmt.Fprintf(
+						stderr,
+						"pfm chat inject: %q is a LIVE background agent under config %s; it reads its input stream, not transcript appends, so nothing was appended\n",
+						flags.Arg(0),
+						config,
+					)
+					return codeDeadChat
+				}
 			}
 			if force {
 				fmt.Fprintln(stderr, "pfm chat inject: --force-now ignored for a dormant RESUME target")
@@ -588,14 +623,30 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		// who can do something about it, and only if the reason reaches them.
 		writeUnsignedInjectWarning(stderr)
 	}
+	return writeInjectResult(result, flags.Arg(0), stdout, stderr)
+}
+
+func writeInjectResult(
+	result inject.Result,
+	target string,
+	stdout, stderr io.Writer,
+) int {
+	if result.ResolutionNote != "" {
+		fmt.Fprintln(stderr, result.ResolutionNote)
+	}
 	if result.Code != 0 {
 		if result.Code == inject.CodeUnknown {
-			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", flags.Arg(0))
+			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", target)
 			if strings.Contains(strings.ToLower(result.Message), "ambiguous") {
 				fmt.Fprintln(stderr, result.Message)
 			}
 		} else {
 			fmt.Fprintln(stderr, result.Message)
+		}
+		if result.Proof != "" {
+			fmt.Fprintln(stderr, "--- delivery proof (FAILED): target pane tail ---")
+			fmt.Fprintln(stderr, result.Proof)
+			fmt.Fprintln(stderr, "--- end delivery proof ---")
 		}
 		switch result.Code {
 		case inject.CodeUnknown:
@@ -607,6 +658,9 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	fmt.Fprintln(stdout, result.Message)
+	fmt.Fprintln(stdout, "--- delivery proof: target pane tail ---")
+	fmt.Fprintln(stdout, result.Proof)
+	fmt.Fprintln(stdout, "--- end delivery proof ---")
 	return 0
 }
 

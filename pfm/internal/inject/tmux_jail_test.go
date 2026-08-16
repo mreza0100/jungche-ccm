@@ -271,7 +271,9 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 func TestJailedBusyCodexQueuesAndLongFileUsesPasteTransport(t *testing.T) {
 	jail := newInjectTmuxJail(t)
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
-	socket := "probe-cx-pfm-inject-queue"
+	// Deliberately keep a non-Codex socket spelling: the verified foreground
+	// process, not the immutable address, decides queue semantics.
+	socket := "probe-pfm-inject-codex-queue"
 	pane := jail.startBusyPane(t, socket, "queue-session", 30*time.Second)
 	socketPath := filepath.Join(jail.tmuxDir, socket)
 	engine, err := New(Dependencies{

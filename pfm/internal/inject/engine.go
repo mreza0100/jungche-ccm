@@ -184,7 +184,7 @@ func withDefaults(options Options) Options {
 		options.Scrollback = 300
 	}
 	if options.ProofLines == 0 {
-		options.ProofLines = 20
+		options.ProofLines = 15
 	}
 	if options.LockTimeout == 0 {
 		options.LockTimeout = 30 * time.Second
@@ -351,21 +351,11 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		return refused(code, detail), nil
 	}
 	base := Result{
-		Status:     "refused",
-		SocketPath: target.SocketPath,
-		Pane:       target.Pane,
+		Status:         "refused",
+		SocketPath:     target.SocketPath,
+		Pane:           target.Pane,
+		ResolutionNote: detail,
 	}
-	if target.Engine == "cx" && !request.FileBacked &&
-		utf8.RuneCountInString(request.Message) > engine.options.CodexInlineMax {
-		base.Code = 6
-		base.Message = fmt.Sprintf(
-			"ABORT: message is %d chars — over the %d-char inline cap for codex panes; nothing was typed",
-			utf8.RuneCountInString(request.Message),
-			engine.options.CodexInlineMax,
-		)
-		return base, nil
-	}
-
 	lock, err := acquireTargetLock(
 		engine.options.LockRoot,
 		target.SocketPath+":"+target.Pane,
@@ -391,19 +381,34 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		return base, nil
 	}
 	base.Busy = IsBusy(capture)
+	command, commandErr := engine.tmux.PaneCommand(
+		ctx,
+		target.SocketPath,
+		target.Pane,
+	)
+	verifiedEngine := ""
+	if commandErr == nil {
+		verifiedEngine = paneCommandEngine(command)
+		if verifiedEngine != "" {
+			target.Engine = verifiedEngine
+		}
+	}
+	if target.Engine == "cx" && !request.FileBacked &&
+		utf8.RuneCountInString(request.Message) > engine.options.CodexInlineMax {
+		base.Code = CodeUndelivered
+		base.Message = fmt.Sprintf(
+			"ABORT: message is %d chars — over the %d-char inline cap for codex panes; nothing was typed",
+			utf8.RuneCountInString(request.Message),
+			engine.options.CodexInlineMax,
+		)
+		return base, nil
+	}
 	// Both TUIs own a safe composer queue while a turn is running. A normal
 	// inject types there and submits without interrupting the active turn;
-	// force-now alone is allowed to send Escape. The draft guard below keeps
-	// this safe: an occupied composer is refused before any key is sent.
-	queueing := false
-	if base.Busy && !request.ForceNow {
-		command, commandErr := engine.tmux.PaneCommand(
-			ctx,
-			target.SocketPath,
-			target.Pane,
-		)
-		queueing = commandErr == nil && queueCapableCommand(target.Engine, command)
-	}
+	// force-now alone is allowed to send Escape. pane_current_command is NOT a
+	// queue gate: tmux reports the foreground descendant, so a legitimate chat
+	// reads as node/python/sleep while one of its tools owns the foreground.
+	queueing := base.Busy && !request.ForceNow
 	if base.Busy && request.ForceNow {
 		for attempt := 0; attempt < engine.options.InterruptTries; attempt++ {
 			if !IsBusy(capture) {
@@ -481,6 +486,25 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			return base, nil
 		}
 	}
+	// Overlay dismissal can put tmux back into copy mode. Re-check at the last
+	// possible moment before any composer key, matching the first cancellation
+	// rather than assuming the overlay Escape left a writable pane.
+	if inMode, modeErr := engine.tmux.PaneInMode(
+		ctx,
+		target.SocketPath,
+		target.Pane,
+	); modeErr == nil && inMode {
+		if err := engine.tmux.CancelCopyMode(ctx, target.SocketPath, target.Pane); err != nil {
+			return Result{}, err
+		}
+		sleepContext(ctx, engine.options.Poll)
+		capture, err = engine.capture(ctx, target, 0)
+		if err != nil {
+			base.Code = CodeDead
+			base.Message = "target pane died while leaving copy mode after overlay dismissal"
+			return base, nil
+		}
+	}
 
 	if menu := SelectorLine(capture); menu != "" {
 		base.Code = CodeUndelivered
@@ -492,30 +516,21 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		return base, nil
 	}
 
-	if queueing {
-		// Claude and Codex both accept a fresh composer while working. Do not
-		// run the idle Claude C-s stash guard here: C-s is not queueing, and a
-		// self-inject must never perturb the turn which invoked it.
-		draftLine := lastComposerLine(capture)
-		if hasDraft(draftLine) {
-			styled, _ := engine.tmux.Capture(
-				ctx,
-				target.SocketPath,
-				target.Pane,
-				true,
-				0,
-			)
-			if !isDimPlaceholder(lastComposerLine(styled)) {
-				base.Code = CodeUndelivered
-				base.Message = fmt.Sprintf(
-					"ABORT: busy %s pane %q already holds a draft; nothing was typed",
-					engineName(target.Engine),
-					target.Pane,
-				)
-				return base, nil
-			}
-		}
-	} else {
+	// Idle panes take the ordinary C-s mash guard. A busy pane with an empty
+	// composer is already a safe queue surface and receives no control key;
+	// only an actual busy draft is stashed before the new turn is queued.
+	needsStashGuard := !queueing
+	if queueing && hasDraft(lastComposerLine(capture)) {
+		styled, _ := engine.tmux.Capture(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+			true,
+			0,
+		)
+		needsStashGuard = !isDimPlaceholder(lastComposerLine(styled))
+	}
+	if needsStashGuard {
 		if err := engine.tmux.SendKey(
 			ctx,
 			target.SocketPath,
@@ -535,7 +550,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			strings.ToLower(lastLines(capture, 8)),
 			"stashed",
 		)
-		draftLine := lastLineContaining(capture, "❯")
+		draftLine := lastComposerLine(capture)
 		for attempt := 0; attempt < engine.options.StashTries && hasDraft(draftLine); attempt++ {
 			styled, _ := engine.tmux.Capture(
 				ctx,
@@ -544,7 +559,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 				true,
 				0,
 			)
-			if isDimPlaceholder(lastLineContaining(styled, "❯")) {
+			if isDimPlaceholder(lastComposerLine(styled)) {
 				break
 			}
 			if err := engine.tmux.SendKey(
@@ -563,7 +578,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			if strings.Contains(strings.ToLower(lastLines(capture, 8)), "stashed") {
 				base.DraftStashed = true
 			}
-			draftLine = lastLineContaining(capture, "❯")
+			draftLine = lastComposerLine(capture)
 		}
 		if hasDraft(draftLine) {
 			styled, _ := engine.tmux.Capture(
@@ -573,18 +588,19 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 				true,
 				0,
 			)
-			if !isDimPlaceholder(lastLineContaining(styled, "❯")) {
+			if !isDimPlaceholder(lastComposerLine(styled)) {
 				base.Code = CodeUndelivered
 				base.Message = fmt.Sprintf(
-					"ABORT: %q composer holds a draft that will not stash (mash guard): %.80s; nothing was typed",
+					"ABORT: %q composer holds a draft that will not stash (mash guard): %.80s; nothing was typed and the draft is preserved (dim placeholder text is exempt)",
 					target.Pane,
-					strings.TrimSpace(strings.TrimPrefix(draftLine, "❯")),
+					strings.TrimSpace(strings.TrimLeft(draftLine, "❯›")),
 				)
 				return base, nil
 			}
 		}
 	}
 
+	preSubmitCapture := capture
 	message, unsigned := engine.signedMessage(ctx, request.Message, base.Interrupted)
 	base.Unsigned = unsigned
 	var sendErr error
@@ -609,26 +625,20 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	base.Typed = true
 	normalized := normalizeSpace(message)
 	needle := tailRunes(normalized, 40)
-	rendered := false
 	for attempt := 0; attempt < engine.options.SettleTries; attempt++ {
 		_ = lock.beat()
 		capture, err = engine.capture(ctx, target, 0)
 		if err == nil && (strings.Contains(normalizeSpace(capture), needle) ||
 			(request.FileBacked && hasPastePlaceholder(capture))) {
-			rendered = true
 			break
 		}
 		sleepContext(ctx, engine.options.Poll)
 	}
-	if !rendered {
-		base.Status = "typed_unconfirmed"
-		base.Code = CodeUndelivered
-		base.Message = fmt.Sprintf(
-			"typed text into %q but could not confirm that the composer received it; nothing was submitted",
-			target.Pane,
-		)
-		return base, nil
-	}
+	// Render-settle is advisory only. Echo detection flakes on wrapping,
+	// bracketed-paste placeholders, and footer glyphs; once literal bytes have
+	// been typed we must always reach the bounded Enter loop. Returning here
+	// would strand a typed-but-unsent body and make every retry mash another
+	// message into the same composer.
 
 	prefix := headRunes(normalizeSpace(message), 24)
 	submitted := false
@@ -643,7 +653,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		); err != nil {
 			return Result{}, err
 		}
-		if !queueing && target.Engine != "cx" && !base.DraftStashed {
+		if !base.DraftStashed {
 			sleepContext(ctx, engine.options.EnterGap)
 			if err := engine.tmux.SendKey(
 				ctx,
@@ -722,13 +732,22 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	sleepContext(ctx, engine.options.ProofSettle)
 	proof, proofErr := engine.capture(ctx, target, 0)
 	if proofErr != nil {
-		return Result{}, proofErr
+		base.Status = "delivered_unproven"
+		base.Code = 0
+		base.Message = fmt.Sprintf(
+			"delivered-unproven into %q — input cleared, but the post-submit pane capture failed: %v",
+			target.Pane,
+			proofErr,
+		)
+		base.Proof = fmt.Sprintf("[pane capture failed: %v]", proofErr)
+		return base, nil
 	}
 	proofInput := lastComposerLine(proof)
 	if proofInput == "" {
 		scrollback, _ := engine.capture(ctx, target, engine.options.Scrollback)
 		proofInput = lastComposerLine(scrollback)
 	}
+	blindProof := proofInput == ""
 	if hasPastePlaceholder(proofInput) ||
 		(proofInput != "" && strings.Contains(normalizeSpace(proofInput), prefix)) {
 		base.Status = "typed_unconfirmed"
@@ -769,6 +788,12 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			target.Pane,
 		)
 	}
+	if base.Interrupted {
+		base.Message += " — FORCE-NOW: interrupted the target's running flow"
+	}
+	if base.DraftStashed {
+		base.Message += " — stashed and restored the target's unsent draft"
+	}
 	if base.Steers > 0 {
 		base.Message += fmt.Sprintf(
 			" — %d then steer(s) queued; deliver in order, one settled turn apart (log: %s)",
@@ -777,6 +802,23 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		)
 	}
 	base.Proof = lastNonEmptyLines(proof, engine.options.ProofLines)
+	if !deliveryProven(
+		preSubmitCapture,
+		proof,
+		request.Message,
+		queueing,
+		request.FileBacked,
+	) {
+		base.Status = "delivered_unproven"
+		base.Message = fmt.Sprintf(
+			"delivered-unproven into %q — input cleared, but the pane capture below shows neither the message past the input bar nor the expected %s",
+			target.Pane,
+			proofExpectation(queueing),
+		)
+	}
+	if blindProof {
+		base.Message += " (proof caveat: no composer line was visible in capture or scrollback; submission was confirmed, but the screen proof is blind)"
+	}
 	return base, nil
 }
 
@@ -787,26 +829,26 @@ func engineName(engine string) string {
 	return "Claude"
 }
 
-func queueCapableCommand(engine, command string) bool {
+func paneCommandEngine(command string) string {
 	name := filepath.Base(strings.TrimSpace(command))
-	if engine == "cx" {
-		return name == "codex"
+	if name == "codex" {
+		return "cx"
 	}
 	if strings.HasPrefix(name, "claude") {
-		return true
+		return "cc"
 	}
 	// Claude's version-managed native executable is named like 2.1.47. This
 	// is the same process-name seam the live resolver already recognizes.
 	dot := strings.IndexByte(name, '.')
 	if dot <= 0 {
-		return false
+		return ""
 	}
 	for _, character := range name[:dot] {
 		if character < '0' || character > '9' {
-			return false
+			return ""
 		}
 	}
-	return true
+	return "cc"
 }
 
 // checkSteerChain applies chat.sh:596-625 before anything is resolved or

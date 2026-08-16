@@ -12,12 +12,15 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"hostops/pfm/internal/agentopen"
+	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
 
@@ -143,6 +146,127 @@ func runningClaudeSession(procRoot, id string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func uuidSessionID(id string) bool {
+	parts := strings.Split(id, "-")
+	if len(parts) != 5 || len(parts[0]) != 8 || len(parts[1]) != 4 ||
+		len(parts[2]) != 4 || len(parts[3]) != 4 || len(parts[4]) != 12 {
+		return false
+	}
+	for _, part := range parts {
+		for _, character := range part {
+			if !((character >= '0' && character <= '9') ||
+				(character >= 'a' && character <= 'f') ||
+				(character >= 'A' && character <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// liveCrumbSession restores the portable half of the live-session guard. A
+// chat can be absent from /proc (or its environment unreadable) while its
+// socket crumb still points at a live tmux pane. The crumb is evidence only
+// after the jailed tmux server answers; a stale socket file is not life.
+func liveCrumbSession(
+	ctx context.Context,
+	resolved paths.Values,
+	id string,
+) (string, bool, error) {
+	entries, err := os.ReadDir(resolved.SIDDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read session crumbs %q: %w", resolved.SIDDir, err)
+	}
+	client := gather.CommandTmux{TmuxTmpDir: filepath.Dir(resolved.TmuxDir)}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			continue
+		}
+		socket, paneID, ok := gather.ParseCrumbName(entry.Name())
+		if !ok {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(resolved.SIDDir, entry.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", false, fmt.Errorf("read session crumb %q: %w", entry.Name(), err)
+		}
+		crumbID := transcriptIDFromPath(strings.TrimSpace(string(content)))
+		if crumbID != id {
+			continue
+		}
+		panes, err := client.ListPanes(ctx, socket)
+		if errors.Is(err, gather.ErrServerGone) {
+			continue
+		}
+		if err != nil {
+			return "", false, fmt.Errorf("prove crumb socket %q: %w", socket, err)
+		}
+		for _, pane := range panes {
+			if paneID == "" || pane.PaneID == paneID {
+				return socket + ":" + pane.PaneID, true, nil
+			}
+		}
+	}
+	return "", false, nil
+}
+
+// registeredDaemonSession asks every configured account. A partial or failed
+// registry query cannot be interpreted as absence: the exact session hidden
+// behind the failed account is the one a transcript append would lose.
+func registeredDaemonSession(
+	ctx context.Context,
+	resolved paths.Values,
+	id string,
+) (string, bool, error) {
+	configs := make([]string, 0, len(resolved.ClaudeRoots))
+	seen := make(map[string]bool)
+	for _, root := range resolved.ClaudeRoots {
+		if filepath.Base(root) != "projects" {
+			continue
+		}
+		config := filepath.Dir(root)
+		if seen[config] {
+			continue
+		}
+		seen[config] = true
+		configs = append(configs, config)
+	}
+	if len(configs) == 0 {
+		return "", false, nil
+	}
+	binary, err := exec.LookPath("claude")
+	if err != nil {
+		binary = filepath.Join(resolved.Home, ".local", "bin", "claude")
+	}
+	for _, config := range configs {
+		queryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		command := exec.CommandContext(queryCtx, binary, "agents", "--json")
+		command.Env = environmentWith("CLAUDE_CONFIG_DIR", config)
+		output, queryErr := command.Output()
+		cancel()
+		if queryErr != nil {
+			return "", false, fmt.Errorf("query agent registry for %q: %w", config, queryErr)
+		}
+		agents, err := agentopen.ParseAgents(output)
+		if err != nil {
+			return "", false, fmt.Errorf("parse agent registry for %q: %w", config, err)
+		}
+		for _, agent := range agents {
+			if agent.SessionID == id ||
+				(agent.ShortID != "" && strings.HasPrefix(id, agent.ShortID)) {
+				return config, true, nil
+			}
+		}
+	}
+	return "", false, nil
 }
 
 type resumeReceipt struct {

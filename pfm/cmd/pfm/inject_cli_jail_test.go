@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/inject"
 )
 
 const injectCLIUI = `import os, sys, tty
@@ -34,6 +36,51 @@ while True:
     sys.stdout.buffer.write(ch)
     sys.stdout.flush()
 `
+
+func TestInjectFailurePrintsContradictionProofOnStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := writeInjectResult(inject.Result{
+		Status:  "typed_unconfirmed",
+		Code:    inject.CodeUndelivered,
+		Message: "PROOF-CONTRADICTION: composer still holds the message",
+		Proof:   "Working\n❯ stranded message",
+	}, "probe-contradiction", &stdout, &stderr)
+	if code != codeUndelivered || stdout.Len() != 0 {
+		t.Fatalf("contradiction exit=%d stdout=%q", code, stdout.String())
+	}
+	for _, want := range []string{
+		"PROOF-CONTRADICTION",
+		"delivery proof (FAILED)",
+		"❯ stranded message",
+		"end delivery proof",
+	} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr %q lacks %q", stderr.String(), want)
+		}
+	}
+}
+
+func TestInjectReceiptPrintsResolverNoteOnStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := writeInjectResult(inject.Result{
+		Status:         "delivered",
+		Message:        "injected LIVE",
+		Proof:          "USER: next\n❯ ",
+		ResolutionNote: "resolved 🔖 label 'QA' → pane '%1'",
+	}, "QA", &stdout, &stderr)
+	if code != 0 || !strings.Contains(stderr.String(), "resolved 🔖 label") {
+		t.Fatalf("resolver note exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestInjectAcceptsRetiredNoSigFlagWithWarning(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runHeadlessInject([]string{"--no-sig"}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), "--no-sig is retired") ||
+		strings.Contains(stderr.String(), "flag provided but not defined") {
+		t.Fatalf("retired flag exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
 
 func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
@@ -121,6 +168,10 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	if !strings.Contains(stdout.String(), "injected LIVE") {
 		t.Fatalf("receipt did not prove live delivery: %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), "delivery proof") ||
+		!strings.Contains(stdout.String(), "USER:"+message) {
+		t.Fatalf("receipt omitted the pane proof block: %q", stdout.String())
+	}
 	verify := exec.Command("tmux", "-L", socket, "capture-pane", "-t", session, "-p", "-J", "-S", "-")
 	verify.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
 	verified, err := verify.Output()
@@ -176,6 +227,10 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	code = run([]string{"chat", "inject", "--file", messagePath, fileSession}, &stdout, &stderr)
 	if code != 0 || !strings.Contains(stdout.String(), "FILE-BACKED") {
 		t.Fatalf("file-backed exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "delivery proof") ||
+		!strings.Contains(stdout.String(), "file-end") {
+		t.Fatalf("file-backed receipt omitted pane proof: %q", stdout.String())
 	}
 	fileCapture := exec.Command("tmux", "-L", fileSocket, "capture-pane", "-t", fileSession, "-p", "-J", "-S", "-")
 	fileCapture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
@@ -282,7 +337,7 @@ func TestChatInjectResumeRefusesAProcessHeldSessionAsDead(t *testing.T) {
 	t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"chat", "inject", id, "must not append"}, &stdout, &stderr)
-	if code != codeDeadChat || stdout.Len() != 0 || !strings.Contains(stderr.String(), "live without a resolvable tmux pane") {
+	if code != codeDeadChat || stdout.Len() != 0 || !strings.Contains(stderr.String(), "LIVE session") {
 		t.Fatalf("dead guard exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	raw, err := os.ReadFile(transcript)
@@ -291,5 +346,135 @@ func TestChatInjectResumeRefusesAProcessHeldSessionAsDead(t *testing.T) {
 	}
 	if string(raw) != line {
 		t.Fatalf("dead guard mutated transcript: %q", raw)
+	}
+}
+
+func TestChatInjectResumeRefusesDaemonRegistrySession(t *testing.T) {
+	const id = "77777777-2222-4333-8444-555555555555"
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	accountProjects := filepath.Join(home, ".cc", "1", "projects")
+	project := filepath.Join(accountProjects, "fixture")
+	bin := filepath.Join(root, "bin")
+	for _, directory := range []string{
+		project,
+		bin,
+		filepath.Join(root, "sid"),
+		filepath.Join(root, "tmux"),
+		filepath.Join(root, "codex"),
+		filepath.Join(root, "proc"),
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	transcript := filepath.Join(project, id+".jsonl")
+	line := fmt.Sprintf(`{"type":"user","uuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee","sessionId":%q,"message":{"role":"user","content":"held"}}`+"\n", id)
+	if err := os.WriteFile(transcript, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	claude := filepath.Join(bin, "claude")
+	registry := fmt.Sprintf(`[{"sessionId":%q,"id":"77777777","status":"busy"}]`, id)
+	if err := os.WriteFile(claude, []byte("#!/bin/sh\nprintf '%s\\n' '"+registry+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("TMUX", "")
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	t.Setenv("PFM_HOME", home)
+	t.Setenv("PFM_DB", filepath.Join(root, "fleet.db"))
+	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
+	t.Setenv("PFM_SID_DIR", filepath.Join(root, "sid"))
+	t.Setenv("PFM_CLAUDE_ROOTS", accountProjects)
+	t.Setenv("PFM_CODEX_ROOT", filepath.Join(root, "codex"))
+	t.Setenv("PFM_TMUX_DIR", filepath.Join(root, "tmux"))
+	t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"chat", "inject", id, "must not append"}, &stdout, &stderr)
+	if code != codeDeadChat || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "LIVE background agent") {
+		t.Fatalf("daemon guard exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	raw, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != line {
+		t.Fatalf("daemon guard mutated transcript: %q", raw)
+	}
+}
+
+func TestChatInjectResumeRefusesLiveSocketCrumbSession(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux binary is not installed")
+	}
+	const id = "66666666-2222-4333-8444-555555555555"
+	const socket = "cc-1800000000-22-3"
+	base := "/tmp/tmux-1000"
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.MkdirTemp(base, "probe-resume-crumb-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	home := filepath.Join(root, "home")
+	accountProjects := filepath.Join(home, ".cc", "1", "projects")
+	project := filepath.Join(accountProjects, "fixture")
+	sidDir := filepath.Join(root, "sid")
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
+	for _, directory := range []string{
+		project,
+		sidDir,
+		tmuxDir,
+		filepath.Join(root, "codex"),
+		filepath.Join(root, "proc"),
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	transcript := filepath.Join(project, id+".jsonl")
+	line := fmt.Sprintf(`{"type":"user","uuid":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee","sessionId":%q,"message":{"role":"user","content":"held"}}`+"\n", id)
+	if err := os.WriteFile(transcript, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sidDir, socket), []byte(transcript+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	start := exec.Command("tmux", "-f", "/dev/null", "-L", socket, "new-session", "-d", "-s", "probe-resume", "sleep", "30")
+	start.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
+	if output, err := start.CombinedOutput(); err != nil {
+		t.Fatalf("start crumb probe: %v: %s", err, output)
+	}
+	t.Cleanup(func() {
+		kill := exec.Command("tmux", "-L", socket, "kill-server")
+		kill.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root)
+		_ = kill.Run()
+	})
+	t.Setenv("HOME", home)
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_TMPDIR", root)
+	t.Setenv("PFM_HOME", home)
+	t.Setenv("PFM_DB", filepath.Join(root, "fleet.db"))
+	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
+	t.Setenv("PFM_SID_DIR", sidDir)
+	t.Setenv("PFM_CLAUDE_ROOTS", accountProjects)
+	t.Setenv("PFM_CODEX_ROOT", filepath.Join(root, "codex"))
+	t.Setenv("PFM_TMUX_DIR", tmuxDir)
+	t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"chat", "inject", id, "must not append"}, &stdout, &stderr)
+	if code != codeDeadChat || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "LIVE session") {
+		t.Fatalf("crumb guard exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	raw, err := os.ReadFile(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != line {
+		t.Fatalf("crumb guard mutated transcript: %q", raw)
 	}
 }
