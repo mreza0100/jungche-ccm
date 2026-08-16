@@ -42,7 +42,8 @@ const (
 )
 
 // StatsSampler is injected so model tests can prove that boot and the Chats
-// tab perform zero sampling. The real implementation reads proc/cgroup only.
+// tab perform zero sampling. The real implementation reads proc/cgroup for
+// resource counters and caches one identity lookup per new Docker cgroup ID.
 type StatsSampler interface {
 	Sample([]compose.Row) (pfmstats.Snapshot, error)
 }

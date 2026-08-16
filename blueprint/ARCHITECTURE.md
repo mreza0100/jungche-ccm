@@ -22,7 +22,8 @@ direction not yet fully built; everything else is shipping.
 
 ```
 SOURCE   this repo — plain files where content is universal,
-         templates where harness or host values genuinely differ
+         templates where harness or project values genuinely differ;
+         pfm/internal/installer/ owns the fleet installer and embedded assets
    │
 RENDER   build step inside the repo; outputs are committed build
          artifacts, verified against their sources at release  (designed)
@@ -33,10 +34,10 @@ INSTALL  pfm install — the ONLY writer of fleet-installed paths;
 UPDATE   pull, build, apply — every installed asset matches the binary
 ```
 
-The clone supplies the binary source. Build `pfm`, then `pfm install --apply` stages the exact
-assets embedded in that binary and wires them into `~/.claude` by symlink. Updating means pulling,
-building one new candidate, and applying that candidate; the installed command surface cannot
-drift from the binary that installed it.
+The clone supplies the binary source. A fresh box needs two steps: get the `pfm` binary, then run
+`pfm install --apply`. That stages the exact assets embedded in the binary and wires them into
+`~/.claude` by symlink. Updating means pulling, building one new candidate, and applying that
+candidate; the installed command surface cannot drift from the binary that installed it.
 
 ## Ownership law — one writer per installed path
 
@@ -102,7 +103,7 @@ refuses to clobber, and the fix moves the edit into the template or the values f
 | Tier            | Contents                                                       | Install mode                       | Values needed         |
 | --------------- | -------------------------------------------------------------- | ---------------------------------- | --------------------- |
 | Host executable | `pfm`                                                          | built binary                       | runtime config only   |
-| Host assets     | `pfm.zsh`, `/bb`, `/swap`, `chat:*` for Claude **and** Codex  | embedded, staged, then symlinked   | none                  |
+| Host assets     | `pfm/internal/installer/assets/`                             | embedded, staged, then symlinked   | none                  |
 | Repo files      | per-project agents, QA protocols, Codex TOMLs, child CLAUDE.md | rendered from the adopter's values | roster, stack, models |
 
 The host tiers are value-free by construction — proven by inspection: their templates contain
@@ -133,8 +134,9 @@ The maintainer's own monorepo — where the pipeline runs daily and improvements
 no special copy of anything **(designed; today it is the origin the blueprint is derived from)**.
 The terminal state:
 
-- **Templates are authored in this repo.** Framework changes edit the source here; the
-  maintainer's machines consume them exactly as any adopter does — clone, pull, symlink.
+- **Framework templates are authored in `blueprint/templates/`; fleet assets are authored in
+  `pfm/internal/installer/assets/`.** The binary embeds the latter; machines consume both through
+  their owning install paths rather than a duplicate host bundle.
 - **`refresh-map.json` retires file-by-file.** Its `curated` class (template IS the source, no
   live file to derive from) is the terminal state for every entry; the map is a migration ledger,
   and an empty map ends the live→template derivation era.

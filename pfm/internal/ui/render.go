@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -191,8 +192,17 @@ func (model Model) renderStatsHeader(width int) string {
 	)
 	if model.statsError != "" {
 		line += " · " + warnStyle.Render("sample failed: "+model.statsError)
-	} else if model.statsLoading {
-		line += " · " + dimStyle.Render("sampling…")
+	} else {
+		if len(model.stats.Warnings) > 0 {
+			warning := model.stats.Warnings[0]
+			if len(model.stats.Warnings) > 1 {
+				warning += fmt.Sprintf(" (+%d)", len(model.stats.Warnings)-1)
+			}
+			line += " · " + warnStyle.Render("warning: "+warning)
+		}
+		if model.statsLoading {
+			line += " · " + dimStyle.Render("sampling…")
+		}
 	}
 	return fillLine(line, width)
 }
@@ -219,6 +229,12 @@ func (model Model) renderStatsPanel(width, height int) string {
 	innerHeight := maxInt(1, height-2)
 	lines := make([]string, 0, innerHeight)
 	if model.statsSubtab == StatsChats {
+		nameWidth := minInt(32, maxInt(8, innerWidth-60))
+		header := fmt.Sprintf(
+			"  %-*s %-7s %7s %8s %6s %9s %9s %5s",
+			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/H", "GEAR",
+		)
+		lines = append(lines, dimStyle.Render(fillLine(header, innerWidth)))
 		for index, chat := range model.stats.Chats {
 			if len(lines) >= innerHeight {
 				break
@@ -227,14 +243,23 @@ func (model Model) renderStatsPanel(width, height int) string {
 			if chat.CPUValid {
 				cpu = fmt.Sprintf("%.1f%%", chat.CPUPercent)
 			}
-			gear := ""
+			gear := "-"
 			if chat.GearCount > 0 {
-				gear = fmt.Sprintf(" ⚙%d", chat.GearCount)
+				gear = fmt.Sprintf("⚙%d", chat.GearCount)
+			}
+			tokens := "…"
+			if chat.TokensKnown {
+				tokens = formatTokens(chat.TokenCount)
+			}
+			tokensPerHour := "…"
+			if chat.TokenRateValid {
+				tokensPerHour = formatTokenRate(chat.TokensPerHour)
 			}
 			line := fmt.Sprintf(
-				"  %-28s %-7s %7s %8s %5.1f%%%s",
-				clipRunes(chat.Name, 28), chat.Engine, cpu,
-				formatSize(int64(chat.RSSBytes)), chat.RAMPercent, gear,
+				"  %-*s %-7s %7s %8s %5.1f%% %9s %9s %5s",
+				nameWidth, clipRunes(cleanField(chat.Name), nameWidth), chat.Engine, cpu,
+				formatSize(int64(chat.RSSBytes)), chat.RAMPercent,
+				tokens, tokensPerHour, gear,
 			)
 			line = fillLine(line, innerWidth)
 			if model.statsFocus == StatsFocusContent && index == model.statsCursor {
@@ -243,6 +268,14 @@ func (model Model) renderStatsPanel(width, height int) string {
 			lines = append(lines, line)
 		}
 	} else {
+		available := maxInt(16, innerWidth-36)
+		nameWidth := minInt(24, maxInt(8, available/3))
+		imageWidth := maxInt(8, available-nameWidth)
+		header := fmt.Sprintf(
+			"  %-*s %-*s %7s %8s %8s %6s",
+			nameWidth, "NAME", imageWidth, "IMAGE", "CPU%", "MEMORY", "LIMIT", "MEM%",
+		)
+		lines = append(lines, dimStyle.Render(fillLine(header, innerWidth)))
 		for index, container := range model.stats.Docker {
 			if len(lines) >= innerHeight {
 				break
@@ -256,8 +289,9 @@ func (model Model) renderStatsPanel(width, height int) string {
 				limit = formatSize(int64(container.LimitBytes))
 			}
 			line := fillLine(fmt.Sprintf(
-				"  %-28s %7s %8s/%-8s %5.1f%%",
-				clipRunes(container.Name, 28), cpu,
+				"  %-*s %-*s %7s %8s %8s %5.1f%%",
+				nameWidth, clipRunes(cleanField(container.Name), nameWidth),
+				imageWidth, clipRunes(cleanField(container.Image), imageWidth), cpu,
 				formatSize(int64(container.MemoryBytes)), limit,
 				container.MemoryPercent,
 			), innerWidth)
@@ -267,7 +301,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 			lines = append(lines, line)
 		}
 	}
-	if len(lines) == 0 {
+	if len(lines) == 1 && len(lines) < innerHeight {
 		message := "  waiting for first sample…"
 		if model.stats.Ready {
 			message = "  no live rows"
@@ -521,6 +555,38 @@ func formatSize(size int64) string {
 		}
 	}
 	return "0B"
+}
+
+func formatTokens(tokens int64) string {
+	if tokens < 0 {
+		return "…"
+	}
+	return formatTokenNumber(float64(tokens))
+}
+
+func formatTokenRate(tokens float64) string {
+	if tokens < 0 || math.IsNaN(tokens) || math.IsInf(tokens, 0) {
+		return "…"
+	}
+	return formatTokenNumber(tokens)
+}
+
+func formatTokenNumber(tokens float64) string {
+	if tokens < 1000 {
+		return fmt.Sprintf("%.0f", tokens)
+	}
+	units := []string{"K", "M", "B", "T"}
+	value := tokens
+	for _, unit := range units {
+		value /= 1000
+		if value < 1000 || unit == "T" {
+			if value < 10 {
+				return fmt.Sprintf("%.1f%s", value, unit)
+			}
+			return fmt.Sprintf("%.0f%s", value, unit)
+		}
+	}
+	return "0"
 }
 
 func maxInt64(left, right int64) int64 {

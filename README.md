@@ -127,7 +127,7 @@ A few of these deserve a sentence, because their names undersell them:
 
 ## The host layer — a fleet of chats that talk to each other
 
-Opt-in, and the most unusual thing in the box: `pfm` treats _chats_ as infrastructure. The binary embeds its command cards and helpers, while `blueprint/templates/host-swap/` retains only the launcher shim and systemd units as inspectable source.
+Opt-in, and the most unusual thing in the box: `pfm` treats _chats_ as infrastructure. The engine and installer live under `pfm/`; every staged command card, helper, launcher shim, and systemd unit has one source under `pfm/internal/installer/assets/` and is embedded in the binary.
 
 - **Bare `pfm`** — one fuzzy-picker over every live chat, resumable transcript, and running background agent across all your accounts. A chat is never lost because a terminal tab closed; `pfm ls --hidden` exposes the hide ledger.
 - **`/swap <n>`** — reboots a _running_ chat in place onto another account: same pane, same conversation, new billing identity. With `--then "<prompt>"`, a chat running out of budget swaps itself and hands itself the baton, unattended.
@@ -136,7 +136,8 @@ Opt-in, and the most unusual thing in the box: `pfm` treats _chats_ as infrastru
 
 **Read before opting in:** the fleet assumes `tmux`, `zsh`, `fzf`, and `jq`, leans on Linux facilities (`/proc`, systemd user units) with macOS mostly working and Windows unsupported — and it launches chats with permission prompts disabled by explicit design, leaving PreToolUse hooks as the remaining brake. That trade-off is documented in the bundle, not hidden; make it consciously.
 
-Bootstrap a stable clone, build the binary, review its dry run, then apply once:
+On a fresh box, get the `pfm` binary and run `pfm install --apply`. Building it from a stable clone
+and reviewing the dry run first looks like this:
 
 ```bash
 mkdir -p "$HOME/.local/bin"
@@ -235,6 +236,7 @@ professor/
 ├── INSTALL.md           Claude reads this to install into your project
 ├── CHANGELOG.md         release index; full notes live in releases/
 ├── VERSION
+├── pfm/                 Go fleet engine + embedded installer assets
 └── blueprint/
     ├── BLUEPRINT.md     philosophy and design principles
     ├── SETUP.md         the install interview + generation spec
@@ -244,7 +246,6 @@ professor/
         ├── output-styles/  personas, full and compact
         ├── skills/         sources.json + the legal reference shelf
         ├── vscode/, themes/, epics/
-        ├── host-swap/      fleet launcher shim + name-sync systemd units
         └── codex/          optional dual-runtime layer
 ```
 

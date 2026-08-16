@@ -8,7 +8,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
 
-- Tier A: `pfm install` and `templates/host-swap` — the self-contained binary now owns the
+- Tier A: `pfm install` and its embedded assets — the self-contained binary now owns the
   host command cards, helpers, Codex BB skill, launcher shim, settings rewrites, systemd links,
   retired-file sweep, backups, and uninstall. Dry-run is the default; a reachable user bus
   refuses before any write with rc 97; offline unit enablement links converge without touching the
@@ -21,7 +21,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
   `pfm install --apply` once.
 
-- Tier A: `pfm statusline`, `pfm usage-hook`, and `templates/host-swap` — native Go rendering
+- Tier A: `pfm statusline`, `pfm usage-hook`, and embedded installer assets — native Go rendering
   replaces the high-frequency statusline shell, both local segments, and the Vertex/Codex
   Python refreshers while preserving badges, gauges, cache TTLs, detached refresh, and the
   dormant fourth-account view; the one-line sky snapshot adds live fleet counts. The native
@@ -33,7 +33,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
   `pfm install --apply` once to rewire settings and retire the old shell/Python copies.
 
-- Tier A: `pfm` and `templates/host-swap` — complete the Professor-Fleet-Manager cutover: the
+- Tier A: `pfm` and its embedded installer assets — complete the Professor-Fleet-Manager cutover: the
   parity oracle/checker is retired; bare `pfm` opens the picker; per-chat work lives under
   `pfm chat` with named creation, immutable socket identities, target resolution, group/BB
   wiring, and inline name convergence; `ls --hidden` exposes the hide ledger; the old
@@ -81,3 +81,7 @@ and `(cost)` on any env / hook / permission / model-config delta.
   attach, all public exit codes, BB/group fail-open hooks, inline Claude naming, and Codex
   `session_index.jsonl` window convergence on isolated `probe-*` tmux servers; installer fixtures
   sever and prove the user systemd bus unreachable before their first installer call.
+
+- Tier A: fleet installation source — the Go installer and `internal/installer/assets/` are the
+  single source of every staged host file. The duplicate host template bundle is removed; a fresh
+  box gets the `pfm` binary and runs `pfm install --apply`.

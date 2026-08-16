@@ -117,10 +117,10 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				return 1
 			}
 			scan.Snapshot.ApplyHide = applier
-			scan.Snapshot.StatsSampler = &pfmstats.Sampler{
-				ProcRoot:   scan.Paths.ProcRoot,
-				CgroupRoot: scan.Paths.CgroupRoot,
-			}
+			scan.Snapshot.StatsSampler = pfmstats.NewSampler(
+				scan.Paths.ProcRoot,
+				scan.Paths.CgroupRoot,
+			)
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
 			// Bubble Tea owns the tty for as long as Pick runs: a probe warning

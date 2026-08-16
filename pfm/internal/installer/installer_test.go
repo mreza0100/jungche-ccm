@@ -233,31 +233,6 @@ func TestUnitTransitionsUseOnlyTheInjectedManager(t *testing.T) {
 	}
 }
 
-func TestInspectableBundleAssetsMatchEmbeddedInstaller(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "blueprint", "templates", "host-swap")
-	for _, asset := range append([]string{"shim/pfm.zsh"}, unitAssetNames()...) {
-		embedded, err := readAsset(asset)
-		if err != nil {
-			t.Fatalf("read embedded %s: %v", asset, err)
-		}
-		bundle, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(asset)))
-		if err != nil {
-			t.Fatalf("read inspectable bundle %s: %v", asset, err)
-		}
-		if !bytes.Equal(bundle, embedded) {
-			t.Fatalf("inspectable bundle %s differs from embedded installer asset", asset)
-		}
-	}
-}
-
-func unitAssetNames() []string {
-	result := make([]string, 0, len(unitNames))
-	for _, name := range unitNames {
-		result = append(result, "systemd/"+name)
-	}
-	return result
-}
-
 func writeFixture(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

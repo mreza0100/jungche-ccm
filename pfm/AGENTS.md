@@ -92,4 +92,4 @@ Pipeline-level test knobs live in `cmd/pfm/pipeline.go`: `PFM_TEST_NOW_NS`, `PFM
 
 - The engine reads and writes the user's real chat state. A destructive operation on a live socket is not recoverable by a rerun — verify the target resolves before acting, and prefer refusing to guessing.
 - `pfm.dev` is a local build artifact, never the shipped path.
-- The zsh surface, satellites, and installer live in `blueprint/templates/host-swap/` — that is shipped template text under the blueprint's rules, not engine code.
+- The installer lives in `internal/installer/`, and every staged host asset (shim, units, command cards) comes from `internal/installer/assets/` — the binary is the single source of truth; no external template dir exists.

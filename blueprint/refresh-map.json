@@ -626,18 +626,6 @@
       "sources": {
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
       }
-    },
-    "templates/host-swap/shim/pfm.zsh": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/pfm-name-sync.service": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/pfm-name-sync.path": {
-      "curated": true
-    },
-    "templates/host-swap/systemd/pfm-name-sync.timer": {
-      "curated": true
     }
   }
 }

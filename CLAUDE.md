@@ -4,8 +4,8 @@
 
 **Architecture:** a roster of four projects in one repo — one publication surface, three engines.
 
-- `blueprint/` — the shipped framework: templates (agents, commands, scripts, codex, host-swap), plus `BLUEPRINT.md` (philosophy), `SETUP.md` (generation spec), `PLACEHOLDERS.md` (substitution law). Markdown + shell. No build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
-- `pfm/` — the Professor-Fleet-Manager fleet engine: Go 1.24, `cmd/pfm` + `internal/*`, tested with `go test ./...`, shipped alongside a zsh shim.
+- `blueprint/` — the shipped framework: templates (agents, commands, scripts, codex), plus `BLUEPRINT.md` (philosophy), `SETUP.md` (generation spec), `PLACEHOLDERS.md` (substitution law). Markdown + shell. No build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
+- `pfm/` — the Professor-Fleet-Manager fleet engine: Go 1.24, `cmd/pfm` + `internal/*`, tested with `go test ./...`. It owns its staged host assets (zsh shim, systemd units, command cards) under `pfm/internal/installer/assets/`; `pfm install` stages them.
 - `dreamer/` — the memory-organ engine: TypeScript (ESM, Node ≥20), `npm run typecheck` / `build` / `test`.
 - `ENGINES/wave-walker/engine/` — the wave-walker engine: JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK; `npm run verify` then `npm test` (vitest).
 

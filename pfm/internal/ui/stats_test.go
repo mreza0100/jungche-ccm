@@ -86,3 +86,40 @@ func TestStatsHeaderRendersSwapSeparate(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsTablesRenderLabeledColumnsAndUsage(t *testing.T) {
+	model := NewModel(fixtureSnapshot(140))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{
+		Ready: true,
+		Chats: []pfmstats.Chat{{
+			Name: "BUILD:one", Engine: "claude", CPUPercent: 12.5, CPUValid: true,
+			RSSBytes: 2 << 20, RAMPercent: 3.5, TokenCount: 1_250_000,
+			TokensKnown: true, TokensPerHour: 625_000, TokenRateValid: true,
+		}},
+		Docker: []pfmstats.Container{{
+			Name: "professor-web", Image: "registry.example/professor:web",
+			CPUPercent: 4.5, CPUValid: true, MemoryBytes: 128 << 20,
+			LimitBytes: 512 << 20, MemoryPercent: 25,
+		}},
+	}
+
+	chatPanel := ansi.Strip(model.renderStatsPanel(140, 8))
+	for _, want := range []string{"NAME", "ENGINE", "CPU", "RSS", "RAM", "TOKENS", "TOK/H", "BUILD:one", "1.2M", "625K"} {
+		if !strings.Contains(chatPanel, want) {
+			t.Fatalf("Chats stats panel missing %q:\n%s", want, chatPanel)
+		}
+	}
+
+	model.statsSubtab = StatsDocker
+	dockerPanel := ansi.Strip(model.renderStatsPanel(140, 8))
+	header := strings.Split(dockerPanel, "\n")[1]
+	if strings.Index(header, "NAME") < 0 || strings.Index(header, "IMAGE") <= strings.Index(header, "NAME") {
+		t.Fatalf("Docker header does not begin NAME then IMAGE: %q", header)
+	}
+	for _, want := range []string{"CPU", "MEMORY", "LIMIT", "MEM", "professor-web", "registry.example/professor:web"} {
+		if !strings.Contains(dockerPanel, want) {
+			t.Fatalf("Docker stats panel missing %q:\n%s", want, dockerPanel)
+		}
+	}
+}
