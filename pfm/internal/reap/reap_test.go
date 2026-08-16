@@ -282,7 +282,7 @@ func TestPlanSweepsBunkerSessionsIndividually(t *testing.T) {
 		action Action
 	}{
 		"vsct:projc-1": {StateKeep, ActionNone},
-		"vsct:proja-2":   {StateKeep, ActionNone},
+		"vsct:proja-2": {StateKeep, ActionNone},
 		"vsct:old-3":     {StateOrphan, ActionKillSession},
 	}
 	for _, decision := range decisions {

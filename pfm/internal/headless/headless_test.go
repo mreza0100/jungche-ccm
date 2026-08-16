@@ -122,7 +122,7 @@ func TestIdleSecondsComeFromTheTranscriptMtime(t *testing.T) {
 	}
 }
 
-// TestStreamFilterWithMargin is the grep -C contract the operator asked for: the
+// TestStreamFilterWithMargin is the requested grep -C contract: the
 // matching line PLUS N lines either side, with non-adjacent hits separated.
 func TestStreamFilterWithMargin(t *testing.T) {
 	path := writeChat(t,
