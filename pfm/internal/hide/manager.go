@@ -26,7 +26,7 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 	}
 	proc := dependencies.ProcFS
 	if proc == nil {
-		proc = gather.RealProcFS{Root: resolved.ProcRoot}
+		proc = gather.NewProcFS(resolved.ProcRoot)
 	}
 	tmux := dependencies.Tmux
 	if tmux == nil {

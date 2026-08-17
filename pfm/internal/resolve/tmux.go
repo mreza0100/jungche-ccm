@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"hostops/pfm/internal/tmuxfmt"
 )
 
 // CommandTmux invokes tmux with an explicit socket pathname.
@@ -40,8 +42,8 @@ func (tmux CommandTmux) ListPanes(
 		if line == "" {
 			continue
 		}
-		// tmux prints a control separator from a format string as \037.
-		fields := strings.SplitN(line, `\037`, 4)
+		// Either spelling of the control separator: see internal/tmuxfmt.
+		fields := tmuxfmt.SplitN(line, 4)
 		if len(fields) != 4 {
 			return nil, fmt.Errorf(
 				"tmux socket %q returned %d fields in %q",

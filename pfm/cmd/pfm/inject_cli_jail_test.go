@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/testjail"
 )
 
 const injectCLIUI = `import os, sys, tty
@@ -267,7 +268,7 @@ func TestChatInjectResumeLadderPathSessionAndExcerpt(t *testing.T) {
 		}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			root := t.TempDir()
+			root := testjail.ShortRoot(t)
 			home := filepath.Join(root, "home")
 			project := filepath.Join(root, "claude", "project")
 			for _, directory := range []string{home, project, filepath.Join(root, "tmux"), filepath.Join(root, "codex"), filepath.Join(root, "proc")} {
@@ -322,7 +323,7 @@ func TestChatInjectResumeLadderPathSessionAndExcerpt(t *testing.T) {
 
 func TestChatInjectResumeRefusesAProcessHeldSessionAsDead(t *testing.T) {
 	const id = "99999999-2222-4333-8444-555555555555"
-	root := t.TempDir()
+	root := testjail.ShortRoot(t)
 	home := filepath.Join(root, "home")
 	project := filepath.Join(root, "claude", "project")
 	process := filepath.Join(root, "proc", "4242")
@@ -365,7 +366,7 @@ func TestChatInjectResumeRefusesAProcessHeldSessionAsDead(t *testing.T) {
 
 func TestChatInjectResumeRefusesDaemonRegistrySession(t *testing.T) {
 	const id = "77777777-2222-4333-8444-555555555555"
-	root := t.TempDir()
+	root := testjail.ShortRoot(t)
 	home := filepath.Join(root, "home")
 	accountProjects := filepath.Join(home, ".cc", "1", "projects")
 	project := filepath.Join(accountProjects, "fixture")

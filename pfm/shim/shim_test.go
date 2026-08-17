@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"hostops/pfm/internal/testjail"
 )
 
 func TestShimSyntaxAndEvalProtocol(t *testing.T) {
@@ -99,7 +101,8 @@ esac
 	writeShimFile(t, filepath.Join(fakeBin, "claude"), `#!/bin/sh
 {
   for argument in "$@"; do printf 'arg=%s\n' "$argument"; done
-  for name in CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN \
+  for name in CLAUDE_CONFIG_DIR CLAUDE_CODE_SESSION_ID CLAUDECODE \
+    CLAUDE_CODE_CHILD_SESSION ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN \
     ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL CLAUDE_CODE_AUTO_COMPACT_WINDOW \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
     CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK \
@@ -136,6 +139,11 @@ print -r -- "primary=$(_cc_primary)"
 		"SHIM_DB_STATE="+dbState,
 		"SHIM_DB_LOG="+dbLog,
 		// A chat launched from inside another chat inherits all of these.
+		// CLAUDE_CODE_CHILD_SESSION is the quiet one: left in place it marks the
+		// newborn a subordinate and silently disables transcript saving.
+		"CLAUDE_CODE_SESSION_ID=parent-session",
+		"CLAUDECODE=1",
+		"CLAUDE_CODE_CHILD_SESSION=1",
 		"ANTHROPIC_BASE_URL=http://127.0.0.1:9/proxy",
 		"ANTHROPIC_AUTH_TOKEN=poison",
 		"ANTHROPIC_MODEL=poison",
@@ -164,6 +172,9 @@ print -r -- "primary=$(_cc_primary)"
 		t.Fatalf("launched without account 2's config dir: %q", launched)
 	}
 	for _, name := range []string{
+		"CLAUDE_CODE_SESSION_ID",
+		"CLAUDECODE",
+		"CLAUDE_CODE_CHILD_SESSION",
 		"ANTHROPIC_BASE_URL",
 		"ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_MODEL",
@@ -182,6 +193,9 @@ print -r -- "primary=$(_cc_primary)"
 	// the autonomy flags, and lands on the account the state store names.
 	runString := readShimFile(t, tmuxResult)
 	for _, wanted := range []string{
+		"-u CLAUDE_CODE_SESSION_ID",
+		"-u CLAUDECODE",
+		"-u CLAUDE_CODE_CHILD_SESSION",
 		"-u ANTHROPIC_BASE_URL",
 		"-u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY",
 		"claude --allow-dangerously-skip-permissions --dangerously-skip-permissions --model z",
@@ -216,8 +230,7 @@ func TestBareFleetLaunchExecsTheTerminalOwner(t *testing.T) {
 	if err != nil {
 		t.Skip("zsh is not installed")
 	}
-	scriptBinary, err := exec.LookPath("script")
-	if err != nil {
+	if _, err := exec.LookPath("script"); err != nil {
 		t.Skip("script is not installed")
 	}
 	home := t.TempDir()
@@ -238,8 +251,7 @@ func TestBareFleetLaunchExecsTheTerminalOwner(t *testing.T) {
 			"print -r -- \"$$\" > \"$SHIM_SHELL_PID\"\n"+
 			"cc\n",
 	)
-	commandLine := quoteZsh(zsh) + " -fi " + quoteZsh(driver)
-	command := exec.Command(scriptBinary, "-qefc", commandLine, "/dev/null")
+	command := testjail.PTYCommand(zsh, "-fi", driver)
 	command.Env = append(
 		os.Environ(),
 		"HOME="+home,
@@ -256,6 +268,142 @@ func TestBareFleetLaunchExecsTheTerminalOwner(t *testing.T) {
 	if got != want {
 		t.Fatalf("tmux pid=%s, shell pid=%s: bare launch forked and left an outer terminal shell", got, want)
 	}
+}
+
+// TestShimAutoOpenDefersDisarmsAndWhitelists drives the auto-open hook the way a
+// terminal profile does: an environment variable set on a fresh interactive
+// shell. The hook exists because the source line lands at the BOTTOM of
+// ~/.zshrc, so a profile that called `cc` from ~/.zshrc itself reached
+// /usr/bin/cc — the C compiler — and every new terminal opened on "clang: error:
+// no input files" instead of a chat. Owning the hook here is what makes the
+// ordering unbreakable, so these are the properties that must hold.
+func TestShimAutoOpenDefersDisarmsAndWhitelists(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh is not installed")
+	}
+	shimPath := embeddedShimPath(t)
+
+	home := t.TempDir()
+	fakeBin := filepath.Join(home, "fake-bin")
+	for _, directory := range []string{filepath.Join(home, ".local", "bin"), fakeBin} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeShimFile(t, filepath.Join(home, ".local", "bin", "pfm"), `#!/bin/sh
+case "$1" in
+  internal) printf '1\n' ;;
+  ls) printf 'picker\n' >> "$SHIM_AUTO_LOG" ;;
+esac
+`)
+	// The launch path ends in tmux; recording its argv proves WHICH account the
+	// whitelist picked, not merely that something launched.
+	writeShimFile(t, filepath.Join(fakeBin, "tmux"), `#!/bin/sh
+printf 'launch %s\n' "$*" >> "$SHIM_AUTO_LOG"
+`)
+	// A value that is neither whitelisted nor a command must reach NOTHING. This
+	// records the day `eval` or a bare "$_cc_auto_what" creeps back in.
+	writeShimFile(t, filepath.Join(fakeBin, "rm"), `#!/bin/sh
+printf 'EVALUATED %s\n' "$*" >> "$SHIM_AUTO_LOG"
+`)
+
+	cases := []struct {
+		name    string
+		environ []string
+		want    []string
+		absent  []string
+	}{{
+		name:    "bare truthy value opens the picker",
+		environ: []string{"CC_AUTO_OPEN=1"},
+		want:    []string{"picker"},
+	}, {
+		name:    "cc opens a fresh chat on the primary account",
+		environ: []string{"CC_AUTO_OPEN=cc"},
+		want:    []string{"launch ", "-u CLAUDE_CONFIG_DIR"},
+	}, {
+		name:    "cc2 opens a fresh chat on account 2",
+		environ: []string{"CC_AUTO_OPEN=cc2"},
+		want:    []string{"launch ", "CLAUDE_CONFIG_DIR=" + home + "/.cc/2"},
+	}, {
+		name:    "the retired spelling still works",
+		environ: []string{"VSCODE_AUTO_CC=1"},
+		want:    []string{"picker"},
+	}, {
+		name:    "an unlisted value falls to the picker and is never run",
+		environ: []string{"CC_AUTO_OPEN=rm -rf /"},
+		want:    []string{"picker"},
+		absent:  []string{"EVALUATED"},
+	}, {
+		name:    "an unset variable opens nothing",
+		environ: nil,
+		absent:  []string{"picker", "launch "},
+	}, {
+		name:    "a shell inside a chat opens nothing",
+		environ: []string{"CC_AUTO_OPEN=1", "CLAUDECODE=1"},
+		absent:  []string{"picker", "launch "},
+	}}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			log := filepath.Join(t.TempDir(), "log")
+			writeShimFile(t, log, "")
+			// Three prompts, so a hook that failed to disarm would fire again:
+			// the command RETURNS when the chat exits, and a still-registered
+			// hook is a terminal that reopens whatever was just closed, forever.
+			got := runAutoOpenShell(t, zsh, shimPath, home, fakeBin, log, testCase.environ,
+				"print -r -- one\nprint -r -- two\nprint -r -- three\n")
+			for _, wanted := range testCase.want {
+				if !strings.Contains(got, wanted) {
+					t.Fatalf("auto-open log %q lacks %q", got, wanted)
+				}
+			}
+			for _, unwanted := range testCase.absent {
+				if strings.Contains(got, unwanted) {
+					t.Fatalf("auto-open log %q contains %q", got, unwanted)
+				}
+			}
+			if lines := strings.Count(got, "\n"); lines > 1 {
+				t.Fatalf("auto-open fired %d times, want at most once: %q", lines, got)
+			}
+		})
+	}
+
+	// Both spellings are exported by the terminal profile, so they are INHERITED.
+	// Unsetting them before arming is what stops a shell opened inside the chat
+	// from opening a chat inside the chat.
+	writeShimFile(t, filepath.Join(home, "inherit-log"), "")
+	inherited := runAutoOpenShell(t, zsh, shimPath, home, fakeBin,
+		filepath.Join(home, "inherit-log"),
+		[]string{"CC_AUTO_OPEN=1", "VSCODE_AUTO_CC=1"},
+		`print -r -- "leaked=${CC_AUTO_OPEN-no}${VSCODE_AUTO_CC-no}" >> "$SHIM_AUTO_LOG"`+"\n")
+	if !strings.Contains(inherited, "leaked=nono") {
+		t.Fatalf("auto-open left its variable in the environment: %q", inherited)
+	}
+}
+
+// runAutoOpenShell sources the shim in a REAL interactive zsh — the hook is a
+// precmd, so only a shell that actually draws prompts exercises it — and returns
+// what the fake launchers recorded.
+func runAutoOpenShell(
+	t *testing.T,
+	zsh, shimPath, home, fakeBin, log string,
+	environ []string,
+	body string,
+) string {
+	t.Helper()
+	command := exec.Command(zsh, "-f", "-i", "+m")
+	command.Stdin = strings.NewReader("source " + quoteZsh(shimPath) + "\n" + body)
+	command.Env = append([]string{
+		"HOME=" + home,
+		"PATH=" + fakeBin + ":/usr/bin:/bin",
+		"TERM=dumb",
+		"SHIM_AUTO_LOG=" + log,
+	}, environ...)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("run auto-open shell: %v: %s", err, output)
+	}
+	return readShimFile(t, log)
 }
 
 func writeShimFile(t *testing.T, path, content string) {

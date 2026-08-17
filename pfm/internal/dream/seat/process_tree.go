@@ -75,17 +75,16 @@ func (tree ProcTree) Inspect(
 	verification.RootReadable = true
 	verification.Root = rootRecord
 
-	entries, err := os.ReadDir(root)
+	pids, err := listProcessPIDs(root)
 	if err != nil {
 		return verification, fmt.Errorf("enumerate proc process relation: %w", err)
 	}
 	relations := make(map[int]ProcessRecord)
-	for _, entry := range entries {
+	for _, pid := range pids {
 		if err := ctx.Err(); err != nil {
 			return verification, err
 		}
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
+		if pid <= 0 {
 			continue
 		}
 		verification.ProcessesEnumerated++
@@ -151,6 +150,25 @@ func (tree ProcTree) Inspect(
 	return verification, nil
 }
 
+// listProcessPIDs enumerates visible pids from the proc root, or from the
+// kernel when there is none.
+func listProcessPIDs(root string) ([]int, error) {
+	if !procRootUsable(root) {
+		return nativeProcessPIDs()
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	pids := make([]int, 0, len(entries))
+	for _, entry := range entries {
+		if pid, convErr := strconv.Atoi(entry.Name()); convErr == nil && pid > 0 {
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
+}
+
 func readProcessRecord(root string, pid int, requireCommand bool) (ProcessRecord, error) {
 	record, _, err := readProcessIdentity(root, pid, requireCommand)
 	return record, err
@@ -161,6 +179,13 @@ func readProcessIdentity(
 	pid int,
 	requireCommand bool,
 ) (ProcessRecord, string, error) {
+	// A proc root that EXISTS is always read — that is how the jail feeds this
+	// deterministic fixtures. Without one, the kernel answers directly: macOS
+	// has no /proc, and a jailer that could not identify a process would refuse
+	// to contain it.
+	if !procRootUsable(root) {
+		return nativeProcessIdentity(pid, requireCommand)
+	}
 	content, err := os.ReadFile(filepath.Join(root, strconv.Itoa(pid), "stat"))
 	if err != nil {
 		return ProcessRecord{}, "", err

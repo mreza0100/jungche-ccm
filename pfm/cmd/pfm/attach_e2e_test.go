@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/testjail"
 )
 
 const attachHelperEnv = "PFM_ATTACH_HELPER"
@@ -230,7 +232,7 @@ func (jail *attachJail) proveAttach(
 	var input io.WriteCloser
 	driverSocket := ""
 	if mode == "plain" {
-		command = exec.Command("script", "-qefc", scriptPath, "/dev/null")
+		command = testjail.PTYCommand(scriptPath)
 		command.Env = jail.env
 		input, err = command.StdinPipe()
 		if err != nil {

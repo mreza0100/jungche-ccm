@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"hostops/pfm/internal/testjail"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -196,7 +197,7 @@ type hideCLIJail struct {
 // real tmux server, but this test does.
 func newHideCLIJail(t *testing.T) *hideCLIJail {
 	t.Helper()
-	root := t.TempDir()
+	root := testjail.ShortRoot(t)
 	home := filepath.Join(root, "home")
 	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	sidDir := filepath.Join(root, "sid")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -129,12 +130,41 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("install changed operator bb.md: %q", content)
 	}
 	assertLink(t, filepath.Join(config, "commands", "chat", "group", "send.md"), filepath.Join(managed, "chat", "group", "send.command.md"))
-	assertLink(t, filepath.Join(home, ".config", "systemd", "user", "pfm-name-sync.service"), filepath.Join(managed, "systemd", "pfm-name-sync.service"))
-	assertLink(t, filepath.Join(unitDirectory, "default.target.wants", "pfm-name-sync.path"), filepath.Join(unitDirectory, "pfm-name-sync.path"))
-	assertLink(t, filepath.Join(unitDirectory, "timers.target.wants", "pfm-name-sync.timer"), filepath.Join(unitDirectory, "pfm-name-sync.timer"))
-	for _, retired := range []string{legacyPathWant, legacyTimerWant} {
-		if _, err := os.Lstat(retired); !os.IsNotExist(err) {
-			t.Fatalf("retired enablement link remains at %s: %v", retired, err)
+	// One job, two schedulers: assert the one this platform actually installs,
+	// and that it did NOT leave the other platform's files behind.
+	if schedulerIsLaunchd {
+		agent := filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")
+		info, err := os.Lstat(agent)
+		if err != nil {
+			t.Fatalf("launch agent was not installed: %v", err)
+		}
+		// launchd silently ignores a symlinked agent, so this must be a real file.
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Fatalf("launch agent is a symlink; launchd will never load it")
+		}
+		plist := readFixture(t, agent)
+		if strings.Contains(plist, "__PFM_HOME__") {
+			t.Fatalf("launch agent kept its placeholder:\n%s", plist)
+		}
+		if !strings.Contains(plist, home+"/.local/bin/pfm") ||
+			!strings.Contains(plist, home+"/.codex/session_index.jsonl") {
+			t.Fatalf("launch agent does not point at this home:\n%s", plist)
+		}
+		if _, err := os.Lstat(filepath.Join(managed, "systemd")); !os.IsNotExist(err) {
+			t.Fatalf("systemd units were staged on a launchd host: %v", err)
+		}
+	} else {
+		assertLink(t, filepath.Join(home, ".config", "systemd", "user", "pfm-name-sync.service"), filepath.Join(managed, "systemd", "pfm-name-sync.service"))
+		assertLink(t, filepath.Join(unitDirectory, "default.target.wants", "pfm-name-sync.path"), filepath.Join(unitDirectory, "pfm-name-sync.path"))
+		assertLink(t, filepath.Join(unitDirectory, "timers.target.wants", "pfm-name-sync.timer"), filepath.Join(unitDirectory, "pfm-name-sync.timer"))
+	}
+	// The predecessor's enablement links are a systemd concept; a launchd host
+	// never wires systemd at all, so it has none to retire.
+	if !schedulerIsLaunchd {
+		for _, retired := range []string{legacyPathWant, legacyTimerWant} {
+			if _, err := os.Lstat(retired); !os.IsNotExist(err) {
+				t.Fatalf("retired enablement link remains at %s: %v", retired, err)
+			}
 		}
 	}
 	if _, err := os.Lstat(bbTarget + ".pre-professor-20300102-030405"); !os.IsNotExist(err) {
@@ -228,6 +258,12 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left managed asset root: %v", err)
+	}
+	if schedulerIsLaunchd {
+		agent := filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist")
+		if _, err := os.Lstat(agent); !os.IsNotExist(err) {
+			t.Fatalf("uninstall left the launch agent at %s: %v", agent, err)
+		}
 	}
 	for _, removed := range []string{
 		filepath.Join(unitDirectory, "default.target.wants", "pfm-name-sync.path"),
@@ -351,14 +387,194 @@ func TestUnitTransitionsUseOnlyTheInjectedManager(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(runner.calls, "\n")
-	for _, wanted := range []string{
+	wantCalls := []string{
 		"systemctl --user status",
 		"systemctl --user daemon-reload",
 		"systemctl --user enable --now pfm-name-sync.path pfm-name-sync.timer",
-	} {
+	}
+	if schedulerIsLaunchd {
+		// launchd has no manager probe to fail: the agent is bootstrapped into
+		// the caller's own gui domain, and bootout first so an edited plist
+		// replaces the loaded job instead of being rejected as a duplicate.
+		wantCalls = []string{
+			"launchctl bootout gui/",
+			"launchctl bootstrap gui/",
+		}
+		for _, unwanted := range []string{"daemon-reload", "enable --now"} {
+			if strings.Contains(joined, unwanted) {
+				t.Fatalf("systemd was driven on a launchd host:\n%s", joined)
+			}
+		}
+	}
+	for _, wanted := range wantCalls {
 		if !strings.Contains(joined, wanted) {
 			t.Fatalf("systemctl calls missing %q:\n%s", wanted, joined)
 		}
+	}
+}
+
+// TestEarlyFleetCallsNamesWhatRunsBeforeTheLaunchersExist fixtures the class the
+// installer cannot let pass silently: a fleet command CALLED above the source
+// line. `cc` is also the POSIX C compiler and `cx` is a name anything may claim,
+// so instead of "command not found" the shell runs a stranger — which is how a
+// terminal profile calling `cc` from ~/.zshrc greeted every new terminal with
+// "clang: error: no input files" while the fleet loaded fine a few lines later.
+func TestEarlyFleetCallsNamesWhatRunsBeforeTheLaunchersExist(t *testing.T) {
+	const sourced = `[[ -r "/opt/fixture/pfm/install/shim/pfm.zsh" ]] && source "/opt/fixture/pfm/install/shim/pfm.zsh"`
+
+	cases := []struct {
+		name    string
+		content string
+		want    []string
+	}{{
+		name:    "the canonical bug: a profile hook above the source line",
+		content: "export EDITOR=vim\n[[ -n \"$VSCODE_AUTO_CC\" ]] && cc\n" + sourced + "\n",
+		want:    []string{"line 2: [[ -n \"$VSCODE_AUTO_CC\" ]] && cc"},
+	}, {
+		name:    "the same call below the source line is fine",
+		content: sourced + "\n[[ -n \"$VSCODE_AUTO_CC\" ]] && cc\n",
+		want:    nil,
+	}, {
+		name:    "no source line yet — the whole file is above the bottom",
+		content: "cc-ls\n",
+		want:    []string{"line 1: cc-ls"},
+	}, {
+		name:    "a commented-out call is not a call",
+		content: "# cc-ls here would break\ncc  # but this one is real\n" + sourced + "\n",
+		want:    []string{"line 2: cc  # but this one is real"},
+	}, {
+		name:    "definitions and paths are not calls",
+		content: "alias cc='echo no'\nexport CCDIR=$HOME/.cc/2\nPATH=$PATH:/opt/cc\n" + sourced + "\n",
+		want:    nil,
+	}, {
+		name: "every launcher, after every separator that starts a command",
+		content: "cc1\nfoo; cc2\nfoo && cx\nfoo || cc-ls\n(cc-open)\nfoo | cc-revive\n" +
+			"cc-swap 1\nvsct-revive\n" + sourced + "\n",
+		want: []string{
+			"line 1: cc1", "line 2: foo; cc2", "line 3: foo && cx", "line 4: foo || cc-ls",
+			"line 5: (cc-open)", "line 6: foo | cc-revive", "line 7: cc-swap 1",
+			"line 8: vsct-revive",
+		},
+	}, {
+		name:    "an empty rc file reports nothing",
+		content: "",
+		want:    nil,
+	}}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := earlyFleetCalls(testCase.content)
+			if len(got) != len(testCase.want) {
+				t.Fatalf("earlyFleetCalls() = %q, want %q", got, testCase.want)
+			}
+			for index, wanted := range testCase.want {
+				if got[index] != wanted {
+					t.Fatalf("earlyFleetCalls()[%d] = %q, want %q", index, got[index], wanted)
+				}
+			}
+		})
+	}
+}
+
+// The rewriter and the early-call scan must never disagree about where the
+// source line is: one decides where the launchers start existing, the other
+// reports what runs before they do.
+func TestEarlyCallScanStopsWhereTheRewriterFindsTheSourceLine(t *testing.T) {
+	home := t.TempDir()
+	zshrc := filepath.Join(home, ".zshrc")
+	writeFixture(t, zshrc, "cc\nsource /old/cc-fleet.zsh\ncc-ls\n")
+
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatalf("apply: %v\n%s", err, output.String())
+	}
+	report := output.String()
+	// Line 1 runs before the launchers exist; line 3 does not.
+	if !strings.Contains(report, "a fleet command runs ABOVE the source line") ||
+		!strings.Contains(report, "line 1: cc\n") {
+		t.Fatalf("installer did not report the early call:\n%s", report)
+	}
+	if strings.Contains(report, "line 3: cc-ls") {
+		t.Fatalf("installer reported a call below the source line:\n%s", report)
+	}
+	// It reports; it never rewrites a line of the operator's shell that is not ours.
+	if zshrcContent := readFixture(t, zshrc); !strings.HasPrefix(zshrcContent, "cc\n") {
+		t.Fatalf("installer rewrote the operator's own line:\n%s", zshrcContent)
+	}
+}
+
+// outputRunner is a fakeRunner that can also answer a probe, which is what the
+// launch-agent gate needs: launchctl reports a job's state in its output and
+// exits zero either way.
+type outputRunner struct {
+	fakeRunner
+	printOutput string
+	printErr    error
+}
+
+func (runner *outputRunner) Output(_ context.Context, name string, args ...string) ([]byte, error) {
+	runner.calls = append(runner.calls, name+" "+strings.Join(args, " "))
+	if runner.printErr != nil {
+		return nil, runner.printErr
+	}
+	return []byte(runner.printOutput), nil
+}
+
+// TestLaunchAgentGateRefusesOnlyMidExecution pins the macOS half of the rc 97
+// refusal. It is deliberately NOT the dead-bus gate: launchd is always live for
+// a logged-in user, so the only window worth refusing is an apply that would
+// rewrite the agent and its binary while that agent is running.
+func TestLaunchAgentGateRefusesOnlyMidExecution(t *testing.T) {
+	if !schedulerIsLaunchd {
+		t.Skip("launch-agent gate is macOS-only")
+	}
+	cases := []struct {
+		name       string
+		output     string
+		outputErr  error
+		wantRefuse bool
+	}{
+		{name: "mid-execution refuses", output: "\tstate = running\n", wantRefuse: true},
+		// "not running" CONTAINS "running": a substring match here would refuse
+		// every install on a perfectly idle agent.
+		{name: "idle proceeds", output: "\tstate = not running\n"},
+		{name: "unknown label proceeds", outputErr: errors.New("could not find service")},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			runner := &outputRunner{printOutput: testCase.output, printErr: testCase.outputErr}
+			_, err := Run(context.Background(), Options{
+				Mode: ModeDryRun, Home: t.TempDir(), Stdout: io.Discard, Runner: runner,
+			})
+			if testCase.wantRefuse {
+				if !errors.Is(err, ErrLaunchAgentRunning) {
+					t.Fatalf("Run() error = %v, want ErrLaunchAgentRunning", err)
+				}
+				return
+			}
+			if errors.Is(err, ErrLaunchAgentRunning) {
+				t.Fatalf("Run() refused an agent that was not mid-execution: %v", err)
+			}
+		})
+	}
+}
+
+// A runner that cannot be probed must not be read as "safe": the installer says
+// the gate did not run rather than implying it passed.
+func TestLaunchAgentGateAnnouncesWhenItCannotProbe(t *testing.T) {
+	if !schedulerIsLaunchd {
+		t.Skip("launch-agent gate is macOS-only")
+	}
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeDryRun, Home: t.TempDir(), Stdout: &output, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "launch-agent gate NOT probed") {
+		t.Fatalf("an unprobed gate was silent:\n%s", output.String())
 	}
 }
 

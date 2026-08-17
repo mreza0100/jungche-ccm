@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Converge every live chat's tmux window name (pfm name-sync).
+
+  One agent replaces all three systemd units, because launchd carries both
+  triggers in a single job: WatchPaths is the .path unit (a codex rename landing
+  in session_index.jsonl) and StartInterval is the .timer (claude /rename drift
+  between picker runs, 15 minutes exactly as OnUnitInactiveSec=15min).
+
+  RunAtLoad stays false: the systemd timer waits OnBootSec=2min before its first
+  run, and a name-sync racing login would gather a fleet that has not started.
+  __PFM_HOME__ is substituted at install time — launchd has no %h.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.professor.pfm.name-sync</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__PFM_HOME__/.local/bin/pfm</string>
+		<string>name-sync</string>
+	</array>
+	<key>WatchPaths</key>
+	<array>
+		<string>__PFM_HOME__/.codex/session_index.jsonl</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>900</integer>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>LowPriorityIO</key>
+	<true/>
+</dict>
+</plist>

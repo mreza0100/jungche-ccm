@@ -82,7 +82,7 @@ func (DeviceGate) Confirm(
 		return false, nil
 	}
 	defer terminal.Close()
-	settings, err := unix.IoctlGetTermios(int(terminal.Fd()), unix.TCGETS)
+	settings, err := unix.IoctlGetTermios(int(terminal.Fd()), getTermios)
 	if err != nil {
 		return false, nil
 	}
@@ -92,12 +92,12 @@ func (DeviceGate) Confirm(
 	oneKey.Cc[unix.VTIME] = 0
 	if err := unix.IoctlSetTermios(
 		int(terminal.Fd()),
-		unix.TCSETS,
+		setTermios,
 		&oneKey,
 	); err != nil {
 		return false, nil
 	}
-	defer unix.IoctlSetTermios(int(terminal.Fd()), unix.TCSETS, settings)
+	defer unix.IoctlSetTermios(int(terminal.Fd()), setTermios, settings)
 	return ReaderGate{Reader: terminal, Writer: terminal}.Confirm(ctx, request)
 }
 

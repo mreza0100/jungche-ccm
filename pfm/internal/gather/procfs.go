@@ -47,6 +47,27 @@ type ProcMemory interface {
 	RSSKB(pid int) (int64, error)
 }
 
+// NewProcFS returns the process-table reader for a given proc root.
+//
+// A root that EXISTS is always honoured, because that is how the jail works:
+// PFM_PROC_ROOT points at a fixture tree and the suite reads files instead of a
+// kernel. When it does not exist, the platform's native reader answers instead
+// — on Linux that is still /proc, on macOS it is sysctl, since there is no /proc
+// to fall back to.
+//
+// The fallback is deliberately not silent-empty. A reader that returned "no
+// processes" on a kernel it cannot read would render as a fleet with no chats,
+// which is the exact failure the root law forbids: a probe that could not run
+// never returns "nothing found".
+func NewProcFS(root string) ProcFS {
+	if root != "" {
+		if info, err := os.Stat(root); err == nil && info.IsDir() {
+			return RealProcFS{Root: root}
+		}
+	}
+	return nativeProcFS()
+}
+
 // RealProcFS reads a Linux proc filesystem. Root defaults to /proc.
 type RealProcFS struct {
 	Root string

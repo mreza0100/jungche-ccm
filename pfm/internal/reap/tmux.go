@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/tmuxfmt"
 )
 
 // Tmux is the reaper's whole tmux surface.
@@ -72,7 +73,7 @@ func (tmux CommandTmux) Sessions(
 		if line == "" {
 			continue
 		}
-		fields := strings.SplitN(line, `\037`, 3)
+		fields := tmuxfmt.SplitN(line, 3)
 		if len(fields) != 3 {
 			return nil, fmt.Errorf(
 				"tmux %s returned %d session fields in %q",

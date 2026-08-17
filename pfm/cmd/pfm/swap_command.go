@@ -18,6 +18,7 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/swap"
+	"hostops/pfm/internal/tmuxfmt"
 )
 
 type swapCommandTmux struct{}
@@ -48,10 +49,8 @@ func (tmux swapCommandTmux) ListPanes(ctx context.Context, socket string) ([]swa
 		if line == "" {
 			continue
 		}
-		// tmux renders the control separator in a format string as the
-		// printable escape \037, keeping pane paths from introducing raw
-		// line-protocol control bytes.
-		fields := strings.SplitN(line, `\037`, 5)
+		// Either spelling of the control separator: see internal/tmuxfmt.
+		fields := tmuxfmt.SplitN(line, 5)
 		if len(fields) != 5 {
 			return nil, fmt.Errorf("tmux returned %d pane fields", len(fields))
 		}
@@ -243,7 +242,7 @@ func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "pfm chat swap: --then queued — the follow-up is typed into the reborn chat once it reaches its prompt")
 	}
 	options := swap.Options{Home: resolved.Home, SIDDir: resolved.SIDDir, ClaudeRoots: resolved.ClaudeRoots, Delay: swapDurationEnv("PFM_SWAP_DELAY_MS", 1500), Poll: swapDurationEnv("PFM_SWAP_POLL_MS", 1000), ExitTries: swap.ParseIntEnv("PFM_SWAP_EXIT_TRIES", 20), ThenTries: swap.ParseIntEnv("PFM_SWAP_THEN_TRIES", 900)}
-	result, err := swap.Run(context.Background(), swap.Request{SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, Cache1H: cache, Then: then}, options, tmux, swapProc{root: resolved.ProcRoot}, stderr)
+	result, err := swap.Run(context.Background(), swap.Request{SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, Cache1H: cache, Then: then}, options, tmux, swapProc{procfs: gather.NewProcFS(resolved.ProcRoot)}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
 		return 1
@@ -361,23 +360,26 @@ func swapTarget(ctx context.Context, sock string, resolved paths.Values, tmux sw
 	return "", "", swap.Pane{}, 1
 }
 
-type swapProc struct{ root string }
+// swapProc adapts the gathered process table to the tree walker. It holds ONE
+// reader rather than building a fresh one per call: on macOS the reader carries
+// a snapshot cache, and a per-call instance would resample the world each hop.
+type swapProc struct{ procfs gather.ProcFS }
 
-func (proc swapProc) PIDs() ([]int, error) { return (gather.RealProcFS{Root: proc.root}).PIDs() }
+func (proc swapProc) PIDs() ([]int, error) { return proc.procfs.PIDs() }
 func (proc swapProc) Cmdline(pid int) ([]string, error) {
-	return (gather.RealProcFS{Root: proc.root}).Cmdline(pid)
+	return proc.procfs.Cmdline(pid)
 }
 func (proc swapProc) Environ(pid int) (map[string]string, error) {
-	return (gather.RealProcFS{Root: proc.root}).Environ(pid)
+	return proc.procfs.Environ(pid)
 }
 func (proc swapProc) Stat(pid int) (gather.ProcStat, error) {
-	return (gather.RealProcFS{Root: proc.root}).Stat(pid)
+	return proc.procfs.Stat(pid)
 }
 
 func swapBirth(resolved paths.Values, socketPath string, pane swap.Pane, stderr io.Writer) (int, bool) {
 	account, cache := 1, true
-	proc := gather.RealProcFS{Root: resolved.ProcRoot}
-	procTree := swapProc{root: resolved.ProcRoot}
+	proc := gather.NewProcFS(resolved.ProcRoot)
+	procTree := swapProc{procfs: proc}
 	pids, err := proc.PIDs()
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat swap: inspect birth processes for %s: %v; using safe defaults\n", filepath.Base(socketPath), err)

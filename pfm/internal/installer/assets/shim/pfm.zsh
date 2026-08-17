@@ -59,6 +59,17 @@ typeset -ga CC_ENDPOINT_UNSET=(
   -u CLAUDE_CODE_AUTO_COMPACT_WINDOW -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK
   -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY
 )
+# CC_SESSION_UNSET — the inherited SESSION IDENTITY, stripped by every path that starts a chat.
+# A chat born inside another chat's Bash tool inherits that chat's markers, and each one lies in a
+# different way: CLAUDE_CODE_SESSION_ID makes the newborn answer to its parent's id, CLAUDECODE
+# makes it believe it is already inside a harness, and CLAUDE_CODE_CHILD_SESSION marks it a
+# SUBORDINATE — which silently turns transcript saving OFF. That last one is the quiet one: the
+# chat runs perfectly, and only the footer whispers "Transcript saving is off", so the loss is
+# discovered when someone goes looking for a conversation that was never written. Stripping the
+# marker restores the default; forcing persistence back on with
+# CLAUDE_CODE_FORCE_SESSION_PERSISTENCE would paper over an identity the chat should never have
+# had. One array, three launch paths — a list written three times is a list that gets fixed twice.
+typeset -ga CC_SESSION_UNSET=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION)
 _cc_arm1h() {
   if [[ "${CC_ARM_1H:-}" == 1 ]]; then echo 1
   elif [[ "${ENABLE_PROMPT_CACHING_1H:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo 1
@@ -83,7 +94,7 @@ _cc_run() {
     # explicit env, always: a launch from INSIDE a chat (Bash tool, nested shell) inherits the
     # host chat's CLAUDE_CONFIG_DIR / session identity / cache mode — env -u makes every one of
     # them the picker's verdict, never the environment's
-    local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET}"
+    local run="env ${CC_SESSION_UNSET} -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET}"
     if [[ -n "$cfg" ]]; then run+=" CLAUDE_CONFIG_DIR=$cfg"; else run+=" -u CLAUDE_CONFIG_DIR"; fi
     if [[ "$arm1h" == 1 ]]; then run+=" ENABLE_PROMPT_CACHING_1H=1"; else run+=" FORCE_PROMPT_CACHING_5M=1"; fi
     # PER-ELEMENT quoting, then join. "${(q)@}" joins the array into ONE word FIRST and quotes
@@ -104,7 +115,7 @@ _cc_run() {
       _cc_own_terminal $?
     fi
   else
-    local -a envargs=(-u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
+    local -a envargs=("${CC_SESSION_UNSET[@]}" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
     if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
     if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
     env "${envargs[@]}" claude "${CC_AUTONOMY_FLAGS[@]}" "$@"
@@ -131,7 +142,7 @@ cx() {
   # PER-ELEMENT quoting, then join — same fix as _cc_run (lines 89-93): "${(q)@}" joins the
   # array into ONE word FIRST and quotes that, so `cx --resume abc123` arrives as a single
   # escaped argv element ("--resume\ abc123") and codex rejects it as one unknown flag.
-  local run="env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(j: :)${(@q)@}}"
+  local run="env ${CC_SESSION_UNSET} -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(j: :)${(@q)@}}"
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab
@@ -324,3 +335,50 @@ vsct-revive() {
   if [[ -t 0 ]]; then TMUX= tmux -L "$srv" attach -t "=$out"   # nested attach — see cc-revive
   else echo "attach with: TMUX= tmux -L $srv attach -t '=$out'"; fi
 }
+
+# ── auto-open: a new terminal lands straight in a chat ────────────────────
+# LAST in this file on purpose, and the reason is worth the paragraph. A terminal profile that
+# wants a chat on open — VS Code's "tmux + claude" is the canonical one — used to carry the hook
+# in ~/.zshrc itself:  [[ -n "$VSCODE_AUTO_CC" ]] && cc.  But the installer APPENDS its source
+# line to the BOTTOM of ~/.zshrc, so that call sat above the line that defines `cc`, and zsh does
+# not report that as an error: `cc` is the POSIX C compiler, present on every box. The terminal
+# opened by running clang with no arguments —
+#     clang: error: no input files
+# — and then the fleet loaded a few lines further down, so typing `cc` or `cc-ls` by hand always
+# worked. That gap is what made it look like a broken picker rather than a line-ordering bug.
+# Owning the hook here settles the ordering for every adopter: nothing can run it before the
+# functions exist, because there is nothing after it.
+#
+# But "after this file" is still not late enough, so the launch is DEFERRED to the first prompt.
+# ~/.zshrc keeps going after the source line — a host's PATH edits that make `pfm`, `tmux` or
+# `claude` resolvable, its own overrides of anything above — and launching from here would run a
+# chat before the shell had finished becoming itself, the same class of ordering bug one layer
+# down. A one-shot precmd hook runs when the shell is fully configured and about to draw its
+# first prompt, whatever else the rc files do after this line.
+if [[ -o interactive && -z "${CLAUDECODE:-}" && -n "${CC_AUTO_OPEN:-}${VSCODE_AUTO_CC:-}" ]]; then
+  # Read the value, then unset BEFORE arming, both spellings. The variable is exported by the
+  # terminal profile, so it is inherited: a shell opened inside the chat would open a chat
+  # inside the chat.
+  typeset -g _cc_auto_what="${CC_AUTO_OPEN:-$VSCODE_AUTO_CC}"
+  unset CC_AUTO_OPEN VSCODE_AUTO_CC
+  autoload -Uz add-zsh-hook
+  _cc_auto_open() {
+    # Disarm FIRST. The command below RETURNS — when the chat exits, or when the picker is
+    # dismissed — and the shell then draws another prompt. A hook still registered at that
+    # moment is a terminal that reopens whatever you just closed, forever.
+    add-zsh-hook -d precmd _cc_auto_open
+    unfunction _cc_auto_open
+    # The value chooses, from a WHITELIST — never `eval`, and never run as-is. It arrives from
+    # the environment, which a terminal profile, a parent process or an ssh client can set.
+    local cmd
+    case "$_cc_auto_what" in
+      cc|new|chat)  cmd=cc ;;                 # straight into a fresh chat, no picker
+      cc1|cc2)      cmd="$_cc_auto_what" ;;   # a fresh chat on that account — the roster is two
+      cx|codex)     cmd=cx ;;                 # a fresh Codex chat
+      *)            cmd=cc-ls ;;              # 1 / yes / ls / picker — and the default
+    esac
+    unset _cc_auto_what
+    $cmd
+  }
+  add-zsh-hook precmd _cc_auto_open
+fi
