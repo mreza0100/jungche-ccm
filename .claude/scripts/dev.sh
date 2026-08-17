@@ -154,6 +154,15 @@ act_blueprint() { # the shipped product: mechanical gates, no build
             | while read -r n tok; do info "  ${n}x  $tok"; done
         fi
       fi
+
+      head_ "blueprint — codex generated-marker claim"
+      # The JS compiler and `pfm codex build` write the same $HOME/.codex outputs.
+      # A copy that stops claiming the other's marker reports its files STALE forever.
+      if node scripts/check-codex-markers.mjs; then
+        ok "both build-codex.mjs copies claim every generation"
+      else
+        fail_step "codex marker claim FAILED — a compiler copy cannot reclaim the other's output"
+      fi
       ;;
     *) return 0 ;;
   esac

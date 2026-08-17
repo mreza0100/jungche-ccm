@@ -5,7 +5,7 @@
       "Bash(.claude/scripts/dev.sh:*)",
       "Bash(scripts/leak-check.sh:*)",
       "Bash(scripts/refresh-scope.sh:*)",
-      "Bash(node .claude/scripts/build-codex.mjs:*)",
+      "Bash(pfm codex:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
