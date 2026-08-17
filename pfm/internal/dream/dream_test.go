@@ -95,6 +95,35 @@ func TestNightEmptyCorpusSucceedsBeforeLogsSeatsAndGates(t *testing.T) {
 	}
 }
 
+func TestNightRunsWithEmbeddedResourcesAndNoProfessorHome(t *testing.T) {
+	isolatedHome := t.TempDir()
+	t.Setenv("HOME", isolatedHome)
+	t.Setenv("PFM_HOME", isolatedHome)
+
+	fixture := newNightFixture(t, "")
+	if err := os.RemoveAll(fixture.resourcesRoot); err != nil {
+		t.Fatal(err)
+	}
+	request := fixture.request()
+	request.ResourcesRoot = ""
+	dependencies := fixture.dependencies(&bytes.Buffer{})
+	dependencies.NewSeatRunner = func(seat.EventSink) (NightSeatRunner, error) {
+		t.Fatal("empty embedded-resource night spent a seat")
+		return nil, nil
+	}
+
+	result, err := Night(context.Background(), request, dependencies)
+	if err != nil {
+		t.Fatalf("Night() without on-disk resources error = %v", err)
+	}
+	if !result.Empty || result.Lane.Lane != "tracer" {
+		t.Fatalf("Night() without on-disk resources = %+v", result)
+	}
+	if _, err := os.Lstat(filepath.Join(isolatedHome, ".professor")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Night() consulted or created HOME/.professor: %v", err)
+	}
+}
+
 func snapshotNightDirectory(t *testing.T, root string) map[string]string {
 	t.Helper()
 	snapshot := make(map[string]string)
@@ -385,25 +414,31 @@ func TestNightCanceledBeforePreflightWritesDurableMarker(t *testing.T) {
 	}
 }
 
-func TestNightMissingPromptNamesExactResourceInDurableMarker(t *testing.T) {
+func TestNightSymlinkPromptNamesExactResourceInDurableMarker(t *testing.T) {
 	fixture := newNightFixture(t, "")
-	missingPrompt := filepath.Join(fixture.resourcesRoot, distillPromptFile)
-	if err := os.Remove(missingPrompt); err != nil {
+	unsafePrompt := filepath.Join(fixture.resourcesRoot, distillPromptFile)
+	if err := os.Remove(unsafePrompt); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(
+		filepath.Join(fixture.resourcesRoot, refinerPromptFile),
+		unsafePrompt,
+	); err != nil {
 		t.Fatal(err)
 	}
 	dependencies := fixture.dependencies(&bytes.Buffer{})
 	dependencies.NewSeatRunner = func(seat.EventSink) (NightSeatRunner, error) {
-		t.Fatal("missing-prompt preflight spent a seat")
+		t.Fatal("unsafe-prompt preflight spent a seat")
 		return nil, nil
 	}
 
 	result, err := Night(context.Background(), fixture.request(), dependencies)
-	if err == nil || !strings.Contains(err.Error(), "inspect dream resource "+missingPrompt) {
-		t.Fatalf("Night() = %+v, %v, want missing prompt", result, err)
+	if err == nil || !strings.Contains(err.Error(), "resource path is a symlink: "+unsafePrompt) {
+		t.Fatalf("Night() = %+v, %v, want symlink prompt refusal", result, err)
 	}
 	body := readNightTest(t, nightFailurePath(fixture.organ))
-	if !strings.Contains(body, "Path: "+missingPrompt+"\n") {
-		t.Fatalf("night failure marker does not name missing prompt:\n%s", body)
+	if !strings.Contains(body, "Path: "+unsafePrompt+"\n") {
+		t.Fatalf("night failure marker does not name unsafe prompt:\n%s", body)
 	}
 }
 

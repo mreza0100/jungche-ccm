@@ -12,6 +12,7 @@ import (
 	"hostops/pfm/internal/dream/artifact"
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
+	"hostops/pfm/internal/dream/resources"
 )
 
 // Inspect resolves and validates the repository boundary without changing it.
@@ -25,6 +26,11 @@ func Inspect(repoRoot, registryBase string) (artifact.RepoContext, organ.Shape, 
 		return artifact.RepoContext{}, "", err
 	}
 	return repository, shape, nil
+}
+
+// RepositoryRoot resolves the repository that contains a working directory.
+func RepositoryRoot(directory string) (string, error) {
+	return organ.RepositoryRoot(directory)
 }
 
 // InspectLane gives --agent semantic validation while preserving inspect's
@@ -41,11 +47,27 @@ func InspectLane(repoRoot, agentType, registryBase, resourcesRoot string) (
 	if err != nil {
 		return artifact.RepoContext{}, "", artifact.LaneContext{}, err
 	}
-	laneName, err := lane.FromAgentTypeIn(agentType, repository.Organ, resourcesRoot)
+	if err := validateResourcesRoot(resourcesRoot); err != nil {
+		return artifact.RepoContext{}, "", artifact.LaneContext{}, err
+	}
+	laneName, err := lane.FromAgentTypeIn(
+		agentType,
+		resources.NewResources(resourcesRoot, repository.Organ),
+	)
 	if err != nil {
 		return artifact.RepoContext{}, "", artifact.LaneContext{}, err
 	}
 	return repository, shape, artifact.LaneContext{AgentType: agentType, Lane: laneName}, nil
+}
+
+func validateResourcesRoot(root string) error {
+	if root == "" {
+		return nil
+	}
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return fmt.Errorf("dream resources root must be absolute and canonical: %s", root)
+	}
+	return nil
 }
 
 type MigrationResult struct {

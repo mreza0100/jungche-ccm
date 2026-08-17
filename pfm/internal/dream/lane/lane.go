@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"hostops/pfm/internal/dream/artifact"
+	"hostops/pfm/internal/dream/resources"
 )
 
 var (
@@ -65,31 +66,29 @@ func asciiWhitespaceOnly(value string) bool {
 	return true
 }
 
-// ResolveProfile applies the organ-first profile law. engineRoot is the
-// dreamer data root containing its shared lanes/ directory.
-func ResolveProfile(agentType, slug, organRoot, engineRoot string) (artifact.LaneProfile, error) {
+// ResolveProfile applies the resource layer order to one lane profile.
+func ResolveProfile(agentType, slug string, resourceSet resources.Resources) (artifact.LaneProfile, error) {
 	if !lanePattern.MatchString(slug) {
 		return artifact.LaneProfile{}, fmt.Errorf("invalid lane slug: %s", slug)
 	}
-	normalized, err := FromAgentTypeIn(agentType, organRoot, engineRoot)
+	normalized, err := FromAgentTypeIn(agentType, resourceSet)
 	if err != nil {
 		return artifact.LaneProfile{}, err
 	}
 	if normalized != slug {
 		return artifact.LaneProfile{}, fmt.Errorf("agent type %s resolves to lane %s, not %s", agentType, normalized, slug)
 	}
-	local := filepath.Join(organRoot, "lanes", slug+".md")
-	global := filepath.Join(engineRoot, "lanes", slug+".md")
-	for _, candidate := range []string{local, global} {
-		body, err := os.ReadFile(candidate)
-		if err == nil {
-			return artifact.LaneProfile{AgentType: agentType, Lane: slug, Path: candidate, Body: string(body)}, nil
-		}
-		if !os.IsNotExist(err) {
-			return artifact.LaneProfile{}, fmt.Errorf("read lane profile %s: %w", candidate, err)
-		}
+	name := "lanes/" + slug + ".md"
+	body, source, err := resourceSet.ReadFileWithSource(name)
+	if err != nil {
+		return artifact.LaneProfile{}, fmt.Errorf("lane has no profile: %w", err)
 	}
-	return artifact.LaneProfile{}, fmt.Errorf("lane has no profile: expected %s or %s", local, global)
+	return artifact.LaneProfile{
+		AgentType: agentType,
+		Lane:      slug,
+		Path:      source,
+		Body:      string(body),
+	}, nil
 }
 
 // MembershipRequest distinguishes a missing pre-lane ledger from a present
@@ -289,47 +288,41 @@ func validateTitle(title string) error {
 var servesPattern = regexp.MustCompile(`(?m)^Serves:[ \t]*(.+?)[ \t]*$`)
 
 // FromAgentTypeIn resolves an agent type to its lane using the lane profiles
-// available to this repository, organ-local before engine-global. A type named
-// in a profile's Serves list takes that lane; anything unnamed falls back to the
+// available to this repository in resource layer order. A type named in a
+// profile's Serves list takes that lane; anything unnamed falls back to the
 // canonical byte normalizer, so an agent with no profile still gets its own lane.
-func FromAgentTypeIn(agentType, organRoot, engineRoot string) (string, error) {
+func FromAgentTypeIn(agentType string, resourceSet resources.Resources) (string, error) {
 	if agentType == "" {
 		return Slug(agentType)
 	}
-	for _, root := range []string{organRoot, engineRoot} {
-		if root == "" {
-			continue
+	entries, err := resourceSet.ReadDirByLayer("lanes")
+	if err != nil {
+		return "", err
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
+			names = append(names, entry.Name())
 		}
-		entries, err := os.ReadDir(filepath.Join(root, "lanes"))
+	}
+	for _, name := range names {
+		body, err := resourceSet.ReadFile("lanes/" + name)
 		if err != nil {
+			return "", err
+		}
+		match := servesPattern.FindSubmatch(body)
+		if match == nil {
 			continue
 		}
-		names := make([]string, 0, len(entries))
-		for _, entry := range entries {
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".md") {
-				names = append(names, entry.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			body, err := os.ReadFile(filepath.Join(root, "lanes", name))
-			if err != nil {
+		for _, served := range strings.Split(string(match[1]), ",") {
+			if strings.TrimSpace(served) != agentType {
 				continue
 			}
-			match := servesPattern.FindSubmatch(body)
-			if match == nil {
-				continue
+			slug := strings.TrimSuffix(name, ".md")
+			if !lanePattern.MatchString(slug) {
+				return "", fmt.Errorf("lane profile %s does not yield a lane slug", name)
 			}
-			for _, served := range strings.Split(string(match[1]), ",") {
-				if strings.TrimSpace(served) != agentType {
-					continue
-				}
-				slug := strings.TrimSuffix(name, ".md")
-				if !lanePattern.MatchString(slug) {
-					return "", fmt.Errorf("lane profile %s does not yield a lane slug", name)
-				}
-				return slug, nil
-			}
+			return slug, nil
 		}
 	}
 	return Slug(agentType)

@@ -12,11 +12,13 @@ import (
 
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
+	"hostops/pfm/internal/dream/resources"
 )
 
 type MorningRequest struct {
-	RegistryBase  string
-	ResourcesRoot string
+	RegistryBase     string
+	ResourcesRoot    string
+	RepositoriesFile string
 }
 
 type MorningRun struct {
@@ -76,11 +78,18 @@ func morningWith(
 	if ctx == nil {
 		return MorningResult{}, errors.New("dream morning requires a context")
 	}
-	if request.ResourcesRoot == "" || !filepath.IsAbs(request.ResourcesRoot) || filepath.Clean(request.ResourcesRoot) != request.ResourcesRoot {
-		return MorningResult{}, fmt.Errorf("dream resources root must be absolute and canonical: %s", request.ResourcesRoot)
+	if err := validateResourcesRoot(request.ResourcesRoot); err != nil {
+		return MorningResult{}, err
 	}
 	if request.RegistryBase == "" || !filepath.IsAbs(request.RegistryBase) || filepath.Clean(request.RegistryBase) != request.RegistryBase {
 		return MorningResult{}, fmt.Errorf("dream registry base must be absolute and canonical: %s", request.RegistryBase)
+	}
+	if request.RepositoriesFile == "" || !filepath.IsAbs(request.RepositoriesFile) ||
+		filepath.Clean(request.RepositoriesFile) != request.RepositoriesFile {
+		return MorningResult{}, fmt.Errorf(
+			"dream repository list path must be absolute and canonical: %s",
+			request.RepositoriesFile,
+		)
 	}
 	if dependencies.night == nil {
 		return MorningResult{}, errors.New("dream morning requires a night runner")
@@ -91,8 +100,15 @@ func morningWith(
 	if err := validateNightDependencies(dependencies.nightDependencies); err != nil {
 		return MorningResult{}, err
 	}
-	repositories, err := readMorningRepositories(filepath.Join(request.ResourcesRoot, "repos.list"))
+	repositories, err := readMorningRepositories(request.RepositoriesFile)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return MorningResult{}, fmt.Errorf(
+				"dream repository list is missing at %s; create it with one line per repository: /absolute/repo [agent-type] # optional comment: %w",
+				request.RepositoriesFile,
+				err,
+			)
+		}
 		return MorningResult{}, err
 	}
 	if len(repositories) == 0 {
@@ -166,7 +182,13 @@ func morningWith(
 			repositoryRun.Outcome = MorningNightFailed
 			repositoryRun.Reason = oneLine(configuredRun.Err.Error())
 		}
-		configuredLane, err := lane.FromAgentTypeIn(configured.AgentType, filepath.Join(configured.RepoRoot, ".professor", "stm"), request.ResourcesRoot)
+		configuredLane, err := lane.FromAgentTypeIn(
+			configured.AgentType,
+			resources.NewResources(
+				request.ResourcesRoot,
+				filepath.Join(configured.RepoRoot, ".professor", "stm"),
+			),
+		)
 		if err != nil {
 			return result, fmt.Errorf("normalize configured morning lane for %s: %w", configured.RepoRoot, err)
 		}

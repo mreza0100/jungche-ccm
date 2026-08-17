@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"syscall"
@@ -51,26 +52,25 @@ func TestDreamNightParsesDefaultsAndSelections(t *testing.T) {
 		want dreamNightOptions
 	}{
 		{
-			name: "legacy defaults",
+			name: "current repository defaults",
 			args: []string{"night"},
 			want: dreamNightOptions{
-				RepoRoot:      defaultDreamRepo,
-				AgentType:     defaultDreamAgent,
-				RegistryBase:  defaultDreamRegistry,
-				ResourcesRoot: defaultDreamResources,
+				RepoRoot:     "/work/current",
+				AgentType:    defaultDreamAgent,
+				RegistryBase: defaultDreamRegistry,
 			},
 		},
 		{
 			name: "bootstrap",
 			args: []string{
-				"night", "--repo", "/work/repository", "--agent", "QA-Agent",
+				"night", "--repo", "/work/repository", "--resources", "/work/resources", "--agent", "QA-Agent",
 				"--bootstrap-count", "17",
 			},
 			want: dreamNightOptions{
 				RepoRoot:       "/work/repository",
 				AgentType:      "QA-Agent",
 				RegistryBase:   defaultDreamRegistry,
-				ResourcesRoot:  defaultDreamResources,
+				ResourcesRoot:  "/work/resources",
 				BootstrapCount: 17,
 			},
 		},
@@ -78,11 +78,10 @@ func TestDreamNightParsesDefaultsAndSelections(t *testing.T) {
 			name: "corpus file",
 			args: []string{"night", "--corpus-file", "/audit/paths.txt"},
 			want: dreamNightOptions{
-				RepoRoot:      defaultDreamRepo,
-				AgentType:     defaultDreamAgent,
-				RegistryBase:  defaultDreamRegistry,
-				ResourcesRoot: defaultDreamResources,
-				CorpusFile:    "/audit/paths.txt",
+				RepoRoot:     "/work/current",
+				AgentType:    defaultDreamAgent,
+				RegistryBase: defaultDreamRegistry,
+				CorpusFile:   "/audit/paths.txt",
 			},
 		},
 	} {
@@ -142,6 +141,63 @@ func TestDreamNightRejectsInvalidSurfaceBeforeCallingRoot(t *testing.T) {
 	}
 }
 
+func TestDreamDefaultRepositoryFailureNamesExplicitOverride(t *testing.T) {
+	runtime := rejectingDreamRuntime(t)
+	runtime.repositoryRoot = func() (string, error) {
+		return "", errors.New("not inside a repository")
+	}
+	runtime.night = func(context.Context, dreamNightOptions, io.Writer, io.Writer) (string, error) {
+		t.Fatal("night ran without a resolved repository")
+		return "", nil
+	}
+	var stdout, stderr bytes.Buffer
+	code := runDreamWith(
+		context.Background(),
+		[]string{"night"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+		runtime,
+	)
+	if code != 1 || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), "pass --repo ROOT") ||
+		!strings.Contains(stderr.String(), "not inside a repository") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestDreamRepositoriesFileUsesAbsoluteXDGOrHomeConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/config-root")
+	if got := defaultDreamRepositoriesFile(); got != "/config-root/pfm/repos.list" {
+		t.Fatalf("absolute XDG repos file = %q", got)
+	}
+	t.Setenv("XDG_CONFIG_HOME", "relative-config")
+	want := filepath.Join(defaultDreamHome(), ".config", "pfm", "repos.list")
+	if got := defaultDreamRepositoriesFile(); got != want {
+		t.Fatalf("relative XDG repos file = %q, want %q", got, want)
+	}
+}
+
+func TestDreamSignedApplyCommandCarriesDevelopmentOverlay(t *testing.T) {
+	options := dreamNightOptions{
+		RepoRoot:      "/repo",
+		AgentType:     "Explore",
+		ResourcesRoot: "/resources",
+	}
+	want := "dreamer-night: signed apply command: pfm dream apply --repo /repo --agent Explore --resources /resources /stage\n"
+	if got := renderDreamApplyCommand(options, "/stage"); got != want {
+		t.Fatalf("signed apply command = %q, want %q", got, want)
+	}
+	wantConfigured := "dreamer-night: signed apply command: pfm --config '/machine config/pfm.json' dream apply --repo /repo --agent Explore --resources /resources /stage\n"
+	if got := renderDreamApplyCommand(options, "/stage", "/machine config/pfm.json"); got != wantConfigured {
+		t.Fatalf("configured signed apply command = %q, want %q", got, wantConfigured)
+	}
+	options.ResourcesRoot = ""
+	if got := renderDreamApplyCommand(options, "/stage"); strings.Contains(got, "--resources") {
+		t.Fatalf("embedded-only signed apply command carries overlay: %q", got)
+	}
+}
+
 func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 	t.Run("apply", func(t *testing.T) {
 		runtime := rejectingDreamRuntime(t)
@@ -150,7 +206,7 @@ func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 				RepoRoot:      "/repo",
 				AgentType:     "Explore",
 				RegistryBase:  defaultDreamRegistry,
-				ResourcesRoot: defaultDreamResources,
+				ResourcesRoot: "/resources",
 				Stage:         "/repo/.professor/stm/dreamer/staging/explorer-one",
 			}
 			if !reflect.DeepEqual(got, want) {
@@ -159,7 +215,7 @@ func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 			return "applied\n", nil
 		}
 		assertDreamRun(t, []string{
-			"apply", "--repo", "/repo", "--agent", "Explore",
+			"apply", "--repo", "/repo", "--resources", "/resources", "--agent", "Explore",
 			"/repo/.professor/stm/dreamer/staging/explorer-one",
 		}, runtime, "applied\n")
 	})
@@ -171,27 +227,33 @@ func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 				RepoRoot:      "/repo",
 				AgentType:     "QA",
 				RegistryBase:  defaultDreamRegistry,
-				ResourcesRoot: defaultDreamResources,
+				ResourcesRoot: "/resources",
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("inspect options = %+v, want %+v", got, want)
 			}
 			return "REPO\t/repo\nORGAN\t/repo/.professor/stm\nREGISTRY\t/registry/-repo\n", nil
 		}
-		assertDreamRun(t, []string{"inspect", "--repo", "/repo", "--agent", "QA"}, runtime,
+		assertDreamRun(t, []string{"inspect", "--repo", "/repo", "--resources", "/resources", "--agent", "QA"}, runtime,
 			"REPO\t/repo\nORGAN\t/repo/.professor/stm\nREGISTRY\t/registry/-repo\n")
 	})
 
 	t.Run("morning", func(t *testing.T) {
 		runtime := rejectingDreamRuntime(t)
 		runtime.morning = func(_ context.Context, got dreamMorningOptions) (dreamMorningOutput, error) {
-			want := dreamMorningOptions{RegistryBase: defaultDreamRegistry, ResourcesRoot: defaultDreamResources}
+			want := dreamMorningOptions{
+				RegistryBase:     defaultDreamRegistry,
+				ResourcesRoot:    "/resources",
+				RepositoriesFile: "/config/repos.list",
+			}
 			if got != want {
 				t.Fatalf("morning options = %+v, want %+v", got, want)
 			}
 			return dreamMorningOutput{Stdout: "morning-result\n"}, nil
 		}
-		assertDreamRun(t, []string{"morning"}, runtime, "morning-result\n")
+		assertDreamRun(t, []string{
+			"morning", "--repos", "/config/repos.list", "--resources", "/resources",
+		}, runtime, "morning-result\n")
 	})
 
 	t.Run("morning aggregate failure", func(t *testing.T) {
@@ -417,8 +479,9 @@ func rejectingDreamRuntime(t *testing.T) dreamCommandRuntime {
 			unexpected("hook")
 			return nil, nil
 		},
-		now:     time.Now,
-		project: func() string { return "" },
+		now:            time.Now,
+		project:        func() string { return "" },
+		repositoryRoot: func() (string, error) { return "/work/current", nil },
 	}
 }
 

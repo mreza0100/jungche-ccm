@@ -58,8 +58,9 @@ func TestMorningContinuesAfterFailureAndDiscoversLanesWithoutDuplicateExplorer(t
 		return NightResult{}, nil
 	}
 	result, err := morningWith(context.Background(), MorningRequest{
-		RegistryBase:  root,
-		ResourcesRoot: resources,
+		RegistryBase:     root,
+		ResourcesRoot:    resources,
+		RepositoriesFile: filepath.Join(resources, "repos.list"),
 	}, morningDependencies{
 		night: fakeNight,
 		probeOrgan: func(string, string) error {
@@ -119,7 +120,11 @@ func TestMorningRepositoryListFailsClosed(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(resources, "repos.list"), []byte(test.body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			_, err := morningWith(context.Background(), MorningRequest{RegistryBase: root, ResourcesRoot: resources}, morningDependencies{
+			_, err := morningWith(context.Background(), MorningRequest{
+				RegistryBase:     root,
+				ResourcesRoot:    resources,
+				RepositoriesFile: filepath.Join(resources, "repos.list"),
+			}, morningDependencies{
 				night: func(context.Context, NightRequest, NightDependencies) (NightResult, error) {
 					t.Fatal("night ran after malformed repository list")
 					return NightResult{}, nil
@@ -131,6 +136,26 @@ func TestMorningRepositoryListFailsClosed(t *testing.T) {
 				t.Fatal("malformed repository list passed")
 			}
 		})
+	}
+}
+
+func TestMorningMissingRepositoryListNamesPathAndFormat(t *testing.T) {
+	root := t.TempDir()
+	repositoriesFile := filepath.Join(root, "config", "pfm", "repos.list")
+	_, err := morningWith(context.Background(), MorningRequest{
+		RegistryBase:     root,
+		RepositoriesFile: repositoriesFile,
+	}, morningDependencies{
+		night: func(context.Context, NightRequest, NightDependencies) (NightResult, error) {
+			t.Fatal("night ran without a repository list")
+			return NightResult{}, nil
+		},
+		probeOrgan:        func(string, string) error { return nil },
+		nightDependencies: validMorningDependencies(),
+	})
+	if err == nil || !strings.Contains(err.Error(), repositoriesFile) ||
+		!strings.Contains(err.Error(), "/absolute/repo [agent-type] # optional comment") {
+		t.Fatalf("missing repository list error = %v", err)
 	}
 }
 
@@ -162,7 +187,9 @@ func TestMorningRecordsMissingListedOrganAndContinuesToLaterRepository(t *testin
 
 	var calls []string
 	result, err := morningWith(context.Background(), MorningRequest{
-		RegistryBase: root, ResourcesRoot: resources,
+		RegistryBase:     root,
+		ResourcesRoot:    resources,
+		RepositoriesFile: filepath.Join(resources, "repos.list"),
 	}, morningDependencies{
 		night: func(_ context.Context, request NightRequest, _ NightDependencies) (NightResult, error) {
 			calls = append(calls, request.RepoRoot)
