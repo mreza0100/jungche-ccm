@@ -1,0 +1,102 @@
+// Package testjail holds the platform setup the suite needs before any test
+// runs. It is imported only by _test.go files, so it never reaches the binary.
+package testjail
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// Run points TMPDIR at a base that is both SHORT and CANONICAL, then runs the
+// package's tests. Every t.TempDir() in the package inherits it, which is why
+// this is one call per package instead of an edit at hundreds of call sites.
+//
+// Both properties are load-bearing, and macOS violates both by default:
+//
+//   - SHORT, because a unix socket path is capped at 104 bytes on macOS (108 on
+//     Linux) — and the cap is on the WHOLE path. The default macOS TMPDIR is
+//     already ~50 characters of /var/folders/<hash>/T, and t.TempDir() appends
+//     the test's own name, so a jail that binds a socket named after a long
+//     test fails with "bind: invalid argument" — an error that reads like a
+//     bug in the code under test rather than a path that ran out of room.
+//
+//   - CANONICAL, because /var is a symlink to /private/var on macOS, so every
+//     default temp path resolves to something other than itself. The dreamer
+//     refuses a non-canonical root on purpose: the repository root becomes the
+//     registry key, and one repository reachable by two spellings would own two
+//     sets of memory. A real repository under /Users satisfies that invariant;
+//     only the temp dir cannot.
+//
+// /tmp is the answer to both: it is short everywhere, and resolving it once
+// yields /private/tmp on macOS and /tmp on Linux — canonical on each.
+func Run(m *testing.M) int {
+	base, err := filepath.EvalSymlinks(os.TempDir())
+	if short, shortErr := filepath.EvalSymlinks("/tmp"); shortErr == nil {
+		base, err = short, nil
+	}
+	if err != nil {
+		// No canonical base to stand on. Run anyway rather than failing the
+		// whole package: on a platform where the default temp dir is already
+		// short and canonical, nothing here was needed in the first place.
+		return m.Run()
+	}
+	// No wrapper directory of our own: t.TempDir() already makes a unique path
+	// per test and removes it. An extra layer would only spend a dozen of the
+	// 104 bytes a socket path is allowed, which is exactly the budget the
+	// longest test names need.
+	os.Setenv("TMPDIR", base)
+	return m.Run()
+}
+
+// ShortRoot returns a unique temporary directory whose path is as short as this
+// platform allows, for jails that bind a unix socket underneath it.
+//
+// t.TempDir() embeds the TEST'S OWN NAME, and a descriptive Go test name is
+// easily sixty characters. Under macOS's 104-byte sun_path cap that leaves no
+// room for tmux's "tmux-<uid>/" convention plus a chat socket name, and the
+// bind fails with "invalid argument" — which reads as a bug in the code under
+// test rather than a path that ran out of room. Callers that only need a
+// scratch directory should keep using t.TempDir(); this is for the ones whose
+// children include a socket.
+func ShortRoot(t *testing.T) string {
+	t.Helper()
+	base := os.TempDir()
+	if short, err := filepath.EvalSymlinks("/tmp"); err == nil {
+		base = short
+	}
+	directory, err := os.MkdirTemp(base, "j")
+	if err != nil {
+		t.Fatalf("create short jail root: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(directory) })
+	return directory
+}
+
+// PTYCommand builds a command that runs argv on a REAL pty via script(1), for
+// behaviour that only happens on a terminal.
+//
+// The two script(1) implementations disagree about their own argv. util-linux
+// takes the command through -c and the typescript file LAST; BSD (macOS) takes
+// the typescript file FIRST and then the command and its arguments directly,
+// with no -c and no -f. Handing Linux's form to the BSD binary prints a usage
+// message and exits — and a test that then writes to its stdin fails with
+// "broken pipe", which reads as the code under test closing the pipe rather
+// than as the harness being wrong about the platform.
+func PTYCommand(argv ...string) *exec.Cmd {
+	scriptBinary, err := exec.LookPath("script")
+	if err != nil {
+		scriptBinary = "script"
+	}
+	if runtime.GOOS == "linux" {
+		quoted := make([]string, len(argv))
+		for index, argument := range argv {
+			quoted[index] = "'" + strings.ReplaceAll(argument, "'", `'\''`) + "'"
+		}
+		return exec.Command(scriptBinary, "-qefc", strings.Join(quoted, " "), "/dev/null")
+	}
+	return exec.Command(scriptBinary, append([]string{"-qe", "/dev/null"}, argv...)...)
+}

@@ -35,6 +35,15 @@ func Run(ctx context.Context, options Options) (Report, error) {
 	if err := options.Runner.Run(ctx, "systemctl", "--user", "status"); err == nil {
 		return Report{}, ErrReachableUserBus
 	}
+	if schedulerIsLaunchd {
+		running, probed := launchAgentRunning(ctx, options.Runner)
+		if running {
+			return Report{}, ErrLaunchAgentRunning
+		}
+		if !probed {
+			options.launchGateUnprobed = true
+		}
+	}
 
 	installer := &engine{
 		options:     options,
@@ -95,12 +104,31 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
-	unitChanged, err := installer.wireUnits(ctx)
-	if err != nil {
-		return err
-	}
-	if systemdAssetChanged || unitChanged {
-		installer.reloadUnits(ctx)
+	// The periodic name-sync has one job and two schedulers. Linux gets the
+	// systemd units; macOS gets a launchd agent that carries both triggers.
+	// Staging the other platform's files would leave an operator with a
+	// ~/.config/systemd/user full of units nothing will ever read.
+	if schedulerIsLaunchd {
+		// Said out loud on every run. The Linux gate refuses while a user bus is
+		// reachable; macOS has no dead-launchd jail, so the equivalent narrows
+		// to "not mid-execution". An operator reading the Linux posture and
+		// assuming it carries over is exactly the silence this prevents.
+		if installer.options.launchGateUnprobed {
+			installer.skip("launch-agent gate NOT probed (runner cannot read output); an apply during a name-sync run is not refused")
+		} else {
+			installer.ok("launch-agent gate: name-sync is not mid-execution (macOS has no dead-bus jail; this is the narrower equivalent)")
+		}
+		if err := installer.wireLaunchAgent(ctx); err != nil {
+			return err
+		}
+	} else {
+		unitChanged, err := installer.wireUnits(ctx)
+		if err != nil {
+			return err
+		}
+		if systemdAssetChanged || unitChanged {
+			installer.reloadUnits(ctx)
+		}
 	}
 	if err := installer.wireSettings(); err != nil {
 		return err
@@ -121,6 +149,11 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	}
 	if err := installer.retireBBInstall(); err != nil {
 		return err
+	}
+	if schedulerIsLaunchd {
+		if err := installer.unwireLaunchAgent(ctx); err != nil {
+			return err
+		}
 	}
 	managerAvailable := installer.userManagerAvailable(ctx)
 	if managerAvailable && installer.apply {
@@ -730,6 +763,9 @@ func (installer *engine) wireShell(uninstall bool) error {
 	} else if err != nil {
 		return err
 	}
+	if !uninstall {
+		installer.reportEarlyFleetCalls(string(raw))
+	}
 	updated := rewriteZshrc(string(raw), wanted, uninstall)
 	if string(raw) == updated {
 		installer.ok(zshrc + " source line")
@@ -747,6 +783,27 @@ func (installer *engine) wireShell(uninstall bool) error {
 		}
 		return atomicWrite(zshrc, []byte(updated), 0o600)
 	})
+}
+
+// reportEarlyFleetCalls names a fleet command CALLED above the source line — a
+// class that cannot announce itself, because `cc` and `cx` are names the system
+// already owns. It only reports: a line of the operator's own shell that is not
+// ours is never rewritten from here.
+func (installer *engine) reportEarlyFleetCalls(content string) {
+	early := earlyFleetCalls(content)
+	if len(early) == 0 {
+		installer.ok("nothing above the source line calls a fleet command")
+		return
+	}
+	installer.skip("a fleet command runs ABOVE the source line, where it does not exist yet:")
+	for _, line := range early {
+		installer.say("          %s", line)
+	}
+	installer.say("          There, `cc` is /usr/bin/cc — the C compiler — not this fleet.")
+	installer.say("          Move those lines BELOW the source line. For a terminal profile that")
+	installer.say("          opens a chat on launch, delete them instead and set CC_AUTO_OPEN=1 in")
+	installer.say("          the profile's env: the shim runs that hook itself, last, once the")
+	installer.say("          launchers are defined.")
 }
 
 func (installer *engine) migrateOldState() error {

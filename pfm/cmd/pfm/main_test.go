@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/store"
+	"hostops/pfm/internal/testjail"
 )
 
 func TestVersion(t *testing.T) {
@@ -616,7 +617,7 @@ func environmentValue(environment []string, key string) string {
 func jailTest(t *testing.T) string {
 	t.Helper()
 
-	root := t.TempDir()
+	root := testjail.ShortRoot(t)
 	for _, directory := range []string{
 		filepath.Join(root, "t"),
 		filepath.Join(root, "sid"),

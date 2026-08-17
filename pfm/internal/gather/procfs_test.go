@@ -10,8 +10,13 @@ import (
 	"unicode/utf8"
 )
 
-func TestRealProcFSSmokeOwnProcessOnly(t *testing.T) {
-	proc := RealProcFS{}
+// TestNativeProcFSSmokeOwnProcessOnly drives whichever reader this platform
+// actually uses — /proc on Linux, sysctl and lsof on macOS — against the one
+// process every platform lets a caller read in full: its own. Asking for the
+// native reader rather than naming RealProcFS is the point; it is what makes
+// this a contract both implementations must satisfy.
+func TestNativeProcFSSmokeOwnProcessOnly(t *testing.T) {
+	proc := NewProcFS("")
 	pid := os.Getpid()
 
 	cmdline, err := proc.Cmdline(pid)
@@ -34,12 +39,27 @@ func TestRealProcFSSmokeOwnProcessOnly(t *testing.T) {
 	if stat.ParentPID <= 0 || stat.StartTime == 0 {
 		t.Fatalf("Stat(own pid) = %+v, want parent and start time", stat)
 	}
-	birth, err := proc.Birth(pid)
+	birther, ok := proc.(ProcBirth)
+	if !ok {
+		t.Fatal("native ProcFS does not report a birth time")
+	}
+	birth, err := birther.Birth(pid)
 	if err != nil {
 		t.Fatalf("Birth(own pid) error = %v", err)
 	}
 	if birth <= 0 || birth > time.Now().Unix() {
 		t.Fatalf("Birth(own pid) = %d, want a past epoch second", birth)
+	}
+	memory, ok := proc.(ProcMemory)
+	if !ok {
+		t.Fatal("native ProcFS does not report resident memory")
+	}
+	resident, err := memory.RSSKB(pid)
+	if err != nil {
+		t.Fatalf("RSSKB(own pid) error = %v", err)
+	}
+	if resident <= 0 {
+		t.Fatalf("RSSKB(own pid) = %d, want a positive size", resident)
 	}
 }
 

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"hostops/pfm/internal/tmuxfmt"
 )
 
 // TmuxClient probes one named tmux socket.
@@ -147,10 +149,11 @@ func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, e
 		if line == "" {
 			continue
 		}
-		// tmux renders the control separator in a format string as the
-		// printable escape \037, keeping pane titles from introducing raw
-		// line-protocol control bytes.
-		fields := strings.SplitN(line, `\037`, 10)
+		// The format joins fields with a raw 0x1F, but which spelling comes
+		// BACK is tmux-version dependent — older builds render it as the
+		// printable escape \037, tmux 3.6 emits the byte. tmuxfmt accepts
+		// both; assuming one silently reads a whole record as a single field.
+		fields := tmuxfmt.SplitN(line, 10)
 		if len(fields) != 10 {
 			return nil, fmt.Errorf(
 				"tmux %s returned %d pane fields in %q",
@@ -401,7 +404,20 @@ func probeTmux(
 
 			// A socket with no server behind it is a chat that ended, not a
 			// fault — it is swept below and stays silent. Everything else is a
-			// real anomaly and still gets said out loud.
+			// real anomaly: it gets said out loud, and the socket is LEFT ALONE.
+			//
+			// Only ErrServerGone means "there is no server here". Every other
+			// error means the probe could not read a server that may well be
+			// healthy — a format this tmux spells differently, a timeout, a
+			// truncated reply — and deleting the socket then does not clean up
+			// after a dead chat, it DETACHES a live one: the server keeps
+			// running with its transcript, and the path every client and every
+			// `pfm` lookup reaches it by is gone. It survives only as a
+			// resumable row, which reads like a chat that merely ended.
+			//
+			// This is the root law at its sharpest. A probe that could not run
+			// never returns "nothing found" — and it certainly never deletes
+			// the thing it failed to read.
 			if !errors.Is(err, ErrServerGone) {
 				mutex.Lock()
 				result.ProbeWarnings = append(
@@ -409,6 +425,7 @@ func probeTmux(
 					fmt.Sprintf("%s: %v", socket.name, err),
 				)
 				mutex.Unlock()
+				return nil
 			}
 			info, statErr := os.Stat(socket.path)
 			if sweep && statErr == nil && now.Sub(info.ModTime()) > time.Hour {

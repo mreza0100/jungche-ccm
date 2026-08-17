@@ -230,6 +230,16 @@ func TestDeadSocketIsSweptWithoutAWarning(t *testing.T) {
 	if len(loud.ProbeWarnings) != 1 {
 		t.Fatalf("a real probe failure went silent: %#v", loud)
 	}
+	// ...and an anomaly is NEVER swept. An unreadable probe says nothing about
+	// whether a server is there, so deleting the socket does not clean up after
+	// a dead chat — it detaches a live one from every client and lookup that
+	// reaches it by path, leaving a healthy chat looking merely resumable.
+	if len(loud.CorpseSwept) != 0 {
+		t.Fatalf("a socket the probe could not READ was swept: %#v", loud.CorpseSwept)
+	}
+	if _, err := os.Stat(filepath.Join(other, "cc-7-8-9")); err != nil {
+		t.Fatalf("an unreadable probe deleted the socket: %v", err)
+	}
 }
 
 // TestServerGoneReadsTmuxOwnWords runs the real tmux against a socket with

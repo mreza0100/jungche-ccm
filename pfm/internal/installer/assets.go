@@ -26,6 +26,13 @@ func assetFiles() ([]assetFile, error) {
 			return nil
 		}
 		relative := strings.TrimPrefix(name, "assets/")
+		if !schedulerAsset(relative) {
+			// The other platform's scheduler files are embedded (one binary
+			// serves both) but never staged: an operator on macOS should not
+			// find a ~/.config/systemd/user of units nothing will read, and an
+			// operator on Linux should not find a launch agent.
+			return nil
+		}
 		mode := fs.FileMode(0o644)
 		if path.Ext(relative) == ".sh" {
 			mode = 0o755
@@ -40,6 +47,21 @@ func assetFiles() ([]assetFile, error) {
 		return files[left].path < files[right].path
 	})
 	return files, nil
+}
+
+// schedulerAsset reports whether an embedded asset belongs on this platform.
+// The launch agent is not staged even on macOS: launchd refuses a symlinked
+// plist, so wireLaunchAgent writes a real file into ~/Library/LaunchAgents
+// instead of linking one out of the managed root.
+func schedulerAsset(relative string) bool {
+	switch {
+	case strings.HasPrefix(relative, "systemd/"):
+		return !schedulerIsLaunchd
+	case strings.HasPrefix(relative, "launchd/"):
+		return false
+	default:
+		return true
+	}
 }
 
 func readAsset(name string) ([]byte, error) {

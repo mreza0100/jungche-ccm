@@ -127,7 +127,7 @@ func New(dependencies Dependencies) (*Runner, error) {
 	}
 	proc := dependencies.Proc
 	if proc == nil {
-		proc = gather.RealProcFS{Root: resolved.ProcRoot}
+		proc = gather.NewProcFS(resolved.ProcRoot)
 	}
 	now := dependencies.Now
 	if now == nil {

@@ -150,7 +150,12 @@ func TestChatBranchCreatesADetachedSeatWithoutTouchingTheCaller(t *testing.T) {
 	if strings.TrimSpace(clients) != "" {
 		t.Fatalf("branch was attached at birth: %q", clients)
 	}
-	arguments, err := os.ReadFile(argsPath)
+	// The seat is spawned DETACHED, so its process races this assertion: tmux
+	// returns as soon as the server exists, before the pane's shell has exec'd
+	// the engine. A single read passes on a fast host and fails on a slow exec,
+	// which is a flake, not a platform difference — wait for the write instead
+	// of assuming it already happened.
+	arguments, err := waitForFile(t, argsPath, 10*time.Second)
 	if err != nil {
 		t.Fatalf("read claude argv: %v", err)
 	}
@@ -184,4 +189,26 @@ func branchTmuxOutput(t *testing.T, socketPath string, arguments ...string) stri
 		t.Fatalf("tmux %s: %v", strings.Join(arguments, " "), err)
 	}
 	return strings.TrimSpace(string(output))
+}
+
+// waitForFile polls until path has content or the deadline passes, returning
+// the last error so a timeout reports why the file was unreadable.
+func waitForFile(t *testing.T, path string, within time.Duration) ([]byte, error) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	var err error
+	for {
+		var content []byte
+		content, err = os.ReadFile(path)
+		if err == nil && len(content) > 0 {
+			return content, nil
+		}
+		if time.Now().After(deadline) {
+			if err == nil {
+				err = errors.New("file stayed empty")
+			}
+			return nil, err
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

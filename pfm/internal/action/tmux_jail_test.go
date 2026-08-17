@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -203,9 +204,12 @@ func TestJailedSoloCompetingAttemptsAndSelfSwitch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(claudePath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(sleepPath, claudePath); err != nil {
-		t.Fatal(err)
-	}
+	// A COPY, not a symlink. tmux reports pane_current_command from the
+	// process's comm, and macOS sets that from the real executable behind a
+	// symlink — so a link named "claude" pointing at sleep runs a process named
+	// "sleep", and the engine window becomes unrecognizable. Linux happens to
+	// report the link name, which is why this passed there.
+	fakeEngine(t, sleepPath, claudePath)
 	if output, err := jail.command(
 		"-L",
 		keepSocket,
@@ -245,5 +249,29 @@ func TestJailedSoloCompetingAttemptsAndSelfSwitch(t *testing.T) {
 	}
 	if strings.TrimSpace(string(output)) != "1" {
 		t.Fatalf("selfswitch active window=%q, want engine window 1", output)
+	}
+}
+
+// fakeEngine installs a runnable executable at target that behaves like the
+// source binary but carries its own name, so tmux reports that name as the
+// pane's current command on every platform.
+func fakeEngine(t *testing.T, source, target string) {
+	t.Helper()
+	content, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, content, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	// Copying a system binary on arm64 macOS invalidates its signature and the
+	// kernel refuses to exec it. An ad-hoc signature makes the copy runnable
+	// again; without this the window dies at birth and the failure reads as a
+	// selfswitch bug.
+	if output, err := exec.Command("codesign", "--force", "--sign", "-", target).CombinedOutput(); err != nil {
+		t.Skipf("cannot ad-hoc sign the fake engine: %v: %s", err, output)
 	}
 }

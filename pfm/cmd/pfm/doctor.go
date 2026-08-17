@@ -128,9 +128,21 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		unhideWarnings,
 	)
 
+	// The process table is probed by READING it, not by stat'ing /proc. macOS has
+	// no /proc and never will — pfm reads its process table through sysctl there
+	// — so a directory check reports a healthy machine as broken, and on Linux it
+	// proves less than the read does: a /proc that exists but denies the read is
+	// the failure that actually matters.
+	if pids, procErr := gather.NewProcFS(resolved.ProcRoot).PIDs(); procErr != nil {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: warning process_table unreadable: %v\n", procErr)
+	} else {
+		fmt.Fprintf(stdout, "doctor: process_table readable pids=%d\n", len(pids))
+	}
+
 	rootWarnings := 0
 	roots := append([]string(nil), resolved.ClaudeRoots...)
-	roots = append(roots, resolved.CodexRoot, resolved.ProcRoot)
+	roots = append(roots, resolved.CodexRoot)
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {

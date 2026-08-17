@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/tmuxfmt"
 )
 
 // CommandTmux invokes tmux only through the configured jailed socket directory.
@@ -47,7 +48,7 @@ func (tmux CommandTmux) ListPanes(
 		if line == "" {
 			continue
 		}
-		fields := strings.SplitN(line, `\037`, 6)
+		fields := tmuxfmt.SplitN(line, 6)
 		if len(fields) != 6 {
 			return nil, fmt.Errorf(
 				"tmux socket %q returned %d action fields",

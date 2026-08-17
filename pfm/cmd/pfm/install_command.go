@@ -41,6 +41,10 @@ func runInstall(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "pfm install: live user systemd bus is reachable; run in a proven dead-bus jail")
 		return 97
 	}
+	if errors.Is(err, installer.ErrLaunchAgentRunning) {
+		fmt.Fprintln(stderr, "pfm install: the pfm name-sync launch agent is running; wait for it to finish or `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` first")
+		return 97
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm install: %v\n", err)
 		return 1

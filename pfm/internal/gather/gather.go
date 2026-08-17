@@ -55,7 +55,7 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 	}
 	proc := dependencies.ProcFS
 	if proc == nil {
-		proc = RealProcFS{Root: resolved.ProcRoot}
+		proc = NewProcFS(resolved.ProcRoot)
 	}
 	now := dependencies.Now
 	if now == nil {

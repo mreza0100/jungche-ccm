@@ -274,7 +274,11 @@ func TestCommandThenSpawnerFallsBackToNohup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("nohup floor was not used: %v", err)
 	}
-	deadline := time.Now().Add(time.Second)
+	// The stub is a SPAWNED process, so this waits on the OS scheduler rather
+	// than on anything the engine does. One second is fine for a lone run and
+	// too tight under a full parallel suite; a generous ceiling costs nothing
+	// when the stub does run, and the assertion still fails if it never does.
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		raw, readErr := os.ReadFile(dump)
 		if readErr == nil {

@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
 )
@@ -133,18 +131,17 @@ func inspectJailedGroup(
 	root string,
 	jail ProcessGroupJail,
 ) (bool, error) {
-	entries, err := os.ReadDir(root)
+	pids, err := listProcessPIDs(root)
 	if err != nil {
 		return false, fmt.Errorf("enumerate proc for pane process group: %w", err)
 	}
 	foundRoot := false
 	live := false
-	for _, entry := range entries {
+	for _, pid := range pids {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
+		if pid <= 0 {
 			continue
 		}
 		record, state, err := readProcessIdentity(root, pid, false)

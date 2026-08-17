@@ -25,6 +25,13 @@ func (processes RealProcesses) Processes(
 	if root == "" {
 		root = "/proc"
 	}
+	// A root that exists is always honoured — that is how the jail feeds this a
+	// fixture tree. When there is none, the kernel's own table answers instead:
+	// macOS has no /proc, and a stray sweep that could not enumerate processes
+	// would conclude there are no strays.
+	if info, statErr := os.Stat(root); statErr != nil || !info.IsDir() {
+		return nativeProcesses(ctx)
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
