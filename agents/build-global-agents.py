@@ -57,6 +57,30 @@ def emit(md_path: pathlib.Path) -> pathlib.Path:
     return out
 
 
+INSTALL_MD = pathlib.Path.home() / ".claude/agents"    # Claude reads ~/.claude/agents (all projects)
+INSTALL_TOML = pathlib.Path.home() / ".codex/agents"   # Codex reads ~/.codex/agents
+
+
+def install(src: pathlib.Path, dest_dir: pathlib.Path) -> pathlib.Path:
+    """Install as a real file.
+
+    A symlink also loads — verified on 2.1.224 by A/B: a fresh session in a
+    neutral directory reported the agent present under both shapes. A copy is
+    used anyway so the registry holds no dependency on this directory's path,
+    and re-running this script is the single way to refresh it.
+
+    Registries bind at session start, so an already-running session will not
+    see a newly installed agent until it restarts. That, not the file shape,
+    is what `Agent type not found` means here.
+    """
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    if dest.is_symlink():
+        dest.unlink()
+    dest.write_text(src.read_text())
+    return dest
+
+
 def main() -> None:
     written = [emit(md) for md in sorted(AGENTS.glob("*.md"))]
     if not written:
@@ -69,6 +93,13 @@ def main() -> None:
         with out.open("rb") as fh:
             tomllib.load(fh)
         print(f"{out.name}: {out.stat().st_size} B, parses clean")
+
+    for md in sorted(AGENTS.glob("*.md")):
+        d = install(md, INSTALL_MD)
+        print(f"installed {d} ({'regular file' if d.is_file() and not d.is_symlink() else 'NOT A REGULAR FILE'})")
+    for toml_src in sorted(AGENTS.glob("*.toml")):
+        d = install(toml_src, INSTALL_TOML)
+        print(f"installed {d} ({'regular file' if d.is_file() and not d.is_symlink() else 'NOT A REGULAR FILE'})")
 
 
 if __name__ == "__main__":

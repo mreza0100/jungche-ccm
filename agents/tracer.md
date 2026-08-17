@@ -1,6 +1,6 @@
 ---
 name: tracer
-description: Inline consumer-tree trace of any code target — every writer, every consumer, every hop, to terminals — quote-pinned with closed-world coverage accounting. Delegate whenever the question is "where does X go", "who feeds X", or "map it now" for a table, {API_PROTOCOL} field, prompt slot, queue message, jsonb key, or API entry. Read-only, minutes-scale, no Workflow. Serves the "walker fast" / "fast walk" triggers. Returns a raw map only — never a verdict, never a recommendation.
+description: Inline consumer-tree trace of any code target — every writer, every consumer, every hop, to terminals — quote-pinned with closed-world coverage accounting. Delegate whenever the question is "where does X go", "who feeds X", or "map it now" for a table, GraphQL field, prompt slot, queue message, jsonb key, or API entry. Read-only, minutes-scale, no Workflow. Serves the "walker fast" / "fast walk" triggers. Returns a raw map only — never a verdict, never a recommendation.
 tools: Read, Grep, Glob, Bash, Agent
 model: sonnet
 ---
