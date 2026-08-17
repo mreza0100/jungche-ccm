@@ -16,17 +16,15 @@ description: "AI pipeline output validation — three-angle faithfulness audit o
 
 ## The Protocol
 
+The question: is the stored output faithful to the source input, given the code and prompts? Three angles, each with one authoritative source:
+
+- **Source input** (what went IN) — the raw material the pipeline processed (a transcript, document, event stream, …), read from the seed export or the store's source table.
+- **AI-generated data** (what came OUT) — read from the **store** (the pipeline's output tables/collections). Never from a seed JSON: the seed is a frozen export that does not reflect the current chains, so auditing it tests history, not the code.
+- **Pipeline code + prompts/knowledge** (the contract) — the chain code (deterministic guards) plus its prompt under the knowledge/prompt registry.
+
 Spawn a clean-context 360 sweep — a `general-purpose` agent reading `.claude/commands/p/360.md`, domain `test`, subject = the audited channel — in parallel with the audit; fold its angle list into the per-unit checks (the same blind-spot backstop `audit/code-hygiene.md` and `audit/security.md` carry).
 
-Three angles, each with one authoritative source:
-
-1. **Source input** (what went IN) — the raw material the pipeline processed (a transcript, document, event stream, …), read from the seed export or the store's source table.
-2. **AI-generated data** (what came OUT) — read from the **store** (the pipeline's output tables/collections). Never from a seed JSON: the seed is a frozen export that does not reflect the current chains, so auditing it tests history, not the code.
-3. **Pipeline code + prompts/knowledge** (the contract) — the chain code (deterministic guards) plus its prompt under the knowledge/prompt registry.
-
-The goal: is the stored output faithful to the source input, given the code and prompts?
-
-**Execution:** discover the pipeline's output channels → ask the user which to audit → run the `audit-ai-output-sessions` workflow: it spawns one agent per unit of every subject (in parallel), each walking ITS unit data-first, code-last on the chosen channel(s), then a synthesizer judges the whole. One unit per agent bounds each agent's context to a single source + its output, so a long multi-subject sweep stays faithful instead of degrading as one agent walks every unit. The orchestrator never inline-audits — accumulated context biases the verdict and an inline pass has missed real failures before.
+The orchestrator never inline-audits: accumulated context biases the verdict, and an inline pass has missed real failures before.
 
 ---
 
@@ -35,16 +33,18 @@ The goal: is the stored output faithful to the source input, given the code and 
 Read:
 
 - The AI project's `CLAUDE.md` — pipeline conventions, chain structure
-- The chain config (tiers, timeouts, token limits)
+- The chain registry/config — per chain, its tier, temperature, timeout, output-token cap, response schema, and prompt keys
 - The specific chain and prompt files identified in Step 1
 
 ---
 
 ## Step 1 — Identify the pipeline's output channels
 
-Enumerate the channels — never trust a frozen list, chains evolve. Discover them from the store-write layer (the modules that hold the `INSERT`/write statements naming the exact output table/collection to query), cross-checked against the chain registry. Group them into the categories the user recognises.
+Enumerate the channels — never trust a frozen list, chains evolve. Discover them from the store-write layer (the modules that hold the `INSERT`/write statements naming the exact output table/collection to query), cross-checked against the chain registry.
 
-Build a channel→file map (user-facing name → chain file → prompt file) as a starting reference, and verify each against the code before auditing — the mapping is discovered per install, never hardcoded here.
+A chain's prompt text resolves in two hops: the chain config gives its prompt keys, and the knowledge/prompt registry resolves each key to its file. Chains never read prompt files directly, so the registry is the only true chain→prompt map — the loader modules are stubs, not the text.
+
+Build a channel→file map (user-facing name → chain file → prompt file) as a starting reference, and verify each against the code before auditing — the mapping is discovered per install, never hardcoded here. Group the discovered channels by the domain module they come from, and present those groups.
 
 ## Step 2 — Ask which channels to audit
 
@@ -55,7 +55,7 @@ Present the discovered categories and ask the user which to audit (`AskUserQuest
 Run the saved `audit-ai-output-sessions` workflow (`.claude/workflows/audit-ai-output-sessions.js`), passing the chosen channel(s) and — for a re-audit — any already-audited unit ids to `exclude`. Its flow:
 
 1. **Discover** — one agent enumerates from the store every unit of every subject that carries output for the chosen channel(s) (join the source table to the channel's output table) — the unit set is discovered, never hardcoded.
-2. **Audit** — one `general-purpose` frontier-tier agent PER UNIT in parallel (`args.frontierModel`, durable default `opus` — faithfulness verdicts on real domain content never run below the frontier tier), each walking ITS unit data-first, code-last per the brief below.
+2. **Audit** — one `general-purpose` frontier-tier agent PER UNIT in parallel (`args.frontierModel`, durable default `opus` — faithfulness verdicts on real domain content never run below the frontier tier), each walking ITS unit data-first, code-last per the brief below. One unit per agent bounds each agent's context to a single source plus its output, so a long multi-subject sweep stays faithful instead of degrading as one agent walks every unit.
 3. **Synthesize** — a final frontier-tier agent (same `args.frontierModel`, default `opus`) quantifies the failure rates, WRITES the full report to `.professor/AUDIT/ai-output/{date}-{channel}.md`, RECONCILES the open-issue registry (§ Registry reconcile below), and returns only a pointer + the headline numbers. The chat that invoked the audit then reads that file. This is the standing output contract for every `/audit:*` command — detailed results go to `.professor/AUDIT/{audit-type}/{date}-{component}.md`, kept out of the conversation's context, never dumped inline.
 
 The workflow file is the declared copy of this flow — change both together. The orchestrator never inline-audits.
@@ -89,19 +89,17 @@ Read this LAST — only to localize a discrepancy the source-vs-output walk alre
 
 ### Cross-validation checks (per channel)
 
-During the paired walk, flag any of these from the source-vs-output comparison; the scope and instruction-compliance rows are confirmed against the prompt in the root-cause pass:
+During the paired walk, flag any of these from the source-vs-output comparison; the scope and instruction-compliance checks are confirmed against the prompt in the root-cause pass. Each check carries its severity when violated, then the failure shapes that betray it.
 
-| Check                      | What to look for                                                                                                                        | Severity if violated |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Completeness**           | Did the model label/process ALL required units? (per-unit chains: count match; selective chains: no obvious skips)                       | HIGH                 |
-| **Faithfulness**           | Do excerpts/quotes/references map to real source content? No hallucinated text?                                                          | CRITICAL             |
-| **Actor accuracy**         | Are speakers/actors correctly attributed? No cross-attribution? Any outer-actor rule respected?                                          | CRITICAL             |
-| **Instruction compliance** | Does the output follow the prompt's format, field constraints, severity scales, enums?                                                   | HIGH                 |
-| **Grounding**              | Are labels/scores justified by what was actually in the source? Or is the model inventing significance?                                  | CRITICAL             |
-| **Scope respect**          | Does the output stay within the prompt's boundaries? No content the prompt forbids ({FORBIDDEN_DOMAIN_OUTPUTS})?                         | CRITICAL             |
-| **Locator accuracy**       | Do timestamps/indices/offsets correspond to the correct units? (for chains that emit them)                                              | MEDIUM               |
-| **Consistency**            | For multi-item outputs: are severity/label distributions plausible? No all-neutral on a clearly non-neutral unit?                        | HIGH                 |
-| **Token efficiency**       | Is the output bloated with echo-back data that should be derived post-hoc? Unnecessary repetition?                                       | MEDIUM               |
+- **Faithfulness** (CRITICAL): do excerpts/quotes/references map to real source content? Watch for excerpts matching no unit in the source, and reasoning that sounds authoritative but doesn't match the unit it cites.
+- **Actor accuracy** (CRITICAL): are speakers/actors correctly attributed, any outer-actor rule respected? Watch for cross-attribution wherever quoted content appears, and an actor carrying a label its role rarely earns.
+- **Grounding** (CRITICAL): are labels/scores justified by what was actually in the source, or is the model inventing significance?
+- **Scope respect** (CRITICAL): does the output stay inside the prompt's boundaries — nothing the prompt forbids ({FORBIDDEN_DOMAIN_OUTPUTS})?
+- **Completeness** (HIGH): did the model label/process ALL required units (per-unit chains: count match; selective chains: no obvious skips)? Watch for labels petering out at the end of long units — model fatigue or truncation.
+- **Instruction compliance** (HIGH): does the output follow the prompt's format, field constraints, severity scales, enums?
+- **Consistency** (HIGH): for multi-item outputs, are severity/label distributions plausible? Watch for all-neutral labeling on a clearly non-neutral unit, and severity inflation — everything "high" without justification.
+- **Locator accuracy** (MEDIUM): do timestamps/indices/offsets correspond to the correct units, for chains that emit them?
+- **Token efficiency** (MEDIUM): is the output bloated with echo-back data that could be derived post-hoc?
 
 ### How to walk the unit
 
@@ -118,51 +116,18 @@ During the paired walk, flag any of these from the source-vs-output comparison; 
 
 **Phase 4 — report** your unit's findings (structured for the synthesizer).
 
-### Red flags to watch for
-
-- Wrong-actor attribution when quoted content is present
-- Excerpts that don't match any unit in the source (hallucinated)
-- All-neutral labeling on a unit with obvious signal
-- Severity inflation (everything is "high" without justification)
-- Missing labels at the end of long units (model fatigue/truncation)
-- Fabricated reasoning that sounds authoritative but doesn't match the source
-
 ---
 
 ### The synthesizer's report — written to the AUDIT file, led by the numbers
 
-The synthesizer writes this to `.professor/AUDIT/ai-output/{date}-{channel}.md`. It LEADS with the failure rate — an overall %, then a per-category breakdown where each failure type carries its own denominator (so a mislabel category reads as failures / total-in-that-category, and a 1-of-1 reads as 100% with the n flagged) — then the detail:
+Written to `.professor/AUDIT/ai-output/{date}-{channel}.md`, in this order:
 
-```markdown
-# AI Output Audit — {channel} — {date}
-
-**Output source:** store (rows created_at {range}) · **Units audited:** {count}
-
-## Failure rate
-
-- **Overall: {N} of {total} outputs wrong = {%}.**
-
-| Category      | Failures | Population | % within category | % of all failures |
-| ------------- | -------- | ---------- | ----------------- | ----------------- |
-| {label A → B} | 1        | 15         | 6.7%              | …                 |
-| {label C → D} | 1        | 1 (n=1)    | 100%              | …                 |
-
-## Verdict
-
-{**FAITHFUL** / **MOSTLY FAITHFUL (N issues)** / **UNFAITHFUL — FIX REQUIRED**}
-
-## Findings — CRITICAL / HIGH / MEDIUM·LOW
-
-{per finding: subject · unit · index · field · Got vs Expected · source evidence}
-
-## Completeness
-
-{missed codable content, per subject}
-
-## Recurring pattern & recommendations
-
-{the one root confusion that explains the most failures — where a single example would help most; prompt fixes → /km, code/guard fixes → /jc}
-```
+- **The failure rate first** — overall wrong / total as a %, then a per-category breakdown where each failure type carries its own denominator (so a mislabel category reads as failures / total-in-that-category) and a 1-of-1 reads as 100% with its n flagged.
+- Output source — the store, and the rows' created-at range — and the unit count.
+- Verdict: FAITHFUL / MOSTLY FAITHFUL (N issues) / UNFAITHFUL — FIX REQUIRED.
+- Findings by severity (CRITICAL / HIGH / MEDIUM·LOW), each carrying subject · unit · index · field · Got vs Expected · source evidence.
+- Completeness — missed codable content, per subject.
+- The one root confusion that explains the most failures and where a single example would help most; prompt fixes route to `/km`, code/guard fixes to `/jc`.
 
 ---
 

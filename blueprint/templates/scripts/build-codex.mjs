@@ -5,6 +5,8 @@
 //   CLAUDE.md + <project>/CLAUDE.md      → AGENTS.md sibling of each
 //   .claude/agents/*.md                  → .codex/agents/{name}.toml
 //   <project>/.claude/agents/*.md        → .codex/agents/{name}-{proj}.toml
+//                                          (a roster project's own agent dir; the
+//                                          CLAUDE.md there is conventions, not a role)
 //   .claude/commands/**/*.md             → .codex/skills/{flat-name}/SKILL.md
 //   .claude/commands/**/SKILL.md         → .codex/skills/{flat-name} (dir symlink)
 //   .claude/skills/*/                    → .codex/skills/{name} (dir symlink)
@@ -13,7 +15,12 @@
 //                                          (config.toml stays hand-written; only the fence is managed)
 //
 // Modes:  generate (default) — write outputs, delete orphans, idempotent
-//         check              — report MISSING/STALE/ORPHAN/CONFLICT, write nothing, exit 1 on any
+//         check              — report MISSING/STALE/ORPHAN/CONFLICT + doctor, write nothing, exit 1 on any
+//         doctor             — check, plus every emitted .toml must PARSE (repo .codex AND
+//                              $HOME/.codex, the global tree every seat in every repo reads).
+//                              Currency is not validity: a description carrying a raw `"`
+//                              compiles to a file that is byte-current and fatal at Codex
+//                              startup. No TOML parser reachable → SKIPPED and FAIL, never a pass.
 //
 // Discovery is dynamic — add/remove/rename any source and the next run follows it;
 // nothing here lists files by name. Transforms are pure string operations:
@@ -41,6 +48,7 @@ import {
   existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync,
   rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -49,8 +57,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // from the live Codex store while preserving the normal installer-facing default.
 const HOME = process.env.CODEX_BUILD_HOME ?? process.env.HOME;
 const MODE = process.argv[2] ?? 'generate';
-if (!['generate', 'check'].includes(MODE)) {
-  console.error(`usage: build-codex.mjs [generate|check]`);
+if (!['generate', 'check', 'doctor'].includes(MODE)) {
+  console.error(`usage: build-codex.mjs [generate|check|doctor]`);
   process.exit(2);
 }
 
@@ -226,7 +234,7 @@ for (const p of projects) {
   for (const f of readdirSync(d).filter((n) => n.endsWith('.md')).sort()) {
     const name = `${f.replace(/\.md$/, '')}-${suffix}`;
     if (agentSources.some((a) => a.name === name)) {
-      notes.push(`skip ${p}/.claude/agents/${f} — root agent ${name} owns the registration`);
+      notes.push(`skip ${p}/.claude/agents/${f} — a prior source already owns ${name}`);
       continue;
     }
     agentSources.push({ src: join(d, f), name });
@@ -317,7 +325,7 @@ let wrote = 0, unchanged = 0, deleted = 0;
 for (const [dst, out] of [...outputs.entries()].sort()) {
   if (out.link) {
     if (isLink(dst) && readlinkSync(dst) === out.link) { unchanged++; continue; }
-    if (MODE === 'check') { problems.push(`${isLink(dst) || existsSync(dst) ? 'STALE ' : 'MISSING'} ${dst} (want symlink → ${out.link})`); continue; }
+    if (MODE !== 'generate') { problems.push(`${isLink(dst) || existsSync(dst) ? 'STALE ' : 'MISSING'} ${dst} (want symlink → ${out.link})`); continue; }
     if (!claimable(dst)) { problems.push(`CONFLICT ${dst} — exists without a generated marker; not touching it`); continue; }
     rmSync(dst, { recursive: true, force: true });
     mkdirSync(dirname(dst), { recursive: true });
@@ -326,7 +334,7 @@ for (const [dst, out] of [...outputs.entries()].sort()) {
   } else {
     const current = existsSync(dst) && !isLink(dst) && lstatSync(dst).isFile() ? read(dst) : null;
     if (current === out.content) { unchanged++; continue; }
-    if (MODE === 'check') { problems.push(`${current === null ? 'MISSING' : 'STALE '} ${dst}`); continue; }
+    if (MODE !== 'generate') { problems.push(`${current === null ? 'MISSING' : 'STALE '} ${dst}`); continue; }
     if (!claimable(dst)) { problems.push(`CONFLICT ${dst} — exists without a generated marker; not touching it`); continue; }
     if (isLink(dst)) rmSync(dst);
     mkdirSync(dirname(dst), { recursive: true });
@@ -338,7 +346,7 @@ for (const [dst, out] of [...outputs.entries()].sort()) {
 // Regression pin: `description = ">"` / `"|"` is the literal signature of the
 // block-scalar frontmatter bug (the fold/literal indicator captured as the whole
 // value instead of its continuation lines) — check mode fails loudly if it recurs.
-if (MODE === 'check') {
+if (MODE !== 'generate') {
   for (const [dst, out] of outputs) {
     if (out.content && /^description = "[>|]"$/m.test(out.content)) {
       problems.push(`BUG-SIGNATURE ${dst} — description compiled to the bare block-scalar indicator; frontmatter parser regressed`);
@@ -391,7 +399,7 @@ const tomlStr = (s) => `"${tomlEscape(String(s))}"`;
     if (blocks.length) desired = `${hand.replace(/\n*$/, '\n')}\n${MCP_BEGIN}\n${blocks.join('\n\n')}\n${MCP_END}\n`;
   }
   if (desired !== current) {
-    if (MODE === 'check') problems.push(`STALE  ${cfgPath} (mcp_servers fence out of date with .mcp.json)`);
+    if (MODE !== 'generate') problems.push(`STALE  ${cfgPath} (mcp_servers fence out of date with .mcp.json)`);
     else { writeFileSync(cfgPath, desired); wrote++; }
   } else { unchanged++; }
 }
@@ -417,21 +425,77 @@ for (const d of managedDirs) {
     if (wanted.has(p)) continue;
     const ours = isLink(p) ? readlinkSync(p).includes('.claude/') : claimable(p) && existsSync(p);
     if (!ours) { notes.push(`unmanaged ${p} — no generated marker, leaving it alone`); continue; }
-    if (MODE === 'check') { problems.push(`ORPHAN ${p} — no source compiles here anymore`); continue; }
+    if (MODE !== 'generate') { problems.push(`ORPHAN ${p} — no source compiles here anymore`); continue; }
     rmSync(p, { recursive: true, force: true });
     deleted++;
   }
 }
 
+// ---------- doctor: the artifacts must PARSE, not merely be current ----------
+// `check` proves every output is byte-identical to what its source compiles to.
+// It cannot see whether those bytes form a valid TOML document: a description
+// carrying a raw `"` produces a file that is current, correct-looking, and fatal
+// at Codex startup. It also never looked at $HOME/.codex/agents — the global
+// tree EVERY seat reads, in every repo — so a break there passed CHECK PASS in
+// all of them at once.
+//
+// Coverage is declared, never assumed. With no TOML parser reachable this
+// reports SKIPPED and fails: an instrument that cannot look must never report
+// clean, because "nothing found" and "could not look" are different claims.
+function runDoctor(problems) {
+  const tomls = [];
+  const collect = (dir) => {
+    if (!isDir(dir)) return;
+    for (const e of readdirSync(dir).sort()) {
+      const p = join(dir, e);
+      if (isDir(p)) collect(p);
+      else if (e.endsWith('.toml')) tomls.push(p);
+    }
+  };
+  collect(join(ROOT, '.codex'));
+  if (HOME) collect(join(HOME, '.codex'));
+
+  if (!tomls.length) {
+    problems.push('DOCTOR SKIPPED — no .toml artifacts found to validate (expected at least .codex/config.toml)');
+    return 0;
+  }
+
+  const script = 'import sys,tomllib\n' +
+    'for f in sys.argv[1:]:\n' +
+    '    try:\n' +
+    '        tomllib.load(open(f,"rb"))\n' +
+    '    except Exception as exc:\n' +
+    '        print(f"{f}\\t{exc}")\n';
+  let out;
+  try {
+    out = execFileSync('python3', ['-c', script, ...tomls], { encoding: 'utf8' });
+  } catch (err) {
+    problems.push(
+      `DOCTOR SKIPPED — cannot validate ${tomls.length} TOML artifact(s): no working python3/tomllib ` +
+      `(${String(err.message).split('\n')[0]}). Install python3.11+ or validate by hand; this is NOT a pass.`,
+    );
+    return 0;
+  }
+  for (const line of out.split('\n').filter(Boolean)) {
+    const [file, ...rest] = line.split('\t');
+    problems.push(`UNPARSEABLE ${file} — ${rest.join(' ')}`);
+  }
+  return tomls.length;
+}
+
+let doctored = 0;
+if (MODE !== 'generate') doctored = runDoctor(problems);
+
 // ---------- report -----------------------------------------------------------
 
 for (const n of notes) console.log(`note: ${n}`);
+if (doctored) console.log(`doctor: ${doctored} TOML artifact(s) parsed (repo .codex + $HOME/.codex)`);
 const counts = `${outputs.size} outputs (${projects.length + 1} AGENTS.md, ${agentSources.length} agent TOMLs) + config.toml mcp fence — coverage: repo commands+skills+agents, $HOME commands, repo .mcp.json; NOT covered: <project>/.claude/skills, output-styles, workflows, hooks (Claude-harness-only), $HOME-level MCP registries`;
 if (problems.length) {
   for (const p of problems) console.error(p);
-  console.error(`${MODE === 'check' ? 'CHECK FAIL' : 'GENERATE INCOMPLETE'} — ${problems.length} problem(s); ${counts}`);
+  console.error(`${MODE === 'generate' ? 'GENERATE INCOMPLETE' : MODE.toUpperCase() + ' FAIL'} — ${problems.length} problem(s); ${counts}`);
   process.exit(1);
 }
-console.log(MODE === 'check'
-  ? `CHECK PASS — ${counts}; ${unchanged} verified current`
+console.log(MODE !== 'generate'
+  ? `${MODE.toUpperCase()} PASS — ${counts}; ${unchanged} verified current`
   : `generated — ${wrote} written, ${unchanged} unchanged, ${deleted} orphans removed; ${counts}`);

@@ -1,7 +1,6 @@
 ---
 name: pcm
 description: Professor Change Manager — owns .claude/, CLAUDE.md, child CLAUDE.md, agents, commands, skills, and scripts. Mandatory route for any framework or process-file change; also runs pipeline audits (`audit [scope]`, e.g. `audit all`) and folds the steering-conscience inbox (`retro`). Upstream blueprint updates and releases are the /pcm:update and /pcm:release subcommands.
-argument-hint: [change request|audit]
 ---
 
 # PCM — Professor Change Manager
@@ -31,8 +30,8 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/output-styles/*.md` — persona registry (session style + per-command overlays)
 - `.claude/scripts/*.{sh,mjs}` — worktree.sh, alloc-ports.sh, dev.sh, build-codex.mjs (Claude→Codex compiler)
 - `.claude/workflows/*.js` — saved Workflow scripts, invocable as Workflow({name, args}) — each a declared copy of its command file's orchestration section (§ Critical invariants, workflow-scripts-are-schedulers); a skill may embed its own engine as {skill}/workflow.js via Workflow({scriptPath})
-- `{project}/.claude/agents/*.md` — child project agents; `{project}/CLAUDE.md` — child project conventions
-- `docs/commands/{cmd}/references/` — command-owned reference docs ($CDOCS/$CMD/$REFS/); `docs/agents/` — cross-project reference clusters (`api/`, `architecture/`, `map/`, `features/`) + `standards.md`, `graph/`
+- `{project}/.claude/agents/*.md` — child project agents; `{project}/CLAUDE.md` — child project conventions. A `{project}` held as a git submodule lands its commits in the child repo, and the monorepo pins a pointer (gitter-owned)
+- `docs/commands/{cmd}/references/` — command-owned reference docs ($CDOCS/$CMD/$REFS/); `docs/agents/` — documenter-owned cross-project reference clusters (`api/`, `architecture/`, `map/`, `features/`) + `standards.md`, `graph/`; `docs/facts/` — founder-ruled system facts (main-loop-written, on explicit ruling only)
 
 ### Critical invariants
 
@@ -50,8 +49,8 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 <!-- INSTALL: this section is derive-only by design — no fixed counts to fill in. The bash commands below run against the actual roster/filesystem every time, so a single-project install and a ten-project install both get correct answers from the same text. -->
 
-- **Projects:** one entry per roster project — `{project}` ({PROJECT_PKG_MGR}), repeated for the whole roster (a single-project install lists exactly one)
-- **Agents:** enumerate with `ls .claude/agents/ {project}/.claude/agents/` — root holds gitter and one registered `qa-{proj}` wrapper per project (hook-carriers reading the child protocol); all OTHER child agents spawn via general-purpose reading their child file — model tiers per CLAUDE.md § Model Selection
+- **Projects:** derive with `ls -d {project}*/`; each child CLAUDE.md § Quick Start names its package manager
+- **Agents:** enumerate with `ls .claude/agents/ {project}/.claude/agents/` — every agent is registered at root on the `{role}-{proj}` convention (`qa-{proj}`, `developer-{proj}`, …), plus the project-neutral `gitter` and `architect`. A root wrapper is a thin registration shell — frontmatter (name, description, model, tools, hooks) over a one-line pointer to the child protocol at `{project}/.claude/agents/{role}.md`; a `{project}` whose child repo is not readable from the monorepo inlines its protocols at root instead. Model tiers per CLAUDE.md § Model Selection
 - Commands and skills: `ls .claude/commands/ .claude/skills/`
 
 ---

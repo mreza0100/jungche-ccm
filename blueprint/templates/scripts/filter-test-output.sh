@@ -13,7 +13,6 @@ set -euo pipefail
 #     Reads the hook JSON envelope on stdin, returns updatedToolOutput. Fires ONLY for
 #     the main agent loop (and for a QA agent spawned as a registered qa-{project} type,
 #     whose frontmatter re-declares this hook). No-ops on any non-test command.
-# Verify live field name (tool_output vs tool_response) during pilot.
 
 # Shared filter: raw test output on stdin -> failure-biased subset on stdout. Keeps
 # failures, errors, tracebacks, warning/coverage summaries, coverage totals (TOTAL /
@@ -37,8 +36,22 @@ $(printf '%s\n' "$out" | tail -40)"
 }
 
 # --- PIPE mode ---
+# Exit status is DEFENSE-IN-DEPTH, never the run verdict — the runner's OWN exit
+# code, captured by the caller, is the verdict. This mode never asserts success:
+#   3 — no pass/fail summary recognized (runner crashed, was killed, or printed an
+#       unrecognized format)
+#   1 — a failure indicator was recognized in the kept output
+#   0 — a green summary was seen
+# A wrapper keying on this exit can therefore no longer read a failing or absent
+# run as success.
 if [[ "${1:-}" == "-p" || "${1:-}" == "--pipe" ]]; then
-  _filter
+  out=$(_filter)
+  printf '%s\n' "$out"
+  if printf '%s' "$out" | grep -q 'no pass/fail summary recognized'; then
+    exit 3
+  elif printf '%s' "$out" | grep -qiE '(^|[^0-9])[1-9][0-9]* (failed|failures?)|FAILED|Traceback|✗'; then
+    exit 1
+  fi
   exit 0
 fi
 

@@ -78,7 +78,7 @@ Follow `docs/commands/build/references/qa-commons.md` § 360° sweep.
 
 **Affected-first** per `docs/commands/build/references/qa-commons.md` §§ Affected-first, Isolation on suspicion — then run the scope below.
 
-Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports).
+Run per the scope set in the spawn brief (see ## Scope). External services are mocked; the data/state layer, entrypoints, auth, and any queue-via-emulator are real (`.env.test`). PRE-MERGE scopes use the pipeline's isolated stack (ports from `<worktree>/.env.ports`, NOT the shared default test ports). NEVER boot the project's dev server in QA — it loads `.env.local` and writes to the LOCAL dev data layer regardless of the allocated port; the integration harness boots its own per-worker instances.
 
 Agents REDIRECT a run to a log file and filter the FILE (`{cmd} > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`; the `settings.json` hook does not reach subagents) — keeps failures, summaries, and coverage totals; never `tail`/`head`/`grep` test output. Typecheck, lint, and any build step run bare.
 
@@ -99,16 +99,13 @@ Failures are bugs — fix and re-run. Do not report PASS while a profile is red.
 
 ### Scope: FULL (GATE-1 — pre-merge)
 
-The entire test surface MUST be green before merge. No scope-gating, no shortcuts. Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then boot the instance and run integration/e2e tests against the pipeline's isolated stack.
+The entire test surface MUST be green before merge. No scope-gating, no shortcuts. Run the project's full gate via `{PROJECT_PKG_MGR}` / `{PROJECT_TEST_RUNNER}`: unit tests with coverage, typecheck, lint, then the integration/e2e suite against the pipeline's isolated stack.
 
 ```bash
 {PROJECT_TEST_RUNNER} <unit-with-coverage> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log   # unit
 {PROJECT_TYPECHECK}                            # type-safe (bare)
 {PROJECT_LINT}                                 # clean (bare)
-{PROJECT_RUN_CMD} &                            # boot the instance on the allocated port
-sleep 3 && {HEALTH_PROBE}
 {PROJECT_TEST_RUNNER} <full-integration-suite> > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log
-# stop the booted instance
 ```
 
 REDIRECT every test runner to a log file and filter the FILE (`{cmd} > tmp/{run}.log 2>&1; ../.claude/scripts/filter-test-output.sh -p < tmp/{run}.log`) — the `settings.json` hook does not reach subagents, and a LIVE pipe hangs an integration run before its first worker spawns (0 CPU, 0 children, no output — indistinguishable from "still running") — keeps failures, summaries, coverage totals; never `tail`/`head`/`grep` test output.
@@ -168,4 +165,6 @@ Read runbook, fresh dependency install, start test infra (shared stack — post-
 ## Rules
 
 - Write adversarial tests (not read-only). Don't modify impl code. No permanent docs writes. Integration tests use `.env.test`. Always cleanup. Never hardcode table/resource names. Fresh dependency install in POST-MERGE. End: "QA complete. Result: PASS" or "FAIL — N issues."
+- **Stack reuse across rounds** — the test stack stands up at gate open and serves every fix-loop round; the `nuke-test`/`nuke-test-pipeline` teardown runs at gate open and gate close only.
+- **Record `wall_ms`** for every `make` target and every suite run in the gate artifact.
 - **Inline-fix escape hatch:** per `docs/commands/build/references/qa-commons.md` § Inline-fix escape hatch.

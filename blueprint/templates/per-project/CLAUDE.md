@@ -65,6 +65,8 @@
 ### Data Conventions <!-- drop entirely if the project owns no datastore -->
 
 - {DATA_ACCESS_RULE}
+- Always parameterized queries — never string-interpolated raw SQL.
+- **Migrations are LOUD** — plain `CREATE` / `ALTER ADD COLUMN`, no `IF [NOT] EXISTS` or guard blocks; a ledger table owns run-once (checksum-verified at boot, in a transaction, per file), and a changed already-applied migration is fatal.
 - **Schema ownership** — schema design/changes go through the schema-owning agent in the pipeline.
 - Never read a migration by name — introspect the live DB.
 
@@ -104,6 +106,16 @@
 | ------------ | ----------------- | ----------------------------------------------------- |
 | `.env.local` | Local development | {INFRA_PROJECT} local — {DB_PORT}                     |
 | `.env.test`  | Integration tests | {INFRA_PROJECT} test — {DB_PORT_TEST}, fully isolated |
+
+### Access Control
+
+<!-- KEEP only if this project serves more than one role or fences records per owner; drop it
+     entirely for a project with no per-user data boundary. -->
+
+- The auth token carries identity + role only, never {SENSITIVE_DATA}; every handler receives the resolved user from context.
+- **Ownership fence (SACRED — reads AND writes):** a {SUBJECT_NOUN}'s {DOMAIN_ADJ} content belongs to the OWNING {USER_NOUN} alone (`record.ownerId === user.id`). Every path that loads or mutates a record by a client-supplied id applies the fence; {ORG_UNIT}-equality is NEVER a sufficient fence — it narrows a {ROLE_SUPER}'s roster and never widens anyone's reach.
+- A default-deny floor (unauthenticated requests blocked outside an explicit allowlist) is a floor, not a replacement: every handler still opens with its own auth + ownership guard.
+- A read that redacts fields per role redacts at the RESOLVER for every role it serves — a role absent from the redaction branch is a leak, not a default.
 
 ## Ethics
 

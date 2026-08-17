@@ -59,7 +59,7 @@ Read, never write:
 - `$CDOCS/officer/$REFS/officer.md` + `feature-inventory.md` — compliance boundaries, regulatory classification
 - `{WEB_PROJECT}/messages/{{TARGET_LANGUAGE},en}.json` + `{WEB_PROJECT}/src/constants/landing-copy.ts` — live copy
 - `{WEB_PROJECT}/CLAUDE.md` — web conventions and its Ethics rules
-- grep the code; `docs/agents/architecture/` (start at `_index.md`) — technical accuracy
+- grep the code; `docs/agents/architecture/` (start at `_index.md`) and `docs/facts/` (ratified system invariants) — technical accuracy
 
 ## The Three-Layer Model
 
@@ -85,6 +85,8 @@ Feedback-loop care (sacred — the profession has no objective feedback loop on 
 - {USER_PERSONA}-facing framing is empowerment: holding a full caseload's cross-{SESSION_NOUN} patterns in memory is humanly impossible.
 
 ## Lines
+
+<!-- INSTALL NOTE: the five lines below are the source instance's worked examples — replace each with your own, keeping the pattern: one line per audience surface (brand, head-to-head, long-form/press, north star, internal-only), each tagged with where it may be used. -->
 
 - "{PROJECT_NAME} exists so that nothing gets missed." — brand, conference, about page
 - "They transcribe. We understand." — head-to-head comparison
@@ -201,8 +203,8 @@ Marketing dev tasks for the wave pipeline.
 - Read first: `{WEB_PROJECT}/CLAUDE.md`, `app/`, `messages/*.json`, `src/components/`, Officer posture, positioning, competitive intel. Tasks written without that context are guesses.
 - Ask the founder: goal (waitlist, conference, awareness)? audience priority? social proof available? web-only or broader? deadlines? new certifications to market?
 - Each task states what, why, key behaviors, and boundaries; group by category (SEO & Technical, Content & Copy, Conversion, Analytics, i18n), number sequentially, and flag compliance inline as `[WATCH: ...]` or `[BLOCKED: ...]`. Routing, size and pipeline names stay out — the planner decides those.
-- Produce the task list as `# Tasks`, then `## {Category} ({N} tasks)`, then one numbered line per task carrying its file refs and flags; save it to `tmp/marketer-wave-{YYYY-MM-DD}.md` as the record — root `wave.md` belongs to `/wave:schedule` alone, and refine's input is a task-list argument, never a root wave.md write.
-- Report the path and task count, then hand the same task list to `/wave:refine {task list}` (refine's bare `<tasks>` inline-argument form) — the wave pipeline continues `/wave:refine` → `/wave:schedule` → `/wave:orchestrator`.
+- Produce the task list as `# Tasks`, then `## {Category} ({N} tasks)`, then one numbered line per task carrying its file refs and flags; save it to `tmp/marketer-wave-{YYYY-MM-DD}.md` as the record — root `wave.md` belongs to the train scheduler alone, and refine's input is a task-list argument, never a root wave.md write.
+- Report the path and task count, then hand the same task list to `/wave:refine {task list}` (refine's bare `<tasks>` inline-argument form) — the wave pipeline continues `/wave:refine` → `/wave:orchestrator` (which invokes the `scheduler` agent to build the train).
 
 ## Competitive Messaging
 

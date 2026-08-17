@@ -1,9 +1,9 @@
 ---
 name: wave:walker-invariants
-description: The wave walker's project config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
+description: The wave walker's engine config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
 ---
 
-# Wave Walker — Project Config & Invariant Registry
+# Wave Walker — Engine Config & Invariant Registry
 
 > Everything about the wave walker that is specific to THIS project lives here: the engine's script
 > path and profile in § Engine Config, and the invariant registry below it. `walker.md` is the manual
@@ -16,7 +16,7 @@ description: The wave walker's project config and invariant registry — the eng
 
 ## § Engine Config
 
-Written once at install. Every caller reads this section and passes both values verbatim — the engine bundle is universal and carries none of it.
+Everything the wave-walker engine needs that is specific to THIS project — the engine bundle is universal and carries none of it — lives here; callers read this section and pass both fields verbatim as `scriptPath` and `args.project`, machine-absolute and install-written since the Workflow harness does not expand `~` (a tilde path resolves against the repo root).
 
 **Script path** — the built bundle, one copy per machine, never copied into this repo:
 
@@ -24,9 +24,9 @@ Written once at install. Every caller reads this section and passes both values 
 {BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine/dist/active-workflow.js
 ```
 
-Absolute, because the Workflow harness does not expand `~` (a tilde path resolves against the repo root). The clone's `git pull` is this file's whole update story; the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner and any hand edit is overwritten by the next `npm run build` in `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`.
+The clone's `git pull` is this file's whole update story; the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner and any hand edit is overwritten by the next `npm run build` in `{BLUEPRINT_CLONE_PATH}/ENGINES/wave-walker/engine`.
 
-**Profile (`args.project`)** — passed on every invocation, all modes:
+**Profile (`args.project`)** — passed verbatim on every engine invocation, all modes:
 
 ```json
 {
@@ -53,21 +53,20 @@ An absent profile — or an invalid gate regex — makes the gate machinery (gat
 One `##` section per invariant. Each entry:
 
 - **Law** — the invariant's rule, quoted VERBATIM from its CLAUDE.md source, with the source pointer.
-  Where no dedicated CLAUDE.md bullet exists yet for a dimension (noted per-entry below), the closest
-  codified law is quoted and the gap is flagged.
-- **Territory** — glob patterns (`*` = one path segment, `**` = any depth; no brace expansion — list
+  Where no CLAUDE.md bullet codifies a dimension, the closest codified law is quoted and the gap is
+  flagged.
+- **Territory** — globs (`*` = one path segment, `**` = any depth; no brace expansion — list
   alternatives as separate globs) naming where violations of this class live, REGARDLESS of the current
-  diff. This is what lets the hunter catch pre-existing bugs no wave ever touches. An entry's territory
-  must contain its own class's known instances — a territory narrower than its exemplars makes the
-  registry's blind spot the walker's.
-- **Triggers** — free-text diff predicates the scout judges semantically (a territory-glob match is the
-  zero-token engine-side fail-safe floor beneath this — see `computeArmedInvariants`,
+  diff. This is what lets the hunter catch pre-existing bugs no wave ever touches. A territory narrower
+  than its own exemplars makes the registry's blind spot the walker's.
+- **Triggers** — free-text diff predicates the scout judges semantically; the zero-token engine-side
+  fail-safe floor beneath it is a territory-glob match (`computeArmedInvariants`,
   `.professor/ENGINES/wave-walker/engine/src/engine.ts`).
-- **Exemplars** — 2-4 already-confirmed bugs of exactly this class, cited `file:line`. Exemplars are
-  what make a finder sharp. Each carries its STATUS — LIVE, or FIXED naming the pin that closed it: a
-  fixed exemplar still teaches the shape, an unmarked one sends a hunter to an anchor that no longer
-  holds and teaches it the registry cannot be trusted. Anchors rot as code moves — a hunter re-reads a
-  cited line before treating it as evidence and names a stale anchor in its coverage.
+- **Exemplars** — 2-4 confirmed bugs of exactly this class, cited `file:line`, each carrying its STATUS:
+  LIVE, or FIXED naming the pin that closed it. A fixed exemplar still teaches the shape; an unmarked one
+  sends a hunter to an anchor that no longer holds and teaches it the registry cannot be trusted. Anchors
+  rot as code moves — a hunter re-reads a cited line before treating it as evidence and names a stale
+  anchor in its coverage.
 - **Hunt Brief** — the enumeration duty handed to the invariantHunter verbatim.
 
 ## § Registration Duty

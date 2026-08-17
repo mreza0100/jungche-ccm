@@ -1,24 +1,24 @@
 ---
 name: wave:walker
-description: Wave walk that verifies the code works — one scout enumerates feature-flow/seam/invariant threads AND schedules sensors over the {API_PROTOCOL} fields+gates the wave touched; Sonnet walkers confirm each thread reaches its terminal state while a zero-token rule engine diffs the extracted field/gate cards for disconnects, encoding/casing mismatches, type drift, and auth-fence gaps; judges adjudicate only the flagged anomalies, and one final Opus judgment rules the whole walk before the review is written. Auto-invoked post-merge on main by /wave:orchestrator (§ O6, merge-SHA mode, concurrent with GATE-2) and post-commit by /wave:live; branch mode serves manual pre-merge walks. Also runs standalone code investigation (args.goal — any open code question) and orchestrator/schedule claim-verification panels (args.claims, args.manifestPath). Fast mode ("walker fast <mission>", "fast walk") — inline consumer-tree trace of any target (writers → every consumer → every hop → terminals), delegated to the `tracer` agent, no Workflow; § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
+description: Wave walk that verifies the code works — one scout enumerates feature-flow/seam/invariant threads AND schedules sensors over the {API_PROTOCOL} fields+gates the wave touched; Sonnet walkers confirm each thread reaches its terminal state while a zero-token rule engine diffs the extracted field/gate cards for disconnects, encoding/casing mismatches, type drift, and auth-fence gaps; judges adjudicate only the flagged anomalies, and one final Opus judgment rules the whole walk before the review is written. Auto-invoked pre-merge and merge-gating by /wave:orchestrator (§ O2, branch mode against the merge candidate) and post-commit by /wave:live (merge-SHA mode). Also runs standalone code investigation (args.goal — any open code question) and orchestrator/schedule claim-verification panels (args.claims, args.manifestPath). Fast mode ("walker fast <mission>", "fast walk") — inline consumer-tree trace of any target (writers → every consumer → every hop → terminals), delegated to the `tracer` agent, no Workflow; § Fast mode. Triggers — "wave walker", "/wave:walker", "walker fast", "fast walk".
 ---
 
 # Wave Walker — Thread Walk + Mechanical Ledger, One Fold
 
-The Professor verifies the wave's code two ways in one pass, then folds them. Runs BEFORE archive — post-merge on `main` for `/wave:orchestrator` (concurrent with GATE-2), post-commit for `/wave:live`.
+The Professor verifies the wave's code two ways in one pass, then folds them. Runs BEFORE the merge for `/wave:orchestrator` — branch mode against the merge candidate, so a blocking verdict stops the merge it condemns and its findings are fixed in the worktree; post-commit for `/wave:live`.
 
 - **Thread walk (the floor)** — each feature flow / seam / field / schema change / invariant is walked **end-to-end** by its own fresh agent. This is the proven engine: the seams where real bugs hid — a happy path that never reached its terminal state, a field plumbed through three layers and fed by none, a partial index masquerading as a lock — are exactly what a focused per-thread walk catches and a single-pass read does not.
 - **Ledger spine (the mechanical add)** — the same scout schedules Haiku sensors over the {API_PROTOCOL} type-fields + entry-point gates the diff touched; they extract comparable **cards**; a zero-token JavaScript rule engine diffs the cards for the defect classes a prose walk misses by construction — a field produced but consumed nowhere, a value stringified by the producer and indexed as an object by the consumer, a consumer comparing against `'ai_selected'` when the producer only writes `'AI_SUGGESTED'`, a {ROLE_USER}-reachable resolver missing its ownership fence. Only the **flagged** anomalies reach a judge — clean code costs almost nothing.
 
 A diff with **no {API_PROTOCOL} surface** (an {AI_PROJECT}-chain wave, a migration-only wave) runs pure thread-walk — the floor never regresses.
 
-**Read-only.** Static trace only — `git log`/`show`/`diff`, `Read`, `Grep`. No code runs, no DB writes, no edits (the fold writes only the review section). Confirming live behavior is `/qa:live`'s job; this confirms the code is wired to behave correctly.
+**Read-only.** Static trace only — `git log`/`show`/`diff`, `Read`, `Grep`. No code runs, no DB writes, no edits (the fold writes only the review section). This confirms the code is wired to behave correctly, never live behavior.
 
 ## Entry points
 
 All invoke the **`wave-walker` workflow** via `Workflow({ scriptPath, args })` — scriptPath read verbatim from `.claude/commands/wave/walker-invariants.md` § Engine Config (see § Engine config below), never `{name}`: name-lookup snapshots at session start and serves a stale copy in a long-running chat. Walk args: `{ reportPath, branch?, ledgerPath?, invariants?, debug?, debugPath?, charter?, extraThreads?, fullGateSweep?, securityFilesPerAuditor?, agents?, project? }` — `project` is that same § Engine Config profile block, passed verbatim on EVERY engine invocation (all modes):
 
-- **Auto (`/wave:orchestrator` § O6, post-merge):** the BUILDER chat launches the scriptPath form with `{ reportPath }` as its first boundary duty (recording the run-id in STATE.md) — merge-SHA mode walks the wave's merge commit on `main` (the scout greps the report's `**Merge SHA:**` line) — persists the returned `ledger` to `ledgerPath` and the returned `debugRecord` to `debugPath` the same no-agent-ferries-bytes way, and the ORCHESTRATOR rules each finding into the boundary `/jc` lane (orchestrator § O6.2).
+- **Auto (`/wave:orchestrator` § O2, pre-merge, merge-gating):** the ORCHESTRATOR launches the scriptPath form with `{ reportPath: the wave SPEC path (docs/dev/trains/{train}/waves/{N}-{slug}/spec.md), branch }` after the builder's DONE — the launch never delegates down to a builder seat, which on a runtime without the Workflow tool (the Codex dialect) holds no walker at all; a hand-orchestrated fan-out is never a substitute either, since its skipped mop-up rounds and self-reconciled inventory bless the defects the engine exists to catch — persists the returned `ledger` to `ledgerPath` and the returned `debugRecord` to `debugPath` the same no-agent-ferries-bytes way, and rules each finding back to the builder (orchestrator § O2.5).
 - **Invariant registry (`invariants`):** every walk-mode caller reads `.claude/commands/wave/walker-invariants.md` and transcribes its per-entry `**Law:**`/`**Territory:**`/`**Triggers:**`/`**Exemplars:**`/`**Hunt Brief:**` lines into the `{id, law, territory[], triggers[], exemplars[], huntBrief}` array its § Consumption Contract specifies, passed as `args.invariants` — mechanical transcription, no reinterpretation. Absent or `[]` = the floor: no hunters, walker behavior identical to a registry-less walk.
 - **Walk telemetry (`debug`, `debugPath`):** `debug` defaults TRUE — the result carries a `debugRecord` (per-seat call/retry tallies, armed-invariant count, judgment counts) and the fold renders it as `### Walk Telemetry` in the review; `debug: false` restores the byte-identical quiet walk. `debugPath` names where the caller persists the record.
 - **Auto (`/wave:live` W6, post-commit):** merge-SHA mode — the review file carries the JC commit SHAs.
@@ -45,7 +45,7 @@ and dispatches its own Haiku tracers. Relay its map; persist to `tmp/walks/{slug
 outgrows chat.
 
 **Gear selection:** "where does X go / who feeds X / map it NOW" → `tracer`. An open question
-needing adjudicated evidence → investigate (`args.goal`). Post-merge wave verification → the full
+needing adjudicated evidence → investigate (`args.goal`). Merge-gating wave verification → the full
 walk. The tracer's map may FEED a judgment; it never makes one.
 
 ## § Orchestration (the `wave-walker` workflow)
@@ -78,7 +78,7 @@ Enumerate BOTH the threads to walk AND the ledger schedule, from the wave's actu
 | **Field**                | a new/changed persisted field — producer → transport → persist → read → surface                     |
 | **Schema/DB**            | migrations + constraints — migration ↔ schema ↔ app-layer enforcement                               |
 | **Invariant**            | a sacred {DOMAIN_ADJ}/safety rule — every enforcement point holds                                   |
-| **Test-data discipline** | changed test + migration files honor the data/schema separation (root CLAUDE.md § Testing)          |
+| **Test-data discipline** | changed test + migration files honor the data/schema separation (the `/test` testing law)           |
 | **Dead-code ripple**     | trace each removed/renamed caller, deleted reference, or dropped field outward into unchanged files |
 
 Always emit a **Test-data discipline** thread when the diff touches any `tests/` or migration file, a **Dead-code ripple** thread when the diff removes/renames a caller or drops a persisted field/column/route/file, and a **Field** thread with an explicit READ-BACK check for every NEW persisted field — the writer AND the reader mapping; a field that writes fine but reads back undefined is the archetypal silent kill (it passes every green gate).
@@ -135,7 +135,7 @@ The fold writes this into the report under `## Professor's Wave Review`:
 
 ### /jc Action Items
 
-{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim `/jc {fix}`. Owner-tagged deferrals (/pm, /officer, founder) for non-code work. "None" if clean.}
+{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim `/jc {fix}`. Owner-tagged deferrals (/pm, /officer, {FOUNDER_NAME}) for non-code work. "None" if clean.}
 
 ### Coverage
 

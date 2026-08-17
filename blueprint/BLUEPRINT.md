@@ -21,7 +21,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `pcm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/pcm:context-meter` audits the framework's own context budget.
-- **/wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/swap`.
+- **/wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/swap`.
 
 > Each Tier A persona (Professor, JC, Dr. House) ships in two selectable depths — **full** (rich, showcase voice) and **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn) — chosen at install.
 
@@ -29,7 +29,8 @@ Every command, agent, and rule sorts into one of three tiers:
 
 - **the framework bus** — `/pcm:update` consumes upstream releases, `/pcm:release` regenerates + publishes the blueprint.
 - **/wave:refine** — wave task refinement into a zero-gap spec.
-- **/wave:walker** — post-merge end-to-end functional + hygiene walk.
+- **/wave:walker** — merge-gating end-to-end functional + hygiene walk, run against the merge candidate before the merge it can condemn.
+- **/wave:sentinel** — on-demand one-shot train auditor. No interval, no re-arm, no standing seat: re-derives the train's true state from ground truth and reports findings ranked.
 - **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`templates/commands/p/360.md`) — not source-fetched.
 - **/p:rnd** — goal-driven iterative research-and-develop loop.
 - **/p:tokens** — per-agent/per-workflow token spend attribution parsed from local transcripts, ranked by estimated cost.
@@ -57,7 +58,7 @@ Every command, agent, and rule sorts into one of three tiers:
 
 ### The plumbing (Tier C — invisible)
 
-- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer`, and one `qa-{project}` gate wrapper per roster entry — root agents. Role-defined, not character-defined.
+- `mono-planner`, `mono-architect`, `mono-documenter`, `gitter`, `tracer`, `scheduler`, `architect`, and one `{role}-{project}` wrapper per roster entry per role (the `qa-{project}` gates among them) — root agents. Role-defined, not character-defined.
 - `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh` — scripts.
 - `pfm statusline` — native status bar with model, fleet counts, context, git, cost, spend, and rate limits. Wired in the host settings by `pfm install`.
 - `settings-global.json` — a handful of keys merged (never overwritten) into the adopter's own `~/.claude/settings.json`. Currently one key, `cleanupPeriodDays: 36500`, which turns off Claude Code's default 30-day auto-delete of session transcripts and orphaned git worktrees.
@@ -222,10 +223,10 @@ your-project/
 │   ├── drift.md                       ← local customizations the merge keeps (human-readable)
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
-│   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, qa-{project})
-│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — `pfm install` installs it host-level)
+│   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, scheduler, architect, {role}-{project} wrappers)
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — `pfm install` installs it host-level)
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
-│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, wave-wait.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
+│   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
 │   ├── skills/                        ← bundled legal shelf + source-fetched sources.json skills (rr, ghostwriter, vision-factory); reasoning protocols ship as nested commands under commands/
 │   └── settings.json                  ← permissions, env vars, hooks (notify, formatter, statusline)

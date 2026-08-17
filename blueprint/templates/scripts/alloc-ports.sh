@@ -24,7 +24,7 @@ set -euo pipefail
 # lanes on one devbox all allocate from this SAME file, and each git worktree carries its
 # own copy of this script. `git rev-parse --path-format=absolute --git-common-dir` returns
 # the shared main checkout's .git dir from ANY worktree (same idiom the Makefile's
-# PORTS_REGISTRY and .claude/scripts/wave-wait.sh already use); a physical
+# PORTS_REGISTRY already uses); a physical
 # dirname($0)-based resolution instead gives each worktree its OWN nested
 # .worktrees/.ports — invisible to Make's canonical resolution and to every other worktree.
 SCRIPT_CHECKOUT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
