@@ -192,8 +192,8 @@ These slot into the concept families above — registered here to close prior ga
 | the test database name (e.g. `<project>_test`)                                              | `{TEST_DB_NAME}`                                                  | Tech stack   |
 | transcript / case note / session record (the artifact holding `{SENSITIVE_DATA}`)           | `{RECORD_NOUN}`                                                   | Domain nouns |
 | illustrative persona examples — a tech artifact, a domain artifact, a domain risk (Professor opening + Model Selection examples) | `{TECH_EXAMPLE_A}` / `{DOMAIN_EXAMPLE_A}` / `{DOMAIN_RISK_EXAMPLE}` | Persona      |
-| the Codex model this repo defaults to (`templates/codex/config.toml` `model =`)             | `{CODEX_MODEL}`                                                    | Model pins   |
-| the Codex reasoning effort this repo defaults to (`templates/codex/config.toml` `model_reasoning_effort =`) | `{CODEX_REASONING_EFFORT}`                                         | Model pins   |
+| the Codex model this repo defaults to (`blueprint/codex/config.toml` `model =`)             | `{CODEX_MODEL}`                                                    | Model pins   |
+| the Codex reasoning effort this repo defaults to (`blueprint/codex/config.toml` `model_reasoning_effort =`) | `{CODEX_REASONING_EFFORT}`                                         | Model pins   |
 | the database CLI forbidden at the execpolicy layer (e.g. `psql`)                           | `{DB_CLI}`                                                         | Tech stack   |
 | the container runtime forbidden at the execpolicy layer (e.g. `docker`)                    | `{CONTAINER_RUNTIME}`                                              | Tech stack   |
 | the cloud CLI forbidden at the execpolicy layer (e.g. `aws`)                                | `{CLOUD_CLI}`                                                      | Tech stack   |

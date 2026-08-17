@@ -48,7 +48,7 @@ When a user installs Professor via `SETUP.md`, the install records:
 - `.professor/manifest.json` — contains three things:
   1. **Version + tag** — which release was installed (`version`, `installed_from_tag`)
   2. **Interview answers** — the full replay seed (project name, character, disciplines, tech stack, Tier B opts, ports). Enables re-parameterizing new upstream templates without re-interviewing.
-  3. **File hashes** — SHA-256 of every Professor-owned file post-substitution. The baseline for three-way comparison (installed vs. current-on-disk vs. re-parameterized-upstream). See `templates/commands/pcm.md` § "Update Protocol — Step 5" for the truth table.
+  3. **File hashes** — SHA-256 of every Professor-owned file post-substitution. The baseline for three-way comparison (installed vs. current-on-disk vs. re-parameterized-upstream). See `blueprint/commands/pcm.md` § "Update Protocol — Step 5" for the truth table.
 
 The manifest is regenerated after every successful `/pcm update` so the new on-disk state becomes the next baseline.
 

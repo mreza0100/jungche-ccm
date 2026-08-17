@@ -80,7 +80,7 @@ const TAIL =
 // brace so the bundle still BEGINS with `export const meta` (the harness requirement validate-bundle.js
 // check 3 enforces).
 const GENERATED_BANNER =
-  '// ⚠ GENERATED FILE — DO NOT EDIT. Built from ~/.professor/ENGINES/wave-walker/engine (npm run build). Manual edits are overwritten by the next build; changes go in src/ with tests.';
+  '// ⚠ GENERATED FILE — DO NOT EDIT. Built from ~/.professor/engines/wave-walker/engine (npm run build). Manual edits are overwritten by the next build; changes go in src/ with tests.';
 
 const fail = (msg) => {
   console.error('✗ build failed — ' + msg);

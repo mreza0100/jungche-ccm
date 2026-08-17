@@ -102,7 +102,7 @@ Claude interviews you — structure, stack, disciplines, optional roles, persona
 - Never installs an opt-in piece — Tier B roles, Codex, statusline, hooks, host fleet, themes, memory backup — without an explicit yes.
 - Never touches a path outside the plan.
 
-**Full protocol:** [`blueprint/SETUP.md`](./blueprint/SETUP.md) — the interview questions, pre-flight checks, existing-doc re-homing rules, generation steps, and verification. [`blueprint/PLACEHOLDERS.md`](./blueprint/PLACEHOLDERS.md) is the substitution law, [`blueprint/BLUEPRINT.md`](./blueprint/BLUEPRINT.md) the philosophy. Read all three before writing any file.
+**Full protocol:** [`docs/SETUP.md`](./docs/SETUP.md) — the interview questions, pre-flight checks, existing-doc re-homing rules, generation steps, and verification. [`docs/PLACEHOLDERS.md`](./docs/PLACEHOLDERS.md) is the substitution law, [`docs/BLUEPRINT.md`](./docs/BLUEPRINT.md) the philosophy. Read all three before writing any file.
 
 ### Corrections to SETUP.md — this list wins until a release folds them in
 

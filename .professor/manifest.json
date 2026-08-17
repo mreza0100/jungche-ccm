@@ -37,7 +37,7 @@
         "ports": []
       },
       {
-        "dir": "ENGINES/wave-walker/engine",
+        "dir": "engines/wave-walker/engine",
         "role": "wave-walker engine",
         "stack": "JS/TS + cross-workflow",
         "pkg_mgr": "npm",
@@ -63,7 +63,7 @@
     "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
-      "drift between .claude/** and its blueprint/templates/** twin",
+      "drift between .claude/** and its blueprint/** twin",
       "a private project's identifiers leaking into the public blueprint",
       "dangling pointers in shipped templates (a command naming a file no install produces)",
       "context-budget bloat past the 35KB command / 15KB agent caps"
@@ -115,7 +115,7 @@
       }
     },
     "deliberately_absent": {
-      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile — the pipeline ships as blueprint/templates source, it is not this repo's own workflow",
+      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile — the pipeline ships as blueprint source, it is not this repo's own workflow",
       "/pcm:update": "this repo IS upstream; there is no newer tag to consume",
       "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
       "format-md.sh + notify.sh + limits-hook.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",

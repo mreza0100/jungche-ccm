@@ -1,7 +1,7 @@
 # Drift — this install's local customizations
 
 Customizations of **this repo's own self-install** that must stay local and must NOT be
-generalized into `blueprint/templates/**`. `/pcm` appends here; `/pcm:release` never consumes it.
+generalized into `blueprint/**`. `/pcm` appends here; `/pcm:release` never consumes it.
 
 The test: would this make sense in a stranger's repo? If yes it belongs in `release.md` and its
 template twin. If it only makes sense because this repo IS the blueprint, it belongs here.
@@ -16,7 +16,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 
 - **KEEP-LOCAL: no worktree pipeline.** `/wave:*`, `worktree.sh`, `alloc-ports.sh`, and the
   per-project planner/architect/developer/qa agents are NOT installed here. They ship as
-  `blueprint/templates/**` source. Work in this repo lands on `main` under `/dev` verification and
+  `blueprint/**` source. Work in this repo lands on `main` under `/dev` verification and
   a gitter commit. Adopters get the full pipeline; the framework repo does not run itself through it.
 
 - **KEEP-LOCAL: no `/pcm:update`.** This repo is upstream. There is no newer tag to replay a

@@ -4,7 +4,7 @@ Executed inside `/pcm:release` (step 3). Re-derives the blueprint from the CURRE
 
 **Scope (incremental):** `blueprint/refresh-map.json` maps every template to its live source(s) + the SHA-256 of each as of the last sync. `scripts/refresh-scope.sh scan` proves unchanged sources untouched — their templates are skipped; re-derive only CHANGED templates (plus files named in `.professor/release.md`); UNMAPPED-LIVE files get a mapping ruling. `curated` templates have no live source and are never auto-derived. `refresh-scope.sh regen` re-baselines the hashes at release end.
 
-**Update mechanism context:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, an adopter's `/pcm:update` replays those interview answers against the new templates, runs a three-way hash comparison, and presents changes in three buckets. That protocol ships to adopters as `blueprint/templates/commands/pcm/{update,release}.md`; this repo installs only `release` (there is nothing upstream of upstream to update from).
+**Update mechanism context:** Adopters install at a specific git tag (`v0.5.0`). Their install creates a `.professor/` directory with `VERSION`, `manifest.json` (interview answers + file hashes as replay seed), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). When upstream releases new tags, an adopter's `/pcm:update` replays those interview answers against the new templates, runs a three-way hash comparison, and presents changes in three buckets. That protocol ships to adopters as `blueprint/commands/pcm/{update,release}.md`; this repo installs only `release` (there is nothing upstream of upstream to update from).
 
 Cross-conversation context persists via **Epics** — initiative-level manifest files (`docs/epics/{name}/manifest.md`) with lifecycle tracking (PLANNING → IN_PROGRESS → SHIPPED).
 
@@ -52,7 +52,7 @@ Character names (Professor, JC, etc.) ship as **default names with "rename if yo
 From the project repo:
 
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B, including command directories like `.claude/commands/pcm/`, `.claude/commands/wave/`, `.claude/commands/audit/`, `.claude/commands/quality/`), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
-- **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
+- **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `blueprint/skills/sources.json` (name → repo); SETUP clones each at install.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
 - `docs/agents/` scaffold — the hub `_index.md` format, the `standards.md` skeleton, and the cluster convention (structure only, NEVER doc content — every adopter's documentation body is their own)
 - The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
@@ -76,24 +76,25 @@ From the project repo:
 ```
 professor/            ← this repo
 ├── README.md, INSTALL.md, CHANGELOG.md, VERSION, LICENSE
+├── docs/
+│   └── README.md, BLUEPRINT.md, SETUP.md, RELEASE.md, ARCHITECTURE.md, PLACEHOLDERS.md, references/
 └── blueprint/
-    ├── README.md, BLUEPRINT.md, SETUP.md, RELEASE.md
-    └── templates/
-        ├── CLAUDE.md
-        ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
-        ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/{refresh.md, audit-scopes.md}), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
-        ├── skills/
-        │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
-        ├── workflows/ (project-local workflows; Wave Walker is compiled in ENGINES/wave-walker/engine)
-        ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
-        ├── epics/ (manifest template, lifecycle reference)
-        ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
-        └── vscode/ (terminal-profile.json, zshrc-cc.snippet.sh, tmux.conf)
+    ├── refresh-map.json
+    ├── CLAUDE.md
+    ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
+    ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/{refresh.md, audit-scopes.md}), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
+    ├── skills/
+    │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
+    ├── workflows/ (project-local workflows; Wave Walker is compiled in engines/wave-walker/engine)
+    ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
+    ├── epics/ (manifest template, lifecycle reference)
+    ├── docs-agents/ (_index.md hub skeleton + standards.md skeleton — SETUP Phase 2.7 seeds docs/agents/ from these, then /documenter bootstrap builds the clusters)
+    └── vscode/ (terminal-profile.json, zshrc-cc.snippet.sh, tmux.conf)
 ```
 
 > **VSCode tmux launcher:** Tier C universal mechanic, **opt-in** at install (it edits the user's _global_ editor + shell config, so SETUP.md asks first). New VSCode terminals open straight into `tmux + cc` — Claude Code inside a tmux session; on `/exit`, claude ends, the tmux session ends, and control falls back to a normal interactive shell — the terminal never closes on you. Ships the three files below (defined inline here — no repo source to mine); SETUP.md merges `terminal-profile.json` into the user's VSCode `settings.json`, appends `zshrc-cc.snippet.sh` to the user's shell rc, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy — the comfort tmux-in-a-terminal assumes). The `cc` launcher is `typeset -f`-guarded so it **never clobbers an existing `cc`**.
 
-`templates/vscode/terminal-profile.json` — merge into VSCode user `settings.json` (macOS keys shown; swap `osx`→`linux`/`windows` on other platforms):
+`blueprint/vscode/terminal-profile.json` — merge into VSCode user `settings.json` (macOS keys shown; swap `osx`→`linux`/`windows` on other platforms):
 
 ```jsonc
 "terminal.integrated.profiles.osx": {
@@ -106,7 +107,7 @@ professor/            ← this repo
 "terminal.integrated.defaultProfile.osx": "tmux + claude"
 ```
 
-`templates/vscode/zshrc-cc.snippet.sh` — append to the user's shell rc (`~/.zshrc`):
+`blueprint/vscode/zshrc-cc.snippet.sh` — append to the user's shell rc (`~/.zshrc`):
 
 ```zsh
 # ── cc: Claude Code in tmux (reuses an existing cc if one is already defined) ──
@@ -129,7 +130,7 @@ if [[ -o interactive && -n "$VSCODE_AUTO_CC" ]]; then
 fi
 ```
 
-`templates/vscode/tmux.conf` — copy to `~/.tmux.conf` (mouse + click-to-copy; macOS `pbcopy` — swap for `xclip`/`wl-copy`/`clip.exe` on Linux/Windows):
+`blueprint/vscode/tmux.conf` — copy to `~/.tmux.conf` (mouse + click-to-copy; macOS `pbcopy` — swap for `xclip`/`wl-copy`/`clip.exe` on Linux/Windows):
 
 ```tmux
 set -g mouse on
