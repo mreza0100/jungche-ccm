@@ -30,6 +30,7 @@ Each roster entry has: directory, role label, tech stack, package manager, test 
 | ----------------------------- | ----------------------- | ------------------------------------------------------------- |
 | the project roster (the list) | `{PROJECT_ROSTER}`      | 1..N entries; SETUP fills from the interview                  |
 | one entry's directory         | `{project}`             | generic — used inside per-project PATTERN blocks              |
+| one entry's directory, uppercase/shell-var-safe form | `{PROJECT}` | e.g. `{PROJECT}_STATUS`; sibling of `{project}` for contexts needing an env-var-safe display form |
 | one entry's role label        | `{PROJECT_ROLE}`        | the adopter's own labels, not `backend/frontend/ai/infra/web` |
 | one entry's stack             | `{PROJECT_STACK}`       | lang / framework / ORM / UI etc. for that entry               |
 | one entry's package manager   | `{PROJECT_PKG_MGR}`     |                                                               |
@@ -80,7 +81,31 @@ These are **NOT hand-filled.** SETUP renders them by expanding the per-project P
 | `{INFRA_PROJECT}`                    | optional-role marker — infra project (`"-"` sentinel when absent)  |
 | `{AI_PROJECT}`                       | optional-role marker — AI project (`"-"` sentinel when absent)     |
 | `{BACKEND_PROJECT}`                  | optional-role marker — backend project (`"-"` sentinel when absent) |
+| `{FRONTEND_PROJECT}`                 | optional-role marker — frontend project (`"-"` sentinel when absent) |
+| `{WEB_PROJECT}`                      | optional-role marker — web project (`"-"` sentinel when absent)     |
 | `{MIGRATIONS_DIR}`                   | optional-role marker — migrations dir (`"-"` sentinel when absent) |
+
+### Per-project `CLAUDE.md` decomposition (templates/per-project/CLAUDE.md)
+
+This file decomposes the aggregate roster tokens above into individual bullets/headings.
+Real slots, register as siblings of their aggregate:
+
+| Token                    | Concept                                                        | Sibling of                |
+| ------------------------ | --------------------------------------------------------------- | -------------------------- |
+| `{PROJECT_BUILD_CMD}`    | per-project build command (was `{BUILD_CMD}` — see RENAME below) | `{PROJECT_INSTALL_CMD}` / `{PROJECT_RUN_CMD}` family |
+| `{RUNTIME}`               | "Runtime: …" bullet, decomposed from `{PROJECT_STACK}`           | `{PROJECT_STACK}`          |
+| `{FRAMEWORK}`             | stack framework name, also reused as a heading ("### {FRAMEWORK} Conventions") | `{PROJECT_STACK}` |
+| `{DATA_LAYER}`            | data-layer bullet, decomposed from `{PROJECT_STACK}`; close kinship to `{DATABASE}`/`{ORM}` — maintainer may fold in instead | `{PROJECT_STACK}` |
+| `{UNIT_RUNNER}` / `{UNIT_TEST_DIR}` | per-tier runner+dir pair                              | `{PROJECT_TEST_RUNNER}`    |
+| `{INTEGRATION_RUNNER}` / `{INTEGRATION_TEST_DIR}` | sibling pair                        | `{PROJECT_TEST_RUNNER}`    |
+| `{PARALLEL_FLAG}`         | parallel-test-execution flag                                     | test-tier family           |
+| `{LOGGER_PATH}`           | structured-logger module path                                    | —                          |
+| `{LOG_LEVEL_ENV}`         | env var controlling log verbosity                                | `{LOGGER_PATH}`            |
+| `{RAW_LOG_CALLS}`         | banned raw-log call name                                         | `{LOGGER_PATH}`            |
+| `{CONVENTION_1}` / `{CONVENTION_2}` | framework-convention bullets                           | —                          |
+| `{DATA_ACCESS_RULE}`      | data-access rule bullet                                          | —                          |
+| `{ETHICS_RULE_1}` / `{ETHICS_RULE_2}` | domain ethics-rule bullets                          | `{SACRED_GROUND}`          |
+| `{PROJECT_TREE}`          | file-structure diagram slot                                      | —                          |
 
 ## Tech stack (per role — keep the mechanics, swap the names)
 
@@ -112,6 +137,8 @@ These are **NOT hand-filled.** SETUP renders them by expanding the per-project P
 | 3000 (BE), 4000 (web)       | `{BACKEND_PORT}`, `{WEB_PORT}`       |
 | 5432 / 5433 (db local/test) | `{DB_PORT}` / `{DB_PORT_TEST}`       |
 | 4566 / 4567 (localstack)    | `{QUEUE_PORT}` / `{QUEUE_PORT_TEST}` |
+| {BACKEND_PORT} sibling — frontend dev port | `{FRONTEND_PORT}`                    |
+| generic port-pair fallback (LLM-judgment territory, per placeholder-map.tsv header) | `{PORT_A}` / `{PORT_B}` |
 
 ## Domain nouns (the `{DOMAIN_NOUN}` family)
 
@@ -122,14 +149,22 @@ These are **NOT hand-filled.** SETUP renders them by expanding the per-project P
 | therapy session                                                           | `{SESSION_NOUN}`                                                                                                 |
 | clinical / therapeutic (adj)                                              | `{DOMAIN_ADJ}`                                                                                                   |
 | therapy / clinical practice (the field)                                   | `{DOMAIN_NOUN}`                                                                                                  |
-| the domain's "sacred ground" / do-no-harm frame                           | `{DOMAIN_SAFETY}` — every domain has a hard "never do this" line; keep the frame, swap the specifics             |
-| DSM-5, diagnoses, treatment recommendations, diagnostic labels            | `{FORBIDDEN_DOMAIN_OUTPUTS}` — the `{DOMAIN_SAFETY}` examples for this domain; keep the guard, swap the examples |
+| the domain's "sacred ground" / do-no-harm frame                           | `{SACRED_GROUND}` — every domain has a hard "never do this" line; keep the frame, swap the specifics. Canonical spelling as of this entry — `{DOMAIN_SAFETY}` was a duplicate naming the same concept (SETUP.md, professor.{full,compact}.md, jc.{full,compact}.md, marketer.md, docs-agents/standards.md all already used `{SACRED_GROUND}`, 8 occurrences vs `{DOMAIN_SAFETY}`'s 3 in officer.md/audit/security.md); collapsed toward the higher-occurrence spelling, never re-add `{DOMAIN_SAFETY}` |
+| DSM-5, diagnoses, treatment recommendations, diagnostic labels            | `{FORBIDDEN_DOMAIN_OUTPUTS}` — the `{SACRED_GROUND}` examples for this domain; keep the guard, swap the examples |
 | CBT/DBT/psychodynamic, Jung/Rogers/Freudian, Gottman, CCRT, Rose of Leary | `{DOMAIN_FRAMEWORKS}` — keep one illustrative slot                                                               |
-| clinic / SUPERVISOR / THERAPIST roles                                     | `{ORG_UNIT}` / `{ROLE_SUPER}` / `{ROLE_USER}`                                                                    |
+| clinic / SUPERVISOR / THERAPIST roles                                     | `{ORG_UNIT}` / `{ROLE_SUPER}` / `{ROLE_USER}` / `{ROLE_ADMIN}` (top-of-hierarchy admin, above SUPER)            |
 
 ## The 10 PhDs (root CLAUDE.md persona)
 
-Keep the **structure** (5 + 5, each with title + bullets + "Think:" line). Keep the **5 CS disciplines** as strong defaults (they fit any software project) with a "swap if your domain differs" note. Replace the **5 Psychology disciplines** with `{PHD_DOMAIN_DISCIPLINE_1..5}` — slots the interview fills with the adopter's domain expertise.
+Keep the **structure** (5 + 5, each with title + bullets + "Think:" line). All ten slots are
+placeholders: `{PHD_DISCIPLINE_1}` … `{PHD_DISCIPLINE_10}` (generically `{PHD_DISCIPLINE_N}`
+in prose) — matching the shipped templates (`output-styles/professor.full.md:15-27`,
+`professor.compact.md:11`) and `refresh.md:62`'s transformation rule ("Professor's
+disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`"). SETUP seeds slots 1-5 with the
+5 CS defaults (Claude may keep or swap them per adopter) and always fills slots 6-10 from
+the adopter's stated domain expertise — but on disk every slot is the same token family,
+never a mix of literal CS prose and templated domain slots. `{PHD_DOMAIN_DISCIPLINE_1..5}`
+is a dead spelling — retired by this entry, never re-add it.
 
 ## Regulation / compliance
 
@@ -152,8 +187,8 @@ The opt-in Tier B commands ship as archetype skeletons whose domain content is o
 | `/officer`   | `{REGULATION}`, `{REGULATION_FRAMEWORK_DOCS}`, `{ENFORCEMENT_AUTHORITY}`, `{DATA_SUBJECT_RIGHTS}`, `{INCIDENT_NOTIFICATION_TIMELINE}` |
 | `/pm`        | `{USER_PERSONA}`, `{PRODUCT_DOMAIN}`, `{USER_DAILY_WORKFLOW}`, `{USER_PAIN_POINTS}`                                           |
 | `/mentor`    | `{MARKET_SEGMENT}`, `{JURISDICTION}`, `{LEGAL_ENTITY_TYPE}`, `{FUNDING_LANDSCAPE}`, `{REGULATORY_BODIES}`                     |
-| `/marketer`  | `{CHANNEL_LANDSCAPE}`, `{TARGET_LANGUAGE}`, `{COMPETITIVE_LANDSCAPE}`, `{INDUSTRY_CONFERENCES}`                               |
-| `/km`        | `{KNOWLEDGE_DOMAIN}`, `{KNOWLEDGE_TAXONOMY}`, `{KNOWLEDGE_CONSUMERS}`, `{SOURCE_AUTHORITIES}`                                 |
+| `/marketer`  | `{CHANNEL_LANDSCAPE}`, `{TARGET_LANGUAGE}`, `{COMPETITIVE_LANDSCAPE}`, `{INDUSTRY_CONFERENCES}`, `{AUDIENCE_VOCABULARY}`               |
+| `/km`        | `{KNOWLEDGE_DOMAIN}`, `{KNOWLEDGE_TAXONOMY}`, `{KNOWLEDGE_CONSUMERS}`, `{SOURCE_AUTHORITIES}`, `{SECONDARY_LANG}`                                 |
 
 A named regulator, competitor, conference, or association surviving in one of these templates is a leak, not a default — the archetype keeps the SHAPE of the answer, never the answer.
 
@@ -165,6 +200,8 @@ Swap only the project-named leaves: the AI project's `knowledge/` dir → `{AI_P
 ## Model pins
 
 `model: sonnet` / `claude-opus-4-6` / `model: "opus"` → keep as literal defaults but add a one-line `{MODEL_TIER}` note where a pin appears, per the existing blueprint convention. Do not churn working pins into placeholders inside prompt bodies.
+
+The actual frontier-model name/alias (distinct from the `{MODEL_TIER}` label) → `{FRONTIER_MODEL}`.
 
 ## Codex layer is KEPT — do NOT propagate Codex-removals
 
@@ -197,3 +234,9 @@ These slot into the concept families above — registered here to close prior ga
 | the database CLI forbidden at the execpolicy layer (e.g. `psql`)                           | `{DB_CLI}`                                                         | Tech stack   |
 | the container runtime forbidden at the execpolicy layer (e.g. `docker`)                    | `{CONTAINER_RUNTIME}`                                              | Tech stack   |
 | the cloud CLI forbidden at the execpolicy layer (e.g. `aws`)                                | `{CLOUD_CLI}`                                                      | Tech stack   |
+| the CMO character's own name (parallel to Professor/JC identity slot)                       | `{MARKETER_NAME}`                                                  | Identity     |
+| the artifact an ATLAS/compliance finding gets routed to (e.g. the adopter's DPIA)           | `{PRIVACY_ASSESSMENT}`                                             | Tier B       |
+| the persona's founding metaphor (e.g. "the couch meets the terminal")                       | `{DOMAIN_METAPHOR_A}`                                              | Persona      |
+| the N+1-query-joke punchline concept, domain-side                                           | `{DOMAIN_UNCONSCIOUS}`                                             | Persona      |
+| the N+1-query-joke setup concept, domain-side                                                | `{DOMAIN_DEFENSE_MECHANISM}`                                       | Persona      |
+| generic tech-stack mention inside Tier-A prose (refresh.md's own documented catch-all)      | `{TECH_STACK_PLACEHOLDER}`                                         | Persona      |

@@ -56,16 +56,10 @@
     "agents/mono-planner.md": {
       "curated": true
     },
-    "agents/per-project/architect.md": {
-      "curated": true
-    },
     "agents/per-project/developer.md": {
       "sources": {
         "{project:backend}/.claude/agents/developer.md": "9f677ca37c21e73a3969922faa98d13de904ba252b08360370ab113ca1e04d30"
       }
-    },
-    "agents/per-project/planner.md": {
-      "curated": true
     },
     "agents/per-project/qa.md": {
       "sources": {
@@ -95,16 +89,22 @@
       "curated": true
     },
     "codex/config.toml": {
-      "curated": true
+      "sources": {
+        ".codex/config.toml": "81ce89deef53d11b37a30789d03bb78a7562797f002b4f84ea884977a81e6f49"
+      }
     },
     "codex/rules/repo-law.rules": {
-      "curated": true
+      "sources": {
+        "AGENTS.md": "7fd2f226c375ef987f4957c6fd8bdd0a8b63e2525e43f3696549c73d7a8800a9"
+      }
     },
     "codex/skills/chat/SKILL.md": {
       "curated": true
     },
     "codex/skills/wave-builder/SKILL.md": {
-      "curated": true
+      "sources": {
+        ".codex/skills/wave-builder/SKILL.md": "776c14673101e27791d1a28a55ac1bd6b4fa5d3db140a129e2f2fa048fc9f747"
+      }
     },
     "commands/animate.md": {
       "curated": true
@@ -383,7 +383,9 @@
       }
     },
     "output-styles/jc.full.md": {
-      "curated": true
+      "sources": {
+        ".claude/output-styles/jc.md": "68f02d40260872ca60ab6fc01e4f09088965b16a4414e8f2a198f14921234217"
+      }
     },
     "output-styles/professor.compact.md": {
       "sources": {
@@ -391,7 +393,9 @@
       }
     },
     "output-styles/professor.full.md": {
-      "curated": true
+      "sources": {
+        ".claude/output-styles/professor.md": "a0f17a81879f140308e8ed84c24d65e53245f4fc723b77de5c38530f3873957e"
+      }
     },
     "per-project/CLAUDE.md": {
       "sources": {

@@ -62,7 +62,7 @@ Files: project dirs, CLAUDE.md files, permanent docs, lock files
 - **Child agents:** each project dir has `.claude/agents/`; rosters match a live `ls`
 - **Permanent docs:** `docs/agents/`, `docs/commands/` dirs exist with expected subdirs
 - **Stale names:** grep all CLAUDE.md files and agents for old/renamed project names or typos
-- **Package managers:** each roster project's lock file (`{PACKAGE_MANAGER}` per project) present
+- **Package managers:** each roster project's lock file (`{PROJECT_PKG_MGR}` per project) present
 - **Codex mirror:** `node .claude/scripts/build-codex.mjs check` exits 0 — report its output verbatim; a non-zero exit names each generated Codex artifact (AGENTS.md, `.codex/`, `$HOME/.codex/`) that is MISSING, STALE, ORPHANed, or CONFLICTing with an unmarked file
 
 ## `cross-refs` — The glue between domains

@@ -8,14 +8,14 @@
 
 # {PROJECT_NAME} {PROJECT_ROLE}
 
-{PROJECT_STACK}. {TYPING_RULE}, {PACKAGE_MANAGER}.
+{PROJECT_STACK}. {PROJECT_TYPING_RULES}, {PROJECT_PKG_MGR}.
 
 ## Quick Start
 
 ```bash
-{INSTALL_CMD}
+{PROJECT_INSTALL_CMD}
 # create .env.local with the vars in § Environment
-{DEV_CMD}
+{PROJECT_RUN_CMD}
 ```
 
 ## Stack
@@ -23,18 +23,18 @@
 - Runtime: {RUNTIME}
 - Framework: {FRAMEWORK}
 - Data: {DATA_LAYER} <!-- drop if the project has no datastore -->
-- Testing: {TEST_RUNNER}
-- Package manager: {PACKAGE_MANAGER}
+- Testing: {PROJECT_TEST_RUNNER}
+- Package manager: {PROJECT_PKG_MGR}
 
 ## Scripts
 
 | Script      | Command         | Description |
 | ----------- | --------------- | ----------- |
-| `dev`       | {DEV_CMD}       | Dev server  |
+| `dev`       | {PROJECT_RUN_CMD}       | Dev server  |
 | `build`     | {BUILD_CMD}     | Build       |
-| `test`      | {TEST_CMD}      | Run tests   |
-| `lint`      | {LINT_CMD}      | Lint        |
-| `typecheck` | {TYPECHECK_CMD} | Type check  |
+| `test`      | {PROJECT_TEST_RUNNER}      | Run tests   |
+| `lint`      | {PROJECT_LINT}      | Lint        |
+| `typecheck` | {PROJECT_TYPECHECK} | Type check  |
 
 ## Code Standards
 

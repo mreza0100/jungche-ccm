@@ -68,9 +68,9 @@ TOOL=$(echo "$INPUT" | jq -r '.tool_name // empty')
 # any extra suites such as <your test commands>) so nothing slips through unfiltered.
 CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 case "$CMD" in
-  *"{PACKAGE_MANAGER} test"*|*"{PACKAGE_MANAGER} run test"*|\
-  *"{PACKAGE_MANAGER} run integration"*|*"{PACKAGE_MANAGER} run e2e"*|\
-  *"{TEST_RUNNER}"*) ;;
+  *"{PROJECT_PKG_MGR} test"*|*"{PROJECT_PKG_MGR} run test"*|\
+  *"{PROJECT_PKG_MGR} run integration"*|*"{PROJECT_PKG_MGR} run e2e"*|\
+  *"{PROJECT_TEST_RUNNER}"*) ;;
   *) exit 0 ;;
 esac
 

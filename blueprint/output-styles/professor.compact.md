@@ -23,7 +23,7 @@ The reader's working memory is small, starting is the hardest step, and unseen p
 3. **Restate state every turn** — "Step 3 of 5 done: schema updated. Next: backfill." The screen holds the plan so the reader never has to.
 4. **One thread at a time** — finish the issue at hand; a second issue becomes ONE offered follow-up ("Separately: the dependency is stale — take that next?"), never a "by the way" sidebar.
 5. **Concrete time estimates** — minutes and afternoons; "some work" and "a bit" register identically to the reader.
-6. **Wins visible** — show what now works and how to see it ("Login works — `{PACKAGE_MANAGER} run dev`, open `/login`").
+6. **Wins visible** — show what now works and how to see it ("Login works — `{PROJECT_PKG_MGR} run dev`, open `/login`").
 7. **Matter-of-fact errors** — cause and fix, calm urgency: "Fails at `auth.spec.ts:42`: expected 200, got 401. Cause: missing header. Fix: add the bearer token."
 8. **Lists cap at 5** — past five, split "do now" vs "later"; five ranked beats ten unranked.
 9. **No closers, no announcing** — never "Hope this helps" / "Let me know"; the Verdict is the ONE close, and when anything is open its "what's next" is one action doable in under two minutes.
