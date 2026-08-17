@@ -1,0 +1,145 @@
+# harvester — multi-format MCP fetch + search server
+
+A Model Context Protocol server that converts web pages, PDFs, Office docs, archives, and local files
+to clean Markdown; resolves scholarly identifiers (DOI/ISBN/PMID/title) to a free, legal full-text
+copy; caches every artifact under a type-partitioned `.fetch/` tree; and escalates through a four-rung
+wall-bypass ladder before surfacing an error. Python 3.10+, packaged as `harvester-mcp`, run over stdio.
+
+## Commands
+
+- `uv sync` — install deps into `.venv`
+- `uv run harvester` — run the server (stdio MCP); `python -m harvester` also works
+- `uv run pytest -q` — full suite; prefer a targeted file (`uv run pytest tests/test_dispatch_hardening.py -q`) while iterating
+- `uv run ruff check .` — lint · `uv run pyright src/` — type-check
+- `RUN_OA_INTEGRATION=1 uv run pytest tests/test_oa_integration.py` — opt-in live scholarly-API smoke tests
+
+## Architecture
+
+Strict layering: `server.py` (MCP protocol) → `dispatch.py` (routing + wall-bypass orchestration) →
+focused workers. **`dispatch.py` and `net.py` never raise** — a failure returns `{"error": …}` or an
+empty value + `error_kind`, never an exception across the boundary.
+
+- `server.py` — MCP plumbing (low-level `mcp.server.Server`, not FastMCP). Registers six tools —
+  `fetch`, `findWorks`, `search`, `fetchImage`, `archive`, `searchCache` — plus one `fetch` prompt, and
+  delegates all work to `dispatch` / `describe` / `cache` / `search`.
+- `dispatch.py` — classifies one source (title/ISBN/DOI/PMID/PMCID/URL/file/archive-member) and calls
+  the per-kind handler (`_html_result`, `_doc_result`, `_image_result`, `_archive_result`). Owns the
+  HTML ladder, the negative cache, and in-flight dedup.
+- `detect.py` — pure, network-free format detection (`detect_kind`, `sniff_magic`, `_sniff_kind`) and
+  the LFI guard `deny_reason`.
+- `net.py` — network layer: Chrome-impersonation (curl_cffi), Jina reader, and the central SSRF
+  chokepoint `assert_fetchable`.
+- `oa.py` — open-access resolver: DOI/arXiv/ISBN/title → ordered legal candidate URLs across
+  Unpaywall / OpenAlex / Semantic Scholar / Crossref / CORE / DOAJ / Europe PMC / OSF / Gutendex / …
+- `mirror.py` — DOI → PMC / Europe PMC / Wayback fallbacks.
+- `convert.py` — local file → Markdown (pymupdf4llm / Docling / MarkItDown); heavy deps imported lazily.
+- `html.py` — trafilatura HTML → Markdown extraction + metadata block.
+- `safe_archive.py` — hostile-archive-safe listing/read (traversal + symlink refusal, zip-bomb caps).
+- `cache.py` — type-partitioned on-disk cache; `search_cache` backs the `searchCache` tool.
+- `search.py` — SearXNG → Brave web-search backend + tool-advertisement gating.
+
+## Security — sacred ground (never weaken these to make a fetch succeed)
+
+- **SSRF: `assert_fetchable` (`net.py`)** is an httpx request hook on every client, so it re-runs on
+  every redirect hop, plus a DNS-rebinding recheck (resolve, reject if any A/AAAA is private). It
+  refuses non-http(s) schemes and private/internal/link-local hosts, including obfuscated
+  integer/hex/octal IP forms. curl_cffi paths call it per hop manually.
+- **LFI: `deny_reason` (`detect.py`)** canonicalizes a path (expanduser + realpath) and refuses system
+  roots (`/proc /sys /dev /etc`), sensitive dirs (`.ssh .gnupg .aws .config .kube …`), and credential
+  names/suffixes (`id_rsa`, `.pem`, `.env`, `.netrc`, …). It runs on both a path and its symlink
+  target, so an innocently named symlink can't smuggle a secret.
+- **stdout is the JSON-RPC channel.** A stray byte corrupts the protocol. Logs go to a rotating file
+  (`log.py`, under `tmp/logs/`); heavy converters' stdout is redirected to stderr via
+  `convert._quiet_stdout`. Never `print()` to stdout in the server path.
+
+## Conventions & gotchas
+
+- **Header-sniff overrides the URL extension.** HTML is the default kind; after the httpx GET,
+  `detect._sniff_kind(content_type, magic_bytes)` reroutes binary docs — so `arxiv.org/pdf/1706.03762`
+  (no `.pdf`) lands in the PDF path, and a `.pdf` URL serving an HTML wall is rejected, not parsed as a
+  silent wrong document.
+- **Negative cache + in-flight dedup (`dispatch.py`).** Only error results are cached (TTL
+  `HARVESTER_NEG_TTL`, default 120s), so a dead source isn't re-hammered; concurrent identical calls
+  share one in-flight fetch. Successes are never negatively cached.
+- **`size_only` still fetches and caches the full body** — it returns only `{size, chars, path}`; an
+  empty extraction is an explicit error, never a silent size 0.
+- **Plain-text passthrough.** `.txt` / `.md` / OCR dumps / Gutenberg text are kept verbatim
+  (`detect.is_plain_text`), not run through trafilatura (which would strip prose to an empty stub).
+- **Images are bifurcated by `media`.** `fetch` runs `media="deny"`: it refuses image/archive inputs
+  (pointing at `fetchImage` / `archive`) and never downloads image binaries — `![](remote)` links stay
+  as URLs. `fetchImage` / `archive` run `media="allow"`. (`images.localize_html_images` exists and is
+  tested but is not wired into the current `fetch` path.)
+- **Archive members are addressed `source::member`** (split on `::`, archives only). `archive` with no
+  member returns a safe listing; with a member, fetches just that one.
+- **Token estimate over-counts on purpose** (`tokens.py`: CJK×1.3, symbol-dense/1.8, Latin/2, always
+  `ceil`) — "N tokens" is a safe upper bound to budget against.
+- **Scholarly sources work keyless** — DOI/ISBN/PMID/title skip the HTTP ladder and go straight to the
+  OA resolver. Optional API keys only raise rate limits and coverage; nothing is hard-gated.
+- **PDF slow features are off by default** (`HARVESTER_PDF_OCR`, `HARVESTER_PDF_LAYOUT`) — text-layer
+  extraction is fast; a scanned PDF without OCR yields thin text and the resolver falls through.
+
+## Cache
+
+`.fetch/` at the project root (the dir holding `pyproject.toml`), overridable with `WEBFETCH_DIR`.
+Type-partitioned: `.fetch/<kind>/<slug>__<sha1[:10]>.md` (e.g. `html/`, `pdf/` + the source `.pdf`,
+`png/`, `archive_member/`). DOI artifacts are keyed by the bare DOI to dedup across input forms; every
+`.md` carries YAML frontmatter (`url`, `fetched_at`, `method`, `token_count`).
+
+## Config
+
+Env vars are read at **module import time** (module-level constants) — set them before import; tests
+monkeypatch the module attribute, not the env. Full list and defaults live in `README.md` §
+Environment variables (`WEBFETCH_DIR`, `HARVESTER_*`, `SEARXNG_URL`, `BRAVE_API_KEY`, the optional
+scholarly-API keys).
+
+## Testing
+
+- `asyncio_mode = "auto"` — every `async def test_*` runs under pytest-asyncio; no `@pytest.mark.asyncio`.
+- `conftest.py` autouse fixtures: `isolated_cache` (redirects `WEBFETCH_DIR` to a tmp dir) and
+  `clear_dispatch_caches` (clears `dispatch._NEG_CACHE` / `_INFLIGHT` around each test).
+- OA unit tests are hermetic (`FakeClient`); live one-call-per-API tests are gated behind
+  `RUN_OA_INTEGRATION=1`. `test_safe_archive.py` is adversarial — it builds real hostile archives and
+  asserts refusal.
+- When you add a source, guard, or handler, add its test in the matching `tests/test_*.py`.
+
+## Code style
+
+- Strict types — `pyright` over `src/`; no bare `Any` without cause. Lint with `ruff`.
+- **Keep boundary modules non-raising** — new code in `dispatch`/`net` returns the error contract above;
+  don't let an exception escape to `server.py`.
+- Never swallow an exception silently — log it (file logger) with context.
+- Surgical changes only — every changed line traces to the task; fix broken code you touch, but don't
+  refactor adjacent working code as a side quest.
+- Reuse before you write — grep for an existing helper (`net._client`, `cache.cache_file`,
+  `detect.detect_kind`) and call it rather than re-implementing.
+
+## Framework (.claude/ + /pcm)
+
+`.claude/` and this `CLAUDE.md` are owned by `/pcm` (the Change Manager). Route every framework or
+process-file change through it — a PreToolUse guard (`pcm-guard.sh`) denies direct Edit/Write to
+`.claude/**` and `CLAUDE.md` unless `/pcm` is active, and `/pcm` loads `/quality:prompt` before editing
+any prompt file. Product code under `src/`, `tests/`, `docs/` is edited normally, never through `/pcm`.
+Commands and skills self-index from their `description:` frontmatter — this file carries no roster.
+
+---
+
+## Model Selection
+
+Match the model to the cost of being wrong; judgment never delegates downward.
+
+- **Opus** — product-shaping output: RND, clinical/liability judgment, salience over large or ambiguous input.
+- **Sonnet** — bounded work with a spec: git mechanics, doc merges, the seo pass, structured-file writes, implementing a design.
+- **Haiku** — fetch, classify, append, extract verbatim, summarization of large output — no judgment; returns raw material with its source, never concludes.
+
+Never summarize clinical text on Haiku — a dropped detail in a therapy transcript is a clinical cost. Unsure? Use `inherit`.
+
+**Effort:**
+
+- Max: never unless I say
+- XHigh: only to force open a genuinely hard problem
+- High: the default — nearly everything
+- Medium: small tasks needing little reasoning
+- Low: never
+
+**Agent nesting** — complex work nests mixed tiers: a Sonnet fans out Haiku probes, lines up their raw findings, then reasons over them. Don't call a heavy MCP tool (harvester, context7, playwright) from the main loop — it floods context; dispatch a Sonnet nesting Haiku probes to fetch and distill, returning only the answer.
+**Sequental sliced agentic work** - when doing an operation, see far ahead of where you want to get, plan your changes in sequential batches and send sonnet agnets to do them one by one, the whole point of using sub agents as your hands is that they're less expensive.

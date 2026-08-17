@@ -1,0 +1,51 @@
+[project]
+name = "harvester-mcp"
+version = "0.1.0"
+description = "Multi-format MCP fetch server: HTML/PDF/DOCX/XLSX/PPTX/CSV/JSON/image/archive → Markdown; type-partitioned .cache/ cache; wall-bypass ladder (httpx → curl_cffi → Jina → DOI open-access mirror → Wayback)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "mreza0100" }]
+keywords = ["http", "mcp", "llm", "automation", "trafilatura", "web"]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = [
+    "curl-cffi>=0.15.0",
+    "docling>=2.107.0",
+    "httpx>=0.27",
+    "markitdown>=0.1.6",
+    "mcp>=1.1.3",
+    "protego>=0.3.1",
+    "py7zr>=1.1.3",
+    "pydantic>=2.0.0",
+    "pymupdf4llm>=1.27.2.3",
+    "rarfile>=4.2",
+    "requests>=2.32.3",
+    "trafilatura>=2.0.0",
+]
+# `remote.py` imports starlette and uvicorn directly. They are not listed above because `mcp`
+# hard-requires both (`starlette>=0.27`, `uvicorn>=0.31.1`), so they are always present; adding them
+# here forces a `uv lock` regeneration that rewrites unrelated dependency markers across the file.
+# Declare them explicitly only alongside a deliberate relock.
+
+[project.scripts]
+harvester = "harvester:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harvester"]
+
+[tool.uv]
+dev-dependencies = ["pyright>=1.1.389", "ruff>=0.7.3", "pytest>=8.0.0", "pytest-asyncio>=0.21.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
