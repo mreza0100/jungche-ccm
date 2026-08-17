@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/dream/artifact"
+	"hostops/pfm/internal/dream/resources"
 )
 
 func TestSlugUsesSharedASCIIByteNormalization(t *testing.T) {
@@ -66,7 +67,8 @@ func TestResolveProfileIsOrganFirstAndNamesBothMissingPaths(t *testing.T) {
 	global := filepath.Join(engine, "lanes", "qa.md")
 	mustWrite(t, global, "GLOBAL\n")
 
-	profile, err := ResolveProfile("QA", "qa", organ, engine)
+	resourceSet := resources.NewResources(organ, engine)
+	profile, err := ResolveProfile("QA", "qa", resourceSet)
 	if err != nil {
 		t.Fatalf("ResolveProfile(global) error = %v", err)
 	}
@@ -74,15 +76,15 @@ func TestResolveProfileIsOrganFirstAndNamesBothMissingPaths(t *testing.T) {
 		t.Fatalf("global profile = %#v", profile)
 	}
 	mustWrite(t, local, "LOCAL\n")
-	profile, err = ResolveProfile("QA", "qa", organ, engine)
+	profile, err = ResolveProfile("QA", "qa", resourceSet)
 	if err != nil {
 		t.Fatalf("ResolveProfile(local) error = %v", err)
 	}
 	if profile.Path != local || profile.Body != "LOCAL\n" {
 		t.Fatalf("local profile = %#v", profile)
 	}
-	_, err = ResolveProfile("Explore", "qa", organ, engine)
-	assertErrorContains(t, err, "resolves to lane explore, not qa")
+	_, err = ResolveProfile("Explore", "qa", resourceSet)
+	assertErrorContains(t, err, "resolves to lane tracer, not qa")
 
 	err = os.Remove(local)
 	if err != nil {
@@ -92,9 +94,10 @@ func TestResolveProfileIsOrganFirstAndNamesBothMissingPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ResolveProfile("QA", "qa", organ, engine)
+	_, err = ResolveProfile("QA", "qa", resourceSet)
 	assertErrorContains(t, err, local)
 	assertErrorContains(t, err, global)
+	assertErrorContains(t, err, "embedded:lanes/qa.md")
 }
 
 func TestBuildMembershipBackfillsLegacyAndAssignsNewMaps(t *testing.T) {
@@ -209,14 +212,42 @@ func TestFromAgentTypeInReadsTheLaneProfileDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, agentType := range []string{"tracer", "Explore", "wave-tracer"} {
-		got, err := FromAgentTypeIn(agentType, organ, "")
+		got, err := FromAgentTypeIn(agentType, resources.NewResources(organ))
 		if err != nil || got != "tracer" {
 			t.Fatalf("FromAgentTypeIn(%q) = %q, %v; want tracer", agentType, got, err)
 		}
 	}
 	// An undeclared type still gets its own lane rather than being swallowed.
-	got, err := FromAgentTypeIn("reviewer", organ, "")
+	got, err := FromAgentTypeIn("reviewer", resources.NewResources(organ))
 	if err != nil || got != "reviewer" {
 		t.Fatalf("FromAgentTypeIn(reviewer) = %q, %v; want reviewer", got, err)
+	}
+}
+
+func TestFromAgentTypeInPreservesLayerPriorityAcrossDifferentLaneNames(t *testing.T) {
+	root := t.TempDir()
+	development := filepath.Join(root, "development")
+	organ := filepath.Join(root, "organ")
+	for _, directory := range []string{
+		filepath.Join(development, "lanes"),
+		filepath.Join(organ, "lanes"),
+	} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, filepath.Join(development, "lanes", "zeta.md"), "Serves: Explore\n")
+	mustWrite(t, filepath.Join(organ, "lanes", "alpha.md"), "Serves: Explore\n")
+
+	got, err := FromAgentTypeIn("Explore", resources.NewResources(development, organ))
+	if err != nil || got != "zeta" {
+		t.Fatalf("development alias = %q, %v; want zeta", got, err)
+	}
+	if err := os.Remove(filepath.Join(development, "lanes", "zeta.md")); err != nil {
+		t.Fatal(err)
+	}
+	got, err = FromAgentTypeIn("Explore", resources.NewResources(development, organ))
+	if err != nil || got != "alpha" {
+		t.Fatalf("organ alias = %q, %v; want alpha over embedded tracer", got, err)
 	}
 }

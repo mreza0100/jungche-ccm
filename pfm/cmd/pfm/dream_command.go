@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,15 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/dream"
 )
 
 const defaultDreamAgent = "Explore"
 
 var (
-	defaultDreamRepo      = filepath.Join(defaultDreamHome(), "work", "proja")
-	defaultDreamRegistry  = filepath.Join(defaultDreamHome(), ".claude", "projects")
-	defaultDreamResources = filepath.Join(defaultDreamHome(), ".professor", "dreamer")
+	defaultDreamRegistry = filepath.Join(defaultDreamHome(), ".claude", "projects")
 )
 
 func defaultDreamHome() string {
@@ -32,6 +32,17 @@ func defaultDreamHome() string {
 	// user directory. Production operations will fail closed on these absent
 	// absolute paths instead of inheriting an ambiguous relative location.
 	return filepath.Join(string(filepath.Separator), "nonexistent-dream-home")
+}
+
+func defaultDreamConfigHome() string {
+	if root := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(root) {
+		return filepath.Clean(root)
+	}
+	return filepath.Join(defaultDreamHome(), ".config")
+}
+
+func defaultDreamRepositoriesFile() string {
+	return filepath.Join(defaultDreamConfigHome(), "pfm", "repos.list")
 }
 
 type dreamNightOptions struct {
@@ -60,8 +71,9 @@ type dreamInspectOptions struct {
 }
 
 type dreamMorningOptions struct {
-	RegistryBase  string
-	ResourcesRoot string
+	RegistryBase     string
+	ResourcesRoot    string
+	RepositoriesFile string
 }
 
 type dreamMorningOutput struct {
@@ -75,18 +87,27 @@ type dreamMorningOutput struct {
 // only contact with internal/dream; no dream implementation package crosses
 // the one-way import boundary.
 type dreamCommandRuntime struct {
-	night   func(context.Context, dreamNightOptions, io.Writer, io.Writer) (string, error)
-	apply   func(context.Context, dreamApplyOptions) (string, error)
-	inspect func(dreamInspectOptions) (string, error)
-	morning func(context.Context, dreamMorningOptions) (dreamMorningOutput, error)
-	migrate func(string) (string, error)
-	restamp func(mapArgument, workingDirectory string, now time.Time) (string, error)
-	hook    func(dreamHookRequest) ([]byte, error)
-	now     func() time.Time
-	project func() string
+	night          func(context.Context, dreamNightOptions, io.Writer, io.Writer) (string, error)
+	apply          func(context.Context, dreamApplyOptions) (string, error)
+	inspect        func(dreamInspectOptions) (string, error)
+	morning        func(context.Context, dreamMorningOptions) (dreamMorningOutput, error)
+	migrate        func(string) (string, error)
+	restamp        func(mapArgument, workingDirectory string, now time.Time) (string, error)
+	hook           func(dreamHookRequest) ([]byte, error)
+	now            func() time.Time
+	project        func() string
+	repositoryRoot func() (string, error)
 }
 
-func productionDreamRuntime() dreamCommandRuntime {
+func productionDreamRuntime(codexBinaries ...string) dreamCommandRuntime {
+	codexBinary := ""
+	configPath := ""
+	if len(codexBinaries) != 0 {
+		codexBinary = codexBinaries[0]
+	}
+	if len(codexBinaries) > 1 {
+		configPath = codexBinaries[1]
+	}
 	return dreamCommandRuntime{
 		night: func(
 			ctx context.Context,
@@ -102,7 +123,7 @@ func productionDreamRuntime() dreamCommandRuntime {
 			}
 			request.Selection.BootstrapCount = options.BootstrapCount
 			request.Selection.CorpusFile = options.CorpusFile
-			dependencies := dream.DefaultNightDependencies()
+			dependencies := dream.DefaultNightDependenciesWithCodex(codexBinary)
 			dependencies.Stdout = stdout
 			dependencies.Stderr = stderr
 			result, err := dream.Night(ctx, request, dependencies)
@@ -112,12 +133,7 @@ func productionDreamRuntime() dreamCommandRuntime {
 			if result.Empty || !result.ApplyEligible {
 				return "", nil
 			}
-			return fmt.Sprintf(
-				"dreamer-night: signed apply command: pfm dream apply --repo %s --agent %s %s\n",
-				options.RepoRoot,
-				options.AgentType,
-				result.Stage.Root,
-			), nil
+			return renderDreamApplyCommand(options, result.Stage.Root, configPath), nil
 		},
 		apply: func(ctx context.Context, options dreamApplyOptions) (string, error) {
 			result, err := dream.Apply(ctx, dream.ApplyRequest{
@@ -155,8 +171,9 @@ func productionDreamRuntime() dreamCommandRuntime {
 		},
 		morning: func(ctx context.Context, options dreamMorningOptions) (dreamMorningOutput, error) {
 			result, err := dream.Morning(ctx, dream.MorningRequest{
-				RegistryBase:  options.RegistryBase,
-				ResourcesRoot: options.ResourcesRoot,
+				RegistryBase:     options.RegistryBase,
+				ResourcesRoot:    options.ResourcesRoot,
+				RepositoriesFile: options.RepositoriesFile,
 			})
 			return dreamMorningOutput{
 				Stdout: result.Stdout,
@@ -186,7 +203,33 @@ func productionDreamRuntime() dreamCommandRuntime {
 		project: func() string {
 			return os.Getenv("CLAUDE_PROJECT_DIR")
 		},
+		repositoryRoot: func() (string, error) {
+			workingDirectory, err := os.Getwd()
+			if err != nil {
+				return "", fmt.Errorf("get working directory: %w", err)
+			}
+			return dream.RepositoryRoot(workingDirectory)
+		},
 	}
+}
+
+func renderDreamApplyCommand(options dreamNightOptions, stage string, configPaths ...string) string {
+	configArgument := ""
+	if len(configPaths) != 0 && configPaths[0] != "" {
+		configArgument = " --config " + action.Quote(configPaths[0])
+	}
+	resourcesArgument := ""
+	if options.ResourcesRoot != "" {
+		resourcesArgument = " --resources " + options.ResourcesRoot
+	}
+	return fmt.Sprintf(
+		"dreamer-night: signed apply command: pfm%s dream apply --repo %s --agent %s%s %s\n",
+		configArgument,
+		options.RepoRoot,
+		options.AgentType,
+		resourcesArgument,
+		stage,
+	)
 }
 
 func runDream(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -199,6 +242,24 @@ func runDream(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		stdout,
 		stderr,
 		productionDreamRuntime(),
+	)
+}
+
+func runDreamConfigured(
+	args []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
+	ctx, stop := dreamCommandContext()
+	defer stop()
+	return runDreamWith(
+		ctx,
+		args,
+		stdin,
+		stdout,
+		stderr,
+		productionDreamRuntime(runtime.Config.Codex.Binary, runtime.Config.Path),
 	)
 }
 
@@ -250,10 +311,11 @@ func runDreamNight(
 ) int {
 	flags := newFlagSet(
 		"dream night",
-		"usage: pfm dream night [--repo ROOT] [--agent TYPE] [--bootstrap-count N | --corpus-file FILE]",
+		"usage: pfm dream night [--repo ROOT] [--resources DIR] [--agent TYPE] [--bootstrap-count N | --corpus-file FILE]",
 		stderr,
 	)
-	repo := flags.String("repo", defaultDreamRepo, "repository root")
+	repo := flags.String("repo", "", "repository root (default: current repository)")
+	resourceRoot := flags.String("resources", "", "development overlay; embedded resources remain fallback")
 	agent := flags.String("agent", defaultDreamAgent, "agent type to harvest")
 	bootstrap := flags.String("bootstrap-count", "", "maximum transcripts for a bootstrap night")
 	corpusFile := flags.String("corpus-file", "", "explicit newline-delimited transcript path file")
@@ -275,11 +337,15 @@ func runDreamNight(
 		flags.Usage()
 		return 2
 	}
+	repoRoot, err := resolveDreamRepo(*repo, runtime)
+	if err != nil {
+		return finishDreamCommand("night", "", err, stdout, stderr)
+	}
 	output, err := runtime.night(ctx, dreamNightOptions{
-		RepoRoot:       *repo,
+		RepoRoot:       repoRoot,
 		AgentType:      *agent,
 		RegistryBase:   defaultDreamRegistry,
-		ResourcesRoot:  defaultDreamResources,
+		ResourcesRoot:  *resourceRoot,
 		BootstrapCount: bootstrapCount,
 		CorpusFile:     *corpusFile,
 		StartedAt:      runtime.now(),
@@ -295,6 +361,20 @@ func parseBootstrapCount(raw string, specified bool) (int, bool) {
 	return value, err == nil && value > 0
 }
 
+func resolveDreamRepo(explicit string, runtime dreamCommandRuntime) (string, error) {
+	if explicit != "" {
+		return explicit, nil
+	}
+	if runtime.repositoryRoot == nil {
+		return "", errors.New("resolve current repository; pass --repo ROOT: repository resolver is unavailable")
+	}
+	root, err := runtime.repositoryRoot()
+	if err != nil {
+		return "", fmt.Errorf("resolve current repository; pass --repo ROOT: %w", err)
+	}
+	return root, nil
+}
+
 func runDreamApply(
 	ctx context.Context,
 	args []string,
@@ -303,10 +383,11 @@ func runDreamApply(
 ) int {
 	flags := newFlagSet(
 		"dream apply",
-		"usage: pfm dream apply [--repo ROOT] [--agent TYPE] STAGE",
+		"usage: pfm dream apply [--repo ROOT] [--resources DIR] [--agent TYPE] STAGE",
 		stderr,
 	)
-	repo := flags.String("repo", defaultDreamRepo, "repository root")
+	repo := flags.String("repo", "", "repository root (default: current repository)")
+	resourceRoot := flags.String("resources", "", "development overlay; embedded resources remain fallback")
 	agent := flags.String("agent", defaultDreamAgent, "agent type that owns the stage")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -315,11 +396,15 @@ func runDreamApply(
 		flags.Usage()
 		return 2
 	}
+	repoRoot, err := resolveDreamRepo(*repo, runtime)
+	if err != nil {
+		return finishDreamCommand("apply", "", err, stdout, stderr)
+	}
 	output, err := runtime.apply(ctx, dreamApplyOptions{
-		RepoRoot:      *repo,
+		RepoRoot:      repoRoot,
 		AgentType:     *agent,
 		RegistryBase:  defaultDreamRegistry,
-		ResourcesRoot: defaultDreamResources,
+		ResourcesRoot: *resourceRoot,
 		Stage:         flags.Arg(0),
 	})
 	return finishDreamCommand("apply", output, err, stdout, stderr)
@@ -332,10 +417,11 @@ func runDreamInspect(
 ) int {
 	flags := newFlagSet(
 		"dream inspect",
-		"usage: pfm dream inspect [--repo ROOT] [--agent TYPE]",
+		"usage: pfm dream inspect [--repo ROOT] [--resources DIR] [--agent TYPE]",
 		stderr,
 	)
-	repo := flags.String("repo", defaultDreamRepo, "repository root")
+	repo := flags.String("repo", "", "repository root (default: current repository)")
+	resourceRoot := flags.String("resources", "", "development overlay; embedded resources remain fallback")
 	agent := flags.String("agent", defaultDreamAgent, "agent type to inspect")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -344,11 +430,15 @@ func runDreamInspect(
 		flags.Usage()
 		return 2
 	}
+	repoRoot, err := resolveDreamRepo(*repo, runtime)
+	if err != nil {
+		return finishDreamCommand("inspect", "", err, stdout, stderr)
+	}
 	output, err := runtime.inspect(dreamInspectOptions{
-		RepoRoot:      *repo,
+		RepoRoot:      repoRoot,
 		AgentType:     *agent,
 		RegistryBase:  defaultDreamRegistry,
-		ResourcesRoot: defaultDreamResources,
+		ResourcesRoot: *resourceRoot,
 	})
 	return finishDreamCommand("inspect", output, err, stdout, stderr)
 }
@@ -359,7 +449,13 @@ func runDreamMorning(
 	stdout, stderr io.Writer,
 	runtime dreamCommandRuntime,
 ) int {
-	flags := newFlagSet("dream morning", "usage: pfm dream morning", stderr)
+	flags := newFlagSet(
+		"dream morning",
+		"usage: pfm dream morning [--repos FILE] [--resources DIR]",
+		stderr,
+	)
+	repositoriesFile := flags.String("repos", defaultDreamRepositoriesFile(), "repository list")
+	resourceRoot := flags.String("resources", "", "development overlay; embedded resources remain fallback")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -368,8 +464,9 @@ func runDreamMorning(
 		return 2
 	}
 	output, err := runtime.morning(ctx, dreamMorningOptions{
-		RegistryBase:  defaultDreamRegistry,
-		ResourcesRoot: defaultDreamResources,
+		RegistryBase:     defaultDreamRegistry,
+		ResourcesRoot:    *resourceRoot,
+		RepositoriesFile: *repositoriesFile,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm dream morning: %v\n", err)

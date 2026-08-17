@@ -16,6 +16,7 @@ import (
 
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
+	"hostops/pfm/internal/dream/resources"
 )
 
 type HookKind string
@@ -176,7 +177,7 @@ func claudeHook(input []byte, projectDirectory string) ([]byte, error) {
 	if err != nil {
 		return nil, nil
 	}
-	laneName, err := lane.FromAgentTypeIn(agentType, hookContext.Organ, "")
+	laneName, err := lane.FromAgentTypeIn(agentType, resources.NewResources(hookContext.Organ))
 	if err != nil {
 		return nil, nil
 	}
@@ -219,7 +220,7 @@ func codexHook(input []byte) ([]byte, error) {
 	if err != nil {
 		return nil, nil
 	}
-	laneName, err := lane.FromAgentTypeIn(agentType, hookContext.Organ, "")
+	laneName, err := lane.FromAgentTypeIn(agentType, resources.NewResources(hookContext.Organ))
 	if err != nil {
 		return nil, nil
 	}

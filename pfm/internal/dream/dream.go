@@ -22,6 +22,7 @@ import (
 	"hostops/pfm/internal/dream/gate"
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
+	"hostops/pfm/internal/dream/resources"
 	"hostops/pfm/internal/dream/seat"
 )
 
@@ -102,10 +103,14 @@ func (runner productionSeatRunner) PrepareNight(
 // DefaultNightDependencies wires production defaults without resolving any
 // host path until a non-empty corpus has passed preflight.
 func DefaultNightDependencies() NightDependencies {
+	return DefaultNightDependenciesWithCodex("")
+}
+
+func DefaultNightDependenciesWithCodex(codexBinary string) NightDependencies {
 	return NightDependencies{
 		SeatLaw: seat.RequiredSeatLaw(),
 		NewSeatRunner: func(events seat.EventSink) (NightSeatRunner, error) {
-			runner, err := seat.NewDefaultRunner(events)
+			runner, err := seat.NewDefaultRunnerWithCodex(events, codexBinary)
 			if err != nil {
 				return nil, err
 			}
@@ -165,9 +170,9 @@ func Night(ctx context.Context, request NightRequest, dependencies NightDependen
 	if request.StartedAt.IsZero() {
 		return result, errors.New("dream night requires a started-at timestamp")
 	}
-	if request.ResourcesRoot == "" || !filepath.IsAbs(request.ResourcesRoot) || filepath.Clean(request.ResourcesRoot) != request.ResourcesRoot {
+	if err := validateResourcesRoot(request.ResourcesRoot); err != nil {
 		failurePath = request.ResourcesRoot
-		return result, fmt.Errorf("dream resources root must be absolute and canonical: %s", request.ResourcesRoot)
+		return result, err
 	}
 	if err := ctx.Err(); err != nil {
 		return result, fmt.Errorf("dream night canceled before preflight: %w", err)
@@ -175,24 +180,27 @@ func Night(ctx context.Context, request NightRequest, dependencies NightDependen
 	if _, err := organ.Validate(repo); err != nil {
 		return result, fmt.Errorf("validate dream organ: %w", err)
 	}
-	laneName, err := lane.FromAgentTypeIn(request.AgentType, repo.Organ, request.ResourcesRoot)
+	resourceSet := resources.NewResources(request.ResourcesRoot, repo.Organ)
+	laneName, err := lane.FromAgentTypeIn(request.AgentType, resourceSet)
 	if err != nil {
 		return result, err
 	}
 	laneContext := artifact.LaneContext{AgentType: request.AgentType, Lane: laneName}
 	result.Lane = laneContext
-	profile, err := lane.ResolveProfile(request.AgentType, laneName, repo.Organ, request.ResourcesRoot)
+	profile, err := lane.ResolveProfile(request.AgentType, laneName, resourceSet)
 	if err != nil {
 		return result, err
 	}
-	distillTemplate, err := readResource(filepath.Join(request.ResourcesRoot, distillPromptFile))
+	distillRaw, err := resourceSet.ReadFile(distillPromptFile)
 	if err != nil {
 		return result, err
 	}
-	refinerTemplate, err := readResource(filepath.Join(request.ResourcesRoot, refinerPromptFile))
+	refinerRaw, err := resourceSet.ReadFile(refinerPromptFile)
 	if err != nil {
 		return result, err
 	}
+	distillTemplate := string(distillRaw)
+	refinerTemplate := string(refinerRaw)
 
 	unlock, err := dependencies.AcquireLock(repo.Organ)
 	if err != nil {
@@ -642,21 +650,6 @@ func writeStageMetadata(
 		}
 	}
 	return nil
-}
-
-func readResource(path string) (string, error) {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return "", artifact.ErrorAt(path, fmt.Errorf("inspect dream resource %s: %w", path, err))
-	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return "", artifact.ErrorAt(path, fmt.Errorf("dream resource is not a regular non-symlink file: %s", path))
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", artifact.ErrorAt(path, fmt.Errorf("read dream resource %s: %w", path, err))
-	}
-	return string(raw), nil
 }
 
 func writePrivateExclusive(path string, raw []byte) error {

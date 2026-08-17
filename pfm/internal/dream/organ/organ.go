@@ -32,6 +32,23 @@ type HookContext struct {
 	Organ     string
 }
 
+// RepositoryRoot resolves the Git top level that owns an arbitrary working
+// directory. The caller still validates the returned root through Resolve
+// before performing a dream operation.
+func RepositoryRoot(directory string) (string, error) {
+	if err := validateCanonicalDirectory(directory, "working directory"); err != nil {
+		return "", err
+	}
+	root, err := gitRevParse(directory, "--show-toplevel")
+	if err != nil {
+		return "", fmt.Errorf("working directory is not inside a Git repository: %s: %w", directory, err)
+	}
+	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
+		return "", fmt.Errorf("Git top level is not absolute and canonical: %s", root)
+	}
+	return root, nil
+}
+
 // Resolve validates a requested repository root and derives its organ and
 // Claude transcript registry paths. The registry key is Claude's path encoding:
 // every path separator becomes a hyphen, including the leading separator.

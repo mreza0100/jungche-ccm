@@ -31,6 +31,20 @@ func TestResolveDerivesOrganAndEncodedRegistry(t *testing.T) {
 	}
 }
 
+func TestRepositoryRootResolvesFromNestedWorkingDirectory(t *testing.T) {
+	repo := newRepository(t)
+	workingDirectory := filepath.Join(repo, "nested", "work")
+	mustMkdir(t, workingDirectory, 0o700)
+
+	root, err := RepositoryRoot(workingDirectory)
+	if err != nil {
+		t.Fatalf("RepositoryRoot: %v", err)
+	}
+	if root != repo {
+		t.Fatalf("RepositoryRoot = %q, want %q", root, repo)
+	}
+}
+
 func TestResolveRejectsNonCanonicalAndNonRootRepositories(t *testing.T) {
 	repo := newRepository(t)
 	registryBase := t.TempDir()

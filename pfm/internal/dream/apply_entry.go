@@ -10,6 +10,7 @@ import (
 	"hostops/pfm/internal/dream/artifact"
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
+	"hostops/pfm/internal/dream/resources"
 )
 
 type ApplyRequest struct {
@@ -34,10 +35,16 @@ func Apply(ctx context.Context, request ApplyRequest) (result apply.Result, retu
 	if _, err := organ.Validate(repository); err != nil {
 		return apply.Result{}, err
 	}
+	if err := validateResourcesRoot(request.ResourcesRoot); err != nil {
+		return apply.Result{}, err
+	}
 	// Alias-aware, same resolver Night staged with — Night writes lane.txt via
 	// the lane profiles' Serves declarations, so an alias-blind Apply would
 	// reject Night's own signed apply command.
-	laneName, err := lane.FromAgentTypeIn(request.AgentType, repository.Organ, request.ResourcesRoot)
+	laneName, err := lane.FromAgentTypeIn(
+		request.AgentType,
+		resources.NewResources(request.ResourcesRoot, repository.Organ),
+	)
 	if err != nil {
 		return apply.Result{}, err
 	}

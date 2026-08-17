@@ -3,6 +3,7 @@ package dream
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,15 +12,15 @@ import (
 
 	"hostops/pfm/internal/dream/artifact"
 	"hostops/pfm/internal/dream/lane"
+	"hostops/pfm/prompts"
 )
 
 func TestRuntimePromptsCarryTheMechanicalArtifactLaws(t *testing.T) {
-	resources := filepath.Join(filepath.Dir(moduleRoot(t)), "dreamer")
-	distill, err := os.ReadFile(filepath.Join(resources, distillPromptFile))
+	distill, err := fs.ReadFile(prompts.Dreamer(), distillPromptFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	refiner, err := os.ReadFile(filepath.Join(resources, refinerPromptFile))
+	refiner, err := fs.ReadFile(prompts.Dreamer(), refinerPromptFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,8 +118,13 @@ func liveContractRepositories(t *testing.T) []morningRepository {
 	if os.Getenv("DREAM_LIVE_CONTRACT") != "1" {
 		t.Skip("set DREAM_LIVE_CONTRACT=1 to verify the configured live organs")
 	}
-	resources := filepath.Join(filepath.Dir(moduleRoot(t)), "dreamer")
-	repositories, err := readMorningRepositories(filepath.Join(resources, "repos.list"))
+	configRoot := os.Getenv("XDG_CONFIG_HOME")
+	if !filepath.IsAbs(configRoot) {
+		configRoot = filepath.Join(os.Getenv("HOME"), ".config")
+	}
+	repositories, err := readMorningRepositories(
+		filepath.Join(filepath.Clean(configRoot), "pfm", "repos.list"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
