@@ -259,7 +259,7 @@ Claude takes your answers and:
 | Skill / command       | Source                                                                    | Parameterization                                                     |
 | --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | `legal`               | Bundled `blueprint/skills/legal/`                                         | None                                                                 |
-| `rr`                  | source-fetched (sources.json) https://github.com/mreza0100/rr             | None                                                                 |
+| `rr`                  | in-tree at `{BLUEPRINT_CLONE_PATH}/engines/rr/` — ships with the blueprint clone, no separate fetch | None                                                                 |
 | `ghostwriter`         | source-fetched (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
 | `vision-factory`      | source-fetched (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
 | `/p:360`              | Command `blueprint/commands/p/360.md`                                     | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |

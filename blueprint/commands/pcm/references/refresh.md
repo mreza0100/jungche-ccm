@@ -40,7 +40,7 @@ Cross-conversation context persists via **Epics** — initiative-level manifest 
 - domain/user nouns (the project's subject matter, its users, its work units) → `{DOMAIN_NOUN}`, `{USER_NOUN}`
 - the project's regulatory frame, jurisdiction, and legal-entity type → `{REGULATION}`, `{JURISDICTION}`, `{LEGAL_ENTITY_TYPE}`
 - All tech specifics (transcription/AI providers, frameworks, ORMs, mobile/web stacks, API layers, databases, infra/cloud/hosting) → `{TECH_STACK_PLACEHOLDER}` per role
-- Ports → `{PORT_A}`, `{PORT_B}`; package managers/test runners → `{PACKAGE_MANAGER}`, `{TEST_RUNNER}`
+- Ports → `{PORT_A}`, `{PORT_B}`; package managers/test runners → `{PROJECT_PKG_MGR}`, `{PROJECT_TEST_RUNNER}`
 - Blueprint self-references (`{BLUEPRINT_REPO}`, `{GH_USER}`, `{BLUEPRINT_CLONE_PATH}`) → resolved at install: a user with push access to the canonical repo targets it directly; everyone else targets their own fork
 
 Character names (Professor, JC, etc.) ship as **default names with "rename if you want" instruction**. Concrete beats abstract.
@@ -52,7 +52,7 @@ Character names (Professor, JC, etc.) ship as **default names with "rename if yo
 From the project repo:
 
 - `CLAUDE.md` (root), `.claude/agents/*.md`, `.claude/commands/*.md` (Tier A+B, including command directories like `.claude/commands/pcm/`, `.claude/commands/wave/`, `.claude/commands/audit/`, `.claude/commands/quality/`), `.claude/skills/*/SKILL.md` (bundled + domain-hydrated only — see next bullet), `.claude/scripts/*.sh`
-- **Source-fetched skills** (`rr`, `360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install.
+- **Source-fetched skills** (`360`, `ghostwriter`, `vision-factory`) — never vendor a `SKILL.md` copy for these; they live in their own canonical repos and a stale copy is the exact drift this avoids. Refresh maintains only `templates/skills/sources.json` (name → repo); SETUP clones each at install. `rr` moved in-tree at `engines/rr/` (ships with the blueprint clone, alongside Wave Walker) — no longer source-fetched; it updates when the blueprint clone updates, not independently.
 - `docs/epics/` structure — Epics section of CLAUDE.md, manifest format, lifecycle, ownership rules
 - `docs/agents/` scaffold — the hub `_index.md` format, the `standards.md` skeleton, and the cluster convention (structure only, NEVER doc content — every adopter's documentation body is their own)
 - The source's per-project structure → mine it INTO the generic **roster PATTERN**: express each per-project file/section ONCE with `{project}` tokens (one representative project as the shape). NEVER bake the source's project count or role names into a template — the source's concrete roster (its N projects, those roles) is an install instance SETUP expands per entry, not template structure. A template must read correctly at roster size 1. See `PLACEHOLDERS.md` § "Project roster".
@@ -83,7 +83,7 @@ From the project repo:
         ├── agents/ (mono-planner, mono-architect, mono-documenter, gitter, per-project/{planner,architect,developer,qa}.md)
         ├── commands/ (animate, jc, dev, git, documenter, goal-definer, officer, km, pm, mentor, marketer; plus command directories: wave/ (orchestrator, builder, refine, walker, live, schedule), pcm/ (update, release, references/{refresh.md, audit-scopes.md}), audit/ (code-hygiene, security), quality/ (prompt, doc), p/ (rnd, 360, slow-burn, tokens/), chat/{save,load,interrogate,…})
         ├── skills/
-        │   └── sources.json — source-fetched skills (rr, 360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here. (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
+        │   └── sources.json — source-fetched skills (360, ghostwriter, vision-factory): cloned from their canonical repos at install, never vendored here; rr ships in-tree at engines/rr/ instead (updates with the blueprint clone, not independently). (All former bundled p:* skills — rnd, wave:refine, wave:walker, quality:prompt, quality:doc, audit:code-hygiene, audit:security — are now nested commands under commands/; the domain-hydrated shells live at commands/audit/{code-hygiene,security}.md, filled by RR at setup.)
         ├── workflows/ (project-local workflows; Wave Walker is compiled in ENGINES/wave-walker/engine)
         ├── scripts/ (worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh)
         ├── epics/ (manifest template, lifecycle reference)

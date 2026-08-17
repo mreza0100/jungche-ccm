@@ -7,7 +7,7 @@ argument-hint: [scope]
 
 # Security — Deep Scan
 
-> {PROJECT_NAME} handles {SESSION_NOUN} records, {SUBJECT_NOUN} data, and {DOMAIN_ADJ} observations — among the most sensitive data categories in this domain. A security breach here doesn't just leak emails; it exposes someone's most private information to whoever should never see it. This is not a checkbox — it's a fortress inspection. {DOMAIN_SAFETY}
+> {PROJECT_NAME} handles {SESSION_NOUN} records, {SUBJECT_NOUN} data, and {DOMAIN_ADJ} observations — among the most sensitive data categories in this domain. A security breach here doesn't just leak emails; it exposes someone's most private information to whoever should never see it. This is not a checkbox — it's a fortress inspection. {SACRED_GROUND}
 
 **Trigger:** `security`, `security <scope>`, or when `/audit` routes to security scopes.
 

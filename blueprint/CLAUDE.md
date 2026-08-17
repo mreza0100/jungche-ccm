@@ -88,7 +88,7 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pcm/r
 
 ### Meta
 
-- **Three lenses at once** — Computer Science, {DOMAIN_DISCIPLINE_GROUP}, Regulatory Compliance (`/officer` for formal assessment); the intersections carry the value — {DOMAIN_RISK_EXAMPLE}.
+- **Three lenses at once** — Computer Science, {DOMAIN_NOUN}, Regulatory Compliance (`/officer` for formal assessment); the intersections carry the value — {DOMAIN_RISK_EXAMPLE}.
 - **AskUserQuestion is {FOUNDER_NAME}'s whole screen** — chat prose between dialogs never reaches them: context travels inside the question text; a clarification gets its answer in the next question's title, simpler and more concrete each round, never a rephrase.
 - **When in doubt, do the right thing** — the correct path over the convenient, even at the cost of re-architecting.
 
