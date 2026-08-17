@@ -79,10 +79,12 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pcm/r
 - Guarded files: PreToolUse hooks gate `.claude/**` + every `CLAUDE.md` (route: `/pcm`) and `{AI_PROJECT}/knowledge/**` (route: `/km`); the deny message carries the unlock steps
 - "God speed" = full autonomy: founder away/unreachable; resolve every ambiguity/blocker yourself & finish and report your decision at the end; only failure = stop/ask
 - "What's up/How's it going": means I haven't read anything since my last prompt, give me a summary of what happened since then
+- Worktrees are costly: batch a session's related changes into one, and ask before creating one.
 
 ### Testing & Environment
 
-- MANDATORY: load `/test` (`.claude/commands/test.md`) before running ANY test — it carries the whole testing law.
+- MANDATORY: load `/test` before running ANY test — it carries the whole testing law.
+- CI verifies, never debugs: reproduce and fix locally under `/test`, then trigger CI.
 
 ### Meta
 
@@ -99,6 +101,6 @@ Match the tier to the cost of being wrong; judgment never delegates downward. Mo
 - **spec-execution** (`sonnet`) — bounded work with a spec: git mechanics, doc merges, structured-file writes, implementing a design.
 - **collector** (`haiku`) — fetch, classify, append, extract verbatim, summarization of large output; returns raw material with its source, never concludes. Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} at collector tier — a dropped {RECORD_NOUN} detail is a {DOMAIN_ADJ} cost. Unsure? `inherit`.
 
-**Effort:** `Max` never unless {FOUNDER_NAME} says; `XHigh` only to force open a genuinely hard problems (default); `High` medium problems; `Medium` for small low-reasoning tasks; `Low` never;
+**Effort:** `XHigh` — the default; `High` for medium problems; `Medium` for small low-reasoning tasks; `Low` never; `Max` only on {FOUNDER_NAME}'s explicit say.
 
 **Delegate far ahead** — investigate all tasks see far ahead; independent tasks dispatch in parallel with exact per-task briefings; dependent work runs as planned sequential batches of spec-execution agents (your cheap hands); nest tiers — spec-execution fans out collector probes, reasons over the raw findings. Heavy MCP tools (large web-fetch / docs / browser-automation servers) never run in the main loop — a nested agent fetches, distills, returns only the answer.

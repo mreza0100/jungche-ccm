@@ -17,18 +17,20 @@ Every gitter phase ends with the matching confirmation:
 
 ## ports.md Template
 
-SETUP writes `$DOCS/ports.md` from `$WORKTREE/.env.ports` using this exact template — one row per roster project (a project with no HTTP port shows `—`):
+SETUP writes `$DOCS/ports.md` from `$WORKTREE/.env.ports` using this exact template — one row per roster project (a project with no HTTP port shows `—`), plus one row per pipeline-isolated test-infra service. `alloc-ports.sh` allocates the whole set per pipeline, so sibling worktrees never collide:
 
 ```markdown
 > Author: gitter
 
 # Port Assignments — $PIPELINE
 
-| Service        | Port         | Worktree Path        |
-| -------------- | ------------ | -------------------- |
-| {PROJECT_ROLE} | {port or —}  | $WORKTREE/{project}  |
+| Service          | Port                | Worktree Path                |
+| ---------------- | ------------------- | ---------------------------- |
+| {PROJECT_ROLE}   | {port or —}         | $WORKTREE/{project}          |
+| Test {DATABASE}  | {db_test_port}      | pipeline-isolated test infra |
+| Test {QUEUE}     | {queue_test_port}   | pipeline-isolated test infra |
 
-{Note any dev-server proxy routing and any port-less project — e.g. a pure queue consumer with no HTTP port.}
+{Note any dev-server proxy routing, and any project whose port status is not obvious — a pure queue consumer with no HTTP port, or a consumer that also serves one endpoint and so carries a real port.} Test-infra ports are pipeline-isolated and used only during `/test` runs.
 ```
 
 ## Pre-Migration History (optional — fill in from your own repo)

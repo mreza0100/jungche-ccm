@@ -79,6 +79,7 @@ These are **NOT hand-filled.** SETUP renders them by expanding the per-project P
 | `{SEED_PROJECT}`                     | optional-role marker — seed project (`"-"` sentinel when absent)   |
 | `{INFRA_PROJECT}`                    | optional-role marker — infra project (`"-"` sentinel when absent)  |
 | `{AI_PROJECT}`                       | optional-role marker — AI project (`"-"` sentinel when absent)     |
+| `{BACKEND_PROJECT}`                  | optional-role marker — backend project (`"-"` sentinel when absent) |
 | `{MIGRATIONS_DIR}`                   | optional-role marker — migrations dir (`"-"` sentinel when absent) |
 
 ## Tech stack (per role — keep the mechanics, swap the names)
@@ -141,6 +142,20 @@ Keep the **structure** (5 + 5, each with title + bullets + "Think:" line). Keep 
 | MDR / SaMD / NEN 7510 / ISO 27001 | `{DOMAIN_STANDARDS}`                           |
 | Dutch / NL / BV / KVK             | `{JURISDICTION}` / `{LEGAL_ENTITY_TYPE}`       |
 | `europe-west4` / EU               | `{DATA_REGION}`                                |
+
+### Tier B archetype slots
+
+The opt-in Tier B commands ship as archetype skeletons whose domain content is one named slot each. SETUP fills these from the interview; a template must never carry the source instance's concrete answer.
+
+| Command      | Slots                                                                                                                         |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `/officer`   | `{REGULATION}`, `{REGULATION_FRAMEWORK_DOCS}`, `{ENFORCEMENT_AUTHORITY}`, `{DATA_SUBJECT_RIGHTS}`, `{INCIDENT_NOTIFICATION_TIMELINE}` |
+| `/pm`        | `{USER_PERSONA}`, `{PRODUCT_DOMAIN}`, `{USER_DAILY_WORKFLOW}`, `{USER_PAIN_POINTS}`                                           |
+| `/mentor`    | `{MARKET_SEGMENT}`, `{JURISDICTION}`, `{LEGAL_ENTITY_TYPE}`, `{FUNDING_LANDSCAPE}`, `{REGULATORY_BODIES}`                     |
+| `/marketer`  | `{CHANNEL_LANDSCAPE}`, `{TARGET_LANGUAGE}`, `{COMPETITIVE_LANDSCAPE}`, `{INDUSTRY_CONFERENCES}`                               |
+| `/km`        | `{KNOWLEDGE_DOMAIN}`, `{KNOWLEDGE_TAXONOMY}`, `{KNOWLEDGE_CONSUMERS}`, `{SOURCE_AUTHORITIES}`                                 |
+
+A named regulator, competitor, conference, or association surviving in one of these templates is a leak, not a default — the archetype keeps the SHAPE of the answer, never the answer.
 
 ## Paths (mostly generic pipeline paths — KEEP unchanged)
 

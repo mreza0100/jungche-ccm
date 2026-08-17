@@ -49,16 +49,20 @@ Fetch target version into temp:
 git clone --branch v{TARGET} --depth 1 https://github.com/{BLUEPRINT_REPO}.git /tmp/professor-update-{TARGET}
 ```
 
-### Step 3 — Parse CHANGELOG between versions
+### Step 3 — Walk the release chain, version by version
 
-Read every per-release file `releases/v*.md` for versions `> {INSTALLED}` and `<= {TARGET}` — each holds one release's full notes, `CHANGELOG.md` is only the index. Group its bullets by heading (Added/Changed/Fixed/Removed/Breaking/Migration).
+The update may span many releases; process each individually, in ascending semver order — the range is never flattened into one bullet pool. For every version `> {INSTALLED}` and `<= {TARGET}`, read its full per-release file `releases/v{X}.md` (release files accumulate in the repo, so the target clone holds the whole chain; `CHANGELOG.md` is only the index) and record a per-version ledger entry: bullets grouped by heading (Added/Changed/Fixed/Removed), its `### Breaking` + `### Migration` sections, and any new interview placeholders.
 
 Parse each bullet:
 
 - Prefix → category (`Tier A:`, `Tier B:`, `Mechanics:`, `Docs:`, `Scripts:`)
 - Trailing tags → override (`(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)`)
 
+**Migration chain replay (order-dependent — runs before Step 5):** apply the chain's `### Migration`/`### Breaking` structural steps (renames, moves, deletes, splits/merges) in version order to the manifest's file paths and `drift.md`'s KEEP-LOCAL paths — a customized file follows its rename chain to its final path, so Step 5 pairs old-path local state with new-path upstream state and the divergence lands on the right successor. A flat installed-vs-target diff reads a rename lineage as remove+add and strands the customization; only the ordered walk sees it. On-disk moves still happen at Step 7 after approval, and content merges ONCE against the final target in Step 5 — order lives in the migration chain, never in repeated content application.
+
 ### Step 4 — Classify bump magnitude
+
+Magnitude = the largest single-release bump in the chain (one major anywhere → the whole update is major), never the endpoint semver diff alone.
 
 - Patch → all auto-apply with preview
 - Minor → mix of auto + interactive; may add optional files
@@ -88,7 +92,9 @@ If new templates introduce placeholders not in the manifest → flag as `[manual
 
 **Bucket 2 — Review** (show diff, ask per-file): `A→B→C` conflicts, `Tier A:` content changes, new `(opt-in)` Tier B archetypes, entries marked `(breaking)`. Cost-bearing deltas — env vars, hooks, permissions, model/config changes (`settings.json` or any file) — ALWAYS land here with an explicit cost/behavior note, regardless of the comparison or `(safe-auto)` tags.
 
-**Bucket 3 — Manual** (interactive walkthrough): new interview questions (new placeholders), structural migrations (renames, moves, deletes), `### Breaking` and `### Migration` entries.
+**Bucket 3 — Manual** (interactive walkthrough): new interview questions (new placeholders), structural migrations (renames, moves, deletes), `### Breaking` and `### Migration` entries — walked in version order per the Step 3 ledger.
+
+Every bucket entry carries its source version (`v{X}: …`) so a multi-version chain stays attributable.
 
 In `check` mode: show all three buckets, write nothing.
 
@@ -107,7 +113,7 @@ In `check` mode: show all three buckets, write nothing.
 rm -rf /tmp/professor-update-{TARGET}
 ```
 
-Report: `v{OLD} → v{TARGET}`; applied `{N}` auto · `{M}` reviewed (`{K}` kept local) · `{P}` manual migrations; manifest regenerated at the target version; the key changelog bullets between versions.
+Report: `v{OLD} → v{TARGET}`; applied `{N}` auto · `{M}` reviewed (`{K}` kept local) · `{P}` manual migrations; manifest regenerated at the target version; the key bullets per version, in chain order.
 
 ### Step 8b — Refresh source-fetched skills
 

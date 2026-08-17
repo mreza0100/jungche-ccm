@@ -22,7 +22,7 @@ First pipeline stage — creates the worktree before planning and architecture r
 ./.claude/scripts/worktree.sh create $PIPELINE
 ```
 
-Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, installs deps for every roster project, allocates ports, writes `.env.ports`. Then init the audit trail (`$WORKTREE/.checkpoint.json` logs which agent did what; gitignored, archived at MERGE):
+Creates branch `pipeline/$PIPELINE` from `main`, checks out the full repo at `.worktrees/$PIPELINE/`, initializes any submodule projects (`git worktree add` leaves submodule dirs empty; the script runs `git submodule update --init {project}`), installs deps for every roster project, allocates ports, writes `.env.ports`. Then init the audit trail (`$WORKTREE/.checkpoint.json` logs which agent did what; gitignored, archived at MERGE):
 
 ```bash
 bash .claude/scripts/checkpoint.sh init "$WORKTREE" "$PIPELINE"
@@ -30,6 +30,6 @@ bash .claude/scripts/checkpoint.sh init "$WORKTREE" "$PIPELINE"
 
 ## 3. Record port assignments
 
-Read `$WORKTREE/.env.ports` and write `$DOCS/ports.md` from the template in `gitter-history.md` § ports.md Template (`> Author: gitter` byline, per-roster-project port table, proxy + port-less notes).
+Read `$WORKTREE/.env.ports` and write `$DOCS/ports.md` from the template in `gitter-history.md` § ports.md Template (`> Author: gitter` byline, per-roster-project + test-infra port table, proxy + port-less notes).
 
 Confirm per template.

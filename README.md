@@ -97,7 +97,7 @@ These are characters, not system prompts with different adjectives. The voice is
   documenter               permanent docs updated, pipeline archived
 ```
 
-Small change? `/jc` delivers on `main` under its own QA and prevention rule. Batch of related work? `/wave:live` runs it on `main` without worktrees. Multiple pipelines? The orchestrator drives N parallel builder chats with a lane registry, and `/wave:watcher` — a third chat that re-arms itself every 50 minutes — watches the instruments, not the vibes. Live-behavior proof? `/qa:live` walks the running app through its real UI with zero injected data.
+Small change? `/jc` delivers on `main` under its own QA and prevention rule. Batch of related work? `/wave:live` runs it on `main` without worktrees. Multiple pipelines? The `scheduler` agent plans the train, the orchestrator fires each builder as a goal and waits on events rather than polling, and `/wave:sentinel` audits the whole train on demand — one shot, ground truth only, no standing seat. Live-behavior proof? `/qa:live` walks the running app through its real UI with zero injected data.
 
 ---
 
@@ -105,14 +105,14 @@ Small change? `/jc` delivers on `main` under its own QA and prevention rule. Bat
 
 |                    |                                                                                                                                                                                                                            |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pipeline**       | `/wave:builder` · `/wave:orchestrator` · `/wave:live` · `/wave:refine` · `/wave:schedule` · `/wave:walker` · `/wave:watcher`                                                                                               |
+| **Pipeline**       | `/wave:builder` · `/wave:orchestrator` · `/wave:live` · `/wave:refine` · `/wave:sentinel` · `/wave:walker`                                                                                                                 |
 | **Delivery**       | `/jc` · `/dev` · `/git` · `/documenter` · `/qa:live` · `/goal-manager`                                                                                                                                                     |
 | **Framework**      | `/pcm` · `/pcm:update` · `/pcm:release` · `/pcm:context-meter`                                                                                                                                                             |
 | **Thinking**       | `/p:360` · `/p:rnd` · `/p:tokens` · `/p:slow-burn` · `/sleep` · `/animate`                                                                                                                                                 |
 | **Quality**        | `/quality:doc` · `/quality:prompt` · `/audit:code-hygiene` · `/audit:security` · `/audit:ai-output`                                                                                                                        |
 | **Optional roles** | `/officer` · `/km` · `/pm` · `/mentor` · `/marketer`                                                                                                                                                                       |
 | **Legal shelf**    | `legal` skill — 11 distilled playbooks (DPA drafting, DPIA, breach response, vendor due diligence, NDA triage, a pre-delivery self-check) the Professor and `/officer` consult; attributed distillations, not legal advice |
-| **Agents**         | `gitter`, `tracer`, `mono-{planner,architect,documenter}`, root `qa-{project}` gate wrappers, and per-project `planner` / `architect` / `developer` / `qa`                                                                |
+| **Agents**         | `gitter`, `tracer`, `scheduler`, `architect`, `mono-{planner,architect,documenter}`, root `{role}-{project}` wrappers (including the `qa-{project}` gates), and per-project `planner` / `architect` / `developer` / `qa`  |
 | **Source-fetched** | `rr` (research & report) · `ghostwriter` (voice fingerprinting) · `vision-factory` — cloned from their own repos at install, never vendored, so they can't silently drift                                                  |
 
 A few of these deserve a sentence, because their names undersell them:

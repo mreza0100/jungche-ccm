@@ -1,8 +1,9 @@
 # token-ledger
 
-Per-agent / per-operation token attribution for Claude Code sessions, parsed straight
-from the sub-agent JSONL transcripts Claude Code writes locally. Zero dependencies
-(node: builtins only), READ-ONLY over transcripts, no network. Node 20+.
+Token attribution for both local agent harnesses — per-agent / per-operation for Claude
+Code sessions, per-session-thread for the Codex CLI (`--codex`) — parsed straight
+from the JSONL each harness writes locally. Zero dependencies (node: builtins only),
+READ-ONLY over transcripts, no network. Node 20+.
 Full human reference — Claude's own routing/invocation entry point is `SKILL.md`.
 
 This is the "WHICH agent / WHICH operation burned the tokens" view that Claude Code's
@@ -52,6 +53,7 @@ node .claude/commands/p/tokens/token-ledger.mjs --root /some/other/.claude --pro
 | `--detail <id\|substr>` | List one agent's individual API calls in order.                                                                                                                                       |
 | `--by-workflow`         | Group by workflow run (`wf_*`) — one row per run + a `(non-workflow agents)` summary row + TOTAL.                                                                                     |
 | `--filter <substr>`     | Restrict the per-agent table + totals to rows whose label or model id contains `<substr>` (case-insensitive); prints the match count. Composes with `--all` / `--session` / `--json`. |
+| `--since <YYYY-MM-DD>`  | Drop sessions older than that calendar day.                                                                                                                                           |
 | `--json`                | Machine-readable output.                                                                                                                                                              |
 
 ### `--by-workflow` honesty caveat
@@ -107,14 +109,98 @@ Within a session:
   4. First-user-message prompt snippet (the agent's task brief).
   5. The raw `agentId`.
 
+## Codex mode (`--codex`)
+
+Same script, same `PRICING` table, different truth source: the Codex CLI writes
+one JSONL rollout per session thread.
+
+```bash
+# This repo's Codex sessions since a date, heaviest first:
+node .claude/commands/p/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD>
+
+# Daily spend rollup:
+node .claude/commands/p/tokens/token-ledger.mjs --codex --since <YYYY-MM-DD> --by-day
+
+# Every project, every row, machine-readable:
+node .claude/commands/p/tokens/token-ledger.mjs --codex --all --top 0 --json
+
+# One agent role, or one session:
+node .claude/commands/p/tokens/token-ledger.mjs --codex --filter developer
+node .claude/commands/p/tokens/token-ledger.mjs --codex --all --filter <thread-id>
+```
+
+| Flag                   | Purpose                                                                              |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `--codex`              | Read Codex rollouts instead of Claude transcripts.                                   |
+| `--since <YYYY-MM-DD>` | Keep rollouts stamped on or after that day (the filename stamp is **local** time).   |
+| `--all`                | Span every project (default: the repo you are standing in) and add a PROJECT column. |
+| `--by-day`             | One row per calendar day instead of per session.                                     |
+| `--top <n>`            | Cap the session table (default 25; `0` = every row).                                 |
+| `--filter <substr>`    | Match on label, model, project, cwd, or session id.                                  |
+| `--codex-root <dir>`   | Override `~/.codex`.                                                                 |
+
+### What it reads
+
+`~/.codex/sessions/YYYY/MM/DD/rollout-<local-ISO-ts>-<threadId>.jsonl` and
+`~/.codex/archived_sessions/rollout-*.jsonl`. The `~/.codex/` root itself is deliberately
+**not** scanned — it holds `rollout-backup-*.jsonl` copies that would double-count a
+session. Sessions are de-duplicated by thread id.
+
+Per rollout: line 1 is `{type:"session_meta"}` (cwd, thread id, and for a subagent thread
+its `agent_role`/`agent_nickname`); `{type:"turn_context"}` carries the model; token
+accounting rides on `{type:"event_msg", payload:{type:"token_count", info:{…}}}`, where
+`info` is `null` on older/idle events.
+
+Because a Codex subagent writes its **own** rollout, per-session rows already give
+per-subagent attribution — the LABEL column shows the role (`developer-{project} (Nickname)`)
+or `main` for a top-level thread.
+
+### Counting rule (verified against a local corpus)
+
+`info.total_token_usage` is **cumulative**, and the tool sums the **peak of each
+segment**:
+
+- Cumulative within a segment — a cumulative of 19,575 plus a 22,531 `last_token_usage`
+  delta is followed by a cumulative of 42,106.
+- It **resets to ~0 on resume/compaction**. One 110 MB rollout resets 3×; its four
+  segment peaks are 108.1M / 77.2M / 353.2M / 384K. Reading only the final counter
+  reports **384,439** instead of **538,898,717** — a 1400× undercount.
+- Duplicate `token_count` events re-emit an **identical** cumulative total, so summing
+  `last_token_usage` deltas **overcounts** (observed exactly 2× on a 2-event rollout).
+
+Invariants that held on every event sampled, and that the arithmetic relies on:
+`total = input + output`; `cached_input ⊆ input`; `reasoning_output ⊆ output`;
+`cache_write = 0`.
+
+### Performance
+
+Rollouts reach 110 MB, mostly tool output. The scanner reads 4 MB windows (64 KB overlap,
+longer than any `token_count`/`turn_context` line, so every match lands whole in some
+window) and JSON-decodes **only** matching lines. On a 110 MB file that is ~0.35 s
+versus ~5.3 s for a plain readline pass, with byte-identical results; a 3.1 GB /
+1500-rollout corpus scans in ~12 s.
+
 ## Cost model
 
-Per-MTok rates are **EDITABLE constants** at the top of `token-ledger.mjs` (`PRICING`).
-Matched by substring on the lowercased model id (`opus`, `sonnet`, `haiku`, `fable`,
-`mythos`). Cache-write = 1.25× input rate, cache-read = 0.1× input rate (standard
-Anthropic prompt-caching multipliers). Unknown model → cost 0 + a one-time warning,
-never a crash. **Update these rates when prices change** — they are best-effort defaults,
-not authoritative billing.
+Per-MTok rates are **EDITABLE constants** at the top of `token-ledger.mjs` (`PRICING`),
+matched by substring on the lowercased model id; first match wins, so keep specific ids
+above broader ones. **Update these rates when prices change** — they are best-effort
+defaults, not authoritative billing.
+
+- **Claude models** (`opus`, `sonnet`, `haiku`, `fable`, `mythos`): cache-write = 1.25×
+  input rate, cache-read = 0.1× input rate (standard Anthropic prompt-caching multipliers).
+- **Codex models** (`{CODEX_MODEL_FRONTIER}`, `{CODEX_MODEL_SPEC}`, `{CODEX_MODEL_COLLECTOR}`):
+  a 4th `PRICING` column carries the cached-input rate, billed separately because Codex
+  reports `cached_input_tokens` as a subset of `input_tokens`. Output already includes
+  reasoning. The frontier tier's row is its published standard-tier input / cached-input /
+  output rate; the spec and collector tiers publish input/output only, so their cached
+  rate is derived at the same 0.1× ratio the frontier tier publishes. The vendor's higher
+  long-context tier (>272K input) never applies — the Codex context window is smaller.
+
+A model with **no** `PRICING` row reports cost **`n/a`**, not `$0`: its tokens still count
+toward the totals, its dollars do not, and the footer says how many sessions are affected.
+A session that spans more than one model is priced at the last model seen, with a warning
+naming every model it used.
 
 ## Token-definition calibration (read this to interpret the harness's numbers)
 
@@ -148,6 +234,6 @@ context calls for.
   (`"workflow-subagent"`/`"rr"`); the real per-worker identity for those lives only in
   the task prompt (first user line), which the label falls back to when meta has no
   `description`.
-- Cost is an **estimate**. Verify against your actual Anthropic billing before trusting
+- Cost is an **estimate**. Verify against the provider's actual billing before trusting
   absolute dollar figures; the relative ranking is what's reliable.
 - Malformed JSONL lines are skipped silently and counted (reported on stderr).

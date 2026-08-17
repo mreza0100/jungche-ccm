@@ -33,7 +33,8 @@
     ".claude/commands/h/",
     ".claude/commands/deploy.md",
     "docs/commands/jc/references/deploy.md",
-    ".claude/commands/test.md"
+    ".claude/commands/test.md",
+    ".claude/commands/prod-deploy.md"
   ],
   "templates": {
     "README.md": {
@@ -59,12 +60,12 @@
     },
     "templates/CLAUDE.md": {
       "sources": {
-        "CLAUDE.md": "2be2a7a833db7a6a04923447300ad6f418ba93eca30bd0e3ef9cefacdb04e4ce"
+        "CLAUDE.md": "806cb0f47036ed2a5b6f69ae84516efae65199055371710be3e15027b4d98ada"
       }
     },
     "templates/agents/gitter.md": {
       "sources": {
-        ".claude/agents/gitter.md": "49ba7f7d2d765b5a03d2787a450693fd813af7298d98e26f9967faf1f0909d2f"
+        ".claude/agents/gitter.md": "c766eebaf51a5c26ddc373d1ca1e697c3ce40562b7dbbd73b6be4f765e321270"
       }
     },
     "templates/agents/mono-architect.md": {
@@ -89,7 +90,7 @@
     },
     "templates/agents/per-project/qa.md": {
       "sources": {
-        "{project:backend}/.claude/agents/qa.md": "da5a2e91327c8d43fcf729887c36825cdbd827283bf284838ad3869bfe8e7de6"
+        "{project:backend}/.claude/agents/qa.md": "a36a3a284f3780c4874ec8da17e97c68a786b72fc6b6aa1e2137a5e0b473efc8"
       }
     },
     "templates/agents/qa-wrapper.md": {
@@ -98,7 +99,7 @@
         ".claude/agents/qa-fe.md": "102e1b7bb62de538f2b2bee7150e8c4fd4ac6b1fe890d402bc2a3edd1d546422",
         ".claude/agents/qa-cortex.md": "dd1a4d4a85d213c9f5377841b1d1d6503584c73e79f396cce4341eb88dd7c434",
         ".claude/agents/qa-infra.md": "544903a31f20f4b64a0f0440f2bf8440f5306cfe0c74cc377667516536cd1a46",
-        ".claude/agents/qa-web.md": "86371bd664110017c5352592f34b45396f5e06719475cd4a1e72c382d21e34e3",
+        ".claude/agents/qa-web.md": "17fac5e23e6d91b5d6b02b09528fae7790c382f9a56ca10905d25509c1c80459",
         ".claude/agents/qa-contracts.md": "80456984c8b7a813d63ec04b89414566b0f30278c65e073ced4daa69bb2fa392"
       }
     },
@@ -131,12 +132,12 @@
     },
     "templates/commands/audit/ai-output.md": {
       "sources": {
-        ".claude/commands/audit/cortex.md": "5ffb52368d4c991cd2842dcba98c81fff084b0d4c91204f60b6aea76362550ad"
+        ".claude/commands/audit/cortex.md": "d84db0087cf3bf63b6e59f17612bdfb518629ec6b5958e5938b73849287d7dcf"
       }
     },
     "templates/commands/audit/code-hygiene.md": {
       "sources": {
-        ".claude/commands/audit/code-hygiene.md": "b2b65bb11ebe7b328c723a31d15c377e7a895103a86ea149546a17f37f2d61ee"
+        ".claude/commands/audit/code-hygiene.md": "5bb2abcf90232f2e893f6bc2bb1e740302337c9c1d072b2d82235f9789738278"
       }
     },
     "templates/commands/audit/security.md": {
@@ -146,12 +147,12 @@
     },
     "templates/commands/dev.md": {
       "sources": {
-        ".claude/commands/dev.md": "39d446145942766bea1358acc627ef6ab1bfb97854870b8142b952df5c275619"
+        ".claude/commands/dev.md": "2d5607d77a6851af0572e4886b88146fca000efe33e62ea024de2f28a82eabbc"
       }
     },
     "templates/commands/documenter.md": {
       "sources": {
-        ".claude/commands/documenter.md": "9f15957292aa846de73ee36e41bd7932cfd1d6e5e4b45bce72c1ed689920fb72"
+        ".claude/commands/documenter.md": "8409fb77c29dbeea6ac60de648ec001668b85078c910580c92ad3ed4e60ffc6e"
       }
     },
     "templates/commands/documenter/_base.txt": {
@@ -183,7 +184,7 @@
     },
     "templates/commands/marketer.md": {
       "sources": {
-        ".claude/commands/marketer.md": "01bbfd19cd17b8de5412627bb7b9ee5f3b136be55c7398fdb09a81a555b5452d"
+        ".claude/commands/marketer.md": "073eaa527044903947c95b4290e1a00e92d2a828e613daa33752501600b0b7ec"
       }
     },
     "templates/commands/mentor.md": {
@@ -193,7 +194,7 @@
     },
     "templates/commands/officer.md": {
       "sources": {
-        ".claude/commands/officer.md": "468035343038e6a7218215a42057c5cc1ee7079e4cc2e0a901eb3070517fed7c"
+        ".claude/commands/officer.md": "5a16322280a88c05e4627ef04e8ee0bb47faf07f7ffe3ef424ac2d85b001df88"
       }
     },
     "templates/commands/p/360.md": {
@@ -203,7 +204,7 @@
     },
     "templates/commands/p/rnd.md": {
       "sources": {
-        ".claude/commands/p/rnd.md": "da662b8e5ec53473b0b7cfc4d9ab47f6c3bec29fdb53dfc634921e92fc3ae82d"
+        ".claude/commands/p/rnd.md": "f83d15a23ff6753e2043708b487468f04c55abdd1fd7bcc82259a989b42e880b"
       }
     },
     "templates/commands/p/slow-burn.md": {
@@ -211,27 +212,27 @@
     },
     "templates/commands/p/tokens/README.md": {
       "sources": {
-        ".claude/commands/p/tokens/README.md": "8046b4b1f13c1922021d91a7da5ef9a6eadb151b173c18d3c9a2e1ee1fb9c5ff"
+        ".claude/commands/p/tokens/README.md": "501f70f2e4b3bf57002e0d2022d3221b4e8a32b7bd272b6ee2fbb68699f9e921"
       }
     },
     "templates/commands/p/tokens/SKILL.md": {
       "sources": {
-        ".claude/commands/p/tokens/SKILL.md": "a770a3fff361048af04c622b665870901119824e3aa997c8ec7f81a965fb4c49"
+        ".claude/commands/p/tokens/SKILL.md": "d3a762f9776c092afef40b6d8bc721def6e10b42b3d61141ae103f59bd937ec5"
       }
     },
     "templates/commands/p/tokens/token-ledger.mjs": {
       "sources": {
-        ".claude/commands/p/tokens/token-ledger.mjs": "524ee82c350872a6f3fba15c528e209a63beef7f75cd10e5c8c048efa695f83e"
+        ".claude/commands/p/tokens/token-ledger.mjs": "61987b19f04ca6ac6324d1e14cb8d59f0372e394b449337b35a848ed4d9e8b66"
       }
     },
     "templates/commands/pcm.md": {
       "sources": {
-        ".claude/commands/pcm.md": "fe59a4710587b5f44d5cab76d6aab890d4178cca0632fc5ef76ca28ec7598c90"
+        ".claude/commands/pcm.md": "5d0e852ed14cdee8dc2bb6e0b9465b2f951464d3d4d373ae25a44a6a4282b031"
       }
     },
     "templates/commands/pcm/context-meter.md": {
       "sources": {
-        ".claude/commands/pcm/context-meter.md": "b54b14b3f948e5105c52d9aca2df7f94724db5f01f9ef535d7640e76519f0347"
+        ".claude/commands/pcm/context-meter.md": "3019b110148251dc8d6c0c55d689eef0eb7663e29cf1a9c4ebd8bfe5512f6fa0"
       }
     },
     "templates/commands/pcm/references/audit-scopes.md": {
@@ -246,17 +247,17 @@
     },
     "templates/commands/pcm/release.md": {
       "sources": {
-        ".claude/commands/pcm/release.md": "84d79da00af9bf479257220133579cdb63e5aeed5aed5811280e94faaa17bace"
+        ".claude/commands/pcm/release.md": "df452369451ec6e8826ea5d853397b76731d7b49855e225e0d1f622032437252"
       }
     },
     "templates/commands/pcm/update.md": {
       "sources": {
-        ".claude/commands/pcm/update.md": "073f10bd9a1be483495b6de85cefc851c4d156d9670662123be79c1814caf735"
+        ".claude/commands/pcm/update.md": "0c7dbc0c6bd58e83af522a557af83ea841da7fb2202c7770527e8fdc9b227aae"
       }
     },
     "templates/commands/pm.md": {
       "sources": {
-        ".claude/commands/pm.md": "126111d78673ccf5185cde78cd235d4e264c12ec661f0026170f76b20703e247"
+        ".claude/commands/pm.md": "36e608b9e7b9a9e2eceee3cf8b2d445fa08ef8133526de0783f63264ed5c7414"
       }
     },
     "templates/commands/qa/live.md": {
@@ -269,7 +270,7 @@
     },
     "templates/commands/quality/prompt.md": {
       "sources": {
-        ".claude/commands/quality/prompt.md": "a516188118b05af65fdd7f161553ef2aac7d07f63a05d2a7803ca75bc168edd7"
+        ".claude/commands/quality/prompt.md": "b1ebb032f2f20e6ca6e8696118cd4e73da049ba05ea1b72de72f1bb8cacd789f"
       }
     },
     "templates/commands/sleep.md": {
@@ -277,37 +278,32 @@
     },
     "templates/commands/wave/builder.md": {
       "sources": {
-        ".claude/commands/wave/builder.md": "d116d2488316556d7725d3a2321c5e2434adab7c8cc6636d55f9a4a8e9f65e06"
+        ".claude/commands/wave/builder.md": "5c55dcb1d28a09198d01abea83ead6fef7d45b650fcf54f824d43bfef22fd592"
       }
     },
     "templates/commands/wave/live.md": {
       "sources": {
-        ".claude/commands/wave/live.md": "a9ac257dbc5d67140565243464198061ad28002c5c5d7347a0c8bb42dd9f3e14"
+        ".claude/commands/wave/live.md": "b663d50da0233ff2acecc827caceb3776d54879ddd28c7ce82a7bab90e08ab9d"
       }
     },
     "templates/commands/wave/orchestrator.md": {
       "sources": {
-        ".claude/commands/wave/orchestrator.md": "b99149ec2063eb0db3ed6b54bbc8a391ce39464340f58cf4c9ce5b0edc16fff1"
+        ".claude/commands/wave/orchestrator.md": "5585ad40a55c848bd7ab39cb846f0c6921abb8ccfb1abbf413aeed5a6bde29b0"
       }
     },
     "templates/commands/wave/refine.md": {
       "sources": {
-        ".claude/commands/wave/refine.md": "ba671f8cebb3eea76aacf386284fefecf7d16cf0f7a6db61fd8b7474e2d2600f"
-      }
-    },
-    "templates/commands/wave/schedule.md": {
-      "sources": {
-        ".claude/commands/wave/schedule.md": "b42f88494bb5b5ec7343bf9544fb139736f48734addd0c6d6061bba482371a50"
+        ".claude/commands/wave/refine.md": "cddd98cb30da699cebc0f3f5a2fef36943d9416fe1ce3cb8d45270ebdcb5cac8"
       }
     },
     "templates/commands/wave/walker.md": {
       "sources": {
-        ".claude/commands/wave/walker.md": "e7e7256f75e20d4b85c9494848b705949daf9ab1200e9f9c8a117759e995b812"
+        ".claude/commands/wave/walker.md": "4b853ced8dc9f7cf3ac8f0fe463dce1d47c822fe2fbf7bde6012b9d2461dd4f4"
       }
     },
     "templates/commands/wave/walker-invariants.md": {
       "sources": {
-        ".claude/commands/wave/walker-invariants.md": "cd22f5c6584ea5475c78549e11cd2b96153ca1cb846664c40845b6affff162b8"
+        ".claude/commands/wave/walker-invariants.md": "84b0ac61e0da06368b8041cbd71c41859bd31dfb0b096b09b93c689d0cfb643d"
       }
     },
     "templates/docs-agents/_index.md": {
@@ -355,7 +351,7 @@
     },
     "templates/docs-commands/git/references/gitter-history.md": {
       "sources": {
-        "docs/commands/git/references/gitter-history.md": "242217965ec98e4d1f0ba8242612dcd94da236ebf871cefe0f4292e7e83e7a60"
+        "docs/commands/git/references/gitter-history.md": "efc3cb1c8f6510a0272738c05795c1449a09960959e70073260b2ee25d5357f2"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-docs.md": {
@@ -365,7 +361,7 @@
     },
     "templates/docs-commands/git/references/gitter-phase-merge.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-merge.md": "528f195265d89b2af7582d2f104ba34f4a62c47c47a287b24579d17d62eeb928"
+        "docs/commands/git/references/gitter-phase-merge.md": "788d06517ace27204a422325e0abbb618465957377218e46e8c5da49890558c3"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-push.md": {
@@ -375,7 +371,7 @@
     },
     "templates/docs-commands/git/references/gitter-phase-setup.md": {
       "sources": {
-        "docs/commands/git/references/gitter-phase-setup.md": "67fa11f2f6df4724de697f892afc71434f270169c9070fcc0c80f8619d8c7e24"
+        "docs/commands/git/references/gitter-phase-setup.md": "22a880339e075fa6c4d79e82bf950ccb1d2e3fb188c807e27c30b5b5695fc3f3"
       }
     },
     "templates/docs-commands/git/references/gitter-phase-wave.md": {
@@ -412,7 +408,7 @@
     },
     "templates/output-styles/professor.compact.md": {
       "sources": {
-        ".claude/output-styles/professor.md": "7d6c2790340c6f9a923f8c08944df688d55de77de7576020974f8413dc67c244"
+        ".claude/output-styles/professor.md": "a0f17a81879f140308e8ed84c24d65e53245f4fc723b77de5c38530f3873957e"
       }
     },
     "templates/output-styles/professor.full.md": {
@@ -420,12 +416,12 @@
     },
     "templates/per-project/CLAUDE.md": {
       "sources": {
-        "{project:backend}/CLAUDE.md": "1cf9318002fd1f8989fef7aa90eb5e3c48a125c4b84b2752c83b49c4a94bef63"
+        "{project:backend}/CLAUDE.md": "72080fc35f119da41761a5bdbaa368a31052935747b31c4a7038e0122984ee5a"
       }
     },
     "templates/scripts/alloc-ports.sh": {
       "sources": {
-        ".claude/scripts/alloc-ports.sh": "e56ad5870a5fd7e8713aa30697ec073e5054be6b07943e6c85b574346e85e511"
+        ".claude/scripts/alloc-ports.sh": "52293f87438bc75e6978b6641db45d9c743e7ea48a0340f3613f1ad590e796b0"
       }
     },
     "templates/scripts/baseline-sync.sh": {
@@ -450,7 +446,7 @@
     },
     "templates/scripts/build-codex.mjs": {
       "sources": {
-        ".claude/scripts/build-codex.mjs": "26095a8d62579b940b730c8d9b6a1cf94ba93e76f834f758b45f5e2607bd5aea"
+        ".claude/scripts/build-codex.mjs": "8eb03c4d8bc34b1765510ace96918418a279786cdce4d33ed1679d2e077acb9f"
       }
     },
     "templates/scripts/codex-sync.sh": {
@@ -470,7 +466,7 @@
     },
     "templates/scripts/filter-test-output.sh": {
       "sources": {
-        ".claude/scripts/filter-test-output.sh": "2ffff3e0abbfc611f9b6a7222750a9faf39fbe0bec825ab5a2343aec86ddfa77"
+        ".claude/scripts/filter-test-output.sh": "355139e4e037ea58fc017ad4d32da4ab1286e5a5860c619024fc4f523a1ca3c2"
       }
     },
     "templates/scripts/format-md.sh": {
@@ -515,7 +511,7 @@
     },
     "templates/scripts/worktree.sh": {
       "sources": {
-        ".claude/scripts/worktree.sh": "0d3d0eefea1e11a667b7ffaea9c729d91d37a56d1149d9ed49f97b206e5c75dc"
+        ".claude/scripts/worktree.sh": "5b3a85148dd34a1a4709a811386b38dce42f8d0f371ecb6872392aa4f1c6a5e3"
       }
     },
     "templates/settings.json": {
@@ -525,7 +521,7 @@
     },
     "templates/settings-global.json": {
       "sources": {
-        "~/.claude/settings.json": "0c502040ee0a9cec7c041c1e761229d2a69d8f9207e961446645fce8cd8fcfd3"
+        "~/.claude/settings.json": "44299d2c971a65d66bd124d37d79b9ce3e4643ae4ae027196ac01b978c7466fc"
       }
     },
     "templates/skills/sources.json": {
@@ -548,21 +544,11 @@
     },
     "templates/workflows/audit-ai-output-sessions.js": {
       "sources": {
-        ".claude/workflows/audit-cortex-sessions.js": "29da837c6ec54d12f6e4136a09beaf46a478898f7c0dbdabc5755d35b95c9371"
+        ".claude/workflows/audit-cortex-sessions.js": "19c891b8c5ab446041e2f9ac51856d722e46c287cef9c608ec7319cac74b5cd7"
       }
     },
     "templates/workflows/documenter-fanout.js": {
       "curated": true
-    },
-    "templates/commands/wave/watcher.md": {
-      "sources": {
-        ".claude/commands/wave/watcher.md": "2281fe829f53838e7d86ba28eb72906dab712322722aec588463e53639491f8a"
-      }
-    },
-    "templates/scripts/wave-wait.sh": {
-      "sources": {
-        ".claude/scripts/wave-wait.sh": "ccededc1112655c3e0d48ba6b47f2a7198f8e11366886b7d29f8358803627a25"
-      }
     },
     "templates/docs-commands/build/references/qa-commons.md": {
       "curated": true
@@ -599,7 +585,7 @@
     },
     "templates/skills/legal/references/privacy-compliance-dpa.md": {
       "sources": {
-        ".claude/skills/legal/references/privacy-compliance-dpa.md": "6f656433975eb35fb58a25efdc76a7a2e12b9c58c797c25136d0243040fbb5c7"
+        ".claude/skills/legal/references/privacy-compliance-dpa.md": "43d97a758fb37d7193832c8d1a6c56dde2c6f2dc664d8b5410ea0c7c6a833128"
       }
     },
     "templates/skills/legal/references/privacy-notice-policy.md": {
@@ -625,6 +611,37 @@
     "templates/skills/legal/references/vendor-due-diligence.md": {
       "sources": {
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
+      }
+    },
+    "templates/commands/wave/sentinel.md": {
+      "sources": {
+        ".claude/commands/wave/sentinel.md": "753a0068011aad4afa40a19f76db14dba11d109aa8b199c1654e4f622ec6c74d"
+      }
+    },
+    "templates/agents/scheduler.md": {
+      "sources": {
+        ".claude/agents/scheduler.md": "334281c55596ddf620cf9e75b802e08de7ec54524e9b4e162ae4fd0d17839613"
+      }
+    },
+    "templates/agents/architect.md": {
+      "sources": {
+        ".claude/agents/architect.md": "7ea75114ea308f69db4c85dfbc386d21b470cd78c2330770a9229f987cb6201b"
+      }
+    },
+    "templates/agents/role-wrapper.md": {
+      "sources": {
+        ".claude/agents/developer-be.md": "cd1955ce638f5450cafce105fa26ecf196fbdca47a4e5d5c55c7a420a573fd24",
+        ".claude/agents/developer-fe.md": "6d6372542abc77c8f51e25007ac137931bdb38475ce245ed7c8468fa15c964b1",
+        ".claude/agents/developer-web.md": "2476b7870a8d64712419c1c2c6e458419a7a90decc539792239d1d793ca5e53c",
+        ".claude/agents/ai-engineer-cortex.md": "63780746d6a15f0454db0ba86deb4df05917f2a03cb6cbf3ea7b30e5dd8fb017",
+        ".claude/agents/devops-infra.md": "d4aa38d216d0192d27e7396b615db38013003fd4ff6adcce6671fd05ee7a4441",
+        ".claude/agents/author-contracts.md": "1a112576e9692963be4d5ab07ca506e550e5e42b6f677779ea6b2c54fdbe0f26",
+        ".claude/agents/db-admin-be.md": "589f5b357abb1a4cdfeb17b07ec2591c74145d04e51670013b0a2c60c48d154f",
+        ".claude/agents/ui-ux-fe.md": "b790e840985c9c8c0e441b361b95b25fd1291e4874ac3c6f6ad309b1adfde845",
+        ".claude/agents/researcher-web.md": "735e23e0dec0e25a905fe5773adbbc391632e39dd81bcec0b87c964f812f2b5d",
+        ".claude/agents/reviewer-web.md": "d38d0516b7927d4321d1751e578f74516bff2f65938e67f4dc9e5613570e2ea3",
+        ".claude/agents/seo-web.md": "d5dfd07540bcd3b81a8031465d74782738315f72b1c7726e3c64ac017ee81244",
+        ".claude/agents/writer-web.md": "c41f3d211b96eab85068bb756d193bfef6586f3c9749a4fdc802785e02f58428"
       }
     }
   }

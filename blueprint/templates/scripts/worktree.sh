@@ -27,15 +27,21 @@ ALLOC="${ROOT}/.claude/scripts/alloc-ports.sh"
 #   dir          — project directory relative to repo root. "." for a single-project
 #                  repo (the worktree root IS the project; no subdir).
 #   install_kind — how deps are provisioned in the worktree:
-#                    install  — run install_cmd inside the worktree
-#                    symlink  — symlink node_modules from the main checkout
-#                               (falls back to install_cmd if main has none)
+#                    install  — run install_cmd inside the worktree (a REAL,
+#                               per-worktree dependency tree of its own)
 #                    none     — nothing to install (e.g. an infra project)
 #   install_cmd  — the command run in the project dir to install deps
-#                  (e.g. "pnpm install --frozen-lockfile", "uv sync", "npm install")
+#                  (e.g. "pnpm install --frozen-lockfile", "uv sync", "npm ci")
 #   env_files    — space-separated env filenames to copy from main into the worktree
 #                  with this project's port substituted (".env.local .env.test"),
 #                  or "-" for none.
+#
+# NO-SYMLINK LAW: a worktree NEVER links its dependency directory to the main
+# checkout's. A linked module dir is a live WRITE path into main — an install run
+# through it empties main's tree — and any build/transform cache living under it is
+# then SHARED across every pipeline worktree, silently inlining another pipeline's
+# env values into compiled output (suites that fail to even RUN at GATE, which reads
+# as a broken worktree rather than a test failure). Every project installs its own.
 #
 # Single-project collapse: a roster of one entry with dir "." targets the repo root.
 PROJECTS=(
@@ -74,46 +80,33 @@ cmd_create() {
   # Create worktree — full repo checkout
   git worktree add "$worktree_dir" "$branch"
 
-  # Install dependencies for each project in the roster
-  local entry dir install_kind install_cmd env_files src_path dst_path
+  # A roster entry backed by a git submodule is left EMPTY by `git worktree add`.
+  # Its install would then run against an empty directory and silently produce a
+  # worktree with no dependencies, so populate submodules before installing. No-op
+  # in a repo that has none.
+  git -C "$worktree_dir" submodule update --init --recursive 2>/dev/null || true
+
+  # Install dependencies for each project in the roster — a REAL install per
+  # worktree, per the NO-SYMLINK LAW above.
+  local entry dir install_kind install_cmd env_files src_path dst_path ef
   for entry in "${PROJECTS[@]}"; do
     IFS='|' read -r dir install_kind install_cmd env_files <<< "$entry"
     src_path="$(proj_path "$ROOT" "$dir")"
     dst_path="$(proj_path "$worktree_dir" "$dir")"
     case "$install_kind" in
       install)
-        if [ -n "$install_cmd" ]; then
-          (cd "$dst_path" && eval "$install_cmd" 2>/dev/null) || true
-        fi
-        ;;
-      symlink)
-        # Reuse main's node_modules when present; otherwise install fresh.
-        if [ -d "${src_path}/node_modules" ]; then
-          ln -sfn "${src_path}/node_modules" "${dst_path}/node_modules"
-        elif [ -n "$install_cmd" ]; then
-          (cd "$dst_path" && eval "$install_cmd") || true
-        fi
-        # Propagate this project's gitignored env files now — `git worktree add`
-        # checks out tracked files only, so a symlink-kind project's env file is
-        # missing until copied, and its dev/test tooling fails fast without it.
-        # No port substitution here (that is the later {ENV_FILE_PROVISION} pass
-        # for install-kind projects whose test harness reads a port verbatim); a
-        # symlink-kind project typically carries no port-dependent env content.
+        # Propagate this project's gitignored env files BEFORE the install —
+        # `git worktree add` checks out tracked files only, so an env file the
+        # project's own config/test bootstrap fail-fasts without is missing until
+        # copied, and whole suites then cannot even RUN. No port substitution here
+        # (that is the later {ENV_FILE_PROVISION} pass, which rewrites the ports).
         if [ "$env_files" != "-" ]; then
-          local ef
           for ef in $env_files; do
             [ -f "${src_path}/${ef}" ] && cp "${src_path}/${ef}" "${dst_path}/${ef}"
           done
         fi
-        # Clear a shared build-transform cache once at setup. node_modules is
-        # SYMLINKED from main (above), so any bundler/transform cache living under
-        # it (babel/jest/jiti/webpack — conventionally node_modules/.cache) is
-        # SHARED across every pipeline worktree and may hold transforms baked
-        # against a DIFFERENT pipeline's env vars. A stale cache silently inlines
-        # the wrong values, surfacing as suites that fail to even RUN at GATE —
-        # not as a test failure. Adjust the cache path per this project's stack.
-        if [ -d "${dst_path}/node_modules/.cache" ]; then
-          rm -rf "${dst_path}/node_modules/.cache"
+        if [ -n "$install_cmd" ]; then
+          (cd "$dst_path" && eval "$install_cmd" 2>/dev/null) || true
         fi
         ;;
       none) : ;;  # nothing to install
