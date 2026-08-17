@@ -51,13 +51,19 @@ func (tmux *fakeSwapTmux) Display(_ context.Context, _, _, message string) error
 }
 
 type fakeSwapProc struct {
-	pids []int
-	argv map[int][]string
-	stat map[int]gather.ProcStat
+	pids   []int
+	argv   map[int][]string
+	cmdErr map[int]error
+	stat   map[int]gather.ProcStat
 }
 
-func (proc fakeSwapProc) PIDs() ([]int, error)                  { return proc.pids, nil }
-func (proc fakeSwapProc) Cmdline(pid int) ([]string, error)     { return proc.argv[pid], nil }
+func (proc fakeSwapProc) PIDs() ([]int, error) { return proc.pids, nil }
+func (proc fakeSwapProc) Cmdline(pid int) ([]string, error) {
+	if err := proc.cmdErr[pid]; err != nil {
+		return nil, err
+	}
+	return proc.argv[pid], nil
+}
 func (fakeSwapProc) Environ(int) (map[string]string, error)     { return nil, nil }
 func (proc fakeSwapProc) Stat(pid int) (gather.ProcStat, error) { return proc.stat[pid], nil }
 
@@ -102,6 +108,39 @@ func (proc promptReadyProc) PIDs() ([]int, error) {
 		return nil, errors.New("Claude has not reached its prompt")
 	}
 	return []int{801}, nil
+}
+
+type respawnPIDTmux struct {
+	delayedThenTmux
+	oldPID int
+	newPID int
+}
+
+func (tmux *respawnPIDTmux) ListPanes(context.Context, string) ([]Pane, error) {
+	pid := tmux.oldPID
+	if tmux.respawn != "" {
+		pid = tmux.newPID
+	}
+	return []Pane{{ID: "%7", Dead: tmux.dead, PID: pid}}, nil
+}
+
+type respawnPromptProc struct{ tmux *respawnPIDTmux }
+
+func (proc respawnPromptProc) PIDs() ([]int, error) {
+	if !proc.tmux.ready {
+		return nil, errors.New("Claude has not reached its prompt")
+	}
+	return []int{801}, nil
+}
+func (respawnPromptProc) Cmdline(int) ([]string, error) { return []string{"claude"}, nil }
+func (respawnPromptProc) Environ(int) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+func (proc respawnPromptProc) Stat(pid int) (gather.ProcStat, error) {
+	if pid == 801 {
+		return gather.ProcStat{ParentPID: proc.tmux.newPID}, nil
+	}
+	return gather.ProcStat{ParentPID: 1}, nil
 }
 func (promptReadyProc) Cmdline(int) ([]string, error) { return []string{"claude"}, nil }
 func (promptReadyProc) Environ(int) (map[string]string, error) {
@@ -250,11 +289,50 @@ func TestRunWaitsForTheRebornPromptBeforeCheckingClaudeAndSubmittingThen(t *test
 	}
 }
 
+func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
+	tmux := &respawnPIDTmux{oldPID: 700, newPID: 900}
+	_, err := Run(
+		context.Background(),
+		Request{
+			SocketPath: "/tmp/tmux-1000/probe-swap-then-pid",
+			Pane:       "%7",
+			PanePID:    tmux.oldPID,
+			SessionID:  "11111111-1111-4111-8111-111111111111",
+			CWD:        "/jail/project",
+			Account:    2,
+			Then:       "continue the task",
+		},
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2, ThenTries: 2},
+		tmux,
+		respawnPromptProc{tmux: tmux},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tmux.submitted {
+		t.Fatal("--then was not submitted after the pane process changed")
+	}
+}
+
 func TestClaudeLiveUsesThePaneProcessPIDNotTheTmuxPaneID(t *testing.T) {
 	proc := fakeSwapProc{
 		pids: []int{801},
 		argv: map[int][]string{801: {"claude"}},
 		stat: map[int]gather.ProcStat{801: {ParentPID: 700}},
+	}
+	live, err := claudeLive(proc, 700)
+	if err != nil || !live {
+		t.Fatalf("claudeLive() = %v, %v", live, err)
+	}
+}
+
+func TestClaudeLiveIgnoresAProcessThatExitsDuringTheProcScan(t *testing.T) {
+	proc := fakeSwapProc{
+		pids:   []int{800, 801},
+		argv:   map[int][]string{801: {"claude"}},
+		cmdErr: map[int]error{800: os.ErrNotExist},
+		stat:   map[int]gather.ProcStat{801: {ParentPID: 700}},
 	}
 	live, err := claudeLive(proc, 700)
 	if err != nil || !live {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -178,6 +179,9 @@ func TestSoloReapsPaneAloneServerAndStrayWithKeepTTY(t *testing.T) {
 			"cc-200-1-1": true,
 			"cc-300-1-1": true,
 			"cc-400-1-1": true,
+			// A successful probe with no panes is the cleanup case; a
+			// failed probe is covered separately and must preserve its crumb.
+			"cc-500-1-1": true,
 		},
 		panes: map[string][]Pane{
 			"cc-100-1-1": {{PaneID: "%1", TTY: "pts/1"}},
@@ -241,6 +245,130 @@ func TestSoloReapsPaneAloneServerAndStrayWithKeepTTY(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(sidDir, "cc-100-1-1")); err != nil {
 		t.Fatalf("keep crumb removed: %v", err)
+	}
+}
+
+// A failed pane probe is not an empty server. The socket may still be live
+// but temporarily unreadable; removing its crumb here makes the next sweep
+// treat a working chat as unowned. Cleanup is safe only after a successful
+// probe that returned no panes.
+func TestSoloPreservesCrumbWhenPaneProbeFails(t *testing.T) {
+	jailAction(t)
+	id := "55555555-5555-4555-8555-555555555555"
+	socket := "cc-900-1-1"
+	crumb := filepath.Join(os.Getenv("PFM_SID_DIR"), socket)
+	writeActionFile(t, crumb, "/tx/"+id+".jsonl", 0o600)
+
+	tmux := &fakeActionTmux{alive: map[string]bool{socket: false}}
+	executor, err := New(Dependencies{
+		Tmux:      tmux,
+		Processes: &fakeProcesses{},
+		Gate:      fixedGate(false),
+		Runner:    &captureRunner{},
+		Stderr:    io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Solo(context.Background(), id, "", true); err != nil {
+		t.Fatalf("Solo() error = %v", err)
+	}
+	if _, err := os.Stat(crumb); err != nil {
+		t.Fatalf("Solo() removed crumb after a failed pane probe: %v", err)
+	}
+}
+
+// The keep-socket probe also gates the stray-Claude sweep. If it fails, the
+// target's tty cannot be proven safe to exclude; killing every matching
+// process would be worse than leaving strays for a later pass.
+func TestSoloSkipsStraySweepWhenKeepSocketProbeFails(t *testing.T) {
+	jailAction(t)
+	id := "66666666-6666-4666-8666-666666666666"
+	socket := "cc-901-1-1"
+	tmux := &fakeActionTmux{alive: map[string]bool{socket: false}}
+	processes := &fakeProcesses{processes: []Process{{
+		PID: 42, Argv: []string{"claude", "--resume", id}, TTY: "pts/1",
+	}}}
+	executor, err := New(Dependencies{
+		Tmux:      tmux,
+		Processes: processes,
+		Gate:      fixedGate(false),
+		Runner:    &captureRunner{},
+		Stderr:    io.Discard,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := executor.Solo(context.Background(), id, socket, false); err != nil {
+		t.Fatalf("Solo() error = %v", err)
+	}
+	if len(processes.terminated) != 0 {
+		t.Fatalf("Solo() killed matching Claude after keep-socket probe failed: %v", processes.terminated)
+	}
+}
+
+// Open reaches Solo with no keep socket along two routes, but only a
+// ResumeClaude row is destructive: it is creating a fresh replacement seat,
+// so every matching Claude process is a competing stray. Agent rows describe
+// a live agent seat and set liveAgent=true, which returns before the process
+// sweep. Live rows use prepareLive and always pass their current socket.
+func TestOpenEmptyKeepSetIsDestructiveOnlyForResumeClaude(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		kind           compose.Kind
+		wantTerminated []int
+	}{
+		{
+			name:           "resume replaces every competing seat",
+			kind:           compose.ResumeClaude,
+			wantTerminated: []int{42},
+		},
+		{
+			name: "live agent preserves its process",
+			kind: compose.Agent,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			jailAction(t)
+			id := "77777777-7777-4777-8777-777777777777"
+			processes := &fakeProcesses{processes: []Process{
+				{PID: 42, Argv: []string{"claude", "--resume", id}, TTY: "pts/1"},
+				{PID: 43, Argv: []string{"claude", "--resume", "another-id"}, TTY: "pts/2"},
+			}}
+			executor, err := New(Dependencies{
+				Tmux:      &fakeActionTmux{alive: map[string]bool{}},
+				Processes: processes,
+				Gate:      fixedGate(false),
+				Runner:    &captureRunner{},
+				Stderr:    io.Discard,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			line, err := executor.Open(context.Background(), Request{
+				Row: compose.Row{
+					Kind: test.kind,
+					ID:   id,
+					CWD:  "/work/resume",
+				},
+				PrimaryAccount: 1,
+				Home:           "/home/test",
+				FreshSocket:    "cc-902-1-1",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if line == "" {
+				t.Fatal("Open() returned no fresh-seat command")
+			}
+			if !reflect.DeepEqual(processes.terminated, test.wantTerminated) {
+				t.Fatalf(
+					"terminated = %v, want %v",
+					processes.terminated,
+					test.wantTerminated,
+				)
+			}
+		})
 	}
 }
 

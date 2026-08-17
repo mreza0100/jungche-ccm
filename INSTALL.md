@@ -20,6 +20,36 @@ A blueprint pasted blindly is a museum exhibit; a blueprint shaped to the user's
 - Optional, per opt-in: `prettier` via `npx` (markdown auto-format), `tmux` (VSCode launcher, host fleet), `node` (Codex mirror compiler), `gh` or `glab` (git-host skill).
 - **10–15 minutes of the user's attention** for the interview.
 
+### Install `pfm` without Go
+
+Each version tag publishes four ready-to-run `pfm` binaries plus `SHA256SUMS` on
+its GitHub Release. Choose `linux` or `darwin` and `amd64` or `arm64`, then fetch
+and verify the matching file. Replace the illustrative repository and version
+values before running this snippet:
+
+```bash
+REPOSITORY=OWNER/REPOSITORY
+VERSION=vX.Y.Z
+OS=linux
+ARCH=amd64
+BINARY="pfm_${VERSION}_${OS}_${ARCH}"
+BASE_URL="https://github.com/${REPOSITORY}/releases/download/${VERSION}"
+
+curl -fLO "${BASE_URL}/${BINARY}"
+curl -fLO "${BASE_URL}/SHA256SUMS"
+awk -v file="${BINARY}" '$2 == file' SHA256SUMS > "${BINARY}.sha256"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum -c "${BINARY}.sha256"
+else
+  shasum -a 256 -c "${BINARY}.sha256"
+fi
+mkdir -p "${HOME}/.local/bin"
+install -m 0755 "${BINARY}" "${HOME}/.local/bin/pfm"
+```
+
+The checksum detects a corrupted or incomplete download; releases do not
+currently publish a separate checksum signature.
+
 ## What this install will never do
 
 State this to the user up front:

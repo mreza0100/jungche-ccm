@@ -135,6 +135,8 @@ The four identity/state regressions that established this plan. A tagged row mus
 | `reap` empty socket younger than 1h left alone (a server may be starting) | JAIL+tmux | `cmd/pfm/reap_jail_test.go:220-260` | |
 | `reap` never reaps from AGE alone; a wedged socket times out into SKIP | JAIL | `internal/reap/reap_test.go:203-224`, `internal/reap/runner.go:33-38` | |
 | `reap --apply` re-verifies attachment at kill time and clears crumbs | JAIL+tmux | `internal/reap/runner.go:320-360` | |
+| `reap --apply` re-probes a planned corpse and skips removal if the socket becomes live or unreadable | JAIL | `internal/reap/reap_test.go:43-89`, `internal/reap/runner.go` | |
+| `reap` socket selection delegates to the canonical gather classifier: cx included, vsct/revive excluded, probe-* only with the jail opt-in | JAIL | `internal/reap/reap_test.go:91-110`, `internal/reap/runner.go:307-312` | |
 | `reap` sweeps idle `vsct` bunkers by SESSION, never by killing the server | JAIL | `internal/reap/reap_test.go:258-296` | |
 | `archive` dry run default; `--apply`, `--subagents`, `--older-than`, `--restore` | JAIL | `internal/archive/archive_test.go:85-204` | |
 | `archive` re-checks liveness at run time (argv, codex fds, sid crumbs) | JAIL | `internal/archive/live.go:20-95`, `archive_test.go:296-340` | |
@@ -300,6 +302,9 @@ tonight's four bugs all live in.
 | Open gate: birth account/cache ≠ picker → offer reboot; failure attaches as-is        | **REAL-SESSION** | `action/executor.go:158-207`, `action/gate.go`          |            |
 | Reboot-to-match invokes `pfm chat swap --sock … <acct> --1h <0\|1>`                   | JAIL+Go          | `action/executor.go:190-199`                            |            |
 | `_cc_solo` stray-claude sweep before an attach/resume                                 | JAIL             | `action/executor.go:208-215`, `action/solo.go`          |            |
+| `_cc_solo` removes a crumb only after a successful empty pane probe; probe errors preserve it | JAIL | `action/executor_test.go:255-278`, `action/solo.go` | |
+| `_cc_solo` skips the stray-Claude kill sweep when the keep socket cannot be probed | JAIL | `action/executor_test.go:284-308`, `action/solo.go` | |
+| Empty keep-set is destructive only for `ResumeClaude`; `Agent` skips the sweep and live rows keep their socket | JAIL | `action/executor_test.go:310-373`, `action/executor.go:115-123,200-208` | |
 
 ## G — MCP server (7 tools)
 
@@ -432,6 +437,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `chat swap` parses account/cache-only forms and rejects a multi-pane server                           | JAIL+tmux        | `swap_command.go`, `swap_jail_test.go`                                   |            |
 | `chat swap` preserves current account for cache-only requests and fresh-boots without a transcript    | JAIL+tmux        | `internal/swap`, `swap_test.go`                                          |            |
 | `chat swap` serializes by pane, refuses an open selector, and waits for a real prompt before `--then` | JAIL+tmux        | `internal/swap`, `swap_jail_test.go`, `swap_test.go`                     |            |
+| `chat swap --then` refreshes the respawned pane PID and ignores processes that vanish during `/proc` enumeration | JAIL | `internal/swap/swap_test.go` | |
 | `chat recover` resolves id or rollout, rebuilds normal/compacted output, and is idempotent            | JAIL             | `internal/recovery`, `recover_jail_test.go`                              |            |
 
 ## K — Installer and systemd units
@@ -453,6 +459,18 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
 | installer rewires Claude and Codex clear-hide, group, statusline, usage and dream hooks while preserving unrelated entries | JAIL | `internal/installer`, installer tests | |
+
+## L — Dream runtime resources
+
+| flow | safety | expected behavior (source) | regression |
+| --- | --- | --- | --- |
+| a night with `HOME` and `PFM_HOME` isolated from the source tree resolves both prompts and the tracer lane from the binary | JAIL | `internal/dream/dream_test.go:TestNightRunsWithEmbeddedResourcesAndNoProfessorHome`, `prompts/embed.go` | defect RED |
+| `--resources` beats organ-local content, organ-local beats embedded, and a partial overlay falls through per file | JAIL | `internal/dream/resources/resources_test.go:TestResourcesLayerPerFileAndPreservePriority` | |
+| lane enumeration merges every layer by sorted entry name and a same-named override appears once | JAIL | `internal/dream/resources/resources_test.go:TestResourcesReadDirMergesAndFirstDeclarationWins` | |
+| missing override roots fall through; real disk errors and symlink resources fail closed | JAIL | `internal/dream/resources/resources_test.go` | |
+| embedded prompt and lane bytes match the four moved source files exactly | JAIL | `prompts/embed_test.go:TestDreamerEmbeddedFilesMatchMovedBytes` | |
+| default repo is the current Git top level; discovery failure names `--repo ROOT` | JAIL | `internal/dream/organ/organ_test.go`, `cmd/pfm/dream_command_test.go` | |
+| `dream morning` reads `--repos` / XDG config and a missing list names its path plus line format | JAIL | `internal/dream/morning_test.go:TestMorningMissingRepositoryListNamesPathAndFormat`, `cmd/pfm/dream_command_test.go` | |
 
 ---
 

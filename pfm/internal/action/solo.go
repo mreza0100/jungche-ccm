@@ -75,7 +75,13 @@ func (executor *Executor) Solo(
 			continue
 		}
 		panes, err := executor.tmux.ListPanes(ctx, socket)
-		if err != nil || len(panes) == 0 {
+		if err != nil {
+			// A failed probe is not an empty server. The socket may still be
+			// live but temporarily unreadable; leave its crumb so a later
+			// pass does not mistake a working chat for an unowned one.
+			continue
+		}
+		if len(panes) == 0 {
 			if err := removeFile(crumbPath); err != nil {
 				return err
 			}
@@ -107,12 +113,23 @@ func (executor *Executor) Solo(
 		return nil
 	}
 	keepTTYs := make(map[string]struct{})
+	keepTTYProbeFailed := false
 	if keepSocket != "" {
 		if panes, err := executor.tmux.ListPanes(ctx, keepSocket); err == nil {
 			for _, pane := range panes {
 				keepTTYs[strings.TrimPrefix(pane.TTY, "/dev/")] = struct{}{}
 			}
+		} else {
+			keepTTYProbeFailed = true
+			fmt.Fprintf(
+				executor.stderr,
+				"cc: solo — keep socket probe failed; skipping stray Claude cleanup: %v\n",
+				err,
+			)
 		}
+	}
+	if keepTTYProbeFailed {
+		return nil
 	}
 	processes, err := executor.processes.Processes(ctx)
 	if err != nil {

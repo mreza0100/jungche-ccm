@@ -231,7 +231,7 @@ func (runner *Runner) probeSockets(
 	}
 	files := make([]socketFile, 0, len(entries))
 	for _, entry := range entries {
-		if !gather.IsChatSocketName(entry.Name()) {
+		if !isReapSocketName(entry.Name()) {
 			continue
 		}
 		info, err := entry.Info()
@@ -304,6 +304,13 @@ func (runner *Runner) probeSockets(
 	return sockets, nil
 }
 
+// isReapSocketName is the reaper's selection seam. Keeping the delegation
+// here makes it testable without minting a live-looking socket and prevents
+// reap from growing a second, drifting prefix classifier.
+func isReapSocketName(name string) bool {
+	return gather.IsChatSocketName(name)
+}
+
 // listPanes probes one socket under a deadline, so one unresponsive server
 // cannot stall the whole sweep.
 func (runner *Runner) listPanes(
@@ -357,6 +364,19 @@ func (runner *Runner) apply(
 	for _, decision := range decisions {
 		switch decision.Action {
 		case ActionRemoveSocketFile:
+			// A corpse can become a live server after planning but before
+			// apply. Removing the path in that race detaches a working chat
+			// from every client and lookup that reaches it by socket name.
+			// Re-probe and remove only when tmux confirms the server is gone.
+			if _, err := runner.listPanes(ctx, decision.Socket); err == nil {
+				decision.State = StateSkip
+				decision.Reason = "socket answered during apply"
+				break
+			} else if !errors.Is(err, gather.ErrServerGone) {
+				decision.State = StateSkip
+				decision.Reason = fmt.Sprintf("re-probe before remove: %v", err)
+				break
+			}
 			path := filepath.Join(runner.paths.TmuxDir, decision.Socket)
 			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				decision.State = StateSkip

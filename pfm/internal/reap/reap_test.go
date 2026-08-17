@@ -1,9 +1,113 @@
 package reap
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/paths"
 )
+
+type liveDuringCorpseReprobe struct{}
+
+func (liveDuringCorpseReprobe) ListPanes(context.Context, string) ([]gather.Pane, error) {
+	return []gather.Pane{{PaneID: "%1"}}, nil
+}
+
+func (liveDuringCorpseReprobe) Sessions(context.Context, string) ([]VSCTSession, error) {
+	return nil, nil
+}
+
+func (liveDuringCorpseReprobe) KillSession(context.Context, string, string) error {
+	return errors.New("unexpected kill-session")
+}
+
+type unreadableDuringCorpseReprobe struct{}
+
+func (unreadableDuringCorpseReprobe) ListPanes(context.Context, string) ([]gather.Pane, error) {
+	return nil, errors.New("fixture permission denied")
+}
+
+func (unreadableDuringCorpseReprobe) Sessions(context.Context, string) ([]VSCTSession, error) {
+	return nil, nil
+}
+
+func (unreadableDuringCorpseReprobe) KillSession(context.Context, string, string) error {
+	return errors.New("unexpected kill-session")
+}
+
+func TestApplyRechecksAPlannedCorpseBeforeRemovingItsSocket(t *testing.T) {
+	tmuxDir := t.TempDir()
+	socket := "probe-900-1-1"
+	path := filepath.Join(tmuxDir, socket)
+	if err := os.WriteFile(path, []byte("socket fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{
+		paths: paths.Values{TmuxDir: tmuxDir},
+		tmux:  liveDuringCorpseReprobe{},
+	}
+	decisions := runner.apply(context.Background(), []Decision{{
+		Socket: socket,
+		State:  StateDead,
+		Action: ActionRemoveSocketFile,
+	}})
+	if len(decisions) != 1 || decisions[0].State != StateSkip || decisions[0].Action != ActionNone {
+		t.Fatalf("corpse apply decisions = %#v, want one skipped decision", decisions)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("apply removed a socket that became live: %v", err)
+	}
+}
+
+func TestApplyPreservesAPlannedCorpseWhenReprobeIsUnreadable(t *testing.T) {
+	tmuxDir := t.TempDir()
+	socket := "probe-901-1-1"
+	path := filepath.Join(tmuxDir, socket)
+	if err := os.WriteFile(path, []byte("socket fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &Runner{
+		paths: paths.Values{TmuxDir: tmuxDir},
+		tmux:  unreadableDuringCorpseReprobe{},
+	}
+	decisions := runner.apply(context.Background(), []Decision{{
+		Socket: socket,
+		State:  StateDead,
+		Action: ActionRemoveSocketFile,
+	}})
+	if len(decisions) != 1 || decisions[0].State != StateSkip || decisions[0].Action != ActionNone {
+		t.Fatalf("unreadable corpse apply decisions = %#v, want one skipped decision", decisions)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("apply removed a socket it could not re-probe: %v", err)
+	}
+}
+
+func TestReapSocketSelectionDelegatesCanonicalClassifier(t *testing.T) {
+	t.Setenv("PFM_TEST_PROBE_SOCKETS", "")
+	for _, testCase := range []struct {
+		name string
+		want bool
+	}{
+		{name: "cx-fixture", want: true},
+		{name: "vsct-fixture", want: false},
+		{name: "revive-fixture", want: false},
+		{name: "probe-fixture", want: false},
+	} {
+		if got := isReapSocketName(testCase.name); got != testCase.want {
+			t.Fatalf("isReapSocketName(%q) = %t, want %t", testCase.name, got, testCase.want)
+		}
+	}
+	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
+	if !isReapSocketName("probe-fixture") {
+		t.Fatal("probe-* socket was not admitted by the explicit jail opt-in")
+	}
+}
 
 // The reaper's whole contract is a table: one socket, one verdict, and an
 // action ONLY where killing is both asked for and safe. Every rule that keeps

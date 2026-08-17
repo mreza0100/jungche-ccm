@@ -318,7 +318,11 @@ ready:
 	// A respawn returns before the child necessarily reaches Claude. Prove the
 	// process only after the input box appears; checking immediately after
 	// respawn races normal startup and drops an otherwise deliverable baton.
-	live, err := claudeLive(proc, request.PanePID)
+	panePID, err := currentPanePID(ctx, request.SocketPath, request.Pane, tmux)
+	if err != nil {
+		return fmt.Errorf("swap --then: refresh reborn pane process: %w", err)
+	}
+	live, err := claudeLive(proc, panePID)
 	if err != nil {
 		return fmt.Errorf("swap --then: prove live Claude: %w", err)
 	}
@@ -381,6 +385,26 @@ ready:
 	return nil
 }
 
+func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int, error) {
+	panes, err := tmux.ListPanes(ctx, socket)
+	if err != nil {
+		return 0, err
+	}
+	for _, pane := range panes {
+		if pane.ID != wanted {
+			continue
+		}
+		if pane.Dead {
+			return 0, errors.New("reborn pane is dead")
+		}
+		if pane.PID <= 0 {
+			return 0, errors.New("reborn pane process id is unavailable")
+		}
+		return pane.PID, nil
+	}
+	return 0, errors.New("reborn pane disappeared")
+}
+
 func lastComposerLine(capture string) string {
 	lines := strings.Split(capture, "\n")
 	for index := len(lines) - 1; index >= 0; index-- {
@@ -402,9 +426,13 @@ func claudeLive(proc Process, panePID int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+processes:
 	for _, pid := range pids {
 		argv, err := proc.Cmdline(pid)
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			return false, fmt.Errorf("read process %d command: %w", pid, err)
 		}
 		if !gather.IsClaudeCommand(argv) {
@@ -417,6 +445,9 @@ func claudeLive(proc Process, panePID int) (bool, error) {
 			}
 			stat, statErr := proc.Stat(current)
 			if statErr != nil {
+				if errors.Is(statErr, fs.ErrNotExist) {
+					continue processes
+				}
 				return false, fmt.Errorf("read process %d ancestry: %w", current, statErr)
 			}
 			if stat.ParentPID <= 1 || stat.ParentPID == current {
