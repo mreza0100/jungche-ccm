@@ -1,0 +1,128 @@
+name: Release pfm binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version used in test artifact names
+        required: true
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: pfm/go.mod
+          cache-dependency-path: pfm/go.sum
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          binary="pfm_${VERSION}_${GOOS}_${GOARCH}"
+
+          # Public CI artifacts deliberately use -trimpath so no builder path
+          # ships. They will NOT hash-match a local `env -u GOFLAGS` build,
+          # which deliberately omits -trimpath; both hashes are correct for
+          # their respective build contracts.
+          go -C pfm build -trimpath -o "../dist/${binary}" ./cmd/pfm
+
+      - name: Upload platform binary
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pfm_${{ env.VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/pfm_${{ env.VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Assemble release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v4.2.2
+
+      - name: Download platform binaries
+        uses: actions/download-artifact@v4.3.0
+        with:
+          path: release
+          pattern: pfm_${{ env.VERSION }}_*
+          merge-multiple: true
+
+      - name: Write SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          LC_ALL=C sha256sum pfm_* | sort -k2 > SHA256SUMS
+
+      - name: Upload assembled workflow artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: pfm_${{ env.VERSION }}_release
+          path: |
+            release/pfm_*
+            release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Require the authored release notes
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="releases/${GITHUB_REF_NAME}.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "missing authored release notes: $notes" >&2
+            exit 1
+          fi
+
+      - name: Attach files to the GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
+        with:
+          files: |
+            release/pfm_*
+            release/SHA256SUMS
+          body_path: releases/${{ github.ref_name }}.md
+          fail_on_unmatched_files: true
+          generate_release_notes: false

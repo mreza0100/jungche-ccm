@@ -6,9 +6,18 @@ set -euo pipefail
 # reports which templates need LLM re-derivation. UNCHANGED hashes are a mechanical
 # untouched-proof — skipped. UNMAPPED live files need a mapping decision. `regen`
 # rewrites the map's hashes after a release's template edits land.
+#
+# A MISSING-SOURCE entry (the live source a template was derived from is gone) is a
+# BLOCKING ruling, not a warning: both `scan` and `regen` exit MISSING_SOURCE_EXIT so a
+# release cannot proceed and cannot re-baseline until each one is ruled — delete the
+# template file AND its refresh-map.json entry, or remap it to the source's new path.
+# Re-baselining around a missing source is what keeps a zombie template alive forever.
+
+MISSING_SOURCE_EXIT=3
 
 usage() {
   echo "usage: $(basename "$0") scan|regen <project_root> [map_path]" >&2
+  echo "  exit ${MISSING_SOURCE_EXIT}: unruled MISSING-SOURCE entries (see above)" >&2
   exit 1
 }
 
@@ -154,10 +163,35 @@ scan() {
   done
 
   echo "refresh-scope: ${c} changed, ${u} unchanged (skip re-derivation), ${k} curated, ${m} unmapped-live, ${x} missing-source"
+
+  if (( x > 0 )); then
+    echo "refresh-scope: BLOCKED — ${x} missing-source entr$( (( x == 1 )) && echo y || echo ies) must be ruled before releasing: delete the template file AND its refresh-map.json entry, or remap it" >&2
+    return "$MISSING_SOURCE_EXIT"
+  fi
 }
 
 regen() {
-  local frag_file n=0
+  local frag_file n=0 x=0
+
+  # Refuse to re-baseline while any mapped source is missing — writing fresh hashes
+  # around a gone source silently keeps its template alive as a zombie. Nothing is
+  # written until every mapped source resolves.
+  while IFS=$'\t' read -r tmpl src expected; do
+    [[ -z "$tmpl" ]] && continue
+    local resolved_rel abs
+    resolved_rel="$(resolve_path "$src")"
+    abs="$(abspath_under_project "$resolved_rel")"
+    if [[ ! -f "$abs" ]]; then
+      echo "MISSING-SOURCE ${tmpl} <= ${src}" >&2
+      x=$((x + 1))
+    fi
+  done < <(jq -r '.templates | to_entries[] | select(.value.sources) | .key as $t | .value.sources | to_entries[] | [$t, .key, .value] | @tsv' "$MAP_PATH")
+
+  if (( x > 0 )); then
+    echo "refresh-scope: REFUSING to regen — ${x} missing-source entr$( (( x == 1 )) && echo y || echo ies); ${MAP_PATH} left unchanged. Rule each first: delete the template file AND its refresh-map.json entry, or remap it" >&2
+    return "$MISSING_SOURCE_EXIT"
+  fi
+
   frag_file="$(mktemp)"
 
   while IFS=$'\t' read -r tmpl src expected; do
@@ -165,10 +199,6 @@ regen() {
     local resolved_rel abs
     resolved_rel="$(resolve_path "$src")"
     abs="$(abspath_under_project "$resolved_rel")"
-    if [[ ! -f "$abs" ]]; then
-      echo "refresh-scope: warning — missing source for ${tmpl} <= ${src}, keeping old hash" >&2
-      continue
-    fi
     local actual
     actual="$(sha256sum "$abs" | awk '{print $1}')"
     jq -nc --arg t "$tmpl" --arg s "$src" --arg h "$actual" '{t:$t,s:$s,h:$h}' >> "$frag_file"
