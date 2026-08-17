@@ -443,8 +443,10 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
 | command cards, helpers, shim and units link to the managed asset tree                                            | JAIL+sh          | `internal/installer`, installer tests     |            |
 | real destinations are backed up; uninstall restores the newest backup                                             | JAIL             | `internal/installer`, installer tests     |            |
-| zshrc and canonical settings converge without duplicate commands                                                  | JAIL+sh          | `internal/installer`, installer tests     |            |
-| immediate second apply reports `changed=0`                                                                        | JAIL             | `TestApplyIsSelfContainedIdempotentAndReversible` |            |
+| zshrc and every physical Claude settings file converge; account symlinks dedupe, while group and clear-hide appear once | JAIL+sh      | `TestEveryClaudeSettingsFileGetsCompleteHookWiring` |            |
+| legacy dream scripts migrate in their original events, dream hooks remain migrate-only, and hook siblings survive | JAIL             | `TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks` |            |
+| uninstall removes only ledger-owned hook occurrences and preserves matching commands that predated installer wiring | JAIL            | `TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks` |            |
+| immediate second apply reports `changed=0` for canonical and numbered-account settings                            | JAIL             | installer idempotence tests               |            |
 | systemd units and `.wants/` links converge without a manager; live transitions use only the injected manager     | JAIL             | installer idempotence and unit-transition tests |            |
 | `pfm-name-sync.path` fires on `~/.codex/session_index.jsonl` modification                                         | **REAL-SESSION** | `systemd/pfm-name-sync.path`              | **B4**     |
 | `pfm-name-sync.timer` 15-min drift fallback                                                                       | JAIL+sh          | `systemd/pfm-name-sync.timer`             |            |

@@ -181,9 +181,11 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("Codex hooks retained predecessor command:\n%s", codexHooks)
 	}
 	secondary := readFixture(t, secondarySettings)
-	if strings.Contains(secondary, "chat bb") || strings.Contains(secondary, "internal clear-hide") ||
+	if strings.Contains(secondary, "chat bb") ||
+		!strings.Contains(secondary, home+"/.local/bin/pfm chat group hook") ||
+		!strings.Contains(secondary, home+"/.local/bin/pfm internal clear-hide") ||
 		!strings.Contains(secondary, "secondary-keep") {
-		t.Fatalf("secondary settings did not retire /bb without gaining the primary clear hook:\n%s", secondary)
+		t.Fatalf("secondary settings did not receive the complete hook wiring:\n%s", secondary)
 	}
 	if zshrc := readFixture(t, filepath.Join(home, ".zshrc")); !strings.Contains(zshrc, sourceLine(filepath.Join(managed, "shim", "pfm.zsh"))) ||
 		strings.Contains(zshrc, "cc-fleet.zsh") {
