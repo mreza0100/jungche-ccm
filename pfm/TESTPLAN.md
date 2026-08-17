@@ -183,7 +183,7 @@ The four identity/state regressions that established this plan. A tagged row mus
 | Footer legend matches the real bindings                                           | JAIL      | `ui/render.go:122-125`                                   |            |
 | every Stats subtab renders labeled column headers                                 | JAIL      | `ui/stats_test.go`, `ui/render.go`                        |            |
 | agent rows are orange rather than Codex magenta; Stats labels and values use semantic colors | JAIL | `ui/golden_test.go`, `ui/stats_test.go`, `ui/render.go` | |
-| Stats Chats renders lifetime `TOKENS` and elapsed-lifetime `TOK/H` per chat        | JAIL      | `stats/stats_test.go`, `stats/tokens.go`, `ui/stats_test.go` |            |
+| Stats Chats renders lifetime-traffic `TOKENS` plus rolling one-minute live `TOK/MIN`; first sample is `…`, idle is `–`, and transcript/session discontinuities reset | JAIL | `stats/stats_test.go`, `stats/tokens.go`, `ui/stats_test.go`, `ui/golden_test.go` | |
 | Stats Docker begins with cached container `NAME` and `IMAGE`, then cgroup metrics | JAIL      | `stats/docker_identity_test.go`, `stats/docker_identity.go`, `ui/stats_test.go` |            |
 | the two-second Stats sampler delta-parses transcript growth and performs at most one Docker API identity lookup per new cgroup id | JAIL | `stats/stats_test.go`, `stats/docker_identity_test.go` |            |
 
@@ -514,6 +514,10 @@ plumbing but not the live daemon's JSON shape, so re-run it on any Claude Code u
    off-roster values upstream, so launches stay correct; the divergence is dormant, not dead.
 3. **`mcpserv/backend.go:303-308` counts `Agent` as live** while `ui/model.go:467-471` does not.
    An agent row is capture-probed for busy state in MCP and treated as non-live in the TUI.
+4. **Stats `TOKENS` is transcript traffic, not cost.** Claude assistant records add
+   `cache_read_input_tokens` on every turn, so a long chat repeatedly counts its cached prefix.
+   The open product question is whether this total should remain traffic or become a billed-cost
+   metric; the live-rate change deliberately leaves the total unchanged.
 
 ---
 

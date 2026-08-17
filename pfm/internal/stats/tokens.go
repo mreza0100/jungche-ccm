@@ -6,10 +6,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
 	"hostops/pfm/internal/compose"
+)
+
+const (
+	tokenRateWindow   = time.Minute
+	tokenRewriteGuard = 256
 )
 
 type tokenCacheEntry struct {
@@ -19,13 +25,26 @@ type tokenCacheEntry struct {
 	claudeTokens int64
 	codexTokens  int64
 	known        bool
-	startNS      int64
+	generation   uint64
+	fileInfo     os.FileInfo
+	rewriteGuard []byte
 }
 
 type tokenMeasure struct {
-	total   int64
-	known   bool
-	startNS int64
+	total      int64
+	known      bool
+	identity   string
+	generation uint64
+}
+
+type tokenRateSample struct {
+	timeNS int64
+	total  int64
+}
+
+type tokenRateState struct {
+	identity string
+	samples  []tokenRateSample
 }
 
 type tokenRecord struct {
@@ -51,6 +70,7 @@ type tokenRecord struct {
 
 func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now int64) []string {
 	pathsBySocket := make(map[string]map[string]bool)
+	sessionsBySocket := make(map[string]map[string]bool)
 	for _, row := range rows {
 		if row.Socket == "" || row.Path == "" || !liveKind(row.Kind) {
 			continue
@@ -61,6 +81,12 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 			pathsBySocket[row.Socket] = paths
 		}
 		paths[row.Path] = true
+		sessions := sessionsBySocket[row.Socket]
+		if sessions == nil {
+			sessions = make(map[string]bool)
+			sessionsBySocket[row.Socket] = sessions
+		}
+		sessions[fmt.Sprintf("%d:%s", row.Kind, row.ID)] = true
 	}
 
 	sampler.tokenMu.Lock()
@@ -73,18 +99,22 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 	var warnings []string
 	for socket, paths := range pathsBySocket {
 		combined := tokenMeasure{}
+		identities := make([]string, 0, len(paths))
 		for path := range paths {
 			usedPaths[path] = true
 			measure, pathWarnings := sampler.readTokenUsageLocked(path)
 			warnings = append(warnings, pathWarnings...)
+			identities = append(identities, fmt.Sprintf("%s\x00%d", path, measure.generation))
 			if measure.known {
 				combined.total += measure.total
 				combined.known = true
 			}
-			if measure.startNS > 0 && (combined.startNS == 0 || measure.startNS < combined.startNS) {
-				combined.startNS = measure.startNS
-			}
 		}
+		for session := range sessionsBySocket[socket] {
+			identities = append(identities, "session:"+session)
+		}
+		sort.Strings(identities)
+		combined.identity = strings.Join(identities, "\x1e")
 		usageBySocket[socket] = combined
 	}
 	for path := range sampler.tokenCache {
@@ -92,17 +122,65 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 			delete(sampler.tokenCache, path)
 		}
 	}
+	if sampler.tokenRates == nil {
+		sampler.tokenRates = make(map[string]*tokenRateState)
+	}
+	usedSockets := make(map[string]bool)
 	for index := range chats {
-		measure := usageBySocket[chats[index].Socket]
+		socket := chats[index].Socket
+		measure := usageBySocket[socket]
 		chats[index].TokenCount = measure.total
 		chats[index].TokensKnown = measure.known
-		if measure.known && measure.startNS > 0 && now > measure.startNS {
-			hours := float64(now-measure.startNS) / float64(time.Hour)
-			chats[index].TokensPerHour = float64(measure.total) / hours
-			chats[index].TokenRateValid = true
+		if !measure.known || measure.identity == "" {
+			delete(sampler.tokenRates, socket)
+			continue
+		}
+		usedSockets[socket] = true
+		sampler.attachTokenRateLocked(&chats[index], measure, now)
+	}
+	for socket := range sampler.tokenRates {
+		if !usedSockets[socket] {
+			delete(sampler.tokenRates, socket)
 		}
 	}
 	return warnings
+}
+
+func (sampler *Sampler) attachTokenRateLocked(chat *Chat, measure tokenMeasure, now int64) {
+	state := sampler.tokenRates[chat.Socket]
+	reset := func() {
+		sampler.tokenRates[chat.Socket] = &tokenRateState{
+			identity: measure.identity,
+			samples:  []tokenRateSample{{timeNS: now, total: measure.total}},
+		}
+	}
+	if state == nil || state.identity != measure.identity || len(state.samples) == 0 {
+		reset()
+		return
+	}
+	last := state.samples[len(state.samples)-1]
+	if now <= last.timeNS || now-last.timeNS > int64(tokenRateWindow) || measure.total < last.total {
+		reset()
+		return
+	}
+	state.samples = append(state.samples, tokenRateSample{timeNS: now, total: measure.total})
+	cutoff := now - int64(tokenRateWindow)
+	oldest := 0
+	for oldest+1 < len(state.samples) && state.samples[oldest+1].timeNS <= cutoff {
+		oldest++
+	}
+	if oldest > 0 {
+		state.samples = append([]tokenRateSample(nil), state.samples[oldest:]...)
+	}
+	baseline := state.samples[0]
+	elapsed := now - baseline.timeNS
+	if elapsed <= 0 || measure.total < baseline.total {
+		reset()
+		return
+	}
+	chat.TokensPerMinute = float64(measure.total-baseline.total) /
+		(float64(elapsed) / float64(time.Minute))
+	chat.TokenRateValid = true
 }
 
 func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []string) {
@@ -118,15 +196,14 @@ func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []strin
 		return tokenMeasure{}, []string{fmt.Sprintf("read chat token transcript %s: not a regular file", path)}
 	}
 	entry := sampler.tokenCache[path]
-	if entry == nil || info.Size() < entry.offset ||
+	if entry == nil || entry.fileInfo == nil || !os.SameFile(entry.fileInfo, info) || info.Size() < entry.offset ||
 		(info.Size() == entry.offset && info.ModTime().UnixNano() != entry.modifiedNS) {
-		entry = &tokenCacheEntry{}
-		sampler.tokenCache[path] = entry
+		entry = sampler.newTokenCacheEntryLocked(path, info)
 	}
 	if info.Size() == entry.offset {
 		return tokenMeasure{
 			total: entry.claudeTokens + entry.codexTokens,
-			known: entry.known, startNS: entry.startNS,
+			known: entry.known, generation: entry.generation,
 		}, nil
 	}
 
@@ -137,6 +214,24 @@ func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []strin
 			return tokenMeasure{}, nil
 		}
 		return tokenMeasure{}, []string{fmt.Sprintf("open chat token transcript %s: %v", path, err)}
+	}
+	openedInfo, statErr := file.Stat()
+	if statErr != nil {
+		if closeErr := file.Close(); closeErr != nil {
+			return tokenMeasure{}, []string{fmt.Sprintf("stat chat token transcript %s before read: %v; close after stat failure: %v", path, statErr, closeErr)}
+		}
+		return tokenMeasure{}, []string{fmt.Sprintf("stat chat token transcript %s before read: %v", path, statErr)}
+	}
+	if entry.fileInfo == nil || !os.SameFile(entry.fileInfo, openedInfo) || openedInfo.Size() < entry.offset {
+		entry = sampler.newTokenCacheEntryLocked(path, openedInfo)
+	}
+	if matches, guardErr := tokenRewriteGuardMatches(file, entry); guardErr != nil {
+		if closeErr := file.Close(); closeErr != nil {
+			return tokenMeasure{}, []string{fmt.Sprintf("verify chat token transcript %s rewrite guard: %v; close after guard failure: %v", path, guardErr, closeErr)}
+		}
+		return tokenMeasure{}, []string{fmt.Sprintf("verify chat token transcript %s rewrite guard: %v", path, guardErr)}
+	} else if !matches {
+		entry = sampler.newTokenCacheEntryLocked(path, openedInfo)
 	}
 	if _, err := file.Seek(entry.offset, io.SeekStart); err != nil {
 		if closeErr := file.Close(); closeErr != nil {
@@ -172,17 +267,69 @@ func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []strin
 	postInfo, statErr := file.Stat()
 	if statErr != nil {
 		warnings = append(warnings, fmt.Sprintf("stat chat token transcript %s after read: %v", path, statErr))
-		entry.modifiedNS = info.ModTime().UnixNano()
+		entry.modifiedNS = openedInfo.ModTime().UnixNano()
+		entry.fileInfo = openedInfo
 	} else {
 		entry.modifiedNS = postInfo.ModTime().UnixNano()
+		entry.fileInfo = postInfo
+	}
+	if guardErr := updateTokenRewriteGuard(file, entry); guardErr != nil {
+		warnings = append(warnings, fmt.Sprintf("record chat token transcript %s rewrite guard: %v", path, guardErr))
 	}
 	if closeErr := file.Close(); closeErr != nil {
 		warnings = append(warnings, fmt.Sprintf("close chat token transcript %s: %v", path, closeErr))
 	}
 	return tokenMeasure{
 		total: entry.claudeTokens + entry.codexTokens,
-		known: entry.known, startNS: entry.startNS,
+		known: entry.known, generation: entry.generation,
 	}, warnings
+}
+
+func (sampler *Sampler) newTokenCacheEntryLocked(path string, info os.FileInfo) *tokenCacheEntry {
+	sampler.tokenGeneration++
+	entry := &tokenCacheEntry{
+		generation: sampler.tokenGeneration,
+		fileInfo:   info,
+		modifiedNS: info.ModTime().UnixNano(),
+	}
+	sampler.tokenCache[path] = entry
+	return entry
+}
+
+func tokenRewriteGuardMatches(file *os.File, entry *tokenCacheEntry) (bool, error) {
+	if entry.offset == 0 || len(entry.rewriteGuard) == 0 {
+		return true, nil
+	}
+	guard := make([]byte, len(entry.rewriteGuard))
+	read, err := file.ReadAt(guard, entry.offset-int64(len(guard)))
+	if err != nil && err != io.EOF {
+		return false, err
+	}
+	if read != len(guard) {
+		return false, nil
+	}
+	return string(guard) == string(entry.rewriteGuard), nil
+}
+
+func updateTokenRewriteGuard(file *os.File, entry *tokenCacheEntry) error {
+	size := int64(tokenRewriteGuard)
+	if entry.offset < size {
+		size = entry.offset
+	}
+	if size == 0 {
+		entry.rewriteGuard = nil
+		return nil
+	}
+	guard := make([]byte, int(size))
+	read, err := file.ReadAt(guard, entry.offset-size)
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if read != len(guard) {
+		return io.ErrUnexpectedEOF
+	}
+	entry.rewriteGuard = guard
+	return nil
 }
 
 func applyTokenRecord(entry *tokenCacheEntry, line []byte) error {
@@ -193,16 +340,9 @@ func applyTokenRecord(entry *tokenCacheEntry, line []byte) error {
 	if err := json.Unmarshal(line, &record); err != nil {
 		return err
 	}
-	var timestampErr error
 	if record.Timestamp != "" {
-		parsed, err := time.Parse(time.RFC3339Nano, record.Timestamp)
-		if err != nil {
-			timestampErr = fmt.Errorf("parse timestamp %q: %w", record.Timestamp, err)
-		} else {
-			stamp := parsed.UnixNano()
-			if entry.startNS == 0 || stamp < entry.startNS {
-				entry.startNS = stamp
-			}
+		if _, err := time.Parse(time.RFC3339Nano, record.Timestamp); err != nil {
+			return fmt.Errorf("parse timestamp %q: %w", record.Timestamp, err)
 		}
 	}
 	if record.Type == "assistant" {
@@ -228,5 +368,5 @@ func applyTokenRecord(entry *tokenCacheEntry, line []byte) error {
 			entry.known = true
 		}
 	}
-	return timestampErr
+	return nil
 }

@@ -28,18 +28,18 @@ type Header struct {
 }
 
 type Chat struct {
-	Socket         string
-	Name           string
-	Engine         string
-	CPUPercent     float64
-	CPUValid       bool
-	RSSBytes       uint64
-	RAMPercent     float64
-	GearCount      int
-	TokenCount     int64
-	TokensKnown    bool
-	TokensPerHour  float64
-	TokenRateValid bool
+	Socket          string
+	Name            string
+	Engine          string
+	CPUPercent      float64
+	CPUValid        bool
+	RSSBytes        uint64
+	RAMPercent      float64
+	GearCount       int
+	TokenCount      int64
+	TokensKnown     bool
+	TokensPerMinute float64
+	TokenRateValid  bool
 }
 
 type Container struct {
@@ -94,6 +94,8 @@ type Sampler struct {
 	previous         *rawSample
 	tokenMu          sync.Mutex
 	tokenCache       map[string]*tokenCacheEntry
+	tokenRates       map[string]*tokenRateState
+	tokenGeneration  uint64
 	dockerMu         sync.Mutex
 	dockerIdentities map[string]dockerIdentity
 }
