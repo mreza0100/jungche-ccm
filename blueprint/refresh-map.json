@@ -1,10 +1,10 @@
 {
   "_comment": [
-    "refresh-map.json — template → live-source map with the SHA-256 of each live source as of the last sync.",
+    "refresh-map.json \u2014 template \u2192 live-source map with the SHA-256 of each live source as of the last sync.",
     "Consumed by scripts/refresh-scope.sh (scan = incremental refresh scope; regen = re-baseline at release end).",
     "Template keys are relative to blueprint/. Source paths are relative to the source project root;",
     "{project:ROLE} tokens resolve via the project's .professor/manifest.json .interview.projects[ROLE]; leading ~/ resolves to $HOME (host-level sources).",
-    "curated: true = hand-curated template with no live source — never auto-derived.",
+    "curated: true = hand-curated template with no live source \u2014 never auto-derived.",
     "Multi-source entries list every live file whose change forces re-derivation (representative-pattern templates).",
     "ignore_sources = live files deliberately not shipped (project-local); source_globs = the mined surfaces scanned for UNMAPPED-LIVE files."
   ],
@@ -83,10 +83,10 @@
       "curated": true
     },
     "codex/agents/per-project/developer.toml": {
-      "curated": true
+      ".codex/agents/developer-be.toml": "76beb9bd7c8777acd7fa000fcd7eddb4360402c78c1469e19fa9008a29d76e3e"
     },
     "codex/agents/per-project/qa.toml": {
-      "curated": true
+      ".codex/agents/qa-be.toml": "b575ade661aef147629bdc0c730b35d592cb112bd242aabaaabe95b6fc5962fe"
     },
     "codex/config.toml": {
       "sources": {

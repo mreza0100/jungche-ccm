@@ -52,7 +52,7 @@ blueprint/                ← the shipped product, one clone away
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
     ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, save
     │                         Tier B (opt-in): officer, km, pm, mentor, marketer
-    ├── skills/            ← bundled p:* skills (+ rr/p:360/ghostwriter/vision-factory source-fetched via sources.json)
+    ├── skills/            ← bundled p:* skills (+ p:360/ghostwriter/vision-factory source-fetched via sources.json; rr is in-tree at engines/rr)
     ├── themes/            ← tokyo-night theme, source-fetched via sources.json
     ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
@@ -111,7 +111,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Bundled commands (ship with the blueprint):** the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 
-**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `rr`, `p:360`, `ghostwriter`, `vision-factory`.
+**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `rr` skill is in-tree at `engines/rr/` and installs with the blueprint.
 
 **Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/swap` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-hide, `pfm reap` orphan sweeper).
 

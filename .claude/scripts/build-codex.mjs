@@ -188,8 +188,10 @@ const outputs = new Map();
 const notes = [];
 
 // Projects = top-level dirs carrying a CLAUDE.md (dynamic; .worktrees etc. have none).
+// blueprint/ is excluded: its CLAUDE.md is the adopter TEMPLATE (placeholder text),
+// not this repo's instructions — mirroring it mints a placeholder AGENTS.md.
 const projects = readdirSync(ROOT, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && existsSync(join(ROOT, e.name, 'CLAUDE.md')))
+  .filter((e) => e.isDirectory() && e.name !== 'blueprint' && existsSync(join(ROOT, e.name, 'CLAUDE.md')))
   .map((e) => e.name)
   .sort();
 
