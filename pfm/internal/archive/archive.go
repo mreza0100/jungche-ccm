@@ -98,18 +98,22 @@ type Report struct {
 
 // Dependencies are the runner's collaborators.
 type Dependencies struct {
-	Paths paths.Values
-	Hides HideStore
-	Proc  gather.ProcFS
-	Now   func() time.Time
+	Paths            paths.Values
+	Hides            HideStore
+	Proc             gather.ProcFS
+	Now              func() time.Time
+	CodexBinary      string
+	ExactClaudeRoots bool
 }
 
 // Runner performs one archive pass.
 type Runner struct {
-	paths paths.Values
-	hides HideStore
-	proc  gather.ProcFS
-	now   func() time.Time
+	paths            paths.Values
+	hides            HideStore
+	proc             gather.ProcFS
+	now              func() time.Time
+	codexBinary      string
+	exactClaudeRoots bool
 }
 
 // New fills real implementations for anything omitted.
@@ -134,10 +138,12 @@ func New(dependencies Dependencies) (*Runner, error) {
 		now = time.Now
 	}
 	return &Runner{
-		paths: resolved,
-		hides: dependencies.Hides,
-		proc:  proc,
-		now:   now,
+		paths:            resolved,
+		hides:            dependencies.Hides,
+		proc:             proc,
+		now:              now,
+		codexBinary:      dependencies.CodexBinary,
+		exactClaudeRoots: dependencies.ExactClaudeRoots,
 	}, nil
 }
 
@@ -146,7 +152,12 @@ func (runner *Runner) Run(
 	ctx context.Context,
 	options Options,
 ) (Report, error) {
-	live := LiveSessions(runner.proc, runner.paths.CodexRoot, runner.paths.SIDDir)
+	live := LiveSessions(
+		runner.proc,
+		runner.paths.CodexRoot,
+		runner.paths.SIDDir,
+		runner.codexBinary,
+	)
 	if options.Subagents {
 		return runner.runSubagents(options, live)
 	}
@@ -374,7 +385,10 @@ func (runner *Runner) claudeRoots() []string {
 		[]string(nil),
 		runner.paths.ClaudeRoots...,
 	)
-	return append(roots, filepath.Join(runner.paths.Home, ".claude", "projects"))
+	if !runner.exactClaudeRoots {
+		roots = append(roots, filepath.Join(runner.paths.Home, ".claude", "projects"))
+	}
+	return roots
 }
 
 // targetFor mirrors the source layout under the archive, so a restore is an

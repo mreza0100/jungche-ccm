@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
@@ -23,7 +24,7 @@ import (
 
 type swapCommandTmux struct{}
 
-const swapUsage = "usage: pfm chat swap [1|2] [--then prompt] [--sock socket] [--1h on|off]"
+const swapUsage = "usage: pfm chat swap [account] [--then prompt] [--sock socket] [--1h on|off]"
 
 var startSwapWorker = func(command *exec.Cmd) error {
 	if err := command.Start(); err != nil {
@@ -94,6 +95,19 @@ func (tmux swapCommandTmux) Display(ctx context.Context, socket, pane, message s
 }
 
 func runChatSwap(args []string, stdout, stderr io.Writer) int {
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat swap: load config: %v\n", err)
+		return 1
+	}
+	return runChatSwapWithRuntime(args, stdout, stderr, runtime)
+}
+
+func runChatSwapWithRuntime(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprintln(stdout, swapUsage)
 		return 0
@@ -102,11 +116,13 @@ func runChatSwap(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
 		return 2
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
-		return 1
+	if account := swapRequestedAccount(args); account != 0 {
+		if _, found := runtime.Config.Account(account); !found {
+			fmt.Fprintf(stderr, "pfm chat swap: account %d is not in the configured roster\n", account)
+			return 2
+		}
 	}
+	resolved := runtime.Paths
 	tmux := swapCommandTmux{}
 	socketPath, _, _, code := swapTarget(
 		context.Background(), swapSocketArgument(args), resolved, tmux, stderr,
@@ -142,7 +158,9 @@ func runChatSwap(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "pfm chat swap: close null input: %v\n", err)
 		}
 	}()
-	command := exec.Command(os.Args[0], append([]string{"internal", "swap-run"}, args...)...)
+	workerArgs := []string{"--config", runtime.Config.Path, "internal", "swap-run"}
+	workerArgs = append(workerArgs, args...)
+	command := exec.Command(os.Args[0], workerArgs...)
 	command.Stdin = null
 	command.Stdout = log
 	command.Stderr = log
@@ -156,6 +174,19 @@ func runChatSwap(args []string, stdout, stderr io.Writer) int {
 }
 
 func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat swap: load config: %v\n", err)
+		return 1
+	}
+	return runChatSwapWorkerWithRuntime(args, stdout, stderr, runtime)
+}
+
+func runChatSwapWorkerWithRuntime(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	if err := validateSwapArgs(args); err != nil {
 		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
 		return 2
@@ -163,12 +194,6 @@ func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
 	var account, cacheOverride, sock, then string
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
-		case "1", "2":
-			if account != "" {
-				fmt.Fprintln(stderr, "pfm chat swap: account specified twice")
-				return 2
-			}
-			account = args[index]
 		case "--then":
 			if index+1 >= len(args) {
 				fmt.Fprintln(stderr, "pfm chat swap: --then needs a prompt")
@@ -191,19 +216,22 @@ func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
 			index++
 			cacheOverride = args[index]
 		default:
-			fmt.Fprintln(stderr, swapUsage)
-			return 2
+			if _, valid := positiveAccount(args[index]); !valid {
+				fmt.Fprintln(stderr, swapUsage)
+				return 2
+			}
+			if account != "" {
+				fmt.Fprintln(stderr, "pfm chat swap: account specified twice")
+				return 2
+			}
+			account = args[index]
 		}
 	}
 	if account == "" && cacheOverride == "" {
 		fmt.Fprintln(stderr, swapUsage)
 		return 2
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
 	tmux := swapCommandTmux{}
 	socketPath, pane, paneState, code := swapTarget(context.Background(), sock, resolved, tmux, stderr)
 	if code != 0 {
@@ -227,12 +255,17 @@ func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
 	if info, statErr := os.Stat(cwd); statErr != nil || !info.IsDir() {
 		cwd, _ = os.Getwd()
 	}
-	birthAccount, birthCache := swapBirth(resolved, socketPath, paneState, stderr)
+	birthAccount, birthCache := swapBirth(resolved, runtime.Config, socketPath, paneState, stderr)
 	if account == "" {
 		account = strconv.Itoa(birthAccount)
 		fmt.Fprintf(stdout, "pfm chat swap: no account given — keeping the chat's current account %s\n", account)
 	}
 	acct, _ := strconv.Atoi(account)
+	selected, found := runtime.Config.Account(acct)
+	if !found {
+		fmt.Fprintf(stderr, "pfm chat swap: account %d is not in the configured roster\n", acct)
+		return 2
+	}
 	cache := birthCache
 	if cacheOverride != "" {
 		cache = cacheOverride == "on" || cacheOverride == "1"
@@ -242,7 +275,7 @@ func runChatSwapWorker(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "pfm chat swap: --then queued — the follow-up is typed into the reborn chat once it reaches its prompt")
 	}
 	options := swap.Options{Home: resolved.Home, SIDDir: resolved.SIDDir, ClaudeRoots: resolved.ClaudeRoots, Delay: swapDurationEnv("PFM_SWAP_DELAY_MS", 1500), Poll: swapDurationEnv("PFM_SWAP_POLL_MS", 1000), ExitTries: swap.ParseIntEnv("PFM_SWAP_EXIT_TRIES", 20), ThenTries: swap.ParseIntEnv("PFM_SWAP_THEN_TRIES", 900)}
-	result, err := swap.Run(context.Background(), swap.Request{SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, Cache1H: cache, Then: then}, options, tmux, swapProc{procfs: gather.NewProcFS(resolved.ProcRoot)}, stderr)
+	result, err := swap.Run(context.Background(), swap.Request{SocketPath: socketPath, Pane: pane, PanePID: paneState.PID, SessionID: id, Transcript: transcript, CWD: cwd, Account: acct, AccountIDs: runtime.Config.AccountIDs(), AccountConfigDir: selected.ConfigDir, AccountImplicit: selected.Implicit, ClaudeBinary: runtime.Config.Claude.Binary, PromptPermissions: runtime.Config.Claude.PermissionMode == pfmconfig.PermissionPrompt, Cache1H: cache, Then: then}, options, tmux, swapProc{procfs: gather.NewProcFS(resolved.ProcRoot)}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat swap: %v\n", err)
 		return 1
@@ -268,11 +301,6 @@ func validateSwapArgs(args []string) error {
 	account, cache := false, false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
-		case "1", "2":
-			if account {
-				return errors.New("account specified twice")
-			}
-			account = true
 		case "--then", "--sock":
 			if index+1 >= len(args) {
 				return fmt.Errorf("%s needs a value", args[index])
@@ -285,13 +313,38 @@ func validateSwapArgs(args []string) error {
 			cache = true
 			index++
 		default:
-			return errors.New(swapUsage)
+			if _, valid := positiveAccount(args[index]); !valid {
+				return errors.New(swapUsage)
+			}
+			if account {
+				return errors.New("account specified twice")
+			}
+			account = true
 		}
 	}
 	if !account && !cache {
 		return errors.New(swapUsage)
 	}
 	return nil
+}
+
+func positiveAccount(value string) (int, bool) {
+	account, err := strconv.Atoi(value)
+	return account, err == nil && account > 0
+}
+
+func swapRequestedAccount(args []string) int {
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--then", "--sock", "--1h":
+			index++
+			continue
+		}
+		if account, valid := positiveAccount(args[index]); valid {
+			return account
+		}
+	}
+	return 0
 }
 
 func swapDurationEnv(name string, fallbackMS int) time.Duration {
@@ -376,8 +429,17 @@ func (proc swapProc) Stat(pid int) (gather.ProcStat, error) {
 	return proc.procfs.Stat(pid)
 }
 
-func swapBirth(resolved paths.Values, socketPath string, pane swap.Pane, stderr io.Writer) (int, bool) {
-	account, cache := 1, true
+func swapBirth(
+	resolved paths.Values,
+	machine pfmconfig.Config,
+	socketPath string,
+	pane swap.Pane,
+	stderr io.Writer,
+) (int, bool) {
+	if len(machine.Accounts) == 0 {
+		machine = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
+	}
+	account, cache := machine.Accounts[0].ID, true
 	proc := gather.NewProcFS(resolved.ProcRoot)
 	procTree := swapProc{procfs: proc}
 	pids, err := proc.PIDs()
@@ -391,7 +453,8 @@ func swapBirth(resolved paths.Values, socketPath string, pane swap.Pane, stderr 
 			fmt.Fprintf(stderr, "pfm chat swap: inspect process %d command: %v\n", pid, err)
 			continue
 		}
-		if !gather.IsClaudeCommand(argv) {
+		if !gather.IsClaudeCommand(argv) &&
+			(len(argv) == 0 || filepath.Base(argv[0]) != filepath.Base(machine.Claude.Binary)) {
 			continue
 		}
 		inPane, err := swapProcessInPane(procTree, pid, pane.PID)
@@ -407,27 +470,42 @@ func swapBirth(resolved paths.Values, socketPath string, pane swap.Pane, stderr 
 			fmt.Fprintf(stderr, "pfm chat swap: inspect process %d environment: %v\n", pid, err)
 			continue
 		}
-		account = accountForConfig(resolved.Home, env["CLAUDE_CONFIG_DIR"])
+		account = accountForConfig(machine, env["CLAUDE_CONFIG_DIR"])
 		cache = env["FORCE_PROMPT_CACHING_5M"] != "1"
 		return account, cache
 	}
 	// A tool shell can be detached from the seat's process tree. In that case
 	// its own birth config is the only safe account rung for a cache-only swap.
-	account = accountForConfig(resolved.Home, os.Getenv("CLAUDE_CONFIG_DIR"))
+	account = accountForConfig(machine, os.Getenv("CLAUDE_CONFIG_DIR"))
 	return account, cache
 }
 
-func accountForConfig(home, config string) int {
-	if config == "" {
+func accountForConfig(machine pfmconfig.Config, config string) int {
+	if len(machine.Accounts) == 0 {
 		return 1
+	}
+	if config == "" {
+		for _, account := range machine.Accounts {
+			if account.Implicit {
+				return account.ID
+			}
+		}
+		return machine.Accounts[0].ID
 	}
 	if resolved, err := filepath.EvalSymlinks(config); err == nil {
 		config = resolved
 	}
-	if config == filepath.Join(home, ".cc", "2") || config == filepath.Join(home, ".claude3") {
-		return 2
+	config = filepath.Clean(config)
+	for _, account := range machine.Accounts {
+		candidate := filepath.Clean(account.ConfigDir)
+		if resolved, err := filepath.EvalSymlinks(candidate); err == nil {
+			candidate = resolved
+		}
+		if config == candidate {
+			return account.ID
+		}
 	}
-	return 1
+	return machine.Accounts[0].ID
 }
 func swapProcessInPane(proc swapProc, pid, panePID int) (bool, error) {
 	current := pid

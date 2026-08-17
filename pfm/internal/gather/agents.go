@@ -9,7 +9,7 @@ import (
 
 // DetectAgents returns strict session identities for Claude processes using a
 // non-primary config directory.
-func DetectAgents(proc ProcFS, home string, panes []Pane) ([]Agent, error) {
+func DetectAgents(proc ProcFS, home string, panes []Pane, binaries ...string) ([]Agent, error) {
 	pids, err := proc.PIDs()
 	if err != nil {
 		return nil, fmt.Errorf("list processes for agent scan: %w", err)
@@ -22,7 +22,7 @@ func DetectAgents(proc ProcFS, home string, panes []Pane) ([]Agent, error) {
 
 	for _, pid := range pids {
 		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !isClaudeCommand(cmdline) {
+		if err != nil || !isClaudeCommand(cmdline, binaries...) {
 			continue
 		}
 		sessionIDs := claudeSessionIDs(cmdline)
@@ -72,25 +72,42 @@ func DetectAgents(proc ProcFS, home string, panes []Pane) ([]Agent, error) {
 // The reaper asks the same question the agent scan does — a process tree
 // hosting a chat is not a process tree hosting somebody's dev server — so
 // there is one spelling of it (K3).
-func IsClaudeCommand(cmdline []string) bool {
+func IsClaudeCommand(cmdline []string, binaries ...string) bool {
 	if len(cmdline) == 0 {
 		return false
 	}
 	executable := filepath.ToSlash(cmdline[0])
-	return filepath.Base(executable) == "claude" ||
-		strings.Contains(executable, "/claude/versions/")
+	name := filepath.Base(executable)
+	if name == "claude" || strings.Contains(executable, "/claude/versions/") {
+		return true
+	}
+	for _, binary := range binaries {
+		if binary != "" && name == filepath.Base(binary) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsCodexCommand reports whether an argv belongs to a Codex process.
-func IsCodexCommand(cmdline []string) bool {
+func IsCodexCommand(cmdline []string, binaries ...string) bool {
 	if len(cmdline) == 0 {
 		return false
 	}
-	return filepath.Base(filepath.ToSlash(cmdline[0])) == "codex"
+	name := filepath.Base(filepath.ToSlash(cmdline[0]))
+	if name == "codex" {
+		return true
+	}
+	for _, binary := range binaries {
+		if binary != "" && name == filepath.Base(binary) {
+			return true
+		}
+	}
+	return false
 }
 
-func isClaudeCommand(cmdline []string) bool {
-	return IsClaudeCommand(cmdline)
+func isClaudeCommand(cmdline []string, binaries ...string) bool {
+	return IsClaudeCommand(cmdline, binaries...)
 }
 
 func claudeSessionIDs(cmdline []string) []string {

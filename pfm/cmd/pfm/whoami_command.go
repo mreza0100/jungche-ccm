@@ -20,7 +20,7 @@ import (
 // (chat.sh:482-484): one bare session name and nothing else, so an existing
 // caller can switch to this binary without reading differently. --json adds
 // the engine identity for callers that want more than the handle.
-func runWhoami(args []string, stdout, stderr io.Writer) int {
+func runWhoami(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("whoami", "usage: pfm whoami [--json | --label]", stderr)
 	asJSON := flags.Bool("json", false, "print the full identity as JSON")
 	asLabel := flags.Bool("label", false, "print the chat label, falling back to its session")
@@ -39,7 +39,7 @@ func runWhoami(args []string, stdout, stderr io.Writer) int {
 	ctx := context.Background()
 	identity, err := identifier.Identify(ctx)
 	if err != nil {
-		seat, found := codexSeatIdentity(ctx)
+		seat, found := codexSeatIdentity(ctx, runtimes...)
 		if !found {
 			fmt.Fprintf(stderr, "%v\n", err)
 			return 1
@@ -84,7 +84,7 @@ func runWhoami(args []string, stdout, stderr io.Writer) int {
 // the socket hosting it: this is that lookup, and nothing more. It runs only
 // after the tmux rungs fail, because CODEX_THREAD_ID is INHERITED — a process
 // with a pane of its own must never be renamed by an id it merely inherited.
-func codexSeatIdentity(ctx context.Context) (resolve.Identity, bool) {
+func codexSeatIdentity(ctx context.Context, runtimes ...commandRuntime) (resolve.Identity, bool) {
 	thread := os.Getenv(resolve.CodexThreadEnv)
 	if thread == "" || os.Getenv(resolve.ClaudeSessionEnv) != "" {
 		return resolve.Identity{}, false
@@ -94,10 +94,14 @@ func codexSeatIdentity(ctx context.Context) (resolve.Identity, bool) {
 		return resolve.Identity{}, false
 	}
 	defer database.Close()
+	request := scanRequest{View: compose.AllView, ReadOnly: true}
+	if len(runtimes) != 0 {
+		request.Runtime = &runtimes[0]
+	}
 	scan, err := scanFleet(
 		ctx,
 		database,
-		scanRequest{View: compose.AllView, ReadOnly: true},
+		request,
 		io.Discard,
 	)
 	if err != nil {
@@ -127,16 +131,31 @@ func codexSeatIdentity(ctx context.Context) (resolve.Identity, bool) {
 // resolve.Whoami: tmux environment and process ancestry stay the first two
 // rungs, because CODEX_THREAD_ID can be inherited by a process with a seat of
 // its own.
-type codexSeatIdentifier struct{}
+type codexSeatIdentifier struct{ Runtime *commandRuntime }
 
-func (codexSeatIdentifier) Identify(ctx context.Context) (resolve.Identity, error) {
-	identity, found := codexSeatIdentity(ctx)
+func (identifier codexSeatIdentifier) Identify(ctx context.Context) (resolve.Identity, error) {
+	var runtimes []commandRuntime
+	if identifier.Runtime != nil {
+		runtimes = append(runtimes, *identifier.Runtime)
+	}
+	identity, found := codexSeatIdentity(ctx, runtimes...)
 	if !found {
 		return resolve.Identity{}, resolve.ErrNoTmux
 	}
 	return identity, nil
 }
 
-func newInjectEngine() (*inject.Engine, error) {
-	return inject.New(inject.Dependencies{CodexSeat: codexSeatIdentifier{}})
+func newInjectEngine(runtimes ...commandRuntime) (*inject.Engine, error) {
+	identifier := codexSeatIdentifier{}
+	dependencies := inject.Dependencies{}
+	if len(runtimes) != 0 {
+		identifier.Runtime = &runtimes[0]
+		dependencies.Spawner = inject.CommandThenSpawner{
+			ConfigPath: runtimes[0].Config.Path,
+		}
+		dependencies.ClaudeBinary = runtimes[0].Config.Claude.Binary
+		dependencies.CodexBinary = runtimes[0].Config.Codex.Binary
+	}
+	dependencies.CodexSeat = identifier
+	return inject.New(dependencies)
 }

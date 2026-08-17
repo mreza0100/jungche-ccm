@@ -44,22 +44,26 @@ type KillServerFunc func(ctx context.Context, socket string) error
 // Dependencies are the reaper's collaborators. Every one of them has a real
 // default; a test supplies its own.
 type Dependencies struct {
-	Paths      paths.Values
-	Tmux       Tmux
-	Proc       gather.ProcFS
-	Busy       BusyProbe
-	KillServer KillServerFunc
-	Now        func() time.Time
+	Paths        paths.Values
+	Tmux         Tmux
+	Proc         gather.ProcFS
+	Busy         BusyProbe
+	ClaudeBinary string
+	CodexBinary  string
+	KillServer   KillServerFunc
+	Now          func() time.Time
 }
 
 // Runner performs one sweep.
 type Runner struct {
-	paths      paths.Values
-	tmux       Tmux
-	proc       gather.ProcFS
-	busy       BusyProbe
-	killServer KillServerFunc
-	now        func() time.Time
+	paths        paths.Values
+	tmux         Tmux
+	proc         gather.ProcFS
+	busy         BusyProbe
+	claudeBinary string
+	codexBinary  string
+	killServer   KillServerFunc
+	now          func() time.Time
 }
 
 // Options are one sweep's knobs.
@@ -120,12 +124,14 @@ func New(dependencies Dependencies) (*Runner, error) {
 		return nil, errors.New("reap needs a kill-server implementation")
 	}
 	return &Runner{
-		paths:      resolved,
-		tmux:       tmux,
-		proc:       proc,
-		busy:       busy,
-		killServer: dependencies.KillServer,
-		now:        now,
+		paths:        resolved,
+		tmux:         tmux,
+		proc:         proc,
+		busy:         busy,
+		claudeBinary: dependencies.ClaudeBinary,
+		codexBinary:  dependencies.CodexBinary,
+		killServer:   dependencies.KillServer,
+		now:          now,
 	}, nil
 }
 
@@ -155,7 +161,7 @@ func (runner *Runner) Run(
 	}
 	report.AgentsOK = input.AgentsOK
 
-	tree, err := NewProcessTree(runner.proc)
+	tree, err := NewProcessTree(runner.proc, runner.claudeBinary, runner.codexBinary)
 	if err != nil {
 		return Report{}, err
 	}

@@ -50,6 +50,7 @@ type Runtime struct {
 	ProcRoot     string
 	Columns      int
 	UID          int
+	AccountDirs  map[string]int
 
 	// A non-nil Env is a closed test environment. Nil reads os.Getenv.
 	Env map[string]string

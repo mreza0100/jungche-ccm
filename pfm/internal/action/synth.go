@@ -8,11 +8,8 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 )
-
-// MaxAccount is the size of the Claude account roster. Every account check in
-// the Go engine and zsh launcher derives from this bound.
-const MaxAccount = 2
 
 // hygiene is the launch-environment strip every fleet-born process carries
 // for both Claude and Codex. A chat born inside
@@ -48,14 +45,14 @@ const autonomyFlags = "--allow-dangerously-skip-permissions --dangerously-skip-p
 // Synthesize produces a deterministic action plan without touching tmux,
 // processes, the filesystem, stdin, stdout, or /dev/tty.
 func Synthesize(request Request) (Plan, error) {
+	machine := normalizedMachineConfig(request.Config, request.Home)
 	route, err := routeForKind(request.Row.Kind)
 	if err != nil {
 		return Plan{}, err
 	}
-	if request.PrimaryAccount < 1 || request.PrimaryAccount > MaxAccount {
+	if _, found := machine.Account(request.PrimaryAccount); !found {
 		return Plan{}, fmt.Errorf(
-			"primary account must be 1-%d, got %d",
-			MaxAccount,
+			"primary account %d is not in the configured roster",
 			request.PrimaryAccount,
 		)
 	}
@@ -79,18 +76,27 @@ func Synthesize(request Request) (Plan, error) {
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Claude action requires a project directory")
 		}
-		command := "cc" + strconv.Itoa(request.PrimaryAccount)
-		armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
-		if request.Cache1H {
-			armed = "CC_ARM_1H=1 "
+		if usesConfiguredClaudeLaunch(machine) {
+			plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
+				claudeCommand(request.Home, request.PrimaryAccount, request.Cache1H, machine) + ")"
+		} else {
+			command := "cc" + strconv.Itoa(request.PrimaryAccount)
+			armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
+			if request.Cache1H {
+				armed = "CC_ARM_1H=1 "
+			}
+			plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
+				armed + command + ")"
 		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
-			armed + command + ")"
 	case NewCodex:
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")
 		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && cx)"
+		command := "cx"
+		if usesConfiguredCodexLaunch(machine) {
+			command = codexCommand(machine)
+		}
+		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " + command + ")"
 	case Live:
 		if request.Row.Socket == "" {
 			return Plan{}, errors.New("live action requires a socket")
@@ -115,12 +121,14 @@ func Synthesize(request Request) (Plan, error) {
 			request.Cache1H,
 			request.Row.ID,
 			request.Row.CWD,
+			machine.Path,
 			owningConfig,
 		)
 		resume := claudeCommand(
 			request.Home,
 			request.PrimaryAccount,
 			request.Cache1H,
+			machine,
 			"--resume",
 			request.Row.ID,
 		)
@@ -145,6 +153,7 @@ func Synthesize(request Request) (Plan, error) {
 			request.Home,
 			request.PrimaryAccount,
 			request.Cache1H,
+			machine,
 			"--resume",
 			request.Row.ID,
 		)
@@ -152,6 +161,7 @@ func Synthesize(request Request) (Plan, error) {
 			request.Cache1H,
 			request.Row.ID,
 			request.Row.CWD,
+			machine.Path,
 		)
 		plan.Run = resume +
 			" || { echo; echo " +
@@ -171,7 +181,7 @@ func Synthesize(request Request) (Plan, error) {
 			)
 		}
 		plan.Run = continuityBanner(request.Row) +
-			codexCommand("resume", request.Row.ID)
+			codexCommand(machine, "resume", request.Row.ID)
 		plan.CodexServer = &CodexServer{
 			Socket: request.FreshSocket,
 			CWD:    request.Row.CWD,
@@ -218,9 +228,10 @@ func claudeCommand(
 	home string,
 	account int,
 	cache1H bool,
+	machine pfmconfig.Config,
 	args ...string,
 ) string {
-	return claudeCommandWith(hygiene, home, account, cache1H, args...)
+	return claudeCommandWith(hygiene, home, account, cache1H, machine, args...)
 }
 
 // claudeCommandWith is claudeCommand over a caller-chosen environment strip,
@@ -231,28 +242,36 @@ func claudeCommandWith(
 	home string,
 	account int,
 	cache1H bool,
+	machine pfmconfig.Config,
 	args ...string,
 ) string {
 	var command strings.Builder
 	command.WriteString(environmentStrip)
 	// Account 1 is the default config dir (hygiene already unset it); every
 	// other account is an explicit CLAUDE_CONFIG_DIR.
-	if account >= 2 && account <= MaxAccount {
+	if selected, found := machine.Account(account); found && !selected.Implicit {
 		command.WriteString(" CLAUDE_CONFIG_DIR=")
-		command.WriteString(Quote(filepath.Join(home, ".cc", strconv.Itoa(account))))
+		command.WriteString(Quote(selected.ConfigDir))
 	}
 	if cache1H {
 		command.WriteString(" ENABLE_PROMPT_CACHING_1H=1")
 	} else {
 		command.WriteString(" FORCE_PROMPT_CACHING_5M=1")
 	}
-	command.WriteString(" claude")
+	command.WriteByte(' ')
+	command.WriteString(binaryWord(
+		machine.Claude.Binary,
+		"claude",
+		machine.Source("claude.binary") == pfmconfig.SourceFile,
+	))
 	for _, argument := range args {
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
 	}
-	command.WriteByte(' ')
-	command.WriteString(autonomyFlags)
+	if machine.Claude.PermissionMode == pfmconfig.PermissionBypass {
+		command.WriteByte(' ')
+		command.WriteString(autonomyFlags)
+	}
 	return command.String()
 }
 
@@ -305,14 +324,28 @@ func continuityBanner(row compose.Row) string {
 	return banner.String()
 }
 
-func codexCommand(args ...string) string {
-	return codexCommandWith(hygiene, args...)
+func codexCommand(machine pfmconfig.Config, args ...string) string {
+	return codexCommandWith(hygiene, machine, args...)
 }
 
-func codexCommandWith(environmentStrip string, args ...string) string {
+func codexCommandWith(
+	environmentStrip string,
+	machine pfmconfig.Config,
+	args ...string,
+) string {
 	var command strings.Builder
 	command.WriteString(environmentStrip)
-	command.WriteString(" codex --dangerously-bypass-approvals-and-sandbox")
+	command.WriteByte(' ')
+	command.WriteString(binaryWord(
+		machine.Codex.Binary,
+		"codex",
+		machine.Source("codex.binary") == pfmconfig.SourceFile,
+	))
+	if machine.Codex.Yolo {
+		command.WriteString(" --dangerously-bypass-approvals-and-sandbox")
+	} else {
+		command.WriteString(" --sandbox workspace-write")
+	}
 	for _, argument := range args {
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
@@ -320,9 +353,37 @@ func codexCommandWith(environmentStrip string, args ...string) string {
 	return command.String()
 }
 
+func normalizedMachineConfig(machine pfmconfig.Config, home string) pfmconfig.Config {
+	if machine.Version == pfmconfig.Version && len(machine.Accounts) != 0 {
+		return machine
+	}
+	return pfmconfig.Defaults(home, nil)
+}
+
+func usesConfiguredClaudeLaunch(machine pfmconfig.Config) bool {
+	return machine.Source("accounts") == pfmconfig.SourceFile ||
+		machine.Source("claude.permissionMode") == pfmconfig.SourceFile ||
+		machine.Source("claude.binary") == pfmconfig.SourceFile
+}
+
+func usesConfiguredCodexLaunch(machine pfmconfig.Config) bool {
+	return machine.Source("codex.yolo") == pfmconfig.SourceFile ||
+		machine.Source("codex.binary") == pfmconfig.SourceFile
+}
+
+func binaryWord(value, fallback string, quote bool) string {
+	if value == "" {
+		value = fallback
+	}
+	if quote {
+		return Quote(value)
+	}
+	return value
+}
+
 func agentCommand(
 	cache1H bool,
-	id, cwd string,
+	id, cwd, machineConfigPath string,
 	configDir ...string,
 ) string {
 	var command strings.Builder
@@ -332,7 +393,12 @@ func agentCommand(
 	} else {
 		command.WriteString(" FORCE_PROMPT_CACHING_5M=1")
 	}
-	command.WriteString(" pfm internal agent-open --id ")
+	command.WriteString(" pfm")
+	if machineConfigPath != "" {
+		command.WriteString(" --config ")
+		command.WriteString(Quote(machineConfigPath))
+	}
+	command.WriteString(" internal agent-open --id ")
 	command.WriteString(Quote(id))
 	command.WriteString(" --cwd ")
 	command.WriteString(Quote(cwd))

@@ -56,6 +56,9 @@ The four identity/state regressions that established this plan. A tagged row mus
 | unknown subcommand → usage, rc 2                                                                                      | JAIL      | `main.go:62-66`                                                                                           |            |
 | `help` / `-h` / `--help` → usage on stdout, rc 0                                                                      | JAIL      | `main.go:59-61`                                                                                           |            |
 | `version` → `pfm <version>`; extra arg → rc 2                                                                         | JAIL      | `main.go:95-106`                                                                                          |            |
+| global `--config PATH` loads once before dispatch; malformed present files name their path and JSON byte              | JAIL      | `runtime_config.go`, `config_cli_test.go`, `internal/config/config_test.go`                                |            |
+| configured account roots are the exact transcript boundary; absent config preserves the three-account discovery       | JAIL      | `runtime_config.go`, `config_cli_test.go`, `internal/config/config_test.go`                                |            |
+| configured Claude/Codex binary and permission policy reach actual launch argv; absent config preserves current argv    | JAIL+tmux | `run_jail_test.go`, `internal/action/*_test.go`, `internal/swap/swap_test.go`                               |            |
 | local `pfm.dev` is absent or carries the current `hostops/pfm/cmd/pfm` build path                                     | JAIL      | `cmd/pfm/dev_binary_test.go`                                                                              |            |
 | `ls` (interactive) → BubblePicker on `/dev/tty`, cached first frame then streamed refresh                             | JAIL+tmux | `commands.go:101-121`, `ui/picker.go:12-68`                                                               |            |
 | `ls --plain` → PlainPicker, one pass, rc 0                                                                            | JAIL      | `commands.go:88-100,126-128`                                                                              |            |
@@ -166,7 +169,7 @@ The four identity/state regressions that established this plan. A tagged row mus
 | `⌃X` then quit → `applyPickerChanges` writes each change                          | JAIL      | `commands.go:296-315`                                    | **B3**     |
 | `⌃X` on an agent row whose transcript is not indexed → **must not silently fail** | JAIL      | `compose/compose.go:564-567` + `hide/manager.go:142-164` | **B3**     |
 | `⌃E` flip 1h cache for the next launch                                            | JAIL      | `ui/model.go:157-159`                                    |            |
-| `⌃S` cycle primary account `n%MaxAccount+1`                                       | JAIL      | `ui/model.go:160-162`, `action/synth.go:19`              |            |
+| `⌃S` cycles primary account through the configured account-id roster             | JAIL      | `ui/model.go`, `pipeline_async_test.go`                   |            |
 | `⌃S` change persisted through the shared store on exit                            | JAIL      | `commands.go:133-138`, `pipeline.go:578-631`             |            |
 | `⌃O` reboot a live row → kill-server, drop crumbs, demote to resume kind          | JAIL+tmux | `ui/model.go:166-172`, `commands.go:317-349`             |            |
 | `⌃O` on a non-live row → no-op                                                    | JAIL      | `ui/model.go:167-171`                                    |            |
@@ -291,7 +294,7 @@ tonight's four bugs all live in.
 | `Agent` → agent router first, fresh resume as the `                                   |                  | ` fallback                                              | JAIL       | `action/synth.go:108-143` | B3  |
 | `ResumeCodex` → detached server created BEFORE the attach line is emitted             | JAIL+tmux        | `action/synth.go:174-191`, `action/executor.go:128-135` |            |
 | Bunker (`$TMUX` socket basename `vsct`) → `exec` prefix on every launch line          | JAIL             | `action/synth.go:290-310`, `pipeline.go:666-668`        |            |
-| Primary account outside `1..MaxAccount` → refuses to synthesize                       | JAIL             | `action/synth.go:59-65`, `action/synth.go:19`           |            |
+| Primary account outside the configured roster → refuses to synthesize                 | JAIL             | `action/synth.go`, `action/synth_test.go`               |            |
 | NUL in any row value → refuses                                                        | JAIL             | `action/synth.go:66-79`                                 |            |
 | Launch hygiene strips inherited identity, cache, and endpoint state                   | JAIL             | `action/synth.go:21-37`                                 |            |
 | Autonomy flags appended AFTER the resume argument, never duplicated on fresh launches | JAIL             | `action/synth.go:39-50,215-242`                         |            |
@@ -313,6 +316,8 @@ tonight's four bugs all live in.
 | flow                                                                              | safety    | expected behavior (source)                                         | regression |
 | --------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------ | ---------- |
 | Tool roster is exactly 7 with correct read-only / mutating annotations            | JAIL      | `mcpserv/server.go:65-103`                                         |            |
+| `mcp ls` reports each registered server's independent enabled state and source     | JAIL      | `main.go`, `config_cli_test.go`, `internal/config/config_test.go`   |            |
+| `mcp chat enable|disable` is atomic/idempotent; disabled `serve` names its remedy  | JAIL      | `main.go`, `config_cli_test.go`, `internal/config/config_test.go`   |            |
 | `chat_ls` default view, `all`, `hidden`, `project` filter                         | JAIL      | `mcpserv/backend.go:82-253`                                        | B2         |
 | `chat_ls` with both `all` and `hidden` → error                                    | JAIL      | `mcpserv/backend.go:83-85`                                         |            |
 | `chat_ls` state: `busy` / `idle` / `dead` / `resumable` per row                   | JAIL+tmux | `mcpserv/backend.go:181-225`, `inject.IsBusy`                      |            |

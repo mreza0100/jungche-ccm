@@ -24,27 +24,31 @@ type CodexIDNameResolver func(threadID string) string
 
 // Dependencies supplies probe interfaces and process-local policy.
 type Dependencies struct {
-	ProcFS      ProcFS
-	Tmux        TmuxClient
-	TmuxBinary  string
-	TmuxTmpDir  string
-	Now         func() time.Time
-	CodexName   CodexNameResolver
-	CodexIDName CodexIDNameResolver
-	CodexThread CodexThreadResolver
-	ReadOnly    bool
+	ProcFS       ProcFS
+	Tmux         TmuxClient
+	TmuxBinary   string
+	TmuxTmpDir   string
+	Now          func() time.Time
+	CodexName    CodexNameResolver
+	CodexIDName  CodexIDNameResolver
+	CodexThread  CodexThreadResolver
+	ClaudeBinary string
+	CodexBinary  string
+	ReadOnly     bool
 }
 
 // Gatherer creates immutable live-state snapshots.
 type Gatherer struct {
-	paths       paths.Values
-	proc        ProcFS
-	tmux        TmuxClient
-	now         func() time.Time
-	codexName   CodexNameResolver
-	codexIDName CodexIDNameResolver
-	codexThread CodexThreadResolver
-	readOnly    bool
+	paths        paths.Values
+	proc         ProcFS
+	tmux         TmuxClient
+	now          func() time.Time
+	codexName    CodexNameResolver
+	codexIDName  CodexIDNameResolver
+	codexThread  CodexThreadResolver
+	claudeBinary string
+	codexBinary  string
+	readOnly     bool
 }
 
 // New resolves paths and fills real implementations for omitted interfaces.
@@ -76,14 +80,16 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 		}
 	}
 	return &Gatherer{
-		paths:       resolved,
-		proc:        proc,
-		tmux:        tmux,
-		now:         now,
-		codexName:   dependencies.CodexName,
-		codexIDName: dependencies.CodexIDName,
-		codexThread: dependencies.CodexThread,
-		readOnly:    dependencies.ReadOnly,
+		paths:        resolved,
+		proc:         proc,
+		tmux:         tmux,
+		now:          now,
+		codexName:    dependencies.CodexName,
+		codexIDName:  dependencies.CodexIDName,
+		codexThread:  dependencies.CodexThread,
+		claudeBinary: dependencies.ClaudeBinary,
+		codexBinary:  dependencies.CodexBinary,
+		readOnly:     dependencies.ReadOnly,
 	}, nil
 }
 
@@ -142,6 +148,7 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 			gatherer.paths.CodexRoot,
 			tmuxProbe.Panes,
 			gatherer.codexThread,
+			gatherer.codexBinary,
 		)
 		return err
 	})
@@ -151,6 +158,7 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 			gatherer.proc,
 			gatherer.paths.Home,
 			tmuxProbe.Panes,
+			gatherer.claudeBinary,
 		)
 		return err
 	})
@@ -159,12 +167,13 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 		claudeProcesses, err = DetectClaudeProcesses(
 			gatherer.proc,
 			tmuxProbe.Panes,
+			gatherer.claudeBinary,
 		)
 		return err
 	})
 	group.Go(func() error {
 		var err error
-		cacheSockets, err = DetectCache1H(gatherer.proc, tmuxProbe.Panes)
+		cacheSockets, err = DetectCache1H(gatherer.proc, tmuxProbe.Panes, gatherer.claudeBinary)
 		return err
 	})
 	if err := group.Wait(); err != nil {

@@ -17,7 +17,7 @@ import (
 // replacement id later in SessionStart(source=clear), so pfm resolves the
 // completed id from the same pane's previously observed binding. Every
 // unrelated or malformed payload returns 0 without output.
-func runClearHide(args []string, stdin io.Reader, stderr io.Writer) int {
+func runClearHide(args []string, stdin io.Reader, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"internal clear-hide",
 		"usage: pfm internal clear-hide < hook-payload.json",
@@ -46,13 +46,13 @@ func runClearHide(args []string, stdin io.Reader, stderr io.Writer) int {
 	}
 	if hook.Event == "SessionStart" &&
 		(hook.Source == "startup" || hook.Source == "resume" || hook.Source == "clear") {
-		return runCodexClearHide(hook.Source, hook.SessionID, hook.CWD, stderr)
+		return runCodexClearHide(hook.Source, hook.SessionID, hook.CWD, stderr, runtimes...)
 	}
 	if hook.Event != "SessionEnd" || hook.Reason != "clear" {
 		return 0
 	}
 
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtimes...)
 	if code != 0 {
 		fmt.Fprintln(stderr, "pfm internal clear-hide: store unavailable (fail-open)")
 		return 0
@@ -67,7 +67,12 @@ func runClearHide(args []string, stdin io.Reader, stderr io.Writer) int {
 	if !found {
 		return 0
 	}
-	indexer, err := index.New(database)
+	runtime, runtimeErr := optionalCommandRuntime(runtimes)
+	if runtimeErr != nil {
+		fmt.Fprintf(stderr, "pfm internal clear-hide: config unavailable (fail-open): %v\n", runtimeErr)
+		return 0
+	}
+	indexer, err := index.NewWithPaths(database, runtime.Paths)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal clear-hide: prepare transcript refresh (fail-open): %v\n", err)
 		return 0
@@ -86,14 +91,14 @@ func runClearHide(args []string, stdin io.Reader, stderr io.Writer) int {
 	return 0
 }
 
-func runCodexClearHide(source, sessionID, cwd string, stderr io.Writer) int {
+func runCodexClearHide(source, sessionID, cwd string, stderr io.Writer, runtimes ...commandRuntime) int {
 	tmux := strings.SplitN(os.Getenv("TMUX"), ",", 2)[0]
 	socket := filepath.Base(tmux)
 	pane := os.Getenv("TMUX_PANE")
 	if tmux == "" || pane == "" {
 		return 0
 	}
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtimes...)
 	if code != 0 {
 		fmt.Fprintln(stderr, "pfm internal clear-hide: store unavailable (fail-open)")
 		return 0
@@ -113,7 +118,12 @@ func runCodexClearHide(source, sessionID, cwd string, stderr io.Writer) int {
 		} else if indexed && rollout.CWD != "" {
 			priorityCWD = rollout.CWD
 		}
-		indexer, indexErr := index.New(database)
+		runtime, runtimeErr := optionalCommandRuntime(runtimes)
+		if runtimeErr != nil {
+			fmt.Fprintf(stderr, "pfm internal clear-hide: config unavailable (fail-open): %v\n", runtimeErr)
+			return 0
+		}
+		indexer, indexErr := index.NewWithPaths(database, runtime.Paths)
 		if indexErr != nil {
 			fmt.Fprintf(stderr, "pfm internal clear-hide: prepare Codex refresh (fail-open): %v\n", indexErr)
 			return 0

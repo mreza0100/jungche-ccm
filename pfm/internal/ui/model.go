@@ -11,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/sahilm/fuzzy"
 
-	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/sky"
 	pfmstats "hostops/pfm/internal/stats"
@@ -66,6 +65,7 @@ type Model struct {
 	refreshing        bool
 	primary           int
 	initialPrimary    int
+	accountIDs        []int
 	cache1H           bool
 	rotation          int
 	tab               Tab
@@ -113,8 +113,9 @@ func NewModel(snapshot Snapshot) Model {
 		hiddenCount:     snapshot.HiddenCount,
 		suppressedCount: snapshot.SuppressedCount,
 		refreshing:      snapshot.Refreshing,
-		primary:         validAccount(snapshot.PrimaryAccount),
-		initialPrimary:  validAccount(snapshot.PrimaryAccount),
+		primary:         validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		initialPrimary:  validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		accountIDs:      normalizedAccountIDs(snapshot.AccountIDs),
 		cache1H:         snapshot.Cache1H,
 		rotation:        snapshot.Rotation,
 		query:           input,
@@ -140,11 +141,35 @@ func positiveOr(value, fallback int) int {
 	return fallback
 }
 
-func validAccount(account int) int {
-	if account < 1 || account > action.MaxAccount {
-		return 1
+func validAccount(account int, rosters ...[]int) int {
+	ids := []int{1, 2, 3}
+	if len(rosters) != 0 {
+		ids = normalizedAccountIDs(rosters[0])
 	}
-	return account
+	for _, id := range ids {
+		if account == id {
+			return account
+		}
+	}
+	return ids[0]
+}
+
+func normalizedAccountIDs(values []int) []int {
+	if len(values) == 0 {
+		return []int{1, 2, 3}
+	}
+	result := make([]int, 0, len(values))
+	seen := make(map[int]bool, len(values))
+	for _, value := range values {
+		if value > 0 && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	if len(result) == 0 {
+		return []int{1, 2, 3}
+	}
+	return result
 }
 
 // Init starts only the pure animation clock. Stats remains fully lazy: its
@@ -240,7 +265,12 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		model.cache1H = !model.cache1H
 		return model, nil
 	case "ctrl+s":
-		model.primary = model.primary%action.MaxAccount + 1
+		for index, account := range model.accountIDs {
+			if account == model.primary {
+				model.primary = model.accountIDs[(index+1)%len(model.accountIDs)]
+				break
+			}
+		}
 		return model, nil
 	// ⌃O, not ⌃B: the picker always runs inside tmux and C-b is tmux's PREFIX,
 	// so tmux swallowed the keystroke before the picker ever saw it. Any

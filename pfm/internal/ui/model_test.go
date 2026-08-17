@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 )
 
@@ -53,13 +52,11 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	if model.Cache1H() {
 		t.Fatal("ctrl+e did not toggle 1h off")
 	}
-	// ⌃S cycles the roster and wraps: the fixture starts on 2, the last account,
-	// so the very next press must come back to 1. A cycle hardcoded wider than
-	// the roster is what froze the account picker on an account nothing accepts.
-	for step := 0; step < action.MaxAccount+1; step++ {
+	// ⌃S cycles the default three-account roster and wraps.
+	for step := 0; step < 4; step++ {
 		before := model.PrimaryAccount()
 		model, _ = applyKey(t, model, controlKey('s'))
-		want := before%action.MaxAccount + 1
+		want := before%3 + 1
 		if model.PrimaryAccount() != want {
 			t.Fatalf("account=%d want=%d", model.PrimaryAccount(), want)
 		}
@@ -183,7 +180,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		snapshot := Snapshot{
 			Rows:           []compose.Row{row},
 			View:           compose.AllView,
-			PrimaryAccount: action.MaxAccount,
+			PrimaryAccount: 3,
 			Cache1H:        true,
 			NowNS:          fixtureNowNS,
 		}
@@ -193,7 +190,7 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 		if command == nil ||
 			result.Kind != OutcomeSelected ||
 			rowKey(result.Row) != rowKey(row) ||
-			result.PrimaryAccount != action.MaxAccount ||
+			result.PrimaryAccount != 3 ||
 			!result.Cache1H {
 			t.Fatalf("%s enter command=%v result=%#v", row.Kind, command, result)
 		}
@@ -266,14 +263,14 @@ func TestAccountsOffTheRosterFallBackToTheFirst(t *testing.T) {
 	// A stale ~/.claude-primary naming an off-roster account must open the
 	// picker on account 1, not on an account no launcher
 	// can reach.
-	for _, account := range []int{0, -1, action.MaxAccount + 1, 9} {
+	for _, account := range []int{0, -1, 4, 9} {
 		snapshot := fixtureSnapshot(120)
 		snapshot.PrimaryAccount = account
 		if got := NewModel(snapshot).PrimaryAccount(); got != 1 {
 			t.Fatalf("account %d became %d, want 1", account, got)
 		}
 	}
-	for account := 1; account <= action.MaxAccount; account++ {
+	for account := 1; account <= 3; account++ {
 		snapshot := fixtureSnapshot(120)
 		snapshot.PrimaryAccount = account
 		if got := NewModel(snapshot).PrimaryAccount(); got != account {

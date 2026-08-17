@@ -392,6 +392,15 @@ func gitDiffCount(ctx context.Context, runtime Runtime, directory string, staged
 func accountBadge(runtime Runtime) (string, int) {
 	configDir := filepath.Clean(runtime.ConfigDir)
 	account := 1
+	for directory, id := range runtime.AccountDirs {
+		if configDir == filepath.Clean(directory) {
+			account = id
+			break
+		}
+	}
+	if account != 1 {
+		return accountBadgeForID(account)
+	}
 	switch configDir {
 	case filepath.Join(runtime.Home, ".cc", "4"):
 		account = 4
@@ -418,6 +427,10 @@ func accountBadge(runtime Runtime) (string, int) {
 			}
 		}
 	}
+	return accountBadgeForID(account)
+}
+
+func accountBadgeForID(account int) (string, int) {
 	switch account {
 	case 2:
 		return "🥈 ", 2

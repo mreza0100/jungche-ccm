@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/inject"
@@ -29,38 +30,69 @@ type injectionService interface {
 }
 
 type backend struct {
-	database *store.Store
-	injector injectionService
-	resolver resolve.Resolver
-	paths    paths.Values
-	indexMu  sync.Mutex
+	database     *store.Store
+	injector     injectionService
+	resolver     resolve.Resolver
+	paths        paths.Values
+	accounts     []pfmconfig.Account
+	claudeBinary string
+	codexBinary  string
+	indexMu      sync.Mutex
 }
 
 func newBackend(warnings io.Writer) (*backend, error) {
+	resolved, err := paths.Resolve()
+	if err != nil {
+		return nil, err
+	}
+	machine := pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
+	return newBackendConfigured(warnings, Runtime{
+		Paths: resolved, Accounts: machine.Accounts,
+		ClaudeBinary: machine.Claude.Binary, CodexBinary: machine.Codex.Binary,
+	})
+}
+
+func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error) {
+	if len(runtime.Accounts) == 0 {
+		machine := pfmconfig.Defaults(runtime.Paths.Home, runtime.Paths.ClaudeRoots)
+		runtime.Accounts = machine.Accounts
+	}
+	if runtime.CodexBinary == "" {
+		runtime.CodexBinary = "codex"
+	}
+	if runtime.ClaudeBinary == "" {
+		runtime.ClaudeBinary = "claude"
+	}
 	database, err := store.Open(store.WithWarningWriter(warnings))
 	if err != nil {
 		return nil, err
 	}
-	resolver, err := resolve.New(nil)
+	resolver, err := resolve.New(nil, resolve.Binaries{
+		Claude: runtime.ClaudeBinary,
+		Codex:  runtime.CodexBinary,
+	})
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
-	injector, err := inject.New(inject.Dependencies{Resolver: resolver})
-	if err != nil {
-		_ = database.Close()
-		return nil, err
-	}
-	resolved, err := paths.Resolve()
+	injector, err := inject.New(inject.Dependencies{
+		Resolver:     resolver,
+		Spawner:      inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
+		ClaudeBinary: runtime.ClaudeBinary,
+		CodexBinary:  runtime.CodexBinary,
+	})
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	return &backend{
-		database: database,
-		injector: injector,
-		resolver: *resolver,
-		paths:    resolved,
+		database:     database,
+		injector:     injector,
+		resolver:     *resolver,
+		paths:        runtime.Paths,
+		accounts:     append([]pfmconfig.Account(nil), runtime.Accounts...),
+		claudeBinary: runtime.ClaudeBinary,
+		codexBinary:  runtime.CodexBinary,
 	}, nil
 }
 
@@ -71,7 +103,7 @@ func (current *backend) close() error {
 func (current *backend) index(ctx context.Context) error {
 	current.indexMu.Lock()
 	defer current.indexMu.Unlock()
-	indexer, err := fleetindex.New(current.database)
+	indexer, err := fleetindex.NewWithPaths(current.database, current.paths)
 	if err != nil {
 		return err
 	}
@@ -117,7 +149,9 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 		CodexIDName: func(threadID string) string {
 			return codexNamesByID[threadID]
 		},
-		CodexThread: store.NewCodexThreadResolver(ctx, current.paths.CodexRoot),
+		CodexThread:  store.NewCodexThreadResolver(ctx, current.paths.CodexRoot),
+		ClaudeBinary: current.claudeBinary,
+		CodexBinary:  current.codexBinary,
 	})
 	if err != nil {
 		return LSOutput{}, err
@@ -153,13 +187,13 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 		Rollouts:     rollouts,
 		CxNames:      cxNames,
 		Hidden:       hidden,
-		AccountRoots: accountRoots(current.paths.ClaudeRoots),
+		AccountRoots: configuredAccountRoots(current.accounts),
 		Options: compose.Options{
 			View:           view,
 			CurrentDir:     cwd,
 			CurrentSocket:  filepath.Base(currentSocket()),
-			PrimaryAccount: primaryAccount(ctx, current.paths),
-			CodexAvailable: codexAvailable(current.paths.CodexRoot),
+			PrimaryAccount: primaryAccount(ctx, current.paths, current.accounts),
+			CodexAvailable: codexAvailable(current.paths.CodexRoot, current.codexBinary),
 			NowNS:          time.Now().UnixNano(),
 		},
 	})
@@ -249,17 +283,17 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 	}, nil
 }
 
-func accountRoots(values []string) []compose.AccountRoot {
-	roots := make([]compose.AccountRoot, 0, len(values))
-	for index, value := range values {
-		path := value
-		if resolved, err := filepath.EvalSymlinks(value); err == nil {
+func configuredAccountRoots(accounts []pfmconfig.Account) []compose.AccountRoot {
+	roots := make([]compose.AccountRoot, 0, len(accounts))
+	for _, account := range accounts {
+		path := account.ProjectDir
+		if resolved, err := filepath.EvalSymlinks(account.ProjectDir); err == nil {
 			path = resolved
-		} else if absolute, err := filepath.Abs(value); err == nil {
+		} else if absolute, err := filepath.Abs(account.ProjectDir); err == nil {
 			path = absolute
 		}
 		roots = append(roots, compose.AccountRoot{
-			Account: index%3 + 1,
+			Account: account.ID,
 			Path:    filepath.Clean(path),
 		})
 	}
@@ -268,21 +302,28 @@ func accountRoots(values []string) []compose.AccountRoot {
 
 // primaryAccount reads the shared state store (db first, ~/.claude-primary
 // mirror second) so chat_ls and the picker can never disagree on the primary.
-func primaryAccount(ctx context.Context, values paths.Values) int {
+func primaryAccount(ctx context.Context, values paths.Values, accounts []pfmconfig.Account) int {
 	if account, ok := shared.PrimaryAccount(ctx, values); ok {
-		return account
+		for _, candidate := range accounts {
+			if candidate.ID == account {
+				return account
+			}
+		}
+	}
+	if len(accounts) != 0 {
+		return accounts[0].ID
 	}
 	return 1
 }
 
-func codexAvailable(root string) bool {
+func codexAvailable(root, binary string) bool {
 	switch os.Getenv("PFM_CODEX_AVAILABLE") {
 	case "1":
 		return true
 	case "0":
 		return false
 	}
-	if _, err := exec.LookPath("codex"); err == nil {
+	if _, err := exec.LookPath(binary); err == nil {
 		return true
 	}
 	info, err := os.Stat(root)

@@ -10,9 +10,9 @@ import (
 	"os"
 	"strconv"
 
+	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/mcpserv"
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
 
@@ -23,48 +23,59 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
+	configPath, args, err := splitGlobalConfig(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm: %v\n", err)
+		printUsage(stderr)
+		return 2
+	}
+	runtime, err := loadCommandRuntime(configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm: config: %v\n", err)
+		return 1
+	}
 	if len(args) == 0 {
-		return runLS(nil, stdout, stderr)
+		return runLS(nil, stdout, stderr, runtime)
 	}
 
 	switch args[0] {
 	case "version", "--version":
 		return runVersion(args[1:], stdout, stderr)
 	case "ls":
-		return runLS(args[1:], stdout, stderr)
+		return runLS(args[1:], stdout, stderr, runtime)
 	case "chat":
-		return runChat(args[1:], os.Stdin, stdout, stderr)
+		return runChatWithRuntime(args[1:], os.Stdin, stdout, stderr, runtime)
 	case "headless":
 		fmt.Fprintln(stderr, "pfm: 'headless' is deprecated; use 'pfm chat'")
-		return runHeadless(args[1:], stdout, stderr)
+		return runHeadless(args[1:], stdout, stderr, runtime)
 	case "index":
-		return runIndex(args[1:], stdout, stderr)
+		return runIndex(args[1:], stdout, stderr, runtime)
 	case "doctor":
-		return runDoctor(args[1:], stdout, stderr)
+		return runDoctor(args[1:], stdout, stderr, runtime)
 	case "dream":
-		return runDream(args[1:], os.Stdin, stdout, stderr)
+		return runDreamConfigured(args[1:], os.Stdin, stdout, stderr, runtime)
 	case "revive":
-		return runRevive(args[1:], stdout, stderr)
+		return runRevive(args[1:], stdout, stderr, runtime)
 	case "reap":
-		return runReap(args[1:], stdout, stderr)
+		return runReap(args[1:], stdout, stderr, runtime)
 	case "archive":
-		return runArchive(args[1:], stdout, stderr)
+		return runArchive(args[1:], stdout, stderr, runtime)
 	case "heal":
 		return runHeal(args[1:], stdout, stderr)
 	case "name-sync":
-		return runNameSync(args[1:], stdout, stderr)
+		return runNameSync(args[1:], stdout, stderr, runtime)
 	case "statusline":
-		return runStatusline(args[1:], os.Stdin, stdout, stderr)
+		return runStatuslineWithRuntime(args[1:], os.Stdin, stdout, stderr, runtime)
 	case "usage-hook":
-		return runUsageHook(args[1:], stdout, stderr)
+		return runUsageHookWithRuntime(args[1:], stdout, stderr, runtime)
 	case "install":
 		return runInstall(args[1:], stdout, stderr)
 	case "whoami":
-		return runWhoami(args[1:], stdout, stderr)
+		return runWhoami(args[1:], stdout, stderr, runtime)
 	case "mcp":
-		return runMCP(args[1:], stderr)
+		return runMCP(args[1:], stdout, stderr, runtime)
 	case "internal":
-		return runInternal(args[1:], stdout, stderr)
+		return runInternal(args[1:], stdout, stderr, runtime)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -75,16 +86,78 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-func runMCP(args []string, stderr io.Writer) int {
-	flags := newFlagSet("mcp", "usage: pfm mcp", stderr)
-	if code, ok := parseFlags(flags, args); !ok {
-		return code
+func runMCP(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
+	// The installed wiring historically invokes bare `pfm mcp`; preserve that
+	// argv as the chat server's serve action while making every new form named.
+	if len(args) == 0 {
+		args = []string{"chat", "serve"}
 	}
-	if flags.NArg() != 0 {
-		flags.Usage()
+	if len(args) == 1 && args[0] == "ls" {
+		for _, name := range config.RegisteredMCPServers() {
+			server := runtime.Config.MCPServers[name]
+			fmt.Fprintf(
+				stdout,
+				"%s\t%t\t%s\n",
+				name,
+				server.Enabled,
+				runtime.Config.Source("mcp.servers."+name+".enabled"),
+			)
+		}
+		return 0
+	}
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "usage: pfm mcp ls | pfm mcp <server> enable|disable|serve")
 		return 2
 	}
-	service, err := mcpserv.New(version, stderr)
+	name, action := args[0], args[1]
+	server, registered := runtime.Config.MCPServers[name]
+	if !registered {
+		fmt.Fprintf(stderr, "pfm mcp: unknown server %q (run: pfm mcp ls)\n", name)
+		return 2
+	}
+	if action == "enable" || action == "disable" {
+		enabled := action == "enable"
+		changed, err := config.SetMCPServer(runtime.Config, name, enabled)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm mcp %s %s: %v\n", name, action, err)
+			return 1
+		}
+		state := "unchanged"
+		if changed {
+			state = "updated"
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", name, action+"d", state)
+		return 0
+	}
+	if action != "serve" {
+		fmt.Fprintln(stderr, "usage: pfm mcp ls | pfm mcp <server> enable|disable|serve")
+		return 2
+	}
+	if !server.Enabled {
+		fmt.Fprintf(
+			stderr,
+			"pfm mcp %s: disabled by config %s; enable it with: pfm --config %s mcp %s enable\n",
+			name,
+			runtime.Config.Path,
+			runtime.Config.Path,
+			name,
+		)
+		return 1
+	}
+	if name != "chat" {
+		fmt.Fprintf(stderr, "pfm mcp %s: registered server has no implementation\n", name)
+		return 1
+	}
+	service, err := mcpserv.NewConfigured(version, stderr, mcpserv.Runtime{
+		Paths: runtime.Paths, Accounts: runtime.Config.Accounts,
+		ConfigPath:   runtime.Config.Path,
+		ClaudeBinary: runtime.Config.Claude.Binary,
+		CodexBinary:  runtime.Config.Codex.Binary,
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm mcp: %v\n", err)
 		return 1
@@ -114,7 +187,7 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHide(args []string, stdout, stderr io.Writer) int {
+func runHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat hide",
 		"usage: pfm chat hide [self | id] [--exit]",
@@ -131,7 +204,12 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	database, manager, code := openHideManager(stderr)
+	runtime, err := optionalCommandRuntime(runtimes)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat hide: config: %v\n", err)
+		return 1
+	}
+	database, manager, code := openHideManager(stderr, runtime)
 	if code != 0 {
 		return code
 	}
@@ -147,7 +225,7 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 		// rollout file yet. A compose pass is the picker's own source of
 		// truth for what exists right now, so resolving against it vouches
 		// for exactly the ids the picker would let you ⌃X, and nothing else.
-		engine, rolloutPath = resolveRowEngine(ctx, database, id, stderr)
+		engine, rolloutPath = resolveRowEngine(ctx, database, id, stderr, runtime)
 	}
 	target, err := manager.Hide(ctx, hide.Request{
 		ID:          id,
@@ -165,7 +243,7 @@ func runHide(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runUnhide(args []string, stdout, stderr io.Writer) int {
+func runUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat unhide", "usage: pfm chat unhide id", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -174,7 +252,7 @@ func runUnhide(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -187,7 +265,7 @@ func runUnhide(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHidden(args []string, stdout, stderr io.Writer) int {
+func runHidden(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"ls --hidden",
 		"usage: pfm ls --hidden",
@@ -200,7 +278,7 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -216,32 +294,31 @@ func runHidden(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runInternal(args []string, stdout, stderr io.Writer) int {
+func runInternal(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	if len(args) != 0 && args[0] == "clear-hide" {
-		return runClearHide(args[1:], os.Stdin, stderr)
+		return runClearHide(args[1:], os.Stdin, stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "agent-open" {
-		return runInternalAgentOpen(args[1:], stderr)
+		return runInternalAgentOpen(args[1:], stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "swap-run" {
-		return runChatSwapWorker(args[1:], os.Stdout, stderr)
+		return runChatSwapWorkerWithRuntime(args[1:], os.Stdout, stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "then" {
-		return runInternalThen(args[1:], stderr)
+		return runInternalThen(args[1:], stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "primary-get" {
-		resolved, err := paths.Resolve()
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm internal primary-get: %v\n", err)
-			return 1
-		}
-		fmt.Fprintln(stdout, readPrimaryAccount(resolved))
+		fmt.Fprintln(stdout, readPrimaryAccount(runtime.Paths, runtime.Config))
 		return 0
 	}
 	if len(args) != 0 && args[0] == "primary-set" {
 		flags := newFlagSet(
 			"internal primary-set",
-			"usage: pfm internal primary-set <1|2>",
+			"usage: pfm internal primary-set <account>",
 			stderr,
 		)
 		if code, ok := parseFlags(flags, args[1:]); !ok {
@@ -256,12 +333,7 @@ func runInternal(args []string, stdout, stderr io.Writer) int {
 			flags.Usage()
 			return 2
 		}
-		resolved, err := paths.Resolve()
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm internal primary-set: %v\n", err)
-			return 1
-		}
-		if err := writePrimaryAccount(resolved, account); err != nil {
+		if err := writePrimaryAccount(runtime.Paths, runtime.Config, account); err != nil {
 			fmt.Fprintf(stderr, "pfm internal primary-set: %v\n", err)
 			return 1
 		}
@@ -296,7 +368,10 @@ func runInternal(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer database.Close()
-	finisher, err := hide.NewFinisher(database, hide.Dependencies{})
+	finisher, err := hide.NewFinisher(database, hide.Dependencies{
+		Paths:       runtime.Paths,
+		ClaudeRoots: runtime.Config.ProjectRoots(),
+	})
 	if err == nil {
 		err = finisher.Run(context.Background(), hide.ExitArgs{
 			Engine:     *engine,
@@ -316,13 +391,19 @@ func runInternal(args []string, stdout, stderr io.Writer) int {
 
 func openHideManager(
 	stderr io.Writer,
+	runtimes ...commandRuntime,
 ) (*store.Store, *hide.Manager, int) {
+	runtime, err := optionalCommandRuntime(runtimes)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm: config: %v\n", err)
+		return nil, nil, 1
+	}
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm: %v\n", err)
 		return nil, nil, 1
 	}
-	manager, err := hide.New(database, hide.Dependencies{})
+	manager, err := hide.New(database, hideDependencies(runtime))
 	if err != nil {
 		_ = database.Close()
 		fmt.Fprintf(stderr, "pfm: %v\n", err)
@@ -374,7 +455,7 @@ func parseFlagsAnywhere(
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, "usage: pfm <command> [options]")
+	fmt.Fprintln(w, "usage: pfm [--config PATH] <command> [options]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "operator commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
@@ -394,5 +475,5 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  name-sync converge live chat window names")
 	fmt.Fprintln(w, "  statusline render the native Claude status line")
 	fmt.Fprintln(w, "  usage-hook the fail-open usage-limit prompt hook")
-	fmt.Fprintln(w, "  mcp       serve chat tools over stdio MCP")
+	fmt.Fprintln(w, "  mcp       list, configure, or serve registered stdio MCP servers")
 }

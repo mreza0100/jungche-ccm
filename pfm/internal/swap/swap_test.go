@@ -206,7 +206,11 @@ func TestRunRefusesAnOverlappingPaneSwap(t *testing.T) {
 }
 
 func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
-	run := claudeRun("/jail/home", 2, false, "11111111-1111-4111-8111-111111111111")
+	run := claudeRun(Request{
+		Account:          2,
+		AccountConfigDir: "/jail/home/.cc/2",
+		SessionID:        "11111111-1111-4111-8111-111111111111",
+	})
 	for _, variable := range []string{"CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "FORCE_PROMPT_CACHING_5M"} {
 		if !strings.Contains(run, variable) {
 			t.Fatalf("run %q does not mention %s", run, variable)
@@ -222,13 +226,14 @@ func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 	result, err := Run(
 		context.Background(),
 		Request{
-			SocketPath: "/tmp/tmux-1000/probe-swap",
-			Pane:       "%7",
-			PanePID:    700,
-			SessionID:  "11111111-1111-4111-8111-111111111111",
-			CWD:        "/jail/project",
-			Account:    2,
-			Cache1H:    false,
+			SocketPath:       "/tmp/tmux-1000/probe-swap",
+			Pane:             "%7",
+			PanePID:          700,
+			SessionID:        "11111111-1111-4111-8111-111111111111",
+			CWD:              "/jail/project",
+			Account:          2,
+			AccountConfigDir: "/jail/home/.cc/2",
+			Cache1H:          false,
 		},
 		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
 		tmux,

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/archive"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/paths"
 )
@@ -45,7 +46,7 @@ func (adapter hideStoreAdapter) Unhide(ctx context.Context, id string) error {
 // The default is a DRY RUN, and the whole design is reversibility: every move
 // is recorded in the manifest, and --restore puts one back exactly where it
 // came from. Nothing here deletes anything, ever.
-func runArchive(args []string, stdout, stderr io.Writer) int {
+func runArchive(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet(
 		"archive",
 		"usage: pfm archive [--apply] [--subagents [--older-than DAYS]] [--restore id] [--prune-orphans]",
@@ -75,11 +76,7 @@ func runArchive(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm archive: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
 	if *restore != "" {
 		row, err := archive.Restore(resolved.ArchiveDir, *restore)
 		if err != nil {
@@ -90,7 +87,7 @@ func runArchive(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if *pruneOrphans {
-		database, _, code := openHideManager(stderr)
+		database, _, code := openHideManager(stderr, runtime)
 		if code != 0 {
 			return code
 		}
@@ -100,14 +97,16 @@ func runArchive(args []string, stdout, stderr io.Writer) int {
 		)
 	}
 
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtime)
 	if code != 0 {
 		return code
 	}
 	defer database.Close()
 	runner, err := archive.New(archive.Dependencies{
-		Paths: resolved,
-		Hides: hideStoreAdapter{manager: manager},
+		Paths:            resolved,
+		Hides:            hideStoreAdapter{manager: manager},
+		CodexBinary:      runtime.Config.Codex.Binary,
+		ExactClaudeRoots: runtime.Config.Source("accounts") == pfmconfig.SourceFile,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm archive: %v\n", err)

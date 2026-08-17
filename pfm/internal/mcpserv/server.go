@@ -7,7 +7,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -26,9 +28,28 @@ type Service struct {
 	backend *backend
 }
 
+// Runtime is the already-loaded machine policy the stdio server shares with
+// the command that started it. The server never re-reads machine config.
+type Runtime struct {
+	Paths        paths.Values
+	Accounts     []pfmconfig.Account
+	ConfigPath   string
+	ClaudeBinary string
+	CodexBinary  string
+}
+
 // New creates the production stdio service.
 func New(version string, warnings io.Writer) (*Service, error) {
 	backend, err := newBackend(warnings)
+	if err != nil {
+		return nil, err
+	}
+	return newService(version, backend), nil
+}
+
+// NewConfigured creates the production service over one command runtime.
+func NewConfigured(version string, warnings io.Writer, runtime Runtime) (*Service, error) {
+	backend, err := newBackendConfigured(warnings, runtime)
 	if err != nil {
 		return nil, err
 	}

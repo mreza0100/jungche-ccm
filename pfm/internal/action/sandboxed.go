@@ -11,6 +11,7 @@ import (
 type SandboxedCodexRequest struct {
 	CWD    string
 	Config []string
+	Binary string
 }
 
 // SandboxedCodexRun builds a Codex TUI command whose writable workspace is
@@ -44,7 +45,8 @@ func SandboxedCodexRun(request SandboxedCodexRequest) (HeadlessPlan, error) {
 	// pane root the launcher by construction under every POSIX shell.
 	command.WriteString("exec ")
 	command.WriteString(headlessHygiene)
-	command.WriteString(" codex")
+	command.WriteByte(' ')
+	command.WriteString(binaryWord(request.Binary, "codex", request.Binary != ""))
 	for _, argument := range arguments {
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))

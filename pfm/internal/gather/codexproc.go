@@ -36,6 +36,7 @@ func DetectCodexThreads(
 	codexRoot string,
 	panes []Pane,
 	identify CodexThreadResolver,
+	binaries ...string,
 ) ([]LiveCodex, error) {
 	pids, err := proc.PIDs()
 	if err != nil {
@@ -48,7 +49,7 @@ func DetectCodexThreads(
 	live := make([]LiveCodex, 0)
 	for _, pid := range pids {
 		cmdline, err := proc.Cmdline(pid)
-		if err != nil || len(cmdline) == 0 || filepath.Base(cmdline[0]) != "codex" {
+		if err != nil || !IsCodexCommand(cmdline, binaries...) {
 			continue
 		}
 		links, err := proc.FDLinks(pid)

@@ -205,6 +205,7 @@ func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
 		gather.Snapshot{Codex: []gather.LiveCodex{{
 			Socket: "cx-probe", PaneID: "%7", ThreadID: oldID,
 		}}},
+		commandRuntime{Paths: jailPaths(t)},
 		&bytes.Buffer{},
 	)
 	manager, err := hide.New(database, hide.Dependencies{})

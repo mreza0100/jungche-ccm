@@ -11,6 +11,7 @@ import (
 func DetectClaudeProcesses(
 	proc ProcFS,
 	panes []Pane,
+	binaries ...string,
 ) ([]ClaudeProcess, error) {
 	pids, err := proc.PIDs()
 	if err != nil {
@@ -21,7 +22,7 @@ func DetectClaudeProcesses(
 	processes := make([]ClaudeProcess, 0)
 	for _, pid := range pids {
 		cmdline, err := proc.Cmdline(pid)
-		if err != nil || !isClaudeCommand(cmdline) {
+		if err != nil || !isClaudeCommand(cmdline, binaries...) {
 			continue
 		}
 		pane, found := paneForProcess(proc, pid, paneByPID)

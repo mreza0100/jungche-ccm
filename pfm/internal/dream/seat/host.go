@@ -51,18 +51,23 @@ func NewCommandHost(binary, tmuxDirectory string) CommandHost {
 // NewDefaultRunner wires the production, database-free boundaries. The path
 // resolver computes names only; rollout discovery reads Codex files directly.
 func NewDefaultRunner(events EventSink) (*Runner, error) {
+	return NewDefaultRunnerWithCodex(events, "")
+}
+
+func NewDefaultRunnerWithCodex(events EventSink, codexBinary string) (*Runner, error) {
 	values, err := paths.Resolve()
 	if err != nil {
 		return nil, fmt.Errorf("resolve seat host paths: %w", err)
 	}
 	locator := FilesystemRolloutLocator{CodexRoot: values.CodexRoot}
 	runner := NewRunner(Dependencies{
-		Commands:  ExecCommandRunner{},
-		Host:      NewCommandHost("", values.TmuxDir),
-		Processes: ProcTree{Root: values.ProcRoot},
-		Jailer:    ProcJailer{Root: values.ProcRoot},
-		Rollouts:  locator,
-		Events:    events,
+		Commands:    ExecCommandRunner{Binary: codexBinary},
+		Host:        NewCommandHost("", values.TmuxDir),
+		Processes:   ProcTree{Root: values.ProcRoot},
+		Jailer:      ProcJailer{Root: values.ProcRoot},
+		Rollouts:    locator,
+		Events:      events,
+		CodexBinary: codexBinary,
 	})
 	if os.Getenv("DREAM_SEAT_TRACE") == "1" {
 		runner.spawnTrace = os.Stderr

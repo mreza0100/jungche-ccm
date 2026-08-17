@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
@@ -82,6 +82,7 @@ type scanRequest struct {
 	Cache1H   bool
 	ForceFull bool
 	NoSky     bool
+	Runtime   *commandRuntime
 }
 
 type scanResult struct {
@@ -105,6 +106,7 @@ type scanEnvironment struct {
 	currentDir string
 	nowNS      int64
 	primary    int
+	config     pfmconfig.Config
 }
 
 type indexRunner interface {
@@ -121,11 +123,11 @@ func scanFleet(
 	request scanRequest,
 	stderr io.Writer,
 ) (scanResult, error) {
-	environment, err := resolveScanEnvironment()
+	environment, err := resolveScanEnvironment(request)
 	if err != nil {
 		return scanResult{}, err
 	}
-	indexer, err := fleetindex.New(database)
+	indexer, err := fleetindex.NewWithPaths(database, environment.paths)
 	if err != nil {
 		return scanResult{}, err
 	}
@@ -142,6 +144,7 @@ func scanFleet(
 	live, err := gatherFleet(
 		ctx,
 		environment.paths,
+		environment.config,
 		data,
 		request.ReadOnly,
 		printWarn(stderr),
@@ -181,8 +184,13 @@ func resolveRowEngine(
 	database *store.Store,
 	id string,
 	stderr io.Writer,
+	runtimes ...commandRuntime,
 ) (string, string) {
-	environment, err := resolveScanEnvironment()
+	request := scanRequest{View: compose.AllView}
+	if len(runtimes) != 0 {
+		request.Runtime = &runtimes[0]
+	}
+	environment, err := resolveScanEnvironment(request)
 	if err != nil {
 		return "", ""
 	}
@@ -190,11 +198,11 @@ func resolveRowEngine(
 	if err != nil {
 		return "", ""
 	}
-	live, err := gatherFleet(ctx, environment.paths, data, false, printWarn(stderr), stderr)
+	live, err := gatherFleet(ctx, environment.paths, environment.config, data, false, printWarn(stderr), stderr)
 	if err != nil {
 		return "", ""
 	}
-	result := composeFleet(environment, scanRequest{View: compose.AllView}, data, live)
+	result := composeFleet(environment, request, data, live)
 	for _, row := range result.Output.Rows {
 		if row.ID == id {
 			return compose.EngineForKind(row.Kind), row.Path
@@ -208,7 +216,7 @@ func scanFleetCached(
 	database *store.Store,
 	request scanRequest,
 ) (scanResult, error) {
-	environment, err := resolveScanEnvironment()
+	environment, err := resolveScanEnvironment(request)
 	if err != nil {
 		return scanResult{}, err
 	}
@@ -226,10 +234,19 @@ func scanFleetCached(
 	return result, nil
 }
 
-func resolveScanEnvironment() (scanEnvironment, error) {
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return scanEnvironment{}, err
+func resolveScanEnvironment(request scanRequest) (scanEnvironment, error) {
+	var resolved paths.Values
+	var machine pfmconfig.Config
+	if request.Runtime != nil {
+		resolved = request.Runtime.Paths
+		machine = request.Runtime.Config
+	} else {
+		var err error
+		resolved, err = paths.Resolve()
+		if err != nil {
+			return scanEnvironment{}, err
+		}
+		machine = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
 	}
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -247,7 +264,8 @@ func resolveScanEnvironment() (scanEnvironment, error) {
 		paths:      resolved,
 		currentDir: currentDir,
 		nowNS:      nowNS,
-		primary:    readPrimaryAccount(resolved),
+		primary:    readPrimaryAccount(resolved, machine),
+		config:     machine,
 	}, nil
 }
 
@@ -308,6 +326,7 @@ func loadDefaultFleetData(
 func gatherFleet(
 	ctx context.Context,
 	resolved paths.Values,
+	machine pfmconfig.Config,
 	data fleetData,
 	readOnly bool,
 	warn gatherWarn,
@@ -329,8 +348,10 @@ func gatherFleet(
 		CodexIDName: func(threadID string) string {
 			return codexNamesByID[threadID]
 		},
-		CodexThread: store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
-		ReadOnly:    readOnly,
+		CodexThread:  store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
+		ClaudeBinary: machine.Claude.Binary,
+		CodexBinary:  machine.Codex.Binary,
+		ReadOnly:     readOnly,
 	})
 	if err != nil {
 		return gather.Snapshot{}, err
@@ -371,13 +392,13 @@ func composeFleet(
 		Rollouts:     data.rollouts,
 		CxNames:      data.cxNames,
 		Hidden:       data.hidden,
-		AccountRoots: accountRoots(environment.paths.ClaudeRoots),
+		AccountRoots: accountRoots(environment.config.Accounts),
 		Options: compose.Options{
 			View:           request.View,
 			CurrentDir:     environment.currentDir,
 			CurrentSocket:  currentSocket(),
 			PrimaryAccount: environment.primary,
-			CodexAvailable: codexAvailable(environment.paths.CodexRoot),
+			CodexAvailable: codexAvailable(environment.paths.CodexRoot, environment.config.Codex.Binary),
 			Rotation:       request.Rotation,
 			NowNS:          environment.nowNS,
 		},
@@ -392,6 +413,7 @@ func composeFleet(
 		HiddenCount:     output.HiddenCount,
 		SuppressedCount: output.SuppressedCount,
 		PrimaryAccount:  environment.primary,
+		AccountIDs:      environment.config.AccountIDs(),
 		Cache1H:         request.Cache1H,
 		Rotation:        request.Rotation,
 		NowNS:           environment.nowNS,
@@ -434,7 +456,7 @@ func streamFleetRefreshesWith(
 	dependencies refreshDependencies,
 ) {
 	defer close(updates)
-	environment, err := resolveScanEnvironment()
+	environment, err := resolveScanEnvironment(request)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
 		return
@@ -452,6 +474,7 @@ func streamFleetRefreshesWith(
 	live, err := gatherFleet(
 		ctx,
 		environment.paths,
+		environment.config,
 		data,
 		request.ReadOnly,
 		warn,
@@ -470,13 +493,16 @@ func streamFleetRefreshesWith(
 		return
 	}
 	if !request.ReadOnly {
-		rememberCodexPaneBindings(ctx, database, live, stderr)
+		rememberCodexPaneBindings(ctx, database, live, commandRuntime{
+			Config: environment.config,
+			Paths:  environment.paths,
+		}, stderr)
 	}
 
 	newIndexer := dependencies.newIndexer
 	if newIndexer == nil {
 		newIndexer = func(database *store.Store) (indexRunner, error) {
-			return fleetindex.New(database)
+			return fleetindex.NewWithPaths(database, environment.paths)
 		}
 	}
 	indexer, err := newIndexer(database)
@@ -531,7 +557,7 @@ func streamFleetRefreshesWith(
 			return
 		case <-ticker.C:
 		}
-		environment, err = resolveScanEnvironment()
+		environment, err = resolveScanEnvironment(request)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
 			continue
@@ -548,6 +574,7 @@ func streamFleetRefreshesWith(
 		live, err = gatherFleet(
 			ctx,
 			environment.paths,
+			environment.config,
 			data,
 			request.ReadOnly,
 			warn,
@@ -563,7 +590,10 @@ func streamFleetRefreshesWith(
 			continue
 		}
 		if !request.ReadOnly {
-			rememberCodexPaneBindings(ctx, database, live, stderr)
+			rememberCodexPaneBindings(ctx, database, live, commandRuntime{
+				Config: environment.config,
+				Paths:  environment.paths,
+			}, stderr)
 		}
 		if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 			return
@@ -589,9 +619,10 @@ func rememberCodexPaneBindings(
 	ctx context.Context,
 	database *store.Store,
 	live gather.Snapshot,
+	runtime commandRuntime,
 	stderr io.Writer,
 ) {
-	manager, err := hide.New(database, hide.Dependencies{})
+	manager, err := hide.New(database, hideDependencies(runtime))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh Codex clear binding: %v\n", err)
 		return
@@ -713,17 +744,17 @@ func sendRefresh(
 	}
 }
 
-func accountRoots(values []string) []compose.AccountRoot {
-	roots := make([]compose.AccountRoot, 0, len(values))
-	for index, value := range values {
-		path := value
-		if resolved, err := filepath.EvalSymlinks(value); err == nil {
+func accountRoots(accounts []pfmconfig.Account) []compose.AccountRoot {
+	roots := make([]compose.AccountRoot, 0, len(accounts))
+	for _, account := range accounts {
+		path := account.ProjectDir
+		if resolved, err := filepath.EvalSymlinks(account.ProjectDir); err == nil {
 			path = resolved
-		} else if absolute, err := filepath.Abs(value); err == nil {
+		} else if absolute, err := filepath.Abs(account.ProjectDir); err == nil {
 			path = absolute
 		}
 		roots = append(roots, compose.AccountRoot{
-			Account: index%3 + 1,
+			Account: account.ID,
 			Path:    filepath.Clean(path),
 		})
 	}
@@ -731,25 +762,42 @@ func accountRoots(values []string) []compose.AccountRoot {
 }
 
 // readPrimaryAccount resolves the shared database's meta row first, then the
-// ~/.claude-primary mirror, and maps anything off the roster to account 1.
+// ~/.claude-primary mirror, and maps anything off the roster to the first
+// configured account.
 //
 // Reading the mirror alone is how the picker came up showing a different
 // account from the one the launchers used: primary-set writes both, but a
 // database restored without the file, or a file left behind by a rollback,
 // makes them disagree, and only one of the two is authoritative.
-func readPrimaryAccount(values paths.Values) int {
-	account, found := shared.PrimaryAccount(context.Background(), values)
-	if !found || account < 1 || account > action.MaxAccount {
-		return 1
+func readPrimaryAccount(
+	values paths.Values,
+	configs ...pfmconfig.Config,
+) int {
+	machine := pfmconfig.Defaults(values.Home, values.ClaudeRoots)
+	if len(configs) != 0 {
+		machine = configs[0]
 	}
-	return account
+	account, found := shared.PrimaryAccount(context.Background(), values)
+	if found {
+		if _, exists := machine.Account(account); exists {
+			return account
+		}
+	}
+	if len(machine.Accounts) != 0 {
+		return machine.Accounts[0].ID
+	}
+	return 1
 }
 
 // writePrimaryAccount validates the operator-facing roster before committing
 // the shared state row and statusline mirror as one reported operation.
-func writePrimaryAccount(values paths.Values, account int) error {
-	if account < 1 || account > action.MaxAccount {
-		return fmt.Errorf("primary account must be 1-%d", action.MaxAccount)
+func writePrimaryAccount(
+	values paths.Values,
+	machine pfmconfig.Config,
+	account int,
+) error {
+	if _, found := machine.Account(account); !found {
+		return fmt.Errorf("primary account %d is not in the configured roster", account)
 	}
 	return shared.SetPrimaryAccount(
 		context.Background(),
@@ -774,14 +822,18 @@ func inBunker() bool {
 	return currentSocket() == "vsct"
 }
 
-func codexAvailable(codexRoot string) bool {
+func codexAvailable(codexRoot string, binaries ...string) bool {
 	switch os.Getenv(codexAvailableEnv) {
 	case "1":
 		return true
 	case "0":
 		return false
 	}
-	if _, err := exec.LookPath("codex"); err == nil {
+	binary := "codex"
+	if len(binaries) != 0 && binaries[0] != "" {
+		binary = binaries[0]
+	}
+	if _, err := exec.LookPath(binary); err == nil {
 		return true
 	}
 	info, err := os.Stat(codexRoot)

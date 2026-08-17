@@ -32,20 +32,40 @@ type ClaudeAgents struct {
 
 // NewClaudeAgents wires the probe to the accounts on this machine.
 func NewClaudeAgents(resolved paths.Values) ClaudeAgents {
-	binary, err := exec.LookPath("claude")
-	if err != nil {
-		binary = filepath.Join(resolved.Home, ".local", "bin", "claude")
-	}
 	directories := make([]string, 0, len(resolved.ClaudeRoots))
 	for _, root := range resolved.ClaudeRoots {
-		directory := filepath.Dir(root)
+		directories = append(directories, filepath.Dir(root))
+	}
+	return NewClaudeAgentsConfigured(resolved, "claude", directories)
+}
+
+// NewClaudeAgentsConfigured probes exactly the configured roster with the
+// configured Claude command.
+func NewClaudeAgentsConfigured(
+	resolved paths.Values,
+	binaryName string,
+	directories []string,
+) ClaudeAgents {
+	if binaryName == "" {
+		binaryName = "claude"
+	}
+	binary, err := exec.LookPath(binaryName)
+	if err != nil {
+		if filepath.IsAbs(binaryName) {
+			binary = binaryName
+		} else {
+			binary = filepath.Join(resolved.Home, ".local", "bin", binaryName)
+		}
+	}
+	available := make([]string, 0, len(directories))
+	for _, directory := range directories {
 		if info, err := os.Stat(directory); err == nil && info.IsDir() {
-			directories = append(directories, directory)
+			available = append(available, directory)
 		}
 	}
 	return ClaudeAgents{
 		Binary:     binary,
-		ConfigDirs: directories,
+		ConfigDirs: available,
 		Timeout:    20 * time.Second,
 	}
 }

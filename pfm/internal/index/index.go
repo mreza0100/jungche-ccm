@@ -59,6 +59,16 @@ func New(database *store.Store) (*Indexer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve index paths: %w", err)
 	}
+	return NewWithPaths(database, resolved)
+}
+
+// NewWithPaths constructs an Indexer with already-resolved host paths.
+// Callers that have loaded command policy must pass those paths here so the
+// indexer reads the same account roots as the rest of the command.
+func NewWithPaths(database *store.Store, resolved paths.Values) (*Indexer, error) {
+	if database == nil {
+		return nil, fmt.Errorf("index store is nil")
+	}
 	return &Indexer{database: database, paths: resolved}, nil
 }
 

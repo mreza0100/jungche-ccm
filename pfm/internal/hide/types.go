@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
 
@@ -94,6 +95,9 @@ type Refresher interface {
 
 // Dependencies replaces process/tmux/time boundaries in tests.
 type Dependencies struct {
+	Paths        paths.Values
+	ClaudeRoots  []string
+	ConfigPath   string
 	ProcFS       gather.ProcFS
 	Tmux         TmuxClient
 	Spawner      ExitSpawner

@@ -101,6 +101,8 @@ func (executor *Executor) Open(
 				ctx,
 				request.CurrentTMUX,
 				request.Row.Socket,
+				request.Config.Claude.Binary,
+				request.Config.Codex.Binary,
 			) {
 				return "", nil
 			}
@@ -114,11 +116,11 @@ func (executor *Executor) Open(
 
 	switch request.Row.Kind {
 	case compose.Agent:
-		if err := executor.Solo(ctx, request.Row.ID, "", true); err != nil {
+		if err := executor.Solo(ctx, request.Row.ID, "", true, request.Config.Claude.Binary); err != nil {
 			return "", err
 		}
 	case compose.ResumeClaude:
-		if err := executor.Solo(ctx, request.Row.ID, "", false); err != nil {
+		if err := executor.Solo(ctx, request.Row.ID, "", false, request.Config.Claude.Binary); err != nil {
 			return "", err
 		}
 	case compose.ResumeCodex:
@@ -188,6 +190,9 @@ func (executor *Executor) prepareLive(
 				cacheValue = "1"
 			}
 			arguments := []string{"chat", "swap", "--sock", request.Row.Socket, strconv.Itoa(request.PrimaryAccount), "--1h", cacheValue}
+			if request.Config.Path != "" {
+				arguments = append([]string{"--config", request.Config.Path}, arguments...)
+			}
 			if err := executor.runner.Run(ctx, "pfm", arguments...); err != nil {
 				fmt.Fprintf(
 					executor.stderr,
@@ -202,6 +207,7 @@ func (executor *Executor) prepareLive(
 		request.Row.ID,
 		request.Row.Socket,
 		false,
+		request.Config.Claude.Binary,
 	); err != nil {
 		return err
 	}
@@ -215,6 +221,7 @@ func (executor *Executor) prepareLive(
 func (executor *Executor) SelfSwitch(
 	ctx context.Context,
 	currentTMUX, targetSocket string,
+	engineCommands ...string,
 ) bool {
 	currentPath := currentTMUX
 	if comma := strings.IndexByte(currentPath, ','); comma >= 0 {
@@ -234,7 +241,7 @@ func (executor *Executor) SelfSwitch(
 	sort.SliceStable(panes, func(left, right int) bool {
 		return panes[left].WindowIndex < panes[right].WindowIndex
 	})
-	window := chooseEngineWindow(panes)
+	window := chooseEngineWindow(panes, engineCommands...)
 	if err := executor.tmux.SelectWindow(
 		ctx,
 		targetSocket,
@@ -253,10 +260,15 @@ func (executor *Executor) SelfSwitch(
 	return true
 }
 
-func chooseEngineWindow(panes []Pane) int {
+func chooseEngineWindow(panes []Pane, engineCommands ...string) int {
+	engines := map[string]bool{"claude": true, "codex": true}
+	for _, command := range engineCommands {
+		if base := filepath.Base(command); base != "." && base != "" {
+			engines[base] = true
+		}
+	}
 	for _, pane := range panes {
-		if pane.CurrentCommand == "claude" ||
-			pane.CurrentCommand == "codex" {
+		if engines[pane.CurrentCommand] {
 			return pane.WindowIndex
 		}
 	}

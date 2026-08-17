@@ -22,10 +22,24 @@ var statuslineVertexOptions = func(ctx context.Context, log io.Writer) (statusli
 }
 
 var statuslineGPTOptions = func() statusline.GPTOptions {
-	return statusline.GPTOptions{ReadRateLimits: statusline.ReadGPTRateLimits}
+	return statusline.GPTOptions{}
 }
 
 func runStatusline(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm statusline: load config (fail-open): %v\n", err)
+		return 0
+	}
+	return runStatuslineWithRuntime(args, stdin, stdout, stderr, runtime)
+}
+
+func runStatuslineWithRuntime(
+	args []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	machine commandRuntime,
+) int {
 	flags := newFlagSet(
 		"statusline",
 		"usage: pfm statusline [--refresh-vertex | --refresh-gpt]",
@@ -55,7 +69,9 @@ func runStatusline(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		return 0
 	}
 	if *refreshGPT {
-		if err := statusline.RefreshGPT(ctx, statuslineGPTOptions()); err != nil {
+		options := statuslineGPTOptions()
+		options.Binary = machine.Config.Codex.Binary
+		if err := statusline.RefreshGPT(ctx, options); err != nil {
 			fmt.Fprintf(stderr, "pfm statusline: refresh GPT cache: %v\n", err)
 			return 1
 		}
@@ -72,6 +88,10 @@ func runStatusline(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		fmt.Fprintf(stderr, "pfm statusline: resolve runtime (fail-open): %v\n", err)
 		return 0
 	}
+	runtime.AccountDirs = make(map[string]int, len(machine.Config.Accounts))
+	for _, account := range machine.Config.Accounts {
+		runtime.AccountDirs[account.ConfigDir] = account.ID
+	}
 	runtime.Spawn = statusline.SpawnDetached
 	rendered, err := statusline.Render(ctx, raw, runtime)
 	if err != nil {
@@ -85,6 +105,19 @@ func runStatusline(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 }
 
 func runUsageHook(args []string, stdout, stderr io.Writer) int {
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm usage-hook: load config (fail-open): %v\n", err)
+		return 0
+	}
+	return runUsageHookWithRuntime(args, stdout, stderr, runtime)
+}
+
+func runUsageHookWithRuntime(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet("usage-hook", "usage: pfm usage-hook", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -93,7 +126,13 @@ func runUsageHook(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	message, err := usagehook.Evaluate(context.Background(), usagehook.Options{})
+	accountDirs := make(map[string]int, len(runtime.Config.Accounts))
+	for _, account := range runtime.Config.Accounts {
+		accountDirs[account.ConfigDir] = account.ID
+	}
+	message, err := usagehook.Evaluate(context.Background(), usagehook.Options{
+		AccountDirs: accountDirs,
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm usage-hook: evaluate (fail-open): %v\n", err)
 		return 0

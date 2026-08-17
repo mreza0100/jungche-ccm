@@ -15,7 +15,6 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
@@ -36,7 +35,11 @@ const (
 	codeUndelivered = 6
 )
 
-func runHeadless(args []string, stdout, stderr io.Writer) int {
+func runHeadless(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "run":
@@ -45,10 +48,24 @@ func runHeadless(args []string, stdout, stderr io.Writer) int {
 			args[0] = "read"
 		}
 	}
-	return runChat(args, os.Stdin, stdout, stderr)
+	return runChatWithRuntime(args, os.Stdin, stdout, stderr, runtime)
 }
 
 func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm: config: %v\n", err)
+		return 1
+	}
+	return runChatWithRuntime(args, stdin, stdout, stderr, runtime)
+}
+
+func runChatWithRuntime(
+	args []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	if len(args) == 0 {
 		printChatUsage(stderr)
 		return 2
@@ -56,50 +73,50 @@ func runChat(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	verb, rest := args[0], args[1:]
 	switch verb {
 	case "new":
-		return runRun(rest, stdout, stderr)
+		return runRun(rest, stdout, stderr, runtime)
 	case "open":
-		return runChatOpen(rest, stdout, stderr)
+		return runChatOpen(rest, stdout, stderr, runtime)
 	case "read":
-		return runChatRead(rest, stdin, stdout, stderr)
+		return runChatRead(rest, stdin, stdout, stderr, runtime)
 	case "last":
-		return runHeadlessLast(rest, stdout, stderr)
+		return runHeadlessLast(rest, stdout, stderr, runtime)
 	case "status":
-		return runHeadlessStatus(rest, stdout, stderr)
+		return runHeadlessStatus(rest, stdout, stderr, runtime)
 	case "stream":
-		return runHeadlessStream(rest, stdout, stderr)
+		return runHeadlessStream(rest, stdout, stderr, runtime)
 	case "inject":
-		return runHeadlessInject(rest, stdout, stderr)
+		return runHeadlessInject(rest, stdout, stderr, runtime)
 	case "ask":
-		return runHeadlessAsk(rest, stdout, stderr)
+		return runHeadlessAsk(rest, stdout, stderr, runtime)
 	case "watch":
-		return runHeadlessWatch(rest, stdout, stderr)
+		return runHeadlessWatch(rest, stdout, stderr, runtime)
 	case "capture":
-		return runChatCapture(rest, stdout, stderr)
+		return runChatCapture(rest, stdout, stderr, runtime)
 	case "recover":
-		return runChatRecover(rest, stdout, stderr)
+		return runChatRecover(rest, stdout, stderr, runtime)
 	case "name":
-		return runChatName(rest, stdout, stderr)
+		return runChatName(rest, stdout, stderr, runtime)
 	case "hide":
-		return runChatHide(rest, stdout, stderr)
+		return runChatHide(rest, stdout, stderr, runtime)
 	case "unhide":
-		return runChatUnhide(rest, stdout, stderr)
+		return runChatUnhide(rest, stdout, stderr, runtime)
 	case "end":
-		return runChatEnd(rest, stdout, stderr)
+		return runChatEnd(rest, stdout, stderr, runtime)
 	case "swap":
-		return runChatSwap(rest, stdout, stderr)
+		return runChatSwapWithRuntime(rest, stdout, stderr, runtime)
 	case "whoami":
 		// Compatibility for the installed chat.sh shim. The settled public
 		// command is `pfm whoami`, but the shim must remain safe while callers
 		// still invoke `chat.sh whoami` during the staged cutover.
-		return runWhoami(rest, stdout, stderr)
+		return runWhoami(rest, stdout, stderr, runtime)
 	case "find", "save", "load", "branch", "history", "ls":
-		return runChatSatellite(verb, rest, stdin, stdout, stderr)
+		return runChatSatellite(verb, rest, stdin, stdout, stderr, runtime)
 	case "modal":
 		return runChatModal(rest, stdout, stderr)
 	case "group":
 		return runChatGroup(rest, stdin, stdout, stderr)
 	case "resolve":
-		return runChatResolve(rest, stdout, stderr)
+		return runChatResolve(rest, stdout, stderr, runtime)
 	case "help", "-h", "--help":
 		printChatUsage(stdout)
 		return 0
@@ -129,7 +146,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide      remove a chat hide")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
-	fmt.Fprintln(w, "  swap        reboot a Claude chat in place under another account/cache mode")
+	fmt.Fprintln(w, "  swap        reboot a Claude chat in place under another configured account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
@@ -146,6 +163,7 @@ func resolveChat(
 	ctx context.Context,
 	name string,
 	warn io.Writer,
+	runtimes ...commandRuntime,
 ) (headless.Chat, bool, error) {
 	if name == "self" || name == "me" {
 		identifier, err := resolve.NewWhoami(resolve.WhoamiDependencies{})
@@ -154,7 +172,7 @@ func resolveChat(
 		}
 		identity, err := identifier.Identify(ctx)
 		if err != nil {
-			seat, found := codexSeatIdentity(ctx)
+			seat, found := codexSeatIdentity(ctx, runtimes...)
 			if !found {
 				return headless.Chat{}, false, err
 			}
@@ -174,10 +192,14 @@ func resolveChat(
 		return headless.Chat{}, false, err
 	}
 	defer database.Close()
+	request := scanRequest{View: compose.AllView, ReadOnly: true}
+	if len(runtimes) != 0 {
+		request.Runtime = &runtimes[0]
+	}
 	scan, err := scanFleet(
 		ctx,
 		database,
-		scanRequest{View: compose.AllView, ReadOnly: true},
+		request,
 		warn,
 	)
 	if err != nil {
@@ -263,8 +285,9 @@ func headlessTarget(
 	name string,
 	stdout, stderr io.Writer,
 	asJSON bool,
+	runtimes ...commandRuntime,
 ) (headless.Chat, int) {
-	chat, found, err := resolveChat(ctx, name, io.Discard)
+	chat, found, err := resolveChat(ctx, name, io.Discard, runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat: %v\n", err)
 		return headless.Chat{}, 2
@@ -281,7 +304,7 @@ func headlessTarget(
 	return chat, 0
 }
 
-func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
+func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat status",
 		"usage: pfm chat status <target> [--json]",
@@ -297,7 +320,7 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON)
+	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -317,7 +340,7 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
+func runHeadlessTranscript(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat read",
 		"usage: pfm chat read <target> [--tail N] [--condensed] [--json]",
@@ -335,7 +358,7 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON)
+	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -369,7 +392,7 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
+func runHeadlessLast(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat last",
 		"usage: pfm chat last <target>",
@@ -384,7 +407,7 @@ func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, names[0], stdout, stderr, false)
+	chat, code := headlessTarget(ctx, names[0], stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -408,7 +431,7 @@ func runHeadlessLast(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
+func runHeadlessStream(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat stream",
 		"usage: pfm chat stream <target> [--filter REGEX] [--margin N] "+
@@ -438,7 +461,7 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 		pattern = compiled
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, names[0], stdout, stderr, false)
+	chat, code := headlessTarget(ctx, names[0], stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -454,7 +477,7 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 		Follow:    !*noFollow,
 		Raw:       *raw,
 		Alive: func() bool {
-			chat, found, err := resolveChat(context.Background(), name, io.Discard)
+			chat, found, err := resolveChat(context.Background(), name, io.Discard, runtimes...)
 			return err == nil && found && chat.Live
 		},
 	}, stdout)
@@ -469,7 +492,7 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
+func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat inject",
 		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] <target> <message>",
@@ -518,7 +541,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	engine, err := newInjectEngine()
+	engine, err := newInjectEngine(runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
 		return codeUndelivered
@@ -535,17 +558,18 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 		return codeUndelivered
 	}
 	if result.Code == inject.CodeUnknown && !strings.Contains(strings.ToLower(result.Message), "ambiguous") {
-		target, found, resolveErr := resolveResumeTarget(flags.Arg(0))
+		target, found, resolveErr := resolveResumeTarget(flags.Arg(0), runtimes...)
 		if resolveErr != nil {
 			fmt.Fprintf(stderr, "pfm chat inject: %v\n", resolveErr)
 			return codeUnknownChat
 		}
 		if found {
-			resolved, pathErr := paths.Resolve()
-			if pathErr != nil {
-				fmt.Fprintf(stderr, "pfm chat inject: %v\n", pathErr)
+			machine, runtimeErr := optionalCommandRuntime(runtimes)
+			if runtimeErr != nil {
+				fmt.Fprintf(stderr, "pfm chat inject: %v\n", runtimeErr)
 				return codeUndelivered
 			}
+			resolved := machine.Paths
 			if uuidSessionID(target.ID) {
 				live, liveErr := runningClaudeSession(resolved.ProcRoot, target.ID)
 				if liveErr != nil {
@@ -574,7 +598,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer) int {
 					)
 					return codeDeadChat
 				}
-				config, live, registryErr := registeredDaemonSession(ctx, resolved, target.ID)
+				config, live, registryErr := registeredDaemonSession(ctx, resolved, machine.Config, target.ID)
 				if registryErr != nil {
 					fmt.Fprintf(stderr, "pfm chat inject: %v\n", registryErr)
 					return codeUndelivered
@@ -697,7 +721,7 @@ func writeUnsignedInjectWarning(stderr io.Writer) {
 	)
 }
 
-func runHeadlessWatch(args []string, stdout, stderr io.Writer) int {
+func runHeadlessWatch(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat watch",
 		"usage: pfm chat watch <target> [--idle-after SECS] "+
@@ -719,13 +743,13 @@ func runHeadlessWatch(args []string, stdout, stderr io.Writer) int {
 	}
 	name := names[0]
 	ctx := context.Background()
-	if _, code := headlessTarget(ctx, name, stdout, stderr, false); code != 0 {
+	if _, code := headlessTarget(ctx, name, stdout, stderr, false, runtimes...); code != 0 {
 		return code
 	}
 	watcher := headless.Watcher{
 		Name: name,
 		Resolve: func(ctx context.Context) (headless.Chat, bool, error) {
-			return resolveChat(ctx, name, io.Discard)
+			return resolveChat(ctx, name, io.Discard, runtimes...)
 		},
 	}
 	status, err := watcher.Watch(ctx, headless.WatchOptions{

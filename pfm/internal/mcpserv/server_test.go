@@ -169,7 +169,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 	}
 	jail := newStdioJail(t)
 	binary := buildFleetBinary(t, jail.root)
-	command := exec.Command(binary, "mcp")
+	command := exec.Command(binary, "--config", writeEnabledMCPConfig(t, jail.root), "mcp")
 	command.Env = jail.environment()
 	var serverStderr bytes.Buffer
 	command.Stderr = &serverStderr
@@ -815,7 +815,7 @@ func TestMCPAdversarialUnknownAndHugeArguments(t *testing.T) {
 func TestMCPMalformedFrameReturnsJSONRPCError(t *testing.T) {
 	root := setupBackendFixture(t)
 	binary := buildFleetBinary(t, root)
-	command := exec.Command(binary, "mcp")
+	command := exec.Command(binary, "--config", writeEnabledMCPConfig(t, root), "mcp")
 	command.Env = os.Environ()
 	stdin, err := command.StdinPipe()
 	if err != nil {
@@ -893,6 +893,15 @@ func TestMCPMalformedFrameReturnsJSONRPCError(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatalf("server did not answer malformed frame; stderr=%s", stderr.String())
 	}
+}
+
+func writeEnabledMCPConfig(t *testing.T, root string) string {
+	t.Helper()
+	path := filepath.Join(root, "mcp-enabled.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"mcp":{"servers":{"chat":{"enabled":true}}}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestChatReadBudgetsAndJunkFilter(t *testing.T) {

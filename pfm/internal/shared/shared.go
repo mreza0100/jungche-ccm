@@ -506,8 +506,8 @@ func (s *Store) ClearBranchSeat(ctx context.Context, socket string) error {
 // PrimaryAccount reports the database value first, then the
 // ~/.claude-primary mirror when the database has none, and not-found when
 // neither parses. The
-// roster bound is the CALLER's to apply — action.MaxAccount is that constant,
-// and this package cannot import it without a cycle.
+// roster membership is the CALLER's to apply from the effective machine
+// configuration; this package deliberately knows only that ids are positive.
 //
 // It opens the database read-only and never creates it: reading the primary
 // account must not be the act that brings a state store into existence.

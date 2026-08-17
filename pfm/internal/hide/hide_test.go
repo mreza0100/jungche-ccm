@@ -977,6 +977,7 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 	spawner := CommandSpawner{
 		Executable: "/jail/pfm",
 		Setsid:     setsidPath,
+		ConfigPath: "/jail/config/pfm.json",
 	}
 	args := ExitArgs{
 		Engine:     ClaudeEngine,
@@ -996,6 +997,8 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 	want := strings.Join([]string{
 		"-f",
 		"/jail/pfm",
+		"--config",
+		"/jail/config/pfm.json",
 		"internal",
 		"hide-exit",
 		"--engine",

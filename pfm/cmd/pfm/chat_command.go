@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,17 +24,21 @@ var chatUUIDPattern = regexp.MustCompile(
 	`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`,
 )
 
-func runChatRead(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func runChatRead(args []string, stdin io.Reader, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	if len(args) > 0 {
 		if info, err := os.Stat(args[0]); err == nil && info.Mode().IsRegular() &&
 			filepath.Ext(args[0]) != ".jsonl" {
-			return runChatReadExcerpt(args, stdout, stderr)
+			return runChatReadExcerpt(args, stdout, stderr, runtimes...)
 		}
 	}
-	return runHeadlessTranscript(args, stdout, stderr)
+	return runHeadlessTranscript(args, stdout, stderr, runtimes...)
 }
 
-func runChatOpen(args []string, stdout, stderr io.Writer) int {
+func runChatOpen(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet("chat open", "usage: pfm chat open <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -42,14 +47,14 @@ func runChatOpen(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false)
+	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtime)
 	if code != 0 {
 		return code
 	}
-	return openID(context.Background(), chat.ID, stdout, stderr)
+	return openID(context.Background(), chat.ID, stdout, stderr, runtime)
 }
 
-func runChatHide(args []string, stdout, stderr io.Writer) int {
+func runChatHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat hide", "usage: pfm chat hide <target> [--exit]", stderr)
 	exit := flags.Bool("exit", false, "gracefully close after hiding")
 	targets, code, ok := parseFlagsAnywhere(flags, args)
@@ -65,7 +70,7 @@ func runChatHide(args []string, stdout, stderr io.Writer) int {
 		// their CODEX_THREAD_ID through the fleet store, then preserve the live
 		// row's immutable socket and pane for the detached exit finisher.
 		if os.Getenv("TMUX") == "" && os.Getenv(resolve.CodexThreadEnv) != "" {
-			chat, found, err := resolveChat(context.Background(), "self", io.Discard)
+			chat, found, err := resolveChat(context.Background(), "self", io.Discard, runtimes...)
 			if err != nil {
 				fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
 				return 1
@@ -74,18 +79,18 @@ func runChatHide(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintln(stderr, "pfm chat hide: this Codex chat has no live fleet seat")
 				return codeUnknownChat
 			}
-			return runResolvedChatHide(chat, *exit, stdout, stderr)
+			return runResolvedChatHide(chat, *exit, stdout, stderr, runtimes...)
 		}
 		hideArgs := []string{"--self"}
 		if *exit {
 			hideArgs = append(hideArgs, "--exit")
 		}
-		return runHide(hideArgs, stdout, stderr)
+		return runHide(hideArgs, stdout, stderr, runtimes...)
 	}
 	target := targets[0]
 	id := target
 	if !chatUUIDPattern.MatchString(target) {
-		chat, found, err := resolveChat(context.Background(), target, io.Discard)
+		chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
 			return 1
@@ -103,7 +108,7 @@ func runChatHide(args []string, stdout, stderr io.Writer) int {
 	}
 	hideArgs = append(hideArgs, id)
 	var hideOut, hideErr strings.Builder
-	code = runHide(hideArgs, &hideOut, &hideErr)
+	code = runHide(hideArgs, &hideOut, &hideErr, runtimes...)
 	_, _ = io.WriteString(stdout, hideOut.String())
 	_, _ = io.WriteString(stderr, hideErr.String())
 	if code != 0 && strings.Contains(hideErr.String(), "not indexed") {
@@ -116,8 +121,9 @@ func runResolvedChatHide(
 	chat headless.Chat,
 	exit bool,
 	stdout, stderr io.Writer,
+	runtimes ...commandRuntime,
 ) int {
-	database, manager, code := openHideManager(stderr)
+	database, manager, code := openHideManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -138,7 +144,7 @@ func runResolvedChatHide(
 	return 0
 }
 
-func runChatUnhide(args []string, stdout, stderr io.Writer) int {
+func runChatUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat unhide", "usage: pfm chat unhide <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -149,7 +155,7 @@ func runChatUnhide(args []string, stdout, stderr io.Writer) int {
 	}
 	target := flags.Arg(0)
 	if !chatUUIDPattern.MatchString(target) {
-		chat, found, err := resolveChat(context.Background(), target, io.Discard)
+		chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat unhide: %v\n", err)
 			return 1
@@ -161,10 +167,10 @@ func runChatUnhide(args []string, stdout, stderr io.Writer) int {
 		}
 		target = chat.ID
 	}
-	return runUnhide([]string{target}, stdout, stderr)
+	return runUnhide([]string{target}, stdout, stderr, runtimes...)
 }
 
-func runChatResolve(args []string, stdout, stderr io.Writer) int {
+func runChatResolve(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat resolve", "usage: pfm chat resolve <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -173,7 +179,7 @@ func runChatResolve(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false)
+	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -181,7 +187,7 @@ func runChatResolve(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runChatCapture(args []string, stdout, stderr io.Writer) int {
+func runChatCapture(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat capture", "usage: pfm chat capture <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -190,7 +196,7 @@ func runChatCapture(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false)
+	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -224,7 +230,7 @@ func runChatCapture(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runChatRecover(args []string, stdout, stderr io.Writer) int {
+func runChatRecover(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat recover", "usage: pfm chat recover <thread-id|rollout-path>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -233,11 +239,12 @@ func runChatRecover(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	resolved, err := paths.Resolve()
+	runtime, err := optionalCommandRuntime(runtimes)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat recover: resolve paths: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat recover: load config: %v\n", err)
 		return 1
 	}
+	resolved := runtime.Paths
 	result, err := recovery.Run(context.Background(), resolved.CodexRoot, flags.Arg(0))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat recover: %v\n", err)
@@ -250,8 +257,11 @@ func runChatRecover(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runChatName(args []string, stdout, stderr io.Writer) int {
-	return runChatNameWith(args, stdout, stderr, deliverChatName)
+func runChatName(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	deliver := func(ctx context.Context, chat headless.Chat, name string) (int, string, error) {
+		return deliverChatNameWithRuntime(ctx, chat, name, runtimes...)
+	}
+	return runChatNameWith(args, stdout, stderr, deliver, runtimes...)
 }
 
 type chatNameDelivery func(
@@ -265,7 +275,16 @@ func deliverChatName(
 	chat headless.Chat,
 	name string,
 ) (int, string, error) {
-	engine, err := newInjectEngine()
+	return deliverChatNameWithRuntime(ctx, chat, name)
+}
+
+func deliverChatNameWithRuntime(
+	ctx context.Context,
+	chat headless.Chat,
+	name string,
+	runtimes ...commandRuntime,
+) (int, string, error) {
+	engine, err := newInjectEngine(runtimes...)
 	if err != nil {
 		return 1, "", err
 	}
@@ -284,6 +303,7 @@ func runChatNameWith(
 	args []string,
 	stdout, stderr io.Writer,
 	deliver chatNameDelivery,
+	runtimes ...commandRuntime,
 ) int {
 	flags := newFlagSet("chat name", "usage: pfm chat name <target> <name>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
@@ -298,7 +318,7 @@ func runChatNameWith(
 		fmt.Fprintln(stderr, "pfm chat name: name must be one non-empty line")
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false)
+	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -341,7 +361,7 @@ func applyChatName(
 	return 0
 }
 
-func runChatEnd(args []string, stdout, stderr io.Writer) int {
+func runChatEnd(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat end", "usage: pfm chat end <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -350,7 +370,7 @@ func runChatEnd(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false)
+	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -414,20 +434,21 @@ func runChatSatellite(
 	args []string,
 	stdin io.Reader,
 	stdout, stderr io.Writer,
+	runtimes ...commandRuntime,
 ) int {
 	switch verb {
 	case "find":
-		return runChatFind(args, stdout, stderr)
+		return runChatFind(args, stdout, stderr, runtimes...)
 	case "save":
-		return runChatSave(args, stdout, stderr)
+		return runChatSave(args, stdout, stderr, runtimes...)
 	case "load":
 		return runChatLoad(args, stdout, stderr)
 	case "branch":
-		return runChatBranch(args, stdout, stderr)
+		return runChatBranch(args, stdout, stderr, runtimes...)
 	case "ls":
-		return runChatLS(args, stdout, stderr)
+		return runChatLS(args, stdout, stderr, runtimes...)
 	case "history":
-		return runChatScript("history.sh", args, stdin, stdout, stderr)
+		return runChatScript("history.sh", args, stdin, stdout, stderr, runtimes...)
 	default:
 		fmt.Fprintf(stderr, "pfm chat: unsupported compatibility command %q\n", verb)
 		return 2
@@ -439,6 +460,7 @@ func runChatScript(
 	args []string,
 	stdin io.Reader,
 	stdout, stderr io.Writer,
+	runtimes ...commandRuntime,
 ) int {
 	path, err := locateChatScript(name)
 	if err != nil {
@@ -449,6 +471,14 @@ func runChatScript(
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr
+	if name == "history.sh" && len(runtimes) != 0 {
+		roots, err := json.Marshal(runtimes[0].Paths.ClaudeRoots)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat: encode history roots: %v\n", err)
+			return 1
+		}
+		command.Env = append(os.Environ(), "PFM_HISTORY_ROOTS_JSON="+string(roots))
+	}
 	if err := command.Run(); err != nil {
 		var exit *exec.ExitError
 		if errors.As(err, &exit) {

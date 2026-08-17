@@ -18,7 +18,17 @@ if [ -f "$sid" ]; then
   f="$sid"
 else
   f=""
-  for pool in "$HOME/.claude/projects" "$HOME"/.cc/*/projects; do
+  pools=()
+  if [ -n "${PFM_HISTORY_ROOTS_JSON:-}" ]; then
+    jq -e 'type == "array" and all(.[]; type == "string")' \
+      <<<"$PFM_HISTORY_ROOTS_JSON" >/dev/null
+    while IFS= read -r -d '' pool; do
+      pools+=("$pool")
+    done < <(jq -j '.[] | ., "\u0000"' <<<"$PFM_HISTORY_ROOTS_JSON")
+  else
+    pools=("$HOME/.claude/projects" "$HOME"/.cc/*/projects)
+  fi
+  for pool in "${pools[@]}"; do
     m=$(ls -t "$pool/$slug/$sid"*.jsonl 2>/dev/null | head -1) || true
     [ -n "${m:-}" ] && { f="$m"; break; }
   done

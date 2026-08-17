@@ -27,11 +27,16 @@ const (
 )
 
 type indexRefresher struct {
-	database *store.Store
+	database    *store.Store
+	claudeRoots []string
+	codexRoot   string
 }
 
 func (refresher indexRefresher) Refresh(ctx context.Context) error {
-	indexer, err := index.New(refresher.database)
+	indexer, err := index.NewWithPaths(refresher.database, paths.Values{
+		ClaudeRoots: refresher.claudeRoots,
+		CodexRoot:   refresher.codexRoot,
+	})
 	if err != nil {
 		return err
 	}
@@ -47,9 +52,13 @@ func NewFinisher(
 	if database == nil {
 		return nil, errors.New("hide finisher store is nil")
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return nil, fmt.Errorf("resolve hide finisher paths: %w", err)
+	resolved := dependencies.Paths
+	if resolved.Home == "" {
+		var err error
+		resolved, err = paths.Resolve()
+		if err != nil {
+			return nil, fmt.Errorf("resolve hide finisher paths: %w", err)
+		}
 	}
 	tmux := dependencies.Tmux
 	if tmux == nil {
@@ -61,7 +70,15 @@ func NewFinisher(
 	}
 	refresher := dependencies.Refresher
 	if refresher == nil {
-		refresher = indexRefresher{database: database}
+		claudeRoots := dependencies.ClaudeRoots
+		if len(claudeRoots) == 0 {
+			claudeRoots = resolved.ClaudeRoots
+		}
+		refresher = indexRefresher{
+			database:    database,
+			claudeRoots: append([]string(nil), claudeRoots...),
+			codexRoot:   resolved.CodexRoot,
+		}
 	}
 	delay := dependencies.Delay
 	if delay == 0 {

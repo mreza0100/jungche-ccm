@@ -418,7 +418,8 @@ func TestDoctorReportsDamagedDatabaseWithoutPanic(t *testing.T) {
 	if code := run([]string{"doctor"}, &stdout, &stderr); code != 1 {
 		t.Fatalf("doctor code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.HasPrefix(stdout.String(), "doctor: unhealthy database:") {
+	if !strings.Contains(stdout.String(), "doctor: config path=") ||
+		!strings.Contains(stdout.String(), "doctor: unhealthy database:") {
 		t.Fatalf("doctor stdout=%q", stdout.String())
 	}
 }

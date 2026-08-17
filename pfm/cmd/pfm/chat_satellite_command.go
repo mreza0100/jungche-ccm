@@ -20,6 +20,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
@@ -34,7 +35,7 @@ type transcriptMatch struct {
 	Hits, Needles         int
 }
 
-func runChatFind(args []string, stdout, stderr io.Writer) int {
+func runChatFind(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet("chat find", "usage: pfm chat find <excerpt-file>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -43,7 +44,7 @@ func runChatFind(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	match, alternatives, err := findTranscript(flags.Arg(0))
+	match, alternatives, err := findTranscript(flags.Arg(0), runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat find: %v\n", err)
 		return 2
@@ -62,24 +63,32 @@ func runChatFind(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func findTranscript(excerptPath string) (transcriptMatch, []transcriptMatch, error) {
+func findTranscript(excerptPath string, runtimes ...commandRuntime) (transcriptMatch, []transcriptMatch, error) {
 	content, err := os.ReadFile(excerptPath)
 	if err != nil {
 		return transcriptMatch{}, nil, err
 	}
-	return findTranscriptContent(content)
+	return findTranscriptContent(content, runtimes...)
 }
 
-func findTranscriptContent(content []byte) (transcriptMatch, []transcriptMatch, error) {
+func findTranscriptContent(content []byte, runtimes ...commandRuntime) (transcriptMatch, []transcriptMatch, error) {
 	needles := excerptNeedles(string(content))
 	if len(needles) == 0 {
 		return transcriptMatch{}, nil, errors.New("excerpt has no line of 20+ characters to search for")
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return transcriptMatch{}, nil, err
+	var resolved paths.Values
+	var err error
+	if len(runtimes) != 0 {
+		resolved = runtimes[0].Paths
+	} else {
+		resolved, err = paths.Resolve()
+		if err != nil {
+			return transcriptMatch{}, nil, err
+		}
 	}
-	files, err := claudeTranscriptFiles(resolved)
+	includeLegacyPrimary := len(runtimes) == 0 ||
+		runtimes[0].Config.Source("accounts") != pfmconfig.SourceFile
+	files, err := claudeTranscriptFiles(resolved, includeLegacyPrimary)
 	if err != nil {
 		return transcriptMatch{}, nil, err
 	}
@@ -147,8 +156,11 @@ func excerptNeedles(value string) []string {
 	return candidates
 }
 
-func claudeTranscriptFiles(resolved paths.Values) ([]string, error) {
-	roots := append([]string{filepath.Join(resolved.Home, ".claude", "projects")}, resolved.ClaudeRoots...)
+func claudeTranscriptFiles(resolved paths.Values, includeLegacyPrimary bool) ([]string, error) {
+	roots := append([]string(nil), resolved.ClaudeRoots...)
+	if includeLegacyPrimary {
+		roots = append([]string{filepath.Join(resolved.Home, ".claude", "projects")}, roots...)
+	}
 	seen := make(map[string]struct{})
 	var files []string
 	for _, root := range roots {
@@ -203,7 +215,7 @@ func transcriptRange(raw []byte) (string, string) {
 	return first, last
 }
 
-func runChatReadExcerpt(args []string, stdout, stderr io.Writer) int {
+func runChatReadExcerpt(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	if len(args) < 1 || len(args) > 2 {
 		fmt.Fprintln(stderr, "usage: pfm chat read <excerpt-file> [last-N-lines]")
 		return 2
@@ -217,7 +229,7 @@ func runChatReadExcerpt(args []string, stdout, stderr io.Writer) int {
 		}
 		limit = value
 	}
-	match, _, err := findTranscript(args[0])
+	match, _, err := findTranscript(args[0], runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat read: %v\n", err)
 		return 2
@@ -276,7 +288,7 @@ func lastLines(value string, count int) string {
 	return strings.Join(lines, "\n")
 }
 
-func runChatSave(args []string, stdout, stderr io.Writer) int {
+func runChatSave(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	if len(args) < 1 || len(args) > 2 {
 		fmt.Fprintln(stderr, "usage: pfm chat save <target-file> [transcript-jsonl]")
 		return 2
@@ -291,22 +303,16 @@ func runChatSave(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "pfm chat save: CLAUDE_CODE_SESSION_ID is not set and no transcript path was given")
 			return 1
 		}
-		config := os.Getenv("CLAUDE_CONFIG_DIR")
-		if config == "" {
-			resolved, err := paths.Resolve()
-			if err != nil {
-				fmt.Fprintf(stderr, "pfm chat save: %v\n", err)
-				return 1
-			}
-			config = filepath.Join(resolved.Home, ".claude")
-		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat save: current directory: %v\n", err)
 			return 1
 		}
-		slug := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
-		transcriptPath = filepath.Join(config, "projects", slug, id+".jsonl")
+		transcriptPath = currentClaudeTranscriptPath(id, cwd, runtimes...)
+		if transcriptPath == "" {
+			fmt.Fprintln(stderr, "pfm chat save: could not resolve the current Claude transcript")
+			return 1
+		}
 	}
 	entries, err := transcript.All(context.Background(), transcriptPath, store.ClaudeEngine)
 	if err != nil {
@@ -433,7 +439,7 @@ func skippedLoadDir(name string) bool {
 	}
 }
 
-func runChatLS(args []string, stdout, stderr io.Writer) int {
+func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	all := false
 	for _, arg := range args {
 		switch arg {
@@ -450,7 +456,11 @@ func runChatLS(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer database.Close()
-	scan, err := scanFleet(context.Background(), database, scanRequest{View: compose.AllView, ReadOnly: true}, stderr)
+	request := scanRequest{View: compose.AllView, ReadOnly: true}
+	if len(runtimes) != 0 {
+		request.Runtime = &runtimes[0]
+	}
+	scan, err := scanFleet(context.Background(), database, request, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat ls: %v\n", err)
 		return 1
@@ -537,25 +547,26 @@ func withinDirectory(path, root string) bool {
 	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
 }
 
-func runChatBranch(args []string, stdout, stderr io.Writer) int {
+func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	id := os.Getenv("CLAUDE_CODE_SESSION_ID")
 	if id == "" {
 		fmt.Fprintln(stderr, "pfm chat branch: CLAUDE_CODE_SESSION_ID is not set")
 		return 1
 	}
-	if _, err := exec.LookPath("claude"); err != nil {
-		fmt.Fprintln(stderr, "pfm chat branch: claude is not on PATH")
+	runtime, err := optionalCommandRuntime(runtimes)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: load config: %v\n", err)
+		return 1
+	}
+	if _, err := exec.LookPath(runtime.Config.Claude.Binary); err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: configured Claude binary %q is not executable: %v\n", runtime.Config.Claude.Binary, err)
 		return 1
 	}
 	if _, err := exec.LookPath("tmux"); err != nil {
 		fmt.Fprintln(stderr, "pfm chat branch: tmux is not on PATH")
 		return 1
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: resolve paths: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat branch: current directory: %v\n", err)
@@ -565,8 +576,8 @@ func runChatBranch(args []string, stdout, stderr io.Writer) int {
 	if strings.TrimSpace(name) == "" {
 		name = defaultBranchName(id)
 	}
-	model := currentClaudeModel(id)
-	command := branchClaudeCommand(id, name, model)
+	model := currentClaudeModel(id, runtime)
+	command := branchClaudeCommand(id, name, model, runtime.Config)
 	socket := freshSocket(compose.ResumeClaude)
 	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
 	if err := tmux.NewSession(context.Background(), spawn.SessionSpec{
@@ -636,21 +647,16 @@ func defaultBranchName(id string) string {
 	return name
 }
 
-func currentClaudeModel(id string) string {
-	config := os.Getenv("CLAUDE_CONFIG_DIR")
-	if config == "" {
-		resolved, err := paths.Resolve()
-		if err != nil {
-			return ""
-		}
-		config = filepath.Join(resolved.Home, ".claude")
-	}
+func currentClaudeModel(id string, runtimes ...commandRuntime) string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""
 	}
-	slug := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
-	meta, err := transcript.ReadMeta(filepath.Join(config, "projects", slug, id+".jsonl"), store.ClaudeEngine)
+	path := currentClaudeTranscriptPath(id, cwd, runtimes...)
+	if path == "" {
+		return ""
+	}
+	meta, err := transcript.ReadMeta(path, store.ClaudeEngine)
 	if err != nil {
 		return ""
 	}
@@ -668,7 +674,44 @@ func currentClaudeModel(id string) string {
 	}
 }
 
-func branchClaudeCommand(id, name, model string) string {
+// currentClaudeTranscriptPath follows the current process's explicit config
+// first. When that variable is intentionally absent for an implicit account,
+// the already-loaded runtime owns the configured account roots and can locate
+// the session without falling back to ~/.claude.
+func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) string {
+	slug := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
+	if config := strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR")); config != "" {
+		return filepath.Join(config, "projects", slug, id+".jsonl")
+	}
+	if len(runtimes) != 0 {
+		roots := runtimes[0].Paths.ClaudeRoots
+		for _, root := range roots {
+			candidate := filepath.Join(root, slug, id+".jsonl")
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+		if len(roots) != 0 {
+			return filepath.Join(roots[0], slug, id+".jsonl")
+		}
+		if runtimes[0].Paths.Home != "" {
+			return filepath.Join(runtimes[0].Paths.Home, ".claude", "projects", slug, id+".jsonl")
+		}
+	}
+	resolved, err := paths.Resolve()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(resolved.Home, ".claude", "projects", slug, id+".jsonl")
+}
+
+func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) string {
+	machine := pfmconfig.Config{
+		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: "claude"},
+	}
+	if len(machines) != 0 {
+		machine = machines[0]
+	}
 	unsets := []string{"-u", "CLAUDE_CODE_SESSION_ID", "-u", "CLAUDECODE"}
 	var sets []string
 	if config := os.Getenv("CLAUDE_CONFIG_DIR"); config == "" {
@@ -685,14 +728,16 @@ func branchClaudeCommand(id, name, model string) string {
 	}
 	parts := append([]string{"env"}, unsets...)
 	parts = append(parts, sets...)
-	parts = append(parts, "claude", "--resume", id, "--fork-session")
+	parts = append(parts, machine.Claude.Binary, "--resume", id, "--fork-session")
 	if model != "" {
 		parts = append(parts, "--model", model)
 	}
 	if name != "" {
 		parts = append(parts, "--name", name)
 	}
-	parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
+	if machine.Claude.PermissionMode != pfmconfig.PermissionPrompt {
+		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
+	}
 	quoted := make([]string, len(parts))
 	for index, part := range parts {
 		quoted[index] = action.Quote(part)

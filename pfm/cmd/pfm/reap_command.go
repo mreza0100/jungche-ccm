@@ -6,7 +6,6 @@ import (
 	"io"
 	"time"
 
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/reap"
 )
 
@@ -16,7 +15,7 @@ import (
 //
 // The default is a DRY RUN. A wrongly kept socket costs memory; a wrongly
 // killed one costs a chat nobody can get back, so killing has to be asked for.
-func runReap(args []string, stdout, stderr io.Writer) int {
+func runReap(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet(
 		"reap",
 		"usage: pfm reap [--apply] [--busy-recent SECONDS]",
@@ -36,14 +35,17 @@ func runReap(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm reap: %v\n", err)
-		return 1
+	resolved := runtime.Paths
+	configDirs := make([]string, 0, len(runtime.Config.Accounts))
+	for _, account := range runtime.Config.Accounts {
+		configDirs = append(configDirs, account.ConfigDir)
 	}
 	ctx := context.Background()
 	runner, err := reap.New(reap.Dependencies{
-		Paths: resolved,
+		Paths:        resolved,
+		Busy:         reap.NewClaudeAgentsConfigured(resolved, runtime.Config.Claude.Binary, configDirs),
+		ClaudeBinary: runtime.Config.Claude.Binary,
+		CodexBinary:  runtime.Config.Codex.Binary,
 		KillServer: func(ctx context.Context, socket string) error {
 			return killChatServer(ctx, resolved, socket)
 		},
