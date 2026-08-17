@@ -82,8 +82,9 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 	var warnings bufferedWarnings
 	var interactiveStderr bytes.Buffer
 	updates := make(chan ui.Snapshot, 4)
+	refreshContext, cancelRefresh := context.WithCancel(context.Background())
 	go streamFleetRefreshesWith(
-		context.Background(),
+		refreshContext,
 		database,
 		scanRequest{},
 		warnings.add,
@@ -95,6 +96,16 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 			},
 		},
 	)
+	for {
+		snapshot, ok := <-updates
+		if !ok {
+			t.Fatalf("interactive refresh stream ended early: %s", interactiveStderr.String())
+		}
+		if !snapshot.Refreshing {
+			break
+		}
+	}
+	cancelRefresh()
 	for range updates {
 	}
 	if interactiveStderr.Len() != 0 {

@@ -257,6 +257,30 @@ func (s *Store) transcriptPromptCounts(
 			return nil, fmt.Errorf("iterate clear-hide prompt counts: %w", err)
 		}
 	}
+	unresolved := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, found := counts[id]; !found {
+			unresolved[id] = struct{}{}
+		}
+	}
+	if len(unresolved) == 0 {
+		return counts, nil
+	}
+	rollouts, err := s.Rollouts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query clear-hide Codex prompt counts: %w", err)
+	}
+	lineages, _ := ResolveCodexLineages(rollouts)
+	for _, lineage := range lineages {
+		if _, found := unresolved[lineage.RootID]; found {
+			counts[lineage.RootID] = lineage.PromptCount
+		}
+		for _, member := range lineage.MemberIDs {
+			if _, found := unresolved[member]; found {
+				counts[member] = lineage.PromptCount
+			}
+		}
+	}
 	return counts, nil
 }
 

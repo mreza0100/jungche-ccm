@@ -105,6 +105,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireSettings(); err != nil {
 		return err
 	}
+	if err := installer.wireCodexHooks(); err != nil {
+		return err
+	}
 	return installer.wireShell(false)
 }
 
@@ -151,6 +154,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 		installer.runSystemctl(ctx, "daemon-reload")
 	}
 	if err := installer.wireSettings(); err != nil {
+		return err
+	}
+	if err := installer.wireCodexHooks(); err != nil {
 		return err
 	}
 	if err := installer.wireShell(true); err != nil {
@@ -621,6 +627,40 @@ func (installer *engine) wireSettings() error {
 		}
 	}
 	return nil
+}
+
+func (installer *engine) wireCodexHooks() error {
+	path := filepath.Join(installer.options.Home, ".codex", "hooks.json")
+	raw, err := os.ReadFile(path)
+	existed := true
+	if errors.Is(err, fs.ErrNotExist) {
+		existed = false
+		raw = []byte("{\"hooks\":{}}\n")
+	} else if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	updated, changed, err := updateCodexHooks(
+		raw,
+		installer.options.Home,
+		installer.options.Mode == ModeUninstall,
+	)
+	if err != nil {
+		installer.skip("invalid Codex hooks JSON at " + path + ": " + err.Error())
+		return nil
+	}
+	if !changed {
+		installer.ok(path + " wiring")
+		return nil
+	}
+	return installer.change("rewrite "+path+" (backup preserved)", func() error {
+		if existed {
+			backup := availableBackup(path, installer.stamp)
+			if err := copyBackup(path, backup); err != nil {
+				return fmt.Errorf("backup %s: %w", path, err)
+			}
+		}
+		return atomicWrite(path, updated, 0o600)
+	})
 }
 
 func (installer *engine) wireShell(uninstall bool) error {

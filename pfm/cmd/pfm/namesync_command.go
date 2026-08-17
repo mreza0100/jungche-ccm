@@ -73,6 +73,9 @@ func runNameSync(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "pfm name-sync: %v\n", err)
 		return 1
 	}
+	if !*dryRun {
+		rememberCodexPaneBindings(ctx, database, live, stderr)
+	}
 	verb := "renamed"
 	if *dryRun {
 		verb = "would rename"

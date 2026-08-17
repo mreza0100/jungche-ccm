@@ -15,6 +15,7 @@ import (
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
@@ -24,9 +25,10 @@ import (
 )
 
 const (
-	testFreshSocketEnv = "PFM_TEST_FRESH_SOCKET"
-	testNowNSEnv       = "PFM_TEST_NOW_NS"
-	codexAvailableEnv  = "PFM_CODEX_AVAILABLE"
+	testFreshSocketEnv   = "PFM_TEST_FRESH_SOCKET"
+	testNowNSEnv         = "PFM_TEST_NOW_NS"
+	codexAvailableEnv    = "PFM_CODEX_AVAILABLE"
+	fleetRefreshInterval = 4 * time.Second
 )
 
 // gatherWarn reports one tmux probe warning raised during a gather pass.
@@ -467,6 +469,9 @@ func streamFleetRefreshesWith(
 	if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 		return
 	}
+	if !request.ReadOnly {
+		rememberCodexPaneBindings(ctx, database, live, stderr)
+	}
 
 	newIndexer := dependencies.newIndexer
 	if newIndexer == nil {
@@ -515,6 +520,95 @@ func streamFleetRefreshesWith(
 	select {
 	case updates <- result.Snapshot:
 	case <-ctx.Done():
+		return
+	}
+
+	ticker := time.NewTicker(fleetRefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		environment, err = resolveScanEnvironment()
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			continue
+		}
+		if request.View == compose.DefaultView {
+			data, err = loadDefaultFleetData(ctx, database)
+		} else {
+			data, err = loadFleetData(ctx, database)
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			continue
+		}
+		live, err = gatherFleet(
+			ctx,
+			environment.paths,
+			data,
+			request.ReadOnly,
+			warn,
+			stderr,
+		)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm refresh gather: %v\n", err)
+			continue
+		}
+		data, err = enrichLiveFleetData(ctx, database, data, live)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm refresh live cache: %v\n", err)
+			continue
+		}
+		if !request.ReadOnly {
+			rememberCodexPaneBindings(ctx, database, live, stderr)
+		}
+		if !sendRefresh(ctx, environment, request, data, live, true, updates) {
+			return
+		}
+		if _, err = indexer.Run(ctx, fleetindex.Options{
+			PriorityCWD: environment.currentDir,
+		}); err != nil {
+			fmt.Fprintf(stderr, "pfm refresh index: %v\n", err)
+			continue
+		}
+		data, err = loadFleetData(ctx, database)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			continue
+		}
+		if !sendRefresh(ctx, environment, request, data, live, false, updates) {
+			return
+		}
+	}
+}
+
+func rememberCodexPaneBindings(
+	ctx context.Context,
+	database *store.Store,
+	live gather.Snapshot,
+	stderr io.Writer,
+) {
+	manager, err := hide.New(database, hide.Dependencies{})
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm refresh Codex clear binding: %v\n", err)
+		return
+	}
+	for _, process := range live.Codex {
+		threadID := process.ThreadID
+		if threadID == "" {
+			threadID = rolloutIDFromPath(process.RolloutPath)
+		}
+		if err := manager.SeedCodexPane(
+			ctx,
+			process.Socket,
+			process.PaneID,
+			threadID,
+		); err != nil {
+			fmt.Fprintf(stderr, "pfm refresh Codex clear binding for %s %s: %v\n", process.Socket, process.PaneID, err)
+		}
 	}
 }
 

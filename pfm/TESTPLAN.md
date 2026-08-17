@@ -147,8 +147,9 @@ The four identity/state regressions that established this plan. A tagged row mus
 | `heal --thread` is a silent exit-0 no-op on a healthy thread | JAIL | `cmd/pfm/heal_jail_test.go:152-176` | |
 | ResumeCodex runs the native projection repair before the seat is created | JAIL | `internal/action/executor.go:113-127`, `testdata/golden/cmdlines.txt:47-54` | |
 | `name-sync` converges both engines' window names; `--dry-run` changes nothing | JAIL+tmux | `internal/gather/labels_jail_test.go:14-90` | |
-| `internal clear-hide` owns only `SessionEnd(reason=clear)`, ignores `/exit`, and fails open | JAIL | `cmd/pfm/clear_hide_jail_test.go` | |
-| clear-hide refreshes the indexed transcript before recording its prompt baseline | JAIL | `cmd/pfm/clear_hide_jail_test.go`, `internal/store/hidden_test.go` | |
+| picker/name-sync live scans seed empty Codex pane bindings but never overwrite a hook-supplied post-clear id | JAIL | `cmd/pfm/clear_hide_jail_test.go`, `cmd/pfm/pipeline.go` | |
+| `internal clear-hide` owns Claude `SessionEnd(reason=clear)` and Codex `SessionStart(source=clear)`, ignores unrelated lifecycle events, and fails open | JAIL | `cmd/pfm/clear_hide_jail_test.go` | |
+| clear-hide refreshes the indexed Claude transcript or Codex lineage before recording its prompt baseline | JAIL | `cmd/pfm/clear_hide_jail_test.go`, `internal/store/hidden_test.go` | |
 
 ## B — Picker TUI: key bindings and model state
 
@@ -176,10 +177,12 @@ The four identity/state regressions that established this plan. A tagged row mus
 | Paste message appends to the query                                                | JAIL      | `ui/model.go:131-133`                                    |            |
 | Query longer than `CharLimit` 200 → clipped, never panics                         | JAIL      | `ui/model.go:80,228-236`                                 |            |
 | Live refresh mid-picker preserves cursor, query and pending hides                 | JAIL      | `ui/model.go:247-271`                                    | B2         |
+| the open picker re-gathers and incrementally re-indexes every four seconds        | JAIL      | `cmd/pfm/pipeline_async_test.go`, `cmd/pfm/pipeline.go`  |            |
 | Refresh that DROPS the selected row → cursor falls back safely                    | JAIL      | `ui/model.go:390-399`                                    | B2         |
 | Window resize re-widths the query field                                           | JAIL      | `ui/model.go:123-127`                                    |            |
 | Footer legend matches the real bindings                                           | JAIL      | `ui/render.go:122-125`                                   |            |
 | every Stats subtab renders labeled column headers                                 | JAIL      | `ui/stats_test.go`, `ui/render.go`                        |            |
+| agent rows are orange rather than Codex magenta; Stats labels and values use semantic colors | JAIL | `ui/golden_test.go`, `ui/stats_test.go`, `ui/render.go` | |
 | Stats Chats renders lifetime `TOKENS` and elapsed-lifetime `TOK/H` per chat        | JAIL      | `stats/stats_test.go`, `stats/tokens.go`, `ui/stats_test.go` |            |
 | Stats Docker begins with cached container `NAME` and `IMAGE`, then cgroup metrics | JAIL      | `stats/docker_identity_test.go`, `stats/docker_identity.go`, `ui/stats_test.go` |            |
 | the two-second Stats sampler delta-parses transcript growth and performs at most one Docker API identity lookup per new cgroup id | JAIL | `stats/stats_test.go`, `stats/docker_identity_test.go` |            |
@@ -447,7 +450,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm-name-sync.timer` 15-min drift fallback                                                                       | JAIL+sh          | `systemd/pfm-name-sync.timer`             |            |
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
-| installer rewires clear-hide, group, statusline, usage and dream hooks across canonical accounts                 | JAIL             | `internal/installer`, installer tests     |            |
+| installer rewires Claude and Codex clear-hide, group, statusline, usage and dream hooks while preserving unrelated entries | JAIL | `internal/installer`, installer tests | |
 
 ---
 
@@ -486,6 +489,11 @@ they count as covered.
     expires with the question still in the record, and the read verbs over the
     same live chats. 22 checks, all green. Re-run on any engine upgrade —
     `ask` is only as true as the transcript shapes both engines write.
+17. ✅ DONE — Codex 0.147 `/clear` emits no immediate hook; the first prompt
+    in the fresh chat emits `SessionStart(source=clear)` with the new payload
+    session id and the live tmux pane. The inherited `CODEX_THREAD_ID` can
+    still name an older thread, so clear-hide must use the payload and the
+    pane binding. Re-run this experiment on any Codex upgrade.
 
 **Needs a real `claude` process:** 16. Agent row: a real non-primary-config-dir claude with `--session-id`. 17. Agent takeover through hidden `pfm internal agent-open` (`claude agents --json`). 18. The daemon-agent guard on the resume-inject path. 19. ✅ DONE — `/clear` emits `SessionEnd(reason=clear)` then `SessionStart(source=clear)` while `/exit` emits `SessionEnd(reason=prompt_input_exit)`; re-run on any Claude Code upgrade. 20. Open gate: a live chat whose birth account ≠ primary. 21. `pfm chat swap` full reboot-in-place (`respawn-pane -k`) + `--then` delivery. 22. Trust-prompt handling on a fresh config-dir/cwd pair. 23. ✅ DONE — `/chat:branch` authentic `--fork-session` starts idle on its own detached server with the parent model and no caller-pane mutation. 24. `pfm chat new NAME` teammate spawn and immutable socket identity. 25. `⚡1h` badge read from a live process's `/proc` environ. 26. ✅ DONE — `[Pasted text #N]` collapse measured for literal and bracketed-paste transport in a real Claude composer; auto-file fixtures cover the edge. Re-run on any Claude Code upgrade. 27. Dim-SGR placeholder vs a real draft (mash guard). 28. Selector/permission modal handling.
 28b. `pfm reap`'s busy probe against REAL `claude agents --json`; the jail proves fail-closed

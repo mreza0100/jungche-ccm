@@ -37,7 +37,22 @@ var (
 	codexStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#e879f9"))
 	agentStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f0abfc"))
+			Foreground(lipgloss.Color("#fb923c"))
+	statsHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#22d3ee"))
+	statsClaudeStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#5eead4"))
+	statsCPUStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#4ade80"))
+	statsMemoryStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#60a5fa"))
+	statsTokenStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#facc15"))
+	statsGearStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#fb923c"))
+	statsImageStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#c084fc"))
 	warnStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#fde047"))
 	labelStyle = lipgloss.NewStyle().
@@ -183,13 +198,10 @@ func (model Model) renderStatsHeader(width int) string {
 		return fmt.Sprintf("%.0f%%", percent)
 	}
 	header := model.stats.Header
-	line := fmt.Sprintf(
-		" CPU %s · PSI %.0f%% · RAM %.0f%% · SWAP %.0f%%",
-		value(header.CPUPercent, header.CPUValid),
-		header.PSIPercent,
-		header.RAMPercent,
-		header.SwapPercent,
-	)
+	line := " " + statsCPUStyle.Render("CPU "+value(header.CPUPercent, header.CPUValid)) +
+		" · " + statsTokenStyle.Render(fmt.Sprintf("PSI %.0f%%", header.PSIPercent)) +
+		" · " + statsMemoryStyle.Render(fmt.Sprintf("RAM %.0f%%", header.RAMPercent)) +
+		" · " + statsImageStyle.Render(fmt.Sprintf("SWAP %.0f%%", header.SwapPercent))
 	if model.statsError != "" {
 		line += " · " + warnStyle.Render("sample failed: "+model.statsError)
 	} else {
@@ -234,7 +246,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 			"  %-*s %-7s %7s %8s %6s %9s %9s %5s",
 			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/H", "GEAR",
 		)
-		lines = append(lines, dimStyle.Render(fillLine(header, innerWidth)))
+		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
 		for index, chat := range model.stats.Chats {
 			if len(lines) >= innerHeight {
 				break
@@ -255,17 +267,31 @@ func (model Model) renderStatsPanel(width, height int) string {
 			if chat.TokenRateValid {
 				tokensPerHour = formatTokenRate(chat.TokensPerHour)
 			}
-			line := fmt.Sprintf(
+			plain := fmt.Sprintf(
 				"  %-*s %-7s %7s %8s %5.1f%% %9s %9s %5s",
 				nameWidth, clipRunes(cleanField(chat.Name), nameWidth), chat.Engine, cpu,
 				formatSize(int64(chat.RSSBytes)), chat.RAMPercent,
 				tokens, tokensPerHour, gear,
 			)
-			line = fillLine(line, innerWidth)
+			plain = fillLine(plain, innerWidth)
 			if model.statsFocus == StatsFocusContent && index == model.statsCursor {
-				line = selectedStyle.Render("›" + ansi.Truncate(line[1:], maxInt(0, innerWidth-1), ""))
+				lines = append(lines, selectedStyle.Render("›"+ansi.Truncate(plain[1:], maxInt(0, innerWidth-1), "")))
+				continue
 			}
-			lines = append(lines, line)
+			engineStyle := statsClaudeStyle
+			if strings.EqualFold(chat.Engine, "codex") {
+				engineStyle = codexStyle
+			}
+			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
+				"%-*s", nameWidth, clipRunes(cleanField(chat.Name), nameWidth),
+			)) + " " + engineStyle.Render(fmt.Sprintf("%-7s", chat.Engine)) +
+				" " + statsCPUStyle.Render(fmt.Sprintf("%7s", cpu)) +
+				" " + statsMemoryStyle.Render(fmt.Sprintf("%8s", formatSize(int64(chat.RSSBytes)))) +
+				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", chat.RAMPercent)) +
+				" " + statsTokenStyle.Render(fmt.Sprintf("%9s", tokens)) +
+				" " + statsTokenStyle.Render(fmt.Sprintf("%9s", tokensPerHour)) +
+				" " + statsGearStyle.Render(fmt.Sprintf("%5s", gear))
+			lines = append(lines, fillLine(line, innerWidth))
 		}
 	} else {
 		available := maxInt(16, innerWidth-36)
@@ -275,7 +301,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 			"  %-*s %-*s %7s %8s %8s %6s",
 			nameWidth, "NAME", imageWidth, "IMAGE", "CPU%", "MEMORY", "LIMIT", "MEM%",
 		)
-		lines = append(lines, dimStyle.Render(fillLine(header, innerWidth)))
+		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
 		for index, container := range model.stats.Docker {
 			if len(lines) >= innerHeight {
 				break
@@ -288,7 +314,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 			if container.LimitBytes > 0 {
 				limit = formatSize(int64(container.LimitBytes))
 			}
-			line := fillLine(fmt.Sprintf(
+			plain := fillLine(fmt.Sprintf(
 				"  %-*s %-*s %7s %8s %8s %5.1f%%",
 				nameWidth, clipRunes(cleanField(container.Name), nameWidth),
 				imageWidth, clipRunes(cleanField(container.Image), imageWidth), cpu,
@@ -296,9 +322,18 @@ func (model Model) renderStatsPanel(width, height int) string {
 				container.MemoryPercent,
 			), innerWidth)
 			if model.statsFocus == StatsFocusContent && index == model.statsDockerCursor {
-				line = selectedStyle.Render("›" + ansi.Truncate(line[1:], maxInt(0, innerWidth-1), ""))
+				lines = append(lines, selectedStyle.Render("›"+ansi.Truncate(plain[1:], maxInt(0, innerWidth-1), "")))
+				continue
 			}
-			lines = append(lines, line)
+			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
+				"%-*s", nameWidth, clipRunes(cleanField(container.Name), nameWidth),
+			)) + " " + statsImageStyle.Render(fmt.Sprintf(
+				"%-*s", imageWidth, clipRunes(cleanField(container.Image), imageWidth),
+			)) + " " + statsCPUStyle.Render(fmt.Sprintf("%7s", cpu)) +
+				" " + statsMemoryStyle.Render(fmt.Sprintf("%8s", formatSize(int64(container.MemoryBytes)))) +
+				" " + statsMemoryStyle.Render(fmt.Sprintf("%8s", limit)) +
+				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", container.MemoryPercent))
+			lines = append(lines, fillLine(line, innerWidth))
 		}
 	}
 	if len(lines) == 1 && len(lines) < innerHeight {

@@ -2,6 +2,7 @@ package hide
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -146,6 +147,93 @@ func (manager *Manager) HideCleared(
 	return Target{
 		Engine: ClaudeEngine, ID: id, DataPath: transcript.Path,
 	}, true, nil
+}
+
+// CodexPaneBinding returns the last Codex thread observed in one immutable
+// tmux pane. Codex starts a new thread in the same pane for /clear, so this is
+// the only unambiguous way for its deferred SessionStart(source=clear) hook to
+// identify the completed thread without guessing from a shared cwd.
+func (manager *Manager) CodexPaneBinding(
+	ctx context.Context,
+	socket, pane string,
+) (string, bool, error) {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok {
+		return "", false, nil
+	}
+	return manager.database.Meta(ctx, key)
+}
+
+// BindCodexPane records the current thread for one live Codex pane in pfm's
+// private derived cache. The shared store remains reserved for operator state.
+func (manager *Manager) BindCodexPane(
+	ctx context.Context,
+	socket, pane, threadID string,
+) error {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok || threadID == "" {
+		return nil
+	}
+	current, found, err := manager.database.Meta(ctx, key)
+	if err != nil || found && current == threadID {
+		return err
+	}
+	return manager.database.SetMeta(ctx, key, threadID)
+}
+
+// SeedCodexPane records a live-scan identity only when no hook binding exists.
+// A Codex process cannot rewrite its own inherited CODEX_THREAD_ID after
+// /clear, so later scans may still report the completed id and must never
+// overwrite the authoritative SessionStart payload.
+func (manager *Manager) SeedCodexPane(
+	ctx context.Context,
+	socket, pane, threadID string,
+) error {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok || threadID == "" {
+		return nil
+	}
+	_, found, err := manager.database.Meta(ctx, key)
+	if err != nil || found {
+		return err
+	}
+	return manager.database.SetMeta(ctx, key, threadID)
+}
+
+// HideClearedCodex records a prompt-baseline hide on the visible lineage root
+// for an already indexed Codex thread. It never guesses an id: callers must
+// supply the pane binding established before /clear created the replacement.
+func (manager *Manager) HideClearedCodex(
+	ctx context.Context,
+	id string,
+) (Target, bool, error) {
+	if id == "" {
+		return Target{}, false, nil
+	}
+	lineage, found, err := manager.database.CodexLineage(ctx, id)
+	if err != nil || !found {
+		return Target{}, false, err
+	}
+	baseline := lineage.PromptCount
+	if err := manager.database.Hide(ctx, store.Hidden{
+		ID: lineage.RootID, Engine: CodexEngine, HiddenAt: manager.now().Unix(),
+		BaselinePrompts: &baseline,
+	}); err != nil {
+		return Target{}, false, err
+	}
+	return Target{
+		Engine: CodexEngine, ID: lineage.RootID, DataPath: lineage.Newest.Path,
+	}, true, nil
+}
+
+func codexPaneBindingKey(socket, pane string) (string, bool) {
+	socket = filepath.Base(strings.TrimSpace(socket))
+	pane = strings.TrimSpace(pane)
+	if socket == "" || socket == "." || pane == "" {
+		return "", false
+	}
+	address := base64.RawURLEncoding.EncodeToString([]byte(socket + "\x00" + pane))
+	return "codex_clear_pane_" + address, true
 }
 
 // Unhide removes one hide through the store's non-fatal busy policy.

@@ -123,3 +123,46 @@ func TestStatsTablesRenderLabeledColumnsAndUsage(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsPropertiesUseSemanticColors(t *testing.T) {
+	model := NewModel(fixtureSnapshot(140))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{
+		Ready: true,
+		Chats: []pfmstats.Chat{{
+			Name: "BUILD:one", Engine: "claude", CPUPercent: 12.5, CPUValid: true,
+			RSSBytes: 2 << 20, RAMPercent: 3.5, TokenCount: 1_250_000,
+			TokensKnown: true, TokensPerHour: 625_000, TokenRateValid: true,
+			GearCount: 2,
+		}},
+		Docker: []pfmstats.Container{{
+			Name: "professor-web", Image: "registry.example/professor:web",
+			CPUPercent: 4.5, CPUValid: true, MemoryBytes: 128 << 20,
+			LimitBytes: 512 << 20, MemoryPercent: 25,
+		}},
+	}
+	chatPanel := model.renderStatsPanel(140, 8)
+	for name, sequence := range map[string]string{
+		"header": "\x1b[1;38;2;34;211;238m",
+		"CPU":    "\x1b[38;2;74;222;128m",
+		"memory": "\x1b[38;2;96;165;250m",
+		"tokens": "\x1b[38;2;250;204;21m",
+		"gear":   "\x1b[38;2;251;146;60m",
+	} {
+		if !strings.Contains(chatPanel, sequence) {
+			t.Fatalf("Chats stats panel missing %s color %q:\n%s", name, sequence, chatPanel)
+		}
+	}
+	model.statsSubtab = StatsDocker
+	dockerPanel := model.renderStatsPanel(140, 8)
+	for name, sequence := range map[string]string{
+		"container name":  "\x1b[38;2;94;234;212m",
+		"container image": "\x1b[38;2;192;132;252m",
+		"CPU":             "\x1b[38;2;74;222;128m",
+		"memory":          "\x1b[38;2;96;165;250m",
+	} {
+		if !strings.Contains(dockerPanel, sequence) {
+			t.Fatalf("Docker stats panel missing %s color %q:\n%s", name, sequence, dockerPanel)
+		}
+	}
+}

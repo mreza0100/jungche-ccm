@@ -8,10 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/store"
 )
 
-func TestClearHideHookOwnsOnlySessionEndClear(t *testing.T) {
+func TestClaudeClearHideHookOwnsOnlySessionEndClear(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		payload  string
@@ -139,6 +141,98 @@ func TestClearHideHookDoubleFireIsIdempotent(t *testing.T) {
 	if err != nil || len(hidden) != 1 || hidden[0].ID != id ||
 		hidden[0].BaselinePrompts == nil || *hidden[0].BaselinePrompts != 1 {
 		t.Fatalf("double-fire hidden=%#v error=%v", hidden, err)
+	}
+}
+
+func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
+	root := jailTest(t)
+	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
+	t.Setenv("TMUX", filepath.Join(root, "tmux", "cx-probe")+",123,0")
+	t.Setenv("TMUX_PANE", "%7")
+	oldID := "33333333-3333-4333-8333-333333333333"
+	newID := "44444444-4444-4444-8444-444444444444"
+	rolloutPath := filepath.Join(
+		root,
+		"codex",
+		"sessions",
+		"2030",
+		"01",
+		"02",
+		"rollout-2030-01-02T03-04-05-"+oldID+".jsonl",
+	)
+	if err := os.MkdirAll(filepath.Dir(rolloutPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rolloutBody := strings.Join([]string{
+		`{"type":"session_meta","payload":{"id":"` + oldID + `","thread_source":"user","cwd":"/work/example"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"second"}]}}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(rolloutPath, []byte(rolloutBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertRollout(context.Background(), store.Rollout{
+		ID: oldID, Path: rolloutPath, CWD: "/work/example", UserThread: true,
+		PromptCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	startup := `{"hook_event_name":"SessionStart","source":"startup","session_id":"` + oldID + `"}`
+	if code, stdout, stderr := runClearHidePayload(t, startup); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Codex startup bind rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	clear := `{"hook_event_name":"SessionStart","source":"clear","session_id":"` + newID + `"}`
+	if code, stdout, stderr := runClearHidePayload(t, clear); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Codex clear rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	database, err = store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rememberCodexPaneBindings(
+		context.Background(),
+		database,
+		gather.Snapshot{Codex: []gather.LiveCodex{{
+			Socket: "cx-probe", PaneID: "%7", ThreadID: oldID,
+		}}},
+		&bytes.Buffer{},
+	)
+	manager, err := hide.New(database, hide.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, found, err := manager.CodexPaneBinding(context.Background(), "cx-probe", "%7")
+	if err != nil || !found || bound != newID {
+		t.Fatalf("stale live scan replaced clear-hook binding: bound=%q found=%v error=%v", bound, found, err)
+	}
+	hidden, found, err := database.Hidden(context.Background(), oldID)
+	if err != nil || !found || hidden.Engine != store.CodexEngine ||
+		hidden.BaselinePrompts == nil || *hidden.BaselinePrompts != 2 {
+		t.Fatalf("Codex clear hidden=%#v found=%v error=%v", hidden, found, err)
+	}
+	rollout, found, err := database.Rollout(context.Background(), oldID)
+	if err != nil || !found {
+		t.Fatalf("resolve refreshed rollout found=%v error=%v", found, err)
+	}
+	rollout.PromptCount = 3
+	if err := database.UpsertRollout(context.Background(), rollout); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := database.Hidden(context.Background(), oldID); err != nil || found {
+		t.Fatalf("grown Codex thread remained hidden: found=%v error=%v", found, err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
