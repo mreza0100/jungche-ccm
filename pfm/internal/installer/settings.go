@@ -6,10 +6,15 @@ import (
 	"strings"
 )
 
-func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool, error) {
+func updateSettings(
+	raw []byte,
+	home string,
+	uninstall bool,
+	owned settingsHookCounts,
+) ([]byte, bool, settingsHookCounts, error) {
 	var document map[string]any
 	if err := json.Unmarshal(raw, &document); err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
@@ -19,12 +24,23 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 	usageCommand := pfmBinary + " usage-hook"
 
 	changed := false
-	if !uninstall {
+	before := countSettingsHookCommands(document)
+	if uninstall {
+		if removeOwnedSettingsHooks(document, owned) {
+			changed = true
+		}
+	} else {
 		changed = rewriteCommandFields(document, func(command string) string {
-			if command == oldBinary || strings.HasPrefix(command, oldBinary+" ") {
+			switch {
+			case strings.Contains(command, "dreamer-agent-inject.sh"):
+				return pfmBinary + " dream hook agent-inject"
+			case strings.Contains(command, "dreamer-nudge.sh"):
+				return pfmBinary + " dream hook nudge"
+			case command == oldBinary || strings.HasPrefix(command, oldBinary+" "):
 				return pfmBinary + strings.TrimPrefix(command, oldBinary)
+			default:
+				return command
 			}
-			return command
 		})
 	}
 
@@ -51,6 +67,7 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 	}
 
 	entries := hookEntries(document, "UserPromptSubmit", !uninstall)
+	seenUserPromptCommands := map[string]bool{}
 	for _, entry := range entries {
 		hooks, _ := entry["hooks"].([]any)
 		kept := hooks[:0]
@@ -58,20 +75,29 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 			hook, _ := hookValue.(map[string]any)
 			command, _ := hook["command"].(string)
 			original := command
-			switch {
-			case strings.Contains(command, "chat/group.sh") && strings.HasSuffix(command, " hook"):
-				command = groupCommand
-			case strings.Contains(command, "cc-usage-hook.sh"):
-				command = usageCommand
+			if !uninstall {
+				switch {
+				case strings.Contains(command, "chat/group.sh") && strings.HasSuffix(command, " hook"):
+					command = groupCommand
+				case strings.Contains(command, "cc-usage-hook.sh"):
+					command = usageCommand
+				}
 			}
 			if command != original {
 				hook["command"] = command
 				hook["type"] = "command"
 				changed = true
 			}
-			if isRetiredBBCommand(command) || uninstall && (command == groupCommand || command == usageCommand) {
+			if isRetiredBBCommand(command) {
 				changed = true
 				continue
+			}
+			if !uninstall && (command == groupCommand || command == usageCommand) {
+				if seenUserPromptCommands[command] {
+					changed = true
+					continue
+				}
+				seenUserPromptCommands[command] = true
 			}
 			kept = append(kept, hookValue)
 		}
@@ -87,7 +113,7 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 			hook, _ := hookValue.(map[string]any)
 			command, _ := hook["command"].(string)
 			if command == clearCommand {
-				if uninstall || clearSeen {
+				if !uninstall && clearSeen {
 					changed = true
 					continue
 				}
@@ -100,24 +126,35 @@ func updateSettings(raw []byte, home string, full, uninstall bool) ([]byte, bool
 	pruneEmptyHooks(document, "SessionEnd")
 
 	if !uninstall {
+		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), groupCommand) {
+			appendHook(document, "UserPromptSubmit", groupCommand)
+			changed = true
+		}
 		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), usageCommand) {
 			appendHook(document, "UserPromptSubmit", usageCommand)
 			changed = true
 		}
-		if full && !clearSeen {
+		if !clearSeen {
 			appendHook(document, "SessionEnd", clearCommand)
 			changed = true
 		}
 	}
+	nextOwned := nextSettingsHookOwnership(
+		before,
+		countSettingsHookCommands(document),
+		owned,
+		pfmBinary,
+		uninstall,
+	)
 
 	if !changed {
-		return raw, false, nil
+		return raw, false, nextOwned, nil
 	}
 	updated, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
-		return nil, false, fmt.Errorf("encode settings: %w", err)
+		return nil, false, nil, fmt.Errorf("encode settings: %w", err)
 	}
-	return append(updated, '\n'), true, nil
+	return append(updated, '\n'), true, nextOwned, nil
 }
 
 func rewriteCommandFields(value any, rewrite func(string) string) bool {

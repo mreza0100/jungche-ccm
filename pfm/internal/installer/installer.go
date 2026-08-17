@@ -574,6 +574,11 @@ func (installer *engine) runSystemctl(ctx context.Context, arguments ...string) 
 }
 
 func (installer *engine) wireSettings() error {
+	ownershipPath := filepath.Join(installer.managedRoot, "settings-hook-ownership.json")
+	ownership, ownershipRaw, err := readSettingsHookOwnership(ownershipPath)
+	if err != nil {
+		return fmt.Errorf("read settings hook ownership %s: %w", ownershipPath, err)
+	}
 	candidates := []string{filepath.Join(installer.options.ConfigDir, "settings.json")}
 	if installer.options.ConfigDir == filepath.Join(installer.options.Home, ".claude") {
 		for account := 1; account <= 4; account++ {
@@ -584,7 +589,8 @@ func (installer *engine) wireSettings() error {
 		}
 	}
 	seen := map[string]bool{}
-	for index, candidate := range candidates {
+	seenOwnershipPaths := map[string]bool{}
+	for _, candidate := range candidates {
 		physical, err := filepath.EvalSymlinks(candidate)
 		if err != nil {
 			physical = candidate
@@ -594,23 +600,35 @@ func (installer *engine) wireSettings() error {
 			continue
 		}
 		seen[physical] = true
+		seenOwnershipPaths[physical] = true
 		raw, err := os.ReadFile(candidate)
 		if errors.Is(err, fs.ErrNotExist) {
+			if installer.options.Mode == ModeUninstall {
+				delete(ownership, physical)
+			}
 			installer.skip("no settings file at " + candidate)
 			continue
 		}
 		if err != nil {
 			return fmt.Errorf("read %s: %w", candidate, err)
 		}
-		updated, changed, err := updateSettings(
+		updated, changed, nextOwned, err := updateSettings(
 			raw,
 			installer.options.Home,
-			index == 0,
 			installer.options.Mode == ModeUninstall,
+			ownership[physical],
 		)
 		if err != nil {
+			if installer.options.Mode == ModeUninstall && len(ownership[physical]) > 0 {
+				return fmt.Errorf("refuse to strand owned hooks in invalid settings JSON at %s: %w", candidate, err)
+			}
 			installer.skip("invalid settings JSON at " + candidate + ": " + err.Error())
 			continue
+		}
+		if len(nextOwned) == 0 {
+			delete(ownership, physical)
+		} else {
+			ownership[physical] = nextOwned
 		}
 		if !changed {
 			installer.ok(candidate + " wiring")
@@ -626,7 +644,46 @@ func (installer *engine) wireSettings() error {
 			return err
 		}
 	}
-	return nil
+	if installer.options.Mode == ModeUninstall {
+		for path := range ownership {
+			if seenOwnershipPaths[path] {
+				continue
+			}
+			if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+				delete(ownership, path)
+				continue
+			} else if err != nil {
+				return fmt.Errorf("inspect unvisited owned settings path %s: %w", path, err)
+			}
+			return fmt.Errorf("refuse to strand hooks in unvisited owned settings path %s", path)
+		}
+	}
+	return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
+}
+
+func (installer *engine) writeSettingsHookOwnership(
+	path string,
+	existing []byte,
+	ownership map[string]settingsHookCounts,
+) error {
+	if len(ownership) == 0 {
+		if len(existing) == 0 {
+			installer.ok(path)
+			return nil
+		}
+		return installer.change("remove "+path, func() error { return os.Remove(path) })
+	}
+	same, encoded, err := sameSettingsHookOwnership(existing, ownership)
+	if err != nil {
+		return err
+	}
+	if same && sameFile(path, encoded, 0o600) {
+		installer.ok(path)
+		return nil
+	}
+	return installer.change("write "+path, func() error {
+		return atomicWrite(path, encoded, 0o600)
+	})
 }
 
 func (installer *engine) wireCodexHooks() error {
