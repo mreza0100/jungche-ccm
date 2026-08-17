@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# uv / virtualenv
+.venv/
+
+
+# tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# the on-disk fetch cache (URL-keyed markdown + downloaded assets)
+.cache/
+# legacy name, kept so an existing cache dir stays ignored after the rename
+.fetch/
+
+# remote-transport secrets (passphrase, static bearer token) — .env.remote.example IS committed
+.env.*
+!.env.*.example
+
+# OAuth state for the remote transport: registered clients + refresh-token digests
+.harvester-state/
+
+# runtime scratch — logs (tmp/logs/harvester.log) and any working files
+tmp/
+
+# OS cruft
+.DS_Store
+Thumbs.db
