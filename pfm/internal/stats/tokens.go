@@ -108,6 +108,10 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []string) {
 	info, err := os.Stat(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			delete(sampler.tokenCache, path)
+			return tokenMeasure{}, nil
+		}
 		return tokenMeasure{}, []string{fmt.Sprintf("read chat token transcript %s: %v", path, err)}
 	}
 	if !info.Mode().IsRegular() {
@@ -128,6 +132,10 @@ func (sampler *Sampler) readTokenUsageLocked(path string) (tokenMeasure, []strin
 
 	file, err := os.Open(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			delete(sampler.tokenCache, path)
+			return tokenMeasure{}, nil
+		}
 		return tokenMeasure{}, []string{fmt.Sprintf("open chat token transcript %s: %v", path, err)}
 	}
 	if _, err := file.Seek(entry.offset, io.SeekStart); err != nil {

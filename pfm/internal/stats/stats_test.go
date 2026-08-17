@@ -167,6 +167,37 @@ func TestSamplerCountsClaudeAndCodexLifetimeTokensIncrementally(t *testing.T) {
 	}
 }
 
+// A live row and its transcript inventory are sampled independently. The
+// transcript may disappear between those snapshots; that ordinary refresh
+// race means "tokens unknown", not a warning painted across the Stats header.
+func TestSamplerTreatsAMissingLiveTokenTranscriptAsRefreshChurn(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	missing := filepath.Join(root, "rollout-disappeared.jsonl")
+	sampler := &Sampler{ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1}
+	snapshot, err := sampler.Sample([]compose.Row{{
+		Kind: compose.LiveCodex, Socket: "probe-missing", Name: "worker",
+		Path: missing, PanePIDs: []int{100},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Warnings) != 0 {
+		t.Fatalf("missing transcript leaked into Stats warnings: %v", snapshot.Warnings)
+	}
+	if len(snapshot.Chats) != 1 || snapshot.Chats[0].TokensKnown {
+		t.Fatalf("missing transcript token state = %#v", snapshot.Chats)
+	}
+}
+
 func TestDockerIdentityIsResolvedOncePerCgroupID(t *testing.T) {
 	root := t.TempDir()
 	proc := filepath.Join(root, "proc")
