@@ -164,7 +164,9 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	if wide && contextTokens > 0 {
 		l2 += sep + dim + "🧮" + formatTokens(contextTokens) + reset
 	}
-	if wide && data.TranscriptPath != "" {
+	// Only the width gate belongs here. Whether the transcript is readable is
+	// the segment's own question to answer, and it answers it visibly.
+	if wide {
 		l2 += cacheWindowSegment(runtime, now, data.TranscriptPath)
 	}
 	totalTokens := data.ContextWindow.TotalInputTokens + data.ContextWindow.TotalOutputTokens
@@ -559,15 +561,28 @@ func harvestRateLimits(runtime Runtime, now time.Time, account int, data input) 
 }
 
 func cacheWindowSegment(runtime Runtime, now time.Time, transcriptPath string) string {
-	info, err := os.Stat(transcriptPath)
-	if err != nil || info.IsDir() {
-		return ""
-	}
 	ttl := time.Hour
 	label := "1h"
 	if runtime.getenv("FORCE_PROMPT_CACHING_5M") == "1" {
 		ttl = 5 * time.Minute
 		label = "5m"
+	}
+	// A transcript we could not read is NOT a chat without a cache window, and
+	// the two must never share a rendering. Returning "" here made the segment
+	// disappear, which is indistinguishable from a statusline that has no cache
+	// timer at all — so the one state worth shouting about, a chat running with
+	// transcript saving off, arrived as silence. That chat cannot be resumed and
+	// its window cannot be measured; the statusline is where the user finds out.
+	//
+	// "!" is deliberately not "?": "?" means the transcript WAS read and simply
+	// carries no user turn to anchor on, which is a fact about the chat. "!" is
+	// a fact about us — we could not look.
+	if transcriptPath == "" {
+		return sep + red + "💾" + label + "!" + reset
+	}
+	info, err := os.Stat(transcriptPath)
+	if err != nil || info.IsDir() {
+		return sep + red + "💾" + label + "!" + reset
 	}
 	cachePath := filepath.Join(
 		runtime.CacheDir,

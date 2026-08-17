@@ -2,6 +2,7 @@ package statusline
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -64,6 +65,16 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// A captured input cannot ship the transcript path it was captured
+			// with — that is a machine home path, which never enters a tracked
+			// file. The jail supplies one instead, so the golden exercises the
+			// cache window on the path that renders a WINDOW; the broken states
+			// are pinned separately by the regression test below.
+			raw = []byte(strings.ReplaceAll(
+				string(raw),
+				"__TRANSCRIPT__",
+				writeGoldenTranscript(t, root, now.Add(-12*time.Minute)),
+			))
 			got, err := Render(context.Background(), raw, Runtime{
 				Now:          func() time.Time { return now },
 				Home:         root,
@@ -90,6 +101,18 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 			}
 		})
 	}
+}
+
+// writeGoldenTranscript lays down a one-turn transcript inside the jail and
+// returns its path, so a golden can anchor the cache window at a fixed offset.
+func writeGoldenTranscript(t *testing.T, root string, turn time.Time) string {
+	t.Helper()
+	path := filepath.Join(root, "transcript.jsonl")
+	body := `{"type":"user","timestamp":"` + turn.UTC().Format(time.RFC3339Nano) + `"}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func writeGoldenCache(t *testing.T, path, body string, now time.Time) {
@@ -221,6 +244,65 @@ func TestFleetSnapshotCountsOnlySocketsPresentInProcOnLinux(t *testing.T) {
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
 	if !strings.Contains(plain, "·1 ·1") || strings.Contains(plain, "·2 ·1") {
 		t.Fatalf("graveyard socket affected live fleet count: %q", plain)
+	}
+}
+
+// TestCacheWindowSaysSoWhenTheTranscriptCannotBeRead pins the one thing this
+// segment must never do: report "I could not measure the cache window" with the
+// same pixels as "this statusline has no cache window". Both halves matter, so
+// the readable case is asserted alongside the broken ones — a marker that is
+// always on says nothing either.
+func TestCacheWindowSaysSoWhenTheTranscriptCannotBeRead(t *testing.T) {
+	root := t.TempDir()
+	now := time.Unix(1_786_838_400, 0)
+	live := filepath.Join(root, "live.jsonl")
+	turn := `{"type":"user","timestamp":"` +
+		now.Add(-2*time.Minute).UTC().Format(time.RFC3339Nano) + `"}` + "\n"
+	if err := os.WriteFile(live, []byte(turn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, testcase := range []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "a readable transcript anchors the window", path: live, want: "💾5m✓3m:0s"},
+		{name: "a path with no file behind it", path: filepath.Join(root, "gone.jsonl"), want: "💾5m!"},
+		{name: "no path at all", path: "", want: "💾5m!"},
+		{name: "a path that is a directory", path: root, want: "💾5m!"},
+	} {
+		t.Run(testcase.name, func(t *testing.T) {
+			cacheDir := filepath.Join(t.TempDir(), "cache")
+			if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(testcase.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			input := []byte(`{"model":{"display_name":"Opus 4"},` +
+				`"workspace":{"current_dir":"/work/sample"},` +
+				`"context_window":{"used_percentage":10},` +
+				`"transcript_path":` + string(encoded) + `}`)
+			got, err := Render(context.Background(), input, Runtime{
+				Now:      func() time.Time { return now },
+				Home:     root,
+				CacheDir: cacheDir,
+				TmuxDir:  filepath.Join(root, "tmux"),
+				ProcRoot: filepath.Join(root, "proc"),
+				Columns:  120,
+				UID:      1000,
+				Env:      map[string]string{"FORCE_PROMPT_CACHING_5M": "1"},
+				Command:  quietRunner{},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
+			if !strings.Contains(plain, testcase.want) {
+				t.Fatalf("cache window lacks %q:\n%q", testcase.want, plain)
+			}
+		})
 	}
 }
 
