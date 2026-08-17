@@ -1,6 +1,6 @@
 # placeholder-map.tsv — executable copy of the refresh placeholder table.
 # Human copy: docs/commands/pcm/references/refresh.md § Placeholders; token
-# registry: blueprint/PLACEHOLDERS.md. genericize.sh applies rows longest-
+# registry: docs/PLACEHOLDERS.md. genericize.sh applies rows longest-
 # search-first; mode word = \b-bounded match, literal = raw substring.
 # Deliberately absent (LLM-judgment territory, per refresh.md): domain nouns
 # (therapist/patient/session — persona metaphors keep them), roster collapsing

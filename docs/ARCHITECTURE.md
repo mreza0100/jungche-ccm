@@ -134,7 +134,7 @@ The maintainer's own monorepo — where the pipeline runs daily and improvements
 no special copy of anything **(designed; today it is the origin the blueprint is derived from)**.
 The terminal state:
 
-- **Framework templates are authored in `blueprint/templates/`; fleet assets are authored in
+- **Framework templates are authored in `blueprint/`; fleet assets are authored in
   `pfm/internal/installer/assets/`.** The binary embeds the latter; machines consume both through
   their owning install paths rather than a duplicate host bundle.
 - **`refresh-map.json` retires file-by-file.** Its `curated` class (template IS the source, no

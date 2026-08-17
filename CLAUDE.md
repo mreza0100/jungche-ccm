@@ -1,13 +1,13 @@
 # Professor — the discipline layer for Claude Code
 
-**What this repo is:** the framework itself, not an app that uses it. Everything under `blueprint/templates/` is **shipped source** — an adopter's live agent prompts, one clone away. A sloppy sentence here becomes a misbehaving agent in someone else's repo tomorrow. Treat prompt text as production code, because it is.
+**What this repo is:** the framework itself, not an app that uses it. Everything under `blueprint/` is **shipped source** — an adopter's live agent prompts, one clone away. A sloppy sentence here becomes a misbehaving agent in someone else's repo tomorrow. Treat prompt text as production code, because it is.
 
 **Architecture:** a roster of four projects in one repo — one publication surface, three engines.
 
 - `blueprint/` — the shipped framework: templates (agents, commands, scripts, codex), plus `BLUEPRINT.md` (philosophy), `SETUP.md` (generation spec), `PLACEHOLDERS.md` (substitution law). Markdown + shell. No build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
 - `pfm/` — the Professor-Fleet-Manager fleet engine: Go 1.24, `cmd/pfm` + `internal/*`, tested with `go test ./...`. It owns its staged host assets (zsh shim, systemd units, command cards) under `pfm/internal/installer/assets/`; `pfm install` stages them.
 - `dreamer/` — the memory-organ engine: TypeScript (ESM, Node ≥20), `npm run typecheck` / `build` / `test`.
-- `ENGINES/wave-walker/engine/` — the wave-walker engine: JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK; `npm run verify` then `npm test` (vitest).
+- `engines/wave-walker/engine/` — the wave-walker engine: JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK; `npm run verify` then `npm test` (vitest).
 
 Root `README.md`, `INSTALL.md`, `CHANGELOG.md`, `VERSION`, and `releases/` are the **public face**. They are edited with the same care as templates.
 
@@ -45,7 +45,7 @@ node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-code
 
 ### Prompt & template code
 
-- **A template IS the live source file, verbatim** — same structure, mechanics, character, working logic — with only project-specific *values* swapped for `blueprint/PLACEHOLDERS.md` tokens. Never abstract, skeletonize, summarize, or "genericize" the prose. If a line works and carries no project-specific value, it ships unchanged.
+- **A template IS the live source file, verbatim** — same structure, mechanics, character, working logic — with only project-specific *values* swapped for `docs/PLACEHOLDERS.md` tokens. Never abstract, skeletonize, summarize, or "genericize" the prose. If a line works and carries no project-specific value, it ships unchanged.
 - **One canonical token per concept** — never invent a synonym for a registered placeholder.
 - **No dangling pointers.** A command that references a file, agent, command, or reference card that the install does not produce is a broken instruction. Grep before you cite; delete the pointer or ship the target.
 - **Every check names what its own broken state reports.** A gate that answers "fine" both when things are fine and when it is broken is a coincidence detector. An error never renders as ABSENCE: absence is a claim about the world ("nothing there"), an error is a claim about ourselves ("we failed to look"). Distinguish them at the visible surface — logging is necessary and not sufficient.
@@ -66,7 +66,7 @@ node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-code
 
 - **Only gitter WRITES git** — commit / merge / checkout / branch / stash / reset / push and every other state-changing git are gitter's, for every agent and for the main loop. Read-only git (`status`/`diff`/`log`/`show`/`rev-parse`) is open to all.
 - **Never commit broken code.** Tests pass before the commit, not after it.
-- This install carries **no worktree pipeline** — work lands on `main` under `/dev` verification and a gitter commit. That is a deliberate scope choice, not a missing piece: the pipeline commands (`/wave:*`) live in `blueprint/templates/commands/` as shipped source, not as this repo's own workflow.
+- This install carries **no worktree pipeline** — work lands on `main` under `/dev` verification and a gitter commit. That is a deliberate scope choice, not a missing piece: the pipeline commands (`/wave:*`) live in `blueprint/commands/` as shipped source, not as this repo's own workflow.
 - **Guarded files:** a PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` — and behind a session that has provably read `.claude/commands/quality/prompt.md`. The deny message carries the unlock steps. Never route around it by disabling the hook.
 - Execute explicit instructions as given: founder delegation ("run it", "finish it") runs to completion; never narrow, drop, or swap scope, nor override with your own caution; raise a genuine concern up front.
 - **"God speed"** = full autonomy: the founder is away; resolve every ambiguity yourself, finish, and report the decisions at the end. Only failure = stopping to ask.

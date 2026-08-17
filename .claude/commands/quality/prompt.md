@@ -1,11 +1,11 @@
 ---
 name: quality:prompt
-description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/**/*.md, .claude/skills/*/SKILL.md, or any shipped prompt template under blueprint/templates/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. General prompt-quality law for ANY LLM-consumed prompt — leanness (cut test, compaction, positive framing, no time-sensitive narration, one canonical term) plus correctness (compute numbers in code, no conflicting directives, per-language validation). Claude-harness file rules (size limits, voice location, hooks, routing) live in /pcm § Claude-harness prompt law. Mandatory load for /pcm — the guard hook denies prompt-file edits until this file is read.
+description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/**/*.md, .claude/skills/*/SKILL.md, or any shipped prompt template under blueprint/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. General prompt-quality law for ANY LLM-consumed prompt — leanness (cut test, compaction, positive framing, no time-sensitive narration, one canonical term) plus correctness (compute numbers in code, no conflicting directives, per-language validation). Claude-harness file rules (size limits, voice location, hooks, routing) live in /pcm § Claude-harness prompt law. Mandatory load for /pcm — the guard hook denies prompt-file edits until this file is read.
 ---
 
 # Prompt Quality
 
-You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (this repo's own agents, an adopter's install compiled from blueprint/templates/, or the Codex mirror). A human-consumed reference file (README, docs/) follows `quality:doc` instead.
+You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (this repo's own agents, an adopter's install compiled from blueprint/, or the Codex mirror). A human-consumed reference file (README, docs/) follows `quality:doc` instead.
 
 ## Cut mode — `quality:prompt cut <file>`
 

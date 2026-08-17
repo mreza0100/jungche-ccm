@@ -6,13 +6,13 @@ node_modules/
 .env.*
 !.env.example
 /tmp/
-ENGINES/wave-walker/engine/tmp/
-ENGINES/wave-walker/engine/dist/
-ENGINES/wave-walker/engine/headless-equivalence-input.json
-ENGINES/wave-walker/engine/runtime-smoke-input.json
+engines/wave-walker/engine/tmp/
+engines/wave-walker/engine/dist/
+engines/wave-walker/engine/headless-equivalence-input.json
+engines/wave-walker/engine/runtime-smoke-input.json
 .worktrees/
 # Source-fetched skills are cloned at install from their own public repos
-# (blueprint/templates/skills/sources.json) and are NEVER vendored here: a
+# (blueprint/skills/sources.json) and are NEVER vendored here: a
 # tracked copy is exactly the silent drift the sources.json law exists to
 # prevent — and each carries its own upstream LICENSE with its author's name,
 # which the leak gate correctly refuses for this repo.

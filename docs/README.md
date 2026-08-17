@@ -42,12 +42,12 @@ A complete `.claude/` infrastructure that turns Claude Code from "an AI that wri
 ## What's in the box
 
 ```
-blueprint/
-├── README.md              ← you are here
-├── BLUEPRINT.md           ← philosophy, three-tier framework, load-bearing walls
-├── ARCHITECTURE.md        ← mechanics: source→render→install→update, ownership law, tiers
-├── SETUP.md               ← interactive install interview (Claude conducts it)
-└── templates/
+docs/                     ← you are here
+├── README.md, BLUEPRINT.md, ARCHITECTURE.md, SETUP.md, PLACEHOLDERS.md, RELEASE.md
+└── references/
+
+blueprint/                ← the shipped product, one clone away
+    ├── refresh-map.json  ← every template ↔ its live source
     ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
     ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, save

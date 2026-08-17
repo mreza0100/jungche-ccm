@@ -24,7 +24,7 @@ proj_dir() {
     blueprint) echo "blueprint" ;;
     pfm)  echo "pfm" ;;
     dreamer)   echo "dreamer" ;;
-    walker)    echo "ENGINES/wave-walker/engine" ;;
+    walker)    echo "engines/wave-walker/engine" ;;
     *) return 1 ;;
   esac
 }
@@ -135,12 +135,12 @@ act_blueprint() { # the shipped product: mechanical gates, no build
       # Scope: markdown templates only. Shell/JS templates use {VAR} for their own
       # runtime values, which are not install placeholders and never will be.
       local used unregistered out
-      used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint/templates 2>/dev/null | sort -u || true)
+      used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint 2>/dev/null | sort -u || true)
       if [[ -z "$used" ]]; then
         fail_step "placeholder scan produced NO tokens at all — the SCAN is broken, not the templates"
       else
         unregistered=$(comm -23 <(printf '%s\n' "$used") \
-                                <(grep -ohE '\{[A-Z][A-Z0-9_]+\}' blueprint/PLACEHOLDERS.md | sort -u))
+                                <(grep -ohE '\{[A-Z][A-Z0-9_]+\}' docs/PLACEHOLDERS.md | sort -u))
         if [[ -z "$unregistered" ]]; then
           ok "every markdown-template token is registered in PLACEHOLDERS.md ($(wc -l <<<"$used") tokens)"
         else
@@ -149,7 +149,7 @@ act_blueprint() { # the shipped product: mechanical gates, no build
           printf '%s\n' "$unregistered" > "$out"
           warn "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md"
           info "most frequent 10 (full list: $out):"
-          grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint/templates \
+          grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint \
             | grep -xFf "$out" | sort | uniq -c | sort -rn | head -10 \
             | while read -r n tok; do info "  ${n}x  $tok"; done
         fi

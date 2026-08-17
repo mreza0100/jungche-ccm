@@ -27,16 +27,16 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `CLAUDE.md` — the law + guards + routing; names mandatory-load obligations; carries no rosters of commands or skills (§ Authoring conventions, no-rosters law)
 - `.claude/commands/**/*.md` — slash commands (`/pcm`, `/pcm:release`, `/pcm:context-meter`, `/quality:*`, `/dev`, `/git`)
 - `.claude/agents/*.md` — registered agents: `gitter` (the sole git writer) and `tracer` (consumer-tree trace)
-- `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set; source-fetched per `blueprint/templates/skills/sources.json`, never vendored)
+- `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set; source-fetched per `blueprint/skills/sources.json`, never vendored)
 - `.claude/output-styles/*.md` — persona registry: `professor.md` (session style) + `dr-house.md` (this command's overlay)
 - `.claude/scripts/*.{sh,mjs}` — dev.sh, pcm-guard.sh, guard-stamp.sh, format-md.sh, codex-sync.sh, build-codex.mjs (Claude→Codex compiler)
 - `docs/commands/{cmd}/references/` — command-owned reference docs (`$CDOCS/$CMD/$REFS/`); today: `pcm/references/{audit-scopes,refresh}.md`
-- **The shipped product** — `blueprint/templates/**` is an adopter's live framework, one clone away. Same law, higher stakes: a change there ships to every future install. `blueprint/{BLUEPRINT,SETUP,PLACEHOLDERS}.md` are its spec; `blueprint/refresh-map.json` maps each template to the live source it is derived from.
+- **The shipped product** — `blueprint/**` is an adopter's live framework, one clone away. Same law, higher stakes: a change there ships to every future install. `docs/{BLUEPRINT,SETUP,PLACEHOLDERS}.md` are its spec; `blueprint/refresh-map.json` maps each template to the live source it is derived from.
 
 ### Critical invariants
 
 - **Path variables** — files use `$CDOCS`, `$REFS`, `$RESEARCH`, never hardcoded doc paths. Defined in root `CLAUDE.md` § Path vars.
-- **Two audiences, one law** — a rule you write into `.claude/**` binds this repo; the same rule in `blueprint/templates/**` binds every adopter. Never let the two drift silently: if a fix belongs upstream, it lands in the template too, and the change logs to `release.md`.
+- **Two audiences, one law** — a rule you write into `.claude/**` binds this repo; the same rule in `blueprint/**` binds every adopter. Never let the two drift silently: if a fix belongs upstream, it lands in the template too, and the change logs to `release.md`.
 - **Agent frontmatter must match behavior** — `name`, `description`, `tools` fields.
 - **Registry over tables** — a command/skill's `description:` frontmatter IS its routing (the harness injects that registry into every session); `disable-model-invocation: true` hides a command from the model's registry — set it only on user-triggered-by-design commands. The roster ban and what CLAUDE.md may carry: § Authoring conventions (CLAUDE.md).
 - **No command >35KB, no agent >15KB** — token consciousness. Every `general-purpose` spawn carries the full root CLAUDE.md (+ git status) and a build spawns 30+ agents, so a root CLAUDE.md line is the most expensive line in the framework — weight cuts by that multiplier (`Explore`/`Plan` types skip the CLAUDE.md chain; the output style appends to the main-loop system prompt only). `@path` imports expand at launch, so splitting CLAUDE.md saves zero context — cut content, don't relocate it.
@@ -47,10 +47,10 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 ### Inventory (derive, never recall)
 
-- **Projects:** `blueprint/` (markdown + shell, no build), `pfm/` (Go), `dreamer/` (npm), `ENGINES/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
+- **Projects:** `blueprint/` (markdown + shell, no build), `pfm/` (Go), `dreamer/` (npm), `engines/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
 - **Agents:** `ls .claude/agents/` — model tiers per CLAUDE.md § Model Selection
 - **Commands, skills, output styles:** `ls -R .claude/commands/ .claude/skills/ .claude/output-styles/`
-- **Shipped surface:** `find blueprint/templates -type f | wc -l` — the count that matters to adopters
+- **Shipped surface:** `find blueprint -type f -not -name refresh-map.json | wc -l` — the count that matters to adopters
 
 ---
 
@@ -104,10 +104,10 @@ For things that must happen every time (formatting, validation, secret-scanning)
 
 Every infra change `/pcm` makes is recorded as the final step of the work, in exactly **one** `.professor/` ledger:
 
-- **`drift.md`** — customizations of THIS repo's own self-install that must **stay local** and never be generalized into `blueprint/templates/**`. Also holds the install history.
+- **`drift.md`** — customizations of THIS repo's own self-install that must **stay local** and never be generalized into `blueprint/**`. Also holds the install history.
 - **`release.md`** — framework changes that belong upstream, **pending publication**. `/pcm:release` consumes this file to build the CHANGELOG, then clears it.
 
-The test: is the change an **improvement to existing infra** (a framework change any Professor adopter could use)? → `release.md`, and the matching `blueprint/templates/**` file changes in the same pass. Is it a **customization only this repo wants** (a rule about publishing the blueprint, a roster fact, a gate that only makes sense upstream)? → `drift.md`. **Unsure? Ask the founder — never guess.** Entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — release step 5 copies them verbatim.
+The test: is the change an **improvement to existing infra** (a framework change any Professor adopter could use)? → `release.md`, and the matching `blueprint/**` file changes in the same pass. Is it a **customization only this repo wants** (a rule about publishing the blueprint, a roster fact, a gate that only makes sense upstream)? → `drift.md`. **Unsure? Ask the founder — never guess.** Entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — release step 5 copies them verbatim.
 
 **Standalone-skill special case:** a change to a `sources.json` skill logs one `release.md` line and bumps the skill's `version:` frontmatter — release step 5b ships the substance to the skill's own public repo; the Professor changelog carries only the version pointer + re-pull note.
 
@@ -133,7 +133,7 @@ Before ANY changes, read all affected files. Grep every reference across `.claud
 - Agent frontmatter matches actual behavior and tools needed
 - Every `/command`, `subagent_type:`, script path, and reference doc named in a file EXISTS — this install ships a subset of the blueprint, so an upstream-shaped pointer is a dangling pointer here
 - Tech stack descriptions match `go.mod` / `package.json`
-- A rule changed in `.claude/**` that belongs upstream has its `blueprint/templates/**` twin changed in the same pass — and vice versa
+- A rule changed in `.claude/**` that belongs upstream has its `blueprint/**` twin changed in the same pass — and vice versa
 
 ### Step 3 — Plan
 
@@ -178,7 +178,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 
 ### Step 6 — Report
 
-Report, in order: "Infrastructure updated, N files changed" — the changes (what and why) — consistency verified (stale references none/N-fixed; agent definitions consistent; Codex mirror `check` clean) — "Logged to: drift.md | release.md — {one-line entry}" — whether the upstream twin under `blueprint/templates/**` changed too, or why it must not — trees touched beyond this repo (`$HOME/.claude/`, `$HOME/.codex/`) with their uncommitted state, or "none" — manual verification needed (list, or "none").
+Report, in order: "Infrastructure updated, N files changed" — the changes (what and why) — consistency verified (stale references none/N-fixed; agent definitions consistent; Codex mirror `check` clean) — "Logged to: drift.md | release.md — {one-line entry}" — whether the upstream twin under `blueprint/**` changed too, or why it must not — trees touched beyond this repo (`$HOME/.claude/`, `$HOME/.codex/`) with their uncommitted state, or "none" — manual verification needed (list, or "none").
 
 Record the logging line (§ Logging) before reporting — no change ships unlogged.
 
@@ -223,11 +223,11 @@ Ask: "Want me to fix these issues?"
 
 ## Special Operations
 
-**Full rename:** Grep ALL occurrences (including `blueprint/templates/**`, `README.md`, `BLUEPRINT.md`, `SETUP.md`, `refresh-map.json`) → update agents → update CLAUDE.md → final grep for zero stale refs → recompile the Codex mirror.
+**Full rename:** Grep ALL occurrences (including `blueprint/**`, `README.md`, `BLUEPRINT.md`, `SETUP.md`, `refresh-map.json`) → update agents → update CLAUDE.md → final grep for zero stale refs → recompile the Codex mirror.
 
-**New agent:** Create `.claude/agents/{name}.md` → add its row to root `CLAUDE.md` § Subagent dispatch → `build-codex.mjs generate` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/templates/agents/{name}.md`.
+**New agent:** Create `.claude/agents/{name}.md` → add its row to root `CLAUDE.md` § Subagent dispatch → `build-codex.mjs generate` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/agents/{name}.md`.
 
-**New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter). A skill meant for adopters is registered in `blueprint/templates/skills/sources.json` and lives in its OWN public repo — the blueprint never vendors one.
+**New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter). A skill meant for adopters is registered in `blueprint/skills/sources.json` and lives in its OWN public repo — the blueprint never vendors one.
 
 **New command:** Create `.claude/commands/{name}.md` with a `description:` → it self-indexes; add to CLAUDE.md ONLY if it's a guard or a non-obvious routing decision.
 

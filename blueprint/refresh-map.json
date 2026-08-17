@@ -37,63 +37,42 @@
     ".claude/commands/prod-deploy.md"
   ],
   "templates": {
-    "README.md": {
-      "curated": true
-    },
-    "BLUEPRINT.md": {
-      "curated": true
-    },
-    "SETUP.md": {
-      "curated": true
-    },
-    "PLACEHOLDERS.md": {
-      "curated": true
-    },
-    "RELEASE.md": {
-      "curated": true
-    },
-    "references/ai-maintainability-disciplines.md": {
-      "curated": true
-    },
-    "references/memory-backup.md": {
-      "curated": true
-    },
-    "templates/CLAUDE.md": {
+    "CLAUDE.md": {
       "sources": {
         "CLAUDE.md": "806cb0f47036ed2a5b6f69ae84516efae65199055371710be3e15027b4d98ada"
       }
     },
-    "templates/agents/gitter.md": {
+    "agents/gitter.md": {
       "sources": {
         ".claude/agents/gitter.md": "c766eebaf51a5c26ddc373d1ca1e697c3ce40562b7dbbd73b6be4f765e321270"
       }
     },
-    "templates/agents/mono-architect.md": {
+    "agents/mono-architect.md": {
       "curated": true
     },
-    "templates/agents/mono-documenter.md": {
+    "agents/mono-documenter.md": {
       "curated": true
     },
-    "templates/agents/mono-planner.md": {
+    "agents/mono-planner.md": {
       "curated": true
     },
-    "templates/agents/per-project/architect.md": {
+    "agents/per-project/architect.md": {
       "curated": true
     },
-    "templates/agents/per-project/developer.md": {
+    "agents/per-project/developer.md": {
       "sources": {
         "{project:backend}/.claude/agents/developer.md": "9f677ca37c21e73a3969922faa98d13de904ba252b08360370ab113ca1e04d30"
       }
     },
-    "templates/agents/per-project/planner.md": {
+    "agents/per-project/planner.md": {
       "curated": true
     },
-    "templates/agents/per-project/qa.md": {
+    "agents/per-project/qa.md": {
       "sources": {
         "{project:backend}/.claude/agents/qa.md": "a36a3a284f3780c4874ec8da17e97c68a786b72fc6b6aa1e2137a5e0b473efc8"
       }
     },
-    "templates/agents/qa-wrapper.md": {
+    "agents/qa-wrapper.md": {
       "sources": {
         ".claude/agents/qa-be.md": "0655260cfea04eae3e982c2e1d5fe364a2b10bc2791f548f986b50610b45f068",
         ".claude/agents/qa-fe.md": "102e1b7bb62de538f2b2bee7150e8c4fd4ac6b1fe890d402bc2a3edd1d546422",
@@ -103,532 +82,532 @@
         ".claude/agents/qa-contracts.md": "80456984c8b7a813d63ec04b89414566b0f30278c65e073ced4daa69bb2fa392"
       }
     },
-    "templates/codex/README.md": {
+    "codex/README.md": {
       "curated": true
     },
-    "templates/codex/agents/mono-documenter.toml": {
+    "codex/agents/mono-documenter.toml": {
       "curated": true
     },
-    "templates/codex/agents/per-project/developer.toml": {
+    "codex/agents/per-project/developer.toml": {
       "curated": true
     },
-    "templates/codex/agents/per-project/qa.toml": {
+    "codex/agents/per-project/qa.toml": {
       "curated": true
     },
-    "templates/codex/config.toml": {
+    "codex/config.toml": {
       "curated": true
     },
-    "templates/codex/rules/repo-law.rules": {
+    "codex/rules/repo-law.rules": {
       "curated": true
     },
-    "templates/codex/skills/chat/SKILL.md": {
+    "codex/skills/chat/SKILL.md": {
       "curated": true
     },
-    "templates/codex/skills/wave-builder/SKILL.md": {
+    "codex/skills/wave-builder/SKILL.md": {
       "curated": true
     },
-    "templates/commands/animate.md": {
+    "commands/animate.md": {
       "curated": true
     },
-    "templates/commands/audit/ai-output.md": {
+    "commands/audit/ai-output.md": {
       "sources": {
         ".claude/commands/audit/cortex.md": "d84db0087cf3bf63b6e59f17612bdfb518629ec6b5958e5938b73849287d7dcf"
       }
     },
-    "templates/commands/audit/code-hygiene.md": {
+    "commands/audit/code-hygiene.md": {
       "sources": {
         ".claude/commands/audit/code-hygiene.md": "5bb2abcf90232f2e893f6bc2bb1e740302337c9c1d072b2d82235f9789738278"
       }
     },
-    "templates/commands/audit/security.md": {
+    "commands/audit/security.md": {
       "sources": {
         ".claude/commands/audit/security.md": "3ed565aeaec2b241fef838b8cd0cdb10870b61fd278d9d255d7cd1c5263923b8"
       }
     },
-    "templates/commands/dev.md": {
+    "commands/dev.md": {
       "sources": {
         ".claude/commands/dev.md": "2d5607d77a6851af0572e4886b88146fca000efe33e62ea024de2f28a82eabbc"
       }
     },
-    "templates/commands/documenter.md": {
+    "commands/documenter.md": {
       "sources": {
         ".claude/commands/documenter.md": "8409fb77c29dbeea6ac60de648ec001668b85078c910580c92ad3ed4e60ffc6e"
       }
     },
-    "templates/commands/documenter/_base.txt": {
+    "commands/documenter/_base.txt": {
       "curated": true
     },
-    "templates/commands/documenter/_epic-consolidation-contract.txt": {
+    "commands/documenter/_epic-consolidation-contract.txt": {
       "curated": true
     },
-    "templates/commands/documenter/archive.md": {
+    "commands/documenter/archive.md": {
       "curated": true
     },
-    "templates/commands/git.md": {
+    "commands/git.md": {
       "sources": {
         ".claude/commands/git.md": "3ee71d82ef4189e0c2c491395a141b7ec67aa18b35ccfb90d3d9a406051a30da"
       }
     },
-    "templates/commands/goal-manager.md": {
+    "commands/goal-manager.md": {
       "curated": true
     },
-    "templates/commands/jc.md": {
+    "commands/jc.md": {
       "sources": {
         ".claude/commands/jc.md": "a3a7d86bbda4331c309c31ce8ff52bce5eec8ff9f127b191e52d7463bf12fb26"
       }
     },
-    "templates/commands/km.md": {
+    "commands/km.md": {
       "sources": {
         ".claude/commands/km.md": "044cba1c5e2e86dc50da208278638d89b93ce86b84a4e7f5e2ed901369897428"
       }
     },
-    "templates/commands/marketer.md": {
+    "commands/marketer.md": {
       "sources": {
         ".claude/commands/marketer.md": "073eaa527044903947c95b4290e1a00e92d2a828e613daa33752501600b0b7ec"
       }
     },
-    "templates/commands/mentor.md": {
+    "commands/mentor.md": {
       "sources": {
         ".claude/commands/mentor.md": "e507139627a793ff5a6547b0fce9170ac0667215488759f5eae1a4e23a8dff33"
       }
     },
-    "templates/commands/officer.md": {
+    "commands/officer.md": {
       "sources": {
         ".claude/commands/officer.md": "5a16322280a88c05e4627ef04e8ee0bb47faf07f7ffe3ef424ac2d85b001df88"
       }
     },
-    "templates/commands/p/360.md": {
+    "commands/p/360.md": {
       "sources": {
         ".claude/commands/p/360.md": "64c11ea93b9771f5f9d8d3f7ae7dd348493885d475120852982945ccfe7e943b"
       }
     },
-    "templates/commands/p/rnd.md": {
+    "commands/p/rnd.md": {
       "sources": {
         ".claude/commands/p/rnd.md": "f83d15a23ff6753e2043708b487468f04c55abdd1fd7bcc82259a989b42e880b"
       }
     },
-    "templates/commands/p/slow-burn.md": {
+    "commands/p/slow-burn.md": {
       "curated": true
     },
-    "templates/commands/p/tokens/README.md": {
+    "commands/p/tokens/README.md": {
       "sources": {
         ".claude/commands/p/tokens/README.md": "501f70f2e4b3bf57002e0d2022d3221b4e8a32b7bd272b6ee2fbb68699f9e921"
       }
     },
-    "templates/commands/p/tokens/SKILL.md": {
+    "commands/p/tokens/SKILL.md": {
       "sources": {
         ".claude/commands/p/tokens/SKILL.md": "d3a762f9776c092afef40b6d8bc721def6e10b42b3d61141ae103f59bd937ec5"
       }
     },
-    "templates/commands/p/tokens/token-ledger.mjs": {
+    "commands/p/tokens/token-ledger.mjs": {
       "sources": {
         ".claude/commands/p/tokens/token-ledger.mjs": "61987b19f04ca6ac6324d1e14cb8d59f0372e394b449337b35a848ed4d9e8b66"
       }
     },
-    "templates/commands/pcm.md": {
+    "commands/pcm.md": {
       "sources": {
         ".claude/commands/pcm.md": "5d0e852ed14cdee8dc2bb6e0b9465b2f951464d3d4d373ae25a44a6a4282b031"
       }
     },
-    "templates/commands/pcm/context-meter.md": {
+    "commands/pcm/context-meter.md": {
       "sources": {
         ".claude/commands/pcm/context-meter.md": "3019b110148251dc8d6c0c55d689eef0eb7663e29cf1a9c4ebd8bfe5512f6fa0"
       }
     },
-    "templates/commands/pcm/references/audit-scopes.md": {
+    "commands/pcm/references/audit-scopes.md": {
       "sources": {
         "docs/commands/pcm/references/audit-scopes.md": "87016b7e7d424b7f30e3c64bdf459ecbe8628149f76507387bc287ef61824327"
       }
     },
-    "templates/commands/pcm/references/refresh.md": {
+    "commands/pcm/references/refresh.md": {
       "sources": {
         "docs/commands/pcm/references/refresh.md": "f0ceadc75dfbce2c94777d6c0e05d4f1c6f79064df4860032c799661274b6158"
       }
     },
-    "templates/commands/pcm/release.md": {
+    "commands/pcm/release.md": {
       "sources": {
         ".claude/commands/pcm/release.md": "df452369451ec6e8826ea5d853397b76731d7b49855e225e0d1f622032437252"
       }
     },
-    "templates/commands/pcm/update.md": {
+    "commands/pcm/update.md": {
       "sources": {
         ".claude/commands/pcm/update.md": "0c7dbc0c6bd58e83af522a557af83ea841da7fb2202c7770527e8fdc9b227aae"
       }
     },
-    "templates/commands/pm.md": {
+    "commands/pm.md": {
       "sources": {
         ".claude/commands/pm.md": "36e608b9e7b9a9e2eceee3cf8b2d445fa08ef8133526de0783f63264ed5c7414"
       }
     },
-    "templates/commands/qa/live.md": {
+    "commands/qa/live.md": {
       "curated": true
     },
-    "templates/commands/quality/doc.md": {
+    "commands/quality/doc.md": {
       "sources": {
         ".claude/commands/quality/doc.md": "1a2822f726a8aba158f6f2ea80570ad41927e76310ba29dc56a0c7d41bc80c29"
       }
     },
-    "templates/commands/quality/prompt.md": {
+    "commands/quality/prompt.md": {
       "sources": {
         ".claude/commands/quality/prompt.md": "b1ebb032f2f20e6ca6e8696118cd4e73da049ba05ea1b72de72f1bb8cacd789f"
       }
     },
-    "templates/commands/sleep.md": {
+    "commands/sleep.md": {
       "curated": true
     },
-    "templates/commands/wave/builder.md": {
+    "commands/wave/builder.md": {
       "sources": {
         ".claude/commands/wave/builder.md": "5c55dcb1d28a09198d01abea83ead6fef7d45b650fcf54f824d43bfef22fd592"
       }
     },
-    "templates/commands/wave/live.md": {
+    "commands/wave/live.md": {
       "sources": {
         ".claude/commands/wave/live.md": "b663d50da0233ff2acecc827caceb3776d54879ddd28c7ce82a7bab90e08ab9d"
       }
     },
-    "templates/commands/wave/orchestrator.md": {
+    "commands/wave/orchestrator.md": {
       "sources": {
         ".claude/commands/wave/orchestrator.md": "5585ad40a55c848bd7ab39cb846f0c6921abb8ccfb1abbf413aeed5a6bde29b0"
       }
     },
-    "templates/commands/wave/refine.md": {
+    "commands/wave/refine.md": {
       "sources": {
         ".claude/commands/wave/refine.md": "cddd98cb30da699cebc0f3f5a2fef36943d9416fe1ce3cb8d45270ebdcb5cac8"
       }
     },
-    "templates/commands/wave/walker.md": {
+    "commands/wave/walker.md": {
       "sources": {
         ".claude/commands/wave/walker.md": "4b853ced8dc9f7cf3ac8f0fe463dce1d47c822fe2fbf7bde6012b9d2461dd4f4"
       }
     },
-    "templates/commands/wave/walker-invariants.md": {
+    "commands/wave/walker-invariants.md": {
       "sources": {
         ".claude/commands/wave/walker-invariants.md": "84b0ac61e0da06368b8041cbd71c41859bd31dfb0b096b09b93c689d0cfb643d"
       }
     },
-    "templates/docs-agents/_index.md": {
+    "docs-agents/_index.md": {
       "curated": true
     },
-    "templates/docs-agents/standards.md": {
+    "docs-agents/standards.md": {
       "curated": true
     },
-    "templates/docs-commands/animate/references/engine.md": {
+    "docs-commands/animate/references/engine.md": {
       "curated": true
     },
-    "templates/docs-commands/build/references/build-reference.md": {
+    "docs-commands/build/references/build-reference.md": {
       "sources": {
         "docs/commands/build/references/build-reference.md": "9cc61f03f7c3d9bd4161d4f6886749a77f263c11d299db02eeb561a9c3b7911f"
       }
     },
-    "templates/docs-commands/documenter/references/doc-approval.md": {
+    "docs-commands/documenter/references/doc-approval.md": {
       "sources": {
         "docs/commands/documenter/references/doc-approval.md": "888fea77f140b284af52aea9139d8caebda8af8d23266b3c3f147c650d4c133f"
       }
     },
-    "templates/docs-commands/documenter/references/scopes/epic.md": {
+    "docs-commands/documenter/references/scopes/epic.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/root-api.md": {
+    "docs-commands/documenter/references/scopes/root-api.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/root-arch.md": {
+    "docs-commands/documenter/references/scopes/root-arch.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/root-db.md": {
+    "docs-commands/documenter/references/scopes/root-db.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/root-features.md": {
+    "docs-commands/documenter/references/scopes/root-features.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/root-map.md": {
+    "docs-commands/documenter/references/scopes/root-map.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/scopes/{project}.md": {
+    "docs-commands/documenter/references/scopes/{project}.md": {
       "curated": true
     },
-    "templates/docs-commands/documenter/references/sync-rules.md": {
+    "docs-commands/documenter/references/sync-rules.md": {
       "curated": true
     },
-    "templates/docs-commands/git/references/gitter-history.md": {
+    "docs-commands/git/references/gitter-history.md": {
       "sources": {
         "docs/commands/git/references/gitter-history.md": "efc3cb1c8f6510a0272738c05795c1449a09960959e70073260b2ee25d5357f2"
       }
     },
-    "templates/docs-commands/git/references/gitter-phase-docs.md": {
+    "docs-commands/git/references/gitter-phase-docs.md": {
       "sources": {
         "docs/commands/git/references/gitter-phase-docs.md": "3e2e68fd01bbb3cb728e92787bfa3f2b7ed12c687a89bc52176af54b11788d90"
       }
     },
-    "templates/docs-commands/git/references/gitter-phase-merge.md": {
+    "docs-commands/git/references/gitter-phase-merge.md": {
       "sources": {
         "docs/commands/git/references/gitter-phase-merge.md": "788d06517ace27204a422325e0abbb618465957377218e46e8c5da49890558c3"
       }
     },
-    "templates/docs-commands/git/references/gitter-phase-push.md": {
+    "docs-commands/git/references/gitter-phase-push.md": {
       "sources": {
         "docs/commands/git/references/gitter-phase-push.md": "b0dfbb200f94aa87016a61cda713bfc8f4b8a5d837c49e4fbc083685cf47cded"
       }
     },
-    "templates/docs-commands/git/references/gitter-phase-setup.md": {
+    "docs-commands/git/references/gitter-phase-setup.md": {
       "sources": {
         "docs/commands/git/references/gitter-phase-setup.md": "22a880339e075fa6c4d79e82bf950ccb1d2e3fb188c807e27c30b5b5695fc3f3"
       }
     },
-    "templates/docs-commands/git/references/gitter-phase-wave.md": {
+    "docs-commands/git/references/gitter-phase-wave.md": {
       "sources": {
         "docs/commands/git/references/gitter-phase-wave.md": "fbf9e77ba5babeb1e9b77c025ac5ed20a576bb7d68e9982e34842b23f6ff8e04"
       }
     },
-    "templates/docs-commands/jc/references/debug-discipline.md": {
+    "docs-commands/jc/references/debug-discipline.md": {
       "sources": {
         "docs/commands/jc/references/debug-discipline.md": "478dc74c2c88cd79a604c04c8cb40f4792366c3ae0bb6717f5d468a2310913a9"
       }
     },
-    "templates/docs-commands/jc/references/jc-core.md": {
+    "docs-commands/jc/references/jc-core.md": {
       "sources": {
         "docs/commands/jc/references/jc-core.md": "0c8b20e38bfff5f0d84161c90de348db59962257e484c893e29f0d36399ff523"
       }
     },
-    "templates/epics/TEMPLATE.md": {
+    "epics/TEMPLATE.md": {
       "curated": true
     },
-    "templates/output-styles/dr-house.compact.md": {
+    "output-styles/dr-house.compact.md": {
       "curated": true
     },
-    "templates/output-styles/dr-house.full.md": {
+    "output-styles/dr-house.full.md": {
       "curated": true
     },
-    "templates/output-styles/jc.compact.md": {
+    "output-styles/jc.compact.md": {
       "sources": {
         ".claude/output-styles/jc.md": "68f02d40260872ca60ab6fc01e4f09088965b16a4414e8f2a198f14921234217"
       }
     },
-    "templates/output-styles/jc.full.md": {
+    "output-styles/jc.full.md": {
       "curated": true
     },
-    "templates/output-styles/professor.compact.md": {
+    "output-styles/professor.compact.md": {
       "sources": {
         ".claude/output-styles/professor.md": "a0f17a81879f140308e8ed84c24d65e53245f4fc723b77de5c38530f3873957e"
       }
     },
-    "templates/output-styles/professor.full.md": {
+    "output-styles/professor.full.md": {
       "curated": true
     },
-    "templates/per-project/CLAUDE.md": {
+    "per-project/CLAUDE.md": {
       "sources": {
         "{project:backend}/CLAUDE.md": "72080fc35f119da41761a5bdbaa368a31052935747b31c4a7038e0122984ee5a"
       }
     },
-    "templates/scripts/alloc-ports.sh": {
+    "scripts/alloc-ports.sh": {
       "sources": {
         ".claude/scripts/alloc-ports.sh": "52293f87438bc75e6978b6641db45d9c743e7ea48a0340f3613f1ad590e796b0"
       }
     },
-    "templates/scripts/baseline-sync.sh": {
+    "scripts/baseline-sync.sh": {
       "sources": {
         ".claude/scripts/baseline-sync.sh": "4358a3fc13402a69cf254c79d96dd818f66fb5aaf4c4406727f136fb126d8050"
       }
     },
-    "templates/scripts/cc-memory-consolidate.sh": {
+    "scripts/cc-memory-consolidate.sh": {
       "sources": {
         "~/work/host-ops/devbox/scripts/cc-memory-consolidate.sh": "32fd7f5ed41816aef943a81c1a81e265c544b8e42bffc039630453400bc29819"
       }
     },
-    "templates/scripts/cc-memory-wire.sh": {
+    "scripts/cc-memory-wire.sh": {
       "sources": {
         "~/work/host-ops/devbox/scripts/cc-memory-wire.sh": "ef579bff42f8fd8ae64ae05b747fea98c0e19b535a7b5cc2918ff0ccb04706f3"
       }
     },
-    "templates/scripts/checkpoint.sh": {
+    "scripts/checkpoint.sh": {
       "sources": {
         ".claude/scripts/checkpoint.sh": "8184d92715dd35504d17af80a5111d6ea1989047f59bd50c051f3fe65ec178dc"
       }
     },
-    "templates/scripts/build-codex.mjs": {
+    "scripts/build-codex.mjs": {
       "sources": {
         ".claude/scripts/build-codex.mjs": "8eb03c4d8bc34b1765510ace96918418a279786cdce4d33ed1679d2e077acb9f"
       }
     },
-    "templates/scripts/codex-sync.sh": {
+    "scripts/codex-sync.sh": {
       "sources": {
         ".claude/scripts/codex-sync.sh": "72141e693c5e14b62b5909facaba4a43b4cd75ddbdc6b350d9ed544dd5ce3bcd"
       }
     },
-    "templates/scripts/dev.sh": {
+    "scripts/dev.sh": {
       "sources": {
         ".claude/scripts/dev.sh": "920db213b5d3fc6e9eb0dd2a04aa8c8ab8ada9666d02c8b31c04d83a3fcc8570"
       }
     },
-    "templates/scripts/drain-wait.sh": {
+    "scripts/drain-wait.sh": {
       "sources": {
         ".claude/scripts/cortex-drain-wait.sh": "be82be217f166b0e497d46be4c25af6b942c9bc2d16dedd9ee58fb2c3df7c4d1"
       }
     },
-    "templates/scripts/filter-test-output.sh": {
+    "scripts/filter-test-output.sh": {
       "sources": {
         ".claude/scripts/filter-test-output.sh": "355139e4e037ea58fc017ad4d32da4ab1286e5a5860c619024fc4f523a1ca3c2"
       }
     },
-    "templates/scripts/format-md.sh": {
+    "scripts/format-md.sh": {
       "sources": {
         ".claude/scripts/format-md.sh": "dc906de7c1c33ab811cbd67a2db067974cb8ea6f457efbbecef8c514ad2369dc"
       }
     },
-    "templates/scripts/git-lock.sh": {
+    "scripts/git-lock.sh": {
       "sources": {
         ".claude/scripts/git-lock.sh": "05fafa1527026175f8cbaca74fc03155f2a6bb359304f826a830e44b3e798b43"
       }
     },
-    "templates/scripts/guard-stamp.sh": {
+    "scripts/guard-stamp.sh": {
       "sources": {
         ".claude/scripts/guard-stamp.sh": "75c321c1de53675175b1f7889f112fe10c73e7b2ecd502b91ae3c3285898d72c"
       }
     },
-    "templates/scripts/km-guard.sh": {
+    "scripts/km-guard.sh": {
       "sources": {
         ".claude/scripts/km-guard.sh": "695dbfc5952209a4b7df6262421440e09a74c4f7402c42e6f24e07a74ba989ad"
       }
     },
-    "templates/scripts/limits-hook.sh": {
+    "scripts/limits-hook.sh": {
       "sources": {
         ".claude/scripts/limits-hook.sh": "4d7e1acf75c9b9cb335233d3863887ddf853f20b3f6076accccd290aa303bbc6"
       }
     },
-    "templates/scripts/memory-sync.sh": {
+    "scripts/memory-sync.sh": {
       "sources": {
         "~/work/cc-memory/.sync.sh": "7883914853be67220f62aef5a9f1e5816a06f586b720d7b5b32b9c170af418cd"
       }
     },
-    "templates/scripts/notify.sh": {
+    "scripts/notify.sh": {
       "sources": {
         ".claude/scripts/notify.sh": "0ed64b8d41f4f5e7b36fd6ed1616875711826376754a0e046a1fe2efe94819df"
       }
     },
-    "templates/scripts/pcm-guard.sh": {
+    "scripts/pcm-guard.sh": {
       "sources": {
         ".claude/scripts/pcm-guard.sh": "7cafdfd576d7ccb5a5ae410c807eb296149f7fa209a80338a1b9d1b168541519"
       }
     },
-    "templates/scripts/worktree.sh": {
+    "scripts/worktree.sh": {
       "sources": {
         ".claude/scripts/worktree.sh": "5b3a85148dd34a1a4709a811386b38dce42f8d0f371ecb6872392aa4f1c6a5e3"
       }
     },
-    "templates/settings.json": {
+    "settings.json": {
       "sources": {
         ".claude/settings.json": "f5d6a2eddce6e44c69cb26ad8d1c4fc9f58ad4f2285ef3ec4fd6f8674c1d825a"
       }
     },
-    "templates/settings-global.json": {
+    "settings-global.json": {
       "sources": {
         "~/.claude/settings.json": "44299d2c971a65d66bd124d37d79b9ce3e4643ae4ae027196ac01b978c7466fc"
       }
     },
-    "templates/skills/sources.json": {
+    "skills/sources.json": {
       "curated": true
     },
-    "templates/themes/sources.json": {
+    "themes/sources.json": {
       "curated": true
     },
-    "templates/vscode/README.md": {
+    "vscode/README.md": {
       "curated": true
     },
-    "templates/vscode/terminal-profile.json": {
+    "vscode/terminal-profile.json": {
       "curated": true
     },
-    "templates/vscode/tmux.conf": {
+    "vscode/tmux.conf": {
       "curated": true
     },
-    "templates/vscode/zshrc-cc.snippet.sh": {
+    "vscode/zshrc-cc.snippet.sh": {
       "curated": true
     },
-    "templates/workflows/audit-ai-output-sessions.js": {
+    "workflows/audit-ai-output-sessions.js": {
       "sources": {
         ".claude/workflows/audit-cortex-sessions.js": "19c891b8c5ab446041e2f9ac51856d722e46c287cef9c608ec7319cac74b5cd7"
       }
     },
-    "templates/workflows/documenter-fanout.js": {
+    "workflows/documenter-fanout.js": {
       "curated": true
     },
-    "templates/docs-commands/build/references/qa-commons.md": {
+    "docs-commands/build/references/qa-commons.md": {
       "curated": true
     },
-    "templates/skills/legal/SKILL.md": {
+    "skills/legal/SKILL.md": {
       "sources": {
         ".claude/skills/legal/SKILL.md": "27d77b9f6e030208ce7e8a9eb7324abfd5f5b0ad9b31b29ff0b24f44ed22e94b"
       }
     },
-    "templates/skills/legal/references/breach-response.md": {
+    "skills/legal/references/breach-response.md": {
       "sources": {
         ".claude/skills/legal/references/breach-response.md": "88451bbd1d506152e67db8f2979f434bd98e24271c339798baef2059e476934b"
       }
     },
-    "templates/skills/legal/references/dpa-drafting-guide.md": {
+    "skills/legal/references/dpa-drafting-guide.md": {
       "sources": {
         ".claude/skills/legal/references/dpa-drafting-guide.md": "1afd27dbdae394588ba9f4084b5fc2198d5f5e88e17c6d88afdcf23ba9b9bf21"
       }
     },
-    "templates/skills/legal/references/dpia.md": {
+    "skills/legal/references/dpia.md": {
       "sources": {
         ".claude/skills/legal/references/dpia.md": "b1bde8d24c867668f2eafa16cd7533567afe3d9b924b5a43ac1e954f4a3ec5ab"
       }
     },
-    "templates/skills/legal/references/nda-risk-triage.md": {
+    "skills/legal/references/nda-risk-triage.md": {
       "sources": {
         ".claude/skills/legal/references/nda-risk-triage.md": "1d44a3b9888b83ba3883af70f54b06d9e2c1e9f8901a8ff1bc317134dc4408bf"
       }
     },
-    "templates/skills/legal/references/pre-delivery-self-check.md": {
+    "skills/legal/references/pre-delivery-self-check.md": {
       "sources": {
         ".claude/skills/legal/references/pre-delivery-self-check.md": "113208b7c0f1654d8a7fdeb8af726f8d67b657440b0e9442b962eddc78664f18"
       }
     },
-    "templates/skills/legal/references/privacy-compliance-dpa.md": {
+    "skills/legal/references/privacy-compliance-dpa.md": {
       "sources": {
         ".claude/skills/legal/references/privacy-compliance-dpa.md": "43d97a758fb37d7193832c8d1a6c56dde2c6f2dc664d8b5410ea0c7c6a833128"
       }
     },
-    "templates/skills/legal/references/privacy-notice-policy.md": {
+    "skills/legal/references/privacy-notice-policy.md": {
       "sources": {
         ".claude/skills/legal/references/privacy-notice-policy.md": "9443e2f0aec4de8545f70de5a7a8398ceeae776cc7b9a270e2ca6956add90801"
       }
     },
-    "templates/skills/legal/references/red-team-verifier.md": {
+    "skills/legal/references/red-team-verifier.md": {
       "sources": {
         ".claude/skills/legal/references/red-team-verifier.md": "7b38f78624731a953cf6741dd00f1e66fb868fd6acda7ca5d9ccb81d28decf9a"
       }
     },
-    "templates/skills/legal/references/skill-optimizer.md": {
+    "skills/legal/references/skill-optimizer.md": {
       "sources": {
         ".claude/skills/legal/references/skill-optimizer.md": "202efd05c0a4bf2d9a5712b455b7427fb8887024a114b5d7086f8d8ecde59a39"
       }
     },
-    "templates/skills/legal/references/statute-analysis.md": {
+    "skills/legal/references/statute-analysis.md": {
       "sources": {
         ".claude/skills/legal/references/statute-analysis.md": "137c8f26316634e4998ff42d17c83092c13d62cae98053362dbb6cd6bfa28c03"
       }
     },
-    "templates/skills/legal/references/vendor-due-diligence.md": {
+    "skills/legal/references/vendor-due-diligence.md": {
       "sources": {
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
       }
     },
-    "templates/commands/wave/sentinel.md": {
+    "commands/wave/sentinel.md": {
       "sources": {
         ".claude/commands/wave/sentinel.md": "753a0068011aad4afa40a19f76db14dba11d109aa8b199c1654e4f622ec6c74d"
       }
     },
-    "templates/agents/scheduler.md": {
+    "agents/scheduler.md": {
       "sources": {
         ".claude/agents/scheduler.md": "334281c55596ddf620cf9e75b802e08de7ec54524e9b4e162ae4fd0d17839613"
       }
     },
-    "templates/agents/architect.md": {
+    "agents/architect.md": {
       "sources": {
         ".claude/agents/architect.md": "7ea75114ea308f69db4c85dfbc386d21b470cd78c2330770a9229f987cb6201b"
       }
     },
-    "templates/agents/role-wrapper.md": {
+    "agents/role-wrapper.md": {
       "sources": {
         ".claude/agents/developer-be.md": "cd1955ce638f5450cafce105fa26ecf196fbdca47a4e5d5c55c7a420a573fd24",
         ".claude/agents/developer-fe.md": "6d6372542abc77c8f51e25007ac137931bdb38475ce245ed7c8468fa15c964b1",

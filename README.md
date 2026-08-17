@@ -223,10 +223,10 @@ Tools that pair well but are not part of Professor and never vendored:
 
 Four files that transfer to any Claude Code setup, no adoption required:
 
-1. [`blueprint/templates/commands/quality/prompt.md`](./blueprint/templates/commands/quality/prompt.md) — the cut test and 19 anti-patterns for any prompt an LLM will consume.
-2. [`blueprint/templates/docs-commands/build/references/qa-commons.md`](./blueprint/templates/docs-commands/build/references/qa-commons.md) — test validity: six checks for whether a test tests anything at all.
-3. [`blueprint/templates/commands/p/rnd.md`](./blueprint/templates/commands/p/rnd.md) — how to stop LLM "research" from being confirmation with extra steps.
-4. [`blueprint/templates/commands/quality/doc.md`](./blueprint/templates/commands/quality/doc.md) — docs as retrieval surfaces: grep-true naming, current-state-only, and why a tombstone note poisons an agent's reading.
+1. [`blueprint/commands/quality/prompt.md`](./blueprint/commands/quality/prompt.md) — the cut test and 19 anti-patterns for any prompt an LLM will consume.
+2. [`blueprint/docs-commands/build/references/qa-commons.md`](./blueprint/docs-commands/build/references/qa-commons.md) — test validity: six checks for whether a test tests anything at all.
+3. [`blueprint/commands/p/rnd.md`](./blueprint/commands/p/rnd.md) — how to stop LLM "research" from being confirmation with extra steps.
+4. [`blueprint/commands/quality/doc.md`](./blueprint/commands/quality/doc.md) — docs as retrieval surfaces: grep-true naming, current-state-only, and why a tombstone note poisons an agent's reading.
 
 ---
 
@@ -238,16 +238,15 @@ professor/
 ├── CHANGELOG.md         release index; full notes live in releases/
 ├── VERSION
 ├── pfm/                 Go fleet engine + embedded installer assets
-└── blueprint/
-    ├── BLUEPRINT.md     philosophy and design principles
-    ├── SETUP.md         the install interview + generation spec
-    ├── refresh-map.json every template ↔ its live source
-    └── templates/
-        ├── CLAUDE.md, agents/, commands/, workflows/, scripts/
-        ├── output-styles/  personas, full and compact
-        ├── skills/         sources.json + the legal reference shelf
-        ├── vscode/, themes/, epics/
-        └── codex/          optional dual-runtime layer
+├── docs/                 BLUEPRINT.md, SETUP.md, ARCHITECTURE.md, PLACEHOLDERS.md,
+│                         RELEASE.md, README.md, references/ — the spec, hand-curated
+└── blueprint/            the shipped product — one clone away
+    ├── refresh-map.json  every template ↔ its live source
+    ├── CLAUDE.md, agents/, commands/, workflows/, scripts/
+    ├── output-styles/    personas, full and compact
+    ├── skills/           sources.json + the legal reference shelf
+    ├── vscode/, themes/, epics/
+    └── codex/            optional dual-runtime layer
 ```
 
 ---

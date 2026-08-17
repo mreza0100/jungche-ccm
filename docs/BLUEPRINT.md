@@ -31,14 +31,14 @@ Every command, agent, and rule sorts into one of three tiers:
 - **/wave:refine** — wave task refinement into a zero-gap spec.
 - **/wave:walker** — merge-gating end-to-end functional + hygiene walk, run against the merge candidate before the merge it can condemn.
 - **/wave:sentinel** — on-demand one-shot train auditor. No interval, no re-arm, no standing seat: re-derives the train's true state from ground truth and reports findings ranked.
-- **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`templates/commands/p/360.md`) — not source-fetched.
+- **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`blueprint/commands/p/360.md`) — not source-fetched.
 - **/p:rnd** — goal-driven iterative research-and-develop loop.
 - **/p:tokens** — per-agent/per-workflow token spend attribution parsed from local transcripts, ranked by estimated cost.
 - **/quality:doc** / **/quality:prompt** — doc-shaping and prompt-quality gates.
 - **/audit:code-hygiene** / **/audit:security** / **/audit:ai-output** — code-hygiene, security, and AI-output audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 - **/qa:live** — live end-to-end QA of the running app on the dev stack: no mocks, no seeded data, judgment-based rather than regression assertions.
 
-**Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
+**Source-fetched skills (installed at setup from canonical public repos via `blueprint/skills/sources.json`, never vendored):**
 
 - **rr** — Research-and-Report protocol.
 - **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
@@ -327,7 +327,7 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 **Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/` (`config.toml`, `rules/repo-law.rules`, the `agents/` registry), runs `scripts/build-codex.mjs generate` to compile `.codex/skills/`, `.codex/agents/*.toml`, and `AGENTS.md`, and wires `scripts/codex-sync.sh` into the hooks so every later framework edit re-compiles before its turn ends. If no, the entire layer is skipped. No pipeline operation requires Codex.
 
-See `templates/codex/README.md` for the full integration guide.
+See `blueprint/codex/README.md` for the full integration guide.
 
 ---
 
@@ -371,7 +371,7 @@ The interview manifest is the key innovation — it means updates don't require 
 - Command-owned docs under `docs/commands/` (your content, not templates)
 - `.claude/settings.json` (hand-curated per project)
 
-See `SETUP.md` § "Staying current" for user-facing docs. See `templates/commands/pcm/update.md` for the full implementation.
+See `SETUP.md` § "Staying current" for user-facing docs. See `blueprint/commands/pcm/update.md` for the full implementation.
 
 ---
 

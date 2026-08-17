@@ -35,14 +35,14 @@ Files: every SKILL.md under `.claude/` (`find .claude -name 'SKILL.md'` — incl
 
 ## `blueprint` — Walk the shipped product
 
-Files: `blueprint/templates/**`, `blueprint/{BLUEPRINT,SETUP,PLACEHOLDERS,RELEASE}.md`, `blueprint/refresh-map.json`, root `README.md`
+Files: `blueprint/**`, `docs/{BLUEPRINT,SETUP,PLACEHOLDERS,RELEASE}.md`, `blueprint/refresh-map.json`, root `README.md`
 
 This is the scope with adopters downstream of it — a FAIL here ships.
 
-- **Internal reference resolution:** every template referencing another template, agent, command, script, or reference card → the target exists under `blueprint/templates/` (a pointer that only resolves in the source project is a broken install)
+- **Internal reference resolution:** every template referencing another template, agent, command, script, or reference card → the target exists under `blueprint/` (a pointer that only resolves in the source project is a broken install)
 - **Placeholder integrity:** every `{TOKEN}` in a template is registered in `PLACEHOLDERS.md`; every registered token is used or knowingly retired; no template carries a source-project value where a token belongs
-- **SETUP coverage:** every file under `templates/` has a write step in `SETUP.md`; every path `SETUP.md` writes has a template
-- **Cast consistency:** `README.md` and `BLUEPRINT.md` agent/command/skill lists match a live `ls` of `templates/agents/` and `templates/commands/`
+- **SETUP coverage:** every file under `blueprint/` has a write step in `SETUP.md`; every path `SETUP.md` writes has a template
+- **Cast consistency:** `README.md` and `BLUEPRINT.md` agent/command/skill lists match a live `ls` of `blueprint/agents/` and `blueprint/commands/`
 - **Refresh map:** every mapped template's live source path is stated; UNMAPPED templates are named (`refresh-scope.sh scan` is the mechanical check — run it and report its output verbatim, including whether it ran at all)
 - **Leak sweep:** `scripts/leak-check.sh --files <changed templates>` — brand, PII, machine-absolute paths. Report the command's own exit status; a check that did not run is never a PASS
 - **Size limits:** no command template >35KB, no agent template >15KB
@@ -63,7 +63,7 @@ Files: project dirs, CLAUDE.md files, permanent docs, lock files
 - **Project dirs:** every roster project named in root `CLAUDE.md` and `.claude/scripts/dev.sh` exists on disk, and every project dir on disk is named in both
 - **Permanent docs:** `docs/commands/` exists with the reference dirs its commands name
 - **Stale names:** grep `CLAUDE.md`, agents, and commands for old/renamed project names or typos
-- **Manifests:** each roster project's manifest is present (`pfm/go.mod`, `dreamer/package.json`, `ENGINES/wave-walker/engine/package.json`) and its stack description in `CLAUDE.md` matches it
+- **Manifests:** each roster project's manifest is present (`pfm/go.mod`, `dreamer/package.json`, `engines/wave-walker/engine/package.json`) and its stack description in `CLAUDE.md` matches it
 - **Install state:** `.professor/{VERSION,manifest.json,drift.md,release.md}` exist and `VERSION` agrees with the root `VERSION` file
 - **Codex mirror:** `node .claude/scripts/build-codex.mjs check` exits 0 — report its output verbatim; a non-zero exit names each generated Codex artifact (AGENTS.md, `.codex/`, `$HOME/.codex/`) that is MISSING, STALE, ORPHANed, or CONFLICTing with an unmarked file
 

@@ -43,7 +43,7 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 6. **Write release notes** as a NEW file `releases/v{NEW_VERSION}.md` (title `# v{NEW_VERSION} — {YYYY-MM-DD}` + bullets grouped under `## Added/Changed/Fixed/Removed/Breaking/Migration`). Then prepend one line to the `## Releases` index in `CHANGELOG.md`: `- [v{NEW_VERSION}](releases/v{NEW_VERSION}.md) — {summary}`. `CHANGELOG.md` stays a slim index; full notes live in `releases/`, one file per version.
 
-6b. **Reconcile hand-curated docs against the shipped templates:** `README.md` + `blueprint/BLUEPRINT.md` cast / command / skill lists must match `blueprint/templates/`, and version references stay current (prefer version-neutral phrasing). The README's universal "any repo / any stack" promise is the CONTRACT — keep it; fix drifted templates up to it, never downgrade the README to match drift.
+6b. **Reconcile hand-curated docs against the shipped templates:** `README.md` + `docs/BLUEPRINT.md` cast / command / skill lists must match `blueprint/`, and version references stay current (prefer version-neutral phrasing). The README's universal "any repo / any stack" promise is the CONTRACT — keep it; fix drifted templates up to it, never downgrade the README to match drift.
 
 7. `echo "{NEW_VERSION}" > VERSION`
 

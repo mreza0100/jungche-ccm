@@ -30,7 +30,7 @@ const CANDIDATE_BUNDLE = join(
 const VALIDATE_SCRIPT = join(ENGINE_DIR, 'validate-bundle.js');
 
 const GENERATED_BANNER =
-  '// ⚠ GENERATED FILE — DO NOT EDIT. Built from ~/.professor/ENGINES/wave-walker/engine (npm run build). Manual edits are overwritten by the next build; changes go in src/ with tests.';
+  '// ⚠ GENERATED FILE — DO NOT EDIT. Built from ~/.professor/engines/wave-walker/engine (npm run build). Manual edits are overwritten by the next build; changes go in src/ with tests.';
 
 // Built by string concatenation, not spelled literally — this repo's own leak gate scans this test file,
 // and these are the exact terms validate-bundle.js's LEAK_TERMS denylist guards against (see that file's

@@ -19,7 +19,7 @@ Run it, then report what it printed. No arguments = `status all`.
 | `blueprint` | `blueprint/` | markdown + shell, no build | `leak-check.sh` over changed public files + the placeholder-registry gate |
 | `pfm` | `pfm/` | Go 1.24 | `go vet ./...` |
 | `dreamer` | `dreamer/` | TypeScript, npm, Node ≥20 | `tsc --noEmit` |
-| `walker` | `ENGINES/wave-walker/engine/` | JS/TS, npm, vitest | `npm run verify` (the bundle validator) |
+| `walker` | `engines/wave-walker/engine/` | JS/TS, npm, vitest | `npm run verify` (the bundle validator) |
 
 `dreamer test` compiles first — its suite runs the **compiled** output, so a bare `npm test` would grade stale JS.
 
