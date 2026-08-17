@@ -54,6 +54,14 @@ func TestReachableUserBusRefusesBeforeWriting(t *testing.T) {
 func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	home := t.TempDir()
 	config := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(home, ".codex", "hooks.json"), `{
+  "hooks": {
+    "SubagentStart": [{"matcher":"","hooks":[
+      {"type":"command","command":"`+home+`/.local/bin/cc-fleet dream hook codex-subagent-inject"},
+      {"type":"command","command":"fixture-codex-keep"}
+    ]}]
+  }
+}`)
 	writeFixture(t, filepath.Join(config, "settings.json"), `{
   "statusLine":{"type":"command","command":"bash ~/.claude/statusline-command.sh"},
   "hooks":{
@@ -157,6 +165,21 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 			t.Fatalf("settings retained retired /bb wiring %q:\n%s", retired, settings)
 		}
 	}
+	codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
+	for _, wanted := range []string{
+		home + "/.local/bin/pfm internal clear-hide",
+		home + "/.local/bin/pfm dream hook codex-subagent-inject",
+		"fixture-codex-keep",
+		`"SessionStart"`,
+		`"matcher": "startup|resume|clear"`,
+	} {
+		if !strings.Contains(codexHooks, wanted) {
+			t.Fatalf("Codex hooks missing %q:\n%s", wanted, codexHooks)
+		}
+	}
+	if strings.Contains(codexHooks, "/cc-fleet ") {
+		t.Fatalf("Codex hooks retained predecessor command:\n%s", codexHooks)
+	}
 	secondary := readFixture(t, secondarySettings)
 	if strings.Contains(secondary, "chat bb") || strings.Contains(secondary, "internal clear-hide") ||
 		!strings.Contains(secondary, "secondary-keep") {
@@ -195,6 +218,11 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if settings := readFixture(t, filepath.Join(config, "settings.json")); strings.Contains(settings, "internal clear-hide") {
 		t.Fatalf("uninstall retained clear-hide hook:\n%s", settings)
+	}
+	if codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json")); strings.Contains(codexHooks, "internal clear-hide") ||
+		!strings.Contains(codexHooks, "fixture-codex-keep") ||
+		!strings.Contains(codexHooks, "pfm dream hook codex-subagent-inject") {
+		t.Fatalf("uninstall did not remove only the owned Codex clear hook:\n%s", codexHooks)
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
 		t.Fatalf("uninstall left managed asset root: %v", err)

@@ -35,6 +35,51 @@ func (immediateIndexRunner) Run(
 	return fleetindex.Counters{}, nil
 }
 
+func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
+	jailTest(t)
+	t.Setenv(codexAvailableEnv, "0")
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	updates := make(chan ui.Snapshot, 1)
+	var stderr bytes.Buffer
+	go streamFleetRefreshesWith(
+		ctx,
+		database,
+		scanRequest{},
+		printWarn(&stderr),
+		&stderr,
+		updates,
+		refreshDependencies{newIndexer: func(*store.Store) (indexRunner, error) {
+			return immediateIndexRunner{}, nil
+		}},
+	)
+	for {
+		snapshot, ok := <-updates
+		if !ok {
+			t.Fatalf("refresh stream closed after initial scan: %s", stderr.String())
+		}
+		if !snapshot.Refreshing {
+			break
+		}
+	}
+	select {
+	case _, ok := <-updates:
+		if !ok {
+			t.Fatalf("refresh stream closed before recurring scan: %s", stderr.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("picker did not refresh again within the four-second interval")
+	}
+	cancel()
+	for range updates {
+	}
+}
+
 func (runner *slowIndexRunner) Run(
 	ctx context.Context,
 	options fleetindex.Options,
@@ -177,14 +222,23 @@ func TestCachedFirstPaintWhileIndexRefreshIsSlow(t *testing.T) {
 		t.Fatalf("gather refresh moved cursor from %q to %q", follow, model.SelectedKey())
 	}
 	close(runner.release)
-	for snapshot := range updates {
+	for {
+		snapshot, ok := <-updates
+		if !ok {
+			t.Fatalf("refresh stream ended before indexed frame: %s", stderr.String())
+		}
 		updated, _ = model.Update(ui.RefreshMsg{Snapshot: snapshot})
 		model = updated.(ui.Model)
 		if model.SelectedKey() != follow {
 			t.Fatalf("index refresh moved cursor from %q to %q", follow, model.SelectedKey())
 		}
+		if !snapshot.Refreshing {
+			break
+		}
 	}
 	cancel()
+	for range updates {
+	}
 	runner.mutex.Lock()
 	options := append([]fleetindex.Options(nil), runner.options...)
 	runner.mutex.Unlock()
@@ -258,10 +312,11 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 	before := runtime.NumGoroutine()
 	const storms = 100
 	for storm := 0; storm < storms; storm++ {
+		stormContext, cancelStorm := context.WithCancel(context.Background())
 		updates := make(chan ui.Snapshot, 1)
 		stormStderr := &bytes.Buffer{}
 		go streamFleetRefreshesWith(
-			context.Background(),
+			stormContext,
 			database,
 			request,
 			printWarn(stormStderr),
@@ -273,7 +328,11 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 				},
 			},
 		)
-		for snapshot := range updates {
+		for {
+			snapshot, ok := <-updates
+			if !ok {
+				t.Fatalf("storm %d refresh stream ended early: %s", storm, stormStderr.String())
+			}
 			updated, command := model.Update(ui.RefreshMsg{Snapshot: snapshot})
 			if command != nil {
 				t.Fatalf("storm %d refresh returned command", storm)
@@ -287,6 +346,12 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 					model.SelectedKey(),
 				)
 			}
+			if !snapshot.Refreshing {
+				break
+			}
+		}
+		cancelStorm()
+		for range updates {
 		}
 	}
 	runtime.GC()

@@ -76,6 +76,17 @@ func TestRenderGoldens(t *testing.T) {
 	}
 }
 
+func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {
+	agent := fmt.Sprint(agentStyle.GetForeground())
+	codex := fmt.Sprint(codexStyle.GetForeground())
+	if agent != "{251 146 60 255}" {
+		t.Fatalf("agent foreground = %q, want vivid orange", agent)
+	}
+	if agent == codex {
+		t.Fatalf("agent and Codex foregrounds are both %q", agent)
+	}
+}
+
 func TestFancyRenderNeverWrapsAtFixedWidths(t *testing.T) {
 	for _, width := range []int{80, 120} {
 		snapshot := fixtureSnapshot(width)
