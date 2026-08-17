@@ -27,7 +27,7 @@ const (
 // back with what it said. It is `inject` plus the wait every caller of inject
 // was writing by hand — a poll loop over `last` that cannot tell a new answer
 // from the previous one, which is the bug this verb exists to delete.
-func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
+func runHeadlessAsk(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat ask",
 		"usage: pfm chat ask [--timeout SECS] [--settle SECS] [--now] "+
@@ -53,7 +53,7 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 	message := strings.Join(flags.Args()[1:], " ")
 
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, name, stdout, stderr, *asJSON)
+	chat, code := headlessTarget(ctx, name, stdout, stderr, *asJSON, runtimes...)
 	if code != 0 {
 		return code
 	}
@@ -68,7 +68,7 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
 	}
-	engine, err := newInjectEngine()
+	engine, err := newInjectEngine(runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat ask: %v\n", err)
 		return 1
@@ -135,6 +135,7 @@ func runHeadlessAsk(args []string, stdout, stderr io.Writer) int {
 		*asJSON,
 		stdout,
 		stderr,
+		runtimes...,
 	)
 }
 
@@ -150,11 +151,12 @@ func awaitAnswer(
 	options headless.AwaitOptions,
 	asJSON bool,
 	stdout, stderr io.Writer,
+	runtimes ...commandRuntime,
 ) int {
 	turn, err := headless.Await(
 		ctx,
 		func(ctx context.Context) (headless.Chat, bool, error) {
-			return resolveChat(ctx, handle, io.Discard)
+			return resolveChat(ctx, handle, io.Discard, runtimes...)
 		},
 		options,
 	)

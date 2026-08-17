@@ -25,7 +25,11 @@ import (
 	"hostops/pfm/internal/ui"
 )
 
-func runLS(args []string, stdout, stderr io.Writer) int {
+func runLS(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet(
 		"ls",
 		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --hidden [--tsv]",
@@ -56,14 +60,14 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		// The hidden ledger is already a stable three-column TSV contract.
 		// Accepting --tsv makes that format explicit for scripts instead of
 		// returning an empty success or rejecting a harmless format request.
-		return runHidden(nil, stdout, stderr)
+		return runHidden(nil, stdout, stderr, runtime)
 	}
 	if flags.NArg() == 1 {
 		if all || *plain || *tsv {
 			flags.Usage()
 			return 2
 		}
-		return openID(context.Background(), flags.Arg(0), stdout, stderr)
+		return openID(context.Background(), flags.Arg(0), stdout, stderr, runtime)
 	}
 
 	view := compose.DefaultView
@@ -90,6 +94,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 			Cache1H:   cache1H,
 			ForceFull: forceFull,
 			NoSky:     *noSky,
+			Runtime:   &runtime,
 		}
 		var scan scanResult
 		var outcome ui.Outcome
@@ -112,7 +117,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 				return 1
 			}
-			applier, err := hideApplier(ctx, database, scan.Paths)
+			applier, err := hideApplier(ctx, database, runtime)
 			if err != nil {
 				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 				return 1
@@ -158,8 +163,8 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 		// A ⌃S account switch IS still a pending intent, and backing out with
 		// Esc/⌃C must not write it.
 		if outcome.Kind != ui.OutcomeCancelled {
-			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths) {
-				if err := writePrimaryAccount(scan.Paths, outcome.PrimaryAccount); err != nil {
+			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths, runtime.Config) {
+				if err := writePrimaryAccount(scan.Paths, runtime.Config, outcome.PrimaryAccount); err != nil {
 					fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
 					return 1
 				}
@@ -178,7 +183,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 				return 1
 			}
-			return openRow(ctx, row, outcome.PrimaryAccount, cache1H, stdout, stderr)
+			return openRow(ctx, row, outcome.PrimaryAccount, cache1H, stdout, stderr, runtime)
 		case ui.OutcomeSelected:
 			return openRow(
 				ctx,
@@ -187,6 +192,7 @@ func runLS(args []string, stdout, stderr io.Writer) int {
 				cache1H,
 				stdout,
 				stderr,
+				runtime,
 			)
 		case ui.OutcomeCancelled, ui.OutcomeNone:
 			return 0
@@ -207,14 +213,19 @@ func boolCount(values ...bool) int {
 	return count
 }
 
-func openID(ctx context.Context, id string, stdout, stderr io.Writer) int {
+func openID(
+	ctx context.Context,
+	id string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
 	defer database.Close()
-	scan, err := scanFleet(ctx, database, scanRequest{View: compose.AllView}, stderr)
+	scan, err := scanFleet(ctx, database, scanRequest{View: compose.AllView, Runtime: &runtime}, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
@@ -224,10 +235,11 @@ func openID(ctx context.Context, id string, stdout, stderr io.Writer) int {
 			return openRow(
 				ctx,
 				row,
-				readPrimaryAccount(scan.Paths),
+				readPrimaryAccount(scan.Paths, runtime.Config),
 				initialCache1H(),
 				stdout,
 				stderr,
+				runtime,
 			)
 		}
 	}
@@ -241,12 +253,9 @@ func openRow(
 	primary int,
 	cache1H bool,
 	stdout, stderr io.Writer,
+	runtime commandRuntime,
 ) int {
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
 	if row.Kind != compose.LiveClaude &&
 		row.Kind != compose.LiveCodex &&
 		row.Kind != compose.LiveSplit {
@@ -277,6 +286,7 @@ func openRow(
 		Home:           resolved.Home,
 		FreshSocket:    freshSocket(row.Kind),
 		CurrentTMUX:    os.Getenv("TMUX"),
+		Config:         runtime.Config,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
@@ -347,9 +357,9 @@ func reportHides(changes []ui.HideChange, stderr io.Writer) {
 func hideApplier(
 	ctx context.Context,
 	database *store.Store,
-	resolved paths.Values,
+	runtime commandRuntime,
 ) (func(ui.HideChange) error, error) {
-	manager, err := hide.New(database, hide.Dependencies{})
+	manager, err := hide.New(database, hideDependencies(runtime))
 	if err != nil {
 		return nil, err
 	}
@@ -366,10 +376,18 @@ func hideApplier(
 			return err
 		}
 		if change.Live && change.Socket != "" {
-			return killChatServer(ctx, resolved, change.Socket)
+			return killChatServer(ctx, runtime.Paths, change.Socket)
 		}
 		return nil
 	}, nil
+}
+
+func hideDependencies(runtime commandRuntime) hide.Dependencies {
+	return hide.Dependencies{
+		Paths:       runtime.Paths,
+		ClaudeRoots: append([]string(nil), runtime.Paths.ClaudeRoots...),
+		ConfigPath:  runtime.Config.Path,
+	}
 }
 
 // killChatServer ends one chat's tmux server and removes every handle that
@@ -436,7 +454,7 @@ func rebootRow(
 	return row, nil
 }
 
-func runIndex(args []string, stdout, stderr io.Writer) int {
+func runIndex(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet(
 		"index",
 		"usage: pfm index [--full] [--progress]",
@@ -457,7 +475,7 @@ func runIndex(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer database.Close()
-	indexer, err := fleetindex.New(database)
+	indexer, err := fleetindex.NewWithPaths(database, runtime.Paths)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm index: %v\n", err)
 		return 1
@@ -499,7 +517,7 @@ func formatCounters(counters fleetindex.Counters) string {
 	)
 }
 
-func runRevive(args []string, stdout, stderr io.Writer) int {
+func runRevive(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet("revive", "usage: pfm revive", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -517,7 +535,7 @@ func runRevive(args []string, stdout, stderr io.Writer) int {
 	scan, err := scanFleet(
 		context.Background(),
 		database,
-		scanRequest{View: compose.AllView},
+		scanRequest{View: compose.AllView, Runtime: &runtime},
 		stderr,
 	)
 	if err != nil {

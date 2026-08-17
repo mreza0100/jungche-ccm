@@ -91,7 +91,14 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 }
 
 func TestChatSwapSchedulesAHiddenWorker(t *testing.T) {
-	jailTest(t)
+	root := jailTest(t)
+	configPath := writeConfigFixture(t, root, `{
+  "version": 1,
+  "accounts": [
+    {"id": 1, "configDir": "`+filepath.Join(root, "account-1")+`"},
+    {"id": 2, "configDir": "`+filepath.Join(root, "account-2")+`"}
+  ]
+}`)
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -116,10 +123,12 @@ func TestChatSwapSchedulesAHiddenWorker(t *testing.T) {
 		return nil
 	}
 	var stdout, stderr bytes.Buffer
-	if code := runChat([]string{"swap", "2", "--sock", socket, "--1h", "on"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+	if code := run([]string{"--config", configPath, "chat", "swap", "2", "--sock", socket, "--1h", "on"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("schedule rc=%d stderr=%q", code, stderr.String())
 	}
-	if len(workerArgs) < 4 || workerArgs[1] != "internal" || workerArgs[2] != "swap-run" || workerArgs[3] != "2" {
+	joined := strings.Join(workerArgs, "\x00")
+	if !strings.Contains(joined, "\x00--config\x00") ||
+		!strings.Contains(joined, "\x00internal\x00swap-run\x002\x00") {
 		t.Fatalf("worker argv = %q", workerArgs)
 	}
 	if !strings.Contains(stdout.String(), "swap scheduled") {

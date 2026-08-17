@@ -20,16 +20,17 @@ const defaultEndpoint = "https://api.anthropic.com/api/oauth/usage"
 
 // Options is the complete, jail-replaceable hook environment.
 type Options struct {
-	Now       func() time.Time
-	Home      string
-	ConfigDir string
-	CacheDir  string
-	Warn      int
-	Critical  int
-	TTL       time.Duration
-	Client    *http.Client
-	Endpoint  string
-	Log       io.Writer
+	Now         func() time.Time
+	Home        string
+	ConfigDir   string
+	AccountDirs map[string]int
+	CacheDir    string
+	Warn        int
+	Critical    int
+	TTL         time.Duration
+	Client      *http.Client
+	Endpoint    string
+	Log         io.Writer
 }
 
 type usage struct {
@@ -60,7 +61,7 @@ func Evaluate(ctx context.Context, options Options) (string, error) {
 		}
 		return "", fmt.Errorf("stat usage credentials: %w", err)
 	}
-	account := accountNumber(options.Home, options.ConfigDir)
+	account := accountNumber(options.Home, options.ConfigDir, options.AccountDirs)
 	if err := ensurePrivateDirectory(options.CacheDir); err != nil {
 		return "", err
 	}
@@ -177,10 +178,21 @@ func normalize(options Options) Options {
 	return options
 }
 
-func accountNumber(home, configDir string) int {
+func accountNumber(home, configDir string, accountDirs ...map[string]int) int {
 	physical, err := filepath.EvalSymlinks(configDir)
 	if err != nil {
 		physical = configDir
+	}
+	if len(accountDirs) != 0 {
+		for directory, account := range accountDirs[0] {
+			candidate := directory
+			if resolved, resolveErr := filepath.EvalSymlinks(directory); resolveErr == nil {
+				candidate = resolved
+			}
+			if filepath.Clean(physical) == filepath.Clean(candidate) {
+				return account
+			}
+		}
 	}
 	switch filepath.Clean(physical) {
 	case filepath.Join(home, ".claude"):

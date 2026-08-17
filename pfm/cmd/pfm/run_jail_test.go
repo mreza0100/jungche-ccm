@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,6 +81,7 @@ claude_live() {
 // repaints the screen so a marker that should be gone really leaves the
 // capture.
 const stubCodex = `#!/usr/bin/env bash
+printf '%s\n' "$*" > "${CX_STUB_ARGV:-/dev/null}"
 stty -icanon -echo -ixon min 1 time 0 2>/dev/null
 ` + stubRecorder + `
 codex_live
@@ -337,6 +339,7 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	}
 	jail := newRunJail(t)
 	defer jail.killSockets(t)
+	t.Setenv("CX_STUB_ARGV", filepath.Join(jail.root, "cx-argv"))
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
@@ -356,6 +359,9 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	got := jail.await(t, "cx-prompt", "incident")
 	if strings.TrimSpace(got) != "read the incident report" {
 		t.Fatalf("delivered prompt = %q", got)
+	}
+	if argv := jail.read(t, "cx-argv"); !strings.Contains(argv, "--dangerously-bypass-approvals-and-sandbox") {
+		t.Fatalf("absent-config Codex argv = %q, want current bypass flag", argv)
 	}
 	report := stdout.String()
 	if !strings.Contains(report, "\tnamed\t") ||
@@ -458,5 +464,85 @@ func TestChatNewSpawnsAClaudeChatWithItsNameOnTheCommandLine(t *testing.T) {
 	}
 	if got := jail.onlyWindowName(t); got != "worker 7" {
 		t.Fatalf("claude window=%q, want inline launch name", got)
+	}
+}
+
+// TestMachineConfigChangesTheActualLaunchCommands is the machine-config
+// acceptance seam: it grades the argv recorded by the engine processes, not
+// merely the decoded config struct. The default-path tests above separately
+// pin today's bypass flags when no config file exists.
+func TestMachineConfigChangesTheActualLaunchCommands(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		engine    string
+		argvFile  string
+		forbidden []string
+	}{
+		{
+			name:     "claude prompt permissions",
+			engine:   "claude",
+			argvFile: "cc-argv",
+			forbidden: []string{
+				"--allow-dangerously-skip-permissions",
+				"--dangerously-skip-permissions",
+			},
+		},
+		{
+			name:      "codex workspace sandbox",
+			engine:    "codex",
+			argvFile:  "cx-argv",
+			forbidden: []string{"--dangerously-bypass-approvals-and-sandbox"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := exec.LookPath("tmux"); err != nil {
+				t.Skip("tmux is not installed")
+			}
+			jail := newRunJail(t)
+			defer jail.killSockets(t)
+			t.Setenv("CX_STUB_ARGV", filepath.Join(jail.root, "cx-argv"))
+
+			configPath := filepath.Join(jail.root, "config.json")
+			content, err := json.Marshal(map[string]any{
+				"version": 1,
+				"accounts": []map[string]any{
+					{"id": 1, "configDir": filepath.Join(jail.root, "accounts", "1")},
+					{"id": 2, "configDir": filepath.Join(jail.root, "accounts", "2")},
+					{"id": 3, "configDir": filepath.Join(jail.root, "accounts", "3")},
+				},
+				"claude": map[string]any{"permissionMode": "prompt"},
+				"codex":  map[string]any{"yolo": false},
+				"mcp": map[string]any{
+					"servers": map[string]any{
+						"chat": map[string]any{"enabled": false},
+					},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(configPath, content, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			var stdout, stderr bytes.Buffer
+			code := run([]string{
+				"--config", configPath,
+				"chat", "new",
+				"--engine", test.engine,
+				"--name", "configured-worker",
+				"--cwd", filepath.Join(jail.root, "work"),
+				"inspect the fixture",
+			}, &stdout, &stderr)
+			if code != 0 {
+				t.Fatalf("run exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			argv := jail.await(t, test.argvFile, "inspect")
+			for _, value := range test.forbidden {
+				if strings.Contains(argv, value) {
+					t.Fatalf("configured %s argv still contains %q: %q", test.engine, value, argv)
+				}
+			}
+		})
 	}
 }

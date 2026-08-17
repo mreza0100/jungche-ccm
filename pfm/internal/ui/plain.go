@@ -36,7 +36,7 @@ func (picker TSVPicker) Pick(
 func passiveOutcome(snapshot Snapshot) Outcome {
 	return Outcome{
 		Kind:           OutcomeNone,
-		PrimaryAccount: validAccount(snapshot.PrimaryAccount),
+		PrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
 		Cache1H:        snapshot.Cache1H,
 		Rotation:       snapshot.Rotation,
 		Query:          snapshot.InitialQuery,

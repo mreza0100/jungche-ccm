@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/config"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
@@ -377,21 +377,26 @@ func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 		Home:     home,
 		SharedDB: filepath.Join(home, ".cc", "fleet.db"),
 	}
-	if err := writePrimaryAccount(values, 2); err != nil {
+	machine := config.Defaults(home, []string{
+		filepath.Join(home, ".cc", "1", "projects"),
+		filepath.Join(home, ".cc", "2", "projects"),
+		filepath.Join(home, ".cc", "3", "projects"),
+	})
+	if err := writePrimaryAccount(values, machine, 3); err != nil {
 		t.Fatalf("writePrimaryAccount() = %v", err)
 	}
-	if got := readPrimaryAccount(values); got != 2 {
+	if got := readPrimaryAccount(values, machine); got != 3 {
 		t.Fatalf("readPrimaryAccount() = %d", got)
 	}
 	content, err := os.ReadFile(filepath.Join(home, ".claude-primary"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(content) != "2\n" {
+	if string(content) != "3\n" {
 		t.Fatalf("primary mirror = %q", content)
 	}
 
-	if err := writePrimaryAccount(values, action.MaxAccount+1); err == nil {
+	if err := writePrimaryAccount(values, machine, 4); err == nil {
 		t.Fatal("off-roster account accepted")
 	}
 
@@ -406,21 +411,21 @@ func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 		Home:     bare,
 		SharedDB: filepath.Join(blocked, "fleet.db"),
 	}
-	if err := writePrimaryAccount(bareValues, 2); err != nil {
+	if err := writePrimaryAccount(bareValues, machine, 2); err != nil {
 		t.Fatalf("fallback writePrimaryAccount() = %v", err)
 	}
-	if got := readPrimaryAccount(bareValues); got != 2 {
+	if got := readPrimaryAccount(bareValues, machine); got != 2 {
 		t.Fatalf("fallback readPrimaryAccount() = %d", got)
 	}
-	// A stale file naming a retired account reads back as account 1.
+	// A stale file naming a retired account reads back as the first account.
 	if err := os.WriteFile(
 		filepath.Join(bare, ".claude-primary"),
-		[]byte("3\n"),
+		[]byte("4\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if got := readPrimaryAccount(bareValues); got != 1 {
+	if got := readPrimaryAccount(bareValues, machine); got != 1 {
 		t.Fatalf("off-roster file readPrimaryAccount() = %d", got)
 	}
 }

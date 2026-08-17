@@ -29,7 +29,7 @@ func (list *steerList) Set(value string) error {
 // carrying the remainder so the chain re-arms one confirmed delivery at a
 // time. It is spawned detached because a self-inject's waiter waits on the
 // very turn that spawned it.
-func runInternalThen(args []string, stderr io.Writer) int {
+func runInternalThen(args []string, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"internal then",
 		"usage: pfm internal then --socket path --target name --steer text [--steer text]...",
@@ -46,7 +46,7 @@ func runInternalThen(args []string, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	engine, err := newInjectEngine()
+	engine, err := newInjectEngine(runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal then: %v\n", err)
 		return 1

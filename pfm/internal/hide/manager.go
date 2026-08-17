@@ -20,9 +20,13 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 	if database == nil {
 		return nil, errors.New("hide store is nil")
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return nil, fmt.Errorf("resolve hide paths: %w", err)
+	resolved := dependencies.Paths
+	if resolved.Home == "" {
+		var err error
+		resolved, err = paths.Resolve()
+		if err != nil {
+			return nil, fmt.Errorf("resolve hide paths: %w", err)
+		}
 	}
 	proc := dependencies.ProcFS
 	if proc == nil {
@@ -38,7 +42,10 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 	}
 	spawner := dependencies.Spawner
 	if spawner == nil {
-		spawner = CommandSpawner{Executable: dependencies.Executable}
+		spawner = CommandSpawner{
+			Executable: dependencies.Executable,
+			ConfigPath: dependencies.ConfigPath,
+		}
 	}
 	return &Manager{
 		database: database,

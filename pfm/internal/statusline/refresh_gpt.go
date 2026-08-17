@@ -16,6 +16,7 @@ import (
 // GPTOptions describes the detached Codex App Server cache refresh.
 type GPTOptions struct {
 	CachePath      string
+	Binary         string
 	ReadRateLimits func(context.Context) ([]byte, error)
 	Now            func() time.Time
 }
@@ -35,7 +36,9 @@ func RefreshGPT(ctx context.Context, options GPTOptions) error {
 	}
 	defer removeRefreshLock(options.CachePath)
 	if options.ReadRateLimits == nil {
-		return fmt.Errorf("GPT rate-limit reader is nil")
+		options.ReadRateLimits = func(ctx context.Context) ([]byte, error) {
+			return ReadGPTRateLimitsWithBinary(ctx, options.Binary)
+		}
 	}
 	if options.Now == nil {
 		options.Now = time.Now

@@ -33,7 +33,12 @@ func LiveSessions(
 	proc gather.ProcFS,
 	codexRoot string,
 	sidDir string,
+	binaries ...string,
 ) map[string]struct{} {
+	codexBinary := ""
+	if len(binaries) > 0 {
+		codexBinary = binaries[0]
+	}
 	live := make(map[string]struct{})
 	pids, err := proc.PIDs()
 	if err == nil {
@@ -48,7 +53,7 @@ func LiveSessions(
 					live[strings.ToLower(id)] = struct{}{}
 				}
 			}
-			if !gather.IsCodexCommand(cmdline) {
+			if !gather.IsCodexCommand(cmdline, codexBinary) {
 				continue
 			}
 			if environment, err := proc.Environ(pid); err == nil {

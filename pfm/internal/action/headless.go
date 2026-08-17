@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/store"
 )
 
@@ -33,6 +34,7 @@ type HeadlessRequest struct {
 	Home           string
 	PrimaryAccount int
 	Cache1H        bool
+	Config         pfmconfig.Config
 	// Model and Effort pin the seat's tier at birth. A seat that inherits
 	// whatever the account config holds that day is a seat whose cost and
 	// quality nobody chose.
@@ -89,10 +91,10 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 	}
 	switch engine {
 	case store.ClaudeEngine:
-		if request.PrimaryAccount < 1 || request.PrimaryAccount > MaxAccount {
+		machine := normalizedMachineConfig(request.Config, request.Home)
+		if _, found := machine.Account(request.PrimaryAccount); !found {
 			return HeadlessPlan{}, fmt.Errorf(
-				"primary account must be 1-%d, got %d",
-				MaxAccount,
+				"primary account %d is not in the configured roster",
 				request.PrimaryAccount,
 			)
 		}
@@ -120,11 +122,13 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 				request.Home,
 				request.PrimaryAccount,
 				request.Cache1H,
+				machine,
 				arguments...,
 			),
 			PromptOnCommandLine: true,
 		}, nil
 	case store.CodexEngine:
+		machine := normalizedMachineConfig(request.Config, request.Home)
 		// No name and no prompt on the command line: Codex has no launch flag
 		// for a thread name (codex 0.147 --help), so the name is set through
 		// the TUI's own rename, and a prompt given here would have the model
@@ -143,7 +147,7 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 			)
 		}
 		return HeadlessPlan{
-			Run: codexCommandWith(headlessHygiene, codexArguments...),
+			Run: codexCommandWith(headlessHygiene, machine, codexArguments...),
 		}, nil
 	}
 	return HeadlessPlan{}, fmt.Errorf("unsupported engine %q", request.Engine)

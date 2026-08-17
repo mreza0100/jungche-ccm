@@ -77,6 +77,23 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func TestConfiguredArchiveRootsExcludeLegacyPrimaryAlias(t *testing.T) {
+	values := archiveJail(t)
+	runner, err := New(Dependencies{
+		Paths:            values,
+		Hides:            &fakeHides{},
+		Proc:             emptyProc{},
+		ExactClaudeRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := runner.claudeRoots()
+	if len(roots) != 1 || roots[0] != values.ClaudeRoots[0] {
+		t.Fatalf("configured archive roots = %#v, want exact roster %#v", roots, values.ClaudeRoots)
+	}
+}
+
 // The whole hidden-chat contract in one run: the dry run moves nothing, the
 // apply moves exactly the resolvable dead chats, a LIVE hidden chat is left on
 // disk, and every decided id leaves the hidden list — including the live one,

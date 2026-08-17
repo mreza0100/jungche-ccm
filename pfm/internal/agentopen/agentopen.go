@@ -94,6 +94,11 @@ type Request struct {
 	Cache1H        bool
 }
 
+type Account struct {
+	ID        int
+	ConfigDir string
+}
+
 type Process struct {
 	PID  int
 	Argv []string
@@ -120,6 +125,8 @@ type Tmux interface {
 type Dependencies struct {
 	SIDDir       string
 	Home         string
+	Accounts     []Account
+	ClaudeBinary string
 	Commands     Commands
 	Processes    Processes
 	Tmux         Tmux
@@ -130,6 +137,8 @@ type Dependencies struct {
 
 type Opener struct {
 	sidDir, home              string
+	accounts                  []Account
+	claudeBinary              string
 	commands                  Commands
 	processes                 Processes
 	tmux                      Tmux
@@ -150,8 +159,22 @@ func New(dependencies Dependencies) *Opener {
 	if stderr == nil {
 		stderr = os.Stderr
 	}
+	accounts := append([]Account(nil), dependencies.Accounts...)
+	if len(accounts) == 0 {
+		accounts = []Account{
+			{ID: 1},
+			{ID: 2, ConfigDir: filepath.Join(dependencies.Home, ".cc", "2")},
+			{ID: 3, ConfigDir: filepath.Join(dependencies.Home, ".cc", "3")},
+		}
+	}
+	claudeBinary := dependencies.ClaudeBinary
+	if claudeBinary == "" {
+		claudeBinary = "claude"
+	}
 	return &Opener{sidDir: dependencies.SIDDir, home: dependencies.Home,
-		commands: dependencies.Commands, processes: dependencies.Processes,
+		accounts:     accounts,
+		claudeBinary: claudeBinary,
+		commands:     dependencies.Commands, processes: dependencies.Processes,
 		tmux: dependencies.Tmux, stderr: stderr,
 		gracePeriod: grace, pollInterval: poll}
 }
@@ -212,7 +235,7 @@ func (opener *Opener) Open(ctx context.Context, request Request) error {
 		return opener.resumeFresh(ctx, request, primary, primary)
 	}
 
-	account := accountForConfig(opener.home, hitConfig)
+	account := opener.accountForConfig(hitConfig)
 	if hit.PID > 0 && opener.processes.Alive(hit.PID) {
 		if socket, err := opener.tmux.SocketForPID(ctx, hit.PID); err != nil {
 			fmt.Fprintf(opener.stderr, "pfm internal agent-open: locate tmux socket for agent %d: %v\n", hit.PID, err)
@@ -312,7 +335,8 @@ func (opener *Opener) holdsSession(ctx context.Context, id string) (bool, error)
 		return false, err
 	}
 	for _, row := range rows {
-		isClaude := len(row.Argv) > 0 && filepath.Base(row.Argv[0]) == "claude"
+		isClaude := len(row.Argv) > 0 &&
+			filepath.Base(row.Argv[0]) == filepath.Base(opener.claudeBinary)
 		if !isClaude {
 			continue
 		}
@@ -329,27 +353,32 @@ func (opener *Opener) configCandidates(owning string) []string {
 	if owning != "" {
 		return []string{owning}
 	}
-	return []string{"", filepath.Join(opener.home, ".cc", "2")}
+	result := make([]string, 0, len(opener.accounts))
+	for _, account := range opener.accounts {
+		result = append(result, account.ConfigDir)
+	}
+	return result
 }
 
 func (opener *Opener) configForAccount(account int) string {
-	if account == 2 {
-		return filepath.Join(opener.home, ".cc", "2")
+	for _, candidate := range opener.accounts {
+		if candidate.ID == account {
+			return candidate.ConfigDir
+		}
 	}
 	return ""
 }
 
-func accountForConfig(home, config string) int {
-	if filepath.Clean(config) == filepath.Join(home, ".cc", "2") || config == filepath.Join(home, ".claude2") || config == filepath.Join(home, ".claude3") {
-		return 2
+func (opener *Opener) accountForConfig(config string) int {
+	for _, account := range opener.accounts {
+		if filepath.Clean(config) == filepath.Clean(account.ConfigDir) {
+			return account.ID
+		}
 	}
 	return 1
 }
 func accountNumber(account int) int {
-	if account == 2 {
-		return 2
-	}
-	return 1
+	return account
 }
 func displayName(agent Agent) string {
 	if agent.Name != "" {

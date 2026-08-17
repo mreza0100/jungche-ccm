@@ -64,6 +64,7 @@ type Snapshot struct {
 	SuppressedCount int
 	Refreshing      bool
 	PrimaryAccount  int
+	AccountIDs      []int
 	Cache1H         bool
 	Rotation        int
 	NowNS           int64

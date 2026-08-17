@@ -87,9 +87,17 @@ func ResolveVertexProject(ctx context.Context) (string, error) {
 // ReadGPTRateLimits performs the complete Codex App Server initialize exchange
 // and returns its id=1 response. It runs only in a detached refresher child.
 func ReadGPTRateLimits(ctx context.Context) ([]byte, error) {
+	return ReadGPTRateLimitsWithBinary(ctx, "codex")
+}
+
+// ReadGPTRateLimitsWithBinary uses the machine-configured Codex command.
+func ReadGPTRateLimitsWithBinary(ctx context.Context, binary string) ([]byte, error) {
+	if binary == "" {
+		binary = "codex"
+	}
 	child, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	return readGPTRateLimitsCommand(exec.CommandContext(child, "codex", "app-server"))
+	return readGPTRateLimitsCommand(exec.CommandContext(child, binary, "app-server"))
 }
 
 func readGPTRateLimitsCommand(command *exec.Cmd) ([]byte, error) {

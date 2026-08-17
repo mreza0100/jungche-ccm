@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 )
 
 // Route is the legacy picker action letter.
@@ -28,6 +29,7 @@ type Request struct {
 	Home           string
 	FreshSocket    string
 	CurrentTMUX    string
+	Config         pfmconfig.Config
 }
 
 // CodexServer is a detached server that must exist before its attach line is

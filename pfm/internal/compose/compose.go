@@ -60,8 +60,12 @@ func Compose(input Input) Output {
 		primaryAccount:   input.Options.PrimaryAccount,
 		fallbackDir:      input.Options.CurrentDir,
 	}
-	if output.primaryAccount < 1 || output.primaryAccount > 3 {
-		output.primaryAccount = 1
+	if !configuredAccount(input.AccountRoots, output.primaryAccount) {
+		if len(input.AccountRoots) != 0 {
+			output.primaryAccount = input.AccountRoots[0].Account
+		} else {
+			output.primaryAccount = 1
+		}
 	}
 
 	for _, row := range append(liveRows, agentRows...) {
@@ -1044,7 +1048,7 @@ func accountForPath(path string, roots []AccountRoot) int {
 	account := 0
 	longest := -1
 	for _, root := range roots {
-		if root.Account < 1 || root.Account > 3 || root.Path == "" {
+		if root.Account < 1 || root.Path == "" {
 			continue
 		}
 		cleanRoot := root.Path
@@ -1058,6 +1062,15 @@ func accountForPath(path string, roots []AccountRoot) int {
 		}
 	}
 	return account
+}
+
+func configuredAccount(roots []AccountRoot, account int) bool {
+	for _, root := range roots {
+		if root.Account == account {
+			return true
+		}
+	}
+	return false
 }
 
 // EngineForKind reports the engine ("cc" or "cx") a row's kind belongs to —

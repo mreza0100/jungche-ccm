@@ -10,12 +10,16 @@ import (
 	"strconv"
 	"strings"
 
+	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
 
-func runDoctor(args []string, stdout, stderr io.Writer) int {
+func runDoctor(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet("doctor", "usage: pfm doctor", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -24,11 +28,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stdout, "doctor: unhealthy paths: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
+	printDoctorConfig(stdout, runtime)
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy database: %v\n", err)
@@ -179,6 +180,29 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
+	fmt.Fprintf(
+		stdout,
+		"doctor: config path=%s exists=%t\n",
+		runtime.Config.Path,
+		runtime.Config.Exists,
+	)
+	fmt.Fprintf(stdout, "doctor: config version=%d (%s)\n", runtime.Config.Version, runtime.Config.Source("version"))
+	accounts := make([]string, 0, len(runtime.Config.Accounts))
+	for _, account := range runtime.Config.Accounts {
+		accounts = append(accounts, fmt.Sprintf("%d:%s", account.ID, account.ConfigDir))
+	}
+	fmt.Fprintf(stdout, "doctor: config accounts=%s (%s)\n", strings.Join(accounts, ","), runtime.Config.Source("accounts"))
+	fmt.Fprintf(stdout, "doctor: config claude.permissionMode=%s (%s)\n", runtime.Config.Claude.PermissionMode, runtime.Config.Source("claude.permissionMode"))
+	fmt.Fprintf(stdout, "doctor: config claude.binary=%s (%s)\n", runtime.Config.Claude.Binary, runtime.Config.Source("claude.binary"))
+	fmt.Fprintf(stdout, "doctor: config codex.yolo=%t (%s)\n", runtime.Config.Codex.Yolo, runtime.Config.Source("codex.yolo"))
+	fmt.Fprintf(stdout, "doctor: config codex.binary=%s (%s)\n", runtime.Config.Codex.Binary, runtime.Config.Source("codex.binary"))
+	for _, name := range config.RegisteredMCPServers() {
+		key := "mcp.servers." + name + ".enabled"
+		fmt.Fprintf(stdout, "doctor: config %s=%t (%s)\n", key, runtime.Config.MCPServers[name].Enabled, runtime.Config.Source(key))
+	}
 }
 
 // pfmPathWarnings checks both precedence and byte identity. A copied binary

@@ -7,17 +7,20 @@ import (
 	"os"
 
 	"hostops/pfm/internal/agentopen"
-	"hostops/pfm/internal/paths"
-	"hostops/pfm/internal/shared"
+	"hostops/pfm/internal/config"
 )
 
 // runInternalAgentOpen is deliberately absent from operator help. It is the
 // argv target embedded by the picker for a tmux window, not a user command.
-func runInternalAgentOpen(args []string, stderr io.Writer) int {
+func runInternalAgentOpen(
+	args []string,
+	stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet("internal agent-open", "usage: pfm internal agent-open --id id --cwd path [--config path]", stderr)
 	id := flags.String("id", "", "session id")
 	cwd := flags.String("cwd", "", "project directory")
-	config := flags.String("config", "", "owning Claude config directory")
+	configDir := flags.String("config", "", "owning Claude config directory")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -25,24 +28,33 @@ func runInternalAgentOpen(args []string, stderr io.Writer) int {
 		flags.Usage()
 		return 2
 	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm internal agent-open: %v\n", err)
-		return 1
-	}
-	primary := 1
-	if account, found := shared.PrimaryAccount(context.Background(), resolved); found && account >= 1 && account <= 2 {
-		primary = account
+	resolved := runtime.Paths
+	primary := readPrimaryAccount(resolved, runtime.Config)
+	accounts := make([]agentopen.Account, 0, len(runtime.Config.Accounts))
+	for _, account := range runtime.Config.Accounts {
+		configDir := account.ConfigDir
+		if account.Implicit {
+			configDir = ""
+		}
+		accounts = append(accounts, agentopen.Account{ID: account.ID, ConfigDir: configDir})
 	}
 	opener := agentopen.New(agentopen.Dependencies{
-		SIDDir:    resolved.SIDDir,
-		Home:      resolved.Home,
-		Commands:  agentopen.ExecCommands{Home: resolved.Home, Stdout: os.Stdout, Stderr: stderr},
+		SIDDir:       resolved.SIDDir,
+		Home:         resolved.Home,
+		Accounts:     accounts,
+		ClaudeBinary: runtime.Config.Claude.Binary,
+		Commands: agentopen.ExecCommands{
+			Binary:            runtime.Config.Claude.Binary,
+			Home:              resolved.Home,
+			PromptPermissions: runtime.Config.Claude.PermissionMode == config.PermissionPrompt,
+			Stdout:            os.Stdout,
+			Stderr:            stderr,
+		},
 		Processes: agentopen.RealProcesses{Root: resolved.ProcRoot},
 		Tmux:      agentopen.RealTmux{Dir: resolved.TmuxDir, Stderr: stderr},
 		Stderr:    stderr,
 	})
-	if err := opener.Open(context.Background(), agentopen.Request{ID: *id, CWD: *cwd, OwningConfig: *config, PrimaryAccount: primary, Cache1H: initialCache1H()}); err != nil {
+	if err := opener.Open(context.Background(), agentopen.Request{ID: *id, CWD: *cwd, OwningConfig: *configDir, PrimaryAccount: primary, Cache1H: initialCache1H()}); err != nil {
 		fmt.Fprintf(stderr, "pfm internal agent-open: %v\n", err)
 		return 1
 	}

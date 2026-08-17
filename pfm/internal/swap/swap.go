@@ -48,15 +48,20 @@ type Process interface {
 }
 
 type Request struct {
-	SocketPath string
-	Pane       string
-	PanePID    int
-	SessionID  string
-	Transcript string
-	CWD        string
-	Account    int
-	Cache1H    bool
-	Then       string
+	SocketPath        string
+	Pane              string
+	PanePID           int
+	SessionID         string
+	Transcript        string
+	CWD               string
+	Account           int
+	AccountIDs        []int
+	AccountConfigDir  string
+	AccountImplicit   bool
+	ClaudeBinary      string
+	PromptPermissions bool
+	Cache1H           bool
+	Then              string
 }
 
 type Options struct {
@@ -102,8 +107,8 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if request.SocketPath == "" || request.Pane == "" {
 		return Result{}, errors.New("swap requires a socket and pane")
 	}
-	if request.Account < 1 || request.Account > action.MaxAccount {
-		return Result{}, fmt.Errorf("account must be 1-%d", action.MaxAccount)
+	if !rosterContains(request.AccountIDs, request.Account) {
+		return Result{}, fmt.Errorf("account %d is not in the configured roster", request.Account)
 	}
 	if stderr == nil {
 		stderr = io.Discard
@@ -220,7 +225,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !dead {
 		return Result{}, errors.New("/exit did not complete; chat left running")
 	}
-	run := claudeRun(options.Home, request.Account, request.Cache1H, request.SessionID)
+	run := claudeRun(request)
 	if err := tmux.Respawn(ctx, request.SocketPath, request.Pane, request.CWD, run); err != nil {
 		return Result{}, fmt.Errorf("respawn pane: %w", err)
 	}
@@ -250,6 +255,18 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	return Result{Account: request.Account, Cache1H: request.Cache1H, Fresh: request.SessionID == ""}, nil
 }
 
+func rosterContains(accounts []int, wanted int) bool {
+	if len(accounts) == 0 {
+		accounts = []int{1, 2, 3}
+	}
+	for _, account := range accounts {
+		if account == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func selectorOpen(capture string) bool {
 	selector := regexp.MustCompile(`❯[[:space:]]*[0-9]+\.`)
 	for _, line := range strings.Split(capture, "\n") {
@@ -260,23 +277,32 @@ func selectorOpen(capture string) bool {
 	return false
 }
 
-func claudeRun(home string, account int, cache1H bool, id string) string {
+func claudeRun(request Request) string {
 	parts := []string{"env", "-u", "CLAUDE_CODE_SESSION_ID", "-u", "CLAUDECODE", "-u", "ENABLE_PROMPT_CACHING_1H", "-u", "FORCE_PROMPT_CACHING_5M", "-u", "ANTHROPIC_BASE_URL", "-u", "ANTHROPIC_AUTH_TOKEN", "-u", "ANTHROPIC_MODEL", "-u", "ANTHROPIC_SMALL_FAST_MODEL", "-u", "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "-u", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "-u", "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"}
-	if account == 2 {
-		parts = append(parts, "CLAUDE_CONFIG_DIR="+action.Quote(filepath.Join(home, ".cc", "2")))
+	if !request.AccountImplicit && request.AccountConfigDir != "" {
+		parts = append(parts, "CLAUDE_CONFIG_DIR="+action.Quote(request.AccountConfigDir))
 	} else {
 		parts = append(parts, "-u", "CLAUDE_CONFIG_DIR")
 	}
-	if cache1H {
+	if request.Cache1H {
 		parts = append(parts, "ENABLE_PROMPT_CACHING_1H=1")
 	} else {
 		parts = append(parts, "FORCE_PROMPT_CACHING_5M=1")
 	}
-	parts = append(parts, "claude")
-	if id != "" {
-		parts = append(parts, "--resume", action.Quote(id))
+	binary := request.ClaudeBinary
+	if binary == "" {
+		binary = "claude"
 	}
-	parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
+	if binary != "claude" {
+		binary = action.Quote(binary)
+	}
+	parts = append(parts, binary)
+	if request.SessionID != "" {
+		parts = append(parts, "--resume", action.Quote(request.SessionID))
+	}
+	if !request.PromptPermissions {
+		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
+	}
 	return strings.Join(parts, " ")
 }
 

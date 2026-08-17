@@ -121,7 +121,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 	// An account outside the launcher's two-seat roster must never reach a
 	// command line.
-	for _, account := range []int{0, MaxAccount + 1, 9} {
+	for _, account := range []int{0, 4, 9} {
 		_, err := Synthesize(Request{
 			Row: compose.Row{
 				Kind: compose.NewClaude,
@@ -134,7 +134,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 			t.Fatalf("account %d error = %v, want a roster rejection", account, err)
 		}
 	}
-	for account := 1; account <= MaxAccount; account++ {
+	for account := 1; account <= 3; account++ {
 		if _, err := Synthesize(Request{
 			Row: compose.Row{
 				Kind: compose.NewClaude,

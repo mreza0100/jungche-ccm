@@ -11,6 +11,7 @@ import (
 type CommandSpawner struct {
 	Executable string
 	Setsid     string
+	ConfigPath string
 }
 
 func (spawner CommandSpawner) Spawn(
@@ -29,11 +30,11 @@ func (spawner CommandSpawner) Spawn(
 	if setsid == "" {
 		setsid = "setsid"
 	}
-	command := exec.CommandContext(
-		ctx,
-		setsid,
-		"-f",
-		executable,
+	arguments := []string{"-f", executable}
+	if spawner.ConfigPath != "" {
+		arguments = append(arguments, "--config", spawner.ConfigPath)
+	}
+	arguments = append(arguments,
 		"internal",
 		"hide-exit",
 		"--engine",
@@ -49,6 +50,7 @@ func (spawner CommandSpawner) Spawn(
 		"--pane",
 		args.PaneID,
 	)
+	command := exec.CommandContext(ctx, setsid, arguments...)
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return fmt.Errorf("open null device for hide finisher: %w", err)

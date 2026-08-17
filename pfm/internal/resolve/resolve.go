@@ -49,15 +49,26 @@ type TmuxClient interface {
 	CapturePane(ctx context.Context, socketPath, paneID string) (string, error)
 }
 
+// Binaries are the configured engine executables. Tmux reports the foreground
+// process basename, so callers pass the configured command paths here and the
+// resolver compares their basenames without making the config package part of
+// the resolution contract.
+type Binaries struct {
+	Claude string
+	Codex  string
+}
+
 // Resolver scans a caller-selected tmux and crumb jail.
 type Resolver struct {
-	tmux    TmuxClient
-	tmuxDir string
-	sidDir  string
+	tmux         TmuxClient
+	tmuxDir      string
+	sidDir       string
+	claudeBinary string
+	codexBinary  string
 }
 
 // New resolves the standard paths and uses command-backed tmux when omitted.
-func New(client TmuxClient) (*Resolver, error) {
+func New(client TmuxClient, configured ...Binaries) (*Resolver, error) {
 	resolved, err := paths.Resolve()
 	if err != nil {
 		return nil, fmt.Errorf("resolve resolver paths: %w", err)
@@ -65,10 +76,16 @@ func New(client TmuxClient) (*Resolver, error) {
 	if client == nil {
 		client = CommandTmux{}
 	}
+	binaries := Binaries{}
+	if len(configured) != 0 {
+		binaries = configured[0]
+	}
 	return &Resolver{
-		tmux:    client,
-		tmuxDir: resolved.TmuxDir,
-		sidDir:  resolved.SIDDir,
+		tmux:         client,
+		tmuxDir:      resolved.TmuxDir,
+		sidDir:       resolved.SIDDir,
+		claudeBinary: binaries.Claude,
+		codexBinary:  binaries.Codex,
 	}, nil
 }
 
@@ -316,7 +333,7 @@ func (resolver *Resolver) resolveSession(want string, panes []Pane) Outcome {
 		if len(sessionPanes) > 1 {
 			claudePanes := make([]Pane, 0)
 			for _, pane := range sessionPanes {
-				if isClaudePaneCommand(pane.CurrentCommand) {
+				if isClaudePaneCommand(pane.CurrentCommand, resolver.claudeBinary) {
 					claudePanes = append(claudePanes, pane)
 				}
 			}
@@ -364,7 +381,8 @@ func (resolver *Resolver) resolveCxWindow(want string, panes []Pane) Outcome {
 		exact := strings.EqualFold(pane.WindowName, want)
 		clipped := queryRunes > 24 &&
 			strings.EqualFold(pane.WindowName, clippedWant)
-		if !strings.HasPrefix(filepath.Base(pane.SocketPath), "cx-") ||
+		codexSocket := strings.HasPrefix(filepath.Base(pane.SocketPath), "cx-")
+		if (!codexSocket && !isCodexCommand(pane.CurrentCommand, resolver.codexBinary)) ||
 			pane.PaneID == "" ||
 			pane.WindowName == "" ||
 			(!exact && !clipped) {
@@ -417,20 +435,43 @@ func containsMedal(value string) bool {
 	return naming.ContainsMedal(value)
 }
 
-func isClaudePaneCommand(command string) bool {
-	if strings.HasPrefix(command, "claude") {
+func isClaudePaneCommand(command string, binaries ...string) bool {
+	return isClaudeCommand(command, binaries...)
+}
+
+func isClaudeCommand(command string, binaries ...string) bool {
+	name := filepath.Base(strings.TrimSpace(command))
+	if strings.HasPrefix(name, "claude") {
 		return true
 	}
-	dot := strings.IndexByte(command, '.')
+	for _, binary := range binaries {
+		if binary != "" && name == filepath.Base(strings.TrimSpace(binary)) {
+			return true
+		}
+	}
+	dot := strings.IndexByte(name, '.')
 	if dot <= 0 {
 		return false
 	}
-	for _, character := range command[:dot] {
+	for _, character := range name[:dot] {
 		if character < '0' || character > '9' {
 			return false
 		}
 	}
 	return true
+}
+
+func isCodexCommand(command string, binaries ...string) bool {
+	name := filepath.Base(strings.TrimSpace(command))
+	if name == "codex" {
+		return true
+	}
+	for _, binary := range binaries {
+		if binary != "" && name == filepath.Base(strings.TrimSpace(binary)) {
+			return true
+		}
+	}
+	return false
 }
 
 func targetLine(socketPath, target string) string {

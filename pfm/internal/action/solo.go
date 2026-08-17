@@ -21,6 +21,7 @@ func (executor *Executor) Solo(
 	ctx context.Context,
 	id, keepSocket string,
 	liveAgent bool,
+	claudeBinaries ...string,
 ) error {
 	if id == "" {
 		return nil
@@ -136,7 +137,7 @@ func (executor *Executor) Solo(
 		return fmt.Errorf("scan solo processes: %w", err)
 	}
 	for _, process := range processes {
-		if !isStrayClaude(process, id) {
+		if !isStrayClaude(process, id, claudeBinaries...) {
 			continue
 		}
 		if _, keep := keepTTYs[strings.TrimPrefix(process.TTY, "/dev/")]; keep {
@@ -192,7 +193,7 @@ func paneExists(panes []Pane, paneID string) bool {
 	return false
 }
 
-func isStrayClaude(process Process, id string) bool {
+func isStrayClaude(process Process, id string, claudeBinaries ...string) bool {
 	if len(process.Argv) == 0 {
 		return false
 	}
@@ -202,7 +203,15 @@ func isStrayClaude(process Process, id string) bool {
 		}
 	}
 	executable := process.Argv[0]
-	if filepath.Base(executable) != "claude" &&
+	executableName := filepath.Base(executable)
+	configured := false
+	for _, binary := range claudeBinaries {
+		if binary != "" && executableName == filepath.Base(binary) {
+			configured = true
+			break
+		}
+	}
+	if executableName != "claude" && !configured &&
 		!strings.Contains(executable, "/claude/versions/") {
 		return false
 	}

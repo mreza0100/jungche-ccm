@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/agentopen"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -33,7 +34,7 @@ type resumeTarget struct {
 // It runs only after every live namespace missed, so a live tmux session name
 // always wins over a transcript id, path, or excerpt that happens to resemble
 // it.
-func resolveResumeTarget(target string) (resumeTarget, bool, error) {
+func resolveResumeTarget(target string, runtimes ...commandRuntime) (resumeTarget, bool, error) {
 	if info, err := os.Stat(target); err == nil {
 		if !info.Mode().IsRegular() {
 			return resumeTarget{}, false, fmt.Errorf("transcript target is not a regular file: %s", target)
@@ -47,11 +48,19 @@ func resolveResumeTarget(target string) (resumeTarget, bool, error) {
 		return resumeTarget{}, false, fmt.Errorf("stat transcript target %q: %w", target, err)
 	}
 
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return resumeTarget{}, false, err
+	var resolved paths.Values
+	var err error
+	if len(runtimes) != 0 {
+		resolved = runtimes[0].Paths
+	} else {
+		resolved, err = paths.Resolve()
+		if err != nil {
+			return resumeTarget{}, false, err
+		}
 	}
-	files, err := claudeTranscriptFiles(resolved)
+	includeLegacyPrimary := len(runtimes) == 0 ||
+		runtimes[0].Config.Source("accounts") != pfmconfig.SourceFile
+	files, err := claudeTranscriptFiles(resolved, includeLegacyPrimary)
 	if err != nil {
 		return resumeTarget{}, false, err
 	}
@@ -83,7 +92,7 @@ func resolveResumeTarget(target string) (resumeTarget, bool, error) {
 	if len(excerptNeedles(target)) == 0 {
 		return resumeTarget{}, false, nil
 	}
-	match, alternatives, err := findTranscriptContent([]byte(target))
+	match, alternatives, err := findTranscriptContent([]byte(target), runtimes...)
 	if err != nil {
 		if strings.Contains(err.Error(), "no session contains the excerpt") ||
 			strings.Contains(err.Error(), "no transcript registry is available") {
@@ -224,6 +233,7 @@ func liveCrumbSession(
 func registeredDaemonSession(
 	ctx context.Context,
 	resolved paths.Values,
+	machine pfmconfig.Config,
 	id string,
 ) (string, bool, error) {
 	configs := make([]string, 0, len(resolved.ClaudeRoots))
@@ -242,9 +252,17 @@ func registeredDaemonSession(
 	if len(configs) == 0 {
 		return "", false, nil
 	}
-	binary, err := exec.LookPath("claude")
+	binaryName := machine.Claude.Binary
+	if binaryName == "" {
+		binaryName = "claude"
+	}
+	binary, err := exec.LookPath(binaryName)
 	if err != nil {
-		binary = filepath.Join(resolved.Home, ".local", "bin", "claude")
+		if filepath.IsAbs(binaryName) {
+			binary = binaryName
+		} else {
+			binary = filepath.Join(resolved.Home, ".local", "bin", binaryName)
+		}
 	}
 	for _, config := range configs {
 		queryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)

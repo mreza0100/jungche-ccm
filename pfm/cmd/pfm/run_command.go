@@ -27,7 +27,11 @@ const spawnTraceEnv = "PFM_SPAWN_TRACE"
 // flags, its own tmux server on a fleet socket — and then walks away from it.
 // No terminal is attached and nothing is eval'd by the caller's shell, so it
 // works from a script, a cron job, or another chat's Bash tool.
-func runRun(args []string, stdout, stderr io.Writer) int {
+func runRun(
+	args []string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	flags := newFlagSet(
 		"chat new",
 		"usage: pfm chat new --name NAME [--engine cc|cx] [--cwd DIR] "+
@@ -66,11 +70,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolved, err := paths.Resolve()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
-		return 1
-	}
+	resolved := runtime.Paths
 	directory, err := runDirectory(*cwd)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
@@ -78,7 +78,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 	}
 	claudeAccount := *account
 	if claudeAccount == 0 {
-		claudeAccount = readPrimaryAccount(resolved)
+		claudeAccount = readPrimaryAccount(resolved, runtime.Config)
 	}
 	prompt, err := runPrompt(*promptFile, positional)
 	if err != nil {
@@ -95,6 +95,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		Home:           resolved.Home,
 		PrimaryAccount: claudeAccount,
 		Cache1H:        *cache1H,
+		Config:         runtime.Config,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
@@ -168,6 +169,7 @@ func runRun(args []string, stdout, stderr io.Writer) int {
 		result,
 		stdout,
 		stderr,
+		runtime,
 	)
 	if code != 0 {
 		return code
@@ -240,10 +242,11 @@ func awaitLaunch(
 	options headless.AwaitOptions,
 	result spawn.Result,
 	stdout, stderr io.Writer,
+	runtimes ...commandRuntime,
 ) int {
 	handle := chatHandle(result.Socket, name)
 	if await {
-		return awaitAnswer(ctx, "run", name, handle, options, false, stdout, stderr)
+		return awaitAnswer(ctx, "run", name, handle, options, false, stdout, stderr, runtimes...)
 	}
 	proof := options
 	proof.StopOnDelivery = true
@@ -251,7 +254,7 @@ func awaitLaunch(
 	turn, err := headless.Await(
 		ctx,
 		func(ctx context.Context) (headless.Chat, bool, error) {
-			return resolveChat(ctx, handle, io.Discard)
+			return resolveChat(ctx, handle, io.Discard, runtimes...)
 		},
 		proof,
 	)

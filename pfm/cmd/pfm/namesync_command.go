@@ -18,7 +18,7 @@ import (
 // applied by the same gather pass the picker runs, so there is exactly ONE
 // writer of a window name however this command is reached — a systemd path
 // unit on a codex rename, a timer, or a picker refresh.
-func runNameSync(args []string, stdout, stderr io.Writer) int {
+func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
 	flags := newFlagSet("name-sync", "usage: pfm name-sync [--dry-run]", stderr)
 	dryRun := flags.Bool("dry-run", false, "report the renames without applying them")
 	if code, ok := parseFlags(flags, args); !ok {
@@ -39,7 +39,7 @@ func runNameSync(args []string, stdout, stderr io.Writer) int {
 	// A delta index first: a codex rename lands in session_index.jsonl or the
 	// thread store, and the name a window converges on is read from the index.
 	// Without this pass the sync would converge yesterday's names.
-	indexer, err := fleetindex.New(database)
+	indexer, err := fleetindex.NewWithPaths(database, runtime.Paths)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm name-sync: %v\n", err)
 		return 1
@@ -49,7 +49,7 @@ func runNameSync(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	environment, err := resolveScanEnvironment()
+	environment, err := resolveScanEnvironment(scanRequest{Runtime: &runtime})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm name-sync: %v\n", err)
 		return 1
@@ -64,6 +64,7 @@ func runNameSync(args []string, stdout, stderr io.Writer) int {
 	live, err := gatherFleet(
 		ctx,
 		environment.paths,
+		environment.config,
 		data,
 		*dryRun,
 		printWarn(stderr),
@@ -74,7 +75,7 @@ func runNameSync(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if !*dryRun {
-		rememberCodexPaneBindings(ctx, database, live, stderr)
+		rememberCodexPaneBindings(ctx, database, live, runtime, stderr)
 	}
 	verb := "renamed"
 	if *dryRun {

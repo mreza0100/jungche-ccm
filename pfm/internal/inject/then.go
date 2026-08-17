@@ -88,6 +88,7 @@ func (engine *Engine) paneBusy(
 // mirroring chat.sh's `$(cc_detach) bash "$0" __then …` (chat.sh:946-948).
 type CommandThenSpawner struct {
 	Executable string
+	ConfigPath string
 	Setsid     string
 	Nohup      string
 }
@@ -105,15 +106,18 @@ func (spawner CommandThenSpawner) Spawn(
 			return fmt.Errorf("resolve pfm executable: %w", err)
 		}
 	}
-	arguments := []string{
-		executable,
+	arguments := []string{executable}
+	if spawner.ConfigPath != "" {
+		arguments = append(arguments, "--config", spawner.ConfigPath)
+	}
+	arguments = append(arguments,
 		"internal",
 		"then",
 		"--socket",
 		request.SocketPath,
 		"--target",
 		request.Target,
-	}
+	)
 	for _, steer := range request.Steers {
 		arguments = append(arguments, "--steer", steer)
 	}

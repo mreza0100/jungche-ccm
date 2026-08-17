@@ -20,6 +20,31 @@ import (
 	"hostops/pfm/internal/store"
 )
 
+func TestNewWithPathsUsesInjectedRoots(t *testing.T) {
+	fixture := setupIndexFixture(t)
+	wrongRoot := t.TempDir()
+	wrongCodexRoot := t.TempDir()
+	t.Setenv(paths.EnvClaudeRoots, wrongRoot)
+	t.Setenv(paths.EnvCodexRoot, wrongCodexRoot)
+
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := NewWithPaths(database, paths.Values{
+		ClaudeRoots: []string{fixture.claudeRoot},
+		CodexRoot:   fixture.codexRoot,
+	})
+	if err != nil {
+		t.Fatalf("NewWithPaths() error = %v", err)
+	}
+	counters, err := indexer.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if counters.FilesSeen != 10 || counters.FullParsed != 10 {
+		t.Fatalf("injected-root counters = %+v, want 10 files and 10 full parses", counters)
+	}
+}
+
 func TestIndexGoldenAndIncrementalTransitions(t *testing.T) {
 	fixture := setupIndexFixture(t)
 	database := openIndexStore(t)

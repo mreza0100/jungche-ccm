@@ -114,13 +114,14 @@ func (function EventSinkFunc) Record(event Event) error {
 }
 
 type Dependencies struct {
-	Commands  CommandRunner
-	Host      Host
-	Processes ProcessTree
-	Jailer    ProcessJailer
-	Rollouts  RolloutLocator
-	Events    EventSink
-	Now       func() time.Time
+	Commands    CommandRunner
+	Host        Host
+	Processes   ProcessTree
+	Jailer      ProcessJailer
+	Rollouts    RolloutLocator
+	Events      EventSink
+	Now         func() time.Time
+	CodexBinary string
 }
 
 type Runner struct {
@@ -130,6 +131,7 @@ type Runner struct {
 	poll               time.Duration
 	spawnTimings       spawn.Timings
 	spawnTrace         io.Writer
+	codexBinary        string
 }
 
 // PreparedNight is one verified seat configuration shared by the distill and
@@ -155,6 +157,7 @@ func NewRunner(dependencies Dependencies) *Runner {
 		seatTimeout:        PerSeatTimeout,
 		promptProofTimeout: defaultPromptProofTimeout,
 		poll:               time.Second,
+		codexBinary:        dependencies.CodexBinary,
 	}
 }
 
@@ -351,6 +354,7 @@ func (runner *Runner) runSeat(
 	plan, err := action.SandboxedCodexRun(action.SandboxedCodexRequest{
 		CWD:    stage,
 		Config: append([]string(nil), config.Overrides...),
+		Binary: runner.codexBinary,
 	})
 	if err != nil {
 		return runner.finishSeat(result, role, started, "plan-error", err)

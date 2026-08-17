@@ -17,10 +17,11 @@ import (
 // ExecCommands is the production command boundary. It strips inherited chat
 // identity before every Claude invocation, exactly as the shell helper did.
 type ExecCommands struct {
-	Binary string
-	Home   string
-	Stdout io.Writer
-	Stderr io.Writer
+	Binary            string
+	Home              string
+	PromptPermissions bool
+	Stdout            io.Writer
+	Stderr            io.Writer
 }
 
 func (commands ExecCommands) binary() string {
@@ -73,7 +74,11 @@ func (commands ExecCommands) QueryAgents(ctx context.Context, config string) ([]
 	return output, nil
 }
 func (commands ExecCommands) Resume(ctx context.Context, config, cwd, id string, cache1H bool) error {
-	command := commands.command(ctx, config, cache1H, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions", "--resume", id)
+	arguments := []string{"--resume", id}
+	if !commands.PromptPermissions {
+		arguments = append([]string{"--allow-dangerously-skip-permissions", "--dangerously-skip-permissions"}, arguments...)
+	}
+	command := commands.command(ctx, config, cache1H, arguments...)
 	command.Dir = cwd
 	return command.Run()
 }

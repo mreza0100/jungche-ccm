@@ -29,12 +29,14 @@ const (
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
-	resolver  Resolver
-	tmux      Tmux
-	spawner   ThenSpawner
-	options   Options
-	whoami    SelfIdentifier
-	codexSeat SelfIdentifier
+	resolver     Resolver
+	tmux         Tmux
+	spawner      ThenSpawner
+	options      Options
+	whoami       SelfIdentifier
+	codexSeat    SelfIdentifier
+	claudeBinary string
+	codexBinary  string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -43,8 +45,12 @@ type Engine struct {
 
 // New constructs a jailed-path-aware injection engine.
 func New(dependencies Dependencies) (*Engine, error) {
+	binaries := resolve.Binaries{
+		Claude: dependencies.ClaudeBinary,
+		Codex:  dependencies.CodexBinary,
+	}
 	if dependencies.Resolver == nil {
-		resolver, err := resolve.New(nil)
+		resolver, err := resolve.New(nil, binaries)
 		if err != nil {
 			return nil, err
 		}
@@ -85,12 +91,14 @@ func New(dependencies Dependencies) (*Engine, error) {
 		dependencies.Identifier = identifier
 	}
 	return &Engine{
-		resolver:  dependencies.Resolver,
-		tmux:      dependencies.Tmux,
-		spawner:   dependencies.Spawner,
-		options:   options,
-		whoami:    dependencies.Identifier,
-		codexSeat: dependencies.CodexSeat,
+		resolver:     dependencies.Resolver,
+		tmux:         dependencies.Tmux,
+		spawner:      dependencies.Spawner,
+		options:      options,
+		whoami:       dependencies.Identifier,
+		codexSeat:    dependencies.CodexSeat,
+		claudeBinary: binaries.Claude,
+		codexBinary:  binaries.Codex,
 	}, nil
 }
 
@@ -403,7 +411,11 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	)
 	verifiedEngine := ""
 	if commandErr == nil {
-		verifiedEngine = paneCommandEngine(command)
+		verifiedEngine = paneCommandEngine(
+			command,
+			engine.claudeBinary,
+			engine.codexBinary,
+		)
 		if verifiedEngine != "" {
 			target.Engine = verifiedEngine
 		}
@@ -863,12 +875,21 @@ func engineName(engine string) string {
 	return "Claude"
 }
 
-func paneCommandEngine(command string) string {
+func paneCommandEngine(command string, binaries ...string) string {
 	name := filepath.Base(strings.TrimSpace(command))
-	if name == "codex" {
+	claudeBinary := ""
+	codexBinary := ""
+	if len(binaries) > 0 {
+		claudeBinary = binaries[0]
+	}
+	if len(binaries) > 1 {
+		codexBinary = binaries[1]
+	}
+	if name == "codex" || (codexBinary != "" && name == filepath.Base(codexBinary)) {
 		return "cx"
 	}
-	if strings.HasPrefix(name, "claude") {
+	if strings.HasPrefix(name, "claude") ||
+		(claudeBinary != "" && name == filepath.Base(claudeBinary)) {
 		return "cc"
 	}
 	// Claude's version-managed native executable is named like 2.1.47. This
