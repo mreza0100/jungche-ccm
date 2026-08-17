@@ -1,138 +1,149 @@
-# RELEASE — How updates flow from upstream to adopters
+# RELEASE — How the blueprint ships and how adopters pull it
 
-This blueprint is regenerated and published from the live upstream source. This doc explains the release process so adopters can reliably consume updates via `/pcm update`.
+Two mechanisms ship on every tag: the portable blueprint tree (this repo, at `blueprint/`) and the
+compiled `pfm` CLI binaries (built from `pfm/`, attached to the GitHub Release). Both are versioned
+by the same git tag.
 
 ---
 
 ## Versioning
 
-The blueprint follows [Semantic Versioning](https://semver.org/):
+[Semantic Versioning](https://semver.org/), one `VERSION` file at the repo root as the source of
+truth, one annotated git tag `v{MAJOR}.{MINOR}.{PATCH}` per release. Tags are immutable — never
+deleted or moved after push.
 
-| Bump                            | When                                                                                   | Adopter impact                                                                           |
-| ------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **PATCH** (e.g., 1.0.0 → 1.0.1) | Bug fixes, doc clarifications, mechanic tweaks that don't change interfaces            | `/pcm update` auto-applies with diff preview                                             |
-| **MINOR** (e.g., 1.0.0 → 1.1.0) | Added Tier B archetype, new mechanics command, new pipeline step, character refinement | `/pcm update` walks through additions; auto-applies mechanics; asks before adding Tier B |
-| **MAJOR** (e.g., 1.x.x → 2.0.0) | Breaking rename, removed command, changed core convention                              | `/pcm update` requires explicit consent for each migration step                          |
+| Bump | When | Adopter impact |
+| --- | --- | --- |
+| **PATCH** | Bug fixes, doc tweaks, non-interface mechanic changes | `/pcm:update` auto-applies with a diff preview |
+| **MINOR** | New Tier B archetype, new mechanics command, new pipeline step | Mix of auto + interactive; may add optional files |
+| **MAJOR** | Breaking rename, removed command, changed core convention | Full interactive walkthrough, no silent applies |
 
-The version is stored in three places (all must agree):
+Magnitude for a multi-version update is the **largest single-release bump in the chain**, never the
+endpoint semver diff alone — one major release anywhere in the walked range makes the whole update
+major.
 
-- `VERSION` at the repo root — single-line semver (source of truth)
-- `CHANGELOG.md` — versioned entries with categorized changes
-- **Git tag** (`v1.0.0`) on every release — this is what adopters pin to at install and what `/pcm update` fetches
+## Release notes layout
 
-### Git tag convention
+Per-version notes live in `releases/v{X.Y.Z}.md`, one file per version, each titled
+`# v{X.Y.Z} — {YYYY-MM-DD}` with bullets grouped under `## Added/Changed/Fixed/Removed/Breaking/Migration`.
+`CHANGELOG.md` is a **slim index only** — one line per release (`- [v{X.Y.Z}](releases/v{X.Y.Z}.md) —
+{summary}`), prepended on every release. Never write full notes into `CHANGELOG.md` itself.
 
-Every release creates a tag `v{MAJOR}.{MINOR}.{PATCH}` on the release commit. Tags are **immutable** — never delete or move a tag after push. The `p:blueprint release` subcommand handles tag creation automatically.
+Bullets carry a category prefix and optional trailing tags, both read by `/pcm:update`:
 
-Adopters install by cloning at a specific tag:
+- Prefix → `Tier A:` / `Tier B:` / `Mechanics:` / `Docs:` / `Scripts:`
+- Trailing tag → `(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)` (env var/hook/permission/model-config
+  changes — always routed to manual review regardless of prefix)
 
-```bash
-git clone --branch v0.5.0 https://github.com/mreza0100/professor.git
-```
+## Cutting a release (maintainer) — `/pcm:release {patch|minor|major} "{summary}"`
 
-The update flow discovers available versions via:
+Run from inside the live source project against the local clone at `{BLUEPRINT_CLONE_PATH}` —
+the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user `{GH_USER}`).
 
-```bash
-git ls-remote --tags https://github.com/mreza0100/professor.git 'refs/tags/v*'
-```
+1. **Update-gate.** `baseline-sync.sh` checks the clone isn't behind published tags for reasons other
+   than this repo's own prior publish round-trip; a genuine peer-content gap forces `/pcm:update` first.
+2. **Sync the clone** — `git fetch && git pull --ff-only origin main` (stop on failure).
+3. **Refresh pass**, scoped by `blueprint/refresh-map.json`: `refresh-scope.sh scan` hashes every live
+   source — unchanged sources skip their templates, changed sources (plus anything named in
+   `.professor/release.md`) get re-derived, unmapped live files get a mapping ruling, `curated`
+   templates are never auto-derived. Then execute `docs/commands/pcm/references/refresh.md` over that
+   scope: `scripts/genericize.sh` runs the deterministic placeholder pass first
+   (`scripts/placeholder-map.tsv`), hand-judgment covers structure only (roster collapsing, domain
+   nouns, persona metaphors). `refresh-scope.sh regen` re-baselines the hashes afterward.
+4. **Compute the new version** from `VERSION` + the bump type.
+5. **Build changelog bullets** from `.professor/release.md` (already-final, copied verbatim — never
+   re-authored). Bullets touching a `sources.json` skill ship to that skill's own public repo first,
+   then get rewritten as a version-pointer bullet.
+6. **Write `releases/v{X.Y.Z}.md`**, prepend the index line to `CHANGELOG.md`.
+7. **Reconcile hand-curated docs** — `README.md` + `BLUEPRINT.md`'s cast/command/skill lists must
+   match `blueprint/`; the README's "any repo, any stack" promise is the contract to keep, never
+   downgrade.
+8. `echo "{X.Y.Z}" > VERSION`.
+9. **Gate, then ship:** `leak-check.sh` clean on the staged diff (brand names current+former, PII,
+   machine-absolute home paths, secrets) → commit (`release: v{X.Y.Z} — {summary}`) → annotated tag
+   `v{X.Y.Z}` → `git push origin main --follow-tags` (never force-push).
+10. Clear `.professor/release.md`'s pending entries (keep the header), then report the tag URL,
+    commit, source SHA, and changelog bullets.
 
-Then fetches the target tag into a temp clone for comparison. This means adopters never need to track `main` — they hop between tagged releases.
+**Never:** push secrets or project identifiers (current/former brand, PII, internal URLs,
+machine-absolute home paths), force-push, ship a Tier A character with empty placeholders, or
+auto-bump the README version without re-checking the templates it describes.
 
----
+## What the tag push triggers — `.github/workflows/release.yml`
 
-## Adopter version tracking
+A `v*` tag push (or manual `workflow_dispatch`) runs on GitHub Actions:
 
-When a user installs Professor via `SETUP.md`, the install records:
+1. **Build** — `pfm` for `linux/amd64`, `linux/arm64`, `darwin/arm64`, `darwin/amd64` (Go, `-trimpath`,
+   `CGO_ENABLED=0`); each platform binary uploads as its own workflow artifact.
+2. **Assemble** — downloads every platform binary, writes `SHA256SUMS`.
+3. **Require authored notes** — fails the run if `releases/{tag}.md` doesn't exist; a tag with no
+   hand-written release file cannot publish.
+4. **Publish the GitHub Release** — attaches the `pfm_*` binaries + `SHA256SUMS`, with
+   `releases/{tag}.md` as the release body verbatim (`generate_release_notes: false` — no
+   auto-summary, the authored file is the only source of truth for the release body).
 
-- `.professor/VERSION` — single-line semver matching the blueprint version at install time
-- `.professor/manifest.json` — contains three things:
-  1. **Version + tag** — which release was installed (`version`, `installed_from_tag`)
-  2. **Interview answers** — the full replay seed (project name, character, disciplines, tech stack, Tier B opts, ports). Enables re-parameterizing new upstream templates without re-interviewing.
-  3. **File hashes** — SHA-256 of every Professor-owned file post-substitution. The baseline for three-way comparison (installed vs. current-on-disk vs. re-parameterized-upstream). See `blueprint/commands/pcm.md` § "Update Protocol — Step 5" for the truth table.
-
-The manifest is regenerated after every successful `/pcm update` so the new on-disk state becomes the next baseline.
-
-### The update flow
-
-When the user runs `/pcm update`:
-
-1. Reads `.professor/VERSION` and `.professor/manifest.json`
-2. Fetches available git tags via `git ls-remote --tags`
-3. Determines target version (latest tag by default, or `--to vX.Y.Z`)
-4. Clones the target tag: `git clone --branch v{TARGET} --depth 1`
-5. Reads `CHANGELOG.md` entries between installed and target versions
-6. **Replays interview answers** from manifest against new templates → computes re-parameterized hashes
-7. **Three-way hash comparison** per file → classifies into auto-apply / review / manual buckets
-8. Presents buckets to user, applies accepted changes
-9. Regenerates manifest (new version, updated interview answers if new questions, fresh file hashes)
-
----
-
-## Change categories `/pcm update` understands
-
-Bullets in `CHANGELOG.md` follow this shape:
-
-```
-- {Tier A|Tier B|Mechanics|Docs|Scripts}: {file path or scope} — {what changed semantically}
-```
-
-The update flow uses the prefix to decide how to apply:
-
-| Prefix                       | Default apply mode                                        | User opt-out                             |
-| ---------------------------- | --------------------------------------------------------- | ---------------------------------------- |
-| `Tier A:` (character)        | Show diff, ask confirmation                               | User can keep their version              |
-| `Tier B:` (opt-in archetype) | Ask if user wants to opt in; if yes, run interview subset | User can skip                            |
-| `Mechanics:`                 | Auto-apply with diff preview                              | User can review before commit            |
-| `Docs:`                      | Auto-apply                                                | Always reviewable                        |
-| `Scripts:`                   | Auto-apply unless user customized                         | If user changed the script, manual merge |
-
-Optional trailing tags refine behavior:
-
-- `(opt-in)` — Tier B additions; requires explicit yes
-- `(breaking)` — overrides the default; always interactive
-- `(safe-auto)` — overrides; auto-apply unconditionally
+The authored-notes gate is why step 6 above (write `releases/v{X.Y.Z}.md` *before* tagging) is not
+optional — the tag push fails release assembly without it.
 
 ---
 
-## How to release a new version (maintainer)
+## Pulling an update (adopter) — `/pcm:update [check | --to vX.Y.Z | --force | --re-interview N]`
 
-Done from inside the upstream source repo via the `p:blueprint release` subcommand (entry: `/pcm release`):
+State lives in `.professor/` inside the adopter's project: `VERSION` (installed version),
+`manifest.json` (file hashes + interview-answer replay seed), `drift.md` (forced KEEP-LOCAL
+customizations), `release.md` (local framework changes queued to publish upstream).
 
-```
-/pcm release {patch|minor|major} "{summary}"
-```
+1. **Fetch tags** via `git ls-remote --tags`; target = latest by default, a pinned `--to` tag, or the
+   installed version again under `--force` (repair mode). Never downgrades.
+2. **Clone the target tag** into a temp dir.
+3. **Walk the release chain version by version** — for every version `> installed` and `<= target`,
+   read that version's `releases/v{X}.md` in full and record a per-version ledger entry (bullets by
+   heading, `### Breaking`, `### Migration`, new interview placeholders). The range is never
+   flattened into one pool — order matters for the migration-chain replay below.
+4. **Migration-chain replay** (runs before the hash comparison) — apply each version's structural
+   `### Migration`/`### Breaking` steps (renames, moves, deletes, splits/merges) in order against the
+   manifest's file paths and `drift.md`'s KEEP-LOCAL paths, so a customized file follows its rename
+   lineage to the correct final path before content is ever compared.
+5. **Three-way hash comparison**, per file — installed (manifest) → current (on-disk, always
+   re-hashed fresh, never trusted from cache) → upstream (re-parameterized with the manifest's
+   interview answers):
 
-What it does:
+   | Pattern | Verdict |
+   | --- | --- |
+   | `A→A→A` | Skip — unchanged |
+   | `A→A→B` | Auto-apply |
+   | `A→B→A` | Keep — user customized, upstream didn't move |
+   | `A→B→C` | Conflict — show diff, ask |
+   | `none→none→B` | New file |
+   | `A→A→none` | Removed upstream — interactive |
+   | `A→B→none` | User customized + removed upstream — warn, keep |
 
-1. **Refresh** — runs the refresh pass to mirror current source-project state to the local professor clone's `blueprint/` directory
-2. **Bump VERSION** — increments according to the bump type
-3. **Update CHANGELOG.md** — moves `[Unreleased]` content into a new dated `[x.y.z]` section, prepends a fresh `[Unreleased]` skeleton
-4. **Prompt for changelog content** — if `[Unreleased]` is empty, asks the maintainer to fill in the categories (Added/Changed/Fixed/Removed/Breaking)
-5. **Commit** — single commit at the blueprint repo with message `release: vx.y.z — {summary}`
-6. **Tag** — `git tag vx.y.z`
-7. **Push** — `git push origin main --follow-tags`
-8. **Report** — public URL of the release tag
-
-If a maintainer wants to add changelog entries between releases (without bumping), they edit the `[Unreleased]` section directly. Those entries get bundled into the next release.
+   A `GENERATED FILE — DO NOT EDIT` banner or a built bundle under `.claude/workflows/` is always a
+   whole-file copy or rebuild — never a line-merge. A symlink into the blueprint clone is skipped
+   entirely; its update channel is the clone's own `git pull`.
+6. **Present three buckets:** Auto-apply (`A→A→B`, new safe-auto Tier C) · Review (conflicts, Tier A
+   content changes, new opt-in Tier B, `(breaking)`, and every cost-bearing delta regardless of tag)
+   · Manual (new interview questions, structural migrations, walked in version order). `check` mode
+   shows all three and writes nothing.
+7. **Apply, then regenerate `manifest.json`** (target version, fresh hashes, updated interview
+   answers) and append an update-history row + any new customizations to `drift.md`.
+8. Clean up the temp clone, report `v{OLD} → v{TARGET}` with counts (auto / reviewed / kept-local /
+   manual).
+9. **Refresh source-fetched skills** — for each `blueprint/skills/sources.json` entry, compare the
+   installed skill's `version:` frontmatter against its own repo's latest tag; offer a re-fetch when
+   behind, never downgrade an installed skill ahead of its repo.
+10. **Offer to publish** — if `.professor/release.md` has entries, or the update surfaced local
+    improvements worth sharing, ask before running `/pcm:release` (never auto-publishes). Every queued
+    entry is checked for genericity first — a customized entry moves to `drift.md` instead of counting
+    toward the publish offer.
 
 ---
 
-## Pre-release checklist
+## What `/pcm:update` does NOT do
 
-Before running `p:blueprint release` (entry: `/pcm release`):
-
-- [ ] All upstream source changes that should be in the release are merged to main
-- [ ] `/pcm update check` shows no unexpected drift
-- [ ] CHANGELOG `[Unreleased]` accurately reflects what's shipping (or you'll be prompted to fill it in during release)
-- [ ] No secrets staged in the blueprint clone
-- [ ] No project-specific identifiers leaked into templates (smell-test in `BLUEPRINT.md`: would a neuropsych team see themselves?)
-
----
-
-## What `/pcm update` does NOT do
-
-- It does NOT touch `.claude/settings.json` — that's hand-curated per project
-- It does NOT touch `CLAUDE.md` Professor persona section without explicit confirmation — your character may have drifted
-- It does NOT touch any file under `docs/commands/{cmd}/` — those are command-owned content, not blueprint templates
-- It does NOT auto-apply MAJOR version migrations — those always require explicit consent per step
-- It does NOT downgrade — if your local `.professor/VERSION` is somehow ahead, it reports and asks
+- Touch `.claude/settings.json` — hand-curated per project
+- Touch the Tier A persona sections without explicit per-file confirmation
+- Auto-apply MAJOR migrations — always explicit consent, walked in version order
+- Downgrade — an installed version ahead of the target reports and asks, never rolls back
+- Overwrite a richer local original on a self-round-trip update — that's the `A→B→C` conflict path,
+  resolved by keeping local
