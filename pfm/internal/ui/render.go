@@ -241,10 +241,10 @@ func (model Model) renderStatsPanel(width, height int) string {
 	innerHeight := maxInt(1, height-2)
 	lines := make([]string, 0, innerHeight)
 	if model.statsSubtab == StatsChats {
-		nameWidth := minInt(32, maxInt(8, innerWidth-60))
+		nameWidth := minInt(32, maxInt(8, innerWidth-59))
 		header := fmt.Sprintf(
-			"  %-*s %-7s %7s %8s %6s %9s %9s %5s",
-			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/H", "GEAR",
+			"  %-*s %-7s %7s %8s %6s %9s %8s %5s",
+			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/MIN", "GEAR",
 		)
 		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
 		for index, chat := range model.stats.Chats {
@@ -263,15 +263,15 @@ func (model Model) renderStatsPanel(width, height int) string {
 			if chat.TokensKnown {
 				tokens = formatTokens(chat.TokenCount)
 			}
-			tokensPerHour := "…"
+			tokensPerMinute := "…"
 			if chat.TokenRateValid {
-				tokensPerHour = formatTokenRate(chat.TokensPerHour)
+				tokensPerMinute = formatTokenRate(chat.TokensPerMinute)
 			}
 			plain := fmt.Sprintf(
-				"  %-*s %-7s %7s %8s %5.1f%% %9s %9s %5s",
+				"  %-*s %-7s %7s %8s %5.1f%% %9s %8s %5s",
 				nameWidth, clipRunes(cleanField(chat.Name), nameWidth), chat.Engine, cpu,
 				formatSize(int64(chat.RSSBytes)), chat.RAMPercent,
-				tokens, tokensPerHour, gear,
+				tokens, tokensPerMinute, gear,
 			)
 			plain = fillLine(plain, innerWidth)
 			if model.statsFocus == StatsFocusContent && index == model.statsCursor {
@@ -289,7 +289,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsMemoryStyle.Render(fmt.Sprintf("%8s", formatSize(int64(chat.RSSBytes)))) +
 				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", chat.RAMPercent)) +
 				" " + statsTokenStyle.Render(fmt.Sprintf("%9s", tokens)) +
-				" " + statsTokenStyle.Render(fmt.Sprintf("%9s", tokensPerHour)) +
+				" " + statsTokenStyle.Render(fmt.Sprintf("%8s", tokensPerMinute)) +
 				" " + statsGearStyle.Render(fmt.Sprintf("%5s", gear))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
@@ -602,6 +602,9 @@ func formatTokens(tokens int64) string {
 func formatTokenRate(tokens float64) string {
 	if tokens < 0 || math.IsNaN(tokens) || math.IsInf(tokens, 0) {
 		return "…"
+	}
+	if tokens == 0 {
+		return "–"
 	}
 	return formatTokenNumber(tokens)
 }

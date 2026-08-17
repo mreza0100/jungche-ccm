@@ -13,6 +13,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	pfmstats "hostops/pfm/internal/stats"
 )
 
 func TestRenderGoldens(t *testing.T) {
@@ -33,6 +35,20 @@ func TestRenderGoldens(t *testing.T) {
 			path: "ui_120.ansi",
 			got: func() string {
 				return quoteANSI(NewModel(fixtureSnapshot(120)).View().Content)
+			},
+		},
+		{
+			name: "Stats Chats ansi 80 columns",
+			path: "stats_chats_80.ansi",
+			got: func() string {
+				return quoteANSI(statsGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Stats Chats ansi 120 columns",
+			path: "stats_chats_120.ansi",
+			got: func() string {
+				return quoteANSI(statsGoldenModel(120).View().Content)
 			},
 		},
 		{
@@ -74,6 +90,38 @@ func TestRenderGoldens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func statsGoldenModel(width int) Model {
+	model := NewModel(fixtureSnapshot(width))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{
+		Ready: true,
+		Header: pfmstats.Header{
+			CPUPercent: 12, CPUValid: true, PSIPercent: 3,
+			RAMPercent: 44, SwapPercent: 16,
+		},
+		Chats: []pfmstats.Chat{
+			{
+				Socket: "active", Name: "BUILD:active", Engine: "claude",
+				CPUPercent: 10, CPUValid: true, RSSBytes: 2 << 20, RAMPercent: 3.5,
+				TokenCount: 1_250_000, TokensKnown: true,
+				TokensPerMinute: 625_000, TokenRateValid: true, GearCount: 2,
+			},
+			{
+				Socket: "idle", Name: "REVIEW:idle", Engine: "codex",
+				CPUPercent: 0, CPUValid: true, RSSBytes: 1 << 20, RAMPercent: 1.5,
+				TokenCount: 750_000, TokensKnown: true,
+				TokensPerMinute: 0, TokenRateValid: true,
+			},
+			{
+				Socket: "new", Name: "NEW:first-sample", Engine: "claude",
+				RSSBytes: 512 << 10, RAMPercent: 0.5,
+				TokenCount: 5_000, TokensKnown: true,
+			},
+		},
+	}
+	return model
 }
 
 func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {

@@ -95,7 +95,7 @@ func TestStatsTablesRenderLabeledColumnsAndUsage(t *testing.T) {
 		Chats: []pfmstats.Chat{{
 			Name: "BUILD:one", Engine: "claude", CPUPercent: 12.5, CPUValid: true,
 			RSSBytes: 2 << 20, RAMPercent: 3.5, TokenCount: 1_250_000,
-			TokensKnown: true, TokensPerHour: 625_000, TokenRateValid: true,
+			TokensKnown: true, TokensPerMinute: 625_000, TokenRateValid: true,
 		}},
 		Docker: []pfmstats.Container{{
 			Name: "professor-web", Image: "registry.example/professor:web",
@@ -105,7 +105,7 @@ func TestStatsTablesRenderLabeledColumnsAndUsage(t *testing.T) {
 	}
 
 	chatPanel := ansi.Strip(model.renderStatsPanel(140, 8))
-	for _, want := range []string{"NAME", "ENGINE", "CPU", "RSS", "RAM", "TOKENS", "TOK/H", "BUILD:one", "1.2M", "625K"} {
+	for _, want := range []string{"NAME", "ENGINE", "CPU", "RSS", "RAM", "TOKENS", "TOK/MIN", "BUILD:one", "1.2M", "625K"} {
 		if !strings.Contains(chatPanel, want) {
 			t.Fatalf("Chats stats panel missing %q:\n%s", want, chatPanel)
 		}
@@ -124,6 +124,29 @@ func TestStatsTablesRenderLabeledColumnsAndUsage(t *testing.T) {
 	}
 }
 
+func TestStatsChatLiveTokenRateRendersUnknownActiveAndIdle(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{Ready: true, Chats: []pfmstats.Chat{
+		{Name: "UNKNOWN", Engine: "claude", CPUValid: true, TokenCount: 100, TokensKnown: true},
+		{Name: "ACTIVE", Engine: "codex", CPUValid: true, TokenCount: 200, TokensKnown: true, TokensPerMinute: 125, TokenRateValid: true},
+		{Name: "IDLE", Engine: "claude", CPUValid: true, TokenCount: 300, TokensKnown: true, TokensPerMinute: 0, TokenRateValid: true},
+	}}
+	panel := ansi.Strip(model.renderStatsPanel(120, 10))
+	for name, want := range map[string]string{"UNKNOWN": "…", "ACTIVE": "125", "IDLE": "–"} {
+		var line string
+		for _, candidate := range strings.Split(panel, "\n") {
+			if strings.Contains(candidate, name) {
+				line = candidate
+				break
+			}
+		}
+		if line == "" || !strings.Contains(line, want) {
+			t.Fatalf("Stats row %s = %q, want live rate %q\n%s", name, line, want, panel)
+		}
+	}
+}
+
 func TestStatsPropertiesUseSemanticColors(t *testing.T) {
 	model := NewModel(fixtureSnapshot(140))
 	model.tab = TabStats
@@ -132,7 +155,7 @@ func TestStatsPropertiesUseSemanticColors(t *testing.T) {
 		Chats: []pfmstats.Chat{{
 			Name: "BUILD:one", Engine: "claude", CPUPercent: 12.5, CPUValid: true,
 			RSSBytes: 2 << 20, RAMPercent: 3.5, TokenCount: 1_250_000,
-			TokensKnown: true, TokensPerHour: 625_000, TokenRateValid: true,
+			TokensKnown: true, TokensPerMinute: 625_000, TokenRateValid: true,
 			GearCount: 2,
 		}},
 		Docker: []pfmstats.Container{{

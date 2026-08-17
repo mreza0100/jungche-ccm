@@ -141,29 +141,232 @@ func TestSamplerCountsClaudeAndCodexLifetimeTokensIncrementally(t *testing.T) {
 	}
 	chats := chatsBySocket(first.Chats)
 	if got := chats["claude-socket"]; !got.TokensKnown || got.TokenCount != 1000 ||
-		!got.TokenRateValid || got.TokensPerHour != 500 {
-		t.Fatalf("Claude token accounting = %#v, want 1000 total and 500/h", got)
+		got.TokenRateValid {
+		t.Fatalf("Claude token accounting = %#v, want 1000 total and unknown first rate", got)
 	}
 	if got := chats["codex-socket"]; !got.TokensKnown || got.TokenCount != 9000 ||
-		!got.TokenRateValid || got.TokensPerHour != 6000 {
-		t.Fatalf("Codex token accounting = %#v, want 9000 total and 6000/h", got)
+		got.TokenRateValid {
+		t.Fatalf("Codex token accounting = %#v, want 9000 total and unknown first rate", got)
 	}
 
 	appendFile(t, claudePath,
 		`{"timestamp":"2026-08-16T12:00:00Z","type":"assistant","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":20,"cache_creation_input_tokens":30,"output_tokens":40}}}`+"\n")
 	appendFile(t, codexPath,
 		`{"timestamp":"2026-08-16T12:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":12000}}}}`+"\n")
-	now = time.Date(2026, 8, 16, 13, 0, 0, 0, time.UTC).UnixNano()
+	now = time.Date(2026, 8, 16, 12, 0, 30, 0, time.UTC).UnixNano()
 	second, err := sampler.Sample(rows)
 	if err != nil {
 		t.Fatal(err)
 	}
 	chats = chatsBySocket(second.Chats)
-	if got := chats["claude-socket"]; got.TokenCount != 1100 || got.TokensPerHour < 366.6 || got.TokensPerHour > 366.7 {
-		t.Fatalf("incremental Claude token accounting = %#v, want 1100 total and 366.7/h", got)
+	if got := chats["claude-socket"]; got.TokenCount != 1100 || !got.TokenRateValid || got.TokensPerMinute != 200 {
+		t.Fatalf("incremental Claude token accounting = %#v, want 1100 total and 200/min", got)
 	}
-	if got := chats["codex-socket"]; got.TokenCount != 12000 || got.TokensPerHour != 4800 {
-		t.Fatalf("incremental Codex token accounting = %#v, want latest 12000 total and 4800/h", got)
+	if got := chats["codex-socket"]; got.TokenCount != 12000 || !got.TokenRateValid || got.TokensPerMinute != 6000 {
+		t.Fatalf("incremental Codex token accounting = %#v, want latest 12000 total and 6000/min", got)
+	}
+}
+
+func TestSamplerLiveTokenRateStartsUnknownThenIdle(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	transcript := filepath.Join(root, "idle.jsonl")
+	if err := os.WriteFile(transcript, []byte(
+		`{"timestamp":"2026-08-16T10:00:00Z","type":"assistant","message":{"usage":{"input_tokens":100}}}`+"\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 17, 8, 0, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	rows := []compose.Row{{
+		Kind: compose.LiveClaude, Socket: "idle-socket", Name: "idle",
+		Path: transcript, PanePIDs: []int{100},
+	}}
+	first, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := first.Chats[0]; got.TokenRateValid {
+		t.Fatalf("first token sample = %#v, want unknown live rate", got)
+	}
+
+	now += int64(4 * time.Second)
+	second, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := second.Chats[0]; !got.TokenRateValid || got.TokensPerMinute != 0 {
+		t.Fatalf("idle second token sample = %#v, want known zero live rate", got)
+	}
+}
+
+func TestSamplerLiveTokenRateUsesRollingGrowthAndExpiresToIdle(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	transcript := filepath.Join(root, "active.jsonl")
+	if err := os.WriteFile(transcript, []byte(
+		`{"timestamp":"2026-08-17T08:00:00Z","type":"assistant","message":{"usage":{"input_tokens":100}}}`+"\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 17, 8, 0, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	rows := []compose.Row{{
+		Kind: compose.LiveClaude, Socket: "active-socket", Name: "active",
+		Path: transcript, PanePIDs: []int{100},
+	}}
+	if _, err := sampler.Sample(rows); err != nil {
+		t.Fatal(err)
+	}
+
+	now += int64(8 * time.Second)
+	appendFile(t, transcript,
+		`{"timestamp":"2026-08-17T08:00:08Z","type":"assistant","message":{"usage":{"input_tokens":60}}}`+"\n")
+	growing, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := growing.Chats[0]; !got.TokenRateValid || got.TokensPerMinute != 450 {
+		t.Fatalf("growing token sample = %#v, want 450/min", got)
+	}
+
+	now += int64(32 * time.Second)
+	if _, err := sampler.Sample(rows); err != nil {
+		t.Fatal(err)
+	}
+	now += int64(32 * time.Second)
+	idle, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := idle.Chats[0]; !got.TokenRateValid || got.TokensPerMinute != 0 {
+		t.Fatalf("expired token growth = %#v, want known idle rate", got)
+	}
+}
+
+func TestSamplerLiveTokenRateResetsOnTranscriptDiscontinuity(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	now := time.Date(2026, 8, 17, 8, 0, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	firstPath := filepath.Join(root, "first.jsonl")
+	writeClaudeTokenFixture(t, firstPath, 100)
+	rows := []compose.Row{{
+		Kind: compose.LiveClaude, ID: "session-one", Socket: "reset-socket", Name: "reset",
+		Path: firstPath, PanePIDs: []int{100},
+	}}
+	if _, err := sampler.Sample(rows); err != nil {
+		t.Fatal(err)
+	}
+	now += int64(4 * time.Second)
+	appendFile(t, firstPath,
+		`{"timestamp":"2026-08-17T08:00:04Z","type":"assistant","message":{"usage":{"input_tokens":40}}}`+"\n")
+	active, err := sampler.Sample(rows)
+	if err != nil || !active.Chats[0].TokenRateValid || active.Chats[0].TokensPerMinute == 0 {
+		t.Fatalf("pre-reset token sample = %#v err=%v", active.Chats, err)
+	}
+
+	now += int64(4 * time.Second)
+	writeClaudeTokenFixture(t, firstPath, 20)
+	truncated, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := truncated.Chats[0]; got.TokenCount != 20 || got.TokenRateValid {
+		t.Fatalf("truncated transcript sample = %#v, want reset unknown rate", got)
+	}
+
+	now += int64(4 * time.Second)
+	idleAfterTruncation, err := sampler.Sample(rows)
+	if err != nil || !idleAfterTruncation.Chats[0].TokenRateValid {
+		t.Fatalf("post-truncation baseline sample = %#v err=%v", idleAfterTruncation.Chats, err)
+	}
+	rows[0].ID = "session-two"
+	now += int64(4 * time.Second)
+	changedSession, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := changedSession.Chats[0]; got.TokenCount != 20 || got.TokenRateValid {
+		t.Fatalf("changed-session sample = %#v, want reset unknown rate", got)
+	}
+
+	now += int64(4 * time.Second)
+	secondPath := filepath.Join(root, "second.jsonl")
+	writeClaudeTokenFixture(t, secondPath, 500)
+	rows[0].Path = secondPath
+	rotated, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rotated.Chats[0]; got.TokenCount != 500 || got.TokenRateValid {
+		t.Fatalf("rotated transcript sample = %#v, want reset unknown rate", got)
+	}
+
+	now += int64(4 * time.Second)
+	if _, err := sampler.Sample(rows); err != nil {
+		t.Fatal(err)
+	}
+	replacement := filepath.Join(root, "replacement.jsonl")
+	writeClaudeTokenFixture(t, replacement, 900)
+	if err := os.Rename(replacement, secondPath); err != nil {
+		t.Fatal(err)
+	}
+	now += int64(4 * time.Second)
+	replaced, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := replaced.Chats[0]; got.TokenCount != 900 || got.TokenRateValid {
+		t.Fatalf("replaced transcript sample = %#v, want reset unknown rate", got)
+	}
+
+	now += int64(4 * time.Second)
+	if _, err := sampler.Sample(nil); err != nil {
+		t.Fatal(err)
+	}
+	now += int64(4 * time.Second)
+	reappeared, err := sampler.Sample(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reappeared.Chats[0]; got.TokenCount != 900 || got.TokenRateValid {
+		t.Fatalf("reappeared pruned transcript sample = %#v, want reset unknown rate", got)
 	}
 }
 
@@ -256,6 +459,15 @@ func appendFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeClaudeTokenFixture(t *testing.T, path string, tokens int64) {
+	t.Helper()
+	content := `{"timestamp":"2026-08-17T08:00:00Z","type":"assistant","message":{"usage":{"input_tokens":` +
+		strconv.FormatInt(tokens, 10) + `}}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
