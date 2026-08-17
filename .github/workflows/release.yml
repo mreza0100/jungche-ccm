@@ -60,7 +60,7 @@ jobs:
           # ships. They will NOT hash-match a local `env -u GOFLAGS` build,
           # which deliberately omits -trimpath; both hashes are correct for
           # their respective build contracts.
-          go -C pfm build -trimpath -o "../dist/${binary}" ./cmd/pfm
+          go -C pfm build -trimpath -ldflags "-X main.version=${{ github.ref_name }}" -o "../dist/${binary}" ./cmd/pfm
 
       - name: Upload platform binary
         uses: actions/upload-artifact@v4.6.2
