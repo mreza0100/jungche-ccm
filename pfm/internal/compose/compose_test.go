@@ -360,7 +360,7 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 				Socket:        "cc-new-fixture-1",
 				SessionName:   "cc-new-fixture-1",
 				WindowID:      "@1",
-				WindowName:    "claude",
+				WindowName:    "Promptless worker",
 				PaneID:        "%1",
 				PID:           900,
 				CWD:           "/work/booting-project",
@@ -382,7 +382,7 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 	if row.Kind != Booting ||
 		row.Socket != "cc-new-fixture-1" ||
 		row.PaneID != "%1" ||
-		row.Name != "booting…" ||
+		row.Name != "Promptless worker" ||
 		row.Project != "booting-project" ||
 		row.CWD != "/work/booting-project" ||
 		row.Hidden {

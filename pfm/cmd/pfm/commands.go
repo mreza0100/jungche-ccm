@@ -19,6 +19,7 @@ import (
 	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
@@ -396,6 +397,16 @@ func killChatServer(
 			name == socket {
 			_ = os.Remove(filepath.Join(resolved.SIDDir, entry.Name()))
 		}
+	}
+	state := shared.Open(ctx, resolved)
+	clearErr := state.ClearBranchSeat(ctx, socket)
+	closeErr := state.Close()
+	if clearErr != nil || closeErr != nil {
+		return fmt.Errorf(
+			"clear branch marker after ending %s: %w",
+			socket,
+			errors.Join(clearErr, closeErr),
+		)
 	}
 	return nil
 }

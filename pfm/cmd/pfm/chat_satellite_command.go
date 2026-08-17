@@ -21,8 +21,10 @@ import (
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/headless"
+	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
+	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
 )
@@ -535,77 +537,74 @@ func withinDirectory(path, root string) bool {
 	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
 }
 
-var branchDeathPolls = 18
-var branchDeathDelay = 500 * time.Millisecond
-
 func runChatBranch(args []string, stdout, stderr io.Writer) int {
 	id := os.Getenv("CLAUDE_CODE_SESSION_ID")
 	if id == "" {
 		fmt.Fprintln(stderr, "pfm chat branch: CLAUDE_CODE_SESSION_ID is not set")
 		return 1
 	}
-	if os.Getenv("TMUX") == "" {
-		fmt.Fprintln(stderr, "pfm chat branch: not inside tmux")
-		return 1
-	}
 	if _, err := exec.LookPath("claude"); err != nil {
 		fmt.Fprintln(stderr, "pfm chat branch: claude is not on PATH")
 		return 1
 	}
+	if _, err := exec.LookPath("tmux"); err != nil {
+		fmt.Fprintln(stderr, "pfm chat branch: tmux is not on PATH")
+		return 1
+	}
+	resolved, err := paths.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: resolve paths: %v\n", err)
+		return 1
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: current directory: %v\n", err)
+		return 1
+	}
 	name := sanitizeBranchName(strings.Join(args, " "))
+	if strings.TrimSpace(name) == "" {
+		name = defaultBranchName(id)
+	}
 	model := currentClaudeModel(id)
 	command := branchClaudeCommand(id, name, model)
-	spawn := exec.Command("tmux", "split-window", "-h", "-P", "-F", "#{pane_id}", "-c", mustGetwd(), command)
-	output, err := spawn.CombinedOutput()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: split pane: %v: %s\n", err, strings.TrimSpace(string(output)))
+	socket := freshSocket(compose.ResumeClaude)
+	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
+	if err := tmux.NewSession(context.Background(), spawn.SessionSpec{
+		Socket: socket, Session: socket, Window: spawn.WindowName(name),
+		CWD: cwd, Run: command,
+		Width: action.HeadlessWidth, Height: action.HeadlessHeight,
+	}); err != nil {
+		rollbackErr := killChatServer(context.Background(), resolved, socket)
+		if rollbackErr != nil {
+			fmt.Fprintf(stderr, "pfm chat branch: create detached seat: %v; rollback: %v\n", err, rollbackErr)
+		} else {
+			fmt.Fprintf(stderr, "pfm chat branch: create detached seat: %v\n", err)
+		}
 		return 1
 	}
-	pane := strings.TrimSpace(string(output))
-	if pane == "" {
-		fmt.Fprintln(stderr, "pfm chat branch: tmux returned no child pane")
+	state := shared.Open(context.Background(), resolved)
+	recordErr := state.RecordBranchSeat(context.Background(), socket, id, time.Now().Unix())
+	closeErr := state.Close()
+	if recordErr != nil || closeErr != nil {
+		rollbackErr := killChatServer(context.Background(), resolved, socket)
+		failure := errors.Join(recordErr, closeErr)
+		if rollbackErr != nil {
+			failure = errors.Join(failure, fmt.Errorf("rollback detached seat: %w", rollbackErr))
+		}
+		fmt.Fprintf(stderr, "pfm chat branch: record detached seat: %v\n", failure)
 		return 1
-	}
-	_ = exec.Command("tmux", "set-option", "-p", "-t", pane, "remain-on-exit", "on").Run()
-	dead := false
-	for attempt := 0; attempt < branchDeathPolls; attempt++ {
-		state, stateErr := exec.Command("tmux", "display-message", "-p", "-t", pane, "#{pane_dead}").Output()
-		if stateErr != nil {
-			fmt.Fprintf(stderr, "pfm chat branch: inspect child pane: %v\n", stateErr)
-			return 1
-		}
-		if strings.TrimSpace(string(state)) == "1" {
-			dead = true
-			break
-		}
-		time.Sleep(branchDeathDelay)
-	}
-	if dead {
-		capture, captureErr := exec.Command("tmux", "capture-pane", "-t", pane, "-p").Output()
-		if captureErr != nil {
-			fmt.Fprintf(stderr, "pfm chat branch: capture dead child: %v\n", captureErr)
-		}
-		if err := exec.Command("tmux", "kill-pane", "-t", pane).Run(); err != nil {
-			fmt.Fprintf(stderr, "pfm chat branch: remove dead child: %v\n", err)
-		}
-		fmt.Fprintf(stderr, "pfm chat branch: the fork died at birth: %s\n", strings.TrimSpace(string(capture)))
-		return 1
-	}
-	if err := exec.Command("tmux", "set-option", "-p", "-t", pane, "remain-on-exit", "off").Run(); err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: clear remain-on-exit: %v\n", err)
-		return 1
-	}
-	if err := registerPaneChild(id, pane); err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: WARNING: child is live but could not be registered for parent-close cleanup: %v\n", err)
 	}
 	fmt.Fprintf(stdout, "Branched %s…", transcript.Truncate(id, 8))
-	if name != "" {
-		fmt.Fprintf(stdout, " as %q", name)
-	}
+	fmt.Fprintf(stdout, " as %q", name)
 	if model != "" {
 		fmt.Fprintf(stdout, " on %s", model)
 	}
-	fmt.Fprintln(stdout, " into a new pane beside this one — original chat still live in the left pane.")
+	fmt.Fprintf(
+		stdout,
+		" into detached socket %s — waiting in pfm ls; open later with pfm chat open %q.\n",
+		socket,
+		name,
+	)
 	return 0
 }
 
@@ -616,6 +615,25 @@ func sanitizeBranchName(value string) string {
 		}
 		return -1
 	}, value)
+}
+
+func defaultBranchName(id string) string {
+	parent := ""
+	database, err := store.Open(store.WithWarningWriter(io.Discard))
+	if err == nil {
+		if indexed, found, queryErr := database.Transcript(context.Background(), id); queryErr == nil && found {
+			parent = naming.DisplayName(indexed.CustomTitle, indexed.AITitle, indexed.FirstPrompt)
+		}
+		_ = database.Close()
+	}
+	if strings.TrimSpace(parent) == "" {
+		parent = transcript.Truncate(id, 8)
+	}
+	name := strings.TrimSpace(sanitizeBranchName(parent + "-branch"))
+	if name == "" {
+		return "branch"
+	}
+	return name
 }
 
 func currentClaudeModel(id string) string {
@@ -680,31 +698,6 @@ func branchClaudeCommand(id, name, model string) string {
 		quoted[index] = action.Quote(part)
 	}
 	return strings.Join(quoted, " ")
-}
-
-func mustGetwd() string {
-	directory, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return directory
-}
-
-func registerPaneChild(id, pane string) error {
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return err
-	}
-	socket := currentSocket()
-	if socket == "" {
-		return errors.New("current socket is unknown")
-	}
-	state := shared.Open(context.Background(), resolved)
-	defer state.Close()
-	if state.Degraded() != nil {
-		return state.Degraded()
-	}
-	return state.AddChild(context.Background(), shared.KindPane, id, socket+"\t"+pane, time.Now().Unix())
 }
 
 func runChatModal(args []string, stdout, stderr io.Writer) int {

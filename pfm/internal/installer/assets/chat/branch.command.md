@@ -1,17 +1,15 @@
 ---
 name: chat:branch
-description: Fork THIS chat into a side-by-side tmux pane — a fresh-session-id fork that inherits this chat's model and takes the name you give it (the fork can't rename itself). The original chat stays live in the left pane; unlike the built-in in-place branch, which displaces your current chat. Trigger — /chat:branch [name].
+description: Fork THIS Claude chat into a detached named seat without changing this pane, layout, or focus. Trigger — /chat:branch [name].
 argument-hint: [name]
 disable-model-invocation: true
 ---
 
-# Chat Branch — fork this chat into a side-by-side pane
+# Chat Branch
 
 Name: $ARGUMENTS
 
-Mechanics: `split-window -h` runs the fork in the new pane; pass `--fork-session` (otherwise the fork drops to the default model) and `--name` for the given name. Reads `$CLAUDE_CODE_SESSION_ID` and `$TMUX` directly — nothing to resolve.
-
 ## Steps
 
-1. **Branch:** `$HOME/.local/bin/pfm chat branch {name}` — pass `$ARGUMENTS` verbatim as the fork's name (omit if empty).
-2. **Report** the script's output verbatim. On error (no session id, not in tmux, `claude` not on PATH) relay the line; nothing was spawned.
+1. Run `$HOME/.local/bin/pfm chat branch {name}`; pass `$ARGUMENTS` verbatim and omit `{name}` when empty.
+2. Report the output verbatim. An empty name becomes `<parent>-branch`; the fork waits in `pfm ls` until the operator opens it. Relay any error line.

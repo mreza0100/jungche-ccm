@@ -225,6 +225,29 @@ func TestPrimaryAccountPrefersTheDatabaseOverTheMirror(t *testing.T) {
 	}
 }
 
+func TestBranchSeatMarkersRoundTripWithoutChangingTheSchema(t *testing.T) {
+	state, _ := openTestStore(t)
+	ctx := context.Background()
+	const socket = "cc-1800000000-42-7"
+	if err := state.RecordBranchSeat(ctx, socket, "parent-id", 123); err != nil {
+		t.Fatal(err)
+	}
+	seats, err := state.BranchSeats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seats[socket]; got.Socket != socket || got.Parent != "parent-id" || got.CreatedAt != 123 {
+		t.Fatalf("branch seat = %#v", got)
+	}
+	if err := state.ClearBranchSeat(ctx, socket); err != nil {
+		t.Fatal(err)
+	}
+	seats, err = state.BranchSeats(ctx)
+	if err != nil || len(seats) != 0 {
+		t.Fatalf("branch seats after clear = %#v err=%v", seats, err)
+	}
+}
+
 // The reader must not be what creates the state store: a missing database is a
 // missing database, not an empty one.
 func TestPrimaryAccountNeverCreatesTheDatabase(t *testing.T) {

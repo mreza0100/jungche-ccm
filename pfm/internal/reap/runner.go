@@ -14,6 +14,7 @@ import (
 
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 )
 
 const (
@@ -163,6 +164,15 @@ func (runner *Runner) Run(
 	if err != nil {
 		return Report{}, err
 	}
+	state := shared.Open(ctx, runner.paths)
+	branchSeats, branchErr := state.BranchSeats(ctx)
+	closeErr := state.Close()
+	if branchErr != nil || closeErr != nil {
+		return Report{}, fmt.Errorf("read detached branch seats: %w", errors.Join(branchErr, closeErr))
+	}
+	for index := range sockets {
+		_, sockets[index].DetachedFork = branchSeats[sockets[index].Name]
+	}
 	input.Sockets = sockets
 	input.RecentIDs = runner.recentSessions(sockets, input.BusyRecent)
 
@@ -183,7 +193,7 @@ func (runner *Runner) Run(
 	report.Decisions = decisions
 	for _, decision := range decisions {
 		switch decision.State {
-		case StateOrphan:
+		case StateOrphan, StateFork:
 			report.Orphans++
 			report.OrphanKB += decision.RSSKB
 		case StateKilled:

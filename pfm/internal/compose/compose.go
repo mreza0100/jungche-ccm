@@ -557,6 +557,13 @@ func (current *composer) bootingRows() []Row {
 	}
 	rows := make([]Row, 0, len(entries))
 	for _, entry := range entries {
+		name := strings.TrimSpace(entry.WindowName)
+		if name == "" && entry.SessionName != entry.Socket {
+			name = strings.TrimSpace(entry.SessionName)
+		}
+		if name == "" {
+			name = "booting…"
+		}
 		row := Row{
 			Kind:        Booting,
 			ID:          entry.Socket,
@@ -565,7 +572,7 @@ func (current *composer) bootingRows() []Row {
 			PanePIDs:    []int{entry.PID},
 			SessionName: entry.SessionName,
 			WindowName:  entry.WindowName,
-			Name:        "booting…",
+			Name:        name,
 			CWD:         entry.CWD,
 			Project:     projectName(entry.CWD),
 			ServerCount: 1,

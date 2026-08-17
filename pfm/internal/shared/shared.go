@@ -28,11 +28,22 @@ const (
 	PrimaryAccountKey = "primary_account"
 
 	// KindNew and KindPane are the two children kinds the schema admits. `new`
-	// is a detached teammate on its own tmux socket; `pane` is a teammate
-	// sharing this chat's server as "<socket>\t<pane>".
+	// is a detached teammate on its own tmux socket; `pane` preserves cleanup
+	// records for a teammate sharing a server as "<socket>\t<pane>".
 	KindNew  = "new"
 	KindPane = "pane"
+
+	branchSeatPrefix = "branch-seat:"
 )
+
+// BranchSeat is a detached /chat:branch process that has not necessarily
+// written a transcript yet. The socket remains the immutable address; Parent
+// is provenance only, never an alias.
+type BranchSeat struct {
+	Socket    string
+	Parent    string
+	CreatedAt int64
+}
 
 // schemaDDL initializes the complete operator-state schema atomically.
 const schemaDDL = `
@@ -411,6 +422,83 @@ ON CONFLICT(key) DO UPDATE SET val=excluded.val, updated_at=excluded.updated_at`
 		updatedAt,
 	); err != nil {
 		return fmt.Errorf("write shared meta %q: %w", key, err)
+	}
+	return nil
+}
+
+// RecordBranchSeat durably marks a detached fork before it is reported to the
+// operator. That marker is how the reaper distinguishes an untouched fork
+// from an unknown crumbless Claude process.
+func (s *Store) RecordBranchSeat(
+	ctx context.Context,
+	socket, parent string,
+	createdAt int64,
+) error {
+	if socket == "" || parent == "" {
+		return errors.New("record branch seat requires socket and parent")
+	}
+	if s.degraded != nil {
+		return s.degraded
+	}
+	return s.SetMeta(ctx, branchSeatPrefix+socket, parent, createdAt)
+}
+
+// BranchSeats returns every detached-fork marker keyed by immutable socket.
+func (s *Store) BranchSeats(ctx context.Context) (map[string]BranchSeat, error) {
+	if s.degraded != nil {
+		return nil, s.degraded
+	}
+	result := make(map[string]BranchSeat)
+	if s.db == nil {
+		return result, nil
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		"SELECT key,val,updated_at FROM meta WHERE key GLOB ? ORDER BY key",
+		branchSeatPrefix+"*",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("read shared branch seats: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key, parent string
+		var createdAt int64
+		if err := rows.Scan(&key, &parent, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan shared branch seat: %w", err)
+		}
+		socket := strings.TrimPrefix(key, branchSeatPrefix)
+		if socket == "" || socket == key {
+			continue
+		}
+		result[socket] = BranchSeat{
+			Socket: socket, Parent: parent, CreatedAt: createdAt,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate shared branch seats: %w", err)
+	}
+	return result, nil
+}
+
+// ClearBranchSeat removes the provenance marker once the fork's server is
+// deliberately ended. It never touches the socket itself.
+func (s *Store) ClearBranchSeat(ctx context.Context, socket string) error {
+	if socket == "" {
+		return nil
+	}
+	if s.degraded != nil {
+		return s.degraded
+	}
+	if s.db == nil {
+		return nil
+	}
+	if _, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM meta WHERE key=?",
+		branchSeatPrefix+socket,
+	); err != nil {
+		return fmt.Errorf("clear shared branch seat %q: %w", socket, err)
 	}
 	return nil
 }

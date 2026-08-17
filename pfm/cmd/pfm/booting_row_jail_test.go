@@ -82,11 +82,42 @@ func TestBootingRowJailedTSV(t *testing.T) {
 	}
 }
 
+// A named chat is addressable from the moment its process exists, before its
+// first prompt creates a transcript or statusline crumb. This is the exact
+// promptless `pfm chat new --name` window other chats must resolve.
+func TestPromptlessNamedChatResolvesByItsLaunchName(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	jail := newHideCLIJail(t)
+	socket := "cc-" + strconv.FormatInt(time.Now().Unix(), 10) +
+		"-" + strconv.Itoa(os.Getpid()) + "-17"
+	panePID := startNamedBootingPane(t, socket, "Promptless worker")
+	writeFakeProcess(t, jail.procRoot, fakeProcessSpec{
+		pid:       92017,
+		parentPID: panePID,
+		comm:      "claude",
+		cmdline:   []string{"/opt/claude"},
+	})
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"chat", "resolve", "Promptless worker"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("resolve promptless name rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), socket) {
+		t.Fatalf("resolved promptless chat = %q, want socket %q", stdout.String(), socket)
+	}
+}
+
 func startBootingPane(t *testing.T, socket string) int {
+	return startNamedBootingPane(t, socket, socket)
+}
+
+func startNamedBootingPane(t *testing.T, socket, window string) int {
 	t.Helper()
 	session := exec.Command(
 		"tmux", "-L", socket, "-f", "/dev/null",
-		"new-session", "-d", "-s", socket, "sleep", "120",
+		"new-session", "-d", "-s", socket, "-n", window, "sleep", "120",
 	)
 	if output, err := session.CombinedOutput(); err != nil {
 		t.Fatalf("start jailed pane %q: %v: %s", socket, err, output)
