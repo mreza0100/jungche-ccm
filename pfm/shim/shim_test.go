@@ -208,6 +208,56 @@ print -r -- "primary=$(_cc_primary)"
 	}
 }
 
+// A fleet chat owns a bare terminal. Replacing that shell with the tmux
+// client makes terminal teardown structural: when the harness closes the
+// server, the client exits and there is no parent shell left to reveal.
+func TestBareFleetLaunchExecsTheTerminalOwner(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh is not installed")
+	}
+	scriptBinary, err := exec.LookPath("script")
+	if err != nil {
+		t.Skip("script is not installed")
+	}
+	home := t.TempDir()
+	fakeBin := filepath.Join(home, "fake-bin")
+	if err := os.MkdirAll(filepath.Join(home, ".local", "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(fakeBin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeShimFile(t, filepath.Join(home, ".local", "bin", "pfm"), "#!/bin/sh\nexit 0\n")
+	writeShimFile(t, filepath.Join(fakeBin, "tmux"), "#!/bin/sh\nprintf '%s\\n' \"$$\" > \"$SHIM_TMUX_PID\"\n")
+	shellPID := filepath.Join(home, "shell.pid")
+	tmuxPID := filepath.Join(home, "tmux.pid")
+	driver := filepath.Join(home, "driver.zsh")
+	writeShimFile(t, driver,
+		"source "+quoteZsh(embeddedShimPath(t))+"\n"+
+			"print -r -- \"$$\" > \"$SHIM_SHELL_PID\"\n"+
+			"cc\n",
+	)
+	commandLine := quoteZsh(zsh) + " -fi " + quoteZsh(driver)
+	command := exec.Command(scriptBinary, "-qefc", commandLine, "/dev/null")
+	command.Env = append(
+		os.Environ(),
+		"HOME="+home,
+		"PATH="+fakeBin+":"+os.Getenv("PATH"),
+		"TMUX=",
+		"SHIM_SHELL_PID="+shellPID,
+		"SHIM_TMUX_PID="+tmuxPID,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("drive interactive shim: %v: %s", err, output)
+	}
+	want := strings.TrimSpace(readShimFile(t, shellPID))
+	got := strings.TrimSpace(readShimFile(t, tmuxPID))
+	if got != want {
+		t.Fatalf("tmux pid=%s, shell pid=%s: bare launch forked and left an outer terminal shell", got, want)
+	}
+}
+
 func writeShimFile(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o700); err != nil {

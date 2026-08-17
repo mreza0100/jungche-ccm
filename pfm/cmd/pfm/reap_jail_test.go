@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"os"
 	"os/exec"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 )
 
 // The reaper KILLS things, so its fixtures run against real tmux servers on
@@ -125,6 +129,60 @@ func reapServerAlive(root, socket string) bool {
 	)
 	command.Env = append(os.Environ(), "TMUX=")
 	return command.Run() == nil
+}
+
+// A /chat:branch seat has no transcript until its first prompt, so the usual
+// Claude busy proof is unavailable. Its durable branch-seat marker is the
+// evidence that an untouched, unattached fork is intentionally reapable.
+func TestReapClassifiesAndClearsAnUntouchedDetachedFork(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := reapJail(t)
+	const socket = "cc-1800000000-42-9"
+	startShellPane(t, root, socket)
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := shared.Open(context.Background(), resolved)
+	if state.Degraded() != nil {
+		t.Fatal(state.Degraded())
+	}
+	if err := state.SetMeta(
+		context.Background(), "branch-seat:"+socket, "parent-fixture", time.Now().Unix(),
+	); err != nil {
+		_ = state.Close()
+		t.Fatal(err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"reap"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("reap dry run rc=%d: %s", code, stderr.String())
+	}
+	if row := reapRow(t, stdout.String(), socket); !strings.Contains(row, "fork") {
+		t.Fatalf("untouched fork was not classified distinctly: %q\n%s", row, stdout.String())
+	}
+	if !reapServerAlive(root, socket) {
+		t.Fatal("dry run killed the detached fork")
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"reap", "--apply"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("reap --apply rc=%d: %s", code, stderr.String())
+	}
+	if reapServerAlive(root, socket) {
+		t.Fatalf("apply left untouched fork alive:\n%s", stdout.String())
+	}
+	state = shared.Open(context.Background(), resolved)
+	defer state.Close()
+	if _, found, err := state.Meta(context.Background(), "branch-seat:"+socket); err != nil || found {
+		t.Fatalf("branch marker after reap found=%t err=%v", found, err)
+	}
 }
 
 // TestReapNeverKillsASocketHostingNonChatWork is the rule that cost a chat

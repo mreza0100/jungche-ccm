@@ -38,6 +38,10 @@ const (
 	// A cx socket once carried a project's dev servers; killing its server
 	// would have taken them down with it.
 	StateHosts State = "hosts"
+	// StateFork is an untouched detached /chat:branch seat. It has durable
+	// provenance but no transcript yet, so it is explicitly reapable rather
+	// than falling into the crumbless busy-unknown guard.
+	StateFork State = "fork"
 	// StateOrphan is an unattached idle chat — the reapable case.
 	StateOrphan State = "orph"
 	// StateKilled is an orphan whose server this run actually killed.
@@ -86,6 +90,9 @@ type Socket struct {
 	// socket crumb is last-writer-wins, so the busy one may not own it.
 	CrumbUUIDs []string
 	HasCrumb   bool
+	// DetachedFork is backed by the shared branch-seat marker. It identifies
+	// provenance only; busy, recent, attached and hosted-work guards still win.
+	DetachedFork bool
 	// transcripts holds each CrumbUUIDs entry's file, appended in lockstep
 	// with it, so the recency check has a path to stat without searching for
 	// one. It stays unexported because it is probe plumbing, not a verdict
@@ -228,6 +235,14 @@ func planSocket(input Input, socket Socket) Decision {
 		decision.State = StateHosts
 		decision.Reason = "hosts non-chat processes: " +
 			strings.Join(socket.Foreign, ", ")
+		return decision
+	}
+	if socket.DetachedFork && !socket.HasCrumb {
+		decision.State = StateFork
+		decision.Reason = "untouched detached fork"
+		if input.Apply {
+			decision.Action = ActionKillServer
+		}
 		return decision
 	}
 

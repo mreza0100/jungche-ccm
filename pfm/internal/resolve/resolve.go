@@ -329,7 +329,7 @@ func (resolver *Resolver) resolveSession(want string, panes []Pane) Outcome {
 			return Outcome{
 				Code: 2,
 				Stderr: fmt.Sprintf(
-					"ambiguous session '%s' — it holds %d panes, %d running claude (a /chat:branch or /chat:new sibling shares this session); a bare session name would target whichever pane is active. Address by 🔖 label or %%pane-id instead (run /chat:ls).\n",
+					"ambiguous session '%s' — it holds %d panes, %d running claude; a bare session name would target whichever pane is active. Address by 🔖 label or %%pane-id instead (run /chat:ls).\n",
 					want,
 					len(sessionPanes),
 					len(claudePanes),

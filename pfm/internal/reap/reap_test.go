@@ -51,16 +51,17 @@ func TestPlanClassifiesEverySocket(t *testing.T) {
 			action: ActionNone,
 		},
 		{
-			name: "a session the engine calls busy survives a sweep",
+			name: "a marked detached fork the engine calls busy survives a sweep",
 			input: Input{
 				AgentsOK: true,
 				Apply:    true,
 				BusyIDs:  map[string]struct{}{busyUUID: {}},
 				Sockets: []Socket{{
-					Name:       "cc-100-1-1",
-					HasServer:  true,
-					HasCrumb:   true,
-					CrumbUUIDs: []string{busyUUID},
+					Name:         "cc-100-1-1",
+					HasServer:    true,
+					HasCrumb:     true,
+					DetachedFork: true,
+					CrumbUUIDs:   []string{busyUUID},
 				}},
 			},
 			want:   StateBusy,
@@ -115,6 +116,18 @@ func TestPlanClassifiesEverySocket(t *testing.T) {
 			},
 			want:   StateOrphan,
 			action: ActionNone,
+		},
+		{
+			name: "an untouched marker-backed fork is explicitly reapable",
+			input: Input{
+				AgentsOK: true,
+				Apply:    true,
+				Sockets: []Socket{{
+					Name: "cc-100-1-1", HasServer: true, DetachedFork: true,
+				}},
+			},
+			want:   StateFork,
+			action: ActionKillServer,
 		},
 		{
 			name: "a failed busy query skips every chat carrying a breadcrumb",
@@ -283,7 +296,7 @@ func TestPlanSweepsBunkerSessionsIndividually(t *testing.T) {
 	}{
 		"vsct:projc-1": {StateKeep, ActionNone},
 		"vsct:proja-2": {StateKeep, ActionNone},
-		"vsct:old-3":     {StateOrphan, ActionKillSession},
+		"vsct:old-3":   {StateOrphan, ActionKillSession},
 	}
 	for _, decision := range decisions {
 		expected, found := want[decision.Socket]
