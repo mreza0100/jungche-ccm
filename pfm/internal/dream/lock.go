@@ -6,13 +6,19 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"hostops/pfm/internal/dream/organ"
 )
 
 // acquireRunnerLock serializes every night and apply for one organ. The lock
 // file remains as organ-local evidence; releasing it only drops the advisory
 // lock and closes the descriptor.
 func acquireRunnerLock(organRoot string) (func() error, error) {
-	path := filepath.Join(organRoot, "dreamer", "runner.lock")
+	scratchRoot := organ.ScratchRoot(organRoot)
+	if err := ensureRealDirectories(scratchRoot); err != nil {
+		return nil, fmt.Errorf("prepare organ scratch root %s: %w", scratchRoot, err)
+	}
+	path := filepath.Join(scratchRoot, "runner.lock")
 	descriptor, err := syscall.Open(
 		path,
 		syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW,

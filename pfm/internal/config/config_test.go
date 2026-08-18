@@ -64,15 +64,31 @@ func TestDefaultsWithDiscoveryRoots(t *testing.T) {
 	if got.Codex != (Codex{Yolo: true, Binary: "codex"}) {
 		t.Fatalf("Codex = %#v, want yolo/codex defaults", got.Codex)
 	}
-	if !reflect.DeepEqual(got.MCPServers, map[string]MCPServer{"chat": {Enabled: false}}) {
-		t.Fatalf("MCPServers = %#v, want chat disabled", got.MCPServers)
+	if !reflect.DeepEqual(got.MCPServers, map[string]MCPServer{
+		"chat": {Enabled: false}, "harvester": {Enabled: false},
+	}) {
+		t.Fatalf("MCPServers = %#v, want chat and harvester disabled", got.MCPServers)
 	}
 	for _, key := range []string{
-		"version", "accounts", "claude.permissionMode", "claude.binary", "codex.yolo", "codex.binary", "mcp.servers.chat.enabled",
+		"version", "accounts", "claude.permissionMode", "claude.binary", "codex.yolo", "codex.binary", "mcp.servers.chat.enabled", "mcp.servers.harvester.enabled",
 	} {
 		if got.Source(key) != SourceDefault {
 			t.Errorf("Source(%q) = %q, want %q", key, got.Source(key), SourceDefault)
 		}
+	}
+}
+
+func TestDefaultsRegisterHarvesterDisabledByDefault(t *testing.T) {
+	got := Defaults(filepath.Join(t.TempDir(), "home"), nil)
+	server, ok := got.MCPServers["harvester"]
+	if !ok {
+		t.Fatal("harvester MCP server is not registered")
+	}
+	if server.Enabled {
+		t.Fatal("harvester MCP server is enabled by default")
+	}
+	if got.Source("mcp.servers.harvester.enabled") != SourceDefault {
+		t.Fatalf("harvester source = %q, want default", got.Source("mcp.servers.harvester.enabled"))
 	}
 }
 
@@ -397,7 +413,7 @@ func TestSetMCPServerRejectsUnknownServerWithoutWriting(t *testing.T) {
 
 func TestRegisteredMCPServersIsSorted(t *testing.T) {
 	got := RegisteredMCPServers()
-	if !sort.StringsAreSorted(got) || !reflect.DeepEqual(got, []string{"chat"}) {
+	if !sort.StringsAreSorted(got) || !reflect.DeepEqual(got, []string{"chat", "harvester"}) {
 		t.Fatalf("RegisteredMCPServers() = %#v, want sorted production registry", got)
 	}
 }

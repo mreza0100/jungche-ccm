@@ -70,6 +70,8 @@ type InjectOutput struct {
 	Steers        int    `json:"steers,omitempty"`
 	SteerLog      string `json:"steer_log,omitempty"`
 	Unsigned      bool   `json:"unsigned,omitempty"`
+	AutoFilePath  string `json:"auto_file_path,omitempty"`
+	LiteralChunks int    `json:"literal_chunks,omitempty"`
 }
 
 // CaptureInput requests a pane snapshot of the whole retained scrollback,

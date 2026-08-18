@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"hostops/pfm/internal/dream/organ"
 )
 
 const nightFailureFilename = "night.failed"
 
 func nightFailurePath(organRoot string) string {
-	return filepath.Join(organRoot, "dreamer", nightFailureFilename)
+	return filepath.Join(organ.ScratchRoot(organRoot), nightFailureFilename)
 }
 
 func writeNightFailure(path, phase string, cause error, offendingPath string, at time.Time) error {

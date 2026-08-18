@@ -59,7 +59,6 @@ func TestInjectUsesConfiguredBinaryToDescribeBusyPane(t *testing.T) {
 			Sender:            &Sender{Session: "sender"},
 			ClaudeAutoFileMax: ClaudeAutoFileMax,
 			CodexAutoFileMax:  CodexAutoFileMax,
-			AbsoluteByteMax:   AbsoluteMessageMax,
 			DisableSignature:  true,
 		},
 	})

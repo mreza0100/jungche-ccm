@@ -8,9 +8,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	goRuntime "runtime"
 	"sort"
 	"strings"
 
+	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 )
@@ -24,6 +26,24 @@ type engine struct {
 	outputErr   error
 }
 
+type pinnedHarvestProvisioner struct{}
+
+func (pinnedHarvestProvisioner) Plan(platform harvestpy.Platform) (harvestpy.InstallPlan, error) {
+	return harvestpy.Plan(platform)
+}
+
+func (pinnedHarvestProvisioner) Provision(ctx context.Context, options harvestpy.ProvisionOptions) (harvestpy.ProvisionResult, error) {
+	return harvestpy.Provision(ctx, options)
+}
+
+func (pinnedHarvestProvisioner) Check(ctx context.Context, root string, platform harvestpy.Platform) (harvestpy.CheckReport, error) {
+	return harvestpy.Check(ctx, root, platform)
+}
+
+// NewHarvestProvisioner returns the production pinned-runtime adapter. Tests
+// should inject their own HarvestProvisioner through Options instead.
+func NewHarvestProvisioner() HarvestProvisioner { return pinnedHarvestProvisioner{} }
+
 func Run(ctx context.Context, options Options) (Report, error) {
 	options, err := normalize(options)
 	if err != nil {
@@ -32,16 +52,19 @@ func Run(ctx context.Context, options Options) (Report, error) {
 	if options.Mode > ModeUninstall {
 		return Report{}, fmt.Errorf("unknown installer mode %d", options.Mode)
 	}
-	if err := options.Runner.Run(ctx, "systemctl", "--user", "status"); err == nil {
-		return Report{}, ErrReachableUserBus
-	}
-	if schedulerIsLaunchd {
-		running, probed := launchAgentRunning(ctx, options.Runner)
-		if running {
-			return Report{}, ErrLaunchAgentRunning
-		}
-		if !probed {
-			options.launchGateUnprobed = true
+	if options.Mode != ModeDryRun {
+		if schedulerIsLaunchd {
+			running, probed := launchAgentRunning(ctx, options.Runner)
+			if running {
+				return Report{}, ErrLaunchAgentRunning
+			}
+			if !probed {
+				options.launchGateUnprobed = true
+			}
+		} else if err := options.Runner.Run(
+			ctx, "systemctl", "--user", "is-active", "--quiet", "pfm-name-sync.service",
+		); err == nil {
+			return Report{}, ErrNameSyncRunning
 		}
 	}
 
@@ -81,6 +104,9 @@ func Run(ctx context.Context, options Options) (Report, error) {
 }
 
 func (installer *engine) install(ctx context.Context) error {
+	if err := installer.installHarvest(ctx); err != nil {
+		return err
+	}
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
@@ -109,14 +135,12 @@ func (installer *engine) install(ctx context.Context) error {
 	// Staging the other platform's files would leave an operator with a
 	// ~/.config/systemd/user full of units nothing will ever read.
 	if schedulerIsLaunchd {
-		// Said out loud on every run. The Linux gate refuses while a user bus is
-		// reachable; macOS has no dead-launchd jail, so the equivalent narrows
-		// to "not mid-execution". An operator reading the Linux posture and
-		// assuming it carries over is exactly the silence this prevents.
-		if installer.options.launchGateUnprobed {
-			installer.skip("launch-agent gate NOT probed (runner cannot read output); an apply during a name-sync run is not refused")
-		} else {
-			installer.ok("launch-agent gate: name-sync is not mid-execution (macOS has no dead-bus jail; this is the narrower equivalent)")
+		if installer.apply {
+			if installer.options.launchGateUnprobed {
+				installer.skip("launch-agent gate NOT probed (runner cannot read output); an apply during a name-sync run is not refused")
+			} else {
+				installer.ok("launch-agent gate: name-sync is not mid-execution")
+			}
 		}
 		if err := installer.wireLaunchAgent(ctx); err != nil {
 			return err
@@ -140,6 +164,9 @@ func (installer *engine) install(ctx context.Context) error {
 }
 
 func (installer *engine) uninstall(ctx context.Context) error {
+	if err := installer.uninstallHarvest(); err != nil {
+		return err
+	}
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
@@ -196,6 +223,129 @@ func (installer *engine) uninstall(ctx context.Context) error {
 		return err
 	}
 	return installer.removeManagedAssets(assets)
+}
+
+func harvestPythonRoot(home string) string {
+	return filepath.Join(home, ".local", "state", "pfm", "harvest-python")
+}
+
+func (installer *engine) harvestPlatform() harvestpy.Platform {
+	platform := installer.options.HarvestPlatform
+	if platform.GOOS == "" {
+		platform.GOOS, platform.GOARCH = goRuntime.GOOS, goRuntime.GOARCH
+	}
+	return platform
+}
+
+func (installer *engine) installHarvest(ctx context.Context) error {
+	if !installer.options.ProvisionHarvest {
+		return nil
+	}
+	provider := installer.options.HarvestProvisioner
+	if provider == nil {
+		return errors.New("harvestpy provisioning is enabled but no provisioner is configured")
+	}
+	platform := installer.harvestPlatform()
+	plan, err := provider.Plan(platform)
+	if err != nil {
+		return fmt.Errorf("harvestpy install plan for %s: %w", platform, err)
+	}
+	installer.say(
+		"harvestpy plan: platform=%s Python %s uv=%s uv_download_bytes=%d python_download_bytes=%d package_download_bytes=%d environment_bytes=%d package_status=%s offline=%t",
+		plan.Platform,
+		plan.PythonVersion,
+		plan.UVVersion,
+		plan.UVDownloadBytes,
+		plan.PythonDownloadBytes,
+		plan.PackageDownloadBytes,
+		plan.EnvironmentBytes,
+		plan.PackageDownloadStatus,
+		installer.options.HarvestOffline,
+	)
+	if len(plan.PackageBlockers) != 0 || plan.PackageDownloadStatus == "blocked-exact-lock" {
+		installer.say("harvestpy plan: BLOCKED exact lock for %s", platform)
+		for _, blocker := range plan.PackageBlockers {
+			installer.say("  blocker %s", blocker)
+		}
+		return fmt.Errorf("harvestpy target %s is blocked-exact-lock", platform)
+	}
+	if !installer.apply {
+		installer.say("harvestpy dry-run: Plan only; writes=0 network=0 offline=%t (apply requires valid cached pins or network)", installer.options.HarvestOffline)
+		return nil
+	}
+	root := harvestPythonRoot(installer.options.Home)
+	check, checkErr := provider.Check(ctx, root, platform)
+	if checkErr == nil && check.Healthy {
+		installer.ok("harvestpy environment already healthy (Check fast-path; no download)")
+		return nil
+	}
+	if checkErr != nil {
+		installer.say("harvestpy Check did not establish a healthy environment; provisioning: %v", checkErr)
+	} else {
+		installer.say("harvestpy Check reported an unhealthy environment; provisioning")
+	}
+	result, provisionErr := provider.Provision(ctx, harvestpy.ProvisionOptions{
+		Root:     root,
+		Cache:    filepath.Join(root, "cache"),
+		Platform: platform,
+		Offline:  installer.options.HarvestOffline,
+	})
+	if provisionErr != nil {
+		if errors.Is(provisionErr, harvestpy.ErrOfflineUnavailable) {
+			installer.say("harvestpy offline: required pinned input is not in the verified cached inputs; prewarm the cache or rerun with network")
+			return fmt.Errorf("harvestpy provisioning offline; verified cached inputs are unavailable: %w", provisionErr)
+		}
+		return fmt.Errorf("harvestpy provision %s: %w", platform, provisionErr)
+	}
+	installer.ok("harvestpy environment provisioned digest=" + result.Digest)
+	return nil
+}
+
+func (installer *engine) uninstallHarvest() error {
+	if !installer.options.ProvisionHarvest {
+		return nil
+	}
+	root := harvestPythonRoot(installer.options.Home)
+	info, err := os.Lstat(root)
+	if errors.Is(err, fs.ErrNotExist) {
+		installer.ok("managed harvestpy runtime and cache absent")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect managed harvestpy root: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("refuse to remove managed harvestpy root that is not a directory: %s", root)
+	}
+	hasManaged := false
+	for _, name := range []string{"env", "cache"} {
+		if _, statErr := os.Lstat(filepath.Join(root, name)); statErr == nil {
+			hasManaged = true
+		} else if !errors.Is(statErr, fs.ErrNotExist) {
+			return fmt.Errorf("inspect managed harvestpy %s: %w", name, statErr)
+		}
+	}
+	if !hasManaged {
+		installer.ok("managed harvestpy runtime and cache absent")
+		return nil
+	}
+	return installer.change("remove managed harvestpy runtime and cache", func() error {
+		for _, name := range []string{"env", "cache"} {
+			if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
+				return fmt.Errorf("remove managed harvestpy %s: %w", name, err)
+			}
+		}
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return fmt.Errorf("inspect managed harvestpy root after removal: %w", err)
+		}
+		if len(entries) == 0 {
+			if err := os.Remove(root); err != nil {
+				return fmt.Errorf("remove empty managed harvestpy root: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 func (installer *engine) say(format string, arguments ...any) {

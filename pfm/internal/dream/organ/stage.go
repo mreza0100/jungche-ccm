@@ -14,6 +14,14 @@ import (
 
 var lanePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
+// ScratchRoot is the organ's single transient tree. Every artifact a night
+// writes on the way to a dream lives below it and nothing else does, so one
+// gitignore line covers the whole class and a new scratch kind cannot leak
+// into the ledger by being born outside the ignored set.
+func ScratchRoot(organRoot string) string {
+	return filepath.Join(organRoot, "tmp")
+}
+
 // NewStage creates one private stage. Log paths are derived in the returned
 // layout but remain absent until CreateLogs is called after a non-empty corpus
 // is proven. The caller supplies the timestamp so stage naming remains
@@ -30,7 +38,11 @@ func NewStage(context artifact.RepoContext, lane string, startedAt time.Time) (a
 		return artifact.StageLayout{}, errors.New("stage start time must not be zero")
 	}
 
-	stagingRoot := filepath.Join(context.Organ, "dreamer", "staging")
+	scratchRoot := ScratchRoot(context.Organ)
+	if err := ensurePrivateDirectory(scratchRoot); err != nil {
+		return artifact.StageLayout{}, err
+	}
+	stagingRoot := filepath.Join(scratchRoot, "staging")
 	if err := ensurePrivateDirectory(stagingRoot); err != nil {
 		return artifact.StageLayout{}, err
 	}
@@ -107,7 +119,7 @@ func ValidateStage(context artifact.RepoContext, stageRoot string) (artifact.Sta
 	if _, err := Validate(context); err != nil {
 		return artifact.StageLayout{}, fmt.Errorf("validate organ before stage: %w", err)
 	}
-	stagingRoot := filepath.Join(context.Organ, "dreamer", "staging")
+	stagingRoot := filepath.Join(ScratchRoot(context.Organ), "staging")
 	if !filepath.IsAbs(stageRoot) || filepath.Clean(stageRoot) != stageRoot {
 		return artifact.StageLayout{}, fmt.Errorf("staging path must be absolute and canonical: %s", stageRoot)
 	}
@@ -150,7 +162,7 @@ func RemoveEmptyStage(context artifact.RepoContext, stageRoot string) error {
 
 func layoutFromRoot(context artifact.RepoContext, root string) artifact.StageLayout {
 	stem := filepath.Base(root)
-	logsRoot := filepath.Join(context.Organ, "dreamer", "logs")
+	logsRoot := filepath.Join(ScratchRoot(context.Organ), "logs")
 	return artifact.StageLayout{
 		Root:               root,
 		Maps:               filepath.Join(root, "maps"),

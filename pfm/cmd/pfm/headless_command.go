@@ -515,21 +515,31 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 	if retiredNoSig {
 		fmt.Fprintln(stderr, "pfm chat inject: --no-sig is retired; delivery signatures remain enabled")
 	}
+	filePath := *messageFile
+	trailingFile := flags.NArg() >= 2 && flags.Arg(1) == "--file"
+	if trailingFile {
+		if filePath != "" || flags.NArg() != 3 {
+			flags.Usage()
+			return 2
+		}
+		filePath = flags.Arg(2)
+	}
 	minimum := 2
-	if *messageFile != "" {
+	if filePath != "" {
 		minimum = 1
 	}
 	if flags.NArg() < minimum {
 		flags.Usage()
 		return 2
 	}
+	targetName := flags.Arg(0)
 	message := strings.Join(flags.Args()[1:], " ")
-	if *messageFile != "" {
-		if flags.NArg() != 1 {
+	if filePath != "" {
+		if !trailingFile && flags.NArg() != 1 {
 			flags.Usage()
 			return 2
 		}
-		content, err := os.ReadFile(*messageFile)
+		content, err := os.ReadFile(filePath)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat inject: read --file: %v\n", err)
 			return 2
@@ -547,10 +557,10 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 		return codeUndelivered
 	}
 	result, err := engine.Inject(ctx, inject.Request{
-		Target:     flags.Arg(0),
+		Target:     targetName,
 		Message:    message,
 		ForceNow:   force,
-		FileBacked: *messageFile != "",
+		FileBacked: filePath != "",
 		Then:       steers,
 	})
 	if err != nil {
@@ -558,7 +568,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 		return codeUndelivered
 	}
 	if result.Code == inject.CodeUnknown && !strings.Contains(strings.ToLower(result.Message), "ambiguous") {
-		target, found, resolveErr := resolveResumeTarget(flags.Arg(0), runtimes...)
+		target, found, resolveErr := resolveResumeTarget(targetName, runtimes...)
 		if resolveErr != nil {
 			fmt.Fprintf(stderr, "pfm chat inject: %v\n", resolveErr)
 			return codeUnknownChat
@@ -580,7 +590,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 					fmt.Fprintf(
 						stderr,
 						"pfm chat inject: %q is a LIVE session held by a running process with no resolvable tmux pane; transcript append refused\n",
-						flags.Arg(0),
+						targetName,
 					)
 					return codeDeadChat
 				}
@@ -593,7 +603,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 					fmt.Fprintf(
 						stderr,
 						"pfm chat inject: %q is a LIVE session at %s with no resolvable target on this path; transcript append refused\n",
-						flags.Arg(0),
+						targetName,
 						crumb,
 					)
 					return codeDeadChat
@@ -607,7 +617,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 					fmt.Fprintf(
 						stderr,
 						"pfm chat inject: %q is a LIVE background agent under config %s; it reads its input stream, not transcript appends, so nothing was appended\n",
-						flags.Arg(0),
+						targetName,
 						config,
 					)
 					return codeDeadChat
@@ -668,7 +678,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 		// who can do something about it, and only if the reason reaches them.
 		writeUnsignedInjectWarning(stderr)
 	}
-	return writeInjectResult(result, flags.Arg(0), stdout, stderr)
+	return writeInjectResult(result, targetName, stdout, stderr)
 }
 
 func writeInjectResult(

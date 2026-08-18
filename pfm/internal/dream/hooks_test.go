@@ -454,7 +454,7 @@ func TestNudgeFailureBecomesPersistentEvidenceThenClears(t *testing.T) {
 	if err != nil || len(got) != 0 {
 		t.Fatalf("transient failure = %q, %v", got, err)
 	}
-	marker := filepath.Join(organRoot, "dreamer", "nudge.failed")
+	marker := filepath.Join(organRoot, "tmp", "nudge.failed")
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatalf("persistent marker missing: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestMalformedNightFailureSurfacesPersistedNudgeFailureOnNextPrompt(t *testi
 	repository := hookRepository(t)
 	organRoot := filepath.Join(repository, ".professor", "stm")
 	nightMarker := nightFailurePath(organRoot)
-	if err := os.Mkdir(nightMarker, 0o700); err != nil {
+	if err := os.MkdirAll(nightMarker, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
@@ -505,7 +505,7 @@ func TestMalformedNightFailureSurfacesPersistedNudgeFailureOnNextPrompt(t *testi
 	if err != nil || len(first) != 0 {
 		t.Fatalf("first malformed-marker nudge = %q, %v, want silent persistence", first, err)
 	}
-	nudgeMarker := filepath.Join(organRoot, "dreamer", "nudge.failed")
+	nudgeMarker := filepath.Join(organRoot, "tmp", "nudge.failed")
 	if _, err := os.Lstat(nudgeMarker); err != nil {
 		t.Fatalf("malformed night marker did not persist nudge evidence: %v", err)
 	}

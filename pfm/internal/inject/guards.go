@@ -23,6 +23,10 @@ func isCompactCommand(message string) bool {
 	return compactPattern.MatchString(message)
 }
 
+func isHarnessCommand(message string) bool {
+	return strings.HasPrefix(strings.TrimLeftFunc(message, unicode.IsSpace), "/")
+}
+
 // IsBusy mirrors chat.sh's live spinner-detail test.
 func IsBusy(capture string) bool {
 	return busyPattern.MatchString(capture)

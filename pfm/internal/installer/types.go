@@ -9,19 +9,17 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"hostops/pfm/internal/harvestpy"
 )
 
-var ErrReachableUserBus = errors.New("live user systemd bus is reachable")
+// ErrNameSyncRunning refuses a mutating install while the Linux name-sync
+// service is executing. A reachable but idle user manager is safe, and a dry
+// run never needs this gate because it writes nothing.
+var ErrNameSyncRunning = errors.New("the pfm name-sync service is running")
 
-// ErrLaunchAgentRunning is the macOS half of the same refusal.
-//
-// It is deliberately NOT a transliteration of the dead-bus gate. That gate
-// demands a manager that is not live; launchd is ALWAYS live for a logged-in
-// user and there is no jail where it is not, so a literal port would refuse
-// every install forever. What survives of the intent is the narrow window the
-// gate actually protects: an apply must not rewrite the agent, and the binary
-// it points at, while that agent is MID-EXECUTION — that is the half-configured
-// host the Linux gate exists to prevent.
+// ErrLaunchAgentRunning is the macOS half of the same narrow refusal: a
+// mutating install must not rewrite the agent and its binary mid-execution.
 var ErrLaunchAgentRunning = errors.New("the pfm name-sync launch agent is running")
 
 type Mode uint8
@@ -34,6 +32,15 @@ const (
 
 type CommandRunner interface {
 	Run(context.Context, string, ...string) error
+}
+
+// HarvestProvisioner is the narrow seam between host wiring and the pinned
+// Python runtime. The real implementation delegates to harvestpy; installer
+// tests inject a fake so they never download the conversion lock.
+type HarvestProvisioner interface {
+	Plan(harvestpy.Platform) (harvestpy.InstallPlan, error)
+	Provision(context.Context, harvestpy.ProvisionOptions) (harvestpy.ProvisionResult, error)
+	Check(context.Context, string, harvestpy.Platform) (harvestpy.CheckReport, error)
 }
 
 // OutputRunner is the optional half of CommandRunner for probes that need to
@@ -52,6 +59,14 @@ type Options struct {
 	Now       func() time.Time
 	Stdout    io.Writer
 	Runner    CommandRunner
+
+	// ProvisionHarvest makes install/uninstall own the pinned conversion
+	// environment. The command sets this for real user actions; existing
+	// installer unit tests leave it false and inject no network-capable worker.
+	ProvisionHarvest   bool
+	HarvestProvisioner HarvestProvisioner
+	HarvestPlatform    harvestpy.Platform
+	HarvestOffline     bool
 
 	// launchGateUnprobed records that the launch-agent gate could not ask its
 	// question. It is set by Run, never by a caller.
@@ -96,6 +111,9 @@ func normalize(options Options) (Options, error) {
 	}
 	if options.Runner == nil {
 		options.Runner = execCommandRunner{}
+	}
+	if options.ProvisionHarvest && options.HarvestProvisioner == nil {
+		options.HarvestProvisioner = NewHarvestProvisioner()
 	}
 	return options, nil
 }

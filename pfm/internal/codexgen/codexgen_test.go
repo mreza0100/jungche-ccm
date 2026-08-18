@@ -1,0 +1,420 @@
+package codexgen
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+func TestLoadConfigRejectsUnknownFieldsAndBadVersion(t *testing.T) {
+	root := t.TempDir()
+	writeTestFile(t, filepath.Join(root, ".claude", "codex-build.json"), `{"version":1,"mystery":true}`)
+	if _, err := loadConfig(root, CLIOverrides{}); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown field: got %v", err)
+	}
+
+	writeTestFile(t, filepath.Join(root, ".claude", "codex-build.json"), `{"version":2}`)
+	if _, err := loadConfig(root, CLIOverrides{}); err == nil || !strings.Contains(err.Error(), "version") {
+		t.Fatalf("bad version: got %v", err)
+	}
+}
+
+func TestGlobalCommandsCanBeDisabledWithoutTouchingGlobalOutputs(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "commands", "local.md"), "---\ndescription: local\n---\nlocal\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "commands", "global.md"), "---\ndescription: global\n---\nglobal\n")
+
+	// The default remains compatible: global outputs are produced when the
+	// project does not opt out.
+	if result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild}); err != nil || !result.OK {
+		t.Fatalf("seed build: result=%#v err=%v", result, err)
+	}
+	globalPrompt := filepath.Join(home, ".codex", "prompts", "global.md")
+	globalSkill := filepath.Join(home, ".codex", "skills", "global", "SKILL.md")
+	beforePrompt := string(mustReadTestFile(t, globalPrompt))
+	beforeSkill := string(mustReadTestFile(t, globalSkill))
+
+	writeTestFile(t, filepath.Join(root, ".claude", "codex-build.json"), `{"version":1,"globalCommands":false}`)
+	writeTestFile(t, filepath.Join(home, ".claude", "commands", "global.md"), "---\ndescription: changed\n---\nchanged\n")
+	result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild})
+	if err != nil || !result.OK {
+		t.Fatalf("opt-out build: result=%#v err=%v", result, err)
+	}
+	if got := string(mustReadTestFile(t, globalPrompt)); got != beforePrompt {
+		t.Fatalf("global prompt changed while disabled: %q", got)
+	}
+	if got := string(mustReadTestFile(t, globalSkill)); got != beforeSkill {
+		t.Fatalf("global skill changed while disabled: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "local", "SKILL.md")); err != nil {
+		t.Fatalf("repository output missing while globals disabled: %v", err)
+	}
+	check, err := Run(Options{Root: root, Home: home, Mode: ModeCheck})
+	if err != nil || !check.OK {
+		t.Fatalf("disabled global source should not make check stale: result=%#v err=%v", check, err)
+	}
+
+	// Disabling global reconciliation must not weaken the independent TOML
+	// safety gate: malformed existing global artifacts remain visible.
+	writeTestFile(t, filepath.Join(home, ".codex", "config.toml"), "broken = [\n")
+	check, err = Run(Options{Root: root, Home: home, Mode: ModeCheck})
+	if err != nil || check.OK || !containsFinding(check.Problems, "UNPARSEABLE") {
+		t.Fatalf("malformed global TOML was not reported: result=%#v err=%v", check, err)
+	}
+}
+
+func TestGlobalCommandsConfigDefaultsTrue(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := loadConfig(root, CLIOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.GlobalCommands {
+		t.Fatal("GlobalCommands default = false, want true")
+	}
+	writeTestFile(t, filepath.Join(root, ".claude", "codex-build.json"), `{"version":1,"globalCommands":false}`)
+	cfg, err = loadConfig(root, CLIOverrides{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.GlobalCommands {
+		t.Fatal("GlobalCommands explicit false was ignored")
+	}
+}
+
+func TestFrontmatterAndRosterTransform(t *testing.T) {
+	raw := "---\ndescription: >-\n  A quoted \\\"description\\\"\n  over two lines.\nmodel: opus\nhooks:\n  PostToolUse:\n    - matcher: Edit\n---\nUse /wave:go, not /wave or /scripts/x. Read CLAUDE.md.\n"
+	fm, body, err := parseFrontmatter(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := fm["description"], `A quoted \"description\" over two lines.`; got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+	got := transformMarkdown(body, TransformOptions{
+		ModelMap:          map[string]string{"opus": "gpt-frontier"},
+		Commands:          map[string]string{"wave:go": "wave-go"},
+		ReplaceClaudeFile: true,
+	})
+	for _, want := range []string{"$wave-go", "/wave or", "/scripts/x", "AGENTS.md"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("transform missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestOverridesApplyExactAndRejectStalePin(t *testing.T) {
+	root := t.TempDir()
+	source := "# Root\n\nkeep\n\n## Replace me\n\nold body\n\n## Tail\n\nend\n"
+	region := "## Replace me\n\nold body\n"
+	sum := sha256.Sum256([]byte(region))
+	overridePath := filepath.Join(root, ".claude", "codex-overrides", "root.json")
+	writeTestFile(t, overridePath, `{
+  "version": 1,
+  "source": "CLAUDE.md",
+  "mode": "replace-section",
+  "headingPath": ["Root", "Replace me"],
+  "content": "## Replace me\n\nnew body\n",
+  "sourceHash": "sha256:`+hex.EncodeToString(sum[:])+`"
+}`)
+
+	cfg := defaultConfig()
+	cfg.OverridesDir = ".claude/codex-overrides"
+	got, statuses, err := applyOverrides(root, "CLAUDE.md", source, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "new body") || strings.Contains(got, "old body") {
+		t.Fatalf("override result = %q", got)
+	}
+	if len(statuses) != 1 || statuses[0].Status != "applied" {
+		t.Fatalf("statuses = %#v", statuses)
+	}
+
+	writeTestFile(t, overridePath, strings.ReplaceAll(string(mustReadTestFile(t, overridePath)), hex.EncodeToString(sum[:]), strings.Repeat("0", 64)))
+	if _, statuses, err = applyOverrides(root, "CLAUDE.md", source, cfg); err == nil || len(statuses) != 1 || statuses[0].Status != "stale-pin" {
+		t.Fatalf("stale pin: statuses=%#v err=%v", statuses, err)
+	}
+}
+
+func TestDanglingGlobalCommandIsHonestAndCheckWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n")
+	commandDir := filepath.Join(home, ".claude", "commands")
+	if err := os.MkdirAll(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("missing-command.md", filepath.Join(commandDir, "gone.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	build, err := Run(Options{Root: root, Home: home, Mode: ModeBuild})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if !containsFinding(build.Warnings, "dangling") {
+		t.Fatalf("build warnings = %#v", build.Warnings)
+	}
+
+	if err := os.Remove(filepath.Join(root, "AGENTS.md")); err != nil {
+		t.Fatal(err)
+	}
+	check, err := Run(Options{Root: root, Home: home, Mode: ModeCheck})
+	if err != nil {
+		t.Fatalf("check execution: %v", err)
+	}
+	if check.OK || !containsFinding(check.Problems, "dangling") || !containsFinding(check.Problems, "MISSING") {
+		t.Fatalf("check = %#v", check)
+	}
+	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("check wrote AGENTS.md: %v", err)
+	}
+}
+
+func TestOverrideModesAndMissingAnchor(t *testing.T) {
+	root := t.TempDir()
+	cfg := defaultConfig()
+	cfg.OverridesDir = ".claude/codex-overrides"
+	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "01-replace.json"), `{"version":1,"source":"CLAUDE.md","mode":"replace-exact","anchor":"replace literal","content":"replaced"}`)
+	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "02-delete.json"), `{"version":1,"source":"CLAUDE.md","mode":"delete","anchor":"delete literal"}`)
+	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "03-insert.json"), `{"version":1,"source":"CLAUDE.md","mode":"insert-after","anchor":"anchor literal","content":" + inserted"}`)
+	source := "replace literal\ndelete literal\nanchor literal\n"
+	got, statuses, err := applyOverrides(root, "CLAUDE.md", source, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "replaced\n\nanchor literal + inserted\n" {
+		t.Fatalf("all override modes = %q", got)
+	}
+	if len(statuses) != 3 {
+		t.Fatalf("statuses = %#v", statuses)
+	}
+	for _, status := range statuses {
+		if status.Status != "applied" {
+			t.Fatalf("status = %#v", status)
+		}
+	}
+
+	writeTestFile(t, filepath.Join(root, cfg.OverridesDir, "04-missing.json"), `{"version":1,"source":"CLAUDE.md","mode":"delete","anchor":"not present"}`)
+	_, statuses, err = applyOverrides(root, "CLAUDE.md", source, cfg)
+	if err == nil || !strings.Contains(err.Error(), "anchor-missing") || statuses[len(statuses)-1].Status != "anchor-missing" {
+		t.Fatalf("missing anchor: statuses=%#v err=%v", statuses, err)
+	}
+}
+
+func TestIncumbentUnionFixtureBuildThenReadOnlyCheck(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(root, ".claude", "codex-build.json"), `{
+  "version": 1,
+  "modelMap": {"sonnet":"gpt-fixture"},
+  "rootAdapter": "\n## Fixture adapter\n",
+  "agentPreamble": "Role ${name} starts here.\n\n",
+  "excludeDirs": ["references"],
+  "excludeProjects": ["template"],
+  "neverRegister": ["private"],
+  "suffixMode": "strip-prefix",
+  "suffixPrefix": "sample-"
+}`)
+	writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Root\n\nUse /wave:go with sonnet. Read CLAUDE.md.\n")
+	writeTestFile(t, filepath.Join(root, "sample-api", "CLAUDE.md"), "# API\n")
+	writeTestFile(t, filepath.Join(root, "template", "CLAUDE.md"), "# Must stay excluded\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "commands", "wave", "go.md"), "---\ndescription: >-\n  Run sonnet cards\n  safely\n---\nBody keeps CLAUDE.md and /wave:go with sonnet.\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "commands", "references", "hidden.md"), "hidden\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "agents", "reviewer.md"), "---\ndescription: >-\n  Review \\\"quoted\\\" output\nmodel: sonnet\ntools: Read, Grep\n---\nFollow /wave:go.\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "agents", "private.md"), "---\ndescription: private\n---\nno\n")
+	writeTestFile(t, filepath.Join(root, "sample-api", ".claude", "agents", "worker.md"), "---\ndescription: child\n---\nchild\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "skills", "native", "SKILL.md"), "# Native\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "commands", "global.md"), "---\ndescription: global\n---\nglobal\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "commands", "side.md"), "---\ndescription: side\ndisable-model-invocation: true\n---\nside\n")
+	writeTestFile(t, filepath.Join(root, ".codex", "config.toml"), "model = \"fixture\"\n")
+	writeTestFile(t, filepath.Join(root, ".mcp.json"), `{"mcpServers":{"fixture":{"command":"pfm","args":["mcp"],"future":true}}}`)
+
+	build, err := Run(Options{Root: root, Home: home, Mode: ModeBuild})
+	if err != nil || !build.OK {
+		t.Fatalf("build: result=%#v err=%v", build, err)
+	}
+	if !containsFinding(build.Warnings, "fields not mapped") {
+		t.Fatalf("MCP warning missing: %#v", build.Warnings)
+	}
+	assertTestFileContains(t, filepath.Join(root, "AGENTS.md"), "Generated by pfm codex build", "$wave-go", "gpt-fixture", "AGENTS.md", "## Fixture adapter")
+	if _, err := os.Stat(filepath.Join(root, "template", "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("excluded template AGENTS.md exists: %v", err)
+	}
+	assertTestFileContains(t, filepath.Join(root, ".codex", "agents", "reviewer.toml"), `description = "Review \\\"quoted\\\" output"`, `sandbox_mode = "read-only"`, "Role reviewer starts here.", "$wave-go")
+	assertTestFileContains(t, filepath.Join(root, ".codex", "agents", "worker-api.toml"), `name = "worker_api"`)
+	if _, err := os.Stat(filepath.Join(root, ".codex", "agents", "private.toml")); !os.IsNotExist(err) {
+		t.Fatalf("never-register agent exists: %v", err)
+	}
+	commandSkill := filepath.Join(root, ".codex", "skills", "wave-go", "SKILL.md")
+	assertTestFileContains(t, commandSkill, "name: wave-go", "Run sonnet cards", "safely", "Body keeps CLAUDE.md", "$wave-go", "gpt-fixture")
+	if strings.Contains(string(mustReadTestFile(t, commandSkill)), "Run gpt-fixture cards") {
+		t.Fatal("command frontmatter model alias was rewritten")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "references-hidden", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("excluded command exists: %v", err)
+	}
+	if target, err := os.Readlink(filepath.Join(root, ".codex", "skills", "native")); err != nil || target == "" {
+		t.Fatalf("native skill link: target=%q err=%v", target, err)
+	}
+	assertTestFileContains(t, filepath.Join(home, ".codex", "prompts", "side.md"), "name: side")
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "side", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("non-model-invocable global skill exists: %v", err)
+	}
+	assertTestFileContains(t, filepath.Join(root, ".codex", "config.toml"), `model = "fixture"`, "generated by pfm codex build", "[mcp_servers.fixture]")
+
+	before := snapshotTestTree(t, root, home)
+	check, err := Run(Options{Root: root, Home: home, Mode: ModeCheck})
+	if err != nil || !check.OK {
+		t.Fatalf("check: result=%#v err=%v", check, err)
+	}
+	if after := snapshotTestTree(t, root, home); after != before {
+		t.Fatalf("check wrote files:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestCheckRejectsInvalidKeeperTOML(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n")
+	writeTestFile(t, filepath.Join(root, ".codex", "config.toml"), "broken = [\n")
+	result, err := Run(Options{Root: root, Home: home, Mode: ModeCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.OK || !containsFinding(result.Problems, "UNPARSEABLE") {
+		t.Fatalf("invalid TOML check = %#v", result)
+	}
+}
+
+func TestReconcileFindingsAreNamedAndNonDestructive(t *testing.T) {
+	t.Run("stale and orphan check findings", func(t *testing.T) {
+		root := t.TempDir()
+		home := t.TempDir()
+		writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n")
+
+		if result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild}); err != nil || !result.OK {
+			t.Fatalf("seed build: result=%#v err=%v", result, err)
+		}
+		writeTestFile(t, filepath.Join(root, "AGENTS.md"), "stale generated content\n")
+		writeTestFile(t, filepath.Join(root, ".codex", "agents", "orphan.toml"), generatedMarker+"\nname = \"orphan\"\n")
+		before := snapshotTestTree(t, root, home)
+
+		result, err := Run(Options{Root: root, Home: home, Mode: ModeCheck})
+		if err != nil {
+			t.Fatalf("check: %v", err)
+		}
+		if result.OK || !containsFinding(result.Problems, "STALE") || !containsFinding(result.Problems, "ORPHAN") {
+			t.Fatalf("check findings = %#v", result)
+		}
+		if after := snapshotTestTree(t, root, home); after != before {
+			t.Fatalf("check changed files:\nbefore=%s\nafter=%s", before, after)
+		}
+	})
+
+	t.Run("build conflict is named and preserved", func(t *testing.T) {
+		root := t.TempDir()
+		home := t.TempDir()
+		writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n")
+		writeTestFile(t, filepath.Join(root, ".claude", "agents", "reviewer.md"), "---\ndescription: reviewer\n---\nReview.\n")
+		if result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild}); err != nil || !result.OK {
+			t.Fatalf("seed build: result=%#v err=%v", result, err)
+		}
+
+		conflictPath := filepath.Join(root, ".codex", "agents", "reviewer.toml")
+		writeTestFile(t, conflictPath, "hand-written keeper\n")
+		before := snapshotTestTree(t, root, home)
+		result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if result.OK || !containsFinding(result.Problems, "CONFLICT") {
+			t.Fatalf("build findings = %#v", result)
+		}
+		if after := snapshotTestTree(t, root, home); after != before {
+			t.Fatalf("conflict build changed files:\nbefore=%s\nafter=%s", before, after)
+		}
+		if got := string(mustReadTestFile(t, conflictPath)); got != "hand-written keeper\n" {
+			t.Fatalf("conflict file changed: %q", got)
+		}
+	})
+}
+
+func containsFinding(items []string, needle string) bool {
+	for _, item := range items {
+		if strings.Contains(strings.ToLower(item), strings.ToLower(needle)) {
+			return true
+		}
+	}
+	return false
+}
+
+func writeTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustReadTestFile(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func assertTestFileContains(t *testing.T, path string, needles ...string) {
+	t.Helper()
+	body := string(mustReadTestFile(t, path))
+	for _, needle := range needles {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("%s missing %q:\n%s", path, needle, body)
+		}
+	}
+}
+
+func snapshotTestTree(t *testing.T, roots ...string) string {
+	t.Helper()
+	rows := []string{}
+	for _, root := range roots {
+		err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() {
+				return nil
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				target, err := os.Readlink(path)
+				if err != nil {
+					return err
+				}
+				rows = append(rows, root+"/"+rel+" -> "+target)
+				return nil
+			}
+			rows = append(rows, root+"/"+rel+" = "+string(mustReadTestFile(t, path)))
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	sort.Strings(rows)
+	return strings.Join(rows, "\n")
+}

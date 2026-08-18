@@ -92,7 +92,7 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 		updates,
 		refreshDependencies{
 			newIndexer: func(*store.Store) (indexRunner, error) {
-				return immediateIndexRunner{}, nil
+				return &immediateIndexRunner{}, nil
 			},
 		},
 	)

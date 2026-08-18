@@ -1,0 +1,13 @@
+[project]
+name = "professor-harvestpy"
+version = "0.1.0"
+requires-python = "==3.11.*"
+dependencies = [
+  "docling==2.107.0",
+  "markitdown==0.1.6",
+  "pymupdf4llm==1.27.2.3",
+  "trafilatura==2.1.0",
+]
+
+[tool.uv]
+package = false

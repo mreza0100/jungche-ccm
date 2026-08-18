@@ -8,9 +8,6 @@ import (
 
 func TestOrganRunnerLockExcludesThenReleasesWithoutDeleting(t *testing.T) {
 	organRoot := t.TempDir()
-	if err := os.Mkdir(filepath.Join(organRoot, "dreamer"), 0o700); err != nil {
-		t.Fatal(err)
-	}
 	release, err := acquireRunnerLock(organRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -28,7 +25,7 @@ func TestOrganRunnerLockExcludesThenReleasesWithoutDeleting(t *testing.T) {
 	if err := secondRelease(); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Lstat(filepath.Join(organRoot, "dreamer", "runner.lock"))
+	info, err := os.Lstat(filepath.Join(organRoot, "tmp", "runner.lock"))
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
 		t.Fatalf("persistent lock evidence = %v, %v", info, err)
 	}
@@ -36,15 +33,15 @@ func TestOrganRunnerLockExcludesThenReleasesWithoutDeleting(t *testing.T) {
 
 func TestOrganRunnerLockRefusesSymlink(t *testing.T) {
 	organRoot := t.TempDir()
-	dreamerRoot := filepath.Join(organRoot, "dreamer")
-	if err := os.Mkdir(dreamerRoot, 0o700); err != nil {
+	scratchRoot := filepath.Join(organRoot, "tmp")
+	if err := os.Mkdir(scratchRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(organRoot, "outside")
 	if err := os.WriteFile(target, []byte("untouched\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(target, filepath.Join(dreamerRoot, "runner.lock")); err != nil {
+	if err := os.Symlink(target, filepath.Join(scratchRoot, "runner.lock")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := acquireRunnerLock(organRoot); err == nil {

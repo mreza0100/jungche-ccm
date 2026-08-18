@@ -13,9 +13,8 @@ import (
 	"hostops/pfm/internal/resolve"
 )
 
-// TestCompactFocusRuleRefusesBeforeAnyKey covers chat.sh:591-625: a /compact
-// primary without a steer, an over-long /compact focus, and a steer that is
-// itself a /compact all die at the caller, before a single key is sent.
+// TestCompactFocusRuleRefusesBeforeAnyKey covers the remaining caller-side
+// chain guards: a steerless /compact and an invalid steer die before typing.
 func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -28,16 +27,6 @@ func TestCompactFocusRuleRefusesBeforeAnyKey(t *testing.T) {
 			request:  Request{Target: "chat", Message: "/compact hold: read /tmp/x.md"},
 			wantCode: 6,
 			wantText: "requires a then steer",
-		},
-		{
-			name: "long compact focus refused",
-			request: Request{
-				Target:  "chat",
-				Message: "/compact " + strings.Repeat("f", CompactFocusMax),
-				Then:    []string{"carry on"},
-			},
-			wantCode: 6,
-			wantText: "a body this long is typed as a PASTE",
 		},
 		{
 			name: "compact steering into compact refused",
@@ -144,6 +133,85 @@ func TestCompactWithSteerArmsWaiterOnlyAfterConfirmedSubmit(t *testing.T) {
 			result,
 			spawner.spawned(),
 		)
+	}
+}
+
+// TestLongCompactFocusChunksAndFires is the user-visible size-limit
+// regression fixture. A /compact focus this far beyond the TUI's paste edge
+// must be split into small literal sends, so the command itself reaches the
+// transcript and fires instead of being rejected or collapsed as a paste.
+func TestLongCompactFocusChunksAndFires(t *testing.T) {
+	const focusRunes = 2147
+	focus := strings.Repeat("f", focusRunes)
+	wantMessage := "/compact " + focus
+
+	for _, test := range []struct {
+		name    string
+		capture string
+		status  string
+	}{
+		{
+			name:    "idle",
+			capture: "conversation\n❯ ",
+			status:  "delivered",
+		},
+		{
+			name:    "busy queues without interleaving",
+			capture: "Working (10s · 500 tokens)\n❯ ",
+			status:  "queued",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeTmux{
+				capture:       test.capture,
+				submitOnEnter: true,
+				submitCapture: "USER: {{MESSAGE}}\nCOMPACTION FIRED\n❯ ",
+			}
+			if test.status == "queued" {
+				fake.submitCapture = "USER: {{MESSAGE}}\nPress up to edit queued messages\n❯ "
+			}
+			spawner := &fakeSpawner{}
+			engine := newTestEngineWith(t, "cc-long-compact", fake, spawner)
+			result, err := engine.Inject(context.Background(), Request{
+				Target:  "chat",
+				Message: wantMessage,
+				Then:    []string{"resume after compaction"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Code != 0 || result.Status != test.status ||
+				result.AutoFilePath != "" || result.Steers != 1 {
+				t.Fatalf("long compact result=%+v err=%v", result, err)
+			}
+			if len(fake.literals) < 2 {
+				t.Fatalf("long compact was not internally chunked: %d literal sends", len(fake.literals))
+			}
+			var typed strings.Builder
+			for _, literal := range fake.literals {
+				if len([]rune(literal)) > CommandChunkRunes {
+					t.Fatalf("literal chunk crossed TUI paste edge: %d runes", len([]rune(literal)))
+				}
+				typed.WriteString(literal)
+			}
+			if typed.String() != wantMessage {
+				t.Fatalf("chunked compact changed command bytes: got %d want %d", typed.Len(), len(wantMessage))
+			}
+			if !strings.Contains(fake.capture, wantMessage) {
+				t.Fatalf("transcript lost full compact focus: got %d bytes", len(fake.capture))
+			}
+			if !strings.Contains(fake.capture, "COMPACTION FIRED") && test.status == "delivered" {
+				t.Fatalf("compact did not fire in transcript capture: %q", fake.capture)
+			}
+			if test.status == "queued" &&
+				!strings.Contains(result.Proof, "Press up to edit queued messages") {
+				t.Fatalf("busy compact proof lacks queue evidence: %q", result.Proof)
+			}
+			if strings.Contains(typed.String(), "— sid ") ||
+				strings.Contains(typed.String(), "to reply: /chat:inject") {
+				t.Fatalf("slash command acquired a sender signature: %q", typed.String())
+			}
+		})
 	}
 }
 

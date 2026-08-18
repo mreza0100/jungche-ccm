@@ -877,7 +877,7 @@ func TestFailedMCPVerificationIsLoggedWithFactsBeforeReturning(t *testing.T) {
 
 func TestProjectRootForStageUsesNearestGitMarkerAndFallsBackToStage(t *testing.T) {
 	repository := t.TempDir()
-	stage := filepath.Join(repository, "organ", "dreamer", "staging", "night")
+	stage := filepath.Join(repository, "organ", "tmp", "staging", "night")
 	if err := os.MkdirAll(stage, 0o700); err != nil {
 		t.Fatal(err)
 	}

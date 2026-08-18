@@ -189,6 +189,8 @@ func (service *Service) chatInject(
 		Steers:        result.Steers,
 		SteerLog:      result.SteerLog,
 		Unsigned:      result.Unsigned,
+		AutoFilePath:  result.AutoFilePath,
+		LiteralChunks: result.LiteralChunks,
 	}, err
 }
 

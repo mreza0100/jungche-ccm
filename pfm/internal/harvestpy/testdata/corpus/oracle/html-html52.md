@@ -1,0 +1,702 @@
+**Title:** HTML
+**Published:** 2026-08-11
+
+---
+
+Living Standard — Last Updated 11 August 2026
+
+- [1 Introduction](#toc-introduction)
+- [2 Common infrastructure](#toc-infrastructure)
+- [3 Semantics, structure, and APIs of HTML documents](#toc-dom)
+- [4 The elements of HTML](#toc-semantics)
+- [5 Microdata](#toc-microdata)
+- [6 User interaction](#toc-editing)
+- [7 Loading web pages](#toc-browsers)
+- [8 Web application APIs](#toc-webappapis)
+- [9 Communication](#toc-comms)
+- [10 Web workers](#toc-workers)
+- [11 Worklets](#toc-worklets)
+- [12 Web storage](#toc-webstorage)
+- [13 The HTML syntax](#toc-syntax)
+- [14 The XML syntax](#toc-the-xhtml-syntax)
+- [15 Rendering](#toc-rendering)
+- [16 Obsolete features](#toc-obsolete)
+- [17 IANA considerations](#toc-iana)
+- [Index](#toc-index)
+- [References](#toc-references)
+- [Acknowledgments](#toc-acknowledgments)
+- [Intellectual property rights](#toc-ipr)
+
+- [1 Introduction](introduction.html#introduction)
+- [2 Common infrastructure](infrastructure.html#infrastructure)- [2.1 Terminology](infrastructure.html#terminology)
+- [2.2 Policy-controlled features](infrastructure.html#policy-controlled-features)
+- [2.3 Common microsyntaxes](common-microsyntaxes.html#common-microsyntaxes)
+- [2.4 URLs](urls-and-fetching.html#urls)
+- [2.5 Fetching resources](urls-and-fetching.html#fetching-resources)
+- [2.6 Common DOM interfaces](common-dom-interfaces.html#common-dom-interfaces)
+- [2.7 Safe passing of structured data](structured-data.html#safe-passing-of-structured-data)- [2.7.1 Serializable objects](structured-data.html#serializable-objects)
+- [2.7.2 Transferable objects](structured-data.html#transferable-objects)
+- [2.7.3 StructuredSerializeInternal (](structured-data.html#structuredserializeinternal)- `value`,- `forStorage`[ ,- `memory`] )
+- [2.7.4 StructuredSerialize (](structured-data.html#structuredserialize)- `value`)
+- [2.7.5 StructuredSerializeForStorage (](structured-data.html#structuredserializeforstorage)- `value`)
+- [2.7.6 StructuredDeserialize (](structured-data.html#structureddeserialize)- `serialized`,- `targetRealm`[ ,- `memory`] )
+- [2.7.7 StructuredSerializeWithTransfer (](structured-data.html#structuredserializewithtransfer)- `value`,- `transferList`)
+- [2.7.8 StructuredDeserializeWithTransfer (](structured-data.html#structureddeserializewithtransfer)- `serializeWithTransferResult`,- `targetRealm`)
+- [2.7.9 Performing serialization and transferring from other specifications](structured-data.html#performing-structured-clones-from-other-specifications)
+- [2.7.10 Structured cloning API](structured-data.html#structured-cloning)
+
+
+- [3 Semantics, structure, and APIs of HTML documents](dom.html#dom)- [3.1 Documents](dom.html#documents)
+- [3.2 Elements](dom.html#elements)- [3.2.1 Semantics](dom.html#semantics-2)
+- [3.2.2 Elements in the DOM](dom.html#elements-in-the-dom)
+- [3.2.3 HTML element constructors](dom.html#html-element-constructors)
+- [3.2.4 Element definitions](dom.html#element-definitions)
+- [3.2.5 Content models](dom.html#content-models)
+- [3.2.6 Global attributes](dom.html#global-attributes)
+- [3.2.7 The](dom.html#the-innertext-idl-attribute)- `innerText`and- `outerText`properties
+- [3.2.8 Requirements relating to the bidirectional algorithm](dom.html#requirements-relating-to-the-bidirectional-algorithm)
+- [3.2.9 Requirements related to ARIA and to platform accessibility APIs](dom.html#wai-aria)
+
+
+- [4 The elements of HTML](semantics.html#semantics)- [4.1 The document element](semantics.html#the-root-element)
+- [4.2 Document metadata](semantics.html#document-metadata)
+- [4.3 Sections](sections.html#sections)- [4.3.1 The](sections.html#the-body-element)- `body`element
+- [4.3.2 The](sections.html#the-article-element)- `article`element
+- [4.3.3 The](sections.html#the-section-element)- `section`element
+- [4.3.4 The](sections.html#the-nav-element)- `nav`element
+- [4.3.5 The](sections.html#the-aside-element)- `aside`element
+- [4.3.6 The](sections.html#the-h1,-h2,-h3,-h4,-h5,-and-h6-elements)- `h1`,- `h2`,- `h3`,- `h4`,- `h5`, and- `h6`elements
+- [4.3.7 The](sections.html#the-hgroup-element)- `hgroup`element
+- [4.3.8 The](sections.html#the-header-element)- `header`element
+- [4.3.9 The](sections.html#the-footer-element)- `footer`element
+- [4.3.10 The](sections.html#the-address-element)- `address`element
+- [4.3.11 Headings and outlines](sections.html#headings-and-outlines-2)
+- [4.3.12 Usage summary](sections.html#usage-summary-2)
+
+- [4.4 Grouping content](grouping-content.html#grouping-content)- [4.4.1 The](grouping-content.html#the-p-element)- `p`element
+- [4.4.2 The](grouping-content.html#the-hr-element)- `hr`element
+- [4.4.3 The](grouping-content.html#the-pre-element)- `pre`element
+- [4.4.4 The](grouping-content.html#the-blockquote-element)- `blockquote`element
+- [4.4.5 The](grouping-content.html#the-ol-element)- `ol`element
+- [4.4.6 The](grouping-content.html#the-ul-element)- `ul`element
+- [4.4.7 The](grouping-content.html#the-menu-element)- `menu`element
+- [4.4.8 The](grouping-content.html#the-li-element)- `li`element
+- [4.4.9 The](grouping-content.html#the-dl-element)- `dl`element
+- [4.4.10 The](grouping-content.html#the-dt-element)- `dt`element
+- [4.4.11 The](grouping-content.html#the-dd-element)- `dd`element
+- [4.4.12 The](grouping-content.html#the-figure-element)- `figure`element
+- [4.4.13 The](grouping-content.html#the-figcaption-element)- `figcaption`element
+- [4.4.14 The](grouping-content.html#the-main-element)- `main`element
+- [4.4.15 The](grouping-content.html#the-search-element)- `search`element
+- [4.4.16 The](grouping-content.html#the-div-element)- `div`element
+
+- [4.5 Text-level semantics](text-level-semantics.html#text-level-semantics)- [4.5.1 The](text-level-semantics.html#the-a-element)- `a`element
+- [4.5.2 The](text-level-semantics.html#the-em-element)- `em`element
+- [4.5.3 The](text-level-semantics.html#the-strong-element)- `strong`element
+- [4.5.4 The](text-level-semantics.html#the-small-element)- `small`element
+- [4.5.5 The](text-level-semantics.html#the-s-element)- `s`element
+- [4.5.6 The](text-level-semantics.html#the-cite-element)- `cite`element
+- [4.5.7 The](text-level-semantics.html#the-q-element)- `q`element
+- [4.5.8 The](text-level-semantics.html#the-dfn-element)- `dfn`element
+- [4.5.9 The](text-level-semantics.html#the-abbr-element)- `abbr`element
+- [4.5.10 The](text-level-semantics.html#the-ruby-element)- `ruby`element
+- [4.5.11 The](text-level-semantics.html#the-rt-element)- `rt`element
+- [4.5.12 The](text-level-semantics.html#the-rp-element)- `rp`element
+- [4.5.13 The](text-level-semantics.html#the-data-element)- `data`element
+- [4.5.14 The](text-level-semantics.html#the-time-element)- `time`element
+- [4.5.15 The](text-level-semantics.html#the-code-element)- `code`element
+- [4.5.16 The](text-level-semantics.html#the-var-element)- `var`element
+- [4.5.17 The](text-level-semantics.html#the-samp-element)- `samp`element
+- [4.5.18 The](text-level-semantics.html#the-kbd-element)- `kbd`element
+- [4.5.19 The](text-level-semantics.html#the-sub-and-sup-elements)- `sub`and- `sup`elements
+- [4.5.20 The](text-level-semantics.html#the-i-element)- `i`element
+- [4.5.21 The](text-level-semantics.html#the-b-element)- `b`element
+- [4.5.22 The](text-level-semantics.html#the-u-element)- `u`element
+- [4.5.23 The](text-level-semantics.html#the-mark-element)- `mark`element
+- [4.5.24 The](text-level-semantics.html#the-bdi-element)- `bdi`element
+- [4.5.25 The](text-level-semantics.html#the-bdo-element)- `bdo`element
+- [4.5.26 The](text-level-semantics.html#the-span-element)- `span`element
+- [4.5.27 The](text-level-semantics.html#the-br-element)- `br`element
+- [4.5.28 The](text-level-semantics.html#the-wbr-element)- `wbr`element
+- [4.5.29 Usage summary](text-level-semantics.html#usage-summary)
+
+- [4.6 Links](links.html#links)- [4.6.1 Introduction](links.html#introduction-2)
+- [4.6.2 Links created by](links.html#links-created-by-a-and-area-elements)- `a`and- `area`elements
+- [4.6.3 API for hyperlink elements](links.html#api-for-hyperlink-elements)
+- [4.6.4 API for](links.html#api-for-a-and-area-elements)- `a`and- `area`elements
+- [4.6.5 Following hyperlinks](links.html#following-hyperlinks)
+- [4.6.6 Downloading resources](links.html#downloading-resources)
+- [4.6.7 Hyperlink auditing](links.html#hyperlink-auditing)
+- [4.6.8 Link types](links.html#linkTypes)- [4.6.8.1 Link type "](links.html#rel-alternate)- `alternate`"
+- [4.6.8.2 Link type "](links.html#link-type-author)- `author`"
+- [4.6.8.3 Link type "](links.html#link-type-bookmark)- `bookmark`"
+- [4.6.8.4 Link type "](links.html#link-type-canonical)- `canonical`"
+- [4.6.8.5 Link type "](links.html#link-type-dns-prefetch)- `dns-prefetch`"
+- [4.6.8.6 Link type "](links.html#link-type-expect)- `expect`"
+- [4.6.8.7 Link type "](links.html#link-type-external)- `external`"
+- [4.6.8.8 Link type "](links.html#link-type-help)- `help`"
+- [4.6.8.9 Link type "](links.html#rel-icon)- `icon`"
+- [4.6.8.10 Link type "](links.html#link-type-license)- `license`"
+- [4.6.8.11 Link type "](links.html#link-type-manifest)- `manifest`"
+- [4.6.8.12 Link type "](links.html#link-type-modulepreload)- `modulepreload`"
+- [4.6.8.13 Link type "](links.html#link-type-nofollow)- `nofollow`"
+- [4.6.8.14 Link type "](links.html#link-type-noopener)- `noopener`"
+- [4.6.8.15 Link type "](links.html#link-type-noreferrer)- `noreferrer`"
+- [4.6.8.16 Link type "](links.html#link-type-opener)- `opener`"
+- [4.6.8.17 Link type "](links.html#link-type-pingback)- `pingback`"
+- [4.6.8.18 Link type "](links.html#link-type-preconnect)- `preconnect`"
+- [4.6.8.19 Link type "](links.html#link-type-prefetch)- `prefetch`"
+- [4.6.8.20 Link type "](links.html#link-type-preload)- `preload`"
+- [4.6.8.21 Link type "](links.html#link-type-privacy-policy)- `privacy-policy`"
+- [4.6.8.22 Link type "](links.html#link-type-search)- `search`"
+- [4.6.8.23 Link type "](links.html#link-type-stylesheet)- `stylesheet`"
+- [4.6.8.24 Link type "](links.html#link-type-tag)- `tag`"
+- [4.6.8.25 Link Type "](links.html#link-type-terms-of-service)- `terms-of-service`"
+- [4.6.8.26 Sequential link types](links.html#sequential-link-types)
+- [4.6.8.27 Other link types](links.html#other-link-types)
+
+
+- [4.7 Edits](edits.html#edits)
+- [4.8 Embedded content](embedded-content.html#embedded-content)- [4.8.1 The](embedded-content.html#the-picture-element)- `picture`element
+- [4.8.2 The](embedded-content.html#the-source-element)- `source`element
+- [4.8.3 The](embedded-content.html#the-img-element)- `img`element
+- [4.8.4 Images](images.html#images)- [4.8.4.1 Introduction](images.html#introduction-3)
+- [4.8.4.2 Attributes common to](images.html#attributes-common-to-source-and-img-elements)- `source`,- `img`, and- `link`elements
+- [4.8.4.3 Processing model](images.html#images-processing-model)- [4.8.4.3.1 When to obtain images](images.html#when-to-obtain-images)
+- [4.8.4.3.2 Reacting to DOM mutations](images.html#reacting-to-dom-mutations)
+- [4.8.4.3.3 The list of available images](images.html#the-list-of-available-images)
+- [4.8.4.3.4 Decoding images](images.html#decoding-images)
+- [4.8.4.3.5 Updating the image data](images.html#updating-the-image-data)
+- [4.8.4.3.6 Preparing an image for presentation](images.html#preparing-an-image-for-presentation)
+- [4.8.4.3.7 Selecting an image source](images.html#selecting-an-image-source)
+- [4.8.4.3.8 Creating a source set from attributes](images.html#creating-a-source-set-from-attributes)
+- [4.8.4.3.9 Updating the source set](images.html#updating-the-source-set)
+- [4.8.4.3.10 Parsing a srcset attribute](images.html#parsing-a-srcset-attribute)
+- [4.8.4.3.11 Parsing a sizes attribute](images.html#parsing-a-sizes-attribute)
+- [4.8.4.3.12 Normalizing the source densities](images.html#normalizing-the-source-densities)
+- [4.8.4.3.13 Reacting to environment changes](images.html#reacting-to-environment-changes)
+
+- [4.8.4.4 Requirements for providing text to act as an alternative for images](images.html#alt)- [4.8.4.4.1 General guidelines](images.html#general-guidelines)
+- [4.8.4.4.2 A link or button containing nothing but the image](images.html#a-link-or-button-containing-nothing-but-the-image)
+- [4.8.4.4.3 A phrase or paragraph with an alternative graphical representation: charts, diagrams, graphs, maps, illustrations](images.html#a-phrase-or-paragraph-with-an-alternative-graphical-representation:-charts,-diagrams,-graphs,-maps,-illustrations)
+- [4.8.4.4.4 A short phrase or label with an alternative graphical representation: icons, logos](images.html#a-short-phrase-or-label-with-an-alternative-graphical-representation:-icons,-logos)
+- [4.8.4.4.5 Text that has been rendered to a graphic for typographical effect](images.html#text-that-has-been-rendered-to-a-graphic-for-typographical-effect)
+- [4.8.4.4.6 A graphical representation of some of the surrounding text](images.html#a-graphical-representation-of-some-of-the-surrounding-text)
+- [4.8.4.4.7 Ancillary images](images.html#ancillary-images)
+- [4.8.4.4.8 A purely decorative image that doesn't add any information](images.html#a-purely-decorative-image-that-doesn't-add-any-information)
+- [4.8.4.4.9 A group of images that form a single larger picture with no links](images.html#a-group-of-images-that-form-a-single-larger-picture-with-no-links)
+- [4.8.4.4.10 A group of images that form a single larger picture with links](images.html#a-group-of-images-that-form-a-single-larger-picture-with-links)
+- [4.8.4.4.11 A key part of the content](images.html#a-key-part-of-the-content)
+- [4.8.4.4.12 An image not intended for the user](images.html#an-image-not-intended-for-the-user)
+- [4.8.4.4.13 An image in an email or private document intended for a specific person who is known to be able to view images](images.html#an-image-in-an-e-mail-or-private-document-intended-for-a-specific-person-who-is-known-to-be-able-to-view-images)
+- [4.8.4.4.14 Guidance for markup generators](images.html#guidance-for-markup-generators)
+- [4.8.4.4.15 Guidance for conformance checkers](images.html#guidance-for-conformance-checkers)
+
+
+- [4.8.5 The](iframe-embed-object.html#the-iframe-element)- `iframe`element
+- [4.8.6 The](iframe-embed-object.html#the-embed-element)- `embed`element
+- [4.8.7 The](iframe-embed-object.html#the-object-element)- `object`element
+- [4.8.8 The](media.html#the-video-element)- `video`element
+- [4.8.9 The](media.html#the-audio-element)- `audio`element
+- [4.8.10 The](media.html#the-track-element)- `track`element
+- [4.8.11 Media elements](media.html#media-elements)- [4.8.11.1 Error codes](media.html#error-codes)
+- [4.8.11.2 Location of the media resource](media.html#location-of-the-media-resource)
+- [4.8.11.3 MIME types](media.html#mime-types)
+- [4.8.11.4 Network states](media.html#network-states)
+- [4.8.11.5 Loading the media resource](media.html#loading-the-media-resource)
+- [4.8.11.6 Offsets into the media resource](media.html#offsets-into-the-media-resource)
+- [4.8.11.7 Ready states](media.html#ready-states)
+- [4.8.11.8 Playing the media resource](media.html#playing-the-media-resource)
+- [4.8.11.9 Seeking](media.html#seeking)
+- [4.8.11.10 Media resources with multiple media tracks](media.html#media-resources-with-multiple-media-tracks)
+- [4.8.11.11 Timed text tracks](media.html#timed-text-tracks)- [4.8.11.11.1 Text track model](media.html#text-track-model)
+- [4.8.11.11.2 Sourcing in-band text tracks](media.html#sourcing-in-band-text-tracks)
+- [4.8.11.11.3 Sourcing out-of-band text tracks](media.html#sourcing-out-of-band-text-tracks)
+- [4.8.11.11.4 Guidelines for exposing cues in various formats as text track cues](media.html#guidelines-for-exposing-cues-in-various-formats-as-text-track-cues)
+- [4.8.11.11.5 Text track API](media.html#text-track-api)
+- [4.8.11.11.6 Event handlers for objects of the text track APIs](media.html#cue-events)
+- [4.8.11.11.7 Best practices for metadata text tracks](media.html#best-practices-for-metadata-text-tracks)
+
+- [4.8.11.12 Identifying a track kind through a URL](media.html#identifying-a-track-kind-through-a-url)
+- [4.8.11.13 User interface](media.html#user-interface)
+- [4.8.11.14 Time ranges](media.html#time-ranges)
+- [4.8.11.15 The](media.html#the-trackevent-interface)- `TrackEvent`interface
+- [4.8.11.16 Events summary](media.html#mediaevents)
+- [4.8.11.17 Security and privacy considerations](media.html#security-and-privacy-considerations)
+- [4.8.11.18 Best practices for authors using media elements](media.html#best-practices-for-authors-using-media-elements)
+- [4.8.11.19 Best practices for implementers of media elements](media.html#best-practices-for-implementers-of-media-elements)
+
+- [4.8.12 The](image-maps.html#the-map-element)- `map`element
+- [4.8.13 The](image-maps.html#the-area-element)- `area`element
+- [4.8.14 Image maps](image-maps.html#image-maps)
+- [4.8.15 MathML](embedded-content-other.html#mathml)
+- [4.8.16 SVG](embedded-content-other.html#svg-0)
+- [4.8.17 Dimension attributes](embedded-content-other.html#dimension-attributes)
+
+- [4.9 Tabular data](tables.html#tables)- [4.9.1 The](tables.html#the-table-element)- `table`element
+- [4.9.2 The](tables.html#the-caption-element)- `caption`element
+- [4.9.3 The](tables.html#the-colgroup-element)- `colgroup`element
+- [4.9.4 The](tables.html#the-col-element)- `col`element
+- [4.9.5 The](tables.html#the-tbody-element)- `tbody`element
+- [4.9.6 The](tables.html#the-thead-element)- `thead`element
+- [4.9.7 The](tables.html#the-tfoot-element)- `tfoot`element
+- [4.9.8 The](tables.html#the-tr-element)- `tr`element
+- [4.9.9 The](tables.html#the-td-element)- `td`element
+- [4.9.10 The](tables.html#the-th-element)- `th`element
+- [4.9.11 Attributes common to](tables.html#attributes-common-to-td-and-th-elements)- `td`and- `th`elements
+- [4.9.12 Processing model](tables.html#table-processing-model)
+- [4.9.13 Examples](tables.html#table-examples)
+
+- [4.10 Forms](forms.html#forms)- [4.10.1 Introduction](forms.html#introduction-4)- [4.10.1.1 Writing a form's user interface](forms.html#writing-a-form's-user-interface)
+- [4.10.1.2 Implementing the server-side processing for a form](forms.html#implementing-the-server-side-processing-for-a-form)
+- [4.10.1.3 Configuring a form to communicate with a server](forms.html#configuring-a-form-to-communicate-with-a-server)
+- [4.10.1.4 Client-side form validation](forms.html#client-side-form-validation)
+- [4.10.1.5 Enabling client-side automatic filling of form controls](forms.html#enabling-client-side-automatic-filling-of-form-controls)
+- [4.10.1.6 Improving the user experience on mobile devices](forms.html#improving-the-user-experience-on-mobile-devices)
+- [4.10.1.7 The difference between the field type, the autofill field name, and the input modality](forms.html#the-difference-between-the-field-type,-the-autofill-field-name,-and-the-input-modality)
+- [4.10.1.8 Date, time, and number formats](forms.html#input-author-notes)
+
+- [4.10.2 Categories](forms.html#categories)
+- [4.10.3 The](forms.html#the-form-element)- `form`element
+- [4.10.4 The](forms.html#the-label-element)- `label`element
+- [4.10.5 The](input.html#the-input-element)- `input`element- [4.10.5.1 States of the](input.html#states-of-the-type-attribute)- `type`attribute- [4.10.5.1.1 Hidden state (](input.html#hidden-state-(type=hidden))- `type=hidden`)
+- [4.10.5.1.2 Text (](input.html#text-(type=text)-state-and-search-state-(type=search))- `type=text`) state and Search state (- `type=search`)
+- [4.10.5.1.3 Telephone state (](input.html#telephone-state-(type=tel))- `type=tel`)
+- [4.10.5.1.4 URL state (](input.html#url-state-(type=url))- `type=url`)
+- [4.10.5.1.5 Email state (](input.html#email-state-(type=email))- `type=email`)
+- [4.10.5.1.6 Password state (](input.html#password-state-(type=password))- `type=password`)
+- [4.10.5.1.7 Date state (](input.html#date-state-(type=date))- `type=date`)
+- [4.10.5.1.8 Month state (](input.html#month-state-(type=month))- `type=month`)
+- [4.10.5.1.9 Week state (](input.html#week-state-(type=week))- `type=week`)
+- [4.10.5.1.10 Time state (](input.html#time-state-(type=time))- `type=time`)
+- [4.10.5.1.11 Local Date and Time state (](input.html#local-date-and-time-state-(type=datetime-local))- `type=datetime-local`)
+- [4.10.5.1.12 Number state (](input.html#number-state-(type=number))- `type=number`)
+- [4.10.5.1.13 Range state (](input.html#range-state-(type=range))- `type=range`)
+- [4.10.5.1.14 Color state (](input.html#color-state-(type=color))- `type=color`)
+- [4.10.5.1.15 Checkbox state (](input.html#checkbox-state-(type=checkbox))- `type=checkbox`)
+- [4.10.5.1.16 Radio Button state (](input.html#radio-button-state-(type=radio))- `type=radio`)
+- [4.10.5.1.17 File Upload state (](input.html#file-upload-state-(type=file))- `type=file`)
+- [4.10.5.1.18 Submit Button state (](input.html#submit-button-state-(type=submit))- `type=submit`)
+- [4.10.5.1.19 Image Button state (](input.html#image-button-state-(type=image))- `type=image`)
+- [4.10.5.1.20 Reset Button state (](input.html#reset-button-state-(type=reset))- `type=reset`)
+- [4.10.5.1.21 Button state (](input.html#button-state-(type=button))- `type=button`)
+
+- [4.10.5.2 Implementation notes regarding localization of form controls](input.html#input-impl-notes)
+- [4.10.5.3 Common](input.html#common-input-element-attributes)- `input`element attributes- [4.10.5.3.1 The](input.html#the-maxlength-and-minlength-attributes)- `maxlength`and- `minlength`attributes
+- [4.10.5.3.2 The](input.html#the-size-attribute)- `size`attribute
+- [4.10.5.3.3 The](input.html#the-readonly-attribute)- `readonly`attribute
+- [4.10.5.3.4 The](input.html#the-required-attribute)- `required`attribute
+- [4.10.5.3.5 The](input.html#the-multiple-attribute)- `multiple`attribute
+- [4.10.5.3.6 The](input.html#the-pattern-attribute)- `pattern`attribute
+- [4.10.5.3.7 The](input.html#the-min-and-max-attributes)- `min`and- `max`attributes
+- [4.10.5.3.8 The](input.html#the-step-attribute)- `step`attribute
+- [4.10.5.3.9 The](input.html#the-list-attribute)- `list`attribute
+- [4.10.5.3.10 The](input.html#the-placeholder-attribute)- `placeholder`attribute
+
+- [4.10.5.4 Common](input.html#common-input-element-apis)- `input`element APIs
+- [4.10.5.5 Common event behaviors](input.html#common-input-element-events)
+
+- [4.10.6 The](form-elements.html#the-button-element)- `button`element
+- [4.10.7 The](form-elements.html#the-select-element)- `select`element
+- [4.10.8 The](form-elements.html#the-datalist-element)- `datalist`element
+- [4.10.9 The](form-elements.html#the-optgroup-element)- `optgroup`element
+- [4.10.10 The](form-elements.html#the-option-element)- `option`element
+- [4.10.11 The](form-elements.html#the-textarea-element)- `textarea`element
+- [4.10.12 The](form-elements.html#the-output-element)- `output`element
+- [4.10.13 The](form-elements.html#the-progress-element)- `progress`element
+- [4.10.14 The](form-elements.html#the-meter-element)- `meter`element
+- [4.10.15 The](form-elements.html#the-fieldset-element)- `fieldset`element
+- [4.10.16 The](form-elements.html#the-legend-element)- `legend`element
+- [4.10.17 The](form-elements.html#the-selectedcontent-element)- `selectedcontent`element
+- [4.10.18 Form control infrastructure](form-control-infrastructure.html#form-control-infrastructure)
+- [4.10.19 Attributes common to form controls](form-control-infrastructure.html#attributes-common-to-form-controls)- [4.10.19.1 Naming form controls: the](form-control-infrastructure.html#naming-form-controls:-the-name-attribute)- `name`attribute
+- [4.10.19.2 Submitting element directionality: the](form-control-infrastructure.html#submitting-element-directionality:-the-dirname-attribute)- `dirname`attribute
+- [4.10.19.3 Limiting user input length: the](form-control-infrastructure.html#limiting-user-input-length:-the-maxlength-attribute)- `maxlength`attribute
+- [4.10.19.4 Setting minimum input length requirements: the](form-control-infrastructure.html#setting-minimum-input-length-requirements:-the-minlength-attribute)- `minlength`attribute
+- [4.10.19.5 Enabling and disabling form controls: the](form-control-infrastructure.html#enabling-and-disabling-form-controls:-the-disabled-attribute)- `disabled`attribute
+- [4.10.19.6 Form submission attributes](form-control-infrastructure.html#form-submission-attributes)
+- [4.10.19.7 Autofill](form-control-infrastructure.html#autofill)
+
+- [4.10.20 APIs for the text control selections](form-control-infrastructure.html#textFieldSelection)
+- [4.10.21 Constraints](form-control-infrastructure.html#constraints)
+- [4.10.22 Form submission](form-control-infrastructure.html#form-submission-2)- [4.10.22.1 Introduction](form-control-infrastructure.html#introduction-5)
+- [4.10.22.2 Implicit submission](form-control-infrastructure.html#implicit-submission)
+- [4.10.22.3 Form submission algorithm](form-control-infrastructure.html#form-submission-algorithm)
+- [4.10.22.4 Constructing the entry list](form-control-infrastructure.html#constructing-form-data-set)
+- [4.10.22.5 Selecting a form submission encoding](form-control-infrastructure.html#selecting-a-form-submission-encoding)
+- [4.10.22.6 Converting an entry list to a list of name-value pairs](form-control-infrastructure.html#converting-an-entry-list-to-a-list-of-name-value-pairs)
+- [4.10.22.7 URL-encoded form data](form-control-infrastructure.html#url-encoded-form-data)
+- [4.10.22.8 Multipart form data](form-control-infrastructure.html#multipart-form-data)
+- [4.10.22.9 Plain text form data](form-control-infrastructure.html#plain-text-form-data)
+- [4.10.22.10 The](form-control-infrastructure.html#the-submitevent-interface)- `SubmitEvent`interface
+- [4.10.22.11 The](form-control-infrastructure.html#the-formdataevent-interface)- `FormDataEvent`interface
+
+- [4.10.23 Resetting a form](form-control-infrastructure.html#resetting-a-form)
+
+- [4.11 Interactive elements](interactive-elements.html#interactive-elements)- [4.11.1 The](interactive-elements.html#the-details-element)- `details`element
+- [4.11.2 The](interactive-elements.html#the-summary-element)- `summary`element
+- [4.11.3 Commands](interactive-elements.html#commands)- [4.11.3.1 Facets](interactive-elements.html#facets-2)
+- [4.11.3.2 Using the](interactive-elements.html#using-the-a-element-to-define-a-command)- `a`element to define a command
+- [4.11.3.3 Using the](interactive-elements.html#using-the-button-element-to-define-a-command)- `button`element to define a command
+- [4.11.3.4 Using the](interactive-elements.html#using-the-input-element-to-define-a-command)- `input`element to define a command
+- [4.11.3.5 Using the](interactive-elements.html#using-the-option-element-to-define-a-command)- `option`element to define a command
+- [4.11.3.6 Using the](interactive-elements.html#using-the-accesskey-attribute-on-a-legend-element-to-define-a-command)- `accesskey`attribute on a- `legend`element to define a command
+- [4.11.3.7 Using the](interactive-elements.html#using-the-accesskey-attribute-to-define-a-command-on-other-elements)- `accesskey`attribute to define a command on other elements
+
+- [4.11.4 The](interactive-elements.html#the-dialog-element)- `dialog`element
+- [4.11.5 Dialog light dismiss](interactive-elements.html#dialog-light-dismiss)
+
+- [4.12 Scripting](scripting.html#scripting-3)- [4.12.1 The](scripting.html#the-script-element)- `script`element
+- [4.12.2 The](scripting.html#the-noscript-element)- `noscript`element
+- [4.12.3 The](scripting.html#the-template-element)- `template`element
+- [4.12.4 The](scripting.html#the-slot-element)- `slot`element
+- [4.12.5 The](canvas.html#the-canvas-element)- `canvas`element- [4.12.5.1 The 2D rendering context](canvas.html#2dcontext)- [4.12.5.1.1 Implementation notes](canvas.html#implementation-notes)
+- [4.12.5.1.2 The canvas settings](canvas.html#the-canvas-settings)
+- [4.12.5.1.3 The canvas state](canvas.html#the-canvas-state)
+- [4.12.5.1.4 Line styles](canvas.html#line-styles)
+- [4.12.5.1.5 Text styles](canvas.html#text-styles)
+- [4.12.5.1.6 Building paths](canvas.html#building-paths)
+- [4.12.5.1.7](canvas.html#path2d-objects)- `Path2D`objects
+- [4.12.5.1.8 Transformations](canvas.html#transformations)
+- [4.12.5.1.9 Image sources for 2D rendering contexts](canvas.html#image-sources-for-2d-rendering-contexts)
+- [4.12.5.1.10 Fill and stroke styles](canvas.html#fill-and-stroke-styles)
+- [4.12.5.1.11 Drawing rectangles to the bitmap](canvas.html#drawing-rectangles-to-the-bitmap)
+- [4.12.5.1.12 Drawing text to the bitmap](canvas.html#drawing-text-to-the-bitmap)
+- [4.12.5.1.13 Drawing paths to the canvas](canvas.html#drawing-paths-to-the-canvas)
+- [4.12.5.1.14 Drawing focus rings](canvas.html#drawing-focus-rings-and-scrolling-paths-into-view)
+- [4.12.5.1.15 Drawing images](canvas.html#drawing-images)
+- [4.12.5.1.16 Pixel manipulation](canvas.html#pixel-manipulation)
+- [4.12.5.1.17 Compositing](canvas.html#compositing)
+- [4.12.5.1.18 Image smoothing](canvas.html#image-smoothing)
+- [4.12.5.1.19 Shadows](canvas.html#shadows)
+- [4.12.5.1.20 Filters](canvas.html#filters)
+- [4.12.5.1.21 Working with externally-defined SVG filters](canvas.html#working-with-externally-defined-svg-filters)
+- [4.12.5.1.22 Drawing model](canvas.html#drawing-model)
+- [4.12.5.1.23 Best practices](canvas.html#best-practices)
+- [4.12.5.1.24 Examples](canvas.html#examples)
+
+- [4.12.5.2 The](canvas.html#the-imagebitmap-rendering-context)- `ImageBitmap`rendering context
+- [4.12.5.3 The](canvas.html#the-offscreencanvas-interface)- `OffscreenCanvas`interface
+- [4.12.5.4 Color spaces and color space conversion](canvas.html#colour-spaces-and-colour-correction)
+- [4.12.5.5 Serializing bitmaps to a file](canvas.html#serialising-bitmaps-to-a-file)
+- [4.12.5.6 Security with](canvas.html#security-with-canvas-elements)- `canvas`elements
+- [4.12.5.7 Premultiplied alpha and the 2D rendering context](canvas.html#premultiplied-alpha-and-the-2d-rendering-context)
+
+
+- [4.13 Custom elements](custom-elements.html#custom-elements)- [4.13.1 Introduction](custom-elements.html#custom-elements-intro)- [4.13.1.1 Creating an autonomous custom element](custom-elements.html#custom-elements-autonomous-example)
+- [4.13.1.2 Creating a form-associated custom element](custom-elements.html#custom-elements-face-example)
+- [4.13.1.3 Creating a custom element with default accessible roles, states, and properties](custom-elements.html#custom-elements-accessibility-example)
+- [4.13.1.4 Creating a customized built-in element](custom-elements.html#custom-elements-customized-builtin-example)
+- [4.13.1.5 Drawbacks of autonomous custom elements](custom-elements.html#custom-elements-autonomous-drawbacks)
+- [4.13.1.6 Upgrading elements after their creation](custom-elements.html#custom-elements-upgrades-examples)
+- [4.13.1.7 Scoped custom element registries](custom-elements.html#scoped-custom-element-registries)
+- [4.13.1.8 Exposing custom element states](custom-elements.html#exposing-custom-element-states)
+
+- [4.13.2 Requirements for custom element constructors and reactions](custom-elements.html#custom-element-conformance)
+- [4.13.3 Core concepts](custom-elements.html#custom-elements-core-concepts)
+- [4.13.4 The](custom-elements.html#custom-elements-api)- `CustomElementRegistry`interface
+- [4.13.5 Upgrades](custom-elements.html#upgrades)
+- [4.13.6 Custom element reactions](custom-elements.html#custom-element-reactions)
+- [4.13.7 Element internals](custom-elements.html#element-internals)
+
+- [4.14 Common idioms without dedicated elements](semantics-other.html#common-idioms)
+- [4.15 Disabled elements](semantics-other.html#disabled-elements)
+- [4.16 Matching HTML elements using selectors and CSS](semantics-other.html#selectors)
+
+- [5 Microdata](microdata.html#microdata)
+- [6 User interaction](interaction.html#editing)- [6.1 The](interaction.html#the-hidden-attribute)- `hidden`attribute
+- [6.2 Page visibility](interaction.html#page-visibility)
+- [6.3 Inert subtrees](interaction.html#inert-subtrees)
+- [6.4 Tracking user activation](interaction.html#tracking-user-activation)
+- [6.5 Activation behavior of elements](interaction.html#activation)
+- [6.6 Focus](interaction.html#focus)
+- [6.7 Assigning keyboard shortcuts](interaction.html#assigning-keyboard-shortcuts)
+- [6.8 Editing](interaction.html#editing-2)- [6.8.1 Making document regions editable: The](interaction.html#contenteditable)- `contenteditable`content attribute
+- [6.8.2 Making entire documents editable: the](interaction.html#making-entire-documents-editable:-the-designmode-idl-attribute)- `designMode`getter and setter
+- [6.8.3 Best practices for in-page editors](interaction.html#best-practices-for-in-page-editors)
+- [6.8.4 Editing APIs](interaction.html#editing-apis)
+- [6.8.5 Spelling and grammar checking](interaction.html#spelling-and-grammar-checking)
+- [6.8.6 Writing suggestions](interaction.html#writing-suggestions)
+- [6.8.7 Autocapitalization](interaction.html#autocapitalization)
+- [6.8.8 Autocorrection](interaction.html#autocorrection)
+- [6.8.9 Input modalities: the](interaction.html#input-modalities:-the-inputmode-attribute)- `inputmode`attribute
+- [6.8.10 Input modalities: the](interaction.html#input-modalities:-the-enterkeyhint-attribute)- `enterkeyhint`attribute
+
+- [6.9 Find-in-page](interaction.html#find-in-page)
+- [6.10 Close requests and close watchers](interaction.html#close-requests-and-close-watchers)
+- [6.11 Drag and drop](dnd.html#dnd)
+- [6.12 The](popover.html#the-popover-attribute)- `popover`attribute
+
+- [7 Loading web pages](browsers.html#browsers)- [7.1 Supporting concepts](browsers.html#loading-web-pages-supporting-concepts)
+- [7.2 APIs related to navigation and session history](nav-history-apis.html#nav-traversal-apis)- [7.2.1 Security infrastructure for](nav-history-apis.html#cross-origin-objects)- `Window`,- `WindowProxy`, and- `Location`objects- [7.2.1.1 Integration with IDL](nav-history-apis.html#integration-with-idl)
+- [7.2.1.2 Shared internal slot: [[CrossOriginPropertyDescriptorMap]]](nav-history-apis.html#shared-internal-slot:-crossoriginpropertydescriptormap)
+- [7.2.1.3 Shared abstract operations](nav-history-apis.html#shared-abstract-operations)- [7.2.1.3.1 CrossOriginProperties (](nav-history-apis.html#crossoriginproperties-(-o-))- `O`)
+- [7.2.1.3.2 CrossOriginPropertyFallback (](nav-history-apis.html#crossoriginpropertyfallback-(-p-))- `P`)
+- [7.2.1.3.3 IsPlatformObjectSameOrigin (](nav-history-apis.html#isplatformobjectsameorigin-(-o-))- `O`)
+- [7.2.1.3.4 CrossOriginGetOwnPropertyHelper (](nav-history-apis.html#crossorigingetownpropertyhelper-(-o,-p-))- `O`,- `P`)
+- [7.2.1.3.5 CrossOriginGet (](nav-history-apis.html#crossoriginget-(-o,-p,-receiver-))- `O`,- `P`,- `Receiver`)
+- [7.2.1.3.6 CrossOriginSet (](nav-history-apis.html#crossoriginset-(-o,-p,-v,-receiver-))- `O`,- `P`,- `V`,- `Receiver`)
+- [7.2.1.3.7 CrossOriginOwnPropertyKeys (](nav-history-apis.html#crossoriginownpropertykeys-(-o-))- `O`)
+
+
+- [7.2.2 The](nav-history-apis.html#the-window-object)- `Window`object
+- [7.2.3 The](nav-history-apis.html#the-windowproxy-exotic-object)- `WindowProxy`exotic object- [7.2.3.1 [[GetPrototypeOf]] ( )](nav-history-apis.html#windowproxy-getprototypeof)
+- [7.2.3.2 [[SetPrototypeOf]] (](nav-history-apis.html#windowproxy-setprototypeof)- `V`)
+- [7.2.3.3 [[IsExtensible]] ( )](nav-history-apis.html#windowproxy-isextensible)
+- [7.2.3.4 [[PreventExtensions]] ( )](nav-history-apis.html#windowproxy-preventextensions)
+- [7.2.3.5 [[GetOwnProperty]] (](nav-history-apis.html#windowproxy-getownproperty)- `P`)
+- [7.2.3.6 [[DefineOwnProperty]] (](nav-history-apis.html#windowproxy-defineownproperty)- `P`,- `Desc`)
+- [7.2.3.7 [[Get]] (](nav-history-apis.html#windowproxy-get)- `P`,- `Receiver`)
+- [7.2.3.8 [[Set]] (](nav-history-apis.html#windowproxy-set)- `P`,- `V`,- `Receiver`)
+- [7.2.3.9 [[Delete]] (](nav-history-apis.html#windowproxy-delete)- `P`)
+- [7.2.3.10 [[OwnPropertyKeys]] ( )](nav-history-apis.html#windowproxy-ownpropertykeys)
+
+- [7.2.4 The](nav-history-apis.html#the-location-interface)- `Location`interface- [7.2.4.1 [[GetPrototypeOf]] ( )](nav-history-apis.html#location-getprototypeof)
+- [7.2.4.2 [[SetPrototypeOf]] (](nav-history-apis.html#location-setprototypeof)- `V`)
+- [7.2.4.3 [[IsExtensible]] ( )](nav-history-apis.html#location-isextensible)
+- [7.2.4.4 [[PreventExtensions]] ( )](nav-history-apis.html#location-preventextensions)
+- [7.2.4.5 [[GetOwnProperty]] (](nav-history-apis.html#location-getownproperty)- `P`)
+- [7.2.4.6 [[DefineOwnProperty]] (](nav-history-apis.html#location-defineownproperty)- `P`,- `Desc`)
+- [7.2.4.7 [[Get]] (](nav-history-apis.html#location-get)- `P`,- `Receiver`)
+- [7.2.4.8 [[Set]] (](nav-history-apis.html#location-set)- `P`,- `V`,- `Receiver`)
+- [7.2.4.9 [[Delete]] (](nav-history-apis.html#location-delete)- `P`)
+- [7.2.4.10 [[OwnPropertyKeys]] ( )](nav-history-apis.html#location-ownpropertykeys)
+
+- [7.2.5 The](nav-history-apis.html#the-history-interface)- `History`interface
+- [7.2.6 The navigation API](nav-history-apis.html#navigation-api)- [7.2.6.1 Introduction](nav-history-apis.html#navigation-api-intro)
+- [7.2.6.2 The](nav-history-apis.html#navigation-interface)- `Navigation`interface
+- [7.2.6.3 Core infrastructure](nav-history-apis.html#navigation-api-core)
+- [7.2.6.4 Initializing and updating the entry list](nav-history-apis.html#navigation-api-entry-updates)
+- [7.2.6.5 The](nav-history-apis.html#the-navigationhistoryentry-interface)- `NavigationHistoryEntry`interface
+- [7.2.6.6 The history entry list](nav-history-apis.html#the-history-entry-list)
+- [7.2.6.7 Initiating navigations](nav-history-apis.html#navigation-api-initiating-navigations)
+- [7.2.6.8 Ongoing navigation tracking](nav-history-apis.html#ongoing-navigation-tracking)
+- [7.2.6.9 The](nav-history-apis.html#navigation-activation-interface)- `NavigationActivation`interface
+- [7.2.6.10 The](nav-history-apis.html#the-navigate-event)- `navigate`event
+
+- [7.2.7 Event interfaces](nav-history-apis.html#nav-traversal-event-interfaces)
+- [7.2.8 The](nav-history-apis.html#the-notrestoredreasons-interface)- `NotRestoredReasons`interface
+
+- [7.3 Infrastructure for sequences of documents](document-sequences.html#infrastructure-for-sequences-of-documents)
+- [7.4 Navigation and session history](browsing-the-web.html#navigation-and-session-history)- [7.4.1 Session history](browsing-the-web.html#session-history-infrastructure)
+- [7.4.2 Navigation](browsing-the-web.html#navigating-across-documents)
+- [7.4.3 Reloading and traversing](browsing-the-web.html#reloading-and-traversing)
+- [7.4.4 Non-fragment synchronous "navigations"](browsing-the-web.html#navigate-non-frag-sync)
+- [7.4.5 Populating a session history entry](browsing-the-web.html#populating-a-session-history-entry)
+- [7.4.6 Applying the history step](browsing-the-web.html#applying-the-history-step)
+
+- [7.5 Document lifecycle](document-lifecycle.html#document-lifecycle)- [7.5.1 Shared document creation infrastructure](document-lifecycle.html#shared-document-creation-infrastructure)
+- [7.5.2 Loading HTML documents](document-lifecycle.html#read-html)
+- [7.5.3 Loading XML documents](document-lifecycle.html#read-xml)
+- [7.5.4 Loading text documents](document-lifecycle.html#read-text)
+- [7.5.5 Loading](document-lifecycle.html#read-multipart-x-mixed-replace)- `multipart/x-mixed-replace`documents
+- [7.5.6 Loading media documents](document-lifecycle.html#read-media)
+- [7.5.7 Loading a document for inline content that doesn't have a DOM](document-lifecycle.html#read-ua-inline)
+- [7.5.8 Finishing the loading process](document-lifecycle.html#loading-documents)
+- [7.5.9 Unloading documents](document-lifecycle.html#unloading-documents)
+- [7.5.10 Destroying documents](document-lifecycle.html#destroying-documents)
+- [7.5.11 Aborting a document load](document-lifecycle.html#aborting-a-document-load)
+
+- [7.6 Speculative loading](speculative-loading.html#speculative-loading)
+- [7.7 The `](speculative-loading.html#the-x-frame-options-header)- `X-Frame-Options`` header
+- [7.8 The `](speculative-loading.html#the-refresh-header)- `Refresh`` header
+- [7.9 Browser user interface considerations](speculative-loading.html#nav-traversal-ui)
+
+- [8 Web application APIs](webappapis.html#webappapis)- [8.1 Scripting](webappapis.html#scripting)- [8.1.1 Introduction](webappapis.html#introduction-11)
+- [8.1.2 Agents and agent clusters](webappapis.html#agents-and-agent-clusters)
+- [8.1.3 Realms and their counterparts](webappapis.html#realms-and-their-counterparts)
+- [8.1.4 Script processing model](webappapis.html#scripting-processing-model)
+- [8.1.5 Module specifier resolution](webappapis.html#module-specifier-resolution)
+- [8.1.6 JavaScript specification host hooks](webappapis.html#javascript-specification-host-hooks)- [8.1.6.1 HostEnsureCanAddPrivateElement(](webappapis.html#the-hostensurecanaddprivateelement-implementation)- `O`)
+- [8.1.6.2 HostEnsureCanCompileStrings(](webappapis.html#hostensurecancompilestrings(realm,-parameterstrings,-bodystring,-codestring,-compilationtype,-parameterargs,-bodyarg))- `realm`,- `parameterStrings`,- `bodyString`,- `codeString`,- `compilationType`,- `parameterArgs`,- `bodyArg`)
+- [8.1.6.3 HostGetCodeForEval(](webappapis.html#hostgetcodeforeval(argument))- `argument`)
+- [8.1.6.4 HostPromiseRejectionTracker(](webappapis.html#the-hostpromiserejectiontracker-implementation)- `promise`,- `operation`)
+- [8.1.6.5 HostSystemUTCEpochNanoseconds(](webappapis.html#hostsystemutcepochnanoseconds)- `global`)
+- [8.1.6.6 Job-related host hooks](webappapis.html#integration-with-javascript-jobs)- [8.1.6.6.1 HostCallJobCallback(](webappapis.html#hostcalljobcallback)- `callback`,- `V`,- `argumentsList`)
+- [8.1.6.6.2 HostEnqueueFinalizationRegistryCleanupJob(](webappapis.html#hostenqueuefinalizationregistrycleanupjob)- `finalizationRegistry`)
+- [8.1.6.6.3 HostEnqueueGenericJob(](webappapis.html#hostenqueuegenericjob)- `job`,- `realm`)
+- [8.1.6.6.4 HostEnqueuePromiseJob(](webappapis.html#hostenqueuepromisejob)- `job`,- `realm`)
+- [8.1.6.6.5 HostEnqueueTimeoutJob(](webappapis.html#hostenqueuetimeoutjob)- `job`,- `realm`,- `milliseconds`)
+- [8.1.6.6.6 HostMakeJobCallback(](webappapis.html#hostmakejobcallback)- `callable`)
+
+- [8.1.6.7 Module-related host hooks](webappapis.html#integration-with-the-javascript-module-system)
+
+- [8.1.7 Event loops](webappapis.html#event-loops)
+- [8.1.8 Events](webappapis.html#events)
+
+- [8.2 The](webappapis.html#windoworworkerglobalscope-mixin)- `WindowOrWorkerGlobalScope`mixin
+- [8.3 Base64 utility methods](webappapis.html#atob)
+- [8.4 Dynamic markup insertion](dynamic-markup-insertion.html#dynamic-markup-insertion)
+- [8.5 DOM parsing and serialization APIs](dynamic-markup-insertion.html#dom-parsing-and-serialization)
+- [8.6 HTML sanitization](dynamic-markup-insertion.html#html-sanitization)
+- [8.7 Timers](timers-and-user-prompts.html#timers)
+- [8.8 Microtask queuing](timers-and-user-prompts.html#microtask-queuing)
+- [8.9 User prompts](timers-and-user-prompts.html#user-prompts)
+- [8.10 System state and capabilities](system-state.html#system-state-and-capabilities)
+- [8.11 Images](imagebitmap-and-animations.html#images-2)
+- [8.12 Animation frames](imagebitmap-and-animations.html#animation-frames)
+
+- [9 Communication](comms.html#comms)
+- [10 Web workers](workers.html#workers)
+- [11 Worklets](worklets.html#worklets)
+- [12 Web storage](webstorage.html#webstorage)
+- [13 The HTML syntax](syntax.html#syntax)- [13.1 Writing HTML documents](syntax.html#writing)
+- [13.2 Parsing HTML documents](parsing.html#parsing)- [13.2.1 Overview of the parsing model](parsing.html#overview-of-the-parsing-model)
+- [13.2.2 Parse errors](parsing.html#parse-errors)
+- [13.2.3 The input byte stream](parsing.html#the-input-byte-stream)
+- [13.2.4 Parse state](parsing.html#parse-state)
+- [13.2.5 Tokenization](parsing.html#tokenization)- [13.2.5.1 Data state](parsing.html#data-state)
+- [13.2.5.2 RCDATA state](parsing.html#rcdata-state)
+- [13.2.5.3 RAWTEXT state](parsing.html#rawtext-state)
+- [13.2.5.4 Script data state](parsing.html#script-data-state)
+- [13.2.5.5 PLAINTEXT state](parsing.html#plaintext-state)
+- [13.2.5.6 Tag open state](parsing.html#tag-open-state)
+- [13.2.5.7 End tag open state](parsing.html#end-tag-open-state)
+- [13.2.5.8 Tag name state](parsing.html#tag-name-state)
+- [13.2.5.9 RCDATA less-than sign state](parsing.html#rcdata-less-than-sign-state)
+- [13.2.5.10 RCDATA end tag open state](parsing.html#rcdata-end-tag-open-state)
+- [13.2.5.11 RCDATA end tag name state](parsing.html#rcdata-end-tag-name-state)
+- [13.2.5.12 RAWTEXT less-than sign state](parsing.html#rawtext-less-than-sign-state)
+- [13.2.5.13 RAWTEXT end tag open state](parsing.html#rawtext-end-tag-open-state)
+- [13.2.5.14 RAWTEXT end tag name state](parsing.html#rawtext-end-tag-name-state)
+- [13.2.5.15 Script data less-than sign state](parsing.html#script-data-less-than-sign-state)
+- [13.2.5.16 Script data end tag open state](parsing.html#script-data-end-tag-open-state)
+- [13.2.5.17 Script data end tag name state](parsing.html#script-data-end-tag-name-state)
+- [13.2.5.18 Script data escape start state](parsing.html#script-data-escape-start-state)
+- [13.2.5.19 Script data escape start dash state](parsing.html#script-data-escape-start-dash-state)
+- [13.2.5.20 Script data escaped state](parsing.html#script-data-escaped-state)
+- [13.2.5.21 Script data escaped dash state](parsing.html#script-data-escaped-dash-state)
+- [13.2.5.22 Script data escaped dash dash state](parsing.html#script-data-escaped-dash-dash-state)
+- [13.2.5.23 Script data escaped less-than sign state](parsing.html#script-data-escaped-less-than-sign-state)
+- [13.2.5.24 Script data escaped end tag open state](parsing.html#script-data-escaped-end-tag-open-state)
+- [13.2.5.25 Script data escaped end tag name state](parsing.html#script-data-escaped-end-tag-name-state)
+- [13.2.5.26 Script data double escape start state](parsing.html#script-data-double-escape-start-state)
+- [13.2.5.27 Script data double escaped state](parsing.html#script-data-double-escaped-state)
+- [13.2.5.28 Script data double escaped dash state](parsing.html#script-data-double-escaped-dash-state)
+- [13.2.5.29 Script data double escaped dash dash state](parsing.html#script-data-double-escaped-dash-dash-state)
+- [13.2.5.30 Script data double escaped less-than sign state](parsing.html#script-data-double-escaped-less-than-sign-state)
+- [13.2.5.31 Script data double escape end state](parsing.html#script-data-double-escape-end-state)
+- [13.2.5.32 Before attribute name state](parsing.html#before-attribute-name-state)
+- [13.2.5.33 Attribute name state](parsing.html#attribute-name-state)
+- [13.2.5.34 After attribute name state](parsing.html#after-attribute-name-state)
+- [13.2.5.35 Before attribute value state](parsing.html#before-attribute-value-state)
+- [13.2.5.36 Attribute value (double-quoted) state](parsing.html#attribute-value-(double-quoted)-state)
+- [13.2.5.37 Attribute value (single-quoted) state](parsing.html#attribute-value-(single-quoted)-state)
+- [13.2.5.38 Attribute value (unquoted) state](parsing.html#attribute-value-(unquoted)-state)
+- [13.2.5.39 After attribute value (quoted) state](parsing.html#after-attribute-value-(quoted)-state)
+- [13.2.5.40 Self-closing start tag state](parsing.html#self-closing-start-tag-state)
+- [13.2.5.41 Bogus comment state](parsing.html#bogus-comment-state)
+- [13.2.5.42 Markup declaration open state](parsing.html#markup-declaration-open-state)
+- [13.2.5.43 Comment start state](parsing.html#comment-start-state)
+- [13.2.5.44 Comment start dash state](parsing.html#comment-start-dash-state)
+- [13.2.5.45 Comment state](parsing.html#comment-state)
+- [13.2.5.46 Comment less-than sign state](parsing.html#comment-less-than-sign-state)
+- [13.2.5.47 Comment less-than sign bang state](parsing.html#comment-less-than-sign-bang-state)
+- [13.2.5.48 Comment less-than sign bang dash state](parsing.html#comment-less-than-sign-bang-dash-state)
+- [13.2.5.49 Comment less-than sign bang dash dash state](parsing.html#comment-less-than-sign-bang-dash-dash-state)
+- [13.2.5.50 Comment end dash state](parsing.html#comment-end-dash-state)
+- [13.2.5.51 Comment end state](parsing.html#comment-end-state)
+- [13.2.5.52 Comment end bang state](parsing.html#comment-end-bang-state)
+- [13.2.5.53 DOCTYPE state](parsing.html#doctype-state)
+- [13.2.5.54 Before DOCTYPE name state](parsing.html#before-doctype-name-state)
+- [13.2.5.55 DOCTYPE name state](parsing.html#doctype-name-state)
+- [13.2.5.56 After DOCTYPE name state](parsing.html#after-doctype-name-state)
+- [13.2.5.57 After DOCTYPE public keyword state](parsing.html#after-doctype-public-keyword-state)
+- [13.2.5.58 Before DOCTYPE public identifier state](parsing.html#before-doctype-public-identifier-state)
+- [13.2.5.59 DOCTYPE public identifier (double-quoted) state](parsing.html#doctype-public-identifier-(double-quoted)-state)
+- [13.2.5.60 DOCTYPE public identifier (single-quoted) state](parsing.html#doctype-public-identifier-(single-quoted)-state)
+- [13.2.5.61 After DOCTYPE public identifier state](parsing.html#after-doctype-public-identifier-state)
+- [13.2.5.62 Between DOCTYPE public and system identifiers state](parsing.html#between-doctype-public-and-system-identifiers-state)
+- [13.2.5.63 After DOCTYPE system keyword state](parsing.html#after-doctype-system-keyword-state)
+- [13.2.5.64 Before DOCTYPE system identifier state](parsing.html#before-doctype-system-identifier-state)
+- [13.2.5.65 DOCTYPE system identifier (double-quoted) state](parsing.html#doctype-system-identifier-(double-quoted)-state)
+- [13.2.5.66 DOCTYPE system identifier (single-quoted) state](parsing.html#doctype-system-identifier-(single-quoted)-state)
+- [13.2.5.67 After DOCTYPE system identifier state](parsing.html#after-doctype-system-identifier-state)
+- [13.2.5.68 Bogus DOCTYPE state](parsing.html#bogus-doctype-state)
+- [13.2.5.69 CDATA section state](parsing.html#cdata-section-state)
+- [13.2.5.70 CDATA section bracket state](parsing.html#cdata-section-bracket-state)
+- [13.2.5.71 CDATA section end state](parsing.html#cdata-section-end-state)
+- [13.2.5.72 Processing instruction open state](parsing.html#processing-instruction-open-state)
+- [13.2.5.73 Processing instruction target state](parsing.html#processing-instruction-target-state)
+- [13.2.5.74 After processing instruction target state](parsing.html#after-processing-instruction-target-state)
+- [13.2.5.75 Processing instruction data state](parsing.html#processing-instruction-data-state)
+- [13.2.5.76 Processing instruction questionable state](parsing.html#processing-instruction-questionable-state)
+- [13.2.5.77 Character reference state](parsing.html#character-reference-state)
+- [13.2.5.78 Named character reference state](parsing.html#named-character-reference-state)
+- [13.2.5.79 Ambiguous ampersand state](parsing.html#ambiguous-ampersand-state)
+- [13.2.5.80 Numeric character reference state](parsing.html#numeric-character-reference-state)
+- [13.2.5.81 Hexadecimal character reference start state](parsing.html#hexadecimal-character-reference-start-state)
+- [13.2.5.82 Hexadecimal character reference state](parsing.html#hexadecimal-character-reference-state)
+- [13.2.5.83 Decimal character reference state](parsing.html#decimal-character-reference-state)
+- [13.2.5.84 Numeric character reference end state](parsing.html#numeric-character-reference-end-state)
+
+- [13.2.6 Tree construction](parsing.html#tree-construction)- [13.2.6.1 Creating and inserting nodes](parsing.html#creating-and-inserting-nodes)
+- [13.2.6.2 Parsing elements that contain only text](parsing.html#parsing-elements-that-contain-only-text)
+- [13.2.6.3 Closing elements that have implied end tags](parsing.html#closing-elements-that-have-implied-end-tags)
+- [13.2.6.4 The rules for parsing tokens in HTML content](parsing.html#parsing-main-inhtml)- [13.2.6.4.1 The "initial" insertion mode](parsing.html#the-initial-insertion-mode)
+- [13.2.6.4.2 The "before html" insertion mode](parsing.html#the-before-html-insertion-mode)
+- [13.2.6.4.3 The "before head" insertion mode](parsing.html#the-before-head-insertion-mode)
+- [13.2.6.4.4 The "in head" insertion mode](parsing.html#parsing-main-inhead)
+- [13.2.6.4.5 The "in head noscript" insertion mode](parsing.html#parsing-main-inheadnoscript)
+- [13.2.6.4.6 The "after head" insertion mode](parsing.html#the-after-head-insertion-mode)
+- [13.2.6.4.7 The "in body" insertion mode](parsing.html#parsing-main-inbody)
+- [13.2.6.4.8 The "text" insertion mode](parsing.html#parsing-main-incdata)
+- [13.2.6.4.9 The "in table" insertion mode](parsing.html#parsing-main-intable)
+- [13.2.6.4.10 The "in table text" insertion mode](parsing.html#parsing-main-intabletext)
+- [13.2.6.4.11 The "in caption" insertion mode](parsing.html#parsing-main-incaption)
+- [13.2.6.4.12 The "in column group" insertion mode](parsing.html#parsing-main-incolgroup)
+- [13.2.6.4.13 The "in table body" insertion mode](parsing.html#parsing-main-intbody)
+- [13.2.6.4.14 The "in row" insertion mode](parsing.html#parsing-main-intr)
+- [13.2.6.4.15 The "in cell" insertion mode](parsing.html#parsing-main-intd)
+- [13.2.6.4.16 The "in template" insertion mode](parsing.html#parsing-main-intemplate)
+- [13.2.6.4.17 The "after body" insertion mode](parsing.html#parsing-main-afterbody)
+- [13.2.6.4.18 The "in frameset" insertion mode](parsing.html#parsing-main-inframeset)
+- [13.2.6.4.19 The "after frameset" insertion mode](parsing.html#parsing-main-afterframeset)
+- [13.2.6.4.20 The "after after body" insertion mode](parsing.html#the-after-after-body-insertion-mode)
+- [13.2.6.4.21 The "after after frameset" insertion mode](parsing.html#the-after-after-frameset-insertion-mode)
+
+- [13.2.6.5 The rules for parsing tokens in foreign content](parsing.html#parsing-main-inforeign)
+
+- [13.2.7 The end](parsing.html#the-end)
+- [13.2.8 Speculative HTML parsing](parsing.html#speculative-html-parsing)
+- [13.2.9 Coercing an HTML DOM into an infoset](parsing.html#coercing-an-html-dom-into-an-infoset)
+- [13.2.10 An introduction to error handling and strange cases in the parser](parsing.html#an-introduction-to-error-handling-and-strange-cases-in-the-parser)
+
+- [13.3 Serializing HTML fragments](parsing.html#serialising-html-fragments)
+- [13.4 Parsing HTML fragments](parsing.html#parsing-html-fragments)
+- [13.5 Named character references](named-characters.html#named-character-references)
+
+- [14 The XML syntax](xhtml.html#the-xhtml-syntax)
+- [15 Rendering](rendering.html#rendering)- [15.1 Introduction](rendering.html#introduction-17)
+- [15.2 The CSS user agent style sheet and presentational hints](rendering.html#the-css-user-agent-style-sheet-and-presentational-hints)
+- [15.3 Non-replaced elements](rendering.html#non-replaced-elements)
+- [15.4 Replaced elements](rendering.html#replaced-elements)
+- [15.5 Widgets](rendering.html#widgets)- [15.5.1 Native appearance](rendering.html#native-appearance-2)
+- [15.5.2 Writing mode](rendering.html#writing-mode)
+- [15.5.3 Button layout](rendering.html#button-layout)
+- [15.5.4 The](rendering.html#the-button-element-2)- `button`element
+- [15.5.5 The](rendering.html#the-details-and-summary-elements)- `details`and- `summary`elements
+- [15.5.6 The](rendering.html#the-input-element-as-a-text-entry-widget)- `input`element as a text entry widget
+- [15.5.7 The](rendering.html#the-input-element-as-domain-specific-widgets)- `input`element as domain-specific widgets
+- [15.5.8 The](rendering.html#the-input-element-as-a-range-control)- `input`element as a range control
+- [15.5.9 The](rendering.html#the-input-element-as-a-colour-well)- `input`element as a color well
+- [15.5.10 The](rendering.html#the-input-element-as-a-checkbox-and-radio-button-widgets)- `input`element as a checkbox and radio button widgets
+- [15.5.11 The](rendering.html#the-input-element-as-a-file-upload-control)- `input`element as a file upload control
+- [15.5.12 The](rendering.html#the-input-element-as-a-button)- `input`element as a button
+- [15.5.13 The](rendering.html#the-marquee-element-2)- `marquee`element
+- [15.5.14 The](rendering.html#the-meter-element-2)- `meter`element
+- [15.5.15 The](rendering.html#the-progress-element-2)- `progress`element
+- [15.5.16 The](rendering.html#the-select-element-2)- `select`element
+- [15.5.17 The](rendering.html#the-textarea-element-2)- `textarea`element
+
+- [15.6 Frames and framesets](rendering.html#frames-and-framesets)
+- [15.7 Interactive media](rendering.html#interactive-media)
+- [15.8 Print media](rendering.html#print-media)
+- [15.9 Unstyled XML documents](rendering.html#unstyled-xml-documents)
+
+- [16 Obsolete features](obsolete.html#obsolete)
+- [17 IANA considerations](iana.html#iana)
+- [Index](indices.html#index)
+- [References](references.html#references)
+- [Acknowledgments](acknowledgements.html#acknowledgments)
+- [Intellectual property rights](acknowledgements.html#ipr)

@@ -67,7 +67,10 @@ type Config struct {
 }
 
 func productionMCPServers() map[string]MCPServer {
-	return map[string]MCPServer{"chat": {Enabled: false}}
+	return map[string]MCPServer{
+		"chat":      {Enabled: false},
+		"harvester": {Enabled: false},
+	}
 }
 
 type rawConfig struct {
