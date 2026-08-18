@@ -496,3 +496,64 @@ func TestPrimaryAccountGoesThroughTheStateStore(t *testing.T) {
 		t.Fatalf("off-roster file readPrimaryAccount() = %d", got)
 	}
 }
+
+// TestPrimaryWritebackIgnoresTheUnsetSentinel fixtures the crash `pfm ls`
+// hit live: 0 is ui.Outcome's zero value for PrimaryAccount, never a real
+// account (accounts start at 1), so it must never reach writePrimaryAccount
+// — which correctly rejects it, but aborting the whole `pfm ls` run over a
+// value nobody chose is the bug. A cancelled picker and a no-op reselect of
+// the already-current account must skip the write for the same reason: there
+// is nothing deliberate to persist.
+func TestPrimaryWritebackIgnoresTheUnsetSentinel(t *testing.T) {
+	cases := []struct {
+		name        string
+		kind        ui.OutcomeKind
+		account     int
+		current     int
+		wantShould  bool
+		wantAccount int
+	}{
+		{"unset sentinel on an otherwise-real outcome", ui.OutcomeSelected, 0, 2, false, 0},
+		{"unset sentinel on reload", ui.OutcomeReload, 0, 1, false, 0},
+		{"cancelled never writes, even with a real account", ui.OutcomeCancelled, 3, 1, false, 0},
+		{"unchanged primary has nothing to persist", ui.OutcomeSelected, 2, 2, false, 0},
+		{"a deliberate switch persists", ui.OutcomeSelected, 3, 1, true, 3},
+		{"a reload that changed the on-disk primary persists", ui.OutcomeReload, 2, 1, true, 2},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			account, should := primaryWriteback(testCase.kind, testCase.account, testCase.current)
+			if should != testCase.wantShould || account != testCase.wantAccount {
+				t.Fatalf(
+					"primaryWriteback(%v, %d, %d) = (%d, %v), want (%d, %v)",
+					testCase.kind, testCase.account, testCase.current,
+					account, should,
+					testCase.wantAccount, testCase.wantShould,
+				)
+			}
+		})
+	}
+}
+
+// TestPrimaryWritebackSentinelNeverHitsTheRosterCheck proves the failure mode
+// end to end: routing the unset sentinel through writePrimaryAccount (what
+// runLS did before primaryWriteback existed) reproduces the exact live
+// error, "primary account 0 is not in the configured roster" — and confirms
+// primaryWriteback's whole point is keeping that call from ever happening.
+func TestPrimaryWritebackSentinelNeverHitsTheRosterCheck(t *testing.T) {
+	home := t.TempDir()
+	values := paths.Values{Home: home, SharedDB: filepath.Join(home, ".cc", "fleet.db")}
+	machine := config.Defaults(home, []string{
+		filepath.Join(home, ".cc", "1", "projects"),
+		filepath.Join(home, ".cc", "2", "projects"),
+		filepath.Join(home, ".cc", "3", "projects"),
+	})
+
+	if err := writePrimaryAccount(values, machine, 0); err == nil {
+		t.Fatal("writePrimaryAccount(0) accepted the sentinel — roster check regressed")
+	}
+
+	if _, should := primaryWriteback(ui.OutcomeSelected, 0, readPrimaryAccount(values, machine)); should {
+		t.Fatal("primaryWriteback let the unset sentinel through — runLS would still crash")
+	}
+}

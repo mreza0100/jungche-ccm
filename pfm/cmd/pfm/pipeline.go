@@ -810,6 +810,23 @@ func writePrimaryAccount(
 	)
 }
 
+// primaryWriteback decides whether an ls session's picker outcome is worth
+// persisting. Zero (and anything non-positive) is never a real account — it
+// is the zero value ui.Outcome carries before a picker has ever reported a
+// deliberate choice — so it means "nothing to save", not "save account 0".
+// Treating it as a real value sent it straight into writePrimaryAccount's
+// roster check, which rejected it and aborted the whole `pfm ls` run before
+// the picker's actual selection (or reload) ever executed. A cancelled
+// picker (Esc/⌃C) never writes either: a ⌃S account switch is only a
+// pending intent until the picker exits deliberately. An outcome that
+// already matches the persisted primary has nothing new to write.
+func primaryWriteback(kind ui.OutcomeKind, account, current int) (int, bool) {
+	if kind == ui.OutcomeCancelled || account <= 0 || account == current {
+		return 0, false
+	}
+	return account, true
+}
+
 func currentSocket() string {
 	value := os.Getenv("TMUX")
 	if comma := strings.IndexByte(value, ','); comma >= 0 {
