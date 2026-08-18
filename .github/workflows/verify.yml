@@ -97,6 +97,13 @@ jobs:
       - name: go vet
         run: go -C pfm vet ./...
 
+      # pfm shells out to an interactive zsh for its terminal actions, and the
+      # runner image does not ship one. Install it rather than skipping the
+      # test: the developer box has zsh as its login shell, so a skip here
+      # would make CI silently weaker than the machine it is meant to protect.
+      - name: install zsh (required by the terminal-action tests)
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
       # Every package runs, including the harvester ones. `pfm harvest` ships
       # as beta with open acceptance work (see releases/v0.58.0.md), but its
       # tests PASS today — excluding a passing package buys nothing and makes
