@@ -20,15 +20,19 @@ func runCodex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 		printCodexUsage(stderr)
 		return 2
 	}
+	switch args[0] {
+	case "agents":
+		return runCodexAgents(args[1:], stdout, stderr, runtime)
+	case "help", "-h", "--help":
+		printCodexUsage(stdout)
+		return 0
+	}
 	mode := codexgen.ModeBuild
 	switch args[0] {
 	case "build":
 		mode = codexgen.ModeBuild
 	case "check":
 		mode = codexgen.ModeCheck
-	case "help", "-h", "--help":
-		printCodexUsage(stdout)
-		return 0
 	default:
 		fmt.Fprintf(stderr, "pfm codex: unknown action %q\n", args[0])
 		printCodexUsage(stderr)
@@ -110,7 +114,7 @@ func runCodex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 }
 
 func printCodexUsage(w io.Writer) {
-	fmt.Fprintln(w, "usage: pfm codex build|check [repo-root] [options]")
+	fmt.Fprintln(w, "usage: pfm codex build|check|agents [repo-root] [options]")
 	fmt.Fprintln(w, "  --home PATH")
 	fmt.Fprintln(w, "  --model alias=value       repeatable")
 	fmt.Fprintln(w, "  --root-adapter TEXT       replace root adapter")
@@ -120,6 +124,55 @@ func printCodexUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --never-register NAME     repeatable")
 	fmt.Fprintln(w, "  --suffix-mode MODE [--suffix-prefix TEXT]")
 	fmt.Fprintln(w, "  --overrides-dir PATH")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "usage: pfm codex agents [--home PATH]")
+	fmt.Fprintln(w, "  compiles every {home}/.professor/agents/*.md into a sibling .toml,")
+	fmt.Fprintln(w, "  then installs sources into {home}/.claude/agents and TOMLs into")
+	fmt.Fprintln(w, "  {home}/.codex/agents — the global (host-level) agent registry.")
+}
+
+// runCodexAgents is the command adapter for the global (host-level) Codex
+// agent compiler — the Go port of the retired
+// ~/.professor/agents/build-global-agents.py. Unlike build/check it has no
+// repository root: its source and destinations are all anchored on --home
+// (default: this process's resolved HOME).
+func runCodexAgents(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
+	flags := newFlagSet("codex agents", "usage: pfm codex agents [--home PATH]", stderr)
+	home := flags.String("home", "", "host HOME whose global agents get compiled and installed")
+	positionals, code, ok := parseFlagsAnywhere(flags, args)
+	if !ok {
+		return code
+	}
+	if len(positionals) != 0 {
+		flags.Usage()
+		return 2
+	}
+	resolvedHome := *home
+	if resolvedHome == "" {
+		resolvedHome = runtime.Paths.Home
+	}
+	resolvedHome, err := filepath.Abs(resolvedHome)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm codex agents: resolve home: %v\n", err)
+		return 1
+	}
+	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: resolvedHome})
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm codex agents: %v\n", err)
+		return 1
+	}
+	for _, compiled := range result.Compiled {
+		fmt.Fprintf(stdout, "%s: %d B, parses clean\n", compiled.Path, compiled.Size)
+	}
+	for _, installed := range result.Installed {
+		shape := "regular file"
+		if !installed.RegularFile {
+			shape = "NOT A REGULAR FILE"
+		}
+		fmt.Fprintf(stdout, "installed %s (%s)\n", installed.Path, shape)
+	}
+	fmt.Fprintln(stdout, "CODEX AGENTS PASS")
+	return 0
 }
 
 func codexRepoRoot() (string, error) {
