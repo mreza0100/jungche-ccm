@@ -139,6 +139,42 @@ while True:
         sys.stdout.flush()
 `
 
+// compactTranscriptUI is a deliberately small TUI probe. It emits output
+// while bytes are arriving, but keeps the logical composer in buf and records
+// every submitted command to a transcript file. The assertion below therefore
+// proves the full focus reached the command handler; a pane glance cannot
+// substitute for that proof when the body is wider than the terminal.
+const compactTranscriptUI = `import os, select, sys, time, tty
+tty.setraw(0)
+transcript = sys.argv[1]
+buf = bytearray()
+event_emitted = False
+prompt = "❯ ".encode("utf-8")
+os.write(1, b"Working (10s \xc2\xb7 9 tokens)\r\n" + prompt)
+while True:
+    if not event_emitted and len(buf) >= 256:
+        os.write(1, b"\r\nEVENT:busy-output\r\n" + prompt + bytes(buf))
+        event_emitted = True
+    ready, _, _ = select.select([0], [], [], 0.005)
+    if not ready:
+        continue
+    ch = os.read(0, 1)
+    if not ch:
+        break
+    if ch in (b"\r", b"\n"):
+        if buf:
+            with open(transcript, "ab") as record:
+                record.write(b"FIRED-BEGIN\n")
+                record.write(bytes(buf))
+                record.write(b"\nFIRED-END\n")
+            os.write(1, b"\r\nFIRED\r\nPress up to edit queued messages\r\n" + prompt)
+            buf.clear()
+        continue
+    buf.extend(ch)
+    os.write(1, ch)
+    time.sleep(0.00005)
+`
+
 func (jail *injectTmuxJail) startBusyPane(
 	t *testing.T,
 	socket, session string,
@@ -194,6 +230,56 @@ func (jail *injectTmuxJail) startBusyPane(
 	}
 }
 
+func (jail *injectTmuxJail) startCompactTranscriptPane(
+	t *testing.T,
+	socket, session, transcript string,
+) string {
+	t.Helper()
+	script := filepath.Join(jail.root, "compact-ui.py")
+	if err := os.WriteFile(script, []byte(compactTranscriptUI), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	command := jail.command(
+		"-f",
+		"/dev/null",
+		"-L",
+		socket,
+		"new-session",
+		"-d",
+		"-s",
+		session,
+		"python3",
+		script,
+		transcript,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("start compact transcript pane: %v: %s", err, output)
+	}
+	jail.sockets = append(jail.sockets, socket)
+	output, err := jail.command("-L", socket, "list-panes", "-F", "#{pane_id}").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane := strings.TrimSpace(string(output))
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		capture, captureErr := CommandTmux{}.Capture(
+			context.Background(),
+			filepath.Join(jail.tmuxDir, socket),
+			pane,
+			false,
+			0,
+		)
+		if captureErr == nil && strings.Contains(capture, "Working (10s · 9 tokens)") {
+			return pane
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("compact transcript pane never became ready: %q", capture)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestJailedThenWaiterDeliversAfterIdleExactlyOnce is the --then contract in a
 // real tmux server: the waiter rides out the busy turn (chat.sh:1062-1077) and
 // the steer lands once, after idle, with the submit confirmed.
@@ -231,7 +317,6 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
 			ClaudeAutoFileMax: ClaudeAutoFileMax,
 			CodexAutoFileMax:  CodexAutoFileMax,
-			AbsoluteByteMax:   AbsoluteMessageMax,
 		},
 	})
 	if err != nil {
@@ -296,7 +381,6 @@ func TestJailedBusyCodexQueuesAndLongFileUsesAutoFilePointer(t *testing.T) {
 			Sender:            &Sender{Session: "sender", UUID: "abcdef123456"},
 			ClaudeAutoFileMax: ClaudeAutoFileMax,
 			CodexAutoFileMax:  CodexAutoFileMax,
-			AbsoluteByteMax:   AbsoluteMessageMax,
 		},
 	})
 	if err != nil {
@@ -371,7 +455,6 @@ func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
 			Sender:            &Sender{Session: "sender", UUID: "abcdef123456"},
 			ClaudeAutoFileMax: ClaudeAutoFileMax,
 			CodexAutoFileMax:  CodexAutoFileMax,
-			AbsoluteByteMax:   AbsoluteMessageMax,
 		},
 	})
 	if err != nil {
@@ -403,6 +486,86 @@ func TestJailedBusyClaudeQueuesWithoutControlKeys(t *testing.T) {
 	if strings.Contains(capture, "CONTROL-S-ERROR") ||
 		strings.Contains(capture, "ESCAPE-ERROR") {
 		t.Fatalf("busy Claude queue sent a control key: %q", capture)
+	}
+}
+
+// TestJailedLongCompactFocusFiresWithFullTranscript is the real-tmux
+// acceptance fixture for the no-user-visible-size-limit rule. The probe emits
+// busy output during input, so an implementation that interleaves output into
+// its accumulated command or falls back to a paste is caught by the exact
+// transcript record, not by a lucky visible tail of the pane.
+func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
+	jail := newInjectTmuxJail(t)
+	socket := "probe-pfm-inject-compact-focus"
+	session := "compact-focus-session"
+	transcript := filepath.Join(jail.root, "compact-transcript.log")
+	pane := jail.startCompactTranscriptPane(t, socket, session, transcript)
+	socketPath := filepath.Join(jail.tmuxDir, socket)
+	engine, err := New(Dependencies{
+		Resolver: fakeResolver{socket: socketPath, target: pane},
+		Tmux:     verifiedChatTmux{CommandTmux: CommandTmux{}, command: "claude"},
+		Spawner:  &fakeSpawner{},
+		Options: Options{
+			Poll:              10 * time.Millisecond,
+			EnterGap:          20 * time.Millisecond,
+			EnterSettle:       100 * time.Millisecond,
+			ProofSettle:       100 * time.Millisecond,
+			SettleTries:       500,
+			EnterTries:        6,
+			LockTimeout:       5 * time.Second,
+			LockPoll:          20 * time.Millisecond,
+			LockMaxHold:       30 * time.Second,
+			LockRoot:          filepath.Join(jail.root, "compact-locks"),
+			ThenLogRoot:       jail.root,
+			ThenMin:           100 * time.Millisecond,
+			ThenBusyTries:     10,
+			ThenIdlePoll:      100 * time.Millisecond,
+			ThenIdleTries:     80,
+			ThenIdleStable:    3,
+			ThenSettle:        100 * time.Millisecond,
+			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "abcdef123456"},
+			ClaudeAutoFileMax: ClaudeAutoFileMax,
+			CodexAutoFileMax:  CodexAutoFileMax,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const focusRunes = 2147
+	focus := strings.Repeat("f", focusRunes)
+	want := "/compact " + focus
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	result, err := engine.Inject(ctx, Request{
+		Target:  session,
+		Message: want,
+		Then:    []string{"resume after compaction"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "queued" || !result.Typed ||
+		result.AutoFilePath != "" || result.LiteralChunks < 2 {
+		t.Fatalf("long compact result=%+v", result)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var recorded []byte
+	for {
+		recorded, err = os.ReadFile(transcript)
+		if err == nil && strings.Contains(string(recorded), "FIRED-END\n") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("compact command never fired: err=%v transcript=%q", err, recorded)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	wantRecord := "FIRED-BEGIN\n" + want + "\nFIRED-END\n"
+	if string(recorded) != wantRecord {
+		t.Fatalf("compact transcript changed or interleaved command: got %d bytes, want %d", len(recorded), len(wantRecord))
+	}
+	if !strings.Contains(result.Proof, "FIRED") {
+		t.Fatalf("delivery proof did not show the fired command: %q", result.Proof)
 	}
 }
 

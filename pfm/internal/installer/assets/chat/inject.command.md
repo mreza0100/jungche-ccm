@@ -10,7 +10,7 @@ Args: $ARGUMENTS
 
 `/chat:inject` lands a real user turn and auto-picks how:
 
-- **`self`, a live tmux session, or a 🔖 label** → typed into that pane and submitted now (LIVE). A short message travels inline; an over-threshold body is stored byte-exact and replaced by a signed caption+path pointer. A **label** is the destination's `/rename` name (the 🔖 in its status line); the script resolves it to a tmux session by scanning live panes the way `/chat:ls` does, so you can address a chat as `WAVE` or `VISION` instead of its tmux number. Matching is case-insensitive; an ambiguous label (two chats share it) errors and asks for the session id. The script owns the Enter and protects the target's draft: before typing it presses `Ctrl+S`, which stashes any unsent draft (restored automatically after the next submit) and is a no-op on an empty box — so it never has to read the input; it waits for the text to render, then double-taps Enter (0.15s apart) to defeat a swallowed first press — single-tap when a draft was stashed, so the restored draft is never re-submitted — and confirms the input cleared, so **you never press Enter yourself**. If it cannot confirm submission (target busy mid-turn or in a selector) it warns rather than leaving a half-sent turn. `self` targets this chat's own pane, queuing a turn for after the current one completes.
+- **`self`, a live tmux session, or a 🔖 label** → typed into that pane and submitted now (LIVE). Short prose travels inline; long prose becomes a durable signed pointer. Slash commands always travel in full through locked, paced literal chunks. A **label** is the destination's `/rename` name (the 🔖 in its status line); pfm resolves it to a tmux session by scanning live panes the way `/chat:ls` does. Matching is case-insensitive; an ambiguous label errors and asks for the session id. The engine owns the Enter, protects an unsent draft, and confirms that the composer cleared, so **you never press Enter yourself**. A busy Claude or Codex pane accepts the message in its composer queue without interruption. `self` targets this chat's own pane and queues the turn after the current one.
 - **session-id or excerpt** → appended to that chat's transcript (RESUME); it answers on its next reopen (backed up first).
 
 ## Steps
@@ -40,30 +40,35 @@ By default a message injected into a busy target queues behind its current turn.
 
 ## Send shell syntax safely with `--file`
 
-`$HOME/.local/bin/pfm chat inject --file {path} {target}` reads the message body from a file instead of argv. The mangler is the CALLER's shell — not tmux or pfm: a message carrying redirects, pipes, backticks, or `$` needs only one imperfect quote for the caller's shell to eat or execute part of it. A file never crosses a shell, so command forms arrive byte-exact. A short file uses bracketed paste for multi-line safety; a long file is copied into the canonical auto-file store and only its pointer enters the chat.
+`$HOME/.local/bin/pfm chat inject --file {path} {target}` reads the message body from a file instead of argv. The compatibility spelling `{target} --file {path}` is also accepted, but keep flags first in authored commands. The mangler is the CALLER's shell — not tmux or pfm: a message carrying redirects, pipes, backticks, or `$` needs only one imperfect quote for the caller's shell to eat or execute part of it. A file never crosses a shell, so command forms arrive byte-exact. A short prose file uses bracketed paste for multi-line safety; a long prose file is copied into the canonical auto-file store and only its pointer enters the chat. A slash command read from a file still travels in full as paced literal chunks.
 
 ## Long bodies automatically become durable pointers
 
-The complete signed wire message stays at or below the empirically measured safety boundary:
+Plain prose has no user-visible size limit. Its complete signed wire message stays at or below the empirically measured safety boundary:
 720 runes for Claude, 900 for Codex. Above it, pfm writes the original body byte-exact to
 `~/.local/state/pfm/inject-bodies/<utc-stamp>-<target>.md` (mode 0600; bodies older than seven
 days are pruned) and sends a short message: the bounded first-line caption plus
 `read <path> fully`, followed by the normal signature. The success receipt says `AUTO-FILE` and
 names the same path. An 8 KiB body therefore reaches the recipient as a harmless pointer, never
 as a composer-filling paste. Do not retry an `AUTO-FILE` receipt: the body is already durable and
-the pointer is the delivered turn.
+the pointer is the delivered turn. If the pointer itself needs more than one literal send, pfm
+chunks it under the same target lock; it never rejects the body for size.
 
 ## `--file` carries the MESSAGE, not the document
 
 The file holds the words you would have typed — an IMPERATIVE. It is not a way to paste a document into a chat. A brief, a spec, or a report is dispatched **by pointer** — `"/jc per {abs path} — {the one-line ask}"` — never by injecting its content: a chat handed a markdown document reads it as _material_, not as an _order_, and will study it instead of acting on it.
 
-## A /compact focus is a POINTER, not a payload
+## A long /compact focus fires in full
 
-`pfm chat inject` REFUSES a `/compact` whose focus exceeds `COMPACT_FOCUS_MAX` (600 chars; exit 6, nothing typed). A body that long is typed as a bracketed PASTE, the TUI collapses it to `[Pasted text #N] · paste again to expand`, the Enter lands on the collapsed block, and **the compaction never fires** — the message just sits in the composer as queue-limbo. Write the hold to a file and make the focus a pointer:
+Slash commands never become auto-file pointers. pfm splits them into literal chunks of at most
+512 runes, holds one per-target lock for the complete stream, and presses Enter only after the
+last chunk. A long `/compact` focus therefore reaches the harness byte-exact and fires; there is
+no command-size refusal. It still requires `--then`:
 
-`$HOME/.local/bin/pfm chat inject --then "{steer}" {target} "/compact hold: read {abs path} — {the 2-3 facts that must survive verbatim}"`
+`$HOME/.local/bin/pfm chat inject --then "{steer}" {target} "/compact {complete focus}"`
 
-This is also the better practice regardless of the transport: a file on disk survives the summary intact, while a 2,000-character focus competes with the summary for the same budget.
+A durable hold file remains useful when facts must survive the summary verbatim, but it is a
+memory-design choice rather than a transport workaround.
 
 ## Carry a follow-up past a /compact with `--then`
 
@@ -86,7 +91,7 @@ When the operator says "restart mcp", run exactly these two.
 
 ## Concurrent senders are serialized
 
-When several chats inject into the **same** live pane at once, their keystrokes would otherwise interleave into one mangled turn. Each LIVE delivery takes a per-target lock (an atomic `mkdir` lock under `${TMPDIR}/chat-inject-locks/`, released when the inject finishes) so deliveries to one pane run one-at-a-time; a second inject waits up to `CHAT_INJECT_LOCK_TIMEOUT` (30s) then warns rather than colliding. A lock whose owner died or has been held too long is reclaimed automatically. Before typing, the script also exits the target's copy/scroll mode and dismisses a stuck Rewind menu — both silently swallow input.
+When several chats inject into the **same** live pane at once, their keystrokes would otherwise interleave into one mangled turn. Each LIVE delivery takes a per-target lock (an atomic `mkdir` lock under `${TMPDIR}/chat-inject-locks/`, released when the inject finishes) so deliveries to one pane run one-at-a-time; the lock covers every chunk through confirmed submission. A second inject waits up to `CHAT_INJECT_LOCK_TIMEOUT` (30s) then warns rather than colliding. A lock whose owner died or has been held too long is reclaimed automatically. Before typing, pfm also exits the target's copy/scroll mode and dismisses a stuck Rewind menu — both silently swallow input.
 
 ## To steer a RUNNING chat, target its tmux session — not its UUID
 
@@ -94,4 +99,4 @@ The LIVE send-keys arm fires only for `self` or a **live tmux session name**. A 
 
 - **Find a chat's tmux session:** run `/chat:ls`, or `/chat:whoami` inside the target, or read its tmux status bar.
 - **Confirm from the output:** `injected LIVE into tmux session …` landed live; `RESUME …` did not reach a running target — re-target by tmux session.
-- **Idle only:** `send-keys` lands clean only when the target pane is idle at its prompt; mid-tool-call it can interleave — a heads-down agent cannot be cleanly interrupted.
+- **Busy panes queue safely:** normal delivery types into the Claude or Codex composer queue without interrupting the running turn. Use `--force-now` only when the current turn must be stopped.

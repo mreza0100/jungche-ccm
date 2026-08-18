@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -16,15 +17,15 @@ import (
 )
 
 type fakeRunner struct {
-	reachable bool
-	manager   bool
-	calls     []string
+	manager        bool
+	nameSyncActive bool
+	calls          []string
 }
 
 func (runner *fakeRunner) Run(_ context.Context, name string, args ...string) error {
 	call := name + " " + strings.Join(args, " ")
 	runner.calls = append(runner.calls, call)
-	if call == "systemctl --user status" && runner.reachable {
+	if call == "systemctl --user is-active --quiet pfm-name-sync.service" && runner.nameSyncActive {
 		return nil
 	}
 	if call == "systemctl --user show-environment" && runner.manager {
@@ -33,22 +34,59 @@ func (runner *fakeRunner) Run(_ context.Context, name string, args ...string) er
 	if strings.Contains(call, "is-active") || strings.Contains(call, "is-enabled") || strings.Contains(call, "is-failed") {
 		return errors.New("not loaded")
 	}
-	if call != "systemctl --user status" && runner.manager {
+	if runner.manager {
 		return nil
 	}
 	return errors.New("dead user bus")
 }
 
-func TestReachableUserBusRefusesBeforeWriting(t *testing.T) {
+func TestDryRunNeverGatesOnAReachableUserManager(t *testing.T) {
 	home := t.TempDir()
-	_, err := Run(context.Background(), Options{
-		Mode: ModeApply, Home: home, Runner: &fakeRunner{reachable: true},
+	runner := &fakeRunner{manager: true, nameSyncActive: true}
+	report, err := Run(context.Background(), Options{
+		Mode: ModeDryRun, Home: home, Runner: runner,
 	})
-	if !errors.Is(err, ErrReachableUserBus) {
-		t.Fatalf("Run() error = %v, want ErrReachableUserBus", err)
+	if err != nil || report.Changed == 0 {
+		t.Fatalf("dry run report=%#v err=%v, want an ungated preview", report, err)
+	}
+	for _, call := range runner.calls {
+		if call == "systemctl --user is-active --quiet pfm-name-sync.service" {
+			t.Fatalf("dry run called the running-service gate: %v", runner.calls)
+		}
 	}
 	if entries, readErr := os.ReadDir(home); readErr != nil || len(entries) != 0 {
-		t.Fatalf("reachable-bus refusal wrote files: entries=%v err=%v", entries, readErr)
+		t.Fatalf("dry run wrote files: entries=%v err=%v", entries, readErr)
+	}
+}
+
+func TestReachableIdleUserManagerAllowsMutatingModes(t *testing.T) {
+	for _, mode := range []Mode{ModeApply, ModeUninstall} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			home := t.TempDir()
+			_, err := Run(context.Background(), Options{
+				Mode: mode, Home: home, Runner: &fakeRunner{manager: true},
+			})
+			if err != nil {
+				t.Fatalf("mode %d refused an idle reachable manager: %v", mode, err)
+			}
+		})
+	}
+}
+
+func TestRunningNameSyncRefusesMutatingModesBeforeWriting(t *testing.T) {
+	for _, mode := range []Mode{ModeApply, ModeUninstall} {
+		t.Run(fmt.Sprint(mode), func(t *testing.T) {
+			home := t.TempDir()
+			_, err := Run(context.Background(), Options{
+				Mode: mode, Home: home, Runner: &fakeRunner{nameSyncActive: true},
+			})
+			if !errors.Is(err, ErrNameSyncRunning) {
+				t.Fatalf("Run() error = %v, want ErrNameSyncRunning", err)
+			}
+			if entries, readErr := os.ReadDir(home); readErr != nil || len(entries) != 0 {
+				t.Fatalf("running-service refusal wrote files: entries=%v err=%v", entries, readErr)
+			}
+		})
 	}
 }
 
@@ -388,7 +426,7 @@ func TestUnitTransitionsUseOnlyTheInjectedManager(t *testing.T) {
 	}
 	joined := strings.Join(runner.calls, "\n")
 	wantCalls := []string{
-		"systemctl --user status",
+		"systemctl --user is-active --quiet pfm-name-sync.service",
 		"systemctl --user daemon-reload",
 		"systemctl --user enable --now pfm-name-sync.path pfm-name-sync.timer",
 	}
@@ -546,7 +584,7 @@ func TestLaunchAgentGateRefusesOnlyMidExecution(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			runner := &outputRunner{printOutput: testCase.output, printErr: testCase.outputErr}
 			_, err := Run(context.Background(), Options{
-				Mode: ModeDryRun, Home: t.TempDir(), Stdout: io.Discard, Runner: runner,
+				Mode: ModeApply, Home: t.TempDir(), Stdout: io.Discard, Runner: runner,
 			})
 			if testCase.wantRefuse {
 				if !errors.Is(err, ErrLaunchAgentRunning) {
@@ -569,7 +607,7 @@ func TestLaunchAgentGateAnnouncesWhenItCannotProbe(t *testing.T) {
 	}
 	var output bytes.Buffer
 	if _, err := Run(context.Background(), Options{
-		Mode: ModeDryRun, Home: t.TempDir(), Stdout: &output, Runner: &fakeRunner{},
+		Mode: ModeApply, Home: t.TempDir(), Stdout: &output, Runner: &fakeRunner{},
 	}); err != nil {
 		t.Fatal(err)
 	}

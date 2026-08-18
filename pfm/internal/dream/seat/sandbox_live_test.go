@@ -19,7 +19,7 @@ func TestSeatSandboxContainsWrites(t *testing.T) {
 		t.Skip("set DREAM_LIVE_SANDBOX_PROBE=1 for the authenticated containment probe")
 	}
 	repository := filepath.Join(t.TempDir(), "repository")
-	stage := filepath.Join(repository, ".professor", "stm", "dreamer", "staging", "sandbox-probe")
+	stage := filepath.Join(repository, ".professor", "stm", "tmp", "staging", "sandbox-probe")
 	if err := os.MkdirAll(stage, 0o700); err != nil {
 		t.Fatal(err)
 	}

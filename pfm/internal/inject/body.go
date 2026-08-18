@@ -46,6 +46,9 @@ func (engine *Engine) prepareLiveMessage(
 	interrupted bool,
 ) (PreparedMessage, error) {
 	signed, unsigned := engine.signedMessage(ctx, body, interrupted)
+	if isHarnessCommand(body) {
+		return PreparedMessage{Message: signed, Unsigned: unsigned}, nil
+	}
 	name := filepath.Base(target.SocketPath)
 	if target.Pane != "" {
 		name += "-" + target.Pane
@@ -80,14 +83,6 @@ func (engine *Engine) prepareMessage(
 		pointer, pointerUnsigned = engine.SignForResume(ctx, pointer)
 	} else {
 		pointer, pointerUnsigned = engine.signedMessage(ctx, pointer, interrupted)
-	}
-	if size := utf8.RuneCountInString(pointer); size > engine.autoFileThreshold(engineName) {
-		return PreparedMessage{}, fmt.Errorf(
-			"auto-file pointer is %d characters, over the %d-character %s boundary",
-			size,
-			engine.autoFileThreshold(engineName),
-			engineName,
-		)
 	}
 	return PreparedMessage{
 		Message:      pointer,

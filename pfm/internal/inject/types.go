@@ -27,12 +27,12 @@ const (
 	// 1001. TESTPLAN.md records the authentic probe method and both transports.
 	ClaudeAutoFileMax = 720
 	CodexAutoFileMax  = 900
-	// AbsoluteMessageMax keeps adversarial MCP arguments from reaching tmux.
-	AbsoluteMessageMax = 256 << 10
-	// CompactFocusMax is chat.sh's COMPACT_FOCUS_MAX: a longer /compact body is
-	// typed as a bracketed paste, the TUI collapses it, and the compaction
-	// never fires.
-	CompactFocusMax = 600
+	// CommandChunkRunes stays safely below both measured literal-paste edges.
+	// Slash commands bypass auto-file pointers, so every command byte reaches
+	// the TUI through paced literal sends and Enter lands only after the final
+	// chunk.
+	CommandChunkRunes = 512
+	CommandChunkGap   = 50 * time.Millisecond
 	// FullScrollback asks Capture for the entire retained buffer, chat.sh's
 	// `capture-pane -S -`, instead of the visible fold.
 	FullScrollback = -1
@@ -80,6 +80,7 @@ type Result struct {
 	SteerLog       string `json:"steer_log,omitempty"`
 	Unsigned       bool   `json:"unsigned,omitempty"`
 	AutoFilePath   string `json:"auto_file_path,omitempty"`
+	LiteralChunks  int    `json:"literal_chunks,omitempty"`
 }
 
 // Sender is appended to every non-command plain-text delivery.
@@ -160,8 +161,8 @@ type Options struct {
 	LockMaxHold       time.Duration
 	ClaudeAutoFileMax int
 	CodexAutoFileMax  int
-	AbsoluteByteMax   int
-	CompactFocusMax   int
+	CommandChunkRunes int
+	CommandChunkGap   time.Duration
 	LockRoot          string
 	BodyRoot          string
 	BodyMaxAge        time.Duration

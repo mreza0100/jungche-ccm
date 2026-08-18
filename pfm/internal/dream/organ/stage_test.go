@@ -17,7 +17,7 @@ func TestNewStageBuildsPrivateArtifactLayout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStage: %v", err)
 	}
-	stagingRoot := filepath.Join(context.Organ, "dreamer", "staging")
+	stagingRoot := filepath.Join(context.Organ, "tmp", "staging")
 	if !strictDescendant(stagingRoot, layout.Root) {
 		t.Fatalf("stage %q is not a strict descendant of %q", layout.Root, stagingRoot)
 	}
@@ -35,8 +35,8 @@ func TestNewStageBuildsPrivateArtifactLayout(t *testing.T) {
 		"Coverage":           filepath.Join(layout.Root, "coverage.md"),
 		"Verdicts":           filepath.Join(layout.Root, "verdicts.md"),
 		"NormalizedVerdicts": filepath.Join(layout.Root, "verdicts-normalized.tsv"),
-		"HumanLog":           filepath.Join(context.Organ, "dreamer", "logs", filepath.Base(layout.Root)+".log"),
-		"StructuredLog":      filepath.Join(context.Organ, "dreamer", "logs", filepath.Base(layout.Root)+".jsonl"),
+		"HumanLog":           filepath.Join(context.Organ, "tmp", "logs", filepath.Base(layout.Root)+".log"),
+		"StructuredLog":      filepath.Join(context.Organ, "tmp", "logs", filepath.Base(layout.Root)+".jsonl"),
 	}
 	actual := map[string]string{
 		"Maps": layout.Maps, "Meta": layout.Meta, "Paths": layout.Paths, "Pin": layout.Pin,
@@ -109,7 +109,7 @@ func TestCreateLogsCleansFirstFileWhenSecondCollides(t *testing.T) {
 
 func TestValidateStageRejectsOutsideSymlinkWrongModeAndBadLeaves(t *testing.T) {
 	context := validContext(t)
-	stagingRoot := filepath.Join(context.Organ, "dreamer", "staging")
+	stagingRoot := filepath.Join(context.Organ, "tmp", "staging")
 	mustMkdir(t, stagingRoot, 0o700)
 
 	outside := filepath.Join(t.TempDir(), "outside")

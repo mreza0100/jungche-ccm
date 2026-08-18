@@ -77,7 +77,7 @@ func TestNightEmptyCorpusSucceedsBeforeLogsSeatsAndGates(t *testing.T) {
 	if _, err := os.Stat(result.Stage.Root); !os.IsNotExist(err) {
 		t.Fatalf("empty stage survives at %s: %v", result.Stage.Root, err)
 	}
-	logs, err := os.ReadDir(filepath.Join(fixture.organ, "dreamer", "logs"))
+	logs, err := os.ReadDir(filepath.Join(fixture.organ, "tmp", "logs"))
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatalf("read logs directory: %v", err)
 	}

@@ -7,7 +7,7 @@ import (
 
 func TestSandboxedCodexRunNeverUsesTheBypassBuilder(t *testing.T) {
 	plan, err := SandboxedCodexRun(SandboxedCodexRequest{
-		CWD: "/organ/dreamer/staging/explorer-night",
+		CWD: "/organ/tmp/staging/explorer-night",
 		Config: []string{
 			`model="gpt-5.6-luna"`,
 			`model_reasoning_effort="xhigh"`,
@@ -37,7 +37,7 @@ func TestSandboxedCodexRunNeverUsesTheBypassBuilder(t *testing.T) {
 	for _, required := range []string{
 		"-u CODEX_THREAD_ID",
 		"codex '--strict-config' '--sandbox' 'workspace-write'",
-		"'--cd' '/organ/dreamer/staging/explorer-night'",
+		"'--cd' '/organ/tmp/staging/explorer-night'",
 		"'-c' 'model=\"gpt-5.6-luna\"'",
 		"'-c' 'approval_policy=\"never\"'",
 		"'-c' 'sandbox_mode=\"workspace-write\"'",

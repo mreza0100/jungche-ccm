@@ -564,7 +564,7 @@ func snapshotOrgan(t *testing.T, root string) map[string]string {
 		if err != nil {
 			return err
 		}
-		if relative == filepath.Join("dreamer", "staging") || strings.HasPrefix(relative, filepath.Join("dreamer", "staging")+string(filepath.Separator)) {
+		if relative == "tmp" || strings.HasPrefix(relative, "tmp"+string(filepath.Separator)) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}

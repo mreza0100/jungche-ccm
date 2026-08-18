@@ -207,7 +207,7 @@ func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 				AgentType:     "Explore",
 				RegistryBase:  defaultDreamRegistry,
 				ResourcesRoot: "/resources",
-				Stage:         "/repo/.professor/stm/dreamer/staging/explorer-one",
+				Stage:         "/repo/.professor/stm/tmp/staging/explorer-one",
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("apply options = %+v, want %+v", got, want)
@@ -216,7 +216,7 @@ func TestDreamApplyInspectMorningAndMigrateDispatchExactOptions(t *testing.T) {
 		}
 		assertDreamRun(t, []string{
 			"apply", "--repo", "/repo", "--resources", "/resources", "--agent", "Explore",
-			"/repo/.professor/stm/dreamer/staging/explorer-one",
+			"/repo/.professor/stm/tmp/staging/explorer-one",
 		}, runtime, "applied\n")
 	})
 

@@ -50,6 +50,28 @@ The four identity/state regressions that established this plan. A tagged row mus
 
 ## A — `pfm` CLI subcommands and flags
 
+### A.1 — Codex compiler divergence and acceptance matrix
+
+The compiler is one static-binary surface. `build` may write only generated
+artifacts; `check` is its read-only twin and returns rc 1 for any finding.
+Fixtures use invented names and a jailed HOME. The Repo A-shaped and
+Repo B-shaped fixtures are structurally equivalent; their only permitted tree
+difference is the generated-marker source path. The real-repo equivalence
+exercise is recorded below as a manual jailed acceptance result; it is not a
+permanently wired fixture in this suite.
+
+| flow | safety | expected behavior | test / status |
+| --- | --- | --- | --- |
+| `pfm codex build [repo-root]` and `check [repo-root]`; no legacy `generate` or `doctor` action | JAIL | build compiles; check reports current; unknown actions rc 2 | `cmd/pfm/codex_command_test.go` |
+| strict `.claude/codex-build.json` version and unknown-key rejection | JAIL | unsupported version or key is a hard error naming the key | `internal/codexgen/codexgen_test.go` + CLI route |
+| block-scalar frontmatter, guarded command roster, model map, persona strip, TOML escaping, root/child AGENTS, collision/suffix, repo/global skills, MCP fence | JAIL | outputs are transformed deterministically and only real command names become `$...` | `internal/codexgen/codexgen_test.go`; generic union fixture — PASS |
+| flags override repository config: `--home`, repeatable `--model`, adapter/preamble, excludes, never-register, suffix mode/prefix, overrides dir | JAIL | CLI values have highest precedence and malformed model syntax rc 2 | `cmd/pfm/codex_command_test.go` |
+| section overrides (`replace-section`, `replace-exact`, `delete`, `insert-after`) | JAIL | applied override is reported; missing anchor and stale source pin fail loudly | `internal/codexgen/codexgen_test.go`; all modes + stale/missing anchors — PASS |
+| dangling `$HOME/.claude/commands/*.md` symlink | JAIL | build skips and warns; check reports the dangling source and returns rc 1 | `internal/codexgen/codexgen_test.go` |
+| reconcile findings: missing, stale, orphan, conflict | JAIL | check names missing/stale/orphan without writes; build names and preserves a hand-written conflict | `internal/codexgen/codexgen_test.go`; deterministic stale/orphan/conflict fixture — PASS |
+| Repo A/Repo B fixture equivalence and full output trees | JAIL | byte-equivalent except explicitly ruled generated-marker command change | manual jailed equivalence: Repo A 66/66, Repo B 54/54, zero diffs after marker normalization — PASS |
+| host `build-global-agents.py` parity | LIVE-READ | recommendation only; no `pfm codex agents` implementation in this scope | audit/report — GAP |
+
 | flow                                                                                                                  | safety    | expected behavior (source)                                                                                | regression |
 | --------------------------------------------------------------------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------- | ---------- |
 | no args → the same interactive picker as `pfm ls`                                                                     | JAIL+tmux | `main.go`, `attach_e2e_test.go`                                                                           |            |
@@ -61,6 +83,7 @@ The four identity/state regressions that established this plan. A tagged row mus
 | configured Claude/Codex binary and permission policy reach actual launch argv; absent config preserves current argv    | JAIL+tmux | `run_jail_test.go`, `internal/action/*_test.go`, `internal/swap/swap_test.go`                               |            |
 | local `pfm.dev` is absent or carries the current `hostops/pfm/cmd/pfm` build path                                     | JAIL      | `cmd/pfm/dev_binary_test.go`                                                                              |            |
 | `ls` (interactive) → BubblePicker on `/dev/tty`, cached first frame then streamed refresh                             | JAIL+tmux | `commands.go:101-121`, `ui/picker.go:12-68`                                                               |            |
+| routine picker refreshes every 4s but index only the priority project; only an explicit reload may walk the full transcript corpus | JAIL | `pipeline.go`, `pipeline_async_test.go` | live defect: three pickers each sustained ~60% CPU for 4h+ |
 | `ls --plain` → PlainPicker, one pass, rc 0                                                                            | JAIL      | `commands.go:88-100,126-128`                                                                              |            |
 | `ls --tsv` → TSVPicker, stable rows                                                                                   | JAIL      | `commands.go:96-99`; golden `testdata/golden/ui.tsv`                                                      |            |
 | `ls -a/--all` → AllView                                                                                               | JAIL      | `commands.go:33-34,60-65`                                                                                 | B2         |
@@ -330,9 +353,9 @@ tonight's four bugs all live in.
 | `chat_inject` full guard chain, mirrors chat.sh                                   | JAIL+tmux | `mcpserv/server.go:145-172`, `inject/engine.go:296-663`            |            |
 | `chat_inject` `/compact` without `then` → refused code 6                          | JAIL      | `inject/engine.go:683-694`                                         |            |
 | `chat_inject` a `then` steer that is itself `/compact` → refused code 1           | JAIL      | `inject/engine.go:668-682`                                         |            |
-| `chat_inject` long `/compact` focus → refused code 6                              | JAIL      | `inject/engine.go:696-708`                                         |            |
+| `chat_inject` a 2,147-rune `/compact` focus → paced literal chunks, full transcript body, command fires | JAIL+tmux | `inject/engine.go`, `then_test.go`, `tmux_jail_test.go`             |            |
 | `chat_inject` long bodies cross the measured per-engine boundary into an auto-file pointer by RUNE count | JAIL+tmux | `inject/body.go`, `inject/engine_test.go`                           |            |
-| `chat_inject` absolute byte cap before anything resolves                          | JAIL      | `inject/engine.go:301-310`                                         |            |
+| `chat_inject` has no absolute body cap; prose above the former cap becomes a byte-exact auto-file pointer | JAIL | `inject/body.go`, `engine_test.go`                                 |            |
 | `chat_capture` `tail_lines` 1..1000, `max_bytes` 1..4Mi, rune-safe tail cut       | JAIL+tmux | `mcpserv/server.go:209-271`                                        |            |
 | `chat_whoami` takes NO arguments; identity from this process only                 | JAIL+tmux | `mcpserv/server.go:177-207`, `mcpserv/types.go:95-97`              |            |
 | `chat_whoami` failure returns `not_found` + message, never an error               | JAIL      | `mcpserv/server.go:186-195`                                        |            |
@@ -353,9 +376,12 @@ tonight's four bugs all live in.
 | busy Codex and Claude inject through the safe composer queue without Esc; receipts distinguish queued from delivered | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`, `engine_test.go`              |                        |
 | `chat inject` stores an over-threshold body under `~/.local/state/pfm/inject-bodies/`, sends only a signed caption+path pointer, and names both facts in the receipt | JAIL+tmux | `internal/inject/body.go`, `engine_test.go`, `inject_cli_jail_test.go` |                        |
 | a short `chat inject --file` keeps bracketed paste for byte-safe multi-line input; an over-threshold `--file` is copied into the canonical auto-file store | JAIL+tmux | `internal/inject`, `inject_cli_jail_test.go`                                |                        |
+| `chat inject --file PATH TARGET` and compatibility `chat inject TARGET --file PATH` both deliver the file body; raw `--file PATH` is never message text | JAIL+tmux | `headless_command.go`, `inject_cli_jail_test.go` | |
 | auto-file boundaries: one character under stays inline, one over becomes a pointer; an 8 KiB body never enters either composer | JAIL+tmux | `TestInjectAutoFileBoundaryAndKillerBody`, CLI probe fixture               |                        |
+| a 5 KiB prose body is stored byte-exact, sends only its signed pointer, and prints both `AUTO-FILE` and pane proof | JAIL+tmux | `engine_test.go`, `tmux_jail_test.go` | |
 | repeated `chat inject --then` waits busy→stable-idle and survives caller exit                                        | JAIL+tmux | `internal/inject/then.go`, waiter jail tests                                |                        |
 | `/compact` without `--then`, or a `/compact` steer, is refused before delivery                                       | JAIL      | `internal/inject`                                                           |                        |
+| a 2,147-rune `/compact` focus bypasses auto-file, is paced under one lock, fires byte-exact, and queues safely while busy | JAIL+tmux | `then_test.go`, `tmux_jail_test.go` | |
 | `--force-now` interrupts only a busy live target and marks the forced delivery                                       | JAIL+tmux | `internal/inject`                                                           |                        |
 | signature: `/`-prefixed commands travel bare; plain text carries the sender identity                                 | JAIL+tmux | `internal/inject`                                                           |                        |
 | `chat ask` delivers, waits and prints only the answer; timeout remains rc 5                                          | JAIL+tmux | `ask_command.go`, `internal/headless/converse.go`                           |                        |
@@ -373,6 +399,7 @@ tonight's four bugs all live in.
 | exit contract: 0 delivered/queued, 2 usage, 3 dead, 4 unknown, 5 answer timeout, 6 undelivered                       | JAIL      | `headless_command.go`, `headless_matrix_test.go`, `inject_cli_jail_test.go` |                        |
 | hidden root compatibility alias emits a deprecation; `run`, `dump`, and the old stream verb are gone                 | JAIL      | `main.go`, `headless_matrix_test.go`                                        |                        |
 | embedded `chat.sh` is an executable two-line compatibility delegate to `pfm chat`                                    | JAIL+sh   | `internal/installer/assets/chat/chat.sh`, installer tests                   |                        |
+| cache-window status stays compact, labels every shown unit, and omits a zero-hour field (`💾5m✗21m10s`, but `💾5m✗1h55m0s`); no prose is added | UNIT | `internal/statusline/render.go`, `statusline_test.go` | live display regression |
 
 ### Measured composer edges — Claude Code 2.1.224 / Codex CLI 0.147.0
 
@@ -390,14 +417,16 @@ and does not reach the transcript/rollout on one Enter; the panes stayed alive.
 | Codex | literal `send-keys -l` | 1,000 chars | 1,001 chars | `[Pasted Content N chars]`; one Enter left the block in the composer |
 | Codex | bracketed `paste-buffer -p` | 1,000 chars | 1,001 chars | `[Pasted Content N chars]`; one Enter left the block in the composer |
 
-The per-engine auto-file boundary uses the smaller transport edge and rounds down at 90%:
+The per-engine plain-prose auto-file boundary uses the smaller transport edge and rounds down at 90%:
 Claude `floor(801 × 0.9) = 720` runes; Codex `floor(1001 × 0.9) = 900` runes. The comparison is
 against the complete signed wire message, so a signature consumes part of the safety margin.
 Above the boundary, pfm writes the original body byte-exact with mode 0600, prunes `.md` bodies
-older than seven days, and sends a bounded first-line caption plus `read <path> fully`. The
-pointer itself must also fit the same boundary or delivery refuses before typing. An 8 KiB raw
-probe reproduced the stranded collapsed composer; the regression fixture now proves that size
-travels only as the short pointer.
+older than seven days, and sends a bounded first-line caption plus `read <path> fully`. A pointer
+that crosses a transport boundary is itself paced in safe literal chunks; body size never causes
+a sender-visible refusal. Slash commands do not become pointers: they travel byte-exact in locked
+512-rune literal chunks, with Enter only after the final chunk. An 8 KiB prose fixture proves the
+body travels only as the short pointer, while the 2,147-rune `/compact` fixture proves the complete
+command reaches the transcript and fires.
 
 ## I — zsh shell surface: launchers and revivers
 
@@ -450,7 +479,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | flow                                                                                                              | safety           | expected behavior (source)                | regression |
 | ----------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------- | ---------- |
 | `pfm install` dry run is the default and writes nothing                                                          | JAIL             | `internal/installer`, installer tests     |            |
-| a reachable user bus refuses before any write with rc 97                                                         | JAIL             | `install_command_test.go`, installer tests |            |
+| dry-run never gates; an idle user manager proceeds; an executing name-sync service refuses before writes with actionable rc 97 | JAIL | `install_command_test.go`, installer tests | |
 | apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
 | command cards, helpers, shim and units link to the managed asset tree                                            | JAIL+sh          | `internal/installer`, installer tests     |            |
 | real destinations are backed up; uninstall restores the newest backup                                             | JAIL             | `internal/installer`, installer tests     |            |

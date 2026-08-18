@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"hostops/pfm/internal/naming"
@@ -123,6 +122,7 @@ func applyEnvironment(options *Options) {
 		{"CHAT_INJECT_LOCK_TIMEOUT", &options.LockTimeout},
 		{"CHAT_INJECT_LOCK_POLL", &options.LockPoll},
 		{"CHAT_INJECT_LOCK_MAXHOLD", &options.LockMaxHold},
+		{"CHAT_INJECT_COMMAND_GAP", &options.CommandChunkGap},
 		{"CHAT_THEN_MIN", &options.ThenMin},
 		{"CHAT_THEN_IDLE_POLL", &options.ThenIdlePoll},
 		{"CHAT_THEN_SETTLE", &options.ThenSettle},
@@ -148,8 +148,7 @@ func applyEnvironment(options *Options) {
 		{"CHAT_INJECT_ENTER_TRIES", &options.EnterTries},
 		{"CHAT_INJECT_SCROLLBACK", &options.Scrollback},
 		{"CHAT_INJECT_PROOF_LINES", &options.ProofLines},
-		{"PFM_MCP_MAX_MESSAGE_BYTES", &options.AbsoluteByteMax},
-		{"COMPACT_FOCUS_MAX", &options.CompactFocusMax},
+		{"CHAT_INJECT_COMMAND_CHUNK", &options.CommandChunkRunes},
 		{"CHAT_THEN_BUSY_TRIES", &options.ThenBusyTries},
 		{"CHAT_THEN_IDLE_TRIES", &options.ThenIdleTries},
 		{"CHAT_THEN_IDLE_STABLE", &options.ThenIdleStable},
@@ -215,11 +214,11 @@ func withDefaults(options Options) Options {
 	if options.CodexAutoFileMax == 0 {
 		options.CodexAutoFileMax = CodexAutoFileMax
 	}
-	if options.AbsoluteByteMax == 0 {
-		options.AbsoluteByteMax = AbsoluteMessageMax
+	if options.CommandChunkRunes == 0 {
+		options.CommandChunkRunes = CommandChunkRunes
 	}
-	if options.CompactFocusMax == 0 {
-		options.CompactFocusMax = CompactFocusMax
+	if options.CommandChunkGap == 0 {
+		options.CommandChunkGap = CommandChunkGap
 	}
 	if options.BodyMaxAge == 0 {
 		options.BodyMaxAge = defaultBodyMaxAge
@@ -351,16 +350,6 @@ func (engine *Engine) Capture(
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
 	if request.Message == "" {
 		return refused(CodeUndelivered, "refusing to inject an empty message"), nil
-	}
-	if len(request.Message) > engine.options.AbsoluteByteMax {
-		return refused(
-			6,
-			fmt.Sprintf(
-				"ABORT: message is %d bytes (absolute MCP limit %d); nothing was typed",
-				len(request.Message),
-				engine.options.AbsoluteByteMax,
-			),
-		), nil
 	}
 	if result, ok := engine.checkSteerChain(request); !ok {
 		return result, nil
@@ -632,7 +621,10 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	message := prepared.Message
 	base.Unsigned = prepared.Unsigned
 	base.AutoFilePath = prepared.AutoFilePath
-	pasteTransport := request.FileBacked && prepared.AutoFilePath == ""
+	commandTransport := isHarnessCommand(request.Message)
+	pasteTransport := request.FileBacked && prepared.AutoFilePath == "" && !commandTransport
+	pacedLiteral := commandTransport ||
+		utf8.RuneCountInString(message) > engine.autoFileThreshold(target.Engine)
 	var sendErr error
 	if pasteTransport {
 		sendErr = engine.tmux.SendPaste(
@@ -640,6 +632,13 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			target.SocketPath,
 			target.Pane,
 			message,
+		)
+	} else if pacedLiteral {
+		base.LiteralChunks, sendErr = engine.sendPacedLiteral(
+			ctx,
+			target,
+			message,
+			lock,
 		)
 	} else {
 		sendErr = engine.tmux.SendLiteral(
@@ -795,6 +794,13 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	}
 	base.Code = 0
 	switch {
+	case queueing && commandTransport:
+		base.Message = fmt.Sprintf(
+			"queued COMMAND into %q — busy %s accepted %d paced literal chunk(s) without interruption (Enter confirmed, input cleared)",
+			target.Pane,
+			engineName(target.Engine),
+			base.LiteralChunks,
+		)
 	case queueing && prepared.AutoFilePath != "":
 		base.Message = fmt.Sprintf(
 			"queued AUTO-FILE pointer into %q — full body saved at %s; busy %s accepted the pointer without interruption (Enter confirmed, input cleared)",
@@ -813,6 +819,12 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			"queued into %q — busy %s accepted the turn without interruption (Enter confirmed, input cleared)",
 			target.Pane,
 			engineName(target.Engine),
+		)
+	case commandTransport:
+		base.Message = fmt.Sprintf(
+			"injected LIVE COMMAND into %q — %d paced literal chunk(s) submitted (Enter confirmed, input cleared)",
+			target.Pane,
+			base.LiteralChunks,
 		)
 	case prepared.AutoFilePath != "":
 		base.Message = fmt.Sprintf(
@@ -873,6 +885,35 @@ func engineName(engine string) string {
 		return "Codex"
 	}
 	return "Claude"
+}
+
+func (engine *Engine) sendPacedLiteral(
+	ctx context.Context,
+	target Target,
+	message string,
+	lock *targetLock,
+) (int, error) {
+	runes := []rune(message)
+	chunks := 0
+	for start := 0; start < len(runes); start += engine.options.CommandChunkRunes {
+		end := min(start+engine.options.CommandChunkRunes, len(runes))
+		if err := lock.beat(); err != nil {
+			return chunks, fmt.Errorf("refresh inject lock while typing command chunk %d: %w", chunks+1, err)
+		}
+		if err := engine.tmux.SendLiteral(
+			ctx,
+			target.SocketPath,
+			target.Pane,
+			string(runes[start:end]),
+		); err != nil {
+			return chunks, err
+		}
+		chunks++
+		if end < len(runes) {
+			sleepContext(ctx, engine.options.CommandChunkGap)
+		}
+	}
+	return chunks, nil
 }
 
 func paneCommandEngine(command string, binaries ...string) string {
@@ -936,20 +977,6 @@ func (engine *Engine) checkSteerChain(request Request) (Result, bool) {
 			"ABORT: a /compact inject requires a then steer — compaction ends at an idle prompt with no turn fired, stranding the target. Re-run with the steer: chat_inject{target, message:'/compact <focus>', then:['<post-compact steer>']}. Nothing was typed.",
 		), false
 	}
-	// LONG-FOCUS GUARD (chat.sh:612-624): a long /compact body is typed as a
-	// bracketed PASTE, the TUI collapses it to "[Pasted text #N]", the Enter
-	// lands on the collapsed block and the compaction never fires.
-	length := utf8.RuneCountInString(request.Message)
-	if length > engine.options.CompactFocusMax {
-		return refused(
-			6,
-			fmt.Sprintf(
-				"ABORT: /compact focus is %d chars (max %d) — a body this long is typed as a PASTE, the TUI collapses it, and the compaction never fires (queue-limbo, seen twice). Write the hold to a file and make the focus a POINTER: chat_inject{target, message:'/compact hold: read <abs path> — {2-3 facts that must survive verbatim}', then:['<steer>']}. Nothing was typed.",
-				length,
-				engine.options.CompactFocusMax,
-			),
-		), false
-	}
 	return Result{}, true
 }
 
@@ -975,8 +1002,7 @@ func (engine *Engine) signedMessage(
 	message string,
 	interrupted bool,
 ) (string, bool) {
-	trimmed := strings.TrimLeftFunc(message, unicode.IsSpace)
-	if strings.HasPrefix(trimmed, "/") || engine.options.DisableSignature {
+	if isHarnessCommand(message) || engine.options.DisableSignature {
 		return message, false
 	}
 	marker := ""
@@ -998,8 +1024,7 @@ func (engine *Engine) signedMessage(
 // block footer because transcript injection is JSON text rather than terminal
 // keystrokes. Slash commands remain byte-exact.
 func (engine *Engine) SignForResume(ctx context.Context, message string) (string, bool) {
-	trimmed := strings.TrimLeftFunc(message, unicode.IsSpace)
-	if strings.HasPrefix(trimmed, "/") || engine.options.DisableSignature {
+	if isHarnessCommand(message) || engine.options.DisableSignature {
 		return message, false
 	}
 	sender := engine.sender(ctx)

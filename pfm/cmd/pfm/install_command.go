@@ -9,6 +9,18 @@ import (
 	"hostops/pfm/internal/installer"
 )
 
+// installHarvestProvisioner is nil in production and resolves to the real
+// pinned adapter. The command-package TestMain replaces it with a no-network
+// fake so existing CLI wiring tests never download the conversion lock.
+var installHarvestProvisionerOverride installer.HarvestProvisioner
+
+func installHarvestProvisioner() installer.HarvestProvisioner {
+	if installHarvestProvisionerOverride != nil {
+		return installHarvestProvisionerOverride
+	}
+	return installer.NewHarvestProvisioner()
+}
+
 func runInstall(args []string, stdout, stderr io.Writer) int {
 	flags := newFlagSet(
 		"install",
@@ -33,12 +45,14 @@ func runInstall(args []string, stdout, stderr io.Writer) int {
 		mode = installer.ModeUninstall
 	}
 	_, err := installer.Run(context.Background(), installer.Options{
-		Mode:      mode,
-		ConfigDir: *configDir,
-		Stdout:    stdout,
+		Mode:               mode,
+		ConfigDir:          *configDir,
+		Stdout:             stdout,
+		ProvisionHarvest:   true,
+		HarvestProvisioner: installHarvestProvisioner(),
 	})
-	if errors.Is(err, installer.ErrReachableUserBus) {
-		fmt.Fprintln(stderr, "pfm install: live user systemd bus is reachable; run in a proven dead-bus jail")
+	if errors.Is(err, installer.ErrNameSyncRunning) {
+		fmt.Fprintln(stderr, "pfm install: the pfm name-sync service is running; wait for it to finish or run `systemctl --user stop pfm-name-sync.service`, then retry")
 		return 97
 	}
 	if errors.Is(err, installer.ErrLaunchAgentRunning) {

@@ -1,0 +1,674 @@
+package harvest
+
+import (
+	"compress/flate"
+	"compress/gzip"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
+)
+
+const defaultUA = "Mozilla/5.0 (compatible; harvester/1.0)"
+
+// The Python oracle's curl_cffi DEFAULT_CHROME is chrome146. Keep the UA and
+// client-hint values coupled to the exact tls-client Chrome_146 profile below.
+const chromeUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
+
+// errorKind is the stable diagnostic class used by describe/negative-cache
+// callers. Keep it independent of the human-facing wrapped error string.
+func errorKind(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return "dns"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	low := strings.ToLower(err.Error())
+	for _, marker := range []string{"no such host", "name or service not known", "temporary failure in name resolution", "nodename nor servname", "no address associated"} {
+		if strings.Contains(low, marker) {
+			return "dns"
+		}
+	}
+	for _, marker := range []string{"connection refused", "connection reset", "connect:", "host is down", "network is unreachable"} {
+		if strings.Contains(low, marker) {
+			return "connect"
+		}
+	}
+	if strings.Contains(low, "unsupported protocol") || strings.Contains(low, "unsupported scheme") || strings.Contains(low, "invalid url") {
+		return "invalid"
+	}
+	if strings.Contains(low, "private") || strings.Contains(low, "internal") || strings.Contains(low, "not allowed") {
+		return "blocked"
+	}
+	return "connect"
+}
+
+func failureMessage(item string, status int, kind string, challenge bool) string {
+	if kind == "invalid" {
+		return fmt.Sprintf("Invalid URL: %s — check it for typos, or use `search` to find the source.", item)
+	}
+	if kind == "blocked" {
+		return fmt.Sprintf("refusing to fetch a private or internal host: %s — harvester only fetches public internet resources; use the resource's public URL instead.", item)
+	}
+	if kind == "timeout" {
+		return fmt.Sprintf("Could not reach %s: the server did not respond in time (connection timed out). Retry later, or use `search` to find an alternative copy.", item)
+	}
+	if kind == "dns" {
+		return fmt.Sprintf("Could not reach %s: DNS resolution failed (host not found). Retry later, or use `search` to find an alternative copy.", item)
+	}
+	if kind == "connect" {
+		return fmt.Sprintf("Could not reach %s: the connection failed (refused or host unreachable). Retry later, or use `search` to find an alternative copy.", item)
+	}
+	if challenge {
+		return fmt.Sprintf("%s is behind a bot/Cloudflare challenge — content not retrievable from this datacenter server. Use `search` to find a mirror or alternative copy.", item)
+	}
+	if status >= 400 {
+		meaning := map[int]string{400: "bad request", 401: "unauthorized", 403: "forbidden", 404: "page not found", 405: "method not allowed", 408: "request timeout", 410: "gone", 429: "too many requests", 500: "internal server error", 502: "bad gateway", 503: "service unavailable", 504: "gateway timeout"}[status]
+		if meaning == "" {
+			meaning = "request failed"
+		}
+		note := ""
+		if status == 403 || status == 429 || status == 503 {
+			note = " — likely a bot-block or rate limit"
+		}
+		return fmt.Sprintf("%s returned HTTP %d (%s)%s. Use `search` to find an alternative copy, or `findWorks` if it is a scholarly title.", item, status, meaning, note)
+	}
+	return fmt.Sprintf("Could not download %s — try `search` for an alternative source.", item)
+}
+
+// FailureMessage exposes the transport core's canonical terminal diagnostic
+// to protocol adapters. Keeping one renderer prevents MCP receipts from
+// drifting away from negative-cache and direct-fetch errors.
+func FailureMessage(item string, status int, kind string, challenge bool) string {
+	return failureMessage(item, status, kind, challenge)
+}
+
+func safeHTTPClient(chrome bool, resolve ...func(context.Context, string) ([]net.IP, error)) *http.Client {
+	timeout := 30 * time.Second
+	if chrome {
+		timeout = 45 * time.Second
+	}
+	var resolver func(context.Context, string) ([]net.IP, error)
+	if len(resolve) > 0 {
+		resolver = resolve[0]
+	}
+	return safeHTTPClientTimeoutWithResolver(chrome, timeout, resolver)
+}
+
+func safeHTTPClientTimeout(chrome bool, timeout time.Duration, resolve ...func(context.Context, string) ([]net.IP, error)) *http.Client {
+	var resolver func(context.Context, string) ([]net.IP, error)
+	if len(resolve) > 0 {
+		resolver = resolve[0]
+	}
+	return safeHTTPClientTimeoutWithResolver(chrome, timeout, resolver)
+}
+
+func safeHTTPClientTimeoutWithResolver(chrome bool, timeout time.Duration, resolver func(context.Context, string) ([]net.IP, error)) *http.Client {
+	var transport http.RoundTripper = &http.Transport{Proxy: http.ProxyFromEnvironment,
+		ForceAttemptHTTP2: !chrome, MaxIdleConns: 32, IdleConnTimeout: 30 * time.Second}
+	if chrome {
+		transport = newChromeTransport(resolver)
+	} else {
+		transport.(*http.Transport).DialContext = pinnedDialContext(resolver)
+	}
+	ua := defaultUA
+	if chrome {
+		ua = chromeUA
+	}
+	client := &http.Client{Transport: &userAgentTransport{base: transport, ua: ua, chrome: chrome}, Timeout: timeout}
+	client.CheckRedirect = func(req *http.Request, _ []*http.Request) error { return assertFetchable(req.URL.String()) }
+	return client
+}
+
+// PinnedDialContext resolves once and dials only the validated public address;
+// the original hostname is retained for TLS SNI by the caller.
+func pinnedDialContext(resolve func(context.Context, string) ([]net.IP, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := publicIPs(ctx, host, resolve)
+		if err != nil {
+			return nil, err
+		}
+		d := &net.Dialer{Timeout: 20 * time.Second}
+		var last error
+		for _, ip := range ips {
+			conn, e := d.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if e == nil {
+				return conn, nil
+			}
+			last = e
+		}
+		if last != nil {
+			return nil, last
+		}
+		return nil, fmt.Errorf("no public address for %s", host)
+	}
+}
+
+func publicIPs(ctx context.Context, host string, resolve func(context.Context, string) ([]net.IP, error)) ([]net.IP, error) {
+	if ip := literalIP(host); ip != nil {
+		if privateIP(ip) {
+			return nil, fmt.Errorf("refusing private/internal host %s", host)
+		}
+		return []net.IP{ip}, nil
+	}
+	if host == "localhost" || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return nil, fmt.Errorf("refusing private/internal host %s", host)
+	}
+	var ips []net.IP
+	var err error
+	if resolve != nil {
+		ips, err = resolve(ctx, host)
+	} else {
+		ips, err = net.DefaultResolver.LookupIP(ctx, "ip", host)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("DNS resolution failed for %s: %w", host, err)
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("DNS returned no addresses for %s", host)
+	}
+	for _, ip := range ips {
+		if privateIP(ip) {
+			return nil, fmt.Errorf("refusing private/internal host %s", host)
+		}
+	}
+	return ips, nil
+}
+
+// ChromeTransport reports the production transport identity for diagnostics
+// and tests without exposing the internal net/http wiring.
+func ChromeTransport(client *http.Client) bool {
+	if client == nil {
+		return false
+	}
+	if wrapped, ok := client.Transport.(*userAgentTransport); ok {
+		if !wrapped.chrome {
+			return false
+		}
+		_, ok := wrapped.base.(*chromeTransport)
+		return ok
+	}
+	return false
+}
+
+func configureProxy(client *http.Client, raw string) {
+	if client == nil || strings.TrimSpace(raw) == "" {
+		return
+	}
+	proxyURL, err := url.Parse(raw)
+	if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
+		return
+	}
+	var base http.RoundTripper = client.Transport
+	if wrapped, ok := base.(*userAgentTransport); ok {
+		base = wrapped.base
+	}
+	if transport, ok := base.(*chromeTransport); ok {
+		if err := transport.setProxy(raw); err != nil {
+			// The caller cannot surface an initialization error through this legacy
+			// helper. Keep the transport's previous proxy and leave a diagnostic in
+			// the request path rather than silently switching to an unsafe fallback.
+			transport.setProxyError(err)
+		}
+		return
+	}
+	if transport, ok := base.(*http.Transport); ok {
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+}
+
+func setUserAgent(client *http.Client, ua string) {
+	if client == nil || ua == "" {
+		return
+	}
+	if wrapped, ok := client.Transport.(*userAgentTransport); ok && !wrapped.chrome {
+		wrapped.ua = ua
+	}
+}
+
+type userAgentTransport struct {
+	base   http.RoundTripper
+	ua     string
+	chrome bool
+}
+
+func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := assertFetchable(req.URL.String()); err != nil {
+		return nil, err
+	}
+	clone := req.Clone(req.Context())
+	clone.Header.Set("User-Agent", t.ua)
+	if t.chrome {
+		clone.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		clone.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+		clone.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		clone.Header.Set("Priority", "u=0, i")
+		clone.Header.Set("Sec-Fetch-Dest", "document")
+		clone.Header.Set("Sec-Fetch-Mode", "navigate")
+		clone.Header.Set("Sec-Fetch-Site", "none")
+		clone.Header.Set("Sec-Fetch-User", "?1")
+		clone.Header.Set("Upgrade-Insecure-Requests", "1")
+		clone.Header.Set("Sec-CH-UA", `"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"`)
+		clone.Header.Set("Sec-CH-UA-Mobile", "?0")
+		clone.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
+	}
+	return t.base.RoundTrip(clone)
+}
+
+func assertFetchable(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("invalid URL: %s", raw)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme %q", u.Scheme)
+	}
+	if u.User != nil {
+		return errors.New("URL userinfo is not allowed")
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "" {
+		return errors.New("URL has no host")
+	}
+	if ip := literalIP(host); ip != nil {
+		if privateIP(ip) {
+			return fmt.Errorf("refusing private/internal host %s", host)
+		}
+		return nil
+	}
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "local" || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" {
+		return fmt.Errorf("refusing private/internal host %s", host)
+	}
+	// DNS rebind defense: if resolution succeeds, every address must be public.
+	ips, lookupErr := net.LookupIP(host)
+	if lookupErr == nil {
+		for _, ip := range ips {
+			if privateIP(ip) {
+				return fmt.Errorf("refusing private/internal host %s", host)
+			}
+		}
+	}
+	return nil
+}
+
+// AssertFetchable is the public SSRF/scheme chokepoint for adapters that need
+// to validate a URL before handing it to another worker.
+func AssertFetchable(raw string) error { return assertFetchable(raw) }
+
+func IsPrivateHost(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil || u.Hostname() == "" {
+		return true
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if ip := literalIP(host); ip != nil {
+		return privateIP(ip)
+	}
+	return host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "local" || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".ts.net")
+}
+
+// RobotsURL is retained for callers that display the source's policy URL.
+// Harvester intentionally does not enforce robots.txt (matching the Python
+// server's documented --ignore-robots-txt compatibility flag).
+func RobotsURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	u.Path = "/robots.txt"
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
+}
+
+func privateIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	if v4 := ip.To4(); v4 != nil {
+		n := uint32(v4[0])<<24 | uint32(v4[1])<<16 | uint32(v4[2])<<8 | uint32(v4[3])
+		if n >= 0x64400000 && n <= 0x647fffff {
+			return true
+		}
+		if n >= 0xc0000000 && n <= 0xc00000ff {
+			return true
+		}
+		if n >= 0xc6120000 && n <= 0xc613ffff {
+			return true
+		}
+		if n >= 0xf0000000 {
+			return true
+		}
+	}
+	return false
+}
+
+func literalIP(host string) net.IP {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip
+	}
+	if strings.HasPrefix(host, "0x") {
+		var value uint64
+		if _, err := fmt.Sscanf(host, "0x%x", &value); err == nil && value <= 0xffffffff {
+			return net.IPv4(byte(value>>24), byte(value>>16), byte(value>>8), byte(value))
+		}
+	}
+	if host != "" && strings.Trim(host, "0123456789") == "" {
+		var value uint64
+		if _, err := fmt.Sscanf(host, "%d", &value); err == nil && value <= 0xffffffff {
+			return net.IPv4(byte(value>>24), byte(value>>16), byte(value>>8), byte(value))
+		}
+	}
+	if strings.HasPrefix(host, "0") && strings.ContainsAny(host, "1234567") {
+		var value uint64
+		if _, err := fmt.Sscanf(host, "%o", &value); err == nil && value <= 0xffffffff {
+			return net.IPv4(byte(value>>24), byte(value>>16), byte(value>>8), byte(value))
+		}
+	}
+	return nil
+}
+
+func getBody(ctx context.Context, client *http.Client, rawURL, ua string, max int64) ([]byte, int, string, error) {
+	return getBodyWithHeaders(ctx, client, rawURL, ua, nil, max)
+}
+
+func getBodyWithHeaders(ctx context.Context, client *http.Client, rawURL, ua string, headers map[string]string, max int64) ([]byte, int, string, error) {
+	if err := assertFetchable(rawURL); err != nil {
+		return nil, 0, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("User-Agent", ua)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	// Do not trust a caller-supplied client to validate redirect hops. Clone it
+	// per request so every 3xx target re-enters the SSRF chokepoint without
+	// mutating shared client state.
+	requestClient := *client
+	requestClient.CheckRedirect = func(next *http.Request, _ []*http.Request) error { return assertFetchable(next.URL.String()) }
+	resp, err := requestClient.Do(req)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	decoded, closeBody, decodeErr := decodedResponseBody(resp)
+	if decodeErr != nil {
+		return nil, resp.StatusCode, resp.Header.Get("Content-Type"), decodeErr
+	}
+	defer closeBody()
+	limit := io.LimitReader(decoded, max+1)
+	body, err := io.ReadAll(limit)
+	if err != nil {
+		return nil, resp.StatusCode, resp.Header.Get("Content-Type"), fmt.Errorf("read response: %w", err)
+	}
+	if int64(len(body)) > max {
+		// Match the oracle's streaming cap: retain exactly the permitted prefix
+		// and let the caller's kind/converter decide whether truncation is usable.
+		body = body[:max]
+	}
+	return body, resp.StatusCode, resp.Header.Get("Content-Type"), nil
+}
+
+// decodedResponseBody keeps the Chrome fingerprint's advertised encodings
+// useful to the converter. net/http only auto-decompresses gzip when it adds
+// that header itself; Chrome sends the complete gzip/deflate/br/zstd list, so
+// decode the response chain explicitly (outermost encoding is last).
+func decodedResponseBody(resp *http.Response) (io.Reader, func() error, error) {
+	readers := []io.Reader{resp.Body}
+	closers := []io.Closer{resp.Body}
+	encodings := strings.Split(strings.ToLower(resp.Header.Get("Content-Encoding")), ",")
+	for i := len(encodings) - 1; i >= 0; i-- {
+		encoding := strings.TrimSpace(encodings[i])
+		if encoding == "" || encoding == "identity" {
+			continue
+		}
+		current := readers[len(readers)-1]
+		var next io.Reader
+		var closer io.Closer
+		var err error
+		switch encoding {
+		case "gzip", "x-gzip":
+			var zr *gzip.Reader
+			zr, err = gzip.NewReader(current)
+			next, closer = zr, zr
+		case "deflate":
+			fr := flate.NewReader(current)
+			closer, next = fr, fr
+		case "br":
+			next = brotli.NewReader(current)
+		case "zstd":
+			var decoder *zstd.Decoder
+			decoder, err = zstd.NewReader(current)
+			next, closer = decoder, noErrorCloser{closeFn: decoder.Close}
+		default:
+			return nil, func() error { return resp.Body.Close() }, fmt.Errorf("unsupported content encoding %q", encoding)
+		}
+		if err != nil {
+			for j := len(closers) - 1; j >= 0; j-- {
+				_ = closers[j].Close()
+			}
+			return nil, func() error { return nil }, fmt.Errorf("decode %s response: %w", encoding, err)
+		}
+		readers = append(readers, next)
+		if closer != nil {
+			closers = append(closers, closer)
+		}
+	}
+	closeFn := func() error {
+		var first error
+		for i := len(closers) - 1; i >= 0; i-- {
+			if err := closers[i].Close(); err != nil && first == nil {
+				first = err
+			}
+		}
+		return first
+	}
+	return readers[len(readers)-1], closeFn, nil
+}
+
+type noErrorCloser struct{ closeFn func() }
+
+func (c noErrorCloser) Close() error {
+	c.closeFn()
+	return nil
+}
+
+func classifyKind(source, contentType string, body []byte) string {
+	ct := baseContentType(contentType)
+	switch ct {
+	case "application/pdf":
+		return "pdf"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return "docx"
+	case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+		return "xlsx"
+	case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+		return "pptx"
+	case "application/zip", "application/x-zip-compressed":
+		return "zip"
+	case "application/x-zip":
+		return "zip"
+	case "application/x-7z-compressed":
+		return "7z"
+	case "application/x-rar-compressed", "application/vnd.rar":
+		return "rar"
+	case "application/x-tar", "application/gzip", "application/x-gzip", "application/x-bzip2", "application/x-xz":
+		return "tar"
+	case "application/json", "text/json", "application/ld+json":
+		return "json"
+	case "text/csv", "application/csv":
+		return "csv"
+	case "image/jpeg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	case "image/bmp":
+		return "bmp"
+	case "image/tiff":
+		return "tiff"
+	case "image/svg+xml":
+		return "svg"
+	case "text/plain", "text/markdown":
+		return "txt"
+	case "text/html", "application/xhtml+xml", "application/xml", "text/xml":
+		return "html"
+	}
+	if strings.Contains(ct, "openxmlformats-officedocument") {
+		switch {
+		case strings.Contains(ct, "wordprocessingml"):
+			return "docx"
+		case strings.Contains(ct, "spreadsheetml"):
+			return "xlsx"
+		case strings.Contains(ct, "presentationml"):
+			return "pptx"
+		default:
+			return "zip"
+		}
+	}
+	if strings.HasPrefix(ct, "image/") {
+		return "image"
+	}
+	if strings.HasPrefix(string(body), "%PDF-") {
+		return "pdf"
+	}
+	if len(body) >= 4 && string(body[:4]) == "PK\x03\x04" {
+		return "zip"
+	}
+	if len(body) >= 6 && string(body[:6]) == "7z\xbc\xaf\x27\x1c" {
+		return "7z"
+	}
+	if len(body) >= 7 && string(body[:7]) == "Rar!\x1a\x07" {
+		return "rar"
+	}
+	if len(body) >= 2 && body[0] == 0x1f && body[1] == 0x8b {
+		return "tar"
+	}
+	if len(body) >= 3 && string(body[:3]) == "BZh" {
+		return "tar"
+	}
+	if len(body) >= 6 && string(body[:6]) == "\xfd7zXZ\x00" {
+		return "tar"
+	}
+	if len(body) >= 8 && string(body[:8]) == "\x89PNG\r\n\x1a\n" {
+		return "png"
+	}
+	if len(body) >= 3 && body[0] == 0xff && body[1] == 0xd8 && body[2] == 0xff {
+		return "jpg"
+	}
+	if len(body) >= 6 && (string(body[:6]) == "GIF87a" || string(body[:6]) == "GIF89a") {
+		return "gif"
+	}
+	if len(body) >= 12 && string(body[:4]) == "RIFF" && string(body[8:12]) == "WEBP" {
+		return "webp"
+	}
+	if len(body) >= 2 && string(body[:2]) == "BM" {
+		return "bmp"
+	}
+	if len(body) >= 4 && (string(body[:4]) == "II*\x00" || string(body[:4]) == "MM\x00*") {
+		return "tiff"
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(body)), "<svg") || strings.Contains(strings.ToLower(string(body[:minInt(len(body), 512)])), "<svg") {
+		return "svg"
+	}
+	if strings.HasSuffix(strings.ToLower(strings.Split(strings.Split(source, "?")[0], "#")[0]), ".pdf") {
+		return "pdf"
+	}
+	lowSource := strings.ToLower(strings.Split(strings.Split(source, "?")[0], "#")[0])
+	for ext, kind := range map[string]string{
+		".jpg": "jpg", ".jpeg": "jpg", ".png": "png", ".gif": "gif", ".webp": "webp", ".bmp": "bmp", ".tif": "tiff", ".tiff": "tiff", ".svg": "svg",
+		".zip": "zip", ".tar": "tar", ".tar.gz": "tar", ".tgz": "tar", ".tar.bz2": "tar", ".tbz2": "tar", ".tar.xz": "tar", ".txz": "tar", ".gz": "tar", ".bz2": "tar", ".xz": "tar",
+		".7z": "7z", ".rar": "rar", ".pdf": "pdf", ".docx": "docx", ".xlsx": "xlsx", ".pptx": "pptx", ".csv": "csv",
+	} {
+		if strings.HasSuffix(lowSource, ext) {
+			return kind
+		}
+	}
+	if strings.HasSuffix(strings.ToLower(source), ".json") {
+		return "json"
+	}
+	if strings.HasSuffix(strings.ToLower(source), ".csv") {
+		return "csv"
+	}
+	lowSource = strings.ToLower(strings.Split(strings.Split(source, "?")[0], "#")[0])
+	for _, ext := range []string{".txt", ".text", ".md", ".markdown", ".rst", ".log", ".tex", ".org"} {
+		if strings.HasSuffix(lowSource, ext) {
+			return "txt"
+		}
+	}
+	if strings.HasSuffix(strings.ToLower(source), ".txt") || strings.HasSuffix(strings.ToLower(source), ".md") {
+		return "txt"
+	}
+	return "html"
+}
+
+func isChallenge(body []byte, status int) bool {
+	low := strings.ToLower(string(body))
+	for _, marker := range []string{"just a moment", "checking your browser", "checking your browser before", "cf-browser-verification", "cf-chl-", "are you a robot", "confirm you are a human", "enable javascript and cookies", "captcha challenge", "completing the captcha", "verify you are human", "verifying you are human"} {
+		if strings.Contains(low, marker) {
+			return true
+		}
+	}
+	if contentChars(string(body)) <= 4000 {
+		for _, marker := range []string{"captcha", "cloudflare", "turnstile", "attention required"} {
+			if strings.Contains(low, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stripJinaEnvelope(text string) string {
+	if idx := strings.Index(text, "Markdown Content:"); idx >= 0 {
+		return strings.TrimLeft(text[idx+len("Markdown Content:"):], "\r\n")
+	}
+	lines := strings.Split(text, "\n")
+	i := 0
+	for i < len(lines) {
+		key, _, ok := strings.Cut(lines[i], ":")
+		if !ok {
+			break
+		}
+		switch key {
+		case "Title", "URL Source", "Published Time", "Markdown Content", "Warning":
+			i++
+		default:
+			return text
+		}
+	}
+	return strings.TrimLeft(strings.Join(lines[i:], "\n"), "\r\n")
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

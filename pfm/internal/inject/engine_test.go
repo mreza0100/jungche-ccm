@@ -41,6 +41,7 @@ type fakeTmux struct {
 	capture       string
 	styled        string
 	literal       string
+	literalBuffer string
 	literals      []string
 	pasted        bool
 	windowName    string
@@ -117,6 +118,7 @@ func (fake *fakeTmux) SendLiteral(
 		return errors.New("dead")
 	}
 	fake.literal = text
+	fake.literalBuffer += text
 	fake.literals = append(fake.literals, text)
 	if fake.hideLiteral {
 		return nil
@@ -166,17 +168,18 @@ func (fake *fakeTmux) SendKey(
 			fake.capture = "draft stashed\n❯ "
 		}
 	case "Enter":
-		if fake.submitOnEnter && fake.literal != "" {
+		if fake.submitOnEnter && fake.literalBuffer != "" {
 			if fake.submitCapture != "" {
 				fake.capture = strings.ReplaceAll(
 					fake.submitCapture,
 					"{{MESSAGE}}",
-					fake.literal,
+					fake.literalBuffer,
 				)
 			} else {
-				fake.capture = "USER: " + fake.literal + "\n❯ "
+				fake.capture = "USER: " + fake.literalBuffer + "\n❯ "
 			}
 			fake.literal = ""
+			fake.literalBuffer = ""
 			fake.submitted = true
 		}
 	}
@@ -276,7 +279,8 @@ func newTestEngineWith(
 			Sender:            &Sender{Session: "sender", Label: "Operator", UUID: "1234567890"},
 			ClaudeAutoFileMax: ClaudeAutoFileMax,
 			CodexAutoFileMax:  CodexAutoFileMax,
-			AbsoluteByteMax:   AbsoluteMessageMax,
+			CommandChunkRunes: CommandChunkRunes,
+			CommandChunkGap:   time.Nanosecond,
 		},
 	})
 	if err != nil {
@@ -450,15 +454,21 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 	}
 }
 
-func TestInjectAbsoluteCapPrecedesTyping(t *testing.T) {
-	fake := &fakeTmux{capture: "› "}
-	engine := newTestEngine(t, "cx-1-2-3", fake)
+func TestInjectBodyAboveFormerAbsoluteCapUsesAutoFile(t *testing.T) {
+	fake := &fakeTmux{capture: "› ", submitOnEnter: true}
+	engine := newTestEngine(t, "cx-former-absolute-cap", fake)
+	body := "former absolute cap payload\n" + strings.Repeat("x", 1<<20)
 	result, err := engine.Inject(context.Background(), Request{
 		Target:  "chat",
-		Message: strings.Repeat("x", 1<<20),
+		Message: body,
 	})
-	if err != nil || result.Code != 6 || result.Typed || len(fake.keys) != 0 {
-		t.Fatalf("absolute cap result=%+v keys=%q err=%v", result, fake.keys, err)
+	if err != nil || result.Code != 0 || result.AutoFilePath == "" ||
+		!strings.Contains(result.Message, "AUTO-FILE") || len(fake.literals) != 1 {
+		t.Fatalf("former absolute cap result=%+v literals=%d err=%v", result, len(fake.literals), err)
+	}
+	stored, readErr := os.ReadFile(result.AutoFilePath)
+	if readErr != nil || string(stored) != body {
+		t.Fatalf("former absolute cap body=%d bytes err=%v", len(stored), readErr)
 	}
 }
 
@@ -531,6 +541,48 @@ func TestInjectAutoFileBoundaryAndKillerBody(t *testing.T) {
 				t.Fatalf("killer body was not reduced to a safe pointer: result=%+v literal=%q err=%v", killerResult, killerFake.literals, err)
 			}
 		})
+	}
+}
+
+// TestLongProseAutoFilePreservesBodySignatureAndProof covers the other side
+// of the unlimited-inject contract: plain prose remains durable file-backed
+// transport, while only its short signed pointer crosses the TUI boundary.
+func TestLongProseAutoFilePreservesBodySignatureAndProof(t *testing.T) {
+	body := "long prose payload\n" + strings.Repeat("byte-exact body ", 400)
+	fake := &fakeTmux{
+		capture:       "conversation\n❯ ",
+		submitOnEnter: true,
+		submitCapture: "USER: {{MESSAGE}}\n❯ ",
+	}
+	engine := newTestEngine(t, "cc-long-prose", fake)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "delivered" ||
+		result.AutoFilePath == "" || result.Unsigned {
+		t.Fatalf("long prose result=%+v err=%v", result, err)
+	}
+	stored, err := os.ReadFile(result.AutoFilePath)
+	if err != nil || string(stored) != body {
+		t.Fatalf("canonical body changed: bytes=%d err=%v", len(stored), err)
+	}
+	if len(fake.literals) != 1 {
+		t.Fatalf("auto-file pointer used unexpected transport chunks: %d", len(fake.literals))
+	}
+	pointer := fake.literals[0]
+	if strings.Contains(pointer, body) ||
+		!strings.Contains(pointer, "long prose payload — read "+result.AutoFilePath+" fully") ||
+		!strings.Contains(pointer, "to reply: /chat:inject sender <message>") {
+		t.Fatalf("pointer changed body/signature semantics: %q", pointer)
+	}
+	if !strings.Contains(result.Message, "AUTO-FILE") ||
+		!strings.Contains(result.Message, result.AutoFilePath) ||
+		!strings.Contains(result.Proof, "long prose payload — read "+result.AutoFilePath+" fully") {
+		t.Fatalf("auto-file receipt/proof lacks pointer evidence: result=%+v", result)
 	}
 }
 

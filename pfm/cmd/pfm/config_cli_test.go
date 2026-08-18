@@ -68,7 +68,7 @@ func TestConfigCLIMCPListReportsConfiguredStateAndSource(t *testing.T) {
 	if code := run([]string{"--config", path, "mcp", "ls"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("run(mcp ls) code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if got, want := stdout.String(), "chat\ttrue\tfile\n"; got != want {
+	if got, want := stdout.String(), "chat\ttrue\tfile\nharvester\tfalse\tdefault\n"; got != want {
 		t.Fatalf("run(mcp ls) stdout=%q, want %q", got, want)
 	}
 	if stderr.Len() != 0 {
@@ -90,6 +90,23 @@ func TestConfigCLIDisabledMCPServeExplainsEnablePath(t *testing.T) {
 	want := "pfm mcp chat: disabled by config " + path + "; enable it with: pfm --config " + path + " mcp chat enable"
 	if stdout.Len() != 0 || strings.TrimSpace(stderr.String()) != want {
 		t.Fatalf("run(disabled mcp serve) stdout=%q stderr=%q, want actionable message %q", stdout.String(), stderr.String(), want)
+	}
+}
+
+func TestConfigCLIDisabledHarvesterMCPServeExplainsEnablePath(t *testing.T) {
+	root := jailTest(t)
+	path := writeConfigFixture(t, root, `{
+  "version": 1,
+  "mcp": {"servers": {"harvester": {"enabled": false}}}
+}`)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--config", path, "mcp", "harvester", "serve"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("run(disabled harvester serve) code=%d stdout=%q stderr=%q, want config refusal", code, stdout.String(), stderr.String())
+	}
+	want := "pfm mcp harvester: disabled by config " + path + "; enable it with: pfm --config " + path + " mcp harvester enable"
+	if stdout.Len() != 0 || strings.TrimSpace(stderr.String()) != want {
+		t.Fatalf("run(disabled harvester serve) stdout=%q stderr=%q, want %q", stdout.String(), stderr.String(), want)
 	}
 }
 
@@ -174,6 +191,7 @@ func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 		"doctor: config codex.yolo=false (file)",
 		"doctor: config codex.binary=codex-fixture (file)",
 		"doctor: config mcp.servers.chat.enabled=true (file)",
+		"doctor: config mcp.servers.harvester.enabled=false (default)",
 	}, "\n") + "\n"
 	if stdout.String() != want {
 		t.Fatalf("printDoctorConfig() = %q, want %q", stdout.String(), want)

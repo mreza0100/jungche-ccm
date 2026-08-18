@@ -45,6 +45,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runLS(args[1:], stdout, stderr, runtime)
 	case "chat":
 		return runChatWithRuntime(args[1:], os.Stdin, stdout, stderr, runtime)
+	case "harvest":
+		return runHarvest(args[1:], stdout, stderr, runtime)
 	case "headless":
 		fmt.Fprintln(stderr, "pfm: 'headless' is deprecated; use 'pfm chat'")
 		return runHeadless(args[1:], stdout, stderr, runtime)
@@ -74,6 +76,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runWhoami(args[1:], stdout, stderr, runtime)
 	case "mcp":
 		return runMCP(args[1:], stdout, stderr, runtime)
+	case "codex":
+		return runCodex(args[1:], stdout, stderr, runtime)
 	case "internal":
 		return runInternal(args[1:], stdout, stderr, runtime)
 	case "help", "-h", "--help":
@@ -109,7 +113,7 @@ func runMCP(
 		}
 		return 0
 	}
-	if len(args) != 2 {
+	if len(args) < 2 || (len(args) > 2 && !(args[0] == "harvester" && args[1] == "serve")) {
 		fmt.Fprintln(stderr, "usage: pfm mcp ls | pfm mcp <server> enable|disable|serve")
 		return 2
 	}
@@ -147,6 +151,9 @@ func runMCP(
 			name,
 		)
 		return 1
+	}
+	if name == "harvester" {
+		return runHarvesterMCP(args[1:], stdout, stderr, runtime)
 	}
 	if name != "chat" {
 		fmt.Fprintf(stderr, "pfm mcp %s: registered server has no implementation\n", name)
@@ -460,6 +467,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "operator commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
 	fmt.Fprintln(w, "  chat      operate on one chat: new, open, inject, ask, read, stream, name, hide, end")
+	fmt.Fprintln(w, "  harvest   fetch and convert URL, DOI, ISBN, PMID, PMCID, or local path")
 	fmt.Fprintln(w, "  dream     build and inject repository memory organs")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
@@ -476,4 +484,5 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  statusline render the native Claude status line")
 	fmt.Fprintln(w, "  usage-hook the fail-open usage-limit prompt hook")
 	fmt.Fprintln(w, "  mcp       list, configure, or serve registered stdio MCP servers")
+	fmt.Fprintln(w, "  codex     compile or check the Codex project mirror")
 }

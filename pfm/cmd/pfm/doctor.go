@@ -7,13 +7,35 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	goRuntime "runtime"
 	"strconv"
 	"strings"
 
 	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/store"
 )
+
+type harvestDoctor interface {
+	Inspect(string, harvestpy.Platform) (harvestpy.EnvironmentDigest, error)
+	Check(context.Context, string, harvestpy.Platform) (harvestpy.CheckReport, error)
+}
+
+type pinnedHarvestDoctor struct{}
+
+// harvestDoctorOverride is nil in production. The command-package TestMain
+// supplies a complete no-network fixture so existing doctor tests exercise
+// fleet health without requiring a user-managed Python environment.
+var harvestDoctorOverride harvestDoctor
+
+func (pinnedHarvestDoctor) Inspect(root string, platform harvestpy.Platform) (harvestpy.EnvironmentDigest, error) {
+	return harvestpy.Inspect(root, platform)
+}
+
+func (pinnedHarvestDoctor) Check(ctx context.Context, root string, platform harvestpy.Platform) (harvestpy.CheckReport, error) {
+	return harvestpy.Check(ctx, root, platform)
+}
 
 func runDoctor(
 	args []string,
@@ -174,12 +196,114 @@ func runDoctor(
 			crumbInvalid,
 		)
 	}
+	warnings += printHarvestPythonDoctor(ctx, stdout, resolved.Home, harvestpy.Platform{}, configuredHarvestDoctor())
 	if warnings != 0 {
 		fmt.Fprintf(stdout, "doctor: warnings=%d\n", warnings)
 		return 1
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+func configuredHarvestDoctor() harvestDoctor {
+	if harvestDoctorOverride != nil {
+		return harvestDoctorOverride
+	}
+	return pinnedHarvestDoctor{}
+}
+
+func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string, platform harvestpy.Platform, doctor harvestDoctor) int {
+	if platform.GOOS == "" {
+		platform.GOOS, platform.GOARCH = goRuntime.GOOS, goRuntime.GOARCH
+	}
+	root := filepath.Join(home, ".local", "state", "pfm", "harvest-python")
+	current := harvestpy.RuntimeRoot(root, platform)
+	interpreter := filepath.Join(current, "project", ".venv", "bin", "python")
+	warnings := 0
+
+	plan, planErr := harvestpy.Plan(platform)
+	if planErr != nil {
+		fmt.Fprintf(stdout, "doctor: harvestpy pinned_version=(default) unavailable error=%v\n", planErr)
+		warnings++
+	} else {
+		fmt.Fprintf(stdout, "doctor: harvestpy pinned_version=(default) %s\n", plan.PythonVersion)
+		if len(plan.PackageBlockers) != 0 || plan.PackageDownloadStatus == "blocked-exact-lock" {
+			warnings++
+			fmt.Fprintf(stdout, "doctor: harvestpy package_plan=(default) blocked-exact-lock\n")
+			for _, blocker := range plan.PackageBlockers {
+				fmt.Fprintf(stdout, "doctor: harvestpy package_blocker=%s\n", blocker)
+			}
+		}
+	}
+
+	digest, inspectErr := doctor.Inspect(root, platform)
+	report, checkErr := doctor.Check(ctx, root, platform)
+	if report.Digest.Python != "" {
+		digest = report.Digest
+	}
+
+	interpreterStatus, interpreterErr := harvestDoctorCheck(report, "interpreter", checkErr)
+	if interpreterStatus {
+		fmt.Fprintf(stdout, "doctor: harvestpy interpreter=(file) %s version=%s\n", interpreter, digest.Python)
+	} else {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: harvestpy interpreter=(file) %s broken error=%s\n", interpreter, interpreterErr)
+	}
+	if inspectErr != nil && digest.LockSHA256 == "" {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: harvestpy marker=(file) broken error=%v\n", inspectErr)
+	}
+
+	lockOK, lockErr := harvestDoctorCheck(report, "lock_completeness", checkErr)
+	if lockOK && digest.LockSHA256 != "" {
+		fmt.Fprintf(stdout, "doctor: harvestpy lock=(file) complete digest=%s\n", digest.LockSHA256)
+	} else {
+		warnings++
+		if lockErr == "" {
+			lockErr = "lock digest or completeness check is missing"
+		}
+		fmt.Fprintf(stdout, "doctor: harvestpy lock=(file) incomplete error=%s\n", lockErr)
+	}
+
+	inventoryOK, inventoryErr := harvestDoctorCheck(report, "lock_completeness", checkErr)
+	if inventoryOK && digest.InventorySHA256 != "" && digest.InventoryCount > 0 {
+		fmt.Fprintf(stdout, "doctor: harvestpy inventory=(file) complete count=%d digest=%s\n", digest.InventoryCount, digest.InventorySHA256)
+	} else {
+		warnings++
+		if inventoryErr == "" {
+			inventoryErr = "installed inventory digest/count is missing"
+		}
+		fmt.Fprintf(stdout, "doctor: harvestpy inventory=(file) incomplete error=%s\n", inventoryErr)
+	}
+
+	smokeOK, smokeErr := harvestDoctorCheck(report, "live_smoke", checkErr)
+	conversionOK, conversionErr := harvestDoctorCheck(report, "live_smoke_conversion", checkErr)
+	if smokeOK && conversionOK {
+		fmt.Fprintln(stdout, "doctor: harvestpy live_smoke=(file) healthy")
+	} else {
+		warnings++
+		if smokeErr == "" {
+			smokeErr = conversionErr
+		}
+		if smokeErr == "" {
+			smokeErr = "live smoke check did not pass"
+		}
+		fmt.Fprintf(stdout, "doctor: harvestpy live_smoke=(file) broken error=%s\n", smokeErr)
+	}
+	return warnings
+}
+
+func harvestDoctorCheck(report harvestpy.CheckReport, name string, checkErr error) (bool, string) {
+	if status, ok := report.Checks[name]; ok {
+		return status.OK, status.Error
+	}
+	if report.Healthy && checkErr == nil {
+		return true, ""
+	}
+	if checkErr != nil {
+		return false, checkErr.Error()
+	}
+	return false, "check did not report healthy"
 }
 
 func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {

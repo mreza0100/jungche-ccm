@@ -26,12 +26,18 @@ type slowIndexRunner struct {
 	options []fleetindex.Options
 }
 
-type immediateIndexRunner struct{}
+type immediateIndexRunner struct {
+	mutex   sync.Mutex
+	options []fleetindex.Options
+}
 
-func (immediateIndexRunner) Run(
-	context.Context,
-	fleetindex.Options,
+func (runner *immediateIndexRunner) Run(
+	_ context.Context,
+	options fleetindex.Options,
 ) (fleetindex.Counters, error) {
+	runner.mutex.Lock()
+	runner.options = append(runner.options, options)
+	runner.mutex.Unlock()
 	return fleetindex.Counters{}, nil
 }
 
@@ -47,6 +53,7 @@ func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
 	defer cancel()
 	updates := make(chan ui.Snapshot, 1)
 	var stderr bytes.Buffer
+	runner := &immediateIndexRunner{}
 	go streamFleetRefreshesWith(
 		ctx,
 		database,
@@ -55,7 +62,7 @@ func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
 		&stderr,
 		updates,
 		refreshDependencies{newIndexer: func(*store.Store) (indexRunner, error) {
-			return immediateIndexRunner{}, nil
+			return runner, nil
 		}},
 	)
 	for {
@@ -67,16 +74,78 @@ func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
 			break
 		}
 	}
-	select {
-	case _, ok := <-updates:
-		if !ok {
-			t.Fatalf("refresh stream closed before recurring scan: %s", stderr.String())
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case snapshot, ok := <-updates:
+			if !ok {
+				t.Fatalf("refresh stream closed before recurring scan: %s", stderr.String())
+			}
+			if !snapshot.Refreshing {
+				goto refreshed
+			}
+		case <-deadline:
+			t.Fatal("picker did not refresh again within the four-second interval")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("picker did not refresh again within the four-second interval")
+	}
+
+refreshed:
+	cancel()
+	for range updates {
+	}
+	runner.mutex.Lock()
+	options := append([]fleetindex.Options(nil), runner.options...)
+	runner.mutex.Unlock()
+	if len(options) < 2 {
+		t.Fatalf("routine picker index stages = %#v, want initial and recurring priority passes", options)
+	}
+	for index, option := range options {
+		if !option.PriorityOnly || option.Full {
+			t.Fatalf("routine picker index stage %d walked the whole corpus: %#v", index, option)
+		}
+	}
+}
+
+func TestPickerExplicitReloadStillRunsOneFullIndex(t *testing.T) {
+	jailTest(t)
+	t.Setenv(codexAvailableEnv, "0")
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	updates := make(chan ui.Snapshot, 1)
+	runner := &immediateIndexRunner{}
+	var stderr bytes.Buffer
+	go streamFleetRefreshesWith(
+		ctx,
+		database,
+		scanRequest{ForceFull: true},
+		printWarn(&stderr),
+		&stderr,
+		updates,
+		refreshDependencies{newIndexer: func(*store.Store) (indexRunner, error) {
+			return runner, nil
+		}},
+	)
+	for {
+		snapshot, ok := <-updates
+		if !ok {
+			t.Fatalf("explicit refresh stream closed early: %s", stderr.String())
+		}
+		if !snapshot.Refreshing {
+			break
+		}
 	}
 	cancel()
 	for range updates {
+	}
+	runner.mutex.Lock()
+	options := append([]fleetindex.Options(nil), runner.options...)
+	runner.mutex.Unlock()
+	if len(options) != 1 || !options[0].Full || options[0].PriorityOnly {
+		t.Fatalf("explicit reload index stages = %#v, want one full pass", options)
 	}
 }
 
@@ -242,11 +311,9 @@ func TestCachedFirstPaintWhileIndexRefreshIsSlow(t *testing.T) {
 	runner.mutex.Lock()
 	options := append([]fleetindex.Options(nil), runner.options...)
 	runner.mutex.Unlock()
-	if len(options) != 2 ||
+	if len(options) != 1 ||
 		!options[0].PriorityOnly ||
-		options[0].PriorityCWD != cwd ||
-		options[1].PriorityOnly ||
-		options[1].PriorityCWD != cwd {
+		options[0].PriorityCWD != cwd {
 		t.Fatalf("async index stages = %#v", options)
 	}
 	runtime.GC()
@@ -255,7 +322,7 @@ func TestCachedFirstPaintWhileIndexRefreshIsSlow(t *testing.T) {
 		t.Fatalf("async refresh leaked goroutines: before=%d after=%d", before, after)
 	}
 	t.Logf(
-		"STRESS cached_rows=%d first_paint=%s scan=%s model=%s view=%s slow_index_async=true refreshes=3 cursor_follow=true goroutines=%d/%d strict=%t",
+		"STRESS cached_rows=%d first_paint=%s scan=%s model=%s view=%s slow_index_async=true refreshes=3 priority_only=true cursor_follow=true goroutines=%d/%d strict=%t",
 		rows,
 		firstPaint,
 		scanReady,
@@ -324,7 +391,7 @@ func TestAsyncCallerRefreshStormPreservesCursorAndGoroutines(t *testing.T) {
 			updates,
 			refreshDependencies{
 				newIndexer: func(*store.Store) (indexRunner, error) {
-					return immediateIndexRunner{}, nil
+					return &immediateIndexRunner{}, nil
 				},
 			},
 		)

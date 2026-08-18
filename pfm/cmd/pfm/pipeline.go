@@ -528,12 +528,14 @@ func streamFleetRefreshesWith(
 		}
 	}
 
-	if _, err := indexer.Run(ctx, fleetindex.Options{
-		Full:        request.ForceFull,
-		PriorityCWD: environment.currentDir,
-	}); err != nil {
-		fmt.Fprintf(stderr, "pfm refresh full index: %v\n", err)
-		return
+	if request.ForceFull {
+		if _, err := indexer.Run(ctx, fleetindex.Options{
+			Full:        true,
+			PriorityCWD: environment.currentDir,
+		}); err != nil {
+			fmt.Fprintf(stderr, "pfm refresh full index: %v\n", err)
+			return
+		}
 	}
 	data, err = loadFleetData(ctx, database)
 	if err != nil {
@@ -599,7 +601,8 @@ func streamFleetRefreshesWith(
 			return
 		}
 		if _, err = indexer.Run(ctx, fleetindex.Options{
-			PriorityCWD: environment.currentDir,
+			PriorityCWD:  environment.currentDir,
+			PriorityOnly: true,
 		}); err != nil {
 			fmt.Fprintf(stderr, "pfm refresh index: %v\n", err)
 			continue

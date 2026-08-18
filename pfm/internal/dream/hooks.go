@@ -301,7 +301,7 @@ func nudgeHook(projectDirectory string, now time.Time) ([]byte, error) {
 		info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return nil, nil
 	}
-	failedPath := filepath.Join(hookContext.Organ, "dreamer", "nudge.failed")
+	failedPath := filepath.Join(organ.ScratchRoot(hookContext.Organ), "nudge.failed")
 	output, checkErr := checkNudge(hookContext.Organ, now)
 	if checkErr != nil {
 		if err := writeNudgeFailure(failedPath, checkErr, now); err != nil {
@@ -331,7 +331,7 @@ func checkNudge(organRoot string, now time.Time) (string, error) {
 		nightMarkerErr = fmt.Errorf("inspect night failure %s: %w", nightFailedPath, err)
 	}
 
-	failedPath := filepath.Join(organRoot, "dreamer", "nudge.failed")
+	failedPath := filepath.Join(organ.ScratchRoot(organRoot), "nudge.failed")
 	if info, err := os.Lstat(failedPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return "", fmt.Errorf("nudge failure marker is not regular: %s", failedPath)

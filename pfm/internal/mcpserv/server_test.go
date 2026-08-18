@@ -356,7 +356,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		!strings.Contains(numberedDraft.Message, "draft that will not stash") {
 		t.Fatalf("numbered Codex draft result=%+v", numberedDraft)
 	}
-	codexOversize := callTool[InjectOutput](
+	codexLongWithDraft := callTool[InjectOutput](
 		t,
 		session,
 		"chat_inject",
@@ -365,18 +365,27 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 			Message: strings.Repeat("x", 1501),
 		},
 	)
-	if codexOversize.Code != 6 ||
-		codexOversize.Typed ||
-		codexOversize.Status != "refused" {
-		t.Fatalf("Codex cap result=%+v", codexOversize)
+	if codexLongWithDraft.Code != 6 ||
+		codexLongWithDraft.Typed ||
+		codexLongWithDraft.Status != "refused" ||
+		!strings.Contains(codexLongWithDraft.Message, "draft that will not stash") {
+		t.Fatalf("Codex long-body draft guard result=%+v", codexLongWithDraft)
 	}
 
+	oversizeBody := strings.Repeat("x", 1<<20)
 	oversize := callTool[InjectOutput](t, session, "chat_inject", InjectInput{
 		Target:  "Fixture Label",
-		Message: strings.Repeat("x", 1<<20),
+		Message: oversizeBody,
 	})
-	if oversize.Code != 6 || oversize.Typed || oversize.Status != "refused" {
+	if oversize.Code != 0 || !oversize.Typed || oversize.Status != "delivered" ||
+		oversize.AutoFilePath == "" ||
+		!strings.Contains(oversize.Message, "AUTO-FILE") ||
+		!strings.Contains(oversize.Proof, "read "+oversize.AutoFilePath+" fully") {
 		t.Fatalf("oversize chat_inject = %+v", oversize)
+	}
+	storedOversize, err := os.ReadFile(oversize.AutoFilePath)
+	if err != nil || string(storedOversize) != oversizeBody {
+		t.Fatalf("oversize body bytes=%d err=%v", len(storedOversize), err)
 	}
 }
 
@@ -807,7 +816,8 @@ func TestMCPAdversarialUnknownAndHugeArguments(t *testing.T) {
 		Target:  "missing",
 		Message: strings.Repeat("x", 1<<20),
 	})
-	if huge.Code != 6 || huge.Typed || huge.Status != "refused" {
+	if huge.Code != 4 || huge.Typed || huge.Status != "refused" ||
+		!strings.Contains(huge.Message, "matched no live chat") {
 		t.Fatalf("huge injection = %+v", huge)
 	}
 }

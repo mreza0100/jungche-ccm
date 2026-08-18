@@ -196,7 +196,19 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 		kill.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
 		_ = kill.Run()
 	})
-	time.Sleep(100 * time.Millisecond)
+	selectorDeadline := time.Now().Add(5 * time.Second)
+	for {
+		capture := exec.Command("tmux", "-L", selectorSocket, "capture-pane", "-t", selectorSession, "-p", "-J")
+		capture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
+		output, captureErr := capture.Output()
+		if captureErr == nil && strings.Contains(string(output), "❯ 1. Allow") {
+			break
+		}
+		if time.Now().After(selectorDeadline) {
+			t.Fatalf("selector probe did not become ready: err=%v capture=%q", captureErr, output)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	stdout.Reset()
 	stderr.Reset()
 	code = run([]string{"chat", "inject", selectorSession, "must not type"}, &stdout, &stderr)
@@ -217,7 +229,9 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 		_ = kill.Run()
 	})
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
-	longBody := "file-start " + strings.Repeat("0123456789abcdef", 140) + " file-end"
+	// Five kilobytes must be harmlessly pointer-delivered; it must never be
+	// expanded into a giant composer paste or a truncated inline argument.
+	longBody := "file-start " + strings.Repeat("0123456789abcdef", 320) + " file-end"
 	messagePath := filepath.Join(root, "long-message.txt")
 	if err := os.WriteFile(messagePath, []byte(longBody), 0o600); err != nil {
 		t.Fatal(err)
@@ -250,8 +264,54 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 	fileOutput, err := fileCapture.Output()
 	if err != nil || !strings.Contains(string(fileOutput), "file-start") ||
 		!strings.Contains(string(fileOutput), "read ") ||
-		strings.Contains(string(fileOutput), "file-end") {
+		strings.Contains(string(fileOutput), "file-end") ||
+		strings.Contains(string(fileOutput), "--file "+messagePath) {
 		t.Fatalf("file-backed pointer missing or full body leaked: err=%v capture=%q", err, fileOutput)
+	}
+
+	// The old shell accepted the compatibility spelling with the target first.
+	// It must still consume --file as a flag; the raw flag text is not a body.
+	compatBody := "compat-start " + strings.Repeat("zyxw", 1300) + " compat-end"
+	compatPath := filepath.Join(root, "compat-long-message.txt")
+	if err := os.WriteFile(compatPath, []byte(compatBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"chat", "inject", fileSession, "--file", compatPath}, &stdout, &stderr)
+	if code != 0 || !strings.Contains(stdout.String(), "AUTO-FILE") {
+		t.Fatalf("target-followed --file exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), compatPath) ||
+		strings.Contains(stdout.String(), "injected LIVE into") {
+		t.Fatalf("target-followed receipt lost file-backed provenance: %q", stdout.String())
+	}
+	compatCapture := exec.Command("tmux", "-L", fileSocket, "capture-pane", "-t", fileSession, "-p", "-J", "-S", "-")
+	compatCapture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+root, "HOME="+home)
+	compatOutput, err := compatCapture.Output()
+	if err != nil || !strings.Contains(string(compatOutput), "compat-start") ||
+		!strings.Contains(string(compatOutput), "read ") ||
+		strings.Contains(string(compatOutput), "--file "+compatPath) ||
+		strings.Contains(string(compatOutput), "compat-end") ||
+		strings.Contains(string(compatOutput), compatBody) {
+		t.Fatalf("target-followed --file delivered wrong body: err=%v capture=%q", err, compatOutput)
+	}
+	compatCanonical, err := filepath.Glob(filepath.Join(
+		home, ".local", "state", "pfm", "inject-bodies", "*.md",
+	))
+	if err != nil || len(compatCanonical) != 2 {
+		t.Fatalf("target-followed canonical bodies=%q err=%v", compatCanonical, err)
+	}
+	foundCompat := false
+	for _, path := range compatCanonical {
+		stored, readErr := os.ReadFile(path)
+		if readErr == nil && string(stored) == compatBody {
+			foundCompat = true
+			break
+		}
+	}
+	if !foundCompat {
+		t.Fatalf("target-followed --file did not persist the exact body: %q", compatCanonical)
 	}
 }
 

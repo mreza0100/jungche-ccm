@@ -32,8 +32,8 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(runner.calls) == 0 || runner.calls[0] != "systemctl --user status" {
-		t.Fatalf("installer did not prove the dead user bus before touching fixtures: %v", runner.calls)
+	if len(runner.calls) == 0 || runner.calls[0] != "systemctl --user is-active --quiet pfm-name-sync.service" {
+		t.Fatalf("installer did not probe the running-service gate before touching fixtures: %v", runner.calls)
 	}
 
 	for _, path := range []string{canonical, secondary} {
