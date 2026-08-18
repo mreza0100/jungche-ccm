@@ -1,6 +1,6 @@
 ---
-name: rr-fast
-description: Fast inline research answer to one query — a targeted WebSearch maps the question, a parallel wave of Haiku sub-agents digs the 2-4 highest-value rabbit-holes (WebSearch + WebFetch 2-3 sources each), and the findings synthesize into an answer with inline source links. Delegate whenever the request is "rr fast", "quick research", or "fast answer with sources" and a single web search will not do but a full RR Workflow run is overkill. Standalone — never assumes the rr skill, its Workflow engine, or any of its files are installed. Minutes-scale, no background job. Returns an inline answer with citations and open questions only — never a fabricated citation, never a background report.
+name: frr
+description: Fast inline research answer to one query — a targeted WebSearch maps the question, a parallel wave of Haiku sub-agents digs the 2-4 highest-value rabbit-holes (WebSearch + WebFetch 2-3 sources each), and the findings synthesize into an answer with inline source links. Delegate whenever the request is "frr", "quick research", or "fast answer with sources" and a single web search will not do but a full RR Workflow run is overkill. Standalone — never assumes the rr skill, its Workflow engine, or any of its files are installed. Minutes-scale, no background job. Returns an inline answer with citations and open questions only — never a fabricated citation, never a background report.
 tools: WebSearch, WebFetch, Read, Agent
 model: sonnet
 ---
