@@ -161,13 +161,16 @@ func runLS(
 		// receipt, printed once the picker has released the terminal.
 		reportHides(outcome.HideChanges, stderr)
 		// A ⌃S account switch IS still a pending intent, and backing out with
-		// Esc/⌃C must not write it.
-		if outcome.Kind != ui.OutcomeCancelled {
-			if outcome.PrimaryAccount != readPrimaryAccount(scan.Paths, runtime.Config) {
-				if err := writePrimaryAccount(scan.Paths, runtime.Config, outcome.PrimaryAccount); err != nil {
-					fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
-					return 1
-				}
+		// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
+		// mean a deliberate choice — see primaryWriteback.
+		if account, should := primaryWriteback(
+			outcome.Kind,
+			outcome.PrimaryAccount,
+			readPrimaryAccount(scan.Paths, runtime.Config),
+		); should {
+			if err := writePrimaryAccount(scan.Paths, runtime.Config, account); err != nil {
+				fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
+				return 1
 			}
 		}
 		rotation = outcome.Rotation
