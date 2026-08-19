@@ -41,6 +41,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "version", "--version":
 		return runVersion(args[1:], stdout, stderr)
+	case "autonomy":
+		return runAutonomy(args[1:], stdout, stderr)
 	case "ls":
 		return runLS(args[1:], stdout, stderr, runtime)
 	case "chat":
@@ -477,6 +479,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
+	fmt.Fprintln(w, "  autonomy  print the permission-bypass posture (on/off); --path prints its config file")
 	fmt.Fprintln(w, "  version   print the pfm version")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "wiring commands:")

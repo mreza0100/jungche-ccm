@@ -40,6 +40,8 @@ func TestQuoteRoundTripsHostileWords(t *testing.T) {
 }
 
 func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
+	SetAutonomy(true)
+	defer SetAutonomy(false)
 	id := "11111111-1111-4111-8111-111111111111"
 	request := Request{
 		Row: compose.Row{
@@ -115,6 +117,30 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	}
 	if strings.Contains(plan.Line, "skip-permissions") {
 		t.Fatalf("new Claude line duplicated the autonomy flags: %q", plan.Line)
+	}
+}
+
+// TestSynthesizeDefaultsToPromptedWithoutAutonomy is the regression guard:
+// autonomyPosture's zero value is "" (off), so a resume plan synthesized
+// before any command entrypoint calls SetAutonomy must never carry the
+// bypass. This is the security property the whole gate exists to enforce.
+func TestSynthesizeDefaultsToPromptedWithoutAutonomy(t *testing.T) {
+	SetAutonomy(false)
+	plan, err := Synthesize(Request{
+		Row: compose.Row{
+			Kind: compose.ResumeClaude,
+			ID:   "55555555-5555-4555-8555-555555555555",
+			CWD:  "/work/project",
+		},
+		PrimaryAccount: 1,
+		Home:           "/home/test",
+		FreshSocket:    "cc-default-posture",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plan.Run, "skip-permissions") {
+		t.Fatalf("resume run armed the bypass without an explicit SetAutonomy(true): %q", plan.Run)
 	}
 }
 
@@ -259,6 +285,8 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 }
 
 func TestAgentFailureNetFallsBackToSanitizedResume(t *testing.T) {
+	SetAutonomy(true)
+	defer SetAutonomy(false)
 	root := t.TempDir()
 	pfmScript := filepath.Join(root, "pfm")
 	claudeScript := filepath.Join(root, "claude")

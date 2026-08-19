@@ -19,6 +19,7 @@ import (
 	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/policy"
 	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
@@ -268,6 +269,9 @@ func openRow(
 			}
 		}
 	}
+	// Synthesize is documented as touching no filesystem, so the posture is
+	// resolved here, once, and injected — never read from inside it.
+	action.SetAutonomy(policy.Autonomy(resolved.Home))
 	// The Codex projection repair rides the resume path itself: a wedged
 	// thread is repaired in the same breath that opens it, with no shell
 	// helper in the run string to be missing, unexecutable, or stale.

@@ -188,10 +188,21 @@ func TestBranchCommandPlacesEveryUnsetBeforeAssignments(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "account"))
 	t.Setenv("ENABLE_PROMPT_CACHING_1H", "1")
 	t.Setenv("FORCE_PROMPT_CACHING_5M", "")
-	command := branchClaudeCommand("session-id", "safe name", "sonnet[1m]")
+	command := branchClaudeCommand("session-id", "safe name", "sonnet[1m]", t.TempDir())
 	assignment := strings.Index(command, "'CLAUDE_CONFIG_DIR=")
 	lastUnset := strings.LastIndex(command, "'-u'")
 	if assignment < 0 || lastUnset < 0 || lastUnset > assignment {
 		t.Fatalf("env options must precede assignments: %s", command)
+	}
+}
+
+// TestBranchCommandDefaultsToPromptedWithoutAutonomyConfig is the regression
+// guard: a home with no PFM_AUTONOMY and no ~/.config/pfm/config.json must
+// resolve prompted, so a branched seat never carries the bypass by default
+// even though its fallback machine config defaults to PermissionBypass.
+func TestBranchCommandDefaultsToPromptedWithoutAutonomyConfig(t *testing.T) {
+	command := branchClaudeCommand("session-id", "safe name", "", t.TempDir())
+	if strings.Contains(command, "skip-permissions") {
+		t.Fatalf("branchClaudeCommand armed the bypass with no autonomy opt-in: %s", command)
 	}
 }

@@ -95,6 +95,7 @@ case "$1 $2" in
     case "$3" in 1|2) ;; *) printf 'account must be 1-2\n' >&2; exit 2 ;; esac
     printf '%s\n' "$3" > "$SHIM_DB_STATE"
     printf 'primary-set %s\n' "$3" >> "$SHIM_DB_LOG" ;;
+  "autonomy ") printf 'on\n' ;;
 esac
 `)
 	// The launched engine records its argv and the environment it was born with.

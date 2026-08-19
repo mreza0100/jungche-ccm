@@ -18,6 +18,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/policy"
 )
 
 type Pane struct {
@@ -225,7 +226,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !dead {
 		return Result{}, errors.New("/exit did not complete; chat left running")
 	}
-	run := claudeRun(request)
+	run := claudeRun(request, options.Home)
 	if err := tmux.Respawn(ctx, request.SocketPath, request.Pane, request.CWD, run); err != nil {
 		return Result{}, fmt.Errorf("respawn pane: %w", err)
 	}
@@ -277,7 +278,7 @@ func selectorOpen(capture string) bool {
 	return false
 }
 
-func claudeRun(request Request) string {
+func claudeRun(request Request, home string) string {
 	parts := []string{"env", "-u", "CLAUDE_CODE_SESSION_ID", "-u", "CLAUDECODE", "-u", "ENABLE_PROMPT_CACHING_1H", "-u", "FORCE_PROMPT_CACHING_5M", "-u", "ANTHROPIC_BASE_URL", "-u", "ANTHROPIC_AUTH_TOKEN", "-u", "ANTHROPIC_MODEL", "-u", "ANTHROPIC_SMALL_FAST_MODEL", "-u", "CLAUDE_CODE_AUTO_COMPACT_WINDOW", "-u", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "-u", "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"}
 	if !request.AccountImplicit && request.AccountConfigDir != "" {
 		parts = append(parts, "CLAUDE_CONFIG_DIR="+action.Quote(request.AccountConfigDir))
@@ -300,7 +301,7 @@ func claudeRun(request Request) string {
 	if request.SessionID != "" {
 		parts = append(parts, "--resume", action.Quote(request.SessionID))
 	}
-	if !request.PromptPermissions {
+	if !request.PromptPermissions && policy.Autonomy(home) {
 		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
 	}
 	return strings.Join(parts, " ")

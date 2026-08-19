@@ -210,7 +210,7 @@ func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
 		Account:          2,
 		AccountConfigDir: "/jail/home/.cc/2",
 		SessionID:        "11111111-1111-4111-8111-111111111111",
-	})
+	}, t.TempDir())
 	for _, variable := range []string{"CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "FORCE_PROMPT_CACHING_5M"} {
 		if !strings.Contains(run, variable) {
 			t.Fatalf("run %q does not mention %s", run, variable)
@@ -218,6 +218,21 @@ func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
 	}
 	if !strings.Contains(run, "claude --resume") {
 		t.Fatalf("run %q has no resume", run)
+	}
+}
+
+// TestClaudeRunDefaultsToPromptedWithoutAutonomyConfig is the regression
+// guard: a home with no PFM_AUTONOMY env var and no ~/.config/pfm/config.json
+// must resolve prompted, so a respawned pane never carries the bypass by
+// default.
+func TestClaudeRunDefaultsToPromptedWithoutAutonomyConfig(t *testing.T) {
+	run := claudeRun(Request{
+		Account:          2,
+		AccountConfigDir: "/jail/home/.cc/2",
+		SessionID:        "11111111-1111-4111-8111-111111111111",
+	}, t.TempDir())
+	if strings.Contains(run, "skip-permissions") {
+		t.Fatalf("claudeRun armed the bypass with no autonomy opt-in: %q", run)
 	}
 }
 

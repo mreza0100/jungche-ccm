@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/policy"
 )
 
 // ExecCommands is the production command boundary. It strips inherited chat
@@ -75,7 +76,7 @@ func (commands ExecCommands) QueryAgents(ctx context.Context, config string) ([]
 }
 func (commands ExecCommands) Resume(ctx context.Context, config, cwd, id string, cache1H bool) error {
 	arguments := []string{"--resume", id}
-	if !commands.PromptPermissions {
+	if !commands.PromptPermissions && policy.Autonomy(commands.Home) {
 		arguments = append([]string{"--allow-dangerously-skip-permissions", "--dangerously-skip-permissions"}, arguments...)
 	}
 	command := commands.command(ctx, config, cache1H, arguments...)

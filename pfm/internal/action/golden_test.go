@@ -9,6 +9,9 @@ import (
 )
 
 func TestGoldenCommandLines(t *testing.T) {
+	// The golden file pins the full launch ceremony, autonomy flags included.
+	SetAutonomy(true)
+	defer SetAutonomy(false)
 	var actual bytes.Buffer
 	lastRoute := Route(0)
 	for _, request := range stressRequests() {

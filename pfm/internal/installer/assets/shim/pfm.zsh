@@ -43,12 +43,18 @@ cc-revive() { "$_PFM_BIN" revive "$@"; }
 # The launch/account functions below are the shell owner of fresh interactive
 # launches; the Go action protocol emits lines that call them.
 # CC_AUTONOMY_FLAGS — the FULL-AUTONOMY posture, applied by EVERY path that starts a chat, on
-# every account. Chats run unattended overnight, so a mid-task approval
-# prompt is a stalled chat with nobody awake to clear it. `--allow-…` is the enabling half (the
-# harness refuses the bypass without it), `--dangerously-…` the acting half; both are required.
-# Blast radius is total and deliberate — PreToolUse hooks sit outside the permission system and
-# are the only brake left, so a guard that matters belongs in a hook, not in a permission rule.
-typeset -ga CC_AUTONOMY_FLAGS=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
+# every account, but ONLY when the operator opted in. Chats run unattended overnight, so a
+# mid-task approval prompt is a stalled chat with nobody awake to clear it — but the bypass's
+# blast radius is total, and PreToolUse hooks sit outside the permission system as the only brake
+# left, so the default must be prompted and autonomy strictly opt-in. `pfm autonomy` is the one
+# resolver (PFM_AUTONOMY, then ~/.config/pfm/config.json, else off) every launch path answers
+# from, so the shell and the Go routes never carry two copies of the same default. `--allow-…` is
+# the enabling half (the harness refuses the bypass without it), `--dangerously-…` the acting half;
+# both are required.
+typeset -ga CC_AUTONOMY_FLAGS=()
+if [[ "$("$_PFM_BIN" autonomy 2>/dev/null)" == on ]]; then
+  CC_AUTONOMY_FLAGS=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
+fi
 # CC_ENDPOINT_UNSET — every launch strips any inherited API endpoint. A chat
 # born inside another chat's Bash tool inherits that chat's environment, so a shell pointed at a
 # local translating proxy would hand the next launch a foreign endpoint and it would answer from a

@@ -14,6 +14,7 @@ import (
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/policy"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
@@ -85,6 +86,9 @@ func runRun(
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 2
 	}
+	// HeadlessRun is documented as doing no I/O, so the posture is resolved
+	// here, once, and injected — never read from inside it.
+	action.SetAutonomy(policy.Autonomy(resolved.Home))
 	plan, err := action.HeadlessRun(action.HeadlessRequest{
 		Engine:         engineName,
 		Name:           *name,

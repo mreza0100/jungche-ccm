@@ -24,6 +24,7 @@ import (
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/policy"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
@@ -577,7 +578,7 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		name = defaultBranchName(id)
 	}
 	model := currentClaudeModel(id, runtime)
-	command := branchClaudeCommand(id, name, model, runtime.Config)
+	command := branchClaudeCommand(id, name, model, resolved.Home, runtime.Config)
 	socket := freshSocket(compose.ResumeClaude)
 	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
 	if err := tmux.NewSession(context.Background(), spawn.SessionSpec{
@@ -705,7 +706,7 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 	return filepath.Join(resolved.Home, ".claude", "projects", slug, id+".jsonl")
 }
 
-func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) string {
+func branchClaudeCommand(id, name, model, home string, machines ...pfmconfig.Config) string {
 	machine := pfmconfig.Config{
 		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: "claude"},
 	}
@@ -735,7 +736,7 @@ func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) s
 	if name != "" {
 		parts = append(parts, "--name", name)
 	}
-	if machine.Claude.PermissionMode != pfmconfig.PermissionPrompt {
+	if machine.Claude.PermissionMode != pfmconfig.PermissionPrompt && policy.Autonomy(home) {
 		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
 	}
 	quoted := make([]string, len(parts))

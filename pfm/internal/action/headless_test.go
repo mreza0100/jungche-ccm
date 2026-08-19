@@ -12,6 +12,8 @@ import (
 // name, and both autonomy flags — a headless chat has nobody awake to answer a
 // permission prompt.
 func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
+	SetAutonomy(true)
+	defer SetAutonomy(false)
 	plan, err := HeadlessRun(HeadlessRequest{
 		Engine:         "cc",
 		Name:           "_HIDE worker 3",

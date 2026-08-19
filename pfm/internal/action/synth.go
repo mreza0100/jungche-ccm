@@ -42,6 +42,24 @@ const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DI
 // bypass flag and never these.
 const autonomyFlags = "--allow-dangerously-skip-permissions --dangerously-skip-permissions"
 
+// autonomyPosture is autonomyFlags when the operator opted in, "" otherwise.
+// Synthesize and HeadlessRun are documented as touching no filesystem, so
+// they cannot read internal/policy (PFM_AUTONOMY, ~/.config/pfm/config.json)
+// themselves; the caller resolves the posture once and injects it here
+// through SetAutonomy before either pure function runs. Zero value is "" —
+// prompted mode is the default until a command entrypoint says otherwise.
+var autonomyPosture string
+
+// SetAutonomy records the resolved permission-bypass posture for every
+// subsequent Synthesize/HeadlessRun call in this process.
+func SetAutonomy(on bool) {
+	if on {
+		autonomyPosture = autonomyFlags
+		return
+	}
+	autonomyPosture = ""
+}
+
 // Synthesize produces a deterministic action plan without touching tmux,
 // processes, the filesystem, stdin, stdout, or /dev/tty.
 func Synthesize(request Request) (Plan, error) {
@@ -268,9 +286,9 @@ func claudeCommandWith(
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
 	}
-	if machine.Claude.PermissionMode == pfmconfig.PermissionBypass {
+	if machine.Claude.PermissionMode == pfmconfig.PermissionBypass && autonomyPosture != "" {
 		command.WriteByte(' ')
-		command.WriteString(autonomyFlags)
+		command.WriteString(autonomyPosture)
 	}
 	return command.String()
 }
