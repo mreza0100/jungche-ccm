@@ -228,7 +228,7 @@ func updateRepository(
 	}
 
 	if err := updateApplyInstall(ctx, runtime, stdout, stderr); err != nil {
-		return updateFailure(fmt.Errorf("install --apply after staging: %w", err), rollbackUpdateReplacements(replacements, stderr))
+		return updateFailure(fmt.Errorf("install --yes after staging: %w", err), rollbackUpdateReplacements(replacements, stderr))
 	}
 	if err := updateRunDoctor(ctx, runtime, stdout, stderr); err != nil {
 		return updateFailure(fmt.Errorf("doctor after update: %w", err), rollbackUpdateReplacements(replacements, stderr))
@@ -381,7 +381,7 @@ func writeUpdateFile(path string, raw []byte, mode os.FileMode) error {
 }
 
 func applyUpdateInstall(_ context.Context, runtime commandRuntime, stdout, stderr io.Writer) error {
-	if code := runInstall([]string{"--apply"}, stdout, stderr, runtime); code != 0 {
+	if code := runInstall([]string{"--yes"}, stdout, stderr, runtime); code != 0 {
 		return fmt.Errorf("pfm install exited with code %d", code)
 	}
 	return nil

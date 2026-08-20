@@ -478,8 +478,9 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 
 | flow                                                                                                              | safety           | expected behavior (source)                | regression |
 | ----------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------- | ---------- |
-| `pfm install` dry run is the default and writes nothing                                                          | JAIL             | `internal/installer`, installer tests     |            |
-| dry-run never gates; an idle user manager proceeds; an executing name-sync service refuses before writes with actionable rc 97 | JAIL | `install_command_test.go`, installer tests | |
+| bare `pfm install` previews the full plan, writes nothing, and ends with the exact `pfm install --yes` confirmation | JAIL | `install_command_test.go`, `internal/installer` | |
+| `pfm install --yes` applies the same classification as the preview; an executing name-sync service refuses before writes with actionable rc 97 | JAIL | `install_command_test.go`, installer tests | |
+| `pfm uninstall [--config-dir DIR]` dispatches `ModeUninstall` and restores/removes installer-owned state | JAIL | `uninstall_command.go`, installer tests | |
 | apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
 | command cards, helpers, shim and units link to the managed asset tree                                            | JAIL+sh          | `internal/installer`, installer tests     |            |
 | real destinations are backed up; uninstall restores the newest backup                                             | JAIL             | `internal/installer`, installer tests     |            |

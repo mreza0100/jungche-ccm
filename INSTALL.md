@@ -42,11 +42,11 @@ The checksum only catches a corrupted/incomplete download — releases don't pub
 Add `$HOME/.local/bin` to `PATH` if it isn't already, then:
 
 ```bash
-pfm install --dry-run   # preview — the default mode, no writes
-pfm install --apply
+pfm install             # preview — the default mode, no writes
+pfm install --yes       # apply the preview
 ```
 
-`pfm install --apply` wires six surfaces, all under `$HOME`:
+`pfm install --yes` wires six surfaces, all under `$HOME`:
 
 1. Staged assets — `~/.local/share/pfm/install/`
 2. Command symlinks — `~/.claude/commands/` (`/reload`, the `/chat:*` family)
@@ -57,7 +57,7 @@ pfm install --apply
 
 Every rewritten file is backed up before it's touched.
 
-**Known gate — read before you run it.** On any host where a user `systemd` bus is already reachable (true for most already-logged-in Linux sessions, not just a host with a live fleet), `pfm install` refuses under **every** mode — `--dry-run` included — with exit 97 and `live user systemd bus is reachable; run in a proven dead-bus jail`. No flag bypasses this (checked `pfm install --help` and the installer source). See `notes.md` — this repo has not verified what a normal first-time install does about it. macOS gates only when the name-sync launch agent is actively mid-run: `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` clears it, then retry.
+**Known gate — read before you run it.** On any host where a user `systemd` bus is already reachable (true for most already-logged-in Linux sessions, not just a host with a live fleet), `pfm install --yes` refuses with exit 97 and `live user systemd bus is reachable; run in a proven dead-bus jail`; the preview remains read-only. No flag bypasses this (checked `pfm install --help` and the installer source). See `notes.md` — this repo has not verified what a normal first-time install does about it. macOS gates only when the name-sync launch agent is actively mid-run: `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` clears it, then retry.
 
 ---
 
@@ -71,8 +71,8 @@ go -C "$HOME/.professor/pfm" build -o "$HOME/.local/bin/pfm" ./cmd/pfm    # need
 Then the same two commands as the binary path:
 
 ```bash
-pfm install --dry-run
-pfm install --apply
+pfm install
+pfm install --yes
 ```
 
 Same six surfaces, same rc-97 gate.
@@ -130,7 +130,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 
 ## Updating
 
-**`pfm` (machine layer):** `pfm update` consumes the latest tagged source-clone release transactionally, then runs `install --apply` and `doctor`; `/pcm:update` remains the semantic blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
+**`pfm` (machine layer):** `pfm update` consumes the latest tagged source-clone release transactionally, then runs `install --yes` and `doctor`; `/pcm:update` remains the semantic blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
 
 **The discipline layer (path 3):**
 
@@ -146,6 +146,6 @@ Every file lands in one of three buckets: **auto-apply** (upstream changed, you 
 
 ## Uninstall
 
-**`pfm`:** `pfm install --uninstall` — removes the installed links and restores the pre-install backups, per `pfm install --help`. Not exercised against a live host as part of this rewrite; see `notes.md`.
+**`pfm`:** `pfm uninstall` — removes the installed links and restores the pre-install backups, per `pfm uninstall --help`. Not exercised against a live host as part of this rewrite; see `notes.md`.
 
 **The discipline layer:** no uninstall command exists anywhere in `blueprint/` or the shipped commands. Removing it is a manual `git` operation on your side — revert the install commit, or delete the written paths from the ownership table above.
