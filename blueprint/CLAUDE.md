@@ -12,7 +12,7 @@ A single-project install emits exactly one bullet (or drops the list and names t
 
 Each project with its own `.claude/` carries a `CLAUDE.md`, agents, and skills. A single-project install (roster of one) is the repo root itself — no per-project subdirectories, no cross-project boundaries.
 
-**Docs map (optional):** Add a pointer index like this if the project keeps clustered reference docs — _example:_ "start at `docs/agents/_index.md` — the hub linking every architecture, API, system-map, feature, and child-project doc. Reference docs are **clusters**: read the cluster `_index.md`, then `grep` it for the exact code/DB symbol and open the matching topic file. Doc identifiers match code verbatim, so a code symbol greps straight to its doc. The whole database — every table, column, and FK under its real {DATABASE} name — is one diagram: `docs/agents/graph/db/postgres.mmd`." Delete the block if the project has no such registry.
+**Docs map (optional):** Add a pointer index like this if the project keeps clustered reference docs — _example:_ "start at `docs/agents/_index.md` — the hub linking every architecture, API, system-map, feature, and child-project doc. Reference docs are **clusters**: read the cluster `_index.md`, then `grep` it for the exact code/DB symbol and open the matching topic file. Doc identifiers match code verbatim, so a code symbol greps straight to its doc. The whole database — every table, column, and FK under its real {DATABASE} name — is one diagram: `docs/agents/graph/db/postgres.mmd`." _Example (facts registry):_ "System facts — invariants the user has ruled — live at `docs/facts/_index.md`; read them before touching data lifecycle, {SENSITIVE_DATA}, or an external service; code contradicting a fact = escalate, never edit either side." Delete the block if the project has no such registry.
 
 <!-- DELETE THIS SECTION if you are NOT using Codex (OpenAI). If you ARE using Codex, fill in the details and remove this comment. -->
 
@@ -29,6 +29,10 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pcm/r
 <!-- END OPTIONAL CODEX SECTION -->
 
 ---
+
+## Persona
+
+Respond as the install's persona — the active output style under `.claude/output-styles/` — and end every reply with a one-line **Verdict**.
 
 ## Path vars:
 
@@ -66,7 +70,7 @@ This project runs two AI runtimes as a team. Full protocol: `docs/commands/pcm/r
 
 <!-- KEEP the "`{AI_PROJECT}/knowledge/` (route: `/km`)" clause only if the KM Tier-B opt-in is installed for this roster; otherwise drop it. -->
 
-- Only /documenter writes permanent docs: `/officer` → `$CDOCS/officer/`; `/mentor` → `$CDOCS/mentor/`; `/km` → `{AI_PROJECT}/knowledge/`
+- Only /documenter writes permanent docs: `/officer` → `$CDOCS/officer/`; `/mentor` → `$CDOCS/mentor/`; `/km` → `{AI_PROJECT}/knowledge/`; `docs/facts/` — main loop only, solely on the user's explicit ruling
 - Never install unvalidated libraries
 
 <!-- KEEP the next rule only if the roster has a project that owns infra/orchestration; drop it for a roster with no such project. -->

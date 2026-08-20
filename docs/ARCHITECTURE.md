@@ -35,7 +35,7 @@ UPDATE   pull, build, apply — every installed asset matches the binary
 ```
 
 The clone supplies the binary source. A fresh box needs two steps: get the `pfm` binary, then run
-`pfm install --apply`. That stages the exact assets embedded in the binary and wires them into
+`pfm install --yes`. That stages the exact assets embedded in the binary and wires them into
 `~/.claude` by symlink. Updating means pulling, building one new candidate, and applying that
 candidate; the installed command surface cannot drift from the binary that installed it.
 
@@ -117,7 +117,7 @@ machine at setup and update. Which rows are shipping versus designed is the
 ```bash
 git -C ~/.professor pull        # the update
 go -C ~/.professor/pfm build -o ~/.local/bin/pfm ./cmd/pfm
-pfm install --apply             # idempotent; applies the exact binary assets
+pfm install --yes             # idempotent; applies the exact binary assets
 ```
 
 `pfm install` is idempotent and honest: dry-run by default, `--apply` to act, `--uninstall` to
