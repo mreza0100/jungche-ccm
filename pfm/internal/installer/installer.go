@@ -333,6 +333,11 @@ func (installer *engine) harvestPlatform() harvestpy.Platform {
 
 func (installer *engine) installHarvest(ctx context.Context) error {
 	if !installer.options.ProvisionHarvest {
+		if installer.apply {
+			installer.say("harvestpy: skipped (blocked, not attempted)")
+		} else {
+			installer.say("harvestpy: would skip (blocked, not attempted)")
+		}
 		return nil
 	}
 	provider := installer.options.HarvestProvisioner

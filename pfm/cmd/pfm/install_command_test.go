@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -82,7 +83,7 @@ func TestInstallUsesOnlyTheNewSurface(t *testing.T) {
 			if code := runInstall([]string{retired}, &stdout, &stderr); code != 2 {
 				t.Fatalf("runInstall(%q) code=%d stdout=%q stderr=%q, want unknown-flag usage", retired, code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--force] [--config-dir DIR]") {
+			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--skip-harvest] [--force] [--config-dir DIR]") {
 				t.Fatalf("runInstall(%q) stderr=%q, want new usage", retired, stderr.String())
 			}
 		})
@@ -125,6 +126,51 @@ func TestInstallPreviewAndYesUseTheSameInstallerClassification(t *testing.T) {
 	}
 	if strings.Contains(applyOut.String(), "if you agree, run again:") {
 		t.Fatalf("yes output unexpectedly contains preview confirmation: %q", applyOut.String())
+	}
+}
+
+func TestInstallSkipHarvestDisablesProvisioningButDefaultFailureStaysLoud(t *testing.T) {
+	previous := runInstaller
+	t.Cleanup(func() { runInstaller = previous })
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		if options.ProvisionHarvest {
+			return installer.Report{}, errors.New("harvest fixture failed")
+		}
+		return installer.Report{}, nil
+	}
+	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
+
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--yes"}, &stdout, &stderr, runtime); code != 1 {
+		t.Fatalf("default apply code=%d stdout=%q stderr=%q, want loud failure", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "harvest fixture failed") {
+		t.Fatalf("default apply stderr=%q, want provisioning failure", stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := runInstall([]string{"--yes", "--skip-harvest"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("skip apply code=%d stdout=%q stderr=%q, want success", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestInstallSkipHarvestPreviewPreservesTheConfirmationFlag(t *testing.T) {
+	previous := runInstaller
+	t.Cleanup(func() { runInstaller = previous })
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		if options.ProvisionHarvest {
+			t.Fatal("skip preview enabled harvest provisioning")
+		}
+		return installer.Report{}, nil
+	}
+	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--skip-harvest"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("skip preview code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "if you agree, run again: pfm install --yes --skip-harvest\n") {
+		t.Fatalf("skip preview output=%q, want preserved skip confirmation", stdout.String())
 	}
 }
 

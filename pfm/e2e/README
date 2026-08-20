@@ -1,0 +1,13 @@
+# pfm installer end-to-end test
+
+Run the serial harness with:
+
+    go test -tags e2e -p 1 ./e2e/...
+
+From a development machine, use `scripts/e2e-linux.sh` to run the same test
+inside an Ubuntu container. The harness creates every HOME and state directory
+under `t.TempDir()` and refuses to run when `HOME` is the invoking user's real
+home.
+
+The update phase needs a reachable local release tag. Set `PFM_E2E_PREVIOUS_TAG`
+to the tag to use when the local clone has more than one release tag.

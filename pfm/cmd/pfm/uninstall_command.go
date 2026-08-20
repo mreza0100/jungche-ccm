@@ -22,7 +22,7 @@ func runUninstall(args []string, stdout, stderr io.Writer, runtimes ...commandRu
 	}
 	return runInstallerCommand(
 		"uninstall",
-		newInstallerOptions(installer.ModeUninstall, *configDir, false, stdout, runtimes...),
+		newInstallerOptions(installer.ModeUninstall, *configDir, false, false, stdout, runtimes...),
 		stderr,
 	)
 }

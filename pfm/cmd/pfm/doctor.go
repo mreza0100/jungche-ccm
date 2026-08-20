@@ -290,6 +290,10 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 	root := filepath.Join(home, ".local", "state", "pfm", "harvest-python")
 	current := harvestpy.RuntimeRoot(root, platform)
 	interpreter := filepath.Join(current, "project", ".venv", "bin", "python")
+	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintln(stdout, "doctor: harvestpy skipped")
+		return 0
+	}
 	warnings := 0
 
 	plan, planErr := harvestpy.Plan(platform)
@@ -408,6 +412,7 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 func pfmPathWarnings(home, pathEnvironment string) []string {
 	canonical := filepath.Join(home, ".local", "bin", "pfm")
 	canonical, _ = filepath.Abs(canonical)
+	targetHome, _ := filepath.Abs(home)
 	canonicalHash, err := executableHash(canonical)
 	if err != nil {
 		return []string{fmt.Sprintf("pfm_canonical=%s error=%v", canonical, err)}
@@ -430,6 +435,10 @@ func pfmPathWarnings(home, pathEnvironment string) []string {
 			continue
 		}
 		seen[candidate] = true
+		relative, err := filepath.Rel(targetHome, candidate)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+			continue
+		}
 		info, err := os.Stat(candidate)
 		if err != nil {
 			if !os.IsNotExist(err) {
@@ -497,6 +506,9 @@ func metaCounter(
 func crumbHealth(path string) (entries, invalid int, err error) {
 	info, err := os.Stat(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil
+		}
 		return 0, 0, err
 	}
 	if !info.IsDir() {

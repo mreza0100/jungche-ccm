@@ -98,6 +98,39 @@ func TestInstallHarvestDryRunPlansOnlyAndWritesNothing(t *testing.T) {
 	}
 }
 
+func TestInstallHarvestSkipReportsExactStateForApplyAndPreview(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		mode Mode
+		want string
+	}{
+		{name: "preview", mode: ModeDryRun, want: "harvestpy: would skip (blocked, not attempted)"},
+		{name: "apply", mode: ModeApply, want: "harvestpy: skipped (blocked, not attempted)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			fake := &harvestProvisionerFake{plan: linuxHarvestPlan()}
+			var output strings.Builder
+			if _, err := Run(context.Background(), Options{
+				Mode:               test.mode,
+				Home:               home,
+				Stdout:             &output,
+				Runner:             &fakeRunner{},
+				ProvisionHarvest:   false,
+				HarvestProvisioner: fake,
+			}); err != nil {
+				t.Fatalf("skip %s: %v\n%s", test.name, err, output.String())
+			}
+			if strings.Count(output.String(), test.want) != 1 {
+				t.Fatalf("skip %s output=%q, want one %q", test.name, output.String(), test.want)
+			}
+			if fake.planCalls != 0 || fake.checkCalls != 0 || fake.provisionCalls != 0 {
+				t.Fatalf("skip %s called provisioner plan=%d check=%d provision=%d", test.name, fake.planCalls, fake.checkCalls, fake.provisionCalls)
+			}
+		})
+	}
+}
+
 func TestInstallHarvestApplyUsesCentralRuntimeRootAndCheckFastPath(t *testing.T) {
 	home := t.TempDir()
 	root := filepath.Join(home, ".local", "state", "pfm", "harvest-python")
