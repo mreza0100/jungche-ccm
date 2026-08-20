@@ -42,4 +42,4 @@ Stamp the train complete in STATE.md; verify every consumed queue spec carries a
 
 - Builder silent past its goal horizon → capture its pane FULL-SCREEN, judge liveness from process evidence (ctx growing, tokens streaming), never from a recap; wedged → re-goal; dead → fresh seat, same spec + worktree.
 - Any instrument that cannot run (walker Workflow, qa agent) BLOCKS its wave — say so; a missing check is never skipped past.
-- On-demand external audit: the user may run `/wave:sentinel {train}` in another chat; its findings arrive as ledger lines — treat them as defects to route, not opinions.
+- Command seat: the user may run `/wave:ccc {train}` in another chat — the standing Control & Command Center. Its audit findings arrive as ledger lines (defects to route, not opinions), and its ledger-logged rulings on your escalations are authoritative.

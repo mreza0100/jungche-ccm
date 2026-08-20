@@ -79,13 +79,15 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `TMUX_TMPDIR`, and the npm suites are independent, so the lock would serialise runs that cannot
   collide.
 
-- **KEEP-LOCAL: `/wave:sentinel` installed, rewired to the on-main pipeline.** The blueprint twin
-  audits a worktree train (`/p:tokens` token probe, worktree-hygiene law, user-addressed
-  prescriptions) — none of which exist here. This install's rewire: ledger truth checks shas on
-  `main` and names uncommitted done-work as a finding; hygiene checks stray dirs and a dirty `main`;
-  suite evidence reads `.claude/scripts/dev.sh test` logs; token burn reads seat statuslines from
-  `/chat:capture`; structure drift adds the gitter-only git-write law; templates address
-  "the user". Blueprint twin unchanged — an install rewire, not an upstream improvement.
+- **KEEP-LOCAL: `/wave:ccc` installed, rewired to the on-main + fence pipeline.** The blueprint twin
+  commands a worktree train (`/p:tokens` token probe, worktree-hygiene law, ONE WAVE = ONE WORKTREE
+  = ONE MERGE) — none of which exist here. This install's rewire: ledger truth checks shas on
+  `main` and names uncommitted done-work as a finding; hygiene checks stray dirs, a dirty `main`,
+  and the fence worktree under `.worktrees/{train}/`; suite evidence reads `.claude/scripts/dev.sh
+  test` logs, fenced code waves through `dev.sh iso` logs opening with their fence proof line;
+  token burn reads seat statuslines from `/chat:capture`; structure drift adds the gitter-only
+  git-write law and the fence close order. The CCC identity itself (standing command seat replacing
+  the one-shot sentinel) ships upstream via `release.md` — this entry records only the rewire.
 
 - **KEEP-LOCAL: root `CLAUDE.md` rewritten lean — 137 → 118 lines, agent roster removed, `## Repo
   structure` added.** The cast table duplicated the harness registry (`.claude/agents/` descriptions

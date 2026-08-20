@@ -21,7 +21,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `pcm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/pcm:context-meter` audits the framework's own context budget.
-- **/wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/reload`.
+- **/wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/reload`.
 
 > Each Tier A persona (Professor, JC, Dr. House) ships in two selectable depths — **full** (rich, showcase voice) and **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn) — chosen at install.
 
@@ -30,7 +30,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **the framework bus** — `/pcm:update` consumes upstream releases, `/pcm:release` regenerates + publishes the blueprint.
 - **/wave:refine** — wave task refinement into a zero-gap spec.
 - **/wave:walker** — merge-gating end-to-end functional + hygiene walk, run against the merge candidate before the merge it can condemn.
-- **/wave:sentinel** — on-demand one-shot train auditor. No interval, no re-arm, no standing seat: re-derives the train's true state from ground truth and reports findings ranked.
+- **/wave:ccc** — the Control & Command Center: the standing command seat over a running train. Full audit from ground truth on arrival, then holds command until the train closes — verifies claims against the tree, rules scope-allocation escalations, dispatches through the orchestrator.
 - **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`blueprint/commands/p/360.md`) — not source-fetched.
 - **/p:rnd** — goal-driven iterative research-and-develop loop.
 - **/p:tokens** — per-agent/per-workflow token spend attribution parsed from local transcripts, ranked by estimated cost.
@@ -224,7 +224,7 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, scheduler, architect, {role}-{project} wrappers)
-│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — `pfm install` installs it host-level)
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/chat:*` is NOT here — `pfm install` installs it host-level)
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
