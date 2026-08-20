@@ -135,7 +135,7 @@ The fold writes this into the report under `## Professor's Wave Review`:
 
 ### /jc Action Items
 
-{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim `/jc {fix}`. Owner-tagged deferrals (/pm, /officer, {FOUNDER_NAME}) for non-code work. "None" if clean.}
+{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim `/jc {fix}`. Owner-tagged deferrals (/pm, /officer, the user) for non-code work. "None" if clean.}
 
 ### Coverage
 

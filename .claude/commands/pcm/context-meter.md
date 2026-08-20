@@ -45,6 +45,6 @@ In order: the always-loaded total read from `/context`, with its composition nam
 
 ## Rules
 
-- Report only — never edit. Trimming a prompt file routes through `/pcm`, which loads `/quality:prompt` and verifies consistency. Surface the savings; the founder approves the cut.
+- Report only — never edit. Trimming a prompt file routes through `/pcm`, which loads `/quality:prompt` and verifies consistency. Surface the savings; the user approves the cut.
 - Rank by tokens reclaimed, not file count — and since MCP schemas are deferred, target the always-loaded floor before chasing tool counts.
 - Derive every count from the filesystem and reconcile it against `/context`; an inventory claim written in any prompt file, this one included, is not evidence.

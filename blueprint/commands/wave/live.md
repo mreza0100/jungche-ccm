@@ -22,7 +22,7 @@ The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/re
 
 ## W1 — Resolve, stage & pre-flight
 
-**{FOUNDER_NAME}-question forecast (gate):** enumerate and CLOSE every {FOUNDER_NAME}-only item the batch will hit (secrets, deploy reviews, destructive ratifications, merge nods) before W2 — a mid-batch {FOUNDER_NAME} wait is a failed pre-flight and a reversal retro.
+**user-question forecast (gate):** enumerate and CLOSE every user-only item the batch will hit (secrets, deploy reviews, destructive ratifications, merge nods) before W2 — a mid-batch the user wait is a failed pre-flight and a reversal retro.
 
 **Resolve the task list:** empty/blank arg → task file is `wave.md` at repo root; a path → read that file; a description → parse as inline tasks. Wave-train partitioning (splitting a multi-area spec into per-area waves) is orchestrator-only — `/wave:live` always flattens a partitioned spec into one flat batch.
 
@@ -52,7 +52,7 @@ The full suites run on the single-tenant canonical test stack: take the boundary
 
 Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the walk's scout runs `git show {sha}` for these JC commits). Invoke the walker workflow: `Workflow({ scriptPath, args: { reportPath: 'docs/dev/waves/{wave-name}/review.md', invariants, project } })` — scriptPath and `args.project` read from `.claude/commands/wave/walker-invariants.md` § Engine Config, the same file this step already opens for `invariants`, and passed verbatim; never `{name}`: name-lookup serves a stale session-start snapshot. `invariants` is transcribed per `walker.md` § Walk args (mechanical transcription; an empty registry match → omit). It returns `{ verdict, actionItems, review }` plus the `ledger`.
 
-Group every code finding in `### /jc Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE `/jc` boundary-lite lane per group — diagnose → fix every finding in the group → re-test that group's affected suites once → cleanup (jc-core card §§ 2–5); /jc's own Step 7 commits each group via `gitter` — never suppressed under boundary-lite — one commit per group, or one commit total when every group lands together. Re-run `/documenter` if a fix changed documented behavior. Surface the review's owner-tagged deferrals (`/pm`, `/officer`, {FOUNDER_NAME}); never park a fixable defect. Present the verdict.
+Group every code finding in `### /jc Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE `/jc` boundary-lite lane per group — diagnose → fix every finding in the group → re-test that group's affected suites once → cleanup (jc-core card §§ 2–5); /jc's own Step 7 commits each group via `gitter` — never suppressed under boundary-lite — one commit per group, or one commit total when every group lands together. Re-run `/documenter` if a fix changed documented behavior. Surface the review's owner-tagged deferrals (`/pm`, `/officer`, the user); never park a fixable defect. Present the verdict.
 
 ## W7 — Report
 

@@ -14,10 +14,13 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 
 ## Post-install customizations
 
-- **KEEP-LOCAL: no worktree pipeline.** `/wave:*`, `worktree.sh`, `alloc-ports.sh`, and the
-  per-project planner/architect/developer/qa agents are NOT installed here. They ship as
-  `blueprint/**` source. Work in this repo lands on `main` under `/dev` verification and
-  a gitter commit. Adopters get the full pipeline; the framework repo does not run itself through it.
+- **KEEP-LOCAL: the fence replaces "no worktree pipeline" (2026-08-20, user-ordered).** Code waves
+  build in `.worktrees/{train}/` through `dev.sh iso` — the `infra/` pfm-dev container (fresh
+  machine, worktree mounted; design `docs/dev/isolated-dev-foundation.md`). Markdown-only waves
+  stay on `main`. The host mirror (build to `~/.local/bin/pfm` + `pfm install --yes`) runs only
+  when a fenced wave fully closes: QA pass → orchestrator review, issues fixed → gitter merge.
+  The adopter worktree pipeline (`worktree.sh`, `alloc-ports.sh`, per-project agents) remains
+  uninstalled; this fence is the repo's own, container-backed variant.
 
 - **KEEP-LOCAL: no `/pcm:update`.** This repo is upstream. There is no newer tag to replay a
   manifest against, so shipping the command would be a route to nowhere.
@@ -58,8 +61,8 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   The blueprint template writes a machine-absolute path because an adopter's engine lives in a
   separate clone. This repo IS that clone and carries `engines/wave-walker/engine/dist/` in-tree, so
   the path is `engines/wave-walker/engine/dist/active-workflow.js`. An absolute `/home/...` path here
-  would both pin one machine and fail `scripts/leak-check.sh`. For the same reason `{FOUNDER_NAME}`
-  resolves to "the founder", never a name — the gate matches the name case-insensitively.
+  would both pin one machine and fail `scripts/leak-check.sh`. For the same reason the
+  templates address "the user", never a real name — the gate matches the name case-insensitively.
 
 - **KEEP-LOCAL: the `args.project` profile carries no gate keys.** This repo exposes no
   request-authenticated surface, no roles, and no resolvers, so `authDoc`/`roles`/`gateResolverPattern`
@@ -76,13 +79,15 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `TMUX_TMPDIR`, and the npm suites are independent, so the lock would serialise runs that cannot
   collide.
 
-- **KEEP-LOCAL: `/wave:sentinel` installed, rewired to the on-main pipeline.** The blueprint twin
-  audits a worktree train (`/p:tokens` token probe, worktree-hygiene law, `{FOUNDER_NAME}`
-  prescriptions) — none of which exist here. This install's rewire: ledger truth checks shas on
-  `main` and names uncommitted done-work as a finding; hygiene checks stray dirs and a dirty `main`;
-  suite evidence reads `.claude/scripts/dev.sh test` logs; token burn reads seat statuslines from
-  `/chat:capture`; structure drift adds the gitter-only git-write law; `{FOUNDER_NAME}` resolves to
-  "the founder". Blueprint twin unchanged — an install rewire, not an upstream improvement.
+- **KEEP-LOCAL: `/wave:ccc` installed, rewired to the on-main + fence pipeline.** The blueprint twin
+  commands a worktree train (`/p:tokens` token probe, worktree-hygiene law, ONE WAVE = ONE WORKTREE
+  = ONE MERGE) — none of which exist here. This install's rewire: ledger truth checks shas on
+  `main` and names uncommitted done-work as a finding; hygiene checks stray dirs, a dirty `main`,
+  and the fence worktree under `.worktrees/{train}/`; suite evidence reads `.claude/scripts/dev.sh
+  test` logs, fenced code waves through `dev.sh iso` logs opening with their fence proof line;
+  token burn reads seat statuslines from `/chat:capture`; structure drift adds the gitter-only
+  git-write law and the fence close order. The CCC identity itself (standing command seat replacing
+  the one-shot sentinel) ships upstream via `release.md` — this entry records only the rewire.
 
 - **KEEP-LOCAL: root `CLAUDE.md` rewritten lean — 137 → 118 lines, agent roster removed, `## Repo
   structure` added.** The cast table duplicated the harness registry (`.claude/agents/` descriptions

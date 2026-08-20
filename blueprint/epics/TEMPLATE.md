@@ -52,7 +52,7 @@ waves: []
 
 ## Open Questions
 
-{Items awaiting a founder ruling.}
+{Items awaiting a user ruling.}
 
 ## Files
 

@@ -121,7 +121,7 @@ The blueprint update covers only blueprint-owned files. For each entry in the bl
 
 ### Step 9 — Offer to sync upstream
 
-If `.professor/release.md` is non-empty (framework changes are queued), or the update surfaced local improvements worth sharing, ask the founder: **publish via `/pcm:release`?** Never auto-publish — the founder confirms, since it pushes to a public repo.
+If `.professor/release.md` is non-empty (framework changes are queued), or the update surfaced local improvements worth sharing, ask the user: **publish via `/pcm:release`?** Never auto-publish — the user confirms, since it pushes to a public repo.
 
 **Genericity gate — release.md is a claim, not a verdict.** Before offering publish, measure every queued entry: Professor-generic (any adopter could apply it) or customized to this project (names its projects, domain, infra, paths, or local-only process)? A customized entry is mislabeled drift — move it to `drift.md` and report the move; only generic entries count toward the publish offer.
 

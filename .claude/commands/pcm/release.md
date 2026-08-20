@@ -37,7 +37,7 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 4. **Read `VERSION`, compute the new version.** It must exceed every tag from Pre-flight 4.
 
-5. **Build CHANGELOG bullets from `.professor/release.md`** — entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var / hook / permission / model-config changes are tagged `(cost)`. Empty `release.md` → prompt the founder for bullets rather than inventing them.
+5. **Build CHANGELOG bullets from `.professor/release.md`** — entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var / hook / permission / model-config changes are tagged `(cost)`. Empty `release.md` → prompt the user for bullets rather than inventing them.
 
 5b. **Source-fetched skill release** — for each pending bullet naming a `sources.json` skill, ship the substance to the skill's OWN public repo first (the blueprint never vendors it): clone/pull the canonical repo → rebase-first against its current state (both-changed is the A→B→C conflict — keep the richer, never blast-overwrite) → genericize project identifiers in the public copy → sync the live `.claude/skills/{name}/` to byte-identical (zero standing drift) → bump the skill's `version:` frontmatter + README version refs → leak-grep the staged diff → commit + annotated tag + push to the skill repo. Then rewrite the professor bullet as a version pointer marked **`update`: skip — informational only** with a `#### → For:` re-pull note.
 
@@ -49,13 +49,13 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 8. **Gate, then hand off to gitter** — you do not run git writes yourself (root `CLAUDE.md`: only gitter writes git):
 
-   a. `scripts/leak-check.sh --files <every changed file>` — brand current+former, founder PII, machine home paths, zero secrets. Report its exit status. A single leftover is a refresh bug, not an exception. The committed `.githooks/pre-push` hook enforces the same gate at push time; do not treat that as a reason to skip this one.
+   a. `scripts/leak-check.sh --files <every changed file>` — brand current+former, user PII, machine home paths, zero secrets. Report its exit status. A single leftover is a refresh bug, not an exception. The committed `.githooks/pre-push` hook enforces the same gate at push time; do not treat that as a reason to skip this one.
 
    b. Spawn `gitter` — `Phase: COMMIT`, naming the exact paths, message `release: v{NEW_VERSION} — {summary}` with a `Source: {sha}` trailer (the live source SHA when Step 3 ran; omit the trailer when it did not) and `Co-Authored-By: Professor <noreply@anthropic.com>`.
 
    c. Spawn `gitter` — `Phase: TAG`, annotated `v{NEW_VERSION}`. It re-checks that `VERSION`, `CHANGELOG.md`, and `releases/v{NEW_VERSION}.md` agree before the tag exists.
 
-   d. Spawn `gitter` — `Phase: PUSH`, `git push origin main --follow-tags`, carrying the founder's explicit publish request as its authority. Relay the pre-push hook's output verbatim. STOP if it fails; NEVER force-push.
+   d. Spawn `gitter` — `Phase: PUSH`, `git push origin main --follow-tags`, carrying the user's explicit publish request as its authority. Relay the pre-push hook's output verbatim. STOP if it fails; NEVER force-push.
 
 9. **Clear `.professor/release.md`** — its entries shipped in this release; empty the pending list, keep the header.
 
@@ -64,4 +64,4 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 ## Hard rules
 
-**NEVER:** push secrets; commit project-specific identifiers (a private project's brand name — current AND former — founder PII, internal URLs, machine-absolute home paths such as `/home/…` and `/Users/…`); force-push; bypass the pre-push hook; ship Tier A characters with empty placeholders; strip an archetype's identity down to abstraction; auto-bump the README version without re-checking the templates; stage anything from `tmp/`. **The repo is PUBLIC — every push is world-visible, and a leak cannot be unpublished.**
+**NEVER:** push secrets; commit project-specific identifiers (a private project's brand name — current AND former — user PII, internal URLs, machine-absolute home paths such as `/home/…` and `/Users/…`); force-push; bypass the pre-push hook; ship Tier A characters with empty placeholders; strip an archetype's identity down to abstraction; auto-bump the README version without re-checking the templates; stage anything from `tmp/`. **The repo is PUBLIC — every push is world-visible, and a leak cannot be unpublished.**

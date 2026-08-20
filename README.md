@@ -19,7 +19,7 @@ $ pfm ls
 
 [api]
 ● PAYMENTS_REFACTOR   🥇 ⇄  118p   14M    2m
-● SENTINEL            🥇 ⇄  452p   32M   54m
+● CCC                 🥇 ⇄  452p   32M   54m
 ↻ SCHEMA_MIGRATION    🥈       20p  6.1M    7h
 
 [webapp]
@@ -69,7 +69,8 @@ files:
   task, the overall score is the MINIMUM not the average); `/wave:orchestrator` drives planners →
   worktree setup → architects → developers → adversarial QA → the fix loop → a disk-gated merge →
   post-merge QA → the walker → docs. Multiple pipelines run as a train the `scheduler` plans and
-  `/wave:sentinel` audits on demand — one shot, ground truth only, no standing seat.
+  `/wave:ccc` commands — the standing Control & Command Center that audits from ground truth,
+  verifies every claim against the tree, and rules escalations until the train closes.
 - **A cast, not a system prompt with different adjectives.** The Professor persona holds ten
   doctorates chosen at install; every answer ends in a one-line **Verdict**. `/jc` stays chill on
   the surface, holds the line underneath. `/pcm` — the route for editing the framework's own

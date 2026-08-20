@@ -74,7 +74,7 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line — no private brand, founder PII, client domain content, or machine-absolute path in any tracked file",
+      "the leak line — no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
       "the publication line — push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
