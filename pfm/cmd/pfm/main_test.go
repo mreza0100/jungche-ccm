@@ -49,7 +49,7 @@ func TestSettledRootInterface(t *testing.T) {
 	}
 	help := stdout.String()
 	for _, want := range []string{
-		"operator commands:", "  chat", "  install", "wiring commands:",
+		"operator commands:", "  chat", "  install", "  update", "  init", "wiring commands:",
 		"  statusline", "  usage-hook",
 	} {
 		if !strings.Contains(help, want) {

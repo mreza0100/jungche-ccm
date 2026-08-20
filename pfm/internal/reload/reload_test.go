@@ -1,4 +1,4 @@
-package swap
+package reload
 
 import (
 	"context"
@@ -12,63 +12,63 @@ import (
 	"hostops/pfm/internal/gather"
 )
 
-type fakeSwapTmux struct {
+type fakeReloadTmux struct {
 	dead     bool
 	literal  string
 	respawn  string
 	displays []string
 }
 
-func (tmux *fakeSwapTmux) ListPanes(context.Context, string) ([]Pane, error) {
+func (tmux *fakeReloadTmux) ListPanes(context.Context, string) ([]Pane, error) {
 	return []Pane{{ID: "%7", Dead: tmux.dead, PID: 700}}, nil
 }
-func (*fakeSwapTmux) SetRemain(context.Context, string, string, bool) error { return nil }
-func (*fakeSwapTmux) PaneInMode(context.Context, string, string) (bool, error) {
+func (*fakeReloadTmux) SetRemain(context.Context, string, string, bool) error { return nil }
+func (*fakeReloadTmux) PaneInMode(context.Context, string, string) (bool, error) {
 	return false, nil
 }
-func (*fakeSwapTmux) CancelMode(context.Context, string, string) error { return nil }
-func (*fakeSwapTmux) Capture(context.Context, string, string) (string, error) {
+func (*fakeReloadTmux) CancelMode(context.Context, string, string) error { return nil }
+func (*fakeReloadTmux) Capture(context.Context, string, string) (string, error) {
 	return "Claude\n❯ ", nil
 }
-func (tmux *fakeSwapTmux) SendKey(_ context.Context, _, _, key string) error {
+func (tmux *fakeReloadTmux) SendKey(_ context.Context, _, _, key string) error {
 	if key == "Enter" && tmux.literal == "/exit" {
 		tmux.dead = true
 	}
 	return nil
 }
-func (tmux *fakeSwapTmux) SendLiteral(_ context.Context, _, _, value string) error {
+func (tmux *fakeReloadTmux) SendLiteral(_ context.Context, _, _, value string) error {
 	tmux.literal = value
 	return nil
 }
-func (tmux *fakeSwapTmux) Respawn(_ context.Context, _, _, _, command string) error {
+func (tmux *fakeReloadTmux) Respawn(_ context.Context, _, _, _, command string) error {
 	tmux.respawn = command
 	tmux.dead = false
 	return nil
 }
-func (tmux *fakeSwapTmux) Display(_ context.Context, _, _, message string) error {
+func (tmux *fakeReloadTmux) Display(_ context.Context, _, _, message string) error {
 	tmux.displays = append(tmux.displays, message)
 	return nil
 }
 
-type fakeSwapProc struct {
+type fakeReloadProc struct {
 	pids   []int
 	argv   map[int][]string
 	cmdErr map[int]error
 	stat   map[int]gather.ProcStat
 }
 
-func (proc fakeSwapProc) PIDs() ([]int, error) { return proc.pids, nil }
-func (proc fakeSwapProc) Cmdline(pid int) ([]string, error) {
+func (proc fakeReloadProc) PIDs() ([]int, error) { return proc.pids, nil }
+func (proc fakeReloadProc) Cmdline(pid int) ([]string, error) {
 	if err := proc.cmdErr[pid]; err != nil {
 		return nil, err
 	}
 	return proc.argv[pid], nil
 }
-func (fakeSwapProc) Environ(int) (map[string]string, error)     { return nil, nil }
-func (proc fakeSwapProc) Stat(pid int) (gather.ProcStat, error) { return proc.stat[pid], nil }
+func (fakeReloadProc) Environ(int) (map[string]string, error)     { return nil, nil }
+func (proc fakeReloadProc) Stat(pid int) (gather.ProcStat, error) { return proc.stat[pid], nil }
 
 type delayedThenTmux struct {
-	fakeSwapTmux
+	fakeReloadTmux
 	ready     bool
 	submitted bool
 }
@@ -188,9 +188,9 @@ func TestTranscriptCWDReadsARecordBeforeTheSummary(t *testing.T) {
 	}
 }
 
-func TestRunRefusesAnOverlappingPaneSwap(t *testing.T) {
+func TestRunRefusesAnOverlappingPaneReload(t *testing.T) {
 	dir := t.TempDir()
-	lockPath := filepath.Join(dir, ".probe-1.%7.swaplock")
+	lockPath := filepath.Join(dir, ".probe-1.%7.reloadlock")
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -222,11 +222,11 @@ func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
 }
 
 func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
-	tmux := &fakeSwapTmux{}
+	tmux := &fakeReloadTmux{}
 	result, err := Run(
 		context.Background(),
 		Request{
-			SocketPath:       "/tmp/tmux-1000/probe-swap",
+			SocketPath:       "/tmp/tmux-1000/probe-reload",
 			Pane:             "%7",
 			PanePID:          700,
 			SessionID:        "11111111-1111-4111-8111-111111111111",
@@ -263,7 +263,7 @@ func TestRunWaitsForTheRebornPromptBeforeCheckingClaudeAndSubmittingThen(t *test
 	_, err := Run(
 		context.Background(),
 		Request{
-			SocketPath: "/tmp/tmux-1000/probe-swap-then",
+			SocketPath: "/tmp/tmux-1000/probe-reload-then",
 			Pane:       "%7",
 			PanePID:    700,
 			SessionID:  "11111111-1111-4111-8111-111111111111",
@@ -299,7 +299,7 @@ func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
 	_, err := Run(
 		context.Background(),
 		Request{
-			SocketPath: "/tmp/tmux-1000/probe-swap-then-pid",
+			SocketPath: "/tmp/tmux-1000/probe-reload-then-pid",
 			Pane:       "%7",
 			PanePID:    tmux.oldPID,
 			SessionID:  "11111111-1111-4111-8111-111111111111",
@@ -321,7 +321,7 @@ func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
 }
 
 func TestClaudeLiveUsesThePaneProcessPIDNotTheTmuxPaneID(t *testing.T) {
-	proc := fakeSwapProc{
+	proc := fakeReloadProc{
 		pids: []int{801},
 		argv: map[int][]string{801: {"claude"}},
 		stat: map[int]gather.ProcStat{801: {ParentPID: 700}},
@@ -333,7 +333,7 @@ func TestClaudeLiveUsesThePaneProcessPIDNotTheTmuxPaneID(t *testing.T) {
 }
 
 func TestClaudeLiveIgnoresAProcessThatExitsDuringTheProcScan(t *testing.T) {
-	proc := fakeSwapProc{
+	proc := fakeReloadProc{
 		pids:   []int{800, 801},
 		argv:   map[int][]string{801: {"claude"}},
 		cmdErr: map[int]error{800: os.ErrNotExist},
@@ -347,16 +347,16 @@ func TestClaudeLiveIgnoresAProcessThatExitsDuringTheProcScan(t *testing.T) {
 
 func TestFailedThenWritesTheRecoverableSentinel(t *testing.T) {
 	dir := t.TempDir()
-	tmux := &fakeSwapTmux{}
+	tmux := &fakeReloadTmux{}
 	request := Request{
-		SocketPath: "/tmp/tmux-1000/probe-swap",
+		SocketPath: "/tmp/tmux-1000/probe-reload",
 		Pane:       "%7",
 		Then:       "continue the task",
 	}
 	if err := failThen(context.Background(), request, dir, tmux, "input box missing"); err != nil {
 		t.Fatal(err)
 	}
-	content, err := os.ReadFile(filepath.Join(dir, "probe-swap.then-failed"))
+	content, err := os.ReadFile(filepath.Join(dir, "probe-reload.then-failed"))
 	if err != nil {
 		t.Fatal(err)
 	}

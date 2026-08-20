@@ -13,6 +13,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/sky"
+	"hostops/pfm/internal/theme"
 )
 
 var (
@@ -60,6 +61,26 @@ var (
 			Foreground(lipgloss.Color("#67e8f9"))
 )
 
+func configureStyles(palette theme.Palette) {
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color("#5f3dc4"))
+	groupStyleA = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupA))
+	groupStyleB = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupB))
+	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Border))
+	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color(palette.Selected))
+	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Dim))
+	codexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.CodexRow))
+	agentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.AgentRow))
+	statsHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.StatsHeader))
+	statsClaudeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsClaude))
+	statsCPUStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsCPU))
+	statsMemoryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsRAM))
+	statsTokenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsToken))
+	statsGearStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsGear))
+	statsImageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsImage))
+	warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Warn))
+	labelStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Label))
+}
+
 // View renders only the visible viewport, so frame cost is independent of the
 // total fleet size.
 func (model Model) View() tea.View {
@@ -92,7 +113,7 @@ func (model Model) renderTabs(width int) string {
 	} else {
 		stats = selectedStyle.Render(stats)
 	}
-	return fillLine(" tabs  "+chat+" "+stats+"   ←/→", width)
+	return fillLine(" tabs  "+chat+" "+stats+"   tab/shift+tab", width)
 }
 
 func (model Model) renderHeader(width int) string {
@@ -178,16 +199,19 @@ func (model Model) renderQuery(width int) string {
 func (model Model) renderStatsSubtabs(width int) string {
 	chats := " Chats "
 	docker := " Docker "
+	limits := " Limits "
 	if model.statsSubtab == StatsChats {
 		chats = selectedStyle.Render(chats)
-	} else {
+	} else if model.statsSubtab == StatsDocker {
 		docker = selectedStyle.Render(docker)
+	} else {
+		limits = selectedStyle.Render(limits)
 	}
 	prefix := " subtabs  "
 	if model.statsFocus == StatsFocusSubtab {
 		prefix = "›subtabs  "
 	}
-	return fillLine(prefix+chats+" "+docker+"   ←/→", width)
+	return fillLine(prefix+chats+" "+docker+" "+limits+"   ←/→", width)
 }
 
 func (model Model) renderStatsHeader(width int) string {
@@ -293,7 +317,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsGearStyle.Render(fmt.Sprintf("%5s", gear))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
-	} else {
+	} else if model.statsSubtab == StatsDocker {
 		available := maxInt(16, innerWidth-36)
 		nameWidth := minInt(24, maxInt(8, available/3))
 		imageWidth := maxInt(8, available-nameWidth)
@@ -335,6 +359,28 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", container.MemoryPercent))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
+	} else {
+		header := "  ACCOUNT  WINDOWS"
+		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
+		now := time.Unix(0, model.nowNS)
+		for _, account := range model.stats.Limits {
+			if len(lines) >= innerHeight {
+				break
+			}
+			parts := make([]string, 0, len(account.Windows))
+			for _, window := range account.Windows {
+				reset := "?"
+				if !window.ResetAt.IsZero() {
+					reset = limitCountdown(now, window.ResetAt)
+				}
+				parts = append(parts, fmt.Sprintf("%s %d%% (%s)", window.Name, window.UsedPct, reset))
+			}
+			if len(parts) == 0 {
+				parts = append(parts, "limits unavailable")
+			}
+			line := fmt.Sprintf("  %s account %-2d  %s", account.Emoji, account.Account, strings.Join(parts, " · "))
+			lines = append(lines, fillLine(line, innerWidth))
+		}
 	}
 	if len(lines) == 1 && len(lines) < innerHeight {
 		message := "  waiting for first sample…"
@@ -347,6 +393,18 @@ func (model Model) renderStatsPanel(width, height int) string {
 		lines = append(lines, strings.Repeat(" ", innerWidth))
 	}
 	return framePanel(" stats ", lines, width)
+}
+
+func limitCountdown(now, reset time.Time) string {
+	remaining := reset.Sub(now)
+	if remaining <= 0 {
+		return "now"
+	}
+	totalMinutes := int64(remaining / time.Minute)
+	days := totalMinutes / (24 * 60)
+	hours := totalMinutes / 60 % 24
+	minutes := totalMinutes % 60
+	return fmt.Sprintf("%dD %02dH %02dM", days, hours, minutes)
 }
 
 func (model Model) renderListPanel(width, height int) string {
@@ -448,6 +506,16 @@ func (model Model) renderGroupedRow(
 	if name == "" {
 		name = "(unnamed)"
 	}
+	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+		claude := "Claude"
+		codex := "Codex"
+		if model.newChatEngine == "claude" {
+			claude = "[ Claude ]"
+		} else {
+			codex = "[ Codex ]"
+		}
+		name = claude + " " + codex
+	}
 	name = fixedDisplayColumn(name, 30)
 	marker := rowMarker(row.Kind)
 	badges := rowBadges(row)
@@ -457,6 +525,9 @@ func (model Model) renderGroupedRow(
 	left := pointer + marker + " " + name + " " + badges + " " +
 		fmt.Sprintf("%4s %6s", prompts, size)
 	age := formatAge(row, model.nowNS)
+	if selected && !(model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex)) {
+		age += "  " + carouselBoxes(model.actionIndex)
+	}
 	leftWidth := maxInt(1, width-lipgloss.Width(age)-1)
 	left = ansi.Truncate(left, leftWidth, "…")
 	line := left + strings.Repeat(
@@ -470,10 +541,56 @@ func (model Model) renderGroupedRow(
 	switch row.Kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		return codexStyle.Render(line)
+	case compose.LiveClaude, compose.ResumeClaude, compose.NewClaude:
+		return statsClaudeStyle.Render(line)
 	case compose.Agent:
 		return agentStyle.Render(line)
 	default:
 		return line
+	}
+}
+
+// carouselActions is the action set a selected chat row offers, in cycle order.
+// Each carries its label: an emoji alone leaves the row guessing what ⚡ does.
+var carouselActions = []struct{ Glyph, Label string }{
+	{"▶", "open"},
+	{"⟳", "reload"},
+	{"⚡", "reboot"},
+	{"🕐", "1h"},
+	{"✖", "hide"},
+}
+
+// carouselBoxes draws every action as its own labelled box at the row's right
+// edge, the current one filled with block edges instead of light brackets. The
+// whole set is visible the moment a row is highlighted — a single box whose
+// contents change hides four of the five actions behind blind → presses, and
+// the fill marks the selection without colour, which the row-wide selected
+// style would otherwise swallow.
+func carouselBoxes(index int) string {
+	boxes := make([]string, 0, len(carouselActions))
+	for position, action := range carouselActions {
+		body := action.Glyph + " " + action.Label
+		if position == index {
+			boxes = append(boxes, "▐"+body+"▌")
+			continue
+		}
+		boxes = append(boxes, "["+body+"]")
+	}
+	return strings.Join(boxes, " ")
+}
+
+func carouselAction(index int) string {
+	switch index {
+	case 1:
+		return "⟳"
+	case 2:
+		return "⚡"
+	case 3:
+		return "🕐"
+	case 4:
+		return "✖"
+	default:
+		return "▶"
 	}
 }
 
@@ -635,6 +752,9 @@ func maxInt64(left, right int64) int64 {
 }
 
 func accountMedal(account int) string {
+	if emoji := configuredAccountEmojis[account]; emoji != "" {
+		return emoji
+	}
 	switch account {
 	case 1:
 		return "🥇"

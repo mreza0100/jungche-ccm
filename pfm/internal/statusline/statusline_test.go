@@ -12,6 +12,34 @@ import (
 	"time"
 )
 
+func TestUnknownConfigDirHasNoAccountBadge(t *testing.T) {
+	runtime := Runtime{
+		Home:        t.TempDir(),
+		ConfigDir:   filepath.Join(t.TempDir(), "unmatched"),
+		AccountDirs: map[string]int{filepath.Join(t.TempDir(), "account-one"): 1},
+	}
+	badge, account := accountBadge(runtime)
+	if badge != "" || account != 0 {
+		t.Fatalf("unknown account badge=%q account=%d, want empty/0", badge, account)
+	}
+}
+
+func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
+	got, err := Render(context.Background(), []byte(`{
+  "model":{"display_name":"Fable"},
+  "rate_limits":{"seven_day_fable":{"used_percentage":23,"resets_at":1800086400}}
+}`), Runtime{
+		Home: t.TempDir(), Columns: 120, UID: 1000, Command: quietRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
+	if !strings.Contains(plain, "✦ Fable") || !strings.Contains(plain, "7d-fable-used:23%") {
+		t.Fatalf("fable statusline=%q", plain)
+	}
+}
+
 type quietRunner struct{}
 
 func (quietRunner) Output(

@@ -4,22 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"sync"
-	"time"
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
-	"hostops/pfm/internal/gather"
-	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/inject"
-	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
-	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/store"
 )
 
@@ -30,14 +20,11 @@ type injectionService interface {
 }
 
 type backend struct {
-	database     *store.Store
-	injector     injectionService
-	resolver     resolve.Resolver
-	paths        paths.Values
-	accounts     []pfmconfig.Account
-	claudeBinary string
-	codexBinary  string
-	indexMu      sync.Mutex
+	database   *store.Store
+	injector   injectionService
+	resolver   resolve.Resolver
+	operations SharedOperations
+	dispatch   Dispatch
 }
 
 func newBackend(warnings io.Writer) (*backend, error) {
@@ -68,31 +55,31 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 		return nil, err
 	}
 	resolver, err := resolve.New(nil, resolve.Binaries{
-		Claude: runtime.ClaudeBinary,
-		Codex:  runtime.CodexBinary,
+		Claude:        runtime.ClaudeBinary,
+		Codex:         runtime.CodexBinary,
+		AccountEmojis: accountEmojis(runtime.Accounts),
 	})
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	injector, err := inject.New(inject.Dependencies{
-		Resolver:     resolver,
-		Spawner:      inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
-		ClaudeBinary: runtime.ClaudeBinary,
-		CodexBinary:  runtime.CodexBinary,
+		Resolver:      resolver,
+		Spawner:       inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
+		ClaudeBinary:  runtime.ClaudeBinary,
+		CodexBinary:   runtime.CodexBinary,
+		AccountEmojis: accountEmojis(runtime.Accounts),
 	})
 	if err != nil {
 		_ = database.Close()
 		return nil, err
 	}
 	return &backend{
-		database:     database,
-		injector:     injector,
-		resolver:     *resolver,
-		paths:        runtime.Paths,
-		accounts:     append([]pfmconfig.Account(nil), runtime.Accounts...),
-		claudeBinary: runtime.ClaudeBinary,
-		codexBinary:  runtime.CodexBinary,
+		database:   database,
+		injector:   injector,
+		resolver:   *resolver,
+		operations: runtime.Operations,
+		dispatch:   runtime.Dispatch,
 	}, nil
 }
 
@@ -100,242 +87,21 @@ func (current *backend) close() error {
 	return current.database.Close()
 }
 
-func (current *backend) index(ctx context.Context) error {
-	current.indexMu.Lock()
-	defer current.indexMu.Unlock()
-	indexer, err := fleetindex.NewWithPaths(current.database, current.paths)
-	if err != nil {
-		return err
+func accountEmojis(accounts []pfmconfig.Account) []string {
+	result := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Emoji != "" && account.Emoji != "·" {
+			result = append(result, account.Emoji)
+		}
 	}
-	_, err = indexer.Run(ctx, fleetindex.Options{})
-	return err
+	return result
 }
 
 func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, error) {
-	if input.All && input.Hidden {
-		return LSOutput{}, fmt.Errorf("all and hidden are mutually exclusive")
+	if current.operations.List == nil {
+		return LSOutput{}, fmt.Errorf("chat_ls shared CLI operation is not configured")
 	}
-	if err := current.index(ctx); err != nil {
-		return LSOutput{}, err
-	}
-	transcripts, err := current.database.Transcripts(ctx)
-	if err != nil {
-		return LSOutput{}, err
-	}
-	rollouts, err := current.database.Rollouts(ctx)
-	if err != nil {
-		return LSOutput{}, err
-	}
-	cxNames, err := current.database.CxNames(ctx)
-	if err != nil {
-		return LSOutput{}, err
-	}
-	hidden, err := current.database.HiddenChats(ctx)
-	if err != nil {
-		return LSOutput{}, err
-	}
-
-	codexNamesByPath, codexNamesByID := naming.CodexNameIndex(
-		store.CodexThreads(rollouts),
-		cxNames,
-	)
-	tmuxClient := gather.CommandTmux{TmuxTmpDir: filepath.Dir(current.paths.TmuxDir)}
-	gatherer, err := gather.New(gather.Dependencies{
-		Tmux:       tmuxClient,
-		TmuxTmpDir: filepath.Dir(current.paths.TmuxDir),
-		CodexName: func(path string) string {
-			return codexNamesByPath[filepath.Clean(path)]
-		},
-		CodexIDName: func(threadID string) string {
-			return codexNamesByID[threadID]
-		},
-		CodexThread:  store.NewCodexThreadResolver(ctx, current.paths.CodexRoot),
-		ClaudeBinary: current.claudeBinary,
-		CodexBinary:  current.codexBinary,
-	})
-	if err != nil {
-		return LSOutput{}, err
-	}
-	snapshot, err := gatherer.Gather(ctx)
-	if err != nil {
-		return LSOutput{}, err
-	}
-	for _, rename := range snapshot.Renames {
-		if err := tmuxClient.RenameWindow(ctx, rename); err == nil {
-			for index := range snapshot.Panes {
-				if snapshot.Panes[index].Socket == rename.Socket &&
-					snapshot.Panes[index].WindowID == rename.WindowID {
-					snapshot.Panes[index].WindowName = rename.TargetName
-				}
-			}
-		}
-	}
-
-	view := compose.DefaultView
-	if input.All {
-		view = compose.AllView
-	} else if input.Hidden {
-		view = compose.HiddenView
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return LSOutput{}, err
-	}
-	output := compose.Compose(compose.Input{
-		Snapshot:     snapshot,
-		Transcripts:  transcripts,
-		Rollouts:     rollouts,
-		CxNames:      cxNames,
-		Hidden:       hidden,
-		AccountRoots: configuredAccountRoots(current.accounts),
-		Options: compose.Options{
-			View:           view,
-			CurrentDir:     cwd,
-			CurrentSocket:  filepath.Base(currentSocket()),
-			PrimaryAccount: primaryAccount(ctx, current.paths, current.accounts),
-			CodexAvailable: codexAvailable(current.paths.CodexRoot, current.codexBinary),
-			NowNS:          time.Now().UnixNano(),
-		},
-	})
-
-	rows := make([]ChatRow, 0, len(output.Rows))
-	filter := strings.ToLower(strings.TrimSpace(input.Project))
-	for _, row := range output.Rows {
-		if excludedFromChatLS(row.Kind) {
-			continue
-		}
-		if filter != "" &&
-			!strings.Contains(strings.ToLower(row.Project), filter) &&
-			!strings.Contains(strings.ToLower(row.CWD), filter) {
-			continue
-		}
-		state := "idle"
-		session := row.SessionName
-		pane := row.PaneID
-		if row.Kind == compose.LiveSplit {
-			state = "idle"
-			for _, candidate := range snapshot.Panes {
-				if candidate.Socket != row.Socket {
-					continue
-				}
-				if session == "" {
-					session = candidate.SessionName
-				}
-				socketPath := filepath.Join(current.paths.TmuxDir, row.Socket)
-				capture, captureErr := inject.CommandTmux{}.Capture(
-					ctx,
-					socketPath,
-					candidate.PaneID,
-					false,
-					0,
-				)
-				if captureErr != nil {
-					if state != "busy" {
-						state = "dead"
-					}
-				} else if inject.IsBusy(capture) {
-					state = "busy"
-				}
-			}
-		} else if isLive(row.Kind) {
-			socketPath := filepath.Join(current.paths.TmuxDir, row.Socket)
-			capture, captureErr := inject.CommandTmux{}.Capture(
-				ctx,
-				socketPath,
-				liveTarget(row),
-				false,
-				0,
-			)
-			if captureErr != nil {
-				state = "dead"
-			} else if inject.IsBusy(capture) {
-				state = "busy"
-			}
-		} else {
-			state = "resumable"
-		}
-		if session == "" {
-			session = row.ID
-		}
-		account := row.Account
-		if account == 0 && len(row.Accounts) > 0 {
-			account = row.Accounts[0]
-		}
-		rows = append(rows, ChatRow{
-			Session: session,
-			ID:      row.ID,
-			Engine:  engineForKind(row.Kind),
-			State:   state,
-			Dir:     row.CWD,
-			Project: row.Project,
-			Name:    row.Name,
-			Account: account,
-			Kind:    row.Kind.String(),
-			Hidden:  row.Hidden,
-			Socket:  row.Socket,
-			Pane:    pane,
-		})
-	}
-	return LSOutput{
-		Rows:        rows,
-		Count:       len(rows),
-		HiddenCount: output.HiddenCount,
-	}, nil
-}
-
-func configuredAccountRoots(accounts []pfmconfig.Account) []compose.AccountRoot {
-	roots := make([]compose.AccountRoot, 0, len(accounts))
-	for _, account := range accounts {
-		path := account.ProjectDir
-		if resolved, err := filepath.EvalSymlinks(account.ProjectDir); err == nil {
-			path = resolved
-		} else if absolute, err := filepath.Abs(account.ProjectDir); err == nil {
-			path = absolute
-		}
-		roots = append(roots, compose.AccountRoot{
-			Account: account.ID,
-			Path:    filepath.Clean(path),
-		})
-	}
-	return roots
-}
-
-// primaryAccount reads the shared state store (db first, ~/.claude-primary
-// mirror second) so chat_ls and the picker can never disagree on the primary.
-func primaryAccount(ctx context.Context, values paths.Values, accounts []pfmconfig.Account) int {
-	if account, ok := shared.PrimaryAccount(ctx, values); ok {
-		for _, candidate := range accounts {
-			if candidate.ID == account {
-				return account
-			}
-		}
-	}
-	if len(accounts) != 0 {
-		return accounts[0].ID
-	}
-	return 1
-}
-
-func codexAvailable(root, binary string) bool {
-	switch os.Getenv("PFM_CODEX_AVAILABLE") {
-	case "1":
-		return true
-	case "0":
-		return false
-	}
-	if _, err := exec.LookPath(binary); err == nil {
-		return true
-	}
-	info, err := os.Stat(root)
-	return err == nil && info.IsDir()
-}
-
-func currentSocket() string {
-	value := os.Getenv("TMUX")
-	if comma := strings.IndexByte(value, ','); comma >= 0 {
-		value = value[:comma]
-	}
-	return value
+	return current.operations.List(ctx, input)
 }
 
 // excludedFromChatLS names the row kinds chat_ls never lists. NewClaude and
@@ -350,25 +116,4 @@ func excludedFromChatLS(kind compose.Kind) bool {
 	return kind == compose.NewClaude ||
 		kind == compose.NewCodex ||
 		kind == compose.Booting
-}
-
-func isLive(kind compose.Kind) bool {
-	return kind == compose.LiveClaude ||
-		kind == compose.LiveCodex ||
-		kind == compose.LiveSplit ||
-		kind == compose.Agent
-}
-
-func liveTarget(row compose.Row) string {
-	if row.PaneID != "" {
-		return row.PaneID
-	}
-	return row.SessionName
-}
-
-func engineForKind(kind compose.Kind) string {
-	if kind == compose.LiveCodex || kind == compose.ResumeCodex {
-		return "cx"
-	}
-	return "cc"
 }

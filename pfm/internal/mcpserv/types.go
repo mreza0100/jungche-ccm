@@ -74,6 +74,27 @@ type InjectOutput struct {
 	LiteralChunks int    `json:"literal_chunks,omitempty"`
 }
 
+// KeysInput requests tmux keypresses for one resolved live chat. Keys are
+// key names unless Literal is explicitly true; this mirrors `pfm chat keys`.
+type KeysInput struct {
+	Target  string   `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
+	Keys    []string `json:"keys" jsonschema:"tmux key names to press"`
+	Literal bool     `json:"literal,omitempty" jsonschema:"type each key as literal text instead of pressing it"`
+	DelayMS int      `json:"delay_ms,omitempty" jsonschema:"pause between keys in milliseconds; default 120"`
+	Capture bool     `json:"capture,omitempty" jsonschema:"return the pane after the keys land"`
+}
+
+// KeysOutput is the structured receipt for chat_keys.
+type KeysOutput struct {
+	Status     string   `json:"status"`
+	Code       int      `json:"code"`
+	SocketPath string   `json:"socket_path,omitempty"`
+	Pane       string   `json:"pane,omitempty"`
+	Count      int      `json:"count"`
+	Keys       []string `json:"keys"`
+	Text       string   `json:"text,omitempty"`
+}
+
 // CaptureInput requests a pane snapshot of the whole retained scrollback,
 // bounded by the caller after the capture.
 type CaptureInput struct {
@@ -163,4 +184,74 @@ type ReadOutput struct {
 	Count     int    `json:"count"`
 	Truncated bool   `json:"truncated"`
 	Bytes     int    `json:"bytes"`
+}
+
+// LastInput selects the newest assistant answer for a chat.
+type LastInput struct {
+	Target string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
+}
+
+type LastOutput struct {
+	Target string `json:"target"`
+	Text   string `json:"text"`
+}
+
+// StatusInput selects one chat for headless status inspection.
+type StatusInput struct {
+	Target string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
+}
+
+type StatusOutput struct {
+	Name        string  `json:"name"`
+	State       string  `json:"state"`
+	IdleSeconds int64   `json:"idle_seconds"`
+	Engine      string  `json:"engine"`
+	Model       string  `json:"model,omitempty"`
+	CWD         string  `json:"cwd,omitempty"`
+	SessionID   string  `json:"session_id,omitempty"`
+	Socket      string  `json:"socket,omitempty"`
+	ContextPct  float64 `json:"context_pct,omitempty"`
+	Last        string  `json:"last,omitempty"`
+}
+
+// TargetInput is shared by chat actions whose CLI form takes one target.
+type TargetInput struct {
+	Target string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
+}
+
+type NameInput struct {
+	Target string `json:"target"`
+	Name   string `json:"name"`
+}
+
+type NewInput struct {
+	Name     string `json:"name"`
+	Engine   string `json:"engine,omitempty"`
+	CWD      string `json:"cwd,omitempty"`
+	Account  int    `json:"account,omitempty"`
+	Cache1H  bool   `json:"1h,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Effort   string `json:"effort,omitempty"`
+	Prompt   string `json:"prompt,omitempty"`
+	Await    bool   `json:"await,omitempty"`
+	Timeout  int    `json:"timeout,omitempty"`
+	Settle   int    `json:"settle,omitempty"`
+	Progress bool   `json:"progress,omitempty"`
+	Attach   bool   `json:"attach,omitempty"`
+}
+
+type ActionOutput struct {
+	Status  string `json:"status"`
+	Code    int    `json:"code"`
+	Message string `json:"message,omitempty"`
+}
+
+type HideInput struct {
+	Target string `json:"target"`
+	Exit   bool   `json:"exit,omitempty"`
+}
+
+type SaveInput struct {
+	Target     string `json:"target"`
+	Transcript string `json:"transcript,omitempty"`
 }

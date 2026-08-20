@@ -1,6 +1,8 @@
 package compose
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -8,6 +10,39 @@ import (
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/store"
 )
+
+func TestComposeCanonicalizesSymlinkedAccountRoots(t *testing.T) {
+	root := t.TempDir()
+	physical := filepath.Join(root, "physical")
+	alias := filepath.Join(root, "alias")
+	if err := os.MkdirAll(filepath.Join(physical, "projects"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Fatal(err)
+	}
+	transcripts := []store.Transcript{
+		transcript("one", filepath.Join(alias, "projects", "one.jsonl"), "/work/one", "one", 1, 1, 1),
+		transcript("two", filepath.Join(root, "two", "projects", "two.jsonl"), "/work/two", "two", 1, 1, 2),
+	}
+	output := Compose(Input{
+		Transcripts: transcripts,
+		AccountRoots: []AccountRoot{
+			{Account: 1, Path: filepath.Join(alias, "projects")},
+			{Account: 2, Path: filepath.Join(root, "two", "projects")},
+		},
+		Options: Options{View: AllView},
+	})
+	for _, want := range []struct {
+		id      string
+		account int
+	}{{"one", 1}, {"two", 2}} {
+		row, ok := rowByID(output.Rows, want.id)
+		if !ok || row.Account != want.account {
+			t.Fatalf("row %s = %#v, want account %d", want.id, row, want.account)
+		}
+	}
+}
 
 func TestPromptBaselineHideLiftsButPermanentHideDoesNot(t *testing.T) {
 	baseline := int64(2)

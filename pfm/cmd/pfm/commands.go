@@ -123,10 +123,27 @@ func runLS(
 				return 1
 			}
 			scan.Snapshot.ApplyHide = applier
-			scan.Snapshot.StatsSampler = pfmstats.NewSampler(
+			scan.Snapshot.MergeNewChat = true
+			statsSampler := pfmstats.NewSampler(
 				scan.Paths.ProcRoot,
 				scan.Paths.CgroupRoot,
 			)
+			limitAccounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts))
+			for _, account := range runtime.Config.Accounts {
+				claude := runtime.Config.EffectiveClaude(account.ID)
+				limitAccount := pfmstats.LimitAccount{
+					ID: account.ID, Emoji: runtime.Config.EmojiFor(account.ID),
+					ConfigDir: account.ConfigDir, ClaudeBinary: claude.Binary,
+				}
+				if account.ID == 4 {
+					limitAccount.CodexCachePath = filepath.Join(
+						runtime.Paths.Home, "tmp", fmt.Sprintf("cc-gpt-usage-%d.json", os.Getuid()),
+					)
+				}
+				limitAccounts = append(limitAccounts, limitAccount)
+			}
+			statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts)
+			scan.Snapshot.StatsSampler = statsSampler
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
 			// Bubble Tea owns the tty for as long as Pick runs: a probe warning

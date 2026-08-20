@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,9 +11,11 @@ import (
 	goRuntime "runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/harvest"
 	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/store"
 )
@@ -51,7 +54,25 @@ func runDoctor(
 		return 2
 	}
 	resolved := runtime.Paths
+	warnings := 0
+	if runtime.ConfigError != nil {
+		fmt.Fprintf(stdout, "doctor: config error=%v\n", runtime.ConfigError)
+		warnings++
+	}
 	printDoctorConfig(stdout, runtime)
+	if mcpConfigured(runtime) {
+		status, daemonErr := mcpDaemonReachability(runtime)
+		if daemonErr != nil {
+			warnings++
+			fmt.Fprintf(stdout, "doctor: mcp daemon=unreachable error=%v\n", daemonErr)
+		} else {
+			fmt.Fprintf(stdout, "doctor: mcp daemon=running pid=%d since=%s endpoint=%s\n", status.PID, status.StartTime, status.Endpoint)
+			if status.PFMVersion != version {
+				warnings++
+				fmt.Fprintf(stdout, "doctor: mcp daemon=version-skew daemon=%s client=%s\n", status.PFMVersion, version)
+			}
+		}
+	}
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy database: %v\n", err)
@@ -59,11 +80,12 @@ func runDoctor(
 	}
 	defer database.Close()
 	ctx := context.Background()
-	warnings := 0
-
 	pathWarnings := pfmPathWarnings(resolved.Home, os.Getenv("PATH"))
 	for _, warning := range pathWarnings {
 		fmt.Fprintf(stdout, "doctor: warning %s\n", warning)
+		if strings.HasPrefix(warning, "pfm_path_resolves=") || strings.HasPrefix(warning, "pfm_hash_mismatch=") {
+			fmt.Fprintf(stdout, "doctor: remediation: put %s first on PATH and remove or rebuild stale pfm copies\n", filepath.Join(resolved.Home, ".local", "bin"))
+		}
 	}
 	warnings += len(pathWarnings)
 	if len(pathWarnings) == 0 {
@@ -197,12 +219,61 @@ func runDoctor(
 		)
 	}
 	warnings += printHarvestPythonDoctor(ctx, stdout, resolved.Home, harvestpy.Platform{}, configuredHarvestDoctor())
+	warnings += printHarvestCacheDoctor(stdout)
 	if warnings != 0 {
 		fmt.Fprintf(stdout, "doctor: warnings=%d\n", warnings)
 		return 1
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+func printHarvestCacheDoctor(stdout io.Writer) int {
+	root := harvest.CacheRoot()
+	entries := 0
+	walkErr := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			entries++
+		}
+		return nil
+	})
+	if os.IsNotExist(walkErr) {
+		walkErr = nil
+	}
+	ttl := 24 * time.Hour
+	ttlText := ttl.String()
+	if raw := strings.TrimSpace(os.Getenv("HARVESTER_CACHE_TTL")); raw != "" {
+		seconds, err := strconv.Atoi(raw)
+		if err != nil || seconds < 0 {
+			walkErr = errors.Join(walkErr, fmt.Errorf("invalid HARVESTER_CACHE_TTL=%q", raw))
+		} else if seconds == 0 {
+			ttlText = "never"
+		} else {
+			ttl = time.Duration(seconds) * time.Second
+			ttlText = ttl.String()
+		}
+	}
+	if walkErr != nil {
+		fmt.Fprintf(stdout, "doctor: harvester_cache dir=%s entries=%d ttl=%s error=%v\n", root, entries, ttlText, walkErr)
+		return 1
+	}
+	fmt.Fprintf(stdout, "doctor: harvester_cache dir=%s entries=%d ttl=%s\n", root, entries, ttlText)
+	return 0
+}
+
+func mcpConfigured(runtime commandRuntime) bool {
+	if runtime.Config.MCP.AuthToken != "" {
+		return true
+	}
+	for _, server := range runtime.Config.MCPServers {
+		if server.Enabled {
+			return true
+		}
+	}
+	return false
 }
 
 func configuredHarvestDoctor() harvestDoctor {
@@ -314,6 +385,7 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 		runtime.Config.Exists,
 	)
 	fmt.Fprintf(stdout, "doctor: config version=%d (%s)\n", runtime.Config.Version, runtime.Config.Source("version"))
+	fmt.Fprintf(stdout, "doctor: config theme=%s (%s)\n", runtime.Config.Theme, runtime.Config.Source("theme"))
 	accounts := make([]string, 0, len(runtime.Config.Accounts))
 	for _, account := range runtime.Config.Accounts {
 		accounts = append(accounts, fmt.Sprintf("%d:%s", account.ID, account.ConfigDir))
@@ -327,6 +399,7 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 		key := "mcp.servers." + name + ".enabled"
 		fmt.Fprintf(stdout, "doctor: config %s=%t (%s)\n", key, runtime.Config.MCPServers[name].Enabled, runtime.Config.Source(key))
 	}
+	fmt.Fprintf(stdout, "doctor: config mcp.http.port=%d (%s)\n", runtime.Config.MCP.HTTP.Port, runtime.Config.Source("mcp.http.port"))
 }
 
 // pfmPathWarnings checks both precedence and byte identity. A copied binary

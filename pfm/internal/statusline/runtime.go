@@ -41,16 +41,17 @@ func (commandRunner) Output(
 type Runtime struct {
 	Now func() time.Time
 
-	Home         string
-	ConfigDir    string
-	CacheDir     string
-	RateLimitDir string
-	SIDDir       string
-	TmuxDir      string
-	ProcRoot     string
-	Columns      int
-	UID          int
-	AccountDirs  map[string]int
+	Home          string
+	ConfigDir     string
+	CacheDir      string
+	RateLimitDir  string
+	SIDDir        string
+	TmuxDir       string
+	ProcRoot      string
+	Columns       int
+	UID           int
+	AccountDirs   map[string]int
+	AccountEmojis map[int]string
 
 	// A non-nil Env is a closed test environment. Nil reads os.Getenv.
 	Env map[string]string

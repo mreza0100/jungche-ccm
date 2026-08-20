@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -92,6 +93,8 @@ func runChatWithRuntime(
 		return runHeadlessWatch(rest, stdout, stderr, runtime)
 	case "capture":
 		return runChatCapture(rest, stdout, stderr, runtime)
+	case "keys":
+		return runChatKeys(rest, stdout, stderr, runtime)
 	case "recover":
 		return runChatRecover(rest, stdout, stderr, runtime)
 	case "name":
@@ -102,8 +105,8 @@ func runChatWithRuntime(
 		return runChatUnhide(rest, stdout, stderr, runtime)
 	case "end":
 		return runChatEnd(rest, stdout, stderr, runtime)
-	case "swap":
-		return runChatSwapWithRuntime(rest, stdout, stderr, runtime)
+	case "reload", "swap":
+		return runChatReloadWithRuntime(rest, stdout, stderr, runtime)
 	case "whoami":
 		// Compatibility for the installed chat.sh shim. The settled public
 		// command is `pfm whoami`, but the shim must remain safe while callers
@@ -141,12 +144,13 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  ask         deliver a message and wait for the answer")
 	fmt.Fprintln(w, "  watch       block, reporting IDLE / EXIT / DEAD")
 	fmt.Fprintln(w, "  capture     print a live chat's tmux scrollback")
+	fmt.Fprintln(w, "  keys        press keys in a live chat's pane (Escape, Enter, C-c, …)")
 	fmt.Fprintln(w, "  recover     rebuild a Codex conversation from its rollout")
 	fmt.Fprintln(w, "  name        rename a chat and converge its window")
 	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
 	fmt.Fprintln(w, "  unhide      remove a chat hide")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
-	fmt.Fprintln(w, "  swap        reboot a Claude chat in place under another configured account/cache mode")
+	fmt.Fprintln(w, "  reload      reboot a Claude chat in place under another configured account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "exit codes: 0 done · 2 usage · 3 chat dead · 4 no such chat")
@@ -358,16 +362,16 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer, runtimes ...
 		return 2
 	}
 	ctx := context.Background()
-	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON, runtimes...)
-	if code != 0 {
-		return code
-	}
-	if chat.Path == "" {
-		fmt.Fprintf(stderr, "pfm chat read: %q has not written a transcript yet\n", chat.Name)
-		return codeDeadChat
-	}
-	entries, truncated, err := transcript.Tail(ctx, chat.Path, chat.Engine, *tail, 0)
+	chat, entries, truncated, err := readChatEntries(ctx, names[0], *tail, runtimes...)
 	if err != nil {
+		if errors.Is(err, errChatNotFound) {
+			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", names[0])
+			return codeUnknownChat
+		}
+		if errors.Is(err, errChatNoTranscript) {
+			fmt.Fprintf(stderr, "pfm chat read: %q has not written a transcript yet\n", chat.Name)
+			return codeDeadChat
+		}
 		fmt.Fprintf(stderr, "pfm chat read: %v\n", err)
 		return 1
 	}
@@ -390,6 +394,37 @@ func runHeadlessTranscript(args []string, stdout, stderr io.Writer, runtimes ...
 		}
 	}
 	return 0
+}
+
+var (
+	errChatNotFound     = errors.New("chat not found")
+	errChatNoTranscript = errors.New("chat has not written a transcript")
+)
+
+// readChatEntries is the shared transcript extraction primitive for the CLI
+// and MCP adapters. Keeping resolution and transcript.Tail here makes their
+// defaults and failures identical.
+func readChatEntries(
+	ctx context.Context,
+	target string,
+	tail int,
+	runtimes ...commandRuntime,
+) (headless.Chat, []transcript.Entry, bool, error) {
+	chat, found, err := resolveChat(ctx, target, io.Discard, runtimes...)
+	if err != nil {
+		return headless.Chat{}, nil, false, err
+	}
+	if !found {
+		return headless.Chat{}, nil, false, fmt.Errorf("%w: %q", errChatNotFound, target)
+	}
+	if chat.Path == "" {
+		return chat, nil, false, fmt.Errorf("%w: %q", errChatNoTranscript, chat.Name)
+	}
+	entries, truncated, err := transcript.Tail(ctx, chat.Path, chat.Engine, tail, 0)
+	if err != nil {
+		return chat, nil, false, err
+	}
+	return chat, entries, truncated, nil
 }
 
 func runHeadlessLast(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {

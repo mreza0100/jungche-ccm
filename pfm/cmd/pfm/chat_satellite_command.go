@@ -153,6 +153,11 @@ func excerptNeedles(value string) []string {
 	if len(candidates) > 5 {
 		candidates = candidates[:5]
 	}
+	if len(candidates) == 0 {
+		if query := strings.TrimSpace(value); query != "" {
+			candidates = []string{query}
+		}
+	}
 	return candidates
 }
 

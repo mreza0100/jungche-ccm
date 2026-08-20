@@ -1,5 +1,5 @@
-// Package swap reboots one Claude seat in its existing tmux pane.
-package swap
+// Package reload reboots one Claude seat in its existing tmux pane.
+package reload
 
 import (
 	"context"
@@ -105,7 +105,7 @@ func (o *Options) defaults() {
 func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc Process, stderr io.Writer) (Result, error) {
 	options.defaults()
 	if request.SocketPath == "" || request.Pane == "" {
-		return Result{}, errors.New("swap requires a socket and pane")
+		return Result{}, errors.New("reload requires a socket and pane")
 	}
 	if !rosterContains(request.AccountIDs, request.Account) {
 		return Result{}, fmt.Errorf("account %d is not in the configured roster", request.Account)
@@ -113,32 +113,32 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	lockPath := filepath.Join(options.SIDDir, "."+filepath.Base(request.SocketPath)+"."+request.Pane+".swaplock")
+	lockPath := filepath.Join(options.SIDDir, "."+filepath.Base(request.SocketPath)+"."+request.Pane+".reloadlock")
 	if err := os.MkdirAll(options.SIDDir, 0o700); err != nil {
-		return Result{}, fmt.Errorf("create swap lock directory: %w", err)
+		return Result{}, fmt.Errorf("create reload lock directory: %w", err)
 	}
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		return Result{}, fmt.Errorf("open swap lock: %w", err)
+		return Result{}, fmt.Errorf("open reload lock: %w", err)
 	}
 	defer func() {
 		if err := lock.Close(); err != nil {
-			fmt.Fprintf(stderr, "pfm chat swap: close pane mutex: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat reload: close pane mutex: %v\n", err)
 		}
 	}()
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return Result{}, errors.New("another swap of this pane is already in flight")
+			return Result{}, errors.New("another reload of this pane is already in flight")
 		}
-		return Result{}, fmt.Errorf("lock swap pane: %w", err)
+		return Result{}, fmt.Errorf("lock reload pane: %w", err)
 	}
 	defer func() {
 		if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
-			fmt.Fprintf(stderr, "pfm chat swap: unlock pane mutex: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat reload: unlock pane mutex: %v\n", err)
 		}
 	}()
 	if tmux == nil {
-		return Result{}, errors.New("swap requires a tmux client")
+		return Result{}, errors.New("reload requires a tmux client")
 	}
 
 	if options.Delay > 0 {
@@ -157,7 +157,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	defer func() {
 		if clearRemain {
 			if err := tmux.SetRemain(context.Background(), request.SocketPath, request.Pane, false); err != nil {
-				fmt.Fprintf(stderr, "pfm chat swap: clear remain-on-exit after failure: %v\n", err)
+				fmt.Fprintf(stderr, "pfm chat reload: clear remain-on-exit after failure: %v\n", err)
 			}
 		}
 	}()
@@ -176,7 +176,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	}
 	if selectorOpen(cap) {
 		cause := errors.New("open selector menu on the pane — refusing to /exit")
-		if displayErr := tmux.Display(ctx, request.SocketPath, request.Pane, "swap ABORTED — answer the open menu first, then swap again"); displayErr != nil {
+		if displayErr := tmux.Display(ctx, request.SocketPath, request.Pane, "reload ABORTED — answer the open menu first, then reload again"); displayErr != nil {
 			return Result{}, errors.Join(cause, fmt.Errorf("display selector refusal: %w", displayErr))
 		}
 		return Result{}, cause
@@ -310,13 +310,13 @@ func deliverThen(ctx context.Context, request Request, options Options, tmux Tmu
 	for i := 0; i < options.ThenTries; i++ {
 		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat swap --then: capture input box (try %d): %v\n", i+1, err)
+			fmt.Fprintf(stderr, "pfm chat reload --then: capture input box (try %d): %v\n", i+1, err)
 		} else {
 			trustPrompt := false
 			for _, needle := range []string{"Trust this directory?", "trust this folder", "trust these settings"} {
 				if strings.Contains(capture, needle) {
 					if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
-						return fmt.Errorf("swap --then: accept trust prompt: %w", err)
+						return fmt.Errorf("reload --then: accept trust prompt: %w", err)
 					}
 					trustPrompt = true
 				}
@@ -339,24 +339,24 @@ func deliverThen(ctx context.Context, request Request, options Options, tmux Tmu
 		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("swap --then: input box never appeared")
+	return fmt.Errorf("reload --then: input box never appeared")
 ready:
 	// A respawn returns before the child necessarily reaches Claude. Prove the
 	// process only after the input box appears; checking immediately after
 	// respawn races normal startup and drops an otherwise deliverable baton.
 	panePID, err := currentPanePID(ctx, request.SocketPath, request.Pane, tmux)
 	if err != nil {
-		return fmt.Errorf("swap --then: refresh reborn pane process: %w", err)
+		return fmt.Errorf("reload --then: refresh reborn pane process: %w", err)
 	}
 	live, err := claudeLive(proc, panePID)
 	if err != nil {
-		return fmt.Errorf("swap --then: prove live Claude: %w", err)
+		return fmt.Errorf("reload --then: prove live Claude: %w", err)
 	}
 	if !live {
-		return errors.New("swap --then: no live Claude on the pane")
+		return errors.New("reload --then: no live Claude on the pane")
 	}
 	if err := tmux.SendLiteral(ctx, request.SocketPath, request.Pane, request.Then); err != nil {
-		return fmt.Errorf("swap --then: type prompt: %w", err)
+		return fmt.Errorf("reload --then: type prompt: %w", err)
 	}
 	flat := strings.Join(strings.Fields(request.Then), " ")
 	needle := flat
@@ -367,7 +367,7 @@ ready:
 	for i := 0; i < 40; i++ {
 		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat swap --then: confirm typed text (try %d): %v\n", i+1, err)
+			fmt.Fprintf(stderr, "pfm chat reload --then: confirm typed text (try %d): %v\n", i+1, err)
 			continue
 		}
 		if strings.Contains(strings.Join(strings.Fields(capture), " "), needle) {
@@ -377,7 +377,7 @@ ready:
 		time.Sleep(200 * time.Millisecond)
 	}
 	if !typed {
-		return errors.New("swap --then: typed text never rendered — refusing blind Enter")
+		return errors.New("reload --then: typed text never rendered — refusing blind Enter")
 	}
 	prefix := flat
 	if len(prefix) > 24 {
@@ -385,16 +385,16 @@ ready:
 	}
 	for i := 0; i < 12; i++ {
 		if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
-			return fmt.Errorf("swap --then: submit prompt: %w", err)
+			return fmt.Errorf("reload --then: submit prompt: %w", err)
 		}
 		time.Sleep(150 * time.Millisecond)
 		if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
-			return fmt.Errorf("swap --then: confirm prompt submit: %w", err)
+			return fmt.Errorf("reload --then: confirm prompt submit: %w", err)
 		}
 		time.Sleep(400 * time.Millisecond)
 		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
 		if err != nil {
-			return fmt.Errorf("swap --then: verify prompt submit: %w", err)
+			return fmt.Errorf("reload --then: verify prompt submit: %w", err)
 		}
 		// Submitted text remains in pane scrollback. Only the active composer
 		// decides whether Enter cleared it; scanning the whole capture would
@@ -405,8 +405,8 @@ ready:
 			return nil
 		}
 	}
-	if err := tmux.Display(ctx, request.SocketPath, request.Pane, "swap --then typed but submit unconfirmed — press Enter"); err != nil {
-		return fmt.Errorf("swap --then: display unconfirmed submit: %w", err)
+	if err := tmux.Display(ctx, request.SocketPath, request.Pane, "reload --then typed but submit unconfirmed — press Enter"); err != nil {
+		return fmt.Errorf("reload --then: display unconfirmed submit: %w", err)
 	}
 	return nil
 }
@@ -490,10 +490,10 @@ func failThen(ctx context.Context, request Request, sidDir string, tmux Tmux, re
 	if request.Then != "" && request.SocketPath != "" {
 		path := filepath.Join(sidDir, filepath.Base(request.SocketPath)+".then-failed")
 		if err := os.WriteFile(path, []byte(request.Then+"\n"), 0o600); err != nil {
-			failures = append(failures, fmt.Errorf("write swap --then sentinel %q: %w", path, err))
+			failures = append(failures, fmt.Errorf("write reload --then sentinel %q: %w", path, err))
 		}
-		if err := tmux.Display(ctx, request.SocketPath, request.Pane, "swap --then NOT delivered ("+reason+") — prompt saved"); err != nil {
-			failures = append(failures, fmt.Errorf("display swap --then failure: %w", err))
+		if err := tmux.Display(ctx, request.SocketPath, request.Pane, "reload --then NOT delivered ("+reason+") — prompt saved"); err != nil {
+			failures = append(failures, fmt.Errorf("display reload --then failure: %w", err))
 		}
 	}
 	return errors.Join(failures...)
@@ -505,7 +505,7 @@ func TranscriptCWD(path string) (string, error) {
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("open swap transcript %q: %w", path, err)
+		return "", fmt.Errorf("open reload transcript %q: %w", path, err)
 	}
 	decoder := json.NewDecoder(file)
 	cwd := ""
@@ -515,7 +515,7 @@ func TranscriptCWD(path string) (string, error) {
 			break
 		} else if err != nil {
 			_ = file.Close()
-			return "", fmt.Errorf("decode swap transcript %q record %d: %w", path, i+1, err)
+			return "", fmt.Errorf("decode reload transcript %q record %d: %w", path, i+1, err)
 		}
 		if value, ok := row["cwd"].(string); ok && value != "" {
 			cwd = value
@@ -523,7 +523,7 @@ func TranscriptCWD(path string) (string, error) {
 		}
 	}
 	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("close swap transcript %q: %w", path, err)
+		return "", fmt.Errorf("close reload transcript %q: %w", path, err)
 	}
 	return cwd, nil
 }
@@ -536,7 +536,7 @@ func SessionFromCrumb(sidDir, socket, pane string) (string, string, error) {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			return "", "", fmt.Errorf("read swap breadcrumb %q: %w", path, err)
+			return "", "", fmt.Errorf("read reload breadcrumb %q: %w", path, err)
 		}
 		transcript := strings.TrimSpace(string(content))
 		if transcript == "" {

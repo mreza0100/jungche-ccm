@@ -109,10 +109,39 @@ func TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy(t *testing.T) {
 	}
 }
 
-func TestSynthesizePickerUsesConfiguredCodexBinaryAndSandbox(t *testing.T) {
+// TestSynthesizePickerNewRowsIgnoreConfiguredLaunch pins K1 (pfm/CLAUDE.md §
+// Code Standards): a ✦-new row always calls the user's own `cc`/`cx` shell
+// function, even on a machine whose config file pins accounts, a permission
+// mode, or a binary override. Those overrides remain live for resume/agent/
+// headless routes (see TestSynthesizeUsesConfiguredClaudeAccountAndPromptPolicy
+// and TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy above) — only the
+// fresh-launch routes must stay blind to them, because the shell function is
+// what stands up the per-chat tmux server the fleet later finds.
+func TestSynthesizePickerNewRowsIgnoreConfiguredLaunch(t *testing.T) {
 	home := t.TempDir()
 	machine := configuredMachinePolicy(home)
-	plan, err := Synthesize(Request{
+
+	claudePlan, err := Synthesize(Request{
+		Row: compose.Row{
+			Kind: compose.NewClaude,
+			CWD:  "/work/project",
+		},
+		PrimaryAccount: 42,
+		Home:           home,
+		Config:         machine,
+	})
+	if err != nil {
+		t.Fatalf("Synthesize(NewClaude) error = %v", err)
+	}
+	wantClaude := "(cd -- '/work/project' && CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 cc42)"
+	if claudePlan.Line != wantClaude {
+		t.Fatalf("new Claude picker line = %q, want %q", claudePlan.Line, wantClaude)
+	}
+	if strings.Contains(claudePlan.Line, "claude") {
+		t.Fatalf("new Claude picker line names the configured binary instead of calling cc42: %q", claudePlan.Line)
+	}
+
+	codexPlan, err := Synthesize(Request{
 		Row: compose.Row{
 			Kind: compose.NewCodex,
 			CWD:  "/work/project",
@@ -122,10 +151,13 @@ func TestSynthesizePickerUsesConfiguredCodexBinaryAndSandbox(t *testing.T) {
 		Config:         machine,
 	})
 	if err != nil {
-		t.Fatalf("Synthesize() error = %v", err)
+		t.Fatalf("Synthesize(NewCodex) error = %v", err)
 	}
-	want := "(cd -- '/work/project' && " + hygiene + " " + Quote(machine.Codex.Binary) + " --sandbox workspace-write)"
-	if plan.Line != want {
-		t.Fatalf("new Codex picker line = %q, want %q", plan.Line, want)
+	wantCodex := "(cd -- '/work/project' && cx)"
+	if codexPlan.Line != wantCodex {
+		t.Fatalf("new Codex picker line = %q, want %q", codexPlan.Line, wantCodex)
+	}
+	if strings.Contains(codexPlan.Line, "codex") {
+		t.Fatalf("new Codex picker line names the configured binary instead of calling cx: %q", codexPlan.Line)
 	}
 }

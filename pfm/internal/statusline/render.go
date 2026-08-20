@@ -66,8 +66,10 @@ type input struct {
 		Name string `json:"name"`
 	} `json:"worktree"`
 	RateLimits struct {
-		FiveHour rateWindow `json:"five_hour"`
-		SevenDay rateWindow `json:"seven_day"`
+		FiveHour   rateWindow `json:"five_hour"`
+		SevenDay   rateWindow `json:"seven_day"`
+		SevenOpus  rateWindow `json:"seven_day_opus"`
+		SevenFable rateWindow `json:"seven_day_fable"`
 	} `json:"rate_limits"`
 	OutputStyle struct {
 		Name string `json:"name"`
@@ -112,6 +114,8 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 
 	modelSymbol := "●"
 	switch {
+	case strings.Contains(data.Model.DisplayName, "Fable"):
+		modelSymbol = "✦"
 	case strings.Contains(data.Model.DisplayName, "Opus"):
 		modelSymbol = "◆"
 	case strings.Contains(data.Model.DisplayName, "Sonnet"):
@@ -322,6 +326,25 @@ func appendRateSegments(line string, now time.Time, data input) string {
 		}
 		line = appendSegment(line, segment)
 	}
+	for _, entry := range []struct {
+		label  string
+		window rateWindow
+	}{
+		{label: "7d-opus", window: data.RateLimits.SevenOpus},
+		{label: "7d-fable", window: data.RateLimits.SevenFable},
+	} {
+		used := int(entry.window.UsedPercentage)
+		if used <= 0 {
+			continue
+		}
+		segment := makeBar(used, 5) + " " + percentColor(used) +
+			entry.label + "-used:" + strconv.Itoa(used) + "%" + reset
+		remaining := entry.window.ResetsAt - now.Unix()
+		if remaining > 0 {
+			segment += fmt.Sprintf(" %s↻%dd%dh%s", dim, remaining/86400, remaining%86400/3600, reset)
+		}
+		line = appendSegment(line, segment)
+	}
 	return line
 }
 
@@ -392,48 +415,43 @@ func gitDiffCount(ctx context.Context, runtime Runtime, directory string, staged
 }
 
 func accountBadge(runtime Runtime) (string, int) {
-	configDir := filepath.Clean(runtime.ConfigDir)
-	account := 1
+	if strings.TrimSpace(runtime.ConfigDir) == "" {
+		return "", 0
+	}
+	configDir := canonicalRuntimePath(runtime.ConfigDir)
+	account := 0
 	for directory, id := range runtime.AccountDirs {
-		if configDir == filepath.Clean(directory) {
+		if configDir == canonicalRuntimePath(directory) {
 			account = id
 			break
 		}
 	}
-	if account != 1 {
-		return accountBadgeForID(account)
-	}
-	switch configDir {
-	case filepath.Join(runtime.Home, ".cc", "4"):
-		account = 4
-	case filepath.Join(runtime.Home, ".cc", "3"):
-		account = 3
-	case filepath.Join(runtime.Home, ".cc", "2"):
-		account = 2
-	default:
-		marker, err := os.ReadFile(filepath.Join(configDir, "account"))
-		if err == nil {
-			fields := strings.Fields(string(marker))
-			if len(fields) > 0 {
-				value, parseErr := strconv.Atoi(fields[0])
-				if parseErr == nil && (value == 2 || value == 3) {
-					// In the retired marker layer both historical values named
-					// account 2. Canonical ~/.cc/3 above is the only bronze path.
-					account = 2
-				}
-			}
-		} else if physical, physicalErr := filepath.EvalSymlinks(configDir); physicalErr == nil {
-			switch filepath.Clean(physical) {
-			case filepath.Join(runtime.Home, ".claude2"), filepath.Join(runtime.Home, ".claude3"):
-				account = 2
+	if account == 0 {
+		if len(runtime.AccountDirs) == 0 {
+			if legacy, err := strconv.Atoi(filepath.Base(configDir)); err == nil && legacy > 0 {
+				return accountBadgeForID(runtime, legacy)
 			}
 		}
+		return "", 0
 	}
-	return accountBadgeForID(account)
+	return accountBadgeForID(runtime, account)
 }
 
-func accountBadgeForID(account int) (string, int) {
+func canonicalRuntimePath(path string) string {
+	cleaned := filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return cleaned
+}
+
+func accountBadgeForID(runtime Runtime, account int) (string, int) {
+	if emoji := runtime.AccountEmojis[account]; emoji != "" && emoji != "·" {
+		return emoji + " ", account
+	}
 	switch account {
+	case 1:
+		return "🥇 ", 1
 	case 2:
 		return "🥈 ", 2
 	case 3:
@@ -441,7 +459,7 @@ func accountBadgeForID(account int) (string, int) {
 	case 4:
 		return "🍀 ", 4
 	default:
-		return "🥇 ", 1
+		return "", 0
 	}
 }
 

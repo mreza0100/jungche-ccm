@@ -36,6 +36,7 @@ func CaptureClaudeLabels(
 	ctx context.Context,
 	capturer PaneCapturer,
 	panes []Pane,
+	configured ...[]string,
 ) []PaneLabel {
 	if capturer == nil {
 		return nil
@@ -76,7 +77,11 @@ func CaptureClaudeLabels(
 			if err != nil {
 				result.Failed = true
 			} else {
-				result.Label = naming.BookmarkLabel(capture)
+				var emojis []string
+				if len(configured) != 0 {
+					emojis = configured[0]
+				}
+				result.Label = naming.BookmarkLabelFor(capture, emojis)
 			}
 			labels[index] = result
 		}()

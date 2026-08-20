@@ -52,8 +52,8 @@ func TestDefaultsWithDiscoveryRoots(t *testing.T) {
 		t.Fatalf("Version = %d, want %d", got.Version, Version)
 	}
 	wantAccounts := []Account{
-		{ID: 1, ConfigDir: filepath.Join(home, ".cc", "one"), ProjectDir: filepath.Join(home, ".cc", "one", "projects"), Implicit: true},
-		{ID: 2, ConfigDir: filepath.Join(home, ".cc", "two"), ProjectDir: filepath.Join(home, ".cc", "two", "projects")},
+		{ID: 1, ConfigDir: filepath.Join(home, ".cc", "one"), ProjectDir: filepath.Join(home, ".cc", "one", "projects"), Implicit: true, Emoji: "🥇"},
+		{ID: 2, ConfigDir: filepath.Join(home, ".cc", "two"), ProjectDir: filepath.Join(home, ".cc", "two", "projects"), Emoji: "🥈"},
 	}
 	if !reflect.DeepEqual(got.Accounts, wantAccounts) {
 		t.Fatalf("Accounts = %#v, want %#v", got.Accounts, wantAccounts)
@@ -96,9 +96,9 @@ func TestDefaultsWithoutDiscoveryRootsUseThreeAccounts(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	got := Defaults(home, nil)
 	want := []Account{
-		{ID: 1, ConfigDir: filepath.Join(home, ".cc", "1"), ProjectDir: filepath.Join(home, ".cc", "1", "projects"), Implicit: true},
-		{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2"), ProjectDir: filepath.Join(home, ".cc", "2", "projects")},
-		{ID: 3, ConfigDir: filepath.Join(home, ".cc", "3"), ProjectDir: filepath.Join(home, ".cc", "3", "projects")},
+		{ID: 1, ConfigDir: filepath.Join(home, ".cc", "1"), ProjectDir: filepath.Join(home, ".cc", "1", "projects"), Implicit: true, Emoji: "🥇"},
+		{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2"), ProjectDir: filepath.Join(home, ".cc", "2", "projects"), Emoji: "🥈"},
+		{ID: 3, ConfigDir: filepath.Join(home, ".cc", "3"), ProjectDir: filepath.Join(home, ".cc", "3", "projects"), Emoji: "🥉"},
 	}
 	if !reflect.DeepEqual(got.Accounts, want) {
 		t.Fatalf("Accounts = %#v, want %#v", got.Accounts, want)
@@ -148,9 +148,9 @@ func TestLoadConfiguredAccountsExpandHomeAndPreserveIDs(t *testing.T) {
 		t.Fatalf("Load(configured) error = %v", err)
 	}
 	want := []Account{
-		{ID: 9, ConfigDir: filepath.Join(home, "account-nine"), ProjectDir: filepath.Join(home, "account-nine", "projects")},
-		{ID: 2, ConfigDir: filepath.Join(home, "account-two"), ProjectDir: filepath.Join(home, "account-two", "projects")},
-		{ID: 17, ConfigDir: "/srv/claude/account-seventeen", ProjectDir: "/srv/claude/account-seventeen/projects"},
+		{ID: 9, ConfigDir: filepath.Join(home, "account-nine"), ProjectDir: filepath.Join(home, "account-nine", "projects"), Emoji: "·"},
+		{ID: 2, ConfigDir: filepath.Join(home, "account-two"), ProjectDir: filepath.Join(home, "account-two", "projects"), Emoji: "🥈"},
+		{ID: 17, ConfigDir: "/srv/claude/account-seventeen", ProjectDir: "/srv/claude/account-seventeen/projects", Emoji: "·"},
 	}
 	if !reflect.DeepEqual(got.Accounts, want) {
 		t.Fatalf("Accounts = %#v, want %#v", got.Accounts, want)
@@ -426,7 +426,7 @@ func TestLoadRejectsMissingVersionAndWrongVersion(t *testing.T) {
 		want string
 	}{
 		{name: "missing", json: `{}`, want: "required key \"version\" is missing"},
-		{name: "wrong", json: `{"version":99}`, want: "version must be 1, got 99"},
+		{name: "wrong", json: `{"version":99}`, want: "version must be 1 or 2, got 99"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.json")
@@ -462,5 +462,91 @@ func TestSetMCPServerWritesValidJSON(t *testing.T) {
 	}
 	if got, ok := decoded["version"].(float64); !ok || got != Version {
 		t.Fatalf("written version = %#v, want %d", decoded["version"], Version)
+	}
+}
+
+func TestV2ConfigDefaultsAndPerAccountOverrides(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := `{
+  "version": 2,
+  "theme": "tokyo-night",
+  "accounts": [
+    {"id": 1, "configDir": "~/one", "emoji": "A", "claude": {"permissionMode": "prompted"}, "codex": {"yolo": false}},
+    {"id": 2, "configDir": "~/two", "emoji": "B"}
+  ],
+  "claude": {"permissionMode": "bypass", "binary": "claude-x"},
+  "codex": {"yolo": true, "binary": "codex-x"},
+  "mcp": {"servers": {"chat": {"enabled": true}}, "http": {"port": 9393}},
+  "ask": {"engine": "claude", "codex": {"model": "codex-model", "effort": "high"}, "claude": {"model": "claude-model", "effort": "low"}}
+}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load(v2) error = %v", err)
+	}
+	if got.Theme != "tokyo-night" || got.MCP.HTTP.Port != 9393 || got.Ask.Engine != "claude" {
+		t.Fatalf("v2 fields = theme:%q mcp:%#v ask:%#v", got.Theme, got.MCP, got.Ask)
+	}
+	if got.EffectiveClaude(1).PermissionMode != "prompted" || got.EffectiveClaude(2).PermissionMode != "bypass" {
+		t.Fatalf("effective Claude preferences = %#v / %#v", got.EffectiveClaude(1), got.EffectiveClaude(2))
+	}
+	if got.EffectiveCodex(1).Yolo || !got.EffectiveCodex(2).Yolo {
+		t.Fatalf("effective Codex preferences = %#v / %#v", got.EffectiveCodex(1), got.EffectiveCodex(2))
+	}
+	if got.EmojiFor(1) != "A" || got.EmojiFor(2) != "B" || got.EmojiFor(999) != "·" {
+		t.Fatalf("emoji lookup = %q %q %q", got.EmojiFor(1), got.EmojiFor(2), got.EmojiFor(999))
+	}
+}
+
+func TestV1ConfigStillLoadsWithV2Defaults(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"version":1,"accounts":[{"id":4,"configDir":"~/four"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load(v1) error = %v", err)
+	}
+	if got.Version != Version || got.Theme != "default" || got.MCP.HTTP.Port != 8377 || got.Ask.Engine != "codex" {
+		t.Fatalf("v1 defaults = version:%d theme:%q port:%d engine:%q", got.Version, got.Theme, got.MCP.HTTP.Port, got.Ask.Engine)
+	}
+	if got.EmojiFor(4) != "🍀" {
+		t.Fatalf("v1 account 4 emoji = %q, want 🍀", got.EmojiFor(4))
+	}
+}
+
+func TestConfigInitJSONRoundTripsAndRedactsSecrets(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	content, err := MarshalDefault(home, nil)
+	if err != nil {
+		t.Fatalf("MarshalDefault() error = %v", err)
+	}
+	if strings.Contains(string(content), "//") {
+		t.Fatalf("default config contains comments: %s", content)
+	}
+	if _, err := Load(path, home, nil); err != nil {
+		// The strict loader check below needs the bytes on disk; this assertion
+		// intentionally documents that MarshalDefault itself does not install.
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("Load(absent) error = %v", err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path, home, nil); err != nil {
+		t.Fatalf("strict loader rejected init output: %v", err)
+	}
+	secretContent := []byte(`{"version":2,"mcp":{"authToken":"neutral-secret"}}`)
+	if !strings.Contains(string(RedactSecrets(secretContent)), "<redacted>") {
+		t.Fatal("RedactSecrets did not redact a secret-looking field")
 	}
 }

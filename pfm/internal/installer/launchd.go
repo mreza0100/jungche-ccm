@@ -14,12 +14,22 @@ import (
 // launchdLabel is the job's name, and the handle launchctl addresses it by.
 const launchdLabel = "com.professor.pfm.name-sync"
 
+const mcpLaunchdLabel = "com.professor.pfm.mcp"
+
 const launchdAsset = "launchd/" + launchdLabel + ".plist"
+
+const mcpLaunchdAsset = "launchd/" + mcpLaunchdLabel + ".plist"
 
 // launchAgentPath returns where macOS expects a per-user agent to live.
 func (installer *engine) launchAgentPath() string {
 	return filepath.Join(
 		installer.options.Home, "Library", "LaunchAgents", launchdLabel+".plist",
+	)
+}
+
+func (installer *engine) mcpLaunchAgentPath() string {
+	return filepath.Join(
+		installer.options.Home, "Library", "LaunchAgents", mcpLaunchdLabel+".plist",
 	)
 }
 
@@ -66,20 +76,63 @@ func (installer *engine) wireLaunchAgent(ctx context.Context) error {
 	return installer.reloadLaunchAgent(ctx, path)
 }
 
+func (installer *engine) wireMCPLaunchAgent(ctx context.Context) error {
+	path := installer.mcpLaunchAgentPath()
+	if !installer.mcpAnyEnabled() {
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if installer.apply {
+			domain := "gui/" + strconv.Itoa(os.Getuid())
+			_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+mcpLaunchdLabel)
+		}
+		return installer.change("remove "+path, func() error { return os.Remove(path) })
+	}
+	template, err := readAsset(mcpLaunchdAsset)
+	if err != nil {
+		return fmt.Errorf("read embedded MCP launch agent: %w", err)
+	}
+	wanted := []byte(strings.ReplaceAll(string(template), "__PFM_HOME__", installer.options.Home))
+	if !sameFile(path, wanted, 0o644) {
+		if err := installer.change("write "+path, func() error {
+			if _, statErr := os.Lstat(path); statErr == nil {
+				if err := copyBackup(path, availableBackup(path, installer.stamp)); err != nil {
+					return err
+				}
+			}
+			return atomicWrite(path, wanted, 0o644)
+		}); err != nil {
+			return err
+		}
+	} else {
+		installer.ok(path)
+	}
+	if !installer.apply {
+		return nil
+	}
+	return installer.reloadLaunchAgentWithLabel(ctx, path, mcpLaunchdLabel)
+}
+
 // reloadLaunchAgent re-registers the job so an edited plist takes effect.
 //
 // bootout before bootstrap is deliberate and its failure is ignored: launchd
 // rejects bootstrapping a label it already knows, and on a first install there
 // is nothing to boot out. Only the bootstrap verdict is reported.
 func (installer *engine) reloadLaunchAgent(ctx context.Context, path string) error {
+	return installer.reloadLaunchAgentWithLabel(ctx, path, launchdLabel)
+}
+
+func (installer *engine) reloadLaunchAgentWithLabel(ctx context.Context, path, label string) error {
 	domain := "gui/" + strconv.Itoa(os.Getuid())
-	_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+launchdLabel)
+	_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+label)
 	if err := installer.options.Runner.Run(ctx, "launchctl", "bootstrap", domain, path); err != nil {
 		installer.skip("launchctl bootstrap failed; the agent is installed but not loaded: " + err.Error())
 		installer.say("")
 		return nil
 	}
-	installer.ok("launchctl bootstrap " + launchdLabel)
+	installer.ok("launchctl bootstrap " + label)
 	installer.say("")
 	return nil
 }
@@ -89,11 +142,28 @@ func (installer *engine) unwireLaunchAgent(ctx context.Context) error {
 	path := installer.launchAgentPath()
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		installer.skip("no launch agent at " + path)
-		return nil
+		return installer.unwireMCPLaunchAgent(ctx)
 	}
 	if installer.apply {
 		domain := "gui/" + strconv.Itoa(os.Getuid())
 		_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+launchdLabel)
+	}
+	if err := installer.change("remove "+path, func() error { return os.Remove(path) }); err != nil {
+		return err
+	}
+	return installer.unwireMCPLaunchAgent(ctx)
+}
+
+func (installer *engine) unwireMCPLaunchAgent(ctx context.Context) error {
+	path := installer.mcpLaunchAgentPath()
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if installer.apply {
+		domain := "gui/" + strconv.Itoa(os.Getuid())
+		_ = installer.options.Runner.Run(ctx, "launchctl", "bootout", domain+"/"+mcpLaunchdLabel)
 	}
 	return installer.change("remove "+path, func() error { return os.Remove(path) })
 }

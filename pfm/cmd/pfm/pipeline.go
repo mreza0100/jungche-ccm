@@ -413,6 +413,7 @@ func gatherFleet(
 		CodexThread:  store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
 		ClaudeBinary: machine.Claude.Binary,
 		CodexBinary:  machine.Codex.Binary,
+		LabelEmojis:  configuredAccountEmojis(machine),
 		ReadOnly:     readOnly,
 	})
 	if err != nil {
@@ -440,6 +441,16 @@ func gatherFleet(
 		}
 	}
 	return live, nil
+}
+
+func configuredAccountEmojis(machine pfmconfig.Config) []string {
+	result := make([]string, 0, len(machine.Accounts))
+	for _, account := range machine.Accounts {
+		if emoji := machine.EmojiFor(account.ID); emoji != "" && emoji != "·" {
+			result = append(result, emoji)
+		}
+	}
+	return result
 }
 
 func composeFleet(
@@ -476,6 +487,8 @@ func composeFleet(
 		SuppressedCount: output.SuppressedCount,
 		PrimaryAccount:  environment.primary,
 		AccountIDs:      environment.config.AccountIDs(),
+		AccountEmojis:   accountEmojis(environment.config),
+		Theme:           environment.config.Theme,
 		Cache1H:         request.Cache1H,
 		Rotation:        request.Rotation,
 		NowNS:           environment.nowNS,
@@ -487,6 +500,14 @@ func composeFleet(
 		Snapshot: snapshot,
 		Paths:    environment.paths,
 	}
+}
+
+func accountEmojis(machine pfmconfig.Config) map[int]string {
+	result := make(map[int]string, len(machine.Accounts))
+	for _, account := range machine.Accounts {
+		result[account.ID] = machine.EmojiFor(account.ID)
+	}
+	return result
 }
 
 func streamFleetRefreshes(

@@ -237,6 +237,19 @@ func (service *Service) RunStdio(ctx context.Context, input io.Reader, output io
 	return service.server.Run(ctx, &mcp.IOTransport{Reader: nopReaderCloser{Reader: input}, Writer: nopWriterCloser{Writer: output}})
 }
 
+// NewHTTPHandler exposes the same tool surface as stdio through streamable
+// HTTP. The process-level daemon supplies authentication and endpoint routing.
+func (service *Service) NewHTTPHandler() http.Handler {
+	return mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return service.server },
+		&mcp.StreamableHTTPOptions{
+			JSONResponse:               true,
+			Stateless:                  false,
+			DisableLocalhostProtection: true,
+		},
+	)
+}
+
 // The SDK's IOTransport takes ownership of ReadCloser/WriteCloser values and
 // closes both at connection shutdown. RunStdio accepts the older, deliberately
 // non-owning io.Reader/io.Writer contract, so adapt them with no-op closers.

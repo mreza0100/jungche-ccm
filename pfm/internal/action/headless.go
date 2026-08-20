@@ -147,7 +147,7 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 			)
 		}
 		return HeadlessPlan{
-			Run: codexCommandWith(headlessHygiene, machine, codexArguments...),
+			Run: codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, codexArguments...),
 		}, nil
 	}
 	return HeadlessPlan{}, fmt.Errorf("unsupported engine %q", request.Engine)

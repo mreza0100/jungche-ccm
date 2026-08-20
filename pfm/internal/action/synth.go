@@ -76,27 +76,18 @@ func Synthesize(request Request) (Plan, error) {
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Claude action requires a project directory")
 		}
-		if usesConfiguredClaudeLaunch(machine) {
-			plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
-				claudeCommand(request.Home, request.PrimaryAccount, request.Cache1H, machine) + ")"
-		} else {
-			command := "cc" + strconv.Itoa(request.PrimaryAccount)
-			armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
-			if request.Cache1H {
-				armed = "CC_ARM_1H=1 "
-			}
-			plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
-				armed + command + ")"
+		command := "cc" + strconv.Itoa(request.PrimaryAccount)
+		armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
+		if request.Cache1H {
+			armed = "CC_ARM_1H=1 "
 		}
+		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
+			armed + command + ")"
 	case NewCodex:
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")
 		}
-		command := "cx"
-		if usesConfiguredCodexLaunch(machine) {
-			command = codexCommand(machine)
-		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " + command + ")"
+		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && cx)"
 	case Live:
 		if request.Row.Socket == "" {
 			return Plan{}, errors.New("live action requires a socket")
@@ -181,7 +172,7 @@ func Synthesize(request Request) (Plan, error) {
 			)
 		}
 		plan.Run = continuityBanner(request.Row) +
-			codexCommand(machine, "resume", request.Row.ID)
+			codexCommandFor(machine, request.PrimaryAccount, "resume", request.Row.ID)
 		plan.CodexServer = &CodexServer{
 			Socket: request.FreshSocket,
 			CWD:    request.Row.CWD,
@@ -268,7 +259,7 @@ func claudeCommandWith(
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
 	}
-	if machine.Claude.PermissionMode == pfmconfig.PermissionBypass {
+	if machine.EffectiveClaude(account).PermissionMode == pfmconfig.PermissionBypass {
 		command.WriteByte(' ')
 		command.WriteString(autonomyFlags)
 	}
@@ -325,12 +316,25 @@ func continuityBanner(row compose.Row) string {
 }
 
 func codexCommand(machine pfmconfig.Config, args ...string) string {
-	return codexCommandWith(hygiene, machine, args...)
+	return codexCommandFor(machine, 1, args...)
+}
+
+func codexCommandFor(machine pfmconfig.Config, account int, args ...string) string {
+	return codexCommandWithAccount(hygiene, machine, account, args...)
 }
 
 func codexCommandWith(
 	environmentStrip string,
 	machine pfmconfig.Config,
+	args ...string,
+) string {
+	return codexCommandWithAccount(environmentStrip, machine, 1, args...)
+}
+
+func codexCommandWithAccount(
+	environmentStrip string,
+	machine pfmconfig.Config,
+	account int,
 	args ...string,
 ) string {
 	var command strings.Builder
@@ -341,7 +345,7 @@ func codexCommandWith(
 		"codex",
 		machine.Source("codex.binary") == pfmconfig.SourceFile,
 	))
-	if machine.Codex.Yolo {
+	if machine.EffectiveCodex(account).Yolo {
 		command.WriteString(" --dangerously-bypass-approvals-and-sandbox")
 	} else {
 		command.WriteString(" --sandbox workspace-write")
@@ -358,17 +362,6 @@ func normalizedMachineConfig(machine pfmconfig.Config, home string) pfmconfig.Co
 		return machine
 	}
 	return pfmconfig.Defaults(home, nil)
-}
-
-func usesConfiguredClaudeLaunch(machine pfmconfig.Config) bool {
-	return machine.Source("accounts") == pfmconfig.SourceFile ||
-		machine.Source("claude.permissionMode") == pfmconfig.SourceFile ||
-		machine.Source("claude.binary") == pfmconfig.SourceFile
-}
-
-func usesConfiguredCodexLaunch(machine pfmconfig.Config) bool {
-	return machine.Source("codex.yolo") == pfmconfig.SourceFile ||
-		machine.Source("codex.binary") == pfmconfig.SourceFile
 }
 
 func binaryWord(value, fallback string, quote bool) string {

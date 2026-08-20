@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/usagehook"
@@ -89,8 +90,16 @@ func runStatuslineWithRuntime(
 		return 0
 	}
 	runtime.AccountDirs = make(map[string]int, len(machine.Config.Accounts))
+	runtime.AccountEmojis = make(map[int]string, len(machine.Config.Accounts))
 	for _, account := range machine.Config.Accounts {
-		runtime.AccountDirs[account.ConfigDir] = account.ID
+		configDir := account.ConfigDir
+		if resolved, err := filepath.EvalSymlinks(configDir); err == nil {
+			configDir = resolved
+		} else if absolute, err := filepath.Abs(configDir); err == nil {
+			configDir = absolute
+		}
+		runtime.AccountDirs[filepath.Clean(configDir)] = account.ID
+		runtime.AccountEmojis[account.ID] = machine.Config.EmojiFor(account.ID)
 	}
 	runtime.Spawn = statusline.SpawnDetached
 	rendered, err := statusline.Render(ctx, raw, runtime)

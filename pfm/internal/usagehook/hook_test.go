@@ -2,6 +2,7 @@ package usagehook
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,24 @@ import (
 	"testing"
 	"time"
 )
+
+func TestUsageParsesFableAndRetainsUnknownWindows(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "usage-fable.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed Usage
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		t.Fatalf("decode usage fixture: %v", err)
+	}
+	if parsed.SevenFable.Utilization == nil || int(*parsed.SevenFable.Utilization) != 23 {
+		t.Fatalf("fable window = %#v", parsed.SevenFable)
+	}
+	unknown, ok := parsed.Extra["seven_day_sonnet"]
+	if !ok || unknown.Utilization == nil || int(*unknown.Utilization) != 17 {
+		t.Fatalf("unknown windows = %#v", parsed.Extra)
+	}
+}
 
 func TestWarnRecoverQuietTransition(t *testing.T) {
 	root := t.TempDir()

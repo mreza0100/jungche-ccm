@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 	"unicode/utf8"
 
+	"hostops/pfm/internal/chatkeys"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
@@ -36,7 +38,23 @@ type Runtime struct {
 	ConfigPath   string
 	ClaudeBinary string
 	CodexBinary  string
+	Operations   SharedOperations
+	Dispatch     Dispatch
 }
+
+// SharedOperations are the canonical chat operations supplied by the CLI
+// command package. MCP only adapts structured input to these functions; it
+// does not maintain a second implementation of list, find, or read.
+type SharedOperations struct {
+	List func(context.Context, LSInput) (LSOutput, error)
+	Find func(context.Context, FindInput) (FindOutput, error)
+	Read func(context.Context, ReadInput) (ReadOutput, error)
+}
+
+// Dispatch is the in-process command dispatcher used by stateful chat tools.
+// The callback receives the same argv beginning with "chat" that the CLI
+// receives after global flags have been handled.
+type Dispatch func(context.Context, []string, io.Writer, io.Writer) int
 
 // New creates the production stdio service.
 func New(version string, warnings io.Writer) (*Service, error) {
@@ -61,7 +79,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Inspect, resolve, capture, search, read, and safely inject into the local pfm chat fleet.",
+		Instructions: "Inspect, resolve, capture, search, read, name, hide, reload, save, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -102,6 +120,11 @@ func (service *Service) register() {
 		Annotations: mutating,
 	}, service.chatInject)
 	mcp.AddTool(service.server, &mcp.Tool{
+		Name:        "chat_keys",
+		Description: "Press validated tmux key names or explicitly type literal key text into a live chat.",
+		Annotations: mutating,
+	}, service.chatKeys)
+	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_capture",
 		Description: "Capture the whole retained scrollback of a resolved live chat, bounded by tail_lines and max_bytes.",
 		Annotations: readOnly,
@@ -121,6 +144,110 @@ func (service *Service) register() {
 		Description: "Read bounded recent visible turns from an indexed Claude/Codex transcript.",
 		Annotations: readOnly,
 	}, service.chatRead)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_last", Description: "Return the newest assistant answer from a chat.", Annotations: readOnly,
+	}, service.chatLast)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_status", Description: "Inspect one chat using the headless status contract.", Annotations: readOnly,
+	}, service.chatStatus)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_new", Description: "Create a detached named chat through the canonical pfm chat new dispatcher.", Annotations: mutating,
+	}, service.chatNew)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_open", Description: "Open a resumable chat through the canonical pfm chat open dispatcher.", Annotations: mutating,
+	}, service.chatOpen)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_name", Description: "Name a live chat through the canonical pfm chat name dispatcher.", Annotations: mutating,
+	}, service.chatName)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_hide", Description: "Hide a chat through the canonical pfm chat hide dispatcher.", Annotations: mutating,
+	}, service.chatHide)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_unhide", Description: "Unhide a chat through the canonical pfm chat unhide dispatcher.", Annotations: mutating,
+	}, service.chatUnhide)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_reload", Description: "Reload a Claude seat through the canonical pfm chat reload dispatcher.", Annotations: mutating,
+	}, service.chatReload)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_save", Description: "Append a transcript snapshot through the canonical pfm chat save dispatcher.", Annotations: mutating,
+	}, service.chatSave)
+}
+
+func (service *Service) chatKeys(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	input KeysInput,
+) (*mcp.CallToolResult, KeysOutput, error) {
+	if strings.TrimSpace(input.Target) == "" {
+		return nil, KeysOutput{}, fmt.Errorf("target is required")
+	}
+	if len(input.Keys) == 0 {
+		return nil, KeysOutput{}, fmt.Errorf("keys must contain at least one key")
+	}
+	if !input.Literal {
+		for _, key := range input.Keys {
+			if !chatkeys.Valid(key) {
+				return nil, KeysOutput{}, fmt.Errorf(
+					"%q is not a tmux key; set literal=true to type it as text, or use one of: %s",
+					key,
+					chatkeys.Names(),
+				)
+			}
+		}
+	}
+	delay := 120 * time.Millisecond
+	if input.DelayMS != 0 {
+		if input.DelayMS < 0 {
+			return nil, KeysOutput{}, fmt.Errorf("delay_ms must not be negative")
+		}
+		delay = time.Duration(input.DelayMS) * time.Millisecond
+	}
+	target, code, detail, err := service.backend.injector.Resolve(ctx, input.Target)
+	if err != nil {
+		return nil, KeysOutput{}, err
+	}
+	if code != 0 {
+		return nil, KeysOutput{Status: "not_found", Code: code, Keys: append([]string(nil), input.Keys...)}, fmt.Errorf("resolve %q: %s", input.Target, detail)
+	}
+	tmux := inject.CommandTmux{}
+	for index, key := range input.Keys {
+		if index > 0 && delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, KeysOutput{}, ctx.Err()
+			case <-timer.C:
+			}
+		}
+		var sendErr error
+		if input.Literal {
+			sendErr = tmux.SendLiteral(ctx, target.SocketPath, target.Pane, key)
+		} else {
+			sendErr = tmux.SendKey(ctx, target.SocketPath, target.Pane, key)
+		}
+		if sendErr != nil {
+			return nil, KeysOutput{
+				Status: "dead", Code: inject.CodeDead, SocketPath: target.SocketPath,
+				Pane: target.Pane, Count: index, Keys: append([]string(nil), input.Keys...),
+			}, fmt.Errorf("send %q: %w", key, sendErr)
+		}
+	}
+	output := KeysOutput{
+		Status: "ok", Code: 0, SocketPath: target.SocketPath, Pane: target.Pane,
+		Count: len(input.Keys), Keys: append([]string(nil), input.Keys...),
+	}
+	if input.Capture {
+		_, text, captureCode, detail, captureErr := service.backend.injector.Capture(ctx, input.Target, 0)
+		if captureErr != nil {
+			return nil, output, fmt.Errorf("capture: %w", captureErr)
+		}
+		if captureCode != 0 {
+			return nil, output, fmt.Errorf("capture: %s", detail)
+		}
+		output.Text = text
+	}
+	return nil, output, nil
 }
 
 func (service *Service) chatLS(

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,16 +34,53 @@ type Options struct {
 	Log         io.Writer
 }
 
-type usage struct {
-	FiveHour  usageWindow `json:"five_hour"`
-	SevenDay  usageWindow `json:"seven_day"`
-	SevenOpus usageWindow `json:"seven_day_opus"`
-}
-
-type usageWindow struct {
+// Window is one model usage window returned by Anthropic's OAuth endpoint.
+type Window struct {
 	Utilization *float64 `json:"utilization"`
 	ResetsAt    string   `json:"resets_at"`
 }
+
+// Usage is the typed core of the OAuth usage response. Extra retains future
+// model windows so consumers can recognize them without losing the payload.
+type Usage struct {
+	FiveHour   Window            `json:"five_hour"`
+	SevenDay   Window            `json:"seven_day"`
+	SevenOpus  Window            `json:"seven_day_opus"`
+	SevenFable Window            `json:"seven_day_fable"`
+	Extra      map[string]Window `json:"-"`
+}
+
+func (usage *Usage) UnmarshalJSON(content []byte) error {
+	type plain Usage
+	var decoded plain
+	if err := json.Unmarshal(content, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(content, &fields); err != nil {
+		return err
+	}
+	known := map[string]bool{
+		"five_hour": true, "seven_day": true, "seven_day_opus": true,
+		"seven_day_fable": true,
+	}
+	decoded.Extra = make(map[string]Window)
+	for name, raw := range fields {
+		if known[name] {
+			continue
+		}
+		var window Window
+		if err := json.Unmarshal(raw, &window); err == nil &&
+			(window.Utilization != nil || window.ResetsAt != "") {
+			decoded.Extra[name] = window
+		}
+	}
+	*usage = Usage(decoded)
+	return nil
+}
+
+type usage = Usage
+type usageWindow = Window
 
 type credentials struct {
 	OAuth struct {
@@ -91,7 +129,16 @@ func Evaluate(ctx context.Context, options Options) (string, error) {
 	five := utilization(cached.FiveHour, 0)
 	seven := utilization(cached.SevenDay, 0)
 	opus := utilization(cached.SevenOpus, -1)
-	maximum := max(five, seven, opus)
+	fable := utilization(cached.SevenFable, -1)
+	if fable < 0 {
+		for name, window := range cached.Extra {
+			if strings.Contains(strings.ToLower(name), "fable") {
+				fable = utilization(window, -1)
+				break
+			}
+		}
+	}
+	maximum := max(five, seven, opus, fable)
 	flagPath := filepath.Join(options.CacheDir, fmt.Sprintf("warned-%d", account))
 	if maximum < options.Warn {
 		if _, err := os.Stat(flagPath); err == nil {
@@ -120,15 +167,18 @@ func Evaluate(ctx context.Context, options Options) (string, error) {
 	if opus >= 0 {
 		line += fmt.Sprintf(" · 7d-opus %d%%", opus)
 	}
+	if fable >= 0 {
+		line += fmt.Sprintf(" · 7d-fable %d%%", fable)
+	}
 	if maximum >= options.Critical {
 		return fmt.Sprintf(
-			"🔴 USAGE LIMIT IMMINENT — account %d: %s. This window is nearly exhausted: finish the in-flight step, then /swap to another account (or pause until the reset).\n",
+			"🔴 USAGE LIMIT IMMINENT — account %d: %s. This window is nearly exhausted: finish the in-flight step, then /reload to another account (or pause until the reset).\n",
 			account,
 			line,
 		), nil
 	}
 	return fmt.Sprintf(
-		"⚠ usage limit approaching — account %d: %s. Plan around it: wrap up soon or /swap to another account before the cap hits.\n",
+		"⚠ usage limit approaching — account %d: %s. Plan around it: wrap up soon or /reload to another account before the cap hits.\n",
 		account,
 		line,
 	), nil
@@ -266,6 +316,50 @@ func refresh(ctx context.Context, options Options, cachePath string) error {
 		return fmt.Errorf("usage response omitted five_hour utilization")
 	}
 	return atomicWrite(cachePath, fresh, 0o600)
+}
+
+// Fetch reads one account's current OAuth usage without touching the warning
+// cache. It is the shared fetch seam for the Limits tab and the prompt hook.
+func Fetch(ctx context.Context, options Options) (Usage, error) {
+	options = normalize(options)
+	credentialPath := filepath.Join(options.ConfigDir, ".credentials.json")
+	body, err := os.ReadFile(credentialPath)
+	if err != nil {
+		return Usage{}, fmt.Errorf("read usage credentials: %w", err)
+	}
+	var credential credentials
+	if err := json.Unmarshal(body, &credential); err != nil {
+		return Usage{}, fmt.Errorf("decode usage credentials: %w", err)
+	}
+	if credential.OAuth.AccessToken == "" {
+		return Usage{}, fmt.Errorf("usage credential contains no access token")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, options.Endpoint, nil)
+	if err != nil {
+		return Usage{}, fmt.Errorf("build usage request: %w", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+credential.OAuth.AccessToken)
+	request.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	response, err := options.Client.Do(request)
+	if err != nil {
+		return Usage{}, fmt.Errorf("fetch usage endpoint: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return Usage{}, fmt.Errorf("usage endpoint returned %s", response.Status)
+	}
+	fresh, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return Usage{}, fmt.Errorf("read usage response: %w", err)
+	}
+	var decoded Usage
+	if err := json.Unmarshal(fresh, &decoded); err != nil {
+		return Usage{}, fmt.Errorf("decode usage response: %w", err)
+	}
+	if decoded.FiveHour.Utilization == nil {
+		return Usage{}, fmt.Errorf("usage response omitted five_hour utilization")
+	}
+	return decoded, nil
 }
 
 func atomicWrite(path string, body []byte, mode os.FileMode) error {

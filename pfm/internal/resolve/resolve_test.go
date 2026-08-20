@@ -99,6 +99,22 @@ func TestResolveLabelAcceptsEveryMedalIncludingTheRetiredOne(t *testing.T) {
 	assertOutcome(t, outcome, 1, "", "")
 }
 
+func TestResolveLabelAcceptsConfiguredAccountEmoji(t *testing.T) {
+	resolver := &Resolver{
+		tmux:          fakeTmux{captures: map[string]string{"/jail/cc-custom\x00%1": "🟣 │ 🔖 Custom Seat │ main\n"}},
+		accountEmojis: []string{"🟣"},
+	}
+	outcome, err := resolver.resolveLabel(context.Background(), "custom seat", []Pane{{
+		SocketPath:     "/jail/cc-custom",
+		PaneID:         "%1",
+		CurrentCommand: "claude",
+	}})
+	if err != nil {
+		t.Fatalf("configured emoji resolveLabel() error = %v", err)
+	}
+	assertOutcome(t, outcome, 0, "/jail/cc-custom\t%1\n", "")
+}
+
 func TestResolveLabelAmbiguityAndSameChatNewestTieBreak(t *testing.T) {
 	sidDir := t.TempDir()
 	oldSocket := "/jail/cc-100-1-1"

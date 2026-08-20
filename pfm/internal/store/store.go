@@ -20,7 +20,7 @@ import (
 
 const (
 	// SchemaVersion is the newest database schema understood by this binary.
-	SchemaVersion = 4
+	SchemaVersion = 5
 
 	driverName = "sqlite"
 )
@@ -37,11 +37,15 @@ var schemaV3 string
 //go:embed migration_v4.sql
 var schemaV4 string
 
+//go:embed migration_v5.sql
+var schemaV5 string
+
 var migrations = [...]string{
 	schemaV1,
 	schemaV2,
 	schemaV3,
 	schemaV4,
+	schemaV5,
 }
 
 // Store is a single-connection handle to the pfm SQLite database.

@@ -56,9 +56,24 @@ type Options struct {
 	Mode      Mode
 	Home      string
 	ConfigDir string
-	Now       func() time.Time
-	Stdout    io.Writer
-	Runner    CommandRunner
+	// ConfigDirs is the config-driven settings fanout. A nil value retains
+	// the historical discovery of existing .cc account settings for callers
+	// that construct Options directly.
+	ConfigDirs []string
+	// SourceRepo is the clone whose blueprint and binary are being installed.
+	// Empty preserves an existing marker when install is invoked elsewhere.
+	SourceRepo string
+	Force      bool
+	Now        func() time.Time
+	Stdout     io.Writer
+	Runner     CommandRunner
+
+	MCPEnabled     map[string]bool
+	MCPPort        int
+	MCPAuthToken   string
+	MCPConfigPath  string
+	ClaudePrompted map[int]bool
+	CodexYolo      map[int]bool
 
 	// ProvisionHarvest makes install/uninstall own the pinned conversion
 	// environment. The command sets this for real user actions; existing
@@ -102,6 +117,15 @@ func normalize(options Options) (Options, error) {
 	}
 	if options.ConfigDir == "" {
 		options.ConfigDir = options.Home + "/.claude"
+	}
+	if options.MCPPort == 0 {
+		options.MCPPort = 8377
+	}
+	if options.ClaudePrompted == nil {
+		options.ClaudePrompted = map[int]bool{1: false, 2: false, 3: false}
+	}
+	if options.CodexYolo == nil {
+		options.CodexYolo = map[int]bool{1: true, 2: true, 3: true}
 	}
 	if options.Now == nil {
 		options.Now = time.Now

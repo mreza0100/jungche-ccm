@@ -1,0 +1,8 @@
+[Unit]
+Description=Serve pfm chat and Harvester MCP over loopback HTTP
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pfm mcp serve
+Restart=on-failure
+RestartSec=2

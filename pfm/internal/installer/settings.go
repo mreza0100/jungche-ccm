@@ -22,6 +22,10 @@ func updateSettings(
 	groupCommand := pfmBinary + " chat group hook"
 	statusCommand := pfmBinary + " statusline"
 	usageCommand := pfmBinary + " usage-hook"
+	agentInjectCommand := pfmBinary + " dream hook agent-inject"
+	nudgeCommand := pfmBinary + " dream hook nudge"
+	exploreDenyCommand := pfmBinary + " internal explore-deny"
+	epicInjectCommand := pfmBinary + " internal epic-inject"
 
 	changed := false
 	before := countSettingsHookCommands(document)
@@ -33,15 +37,21 @@ func updateSettings(
 		changed = rewriteCommandFields(document, func(command string) string {
 			switch {
 			case strings.Contains(command, "dreamer-agent-inject.sh"):
-				return pfmBinary + " dream hook agent-inject"
+				return agentInjectCommand
 			case strings.Contains(command, "dreamer-nudge.sh"):
-				return pfmBinary + " dream hook nudge"
+				return nudgeCommand
+			case strings.Contains(command, "explore-deny.sh"):
+				return exploreDenyCommand
 			case command == oldBinary || strings.HasPrefix(command, oldBinary+" "):
 				return pfmBinary + strings.TrimPrefix(command, oldBinary)
 			default:
 				return command
 			}
 		})
+	}
+	if _, present := document["cleanupPeriodDays"]; !present && !uninstall {
+		document["cleanupPeriodDays"] = float64(36500)
+		changed = true
 	}
 
 	status, _ := document["statusLine"].(map[string]any)
@@ -92,7 +102,7 @@ func updateSettings(
 				changed = true
 				continue
 			}
-			if !uninstall && (command == groupCommand || command == usageCommand) {
+			if !uninstall && (command == groupCommand || command == usageCommand || command == nudgeCommand || command == epicInjectCommand) {
 				if seenUserPromptCommands[command] {
 					changed = true
 					continue
@@ -104,6 +114,21 @@ func updateSettings(
 		entry["hooks"] = kept
 	}
 	pruneEmptyHooks(document, "UserPromptSubmit")
+	if !uninstall {
+		for _, entry := range hookEntries(document, "PreToolUse", true) {
+			hooks, _ := entry["hooks"].([]any)
+			for _, hookValue := range hooks {
+				hook, _ := hookValue.(map[string]any)
+				command, _ := hook["command"].(string)
+				if command == agentInjectCommand || command == exploreDenyCommand {
+					if entry["matcher"] != "Agent|Task" {
+						entry["matcher"] = "Agent|Task"
+						changed = true
+					}
+				}
+			}
+		}
+	}
 
 	clearSeen := false
 	for _, entry := range hookEntries(document, "SessionEnd", false) {
@@ -136,6 +161,22 @@ func updateSettings(
 		}
 		if !clearSeen {
 			appendHook(document, "SessionEnd", clearCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "PreToolUse", true), agentInjectCommand, "Agent|Task") {
+			appendHookWithMatcher(document, "PreToolUse", "Agent|Task", agentInjectCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "PreToolUse", true), exploreDenyCommand, "Agent|Task") {
+			appendHookWithMatcher(document, "PreToolUse", "Agent|Task", exploreDenyCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), nudgeCommand, "") {
+			appendHookWithMatcher(document, "UserPromptSubmit", "", nudgeCommand)
+			changed = true
+		}
+		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), epicInjectCommand, "") {
+			appendHookWithMatcher(document, "UserPromptSubmit", "", epicInjectCommand)
 			changed = true
 		}
 	}
@@ -229,7 +270,27 @@ func hasHookCommand(entries []map[string]any, wanted string) bool {
 	return false
 }
 
+func hasHookCommandWithMatcher(entries []map[string]any, wanted, matcher string) bool {
+	for _, entry := range entries {
+		if entry["matcher"] != matcher {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		for _, value := range hooks {
+			hook, _ := value.(map[string]any)
+			if hook["command"] == wanted {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func appendHook(document map[string]any, event, command string) {
+	appendHookWithMatcher(document, event, "", command)
+}
+
+func appendHookWithMatcher(document map[string]any, event, matcher, command string) {
 	hooks, _ := document["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = map[string]any{}
@@ -237,7 +298,7 @@ func appendHook(document map[string]any, event, command string) {
 	}
 	values, _ := hooks[event].([]any)
 	hooks[event] = append(values, map[string]any{
-		"matcher": "",
+		"matcher": matcher,
 		"hooks": []any{map[string]any{
 			"type": "command", "command": command,
 		}},

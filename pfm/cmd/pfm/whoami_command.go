@@ -64,7 +64,15 @@ func runWhoami(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 			ctx, identity.SocketPath, target, true, inject.FullScrollback,
 		)
 		if captureErr == nil {
-			if label := naming.BookmarkLabel(capture); label != "" {
+			emojis := []string(nil)
+			if len(runtimes) != 0 {
+				for _, account := range runtimes[0].Config.Accounts {
+					if emoji := runtimes[0].Config.EmojiFor(account.ID); emoji != "" && emoji != "·" {
+						emojis = append(emojis, emoji)
+					}
+				}
+			}
+			if label := naming.BookmarkLabelFor(capture, emojis); label != "" {
 				fmt.Fprintln(stdout, label)
 				return 0
 			}
@@ -155,6 +163,11 @@ func newInjectEngine(runtimes ...commandRuntime) (*inject.Engine, error) {
 		}
 		dependencies.ClaudeBinary = runtimes[0].Config.Claude.Binary
 		dependencies.CodexBinary = runtimes[0].Config.Codex.Binary
+		for _, account := range runtimes[0].Config.Accounts {
+			if emoji := runtimes[0].Config.EmojiFor(account.ID); emoji != "" && emoji != "·" {
+				dependencies.AccountEmojis = append(dependencies.AccountEmojis, emoji)
+			}
+		}
 	}
 	dependencies.CodexSeat = identifier
 	return inject.New(dependencies)
