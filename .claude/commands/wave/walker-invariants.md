@@ -82,7 +82,7 @@ Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md 
 
 ## LEAK-LINE
 
-**Law:** "Nothing identifying ships. No brand of the private source project, no founder PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` runs as `pre-push` via `.githooks/` — it is the backstop, not the plan. Write it clean the first time." — `CLAUDE.md` (root, § Publication). Paired with: "A template's example values are illustrative placeholders, never mined from a live private repo."
+**Law:** "Nothing identifying ships. No brand of the private source project, no user PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` runs as `pre-push` via `.githooks/` — it is the backstop, not the plan. Write it clean the first time." — `CLAUDE.md` (root, § Publication). Paired with: "A template's example values are illustrative placeholders, never mined from a live private repo."
 
 **Territory:**
 

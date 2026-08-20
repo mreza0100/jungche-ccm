@@ -6,12 +6,12 @@
 # (therapist/patient/session — persona metaphors keep them), roster collapsing
 # (N concrete projects -> {project} PATTERN blocks), port numbers (stock
 # defaults, not identifying), multi-word stack headers ({BACKEND_STACK} etc.).
-reza@intuita.health	{FOUNDER_NAME}@{PROJECT_DOMAIN}	literal
-Mohammadreza Khosravivala	{FOUNDER_NAME}	literal
-Reza Khosravivala	{FOUNDER_NAME}	literal
-Khosravivala	{FOUNDER_NAME}	word
-Mohammadreza	{FOUNDER_NAME}	word
-Reza	{FOUNDER_NAME}	word
+reza@intuita.health	user@{PROJECT_DOMAIN}	literal
+Mohammadreza Khosravivala	the user	literal
+Reza Khosravivala	the user	literal
+Khosravivala	the user	word
+Mohammadreza	the user	word
+Reza	the user	word
 /home/reza/work/intuita	{REPO_ROOT}	literal
 /Users/reza/work/intuita	{REPO_ROOT}	literal
 /home/reza/work/professor	{BLUEPRINT_CLONE_PATH}	literal

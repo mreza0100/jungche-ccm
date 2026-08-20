@@ -1,6 +1,6 @@
 ---
 name: wave:refine
-description: Wave refinement — walks the code and writes ONE zero-gap, feature-scoped wave spec (every layer of the feature in one wave, tasks ordered inside-out — contracts and shared types first, then each project outward to the surface) to docs/dev/trains/queue/{YYYY-MM-DD}-{slug}.md, which /wave:live consumes as its task file; asks the founder only what the code cannot answer. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and builds it itself under tmp/RND/POC/{name}/ — no gitter, no QA gates. Triggers — "refine", "refine this", "/wave:refine", "refine tasks", "refine poc".
+description: Wave refinement — walks the code and writes ONE zero-gap, feature-scoped wave spec (every layer of the feature in one wave, tasks ordered inside-out — contracts and shared types first, then each project outward to the surface) to docs/dev/trains/queue/{YYYY-MM-DD}-{slug}.md, which /wave:live consumes as its task file; asks the user only what the code cannot answer. Subcommand `poc <goal>` refines a proof-of-concept idea into an airtight spec and builds it itself under tmp/RND/POC/{name}/ — no gitter, no QA gates. Triggers — "refine", "refine this", "/wave:refine", "refine tasks", "refine poc".
 argument-hint: [tasks | poc <goal>]
 ---
 
@@ -22,24 +22,24 @@ Fan out read-only `tracer` agents (`subagent_type: tracer`), one per subsystem c
 - What exists today / what's missing.
 - Reuse targets: existing helpers, types, and packages to import rather than rebuild.
 - Incumbent patterns: how this codebase already solves the task's mechanism classes.
-- Status: `READY` / `NEEDS-CLARIFICATION` / `NEEDS-FOUNDER-SPEC`.
+- Status: `READY` / `NEEDS-CLARIFICATION` / `NEEDS-USER-SPEC`.
 
-## R2 — Ask the founder until clear
+## R2 — Ask the user until clear
 
-`AskUserQuestion` rounds, ≤4 questions per call. First always: (a) `NEEDS-FOUNDER-SPEC` tasks — spec / defer / drop; (b) scope boundary — restate the founder's full objective and confirm what this wave includes versus defers; scope never narrows silently. Ask nothing derivable from code. Continue until every task is clear or the founder disposes it. Forecast every founder touchpoint the wave will EVER need (destructive ratifications, publication decisions, version bumps) and record each as pre-authorized in the spec — a wave that stops mid-flight for a founder answer is a failed spec.
+`AskUserQuestion` rounds, ≤4 questions per call. First always: (a) `NEEDS-USER-SPEC` tasks — spec / defer / drop; (b) scope boundary — restate the user's full objective and confirm what this wave includes versus defers; scope never narrows silently. Ask nothing derivable from code. Continue until every task is clear or the user disposes it. Forecast every user touchpoint the wave will EVER need (destructive ratifications, publication decisions, version bumps) and record each as pre-authorized in the spec — a wave that stops mid-flight for a user answer is a failed spec.
 
 A task needing prototype evidence before it can be specified runs `refine poc` first; the spec embeds the findings (§ RND findings).
 
 ## R3 — Decide and write
 
-Settle every technical branch before writing: data placement, mechanism, failure modes, migration. Every mechanism decision first names the incumbent pattern it follows; deviating carries a one-line justification. A branch with 2+ defensible options and materially different consequences goes to the founder; everything else you settle. Per task, decide and write:
+Settle every technical branch before writing: data placement, mechanism, failure modes, migration. Every mechanism decision first names the incumbent pattern it follows; deviating carries a one-line justification. A branch with 2+ defensible options and materially different consequences goes to the user; everything else you settle. Per task, decide and write:
 
 - **Routing** — the exact roster project set the task touches, and the agents that will build it (`dev` per task, `qa` per modified project). A task touching `.claude/**`, any `CLAUDE.md`, or `blueprint/**` routes to `/pcm` instead — those files are guarded and a dev agent is denied by the hook.
 - **Data model** — for `pfm`, every table, column with exact type, index, and constraint, plus the numbered `migration_vN.sql` that adds it; migrations are additive and never an edit to `schema.sql`.
 - **Contracts** — the exact cross-project seams the task changes: Go exports consumed by `shim/pfm.zsh`, the emitted eval line's shape, TS exports the walker engine consumes, and every placeholder token a template gains or loses.
 - **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped field names its full coupling including string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
 - **Behavior** — success/failure/edge paths, terminal output, copy, scope. Every new check names what it reports when the check itself is broken.
-- **Publication surface** — every place the task touches `blueprint/**`, `README.md`, `INSTALL.md`, `CHANGELOG.md`, or `releases/**`. Nothing identifying may enter one: no founder name, no machine-absolute path, no client content, no example value mined from a live repo. A task that adds a template names the invented illustrative values it uses.
+- **Publication surface** — every place the task touches `blueprint/**`, `README.md`, `INSTALL.md`, `CHANGELOG.md`, or `releases/**`. Nothing identifying may enter one: no personal name, no machine-absolute path, no client content, no example value mined from a live repo. A task that adds a template names the invented illustrative values it uses.
 
 ### Spec format
 
@@ -59,18 +59,18 @@ Rules blocks binding a subset of tasks sit above those tasks; all-task rules sit
 
 Write `## RND-Validated Mandatory Rules` before the task list: every validated prompt in a fenced block, byte-identical — never paraphrased, since a rewritten prompt is an unvalidated prompt — labelled with where it runs; every technique that separated success from failure, with numbers; every behavior adding an LLM call names its validated prompt artifact or is staged to the wave where its prompt validates.
 
-## R4 — Review + founder gate
+## R4 — Review + user gate
 
 - **Invariant registration:** a wave that introduces a new cross-cutting invariant registers it in `.claude/commands/wave/walker-invariants.md` in the SAME wave, as its own `[CMD: /pcm]` task. A registry that is never updated is exactly as blind as no registry.
-- **Founder gate:** present the Scope/Deferred boundary plus one line per task (routing + the key technical and product decisions made for them). Loop until approved; approval queues the spec. Running it (`/wave:live {queue-path}`) is a separate decision.
+- **User gate:** present the Scope/Deferred boundary plus one line per task (routing + the key technical and product decisions made for them). Loop until approved; approval queues the spec. Running it (`/wave:live {queue-path}`) is a separate decision.
 
-**Publication fence (sacred):** a push, a tag, or a GitHub release happens only on the founder's explicit request in the turn that runs it. The spec never carries a task or clause instructing any agent to publish; a release need is listed in the R4 summary as a founder-owned item.
+**Publication fence (sacred):** a push, a tag, or a GitHub release happens only on the user's explicit request in the turn that runs it. The spec never carries a task or clause instructing any agent to publish; a release need is listed in the R4 summary as a user-owned item.
 
 ## Subcommand: `poc <goal>`
 
 Interrogate a proof-of-concept idea into an airtight spec, then build it directly — disposable sandbox under `tmp/RND/POC/{name}/`, no gitter, no QA gates.
 
 1. **P1 — Scope:** read only the code the POC exercises or stubs; decide real versus faked.
-2. **P2 — Ask the founder** one focused batch: what it must prove, the observable success signal, real versus faked, scope boundary, stack. Loop until clear.
+2. **P2 — Ask the user** one focused batch: what it must prove, the observable success signal, real versus faked, scope boundary, stack. Loop until clear.
 3. **P3 — Spec:** write `tmp/RND/POC/{name}/spec.md` — Goal, Proves, Success criteria, Real vs faked, Build plan (every file + signatures), How to run, Boundaries.
 4. **P4 — Build:** dispatch `dev` agents per the build plan (independent probes in parallel); report the result, naming what the POC proved and what it left unproven.

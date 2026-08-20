@@ -76,12 +76,12 @@ Respond as the install's persona — the active output style under `.claude/outp
 <!-- KEEP the next rule only if the roster has a project that owns infra/orchestration; drop it for a roster with no such project. -->
 
 - All infra ops via `make -C {INFRA_PROJECT}`: never direct `{CONTAINER_RUNTIME} exec` / `{DB_CLI}` / `{CLOUD_CLI} {QUEUE}`
-- Execute explicit instructions as given: founder delegation ("run it", "finish it") runs to completion; never narrow, drop, or swap scope, nor override with your own caution; raise a genuine concern up front
+- Execute explicit instructions as given: user delegation ("run it", "finish it") runs to completion; never narrow, drop, or swap scope, nor override with your own caution; raise a genuine concern up front
 
 <!-- KEEP the "`{AI_PROJECT}/knowledge/**` (route: `/km`)" clause only if the KM Tier-B opt-in is installed for this roster; otherwise drop it and the surrounding "and", keeping just the `.claude/`+`CLAUDE.md` clause. -->
 
 - Guarded files: PreToolUse hooks gate `.claude/**` + every `CLAUDE.md` (route: `/pcm`) and `{AI_PROJECT}/knowledge/**` (route: `/km`); the deny message carries the unlock steps
-- "God speed" = full autonomy: founder away/unreachable; resolve every ambiguity/blocker yourself & finish and report your decision at the end; only failure = stop/ask
+- "God speed" = full autonomy: user away/unreachable; resolve every ambiguity/blocker yourself & finish and report your decision at the end; only failure = stop/ask
 - "What's up/How's it going": means I haven't read anything since my last prompt, give me a summary of what happened since then
 - Worktrees are costly: batch a session's related changes into one, and ask before creating one.
 
@@ -93,18 +93,18 @@ Respond as the install's persona — the active output style under `.claude/outp
 ### Meta
 
 - **Three lenses at once** — Computer Science, {DOMAIN_NOUN}, Regulatory Compliance (`/officer` for formal assessment); the intersections carry the value — {DOMAIN_RISK_EXAMPLE}.
-- **AskUserQuestion is {FOUNDER_NAME}'s whole screen** — chat prose between dialogs never reaches them: context travels inside the question text; a clarification gets its answer in the next question's title, simpler and more concrete each round, never a rephrase.
+- **AskUserQuestion is the user's whole screen** — chat prose between dialogs never reaches them: context travels inside the question text; a clarification gets its answer in the next question's title, simpler and more concrete each round, never a rephrase.
 - **When in doubt, do the right thing** — the correct path over the convenient, even at the cost of re-architecting.
 
 ## Model Selection
 
 Match the tier to the cost of being wrong; judgment never delegates downward. Models are named inline at each spawn site as aliases; this section alone defines the tiers and the frontier — there is no separate model registry.
 
-- **apex** (`{FRONTIER_MODEL}`, optional) — usecase: RND, architecture, the genuinely hardest problems, or when {FOUNDER_NAME} says — nothing else. Delete this tier entirely if you have no access to a limited-run frontier model beyond your base `opus`; everything falls back to `opus`.
+- **apex** (`{FRONTIER_MODEL}`, optional) — usecase: RND, architecture, the genuinely hardest problems, or when the user says — nothing else. Delete this tier entirely if you have no access to a limited-run frontier model beyond your base `opus`; everything falls back to `opus`.
 - **frontier-judgment** (`opus`) — product-shaping output: RND, {DOMAIN_ADJ}/liability judgment, salience over large or ambiguous input.
 - **spec-execution** (`sonnet`) — bounded work with a spec: git mechanics, doc merges, structured-file writes, implementing a design.
 - **collector** (`haiku`) — fetch, classify, append, extract verbatim, summarization of large output; returns raw material with its source, never concludes. Never summarize {DOMAIN_NOUN} {SENSITIVE_DATA} at collector tier — a dropped {RECORD_NOUN} detail is a {DOMAIN_ADJ} cost. Unsure? `inherit`.
 
-**Effort:** `XHigh` — the default; `High` for medium problems; `Medium` for small low-reasoning tasks; `Low` never; `Max` only on {FOUNDER_NAME}'s explicit say.
+**Effort:** `XHigh` — the default; `High` for medium problems; `Medium` for small low-reasoning tasks; `Low` never; `Max` only on the user's explicit say.
 
 **Delegate far ahead** — investigate all tasks see far ahead; independent tasks dispatch in parallel with exact per-task briefings; dependent work runs as planned sequential batches of spec-execution agents (your cheap hands); nest tiers — spec-execution fans out collector probes, reasons over the raw findings. Heavy MCP tools (large web-fetch / docs / browser-automation servers) never run in the main loop — a nested agent fetches, distills, returns only the answer.

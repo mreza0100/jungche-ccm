@@ -89,7 +89,7 @@ const ADAPTER = `
 This file is compiled verbatim from CLAUDE.md by ${SELF}; Claude model aliases are already swapped to Codex models ({CODEX_MODEL_FRONTIER} = frontier judgment, {CODEX_MODEL_SPEC} = spec execution, {CODEX_MODEL_COLLECTOR} = collector — add a {FRONTIER_MODEL} row too if CLAUDE.md names one). Where the text names Claude-harness mechanics, map them:
 
 - Agent / Task spawn / \`subagent_type\` → \`spawn_agent\` with the matching \`.codex/agents/*.toml\` role
-- AskUserQuestion → ask the founder in prose and end your turn
+- AskUserQuestion → ask the user in prose and end your turn
 - Workflow() scripts → no equivalent: decompose sequentially or fan out \`spawn_agent\` calls
 - Skills / slash commands → \`.codex/skills/{name}/SKILL.md\`, invoked as \`$name\` — Codex has no \`/name\` syntax, so every \`/name\` reference below is already rewritten to \`$name\` (nested Claude names flatten: \`/wave:orchestrator\` → \`$wave-orchestrator\`)
 - PreToolUse hooks (guarded files) → Codex has NO hook layer, so the guard is absolute: never edit \`.claude/**\`, any \`CLAUDE.md\`, any \`AGENTS.md\` (generated — change CLAUDE.md and re-run the build), or \`{AI_PROJECT}/knowledge/**\` — stop and report instead
