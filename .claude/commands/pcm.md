@@ -225,7 +225,7 @@ Ask: "Want me to fix these issues?"
 
 **Full rename:** Grep ALL occurrences (including `blueprint/**`, `README.md`, `BLUEPRINT.md`, `SETUP.md`, `refresh-map.json`) → update agents → update CLAUDE.md → final grep for zero stale refs → recompile the Codex mirror.
 
-**New agent:** Create `.claude/agents/{name}.md` → add its row to root `CLAUDE.md` § Subagent dispatch → `build-codex.mjs generate` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/agents/{name}.md`.
+**New agent:** Create `.claude/agents/{name}.md` — its `description:` is the registry entry, its `model:` pins the tier (root `CLAUDE.md` § Subagent dispatch carries no roster) → `build-codex.mjs generate` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/agents/{name}.md`.
 
 **New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter). A skill meant for adopters is registered in `blueprint/skills/sources.json` and lives in its OWN public repo — the blueprint never vendors one.
 

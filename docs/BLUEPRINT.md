@@ -21,7 +21,7 @@ Every command, agent, and rule sorts into one of three tiers:
 - **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command. Disciplines parameterize per project.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
 - **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `pcm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/pcm:context-meter` audits the framework's own context budget.
-- **/wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/swap`.
+- **/wave:{orchestrator,builder,refine,walker,live,sentinel}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/chat:*` is the same tier but installs host-level (`~/.claude/commands/chat/`, opt-in) from the self-contained `pfm` binary alongside `/reload`.
 
 > Each Tier A persona (Professor, JC, Dr. House) ships in two selectable depths — **full** (rich, showcase voice) and **compact** (lean voice plus the same Verdict / sacred-ground / Analysis-Protocol contract, fewer tokens every turn) — chosen at install.
 
