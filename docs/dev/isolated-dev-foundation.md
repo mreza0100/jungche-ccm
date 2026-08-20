@@ -1,6 +1,6 @@
 # Isolated Dev Foundation — worktree + container for pfm development
 
-**Status:** DESIGN — awaiting the user's ruling on the three open decisions at the bottom.
+**Status:** APPROVED 2026-08-20 — rulings: (a) markdown-only waves stay on `main`, code changes only in `.worktrees/`; (b) the mirror runs when a fenced wave fully closes — QA pass, orchestrator review with issues fixed, stable — then gitter merges and the host build runs; (c) one image for dev+e2e, files edited on the HOST worktree, the container mounts it for build/test only, and `infra/` at root holds the compose so the setup replicates every time.
 
 ## Problem
 
