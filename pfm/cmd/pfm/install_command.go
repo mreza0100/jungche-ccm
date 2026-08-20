@@ -27,10 +27,11 @@ func installHarvestProvisioner() installer.HarvestProvisioner {
 func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"install",
-		"usage: pfm install [--yes] [--force] [--config-dir DIR]",
+		"usage: pfm install [--yes] [--skip-harvest] [--force] [--config-dir DIR]",
 		stderr,
 	)
 	yes := flags.Bool("yes", false, "apply the installation")
+	skipHarvest := flags.Bool("skip-harvest", false, "skip harvestpy provisioning")
 	force := flags.Bool("force", false, "regenerate installer-owned credentials")
 	configDir := flags.String("config-dir", "", "target config directory instead of ~/.claude")
 	if code, ok := parseFlags(flags, args); !ok {
@@ -44,10 +45,14 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	if *yes {
 		mode = installer.ModeApply
 	}
-	options := newInstallerOptions(mode, *configDir, *force, stdout, runtimes...)
+	options := newInstallerOptions(mode, *configDir, *force, *skipHarvest, stdout, runtimes...)
 	code := runInstallerCommand("install", options, stderr)
 	if code == 0 && mode == installer.ModeDryRun {
-		fmt.Fprintln(stdout, "if you agree, run again: pfm install --yes")
+		confirmation := "if you agree, run again: pfm install --yes"
+		if *skipHarvest {
+			confirmation += " --skip-harvest"
+		}
+		fmt.Fprintln(stdout, confirmation)
 	}
 	return code
 }
@@ -56,6 +61,7 @@ func newInstallerOptions(
 	mode installer.Mode,
 	configDir string,
 	force bool,
+	skipHarvest bool,
 	stdout io.Writer,
 	runtimes ...commandRuntime,
 ) installer.Options {
@@ -65,7 +71,7 @@ func newInstallerOptions(
 		SourceRepo:         discoverSourceRepo(),
 		Force:              force,
 		Stdout:             stdout,
-		ProvisionHarvest:   true,
+		ProvisionHarvest:   !skipHarvest,
 		HarvestProvisioner: installHarvestProvisioner(),
 	}
 	if len(runtimes) != 0 {

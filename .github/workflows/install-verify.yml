@@ -1,0 +1,72 @@
+name: Installer end-to-end verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux installer e2e
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install e2e tools
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git tmux zsh
+
+      - name: Set up Go
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: pfm/go.mod
+          cache-dependency-path: pfm/go.sum
+
+      - name: Run serial installer e2e
+        env:
+          PFM_DEV_FENCE: "1"
+          PFM_HARVESTPY_OFFLINE: "1"
+          PFM_E2E_HARVESTPY_GATE: blocked, not attempted
+        run: |
+          set -euo pipefail
+          export HOME="$(mktemp -d)"
+          go -C pfm test -tags e2e -p 1 ./e2e/...
+
+  darwin:
+    name: Darwin installer e2e
+    runs-on: macos-14
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: pfm/go.mod
+          cache-dependency-path: pfm/go.sum
+
+      - name: Install e2e tools
+        run: brew install tmux
+
+      - name: Run serial installer e2e
+        env:
+          PFM_DEV_FENCE: "1"
+          PFM_HARVESTPY_OFFLINE: "1"
+          PFM_E2E_HARVESTPY_GATE: blocked, not attempted
+        run: |
+          set -euo pipefail
+          export HOME="$(mktemp -d)"
+          go -C pfm test -tags e2e -p 1 ./e2e/...
