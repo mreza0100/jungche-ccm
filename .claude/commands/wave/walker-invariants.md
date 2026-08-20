@@ -1,0 +1,138 @@
+---
+name: wave:walker-invariants
+description: The wave walker's engine config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
+---
+
+# Wave Walker — Engine Config & Invariant Registry
+
+> Everything about the wave walker specific to THIS repo lives here: the engine's script path and
+> profile in § Engine Config, and the invariant registry below it. `walker.md` is the manual —
+> identical in every install; this file is the config — different in every install.
+
+## § Engine Config
+
+Everything the wave-walker engine needs that is specific to this repo — the engine bundle is universal and carries none of it — lives here; callers read this section and pass both fields verbatim as `scriptPath` and `args.project`.
+
+**Script path** — the built bundle, which this repo carries in-tree:
+
+```
+engines/wave-walker/engine/dist/active-workflow.js
+```
+
+Repo-relative on purpose. The blueprint's own template writes a machine-absolute path here because an adopter's engine lives in a separate clone; this repo IS that clone, so the bundle sits in-tree and an absolute `/home/...` path would both hardcode one machine and breach `scripts/leak-check.sh`, which fails the push on any machine-absolute path in a tracked file.
+
+`active-workflow.js` is a symlink to the built `workflow.js`; `npm run build` in `engines/wave-walker/engine` overwrites it, and the bundle opens with a `GENERATED FILE — DO NOT EDIT` banner.
+
+**When this path is wrong the Workflow launch fails loudly** with a script-not-found error before any seat is dispatched — never a silent empty walk, and never a verdict. A walk that returns no findings has walked; a walk that could not load its engine says so.
+
+**Profile (`args.project`)** — passed verbatim on every engine invocation, all modes:
+
+```json
+{
+  "repoRoot": ".",
+  "deadnessSurfaces": "the installer's staged host assets (pfm/internal/installer/assets/), go:embed'd SQL and schema files, the Codex mirror compiled from .claude/ sources, and every path referenced only from a markdown prompt — none of which a static import-grep reaches",
+  "stakesLine": "A false 'dead' verdict here deletes a template, asset, or prompt pointer that ships to every adopter one clone away, and the deletion surfaces only in someone else's repo."
+}
+```
+
+The gate keys (`authDoc`, `roles`, `gateResolverPattern`, `gateSurfacePattern`, `fencedResourceClasses`) are absent by design: this repo exposes no request-authenticated surface, no roles, and no resolvers, so there is no ownership fence to check. The engine therefore reports `gates: SKIPPED — no project profile supplied` in Coverage and telemetry — loud and correct, not a hidden pass. The thread walk, security fan-out, hygiene, and panel modes run fully regardless.
+
+## § Registry Format
+
+One `##` section per invariant. Each entry:
+
+- **Law** — the invariant's rule, quoted VERBATIM from its CLAUDE.md source, with the source pointer. Where no CLAUDE.md bullet codifies a dimension, the closest codified law is quoted and the gap is flagged.
+- **Territory** — globs (`*` = one path segment, `**` = any depth; no brace expansion — list alternatives as separate globs) naming where violations of this class live, REGARDLESS of the current diff. This is what lets the hunter catch pre-existing bugs no wave ever touches. A territory narrower than its own exemplars makes the registry's blind spot the walker's.
+- **Triggers** — free-text diff predicates the scout judges semantically; the zero-token engine-side fail-safe floor beneath it is a territory-glob match (`computeArmedInvariants`, `engines/wave-walker/engine/src/engine.ts`).
+- **Exemplars** — confirmed bugs of exactly this class, cited `file:line`, each carrying its STATUS: LIVE, or FIXED naming the pin that closed it. A fixed exemplar still teaches the shape; an unmarked one sends a hunter to an anchor that no longer holds and teaches it the registry cannot be trusted. Anchors rot as code moves — a hunter re-reads a cited line before treating it as evidence and names a stale anchor in its coverage.
+- **Hunt Brief** — the enumeration duty handed to the invariantHunter verbatim.
+
+## § Registration Duty
+
+A wave that INTRODUCES a new invariant registers it here in the SAME wave — a process duty for `/wave:refine`'s spec checklist, not an engine mechanism. A registry that is never updated is exactly as blind as no registry.
+
+## § Curation
+
+Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md edit: a bad entry either arms nothing (dead territory globs) or arms everything (a territory of `**`), both silently.
+
+---
+
+## HONEST-ABSENCE
+
+**Law:** "Every check names what its own broken state reports. A gate that answers 'fine' both when things are fine and when it is broken is a coincidence detector. An error never renders as ABSENCE: absence is a claim about the world ('nothing there'), an error is a claim about ourselves ('we failed to look'). Distinguish them at the visible surface — logging is necessary and not sufficient." — `CLAUDE.md` (root, § Prompt & template code). Reinforced for the engine layer by `pfm/CLAUDE.md` § Code Standards: "A probe that could not run never returns 'nothing found.'"
+
+**Territory:**
+
+- `pfm/internal/gather/**`
+- `pfm/internal/reap/**`
+- `pfm/internal/heal/**`
+- `pfm/internal/check/**`
+- `pfm/cmd/pfm/**`
+- `scripts/**`
+- `.claude/scripts/**`
+- `engines/wave-walker/engine/src/**`
+
+**Triggers:** diff touches a probe, gate, health check, verdict, or empty-state branch; diff adds an error-suppressing idiom (`2>/dev/null`, `|| true`, `set +e`, a `catch` or `if err != nil` with no context); diff adds an enumeration whose empty result feeds a decision.
+
+**Exemplars:** *(none confirmed in this registry yet — the hunter arms on territory + triggers alone. `pfm/CLAUDE.md` names this "the single most common defect class here", so entries are expected; add each with STATUS + `file:line` + severity as walks confirm them.)*
+
+**Hunt Brief:** For every probe, gate, and empty-state in the territory, apply the broken-mechanism test: what does this step report when the thing it checks ERRORS — permission denied, timeout, wrong socket, malformed output — and does that read the same as "nothing here" / "all clear"? Enumerate every swallowed exit code, `2>/dev/null`, `|| true`, bare `catch`, and error-to-empty-slice conversion in the territory and judge each by name; an unnamed swallow is an unjudged swallow. For each enumeration feeding a verdict, name how a caller distinguishes "looked and found nothing" from "failed to look".
+
+---
+
+## LEAK-LINE
+
+**Law:** "Nothing identifying ships. No brand of the private source project, no founder PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` runs as `pre-push` via `.githooks/` — it is the backstop, not the plan. Write it clean the first time." — `CLAUDE.md` (root, § Publication). Paired with: "A template's example values are illustrative placeholders, never mined from a live private repo."
+
+**Territory:**
+
+- `blueprint/**`
+- `README.md`
+- `INSTALL.md`
+- `CHANGELOG.md`
+- `releases/**`
+- `docs/**`
+- `.claude/**`
+- `pfm/internal/installer/assets/**`
+
+**Triggers:** diff adds or edits any tracked file under the territory; diff introduces a path literal, an example value, a fixture, or a sample config; diff adds a test fixture carrying a name, host, or home directory.
+
+**Exemplars:** *(none confirmed — the pre-push gate has held. A LIVE entry here would mean the gate was bypassed, so record any near-miss caught in review with STATUS + `file:line`.)*
+
+**Hunt Brief:** Enumerate every string literal the diff adds under the territory that could carry identity: absolute paths, home directories, hostnames, email addresses, personal or brand names, client domain content. For each, state whether it is invented-illustrative or mined from live state — a value that looks plausible because it was copied is precisely the failure. Confirm `scripts/leak-check.sh` would fail on each finding, and name any finding it would MISS, since a leak the mechanical gate cannot see is the only kind that ships.
+
+---
+
+## CONFIG-OWNERSHIP
+
+**Law:** "Account identity, emoji, theme, and permission posture come ONLY from `internal/config` — a hardcoded account count, `.cc/N` literal, medal emoji, or bypass flag outside the config package is a defect." — `pfm/CLAUDE.md` § Code Standards.
+
+**Territory:**
+
+- `pfm/cmd/pfm/**`
+- `pfm/internal/**`
+
+**Triggers:** diff adds an account-number comparison or literal id list, a `.cc/N` or config-dir path literal, a medal/emoji literal, a permission-mode or bypass-flag string, or a theme/color constant outside `pfm/internal/config`; diff touches account attribution, posture rendering, or launch-flag synthesis.
+
+**Exemplars:** `pfm/internal/config/config.go:140` account cap `<=3` — STATUS: FIXED (config v2 span, `750375d`). `pfm/internal/swap/swap.go:260` `[]int{1,2,3}` — STATUS: FIXED (file deleted entirely by the `/reload` rework, same span; the shape it teaches — a hardcoded id roster — survives it). `pfm/internal/installer/installer.go:767` `<=4` — STATUS: FIXED (`750375d`). `pfm/internal/statusline/render.go:406-428` hardcoded medal emojis — STATUS: FIXED (`750375d`).
+
+**Hunt Brief:** Enumerate every account-count comparison, account-id literal list, config-dir literal, emoji literal, permission-mode/bypass-flag literal, and theme/color constant in the territory; for each, name its provenance — `internal/config` (or an installer-emitted config product such as the shim's posture maps) versus hardcoded. A literal with no config provenance is a finding, LIVE, with `file:line`.
+
+---
+
+## § Consumption Contract (`args.invariants`)
+
+The engine never reads this file directly — the JS engine layer has no filesystem access (Workflow sandbox). The registry's data arrives structured via `args.invariants`, an array of:
+
+```json
+{
+  "id": "HONEST-ABSENCE",
+  "law": "... verbatim law text + source pointer ...",
+  "territory": ["pfm/internal/gather/**", "..."],
+  "triggers": ["diff touches a probe/gate/empty-state branch", "..."],
+  "exemplars": ["gather/tmuxprobe.go:105 — a failed probe returns an empty pane list (HIGH)", "..."],
+  "huntBrief": "walk every probe/gate/empty-state for the broken-mechanism test"
+}
+```
+
+Each field maps directly from this doc's per-entry `**Law:**` / `**Territory:**` / `**Triggers:**` / `**Exemplars:**` / `**Hunt Brief:**` lines — mechanical, list-to-array transcription. `Configs.parseInvariants` (`engines/wave-walker/engine/src/config.ts`) validates the shape and throws loudly on a malformed entry (missing `id`/`law`/`huntBrief`, empty/non-array `territory`). Absent or `[]` → THE FLOOR: no `invariantHunter`/`coverageCritic` dispatched, walker behavior byte-identical to the registry-less walker. The caller-side transcription duty is documented in `walker.md` § Entry points.

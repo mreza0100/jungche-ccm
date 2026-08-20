@@ -1,0 +1,138 @@
+# pfm — CLI & MCP Surface
+
+Proposal for founder review. Target state after wave `config-ui-mcp-install` (companion:
+`docs/dev/trains/queue/2026-08-20-config-ui-mcp-install.md`); refined against main @ 7b01caa.
+
+Legend: **●** exists, unchanged · **◆** changes this wave · **✚** new this wave · **⏭** next wave.
+Existing commands marked ● keep their current flags; only changed/new surface is fully specified here.
+
+## Global
+
+- Config: `~/.config/pfm/config.json` (v2, strict JSON — accounts/emoji/theme/permission posture/mcp/ask; `$XDG_CONFIG_HOME` honored). Missing file = defaults. **Malformed file = hard failure for every command** except the three diagnostics (`doctor`, `config show`, `config validate`), which run on defaults and print the exact error. `config show` redacts secrets.
+- One binary, one dispatch. Everything below is `pfm <command> …`.
+
+## Top-level commands
+
+| Cmd | Usage | Does |
+| --- | --- | --- |
+| ◆ `ls` | `pfm ls [--plain\|--tsv]` | Fleet picker TUI. New keys: `Tab`/`Shift-Tab` switch Chats↔Stats; `←/→` action carousel on chat rows (`▶ open → ⟳ reload → ⚡ reboot → 🕐 1h → ✖ hide`, `Enter` runs the boxed action) and Claude\|Codex toggle on the single merged new-chat row; ctrl shortcuts stay as aliases. Claude rows themed teal. |
+| ◆ `doctor` | `pfm doctor` | Existing checks + config provenance, harvest-cache line (dir/entries/TTL), MCP daemon state + port. |
+| ◆ `install` | `pfm install [--apply]` | Dry-run by default. Now also: full pfm hook set (dream agent-inject/nudge, explore-deny, epic-inject), `cleanupPeriodDays: 36500`, `codex agents` step, MCP units + client registration when enabled, account fanout from config. |
+| ● `uninstall` | `pfm uninstall` | Removes exactly the installer-owned surface (ownership ledger); manual hooks survive. |
+| ◆ `chat new` | (see the chat family) | On a proof timeout the launch now presses `Escape` then `Enter` once and RE-PROVES against the engine's transcript before reporting. A rescued launch exits 0 and says what it pressed; an unrescued one still exits `codeUndelivered` and says the retry was tried. |
+| ✚ `update` | `pfm update [--to vX.Y.Z] [--repo <path>]` | Ownership-aware, transactional whole-professor update: fetch tags → highest SEMVER tag (parsed, not lexical) → refuse dirty worktree → build twice + hash gate → stage → atomically replace ONLY ledger-owned pfm copies (previous binary preserved for rollback) → `install --yes` → `doctor` → finalize. Unowned PATH copies untouched (drift surfaced loudly instead). Failure → rollback or an exact residue report. Never pushes. |
+| ✚ `init` | `pfm init [dir] [--force]` | Per-project scaffold: copies blueprint set (`CLAUDE.md`, `AGENTS.md`, `.claude/{settings,output-styles,commands,agents,skills}`) with placeholders intact; refuses existing `.claude/` without `--force`; prints the "open Claude, run SETUP" handoff. |
+| ✚ `config` | `pfm config init [--force] \| show \| validate` | `init` writes the default v2 file as strict comment-free JSON (0600, atomic; field docs print to stdout). `show` prints resolved config with `(default)/(file)` provenance, secrets redacted. `validate` = load + exact decode error with position. |
+| ● `codex` | `pfm codex build\|check\|agents [repo-root]` | Compiler mirror, marker check, global agents md→toml. `agents` also auto-runs inside install. |
+| ◆ `harvest` | `pfm harvest [--refresh] [--size-only] [--json] <url\|doi\|path>...` | Multi-source fetch → markdown, cache + 24h TTL (`HARVESTER_CACHE_TTL`). Stdout clips large sources; full docs live at the printed `path:`. |
+| ⏭ `harvest ask` | `pfm harvest ask -p "<prompt>" [--model gpt-5.6-luna] [--effort low] <url\|doi\|path>...` | Mechanical: harvest all sources → prepared corpus from FULL cache files (size-aware: single pass ≤ budget, map-reduce beyond) → one model pass (shared `internal/ask` engine) → answer + usage metrics. |
+| ◆ `mcp` | `pfm mcp serve` · `pfm mcp chat\|harvester serve` | `serve` = ONE HTTP daemon, `127.0.0.1:<config port>`, both servers (`/mcp/chat`, `/mcp/harvester`); **bearer-token auth required** (credential generated at install, 0600, redacted in `config show`); single-instance guarded; authed `GET /status` returns `{pfmVersion, protocolVersion, tools, pid, startTime, endpoint}` (doctor consumes it). Per-name stdio kept for clients without HTTP MCP. |
+| ● `statusline` | (stdin JSON from Claude Code) | + `7d-fable` segment and `✦` Fable symbol; account badge from config (unknown → no badge, never 🥇). |
+| ● `usage-hook` | (UserPromptSubmit hook) | OAuth usage fetch; struct gains model-scoped windows (`SevenFable` + generic map). |
+| ● `dream` | `pfm dream …` · `pfm dream hook agent-inject\|nudge\|codex` | Unchanged; hook verbs now INSTALLED by default. |
+| ● `heal` | `pfm heal` | Codex projection heal. Unchanged. |
+| ● `reap` | `pfm reap …` | Unchanged. |
+| ● `run` | `pfm run …` | Chat-spawn plumbing (backs `chat new`). Unchanged. |
+| ● `agent` | `pfm agent open …` | Headless claude open path. Unchanged. |
+| ◆ `internal` | `pfm internal clear-hide\|explore-deny\|epic-inject` | Hook backends: ✚ `explore-deny` (ports the shell script; stdin hook JSON → allow/deny), ✚ `epic-inject` (see below). |
+| ● `version` | `pfm version` | Verify identity by hash, not this string. |
+
+### `pfm internal epic-inject` ✚
+
+UserPromptSubmit hook. Resolves the pane's chat name each turn; on `^E_([A-Za-z0-9][A-Za-z0-9-]*)_`
+finds `docs/epics/{slug}/manifest.md` from cwd upward and emits it as additionalContext prefixed
+with marker `INJECTED EPIC {slug}/manifest.md` (visible provenance only). Once-only state is
+STRUCTURED: the shared store records `(session_id, slug)` — same epic never re-injects (not even on
+manifest edits; no content hashes), a rename into a different epic injects that one once, renaming
+back stays silent. No hook needed on `/rename` (per-turn re-check). Missing manifest → silent.
+
+## `pfm chat` family
+
+| Verb | Status | Does |
+| --- | --- | --- |
+| `new` | ● | Spawn a chat (engine/account per picker or flags). |
+| `open` | ● | Open/attach an existing chat. |
+| `read` | ● | Read transcript (full/excerpt). |
+| `last` | ● | Newest entry by role. |
+| `status` | ● | Inspect liveness/state. |
+| `stream` | ● | Follow output live. |
+| `inject` | ● | Type into a pane (signing rules unchanged). |
+| `ask` | ● | Headless ask flow. |
+| `watch` | ● | Watch for a condition. |
+| `capture` | ● | Capture pane contents. |
+| `keys` | ✚ | `pfm chat keys [--delay ms] [--literal] [--capture] <target> <key>...` — press any key in a live chat's pane (`Escape`, `Enter`, `C-c`, `Down`, `F1`, `S-Tab`, …). Unknown names are REFUSED, because tmux types an unrecognised key as text and a caller who writes `Esc` would silently put three letters in the composer; `--literal` types text on purpose. `--delay` defaults to 120ms — a TUI drops keys that arrive in the same millisecond. |
+| `recover` | ● | Rollout recovery. |
+| `name` | ● | Deliver/set chat name. |
+| `hide` / `unhide` | ● | Hide bookkeeping. |
+| `reload` | ◆ | **Renamed from `swap`** (same args: `[account] [--then prompt] [--sock socket] [--1h on\|off]`); `swap` stays a hidden alias one release. Slash command installs as `/reload`. |
+| `end` | ● | Kill the chat's tmux server. |
+| `whoami` / `resolve` | ● | Identity / target resolution. |
+| `modal` | ● | Send modal keys. |
+| `group` | ● | Grouping hook backend. |
+| `find` / `save` / `load` / `branch` / `ls` / `history` | ● | Satellite verbs, unchanged. |
+
+## MCP surface
+
+One daemon process (Task #8), two servers. Every tool is a thin adapter over the SAME function its
+CLI verb calls — no second implementation, ever.
+
+### Server `chat` — `/mcp/chat` (stdio: `pfm mcp chat serve`)
+
+| Tool | Status | Inputs | Returns |
+| --- | --- | --- | --- |
+| `chat_ls` | ● | `{}` | Fleet rows (accounts, engines, sizes, liveness). |
+| `chat_new` | ✚ | `{engine, account?, name?, cwd?}` | Spawned chat identity. |
+| `chat_open` | ✚ | `{target}` | Open result. |
+| `chat_read` | ◆ | `{target, excerpt?}` | Transcript text (converges onto CLI `read`). |
+| `chat_last` | ✚ | `{target, role?}` | Newest entry. |
+| `chat_status` | ✚ | `{target}` | Liveness/state. |
+| `chat_inject` | ● | `{target, text, then?}` | Delivery report (signing rules apply). |
+| `chat_capture` | ● | `{target}` | Pane text. |
+| `chat_keys` | ✚ | `{target, keys: [string], literal?, delay_ms?, capture?}` | Press keys in the chat's pane — the model's hands on a TUI that swallowed a keystroke. Same validation as the CLI verb: an unknown key name is an error, never typed as text. |
+| `chat_name` | ✚ | `{target, name}` | Rename result. |
+| `chat_hide` / `chat_unhide` | ✚ | `{target}` | Hide-state result. |
+| `chat_reload` | ✚ | `{target, account?, then?}` | Reload (swap) result. |
+| `chat_find` | ◆ | `{query}` | Matching transcripts (converges onto CLI `find`). |
+| `chat_save` | ✚ | `{target}` | Repository snapshot path. |
+| `chat_whoami` | ● | `{}` | Caller identity. |
+| `chat_resolve` | ● | `{ref}` | Resolved target. |
+| `transcript_ask` | ⏭ | `{session, prompt, span?: compacted\|live\|all = compacted, offset?, limit?, max_chars?, engine?, model?, effort?}` | **Mechanical-then-model, one tool:** pfm extracts + denoises the slice itself (pager semantics: sidechain/tool-noise filtering, negative offsets, honest span-fallback note; transcript parsed/indexed once by the daemon), writes prepared text, one model pass answers with evidence. The model never drives paging. |
+
+Deliberately NOT exposed: `end`, `modal`, `group`, `watch`, `stream`, `recover`, `history`,
+`branch`, `load` — interactive/plumbing; the absence is stated in the server docstring.
+
+### Server `harvester` — `/mcp/harvester` (stdio: `pfm mcp harvester serve`)
+
+| Tool | Status | Inputs | Returns |
+| --- | --- | --- | --- |
+| `fetch` | ● | `{source, refresh?}` | Markdown (cache + TTL). |
+| `search` | ● | `{query, …}` | Web search results. |
+| `findWorks` | ● | `{query, …}` | Scholarly works. |
+| `fetchImage` | ● | `{source}` | Image fetch. |
+| `archive` | ● | `{source}` | Archive extraction. |
+| `searchCache` | ● | `{query}` | Cache search. |
+| `ask` | ⏭ | `{sources: [url\|doi\|path], prompt, engine?, model?, effort?}` | **Mechanical-then-model:** harvest all → prepared corpus from FULL cache files → one model pass → answer + evidence + per-source status (clipped/unusable stated, never invented) + usage. |
+
+## Shared engine `internal/ask` (contract + engine abstraction land THIS wave; runners next wave)
+
+Content-agnostic one-shot runner behind both `ask` tools — nothing harvester- or
+transcript-specific in its interface. **Two engines, selected in config** (`ask.engine`):
+`codex` (default `gpt-5.6-luna` @ `low`) and `claude` (headless `claude -p`, default
+`claude-haiku-4-5` @ `low`); per-call override via the tools' `engine/model/effort` params.
+
+```
+Engine.Run(ctx, AskInput) (AskResult, error)
+  AskInput  { ContentFiles []string; SourceLabels []string; Prompt string;
+              Engine, Model, Effort string /* "" → config ask.* */ }
+  AskResult { Answer string; Evidence []Evidence; PerFile []FileStatus;
+              Usage TokenUsage; Duration time.Duration }
+  Evidence  { File string; Label string; Span SourceSpan /* lines|turns|chunk */; Quote string }
+```
+
+`Evidence` answers "where did this come from?" — every load-bearing claim points back into the
+prepared source material (file + span + verbatim quote), without the model ever performing
+retrieval or pagination. Mechanics (validated live): isolated minted engine home (auth only — never
+the real one, never in `pfm ls`), read-only sandbox, no network, size-aware (single pass within a
+context budget, map-reduce per-source beyond it), honest per-file truncation reporting.
+Preparation layers (harvester / transcript) own ALL source discovery and preserve source metadata
+into `SourceLabels`.

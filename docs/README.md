@@ -60,7 +60,7 @@ blueprint/                ← the shipped product, one clone away
 
 Host fleet tooling has one source outside the template tree: the Go engine under `../pfm/`, with
 every staged host asset under `../pfm/internal/installer/assets/`. A fresh box gets the `pfm`
-binary, then runs `pfm install --apply`; no separate host template bundle is copied.
+binary, then runs `pfm install --yes`; no separate host template bundle is copied.
 
 ---
 
@@ -113,7 +113,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `rr` skill is in-tree at `engines/rr/` and installs with the blueprint.
 
-**Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/swap` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-hide, `pfm reap` orphan sweeper).
+**Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-hide, `pfm reap` orphan sweeper).
 
 **Tier B — opt-in domain archetypes:**
 
