@@ -17,13 +17,14 @@ A dependency or heavy overlap between two specs is evidence they are ONE feature
 2. **Cards** — per spec: Touches, task list, file-plan paths, data-model + contract symbols.
 3. **Merge** — shared files/symbols/tables or a producer→consumer edge across specs = merge candidates, each with a one-line why. Execute each merge: spawn `Agent(subagent_type: "general-purpose", model: "opus")` — "Use the Skill tool to invoke /wave:refine with arguments: merge mode — unify these approved specs into one wave spec: {paths}. Non-interactive; return contradictions as questions." Contradictions between sources go in your return, never settled silently.
 4. **Staleness** — `git diff --name-only {Refined-sha}..main` ∩ each spec's file plan + anchors; a touched anchor whose premise no longer holds on main = **RE-REFINE** flag with evidence — a stale spec is never silently patched.
-5. **Order** — surviving independent waves, biggest system-touch first, then spec age.
-6. **Write the train** — `docs/dev/trains/{name}/`:
+5. **Anchors** — every production surface a task's prose relies on (a CLI verb or flag, an exit behavior, an "existing" code path) is grep/read-verified in the tree before the task schedules — staleness catches a spec broken by later commits; this catches one born wrong. A surface that does not exist = **RE-REFINE** flag with evidence.
+6. **Order** — surviving independent waves, biggest system-touch first, then spec age.
+7. **Write the train** — `docs/dev/trains/{name}/`:
    - `train.md` — the wave table (`# | wave | Touches | tasks | merged-from | flags`), the `## Builder plan`, a Source Reconciliation table (queue file → wave # / disposition).
    - `waves/{N}-{slug}/spec.md` — one dir per wave holding its spec; task numbers sequential across the train (every in-spec `#N` reference remapped; grep-verify zero stale numbers), bodies otherwise byte-identical.
    - `STATE.md` — seeded: resume-brief header block on top, an append-only event ledger below a marker. Every seat appends one line per event; prose reports do not exist. Per-wave runtime residue with a real reader (gate verdict, ports.md) lives beside the wave's `spec.md` in `waves/{N}-{slug}/`.
    - Stamp each consumed spec `**Status:** SCHEDULED → {train-name} ({date})`; DROP / HOLD / RE-REFINE stamped likewise.
-7. **Return** — train path, the wave table, merge log, RE-REFINE flags, contradictions/questions. A flagged part of the train is not scheduled until the orchestrator returns {FOUNDER_NAME}'s ruling on it.
+8. **Return** — train path, the wave table, merge log, RE-REFINE flags, contradictions/questions. A flagged part of the train is not scheduled until the orchestrator returns {FOUNDER_NAME}'s ruling on it.
 
 ## Builder plan
 
