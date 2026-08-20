@@ -134,6 +134,11 @@ func runLS(
 			// so it is buffered here and flushed only once Pick has released
 			// the terminal.
 			var warnings bufferedWarnings
+			// Opening the picker IS an interaction, so the clock starts stamped
+			// and the first frames refresh at full cadence. Every keystroke
+			// restamps it; going quiet is what makes the stream back off.
+			activity := ui.NewActivityClock(time.Now())
+			scan.Snapshot.Activity = activity
 			go streamFleetRefreshes(
 				refreshContext,
 				database,
@@ -141,6 +146,7 @@ func runLS(
 				warnings.add,
 				stderr,
 				updates,
+				activity,
 			)
 			outcome, err = (ui.BubblePicker{Updates: updates}).Pick(
 				ctx,

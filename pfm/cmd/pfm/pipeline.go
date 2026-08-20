@@ -25,11 +25,69 @@ import (
 )
 
 const (
-	testFreshSocketEnv   = "PFM_TEST_FRESH_SOCKET"
-	testNowNSEnv         = "PFM_TEST_NOW_NS"
-	codexAvailableEnv    = "PFM_CODEX_AVAILABLE"
-	fleetRefreshInterval = 4 * time.Second
+	testFreshSocketEnv = "PFM_TEST_FRESH_SOCKET"
+	testNowNSEnv       = "PFM_TEST_NOW_NS"
+	codexAvailableEnv  = "PFM_CODEX_AVAILABLE"
+	// fleetRefreshInterval is the cadence while somebody is driving the picker.
+	// One pass is expensive — a tmux fork+exec per live socket plus a whole
+	// store read, ~2.6 CPU-seconds on a busy box — so paying it on a fixed
+	// clock forever is what let an abandoned picker hold half a core.
+	fleetRefreshInterval = 5 * time.Second
+	// fleetRefreshGrowth stretches the interval by 10% after every pass nobody
+	// interrupted. The decay is gentle where it is felt (5s → 5.5s → 6.05s, all
+	// still a live list) and steep where it pays (roughly 49 minutes untouched
+	// to reach the ceiling below).
+	fleetRefreshGrowth = 1.1
+	// fleetRefreshMaxInterval bounds the decay. Unbounded, 1.1^n reaches a
+	// refresh a day inside a shift, and a picker that has quietly stopped
+	// refreshing looks exactly like a fleet where nothing is happening — the
+	// screen would assert a truth it stopped checking. Five minutes keeps an
+	// abandoned picker under 1% of a core while still bounding how stale the
+	// frame in front of you can be.
+	fleetRefreshMaxInterval = 5 * time.Minute
 )
+
+// refreshCadence is one refresh stream's backoff state. It starts at
+// fleetRefreshInterval and stretches by fleetRefreshGrowth after each pass
+// that nobody interrupted, so a picker being driven stays prompt and an
+// abandoned one decays toward costing nothing.
+type refreshCadence struct {
+	activity  *ui.ActivityClock
+	lastStamp int64
+	interval  time.Duration
+}
+
+func newRefreshCadence(activity *ui.ActivityClock) *refreshCadence {
+	return &refreshCadence{
+		activity:  activity,
+		lastStamp: activity.StampNS(),
+		interval:  fleetRefreshInterval,
+	}
+}
+
+// next reports how long to wait before the next pass. Any interaction since
+// the previous call snaps the cadence back to fleetRefreshInterval; otherwise
+// it grows, capped at fleetRefreshMaxInterval.
+//
+// A nil clock — every non-interactive caller — never backs off. An absent
+// presence signal is a claim about US, not about the user, and must never be
+// spent as evidence that nobody is there.
+func (cadence *refreshCadence) next() time.Duration {
+	if cadence.activity == nil {
+		return fleetRefreshInterval
+	}
+	if stamp := cadence.activity.StampNS(); stamp != cadence.lastStamp {
+		cadence.lastStamp = stamp
+		cadence.interval = fleetRefreshInterval
+		return cadence.interval
+	}
+	grown := time.Duration(float64(cadence.interval) * fleetRefreshGrowth)
+	if grown > fleetRefreshMaxInterval {
+		grown = fleetRefreshMaxInterval
+	}
+	cadence.interval = grown
+	return cadence.interval
+}
 
 // gatherWarn reports one tmux probe warning raised during a gather pass.
 // scanFleet's callers — plain, tsv, check, and every one-shot command — print
@@ -115,6 +173,10 @@ type indexRunner interface {
 
 type refreshDependencies struct {
 	newIndexer func(*store.Store) (indexRunner, error)
+	// activity is the picker's presence clock. Nil — every non-interactive
+	// caller and every existing stream test — reads as permanently active and
+	// holds the loop at fleetRefreshInterval, exactly as before the backoff.
+	activity *ui.ActivityClock
 }
 
 func scanFleet(
@@ -434,6 +496,7 @@ func streamFleetRefreshes(
 	warn gatherWarn,
 	stderr io.Writer,
 	updates chan<- ui.Snapshot,
+	activity *ui.ActivityClock,
 ) {
 	streamFleetRefreshesWith(
 		ctx,
@@ -442,7 +505,7 @@ func streamFleetRefreshes(
 		warn,
 		stderr,
 		updates,
-		refreshDependencies{},
+		refreshDependencies{activity: activity},
 	)
 }
 
@@ -551,14 +614,21 @@ func streamFleetRefreshesWith(
 		return
 	}
 
-	ticker := time.NewTicker(fleetRefreshInterval)
-	defer ticker.Stop()
+	cadence := newRefreshCadence(dependencies.activity)
+	timer := time.NewTimer(cadence.interval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
+		// Rearm BEFORE the pass, never after it. The body below leaves through
+		// several `continue`s on transient errors, and a Reset parked at the
+		// bottom would be skipped by every one of them — the stream would go
+		// permanently silent on the first gather hiccup, which reads on screen
+		// as a fleet that simply stopped changing.
+		timer.Reset(cadence.next())
 		environment, err = resolveScanEnvironment(request)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)

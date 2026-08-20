@@ -81,11 +81,14 @@ type Model struct {
 	statsError        string
 	skyEnabled        bool
 	skyEvents         []sky.Event
-	query             textinput.Model
-	outcome           OutcomeKind
-	outcomeRow        compose.Row
-	initialHidden     map[string]bool
-	hideChanges       map[string]HideChange
+	// activity is stamped on every real keystroke. The background refresh
+	// stream reads it to decide whether anyone is still watching.
+	activity      *ActivityClock
+	query         textinput.Model
+	outcome       OutcomeKind
+	outcomeRow    compose.Row
+	initialHidden map[string]bool
+	hideChanges   map[string]HideChange
 	// applyHide performs a ⌃X the instant it is typed. hideStatus is the
 	// receipt: what landed, or why the keystroke was refused. A ⌃X NEVER goes
 	// silent — a keystroke that appears to do nothing reads as a hide that
@@ -124,6 +127,7 @@ func NewModel(snapshot Snapshot) Model {
 		applyHide:       snapshot.ApplyHide,
 		statsSampler:    snapshot.StatsSampler,
 		skyEnabled:      !snapshot.NoSky,
+		activity:        snapshot.Activity,
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -223,9 +227,11 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.skyEvents = kept
 		return model, skyTickCmd()
 	case tea.PasteMsg:
+		model.activity.Stamp(time.Now())
 		model.updateQuery(model.query.Value() + message.Content)
 		return model, nil
 	case tea.KeyMsg:
+		model.activity.Stamp(time.Now())
 		return model.updateKey(message)
 	default:
 		return model, nil

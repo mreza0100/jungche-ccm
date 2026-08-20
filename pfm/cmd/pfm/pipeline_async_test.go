@@ -41,7 +41,7 @@ func (runner *immediateIndexRunner) Run(
 	return fleetindex.Counters{}, nil
 }
 
-func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
+func TestPickerRefreshStreamRepeatsAtTheBaseInterval(t *testing.T) {
 	jailTest(t)
 	t.Setenv(codexAvailableEnv, "0")
 	database, err := store.Open()
@@ -74,7 +74,9 @@ func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
 			break
 		}
 	}
-	deadline := time.After(5 * time.Second)
+	// The base interval plus headroom: a nil activity clock never backs off,
+	// so a second pass is due one fleetRefreshInterval after the first.
+	deadline := time.After(fleetRefreshInterval + 4*time.Second)
 	for {
 		select {
 		case snapshot, ok := <-updates:
@@ -85,7 +87,7 @@ func TestPickerRefreshStreamRepeatsEveryFourSeconds(t *testing.T) {
 				goto refreshed
 			}
 		case <-deadline:
-			t.Fatal("picker did not refresh again within the four-second interval")
+			t.Fatalf("picker did not refresh again within %s", fleetRefreshInterval+4*time.Second)
 		}
 	}
 

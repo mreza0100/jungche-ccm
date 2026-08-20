@@ -81,6 +81,11 @@ type Snapshot struct {
 	ApplyHide    func(HideChange) error
 	StatsSampler StatsSampler
 	NoSky        bool
+	// Activity is the presence clock the background refresh reads to pick its
+	// cadence. Nil for every non-interactive picker, which reads as always
+	// active. Set once when the model is built; refresh snapshots leave it
+	// alone, so a rebuild from the stream can never blind the loop to the user.
+	Activity *ActivityClock
 }
 
 // OutcomeKind identifies why an interactive picker stopped.
