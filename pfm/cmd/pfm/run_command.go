@@ -12,6 +12,7 @@ import (
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/headless"
+	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
@@ -261,10 +262,30 @@ func awaitLaunch(
 	if turn.Delivered {
 		return 0
 	}
+	if rescueLaunchPrompt(ctx, handle, stderr, runtimes...) {
+		rescued, _ := headless.Await(
+			ctx,
+			func(ctx context.Context) (headless.Chat, bool, error) {
+				return resolveChat(ctx, handle, io.Discard, runtimes...)
+			},
+			rescueProofOptions(options),
+		)
+		if rescued.Delivered {
+			fmt.Fprintf(
+				stderr,
+				"pfm chat new: %s left the prompt unsent in the composer; "+
+					"dismissed the overlay, pressed Enter, and the model "+
+					"recorded it\n",
+				name,
+			)
+			return 0
+		}
+	}
 	fmt.Fprintf(
 		stderr,
 		"pfm chat new: %s never recorded the prompt — it was typed but "+
-			"the model was never asked; attach it and look: tmux -L %s attach -t %s\n",
+			"the model was never asked (a dismiss-and-Enter retry did not "+
+			"land it either); attach it and look: tmux -L %s attach -t %s\n",
 		name,
 		result.Socket,
 		result.Session,
@@ -273,6 +294,54 @@ func awaitLaunch(
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 	}
 	return codeUndelivered
+}
+
+// launchRescueWindow bounds the second proof wait. The prompt is already in
+// the composer by this point, so the model answers as soon as the Enter lands
+// or never — a short window either way.
+var launchRescueWindow = 30 * time.Second
+
+// launchRescueSettle separates the dismiss from the submit. A TUI that eats
+// the first Enter eats a second one sent in the same instant.
+var launchRescueSettle = 500 * time.Millisecond
+
+func rescueProofOptions(options headless.AwaitOptions) headless.AwaitOptions {
+	proof := options
+	proof.StopOnDelivery = true
+	proof.Timeout = launchRescueWindow
+	return proof
+}
+
+// rescueLaunchPrompt presses the keys a human presses when a launch prompt is
+// sitting typed-but-unsent: Escape to clear the startup overlay that swallowed
+// the submit, then Enter. It reports whether the keys were delivered, not
+// whether the model answered — the caller re-proves that against the engine's
+// own transcript, because a keypress that reached tmux still proves nothing
+// about the model having been asked.
+func rescueLaunchPrompt(
+	ctx context.Context,
+	handle string,
+	stderr io.Writer,
+	runtimes ...commandRuntime,
+) bool {
+	chat, found, err := resolveChat(ctx, handle, io.Discard, runtimes...)
+	if err != nil || !found || !chat.Live {
+		return false
+	}
+	socketPath, err := chatSocketPath(chat.Socket)
+	if err != nil {
+		return false
+	}
+	pane := chatPaneTarget(chat.Pane, chat.Session, chat.Socket)
+	tmux := inject.CommandTmux{}
+	if err := tmux.SendKey(ctx, socketPath, pane, "Escape"); err != nil {
+		return false
+	}
+	time.Sleep(launchRescueSettle)
+	if err := tmux.SendKey(ctx, socketPath, pane, "Enter"); err != nil {
+		return false
+	}
+	return true
 }
 
 // promptForTUI is the prompt the spawner must type, which is empty whenever

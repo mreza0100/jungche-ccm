@@ -146,8 +146,13 @@ func TestRunRefusesToCallAnUnheardPromptDelivered(t *testing.T) {
 	defer jail.killSockets(t)
 	t.Setenv("CC_STUB_DEAF", "1")
 	restoreGrace, restoreWindow := launchGrace, launchProofWindow
+	restoreRescue := launchRescueWindow
 	launchGrace, launchProofWindow = 3*time.Second, 6*time.Second
-	t.Cleanup(func() { launchGrace, launchProofWindow = restoreGrace, restoreWindow })
+	launchRescueWindow = 4 * time.Second
+	t.Cleanup(func() {
+		launchGrace, launchProofWindow = restoreGrace, restoreWindow
+		launchRescueWindow = restoreRescue
+	})
 
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
@@ -163,6 +168,11 @@ func TestRunRefusesToCallAnUnheardPromptDelivered(t *testing.T) {
 	if !strings.Contains(stderr.String(), "never recorded the prompt") ||
 		!strings.Contains(stderr.String(), "attach it and look") {
 		t.Fatalf("refusal = %q, want it to name the failure and how to look", stderr.String())
+	}
+	// The retry is reported whether or not it worked: a rescue that silently
+	// failed would read as a launch that was never retried.
+	if !strings.Contains(stderr.String(), "retry did not") {
+		t.Fatalf("refusal = %q, want it to say the retry was tried", stderr.String())
 	}
 	// The chat itself is still up: an undelivered prompt is not a reason to
 	// kill a seat the user may want to drive by hand.

@@ -34,6 +34,7 @@ type Dependencies struct {
 	CodexThread  CodexThreadResolver
 	ClaudeBinary string
 	CodexBinary  string
+	LabelEmojis  []string
 	ReadOnly     bool
 }
 
@@ -48,6 +49,7 @@ type Gatherer struct {
 	codexThread  CodexThreadResolver
 	claudeBinary string
 	codexBinary  string
+	labelEmojis  []string
 	readOnly     bool
 }
 
@@ -89,6 +91,7 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 		codexThread:  dependencies.CodexThread,
 		claudeBinary: dependencies.ClaudeBinary,
 		codexBinary:  dependencies.CodexBinary,
+		labelEmojis:  append([]string(nil), dependencies.LabelEmojis...),
 		readOnly:     dependencies.ReadOnly,
 	}, nil
 }
@@ -129,7 +132,7 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 		if !ok {
 			return nil
 		}
-		paneLabels = CaptureClaudeLabels(ctx, capturer, tmuxProbe.Panes)
+		paneLabels = CaptureClaudeLabels(ctx, capturer, tmuxProbe.Panes, gatherer.labelEmojis)
 		return nil
 	})
 	group.Go(func() error {

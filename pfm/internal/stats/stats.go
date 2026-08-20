@@ -4,6 +4,7 @@
 package stats
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -53,10 +54,23 @@ type Container struct {
 	MemoryPercent float64
 }
 
+type Window struct {
+	Name    string
+	UsedPct int
+	ResetAt time.Time
+}
+
+type AccountLimits struct {
+	Account int
+	Emoji   string
+	Windows []Window
+}
+
 type Snapshot struct {
 	Header     Header
 	Chats      []Chat
 	Docker     []Container
+	Limits     []AccountLimits
 	Ready      bool
 	Warnings   []string
 	SampleTime int64
@@ -89,6 +103,7 @@ type Sampler struct {
 	CPUCount      int
 	Clock         func() int64
 	DockerInspect func(string) (name, image string, err error)
+	Limits        *LimitsSampler
 
 	mu               sync.Mutex
 	previous         *rawSample
@@ -167,6 +182,12 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 	chats := chatTrees(rows, processes, previous, total, cpuCount, header.MemoryBytes)
 	tokenWarnings := sampler.attachTokenUsage(rows, chats, now)
 	warnings = append(warnings, tokenWarnings...)
+	var limits []AccountLimits
+	if sampler.Limits != nil {
+		var limitWarnings []string
+		limits, limitWarnings = sampler.Limits.Sample(context.Background())
+		warnings = append(warnings, limitWarnings...)
+	}
 	if previous != nil && now > previous.timeNS {
 		for index := range docker {
 			prior, found := previous.docker[docker[index].ID]
@@ -185,7 +206,7 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 	}
 	return Snapshot{
 		Header: header, Chats: chats, Docker: docker,
-		Ready: previous != nil, Warnings: warnings, SampleTime: now,
+		Ready: previous != nil, Warnings: warnings, Limits: limits, SampleTime: now,
 	}, nil
 }
 

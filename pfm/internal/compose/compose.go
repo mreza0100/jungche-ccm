@@ -34,6 +34,7 @@ type composer struct {
 	liveTranscripts  map[string]struct{}
 	liveRollouts     map[string]struct{}
 	accountRoots     []AccountRoot
+	canonicalPaths   map[string]string
 	projectDirs      map[string]string
 }
 
@@ -276,9 +277,49 @@ func (current *composer) buildIndexes() {
 	current.liveRollouts = make(map[string]struct{})
 	current.accountRoots = make([]AccountRoot, 0, len(current.input.AccountRoots))
 	for _, root := range current.input.AccountRoots {
-		root.Path = cleanPath(root.Path)
+		root.Path = canonicalPath(root.Path)
 		current.accountRoots = append(current.accountRoots, root)
 	}
+	current.canonicalPaths = make(map[string]string, len(current.input.Transcripts)+len(current.input.Snapshot.Agents))
+	for _, transcript := range current.input.Transcripts {
+		current.canonicalPaths[transcript.Path] = canonicalPath(transcript.Path)
+	}
+	for _, agent := range current.input.Snapshot.Agents {
+		current.canonicalPaths[agent.ConfigDir] = canonicalPath(agent.ConfigDir)
+	}
+}
+
+func canonicalPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	cleaned := cleanPath(path)
+	if absolute, err := filepath.Abs(cleaned); err == nil {
+		cleaned = cleanPath(absolute)
+	}
+	probe := cleaned
+	suffix := make([]string, 0, 4)
+	for {
+		if resolved, err := filepath.EvalSymlinks(probe); err == nil {
+			for index := len(suffix) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, suffix[index])
+			}
+			return cleanPath(resolved)
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			return cleaned
+		}
+		suffix = append(suffix, filepath.Base(probe))
+		probe = parent
+	}
+}
+
+func (current *composer) accountFor(path string) int {
+	if canonical, ok := current.canonicalPaths[path]; ok {
+		return accountForPath(canonical, current.accountRoots)
+	}
+	return accountForPath(path, current.accountRoots)
 }
 
 type crumbsForSocket struct {
@@ -472,10 +513,7 @@ func (current *composer) splitRow(
 			row.Path = transcript.Path
 			row.LastPrompt = transcript.LastPrompt
 		}
-		if account := accountForPath(
-			transcript.Path,
-			current.accountRoots,
-		); account != 0 {
+		if account := current.accountFor(transcript.Path); account != 0 {
 			accounts[account] = struct{}{}
 		}
 	}
@@ -643,7 +681,7 @@ func (current *composer) agentRows() []Row {
 			row.Name = "(no prompt)"
 		}
 		if row.Account == 0 {
-			row.Account = accountForPath(agent.ConfigDir, current.accountRoots)
+			row.Account = current.accountFor(agent.ConfigDir)
 		}
 		_, row.C1H = current.cacheSockets[agent.Socket]
 		rows = append(rows, row)
@@ -670,11 +708,8 @@ func (current *composer) transcriptRow(
 		Size:        transcript.Size,
 		PromptCount: transcript.PromptCount,
 		ActivityNS:  transcript.MTimeNS,
-		Account: accountForPath(
-			transcript.Path,
-			current.accountRoots,
-		),
-		BG: transcript.IsBG,
+		Account:     current.accountFor(transcript.Path),
+		BG:          transcript.IsBG,
 	}
 }
 

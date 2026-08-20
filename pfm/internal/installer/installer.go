@@ -11,7 +11,9 @@ import (
 	goRuntime "runtime"
 	"sort"
 	"strings"
+	"syscall"
 
+	"hostops/pfm/internal/codexgen"
 	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
@@ -130,6 +132,12 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
+	if err := installer.wireCodexAgents(); err != nil {
+		return err
+	}
+	if err := installer.retireLegacySwapCommand(); err != nil {
+		return err
+	}
 	// The periodic name-sync has one job and two schedulers. Linux gets the
 	// systemd units; macOS gets a launchd agent that carries both triggers.
 	// Staging the other platform's files would leave an operator with a
@@ -143,6 +151,9 @@ func (installer *engine) install(ctx context.Context) error {
 			}
 		}
 		if err := installer.wireLaunchAgent(ctx); err != nil {
+			return err
+		}
+		if err := installer.wireMCPLaunchAgent(ctx); err != nil {
 			return err
 		}
 	} else {
@@ -160,7 +171,38 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCodexHooks(); err != nil {
 		return err
 	}
-	return installer.wireShell(false)
+	if err := installer.wireMCP(); err != nil {
+		return err
+	}
+	if err := installer.wireShell(false); err != nil {
+		return err
+	}
+	if installer.apply {
+		if err := installer.writeUpdateMetadata(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (installer *engine) wireCodexAgents() error {
+	source := filepath.Join(installer.options.Home, ".professor", "agents")
+	if _, err := os.Stat(source); errors.Is(err, fs.ErrNotExist) {
+		installer.skip("Codex global agents source absent at " + source)
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect Codex global agents source %s: %w", source, err)
+	}
+	if !installer.apply {
+		installer.say("Codex global agents: would run pfm codex agents")
+		return nil
+	}
+	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: installer.options.Home})
+	if err != nil {
+		return fmt.Errorf("run pfm codex agents: %w", err)
+	}
+	installer.ok(fmt.Sprintf("Codex global agents compiled=%d installed=%d", len(result.Compiled), len(result.Installed)))
+	return nil
 }
 
 func (installer *engine) uninstall(ctx context.Context) error {
@@ -184,7 +226,7 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	}
 	managerAvailable := installer.userManagerAvailable(ctx)
 	if managerAvailable && installer.apply {
-		installer.runSystemctl(ctx, "disable", "--now", "pfm-name-sync.path", "pfm-name-sync.timer")
+		installer.runSystemctl(ctx, "disable", "--now", "pfm-name-sync.path", "pfm-name-sync.timer", mcpUnitName)
 	}
 	if _, err := installer.retireUnitEnablements(
 		filepath.Join(installer.options.Home, ".config", "systemd", "user"),
@@ -205,7 +247,7 @@ func (installer *engine) uninstall(ctx context.Context) error {
 			return err
 		}
 	}
-	for _, name := range unitNames {
+	for _, name := range append(append([]string(nil), unitNames...), mcpUnitName) {
 		if err := installer.unlinkOne(filepath.Join(installer.options.Home, ".config", "systemd", "user", name)); err != nil {
 			return err
 		}
@@ -219,10 +261,62 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.wireCodexHooks(); err != nil {
 		return err
 	}
+	if err := installer.wireMCP(); err != nil {
+		return err
+	}
 	if err := installer.wireShell(true); err != nil {
 		return err
 	}
-	return installer.removeManagedAssets(assets)
+	if err := installer.removeManagedAssets(assets); err != nil {
+		return err
+	}
+	if installer.apply {
+		if err := installer.removeUpdateMetadata(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (installer *engine) removeUpdateMetadata() error {
+	for _, path := range []string{SourceRepoPath(installer.options.Home), binaryOwnershipPath(installer.options.Home)} {
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := installer.change("remove "+path, func() error { return os.Remove(path) }); err != nil {
+			return err
+		}
+	}
+	for directory := filepath.Dir(SourceRepoPath(installer.options.Home)); strings.HasPrefix(directory, installer.managedRoot); directory = filepath.Dir(directory) {
+		if err := os.Remove(directory); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if errors.Is(err, syscall.ENOTEMPTY) {
+				break
+			}
+			return err
+		}
+		if directory == installer.managedRoot {
+			break
+		}
+	}
+	return nil
+}
+
+func (installer *engine) writeUpdateMetadata() error {
+	if installer.options.SourceRepo != "" {
+		if err := WriteSourceRepoMarker(installer.options.Home, installer.options.SourceRepo); err != nil {
+			return err
+		}
+	}
+	if err := RecordCanonicalBinary(installer.options.Home); err != nil {
+		return err
+	}
+	installer.ok("update ownership metadata")
+	return nil
 }
 
 func harvestPythonRoot(home string) string {
@@ -378,9 +472,15 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 	installer.say("embedded assets -> %s", installer.managedRoot)
 	systemdChanged := false
 	for _, asset := range assets {
+		if mcpSchedulerAsset(asset.path) && !installer.mcpAnyEnabled() {
+			continue
+		}
 		content, err := readAsset(asset.path)
 		if err != nil {
 			return false, fmt.Errorf("read embedded asset %s: %w", asset.path, err)
+		}
+		if asset.path == "shim/pfm.zsh" {
+			content = renderShimAsset(content, installer.options)
 		}
 		target := filepath.Join(installer.managedRoot, filepath.FromSlash(asset.path))
 		if sameFile(target, content, asset.mode) {
@@ -393,6 +493,17 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 		if err := installer.change("write "+target, func() error {
 			return atomicWrite(target, content, asset.mode)
 		}); err != nil {
+			return false, err
+		}
+	}
+	if !installer.mcpAnyEnabled() {
+		mcpAsset := filepath.Join(installer.managedRoot, "systemd", "pfm-mcp.service")
+		if _, err := os.Lstat(mcpAsset); err == nil {
+			if err := installer.change("remove "+mcpAsset, func() error { return os.Remove(mcpAsset) }); err != nil {
+				return false, err
+			}
+			systemdChanged = true
+		} else if !errors.Is(err, fs.ErrNotExist) {
 			return false, err
 		}
 	}
@@ -544,6 +655,9 @@ func (installer *engine) unwireCommands(assets []assetFile) error {
 			return err
 		}
 	}
+	if err := installer.retireLegacySwapCommand(); err != nil {
+		return err
+	}
 	installer.say("")
 	return nil
 }
@@ -551,8 +665,8 @@ func (installer *engine) unwireCommands(assets []assetFile) error {
 func (installer *engine) commandTarget(asset string) (string, bool) {
 	commands := filepath.Join(installer.options.ConfigDir, "commands")
 	switch asset {
-	case "swap.command.md":
-		return filepath.Join(commands, "swap.md"), true
+	case "reload.command.md":
+		return filepath.Join(commands, "reload.md"), true
 	case "chat/chat.sh", "chat/history.sh":
 		return filepath.Join(commands, filepath.FromSlash(asset)), true
 	}
@@ -561,6 +675,10 @@ func (installer *engine) commandTarget(asset string) (string, bool) {
 		return filepath.Join(commands, filepath.FromSlash(relative)), true
 	}
 	return "", false
+}
+
+func (installer *engine) retireLegacySwapCommand() error {
+	return installer.unlinkOne(filepath.Join(installer.options.ConfigDir, "commands", "swap.md"))
 }
 
 func (installer *engine) retireBBInstall() error {
@@ -631,6 +749,8 @@ var unitNames = []string{
 	"pfm-name-sync.timer",
 }
 
+const mcpUnitName = "pfm-mcp.service"
+
 var retiredUnitNames = []string{
 	"cc-fleet-name-sync.path", "cc-fleet-name-sync.service", "cc-fleet-name-sync.timer",
 	"cc-name-sync.path", "cc-name-sync.service", "cc-name-sync.timer",
@@ -678,7 +798,24 @@ func (installer *engine) wireUnits(ctx context.Context) (bool, error) {
 			changed = true
 		}
 	}
-	for _, name := range unitNames {
+	managedNames := append([]string(nil), unitNames...)
+	if installer.mcpAnyEnabled() {
+		managedNames = append(managedNames, mcpUnitName)
+	} else {
+		mcpTarget := filepath.Join(directory, mcpUnitName)
+		if _, err := os.Lstat(mcpTarget); err == nil {
+			if managerAvailable && installer.apply {
+				installer.runSystemctl(ctx, "disable", "--now", mcpUnitName)
+			}
+			if err := installer.unlinkOne(mcpTarget); err != nil {
+				return false, err
+			}
+			changed = true
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return false, err
+		}
+	}
+	for _, name := range managedNames {
 		source := filepath.Join(installer.managedRoot, "systemd", name)
 		target := filepath.Join(directory, name)
 		linkChanged, err := installer.ensureLink(source, target)
@@ -734,6 +871,9 @@ func (installer *engine) reloadUnits(ctx context.Context) {
 	}
 	installer.runSystemctl(ctx, "daemon-reload")
 	installer.runSystemctl(ctx, "enable", "--now", "pfm-name-sync.path", "pfm-name-sync.timer")
+	if installer.mcpAnyEnabled() {
+		installer.runSystemctl(ctx, "enable", "--now", mcpUnitName)
+	}
 }
 
 func (installer *engine) userManagerAvailable(ctx context.Context) bool {
@@ -762,13 +902,15 @@ func (installer *engine) wireSettings() error {
 	if err != nil {
 		return fmt.Errorf("read settings hook ownership %s: %w", ownershipPath, err)
 	}
-	candidates := []string{filepath.Join(installer.options.ConfigDir, "settings.json")}
-	if installer.options.ConfigDir == filepath.Join(installer.options.Home, ".claude") {
-		for account := 1; account <= 4; account++ {
-			candidate := filepath.Join(installer.options.Home, ".cc", fmt.Sprint(account), "settings.json")
-			if _, err := os.Stat(candidate); err == nil {
-				candidates = append(candidates, candidate)
+	candidates := make([]string, 0, len(installer.options.ConfigDirs)+1)
+	if installer.options.ConfigDirs == nil {
+		candidates = append(candidates, filepath.Join(installer.options.ConfigDir, "settings.json"))
+	} else {
+		for _, configDir := range installer.options.ConfigDirs {
+			if strings.TrimSpace(configDir) == "" {
+				continue
 			}
+			candidates = append(candidates, filepath.Join(configDir, "settings.json"))
 		}
 	}
 	seen := map[string]bool{}

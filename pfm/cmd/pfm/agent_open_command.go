@@ -46,7 +46,7 @@ func runInternalAgentOpen(
 		Commands: agentopen.ExecCommands{
 			Binary:            runtime.Config.Claude.Binary,
 			Home:              resolved.Home,
-			PromptPermissions: runtime.Config.Claude.PermissionMode == config.PermissionPrompt,
+			PromptPermissions: runtime.Config.EffectiveClaude(primary).PermissionMode == config.PermissionPrompt,
 			Stdout:            os.Stdout,
 			Stderr:            stderr,
 		},

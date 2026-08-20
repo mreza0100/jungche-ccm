@@ -135,7 +135,7 @@ func NewWhoami(dependencies WhoamiDependencies) (*Whoami, error) {
 		identifier.owners = CommandPaneOwners{TmuxDir: tmuxDir}
 	}
 	if identifier.processes == nil {
-		identifier.processes = ProcTree{Root: procRoot}
+		identifier.processes = ProcTree{Root: procRoot, ProcFS: newNativeProcFS(procRoot)}
 	}
 	if identifier.selfPID == 0 {
 		identifier.selfPID = os.Getpid()
@@ -392,49 +392,43 @@ func (lister CommandPaneOwners) PaneOwners(
 	return owners, nil
 }
 
-// ProcTree reads a Linux proc filesystem. Root defaults to /proc and is
-// overridden by a jail so no test ever reads live process state.
+// ProcFS is the small process-table seam ancestry recovery needs. Platform
+// implementations provide Linux procfs or Darwin sysctl without making the
+// resolver know which kernel it is running on.
+type ProcFS interface {
+	Environ(int) (map[string]string, error)
+	Stat(int) (ProcStat, error)
+}
+
+// ProcStat contains the process relationship needed by ancestry recovery.
+type ProcStat struct {
+	ParentPID int
+}
+
+// ProcTree reads through ProcFS. Root defaults to the platform's native
+// process table and is overridden by a jail on Linux.
 type ProcTree struct {
-	Root string
+	Root   string
+	ProcFS ProcFS
 }
 
 // Environ returns one process's environment, keyed before the first equals.
 func (tree ProcTree) Environ(pid int) (map[string]string, error) {
-	content, err := os.ReadFile(tree.path(pid, "environ"))
-	if err != nil {
-		return nil, err
-	}
-	environment := make(map[string]string)
-	for _, entry := range strings.Split(string(content), "\x00") {
-		key, value, found := strings.Cut(entry, "=")
-		if found {
-			environment[key] = value
-		}
-	}
-	return environment, nil
+	return tree.procfs().Environ(pid)
 }
 
-// Parent returns the parent pid from /proc/<pid>/stat.
+// Parent returns the parent pid through the platform process abstraction.
 func (tree ProcTree) Parent(pid int) (int, error) {
-	content, err := os.ReadFile(tree.path(pid, "stat"))
+	stat, err := tree.procfs().Stat(pid)
 	if err != nil {
 		return 0, err
 	}
-	closeParen := strings.LastIndex(string(content), ") ")
-	if closeParen < 0 {
-		return 0, errors.New("malformed proc stat")
-	}
-	fields := strings.Fields(string(content[closeParen+2:]))
-	if len(fields) < 2 {
-		return 0, errors.New("short proc stat")
-	}
-	return strconv.Atoi(fields[1])
+	return stat.ParentPID, nil
 }
 
-func (tree ProcTree) path(pid int, element string) string {
-	root := tree.Root
-	if root == "" {
-		root = "/proc"
+func (tree ProcTree) procfs() ProcFS {
+	if tree.ProcFS != nil {
+		return tree.ProcFS
 	}
-	return filepath.Join(root, strconv.Itoa(pid), element)
+	return newNativeProcFS(tree.Root)
 }

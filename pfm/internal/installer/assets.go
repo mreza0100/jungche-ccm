@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -62,6 +63,43 @@ func schedulerAsset(relative string) bool {
 	default:
 		return true
 	}
+}
+
+func mcpSchedulerAsset(relative string) bool {
+	return relative == "systemd/pfm-mcp.service" || relative == "launchd/com.professor.pfm.mcp.plist"
+}
+
+func renderShimAsset(content []byte, options Options) []byte {
+	claude := []string{"typeset -gA PFM_CLAUDE_PROMPTED=("}
+	for _, account := range sortedBoolKeys(options.ClaudePrompted) {
+		value := 0
+		if options.ClaudePrompted[account] {
+			value = 1
+		}
+		claude = append(claude, "  ["+strconv.Itoa(account)+"]="+strconv.Itoa(value))
+	}
+	claude = append(claude, ")")
+	codex := []string{"typeset -gA PFM_CODEX_YOLO=("}
+	for _, account := range sortedBoolKeys(options.CodexYolo) {
+		value := 0
+		if options.CodexYolo[account] {
+			value = 1
+		}
+		codex = append(codex, "  ["+strconv.Itoa(account)+"]="+strconv.Itoa(value))
+	}
+	codex = append(codex, ")")
+	text := strings.Replace(string(content), "typeset -gA PFM_CLAUDE_PROMPTED=()", strings.Join(claude, "\n"), 1)
+	text = strings.Replace(text, "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"), 1)
+	return []byte(text)
+}
+
+func sortedBoolKeys(values map[int]bool) []int {
+	keys := make([]int, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+	return keys
 }
 
 func readAsset(name string) ([]byte, error) {

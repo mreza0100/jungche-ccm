@@ -14,6 +14,7 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/sky"
 	pfmstats "hostops/pfm/internal/stats"
+	"hostops/pfm/internal/theme"
 )
 
 const (
@@ -81,6 +82,9 @@ type Model struct {
 	statsError        string
 	skyEnabled        bool
 	skyEvents         []sky.Event
+	mergeNewChat      bool
+	actionIndex       int
+	newChatEngine     string
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -99,6 +103,8 @@ type Model struct {
 
 // NewModel builds the first frame entirely from cached state.
 func NewModel(snapshot Snapshot) Model {
+	configureStyles(theme.Load(snapshot.Theme))
+	configuredAccountEmojis = copyEmojis(snapshot.AccountEmojis)
 	input := textinput.New()
 	input.Prompt = "find › "
 	input.Placeholder = "type project or name"
@@ -128,6 +134,8 @@ func NewModel(snapshot Snapshot) Model {
 		statsSampler:    snapshot.StatsSampler,
 		skyEnabled:      !snapshot.NoSky,
 		activity:        snapshot.Activity,
+		mergeNewChat:    snapshot.MergeNewChat,
+		newChatEngine:   "claude",
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -136,6 +144,19 @@ func NewModel(snapshot Snapshot) Model {
 	}
 	model.rebuild(snapshot.InitialCursorID, 0)
 	return model
+}
+
+var configuredAccountEmojis map[int]string
+
+func copyEmojis(values map[int]string) map[int]string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make(map[int]string, len(values))
+	for id, emoji := range values {
+		result[id] = emoji
+	}
+	return result
 }
 
 func positiveOr(value, fallback int) int {
@@ -246,9 +267,19 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch key {
 	case "left":
+		if model.tab == TabChats {
+			return model.navigateChatHorizontal(-1)
+		}
 		return model.navigateHorizontal(-1)
 	case "right":
+		if model.tab == TabChats {
+			return model.navigateChatHorizontal(1)
+		}
 		return model.navigateHorizontal(1)
+	case "tab":
+		return model.switchTab(1)
+	case "shift+tab":
+		return model.switchTab(-1)
 	}
 	if model.tab != TabChats {
 		return model.updateStatsKey(key)
@@ -290,35 +321,72 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case "enter":
 		if row, ok := model.selectedRow(); ok {
-			model.outcome = OutcomeSelected
-			model.outcomeRow = row
-			return model, tea.Quit
+			if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+				if model.newChatEngine == "codex" {
+					row.Kind = compose.NewCodex
+					row.Name = "New Codex chat"
+				} else {
+					row.Kind = compose.NewClaude
+					row.Name = "New Claude chat"
+				}
+				model.outcome = OutcomeSelected
+				model.outcomeRow = row
+				return model, tea.Quit
+			}
+			switch model.actionIndex {
+			case 1:
+				model.outcome = OutcomeReload
+				model.outcomeRow = row
+				return model, tea.Quit
+			case 2:
+				if isLive(row.Kind) {
+					model.outcome = OutcomeReboot
+					model.outcomeRow = row
+					return model, tea.Quit
+				}
+			case 3:
+				model.cache1H = !model.cache1H
+				return model, nil
+			case 4:
+				model.toggleHidden()
+				return model, nil
+			default:
+				model.outcome = OutcomeSelected
+				model.outcomeRow = row
+				return model, tea.Quit
+			}
 		}
 		return model, nil
 	case "up", "ctrl+p":
 		if model.cursor > 0 {
 			model.cursor--
 		}
+		model.actionIndex = 0
 		return model, nil
 	case "down", "ctrl+n":
 		if model.cursor+1 < len(model.filtered) {
 			model.cursor++
 		}
+		model.actionIndex = 0
 		return model, nil
 	case "pgup":
 		model.cursor = maxInt(0, model.cursor-model.pageRows())
+		model.actionIndex = 0
 		return model, nil
 	case "pgdown":
 		model.cursor = minInt(
 			maxInt(0, len(model.filtered)-1),
 			model.cursor+model.pageRows(),
 		)
+		model.actionIndex = 0
 		return model, nil
 	case "home":
 		model.cursor = 0
+		model.actionIndex = 0
 		return model, nil
 	case "end":
 		model.cursor = maxInt(0, len(model.filtered)-1)
+		model.actionIndex = 0
 		return model, nil
 	}
 
@@ -354,6 +422,30 @@ func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
 		model.statsFocus = StatsFocusTop
 		return model, model.startStatsSample()
 	}
+	return model, nil
+}
+
+func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
+	previous := model.tab
+	model.tab = Tab((int(model.tab) + int(tabCount) + direction) % int(tabCount))
+	if previous != TabStats && model.tab == TabStats {
+		model.statsFocus = StatsFocusTop
+		return model, model.startStatsSample()
+	}
+	return model, nil
+}
+
+func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
+	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
+		(row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+		if direction > 0 {
+			model.newChatEngine = "codex"
+		} else {
+			model.newChatEngine = "claude"
+		}
+		return model, nil
+	}
+	model.actionIndex = (model.actionIndex + 5 + direction) % 5
 	return model, nil
 }
 
@@ -716,6 +808,9 @@ func (model *Model) rebuildOrder() {
 			if !model.visibleInView(model.rows[index]) {
 				continue
 			}
+			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex {
+				continue
+			}
 			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
 			grouped = grouped && len(members[prefix]) >= 2
 			if !grouped {
@@ -922,6 +1017,8 @@ func (model Model) SelectedKey() string   { return model.selectedKey() }
 func (model Model) GroupCount() int       { return len(model.groups) }
 func (model Model) OrderedRowCount() int  { return len(model.order) }
 func (model Model) FilteredRowCount() int { return len(model.filtered) }
+func (model Model) ActionIndex() int      { return model.actionIndex }
+func (model Model) NewChatEngine() string { return model.newChatEngine }
 func (model Model) ValidUTF8Query() bool  { return utf8.ValidString(model.Query()) }
 func (model Model) HasVisibleSelection() bool { // compact invariant helper
 	return len(model.filtered) == 0 ||

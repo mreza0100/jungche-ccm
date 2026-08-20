@@ -18,6 +18,25 @@ type fakeProcTree struct {
 	environments map[int]map[string]string
 }
 
+type fakeParentProcFS struct {
+	parent int
+}
+
+func (proc fakeParentProcFS) Environ(int) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
+func (proc fakeParentProcFS) Stat(int) (ProcStat, error) {
+	return ProcStat{ParentPID: proc.parent}, nil
+}
+
+func TestProcTreeParentUsesInjectedProcFS(t *testing.T) {
+	tree := ProcTree{Root: filepath.Join(t.TempDir(), "does-not-exist"), ProcFS: fakeParentProcFS{parent: 41}}
+	if got, err := tree.Parent(99); err != nil || got != 41 {
+		t.Fatalf("Parent() = %d, %v; want 41, nil", got, err)
+	}
+}
+
 func (tree fakeProcTree) Environ(pid int) (map[string]string, error) {
 	environment, found := tree.environments[pid]
 	if !found {

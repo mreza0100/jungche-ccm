@@ -20,9 +20,15 @@ import (
 // The LAST matching line wins: the statusline is at the bottom of the capture,
 // and a transcript quoting an older label appears above it.
 func BookmarkLabel(capture string) string {
+	return BookmarkLabelFor(capture, nil)
+}
+
+// BookmarkLabelFor is BookmarkLabel with the configured account emoji set
+// supplied by the caller. Legacy medals remain accepted for old live labels.
+func BookmarkLabelFor(capture string, configured []string) string {
 	label := ""
 	for _, line := range strings.Split(capture, "\n") {
-		if !strings.Contains(line, "🔖") || !ContainsMedal(line) {
+		if !strings.Contains(line, "🔖") || !ContainsMedalFor(line, configured) {
 			continue
 		}
 		index := strings.LastIndex(line, "🔖")
@@ -43,6 +49,17 @@ func BookmarkLabel(capture string) string {
 // the retired account-4 medal: the account is gone, but chats labelled while it
 // was live still render it, and without it here those chats are unresolvable.
 func ContainsMedal(value string) bool {
+	return ContainsMedalFor(value, nil)
+}
+
+// ContainsMedalFor recognizes configured account emoji plus the historical
+// medals so labels from retired rosters remain resolvable.
+func ContainsMedalFor(value string, configured []string) bool {
+	for _, emoji := range configured {
+		if emoji != "" && emoji != "·" && strings.Contains(value, emoji) {
+			return true
+		}
+	}
 	return strings.Contains(value, "🥇") ||
 		strings.Contains(value, "🥈") ||
 		strings.Contains(value, "🥉") ||

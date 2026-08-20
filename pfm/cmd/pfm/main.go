@@ -31,8 +31,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	runtime, err := loadCommandRuntime(configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm: config: %v\n", err)
-		return 1
+		if !diagnosticCommand(args) {
+			fmt.Fprintf(stderr, "pfm: config: %v\n", err)
+			return 1
+		}
+		runtime, err = loadDiagnosticRuntime(configPath)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm: config: %v\n", err)
+			return 1
+		}
 	}
 	if len(args) == 0 {
 		return runLS(nil, stdout, stderr, runtime)
@@ -54,6 +61,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runIndex(args[1:], stdout, stderr, runtime)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr, runtime)
+	case "config":
+		return runConfig(args[1:], stdout, stderr, runtime)
 	case "dream":
 		return runDreamConfigured(args[1:], os.Stdin, stdout, stderr, runtime)
 	case "revive":
@@ -71,7 +80,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "usage-hook":
 		return runUsageHookWithRuntime(args[1:], stdout, stderr, runtime)
 	case "install":
-		return runInstall(args[1:], stdout, stderr)
+		return runInstall(args[1:], stdout, stderr, runtime)
+	case "update":
+		return runUpdate(args[1:], stdout, stderr, runtime)
+	case "init":
+		return runInit(args[1:], stdout, stderr, runtime)
 	case "whoami":
 		return runWhoami(args[1:], stdout, stderr, runtime)
 	case "mcp":
@@ -90,6 +103,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+func diagnosticCommand(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	if args[0] == "doctor" {
+		return true
+	}
+	return args[0] == "config" && len(args) > 1 && (args[1] == "show" || args[1] == "validate")
+}
+
 func runMCP(
 	args []string,
 	stdout, stderr io.Writer,
@@ -99,6 +122,9 @@ func runMCP(
 	// argv as the chat server's serve action while making every new form named.
 	if len(args) == 0 {
 		args = []string{"chat", "serve"}
+	}
+	if len(args) == 1 && args[0] == "serve" {
+		return runMCPServe(stdout, stderr, runtime)
 	}
 	if len(args) == 1 && args[0] == "ls" {
 		for _, name := range config.RegisteredMCPServers() {
@@ -114,7 +140,7 @@ func runMCP(
 		return 0
 	}
 	if len(args) < 2 || (len(args) > 2 && !(args[0] == "harvester" && args[1] == "serve")) {
-		fmt.Fprintln(stderr, "usage: pfm mcp ls | pfm mcp <server> enable|disable|serve")
+		fmt.Fprintln(stderr, "usage: pfm mcp ls | pfm mcp serve | pfm mcp <server> enable|disable|serve")
 		return 2
 	}
 	name, action := args[0], args[1]
@@ -159,12 +185,7 @@ func runMCP(
 		fmt.Fprintf(stderr, "pfm mcp %s: registered server has no implementation\n", name)
 		return 1
 	}
-	service, err := mcpserv.NewConfigured(version, stderr, mcpserv.Runtime{
-		Paths: runtime.Paths, Accounts: runtime.Config.Accounts,
-		ConfigPath:   runtime.Config.Path,
-		ClaudeBinary: runtime.Config.Claude.Binary,
-		CodexBinary:  runtime.Config.Codex.Binary,
-	})
+	service, err := mcpserv.NewConfigured(version, stderr, mcpRuntime(runtime))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm mcp: %v\n", err)
 		return 1
@@ -312,8 +333,14 @@ func runInternal(
 	if len(args) != 0 && args[0] == "agent-open" {
 		return runInternalAgentOpen(args[1:], stderr, runtime)
 	}
-	if len(args) != 0 && args[0] == "swap-run" {
-		return runChatSwapWorkerWithRuntime(args[1:], os.Stdout, stderr, runtime)
+	if len(args) != 0 && args[0] == "explore-deny" {
+		return runExploreDeny(os.Stdin, stdout, stderr)
+	}
+	if len(args) != 0 && args[0] == "epic-inject" {
+		return runEpicInject(os.Stdin, stdout, stderr)
+	}
+	if len(args) != 0 && args[0] == "reload-run" {
+		return runChatReloadWorkerWithRuntime(args[1:], os.Stdout, stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "then" {
 		return runInternalThen(args[1:], stderr, runtime)
@@ -347,7 +374,7 @@ func runInternal(
 		return 0
 	}
 	if len(args) == 0 || args[0] != "hide-exit" {
-		fmt.Fprintln(stderr, "usage: pfm internal clear-hide|hide-exit|then [options]")
+		fmt.Fprintln(stderr, "usage: pfm internal clear-hide|hide-exit|then|explore-deny|epic-inject [options]")
 		return 2
 	}
 	flags := newFlagSet(
@@ -476,6 +503,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
+	fmt.Fprintln(w, "  update    update the installer-owned binary from a tagged source clone")
+	fmt.Fprintln(w, "  init      scaffold a project from the recorded blueprint clone")
+	fmt.Fprintln(w, "  config    initialize, inspect, or validate machine configuration")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the pfm version")
 	fmt.Fprintln(w)
@@ -483,6 +513,6 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  name-sync converge live chat window names")
 	fmt.Fprintln(w, "  statusline render the native Claude status line")
 	fmt.Fprintln(w, "  usage-hook the fail-open usage-limit prompt hook")
-	fmt.Fprintln(w, "  mcp       list, configure, or serve registered stdio MCP servers")
+	fmt.Fprintln(w, "  mcp       list, configure, or serve registered MCP servers (stdio or loopback HTTP)")
 	fmt.Fprintln(w, "  codex     compile or check the Codex project mirror")
 }

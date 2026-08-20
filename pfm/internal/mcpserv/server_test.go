@@ -199,10 +199,20 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 	wantTools := []string{
 		"chat_capture",
 		"chat_find",
+		"chat_hide",
 		"chat_inject",
+		"chat_keys",
+		"chat_last",
 		"chat_ls",
+		"chat_name",
+		"chat_new",
+		"chat_open",
 		"chat_read",
+		"chat_reload",
 		"chat_resolve",
+		"chat_save",
+		"chat_status",
+		"chat_unhide",
 		"chat_whoami",
 	}
 	if !reflect.DeepEqual(toolNames, wantTools) {
@@ -386,6 +396,37 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 	storedOversize, err := os.ReadFile(oversize.AutoFilePath)
 	if err != nil || string(storedOversize) != oversizeBody {
 		t.Fatalf("oversize body bytes=%d err=%v", len(storedOversize), err)
+	}
+}
+
+func TestChatKeysMCPRejectsUnknownNamesBeforeResolution(t *testing.T) {
+	setupBackendFixture(t)
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewConfigured("test", nil, Runtime{Paths: resolved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+	protocol := connectInMemory(t, service.Server())
+	result, err := protocol.clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "chat_keys",
+		Arguments: KeysInput{Target: "not-used", Keys: []string{"Esc"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatalf("unknown key result = %#v, want tool error", result)
+	}
+	content, err := json.Marshal(result.Content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "not a tmux key") {
+		t.Fatalf("unknown key error = %s", content)
 	}
 }
 
@@ -666,10 +707,7 @@ func buildFleetBinary(t *testing.T, destination string) string {
 
 func TestMCPStressSequentialCallsNoLeaks(t *testing.T) {
 	setupBackendFixture(t)
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 	_ = callTool[FindOutput](t, client.clientSession, "chat_find", FindInput{
@@ -723,10 +761,7 @@ func TestMCPStressSequentialCallsNoLeaks(t *testing.T) {
 
 func TestMCPStressConcurrentEightClientsNoCrossTalk(t *testing.T) {
 	setupBackendFixture(t)
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	clients := make([]protocolClient, 8)
 	for index := range clients {
@@ -797,10 +832,7 @@ func TestMCPStressConcurrentEightClientsNoCrossTalk(t *testing.T) {
 
 func TestMCPAdversarialUnknownAndHugeArguments(t *testing.T) {
 	setupBackendFixture(t)
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -935,10 +967,7 @@ func TestChatReadBudgetsAndJunkFilter(t *testing.T) {
 			"message": map[string]any{"content": "last visible"},
 		},
 	})
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 	output := callTool[ReadOutput](t, client.clientSession, "chat_read", ReadInput{

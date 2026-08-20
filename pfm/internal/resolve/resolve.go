@@ -54,8 +54,9 @@ type TmuxClient interface {
 // resolver compares their basenames without making the config package part of
 // the resolution contract.
 type Binaries struct {
-	Claude string
-	Codex  string
+	Claude      string
+	Codex       string
+	AccountEmojis []string
 }
 
 // Resolver scans a caller-selected tmux and crumb jail.
@@ -65,6 +66,7 @@ type Resolver struct {
 	sidDir       string
 	claudeBinary string
 	codexBinary  string
+	accountEmojis []string
 }
 
 // New resolves the standard paths and uses command-backed tmux when omitted.
@@ -86,6 +88,7 @@ func New(client TmuxClient, configured ...Binaries) (*Resolver, error) {
 		sidDir:       resolved.SIDDir,
 		claudeBinary: binaries.Claude,
 		codexBinary:  binaries.Codex,
+		accountEmojis: append([]string(nil), binaries.AccountEmojis...),
 	}, nil
 }
 
@@ -195,7 +198,7 @@ func (resolver *Resolver) resolveLabel(
 			if err != nil {
 				return nil
 			}
-			label := bookmarkLabel(capture)
+			label := naming.BookmarkLabelFor(capture, resolver.accountEmojis)
 			if label == "" || !strings.EqualFold(label, want) {
 				return nil
 			}

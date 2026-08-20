@@ -28,7 +28,7 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 	now := func() time.Time { return time.Date(2031, 2, 3, 4, 5, 6, 0, time.UTC) }
 	runner := &fakeRunner{}
 	if _, err := Run(context.Background(), Options{
-		Mode: ModeApply, Home: home, Now: now, Runner: runner,
+		Mode: ModeApply, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "4")}, Now: now, Runner: runner,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 
 	var second bytes.Buffer
 	report, err := Run(context.Background(), Options{
-		Mode: ModeApply, Home: home, Now: now, Stdout: &second, Runner: &fakeRunner{},
+		Mode: ModeApply, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "4")}, Now: now, Stdout: &second, Runner: &fakeRunner{},
 	})
 	if err != nil || report.Changed != 0 {
 		t.Fatalf("second apply report=%#v err=%v\n%s", report, err, second.String())
@@ -60,6 +60,107 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-hide") {
 		t.Fatalf("Codex clear-hide startup/resume/clear fixture regressed:\n%s", codex)
 	}
+}
+
+func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	raw := []byte(`{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"manual-keep"}]}]},"cleanupPeriodDays":42}`)
+	updated, changed, owned, err := updateSettings(raw, home, false, nil)
+	if err != nil || !changed {
+		t.Fatalf("updateSettings changed=%v err=%v", changed, err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(updated, &document); err != nil {
+		t.Fatal(err)
+	}
+	if got := document["cleanupPeriodDays"]; got != float64(42) {
+		t.Fatalf("cleanupPeriodDays=%v, want existing value 42", got)
+	}
+	prefix := home + "/.local/bin/pfm"
+	for _, hook := range []struct {
+		event, matcher, command string
+	}{
+		{"PreToolUse", "Agent|Task", prefix + " dream hook agent-inject"},
+		{"PreToolUse", "Agent|Task", prefix + " internal explore-deny"},
+		{"UserPromptSubmit", "", prefix + " dream hook nudge"},
+		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
+		{"UserPromptSubmit", "", prefix + " chat group hook"},
+		{"UserPromptSubmit", "", prefix + " usage-hook"},
+		{"SessionEnd", "", prefix + " internal clear-hide"},
+	} {
+		if got := hookCommandCount(t, string(updated), hook.event, hook.command); got != 1 {
+			t.Fatalf("%s %s count=%d, want 1\n%s", hook.event, hook.command, got, updated)
+		}
+		if got := hookMatcherCount(t, string(updated), hook.event, hook.command, hook.matcher); got != 1 {
+			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
+		}
+	}
+	if len(owned) != 7 {
+		t.Fatalf("owned hooks=%d, want 7: %#v", len(owned), owned)
+	}
+
+	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
+	updated, _, owned, err = updateSettings(withManual, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed, changed, _, err := updateSettings(updated, home, true, owned)
+	if err != nil || !changed {
+		t.Fatalf("uninstall changed=%v err=%v", changed, err)
+	}
+	if strings.Contains(string(removed), prefix+" ") || !strings.Contains(string(removed), "operator-keep") {
+		t.Fatalf("uninstall ownership result=%s", removed)
+	}
+}
+
+func TestShimAssetEmitsConfiguredClaudeAndCodexPosture(t *testing.T) {
+	raw, err := readAsset("shim/pfm.zsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(renderShimAsset(raw, Options{
+		ClaudePrompted: map[int]bool{1: false, 2: true},
+		CodexYolo:      map[int]bool{1: true, 2: false},
+	}))
+	for _, want := range []string{
+		"[1]=0",
+		"[2]=1",
+		"PFM_CODEX_YOLO",
+		"[2]=0",
+		"autonomy_flags=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)",
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered shim missing %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "CC_AUTONOMY_FLAGS") || strings.Contains(rendered, "codex --dangerously-bypass-approvals-and-sandbox") {
+		t.Fatalf("rendered shim retained unconditional posture flags:\n%s", rendered)
+	}
+}
+
+func hookMatcherCount(t *testing.T, raw, event, command, matcher string) int {
+	t.Helper()
+	var document map[string]any
+	if err := json.Unmarshal([]byte(raw), &document); err != nil {
+		t.Fatal(err)
+	}
+	events, _ := document["hooks"].(map[string]any)
+	count := 0
+	entries, _ := events[event].([]any)
+	for _, value := range entries {
+		entry, _ := value.(map[string]any)
+		if entry["matcher"] != matcher {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		for _, hookValue := range hooks {
+			hook, _ := hookValue.(map[string]any)
+			if hook["command"] == command {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *testing.T) {
@@ -94,7 +195,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 
 	now := func() time.Time { return time.Date(2031, 2, 3, 4, 5, 6, 0, time.UTC) }
 	if _, err := Run(context.Background(), Options{
-		Mode: ModeApply, Home: home, Now: now, Runner: &fakeRunner{},
+		Mode: ModeApply, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "3")}, Now: now, Runner: &fakeRunner{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -120,20 +221,28 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 			t.Fatalf("dream migration dropped same-event sibling %q:\n%s", neighbor, settings)
 		}
 	}
-	if secondary := readFixture(t, secondaryPath); strings.Contains(secondary, " dream hook ") {
-		t.Fatalf("migrate-only install invented a dream hook:\n%s", secondary)
+	secondary := readFixture(t, secondaryPath)
+	for _, command := range []string{
+		pfm + " dream hook agent-inject",
+		pfm + " dream hook nudge",
+		pfm + " internal explore-deny",
+		pfm + " internal epic-inject",
+	} {
+		if got := hookCommandCount(t, secondary, "", command); got != 1 {
+			t.Fatalf("managed secondary settings missing new installer hook %q: count=%d\n%s", command, got, secondary)
+		}
 	}
 
 	var second bytes.Buffer
 	report, err := Run(context.Background(), Options{
-		Mode: ModeApply, Home: home, Now: now, Stdout: &second, Runner: &fakeRunner{},
+		Mode: ModeApply, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "3")}, Now: now, Stdout: &second, Runner: &fakeRunner{},
 	})
 	if err != nil || report.Changed != 0 {
 		t.Fatalf("second apply report=%#v err=%v\n%s", report, err, second.String())
 	}
 
 	if _, err := Run(context.Background(), Options{
-		Mode: ModeUninstall, Home: home, Now: now, Runner: &fakeRunner{},
+		Mode: ModeUninstall, Home: home, ConfigDirs: []string{filepath.Join(home, ".claude"), filepath.Join(home, ".cc", "3")}, Now: now, Runner: &fakeRunner{},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -161,11 +270,15 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	if !strings.Contains(settings, "operator-keep") {
 		t.Fatalf("uninstall deleted unrelated hook:\n%s", settings)
 	}
-	secondary := readFixture(t, secondaryPath)
+	secondary = readFixture(t, secondaryPath)
 	for _, command := range []string{
 		pfm + " chat group hook",
 		pfm + " usage-hook",
 		pfm + " internal clear-hide",
+		pfm + " dream hook agent-inject",
+		pfm + " dream hook nudge",
+		pfm + " internal explore-deny",
+		pfm + " internal epic-inject",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 0 {
 			t.Fatalf("uninstall retained installer-owned secondary hook %q: count=%d\n%s", command, got, secondary)

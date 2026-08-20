@@ -145,6 +145,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	var preview bytes.Buffer
 	previewReport, err := Run(context.Background(), Options{
 		Mode: ModeDryRun, Home: home, Now: now, Stdout: &preview, Runner: runner,
+		ConfigDirs: []string{config, filepath.Join(home, ".cc", "2")},
 	})
 	if err != nil || previewReport.Changed == 0 {
 		t.Fatalf("dry run report=%#v err=%v", previewReport, err)
@@ -159,6 +160,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	var applied bytes.Buffer
 	report, err := Run(context.Background(), Options{
 		Mode: ModeApply, Home: home, Now: now, Stdout: &applied, Runner: runner,
+		ConfigDirs: []string{config, filepath.Join(home, ".cc", "2")},
 	})
 	if err != nil || report.Changed == 0 {
 		t.Fatalf("apply report=%#v err=%v\n%s", report, err, applied.String())
@@ -272,6 +274,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	var second bytes.Buffer
 	secondReport, err := Run(context.Background(), Options{
 		Mode: ModeApply, Home: home, Now: now, Stdout: &second, Runner: runner,
+		ConfigDirs: []string{config, filepath.Join(home, ".cc", "2")},
 	})
 	if err != nil || secondReport.Changed != 0 {
 		t.Fatalf("second apply report=%#v err=%v\n%s", secondReport, err, second.String())
@@ -280,6 +283,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	var removed bytes.Buffer
 	if _, err := Run(context.Background(), Options{
 		Mode: ModeUninstall, Home: home, Now: now, Stdout: &removed, Runner: runner,
+		ConfigDirs: []string{config, filepath.Join(home, ".cc", "2")},
 	}); err != nil {
 		t.Fatalf("uninstall: %v\n%s", err, removed.String())
 	}

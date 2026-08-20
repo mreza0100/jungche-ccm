@@ -189,7 +189,7 @@ func (executor *Executor) prepareLive(
 			if request.Cache1H {
 				cacheValue = "1"
 			}
-			arguments := []string{"chat", "swap", "--sock", request.Row.Socket, strconv.Itoa(request.PrimaryAccount), "--1h", cacheValue}
+			arguments := []string{"chat", "reload", "--sock", request.Row.Socket, strconv.Itoa(request.PrimaryAccount), "--1h", cacheValue}
 			if request.Config.Path != "" {
 				arguments = append([]string{"--config", request.Config.Path}, arguments...)
 			}

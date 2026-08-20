@@ -1,0 +1,395 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"hostops/pfm/internal/installer"
+)
+
+// These seams keep update tests entirely inside their throwaway repositories;
+// production uses the real build/install/doctor functions below.
+var (
+	updateBuildCandidate = buildUpdateCandidate
+	updateApplyInstall   = applyUpdateInstall
+	updateRunDoctor      = runUpdateDoctor
+)
+
+type updateVersion struct {
+	major int
+	minor int
+	patch int
+}
+
+func (version updateVersion) less(other updateVersion) bool {
+	if version.major != other.major {
+		return version.major < other.major
+	}
+	if version.minor != other.minor {
+		return version.minor < other.minor
+	}
+	return version.patch < other.patch
+}
+
+func parseUpdateVersion(tag string) (updateVersion, bool) {
+	parts := strings.Split(strings.TrimSpace(tag), ".")
+	if len(parts) != 3 || !strings.HasPrefix(parts[0], "v") {
+		return updateVersion{}, false
+	}
+	major, err := strconv.Atoi(strings.TrimPrefix(parts[0], "v"))
+	if err != nil || major < 0 {
+		return updateVersion{}, false
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil || minor < 0 {
+		return updateVersion{}, false
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil || patch < 0 {
+		return updateVersion{}, false
+	}
+	return updateVersion{major: major, minor: minor, patch: patch}, true
+}
+
+func selectHighestSemver(tags []string) (string, error) {
+	ordered := append([]string(nil), tags...)
+	sort.Strings(ordered)
+	var selected string
+	var selectedVersion updateVersion
+	for _, tag := range ordered {
+		version, ok := parseUpdateVersion(tag)
+		if !ok {
+			continue
+		}
+		if selected == "" || selectedVersion.less(version) {
+			selected, selectedVersion = tag, version
+		}
+	}
+	if selected == "" {
+		return "", errors.New("no semantic-version tags (expected vMAJOR.MINOR.PATCH)")
+	}
+	return selected, nil
+}
+
+func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet(
+		"update",
+		"usage: pfm update [--to vX.Y.Z] [--repo PATH]",
+		stderr,
+	)
+	target := flags.String("to", "", "target semantic-version tag")
+	repoFlag := flags.String("repo", "", "source clone to update")
+	positional, code, ok := parseFlagsAnywhere(flags, args)
+	if !ok {
+		return code
+	}
+	if len(positional) != 0 {
+		flags.Usage()
+		return 2
+	}
+	runtime, err := optionalCommandRuntime(runtimes)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update: config: %v\n", err)
+		return 1
+	}
+	repo := strings.TrimSpace(*repoFlag)
+	if repo == "" {
+		repo, err = installer.ReadSourceRepoMarker(runtime.Paths.Home)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm update: %v\n", err)
+			return 1
+		}
+	}
+	repo, err = filepath.Abs(repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm update: resolve repository: %v\n", err)
+		return 1
+	}
+	if err := updateRepository(context.Background(), repo, *target, stdout, stderr, runtime); err != nil {
+		fmt.Fprintf(stderr, "pfm update: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func updateRepository(
+	ctx context.Context,
+	repo, requestedTag string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) (err error) {
+	previousRef, err := updateGitOutput(ctx, repo, "rev-parse", "--verify", "HEAD")
+	if err != nil {
+		return fmt.Errorf("resolve current revision: %w", err)
+	}
+	previousRef = strings.TrimSpace(previousRef)
+	checkedOut := false
+	defer func() {
+		if err == nil || !checkedOut {
+			return
+		}
+		if restoreErr := updateGitRun(ctx, repo, "checkout", "--detach", "--quiet", previousRef); restoreErr != nil {
+			err = errors.Join(err, fmt.Errorf("restore source revision %s: %w; source clone remains at the update revision", previousRef, restoreErr))
+		}
+	}()
+
+	if err := updateGitRun(ctx, repo, "fetch", "--tags"); err != nil {
+		return fmt.Errorf("fetch tags: %w", err)
+	}
+	tagOutput, err := updateGitOutput(ctx, repo, "tag", "--list")
+	if err != nil {
+		return fmt.Errorf("list tags: %w", err)
+	}
+	tags := strings.Fields(tagOutput)
+	target := strings.TrimSpace(requestedTag)
+	if target == "" {
+		target, err = selectHighestSemver(tags)
+		if err != nil {
+			return fmt.Errorf("resolve latest release: %w", err)
+		}
+	} else if _, ok := parseUpdateVersion(target); !ok {
+		return fmt.Errorf("invalid target tag %q (expected vMAJOR.MINOR.PATCH)", target)
+	}
+	if !containsString(tags, target) {
+		return fmt.Errorf("target tag %q is not present after fetch", target)
+	}
+	status, err := updateGitOutput(ctx, repo, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		return fmt.Errorf("inspect worktree: %w", err)
+	}
+	if strings.TrimSpace(status) != "" {
+		return errors.New("refuse dirty worktree; commit or stash changes before update")
+	}
+	if err := updateGitRun(ctx, repo, "checkout", "--detach", "--quiet", target); err != nil {
+		return fmt.Errorf("checkout %s: %w", target, err)
+	}
+	checkedOut = true
+
+	managedRoot := filepath.Dir(installer.SourceRepoPath(runtime.Paths.Home))
+	stage, err := os.MkdirTemp(managedRoot, "update-")
+	if err != nil {
+		return fmt.Errorf("stage update under managedRoot: %w", err)
+	}
+	defer os.RemoveAll(stage)
+	candidateA := filepath.Join(stage, "pfm-a")
+	candidateB := filepath.Join(stage, "pfm-b")
+	if err := updateBuildCandidate(ctx, repo, candidateA); err != nil {
+		return fmt.Errorf("build candidate first pass: %w", err)
+	}
+	if err := updateBuildCandidate(ctx, repo, candidateB); err != nil {
+		return fmt.Errorf("build candidate second pass: %w", err)
+	}
+	hashA, err := fileHash(candidateA)
+	if err != nil {
+		return fmt.Errorf("hash first candidate: %w", err)
+	}
+	hashB, err := fileHash(candidateB)
+	if err != nil {
+		return fmt.Errorf("hash second candidate: %w", err)
+	}
+	if hashA != hashB {
+		return fmt.Errorf("candidate hash mismatch: first=%s second=%s", hashA, hashB)
+	}
+
+	ledger, err := installer.ReadBinaryOwnership(runtime.Paths.Home)
+	if err != nil {
+		return err
+	}
+	if len(ledger.Paths) == 0 {
+		return errors.New("binary ownership ledger is empty; refusing to overwrite PATH copies")
+	}
+	replacements := make([]updateReplacement, 0, len(ledger.Paths))
+	for _, targetPath := range ledger.Paths {
+		if strings.TrimSpace(targetPath) == "" || !filepath.IsAbs(targetPath) {
+			return fmt.Errorf("binary ownership ledger contains invalid path %q", targetPath)
+		}
+		backup := filepath.Join(stage, fmt.Sprintf("previous-%d", len(replacements)))
+		if err := copyUpdateFile(targetPath, backup); err != nil {
+			return fmt.Errorf("preserve owned binary %s: %w", targetPath, err)
+		}
+		replacements = append(replacements, updateReplacement{target: targetPath, backup: backup})
+	}
+	for index := range replacements {
+		if err := replaceUpdateFile(candidateA, replacements[index].target); err != nil {
+			rollbackErr := rollbackUpdateReplacements(replacements[:index], stderr)
+			return updateFailure(fmt.Errorf("replace owned binary %s: %w", replacements[index].target, err), rollbackErr)
+		}
+		replacements[index].replaced = true
+	}
+
+	if err := updateApplyInstall(ctx, runtime, stdout, stderr); err != nil {
+		return updateFailure(fmt.Errorf("install --apply after staging: %w", err), rollbackUpdateReplacements(replacements, stderr))
+	}
+	if err := updateRunDoctor(ctx, runtime, stdout, stderr); err != nil {
+		return updateFailure(fmt.Errorf("doctor after update: %w", err), rollbackUpdateReplacements(replacements, stderr))
+	}
+	fmt.Fprintf(stdout, "updated %s from %s\n", target, repo)
+	return nil
+}
+
+type updateReplacement struct {
+	target   string
+	backup   string
+	replaced bool
+}
+
+func updateFailure(primary, rollbackErr error) error {
+	if rollbackErr != nil {
+		return fmt.Errorf("%w; rollback residue: %v; manually repair the listed owned binary paths", primary, rollbackErr)
+	}
+	return fmt.Errorf("%w; rolled back update-owned changes", primary)
+}
+
+func rollbackUpdateReplacements(replacements []updateReplacement, stderr io.Writer) error {
+	var rollbackErr error
+	for index := len(replacements) - 1; index >= 0; index-- {
+		replacement := replacements[index]
+		if !replacement.replaced {
+			continue
+		}
+		if err := replaceUpdateFile(replacement.backup, replacement.target); err != nil {
+			rollbackErr = errors.Join(rollbackErr, fmt.Errorf("%s: %w", replacement.target, err))
+			continue
+		}
+		fmt.Fprintf(stderr, "pfm update: rolled back %s\n", replacement.target)
+	}
+	return rollbackErr
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func updateGitRun(ctx context.Context, repo string, args ...string) error {
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = repo
+	command.Env = os.Environ()
+	var output bytes.Buffer
+	command.Stdout = &output
+	command.Stderr = &output
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(output.String()))
+	}
+	return nil
+}
+
+func updateGitOutput(ctx context.Context, repo string, args ...string) (string, error) {
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = repo
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return string(output), nil
+}
+
+func buildUpdateCandidate(ctx context.Context, repo, output string) error {
+	moduleRoot := repo
+	if _, err := os.Stat(filepath.Join(repo, "pfm", "go.mod")); err == nil {
+		moduleRoot = filepath.Join(repo, "pfm")
+	}
+	command := exec.CommandContext(ctx, "go", "-C", moduleRoot, "build", "-trimpath", "-o", output, "./cmd/pfm")
+	command.Env = envWithEmptyGOFLAGS()
+	command.Dir = repo
+	outputBytes, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("go build: %w: %s", err, strings.TrimSpace(string(outputBytes)))
+	}
+	return nil
+}
+
+func envWithEmptyGOFLAGS() []string {
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "GOFLAGS=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, "GOFLAGS=")
+}
+
+func fileHash(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(raw)), nil
+}
+
+func copyUpdateFile(source, target string) error {
+	raw, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	return writeUpdateFile(target, raw, info.Mode().Perm())
+}
+
+func replaceUpdateFile(source, target string) error {
+	raw, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(source)
+	if err != nil {
+		return err
+	}
+	return writeUpdateFile(target, raw, info.Mode().Perm())
+}
+
+func writeUpdateFile(path string, raw []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".pfm-update-")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err := temporary.Chmod(mode.Perm()); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if _, err := temporary.Write(raw); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
+func applyUpdateInstall(_ context.Context, runtime commandRuntime, stdout, stderr io.Writer) error {
+	if code := runInstall([]string{"--apply"}, stdout, stderr, runtime); code != 0 {
+		return fmt.Errorf("pfm install exited with code %d", code)
+	}
+	return nil
+}
+
+func runUpdateDoctor(_ context.Context, runtime commandRuntime, stdout, stderr io.Writer) error {
+	if code := runDoctor(nil, stdout, stderr, runtime); code != 0 {
+		return fmt.Errorf("pfm doctor exited with code %d", code)
+	}
+	return nil
+}

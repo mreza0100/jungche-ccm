@@ -191,6 +191,7 @@ type Dependencies struct {
 	// values to verify a live pane without assuming the defaults.
 	ClaudeBinary string
 	CodexBinary  string
+	AccountEmojis []string
 	// CodexSeat is the last sender-identity rung. It maps this process's
 	// CODEX_THREAD_ID to the live fleet seat after ambient tmux and ancestry
 	// recovery both fail. Nil means that lookup is unavailable.

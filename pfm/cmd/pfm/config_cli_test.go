@@ -159,6 +159,65 @@ func TestConfigCLIMCPEnableDisableAreIdempotentWithoutStartingStdio(t *testing.T
 	}
 }
 
+func TestConfigCLIInitShowValidateAndBrokenDiagnostics(t *testing.T) {
+	root := jailTest(t)
+	home := filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "config", "config.json")
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--config", path, "config", "init"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("config init code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "field documentation:") || stderr.Len() != 0 {
+		t.Fatalf("config init stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "//") {
+		t.Fatalf("config init wrote comments: %s", content)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("config init mode=%o, want 600", info.Mode().Perm())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--config", path, "config", "validate"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "config valid:") {
+		t.Fatalf("config validate code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--config", path, "config", "show"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "config mcp.authToken=<redacted>") {
+		t.Fatalf("config show code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	if err := os.WriteFile(path, []byte(`{"version":2`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--config", path, "config", "show"}, &stdout, &stderr); code != 0 || !strings.Contains(stderr.String(), "configuration error: parse config "+path) {
+		t.Fatalf("broken config show code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--config", path, "config", "validate"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "parse config "+path) {
+		t.Fatalf("broken config validate code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"--config", path, "doctor"}, &stdout, &stderr); code == 0 || !strings.Contains(stdout.String(), "doctor: config error=") {
+		t.Fatalf("broken doctor code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 	root := jailTest(t)
 	home := filepath.Join(root, "config-home")
@@ -184,14 +243,16 @@ func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 	printDoctorConfig(&stdout, commandRuntime{Config: loaded})
 	want := strings.Join([]string{
 		"doctor: config path=" + path + " exists=true",
-		"doctor: config version=1 (file)",
+		"doctor: config version=2 (file)",
+		"doctor: config theme=default (default)",
 		"doctor: config accounts=7:" + filepath.Join(home, "account-seven") + " (file)",
-		"doctor: config claude.permissionMode=prompt (file)",
+		"doctor: config claude.permissionMode=prompted (file)",
 		"doctor: config claude.binary=claude-fixture (file)",
 		"doctor: config codex.yolo=false (file)",
 		"doctor: config codex.binary=codex-fixture (file)",
 		"doctor: config mcp.servers.chat.enabled=true (file)",
 		"doctor: config mcp.servers.harvester.enabled=false (default)",
+		"doctor: config mcp.http.port=8377 (default)",
 	}, "\n") + "\n"
 	if stdout.String() != want {
 		t.Fatalf("printDoctorConfig() = %q, want %q", stdout.String(), want)

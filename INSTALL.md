@@ -2,7 +2,7 @@
 
 Two independent things live in this repo. Install what you need.
 
-- **`pfm`** — the host fleet CLI: statusline, `/chat:*`, `/swap`, multi-account tooling. Binary or source, touches only your `$HOME`, no project files.
+- **`pfm`** — the host fleet CLI: statusline, `/chat:*`, `/reload`, multi-account tooling. Binary or source, touches only your `$HOME`, no project files.
 - **Professor, the discipline layer** — `CLAUDE.md`, agents, commands, the pipeline. Installed into YOUR project through a Claude-guided interview.
 
 Shortest path first.
@@ -49,7 +49,7 @@ pfm install --apply
 `pfm install --apply` wires six surfaces, all under `$HOME`:
 
 1. Staged assets — `~/.local/share/pfm/install/`
-2. Command symlinks — `~/.claude/commands/` (`/swap`, the `/chat:*` family)
+2. Command symlinks — `~/.claude/commands/` (`/reload`, the `/chat:*` family)
 3. The `pfm-name-sync` scheduler — three systemd user units (Linux) or one launchd agent (macOS)
 4. Every Claude account settings file it finds (`~/.claude/settings.json` and each `~/.cc/N/settings.json`) — adds the usage, group, and `/clear` `SessionEnd` hooks; adopts the statusline only if none is already set
 5. `~/.codex/hooks.json` — the matching Codex `SessionStart` hook
@@ -130,7 +130,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 
 ## Updating
 
-**`pfm` (path 1/2):** get the newer binary (repeat path 1) or `git pull` a source clone and rebuild (path 2), then re-run `pfm install --apply`. It backs up before touching anything and only adopts what it doesn't already own — re-running is safe.
+**`pfm` (machine layer):** `pfm update` consumes the latest tagged source-clone release transactionally, then runs `install --apply` and `doctor`; `/pcm:update` remains the semantic blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
 
 **The discipline layer (path 3):**
 

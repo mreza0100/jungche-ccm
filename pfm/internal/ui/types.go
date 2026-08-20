@@ -23,6 +23,7 @@ type StatsSubtab uint8
 const (
 	StatsChats StatsSubtab = iota
 	StatsDocker
+	StatsLimits
 	statsSubtabCount
 )
 
@@ -65,6 +66,8 @@ type Snapshot struct {
 	Refreshing      bool
 	PrimaryAccount  int
 	AccountIDs      []int
+	AccountEmojis   map[int]string
+	Theme           string
 	Cache1H         bool
 	Rotation        int
 	NowNS           int64
@@ -72,6 +75,9 @@ type Snapshot struct {
 	Height          int
 	InitialQuery    string
 	InitialCursorID string
+	// MergeNewChat is used only by the interactive picker. Plain and TSV
+	// output leave it false so their existing two-row output remains stable.
+	MergeNewChat bool
 	// ApplyHide performs a ⌃X the instant it is typed — the store write, and
 	// the kill when the row is live. It is deliberately NOT deferred to quit:
 	// the only exits that ever applied a batched hide were the ones that

@@ -20,6 +20,7 @@ func TestOpenMigratesAndReopensIdempotently(t *testing.T) {
 	assertSchemaVersion(t, first, SchemaVersion)
 	assertTables(t, first, []string{
 		"cx_names",
+		"epic_injections",
 		"hidden",
 		"meta",
 		"rollouts",

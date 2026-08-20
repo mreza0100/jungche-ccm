@@ -36,6 +36,7 @@ type Engine struct {
 	codexSeat    SelfIdentifier
 	claudeBinary string
 	codexBinary  string
+	accountEmojis []string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -45,8 +46,9 @@ type Engine struct {
 // New constructs a jailed-path-aware injection engine.
 func New(dependencies Dependencies) (*Engine, error) {
 	binaries := resolve.Binaries{
-		Claude: dependencies.ClaudeBinary,
-		Codex:  dependencies.CodexBinary,
+		Claude:        dependencies.ClaudeBinary,
+		Codex:         dependencies.CodexBinary,
+		AccountEmojis: dependencies.AccountEmojis,
 	}
 	if dependencies.Resolver == nil {
 		resolver, err := resolve.New(nil, binaries)
@@ -98,6 +100,7 @@ func New(dependencies Dependencies) (*Engine, error) {
 		codexSeat:    dependencies.CodexSeat,
 		claudeBinary: binaries.Claude,
 		codexBinary:  binaries.Codex,
+		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
 	}, nil
 }
 
@@ -1156,7 +1159,7 @@ func (engine *Engine) senderLabel(
 		0,
 	)
 	if err == nil {
-		if label := captureLabel(capture); label != "" {
+		if label := naming.BookmarkLabelFor(capture, engine.accountEmojis); label != "" {
 			return label
 		}
 	}

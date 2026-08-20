@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -34,7 +35,7 @@ func TestStatsSamplerIsLazyAndStopsAfterLeaving(t *testing.T) {
 		t.Fatalf("picker boot sampled stats: calls=%d", sampler.calls)
 	}
 
-	model, command := applyKey(t, model, specialKey(tea.KeyRight))
+	model, command := applyKey(t, model, specialKey(tea.KeyTab))
 	if command == nil || sampler.calls != 0 {
 		t.Fatalf("Stats focus command=%v calls=%d", command, sampler.calls)
 	}
@@ -44,11 +45,26 @@ func TestStatsSamplerIsLazyAndStopsAfterLeaving(t *testing.T) {
 	}
 	updated, _ := model.Update(message)
 	model = updated.(Model)
-	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
+	model, _ = applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 	updated, command = model.Update(statsTickMsg{generation: model.statsGeneration})
 	model = updated.(Model)
 	if command != nil || sampler.calls != 1 || model.Tab() != TabChats {
 		t.Fatalf("sampling continued after leave: command=%v calls=%d tab=%d", command, sampler.calls, model.Tab())
+	}
+}
+
+func TestStatsLimitsSubtabRendersAccountWindows(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 2,
+		Emoji:   "🔹",
+		Windows: []pfmstats.Window{{Name: "7d-fable", UsedPct: 23, ResetAt: time.Unix(1_800_000_000, 0)}},
+	}}}
+	plain := ansi.Strip(model.renderStatsPanel(120, 8))
+	if !strings.Contains(plain, "7d-fable") || !strings.Contains(plain, "23%") || !strings.Contains(plain, "🔹") {
+		t.Fatalf("limits panel=%q", plain)
 	}
 }
 

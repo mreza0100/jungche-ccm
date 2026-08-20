@@ -95,7 +95,9 @@ jobs:
           echo "gofmt: clean"
 
       - name: go vet
-        run: go -C pfm vet ./...
+        run: |
+          go -C pfm vet ./...
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go -C pfm vet ./...
 
       # pfm shells out to an interactive zsh for its terminal actions, and the
       # runner image does not ship one. Install it rather than skipping the

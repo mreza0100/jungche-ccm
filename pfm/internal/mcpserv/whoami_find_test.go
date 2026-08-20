@@ -2,7 +2,6 @@ package mcpserv
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -23,10 +22,7 @@ func TestChatWhoamiReportsIdentityOrStatesItsAbsence(t *testing.T) {
 	t.Setenv("TMUX", "")
 	t.Setenv(resolve.ClaudeSessionEnv, "")
 	t.Setenv(resolve.CodexThreadEnv, "")
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 	output := callTool[WhoamiOutput](
@@ -86,10 +82,7 @@ func TestChatFindRanksByNeedleVotesAndExcludesSelf(t *testing.T) {
 	})
 	t.Setenv(resolve.ClaudeSessionEnv, "selfchat")
 	t.Setenv(resolve.CodexThreadEnv, "")
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 
@@ -150,10 +143,7 @@ func TestChatFindRanksByNeedleVotesAndExcludesSelf(t *testing.T) {
 // before the target is even resolved.
 func TestChatInjectCarriesTheThenArgument(t *testing.T) {
 	setupBackendFixture(t)
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 
@@ -228,10 +218,7 @@ func TestChatCaptureBoundsAreAppliedAfterTheCapture(t *testing.T) {
 		t.Skip("no /proc")
 	}
 	setupBackendFixture(t)
-	service, err := New("test", io.Discard)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service := newFixtureService(t)
 	defer service.Close()
 	client := connectInMemory(t, service.Server())
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -26,3 +26,10 @@ func TestLabelHidden(t *testing.T) {
 		})
 	}
 }
+
+func TestBookmarkLabelAcceptsConfiguredAccountEmoji(t *testing.T) {
+	line := "🔖 🟣 Custom Seat │ neutral-project"
+	if got := BookmarkLabelFor(line, []string{"🟣"}); got != "🟣 Custom Seat" {
+		t.Fatalf("BookmarkLabelFor() = %q, want configured emoji label", got)
+	}
+}

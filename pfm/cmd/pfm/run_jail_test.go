@@ -147,6 +147,10 @@ done
 // CC_STUB_DEAF models the failure this whole verification exists for: the
 // launch prompt arrives on the command line and is never recorded, exactly as
 // a startup dialog eating it would look from the outside.
+//
+// CC_STUB_OVERLAY models the recoverable shape of that same failure: the
+// prompt is held unsent behind a startup overlay, and an Escape followed by
+// an Enter submits it. Deaf is unrecoverable, overlay is what a retry saves.
 const stubClaude = `#!/usr/bin/env bash
 printf '%s\n' "$*" > "$CC_STUB_ARGV"
 stty -icanon -echo -ixon min 1 time 0 2>/dev/null
@@ -168,11 +172,17 @@ render() {
   [ -n "$note" ] && printf '%s\n' "$note"
   printf '❯ %s\n' "$buf"
 }
-if [ -n "$prompt" ] && [ -z "$CC_STUB_DEAF" ]; then turn "$prompt"; fi
+if [ -n "$prompt" ] && [ -z "$CC_STUB_DEAF" ] && [ -z "$CC_STUB_OVERLAY" ]; then turn "$prompt"; fi
+pending=""; dismissed=0
+if [ -n "$CC_STUB_OVERLAY" ]; then pending="$prompt"; fi
 render
 while IFS= read -r -N1 ch; do
   case "$ch" in
-    $'\n'|$'\r') if [ -n "$buf" ]; then turn "$buf"; fi; buf=""; note="" ;;
+    $'\033') dismissed=1 ;;
+    $'\n'|$'\r')
+      if [ -n "$buf" ]; then turn "$buf"
+      elif [ "$dismissed" = 1 ] && [ -n "$pending" ]; then turn "$pending"; pending=""; fi
+      buf=""; note="" ;;
     $'\023') buf=""; note="  draft stashed" ;;
     $'\177'|$'\b') buf="${buf%?}" ;;
     *) buf="$buf$ch" ;;

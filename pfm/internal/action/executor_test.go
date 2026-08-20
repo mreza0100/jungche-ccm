@@ -419,9 +419,9 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 		t.Fatalf("live line = %q", line)
 	}
 	if runner.name != "pfm" || !reflect.DeepEqual(runner.args, []string{
-		"chat", "swap", "--sock", "cc-100-1-1", "1", "--1h", "1",
+		"chat", "reload", "--sock", "cc-100-1-1", "1", "--1h", "1",
 	}) {
-		t.Fatalf("swap command = %q %q", runner.name, runner.args)
+		t.Fatalf("reload command = %q %q", runner.name, runner.args)
 	}
 
 	request.CurrentTMUX = "/tmp/jail/cc-100-1-1,1,0"

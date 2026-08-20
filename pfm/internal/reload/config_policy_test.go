@@ -1,4 +1,4 @@
-package swap
+package reload
 
 import (
 	"context"
@@ -10,13 +10,13 @@ import (
 )
 
 func TestRunRespawnsWithConfiguredClaudePolicy(t *testing.T) {
-	tmux := &fakeSwapTmux{}
+	tmux := &fakeReloadTmux{}
 	configDir := filepath.Join(t.TempDir(), "account 42")
 	customBinary := "/opt/tools/claude enterprise"
 	_, err := Run(
 		context.Background(),
 		Request{
-			SocketPath:        "/tmp/tmux-1000/configured-swap",
+			SocketPath:        "/tmp/tmux-1000/configured-reload",
 			Pane:              "%7",
 			SessionID:         "11111111-1111-4111-8111-111111111111",
 			CWD:               "/jail/project",

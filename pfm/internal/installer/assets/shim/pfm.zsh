@@ -42,13 +42,12 @@ cc-revive() { "$_PFM_BIN" revive "$@"; }
 
 # The launch/account functions below are the shell owner of fresh interactive
 # launches; the Go action protocol emits lines that call them.
-# CC_AUTONOMY_FLAGS — the FULL-AUTONOMY posture, applied by EVERY path that starts a chat, on
-# every account. Chats run unattended overnight, so a mid-task approval
-# prompt is a stalled chat with nobody awake to clear it. `--allow-…` is the enabling half (the
-# harness refuses the bypass without it), `--dangerously-…` the acting half; both are required.
-# Blast radius is total and deliberate — PreToolUse hooks sit outside the permission system and
-# are the only brake left, so a guard that matters belongs in a hook, not in a permission rule.
-typeset -ga CC_AUTONOMY_FLAGS=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
+# PFM_CLAUDE_PROMPTED and PFM_CODEX_YOLO are emitted by the installer from the
+# machine config. A prompted Claude account gets no bypass pair; a Codex account
+# with yolo=false gets no approval bypass. The launch functions below are the
+# only shell paths that decide these flags.
+typeset -gA PFM_CLAUDE_PROMPTED=()
+typeset -gA PFM_CODEX_YOLO=()
 # CC_ENDPOINT_UNSET — every launch strips any inherited API endpoint. A chat
 # born inside another chat's Bash tool inherits that chat's environment, so a shell pointed at a
 # local translating proxy would hand the next launch a foreign endpoint and it would answer from a
@@ -78,6 +77,10 @@ _cc_arm1h() {
 _cc_run() {
   local acct="$1" use_tmux="$2"; shift 2
   local cfg; case "$acct" in 2) cfg="$HOME/.cc/$acct" ;; *) cfg="" ;; esac
+  local -a autonomy_flags=()
+  if [[ "${PFM_CLAUDE_PROMPTED[$acct]:-0}" != 1 ]]; then
+    autonomy_flags=(--allow-dangerously-skip-permissions --dangerously-skip-permissions)
+  fi
   local in_tmux=0; [[ -n "$TMUX" ]] && in_tmux=1
   # ⚡1h-cache is per-launch, NEVER sticky (2× write premium must be a deliberate choice each
   # time) — _cc_arm1h decides; the strip below unsets the leaked flag, and an armed launch
@@ -100,7 +103,7 @@ _cc_run() {
     # PER-ELEMENT quoting, then join. "${(q)@}" joins the array into ONE word FIRST and quotes
     # that, so two flags arrive as a single argv element with an escaped space, claude rejects the
     # unknown option, and the tmux session dies at birth.
-    run+=" claude ${(j: :)${(@q)CC_AUTONOMY_FLAGS}} ${(j: :)${(@q)@}}"
+    run+=" claude ${(j: :)${(@q)autonomy_flags}} ${(j: :)${(@q)@}}"
     # A bare terminal hands itself to the chat (_cc_own_terminal); a bunker pane is EXEC'd into
     # the viewport, which is the same law by another route. Inside another chat, neither: a
     # nested viewport that closed on exit would take its host chat's pane down with it.
@@ -118,7 +121,7 @@ _cc_run() {
     local -a envargs=("${CC_SESSION_UNSET[@]}" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M "${CC_ENDPOINT_UNSET[@]}")
     if [[ -n "$cfg" ]]; then envargs+=(CLAUDE_CONFIG_DIR="$cfg"); else envargs+=(-u CLAUDE_CONFIG_DIR); fi
     if [[ "$arm1h" == 1 ]]; then envargs+=(ENABLE_PROMPT_CACHING_1H=1); else envargs+=(FORCE_PROMPT_CACHING_5M=1); fi
-    env "${envargs[@]}" claude "${CC_AUTONOMY_FLAGS[@]}" "$@"
+    env "${envargs[@]}" claude "${autonomy_flags[@]}" "$@"
     _cc_own_terminal $?
   fi
 }
@@ -126,7 +129,7 @@ _cc_primary() { local n; n="$("$_PFM_BIN" internal primary-get 2>/dev/null)"; ca
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
-# _cc_run prepends CC_AUTONOMY_FLAGS for every account, so a launcher must NOT pass them again
+# _cc_run prepends the configured Claude flags for every account, so a launcher must NOT pass them again
 # (that would duplicate the flags in argv). A caller's own flags still follow and win, so
 # `cc1 --permission-mode manual` remains the escape hatch for a supervised chat.
 # cx — a CODEX chat on the same per-chat-server pattern, socket prefix cx-* instead of cc-*.
@@ -135,14 +138,16 @@ cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
 # accounts / ⚡1h don't apply — codex has its own single auth (~/.codex).
 cx() {
   local sock="cx-$(date +%s)-$$-$RANDOM"
+  local acct; acct="$(_cc_primary)"
+  local -a codex_flags=()
+  if [[ "${PFM_CODEX_YOLO[$acct]:-1}" == 1 ]]; then
+    codex_flags=(--dangerously-bypass-approvals-and-sandbox)
+  fi
   # same launch hygiene as claude: a codex born inside a Claude chat must not inherit its identity.
-  # --dangerously-bypass-approvals-and-sandbox: operator-approved fleet policy — a fleet
-  # codex runs with FULL autonomy, never stopping to ask approval (wave builders stalled on
-  # mid-task approval prompts). This box's codex work is already gated by repo trust + the fleet.
   # PER-ELEMENT quoting, then join — same fix as _cc_run (lines 89-93): "${(q)@}" joins the
   # array into ONE word FIRST and quotes that, so `cx --resume abc123` arrives as a single
   # escaped argv element ("--resume\ abc123") and codex rejects it as one unknown flag.
-  local run="env ${CC_SESSION_UNSET} -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex --dangerously-bypass-approvals-and-sandbox ${(j: :)${(@q)@}}"
+  local run="env ${CC_SESSION_UNSET} -u CLAUDE_CONFIG_DIR -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M ${CC_ENDPOINT_UNSET} codex ${(j: :)${(@q)codex_flags}} ${(j: :)${(@q)@}}"
   _cx_server "$sock" "$PWD" "$run" || return
   if _cc_selfswitch "$sock"; then :                          # already inside it → switch, never nest
   elif _cc_in_bunker; then TMUX= exec tmux -L "$sock" attach # viewport dies with the tab

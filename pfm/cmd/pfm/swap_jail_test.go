@@ -37,7 +37,7 @@ func TestChatSwapHelpIsPublicAndSuccessful(t *testing.T) {
 		&stdout,
 		&stderr,
 	)
-	if code != 0 || !strings.Contains(stdout.String(), "usage: pfm chat swap") {
+	if code != 0 || !strings.Contains(stdout.String(), "usage: pfm chat reload") {
 		t.Fatalf("swap help rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
@@ -81,7 +81,7 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := runChatSwapWorker([]string{"--sock", socket, "--1h", "on"}, &stdout, &stderr)
+	code := runChatReloadWorker([]string{"--sock", socket, "--1h", "on"}, &stdout, &stderr)
 	if code == 0 || !strings.Contains(stderr.String(), "open selector menu") {
 		t.Fatalf("swap selector gate rc=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
@@ -112,11 +112,11 @@ func TestChatSwapSchedulesAHiddenWorker(t *testing.T) {
 		t.Fatalf("start probe socket: %v: %s", err, output)
 	}
 	cleanupProbeSwapSocket(t, socket)
-	old := startSwapWorker
-	t.Cleanup(func() { startSwapWorker = old })
+	old := startReloadWorker
+	t.Cleanup(func() { startReloadWorker = old })
 	var workerArgs []string
 	detached := false
-	startSwapWorker = func(command *exec.Cmd) error {
+	startReloadWorker = func(command *exec.Cmd) error {
 		workerArgs = append([]string(nil), command.Args...)
 		detached = command.SysProcAttr != nil && command.SysProcAttr.Setsid &&
 			command.Stdin != os.Stdin && command.Stdout == command.Stderr
@@ -128,10 +128,10 @@ func TestChatSwapSchedulesAHiddenWorker(t *testing.T) {
 	}
 	joined := strings.Join(workerArgs, "\x00")
 	if !strings.Contains(joined, "\x00--config\x00") ||
-		!strings.Contains(joined, "\x00internal\x00swap-run\x002\x00") {
+		!strings.Contains(joined, "\x00internal\x00reload-run\x002\x00") {
 		t.Fatalf("worker argv = %q", workerArgs)
 	}
-	if !strings.Contains(stdout.String(), "swap scheduled") {
+	if !strings.Contains(stdout.String(), "reload scheduled") {
 		t.Fatalf("schedule receipt = %q", stdout.String())
 	}
 	if !detached {
@@ -173,7 +173,7 @@ func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 		SIDDir:      filepath.Join(root, "sid"),
 		ClaudeRoots: []string{filepath.Join(root, "claude")},
 	}
-	_, _, err := resolveSwapSession(
+	_, _, err := resolveReloadSession(
 		resolved,
 		"/tmp/tmux-1000/probe-pfm-swap-target",
 		"%7",

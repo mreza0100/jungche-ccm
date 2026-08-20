@@ -72,6 +72,39 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	}
 }
 
+func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.Rows = []compose.Row{
+		{Kind: compose.NewClaude, Name: "New Claude chat", Project: "new"},
+		{Kind: compose.NewCodex, Name: "New Codex chat", Project: "new"},
+	}
+	snapshot.MergeNewChat = true
+	model := NewModel(snapshot)
+	if model.NewChatEngine() != "claude" {
+		t.Fatalf("new chat engine=%q, want claude", model.NewChatEngine())
+	}
+	model, command := applyKey(t, model, specialKey(tea.KeyRight))
+	if command != nil || model.NewChatEngine() != "codex" {
+		t.Fatalf("right new-chat engine=%q command=%v", model.NewChatEngine(), command)
+	}
+	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
+	if command == nil || model.Result().Kind != OutcomeSelected || model.Result().Row.Kind != compose.NewCodex {
+		t.Fatalf("new-chat Enter result=%#v command=%v", model.Result(), command)
+	}
+
+	snapshot.Rows = []compose.Row{{Kind: compose.LiveClaude, ID: "live", Name: "live", Project: "p", Socket: "s"}}
+	snapshot.InitialCursorID = "live"
+	model = NewModel(snapshot)
+	model, command = applyKey(t, model, specialKey(tea.KeyRight))
+	if command != nil || model.ActionIndex() != 1 {
+		t.Fatalf("chat carousel index=%d command=%v", model.ActionIndex(), command)
+	}
+	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
+	if command == nil || model.Result().Kind != OutcomeReload {
+		t.Fatalf("chat carousel Enter result=%#v command=%v", model.Result(), command)
+	}
+}
+
 // TestCancelKeepsAppliedHidesAndDropsPrimaryChange pins the split that ⌃X
 // acting immediately creates: Esc still abandons a ⌃S account switch, which is
 // only ever a pending intent, but it can no longer take back a hide. Batching
@@ -335,23 +368,23 @@ func TestDefaultHideRemovesRowAndKeepsValidCursor(t *testing.T) {
 	}
 }
 
-func TestTabsDefaultToChatsAndArrowKeysWrap(t *testing.T) {
+func TestTabsDefaultToChatsAndTabKeysWrap(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
 	if model.Tab() != TabChats {
 		t.Fatalf("initial tab = %d, want Chats", model.Tab())
 	}
 	selected := model.SelectedKey()
-	model, command := applyKey(t, model, specialKey(tea.KeyRight))
+	model, command := applyKey(t, model, specialKey(tea.KeyTab))
 	if command != nil || model.Tab() != TabStats || model.SelectedKey() != selected {
-		t.Fatalf("right: tab=%d selected=%q command=%v", model.Tab(), model.SelectedKey(), command)
+		t.Fatalf("tab: tab=%d selected=%q command=%v", model.Tab(), model.SelectedKey(), command)
 	}
-	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
+	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
 	if model.Tab() != TabChats {
-		t.Fatalf("right wrap tab = %d, want Chats", model.Tab())
+		t.Fatalf("tab wrap = %d, want Chats", model.Tab())
 	}
-	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
+	model, _ = applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 	if model.Tab() != TabStats {
-		t.Fatalf("left wrap tab = %d, want Stats", model.Tab())
+		t.Fatalf("shift+tab wrap = %d, want Stats", model.Tab())
 	}
 }
 

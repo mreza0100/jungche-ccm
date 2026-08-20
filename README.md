@@ -102,7 +102,7 @@ scrollback. One Go binary, embedded installer assets, no per-project files touch
   sqlite store; `pfm heal` repairs a wedged history projection where a resumed thread renders as
   if brand-new, backing up the store before it deletes a row. `pfm revive` lists resumable chats
   by project on either harness.
-- **Swap, usage, and one ledger for both harnesses.** `/swap <n>` reboots a running chat in place
+- **Reload, usage, and one ledger for both harnesses.** `/reload <n>` reboots a running chat in place
   onto another account — same pane, same conversation, new billing identity; with `--then`, a
   chat running low on budget swaps itself and hands itself the baton, unattended. `pfm statusline`
   renders identity/session/money plus a prompt-cache-window segment; the token ledger

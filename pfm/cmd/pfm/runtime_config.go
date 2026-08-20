@@ -13,8 +13,9 @@ import (
 // commandRuntime is loaded exactly once by run and then passed to the command
 // branches that consume machine policy. It is immutable for that invocation.
 type commandRuntime struct {
-	Config pfmconfig.Config
-	Paths  paths.Values
+	Config      pfmconfig.Config
+	Paths       paths.Values
+	ConfigError error
 }
 
 func optionalCommandRuntime(runtimes []commandRuntime) (commandRuntime, error) {
@@ -39,6 +40,29 @@ func loadCommandRuntime(configPath string) (commandRuntime, error) {
 	}
 	resolved.ClaudeRoots = effective.ProjectRoots()
 	return commandRuntime{Config: effective, Paths: resolved}, nil
+}
+
+func loadDiagnosticRuntime(configPath string) (commandRuntime, error) {
+	resolved, err := paths.Resolve()
+	if err != nil {
+		return commandRuntime{}, fmt.Errorf("resolve paths: %w", err)
+	}
+	effective, configErr := pfmconfig.Load(configPath, resolved.Home, resolved.ClaudeRoots)
+	if configErr == nil {
+		resolved.ClaudeRoots = effective.ProjectRoots()
+		return commandRuntime{Config: effective, Paths: resolved}, nil
+	}
+	// Diagnostics must remain usable on a broken config. They operate on
+	// defaults, but carry the original error to the visible command surface.
+	path := configPath
+	if path == "" {
+		path = pfmconfig.ResolvePath(resolved.Home)
+	}
+	effective = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
+	effective.Path = path
+	effective.Exists = true
+	resolved.ClaudeRoots = effective.ProjectRoots()
+	return commandRuntime{Config: effective, Paths: resolved, ConfigError: configErr}, nil
 }
 
 // splitGlobalConfig accepts the global flag only before the command. This is
