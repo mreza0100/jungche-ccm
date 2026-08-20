@@ -234,7 +234,13 @@ func checkDependencies(ctx context.Context, root string) error {
 func checkInventory(ctx context.Context, root string, expected EnvironmentDigest) error {
 	uv := filepath.Join(root, "uv")
 	python := filepath.Join(root, "project", ".venv", "bin", "python")
-	output, err := runCommand(ctx, uv, []string{"pip", "list", "--format", "freeze", "--python", python}, filepath.Join(root, "project"))
+	// current is required to be a symlink (see the current_pointer check above),
+	// so --python here always traverses one; uv responds by writing a "Using
+	// Python ... environment at: ..." preamble to stderr. runCommand's
+	// CombinedOutput would fold that line into the parsed freeze output and
+	// inventoryDigest would hard-error on it as a malformed distribution
+	// record, so this capture must stay stdout-only.
+	output, err := runCommandStdout(ctx, uv, []string{"pip", "list", "--format", "freeze", "--python", python}, filepath.Join(root, "project"))
 	if err != nil {
 		return fmt.Errorf("read installed distribution inventory: %w", err)
 	}

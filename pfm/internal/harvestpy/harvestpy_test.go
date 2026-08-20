@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -376,6 +377,139 @@ func TestInstalledInventoryDigestIsStableAndRejectsTampering(t *testing.T) {
 	}
 	if _, _, err := inventoryDigest([]byte("Docling==2.107.0\nnot-a-distribution\n")); err == nil {
 		t.Fatal("tampered inventory record was accepted")
+	}
+}
+
+// TestRunCommandStdoutIsolatesStderrFromInventoryParsing is a regression test
+// for the bug where uv's informational "Using Python ... environment at: ..."
+// preamble (which uv writes to stderr whenever --python traverses a symlink,
+// exactly the case for Check()'s <current> pointer) was folded into stdout by
+// CombinedOutput and then hard-rejected by inventoryDigest's strict
+// name==version parser. It proves runCommandStdout keeps that noise out of
+// the captured output, and that the same command's CombinedOutput (what the
+// pre-fix code path fed to inventoryDigest) really did break the parse.
+func TestRunCommandStdoutIsolatesStderrFromInventoryParsing(t *testing.T) {
+	dir := t.TempDir()
+	fakeUV := filepath.Join(dir, "fake-uv")
+	body := "#!/bin/sh\n" +
+		"echo 'Using Python 3.11.15 environment at: /some/staging/project/.venv' 1>&2\n" +
+		"printf 'docling==2.107.0\\ntrafilatura==2.1.0\\n'\n"
+	if err := os.WriteFile(fakeUV, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	arguments := []string{"pip", "list", "--format", "freeze", "--python", "unused"}
+
+	output, err := runCommandStdout(context.Background(), fakeUV, arguments, dir)
+	if err != nil {
+		t.Fatalf("runCommandStdout failed: %v", err)
+	}
+	if strings.Contains(string(output), "Using Python") {
+		t.Fatalf("stderr preamble leaked into stdout-only capture: %q", output)
+	}
+	sum, count, err := inventoryDigest(output)
+	if err != nil {
+		t.Fatalf("inventoryDigest rejected clean stdout-only capture: %v", err)
+	}
+	if count != 2 || sum == "" {
+		t.Fatalf("inventoryDigest = %s/%d, want two clean records", sum, count)
+	}
+
+	combined, err := runCommand(context.Background(), fakeUV, arguments, dir)
+	if err != nil {
+		t.Fatalf("runCommand failed: %v", err)
+	}
+	if _, _, err := inventoryDigest(combined); err == nil {
+		t.Fatal("combined stdout+stderr capture unexpectedly parsed cleanly; this regression no longer reproduces the original bug")
+	}
+}
+
+// TestRelinkVenvToFinalRepointsStagingSymlinksAndPyvenvCfg reproduces the
+// Darwin dangling-venv-symlink bug: uv bakes the ABSOLUTE staging interpreter
+// path into .venv/bin/python{,3} and pyvenv.cfg's `home =` line, and the
+// staging->final os.Rename moves the tree without updating those baked-in
+// absolute targets. It builds a staging-shaped venv tree, renames it to a
+// final directory exactly as provision() does, then asserts
+// relinkVenvToFinal repoints every staging-rooted symlink and the pyvenv.cfg
+// home entry so the interpreter resolves (and actually runs) under final.
+func TestRelinkVenvToFinalRepointsStagingSymlinksAndPyvenvCfg(t *testing.T) {
+	root := t.TempDir()
+	staging := filepath.Join(root, ".staging-3997678820")
+	if err := os.MkdirAll(filepath.Join(staging, "python", "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	interpreter := filepath.Join(staging, "python", "bin", "python3")
+	if err := os.WriteFile(interpreter, []byte("#!/bin/sh\necho ok\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	venvBin := filepath.Join(staging, "project", ".venv", "bin")
+	if err := os.MkdirAll(venvBin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(interpreter, filepath.Join(venvBin, "python")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(interpreter, filepath.Join(venvBin, "python3")); err != nil {
+		t.Fatal(err)
+	}
+	// A relative symlink, as uv also creates (e.g. python3.11 -> python3), must
+	// be left untouched: it never targeted an absolute staging path.
+	if err := os.Symlink("python3", filepath.Join(venvBin, "python3.11")); err != nil {
+		t.Fatal(err)
+	}
+	pyvenvCfg := filepath.Join(staging, "project", ".venv", "pyvenv.cfg")
+	cfgBody := "home = " + filepath.Join(staging, "python", "bin") + "\nversion = 3.11.15\n"
+	if err := os.WriteFile(pyvenvCfg, []byte(cfgBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	final := filepath.Join(root, "digest-final")
+	if err := os.Rename(staging, final); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := relinkVenvToFinal(final, staging); err != nil {
+		t.Fatalf("relinkVenvToFinal failed: %v", err)
+	}
+
+	finalVenvBin := filepath.Join(final, "project", ".venv", "bin")
+	wantInterpreter := filepath.Join(final, "python", "bin", "python3")
+	for _, name := range []string{"python", "python3"} {
+		got, err := os.Readlink(filepath.Join(finalVenvBin, name))
+		if err != nil {
+			t.Fatalf("readlink %s after relink: %v", name, err)
+		}
+		if got != wantInterpreter {
+			t.Errorf("%s symlink = %q, want %q", name, got, wantInterpreter)
+		}
+	}
+	if got, err := os.Readlink(filepath.Join(finalVenvBin, "python3.11")); err != nil || got != "python3" {
+		t.Errorf("relative symlink was unexpectedly rewritten: %q %v", got, err)
+	}
+
+	// The interpreter must now actually resolve and execute under final,
+	// proving no dangling absolute-path symlink remains.
+	finalPython := filepath.Join(final, "project", ".venv", "bin", "python")
+	if _, err := os.Stat(finalPython); err != nil {
+		t.Fatalf("relinked interpreter does not resolve: %v", err)
+	}
+	output, err := exec.Command(finalPython).CombinedOutput()
+	if err != nil {
+		t.Fatalf("relinked interpreter did not execute: %v (output: %s)", err, output)
+	}
+	if strings.TrimSpace(string(output)) != "ok" {
+		t.Fatalf("relinked interpreter output = %q, want ok", output)
+	}
+
+	rewrittenCfg, err := os.ReadFile(filepath.Join(final, "project", ".venv", "pyvenv.cfg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHome := "home = " + filepath.Join(final, "python", "bin")
+	if !strings.Contains(string(rewrittenCfg), wantHome) {
+		t.Errorf("pyvenv.cfg home was not rewritten to final: %q", rewrittenCfg)
+	}
+	if strings.Contains(string(rewrittenCfg), staging) {
+		t.Errorf("pyvenv.cfg still references staging path: %q", rewrittenCfg)
 	}
 }
 
