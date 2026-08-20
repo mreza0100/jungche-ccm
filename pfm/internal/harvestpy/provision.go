@@ -2,6 +2,7 @@ package harvestpy
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -230,7 +231,13 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	if _, err := options.Run(ctx, uvPath, []string{"pip", "check", "--python", venvPython}, project); err != nil {
 		return ProvisionResult{}, fmt.Errorf("harvestpy locked dependency check failed: %w", err)
 	}
-	inventoryOutput, err := options.Run(ctx, uvPath, []string{"pip", "list", "--format", "freeze", "--python", venvPython}, project)
+	// Deliberately bypasses options.Run: uv prints a "Using Python ... environment
+	// at: ..." preamble to stderr whenever --python traverses a symlink, and
+	// inventoryDigest hard-errors on any line that is not name==version. The
+	// injectable RunFunc is CombinedOutput-based (its error paths want stderr
+	// folded in), so the freeze capture needs its own stdout-only runner instead
+	// of relying on the same seam used for uv sync/pip check above.
+	inventoryOutput, err := runCommandStdout(ctx, uvPath, []string{"pip", "list", "--format", "freeze", "--python", venvPython}, project)
 	if err != nil {
 		return ProvisionResult{}, fmt.Errorf("harvestpy installed inventory failed: %w", err)
 	}
@@ -271,6 +278,7 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return ProvisionResult{}, fmt.Errorf("inspect harvestpy versioned environment: %w", err)
 	}
+	stagingPrefix := staging
 	if err := os.Rename(staging, final); err != nil {
 		if backup != "" {
 			_ = os.Rename(backup, final)
@@ -283,6 +291,19 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 		if backup != "" {
 			_ = os.Rename(backup, final)
 		}
+	}
+	// uv bakes an ABSOLUTE interpreter path into the venv it just built under
+	// stagingPrefix (both .venv/bin/python{,3} and pyvenv.cfg's `home =` line
+	// point at <stagingPrefix>/python/bin/python3). The rename above moved the
+	// directory tree but not those baked-in absolute targets, so left alone
+	// they now point at a path that no longer exists and the post-publish
+	// smoke below would die with ENOENT. Repoint them at final before that
+	// smoke runs, which is exactly the class of "uv may choose links whose
+	// target changes when the versioned root is published" the smoke comment
+	// below already anticipates.
+	if err := relinkVenvToFinal(final, stagingPrefix); err != nil {
+		restoreOld()
+		return ProvisionResult{}, fmt.Errorf("relink harvestpy venv to published path: %w", err)
 	}
 	// Verify the relocated environment, not merely the pre-rename staging
 	// path.  uv may choose links whose target changes when the versioned root
@@ -460,6 +481,96 @@ func atomicCurrent(root, desired string) error {
 		return fmt.Errorf("publish harvestpy current pointer: %w", err)
 	}
 	return nil
+}
+
+// relinkVenvToFinal repoints the absolute interpreter symlinks and pyvenv.cfg
+// `home =` entry that uv baked into the venv under the staging directory so
+// they resolve under the published final directory instead.  It walks
+// <final>/project/.venv/bin, rewriting every symlink whose target is an
+// absolute path rooted at staging, then rewrites pyvenv.cfg the same way.
+// Non-symlink entries and symlinks that do not target staging are left
+// untouched; on any I/O failure the caller is expected to run its existing
+// rollback/restore path, matching how the neighbouring publish steps handle
+// errors.
+func relinkVenvToFinal(final, staging string) error {
+	venvBin := filepath.Join(final, "project", ".venv", "bin")
+	entries, err := os.ReadDir(venvBin)
+	if err != nil {
+		return fmt.Errorf("relink harvestpy venv: read %s: %w", venvBin, err)
+	}
+	for _, entry := range entries {
+		path := filepath.Join(venvBin, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("relink harvestpy venv: inspect %s: %w", path, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			continue // (a) skip non-symlinks
+		}
+		target, err := os.Readlink(path)
+		if err != nil {
+			return fmt.Errorf("relink harvestpy venv: read symlink %s: %w", path, err)
+		}
+		if !filepath.IsAbs(target) || !hasPathPrefix(target, staging) {
+			continue // skip targets that are not rooted under the staging prefix
+		}
+		relinked := filepath.Join(final, strings.TrimPrefix(target, staging))
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("relink harvestpy venv: remove stale symlink %s: %w", path, err)
+		}
+		if err := os.Symlink(relinked, path); err != nil {
+			return fmt.Errorf("relink harvestpy venv: create symlink %s: %w", path, err)
+		}
+	}
+	if err := relinkPyvenvCfg(filepath.Join(final, "project", ".venv", "pyvenv.cfg"), staging, final); err != nil {
+		return fmt.Errorf("relink harvestpy venv: %w", err)
+	}
+	return nil
+}
+
+// relinkPyvenvCfg rewrites a staging-rooted `home = ` entry in pyvenv.cfg to
+// the equivalent path under final.  A missing or already-correct entry is not
+// an error; only I/O failure is.
+func relinkPyvenvCfg(path, staging, final string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat pyvenv.cfg %s: %w", path, err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read pyvenv.cfg %s: %w", path, err)
+	}
+	lines := strings.Split(string(body), "\n")
+	changed := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "home = ") {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(trimmed, "home = "))
+		if !hasPathPrefix(value, staging) {
+			continue
+		}
+		lines[i] = "home = " + filepath.Join(final, strings.TrimPrefix(value, staging))
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), info.Mode().Perm()); err != nil {
+		return fmt.Errorf("rewrite pyvenv.cfg %s: %w", path, err)
+	}
+	return nil
+}
+
+// hasPathPrefix reports whether path is prefix itself or a descendant of it,
+// guarding against false positives like "/foo/.staging-1234" matching the
+// prefix "/foo/.staging-123".
+func hasPathPrefix(path, prefix string) bool {
+	if path == prefix {
+		return true
+	}
+	return strings.HasPrefix(path, prefix+string(filepath.Separator))
 }
 
 func extractNamedBinary(path, name, destination string) error {
@@ -677,6 +788,25 @@ func runCommand(ctx context.Context, executable string, arguments []string, dire
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("%s %s: %w (output: %s)", executable, strings.Join(arguments, " "), err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
+// runCommandStdout captures stdout only, with stderr collected separately and
+// folded into the error solely for diagnostics.  uv writes an informational
+// "Using Python ... environment at: ..." preamble to stderr whenever the
+// --python path traverses a symlink (which is exactly how Check() and the
+// pip-list/freeze capture reach the venv), and combining stdout+stderr would
+// corrupt the strict name==version parser in inventoryDigest.  Callers that
+// need to machine-parse command output should use this instead of runCommand.
+func runCommandStdout(ctx context.Context, executable string, arguments []string, directory string) ([]byte, error) {
+	command := exec.CommandContext(ctx, executable, arguments...)
+	command.Dir = directory
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	if err != nil {
+		return output, fmt.Errorf("%s %s: %w (stderr: %s)", executable, strings.Join(arguments, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return output, nil
 }
