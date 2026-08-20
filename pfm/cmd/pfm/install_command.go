@@ -15,6 +15,8 @@ import (
 // fake so existing CLI wiring tests never download the conversion lock.
 var installHarvestProvisionerOverride installer.HarvestProvisioner
 
+var runInstaller = installer.Run
+
 func installHarvestProvisioner() installer.HarvestProvisioner {
 	if installHarvestProvisionerOverride != nil {
 		return installHarvestProvisionerOverride
@@ -25,32 +27,43 @@ func installHarvestProvisioner() installer.HarvestProvisioner {
 func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"install",
-		"usage: pfm install [--apply | --uninstall | --dry-run] [--force] [--config-dir DIR]",
+		"usage: pfm install [--yes] [--force] [--config-dir DIR]",
 		stderr,
 	)
-	apply := flags.Bool("apply", false, "apply the installation")
-	uninstall := flags.Bool("uninstall", false, "remove installed links and restore backups")
-	dryRun := flags.Bool("dry-run", false, "preview the installation without changing files")
+	yes := flags.Bool("yes", false, "apply the installation")
 	force := flags.Bool("force", false, "regenerate installer-owned credentials")
 	configDir := flags.String("config-dir", "", "target config directory instead of ~/.claude")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() != 0 || boolCount(*apply, *uninstall, *dryRun) > 1 {
+	if flags.NArg() != 0 {
 		flags.Usage()
 		return 2
 	}
 	mode := installer.ModeDryRun
-	if *apply {
+	if *yes {
 		mode = installer.ModeApply
-	} else if *uninstall {
-		mode = installer.ModeUninstall
 	}
+	options := newInstallerOptions(mode, *configDir, *force, stdout, runtimes...)
+	code := runInstallerCommand("install", options, stderr)
+	if code == 0 && mode == installer.ModeDryRun {
+		fmt.Fprintln(stdout, "if you agree, run again: pfm install --yes")
+	}
+	return code
+}
+
+func newInstallerOptions(
+	mode installer.Mode,
+	configDir string,
+	force bool,
+	stdout io.Writer,
+	runtimes ...commandRuntime,
+) installer.Options {
 	options := installer.Options{
 		Mode:               mode,
-		ConfigDir:          *configDir,
+		ConfigDir:          configDir,
 		SourceRepo:         discoverSourceRepo(),
-		Force:              *force,
+		Force:              force,
 		Stdout:             stdout,
 		ProvisionHarvest:   true,
 		HarvestProvisioner: installHarvestProvisioner(),
@@ -71,24 +84,28 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 			options.ClaudePrompted[account.ID] = runtime.Config.EffectiveClaude(account.ID).PermissionMode == pfmconfig.PermissionPrompt
 			options.CodexYolo[account.ID] = runtime.Config.EffectiveCodex(account.ID).Yolo
 		}
-		if *configDir == "" {
+		if configDir == "" {
 			options.ConfigDirs = append(options.ConfigDirs, runtime.Paths.Home+"/.claude")
 			for _, account := range runtime.Config.Accounts {
 				options.ConfigDirs = append(options.ConfigDirs, account.ConfigDir)
 			}
 		}
 	}
-	_, err := installer.Run(context.Background(), options)
+	return options
+}
+
+func runInstallerCommand(command string, options installer.Options, stderr io.Writer) int {
+	_, err := runInstaller(context.Background(), options)
 	if errors.Is(err, installer.ErrNameSyncRunning) {
-		fmt.Fprintln(stderr, "pfm install: the pfm name-sync service is running; wait for it to finish or run `systemctl --user stop pfm-name-sync.service`, then retry")
+		fmt.Fprintf(stderr, "pfm %s: the pfm name-sync service is running; wait for it to finish or run `systemctl --user stop pfm-name-sync.service`, then retry\n", command)
 		return 97
 	}
 	if errors.Is(err, installer.ErrLaunchAgentRunning) {
-		fmt.Fprintln(stderr, "pfm install: the pfm name-sync launch agent is running; wait for it to finish or `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` first")
+		fmt.Fprintf(stderr, "pfm %s: the pfm name-sync launch agent is running; wait for it to finish or `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` first\n", command)
 		return 97
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm install: %v\n", err)
+		fmt.Fprintf(stderr, "pfm %s: %v\n", command, err)
 		return 1
 	}
 	return 0

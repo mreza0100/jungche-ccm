@@ -127,7 +127,7 @@ func runMCPServe(stdout, stderr io.Writer, runtime commandRuntime) int {
 	}
 	token := runtime.Config.MCP.AuthToken
 	if token == "" {
-		fmt.Fprintln(stderr, "pfm mcp serve: bearer credential is empty; run pfm install --apply")
+		fmt.Fprintln(stderr, "pfm mcp serve: bearer credential is empty; run pfm install --yes")
 		return 1
 	}
 	address := "127.0.0.1:" + strconv.Itoa(port)

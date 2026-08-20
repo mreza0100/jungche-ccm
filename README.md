@@ -161,7 +161,7 @@ just the open web: without it, every fetch errors and a run degrades to snippet-
 Three paths, shortest first — full protocol in **[`INSTALL.md`](./INSTALL.md)**.
 
 1. **Binary — `pfm` only, 2 minutes.** Download the release binary, verify its checksum, then
-   `pfm install --dry-run` (preview, default) and `pfm install --apply`. No project files
+   `pfm install` (preview, default) and `pfm install --yes`. No project files
    touched — six surfaces under `$HOME`, every one backed up before it's rewritten.
 2. **Build from source — `pfm` only.** Clone the repo, build the `pfm` binary from `pfm/cmd/pfm`
    (Go 1.24+), then the same two `pfm install` commands as above.

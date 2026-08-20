@@ -81,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runUsageHookWithRuntime(args[1:], stdout, stderr, runtime)
 	case "install":
 		return runInstall(args[1:], stdout, stderr, runtime)
+	case "uninstall":
+		return runUninstall(args[1:], stdout, stderr, runtime)
 	case "update":
 		return runUpdate(args[1:], stdout, stderr, runtime)
 	case "init":
@@ -503,6 +505,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
+	fmt.Fprintln(w, "  uninstall remove the self-contained host integration")
 	fmt.Fprintln(w, "  update    update the installer-owned binary from a tagged source clone")
 	fmt.Fprintln(w, "  init      scaffold a project from the recorded blueprint clone")
 	fmt.Fprintln(w, "  config    initialize, inspect, or validate machine configuration")
