@@ -52,7 +52,7 @@ Several scopes read the same pipeline doc, but each writes only its own slice �
 
 - You are the ONLY agent that writes to permanent child project docs (`{project}/docs/*.md` for every roster entry), root cross-project doc clusters (`docs/agents/{architecture,api,map,features}/`), and `docs/dev/backlog/backlog.md`
 - You MAY write to `docs/epics/*/` only per § Epic consolidation contract (the `epic` scope card, EPIC mode) — never `## Vision & Scope`, `status:`, or epic creation/deletion (the Professor owns the lifecycle)
-- NEVER write to: `docs/facts/` ({FOUNDER_NAME}-ruled system facts — main-loop-written on explicit ruling only), `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/`/`.codex/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `.professor/RR/`)
+- NEVER write to: `docs/facts/` (user-ruled system facts — main-loop-written on explicit ruling only), `$CDOCS/officer/` (owned by `/officer`), `.claude/agents/gitter.md` Living Reference (owned by gitter), `$CDOCS/mentor/` (owned by `/mentor`), CLAUDE.md files or `.claude/`/`.codex/` files (owned by `/pcm`), source code, temporary/pipeline files (`docs/dev/builds/`, `docs/dev/waves/`), research files (`docs/commands/*/research/`, `.professor/RR/`)
 
 ## Doc clusters
 
@@ -64,7 +64,7 @@ Map of permanent doc surfaces and owners. **Main-loop/direct invocations (REGIST
 
 <!-- Install-time: rewrite this registry from your actual `docs/` tree. List every permanent doc surface (root cross-project clusters + each subproject's `docs/`), and the non-`mono-documenter` owners (`/pm`, `/officer`, `/mentor`, `/km`, `/pcm` own their command reference/research directories; gitter owns its Living Reference; the Professor owns `docs/epics/`). Keep `.claude/` and `.codex/` instruction surfaces OUT — they are pipeline infrastructure, not registry entries. -->
 
-**Root (`docs/agents/`):** `_index.md`; clusters `architecture/`, `api/`, `map/`, `features/` (each an `_index.md` + topic files); `standards.md`; `graph/` (Mermaid diagrams — see `graph/_index.md`); operational refs `deploy/_index.md` (ship checklist) and `db/_index.md` (DB + queue ops). System facts: `docs/facts/` — {FOUNDER_NAME}-ruled, main-loop-written, NOT documenter-owned.
+**Root (`docs/agents/`):** `_index.md`; clusters `architecture/`, `api/`, `map/`, `features/` (each an `_index.md` + topic files); `standards.md`; `graph/` (Mermaid diagrams — see `graph/_index.md`); operational refs `deploy/_index.md` (ship checklist) and `db/_index.md` (DB + queue ops). System facts: `docs/facts/` — user-ruled, main-loop-written, NOT documenter-owned.
 
 **Command-owned (`docs/commands/{cmd}/`):** `documenter/references/sync-rules.md`, `documenter/references/doc-approval.md`, `documenter/references/scopes/*.md` → `/documenter`; `pcm/references/` → `/pcm`; `officer/references/` → `/officer`; `mentor/references/` → `/mentor`; `pm/references/` → `/pm`; `km/research/` → `/km`; each other opted-in Tier B command owns its `references/`/`research/` directory.
 
@@ -131,15 +131,15 @@ Epic files are current-state — consolidated chunks of work and decisions, neve
 
 ## Mode: EPIC (invoked as /documenter epic)
 
-You run inline in {FOUNDER_NAME}'s session — the conversation is your source. Write no dump file; skip the `/quality:doc` load (epic files are working context, not reference clusters).
+You run inline in the user's session — the conversation is your source. Write no dump file; skip the `/quality:doc` load (epic files are working context, not reference clusters).
 
-1. **Resolve the epic:** explicit name after the `epic` token; else the `docs/epics/*/manifest.md` with `status: IN_PROGRESS` whose scope matches the session's work; no unambiguous match → list candidates and ask {FOUNDER_NAME}.
+1. **Resolve the epic:** explicit name after the `epic` token; else the `docs/epics/*/manifest.md` with `status: IN_PROGRESS` whose scope matches the session's work; no unambiguous match → list candidates and ask the user.
 2. **Consolidate the whole session** per § Epic consolidation contract — walk the ENTIRE conversation, not just recent turns:
    - Work state — done (with evidence: paths, SHAs, test results), in-flight position, ordered next steps → `update.md` (`## State of work` rewritten, `## Delivered` merged).
-   - Decisions with rationale, {FOUNDER_NAME} rulings included → manifest `## Key Decisions` (deduped).
-   - Gotchas, failed attempts, surprises → `## Discoveries` (deduped); items awaiting {FOUNDER_NAME} → `## Open Questions`.
+   - Decisions with rationale, the user rulings included → manifest `## Key Decisions` (deduped).
+   - Gotchas, failed attempts, surprises → `## Discoveries` (deduped); items awaiting the user → `## Open Questions`.
    - One `## Progress Log` milestone line; new epic files registered in `## Files`; bump `updated:`.
-3. **Completeness pass:** re-scan the conversation top to bottom. The bar: a fresh session given only "Load epic {name}" continues seamlessly — no re-reading the old chat, no re-asking {FOUNDER_NAME}, no re-discovering gotchas.
+3. **Completeness pass:** re-scan the conversation top to bottom. The bar: a fresh session given only "Load epic {name}" continues seamlessly — no re-reading the old chat, no re-asking the user, no re-discovering gotchas.
 4. **Report** which epic was saved into and the exact continuation line to paste in a new chat: `Load epic {name}`.
 
 ## Mode: AUDIT

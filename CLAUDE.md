@@ -35,8 +35,8 @@ node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-code
 
 ### Publication (this repo's sacred ground)
 
-- **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. Only gitter pushes, only on the founder's plain ask in that turn.
-- **Nothing identifying ships:** no source-project brand, no founder PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` (`pre-push`) is the backstop, not the plan — write it clean the first time.
+- **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. Only gitter pushes, only on the user's plain ask in that turn.
+- **Nothing identifying ships:** no source-project brand, no user PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` (`pre-push`) is the backstop, not the plan — write it clean the first time.
 - Template example values are invented placeholders, never mined from a live private repo.
 - **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `/pcm:release` owns the sequence.
 
@@ -64,10 +64,10 @@ node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-code
 - **Never commit broken code** — tests pass before the commit.
 - **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (blueprint/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → gitter merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`/wave:refine`, `/wave:live`, `/wave:walker`, `/wave:walker-invariants`, `/wave:sentinel`) are rewired to this cast — `dev` builds, `qa` tests, `gitter` commits and merges; a task touching `.claude/**`, any `CLAUDE.md`, or `blueprint/**` routes to `/pcm`. Their `blueprint/commands/wave/` twins keep the adopter pipeline.
 - **Guarded files:** a PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
-- Execute explicit instructions as given: founder delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
+- Execute explicit instructions as given: user delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
 - "God speed" = full autonomy: resolve every ambiguity yourself, finish, report the decisions at the end; only failure = stop/ask.
 - "What's up / how's it going" = summarize everything since the last prompt.
-- **AskUserQuestion is the founder's whole screen** — context travels inside the question text; each round simpler and more concrete, never a rephrase.
+- **AskUserQuestion is the user's whole screen** — context travels inside the question text; each round simpler and more concrete, never a rephrase.
 - When in doubt, do the right thing — correct over convenient, even at re-architecting cost.
 
 ### Testing
@@ -80,12 +80,12 @@ node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-code
 
 Match the tier to the cost of being wrong; judgment never delegates downward. Aliases are named inline at each spawn site; this section alone defines the tiers.
 
-- apex: optional frontier — R&D loops, architecture, the genuinely hardest problems, or the founder's say; falls back to `opus`.
+- apex: optional frontier — R&D loops, architecture, the genuinely hardest problems, or the user's say; falls back to `opus`.
 - frontier-judgment (`opus`): product-shaping output — framework surgery, release judgment, salience over ambiguous input, any ruling on shipped prompt text.
 - spec-execution (`sonnet`): bounded work arriving with a spec.
 - collector (`haiku`): fetch, classify, extract verbatim, summarize large output; returns raw material with its source, never concludes. Unsure? `inherit`.
 
-Effort: `High` default · `Medium` for small low-reasoning tasks · `XHigh` only to force open a genuinely hard problem · `Max` only on the founder's say · `Low` never.
+Effort: `High` default · `Medium` for small low-reasoning tasks · `XHigh` only to force open a genuinely hard problem · `Max` only on the user's say · `Low` never.
 
 ## Subagent dispatch
 

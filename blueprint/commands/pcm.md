@@ -31,7 +31,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/scripts/*.{sh,mjs}` — worktree.sh, alloc-ports.sh, dev.sh, build-codex.mjs (Claude→Codex compiler)
 - `.claude/workflows/*.js` — saved Workflow scripts, invocable as Workflow({name, args}) — each a declared copy of its command file's orchestration section (§ Critical invariants, workflow-scripts-are-schedulers); a skill may embed its own engine as {skill}/workflow.js via Workflow({scriptPath})
 - `{project}/.claude/agents/*.md` — child project agents; `{project}/CLAUDE.md` — child project conventions. A `{project}` held as a git submodule lands its commits in the child repo, and the monorepo pins a pointer (gitter-owned)
-- `docs/commands/{cmd}/references/` — command-owned reference docs ($CDOCS/$CMD/$REFS/); `docs/agents/` — documenter-owned cross-project reference clusters (`api/`, `architecture/`, `map/`, `features/`) + `standards.md`, `graph/`; `docs/facts/` — founder-ruled system facts (main-loop-written, on explicit ruling only)
+- `docs/commands/{cmd}/references/` — command-owned reference docs ($CDOCS/$CMD/$REFS/); `docs/agents/` — documenter-owned cross-project reference clusters (`api/`, `architecture/`, `map/`, `features/`) + `standards.md`, `graph/`; `docs/facts/` — user-ruled system facts (main-loop-written, on explicit ruling only)
 
 ### Critical invariants
 
@@ -107,7 +107,7 @@ Every infra change `/pcm` makes is recorded as the final step of the work, in ex
 - **`drift.md`** — local customizations that diverge from the blueprint and must **stay local** (the update merge's forced KEEP-LOCAL set). Also holds the local update history.
 - **`release.md`** — framework changes that belong upstream, **pending push/sync**. `/pcm:release` consumes this file to build the CHANGELOG, then clears it.
 
-The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the founder — never guess.** Entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — release step 5 copies them verbatim.
+The test: is the change an **improvement to existing infra** (a framework change any Professor user could use)? → `release.md`. Is it a **project-specific customization**? → `drift.md`. **Unsure? Ask the user — never guess.** Entries append as FINAL changelog bullets — `- {Tier}: {scope} — {semantic change}`, plus `#### → For:` when adopters must act and `(cost)` on env/hook/permission/model deltas — release step 5 copies them verbatim.
 
 **Standalone-skill special case:** a change to a `sources.json` skill logs one `release.md` line and bumps the skill's `version:` frontmatter — release step 5b ships the substance to the skill's own public repo; the Professor changelog carries only the version pointer + re-pull note.
 
@@ -277,7 +277,7 @@ If anything is stale, update this file before completing the report. This comman
 
 ## Rules
 
-- **Founder-ordered only** — framework files change ONLY on the founder's explicit in-session command, never autonomously, never as automation, never as a side effect of other work; an improvement spotted mid-task is proposed, not applied
+- **User-ordered only** — framework files change ONLY on the user's explicit in-session command, never autonomously, never as automation, never as a side effect of other work; an improvement spotted mid-task is proposed, not applied
 - **Never break the pipeline** — atomic changes for breaking modifications
 - **Never weaken non-negotiable rules** — ethics, privacy, code quality are sacred
 - **Never remove safety checks** — QA gates, merge guards, worktree isolation

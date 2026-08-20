@@ -1,6 +1,6 @@
 ---
 name: goal-manager
-description: Turn an ambition into a runnable prompt, or keep a live goal resumable. Two modes. Default — compile a fuzzy super-goal into a sharp, self-contained prompt for a fresh Professor chat (interrogate → ground in the repo → write to tmp/prompt-saves/{slug}.md). `epic {name}` — write/refresh an epic's continuation prompt at docs/epics/{name}/prompts/resume-latest.md (+ dated archive): a # Report narrative of what happened and why, then a # Prompt the founder pastes into /goal so a stopped session resumes exactly where it left off. Runs at every checkpoint. Route here to turn an ambition into a prompt, or a paused/in-flight epic into a runnable continuation — not to execute it.
+description: Turn an ambition into a runnable prompt, or keep a live goal resumable. Two modes. Default — compile a fuzzy super-goal into a sharp, self-contained prompt for a fresh Professor chat (interrogate → ground in the repo → write to tmp/prompt-saves/{slug}.md). `epic {name}` — write/refresh an epic's continuation prompt at docs/epics/{name}/prompts/resume-latest.md (+ dated archive): a # Report narrative of what happened and why, then a # Prompt the user pastes into /goal so a stopped session resumes exactly where it left off. Runs at every checkpoint. Route here to turn an ambition into a prompt, or a paused/in-flight epic into a runnable continuation — not to execute it.
 argument-hint: [super goal] | epic [epic-name]
 ---
 
@@ -17,8 +17,8 @@ The goal as stated is never the goal. Ask targeted questions (AskUserQuestion, u
 - **Outcome** — what does done look like? What is different in the product or system when this succeeds?
 - **Scope** — what is explicitly in, what is explicitly out?
 - **Constraints** — deadlines, sacred ground (tenant isolation, permissions, audit trails, money paths), tech choices already made.
-- **Evidence** — what proof will the founder accept? Tests, metrics, demo, report.
-- **Endgame** — is the finish line shipped code, validated knowledge, or a decision? When a founder-gated step (paid spend, sacred ground, an irreversible action) sits on the critical path, the endgame is phased — autonomous up to the gate, then an explicit founder stop — not a "fully autonomous to done" mandate that contradicts its own gate.
+- **Evidence** — what proof will the user accept? Tests, metrics, demo, report.
+- **Endgame** — is the finish line shipped code, validated knowledge, or a decision? When a user-gated step (paid spend, sacred ground, an irreversible action) sits on the critical path, the endgame is phased — autonomous up to the gate, then an explicit user stop — not a "fully autonomous to done" mandate that contradicts its own gate.
 
 Ask only questions whose answer would change the prompt; when the remaining unknowns are things the executor can discover from the repo, stop asking and move on.
 
@@ -29,7 +29,7 @@ The executor is a fresh Professor session in this repo with no memory of this co
 - Locate the surfaces the goal touches (start at `docs/agents/_index.md` and the relevant child `CLAUDE.md`); collect the 3–8 entry-point files or docs the executor should read first.
 - Check `docs/epics/` and recent waves for prior work the goal builds on or collides with.
 - Identify the natural first move for the executor: a command (`/wave:builder`, `/jc`, `/wave:orchestrator`, `/wave:refine`, `/p:rnd`), a skill (`rr`), or direct analysis.
-- Distill what the executor cannot infer from the repo: founder intent, tradeoffs already decided, context from this conversation.
+- Distill what the executor cannot infer from the repo: user intent, tradeoffs already decided, context from this conversation.
 
 ## Step 3 — Write the prompt
 
@@ -47,7 +47,7 @@ This is a super-goal — few who attempt it succeed. Work accordingly:
 1. Read this entire prompt first, build a mental model of the end state, and write it to a short northstar note (`docs/epics/{goal-slug}/mental-model/build-northstar.md`) — see far ahead before touching anything; no build work exists until that note does.
 2. Plan in smart workflows: decompose toward the end state, but decide each next step dynamically from what the last step taught you — the plan serves the mental model, never the reverse.
 3. When you hit a real dead end, look back: reconsider earlier decisions, revise the plan, and re-approach. Backtracking a wrong decision is progress; repeating it is not.
-4. Chain the work to done: after each green milestone continue straight to the next; surface to the founder at genuine decision gates and blockers, not to report progress. Done is the Success criteria below — not a green slice, and not a `/goal` "achieved"/"could-not-be-achieved" banner (that ends a harness instance, not the mission). If a banner fires with the criteria still unmet, continue, or resume on the next re-injection.
+4. Chain the work to done: after each green milestone continue straight to the next; surface to the user at genuine decision gates and blockers, not to report progress. Done is the Success criteria below — not a green slice, and not a `/goal` "achieved"/"could-not-be-achieved" banner (that ends a harness instance, not the mission). If a banner fires with the criteria still unmet, continue, or resume on the next re-injection.
 5. On resume and after any `/compact`, re-form the mental model from your northstar note before reading "the next step" — jumping straight to the next step is the drift that loses the end-state.
 
 ## Mission
@@ -73,7 +73,7 @@ This is a super-goal — few who attempt it succeed. Work accordingly:
 
 ## Success criteria
 
-{the evidence the founder will accept — a working end-to-end increment plus independent or held-out proof, not self-graded per-component green}
+{the evidence the user will accept — a working end-to-end increment plus independent or held-out proof, not self-graded per-component green}
 
 ## Suggested route
 
@@ -87,7 +87,7 @@ Resume after any stop: paste `docs/epics/{goal-slug}/prompts/resume-latest.md` i
 
 ## Open questions
 
-{what the executor must confirm with the founder before irreversible moves}
+{what the executor must confirm with the user before irreversible moves}
 ```
 
 Prompt rules: self-contained — the executor has the repo, not this chat; point at files rather than pasting file bodies; no secrets, credentials, or internal URLs.
@@ -98,15 +98,15 @@ Report the file path and one line stating what context you embedded. The prompt 
 
 ## Subcommand: epic — write the continuation prompt for a paused or in-flight epic
 
-`/goal-manager epic {name}` — the goal already exists; the epic carries it. No interrogation: this is extraction into a **continuation prompt** the founder pastes into `/goal` so a fresh chat resumes exactly where the last one stopped. It runs at every checkpoint — a session is always one stop from unrecoverable, and `resume-latest.md` is its always-current rescue.
+`/goal-manager epic {name}` — the goal already exists; the epic carries it. No interrogation: this is extraction into a **continuation prompt** the user pastes into `/goal` so a fresh chat resumes exactly where the last one stopped. It runs at every checkpoint — a session is always one stop from unrecoverable, and `resume-latest.md` is its always-current rescue.
 
 1. **Load the epic.** Read `docs/epics/{name}/manifest.md` + `update.md` + the constitution (`goal-prompt.md`, or whichever prompt file `## Files` registers as the goal source). No `{name}` given or epic missing → `ls docs/epics/` and ask in one line.
 2. **Locate the live state**, in priority order: `update.md` `## State of work` (percent complete, in-flight position, exact next step); manifest `## Key Decisions` entries that supersede or refine the constitution (overrides outrank goal-prompt text — list them explicitly); `## Open Questions`; and any program-counter or register files those sections name (read them; cite their paths, never copy their bodies).
-3. **Write two files** to `docs/epics/{name}/prompts/` (create it if missing): the rolling `resume-latest.md` (overwrite every run — the one file the founder pastes) and a dated `resume-{YYYY-MM-DD}.md` (`-2`/`-3` on same-day collision — the archive). Both carry IDENTICAL content. Both stay unregistered in the manifest `## Files` and are never auto-loaded by `Load epic`.
+3. **Write two files** to `docs/epics/{name}/prompts/` (create it if missing): the rolling `resume-latest.md` (overwrite every run — the one file the user pastes) and a dated `resume-{YYYY-MM-DD}.md` (`-2`/`-3` on same-day collision — the archive). Both carry IDENTICAL content. Both stay unregistered in the manifest `## Files` and are never auto-loaded by `Load epic`.
 
    The file is two sections — `# Report` then `# Prompt`:
 
-   **`# Report`** — founder-facing prose so a reader grasps the state at once: what has been done so far, the key decisions made and WHY (cite the register rows), and the current project state (percent complete, what is green and committed, what is in flight). Narrative, not a template.
+   **`# Report`** — user-facing prose so a reader grasps the state at once: what has been done so far, the key decisions made and WHY (cite the register rows), and the current project state (percent complete, what is green and committed, what is in flight). Narrative, not a template.
 
    **`# Prompt`** — the self-contained resume prompt; pasting it into `/goal` must let a fresh session continue exactly where it stopped:
    - the **Operating mode** block from Step 3, verbatim;
