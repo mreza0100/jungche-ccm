@@ -11,4 +11,4 @@ RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" | tar -C /
 ENV HOME=/root \
     PATH=/usr/local/go/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     CGO_ENABLED=0
-WORKDIR /work
+WORKDIR /worktree

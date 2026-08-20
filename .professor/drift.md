@@ -14,10 +14,13 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 
 ## Post-install customizations
 
-- **KEEP-LOCAL: no worktree pipeline.** `/wave:*`, `worktree.sh`, `alloc-ports.sh`, and the
-  per-project planner/architect/developer/qa agents are NOT installed here. They ship as
-  `blueprint/**` source. Work in this repo lands on `main` under `/dev` verification and
-  a gitter commit. Adopters get the full pipeline; the framework repo does not run itself through it.
+- **KEEP-LOCAL: the fence replaces "no worktree pipeline" (2026-08-20, user-ordered).** Code waves
+  build in `.worktrees/{train}/` through `dev.sh iso` — the `infra/` pfm-dev container (fresh
+  machine, worktree mounted; design `docs/dev/isolated-dev-foundation.md`). Markdown-only waves
+  stay on `main`. The host mirror (build to `~/.local/bin/pfm` + `pfm install --yes`) runs only
+  when a fenced wave fully closes: QA pass → orchestrator review, issues fixed → gitter merge.
+  The adopter worktree pipeline (`worktree.sh`, `alloc-ports.sh`, per-project agents) remains
+  uninstalled; this fence is the repo's own, container-backed variant.
 
 - **KEEP-LOCAL: no `/pcm:update`.** This repo is upstream. There is no newer tag to replay a
   manifest against, so shipping the command would be a route to nowhere.
