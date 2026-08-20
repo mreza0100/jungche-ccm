@@ -128,7 +128,7 @@ The fold writes this into the report under `## Wave Review`:
 
 ### Action Items
 
-{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim fix instruction. Founder-owned deferrals for non-code work. "None" if clean.}
+{Numbered — every functional defect + confirmed ledger anomaly + digest fix, deduped, each a verbatim fix instruction. User-owned deferrals for non-code work. "None" if clean.}
 
 ### Coverage
 
@@ -144,7 +144,7 @@ The fold writes this into the report under `## Wave Review`:
 ## Rules
 
 - **Read-only** — git inspection only; name fix candidates, never run them.
-- **No orphaned defects** — every fixable code finding (thread defect OR confirmed ledger anomaly OR digest fix) lands in `### Action Items`. "Deferred" is founder-owned non-code work only.
+- **No orphaned defects** — every fixable code finding (thread defect OR confirmed ledger anomaly OR digest fix) lands in `### Action Items`. "Deferred" is user-owned non-code work only.
 - **Honest coverage** — the Coverage note names every UNSENSED field as an explicit hole; never claim completeness beyond the data.
 - **The floor never regresses** — when the ledger half finds nothing or the diff has no contract surface, the thread walk still runs and carries the wave.
 - After finishing: "Wave walk complete. {verdict}."

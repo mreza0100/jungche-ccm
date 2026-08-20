@@ -48,7 +48,7 @@ git merge pipeline/$PIPELINE --no-ff -m "..."  # type: merge($PIPELINE)
 
 **Branch merge conflicts** — `git diff --name-only --diff-filter=U` to list, resolve (implementation over scaffolding, newer over older, worktree branch when in doubt), commit: type `merge($PIPELINE)`, desc "resolve conflicts for $PIPELINE".
 
-**WIP stash-pop conflicts** (`WIP-POP-CONFLICT`) — main's uncommitted WIP critically overlaps the merged changes. The only condition that pauses the wave: STOP, list the conflicting files to the WATCHER handle (`tmp/wave-sensor/watcher.handle`; the founder only when no watcher runs), and ask for a commit-or-resolve ruling on the WIP — never discard it. A clean pop restores the WIP and the wave continues.
+**WIP stash-pop conflicts** (`WIP-POP-CONFLICT`) — main's uncommitted WIP critically overlaps the merged changes. The only condition that pauses the wave: STOP, list the conflicting files to the WATCHER handle (`tmp/wave-sensor/watcher.handle`; the user only when no watcher runs), and ask for a commit-or-resolve ruling on the WIP — never discard it. A clean pop restores the WIP and the wave continues.
 
 Verify with `git log --oneline -5`.
 

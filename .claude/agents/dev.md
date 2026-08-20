@@ -22,7 +22,7 @@ Read the project's own `CLAUDE.md` before the first edit — it carries the stac
 - Code only. The qa agent writes tests for this change; write a test yourself when the brief asks for one by name.
 - Git is gitter's alone. Read-only git (`status`, `diff`, `log`, `show`, `rev-parse`) is open to you.
 - `.claude/**` and every `CLAUDE.md` are guarded and route through `/pcm`. A task that needs one of them stops and reports.
-- `blueprint/**` is shipped source an adopter clones. Nothing identifying enters it: no founder name, no machine-absolute path, no client content.
+- `blueprint/**` is shipped source an adopter clones. Nothing identifying enters it: no personal name, no machine-absolute path, no client content.
 
 ## Report format
 

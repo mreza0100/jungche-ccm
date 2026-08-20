@@ -16,7 +16,7 @@ The fix loop the steps below cite is this repo's own: the `dev` agent implements
 
 ## W1 — Resolve, stage & pre-flight
 
-**Founder-question forecast (gate):** enumerate and CLOSE every founder-only item the batch will hit (destructive ratifications, publication decisions, scope calls) before W2 — a mid-batch wait for the founder is a failed pre-flight.
+**User-question forecast (gate):** enumerate and CLOSE every user-only item the batch will hit (destructive ratifications, publication decisions, scope calls) before W2 — a mid-batch wait for the user is a failed pre-flight.
 
 **Resolve the task list:** empty/blank arg → task file is `wave.md` at repo root; a path → read that file; a description → parse as inline tasks.
 
@@ -52,7 +52,7 @@ Every failure is blocking, pre-existing included. A regression test counts only 
 
 Write a lightweight review input to `docs/dev/waves/{wave-name}/review.md` — the manifest's task list plus the W5 commit SHAs (the walk's scout runs `git show {sha}` for these commits). Invoke the walker workflow: `Workflow({ scriptPath, args: { reportPath: 'docs/dev/waves/{wave-name}/review.md', invariants, project } })` — scriptPath and `args.project` read from `.claude/commands/wave/walker-invariants.md` § Engine Config, the same file this step already opens for `invariants`, and passed verbatim; never `{name}`: name-lookup serves a stale session-start snapshot. `invariants` is transcribed per `walker.md` § Entry points (mechanical transcription; an empty registry match → omit). It returns `{ verdict, actionItems, review }` plus the `ledger`.
 
-Group every code finding in `### Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE remediation lane per group: a `dev` agent diagnoses and fixes every finding in the group, `qa` re-runs that project's suite once, then `gitter` commits the group — one commit per group, or one commit total when every group lands together. Surface the review's founder-owned deferrals; never park a fixable defect. Present the verdict.
+Group every code finding in `### Action Items` by its file or project (a finding with no single owner file groups by its named project). Run ONE remediation lane per group: a `dev` agent diagnoses and fixes every finding in the group, `qa` re-runs that project's suite once, then `gitter` commits the group — one commit per group, or one commit total when every group lands together. Surface the review's user-owned deferrals; never park a fixable defect. Present the verdict.
 
 ## W7 — Report
 

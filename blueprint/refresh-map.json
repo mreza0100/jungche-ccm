@@ -596,9 +596,9 @@
         ".claude/skills/legal/references/vendor-due-diligence.md": "457af2affe208bf5dc6badf39c7e582b934dce005673495bed4c6b2f8bce36dd"
       }
     },
-    "commands/wave/sentinel.md": {
+    "commands/wave/ccc.md": {
       "sources": {
-        ".claude/commands/wave/sentinel.md": "753a0068011aad4afa40a19f76db14dba11d109aa8b199c1654e4f622ec6c74d"
+        ".claude/commands/wave/ccc.md": "f708267a5a1c170e9209c571cdaf1b8a0b3d7b2113856e7789b4721d20e74112"
       }
     },
     "agents/scheduler.md": {
