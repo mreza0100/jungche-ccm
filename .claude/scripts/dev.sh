@@ -255,15 +255,7 @@ cmd_iso() { # cmd_iso <action> [project]
     shell)
       docker compose -f "$compose" run --rm pfm-dev zsh -c "$proof; exec zsh -i" ;;
     e2e)
-      # The fence mounts a bare worktree: no .git, no gitignored install artifacts. The
-      # previous-tag phase needs git history, so stage it as a bundle the harness clones from.
-      local bundle="$REPO_ROOT/tmp/e2e/repo.bundle"
-      mkdir -p "${bundle%/*}"
-      if ! git -C "$REPO_ROOT" bundle create "$bundle" --tags --branches HEAD >/dev/null 2>&1; then
-        fail_step "iso e2e: repo bundle creation failed — the e2e previous-tag phase cannot run without it"
-        exit 1
-      fi
-      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; PFM_E2E_REPO_BUNDLE=/worktree/tmp/e2e/repo.bundle go -C pfm test -tags e2e -p 1 ./e2e/..." ;;
+      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; go -C pfm test -tags e2e -p 1 ./e2e/..." ;;
     install|build|typecheck|verify|test|all|status)
       docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; ./.claude/scripts/dev.sh $action $target" ;;
     *)
