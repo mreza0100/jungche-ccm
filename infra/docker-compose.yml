@@ -1,0 +1,21 @@
+# The isolated dev fence — mounts the ACTIVE worktree at /work and behaves as a
+# brand-new machine: own HOME, own tmux, no published ports, builds land in the
+# container's ~/.local/bin. `dev.sh iso` is the intended entry point; it sets
+# PFM_DEV_WORKTREE to the checkout it runs from. See docs/dev/isolated-dev-foundation.md.
+services:
+  pfm-dev:
+    build:
+      context: .
+      dockerfile: pfm-dev.Dockerfile
+    image: professor-pfm-dev
+    volumes:
+      - ${PFM_DEV_WORKTREE:?set by dev.sh iso — the worktree to fence}:/work
+      - pfm-dev-gocache:/root/.cache/go-build
+      - pfm-dev-gomod:/root/go/pkg/mod
+    working_dir: /work
+    environment:
+      PFM_DEV_FENCE: "1"
+
+volumes:
+  pfm-dev-gocache:
+  pfm-dev-gomod:

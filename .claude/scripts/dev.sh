@@ -233,6 +233,36 @@ dispatch() { # dispatch <project> <action>
   esac
 }
 
+# ─── iso — the container fence ───────────────────────────────────────────────
+# Runs a command inside the pfm-dev container (infra/docker-compose.yml) with
+# THIS checkout — the worktree this script belongs to — mounted at /work: a
+# fresh machine per run (own HOME, own tmux, no published ports). Files are
+# edited on the host; the container only builds and tests.
+# First output line is the fence proof (container hostname + HOME + /work).
+# BROKEN STATE: docker or the compose file missing = TOOLCHAIN-MISSING and a
+# non-zero exit — never a host fallback; a run that cannot print its fence
+# proof did not run inside the fence.
+cmd_iso() { # cmd_iso <action> [project]
+  local action="${1:-}" target="${2:-pfm}"
+  need_tool docker iso || exit 1
+  local compose="$REPO_ROOT/infra/docker-compose.yml"
+  if [[ ! -f "$compose" ]]; then
+    fail_step "iso: TOOLCHAIN-MISSING — $compose not found"; exit 1
+  fi
+  export PFM_DEV_WORKTREE="$REPO_ROOT"
+  local proof='echo "fence: container=$(hostname) HOME=$HOME work=$(pwd)"'
+  case "$action" in
+    shell)
+      docker compose -f "$compose" run --rm pfm-dev zsh -c "$proof; exec zsh -i" ;;
+    e2e)
+      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; go -C pfm test -tags e2e -p 1 ./e2e/..." ;;
+    install|build|typecheck|verify|test|all|status)
+      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; ./.claude/scripts/dev.sh $action $target" ;;
+    *)
+      echo "usage: dev.sh iso {install|build|typecheck|verify|test|all|status|e2e|shell} [project]" >&2; exit 2 ;;
+  esac
+}
+
 usage() {
   cat >&2 <<EOF
 usage: dev.sh <command> [project]
@@ -245,6 +275,8 @@ commands:
   verify                 pre-test gates (go vet, walker's verify, blueprint's leak + token gates)
   test                   run the test suite
   all                    verify + build + test for the project
+  iso <cmd> [project]    run any command above — plus e2e | shell — inside the
+                         pfm-dev container fence (infra/), worktree mounted
 
 projects: ${PROJECTS[*]} | all (default)
 
@@ -267,6 +299,7 @@ case "$CMD" in
       head_ "$TARGET :: $CMD"
       dispatch "$TARGET" "$CMD"
     fi ;;
+  iso) cmd_iso "${2:-}" "${3:-pfm}" ;;
   -h|--help|help) usage ;;
   *) echo "unknown command: $CMD" >&2; usage ;;
 esac
