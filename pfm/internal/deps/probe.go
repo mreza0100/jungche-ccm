@@ -16,6 +16,13 @@ import (
 
 const ProbeTimeout = 5 * time.Second
 
+// DefaultSelfDoctorTimeout bounds the self-doctor summary call on its own —
+// separately from the ordinary version-probe timeout. A codex/claude
+// self-doctor can legitimately run past a few seconds while scanning a large
+// transcript corpus, and that must read as a named timeout, never as a
+// broken engine that blocks install preflight.
+const DefaultSelfDoctorTimeout = 30 * time.Second
+
 type State string
 
 const (
@@ -45,6 +52,24 @@ type ProbeOptions struct {
 	VerboseDir   string
 	LookPath     func(string) (string, error)
 	Timeout      time.Duration
+	// SelfDoctorTimeout bounds only the self-doctor calls. Unset falls back
+	// to Timeout (so existing callers that only ever set Timeout keep
+	// driving the self-doctor bound), and Timeout unset too falls back to
+	// DefaultSelfDoctorTimeout.
+	SelfDoctorTimeout time.Duration
+}
+
+// selfDoctorTimeout resolves the effective self-doctor bound: an explicit
+// SelfDoctorTimeout wins, then the general Timeout (existing test setups
+// already drive the self-doctor probe through it), then the 30s default.
+func selfDoctorTimeout(options ProbeOptions) time.Duration {
+	if options.SelfDoctorTimeout > 0 {
+		return options.SelfDoctorTimeout
+	}
+	if options.Timeout > 0 {
+		return options.Timeout
+	}
+	return DefaultSelfDoctorTimeout
 }
 
 // Probe resolves and runs every applicable registry entry with a per-command
@@ -118,45 +143,67 @@ func probeOne(ctx context.Context, entry Entry, options ProbeOptions) Result {
 	}
 	result.State = StateOK
 	if len(entry.SelfDoctorArgs) != 0 {
-		result.SelfDoctor, err = probeSelfDoctor(ctx, path, entry, options.VerboseDir, options.Timeout)
+		var selfDoctorRaw string
+		result.SelfDoctor, selfDoctorRaw, err = probeSelfDoctor(ctx, path, entry, options.VerboseDir, selfDoctorTimeout(options))
 		if err != nil {
 			result.VerboseErr = err.Error()
 		}
-		if result.SelfDoctor == "broken" {
+		switch {
+		case result.SelfDoctor == "broken":
 			result.State = StateBroken
-			result.Error = "self-doctor failed"
+			if selfDoctorRaw != "" {
+				result.Error = fmt.Sprintf("self-doctor failed raw=%q", selfDoctorRaw)
+			} else {
+				result.Error = "self-doctor failed"
+			}
+		case strings.HasPrefix(result.SelfDoctor, "timeout"):
+			// The binary already answered --version; a self-doctor summary
+			// that merely outran its own bound is not a broken engine and
+			// must never block install preflight.
+			result.Error = fmt.Sprintf("self-doctor %s", result.SelfDoctor)
 		}
 	}
 	return result
 }
 
-func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir string, timeout time.Duration) (string, error) {
+// probeSelfDoctor returns the self-doctor status label, the raw first output
+// line for a genuine ("broken") failure so the caller can quote it, and any
+// verbose-write error. The --help probe's own timeout still reads as
+// "broken" — a self-doctor that cannot even answer --help within the bound
+// is unsupported or hung, not a legitimate slow summary. Only the summary
+// call itself (entry.SelfDoctorArgs) distinguishes a timeout from a real
+// failure, because that is the call the regression this guards against
+// actually outruns.
+func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir string, timeout time.Duration) (string, string, error) {
 	helpArgs := []string{entry.SelfDoctorArgs[0], "--help"}
 	help, helpErr := boundedOutput(ctx, timeout, path, helpArgs...)
 	if err := writeVerbose(verboseDir, entry.Name+"-self-doctor-help", help); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if helpErr != nil {
 		if errors.Is(helpErr, context.DeadlineExceeded) {
-			return "broken", nil
+			return "broken", "", nil
 		}
 		var exitErr *exec.ExitError
 		if errors.As(helpErr, &exitErr) {
-			return "unavailable", nil
+			return "unavailable", "", nil
 		}
-		return "broken", nil
+		return "broken", "", nil
 	}
 	output, err := boundedOutput(ctx, timeout, path, entry.SelfDoctorArgs...)
 	if writeErr := writeVerbose(verboseDir, entry.Name+"-self-doctor", output); writeErr != nil {
-		return "", writeErr
+		return "", "", writeErr
 	}
 	if err != nil {
-		if strings.Contains(strings.ToLower(string(output)), "tty") || strings.Contains(strings.ToLower(string(output)), "interactive") {
-			return "unavailable (interactive-only)", nil
+		if errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Sprintf("timeout (%s)", timeout), "", nil
 		}
-		return "broken", nil
+		if strings.Contains(strings.ToLower(string(output)), "tty") || strings.Contains(strings.ToLower(string(output)), "interactive") {
+			return "unavailable (interactive-only)", "", nil
+		}
+		return "broken", FirstLine(string(output)), nil
 	}
-	return "ok", nil
+	return "ok", "", nil
 }
 
 func boundedOutput(parent context.Context, timeout time.Duration, path string, args ...string) ([]byte, error) {
