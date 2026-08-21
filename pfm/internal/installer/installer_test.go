@@ -90,6 +90,30 @@ func TestRunningNameSyncRefusesMutatingModesBeforeWriting(t *testing.T) {
 	}
 }
 
+func TestZshrcCreateOnFreshHomeNamesItselfHonestly(t *testing.T) {
+	home := t.TempDir()
+	var applied bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{}, Stdout: &applied,
+	}); err != nil {
+		t.Fatalf("apply on a fresh home: %v\n%s", err, applied.String())
+	}
+	out := applied.String()
+	zshrc := filepath.Join(home, ".zshrc")
+	if !strings.Contains(out, "create "+zshrc) {
+		t.Fatalf("apply output never says it created %s:\n%s", zshrc, out)
+	}
+	if strings.Contains(out, "rewrite "+zshrc+" (backup preserved)") {
+		t.Fatalf("claimed a backed-up rewrite for an absent zshrc:\n%s", out)
+	}
+	if matches, _ := filepath.Glob(zshrc + ".pre-professor-*"); len(matches) != 0 {
+		t.Fatalf("backup written for a file that did not exist: %v", matches)
+	}
+	if content := readFixture(t, zshrc); !strings.Contains(content, "pfm.zsh") {
+		t.Fatalf("zshrc was not created with the source line:\n%s", content)
+	}
+}
+
 func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	home := t.TempDir()
 	config := filepath.Join(home, ".claude")

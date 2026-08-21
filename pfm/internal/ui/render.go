@@ -280,10 +280,10 @@ func (model Model) renderStatsPanel(width, height int) string {
 	innerHeight := maxInt(1, height-2)
 	lines := make([]string, 0, innerHeight)
 	if model.statsSubtab == StatsChats {
-		nameWidth := minInt(32, maxInt(8, innerWidth-59))
+		nameWidth := minInt(32, maxInt(8, innerWidth-72))
 		header := fmt.Sprintf(
-			"  %-*s %-7s %7s %8s %6s %9s %8s %5s",
-			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/MIN", "GEAR",
+			"  %-*s %-7s %7s %8s %6s %9s %8s %5s %12s",
+			nameWidth, "NAME", "ENGINE", "CPU%", "RSS", "RAM%", "TOKENS", "TOK/MIN", "GEAR", "USAGE",
 		)
 		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
 		for index, chat := range model.stats.Chats {
@@ -307,10 +307,10 @@ func (model Model) renderStatsPanel(width, height int) string {
 				tokensPerMinute = formatTokenRate(chat.TokensPerMinute)
 			}
 			plain := fmt.Sprintf(
-				"  %-*s %-7s %7s %8s %5.1f%% %9s %8s %5s",
+				"  %-*s %-7s %7s %8s %5.1f%% %9s %8s %5s %12s",
 				nameWidth, clipRunes(cleanField(chat.Name), nameWidth), chat.Engine, cpu,
 				formatSize(int64(chat.RSSBytes)), chat.RAMPercent,
-				tokens, tokensPerMinute, gear,
+				tokens, tokensPerMinute, gear, usageSpark(chat.Spark),
 			)
 			plain = fillLine(plain, innerWidth)
 			if model.statsFocus == StatsFocusContent && index == model.statsCursor {
@@ -329,7 +329,8 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", chat.RAMPercent)) +
 				" " + statsTokenStyle.Render(fmt.Sprintf("%9s", tokens)) +
 				" " + statsTokenStyle.Render(fmt.Sprintf("%8s", tokensPerMinute)) +
-				" " + statsGearStyle.Render(fmt.Sprintf("%5s", gear))
+				" " + statsGearStyle.Render(fmt.Sprintf("%5s", gear)) +
+				" " + statsTokenStyle.Render(fmt.Sprintf("%12s", usageSpark(chat.Spark)))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
 	} else if model.statsSubtab == StatsDocker {
@@ -922,6 +923,33 @@ func formatTokens(tokens int64) string {
 		return "…"
 	}
 	return formatTokenNumber(float64(tokens))
+}
+
+// usageSpark draws the chat's recent token burn as one line of block runes:
+// each column is a sample delta, height relative to the busiest sample in the
+// window. An idle chart stays flat; a burst spikes. No history yet renders as
+// "…" — the chart needs two samples before it can claim anything.
+func usageSpark(deltas []int64) string {
+	if len(deltas) == 0 {
+		return "…"
+	}
+	blocks := []rune("▁▂▃▄▅▆▇█")
+	busiest := deltas[0]
+	for _, delta := range deltas[1:] {
+		if delta > busiest {
+			busiest = delta
+		}
+	}
+	runes := make([]rune, 0, len(deltas))
+	for _, delta := range deltas {
+		if delta <= 0 || busiest <= 0 {
+			runes = append(runes, blocks[0])
+			continue
+		}
+		height := int(float64(delta)/float64(busiest)*float64(len(blocks)-1) + 0.5)
+		runes = append(runes, blocks[minInt(height, len(blocks)-1)])
+	}
+	return string(runes)
 }
 
 func formatTokenRate(tokens float64) string {

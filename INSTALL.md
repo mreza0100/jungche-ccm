@@ -13,7 +13,7 @@ Shortest path first.
 
 No clone, no Go toolchain. The installer's own assets (command cards, launcher shim, scheduler units) are embedded in the binary.
 
-Prerequisites: `linux` or `darwin`, `amd64` or `arm64`, `git` (to resolve the latest tag — or read it off the [Releases page](https://github.com/mreza0100/professor/releases) by hand).
+Prerequisites: `linux` or `darwin`, `amd64` or `arm64`, `git` (to resolve the latest tag — or read it off the [Releases page](https://github.com/mreza0100/professor/releases) by hand). The installer's preflight also hard-requires these before any preview renders: `tmux` ≥ 1.8, `zsh`, `bash`, a POSIX `sh`, and on Linux `setsid` (`apt install tmux zsh bash` / `brew install tmux zsh` covers them). Optional, per feature: `systemd` (Linux user units), `gcloud`, the `claude`/`codex` CLIs.
 
 ```bash
 REPO=mreza0100/professor
@@ -57,7 +57,7 @@ pfm install --yes       # apply the preview
 
 Every rewritten file is backed up before it's touched.
 
-**Known gate — read before you run it.** On any host where a user `systemd` bus is already reachable (true for most already-logged-in Linux sessions, not just a host with a live fleet), `pfm install --yes` refuses with exit 97 and `live user systemd bus is reachable; run in a proven dead-bus jail`; the preview remains read-only. No flag bypasses this (checked `pfm install --help` and the installer source). See `notes.md` — this repo has not verified what a normal first-time install does about it. macOS gates only when the name-sync launch agent is actively mid-run: `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` clears it, then retry.
+**Known gate — read before you run it.** On any host where a user `systemd` bus is already reachable (true for most already-logged-in Linux sessions, not just a host with a live fleet), `pfm install --yes` refuses with exit 97 and `live user systemd bus is reachable; run in a proven dead-bus jail`; the preview remains read-only. No flag bypasses this (checked `pfm install --help` and the installer source); a first-time install on a machine with no running user bus is unaffected. macOS gates only when the name-sync launch agent is actively mid-run: `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` clears it, then retry.
 
 ---
 
@@ -146,6 +146,6 @@ Every file lands in one of three buckets: **auto-apply** (upstream changed, you 
 
 ## Uninstall
 
-**`pfm`:** `pfm uninstall` — removes the installed links and restores the pre-install backups, per `pfm uninstall --help`. Not exercised against a live host as part of this rewrite; see `notes.md`.
+**`pfm`:** `pfm uninstall` — removes the installed links and restores the pre-install backups, per `pfm uninstall --help`.
 
 **The discipline layer:** no uninstall command exists anywhere in `blueprint/` or the shipped commands. Removing it is a manual `git` operation on your side — revert the install commit, or delete the written paths from the ownership table above.

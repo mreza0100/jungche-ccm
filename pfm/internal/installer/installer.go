@@ -926,6 +926,9 @@ func (installer *engine) wireSettings() error {
 			candidates = append(candidates, filepath.Join(configDir, "settings.json"))
 		}
 	}
+	if len(candidates) == 0 {
+		installer.skip("no Claude account config dirs configured — settings hook wiring has nothing to wire")
+	}
 	seen := map[string]bool{}
 	seenOwnershipPaths := map[string]bool{}
 	// Codex hooks share this ledger but are converged by wireCodexHooks after
@@ -1036,6 +1039,9 @@ func (installer *engine) wireCodexHooks() error {
 		return fmt.Errorf("read settings hook ownership %s: %w", ownershipPath, err)
 	}
 	seen := map[string]bool{}
+	if len(installer.codexHomes()) == 0 {
+		installer.skip("no Codex accounts configured — hooks.json wiring has nothing to wire")
+	}
 	for _, codexHome := range installer.codexHomes() {
 		path := filepath.Join(codexHome, "hooks.json")
 		physical := physicalSettingsPath(path)
@@ -1117,7 +1123,11 @@ func (installer *engine) wireShell(uninstall bool) error {
 		installer.ok(zshrc + " source line")
 		return nil
 	}
-	return installer.change("rewrite "+zshrc+" (backup preserved)", func() error {
+	description := "rewrite " + zshrc + " (backup preserved)"
+	if len(raw) == 0 {
+		description = "create " + zshrc
+	}
+	return installer.change(description, func() error {
 		if len(raw) > 0 {
 			backup := availableBackup(zshrc, installer.stamp)
 			if err := copyBackup(zshrc, backup); err != nil {
