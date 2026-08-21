@@ -103,6 +103,49 @@ func TestInstallPreflightRefusesRequiredDependencyEvenWithForce(t *testing.T) {
 	}
 }
 
+func TestInstallPreflightFailureStillPreviewsInDryRun(t *testing.T) {
+	savedProbe, savedInstaller := dependencyProbeOverride, runInstaller
+	t.Cleanup(func() {
+		dependencyProbeOverride = savedProbe
+		runInstaller = savedInstaller
+	})
+	dependencyProbeOverride = func(_ context.Context, entries []deps.Entry, _ deps.ProbeOptions) []deps.Result {
+		for _, entry := range entries {
+			if entry.Name == "tmux" {
+				return []deps.Result{{Entry: entry, State: deps.StateMissing}}
+			}
+		}
+		t.Fatal("tmux registry entry missing")
+		return nil
+	}
+	called := false
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		if options.Mode != installer.ModeDryRun {
+			t.Errorf("install mode=%v, want dry run", options.Mode)
+		}
+		called = true
+		return installer.Report{}, nil
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{
+		Config: pfmconfig.Config{Claude: pfmconfig.Claude{Binary: "claude"}, Codex: pfmconfig.Codex{Binary: "codex"}},
+		Paths:  paths.Values{Home: home, CodexRoot: filepath.Join(home, ".codex")},
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--skip-harvest"}, &stdout, &stderr, runtime); code != 1 {
+		t.Fatalf("install code=%d, want 1\nstdout=%s\nstderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !called {
+		t.Fatal("read-only preview never ran — a fresh machine gets no plan at all")
+	}
+	if !strings.Contains(stdout.String(), "doctor: dep tmux path=(none) MISSING required") || !strings.Contains(stderr.String(), "required dependency preflight failed") {
+		t.Fatalf("missing preflight report:\nstdout=%s\nstderr=%s", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "if you agree, run again") {
+		t.Fatalf("apply confirmation offered despite failed preflight:\n%s", stdout.String())
+	}
+}
+
 func TestHookDoctorRowsCountMissingBrokenAndDriftWarnings(t *testing.T) {
 	saved := hookProbeOverride
 	t.Cleanup(func() { hookProbeOverride = saved })
