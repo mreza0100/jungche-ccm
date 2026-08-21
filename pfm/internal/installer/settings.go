@@ -199,6 +199,7 @@ func updateSettings(
 		owned,
 		pfmBinary,
 		uninstall,
+		settingsDocumentHasMixedOwnershipEntry(document, pfmBinary),
 	)
 
 	if !changed {

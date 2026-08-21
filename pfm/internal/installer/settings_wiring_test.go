@@ -172,6 +172,110 @@ func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T)
 	}
 }
 
+// TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent pins the
+// deep-doctor defect one step past TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings:
+// nextSettingsHookOwnership's "already fully-wired" claim only fires when
+// the WHOLE settings.json document is "pure" — every hook command in it,
+// not just the installer's own, matches a canonical (event, matcher,
+// command) triple. A real host's settings.json is essentially never that
+// clean: it also carries third-party hooks (a monitoring agent's
+// PreToolUse hook, an operator's own SessionStart/SessionEnd scripts) that
+// no installer template produced. Because a single foreign hook anywhere
+// in the document flips `pure` to false for the ENTIRE file, an otherwise
+// fully-wired host with even one foreign hook never gets its eight
+// expected hooks claimed, and `pfm doctor` reports permanent ownership
+// drift (`ownership=0 file=1`) for hooks that are, in fact, correctly
+// wired — on every install, forever.
+func TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent(t *testing.T) {
+	home := t.TempDir()
+
+	// Build the settings document a fully-wired install produces, exactly
+	// as TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings does.
+	preexisting, _, _, err := updateSettings([]byte("{}\n"), home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(preexisting, &document); err != nil {
+		t.Fatal(err)
+	}
+	// Foreign hooks a real host carries that no installer template
+	// produced — invented placeholder commands shaped like a third-party
+	// monitoring hook, an operator's own SessionStart script, and a
+	// SessionEnd repo sync — parked at events the installer also wires, so
+	// the document mixes canonical and foreign entries exactly like a live
+	// host does.
+	foreignPreToolUse := `node "/opt/example-monitor/hook-handler.js" PreToolUse`
+	foreignSessionStart := `bash /opt/example-tools/cc-memory-wire.sh`
+	foreignSessionEnd := `cd /opt/example-repo && git pull --ff-only`
+	appendHookWithMatcher(document, "PreToolUse", "", foreignPreToolUse)
+	appendHookWithMatcher(document, "SessionStart", "", foreignSessionStart)
+	appendHookWithMatcher(document, "SessionEnd", "", foreignSessionEnd)
+	withForeign, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Today's install run starts from an EMPTY ownership ledger, exactly as
+	// wireSettings does for a path the ledger has no entry for yet.
+	updated, _, owned, err := updateSettings(withForeign, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prefix := home + "/.local/bin/pfm"
+	expectedKeys := []settingsHookKey{
+		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " dream hook agent-inject"},
+		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " internal explore-deny"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " dream hook nudge"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal epic-inject"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " chat group hook"},
+		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " usage-hook"},
+		{Event: "SessionStart", Matcher: "", Command: prefix + " internal launcher-repair"},
+		{Event: "SessionEnd", Matcher: "", Command: prefix + " internal clear-kill"},
+	}
+	if len(owned) != len(expectedKeys) {
+		t.Fatalf("owned hooks=%d, want %d — every already-present expected hook must be claimed even with foreign hooks in the document: %#v", len(owned), len(expectedKeys), owned)
+	}
+	for _, key := range expectedKeys {
+		if owned[key] != 1 {
+			t.Fatalf("owned[%#v]=%d, want 1", key, owned[key])
+		}
+	}
+	for _, foreign := range []string{foreignPreToolUse, foreignSessionStart, foreignSessionEnd} {
+		for key := range owned {
+			if key.Command == foreign {
+				t.Fatalf("foreign hook %q was wrongly claimed into the ownership ledger: %#v", foreign, owned)
+			}
+		}
+	}
+	for event, foreign := range map[string]string{
+		"PreToolUse":   foreignPreToolUse,
+		"SessionStart": foreignSessionStart,
+		"SessionEnd":   foreignSessionEnd,
+	} {
+		if got := hookCommandCount(t, string(updated), event, foreign); got != 1 {
+			t.Fatalf("foreign %s hook count=%d after wiring, want 1 (installer must leave it untouched)\n%s", event, got, updated)
+		}
+	}
+
+	// The doctor hook probe must agree: an already-owned hook is never
+	// drift, foreign hooks in the document notwithstanding.
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	writeFixture(t, settingsPath, string(withForeign))
+	encoded, err := encodeSettingsHookOwnership(map[string]settingsHookCounts{physicalSettingsPath(settingsPath): owned})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", "settings-hook-ownership.json"), string(encoded))
+	machine := pfmconfig.Config{Accounts: []pfmconfig.Account{{ID: 1, ConfigDir: filepath.Join(home, ".claude")}}}
+	for _, result := range ProbeExpectedHooks(home, machine) {
+		if result.State == "drift" {
+			t.Fatalf("hook probe reported drift for an already-owned hook despite foreign hooks present: %#v", result)
+		}
+	}
+}
+
 // TestSettingsInstallRemovesRetiredClearHideAndKeepsOneClearKill pins the
 // deep-doctor defect: the kill-rename retired `internal clear-hide` in favor
 // of `internal clear-kill` (cmd/pfm/main.go's `internal` dispatch has no

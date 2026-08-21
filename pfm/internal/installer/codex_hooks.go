@@ -64,7 +64,7 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 			changed = true
 		}
 	}
-	nextOwned := nextSettingsHookOwnership(before, countSettingsHookCommands(document), owned, pfmBinary, uninstall)
+	nextOwned := nextSettingsHookOwnership(before, countSettingsHookCommands(document), owned, pfmBinary, uninstall, settingsDocumentHasMixedOwnershipEntry(document, pfmBinary))
 	if !changed {
 		return raw, false, nextOwned, nil
 	}
