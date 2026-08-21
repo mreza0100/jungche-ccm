@@ -41,20 +41,32 @@ type Window struct {
 	ResetsAt    string   `json:"resets_at"`
 }
 
-// Usage is the typed core of the OAuth usage response. Extra retains future
-// model windows so consumers can recognize them without losing the payload.
+// ScopedLimit is one model-specific quota carried in the usage response's
+// limits array.
+type ScopedLimit struct {
+	Kind  string `json:"kind"`
+	Scope struct {
+		Model struct {
+			DisplayName string `json:"display_name"`
+		} `json:"model"`
+	} `json:"scope"`
+	Percent  *float64 `json:"percent"`
+	ResetsAt string   `json:"resets_at"`
+	IsActive bool     `json:"is_active"`
+}
+
+// Usage is the typed quota-bearing core of the OAuth usage response. Unknown
+// top-level provider metadata is intentionally ignored rather than presented
+// as a rate-limit window.
 type Usage struct {
-	FiveHour   Window            `json:"five_hour"`
-	SevenDay   Window            `json:"seven_day"`
-	SevenOpus  Window            `json:"seven_day_opus"`
-	SevenFable Window            `json:"seven_day_fable"`
-	Extra      map[string]Window `json:"-"`
+	FiveHour  Window        `json:"five_hour"`
+	SevenDay  Window        `json:"seven_day"`
+	SevenOpus Window        `json:"seven_day_opus"`
+	Limits    []ScopedLimit `json:"limits"`
 }
 
 // WindowDescriptor is the canonical public name and ordering metadata for one
-// raw API window key. Unknown keys retain their raw spelling so a newly added
-// server window is visible as a named compatibility gap, never a codename that
-// looks supported.
+// recognized API window key.
 type WindowDescriptor struct {
 	Key   string
 	Label string
@@ -71,33 +83,21 @@ type NamedWindow struct {
 var knownWindowDescriptors = []WindowDescriptor{
 	{Key: "five_hour", Label: "5h", Known: true},
 	{Key: "seven_day", Label: "7d", Known: true},
-	{Key: "seven_day_opus", Label: "7d-opus", Known: true},
 	{Key: "seven_day_fable", Label: "7d-fable", Known: true},
 }
 
-// DescribeWindows returns present keys in canonical order, followed by sorted
-// unknown keys whose labels explicitly retain the raw API spelling.
+// DescribeWindows returns recognized present keys in canonical display order.
+// Provider metadata and unrecognized top-level keys are never windows.
 func DescribeWindows(keys []string) []WindowDescriptor {
 	present := make(map[string]bool, len(keys))
 	for _, key := range keys {
 		present[key] = true
 	}
-	described := make([]WindowDescriptor, 0, len(present))
+	described := make([]WindowDescriptor, 0, len(knownWindowDescriptors))
 	for _, descriptor := range knownWindowDescriptors {
 		if present[descriptor.Key] {
 			described = append(described, descriptor)
-			delete(present, descriptor.Key)
 		}
-	}
-	unknown := make([]string, 0, len(present))
-	for key := range present {
-		unknown = append(unknown, key)
-	}
-	sort.Strings(unknown)
-	for _, key := range unknown {
-		described = append(described, WindowDescriptor{
-			Key: key, Label: "unknown[" + key + "]", Known: false,
-		})
 	}
 	return described
 }
@@ -105,12 +105,18 @@ func DescribeWindows(keys []string) []WindowDescriptor {
 // NamedWindows returns only windows actually carried by the response. A zero
 // utilization pointer is still present and therefore remains visible.
 func (usage Usage) NamedWindows() []NamedWindow {
+	return usage.NamedWindowsAt(time.Now())
+}
+
+// NamedWindowsAt is the deterministic form used by samplers and renderers that
+// already own a clock.
+func (usage Usage) NamedWindowsAt(now time.Time) []NamedWindow {
 	windows := map[string]Window{
-		"five_hour": usage.FiveHour, "seven_day": usage.SevenDay,
-		"seven_day_opus": usage.SevenOpus, "seven_day_fable": usage.SevenFable,
+		"five_hour": usage.FiveHour,
+		"seven_day": usage.SevenDay,
 	}
-	for key, window := range usage.Extra {
-		windows[key] = window
+	if fable, ok := usage.fableWindow(now); ok {
+		windows["seven_day_fable"] = fable
 	}
 	keys := make([]string, 0, len(windows))
 	for key, window := range windows {
@@ -126,33 +132,30 @@ func (usage Usage) NamedWindows() []NamedWindow {
 	return named
 }
 
-func (usage *Usage) UnmarshalJSON(content []byte) error {
-	type plain Usage
-	var decoded plain
-	if err := json.Unmarshal(content, &decoded); err != nil {
-		return err
-	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(content, &fields); err != nil {
-		return err
-	}
-	known := map[string]bool{
-		"five_hour": true, "seven_day": true, "seven_day_opus": true,
-		"seven_day_fable": true,
-	}
-	decoded.Extra = make(map[string]Window)
-	for name, raw := range fields {
-		if known[name] {
+func (usage Usage) fableWindow(now time.Time) (Window, bool) {
+	var fallback *ScopedLimit
+	for index := range usage.Limits {
+		limit := &usage.Limits[index]
+		if strings.TrimSpace(limit.Kind) != "weekly_scoped" ||
+			!strings.EqualFold(strings.TrimSpace(limit.Scope.Model.DisplayName), "Fable") ||
+			limit.Percent == nil {
 			continue
 		}
-		var window Window
-		if err := json.Unmarshal(raw, &window); err == nil &&
-			(window.Utilization != nil || window.ResetsAt != "") {
-			decoded.Extra[name] = window
+		resetAt, err := time.Parse(time.RFC3339, strings.TrimSpace(limit.ResetsAt))
+		if err != nil || !resetAt.After(now) {
+			continue
+		}
+		if limit.IsActive {
+			return Window{Utilization: limit.Percent, ResetsAt: limit.ResetsAt}, true
+		}
+		if fallback == nil {
+			fallback = limit
 		}
 	}
-	*usage = Usage(decoded)
-	return nil
+	if fallback == nil {
+		return Window{}, false
+	}
+	return Window{Utilization: fallback.Percent, ResetsAt: fallback.ResetsAt}, true
 }
 
 type usage = Usage
@@ -205,13 +208,11 @@ func Evaluate(ctx context.Context, options Options) (string, error) {
 	five := utilization(cached.FiveHour, 0)
 	seven := utilization(cached.SevenDay, 0)
 	opus := utilization(cached.SevenOpus, -1)
-	fable := utilization(cached.SevenFable, -1)
-	if fable < 0 {
-		for name, window := range cached.Extra {
-			if strings.Contains(strings.ToLower(name), "fable") {
-				fable = utilization(window, -1)
-				break
-			}
+	fable := -1
+	for _, named := range cached.NamedWindowsAt(now) {
+		if named.Key == "seven_day_fable" {
+			fable = utilization(named.Window, -1)
+			break
 		}
 	}
 	maximum := max(five, seven, opus, fable)
@@ -388,6 +389,7 @@ func refresh(ctx context.Context, options Options, cachePath string) error {
 	if err := json.Unmarshal(fresh, &decoded); err != nil {
 		return err
 	}
+	logUnknownUsageKeys(fresh, options.Log)
 	if decoded.FiveHour.Utilization == nil {
 		return fmt.Errorf("usage response omitted five_hour utilization")
 	}
@@ -432,10 +434,36 @@ func Fetch(ctx context.Context, options Options) (Usage, error) {
 	if err := json.Unmarshal(fresh, &decoded); err != nil {
 		return Usage{}, fmt.Errorf("decode usage response: %w", err)
 	}
+	logUnknownUsageKeys(fresh, options.Log)
 	if decoded.FiveHour.Utilization == nil {
 		return Usage{}, fmt.Errorf("usage response omitted five_hour utilization")
 	}
 	return decoded, nil
+}
+
+func logUnknownUsageKeys(body []byte, logger io.Writer) {
+	if logger == nil {
+		return
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		fmt.Fprintf(logger, "pfm usage-hook: debug: enumerate ignored usage keys: %v\n", err)
+		return
+	}
+	known := map[string]bool{
+		"five_hour": true, "seven_day": true, "seven_day_opus": true, "limits": true,
+	}
+	unknown := make([]string, 0, len(fields))
+	for key := range fields {
+		if !known[key] {
+			unknown = append(unknown, key)
+		}
+	}
+	if len(unknown) == 0 {
+		return
+	}
+	sort.Strings(unknown)
+	fmt.Fprintf(logger, "pfm usage-hook: debug: ignored usage keys: %s\n", strings.Join(unknown, ","))
 }
 
 func atomicWrite(path string, body []byte, mode os.FileMode) error {

@@ -33,6 +33,9 @@ type Palette struct {
 	StatsToken  string
 	StatsGear   string
 	StatsImage  string
+	LimitGreen  string
+	LimitAmber  string
+	LimitRed    string
 	Label       string
 }
 
@@ -58,6 +61,9 @@ var defaultPalette = Palette{
 	StatsToken:  "#facc15",
 	StatsGear:   "#fb923c",
 	StatsImage:  "#c084fc",
+	LimitGreen:  "#4ade80",
+	LimitAmber:  "#facc15",
+	LimitRed:    "#fb7185",
 	Label:       "#67e8f9",
 }
 
@@ -83,6 +89,9 @@ var tokyoNightPalette = Palette{
 	StatsToken:  "#e0af68",
 	StatsGear:   "#ff9e64",
 	StatsImage:  "#bb9af7",
+	LimitGreen:  "#9ece6a",
+	LimitAmber:  "#e0af68",
+	LimitRed:    "#f7768e",
 	Label:       "#2ac3de",
 }
 

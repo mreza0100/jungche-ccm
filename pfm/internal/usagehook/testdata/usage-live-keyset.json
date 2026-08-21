@@ -1,0 +1,26 @@
+{
+  "top_level_keys": [
+    "amber_ladder",
+    "cinder_cove",
+    "extra_usage",
+    "five_hour",
+    "iguana_necktie",
+    "limits",
+    "member_dashboard_available",
+    "nimbus_quill",
+    "omelette_promotional",
+    "seven_day",
+    "seven_day_cowork",
+    "seven_day_oauth_apps",
+    "seven_day_omelette",
+    "seven_day_opus",
+    "seven_day_sonnet",
+    "spend",
+    "tangelo"
+  ],
+  "limit_item_keys": ["group", "is_active", "kind", "percent", "resets_at", "scope", "severity"],
+  "limit_kinds": ["session", "weekly_all", "weekly_scoped"],
+  "scope_keys": ["model", "surface"],
+  "scope_model_keys": ["display_name", "id"],
+  "scoped_model_names": ["Fable"]
+}

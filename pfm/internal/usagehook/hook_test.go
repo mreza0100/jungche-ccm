@@ -1,6 +1,7 @@
 package usagehook
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -8,12 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestUsageParsesFableAndRetainsUnknownWindows(t *testing.T) {
+func TestUsageParsesScopedFableAndDropsUnknownWindows(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join("testdata", "usage-fable.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -22,21 +24,28 @@ func TestUsageParsesFableAndRetainsUnknownWindows(t *testing.T) {
 	if err := json.Unmarshal(body, &parsed); err != nil {
 		t.Fatalf("decode usage fixture: %v", err)
 	}
-	if parsed.SevenFable.Utilization == nil || int(*parsed.SevenFable.Utilization) != 23 {
-		t.Fatalf("fable window = %#v", parsed.SevenFable)
+	windows := parsed.NamedWindows()
+	want := []struct {
+		label string
+		used  int
+	}{{label: "5h", used: 42}, {label: "7d", used: 58}, {label: "7d-fable", used: 24}}
+	if len(windows) != len(want) {
+		t.Fatalf("NamedWindows()=%#v, want exactly 5h, 7d, and scoped Fable", windows)
 	}
-	unknown, ok := parsed.Extra["seven_day_sonnet"]
-	if !ok || unknown.Utilization == nil || int(*unknown.Utilization) != 17 {
-		t.Fatalf("unknown windows = %#v", parsed.Extra)
+	for index, expected := range want {
+		if windows[index].Label != expected.label || windows[index].Window.Utilization == nil || int(*windows[index].Window.Utilization) != expected.used {
+			t.Fatalf("NamedWindows()[%d]=%#v, want %#v", index, windows[index], expected)
+		}
 	}
 }
 
-func TestNamedWindowsUsesOneCanonicalMappingAndLabelsUnknownKeys(t *testing.T) {
+func TestNamedWindowsUsesOneCanonicalMappingAndDropsUnknownKeys(t *testing.T) {
 	var parsed Usage
 	content := []byte(`{
+		"five_hour":{"utilization":4,"resets_at":"2030-01-01T10:00:00Z"},
 		"seven_day":{"utilization":11,"resets_at":"2026-08-28T00:00:00Z"},
 		"seven_day_opus":{"utilization":22,"resets_at":"2026-08-28T00:00:00Z"},
-		"seven_day_fable":{"utilization":0,"resets_at":""},
+		"limits":[{"kind":"weekly_scoped","percent":23,"resets_at":"2030-01-07T08:00:00Z","scope":{"model":{"display_name":"FABLE"}},"is_active":true}],
 		"seven_day_nimbus_quill":{"utilization":33,"resets_at":"2026-08-28T00:00:00Z"}
 	}`)
 	if err := json.Unmarshal(content, &parsed); err != nil {
@@ -47,10 +56,9 @@ func TestNamedWindowsUsesOneCanonicalMappingAndLabelsUnknownKeys(t *testing.T) {
 		key, label string
 		known      bool
 	}{
+		{key: "five_hour", label: "5h", known: true},
 		{key: "seven_day", label: "7d", known: true},
-		{key: "seven_day_opus", label: "7d-opus", known: true},
 		{key: "seven_day_fable", label: "7d-fable", known: true},
-		{key: "seven_day_nimbus_quill", label: "unknown[seven_day_nimbus_quill]", known: false},
 	}
 	if len(windows) != len(want) {
 		t.Fatalf("NamedWindows() = %#v, want %d windows", windows, len(want))
@@ -59,6 +67,57 @@ func TestNamedWindowsUsesOneCanonicalMappingAndLabelsUnknownKeys(t *testing.T) {
 		if windows[index].Key != expected.key || windows[index].Label != expected.label || windows[index].Known != expected.known {
 			t.Fatalf("NamedWindows()[%d] = %#v, want %#v", index, windows[index], expected)
 		}
+	}
+}
+
+func TestScopedFableRequiresAValidFutureReset(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name    string
+		kind    string
+		reset   string
+		present bool
+	}{
+		{name: "future", kind: "weekly_scoped", reset: now.Add(time.Hour).Format(time.RFC3339), present: true},
+		{name: "past", kind: "weekly_scoped", reset: now.Add(-time.Second).Format(time.RFC3339)},
+		{name: "invalid", kind: "weekly_scoped", reset: "not-a-time"},
+		{name: "wrong kind", kind: "weekly_all", reset: now.Add(time.Hour).Format(time.RFC3339)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			percent := 17.0
+			limit := ScopedLimit{Kind: test.kind, Percent: &percent, ResetsAt: test.reset, IsActive: true}
+			limit.Scope.Model.DisplayName = " FABLE "
+			windows := (Usage{Limits: []ScopedLimit{limit}}).NamedWindowsAt(now)
+			if got := len(windows) == 1; got != test.present {
+				t.Fatalf("NamedWindowsAt()=%#v, present=%v", windows, test.present)
+			}
+		})
+	}
+}
+
+func TestLiveKeysetRecordsTopLevelOpusButNoTopLevelFable(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "usage-live-keyset.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recorded struct {
+		TopLevelKeys []string `json:"top_level_keys"`
+	}
+	if err := json.Unmarshal(body, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(recorded.TopLevelKeys, "limits") ||
+		!slices.Contains(recorded.TopLevelKeys, "seven_day_opus") ||
+		slices.Contains(recorded.TopLevelKeys, "seven_day_fable") {
+		t.Fatalf("recorded live key set=%v", recorded.TopLevelKeys)
+	}
+}
+
+func TestUnknownUsageKeysProduceOneDebugLineAndNoWindows(t *testing.T) {
+	var log bytes.Buffer
+	logUnknownUsageKeys([]byte(`{"five_hour":{},"zeta":{},"alpha":{}}`), &log)
+	if got, want := log.String(), "pfm usage-hook: debug: ignored usage keys: alpha,zeta\n"; got != want {
+		t.Fatalf("debug log=%q, want %q", got, want)
 	}
 }
 

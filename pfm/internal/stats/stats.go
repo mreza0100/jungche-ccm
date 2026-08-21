@@ -56,18 +56,20 @@ type Container struct {
 
 type Window struct {
 	Name      string
-	UsedPct   int
+	UsedPct   float64
 	ResetAt   time.Time
 	ResetNote string
 }
 
 type AccountLimits struct {
-	Account int
-	Emoji   string
-	Engine  string
-	Label   string
-	Status  string
-	Windows []Window
+	Account     int
+	Emoji       string
+	Engine      string
+	Label       string
+	Plan        string
+	ConfirmedAt time.Time
+	Status      string
+	Windows     []Window
 }
 
 type Snapshot struct {

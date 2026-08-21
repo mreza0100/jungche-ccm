@@ -87,22 +87,57 @@ type rateWindow struct {
 	ResetsAt       int64   `json:"resets_at"`
 }
 
-type rateLimits map[string]rateWindow
+type rateLimits struct {
+	Windows map[string]rateWindow
+	Scoped  []usagehook.ScopedLimit
+}
 
 func (limits *rateLimits) UnmarshalJSON(content []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(content, &raw); err != nil {
 		return err
 	}
-	decoded := make(rateLimits, len(raw))
-	for key, value := range raw {
+	decoded := rateLimits{Windows: make(map[string]rateWindow, 2)}
+	for _, key := range []string{"five_hour", "seven_day"} {
+		value, ok := raw[key]
+		if !ok {
+			continue
+		}
 		var window rateWindow
-		if json.Unmarshal(value, &window) == nil {
-			decoded[key] = window
+		if err := json.Unmarshal(value, &window); err != nil {
+			return fmt.Errorf("decode %s rate limit: %w", key, err)
+		}
+		decoded.Windows[key] = window
+	}
+	if value, ok := raw["limits"]; ok {
+		if err := json.Unmarshal(value, &decoded.Scoped); err != nil {
+			return fmt.Errorf("decode scoped rate limits: %w", err)
 		}
 	}
 	*limits = decoded
 	return nil
+}
+
+func (limits rateLimits) windowsAt(now time.Time) (map[string]rateWindow, error) {
+	windows := make(map[string]rateWindow, len(limits.Windows)+1)
+	for key, window := range limits.Windows {
+		windows[key] = window
+	}
+	usage := usagehook.Usage{Limits: limits.Scoped}
+	for _, named := range usage.NamedWindowsAt(now) {
+		if named.Key != "seven_day_fable" || named.Window.Utilization == nil {
+			continue
+		}
+		resetAt, err := time.Parse(time.RFC3339, named.Window.ResetsAt)
+		if err != nil {
+			return nil, fmt.Errorf("decode %s reset: %w", named.Key, err)
+		}
+		windows[named.Key] = rateWindow{
+			UsedPercentage: *named.Window.Utilization,
+			ResetsAt:       resetAt.Unix(),
+		}
+	}
+	return windows, nil
 }
 
 // Render is the native high-frequency path. It performs no network work and
@@ -122,6 +157,12 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		directory = data.CWD
 	}
 	now := runtime.now()
+	resolvedLimits, err := data.RateLimits.windowsAt(now)
+	if err != nil {
+		return "", fmt.Errorf("decode statusline rate limits: %w", err)
+	}
+	data.RateLimits.Windows = resolvedLimits
+	data.RateLimits.Scoped = nil
 	writeBreadcrumb(runtime, data.TranscriptPath)
 
 	badge, account := accountBadge(runtime)
@@ -321,12 +362,12 @@ func appendSegment(line, segment string) string {
 }
 
 func appendRateSegments(line string, now time.Time, data input) string {
-	keys := make([]string, 0, len(data.RateLimits))
-	for key := range data.RateLimits {
+	keys := make([]string, 0, len(data.RateLimits.Windows))
+	for key := range data.RateLimits.Windows {
 		keys = append(keys, key)
 	}
 	for _, descriptor := range usagehook.DescribeWindows(keys) {
-		window := data.RateLimits[descriptor.Key]
+		window := data.RateLimits.Windows[descriptor.Key]
 		used := int(window.UsedPercentage)
 		if used <= 0 {
 			continue
@@ -530,8 +571,8 @@ func writeBreadcrumb(runtime Runtime, transcriptPath string) {
 }
 
 func harvestRateLimits(runtime Runtime, now time.Time, account int, data input) {
-	fiveWindow := data.RateLimits["five_hour"]
-	sevenWindow := data.RateLimits["seven_day"]
+	fiveWindow := data.RateLimits.Windows["five_hour"]
+	sevenWindow := data.RateLimits.Windows["seven_day"]
 	five := int(fiveWindow.UsedPercentage)
 	seven := int(sevenWindow.UsedPercentage)
 	if (five <= 0 && seven <= 0) || fiveWindow.ResetsAt <= now.Unix() {

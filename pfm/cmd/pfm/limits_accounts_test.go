@@ -1,9 +1,7 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
@@ -14,7 +12,7 @@ func TestLimitAccountsKeepCodexIndependentFromClaudeRoster(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv(paths.EnvHome, home)
 	runtime := commandRuntime{
-		Paths: paths.Values{Home: home},
+		Paths: paths.Values{Home: home, CodexRoot: filepath.Join(home, ".codex")},
 		Config: pfmconfig.Config{
 			Claude: pfmconfig.Claude{Binary: "claude"},
 			Accounts: []pfmconfig.Account{
@@ -34,8 +32,8 @@ func TestLimitAccountsKeepCodexIndependentFromClaudeRoster(t *testing.T) {
 		t.Fatalf("Claude accounts/skips=%#v", accounts[:3])
 	}
 	codex := accounts[3]
-	wantCache := filepath.Join(home, "tmp", "cc-gpt-usage-"+strconv.Itoa(os.Getuid())+".json")
-	if codex.Engine != "codex" || codex.Label != "Codex" || codex.CodexCachePath != wantCache {
-		t.Fatalf("Codex account=%#v, want independent cache row at %q", codex, wantCache)
+	wantAuth := filepath.Join(home, ".codex", "auth.json")
+	if codex.Engine != "codex" || codex.Label != "Codex" || codex.CodexAuthPath != wantAuth {
+		t.Fatalf("Codex account=%#v, want independent live-fetch row using %q", codex, wantAuth)
 	}
 }

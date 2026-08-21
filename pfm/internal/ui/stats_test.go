@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
@@ -69,7 +70,78 @@ func TestStatsLimitsSubtabRendersAccountWindows(t *testing.T) {
 	}
 }
 
-func TestStatsLimitsSubtabRendersNamedSkipsUnknownsAndCodexErrors(t *testing.T) {
+func TestStatsLimitsSubtabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	now := time.Unix(0, model.nowNS)
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 1, Emoji: "🥇", Engine: "claude",
+		Windows: []pfmstats.Window{
+			{Name: "5h", UsedPct: 52, ResetAt: now.Add(90 * time.Minute)},
+			{Name: "7d", UsedPct: 100, ResetAt: now.Add(-time.Minute)},
+		},
+	}}}
+	panel := model.renderStatsPanel(120, 10)
+	plain := ansi.Strip(panel)
+	for _, want := range []string{"🥇 account 1", "█", "52%", "FULL", "↻ refreshing…"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("fancy Limits panel missing %q:\n%s", want, plain)
+		}
+	}
+	if strings.Contains(plain, "(now)") {
+		t.Fatalf("past reset rendered as now:\n%s", plain)
+	}
+}
+
+func TestLimitBarsKeepEighthCellPrecisionAndFullTail(t *testing.T) {
+	_ = NewModel(fixtureSnapshot(120))
+	left := ansi.Strip(limitBar(52.4, 20))
+	right := ansi.Strip(limitBar(55, 20))
+	if left == right || !strings.Contains(left, "▌") {
+		t.Fatalf("subcell bars did not distinguish 52.4%% from 55%%: %q vs %q", left, right)
+	}
+	full := ansi.Strip(limitBar(100, 20))
+	if !strings.Contains(full, "FULL▏") {
+		t.Fatalf("full bar=%q, want FULL tail", full)
+	}
+}
+
+func TestStatsLimitsNarrowRowsDropResetAndNeverWrap(t *testing.T) {
+	model := NewModel(fixtureSnapshot(50))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	now := time.Unix(0, model.nowNS)
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 1, Emoji: "🥇", Engine: "claude",
+		Windows: []pfmstats.Window{{Name: "7d-fable", UsedPct: 52.4, ResetAt: now.Add(14 * time.Minute)}},
+	}}}
+	panel := model.renderStatsPanel(50, 8)
+	if strings.Contains(ansi.Strip(panel), "↻") {
+		t.Fatalf("narrow Limits panel kept reset column:\n%s", ansi.Strip(panel))
+	}
+	for index, line := range strings.Split(panel, "\n") {
+		if got := lipgloss.Width(line); got != 50 {
+			t.Fatalf("narrow Limits line %d width=%d, want 50: %q", index, got, line)
+		}
+	}
+}
+
+func TestStatsLimitsRendersProviderMaxTotals(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{Account: 1, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 52}}},
+		{Account: 2, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 75}}},
+	}}
+	plain := ansi.Strip(model.renderStatsPanel(120, 10))
+	if !strings.Contains(plain, "Σ claude · 5h 75%") {
+		t.Fatalf("provider totals missing max window:\n%s", plain)
+	}
+}
+
+func TestStatsLimitsSubtabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testing.T) {
 	home := "/home/test"
 	label1 := pfmconfig.DisplayAccountDir(home, 1, pfmconfig.DefaultAccountDir(home, 1))
 	label3 := pfmconfig.DisplayAccountDir(home, 3, pfmconfig.DefaultAccountDir(home, 3))
@@ -88,21 +160,28 @@ func TestStatsLimitsSubtabRendersNamedSkipsUnknownsAndCodexErrors(t *testing.T) 
 		},
 		{Account: 3, Engine: "claude", Label: label3, Status: "skipped " + label3 + ": credentials rejected"},
 		{Account: 4, Engine: "claude", Label: label4, Status: "skipped " + label4 + ": no valid credentials"},
-		{Engine: "codex", Label: "Codex", Status: "read Codex cache: fixture missing"},
+		{Engine: "codex", Label: "Codex", Status: "Codex credential rejected (HTTP 401)"},
 	}}
-	plain := ansi.Strip(model.renderStatsPanel(140, 10))
+	plain := ansi.Strip(model.renderStatsPanel(140, 18))
 	for _, want := range []string{
-		"7d-fable 0% (reset unavailable)",
-		"unknown[seven_day_nimbus_quill] 0% (reset unavailable)",
+		"7d-fable", "0%", "↻ reset unavailable",
 		"skipped " + label3 + ": credentials rejected",
 		"skipped " + label4 + ": no valid credentials",
-		"Codex", "read Codex cache: fixture missing",
+		"Codex", "Codex credential rejected (HTTP 401)",
 	} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("limits panel missing %q:\n%s", want, plain)
 		}
 	}
-	for _, reject := range []string{"(?)", "403 Forbidden"} {
+	if got := strings.Count(plain, "skipped "); got != 2 {
+		t.Fatalf("Limits footer carried %d skip notes, want both notes on one footer line:\n%s", got, plain)
+	}
+	for _, line := range strings.Split(plain, "\n") {
+		if strings.Contains(line, "skipped ") && strings.Count(line, "skipped ") != 2 {
+			t.Fatalf("skip notes were not consolidated:\n%s", plain)
+		}
+	}
+	for _, reject := range []string{"(?)", "403 Forbidden", "unknown["} {
 		if strings.Contains(plain, reject) {
 			t.Fatalf("limits panel contains unexplained/retired output %q:\n%s", reject, plain)
 		}
