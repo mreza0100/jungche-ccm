@@ -16,6 +16,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/spawn"
 )
 
@@ -108,7 +109,7 @@ func runInternalLaunch(args []string, stdout, stderr io.Writer, runtime commandR
 		fmt.Fprintf(stderr, "pfm internal launch: build Claude command: %v\n", err)
 		return 1
 	}
-	tmuxBinary, err := exec.LookPath("tmux")
+	tmuxBinary, err := deps.Resolve("tmux")
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal launch: find tmux: %v\n", err)
 		return 1

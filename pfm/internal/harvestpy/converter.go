@@ -56,9 +56,6 @@ type workerProcess struct {
 }
 
 func NewConverter(runtime Runtime) *Converter {
-	if runtime.Python == "" {
-		runtime.Python = "python3"
-	}
 	return &Converter{runtime: runtime}
 }
 
@@ -173,6 +170,9 @@ func (converter *Converter) request(ctx context.Context, body []byte) ([]byte, s
 func (converter *Converter) ensureWorkerLocked() (*workerProcess, error) {
 	if converter.worker != nil {
 		return converter.worker, nil
+	}
+	if strings.TrimSpace(converter.runtime.Python) == "" {
+		return nil, errors.New("harvestpy interpreter path is empty; use the provisioned managed interpreter")
 	}
 	script, err := converter.scriptPath()
 	if err != nil {

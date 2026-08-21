@@ -7,6 +7,7 @@ import (
 	"io"
 
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/installer"
 )
 
@@ -45,7 +46,21 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	if *yes {
 		mode = installer.ModeApply
 	}
-	options := newInstallerOptions(mode, *configDir, *force, *skipHarvest, stdout, runtimes...)
+	runtime, runtimeErr := optionalCommandRuntime(runtimes)
+	if runtimeErr != nil {
+		fmt.Fprintf(stderr, "pfm install: resolve dependency config: %v\n", runtimeErr)
+		return 1
+	}
+	entries := deps.Registry(deps.Options{
+		Home: runtime.Paths.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
+	})
+	if warnings := printDependencyDoctor(context.Background(), stdout, entries, deps.ProbeOptions{
+		SkipHarvest: *skipHarvest, Provisioning: true,
+	}); warnings != 0 {
+		fmt.Fprintln(stderr, "pfm install: required dependency preflight failed")
+		return 1
+	}
+	options := newInstallerOptions(mode, *configDir, *force, *skipHarvest, stdout, runtime)
 	code := runInstallerCommand("install", options, stderr)
 	if code == 0 && mode == installer.ModeDryRun {
 		confirmation := "if you agree, run again: pfm install --yes"

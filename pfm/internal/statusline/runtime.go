@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 )
 
@@ -31,7 +32,7 @@ func (commandRunner) Output(
 	name string,
 	args ...string,
 ) ([]byte, error) {
-	command := exec.CommandContext(ctx, name, args...)
+	command := exec.CommandContext(ctx, deps.Executable(name), args...)
 	return command.Output()
 }
 

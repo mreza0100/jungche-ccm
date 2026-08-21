@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/usagehook"
 )
 
@@ -248,7 +249,7 @@ func defaultAck(ctx context.Context, account LimitAccount) error {
 	if binary == "" {
 		binary = "claude"
 	}
-	command := exec.CommandContext(ctx, binary, "-p", "ACK", "--model", "claude-haiku-4-5", "--max-turns", "1")
+	command := exec.CommandContext(ctx, deps.Executable(binary), "-p", "ACK", "--model", "claude-haiku-4-5", "--max-turns", "1")
 	command.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+account.ConfigDir)
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("refresh account %d OAuth token: %w (%s)", account.ID, err, strings.TrimSpace(string(output)))

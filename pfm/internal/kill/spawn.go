@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+
+	"hostops/pfm/internal/deps"
 )
 
 // CommandSpawner starts the binary's killed finisher under a new session.
@@ -28,7 +30,9 @@ func (spawner CommandSpawner) Spawn(
 	}
 	setsid := spawner.Setsid
 	if setsid == "" {
-		setsid = "setsid"
+		setsid = deps.Executable("setsid")
+	} else {
+		setsid = deps.Executable(setsid)
 	}
 	arguments := []string{"-f", executable}
 	if spawner.ConfigPath != "" {

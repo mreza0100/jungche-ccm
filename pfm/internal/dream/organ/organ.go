@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/dream/artifact"
 )
 
@@ -285,7 +286,7 @@ func validateRootAssertion(organ, repoRoot string) error {
 // only rev-parse, and disables Git's optional locks for every read.
 func gitRevParse(directory string, arguments ...string) (string, error) {
 	args := append([]string{"-C", directory, "rev-parse"}, arguments...)
-	command := exec.Command("git", args...)
+	command := exec.Command(deps.Executable("git"), args...)
 	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	output, err := command.CombinedOutput()
 	if err != nil {

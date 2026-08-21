@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"hostops/pfm/internal/deps"
 )
 
 // DeliverThen is the waiter half of chat.sh's __then subcommand
@@ -125,7 +127,7 @@ func (spawner CommandThenSpawner) Spawn(
 	if setsid == "" {
 		setsid = "setsid"
 	}
-	setsidPath, setsidErr := exec.LookPath(setsid)
+	setsidPath, setsidErr := deps.Resolve(setsid)
 	usingNohup := setsidErr != nil
 	launcher := setsidPath
 	if usingNohup {
@@ -134,7 +136,7 @@ func (spawner CommandThenSpawner) Spawn(
 			nohup = "nohup"
 		}
 		var err error
-		launcher, err = exec.LookPath(nohup)
+		launcher, err = deps.Resolve(nohup)
 		if err != nil {
 			return fmt.Errorf(
 				"detach then waiter: setsid unavailable (%v) and nohup unavailable (%w)",

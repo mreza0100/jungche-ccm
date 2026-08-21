@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,6 +13,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/kill"
@@ -919,7 +919,7 @@ func codexAvailable(codexRoot string, binaries ...string) bool {
 	if len(binaries) != 0 && binaries[0] != "" {
 		binary = binaries[0]
 	}
-	if _, err := exec.LookPath(binary); err == nil {
+	if _, err := deps.Resolve(binary); err == nil {
 		return true
 	}
 	info, err := os.Stat(codexRoot)
