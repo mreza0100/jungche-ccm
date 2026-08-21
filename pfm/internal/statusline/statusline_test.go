@@ -64,7 +64,7 @@ func TestClaudeAccountFourDoesNotRenderCodexUsage(t *testing.T) {
 func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
 	got, err := Render(context.Background(), []byte(`{
   "model":{"display_name":"Fable"},
-  "rate_limits":{"seven_day_fable":{"used_percentage":23,"resets_at":1800086400}}
+  "rate_limits":{"limits":[{"kind":"weekly_scoped","percent":23,"resets_at":"2030-01-07T08:00:00Z","scope":{"model":{"display_name":" fAbLe "}},"is_active":true}]}
 }`), Runtime{
 		Home: t.TempDir(), Columns: 120, UID: 1000, Command: quietRunner{},
 	})
@@ -77,7 +77,7 @@ func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
 	}
 }
 
-func TestStatuslineUsesCanonicalUnknownWindowLabelAndIgnoresNonWindows(t *testing.T) {
+func TestStatuslineDropsUnknownTopLevelWindows(t *testing.T) {
 	got, err := Render(context.Background(), []byte(`{
   "rate_limits":{
     "seven_day_nimbus_quill":{"used_percentage":17,"resets_at":1800086400},
@@ -90,8 +90,8 @@ func TestStatuslineUsesCanonicalUnknownWindowLabelAndIgnoresNonWindows(t *testin
 		t.Fatal(err)
 	}
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
-	if !strings.Contains(plain, "unknown[seven_day_nimbus_quill]-used:17%") {
-		t.Fatalf("unknown-window statusline=%q", plain)
+	if strings.Contains(plain, "nimbus_quill") || strings.Contains(plain, "unknown[") {
+		t.Fatalf("unknown top-level key rendered as a window: %q", plain)
 	}
 }
 

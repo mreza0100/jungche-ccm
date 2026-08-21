@@ -22,7 +22,6 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
-	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
 )
@@ -222,7 +221,7 @@ func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
 	}
 	accounts = append(accounts, pfmstats.LimitAccount{
 		Engine: "codex", Label: "Codex",
-		CodexCachePath: statusline.GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid()),
+		CodexAuthPath: filepath.Join(runtime.Paths.CodexRoot, "auth.json"),
 	})
 	return accounts
 }

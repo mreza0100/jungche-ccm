@@ -2,7 +2,9 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -14,6 +16,7 @@ import (
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/sky"
+	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/theme"
 )
 
@@ -58,6 +61,8 @@ var (
 	labelStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#67e8f9"))
+	limitGradient   []color.Color
+	limitErrorStyle = lipgloss.NewStyle().Bold(true).Blink(true)
 )
 
 func configureStyles(palette theme.Palette) {
@@ -78,6 +83,16 @@ func configureStyles(palette theme.Palette) {
 	statsImageStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsImage))
 	warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Warn))
 	labelStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Label))
+	limitGradient = lipgloss.Blend1D(
+		101,
+		lipgloss.Color(palette.LimitGreen),
+		lipgloss.Color(palette.LimitAmber),
+		lipgloss.Color(palette.LimitRed),
+	)
+	limitErrorStyle = lipgloss.NewStyle().
+		Bold(true).
+		Blink(true).
+		Foreground(lipgloss.Color(palette.LimitRed))
 }
 
 // View renders only the visible viewport, so frame cost is independent of the
@@ -354,46 +369,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 			lines = append(lines, fillLine(line, innerWidth))
 		}
 	} else {
-		header := "  ACCOUNT  WINDOWS"
-		lines = append(lines, statsHeaderStyle.Render(fillLine(header, innerWidth)))
-		now := time.Unix(0, model.nowNS)
-		for _, account := range model.stats.Limits {
-			if len(lines) >= innerHeight {
-				break
-			}
-			parts := make([]string, 0, len(account.Windows))
-			for _, window := range account.Windows {
-				reset := window.ResetNote
-				if reset == "" && !window.ResetAt.IsZero() {
-					reset = limitCountdown(now, window.ResetAt)
-				}
-				if reset == "" {
-					reset = "reset unavailable"
-				}
-				parts = append(parts, fmt.Sprintf("%s %d%% (%s)", cleanField(window.Name), window.UsedPct, reset))
-			}
-			if account.Status != "" {
-				parts = append(parts, cleanField(account.Status))
-			} else if len(parts) == 0 {
-				parts = append(parts, "limits unavailable")
-			}
-			var source string
-			switch {
-			case strings.HasPrefix(account.Status, "skipped "):
-				line := "  " + strings.Join(parts, " · ")
-				lines = append(lines, fillLine(line, innerWidth))
-				continue
-			case account.Engine == "codex":
-				source = account.Label
-				if source == "" {
-					source = "Codex"
-				}
-			default:
-				source = fmt.Sprintf("%s account %-2d", account.Emoji, account.Account)
-			}
-			line := fmt.Sprintf("  %-12s  %s", source, strings.Join(parts, " · "))
-			lines = append(lines, fillLine(line, innerWidth))
-		}
+		lines = append(lines, model.renderLimitCards(innerWidth, innerHeight)...)
 	}
 	if len(lines) == 1 && len(lines) < innerHeight {
 		message := "  waiting for first sample…"
@@ -408,16 +384,231 @@ func (model Model) renderStatsPanel(width, height int) string {
 	return framePanel(" stats ", lines, width)
 }
 
-func limitCountdown(now, reset time.Time) string {
-	remaining := reset.Sub(now)
+type limitProviderTotal struct {
+	count   int
+	order   []string
+	windows map[string]float64
+}
+
+func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
+	now := time.Unix(0, model.nowNS)
+	lines := make([]string, 0, innerHeight)
+	skips := make([]string, 0)
+	providers := make(map[string]*limitProviderTotal)
+	providerOrder := make([]string, 0)
+	appendLine := func(line string) {
+		if len(lines) < innerHeight {
+			lines = append(lines, line)
+		}
+	}
+	for _, account := range model.stats.Limits {
+		if strings.HasPrefix(account.Status, "skipped ") {
+			skips = append(skips, cleanField(account.Status))
+			continue
+		}
+		engine := strings.ToLower(strings.TrimSpace(account.Engine))
+		if engine == "" {
+			engine = "claude"
+		}
+		total, found := providers[engine]
+		if !found {
+			total = &limitProviderTotal{windows: make(map[string]float64)}
+			providers[engine] = total
+			providerOrder = append(providerOrder, engine)
+		}
+		total.count++
+		for _, window := range account.Windows {
+			name := cleanField(window.Name)
+			if strings.HasPrefix(name, "unknown[") {
+				continue
+			}
+			if _, found := total.windows[name]; !found {
+				total.order = append(total.order, name)
+			}
+			if window.UsedPct > total.windows[name] {
+				total.windows[name] = window.UsedPct
+			}
+		}
+
+		appendLine(statsHeaderStyle.Render(fillLine("  "+limitAccountHeader(account, now), innerWidth)))
+		appendLine(borderStyle.Render(fillLine("  "+strings.Repeat("─", maxInt(0, innerWidth-2)), innerWidth)))
+		if account.Status != "" {
+			appendLine(dimStyle.Render(fillLine("  ⚠ "+cleanField(account.Status), innerWidth)))
+			continue
+		}
+		renderedWindows := 0
+		for _, window := range account.Windows {
+			if strings.HasPrefix(cleanField(window.Name), "unknown[") {
+				continue
+			}
+			appendLine(renderLimitWindow(now, window, innerWidth))
+			renderedWindows++
+		}
+		if renderedWindows == 0 {
+			appendLine(dimStyle.Render(fillLine("  ⚠ limits unavailable", innerWidth)))
+		}
+	}
+	for _, engine := range providerOrder {
+		total := providers[engine]
+		if total.count < 2 {
+			continue
+		}
+		parts := make([]string, 0, len(total.order))
+		for _, name := range total.order {
+			parts = append(parts, fmt.Sprintf("%s %.0f%%", name, total.windows[name]))
+		}
+		appendLine(statsHeaderStyle.Render(fillLine("  Σ "+engine+" · "+strings.Join(parts, " · "), innerWidth)))
+	}
+	if len(skips) > 0 {
+		appendLine(dimStyle.Render(fillLine("  "+strings.Join(skips, " · "), innerWidth)))
+	}
+	return lines
+}
+
+func limitAccountHeader(account pfmstats.AccountLimits, now time.Time) string {
+	emoji := cleanField(account.Emoji)
+	identity := "account " + strconv.Itoa(account.Account)
+	if strings.EqualFold(account.Engine, "codex") {
+		if emoji == "" {
+			emoji = "⬢"
+		}
+		identity = cleanField(account.Label)
+		if identity == "" {
+			identity = "Codex"
+		}
+	} else if emoji == "" {
+		emoji = "·"
+	}
+	plan := titleWord(cleanField(account.Plan))
+	if plan == "" {
+		plan = titleWord(account.Engine)
+		if plan == "" {
+			plan = "Claude"
+		}
+	}
+	confirmation := "provider confirmation unavailable"
+	if !account.ConfirmedAt.IsZero() {
+		confirmation = "provider confirmed " + limitAge(now, account.ConfirmedAt) + " ago"
+	}
+	return fmt.Sprintf("%s %s · %s · %s", emoji, identity, plan, confirmation)
+}
+
+func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) string {
+	const nameWidth = 10
+	showReset := innerWidth >= 60
+	reserved := 22
+	if showReset {
+		reserved += 18
+	}
+	barWidth := minInt(40, maxInt(12, innerWidth-reserved))
+	name := fmt.Sprintf("%-*s", nameWidth, clipRunes(cleanField(window.Name), nameWidth))
+	bar := limitBar(window.UsedPct, barWidth)
+	percent := fmt.Sprintf("%.0f%%", window.UsedPct)
+	percentStyle := limitUsageStyle(window.UsedPct)
+	if window.UsedPct >= 95 {
+		percentStyle = limitErrorStyle
+	}
+	line := "  " + name + "  " + bar + "  " + percentStyle.Render(fmt.Sprintf("%4s", percent))
+	if showReset {
+		reset, urgent := limitReset(now, window)
+		style := dimStyle
+		if urgent {
+			style = warnStyle
+		}
+		line += "   " + style.Render(reset)
+	}
+	return fillLine(line, innerWidth)
+}
+
+func limitBar(percent float64, width int) string {
+	width = maxInt(1, width)
+	percent = math.Max(0, math.Min(100, percent))
+	style := limitUsageStyle(percent)
+	if percent >= 100 && width >= 4 {
+		return style.Render("▕" + strings.Repeat("█", width-4) + "FULL" + "▏")
+	}
+	scaled := percent / 100 * float64(width)
+	full := int(math.Floor(scaled))
+	eighth := int(math.Round((scaled - float64(full)) * 8))
+	if eighth == 8 {
+		full++
+		eighth = 0
+	}
+	if full > width {
+		full = width
+	}
+	partials := []string{"", "▏", "▎", "▍", "▌", "▋", "▊", "▉"}
+	content := strings.Repeat("█", full)
+	if eighth > 0 && full < width {
+		content += partials[eighth]
+	}
+	empty := width - lipgloss.Width(content)
+	if empty > 0 {
+		content += strings.Repeat("░", empty)
+	}
+	return style.Render("▕" + content + "▏")
+}
+
+func limitUsageStyle(percent float64) lipgloss.Style {
+	if len(limitGradient) == 0 {
+		return lipgloss.NewStyle()
+	}
+	index := int(math.Round(math.Max(0, math.Min(100, percent))))
+	return lipgloss.NewStyle().Foreground(limitGradient[index])
+}
+
+func limitReset(now time.Time, window pfmstats.Window) (string, bool) {
+	if window.ResetNote != "" || window.ResetAt.IsZero() {
+		note := cleanField(window.ResetNote)
+		if note == "" {
+			note = "reset unavailable"
+		}
+		return "↻ " + note, false
+	}
+	remaining := window.ResetAt.Sub(now)
 	if remaining <= 0 {
-		return "now"
+		return "↻ refreshing…", false
 	}
 	totalMinutes := int64(remaining / time.Minute)
-	days := totalMinutes / (24 * 60)
-	hours := totalMinutes / 60 % 24
-	minutes := totalMinutes % 60
-	return fmt.Sprintf("%dD %02dH %02dM", days, hours, minutes)
+	if totalMinutes < 1 {
+		return "↻ <1m", true
+	}
+	if totalMinutes < 60 {
+		return fmt.Sprintf("↻ %dm", totalMinutes), true
+	}
+	hours := totalMinutes / 60
+	if hours < 24 {
+		return fmt.Sprintf("↻ %dh %dm", hours, totalMinutes%60), false
+	}
+	return fmt.Sprintf("↻ %dd %dh", hours/24, hours%24), false
+}
+
+func limitAge(now, confirmed time.Time) string {
+	age := now.Sub(confirmed)
+	if age < 0 {
+		age = 0
+	}
+	seconds := int64(age / time.Second)
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm", minutes)
+	}
+	hours := minutes / 60
+	if hours < 24 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dd", hours/24)
+}
+
+func titleWord(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "_", " "))
+	if value == "" {
+		return ""
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
 }
 
 func (model Model) renderListPanel(width, height int) string {
