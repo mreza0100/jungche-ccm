@@ -202,12 +202,62 @@ func TestConfiguredCodexHomeWithoutCredentialsIsAConfigError(t *testing.T) {
 	}
 }
 
+// TestCodexAuthAccountIDNestedUnderTokensIsDiscovered pins a regression: the
+// real Codex CLI never writes account_id at the TOP level of auth.json — it
+// writes it INSIDE tokens, alongside id_token/access_token/refresh_token. A
+// Codex home carrying only that real shape must still be discovered as one
+// valid, credentialed account: Engines().Codex == 1 and DefaultEngine()
+// returns "codex" when ask.engine is codex. Before the fix this fails Load()
+// itself with 'ask.engine "codex" has zero Codex accounts', because
+// hasValidCodexCredentials (config.go) only ever looked at a top-level
+// account_id field that the real CLI does not produce.
+func TestCodexAuthAccountIDNestedUnderTokensIsDiscovered(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Keys only, invented placeholder values — never real tokens. Mirrors the
+	// real Codex CLI's auth.json shape: account_id lives under tokens, not
+	// at the top level.
+	content := `{
+  "auth_mode": "chatgpt",
+  "OPENAI_API_KEY": null,
+  "tokens": {
+    "id_token": "regression-id-token",
+    "access_token": "regression-access-token",
+    "refresh_token": "regression-refresh-token",
+    "account_id": "regression-account-id"
+  },
+  "last_refresh": "2026-01-01T00:00:00Z"
+}`
+	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"version":2,"accounts":[],"ask":{"engine":"codex"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	machine, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error=%v, want nil — a Codex auth.json with account_id nested under tokens (the real CLI shape) must be discovered", err)
+	}
+	if got := machine.Engines(); got != (EngineCounts{Codex: 1}) {
+		t.Fatalf("Engines()=%#v, want {Codex: 1} — the .codex account with a real-shape auth.json was not counted", got)
+	}
+	if engine, defaultErr := machine.DefaultEngine(); defaultErr != nil || engine != "codex" {
+		t.Fatalf("DefaultEngine()=(%q,%v), want (\"codex\", nil)", engine, defaultErr)
+	}
+}
+
 func writeCodexAuthFixture(t *testing.T, home string) {
 	t.Helper()
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	content := `{"tokens":{"access_token":"fixture-token"},"account_id":"fixture-account"}`
+	content := `{"tokens":{"access_token":"fixture-token","account_id":"fixture-account"}}`
 	if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

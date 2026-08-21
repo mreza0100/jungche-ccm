@@ -256,7 +256,7 @@ func newRunJail(t *testing.T) *runJail {
 	write("claude", stubClaude)
 	if err := os.WriteFile(
 		filepath.Join(root, "codex", "auth.json"),
-		[]byte(`{"tokens":{"access_token":"fixture"},"account_id":"fixture"}`),
+		[]byte(`{"tokens":{"access_token":"fixture","account_id":"fixture"}}`),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
