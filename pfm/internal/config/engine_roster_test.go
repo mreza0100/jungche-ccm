@@ -140,6 +140,56 @@ func TestConfiguredCodexHomesAreCredentialedRosterEntriesWithPrefs(t *testing.T)
 	}
 }
 
+func TestConfiguredCodexHomeRehomesAutoDiscoveredAccount(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		metadata  string
+		wantEmoji string
+		wantPrefs *CodexPrefs
+	}{
+		{name: "default metadata", wantEmoji: DefaultEmoji(1)},
+		{
+			name:      "explicit metadata",
+			metadata:  `,"emoji":"X","prefs":{"yolo":false,"binary":"codex-replacement"}`,
+			wantEmoji: "X",
+			wantPrefs: &CodexPrefs{Yolo: false, Binary: "codex-replacement"},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("TMUX_TMPDIR", t.TempDir())
+			home := t.TempDir()
+			oldHome := filepath.Join(home, ".codex")
+			replacement := filepath.Join(home, "codex-replacement")
+			writeCodexAuthFixture(t, oldHome)
+			writeCodexAuthFixture(t, replacement)
+
+			path := filepath.Join(t.TempDir(), "config.json")
+			content := fmt.Sprintf(`{"version":2,"accounts":[],"codex":{"homes":[{"id":1,"home":"~/codex-replacement"%s}]}}`, testCase.metadata)
+			if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			machine, err := Load(path, home, nil)
+			if err != nil {
+				t.Fatalf("Load() error=%v", err)
+			}
+			if len(machine.CodexAccounts) != 1 {
+				t.Fatalf("CodexAccounts=%#v, want exactly one account", machine.CodexAccounts)
+			}
+			got := machine.CodexAccounts[0]
+			if got.ID != 1 || got.Home != replacement || got.Home == oldHome {
+				t.Fatalf("CodexAccounts=%#v, want id 1 at replacement %q and not old home %q", machine.CodexAccounts, replacement, oldHome)
+			}
+			if got.Emoji != testCase.wantEmoji {
+				t.Fatalf("Codex emoji=%q, want %q", got.Emoji, testCase.wantEmoji)
+			}
+			if !reflect.DeepEqual(got.Prefs, testCase.wantPrefs) {
+				t.Fatalf("Codex prefs=%#v, want %#v", got.Prefs, testCase.wantPrefs)
+			}
+		})
+	}
+}
+
 func TestConfiguredCodexHomeWithoutCredentialsIsAConfigError(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "config.json")

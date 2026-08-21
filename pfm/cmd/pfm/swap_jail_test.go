@@ -91,7 +91,7 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	}
 }
 
-func TestChatSwapSchedulesAKilledWorker(t *testing.T) {
+func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 	root := jailTest(t)
 	configPath := writeConfigFixture(t, root, `{
   "version": 1,

@@ -735,6 +735,7 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 	accounts := append([]CodexAccount(nil), existing...)
 	ids := make(map[int]int, len(accounts)+len(values))
 	homes := make(map[string]int, len(accounts)+len(values))
+	configuredIDs := make(map[int]bool, len(values))
 	for index, account := range accounts {
 		ids[account.ID] = index
 		homes[filepath.Clean(account.Home)] = index
@@ -744,6 +745,10 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 		if value.ID < 1 {
 			return nil, fmt.Errorf("config %s: %s.id must be positive", path, scope)
 		}
+		if configuredIDs[value.ID] {
+			return nil, fmt.Errorf("config %s: %s duplicates id %d", path, scope, value.ID)
+		}
+		configuredIDs[value.ID] = true
 		codexHome, err := expandHomePath(value.Home, home)
 		if err != nil {
 			return nil, fmt.Errorf("config %s: %s.home: %w", path, scope, err)
@@ -772,8 +777,11 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 			accounts[existingIndex].Prefs = prefs
 			continue
 		}
-		if _, found := ids[value.ID]; found {
-			return nil, fmt.Errorf("config %s: %s duplicates id %d", path, scope, value.ID)
+		if existingIndex, found := ids[value.ID]; found {
+			delete(homes, filepath.Clean(accounts[existingIndex].Home))
+			accounts[existingIndex] = CodexAccount{ID: value.ID, Home: cleanHome, Emoji: emoji, Prefs: prefs}
+			homes[cleanHome] = existingIndex
+			continue
 		}
 		ids[value.ID] = len(accounts)
 		homes[cleanHome] = len(accounts)

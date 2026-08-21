@@ -68,7 +68,7 @@ func Morning(ctx context.Context, request MorningRequest) (MorningResult, error)
 }
 
 // Morning runs every configured repository and organ-local lane sequentially.
-// An individual failed night is recorded and does not kill later repositories;
+// An individual failed night is recorded and does not hide later repositories;
 // malformed launcher configuration fails the whole operation immediately.
 func morningWith(
 	ctx context.Context,
