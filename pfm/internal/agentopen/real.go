@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/gather"
 )
 
 // ExecCommands is the production command boundary. It strips inherited chat
@@ -116,6 +117,19 @@ func (RealProcesses) Kill(pid int) error {
 	return err
 }
 
+func (processes RealProcesses) ParentComm(pid int) string {
+	proc := gather.NewProcFS(processes.Root)
+	stat, err := proc.Stat(pid)
+	if err != nil || stat.ParentPID <= 0 {
+		return "unknown"
+	}
+	argv, err := proc.Cmdline(stat.ParentPID)
+	if err != nil || len(argv) == 0 {
+		return "unknown"
+	}
+	return filepath.Base(argv[0])
+}
+
 type RealTmux struct {
 	Binary string
 	Dir    string
@@ -144,9 +158,6 @@ func (tmux RealTmux) SocketForPID(ctx context.Context, pid int) (string, error) 
 		}
 		output, err := tmux.command(ctx, entry.Name(), "list-panes", "-a", "-F", "#{pane_pid}").Output()
 		if err != nil {
-			if tmux.Stderr != nil {
-				fmt.Fprintf(tmux.Stderr, "pfm internal agent-open: probe tmux socket %s for pid %d: %v\n", entry.Name(), pid, err)
-			}
 			continue
 		}
 		for _, line := range strings.Split(string(output), "\n") {

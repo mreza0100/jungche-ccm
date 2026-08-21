@@ -225,6 +225,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm chat group hook",
 		home + "/.local/bin/pfm dream hook agent-inject",
+		home + "/.local/bin/pfm internal launcher-repair",
 	} {
 		if !strings.Contains(settings, wanted) {
 			t.Fatalf("settings missing %q:\n%s", wanted, settings)

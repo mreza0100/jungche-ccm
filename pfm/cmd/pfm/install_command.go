@@ -84,6 +84,7 @@ func newInstallerOptions(
 		options.MCPPort = runtime.Config.MCP.HTTP.Port
 		options.MCPAuthToken = runtime.Config.MCP.AuthToken
 		options.MCPConfigPath = runtime.Config.Path
+		options.ClaudeBinary = runtime.Config.Claude.Binary
 		options.ClaudePrompted = make(map[int]bool, len(runtime.Config.Accounts))
 		options.CodexYolo = make(map[int]bool, len(runtime.Config.Accounts))
 		for _, account := range runtime.Config.Accounts {

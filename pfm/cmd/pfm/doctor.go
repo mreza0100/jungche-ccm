@@ -17,6 +17,7 @@ import (
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/harvest"
 	"hostops/pfm/internal/harvestpy"
+	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -91,6 +92,25 @@ func runDoctor(
 	warnings += len(pathWarnings)
 	if len(pathWarnings) == 0 {
 		fmt.Fprintln(stdout, "doctor: path canonical")
+	}
+	launcher, launcherErr := installer.InspectClaudeLauncher(resolved.Home)
+	if launcherErr != nil {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: launcher: unreadable error=%v — run pfm install\n", launcherErr)
+	} else {
+		switch launcher.State {
+		case installer.LauncherOK:
+			fmt.Fprintln(stdout, "doctor: launcher: ok")
+		case installer.LauncherMissing:
+			warnings++
+			fmt.Fprintln(stdout, "doctor: launcher: missing — run pfm install")
+		case installer.LauncherDisplaced:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: launcher: DISPLACED by %s — run pfm install\n", launcher.Target)
+		default:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: launcher: unknown state=%s — run pfm install\n", launcher.State)
+		}
 	}
 
 	version, err := database.UserVersion(ctx)

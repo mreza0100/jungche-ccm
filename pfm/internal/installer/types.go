@@ -72,6 +72,7 @@ type Options struct {
 	MCPPort        int
 	MCPAuthToken   string
 	MCPConfigPath  string
+	ClaudeBinary   string
 	ClaudePrompted map[int]bool
 	CodexYolo      map[int]bool
 

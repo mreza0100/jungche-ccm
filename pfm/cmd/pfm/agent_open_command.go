@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,6 +56,11 @@ func runInternalAgentOpen(
 		Stderr:    stderr,
 	})
 	if err := opener.Open(context.Background(), agentopen.Request{ID: *id, CWD: *cwd, OwningConfig: *configDir, PrimaryAccount: primary, Cache1H: initialCache1H()}); err != nil {
+		var outside *agentopen.OutsidePFMError
+		if errors.As(err, &outside) {
+			fmt.Fprintln(stderr, outside.Error())
+			return 1
+		}
 		fmt.Fprintf(stderr, "pfm internal agent-open: %v\n", err)
 		return 1
 	}

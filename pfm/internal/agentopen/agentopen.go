@@ -18,6 +18,18 @@ import (
 
 var ErrBusy = errors.New("another agent open is already in flight")
 
+type OutsidePFMError struct {
+	Name, Parent string
+	PID          int
+}
+
+func (failure *OutsidePFMError) Error() string {
+	return fmt.Sprintf(
+		"⚙ %s: running outside pfm (pid %d, parent %s) — no pane to attach; kill %d and open the row to resume it in a pane",
+		failure.Name, failure.PID, failure.Parent, failure.PID,
+	)
+}
+
 const agentQueryTimeout = 40 * time.Second
 
 type Agent struct {
@@ -239,15 +251,24 @@ func (opener *Opener) Open(ctx context.Context, request Request) error {
 
 	account := opener.accountForConfig(hitConfig)
 	if hit.PID > 0 && opener.processes.Alive(hit.PID) {
-		if socket, err := opener.tmux.SocketForPID(ctx, hit.PID); err != nil {
-			fmt.Fprintf(opener.stderr, "pfm internal agent-open: locate tmux socket for agent %d: %v\n", hit.PID, err)
-		} else if strings.HasPrefix(socket, "cc-") {
+		socket, err := opener.tmux.SocketForPID(ctx, hit.PID)
+		if err != nil {
+			return fmt.Errorf("locate tmux socket for agent %d: %w", hit.PID, err)
+		}
+		if strings.HasPrefix(socket, "cc-") {
 			fmt.Fprintf(opener.stderr, "⚙ %s is a tmux-resident chat on %s — attaching its window\n", displayName(hit), socket)
 			if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
 				return fmt.Errorf("release attach lock: %w", err)
 			}
 			return opener.tmux.Attach(ctx, socket)
 		}
+		parent := "unknown"
+		if processes, ok := opener.processes.(interface{ ParentComm(int) string }); ok {
+			if comm := strings.TrimSpace(processes.ParentComm(hit.PID)); comm != "" {
+				parent = comm
+			}
+		}
+		return &OutsidePFMError{Name: displayName(hit), PID: hit.PID, Parent: parent}
 	}
 
 	if hit.activity() == "busy" {
