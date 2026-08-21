@@ -52,18 +52,23 @@ def _docling():
     return _DOCLING
 
 
-def pdf_to_md(path: str) -> str:
-    log.info("convert pdf:pymupdf4llm %s ocr=%s layout=%s", path, _PDF_OCR, _PDF_LAYOUT)
+def pdf_to_md(path: str, force_ocr: bool = False) -> str:
+    """PDF -> markdown. `force_ocr=True` runs the layout model + Tesseract for THIS call only —
+    the dispatch OCR-escalation rung uses it when a PDF's text layer converts to empty (a scan),
+    without turning the slow default on for every other fetch."""
+    ocr = _PDF_OCR or force_ocr
+    layout = _PDF_LAYOUT or force_ocr  # use_ocr only applies in layout mode — force it on too
+    log.info("convert pdf:pymupdf4llm %s ocr=%s layout=%s", path, ocr, layout)
     import pymupdf4llm
     # The fork defaults the layout model ON (10s+/PDF). Force it off unless opted in.
     if hasattr(pymupdf4llm, "use_layout"):
         try:
-            pymupdf4llm.use_layout(_PDF_LAYOUT)
+            pymupdf4llm.use_layout(layout)
         except Exception as e:
-            log.warning("pymupdf4llm.use_layout(%s) failed: %s", _PDF_LAYOUT, e)
+            log.warning("pymupdf4llm.use_layout(%s) failed: %s", layout, e)
     # use_ocr only applies in layout mode; in legacy mode it's ignored (and warns). Pass it only
     # when it does something — legacy/classic extraction never OCRs anyway.
-    kwargs = {"use_ocr": _PDF_OCR} if _PDF_LAYOUT else {}
+    kwargs = {"use_ocr": ocr} if layout else {}
     with _quiet_stdout():
         try:
             result = pymupdf4llm.to_markdown(path, **kwargs)
@@ -82,6 +87,18 @@ def office_to_md(path: str) -> str:
 
 def csv_to_md(path: str) -> str:
     log.info("convert csv:markitdown %s", path)
+    from markitdown import MarkItDown
+    with _quiet_stdout():
+        return MarkItDown().convert(path).text_content or ""
+
+
+def epub_to_md(path: str) -> str:
+    """EPUB -> markdown via MarkItDown (verified live: spine-ordered chapters, headings kept).
+
+    EPUBs are how OAPEN/DOAB/Gutenberg serve open books — without this converter those OA
+    candidates were rejected as 'archive-shaped' bytes and the book was lost after being found.
+    """
+    log.info("convert epub:markitdown %s", path)
     from markitdown import MarkItDown
     with _quiet_stdout():
         return MarkItDown().convert(path).text_content or ""
@@ -109,6 +126,7 @@ def convert_local_file(path: str, kind: str) -> str:
         "xlsx": lambda: office_to_md(path),
         "pptx": lambda: office_to_md(path),
         "csv": lambda: csv_to_md(path),
+        "epub": lambda: epub_to_md(path),
         "json": lambda: json_to_md(Path(path).read_text(encoding="utf-8", errors="ignore")),
     }
     fn = converters.get(kind)

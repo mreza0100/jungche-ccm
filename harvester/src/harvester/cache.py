@@ -36,7 +36,7 @@ DEFAULT_CACHE_TTL = 86400          # 1 day
 # spreadsheet is updated. These expire. Images and archive members are omitted on purpose: they are
 # binary content addressed by URL, not publications that get edited in place, and re-downloading
 # them on a timer would burn bandwidth for a byte-identical file.
-VOLATILE_KINDS = frozenset({"html", "pdf", "docx", "xlsx", "pptx", "csv", "json", "txt"})
+VOLATILE_KINDS = frozenset({"html", "pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "epub"})
 
 
 def cache_ttl() -> int:

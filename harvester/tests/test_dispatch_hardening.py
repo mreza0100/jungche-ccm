@@ -975,6 +975,9 @@ class TestR3EmptyConvertPivotsToMirror:
         assert "error" not in result
 
     async def test_no_rescue_keeps_ocr_hint(self, monkeypatch):
+        """Since the OCR-escalation wave, a REMOTE pdf gets one automatic OCR pass before this
+        error — so the message names the attempt, not the env flag (the HARVESTER_PDF_OCR hint
+        now applies only to LOCAL files, which the escalation never sees)."""
         async def fake_download_bytes(url, ua, proxy=None):
             return b"%PDF-1.4 minimal", 200, None
 
@@ -991,8 +994,29 @@ class TestR3EmptyConvertPivotsToMirror:
         url = "https://scanned.example/paper.pdf"
         result = await dispatch._doc_result(url, url, "pdf", False, "ua", None)
         assert "error" in result
-        assert "HARVESTER_PDF_OCR" in result["error"]
+        assert "OCR pass was already attempted" in result["error"]
         assert "search" in result["error"].lower()
+
+    async def test_local_pdf_still_names_ocr_flag(self, monkeypatch):
+        """A LOCAL pdf never goes through the mirror/OCR escalation — its error keeps the
+        'set HARVESTER_PDF_OCR=1' hint pointing at the operator's own control."""
+        import tempfile
+        import os
+        fd, p = tempfile.mkstemp(suffix=".pdf")
+        os.write(fd, b"%PDF-1.4 minimal")
+        os.close(fd)
+
+        def fake_convert(path, kind):
+            return ""
+
+        monkeypatch.setattr(convert, "convert_local_file", fake_convert)
+
+        try:
+            result = await dispatch._doc_result(p, p, "pdf", True, "ua", None)
+        finally:
+            os.unlink(p)
+        assert "error" in result
+        assert "HARVESTER_PDF_OCR" in result["error"]
 
 
 # ── R4: meta-scrape reuses text already in scope, never plain httpx ──────────

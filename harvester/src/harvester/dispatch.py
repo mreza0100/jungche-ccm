@@ -14,11 +14,17 @@ from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import unquote, urlparse
 
-from . import cache, convert, detect, html, mirror, net, oa, safe_archive, search
+from . import cache, convert, detect, html, images, mirror, net, oa, safe_archive, search, stats
 from .cache import CACHE_MIN_BODY, THIN_MIN_CHARS
 from .log import get_logger
 
 log = get_logger("dispatch")
+
+# Opt-in figure localisation for `fetch` (HARVESTER_LOCALIZE_IMAGES=1): download every image a
+# successfully fetched page references into the cache and rewrite the markdown links to local
+# paths the model can read with vision. Off by default — `fetch`'s contract stays "image refs
+# remain URLs"; see AGENTS.md § Conventions (images are bifurcated by `media`).
+_LOCALIZE_IMAGES = convert._envflag("HARVESTER_LOCALIZE_IMAGES")
 
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
@@ -374,8 +380,9 @@ async def _handle_binary_doc(
         )
         return _ok(local_path, "image", body, content_chars=THIN_MIN_CHARS + 1)
 
-    # DOC kinds: pdf, docx, xlsx, pptx, csv, json
-    _doc_ext = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx", "csv": ".csv", "json": ".json"}
+    # DOC kinds: pdf, docx, xlsx, pptx, csv, json, epub
+    _doc_ext = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx", "csv": ".csv",
+                "json": ".json", "epub": ".epub"}
     ext = _doc_ext.get(kind, f".{kind}")
     bin_path = cache.cache_file(key, kind, ext)
     bin_path.write_bytes(data)
@@ -511,6 +518,18 @@ async def _html_result(
         body = meta_block + body
     body = html.tidy_markdown(body)
 
+    # Opt-in figure localisation (HARVESTER_LOCALIZE_IMAGES=1): rewrite `![](remote)` links to
+    # local cache paths so the model can view figures directly. Only for a real (non-local,
+    # non-challenge) fetch; a localization failure leaves the remote links untouched.
+    if not local and not challenge and _LOCALIZE_IMAGES and "![" in body:
+        try:
+            localized = await images.localize_html_images(body, src, user_agent, proxy_url)
+            if localized != body:
+                log.info("html %s localized %d -> %d chars of image links", key, len(body), len(localized))
+                body = localized
+        except Exception as e:
+            log.warning("image localisation failed %s (links left remote): %s", key, e)
+
     extra = {"rungs": _rungs_summary(trace)} if len(trace) > 1 else None
     cache._write_md(md_path, key, method, body, extra=extra)
     log.info("html %s done method=%s chars=%d", key, method, content_chars)
@@ -606,6 +625,7 @@ async def _doc_result(
     method = {
         "pdf": "pdf:pymupdf4llm", "docx": "office:docling", "xlsx": "office:docling",
         "pptx": "office:docling", "csv": "csv:markitdown", "json": "json",
+        "epub": "book:markitdown",
     }[kind]
     body = await asyncio.to_thread(convert.convert_local_file, path, kind)
     body = html.tidy_markdown(body)
@@ -618,7 +638,30 @@ async def _doc_result(
             mirror_res = await _try_mirror_for_url(src, key, user_agent, proxy_url, trace)
             if mirror_res:
                 return mirror_res
-        hint = " — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it" if kind == "pdf" else ""
+            # LAST resort for a remote PDF: ONE forced-OCR pass. An empty text layer almost
+            # always means a scanned document, and every faster rescue (a text copy elsewhere)
+            # just failed. Slow, so it fires exactly when nothing else worked; a missing/broken
+            # OCR backend is logged and treated as an empty result, never an exception.
+            if kind == "pdf":
+                log.info("doc %s mirror chain exhausted -> OCR escalation rung", key)
+                ocr_body = ""
+                try:
+                    ocr_body = html.tidy_markdown(
+                        await asyncio.to_thread(convert.pdf_to_md, path, True))
+                except Exception as e:
+                    log.warning("doc %s OCR backend failed: %s", key, e)
+                if ocr_body.strip():
+                    trace.append(Attempt("ocr", src, Outcome.OK))
+                    extra = {"rungs": _rungs_summary(trace)} if len(trace) > 1 else None
+                    cache._write_md(md_path, key, "pdf:pymupdf4llm-ocr", ocr_body, extra=extra)
+                    log.info("doc %s -> OCR rung won (%d chars)", key, len(ocr_body))
+                    return _ok(md_path, "pdf:pymupdf4llm-ocr", ocr_body)
+                trace.append(Attempt("ocr", src, Outcome.EMPTY_CONVERT))
+        hint = ""
+        if kind == "pdf":
+            hint = (" — an OCR pass was already attempted on this copy and produced nothing, "
+                    "so the file is likely corrupt or password-protected" if not local
+                    else " — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it")
         msg = (
             f"Downloaded the {kind.upper()} from {key} but it converted to EMPTY text. It is "
             f"likely scanned/image-only, corrupt, or password-protected{hint}. Use `search` to "
@@ -905,9 +948,24 @@ async def _candidate_to_result(
         return None
 
     if kind in detect.ARCHIVE_KINDS:
-        # R5: a candidate serving a zip/7z/rar/tar (e.g. an EPUB, which is zip-shaped) has no
-        # text converter in this ladder — decoding it as UTF-8 below would silently cache binary
-        # noise as a "successful" text artifact. Reject; the caller tries the next candidate.
+        # R5: a candidate serving a zip/7z/rar/tar has no text converter in this ladder —
+        # decoding it as UTF-8 below would silently cache binary noise as a "successful" text
+        # artifact. ONE exception: an EPUB is zip-SHAPED but is a book, and OA book sources
+        # (OAPEN/DOAB/Gutenberg) serve EPUB constantly — detect it by its uncompressed
+        # `mimetype` member and convert it instead of throwing the found book away.
+        if kind == "zip" and detect.looks_like_epub(data):
+            log.info("oa candidate %s (%s) -> zip bytes are an EPUB — converting", cand.source, cand.url)
+            try:
+                res = await _handle_binary_doc(data, cand.url, key, "epub", user_agent, proxy_url)
+            except Exception as e:
+                log.warning("oa candidate epub convert failed %s: %s", cand.url, e)
+                trace.append(Attempt(rung, cand.url, Outcome.EMPTY_CONVERT))
+                return None
+            if res and not res.get("error") and (res.get("content_chars") or 0) > 0:
+                trace.append(Attempt(rung, cand.url, Outcome.OK))
+                return _finalize_with_rungs(res, trace)
+            trace.append(Attempt(rung, cand.url, Outcome.EMPTY_CONVERT))
+            return None
         log.info("oa candidate %s (%s) -> archive-kind %s, no text converter — rejected",
                  cand.source, cand.url, kind)
         trace.append(Attempt(rung, cand.url, Outcome.WRONG_KIND))
@@ -1413,6 +1471,14 @@ async def _fetch_and_record(
             ttl = HARVESTER_NEG_TTL_TRANSIENT if _is_transient_error(result) else _neg_ttl()
             _NEG_CACHE[neg_key] = (time.monotonic(), result, ttl)
             _neg_cache_evict_stale()
+        # Scoreboard (stats.jsonl): one line per terminal outcome, so source health and failure
+        # kinds are aggregable over time. record_fetch never raises — telemetry can't break a fetch.
+        if isinstance(result, dict):
+            ok = not result.get("error")
+            stats.record_fetch(
+                item, ok,
+                str(result.get("method") or "") if ok else str(result.get("error_kind") or "error"),
+            )
         if not fut.done():
             fut.set_result(result)
         return result

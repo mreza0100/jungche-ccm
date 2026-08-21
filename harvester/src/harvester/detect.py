@@ -15,12 +15,23 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff",
 
 _EXT_KIND = {
     ".pdf": "pdf", ".docx": "docx", ".xlsx": "xlsx", ".pptx": "pptx",
-    ".csv": "csv", ".json": "json", ".zip": "zip", ".7z": "7z", ".rar": "rar",
-    ".htm": "html", ".html": "html",
+    ".csv": "csv", ".json": "json", ".epub": "epub", ".zip": "zip", ".7z": "7z",
+    ".rar": "rar", ".htm": "html", ".html": "html",
 }
 _TAR_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".tar")
 ARCHIVE_KINDS = {"zip", "tar", "7z", "rar"}
-DOC_KINDS = {"pdf", "docx", "xlsx", "pptx", "csv", "json"}
+DOC_KINDS = {"pdf", "docx", "xlsx", "pptx", "csv", "json", "epub"}
+
+# EPUB_CONTENT_MARKER: an EPUB is a ZIP whose FIRST, UNCOMPRESSED member is a `mimetype` file
+# holding exactly `application/epub+zip` — so those bytes appear within the first ~60 bytes of
+# the file. This is what separates an EPUB (a book to convert) from a plain zip (an archive to
+# browse) when both arrive as PK\x03\x04 bytes with no helpful extension.
+EPUB_CONTENT_MARKER = b"application/epub+zip"
+
+
+def looks_like_epub(data: bytes) -> bool:
+    """True when *data* carries the EPUB mimetype signature near the zip header."""
+    return EPUB_CONTENT_MARKER in data[:200]
 
 
 def detect_kind(location: str) -> str:
@@ -165,6 +176,7 @@ def deny_reason(path: Path) -> str | None:
 # ── content-type → kind mapping for binary/non-HTML responses ────────────────
 _CT_BINARY_MAP: dict[str, str] = {
     "application/pdf": "pdf",
+    "application/epub+zip": "epub",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
