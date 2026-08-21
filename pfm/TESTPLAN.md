@@ -153,6 +153,35 @@ permanently wired fixture in this suite.
 | `internal hide-exit --engine…` → detached finisher; missing flags → rc 2                                              | JAIL+tmux | `main.go:250-299`, `hide/finisher.go:94-144`                                                              |            |
 | `internal then …` → steer waiter                                                                                      | JAIL+tmux | `main.go:251-253`, `inject/then.go`                                                                       |            |
 
+### A.2 — Doctor probe classification
+
+| probe | safety | expected behavior | regression |
+| --- | --- | --- | --- |
+| config load error | JAIL | visible config warning and rc 1 | `config_cli_test.go` |
+| disabled MCP daemon | JAIL | no daemon probe or warning | `doctor_jail_test.go` |
+| enabled MCP daemon reachability | JAIL | running is clean; unreachable is a warning and rc 1 | `mcp_serve_test.go` |
+| enabled MCP daemon version | JAIL | matching version is clean; skew is a warning and rc 1 | `mcp_serve_test.go` |
+| canonical `pfm` executable read | JAIL | readable target-HOME binary is clean; unreadable or absent canonical binary is a warning and rc 1 | `doctor_path_test.go` |
+| PATH candidate resolution | JAIL | target-HOME canonical candidate first is clean; no target-HOME candidate or an in-home shadow is a warning and rc 1; host candidates are ignored | `doctor_jail_test.go`, `doctor_path_test.go` |
+| PATH candidate hash | JAIL | matching target-HOME candidates are clean; target-HOME read failure or hash mismatch is a warning and rc 1 | `doctor_jail_test.go`, `doctor_path_test.go` |
+| database open | JAIL | cannot open is a hard failure and rc 1 | `main_test.go:414-424` |
+| database user-version read | JAIL | cannot read is a hard failure and rc 1 | `doctor.go` |
+| database quick-check read | JAIL | cannot read is a hard failure and rc 1 | `doctor.go` |
+| database schema or integrity mismatch | JAIL | mismatch is a warning and rc 1 | `doctor.go` |
+| shared-store health | JAIL | healthy is clean; degraded shared state is a warning and rc 1 | `doctor.go` |
+| row counts and orphaned hides | JAIL | count query failure is a hard failure; nonzero orphaned hides is a warning and rc 1 | `doctor.go`, `store/hidden_test.go` |
+| WAL stat | JAIL | absent WAL is clean; other stat failure is a warning and rc 1 | `doctor.go` |
+| busy-warning counters | JAIL | zero counters are clean; nonzero or unreadable counters remain a warning or hard failure | `doctor.go` |
+| process-table read | JAIL | readable, including empty, is clean; unreadable is a warning and rc 1 | `doctor.go`, `internal/gather` |
+| configured roots | JAIL | existing directories are clean; missing, non-directory, or unreadable roots are warnings and rc 1 | `doctor.go` |
+| SID crumb directory | JAIL | missing after clean install is empty and clean; readable invalid entries warn; non-directory or unreadable probe remains an error and rc 1 | `doctor_jail_test.go`, `main_test.go:427-502` |
+| harvestpy plan | JAIL | available unblocked plan is clean; unavailable or blocked exact lock is a warning and rc 1 | `doctor_harvest_test.go` |
+| harvestpy deliberate skip | JAIL | deliberate skip is reported as `skipped` and is not a warning | `doctor_harvest_test.go` |
+| harvestpy interpreter and marker | JAIL | healthy interpreter and readable marker are clean; failed execution or marker inspection is a warning and rc 1 | `doctor_harvest_test.go` |
+| harvestpy lock and inventory | JAIL | complete lock and inventory are clean; incomplete or unreadable state is a warning and rc 1 | `doctor_harvest_test.go` |
+| harvestpy live smoke and conversion | JAIL | both healthy are clean; either failure is a warning and rc 1 | `doctor_harvest_test.go` |
+| harvester cache | JAIL | missing cache root is clean; walk failure or invalid TTL is a warning and rc 1 | `doctor.go`, `internal/harvest/cache_roundtrip_test.go` |
+
 | `reap` dry run classifies every socket, changes nothing | JAIL+tmux | `cmd/pfm/reap_jail_test.go:134-189`, `internal/reap/reap.go:139-160` | |
 | `reap` KEEP rules: attached, self, `cc-new-*`, busy, transcript written < 60s | JAIL | `internal/reap/reap_test.go:14-200` | |
 | `reap` never kills a socket hosting non-chat processes (dev servers, `uv`) | JAIL+tmux | `internal/reap/proc.go:78-110`, `cmd/pfm/reap_jail_test.go:134-189` | |
@@ -480,6 +509,9 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | ----------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------- | ---------- |
 | bare `pfm install` previews the full plan, writes nothing, and ends with the exact `pfm install --yes` confirmation | JAIL | `install_command_test.go`, `internal/installer` | |
 | `pfm install --yes` applies the same classification as the preview; an executing name-sync service refuses before writes with actionable rc 97 | JAIL | `install_command_test.go`, installer tests | |
+| `pfm install --yes --skip-harvest` applies with `ProvisionHarvest=false` and prints exactly `harvestpy: skipped (blocked, not attempted)` without calling the provisioner | JAIL | `install_command_test.go`, `internal/installer/harvest_integration_test.go` | |
+| bare `pfm install --skip-harvest` previews `harvestpy: would skip (blocked, not attempted)` and preserves the flag in its confirmation | JAIL | `install_command_test.go`, `internal/installer/harvest_integration_test.go` | |
+| `pfm install --yes` keeps provisioning failures loud instead of downgrading them to a skip | JAIL | `install_command_test.go` | |
 | `pfm uninstall [--config-dir DIR]` dispatches `ModeUninstall` and restores/removes installer-owned state | JAIL | `uninstall_command.go`, installer tests | |
 | apply stages embedded assets, removes retired links, and leaves `~/.claude/bin` empty                            | JAIL             | `internal/installer`, installer tests     |            |
 | command cards, helpers, shim and units link to the managed asset tree                                            | JAIL+sh          | `internal/installer`, installer tests     |            |
@@ -494,6 +526,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
 | installer rewires Claude and Codex clear-hide, group, statusline, usage and dream hooks while preserving unrelated entries | JAIL | `internal/installer`, installer tests | |
+| fenced e2e install/update/uninstall requires `PFM_DEV_FENCE=1`, stages the source plus every HOME/state path under `t.TempDir()`, uses `--skip-harvest`, and asserts the exact skip line | JAIL | `e2e/install_e2e_test.go`, `scripts/e2e-linux.sh`, `.github/workflows/install-verify.yml` | |
 
 ## L — Dream runtime resources
 
