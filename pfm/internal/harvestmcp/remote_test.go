@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 )
 
 func remoteRequest(t *testing.T, server *RemoteServer, method, path, body, contentType string) *httptest.ResponseRecorder {
@@ -21,6 +23,48 @@ func remoteRequest(t *testing.T, server *RemoteServer, method, path, body, conte
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func TestConsentPageTxnInputIsHidden(t *testing.T) {
+	t.Setenv("TMUX_TMPDIR", t.TempDir())
+	const txn = "distinctive-consent-txn-qa-20260821"
+	doc, err := html.Parse(strings.NewReader(consentPage(txn, "")))
+	if err != nil {
+		t.Fatalf("parse consent page: %v", err)
+	}
+
+	var txnInputs []*html.Node
+	var visit func(*html.Node)
+	visit = func(node *html.Node) {
+		if node.Type == html.ElementNode && node.Data == "input" {
+			for _, attr := range node.Attr {
+				if attr.Key == "name" && attr.Val == "txn" {
+					txnInputs = append(txnInputs, node)
+					break
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(doc)
+
+	if len(txnInputs) == 0 {
+		t.Fatal("consent page has no input named txn")
+	}
+	if len(txnInputs) != 1 {
+		t.Fatalf("consent page has %d inputs named txn, want exactly one", len(txnInputs))
+	}
+	for _, attr := range txnInputs[0].Attr {
+		if attr.Key == "type" {
+			if attr.Val != "hidden" {
+				t.Fatalf("consent page txn input type = %q, want %q", attr.Val, "hidden")
+			}
+			return
+		}
+	}
+	t.Fatal("consent page txn input has no type attribute, want \"hidden\"")
 }
 
 func TestRemoteOpenAndStaticGateway(t *testing.T) {

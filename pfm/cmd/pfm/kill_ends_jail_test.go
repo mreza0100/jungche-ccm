@@ -56,11 +56,11 @@ func jailServerAlive(tmuxDir, socket string) bool {
 	return command.Run() == nil
 }
 
-// TestHidingALiveChatEndsItAndClearsItsHandles is the whole contract of the
+// TestKillingALiveChatEndsItAndClearsItsHandles is the whole contract of the
 // destructive half: the store row lands, the server dies, and every handle
 // that pointed at it — socket file, sid crumb — is gone, so nothing is left
 // resolving the chat to a server that no longer exists.
-func TestHidingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
+func TestKillingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -104,7 +104,7 @@ func TestHidingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 	}
 
 	if jailServerAlive(tmuxDir, socket) {
-		t.Fatal("⌃X hid the chat but left it running")
+		t.Fatal("⌃X killed the chat but left it running")
 	}
 	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); !os.IsNotExist(err) {
 		t.Fatalf("socket file outlived the kill: %v", err)
@@ -114,9 +114,9 @@ func TestHidingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 	}
 }
 
-// TestHidingAChatThatIsNotRunningKillsNothing: the kill is scoped to rows the
-// picker saw as live. A resumable row is filed away and nothing is touched.
-func TestHidingAChatThatIsNotRunningKillsNothing(t *testing.T) {
+// TestKillingAChatThatIsNotRunningKillsNothing: the kill is scoped to rows the
+// picker saw as live. A resumable row is not live, so killing it touches nothing.
+func TestKillingAChatThatIsNotRunningKillsNothing(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -145,14 +145,14 @@ func TestHidingAChatThatIsNotRunningKillsNothing(t *testing.T) {
 		t.Fatalf("kill a resumable chat: %v", err)
 	}
 	if !jailServerAlive(tmuxDir, bystander) {
-		t.Fatal("hiding a resumable row killed a server that was not its own")
+		t.Fatal("killing a resumable row killed a server that was not its own")
 	}
 }
 
-// TestHidingAChatWhoseServerAlreadyDiedStillSucceeds: killing a corpse fails
+// TestKillingAChatWhoseServerAlreadyDiedStillSucceeds: killing a corpse fails
 // loudly at the tmux level for no reason an operator can act on. The goal is
 // "not running", so a chat that died on its own still kills cleanly.
-func TestHidingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
+func TestKillingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -182,7 +182,7 @@ func TestHidingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
 		Live:   true,
 		Name:   "ALREADY-GONE",
 	}); err != nil {
-		t.Fatalf("hiding an already-dead chat reported a failure: %v", err)
+		t.Fatalf("killing an already-dead chat reported a failure: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); !os.IsNotExist(err) {
 		t.Fatalf("corpse socket survived: %v", err)

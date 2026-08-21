@@ -11,8 +11,9 @@ import (
 // the chat itself, with no store row and no picker keystroke — and renaming it
 // back is the unkill. The match is case-insensitive so "_kill" works too.
 const (
-	KillPrefix       = "_KILL"
-	legacyKillPrefix = "_" + "HI" + "DE"
+	KillPrefix = "_KILL"
+	// legacy label prefix, read-compat only.
+	legacyKillPrefix = "_HIDE"
 )
 
 // LabelKilled reports whether a display name carries KillPrefix.

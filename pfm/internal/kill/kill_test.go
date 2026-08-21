@@ -1208,7 +1208,7 @@ func tmuxKilledAt(t *testing.T, database *store.Store, id string) int64 {
 // so "not indexed" is its NORMAL state, not an error — and the kill must land
 // on the agent's own session uuid, reach the shared store, and hold while the
 // process is still alive.
-func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
+func TestKillingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
@@ -1295,7 +1295,7 @@ func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 // A bare id the index cannot name is still an error, so a mistyped
 // `pfm kill` argument cannot quietly record a kill for nothing. Only a
 // caller holding the row vouches for it.
-func TestHidingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
+func TestKillingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
 	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
