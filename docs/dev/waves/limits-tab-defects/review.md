@@ -4,7 +4,7 @@
 
 - Manifest: `docs/dev/waves/limits-tab-defects/manifest.md`
 - Project: `pfm`
-- Commit: assigned by gitter after this pre-commit review
+- Code commit: `630fab1659b11fcfdd51566de1a2820bf35fc447`
 - Review mode: single-context inline walk, as ordered by the user
 
 ## Coverage
