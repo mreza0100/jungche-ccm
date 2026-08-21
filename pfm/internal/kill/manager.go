@@ -47,6 +47,12 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 			ConfigPath: dependencies.ConfigPath,
 		}
 	}
+	codexRoots := dependencies.CodexRoots
+	if codexRoots == nil {
+		codexRoots = []string{resolved.CodexRoot}
+	} else {
+		codexRoots = append([]string{}, codexRoots...)
+	}
 	return &Manager{
 		database: database,
 		proc:     proc,
@@ -54,10 +60,10 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 		spawner:  spawner,
 		now:      now,
 		paths: resolvedPaths{
-			home:      resolved.Home,
-			sidDir:    resolved.SIDDir,
-			codexRoot: resolved.CodexRoot,
-			tmuxDir:   resolved.TmuxDir,
+			home:       resolved.Home,
+			sidDir:     resolved.SIDDir,
+			codexRoots: codexRoots,
+			tmuxDir:    resolved.TmuxDir,
 		},
 	}, nil
 }

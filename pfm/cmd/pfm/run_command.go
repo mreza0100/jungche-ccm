@@ -11,6 +11,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
@@ -41,7 +42,7 @@ func runRun(
 		stderr,
 	)
 	name := flags.String("name", "", "chat name (a _KILL… name stays out of the list)")
-	engine := flags.String("engine", "cc", "engine: cc|claude or cx|codex")
+	engine := flags.String("engine", "", "engine: cc|claude or cx|codex (default: config)")
 	cwd := flags.String("cwd", "", "project directory (default: the current one)")
 	account := flags.Int("account", 0, "Claude account (default: the primary one)")
 	cache1H := flags.Bool("1h", false, "arm 1h prompt caching")
@@ -65,21 +66,21 @@ func runRun(
 		flags.Usage()
 		return 2
 	}
-	engineName, ok := action.NormalizeEngine(*engine)
-	if !ok {
-		fmt.Fprintf(stderr, "pfm chat new: unknown engine %q\n", *engine)
-		return 2
-	}
-
 	resolved := runtime.Paths
 	directory, err := runDirectory(*cwd)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 1
 	}
-	claudeAccount := *account
-	if claudeAccount == 0 {
-		claudeAccount = readPrimaryAccount(resolved, runtime.Config)
+	engineName, selectedAccount, err := resolveRunEngineAccount(
+		*engine,
+		*account,
+		runtime.Config,
+		readPrimaryAccount(resolved, runtime.Config),
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
+		return 2
 	}
 	prompt, err := runPrompt(*promptFile, positional)
 	if err != nil {
@@ -94,7 +95,7 @@ func runRun(
 		Model:          *model,
 		Effort:         *effort,
 		Home:           resolved.Home,
-		PrimaryAccount: claudeAccount,
+		PrimaryAccount: selectedAccount,
 		Cache1H:        *cache1H,
 		Config:         runtime.Config,
 	})
@@ -176,6 +177,48 @@ func runRun(
 		return code
 	}
 	return attachRunResult(*attach, result, stdout, stderr)
+}
+
+func resolveRunEngineAccount(
+	requestedEngine string,
+	requestedAccount int,
+	machine pfmconfig.Config,
+	primaryClaude int,
+) (string, int, error) {
+	engineInput := requestedEngine
+	if strings.TrimSpace(engineInput) == "" {
+		defaultEngine, err := machine.DefaultEngine()
+		if err != nil {
+			return "", 0, err
+		}
+		engineInput = defaultEngine
+	}
+	engine, ok := action.NormalizeEngine(engineInput)
+	if !ok {
+		return "", 0, fmt.Errorf("unknown engine %q", requestedEngine)
+	}
+
+	account := requestedAccount
+	switch engine {
+	case store.ClaudeEngine:
+		if account == 0 {
+			account = primaryClaude
+			if _, found := machine.Account(account); !found && len(machine.Accounts) != 0 {
+				account = machine.Accounts[0].ID
+			}
+		}
+		if _, found := machine.Account(account); !found {
+			return "", 0, fmt.Errorf("Claude account %d is not in the configured roster", account)
+		}
+	case store.CodexEngine:
+		if account == 0 && len(machine.CodexAccounts) != 0 {
+			account = machine.CodexAccounts[0].ID
+		}
+		if _, found := machine.CodexAccountByID(account); !found {
+			return "", 0, fmt.Errorf("Codex account %d is not in the configured roster", account)
+		}
+	}
+	return engine, account, nil
 }
 
 func parentChatID() string {

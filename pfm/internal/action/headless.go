@@ -129,6 +129,12 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 		}, nil
 	case store.CodexEngine:
 		machine := normalizedMachineConfig(request.Config, request.Home)
+		if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
+			return HeadlessPlan{}, fmt.Errorf(
+				"Codex account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
 		// No name and no prompt on the command line: Codex has no launch flag
 		// for a thread name (codex 0.147 --help), so the name is set through
 		// the TUI's own rename, and a prompt given here would have the model

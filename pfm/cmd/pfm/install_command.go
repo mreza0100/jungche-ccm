@@ -53,6 +53,7 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	}
 	entries := deps.Registry(deps.Options{
 		Home: runtime.Paths.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
+		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
 	})
 	if warnings := printDependencyDoctor(context.Background(), stdout, entries, deps.ProbeOptions{
 		SkipHarvest: *skipHarvest, Provisioning: true,
@@ -101,13 +102,17 @@ func newInstallerOptions(
 		options.MCPConfigPath = runtime.Config.Path
 		options.ClaudeBinary = runtime.Config.Claude.Binary
 		options.ClaudePrompted = make(map[int]bool, len(runtime.Config.Accounts))
-		options.CodexYolo = make(map[int]bool, len(runtime.Config.Accounts))
+		options.CodexYolo = make(map[int]bool, len(runtime.Config.CodexAccounts))
 		for _, account := range runtime.Config.Accounts {
 			options.ClaudePrompted[account.ID] = runtime.Config.EffectiveClaude(account.ID).PermissionMode == pfmconfig.PermissionPrompt
+		}
+		options.CodexHomes = make([]string, 0, len(runtime.Config.CodexAccounts))
+		for _, account := range runtime.Config.CodexAccounts {
+			options.CodexHomes = append(options.CodexHomes, account.Home)
 			options.CodexYolo[account.ID] = runtime.Config.EffectiveCodex(account.ID).Yolo
 		}
 		if configDir == "" {
-			options.ConfigDirs = append(options.ConfigDirs, runtime.Paths.Home+"/.claude")
+			options.ConfigDirs = make([]string, 0, len(runtime.Config.Accounts))
 			for _, account := range runtime.Config.Accounts {
 				options.ConfigDirs = append(options.ConfigDirs, account.ConfigDir)
 			}

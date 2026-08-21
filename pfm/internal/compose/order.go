@@ -42,6 +42,7 @@ func withNewRows(output Output) Output {
 			Name:    "New Codex chat",
 			Project: project,
 			CWD:     directory,
+			Account: output.primaryCodex,
 		})
 	}
 	rows = append(rows, chatRows...)

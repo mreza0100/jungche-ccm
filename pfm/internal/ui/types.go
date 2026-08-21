@@ -59,21 +59,24 @@ type Picker interface {
 // Snapshot is all state needed for a frame. Rendering never probes the
 // filesystem, processes, tmux, or the clock.
 type Snapshot struct {
-	Rows            []compose.Row
-	View            compose.View
-	KilledCount     int
-	SuppressedCount int
-	Refreshing      bool
-	PrimaryAccount  int
-	AccountIDs      []int
-	AccountEmojis   map[int]string
-	Theme           string
-	Cache1H         bool
-	NowNS           int64
-	Width           int
-	Height          int
-	InitialQuery    string
-	InitialCursorID string
+	Rows                []compose.Row
+	View                compose.View
+	KilledCount         int
+	SuppressedCount     int
+	Refreshing          bool
+	PrimaryAccount      int
+	AccountIDs          []int
+	AccountEmojis       map[int]string
+	CodexPrimaryAccount int
+	CodexAccountIDs     []int
+	CodexAccountEmojis  map[int]string
+	Theme               string
+	Cache1H             bool
+	NowNS               int64
+	Width               int
+	Height              int
+	InitialQuery        string
+	InitialCursorID     string
 	// MergeNewChat is used only by the interactive picker. Plain and TSV
 	// output leave it false so their existing two-row output remains stable.
 	MergeNewChat bool
@@ -120,12 +123,13 @@ type KillChange struct {
 // caller owns persistence and action execution after the TUI has restored the
 // terminal.
 type Outcome struct {
-	Kind           OutcomeKind
-	Row            compose.Row
-	PrimaryAccount int
-	Cache1H        bool
-	Query          string
-	KillChanges    []KillChange
+	Kind                 OutcomeKind
+	Row                  compose.Row
+	PrimaryAccount       int
+	ClaudePrimaryAccount int
+	Cache1H              bool
+	Query                string
+	KillChanges          []KillChange
 }
 
 // RefreshMsg replaces the cached compose snapshot without doing I/O in Model.

@@ -45,6 +45,48 @@ func TestNewWithPathsUsesInjectedRoots(t *testing.T) {
 	}
 }
 
+func TestIndexerIteratesEveryConfiguredCodexRoot(t *testing.T) {
+	root := t.TempDir()
+	codexRoots := []string{filepath.Join(root, "codex-1"), filepath.Join(root, "codex-2")}
+	for index, codexRoot := range codexRoots {
+		id := fmt.Sprintf("codex-account-%d", index+1)
+		path := filepath.Join(codexRoot, "sessions", "2026", "08", fmt.Sprintf("rollout-%s.jsonl", id))
+		rewriteJSONLines(t, path, []any{map[string]any{
+			"type": "response_item",
+			"payload": map[string]any{
+				"type": "message", "role": "user",
+				"content": []map[string]any{{"type": "input_text", "text": id}},
+			},
+		}})
+	}
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := NewWithCodexRoots(database, paths.Values{}, codexRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counters, err := indexer.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counters.FilesSeen != 2 || counters.FullParsed != 2 {
+		t.Fatalf("multi-root counters=%+v, want both Codex rollouts parsed", counters)
+	}
+	for index := range codexRoots {
+		id := fmt.Sprintf("codex-account-%d", index+1)
+		if rollout, found, err := database.Rollout(context.Background(), id); err != nil || !found || rollout.FirstPrompt != id {
+			t.Fatalf("Rollout(%q)=%#v found=%t err=%v", id, rollout, found, err)
+		}
+	}
+	warm, err := indexer.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if warm.FilesSeen != 2 || warm.FilesSkipped != 2 || warm.FullParsed != 0 || warm.RowsTouched != 0 || warm.BytesRead != 0 || warm.CxNamesReloaded {
+		t.Fatalf("warm multi-root counters=%+v, want two skips and no work", warm)
+	}
+}
+
 func TestIndexGoldenAndIncrementalTransitions(t *testing.T) {
 	fixture := setupIndexFixture(t)
 	database := openIndexStore(t)

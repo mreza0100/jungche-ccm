@@ -35,10 +35,11 @@ func (picker TSVPicker) Pick(
 
 func passiveOutcome(snapshot Snapshot) Outcome {
 	return Outcome{
-		Kind:           OutcomeNone,
-		PrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		Cache1H:        snapshot.Cache1H,
-		Query:          snapshot.InitialQuery,
+		Kind:                 OutcomeNone,
+		PrimaryAccount:       validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		ClaudePrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		Cache1H:              snapshot.Cache1H,
+		Query:                snapshot.InitialQuery,
 	}
 }
 
@@ -63,7 +64,7 @@ func RenderPlain(snapshot Snapshot) string {
 			rowMarker(row.Kind) + " " +
 				clipRunes(cleanField(row.Name), 30),
 		}
-		if badges := stripANSI(rowBadges(row)); badges != "" {
+		if badges := stripANSI(model.rowBadges(row)); badges != "" {
 			parts = append(parts, badges)
 		}
 		parts = append(

@@ -38,13 +38,31 @@ func DetectCodexThreads(
 	identify CodexThreadResolver,
 	binaries ...string,
 ) ([]LiveCodex, error) {
+	return DetectCodexThreadsInRoots(proc, []string{codexRoot}, panes, identify, binaries...)
+}
+
+// DetectCodexThreadsInRoots is DetectCodexThreads over every configured
+// Codex home. A process belongs to the account whose sessions directory owns
+// its rollout descriptor; rollout-less sessions use the roster-wide resolver.
+func DetectCodexThreadsInRoots(
+	proc ProcFS,
+	codexRoots []string,
+	panes []Pane,
+	identify CodexThreadResolver,
+	binaries ...string,
+) ([]LiveCodex, error) {
 	pids, err := proc.PIDs()
 	if err != nil {
 		return nil, fmt.Errorf("list processes for Codex scan: %w", err)
 	}
 	sort.Ints(pids)
 	paneByPID := panesByPID(panes)
-	sessionsRoot := filepath.Join(codexRoot, "sessions")
+	sessionsRoots := make([]string, 0, len(codexRoots))
+	for _, codexRoot := range codexRoots {
+		if strings.TrimSpace(codexRoot) != "" {
+			sessionsRoots = append(sessionsRoots, filepath.Join(codexRoot, "sessions"))
+		}
+	}
 
 	live := make([]LiveCodex, 0)
 	for _, pid := range pids {
@@ -62,8 +80,13 @@ func DetectCodexThreads(
 
 		rolloutPath := ""
 		for _, link := range links {
-			if isRolloutUnder(sessionsRoot, link.Target) {
-				rolloutPath = filepath.Clean(link.Target)
+			for _, sessionsRoot := range sessionsRoots {
+				if isRolloutUnder(sessionsRoot, link.Target) {
+					rolloutPath = filepath.Clean(link.Target)
+					break
+				}
+			}
+			if rolloutPath != "" {
 				break
 			}
 		}

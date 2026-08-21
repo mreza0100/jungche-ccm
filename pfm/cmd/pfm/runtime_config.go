@@ -34,6 +34,7 @@ func loadCommandRuntime(configPath string) (commandRuntime, error) {
 		configPath,
 		resolved.Home,
 		resolved.ClaudeRoots,
+		resolved.CodexRoot,
 	)
 	if err != nil {
 		return commandRuntime{}, err
@@ -47,7 +48,7 @@ func loadDiagnosticRuntime(configPath string) (commandRuntime, error) {
 	if err != nil {
 		return commandRuntime{}, fmt.Errorf("resolve paths: %w", err)
 	}
-	effective, configErr := pfmconfig.Load(configPath, resolved.Home, resolved.ClaudeRoots)
+	effective, configErr := pfmconfig.Load(configPath, resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
 	if configErr == nil {
 		resolved.ClaudeRoots = effective.ProjectRoots()
 		return commandRuntime{Config: effective, Paths: resolved}, nil
@@ -58,7 +59,7 @@ func loadDiagnosticRuntime(configPath string) (commandRuntime, error) {
 	if path == "" {
 		path = pfmconfig.ResolvePath(resolved.Home)
 	}
-	effective = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
+	effective = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
 	effective.Path = path
 	effective.Exists = true
 	resolved.ClaudeRoots = effective.ProjectRoots()

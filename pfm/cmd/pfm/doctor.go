@@ -67,6 +67,7 @@ func runDoctor(
 		warnings++
 	}
 	printDoctorConfig(stdout, runtime)
+	warnings += printEngineDoctor(stdout, runtime.Config)
 	if mcpConfigured(runtime) {
 		status, daemonErr := mcpDaemonReachability(runtime)
 		if daemonErr != nil {
@@ -123,6 +124,7 @@ func runDoctor(
 	}
 	warnings += printDependencyDoctor(ctx, stdout, deps.Registry(deps.Options{
 		Home: resolved.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
+		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
 	}), deps.ProbeOptions{VerboseDir: verboseDir})
 	warnings += printHookDoctor(stdout, resolved.Home, runtime.Config)
 
@@ -220,8 +222,13 @@ func runDoctor(
 	}
 
 	rootWarnings := 0
-	roots := append([]string(nil), resolved.ClaudeRoots...)
-	roots = append(roots, resolved.CodexRoot)
+	roots := make([]string, 0, len(runtime.Config.Accounts)+len(runtime.Config.CodexAccounts))
+	for _, account := range runtime.Config.Accounts {
+		roots = append(roots, account.ProjectDir)
+	}
+	for _, account := range runtime.Config.CodexAccounts {
+		roots = append(roots, account.Home)
+	}
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {
@@ -259,6 +266,17 @@ func runDoctor(
 		return 1
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
+	return 0
+}
+
+func printEngineDoctor(stdout io.Writer, machine config.Config) int {
+	counts := machine.Engines()
+	engine, err := machine.DefaultEngine()
+	if err != nil {
+		fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=none error=%v\n", counts.Claude, counts.Codex, err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=%s\n", counts.Claude, counts.Codex, engine)
 	return 0
 }
 

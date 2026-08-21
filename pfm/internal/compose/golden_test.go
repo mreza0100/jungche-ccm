@@ -29,6 +29,12 @@ func TestGoldenRowScenarios(t *testing.T) {
 	rendered.Truncate(rendered.Len() - 1)
 
 	goldenPath := filepath.Join("..", "..", "testdata", "golden", "compose.tsv")
+	if os.Getenv("PFM_UPDATE_GOLDENS") == "1" {
+		if err := os.WriteFile(goldenPath, rendered.Bytes(), 0o644); err != nil {
+			t.Fatalf("regenerate compose golden: %v", err)
+		}
+		return
+	}
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("read compose golden: %v\nactual:\n%s", err, rendered.String())

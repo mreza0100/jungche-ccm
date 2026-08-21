@@ -14,14 +14,17 @@ func fixtureSnapshot(width int) Snapshot {
 		return fixtureNowNS - int64(duration)
 	}
 	return Snapshot{
-		View:           compose.AllView,
-		KilledCount:    1,
-		PrimaryAccount: 2,
-		AccountIDs:     []int{1, 2, 3},
-		Cache1H:        true,
-		NowNS:          fixtureNowNS,
-		Width:          width,
-		Height:         17,
+		View:                compose.AllView,
+		KilledCount:         1,
+		PrimaryAccount:      2,
+		AccountIDs:          []int{1, 2, 3},
+		CodexPrimaryAccount: 3,
+		CodexAccountIDs:     []int{1, 2, 3},
+		CodexAccountEmojis:  map[int]string{1: "🥇", 2: "🥈", 3: "🥉"},
+		Cache1H:             true,
+		NowNS:               fixtureNowNS,
+		Width:               width,
+		Height:              17,
 		// The production picker always wires an applier (a ⌃X with nowhere to
 		// persist is refused), so the fixture carries one too.
 		ApplyKill: func(KillChange) error { return nil },

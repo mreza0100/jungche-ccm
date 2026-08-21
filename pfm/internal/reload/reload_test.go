@@ -221,6 +221,29 @@ func TestClaudeRunUnsetsInheritedIdentity(t *testing.T) {
 	}
 }
 
+func TestCodexRunUsesTheSelectedHomeAndRosterPolicy(t *testing.T) {
+	run := engineRun(Request{
+		Engine:      "cx",
+		Account:     9,
+		AccountHome: "/jail/codex/9",
+		CodexBinary: "/opt/codex safe",
+		CodexYolo:   false,
+		SessionID:   "019ff700-0000-7000-8000-000000000001",
+	})
+	for _, want := range []string{
+		"CODEX_HOME='/jail/codex/9'",
+		"'/opt/codex safe' --sandbox workspace-write",
+		"resume '019ff700-0000-7000-8000-000000000001'",
+	} {
+		if !strings.Contains(run, want) {
+			t.Fatalf("run %q lacks %q", run, want)
+		}
+	}
+	if strings.Contains(run, "CLAUDE_CONFIG_DIR=") {
+		t.Fatalf("Codex reload inherited a Claude config assignment: %q", run)
+	}
+}
+
 func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 	tmux := &fakeReloadTmux{}
 	result, err := Run(

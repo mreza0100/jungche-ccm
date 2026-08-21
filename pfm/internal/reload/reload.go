@@ -48,6 +48,7 @@ type Process interface {
 }
 
 type Request struct {
+	Engine            string
 	SocketPath        string
 	Pane              string
 	PanePID           int
@@ -56,9 +57,12 @@ type Request struct {
 	CWD               string
 	Account           int
 	AccountIDs        []int
+	AccountHome       string
 	AccountConfigDir  string
 	AccountImplicit   bool
 	ClaudeBinary      string
+	CodexBinary       string
+	CodexYolo         bool
 	PromptPermissions bool
 	Cache1H           bool
 	Then              string
@@ -225,7 +229,7 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !dead {
 		return Result{}, errors.New("/exit did not complete; chat left running")
 	}
-	run := claudeRun(request)
+	run := engineRun(request)
 	if err := tmux.Respawn(ctx, request.SocketPath, request.Pane, request.CWD, run); err != nil {
 		return Result{}, fmt.Errorf("respawn pane: %w", err)
 	}
@@ -303,6 +307,40 @@ func claudeRun(request Request) string {
 	return strings.Join(parts, " ")
 }
 
+func engineRun(request Request) string {
+	if request.Engine == "cx" || request.Engine == "codex" {
+		return codexRun(request)
+	}
+	return claudeRun(request)
+}
+
+func codexRun(request Request) string {
+	parts := []string{
+		"env", "-u", "CODEX_THREAD_ID", "-u", "CLAUDE_CODE_SESSION_ID",
+		"-u", "CLAUDECODE", "-u", "CLAUDE_CONFIG_DIR",
+	}
+	if request.AccountHome != "" {
+		parts = append(parts, "CODEX_HOME="+action.Quote(request.AccountHome))
+	}
+	binary := request.CodexBinary
+	if binary == "" {
+		binary = "codex"
+	}
+	if binary != "codex" {
+		binary = action.Quote(binary)
+	}
+	parts = append(parts, binary)
+	if request.CodexYolo {
+		parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
+	} else {
+		parts = append(parts, "--sandbox", "workspace-write")
+	}
+	if request.SessionID != "" {
+		parts = append(parts, "resume", action.Quote(request.SessionID))
+	}
+	return strings.Join(parts, " ")
+}
+
 func deliverThen(ctx context.Context, request Request, options Options, tmux Tmux, proc Process, stderr io.Writer) error {
 	for i := 0; i < options.ThenTries; i++ {
 		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
@@ -345,12 +383,12 @@ ready:
 	if err != nil {
 		return fmt.Errorf("reload --then: refresh reborn pane process: %w", err)
 	}
-	live, err := claudeLive(proc, panePID)
+	live, err := engineLive(proc, panePID, request.Engine, request.ClaudeBinary, request.CodexBinary)
 	if err != nil {
 		return fmt.Errorf("reload --then: prove live Claude: %w", err)
 	}
 	if !live {
-		return errors.New("reload --then: no live Claude on the pane")
+		return fmt.Errorf("reload --then: no live %s on the pane", engineLabel(request.Engine))
 	}
 	if err := tmux.SendLiteral(ctx, request.SocketPath, request.Pane, request.Then); err != nil {
 		return fmt.Errorf("reload --then: type prompt: %w", err)
@@ -439,6 +477,17 @@ func lastComposerLine(capture string) string {
 }
 
 func claudeLive(proc Process, panePID int) (bool, error) {
+	return engineLive(proc, panePID, "cc", "", "")
+}
+
+func engineLabel(engine string) string {
+	if engine == "cx" || engine == "codex" {
+		return "Codex"
+	}
+	return "Claude"
+}
+
+func engineLive(proc Process, panePID int, engine, claudeBinary, codexBinary string) (bool, error) {
 	if proc == nil {
 		return false, errors.New("process reader is unavailable")
 	}
@@ -458,7 +507,11 @@ processes:
 			}
 			return false, fmt.Errorf("read process %d command: %w", pid, err)
 		}
-		if !gather.IsClaudeCommand(argv) {
+		matching := gather.IsClaudeCommand(argv, claudeBinary)
+		if engine == "cx" || engine == "codex" {
+			matching = gather.IsCodexCommand(argv, codexBinary)
+		}
+		if !matching {
 			continue
 		}
 		current := pid

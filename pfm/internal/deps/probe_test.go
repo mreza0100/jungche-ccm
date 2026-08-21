@@ -64,6 +64,35 @@ func TestProbePlatformAndHarvestFiltering(t *testing.T) {
 	}
 }
 
+func TestEngineDependenciesAreRequiredOnlyForPresentRosters(t *testing.T) {
+	tests := []struct {
+		name                  string
+		claude, codex         int
+		wantClaude, wantCodex bool
+	}{
+		{name: "zero zero"},
+		{name: "claude only", claude: 2, wantClaude: true},
+		{name: "codex only", codex: 3, wantCodex: true},
+		{name: "both", claude: 2, codex: 1, wantClaude: true, wantCodex: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entries := Registry(Options{
+				Home: t.TempDir(), ClaudeAccounts: test.claude, CodexAccounts: test.codex,
+			})
+			got := map[string]bool{}
+			for _, entry := range entries {
+				if entry.Name == "claude" || entry.Name == "codex" {
+					got[entry.Name] = entry.Required
+				}
+			}
+			if got["claude"] != test.wantClaude || got["codex"] != test.wantCodex {
+				t.Fatalf("required claude=%t codex=%t, want %t/%t", got["claude"], got["codex"], test.wantClaude, test.wantCodex)
+			}
+		})
+	}
+}
+
 func TestResolveRejectsRegisteredOffPlatformCommand(t *testing.T) {
 	var command string
 	switch runtime.GOOS {

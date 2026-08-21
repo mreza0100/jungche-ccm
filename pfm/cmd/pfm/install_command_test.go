@@ -4,15 +4,39 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 )
+
+func TestInstallerOptionsCarryEachEngineRosterIndependently(t *testing.T) {
+	home := t.TempDir()
+	runtime := commandRuntime{
+		Paths: paths.Values{Home: home},
+		Config: pfmconfig.Config{
+			Accounts: []pfmconfig.Account{{ID: 4, ConfigDir: filepath.Join(home, ".cc", "4")}},
+			CodexAccounts: []pfmconfig.CodexAccount{
+				{ID: 2, Home: filepath.Join(home, ".codex-2")},
+				{ID: 7, Home: filepath.Join(home, ".codex-7")},
+			},
+		},
+	}
+	options := newInstallerOptions(installer.ModeDryRun, "", false, true, io.Discard, runtime)
+	if !reflect.DeepEqual(options.ConfigDirs, []string{runtime.Config.Accounts[0].ConfigDir}) ||
+		!reflect.DeepEqual(options.CodexHomes, []string{runtime.Config.CodexAccounts[0].Home, runtime.Config.CodexAccounts[1].Home}) {
+		t.Fatalf("installer rosters ConfigDirs=%q CodexHomes=%q", options.ConfigDirs, options.CodexHomes)
+	}
+	if _, found := options.CodexYolo[4]; found {
+		t.Fatalf("Codex policies inherited Claude account IDs: %#v", options.CodexYolo)
+	}
+}
 
 func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
 	t.Run("bare preview ignores reachable manager", func(t *testing.T) {

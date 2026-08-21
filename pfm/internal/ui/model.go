@@ -50,40 +50,43 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows              []compose.Row
-	search            []string
-	groups            []projectGroup
-	nameGroups        map[int]nameGroup
-	order             []int
-	filtered          []int
-	cursor            int
-	width             int
-	height            int
-	nowNS             int64
-	view              compose.View
-	killedCount       int
-	suppressedCount   int
-	refreshing        bool
-	primary           int
-	initialPrimary    int
-	accountIDs        []int
-	cache1H           bool
-	tab               Tab
-	statsSubtab       StatsSubtab
-	statsFocus        StatsFocus
-	statsSort         StatsSort
-	statsCursor       int
-	statsDockerCursor int
-	stats             pfmstats.Snapshot
-	statsSampler      StatsSampler
-	statsGeneration   uint64
-	statsLoading      bool
-	statsError        string
-	skyEnabled        bool
-	skyEvents         []sky.Event
-	mergeNewChat      bool
-	actionIndex       int
-	newChatEngine     string
+	rows                []compose.Row
+	search              []string
+	groups              []projectGroup
+	nameGroups          map[int]nameGroup
+	order               []int
+	filtered            []int
+	cursor              int
+	width               int
+	height              int
+	nowNS               int64
+	view                compose.View
+	killedCount         int
+	suppressedCount     int
+	refreshing          bool
+	primary             int
+	initialPrimary      int
+	accountIDs          []int
+	codexPrimary        int
+	initialCodexPrimary int
+	codexAccountIDs     []int
+	cache1H             bool
+	tab                 Tab
+	statsSubtab         StatsSubtab
+	statsFocus          StatsFocus
+	statsSort           StatsSort
+	statsCursor         int
+	statsDockerCursor   int
+	stats               pfmstats.Snapshot
+	statsSampler        StatsSampler
+	statsGeneration     uint64
+	statsLoading        bool
+	statsError          string
+	skyEnabled          bool
+	skyEvents           []sky.Event
+	mergeNewChat        bool
+	actionIndex         int
+	newChatEngine       string
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -104,6 +107,7 @@ type Model struct {
 func NewModel(snapshot Snapshot) Model {
 	configureStyles(theme.Load(snapshot.Theme))
 	configuredAccountEmojis = copyEmojis(snapshot.AccountEmojis)
+	configuredCodexAccountEmojis = copyEmojis(snapshot.CodexAccountEmojis)
 	input := textinput.New()
 	input.Prompt = "find › "
 	input.Placeholder = "type project or name"
@@ -113,27 +117,30 @@ func NewModel(snapshot Snapshot) Model {
 	_ = input.Focus()
 
 	model := Model{
-		rows:            append([]compose.Row(nil), snapshot.Rows...),
-		width:           positiveOr(snapshot.Width, defaultWidth),
-		height:          positiveOr(snapshot.Height, defaultHeight),
-		nowNS:           snapshot.NowNS,
-		view:            snapshot.View,
-		killedCount:     snapshot.KilledCount,
-		suppressedCount: snapshot.SuppressedCount,
-		refreshing:      snapshot.Refreshing,
-		primary:         validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		initialPrimary:  validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		accountIDs:      normalizedAccountIDs(snapshot.AccountIDs),
-		cache1H:         snapshot.Cache1H,
-		query:           input,
-		initialKilled:   make(map[string]bool),
-		killChanges:     make(map[string]KillChange),
-		applyKill:       snapshot.ApplyKill,
-		statsSampler:    snapshot.StatsSampler,
-		skyEnabled:      !snapshot.NoSky,
-		activity:        snapshot.Activity,
-		mergeNewChat:    snapshot.MergeNewChat,
-		newChatEngine:   "claude",
+		rows:                append([]compose.Row(nil), snapshot.Rows...),
+		width:               positiveOr(snapshot.Width, defaultWidth),
+		height:              positiveOr(snapshot.Height, defaultHeight),
+		nowNS:               snapshot.NowNS,
+		view:                snapshot.View,
+		killedCount:         snapshot.KilledCount,
+		suppressedCount:     snapshot.SuppressedCount,
+		refreshing:          snapshot.Refreshing,
+		primary:             validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		initialPrimary:      validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		accountIDs:          normalizedAccountIDs(snapshot.AccountIDs),
+		codexPrimary:        validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
+		initialCodexPrimary: validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
+		codexAccountIDs:     normalizedAccountIDs(snapshot.CodexAccountIDs),
+		cache1H:             snapshot.Cache1H,
+		query:               input,
+		initialKilled:       make(map[string]bool),
+		killChanges:         make(map[string]KillChange),
+		applyKill:           snapshot.ApplyKill,
+		statsSampler:        snapshot.StatsSampler,
+		skyEnabled:          !snapshot.NoSky,
+		activity:            snapshot.Activity,
+		mergeNewChat:        snapshot.MergeNewChat,
+		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs),
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -145,6 +152,14 @@ func NewModel(snapshot Snapshot) Model {
 }
 
 var configuredAccountEmojis map[int]string
+var configuredCodexAccountEmojis map[int]string
+
+func defaultNewChatEngine(claude, codex []int) string {
+	if len(normalizedAccountIDs(claude)) != 0 || len(normalizedAccountIDs(codex)) == 0 {
+		return "claude"
+	}
+	return "codex"
+}
 
 func copyEmojis(values map[int]string) map[int]string {
 	if len(values) == 0 {
@@ -287,12 +302,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		model.cache1H = !model.cache1H
 		return model, nil
 	case "ctrl+s":
-		for index, account := range model.accountIDs {
-			if account == model.primary {
-				model.primary = model.accountIDs[(index+1)%len(model.accountIDs)]
-				break
-			}
-		}
+		model.cycleSelectedAccount()
 		return model, nil
 	// ⌃O, not ⌃B: the picker always runs inside tmux and C-b is tmux's PREFIX,
 	// so tmux swallowed the keystroke before the picker ever saw it. Any
@@ -314,6 +324,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 					row.Kind = compose.NewClaude
 					row.Name = "New Claude chat"
 				}
+				row.Account = model.accountForKind(row.Kind)
 				model.outcome = OutcomeSelected
 				model.outcomeRow = row
 				return model, tea.Quit
@@ -332,6 +343,9 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				model.toggleKilled()
 				return model, nil
 			default:
+				if row.Kind == compose.NewClaude || row.Kind == compose.NewCodex {
+					row.Account = model.accountForKind(row.Kind)
+				}
 				model.outcome = OutcomeSelected
 				model.outcomeRow = row
 				return model, tea.Quit
@@ -419,15 +433,51 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
 		(row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-		if direction > 0 {
+		if direction > 0 && len(model.codexAccountIDs) != 0 {
 			model.newChatEngine = "codex"
-		} else {
+		} else if direction < 0 && len(model.accountIDs) != 0 {
 			model.newChatEngine = "claude"
 		}
 		return model, nil
 	}
 	model.actionIndex = (model.actionIndex + len(carouselActions) + direction) % len(carouselActions)
 	return model, nil
+}
+
+func (model *Model) cycleSelectedAccount() {
+	row, ok := model.selectedRow()
+	if !ok {
+		return
+	}
+	engine := compose.EngineForKind(row.Kind)
+	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+		engine = model.newChatEngine
+	}
+	if engine == "cx" || engine == "codex" {
+		model.codexPrimary = nextAccount(model.codexPrimary, model.codexAccountIDs)
+		return
+	}
+	model.primary = nextAccount(model.primary, model.accountIDs)
+}
+
+func nextAccount(current int, ids []int) int {
+	if len(ids) == 0 {
+		return 0
+	}
+	for index, id := range ids {
+		if id == current {
+			return ids[(index+1)%len(ids)]
+		}
+	}
+	return ids[0]
+}
+
+func (model Model) accountForKind(kind compose.Kind) int {
+	engine := compose.EngineForKind(kind)
+	if engine == "cx" || engine == "codex" {
+		return model.codexPrimary
+	}
+	return model.primary
 }
 
 func (model Model) updateStatsKey(key string) (tea.Model, tea.Cmd) {
@@ -780,7 +830,8 @@ func (model *Model) rebuildOrder() {
 			if !model.visibleInView(model.rows[index]) {
 				continue
 			}
-			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex {
+			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex &&
+				len(model.accountIDs) != 0 {
 				continue
 			}
 			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
@@ -940,20 +991,22 @@ func isLive(kind compose.Kind) bool {
 func (model Model) Result() Outcome {
 	if model.outcome == OutcomeCancelled {
 		return Outcome{
-			Kind:           OutcomeCancelled,
-			PrimaryAccount: model.initialPrimary,
-			Cache1H:        model.cache1H,
-			Query:          model.query.Value(),
-			KillChanges:    model.appliedChanges(),
+			Kind:                 OutcomeCancelled,
+			PrimaryAccount:       model.initialPrimary,
+			ClaudePrimaryAccount: model.initialPrimary,
+			Cache1H:              model.cache1H,
+			Query:                model.query.Value(),
+			KillChanges:          model.appliedChanges(),
 		}
 	}
 	return Outcome{
-		Kind:           model.outcome,
-		Row:            model.outcomeRow,
-		PrimaryAccount: model.primary,
-		Cache1H:        model.cache1H,
-		Query:          model.query.Value(),
-		KillChanges:    model.appliedChanges(),
+		Kind:                 model.outcome,
+		Row:                  model.outcomeRow,
+		PrimaryAccount:       model.accountForKind(model.outcomeRow.Kind),
+		ClaudePrimaryAccount: model.primary,
+		Cache1H:              model.cache1H,
+		Query:                model.query.Value(),
+		KillChanges:          model.appliedChanges(),
 	}
 }
 

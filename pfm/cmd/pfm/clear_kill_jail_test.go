@@ -146,6 +146,7 @@ func TestClearKillHookDoubleFireIsIdempotent(t *testing.T) {
 
 func TestCodexClearKillsPreviousPaneThreadAndThenAutoUnkills(t *testing.T) {
 	root := jailTest(t)
+	writeJailedCodexAuth(t, root)
 	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
 	t.Setenv("TMUX", filepath.Join(root, "tmux", "cx-probe")+",123,0")
 	t.Setenv("TMUX_PANE", "%7")

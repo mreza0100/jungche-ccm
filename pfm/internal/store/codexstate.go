@@ -180,10 +180,23 @@ func NewCodexThreadResolver(
 	ctx context.Context,
 	codexRoot string,
 ) func(exported, cwd string, birth int64) (id string, rolloutPath string) {
+	return NewCodexThreadResolverRoots(ctx, []string{codexRoot})
+}
+
+// NewCodexThreadResolverRoots resolves rollout-less live processes across the
+// complete config-owned Codex roster.
+func NewCodexThreadResolverRoots(
+	ctx context.Context,
+	codexRoots []string,
+) func(exported, cwd string, birth int64) (id string, rolloutPath string) {
 	candidates := sync.OnceValue(func() []resolve.CodexThread {
-		files, err := CodexStateFiles(codexRoot)
-		if err != nil {
-			return nil
+		files := make([]string, 0)
+		for _, codexRoot := range codexRoots {
+			rootFiles, err := CodexStateFiles(codexRoot)
+			if err != nil {
+				continue
+			}
+			files = append(files, rootFiles...)
 		}
 		threads, err := ReadCodexThreads(ctx, files)
 		if err != nil {

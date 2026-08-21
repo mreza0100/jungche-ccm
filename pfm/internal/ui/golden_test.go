@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"hostops/pfm/internal/compose"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/theme"
 )
@@ -37,6 +38,20 @@ func TestRenderGoldens(t *testing.T) {
 			path: "ui_120.ansi",
 			got: func() string {
 				return quoteANSI(NewModel(fixtureSnapshot(120)).View().Content)
+			},
+		},
+		{
+			name: "Codex-only ansi 80 columns",
+			path: "ui_codex_only_80.ansi",
+			got: func() string {
+				return quoteANSI(engineOnlyGoldenSnapshot("cx", 80).View().Content)
+			},
+		},
+		{
+			name: "Claude-only ansi 80 columns",
+			path: "ui_claude_only_80.ansi",
+			got: func() string {
+				return quoteANSI(engineOnlyGoldenSnapshot("cc", 80).View().Content)
 			},
 		},
 		{
@@ -106,6 +121,28 @@ func TestRenderGoldens(t *testing.T) {
 			}
 		})
 	}
+}
+
+func engineOnlyGoldenSnapshot(engine string, width int) Model {
+	snapshot := fixtureSnapshot(width)
+	rows := make([]compose.Row, 0, len(snapshot.Rows))
+	for _, row := range snapshot.Rows {
+		if compose.EngineForKind(row.Kind) == engine {
+			rows = append(rows, row)
+		}
+	}
+	snapshot.Rows = rows
+	snapshot.MergeNewChat = true
+	if engine == "cx" {
+		snapshot.PrimaryAccount = 0
+		snapshot.AccountIDs = nil
+		snapshot.AccountEmojis = nil
+	} else {
+		snapshot.CodexPrimaryAccount = 0
+		snapshot.CodexAccountIDs = nil
+		snapshot.CodexAccountEmojis = nil
+	}
+	return NewModel(snapshot)
 }
 
 func statsGoldenModel(width int) Model {

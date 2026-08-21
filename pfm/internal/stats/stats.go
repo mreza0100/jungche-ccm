@@ -66,6 +66,7 @@ type AccountLimits struct {
 	Emoji       string
 	Engine      string
 	Label       string
+	Absent      bool
 	Plan        string
 	ConfirmedAt time.Time
 	Status      string
