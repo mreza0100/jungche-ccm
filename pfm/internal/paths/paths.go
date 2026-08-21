@@ -77,11 +77,7 @@ func Resolve() (Values, error) {
 		}
 	}
 
-	claudeRoots := []string{
-		filepath.Join(home, ".cc", "1", "projects"),
-		filepath.Join(home, ".cc", "2", "projects"),
-		filepath.Join(home, ".cc", "3", "projects"),
-	}
+	var claudeRoots []string
 	if value := os.Getenv(EnvClaudeRoots); value != "" {
 		claudeRoots = filepath.SplitList(value)
 	}

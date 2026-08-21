@@ -79,6 +79,20 @@ func TestResolveSharedStoreDefaultsOutsideThePrivateCache(t *testing.T) {
 	}
 }
 
+func TestResolveDoesNotFabricateClaudeAccountRoots(t *testing.T) {
+	testRoot := t.TempDir()
+	t.Setenv(EnvHome, filepath.Join(testRoot, "home"))
+	t.Setenv(EnvClaudeRoots, "")
+
+	got, err := Resolve()
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if len(got.ClaudeRoots) != 0 {
+		t.Fatalf("Resolve().ClaudeRoots = %#v, want discovery delegated to internal/config", got.ClaudeRoots)
+	}
+}
+
 func TestResolveUsesScratchTmuxBase(t *testing.T) {
 	testRoot := t.TempDir()
 	t.Setenv(EnvHome, filepath.Join(testRoot, "home"))

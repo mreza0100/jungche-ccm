@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +17,9 @@ import (
 type LimitAccount struct {
 	ID             int
 	Emoji          string
+	Engine         string
+	Label          string
+	SkipReason     string
 	ConfigDir      string
 	ClaudeBinary   string
 	CodexCachePath string
@@ -33,8 +35,8 @@ type LimitsSampler struct {
 	Ack      func(context.Context, LimitAccount) error
 
 	mu           sync.Mutex
-	cache        map[int]cachedLimits
-	ackAttempted map[int]bool
+	cache        map[string]cachedLimits
+	ackAttempted map[string]bool
 }
 
 type cachedLimits struct {
@@ -48,8 +50,8 @@ func NewLimitsSampler(accounts []LimitAccount) *LimitsSampler {
 	sampler := &LimitsSampler{
 		Accounts:     copyAccounts,
 		TTL:          time.Minute,
-		cache:        make(map[int]cachedLimits),
-		ackAttempted: make(map[int]bool),
+		cache:        make(map[string]cachedLimits),
+		ackAttempted: make(map[string]bool),
 	}
 	sampler.Fetch = func(ctx context.Context, account LimitAccount) (usagehook.Usage, error) {
 		return usagehook.Fetch(ctx, usagehook.Options{
@@ -84,9 +86,10 @@ func (sampler *LimitsSampler) Sample(ctx context.Context) ([]AccountLimits, []st
 	limits := make([]AccountLimits, 0, len(sampler.Accounts))
 	warnings := make([]string, 0)
 	for _, account := range sampler.Accounts {
-		cached, found := sampler.cached(account.ID, now)
+		key := account.cacheKey()
+		cached, found := sampler.cached(key, now)
 		if !found {
-			cached = sampler.refresh(ctx, account, now)
+			cached = sampler.refresh(ctx, account, key, now)
 		}
 		limits = append(limits, cached.limits)
 		warnings = append(warnings, cached.warnings...)
@@ -94,10 +97,10 @@ func (sampler *LimitsSampler) Sample(ctx context.Context) ([]AccountLimits, []st
 	return limits, warnings
 }
 
-func (sampler *LimitsSampler) cached(account int, now time.Time) (cachedLimits, bool) {
+func (sampler *LimitsSampler) cached(key string, now time.Time) (cachedLimits, bool) {
 	sampler.mu.Lock()
 	defer sampler.mu.Unlock()
-	entry, ok := sampler.cache[account]
+	entry, ok := sampler.cache[key]
 	if !ok || now.Sub(entry.when) >= sampler.ttl() {
 		return cachedLimits{}, false
 	}
@@ -111,14 +114,35 @@ func (sampler *LimitsSampler) ttl() time.Duration {
 	return sampler.TTL
 }
 
-func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount, now time.Time) cachedLimits {
-	entry := cachedLimits{limits: AccountLimits{Account: account.ID, Emoji: account.Emoji}, when: now}
+func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount, key string, now time.Time) cachedLimits {
+	engine := account.Engine
+	if engine == "" {
+		engine = "claude"
+	}
+	label := account.Label
+	if label == "" && engine == "claude" {
+		label = fmt.Sprintf("account %d", account.ID)
+	}
+	entry := cachedLimits{limits: AccountLimits{
+		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label,
+	}, when: now}
+	if account.SkipReason != "" {
+		entry.limits.Status = fmt.Sprintf("skipped %s: %s", label, account.SkipReason)
+		sampler.store(key, entry)
+		return entry
+	}
 	if account.CodexCachePath != "" {
-		entry.limits.Windows, entry.warnings = readCodexLimits(account.CodexCachePath, account.ID)
-		if len(entry.limits.Windows) != 0 {
-			sampler.store(account.ID, entry)
-			return entry
+		var err error
+		entry.limits.Windows, err = readCodexLimits(account.CodexCachePath)
+		if err != nil {
+			entry.limits.Status = err.Error()
+			entry.warnings = append(entry.warnings, fmt.Sprintf("%s limits unavailable: %v", label, err))
+		} else if len(entry.limits.Windows) == 0 {
+			entry.limits.Status = "Codex cache carried no rate-limit windows"
+			entry.warnings = append(entry.warnings, entry.limits.Status)
 		}
+		sampler.store(key, entry)
+		return entry
 	}
 	usage, err := sampler.Fetch(ctx, account)
 	if err != nil && needsCredentialRefresh(err) {
@@ -127,30 +151,50 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 		}
 	}
 	if err != nil {
-		entry.warnings = append(entry.warnings, fmt.Sprintf("account %d limits unavailable: %v", account.ID, err))
+		if isCredentialRejection(err) {
+			entry.limits.Status = fmt.Sprintf("skipped %s: credentials rejected", label)
+		} else {
+			entry.limits.Status = fmt.Sprintf("account %d limits unavailable: %v", account.ID, err)
+			entry.warnings = append(entry.warnings, entry.limits.Status)
+		}
 	} else {
 		entry.limits.Windows = usageWindows(usage)
 		if len(entry.limits.Windows) == 0 {
-			entry.warnings = append(entry.warnings, fmt.Sprintf("account %d limits unavailable: empty usage response", account.ID))
+			entry.limits.Status = fmt.Sprintf("account %d limits unavailable: empty usage response", account.ID)
+			entry.warnings = append(entry.warnings, entry.limits.Status)
 		}
 	}
-	sampler.store(account.ID, entry)
+	sampler.store(key, entry)
 	return entry
 }
 
-func (sampler *LimitsSampler) store(account int, entry cachedLimits) {
+func isCredentialRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"401", "403", "unauthorized", "forbidden", "access token rejected"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (sampler *LimitsSampler) store(key string, entry cachedLimits) {
 	sampler.mu.Lock()
-	sampler.cache[account] = entry
+	sampler.cache[key] = entry
 	sampler.mu.Unlock()
 }
 
 func (sampler *LimitsSampler) tryAck(ctx context.Context, account LimitAccount) error {
+	key := account.cacheKey()
 	sampler.mu.Lock()
-	if sampler.ackAttempted[account.ID] {
+	if sampler.ackAttempted[key] {
 		sampler.mu.Unlock()
 		return fmt.Errorf("credential refresh already attempted for account %d", account.ID)
 	}
-	sampler.ackAttempted[account.ID] = true
+	sampler.ackAttempted[key] = true
 	sampler.mu.Unlock()
 	if sampler.Ack == nil {
 		return fmt.Errorf("credential refresh unavailable for account %d", account.ID)
@@ -158,12 +202,16 @@ func (sampler *LimitsSampler) tryAck(ctx context.Context, account LimitAccount) 
 	return sampler.Ack(ctx, account)
 }
 
+func (account LimitAccount) cacheKey() string {
+	return fmt.Sprintf("%s:%d:%s:%s", account.Engine, account.ID, account.ConfigDir, account.CodexCachePath)
+}
+
 func needsCredentialRefresh(err error) bool {
 	if err == nil {
 		return false
 	}
 	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"credential", "access token", "401", "unauthorized", "forbidden"} {
+	for _, marker := range []string{"credential", "access token", "401", "403", "unauthorized", "forbidden"} {
 		if strings.Contains(message, marker) {
 			return true
 		}
@@ -185,48 +233,30 @@ func defaultAck(ctx context.Context, account LimitAccount) error {
 }
 
 func usageWindows(usage usagehook.Usage) []Window {
-	windows := make([]Window, 0, 4+len(usage.Extra))
-	appendWindow := func(name string, source usagehook.Window) {
+	named := usage.NamedWindows()
+	windows := make([]Window, 0, len(named))
+	for _, entry := range named {
+		source := entry.Window
 		if source.Utilization == nil {
-			return
+			continue
 		}
+		resetAt, resetNote := parseReset(source.ResetsAt)
 		windows = append(windows, Window{
-			Name: name, UsedPct: int(*source.Utilization), ResetAt: parseReset(source.ResetsAt),
+			Name: entry.Label, UsedPct: int(*source.Utilization), ResetAt: resetAt, ResetNote: resetNote,
 		})
-	}
-	appendWindow("5h", usage.FiveHour)
-	appendWindow("7d", usage.SevenDay)
-	appendWindow("7d-opus", usage.SevenOpus)
-	appendWindow("7d-fable", usage.SevenFable)
-	extra := make([]string, 0, len(usage.Extra))
-	for name := range usage.Extra {
-		extra = append(extra, name)
-	}
-	sort.Strings(extra)
-	for _, name := range extra {
-		appendWindow(displayWindowName(name), usage.Extra[name])
 	}
 	return windows
 }
 
-func displayWindowName(name string) string {
-	name = strings.TrimPrefix(name, "seven_day_")
-	name = strings.ReplaceAll(name, "_", "-")
-	if name == "" {
-		return "7d"
-	}
-	return "7d-" + name
-}
-
-func parseReset(value string) time.Time {
+func parseReset(value string) (time.Time, string) {
 	if value == "" {
-		return time.Time{}
+		return time.Time{}, "reset unavailable"
 	}
 	parsed, err := time.Parse(time.RFC3339, value)
 	if err != nil {
-		return time.Time{}
+		return time.Time{}, "invalid reset timestamp"
 	}
-	return parsed
+	return parsed, ""
 }
 
 type codexUsageCache struct {
@@ -240,24 +270,29 @@ type codexWindow struct {
 	ResetsAt           int64   `json:"resetsAt"`
 }
 
-func readCodexLimits(path string, account int) ([]Window, []string) {
+func readCodexLimits(path string) ([]Window, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return nil, []string{fmt.Sprintf("account %d limits unavailable: read Codex cache: %v", account, err)}
+		return nil, fmt.Errorf("read Codex cache: %w", err)
 	}
 	var cache codexUsageCache
 	if err := json.Unmarshal(body, &cache); err != nil {
-		return nil, []string{fmt.Sprintf("account %d limits unavailable: decode Codex cache: %v", account, err)}
+		return nil, fmt.Errorf("decode Codex cache: %w", err)
 	}
 	windows := make([]Window, 0, 2)
 	for _, entry := range []*codexWindow{cache.Primary, cache.Secondary} {
 		if entry == nil {
 			continue
 		}
-		windows = append(windows, Window{
+		window := Window{
 			Name:    fmt.Sprintf("codex-%s", durationLabel(entry.WindowDurationMins)),
 			UsedPct: int(entry.UsedPercent), ResetAt: time.Unix(entry.ResetsAt, 0),
-		})
+		}
+		if entry.ResetsAt <= 0 {
+			window.ResetAt = time.Time{}
+			window.ResetNote = "reset unavailable"
+		}
+		windows = append(windows, window)
 	}
 	return windows, nil
 }

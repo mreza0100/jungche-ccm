@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/sky"
+	"hostops/pfm/internal/usagehook"
 )
 
 const (
@@ -65,12 +66,7 @@ type input struct {
 	Worktree struct {
 		Name string `json:"name"`
 	} `json:"worktree"`
-	RateLimits struct {
-		FiveHour   rateWindow `json:"five_hour"`
-		SevenDay   rateWindow `json:"seven_day"`
-		SevenOpus  rateWindow `json:"seven_day_opus"`
-		SevenFable rateWindow `json:"seven_day_fable"`
-	} `json:"rate_limits"`
+	RateLimits  rateLimits `json:"rate_limits"`
 	OutputStyle struct {
 		Name string `json:"name"`
 	} `json:"output_style"`
@@ -88,6 +84,24 @@ type input struct {
 type rateWindow struct {
 	UsedPercentage float64 `json:"used_percentage"`
 	ResetsAt       int64   `json:"resets_at"`
+}
+
+type rateLimits map[string]rateWindow
+
+func (limits *rateLimits) UnmarshalJSON(content []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(content, &raw); err != nil {
+		return err
+	}
+	decoded := make(rateLimits, len(raw))
+	for key, value := range raw {
+		var window rateWindow
+		if json.Unmarshal(value, &window) == nil {
+			decoded[key] = window
+		}
+	}
+	*limits = decoded
+	return nil
 }
 
 // Render is the native high-frequency path. It performs no network work and
@@ -306,42 +320,25 @@ func appendSegment(line, segment string) string {
 }
 
 func appendRateSegments(line string, now time.Time, data input) string {
-	five := int(data.RateLimits.FiveHour.UsedPercentage)
-	seven := int(data.RateLimits.SevenDay.UsedPercentage)
-	if five > 0 {
-		segment := makeBar(five, 5) + " " + percentColor(five) +
-			"5h-used:" + strconv.Itoa(five) + "%" + reset
-		remaining := data.RateLimits.FiveHour.ResetsAt - now.Unix()
-		if remaining > 0 {
-			segment += fmt.Sprintf(" %s↻%dh%dm%s", dim, remaining/3600, remaining%3600/60, reset)
-		}
-		line = appendSegment(line, segment)
+	keys := make([]string, 0, len(data.RateLimits))
+	for key := range data.RateLimits {
+		keys = append(keys, key)
 	}
-	if seven > 0 {
-		segment := makeBar(seven, 5) + " " + percentColor(seven) +
-			"7d-used:" + strconv.Itoa(seven) + "%" + reset
-		remaining := data.RateLimits.SevenDay.ResetsAt - now.Unix()
-		if remaining > 0 {
-			segment += fmt.Sprintf(" %s↻%dd%dh%s", dim, remaining/86400, remaining%86400/3600, reset)
-		}
-		line = appendSegment(line, segment)
-	}
-	for _, entry := range []struct {
-		label  string
-		window rateWindow
-	}{
-		{label: "7d-opus", window: data.RateLimits.SevenOpus},
-		{label: "7d-fable", window: data.RateLimits.SevenFable},
-	} {
-		used := int(entry.window.UsedPercentage)
+	for _, descriptor := range usagehook.DescribeWindows(keys) {
+		window := data.RateLimits[descriptor.Key]
+		used := int(window.UsedPercentage)
 		if used <= 0 {
 			continue
 		}
 		segment := makeBar(used, 5) + " " + percentColor(used) +
-			entry.label + "-used:" + strconv.Itoa(used) + "%" + reset
-		remaining := entry.window.ResetsAt - now.Unix()
+			descriptor.Label + "-used:" + strconv.Itoa(used) + "%" + reset
+		remaining := window.ResetsAt - now.Unix()
 		if remaining > 0 {
-			segment += fmt.Sprintf(" %s↻%dd%dh%s", dim, remaining/86400, remaining%86400/3600, reset)
+			if descriptor.Key == "five_hour" {
+				segment += fmt.Sprintf(" %s↻%dh%dm%s", dim, remaining/3600, remaining%3600/60, reset)
+			} else {
+				segment += fmt.Sprintf(" %s↻%dd%dh%s", dim, remaining/86400, remaining%86400/3600, reset)
+			}
 		}
 		line = appendSegment(line, segment)
 	}
@@ -537,9 +534,11 @@ func writeBreadcrumb(runtime Runtime, transcriptPath string) {
 }
 
 func harvestRateLimits(runtime Runtime, now time.Time, account int, data input) {
-	five := int(data.RateLimits.FiveHour.UsedPercentage)
-	seven := int(data.RateLimits.SevenDay.UsedPercentage)
-	if (five <= 0 && seven <= 0) || data.RateLimits.FiveHour.ResetsAt <= now.Unix() {
+	fiveWindow := data.RateLimits["five_hour"]
+	sevenWindow := data.RateLimits["seven_day"]
+	five := int(fiveWindow.UsedPercentage)
+	seven := int(sevenWindow.UsedPercentage)
+	if (five <= 0 && seven <= 0) || fiveWindow.ResetsAt <= now.Unix() {
 		return
 	}
 	if err := os.MkdirAll(runtime.RateLimitDir, 0o700); err != nil {
@@ -553,8 +552,8 @@ func harvestRateLimits(runtime Runtime, now time.Time, account int, data input) 
 		"acct":                int64(account),
 		"five_hour_used":      int64(five),
 		"seven_day_used":      int64(seven),
-		"five_hour_resets_at": data.RateLimits.FiveHour.ResetsAt,
-		"seven_day_resets_at": data.RateLimits.SevenDay.ResetsAt,
+		"five_hour_resets_at": fiveWindow.ResetsAt,
+		"seven_day_resets_at": sevenWindow.ResetsAt,
 		"ts":                  now.Unix(),
 	})
 	if err == nil {

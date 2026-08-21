@@ -70,10 +70,7 @@ func DefaultRuntime() (Runtime, error) {
 	if configDir == "" {
 		configDir = filepath.Join(resolved.Home, ".claude")
 	}
-	cacheDir := os.TempDir()
-	if jailHome := os.Getenv(paths.EnvHome); jailHome != "" {
-		cacheDir = filepath.Join(jailHome, "tmp")
-	}
+	cacheDir := filepath.Dir(GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid()))
 	rateDir := filepath.Join(cacheDir, "cc-rate-limits")
 	return Runtime{
 		Now:          time.Now,
@@ -88,6 +85,17 @@ func DefaultRuntime() (Runtime, error) {
 		UID:          os.Getuid(),
 		Command:      commandRunner{},
 	}, nil
+}
+
+// GPTCachePath is the one filesystem rule for the Codex App Server limits
+// cache. Production uses the host temp directory; a PFM_HOME jail keeps the
+// cache inside that jail.
+func GPTCachePath(jailHome string, uid int) string {
+	cacheDir := os.TempDir()
+	if jailHome != "" {
+		cacheDir = filepath.Join(jailHome, "tmp")
+	}
+	return filepath.Join(cacheDir, "cc-gpt-usage-"+strconv.Itoa(uid)+".json")
 }
 
 func (runtime Runtime) getenv(name string) string {
