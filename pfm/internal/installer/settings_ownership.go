@@ -53,31 +53,47 @@ func countSettingsHookCommands(document map[string]any) settingsHookCounts {
 	return counts
 }
 
+// settingsDocumentHasMixedOwnershipEntry reports whether any hook entry (one
+// matcher-group's "hooks" array) mixes an installer-owned-by-command-text
+// hook with one that is not. See nextSettingsHookOwnership's retroactive-
+// claim gate for why this — not whole-document purity — is the signal it
+// needs.
+func settingsDocumentHasMixedOwnershipEntry(document map[string]any, pfmBinary string) bool {
+	events, _ := document["hooks"].(map[string]any)
+	for _, eventValue := range events {
+		entries, _ := eventValue.([]any)
+		for _, entryValue := range entries {
+			entry, _ := entryValue.(map[string]any)
+			hooks, _ := entry["hooks"].([]any)
+			hasOwned, hasForeign := false, false
+			for _, hookValue := range hooks {
+				hook, _ := hookValue.(map[string]any)
+				command, _ := hook["command"].(string)
+				if command == "" {
+					continue
+				}
+				if installerOwnedHookCommand(command, pfmBinary) {
+					hasOwned = true
+				} else {
+					hasForeign = true
+				}
+			}
+			if hasOwned && hasForeign {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func nextSettingsHookOwnership(
 	before, after, owned settingsHookCounts,
 	pfmBinary string,
 	uninstall bool,
+	hasMixedOwnershipEntry bool,
 ) settingsHookCounts {
 	if uninstall {
 		return settingsHookCounts{}
-	}
-	// A settings.json is "pure" when EVERY hook command it carries, once
-	// this run's wiring has converged it, is one of the installer's own
-	// canonical (event, matcher, command) triples — nothing foreign,
-	// nothing sitting at a non-canonical spot. Only a whole document that
-	// clean could have been produced entirely by a pfm install, whether or
-	// not the ownership ledger tracked it; a single stray or misplaced
-	// command (an operator's own hook, a not-yet-migrated legacy entry)
-	// means the file's history is not provably ours. Purity is computed
-	// once per document, not per key, and is stable across repeat runs:
-	// wiring never removes foreign content, so an impure file never
-	// "becomes" pure just because a later apply happens to be a no-op.
-	pure := true
-	for key := range after {
-		if !installerOwnedHookKey(key, pfmBinary) {
-			pure = false
-			break
-		}
 	}
 	next := settingsHookCounts{}
 	for key, afterCount := range after {
@@ -96,22 +112,43 @@ func nextSettingsHookOwnership(
 		// entry rewritten to the canonical nudge command but left under
 		// SessionStart, not UserPromptSubmit; see
 		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks).
-		// What it never credits is a hook nothing changed this run AND the
-		// ledger never recorded — an already fully-wired host predating the
-		// ownership ledger, or one converged by an install version before
-		// it existed for that hook
-		// (TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings).
-		// That hook belongs to the installer when — and ONLY when — it
-		// sits at exactly the canonical triple a template wires AND the
-		// whole document is pure: a command that merely shares its TEXT
-		// with a template while parked under a different event or matcher,
-		// in a document that also carries an operator's own hook, is never
-		// claimed this way (the PostToolUse/UserPromptSubmit manual copies
+		// What it never credits on its own is a hook nothing changed this
+		// run AND the ledger never recorded — an already fully-wired host
+		// predating the ownership ledger, or one converged by an install
+		// version before it existed for that hook
+		// (TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings,
+		// TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent).
+		// That hook belongs to the installer when — and ONLY when — it sits
+		// at exactly the canonical (event, matcher, command) triple a
+		// template wires (`installerOwnedHookKey` on THIS key), AND
+		// `hasMixedOwnershipEntry` is false: no hook ENTRY anywhere in this
+		// same file mixes an installer-owned-by-text command with a
+		// foreign one in the SAME matcher-group array
+		// (`settingsDocumentHasMixedOwnershipEntry`). That per-file gate,
+		// unlike whole-document purity, does not fire on a foreign hook
+		// that merely coexists in a SEPARATE entry at an event the
+		// installer also wires (a real host's monitoring/SessionStart/
+		// SessionEnd hooks alongside a fully-wired install — the exact
+		// defect TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent
+		// pins), but DOES fire the moment an operator's hook shares an
+		// entry with installer-adjacent text (the PostToolUse/
+		// UserPromptSubmit manual copies
 		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks
-		// pins as permanently NOT owned); uninstall only ever removes what
-		// `owned` lists, so a wrongly claimed key is a wrongly deleted
-		// operator hook.
-		if count == 0 && afterCount > 0 && pure && installerOwnedHookKey(key, pfmBinary) {
+		// pins as permanently NOT owned) — proof, anywhere in the file,
+		// that an operator hand-edited an installer-adjacent hook list, so
+		// an untouched-but-canonical-looking neighbor is no longer
+		// trustworthy evidence of a prior pfm install. It is computed from
+		// `after` (the converged document) alone, never from a before/after
+		// delta, so it is stable across repeat applies: an operator's
+		// foreign sibling is never removed by wiring, so a file once
+		// flagged mixed stays flagged on every later idle re-scan too —
+		// unlike a `before`-vs-`after` "did this call write anything"
+		// signal, which flips between a migrating first run and an idle
+		// second one and would make the ledger and its uninstall behavior
+		// depend on which apply happened to observe the file first.
+		// Uninstall only ever removes what `owned` lists, so a wrongly
+		// claimed key is a wrongly deleted operator hook.
+		if count == 0 && afterCount > 0 && !hasMixedOwnershipEntry && installerOwnedHookKey(key, pfmBinary) {
 			count = afterCount
 		}
 		if count > afterCount {
