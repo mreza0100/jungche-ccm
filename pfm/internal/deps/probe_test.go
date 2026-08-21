@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -166,6 +167,91 @@ if [ "$1" = "--version" ]; then printf '1.0\n'; exit 0; fi
 	if results[1].State != StateBroken || results[1].SelfDoctor != "broken" {
 		t.Fatalf("hung self-doctor=%#v", results[1])
 	}
+}
+
+// Regression: real `go version` output is "go version go1.24.13 linux/amd64" —
+// firstVersion's "vV"-only trim never strips the "go" prefix on the version
+// field, so the go dependency read as broken on every real host. codex-cli
+// and tmux are carried alongside as guards: both already parse correctly and
+// must keep doing so.
+func TestFirstVersionParsesRealCommandVersionStrings(t *testing.T) {
+	directory := t.TempDir()
+	writeProbeStub(t, directory, "go", "printf 'go version go1.24.13 linux/amd64\\n'")
+	writeProbeStub(t, directory, "codex", "printf 'codex-cli 0.148.0\\n'")
+	writeProbeStub(t, directory, "tmux", "printf 'tmux 3.5a\\n'")
+	t.Setenv("PATH", directory)
+
+	tests := []struct {
+		name        string
+		versionArgs []string
+		parse       func(string) (string, error)
+		wantVersion string
+	}{
+		{name: "go", versionArgs: []string{"version"}, parse: firstVersion, wantVersion: "1.24.13"},
+		{name: "codex", versionArgs: []string{"--version"}, parse: firstVersion, wantVersion: "0.148.0"},
+		{name: "tmux", versionArgs: []string{"-V"}, parse: prefixedVersion("tmux"), wantVersion: "3.5a"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			entry := Entry{Name: test.name, Command: test.name, Required: true, VersionArgs: test.versionArgs, Parse: test.parse}
+			result := Probe(context.Background(), []Entry{entry}, ProbeOptions{GOOS: "linux"})[0]
+			if result.State != StateOK {
+				t.Fatalf("%s state=%s error=%q raw=%q, want ok", test.name, result.State, result.Error, result.Raw)
+			}
+			if result.Version != test.wantVersion {
+				t.Fatalf("%s version=%q, want %q", test.name, result.Version, test.wantVersion)
+			}
+		})
+	}
+}
+
+// Regression: probeSelfDoctor's second boundedOutput call (the summary
+// itself, not the --help probe) maps every failure — including
+// context.DeadlineExceeded — straight to "broken", the same bucket as an
+// actually-broken binary. A codex doctor that legitimately runs past the
+// probe timeout while scanning a large rollout corpus must not read as a
+// broken engine and block install preflight; it must be named as a timeout
+// distinct from a real failure.
+func TestProbeSelfDoctorTimeoutIsNotConflatedWithBroken(t *testing.T) {
+	const timeout = 200 * time.Millisecond
+	durationPattern := regexp.MustCompile(`\d+(\.\d+)?\s*(ms|s|m)\b`)
+
+	t.Run("slow but healthy self-doctor stays ok and is named as a timeout", func(t *testing.T) {
+		directory := t.TempDir()
+		writeProbeStub(t, directory, "codex", `
+if [ "$1" = "--version" ]; then printf 'codex-cli 0.148.0\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--help" ]; then printf 'usage: codex doctor\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then /bin/sleep 1; exit 0; fi
+exit 2`)
+		t.Setenv("PATH", directory)
+		entry := Entry{Name: "codex", Command: "codex", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}}
+		result := Probe(context.Background(), []Entry{entry}, ProbeOptions{GOOS: "linux", Timeout: timeout})[0]
+		if result.State != StateOK {
+			t.Fatalf("state=%s error=%q, want ok — a self-doctor that outran the probe timeout must not read as a broken engine", result.State, result.Error)
+		}
+		if !strings.HasPrefix(result.SelfDoctor, "timeout") {
+			t.Fatalf("self_doctor=%q, want it to start with %q", result.SelfDoctor, "timeout")
+		}
+		combined := result.SelfDoctor + " " + result.Error
+		if !durationPattern.MatchString(combined) {
+			t.Fatalf("self_doctor=%q error=%q, want the timeout duration named in one of them", result.SelfDoctor, result.Error)
+		}
+	})
+
+	t.Run("quick non-zero self-doctor still reads broken", func(t *testing.T) {
+		directory := t.TempDir()
+		writeProbeStub(t, directory, "codex", `
+if [ "$1" = "--version" ]; then printf 'codex-cli 0.148.0\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--help" ]; then printf 'usage: codex doctor\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then printf 'boom\n'; exit 3; fi
+exit 2`)
+		t.Setenv("PATH", directory)
+		entry := Entry{Name: "codex", Command: "codex", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}}
+		result := Probe(context.Background(), []Entry{entry}, ProbeOptions{GOOS: "linux", Timeout: timeout})[0]
+		if result.State != StateBroken || result.SelfDoctor != "broken" {
+			t.Fatalf("result=%#v, want StateBroken with self_doctor=broken", result)
+		}
+	})
 }
 
 func writeProbeStub(t *testing.T, directory, name, body string) {
