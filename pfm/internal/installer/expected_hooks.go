@@ -125,11 +125,15 @@ func ProbeExpectedHooks(home string, config pfmconfig.Config) []HookProbeResult 
 		err         error
 	}
 	files := map[string]fileProbe{}
+	fileTargets := map[string]string{}
+	fileDisplayPaths := map[string]string{}
 	for _, hook := range expected {
 		physical := physicalSettingsPath(hook.File)
 		if _, done := files[physical]; done {
 			continue
 		}
+		fileTargets[physical] = hook.Target
+		fileDisplayPaths[physical] = hook.File
 		raw, err := os.ReadFile(hook.File)
 		if err != nil {
 			files[physical] = fileProbe{err: err}
@@ -180,6 +184,31 @@ func ProbeExpectedHooks(home string, config pfmconfig.Config) []HookProbeResult 
 			results = append(results, HookProbeResult{
 				Hook: hook, State: "drift",
 				Error: fmt.Sprintf("ownership=%d file=%d", ownership[physical][key], file.counts[key]),
+			})
+		}
+	}
+	// A retired command sitting in a file is invisible to the loop above —
+	// it matches no expected hook — so walk every probed file's raw command
+	// inventory once for any hook that matches the shared retired-command
+	// table, regardless of whether the installer ever wrote or owned it.
+	for physical, file := range files {
+		if file.err != nil {
+			continue
+		}
+		for key, count := range file.allCounts {
+			if count == 0 {
+				continue
+			}
+			name, retired := retiredHookCommandName(key.Command)
+			if !retired {
+				continue
+			}
+			results = append(results, HookProbeResult{
+				Hook: ExpectedHook{
+					Target: fileTargets[physical], File: fileDisplayPaths[physical],
+					Event: key.Event, Matcher: key.Matcher, Command: key.Command, Name: name,
+				},
+				State: "stale", Error: "retired hook command is still present",
 			})
 		}
 	}

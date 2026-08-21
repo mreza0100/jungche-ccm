@@ -555,6 +555,15 @@ func classifyKind(source, contentType string, body []byte) string {
 	if strings.HasPrefix(ct, "image/") {
 		return "image"
 	}
+	// Every OOXML document (.docx/.xlsx/.pptx) IS a zip container, so its body
+	// always matches the "PK\x03\x04" magic sniff below. The extension must
+	// win before any magic-byte sniff runs — mirroring
+	// harvester/src/harvester/dispatch.py's local-file rule, where
+	// detect.detect_kind(base) (extension) is consulted first and
+	// detect.sniff_magic only ever refines an ambiguous ("html") verdict.
+	if kind, ok := ooxmlExtensionKind(source); ok {
+		return kind
+	}
 	if strings.HasPrefix(string(body), "%PDF-") {
 		return "pdf"
 	}
@@ -604,7 +613,9 @@ func classifyKind(source, contentType string, body []byte) string {
 	for ext, kind := range map[string]string{
 		".jpg": "jpg", ".jpeg": "jpg", ".png": "png", ".gif": "gif", ".webp": "webp", ".bmp": "bmp", ".tif": "tiff", ".tiff": "tiff", ".svg": "svg",
 		".zip": "zip", ".tar": "tar", ".tar.gz": "tar", ".tgz": "tar", ".tar.bz2": "tar", ".tbz2": "tar", ".tar.xz": "tar", ".txz": "tar", ".gz": "tar", ".bz2": "tar", ".xz": "tar",
-		".7z": "7z", ".rar": "rar", ".pdf": "pdf", ".docx": "docx", ".xlsx": "xlsx", ".pptx": "pptx", ".csv": "csv",
+		".7z": "7z", ".rar": "rar", ".pdf": "pdf", ".csv": "csv",
+		// .docx/.xlsx/.pptx are handled by ooxmlExtensionKind above, before the
+		// zip magic sniff — listing them again here would never be reached.
 	} {
 		if strings.HasSuffix(lowSource, ext) {
 			return kind
@@ -628,15 +639,48 @@ func classifyKind(source, contentType string, body []byte) string {
 	return "html"
 }
 
+// ooxmlExtensionKind reports the OOXML kind implied by source's file
+// extension (.docx/.xlsx/.pptx). Every OOXML document is itself a zip
+// container, so its body always matches classifyKind's "PK\x03\x04" magic
+// sniff; callers must check this BEFORE that sniff so a real .docx/.xlsx/.pptx
+// is never misclassified as a generic zip archive.
+func ooxmlExtensionKind(source string) (string, bool) {
+	name := strings.ToLower(strings.Split(strings.Split(source, "?")[0], "#")[0])
+	switch {
+	case strings.HasSuffix(name, ".docx"):
+		return "docx", true
+	case strings.HasSuffix(name, ".xlsx"):
+		return "xlsx", true
+	case strings.HasSuffix(name, ".pptx"):
+		return "pptx", true
+	}
+	return "", false
+}
+
 func isChallenge(body []byte, status int) bool {
 	low := strings.ToLower(string(body))
-	for _, marker := range []string{"just a moment", "checking your browser", "checking your browser before", "cf-browser-verification", "cf-chl-", "are you a robot", "confirm you are a human", "enable javascript and cookies", "captcha challenge", "completing the captcha", "verify you are human", "verifying you are human"} {
+	// Strong, specific bot-wall phrases (mirrors harvester/src/harvester/net.py's
+	// _CHALLENGE_PHRASES) flag at any body length — plus the real Cloudflare
+	// "Sorry, you have been blocked" (error 1020) block-page copy, which the
+	// Python oracle's list also lacks.
+	for _, marker := range []string{"just a moment", "checking your browser", "checking your browser before", "cf-browser-verification", "cf-chl-", "are you a robot", "confirm you are a human", "enable javascript and cookies", "captcha challenge", "completing the captcha", "verify you are human", "verifying you are human", "sorry, you have been blocked", "why have i been blocked", "attention required! | cloudflare"} {
 		if strings.Contains(low, marker) {
 			return true
 		}
 	}
+	weakMarkers := []string{"captcha", "cloudflare", "turnstile", "attention required"}
 	if contentChars(string(body)) <= 4000 {
-		for _, marker := range []string{"captcha", "cloudflare", "turnstile", "attention required"} {
+		for _, marker := range weakMarkers {
+			if strings.Contains(low, marker) {
+				return true
+			}
+		}
+	} else if status == http.StatusForbidden || status == http.StatusServiceUnavailable {
+		// A real Cloudflare interstitial ships several KB of inline CSS, well
+		// past the short-body heuristic above — but a 403/503 carrying ANY
+		// Cloudflare marker is never a legitimate long article, so the length
+		// gate does not apply for these two status codes.
+		for _, marker := range weakMarkers {
 			if strings.Contains(low, marker) {
 				return true
 			}

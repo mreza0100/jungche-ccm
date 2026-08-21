@@ -2,6 +2,7 @@ package harvestpy
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -727,11 +728,14 @@ func copyLimited(destination string, source io.Reader, size int64) error {
 func runCommand(ctx context.Context, executable string, arguments []string, directory string) ([]byte, error) {
 	command := exec.CommandContext(ctx, executable, arguments...)
 	command.Dir = directory
-	output, err := command.CombinedOutput()
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
 	if err != nil {
-		return output, fmt.Errorf("%s %s: %w (output: %s)", executable, strings.Join(arguments, " "), err, strings.TrimSpace(string(output)))
+		return stdout.Bytes(), fmt.Errorf("%s %s: %w (stderr: %s)", executable, strings.Join(arguments, " "), err, strings.TrimSpace(stderr.String()))
 	}
-	return output, nil
+	return stdout.Bytes(), nil
 }
 
 func measureTree(root string) SizeReport {
