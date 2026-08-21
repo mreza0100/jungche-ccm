@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -92,8 +93,21 @@ func TestDefaultsRegisterHarvesterDisabledByDefault(t *testing.T) {
 	}
 }
 
-func TestDefaultsWithoutDiscoveryRootsUseThreeAccounts(t *testing.T) {
+func TestDefaultsWithoutDiscoveryRootsDiscoversCredentialedAccountsAndNamesSkips(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
+	for _, account := range []int{1, 2, 3, 4} {
+		configDir := filepath.Join(home, ".cc", strconv.Itoa(account))
+		if err := os.MkdirAll(configDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if account == 4 {
+			continue
+		}
+		credentials := `{"claudeAiOauth":{"accessToken":"fixture","refreshToken":"fixture"}}`
+		if err := os.WriteFile(filepath.Join(configDir, ".credentials.json"), []byte(credentials), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	got := Defaults(home, nil)
 	want := []Account{
 		{ID: 1, ConfigDir: filepath.Join(home, ".cc", "1"), ProjectDir: filepath.Join(home, ".cc", "1", "projects"), Implicit: true, Emoji: "🥇"},
@@ -102,6 +116,12 @@ func TestDefaultsWithoutDiscoveryRootsUseThreeAccounts(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Accounts, want) {
 		t.Fatalf("Accounts = %#v, want %#v", got.Accounts, want)
+	}
+	wantSkips := []AccountSkip{{
+		ID: 4, ConfigDir: filepath.Join(home, ".cc", "4"), Reason: "no valid credentials",
+	}}
+	if !reflect.DeepEqual(got.AccountSkips, wantSkips) {
+		t.Fatalf("AccountSkips = %#v, want %#v", got.AccountSkips, wantSkips)
 	}
 }
 

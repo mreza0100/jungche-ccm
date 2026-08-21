@@ -12,7 +12,7 @@ import (
 // name, and both autonomy flags — a headless chat has nobody awake to answer a
 // permission prompt.
 func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
-	plan, err := HeadlessRun(HeadlessRequest{
+	plan, err := headlessWithTestConfig(HeadlessRequest{
 		Engine:         "cc",
 		Name:           "_HIDE worker 3",
 		CWD:            "/work/alpha",
@@ -43,7 +43,7 @@ func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
 }
 
 func TestHeadlessClaudeAccountOneAndCacheArmed(t *testing.T) {
-	plan, err := HeadlessRun(HeadlessRequest{
+	plan, err := headlessWithTestConfig(HeadlessRequest{
 		Engine:         "cc",
 		Name:           "worker",
 		CWD:            "/work/alpha",
@@ -70,7 +70,7 @@ func TestHeadlessClaudeAccountOneAndCacheArmed(t *testing.T) {
 // into its rename UI, and a prompt on the command line would start a turn
 // before that can happen.
 func TestHeadlessCodexTakesNeitherNameNorPrompt(t *testing.T) {
-	plan, err := HeadlessRun(HeadlessRequest{
+	plan, err := headlessWithTestConfig(HeadlessRequest{
 		Engine: "codex",
 		Name:   "_HIDE codex worker",
 		CWD:    "/work/alpha",
@@ -120,7 +120,7 @@ func TestHeadlessRunRefusals(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			request := base
 			testCase.mutate(&request)
-			_, err := HeadlessRun(request)
+			_, err := headlessWithTestConfig(request)
 			if err == nil {
 				t.Fatal("HeadlessRun() accepted the request")
 			}

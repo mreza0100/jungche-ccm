@@ -62,6 +62,7 @@ func TestActionStress(t *testing.T) {
 }
 
 func stressRequests() []Request {
+	machine := testMachineConfig("/home/test")
 	rows := []compose.Row{
 		{Kind: compose.NewClaude, CWD: "/work/project"},
 		{Kind: compose.NewCodex, CWD: "/work/project"},
@@ -104,6 +105,7 @@ func stressRequests() []Request {
 						Cache1H:        cache1H,
 						Bunker:         bunker,
 						Home:           "/home/test",
+						Config:         machine,
 						FreshSocket: fmt.Sprintf(
 							"%s-1700000001-123-456",
 							freshPrefix,
@@ -136,7 +138,7 @@ func stressHostileProjectDirectories(t *testing.T) {
 		if err := os.Mkdir(projectDir, 0o700); err != nil {
 			t.Fatalf("mkdir hostile case %d: %v", index, err)
 		}
-		plan, err := Synthesize(Request{
+		plan, err := synthesizeWithTestConfig(Request{
 			Row: compose.Row{
 				Kind: compose.NewClaude,
 				CWD:  projectDir,

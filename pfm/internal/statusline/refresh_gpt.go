@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,14 +24,7 @@ type GPTOptions struct {
 // Server JSONL exchange and atomically replaces the cache.
 func RefreshGPT(ctx context.Context, options GPTOptions) error {
 	if options.CachePath == "" {
-		cacheDir := os.TempDir()
-		if jailHome := os.Getenv(paths.EnvHome); jailHome != "" {
-			cacheDir = filepath.Join(jailHome, "tmp")
-		}
-		options.CachePath = filepath.Join(
-			cacheDir,
-			fmt.Sprintf("cc-gpt-usage-%d.json", os.Getuid()),
-		)
+		options.CachePath = GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid())
 	}
 	defer removeRefreshLock(options.CachePath)
 	if options.ReadRateLimits == nil {

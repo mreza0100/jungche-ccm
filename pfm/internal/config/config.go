@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -39,6 +40,16 @@ type Account struct {
 	Emoji      string
 	Claude     *ClaudePrefs
 	Codex      *CodexPrefs
+}
+
+// AccountSkip is a numeric ~/.cc directory discovery inspected and rejected
+// as an account. Keeping skips in the materialized runtime config lets visible
+// consumers explain why a directory was omitted without fabricating an
+// account or retrying a known absence forever.
+type AccountSkip struct {
+	ID        int
+	ConfigDir string
+	Reason    string
 }
 
 type ClaudePrefs struct {
@@ -85,14 +96,15 @@ type AskConfig struct {
 // Config is the fully materialized configuration. Sources records whether
 // each effective value came from the machine file or from a default.
 type Config struct {
-	Version    int
-	Theme      string
-	Accounts   []Account
-	Claude     Claude
-	Codex      Codex
-	MCPServers map[string]MCPServer
-	MCP        MCPConfig
-	Ask        AskConfig
+	Version      int
+	Theme        string
+	Accounts     []Account
+	AccountSkips []AccountSkip
+	Claude       Claude
+	Codex        Codex
+	MCPServers   map[string]MCPServer
+	MCP          MCPConfig
+	Ask          AskConfig
 
 	Path    string
 	Exists  bool
@@ -181,6 +193,7 @@ func defaultsWithMCPServers(
 	registered map[string]MCPServer,
 ) Config {
 	accounts := make([]Account, 0, len(projectRoots))
+	var accountSkips []AccountSkip
 	for index, projectRoot := range projectRoots {
 		configDir := filepath.Dir(projectRoot)
 		accounts = append(accounts, Account{
@@ -192,16 +205,7 @@ func defaultsWithMCPServers(
 		})
 	}
 	if len(accounts) == 0 {
-		for account := 1; account <= 3; account++ {
-			configDir := filepath.Join(home, ".cc", fmt.Sprint(account))
-			accounts = append(accounts, Account{
-				ID:         account,
-				ConfigDir:  configDir,
-				ProjectDir: filepath.Join(configDir, "projects"),
-				Implicit:   account == 1,
-				Emoji:      defaultEmoji(account),
-			})
-		}
+		accounts, accountSkips = discoverAccounts(home)
 	}
 	sources := map[string]Source{
 		"version":               SourceDefault,
@@ -224,13 +228,14 @@ func defaultsWithMCPServers(
 		sources["mcp.servers."+name+".enabled"] = SourceDefault
 	}
 	return Config{
-		Version:    Version,
-		Theme:      "default",
-		Accounts:   accounts,
-		Claude:     Claude{PermissionMode: PermissionBypass, Binary: "claude"},
-		Codex:      Codex{Yolo: true, Binary: "codex"},
-		MCPServers: servers,
-		MCP:        MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
+		Version:      Version,
+		Theme:        "default",
+		Accounts:     accounts,
+		AccountSkips: accountSkips,
+		Claude:       Claude{PermissionMode: PermissionBypass, Binary: "claude"},
+		Codex:        Codex{Yolo: true, Binary: "codex"},
+		MCPServers:   servers,
+		MCP:          MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
 		Ask: AskConfig{
 			Engine: "codex",
 			Codex:  EnginePrefs{Model: "gpt-5.6-luna", Effort: "low"},
@@ -261,6 +266,101 @@ func defaultEmoji(id int) string {
 	default:
 		return "·"
 	}
+}
+
+// DefaultAccountDir is the config-owned conventional directory for a numeric
+// account. Consumers must not reconstruct this filesystem policy.
+func DefaultAccountDir(home string, id int) string {
+	return filepath.Join(home, ".cc", strconv.Itoa(id))
+}
+
+// DefaultAccountProjectDir is the discovery root beneath DefaultAccountDir.
+func DefaultAccountProjectDir(home string, id int) string {
+	return filepath.Join(DefaultAccountDir(home, id), "projects")
+}
+
+// DisplayAccountDir names a conventional account without exposing a full home
+// path, while preserving custom configured directories verbatim.
+func DisplayAccountDir(home string, id int, configDir string) string {
+	clean := filepath.Clean(configDir)
+	if clean == filepath.Clean(DefaultAccountDir(home, id)) {
+		return filepath.Join(".cc", strconv.Itoa(id))
+	}
+	if clean == filepath.Join(filepath.Clean(home), ".cc") {
+		return ".cc"
+	}
+	return fmt.Sprintf("account %d", id)
+}
+
+func discoverAccounts(home string) ([]Account, []AccountSkip) {
+	root := filepath.Join(home, ".cc")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, []AccountSkip{{ConfigDir: root, Reason: fmt.Sprintf("discovery failed: %v", err)}}
+	}
+	type candidate struct {
+		id   int
+		path string
+	}
+	candidates := make([]candidate, 0, len(entries))
+	for _, entry := range entries {
+		id, parseErr := strconv.Atoi(entry.Name())
+		if parseErr != nil || id < 1 {
+			continue
+		}
+		configDir := filepath.Join(root, entry.Name())
+		candidates = append(candidates, candidate{id: id, path: configDir})
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
+	accounts := make([]Account, 0, len(candidates))
+	skips := make([]AccountSkip, 0)
+	for _, candidate := range candidates {
+		if !hasValidAccountCredentials(candidate.path) {
+			skips = append(skips, AccountSkip{
+				ID: candidate.id, ConfigDir: candidate.path, Reason: "no valid credentials",
+			})
+			continue
+		}
+		accounts = append(accounts, Account{
+			ID: candidate.id, ConfigDir: candidate.path,
+			ProjectDir: filepath.Join(candidate.path, "projects"),
+			Implicit:   candidate.id == 1, Emoji: defaultEmoji(candidate.id),
+		})
+	}
+	return accounts, skips
+}
+
+func hasValidAccountCredentials(configDir string) bool {
+	body, err := os.ReadFile(filepath.Join(configDir, ".credentials.json"))
+	if err != nil {
+		return false
+	}
+	var marker struct {
+		OAuth struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"claudeAiOauth"`
+	}
+	return json.Unmarshal(body, &marker) == nil && strings.TrimSpace(marker.OAuth.AccessToken) != ""
+}
+
+func skipsOutsideRoster(skips []AccountSkip, accounts []Account) []AccountSkip {
+	if len(skips) == 0 {
+		return nil
+	}
+	configured := make(map[string]bool, len(accounts))
+	for _, account := range accounts {
+		configured[filepath.Clean(account.ConfigDir)] = true
+	}
+	filtered := make([]AccountSkip, 0, len(skips))
+	for _, skip := range skips {
+		if !configured[filepath.Clean(skip.ConfigDir)] {
+			filtered = append(filtered, skip)
+		}
+	}
+	return filtered
 }
 
 // Load reads a machine config over defaults. An absent file returns defaults;
@@ -323,6 +423,7 @@ func loadWithMCPServers(
 			return Config{}, fmt.Errorf("config %s: accounts: %w", result.Path, err)
 		}
 		result.Accounts = accounts
+		result.AccountSkips = skipsOutsideRoster(result.AccountSkips, accounts)
 		result.Sources["accounts"] = SourceFile
 		for index, value := range *raw.Accounts {
 			if value.Emoji != "" {
@@ -830,9 +931,8 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 		servers[name] = map[string]any{"enabled": server.Enabled}
 	}
 	value := map[string]any{
-		"version":  config.Version,
-		"theme":    config.Theme,
-		"accounts": accounts,
+		"version": config.Version,
+		"theme":   config.Theme,
 		"claude": map[string]any{
 			"permissionMode": config.Claude.PermissionMode,
 			"binary":         config.Claude.Binary,
@@ -850,6 +950,9 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			"codex":  map[string]any{"model": config.Ask.Codex.Model, "effort": config.Ask.Codex.Effort},
 			"claude": map[string]any{"model": config.Ask.Claude.Model, "effort": config.Ask.Claude.Effort},
 		},
+	}
+	if len(accounts) != 0 {
+		value["accounts"] = accounts
 	}
 	if config.MCP.AuthToken != "" {
 		value["mcp"].(map[string]any)["authToken"] = config.MCP.AuthToken

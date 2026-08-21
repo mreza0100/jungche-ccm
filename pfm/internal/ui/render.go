@@ -369,16 +369,35 @@ func (model Model) renderStatsPanel(width, height int) string {
 			}
 			parts := make([]string, 0, len(account.Windows))
 			for _, window := range account.Windows {
-				reset := "?"
-				if !window.ResetAt.IsZero() {
+				reset := window.ResetNote
+				if reset == "" && !window.ResetAt.IsZero() {
 					reset = limitCountdown(now, window.ResetAt)
 				}
-				parts = append(parts, fmt.Sprintf("%s %d%% (%s)", window.Name, window.UsedPct, reset))
+				if reset == "" {
+					reset = "reset unavailable"
+				}
+				parts = append(parts, fmt.Sprintf("%s %d%% (%s)", cleanField(window.Name), window.UsedPct, reset))
 			}
-			if len(parts) == 0 {
+			if account.Status != "" {
+				parts = append(parts, cleanField(account.Status))
+			} else if len(parts) == 0 {
 				parts = append(parts, "limits unavailable")
 			}
-			line := fmt.Sprintf("  %s account %-2d  %s", account.Emoji, account.Account, strings.Join(parts, " · "))
+			var source string
+			switch {
+			case strings.HasPrefix(account.Status, "skipped "):
+				line := "  " + strings.Join(parts, " · ")
+				lines = append(lines, fillLine(line, innerWidth))
+				continue
+			case account.Engine == "codex":
+				source = account.Label
+				if source == "" {
+					source = "Codex"
+				}
+			default:
+				source = fmt.Sprintf("%s account %-2d", account.Emoji, account.Account)
+			}
+			line := fmt.Sprintf("  %-12s  %s", source, strings.Join(parts, " · "))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
 	}
