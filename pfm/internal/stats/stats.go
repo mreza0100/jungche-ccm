@@ -41,6 +41,9 @@ type Chat struct {
 	TokensKnown     bool
 	TokensPerMinute float64
 	TokenRateValid  bool
+	// Spark is the usage chart: the last few per-sample token deltas for this
+	// chat, oldest first. Empty until a second sample proves a trend.
+	Spark []int64
 }
 
 type Container struct {
@@ -117,6 +120,7 @@ type Sampler struct {
 	tokenMu          sync.Mutex
 	tokenCache       map[string]*tokenCacheEntry
 	tokenRates       map[string]*tokenRateState
+	tokenHistory     map[string]*tokenHistoryState
 	tokenGeneration  uint64
 	dockerMu         sync.Mutex
 	dockerIdentities map[string]dockerIdentity

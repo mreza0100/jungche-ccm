@@ -160,12 +160,14 @@ func statsGoldenModel(width int) Model {
 				CPUPercent: 10, CPUValid: true, RSSBytes: 2 << 20, RAMPercent: 3.5,
 				TokenCount: 1_250_000, TokensKnown: true,
 				TokensPerMinute: 625_000, TokenRateValid: true, GearCount: 2,
+				Spark: []int64{0, 120_000, 640_000, 900_000, 450_000, 20_000, 80_000},
 			},
 			{
 				Socket: "idle", Name: "REVIEW:idle", Engine: "codex",
 				CPUPercent: 0, CPUValid: true, RSSBytes: 1 << 20, RAMPercent: 1.5,
 				TokenCount: 750_000, TokensKnown: true,
 				TokensPerMinute: 0, TokenRateValid: true,
+				Spark: []int64{0, 0, 0, 0},
 			},
 			{
 				Socket: "new", Name: "NEW:first-sample", Engine: "claude",

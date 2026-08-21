@@ -209,6 +209,26 @@ func TestStatsLimitsSubtabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testin
 	}
 }
 
+func TestUsageSparkScalesToTheBusiestSample(t *testing.T) {
+	cases := []struct {
+		name   string
+		deltas []int64
+		want   string
+	}{
+		{"no history yet", nil, "…"},
+		{"all idle", []int64{0, 0, 0}, "▁▁▁"},
+		{"burst after idle", []int64{0, 100}, "▁█"},
+		{"mixed", []int64{50, 100, 25}, "▅█▃"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := usageSpark(testCase.deltas); got != testCase.want {
+				t.Fatalf("usageSpark(%v) = %q, want %q", testCase.deltas, got, testCase.want)
+			}
+		})
+	}
+}
+
 func TestStatsCursorFollowsSocketAcrossCPUSort(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
 	model.tab = TabStats
