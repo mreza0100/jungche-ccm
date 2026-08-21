@@ -62,11 +62,11 @@ func Check(ctx context.Context, root string, platform Platform) (CheckReport, er
 			}())
 		}
 	}
-	digest, digestErr := ReadEnvironmentDigest(filepath.Join(current, "environment.json"))
+	digest, digestErr := Inspect(root, platform)
+	report.Digest = digest
 	if digestErr != nil {
 		set("marker", digestErr)
 	} else {
-		report.Digest = digest
 		set("marker", nil)
 		set("marker_state", func() error {
 			if digest.State != "ready" {

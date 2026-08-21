@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -273,6 +274,143 @@ func TestProvisionConvergesAtomicallyAndIsIdempotent(t *testing.T) {
 	}
 	if result.Digest != "" {
 		t.Fatalf("failed convergence returned digest %q", result.Digest)
+	}
+}
+
+func TestProvisionKeepsAbsoluteVenvLinksAtTheirFinalPath(t *testing.T) {
+	root := t.TempDir()
+	platform := Platform{GOOS: "linux", GOARCH: "amd64"}
+	targets, cache := fakeProvisionInputs(t, root, platform)
+	var smokePaths []string
+
+	result, err := provision(context.Background(), ProvisionOptions{
+		Root: root, Cache: cache, Platform: platform,
+		Run: fakeProvisionRun(t, false),
+		Smoke: func(_ context.Context, runtime Runtime) (map[string]any, error) {
+			smokePaths = append(smokePaths, runtime.Python)
+			resolved, err := filepath.EvalSymlinks(runtime.Python)
+			if err != nil {
+				return nil, fmt.Errorf("resolve fake uv Python link: %w", err)
+			}
+			if _, err := os.Stat(resolved); err != nil {
+				return nil, fmt.Errorf("stat fake uv Python target: %w", err)
+			}
+			return map[string]any{
+				"imports":    map[string]any{},
+				"conversion": map[string]any{"ok": true},
+			}, nil
+		},
+	}, targets)
+	if err != nil {
+		t.Fatalf("provision with absolute uv link failed: %v", err)
+	}
+	final := filepath.Join(root, "env", platform.String(), result.Digest)
+	venvPython := filepath.Join(final, "project", ".venv", "bin", "python")
+	resolved, err := filepath.EvalSymlinks(venvPython)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPython := filepath.Join(final, "python", "bin", "python3")
+	if resolved != wantPython {
+		t.Fatalf("absolute uv Python link resolves to %s, want %s", resolved, wantPython)
+	}
+	configuration, err := os.ReadFile(filepath.Join(final, "project", ".venv", "pyvenv.cfg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHome := "home = " + filepath.Join(final, "python", "bin")
+	if !strings.Contains(string(configuration), wantHome) {
+		t.Fatalf("pyvenv.cfg = %q, want %q", configuration, wantHome)
+	}
+	if len(smokePaths) != 2 || smokePaths[0] != venvPython || smokePaths[1] != venvPython {
+		t.Fatalf("smoke paths = %#v, want the same final runtime twice", smokePaths)
+	}
+}
+
+func TestProvisionFailureRemovesIncompleteFinalPath(t *testing.T) {
+	root := t.TempDir()
+	platform := Platform{GOOS: "linux", GOARCH: "amd64"}
+	targets, cache := fakeProvisionInputs(t, root, platform)
+	desired := desiredTestDigest(platform, targets[platform])
+
+	_, err := provision(context.Background(), ProvisionOptions{
+		Root: root, Cache: cache, Platform: platform,
+		Run: fakeProvisionRun(t, true),
+	}, targets)
+	if err == nil || !strings.Contains(err.Error(), "locked dependency check failed") {
+		t.Fatalf("pip-check interruption error = %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "env", platform.String(), desired),
+		RuntimeRoot(root, platform),
+	} {
+		if _, statErr := os.Lstat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("interrupted provision left %s: %v", path, statErr)
+		}
+	}
+}
+
+func TestProvisionFailureRestoresQuarantinedEnvironment(t *testing.T) {
+	root := t.TempDir()
+	platform := Platform{GOOS: "linux", GOARCH: "amd64"}
+	targets, cache := fakeProvisionInputs(t, root, platform)
+	desired := desiredTestDigest(platform, targets[platform])
+	envRoot := filepath.Join(root, "env", platform.String())
+	final := filepath.Join(envRoot, desired)
+	if err := os.MkdirAll(final, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldState := filepath.Join(final, "old-state")
+	if err := os.WriteFile(oldState, []byte("restore me\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(desired, RuntimeRoot(root, platform)); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := provision(context.Background(), ProvisionOptions{
+		Root: root, Cache: cache, Platform: platform,
+		Run: fakeProvisionRun(t, true),
+	}, targets)
+	if err == nil || !strings.Contains(err.Error(), "locked dependency check failed") {
+		t.Fatalf("pip-check interruption error = %v", err)
+	}
+	if body, readErr := os.ReadFile(oldState); readErr != nil || string(body) != "restore me\n" {
+		t.Fatalf("quarantined environment was not restored: %q, %v", body, readErr)
+	}
+	entries, err := os.ReadDir(envRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".repair-") {
+			t.Fatalf("repair quarantine remains after restoration: %s", entry.Name())
+		}
+	}
+}
+
+func TestInspectAndCheckReportIncompleteProvisioning(t *testing.T) {
+	root := t.TempDir()
+	platform := Platform{GOOS: "linux", GOARCH: "amd64"}
+	envRoot := filepath.Join(root, "env", platform.String())
+	version := filepath.Join(envRoot, "interrupted-digest")
+	if err := os.MkdirAll(version, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(version, "INCOMPLETE"), []byte("provisioning did not finish\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Base(version), RuntimeRoot(root, platform)); err != nil {
+		t.Fatal(err)
+	}
+
+	digest, inspectErr := Inspect(root, platform)
+	if digest.State != "incomplete" || inspectErr == nil || !strings.Contains(inspectErr.Error(), "provisioning did not finish") {
+		t.Fatalf("Inspect incomplete = %#v, %v", digest, inspectErr)
+	}
+	report, checkErr := Check(context.Background(), root, platform)
+	if report.Digest.State != "incomplete" || checkErr == nil || !strings.Contains(report.Checks["marker"].Error, "provisioning did not finish") {
+		t.Fatalf("Check incomplete = %#v, %v", report, checkErr)
 	}
 }
 
@@ -762,6 +900,117 @@ func testConverter(t *testing.T, python string) *Converter {
 func digest(body []byte) string {
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:])
+}
+
+func fakeProvisionInputs(t *testing.T, root string, platform Platform) (map[Platform]Target, string) {
+	t.Helper()
+	targets := Targets()
+	target := targets[platform]
+	uvArchive := fakeTarGzip(t, []fakeArchiveEntry{{name: "uv", body: "fake uv\n", mode: 0o700}})
+	pythonArchive := fakeTarGzip(t, []fakeArchiveEntry{
+		{name: "python", mode: 0o700, directory: true},
+		{name: "python/bin", mode: 0o700, directory: true},
+		{name: "python/bin/python3", body: "fake python\n", mode: 0o700},
+	})
+	target.UV.SHA256, target.UV.Size = digest(uvArchive), int64(len(uvArchive))
+	target.Python.SHA256, target.Python.Size = digest(pythonArchive), int64(len(pythonArchive))
+	targets[platform] = target
+	cache := filepath.Join(root, "cache")
+	if err := os.MkdirAll(cache, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "uv-"+platform.String()+".tar.gz"), uvArchive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "python-"+platform.String()+".tar.gz"), pythonArchive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return targets, cache
+}
+
+func fakeProvisionRun(t *testing.T, failCheck bool) RunFunc {
+	t.Helper()
+	valueAfter := func(arguments []string, name string) string {
+		for index := 0; index+1 < len(arguments); index++ {
+			if arguments[index] == name {
+				return arguments[index+1]
+			}
+		}
+		return ""
+	}
+	return func(_ context.Context, _ string, arguments []string, _ string) ([]byte, error) {
+		switch {
+		case len(arguments) > 0 && arguments[0] == "sync":
+			project := valueAfter(arguments, "--project")
+			python := valueAfter(arguments, "--python")
+			venvBin := filepath.Join(project, ".venv", "bin")
+			if err := os.MkdirAll(venvBin, 0o700); err != nil {
+				return nil, err
+			}
+			if err := os.Symlink(python, filepath.Join(venvBin, "python")); err != nil {
+				return nil, err
+			}
+			configuration := []byte("home = " + filepath.Dir(python) + "\n")
+			if err := os.WriteFile(filepath.Join(project, ".venv", "pyvenv.cfg"), configuration, 0o600); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		case len(arguments) > 1 && arguments[0] == "pip" && arguments[1] == "check":
+			if failCheck {
+				return nil, errors.New("fake pip check failed")
+			}
+			return nil, nil
+		case len(arguments) > 1 && arguments[0] == "pip" && arguments[1] == "list":
+			return []byte("fixture==1.0\n"), nil
+		default:
+			return nil, fmt.Errorf("unexpected fake uv arguments: %v", arguments)
+		}
+	}
+}
+
+type fakeArchiveEntry struct {
+	name      string
+	body      string
+	mode      int64
+	directory bool
+}
+
+func fakeTarGzip(t *testing.T, entries []fakeArchiveEntry) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(gzipWriter)
+	for _, entry := range entries {
+		header := &tar.Header{Name: entry.name, Mode: entry.mode, Size: int64(len(entry.body))}
+		if entry.directory {
+			header.Typeflag = tar.TypeDir
+			header.Size = 0
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if entry.body != "" {
+			if _, err := tarWriter.Write([]byte(entry.body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func desiredTestDigest(platform Platform, target Target) string {
+	return digestID(EnvironmentDigest{
+		Schema: 1, Target: platform.String(), Python: target.PythonVersion, UV: target.UVVersion,
+		PythonSHA256: target.Python.SHA256, UVSHA256: target.UV.SHA256,
+		LockSHA256: lockSHA256(), SourceSHA256: sourceSHA256(),
+		Features: FeatureStatus{OCR: "disabled", Layout: "disabled", Models: "not-requested"},
+	})
 }
 
 // These seams are deliberately test-only; production uses the immutable
