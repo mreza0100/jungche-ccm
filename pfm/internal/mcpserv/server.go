@@ -56,15 +56,6 @@ type SharedOperations struct {
 // receives after global flags have been handled.
 type Dispatch func(context.Context, []string, io.Writer, io.Writer) int
 
-// New creates the production stdio service.
-func New(version string, warnings io.Writer) (*Service, error) {
-	backend, err := newBackend(warnings)
-	if err != nil {
-		return nil, err
-	}
-	return newService(version, backend), nil
-}
-
 // NewConfigured creates the production service over one command runtime.
 func NewConfigured(version string, warnings io.Writer, runtime Runtime) (*Service, error) {
 	backend, err := newBackendConfigured(warnings, runtime)
@@ -79,7 +70,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Inspect, resolve, capture, search, read, name, hide, reload, save, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
+		Instructions: "Inspect, resolve, capture, search, read, name, kill, reload, save, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -148,7 +139,7 @@ func (service *Service) register() {
 		Name: "chat_last", Description: "Return the newest assistant answer from a chat.", Annotations: readOnly,
 	}, service.chatLast)
 	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_status", Description: "Inspect one chat using the headless status contract.", Annotations: readOnly,
+		Name: "chat_status", Description: "Inspect one chat, optionally summarizing its last human exchange.", Annotations: readOnly,
 	}, service.chatStatus)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_new", Description: "Create a detached named chat through the canonical pfm chat new dispatcher.", Annotations: mutating,
@@ -160,11 +151,11 @@ func (service *Service) register() {
 		Name: "chat_name", Description: "Name a live chat through the canonical pfm chat name dispatcher.", Annotations: mutating,
 	}, service.chatName)
 	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_hide", Description: "Hide a chat through the canonical pfm chat hide dispatcher.", Annotations: mutating,
-	}, service.chatHide)
+		Name: "chat_kill", Description: "Kill a chat through the canonical pfm chat kill dispatcher.", Annotations: mutating,
+	}, service.chatKill)
 	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_unhide", Description: "Unhide a chat through the canonical pfm chat unhide dispatcher.", Annotations: mutating,
-	}, service.chatUnhide)
+		Name: "chat_unkill", Description: "Unkill a chat through the canonical pfm chat unkill dispatcher.", Annotations: mutating,
+	}, service.chatUnkill)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_reload", Description: "Reload a Claude seat through the canonical pfm chat reload dispatcher.", Annotations: mutating,
 	}, service.chatReload)

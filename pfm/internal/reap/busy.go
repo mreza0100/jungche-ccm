@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 )
 
@@ -49,7 +50,7 @@ func NewClaudeAgentsConfigured(
 	if binaryName == "" {
 		binaryName = "claude"
 	}
-	binary, err := exec.LookPath(binaryName)
+	binary, err := deps.Resolve(binaryName)
 	if err != nil {
 		if filepath.IsAbs(binaryName) {
 			binary = binaryName

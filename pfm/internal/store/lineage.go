@@ -235,11 +235,11 @@ func (s *Store) ReconcileCodexLineageRoots(ctx context.Context) error {
 	})
 }
 
-// migrateCodexLineageHides denormalizes every rollout's lineage root and
-// collapses the v1 per-rollout Codex hides onto that root, keeping the newest
-// hidden_at. The merged row's baseline_prompts is NULL because these are
-// explicit permanent hides, so lineage repair must not invent /clear state.
-func migrateCodexLineageHides(
+// migrateCodexLineageKills denormalizes every rollout's lineage root and
+// collapses the v1 per-rollout Codex kills onto that root, keeping the newest
+// killed_at. The merged row's baseline_prompts is NULL because these are
+// explicit permanent kills, so lineage repair must not invent /clear state.
+func migrateCodexLineageKills(
 	ctx context.Context,
 	tx *ImmediateTx,
 ) error {
@@ -271,14 +271,14 @@ ORDER BY id`)
 	if err != nil {
 		return err
 	}
-	hides := make([]Hidden, 0)
+	kills := make([]Killed, 0)
 	for rows.Next() {
-		hidden, err := scanHidden(rows)
+		killed, err := scanKilled(rows)
 		if err != nil {
 			_ = rows.Close()
 			return err
 		}
-		hides = append(hides, hidden)
+		kills = append(kills, killed)
 	}
 	if err := rows.Close(); err != nil {
 		return err
@@ -287,28 +287,28 @@ ORDER BY id`)
 		return err
 	}
 
-	type migratedHide struct {
-		hidden Hidden
+	type migratedKill struct {
+		killed Killed
 		ids    []string
 	}
-	migrated := make(map[string]*migratedHide)
-	for _, hidden := range hides {
-		root := roots[hidden.ID]
+	migrated := make(map[string]*migratedKill)
+	for _, killed := range kills {
+		root := roots[killed.ID]
 		if root == "" {
 			continue
 		}
 		target := migrated[root]
 		if target == nil {
-			target = &migratedHide{hidden: Hidden{
+			target = &migratedKill{killed: Killed{
 				ID:       root,
 				Engine:   CodexEngine,
-				HiddenAt: hidden.HiddenAt,
+				KilledAt: killed.KilledAt,
 			}}
 			migrated[root] = target
 		}
-		target.ids = append(target.ids, hidden.ID)
-		if hidden.HiddenAt > target.hidden.HiddenAt {
-			target.hidden.HiddenAt = hidden.HiddenAt
+		target.ids = append(target.ids, killed.ID)
+		if killed.KilledAt > target.killed.KilledAt {
+			target.killed.KilledAt = killed.KilledAt
 		}
 	}
 	for _, target := range migrated {
@@ -321,7 +321,7 @@ ORDER BY id`)
 				return err
 			}
 		}
-		if err := tx.UpsertHidden(ctx, target.hidden); err != nil {
+		if err := tx.UpsertKilled(ctx, target.killed); err != nil {
 			return err
 		}
 	}

@@ -12,6 +12,8 @@ import (
 	"syscall"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/deps"
+	"hostops/pfm/internal/gather"
 )
 
 // ExecCommands is the production command boundary. It strips inherited chat
@@ -26,9 +28,9 @@ type ExecCommands struct {
 
 func (commands ExecCommands) binary() string {
 	if commands.Binary != "" {
-		return commands.Binary
+		return deps.Executable(commands.Binary)
 	}
-	return "claude"
+	return deps.Executable("claude")
 }
 func (commands ExecCommands) environment(config string, cache1H bool) []string {
 	dropped := map[string]struct{}{
@@ -116,6 +118,19 @@ func (RealProcesses) Kill(pid int) error {
 	return err
 }
 
+func (processes RealProcesses) ParentComm(pid int) string {
+	proc := gather.NewProcFS(processes.Root)
+	stat, err := proc.Stat(pid)
+	if err != nil || stat.ParentPID <= 0 {
+		return "unknown"
+	}
+	argv, err := proc.Cmdline(stat.ParentPID)
+	if err != nil || len(argv) == 0 {
+		return "unknown"
+	}
+	return filepath.Base(argv[0])
+}
+
 type RealTmux struct {
 	Binary string
 	Dir    string
@@ -124,9 +139,9 @@ type RealTmux struct {
 
 func (tmux RealTmux) binary() string {
 	if tmux.Binary != "" {
-		return tmux.Binary
+		return deps.Executable(tmux.Binary)
 	}
-	return "tmux"
+	return deps.Executable("tmux")
 }
 func (tmux RealTmux) command(ctx context.Context, socket string, args ...string) *exec.Cmd {
 	command := exec.CommandContext(ctx, tmux.binary(), append([]string{"-S", filepath.Join(tmux.Dir, socket)}, args...)...)
@@ -144,9 +159,6 @@ func (tmux RealTmux) SocketForPID(ctx context.Context, pid int) (string, error) 
 		}
 		output, err := tmux.command(ctx, entry.Name(), "list-panes", "-a", "-F", "#{pane_pid}").Output()
 		if err != nil {
-			if tmux.Stderr != nil {
-				fmt.Fprintf(tmux.Stderr, "pfm internal agent-open: probe tmux socket %s for pid %d: %v\n", entry.Name(), pid, err)
-			}
 			continue
 		}
 		for _, line := range strings.Split(string(output), "\n") {

@@ -27,7 +27,7 @@ func TestResolveCodexLineageUsesNewestAndMonotonicPromptMaximum(t *testing.T) {
 	}
 }
 
-func TestV2MigrationCollapsesExistingCodexHidesToLineageRoot(t *testing.T) {
+func TestV2MigrationCollapsesExistingCodexKillsToLineageRoot(t *testing.T) {
 	dbPath := setStoreTestJail(t)
 	ctx := context.Background()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
@@ -64,33 +64,33 @@ INSERT INTO rollouts (
 			t.Fatal(err)
 		}
 	}
-	for _, hidden := range []Hidden{
+	for _, killed := range []Killed{
 		{
 			ID:              "root",
 			Engine:          "cx",
-			HiddenAt:        100,
+			KilledAt:        100,
 			BaselinePrompts: int64Pointer(10),
 		},
 		{
 			ID:              "child-old",
 			Engine:          "cx",
-			HiddenAt:        200,
+			KilledAt:        200,
 			BaselinePrompts: int64Pointer(10),
 		},
 		{
 			ID:              "child-newest",
 			Engine:          "cx",
-			HiddenAt:        300,
+			KilledAt:        300,
 			BaselinePrompts: int64Pointer(11),
 		},
 	} {
 		if _, err := database.ExecContext(ctx, `
 INSERT INTO hidden (id, engine, hidden_at, baseline_prompts)
 VALUES (?, ?, ?, ?)`,
-			hidden.ID,
-			hidden.Engine,
-			hidden.HiddenAt,
-			hidden.BaselinePrompts,
+			killed.ID,
+			killed.Engine,
+			killed.KilledAt,
+			killed.BaselinePrompts,
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -113,25 +113,25 @@ VALUES (?, ?, ?, ?)`,
 			t.Fatalf("%s lineage_root = %q", rollout.ID, rollout.LineageRoot)
 		}
 	}
-	hidden, err := migrated.HiddenChats(ctx)
+	killed, err := migrated.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The merged row keeps the newest hidden_at and drops the retired
-	// baseline: the column is NULL for every hide the fleet writes.
-	if len(hidden) != 1 ||
-		hidden[0].ID != "root" ||
-		hidden[0].Engine != "cx" ||
-		hidden[0].HiddenAt != 300 ||
-		hidden[0].BaselinePrompts != nil {
-		t.Fatalf("migrated hides = %#v", hidden)
+	// baseline: the column is NULL for every kill the fleet writes.
+	if len(killed) != 1 ||
+		killed[0].ID != "root" ||
+		killed[0].Engine != "cx" ||
+		killed[0].KilledAt != 300 ||
+		killed[0].BaselinePrompts != nil {
+		t.Fatalf("migrated kills = %#v", killed)
 	}
 	counts, err := migrated.Counts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts.OrphanedHides != 0 {
-		t.Fatalf("migrated orphaned hides = %d", counts.OrphanedHides)
+	if counts.OrphanedKills != 0 {
+		t.Fatalf("migrated orphaned kills = %d", counts.OrphanedKills)
 	}
 	if err := migrated.Close(); err != nil {
 		t.Fatal(err)
@@ -139,11 +139,11 @@ VALUES (?, ?, ?, ?)`,
 
 	reopened := openTestStore(t)
 	t.Cleanup(func() { _ = reopened.Close() })
-	hidden, err = reopened.HiddenChats(ctx)
-	if err != nil || len(hidden) != 1 ||
-		hidden[0].ID != "root" ||
-		hidden[0].BaselinePrompts != nil {
-		t.Fatalf("idempotent reopen hides = %#v, err=%v", hidden, err)
+	killed, err = reopened.KilledChats(ctx)
+	if err != nil || len(killed) != 1 ||
+		killed[0].ID != "root" ||
+		killed[0].BaselinePrompts != nil {
+		t.Fatalf("idempotent reopen kills = %#v, err=%v", killed, err)
 	}
 }
 

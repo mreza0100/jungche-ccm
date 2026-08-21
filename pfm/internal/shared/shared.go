@@ -1,6 +1,6 @@
 // Package shared is the fleet's authoritative state store.
 //
-// The SQLite database at ~/.cc/fleet.db holds every operator decision: hidden
+// The SQLite database at ~/.cc/fleet.db holds every operator decision: killed
 // chats, spawned teammates, and the primary account. The transcript database
 // (paths.Values.DB) remains a derived cache that a rescan can rebuild.
 package shared
@@ -169,18 +169,18 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// HiddenRecord is one operator hide. A nil AtPayload is permanent; a prompt
-// baseline is the clear-hide ratchet and expires when that transcript grows.
-type HiddenRecord struct {
-	HiddenAt  int64
+// KilledRecord is one operator kill. A nil AtPayload is permanent; a prompt
+// baseline is the clear-kill ratchet and expires when that transcript grows.
+type KilledRecord struct {
+	KilledAt  int64
 	AtPayload *int64
 }
 
-// Hide records a permanent hide in SQLite. An explicit hide always wins over
-// an earlier clear-hide ratchet by clearing its prompt baseline.
-func (s *Store) Hide(ctx context.Context, id string, hiddenAt int64) error {
+// Kill records a permanent kill in SQLite. An explicit kill always wins over
+// an earlier clear-kill ratchet by clearing its prompt baseline.
+func (s *Store) Kill(ctx context.Context, id string, killedAt int64) error {
 	if s.db == nil {
-		return fmt.Errorf("record shared hide %q: %w", id, s.degraded)
+		return fmt.Errorf("record shared kill %q: %w", id, s.degraded)
 	}
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,NULL)
@@ -188,23 +188,23 @@ ON CONFLICT(uuid) DO UPDATE SET
   hidden_at=excluded.hidden_at,
   at_payload=NULL`,
 		id,
-		hiddenAt,
+		killedAt,
 	); err != nil {
-		return fmt.Errorf("record shared hide %q: %w", id, err)
+		return fmt.Errorf("record shared kill %q: %w", id, err)
 	}
 	return nil
 }
 
-// HideUntilPrompt records the current prompt count for a /clear hide. A
-// permanent hide is never weakened; repeated clear events retain the greatest
-// observed baseline so delivery/index races cannot unhide too early.
-func (s *Store) HideUntilPrompt(
+// KillUntilPrompt records the current prompt count for a /clear kill. A
+// permanent kill is never weakened; repeated clear events retain the greatest
+// observed baseline so delivery/index races cannot unkill too early.
+func (s *Store) KillUntilPrompt(
 	ctx context.Context,
 	id string,
-	hiddenAt, baseline int64,
+	killedAt, baseline int64,
 ) error {
 	if s.db == nil {
-		return fmt.Errorf("record shared clear hide %q: %w", id, s.degraded)
+		return fmt.Errorf("record shared clear kill %q: %w", id, s.degraded)
 	}
 	if _, err := s.db.ExecContext(ctx, `
 INSERT INTO hidden(uuid,hidden_at,at_payload) VALUES(?,?,?)
@@ -216,38 +216,38 @@ ON CONFLICT(uuid) DO UPDATE SET
     ELSE hidden.at_payload
   END`,
 		id,
-		hiddenAt,
+		killedAt,
 		baseline,
 	); err != nil {
-		return fmt.Errorf("record shared clear hide %q: %w", id, err)
+		return fmt.Errorf("record shared clear kill %q: %w", id, err)
 	}
 	return nil
 }
 
-// Unhide deletes one hide row.
-func (s *Store) Unhide(ctx context.Context, id string) error {
+// Unkill deletes one kill row.
+func (s *Store) Unkill(ctx context.Context, id string) error {
 	if s.db == nil {
-		return fmt.Errorf("remove shared hide %q: %w", id, s.degraded)
+		return fmt.Errorf("remove shared kill %q: %w", id, s.degraded)
 	}
 	if _, err := s.db.ExecContext(
 		ctx,
 		"DELETE FROM hidden WHERE uuid=?",
 		id,
 	); err != nil {
-		return fmt.Errorf("remove shared hide %q: %w", id, err)
+		return fmt.Errorf("remove shared kill %q: %w", id, err)
 	}
 	return nil
 }
 
-// UnhideIfPayload expires only the clear-hide version the caller observed.
-// A concurrent explicit hide or later /clear survives the conditional delete.
-func (s *Store) UnhideIfPayload(
+// UnkillIfPayload expires only the clear-kill version the caller observed.
+// A concurrent explicit kill or later /clear survives the conditional delete.
+func (s *Store) UnkillIfPayload(
 	ctx context.Context,
 	id string,
 	payload int64,
 ) (bool, error) {
 	if s.db == nil {
-		return false, fmt.Errorf("expire shared clear hide %q: %w", id, s.degraded)
+		return false, fmt.Errorf("expire shared clear kill %q: %w", id, s.degraded)
 	}
 	result, err := s.db.ExecContext(
 		ctx,
@@ -256,37 +256,37 @@ func (s *Store) UnhideIfPayload(
 		payload,
 	)
 	if err != nil {
-		return false, fmt.Errorf("expire shared clear hide %q: %w", id, err)
+		return false, fmt.Errorf("expire shared clear kill %q: %w", id, err)
 	}
 	removed, err := result.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("count expired shared clear hide %q: %w", id, err)
+		return false, fmt.Errorf("count expired shared clear kill %q: %w", id, err)
 	}
 	return removed == 1, nil
 }
 
-// HiddenRecords returns the complete shared hide state keyed by chat id.
-func (s *Store) HiddenRecords(ctx context.Context) (map[string]HiddenRecord, error) {
+// KilledRecords returns the complete shared kill state keyed by chat id.
+func (s *Store) KilledRecords(ctx context.Context) (map[string]KilledRecord, error) {
 	if s.db == nil {
-		return nil, fmt.Errorf("query shared hides: %w", s.degraded)
+		return nil, fmt.Errorf("query shared kills: %w", s.degraded)
 	}
-	records := make(map[string]HiddenRecord)
+	records := make(map[string]KilledRecord)
 	rows, err := s.db.QueryContext(
 		ctx,
 		"SELECT uuid, hidden_at, at_payload FROM hidden",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query shared hides: %w", err)
+		return nil, fmt.Errorf("query shared kills: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id string
-		var hiddenAt int64
+		var killedAt int64
 		var payload sql.NullInt64
-		if err := rows.Scan(&id, &hiddenAt, &payload); err != nil {
-			return nil, fmt.Errorf("scan shared hide: %w", err)
+		if err := rows.Scan(&id, &killedAt, &payload); err != nil {
+			return nil, fmt.Errorf("scan shared kill: %w", err)
 		}
-		record := HiddenRecord{HiddenAt: hiddenAt}
+		record := KilledRecord{KilledAt: killedAt}
 		if payload.Valid {
 			value := payload.Int64
 			record.AtPayload = &value
@@ -294,22 +294,22 @@ func (s *Store) HiddenRecords(ctx context.Context) (map[string]HiddenRecord, err
 		records[id] = record
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate shared hides: %w", err)
+		return nil, fmt.Errorf("iterate shared kills: %w", err)
 	}
 	return records, nil
 }
 
-// HiddenAt returns every hidden row keyed by chat id.
-func (s *Store) HiddenAt(ctx context.Context) (map[string]int64, error) {
-	records, err := s.HiddenRecords(ctx)
+// KilledAt returns every killed row keyed by chat id.
+func (s *Store) KilledAt(ctx context.Context) (map[string]int64, error) {
+	records, err := s.KilledRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
-	hidden := make(map[string]int64, len(records))
+	killed := make(map[string]int64, len(records))
 	for id, record := range records {
-		hidden[id] = record.HiddenAt
+		killed[id] = record.KilledAt
 	}
-	return hidden, nil
+	return killed, nil
 }
 
 // Children returns the teammates a chat spawned. The second result is false
@@ -604,10 +604,10 @@ func primaryFromDatabase(ctx context.Context, path string) (int, bool) {
 	return account, true
 }
 
-// SortedIDs returns the keys of a hidden set in stable order.
-func SortedIDs(hidden map[string]int64) []string {
-	ids := make([]string, 0, len(hidden))
-	for id := range hidden {
+// SortedIDs returns the keys of a killed set in stable order.
+func SortedIDs(killed map[string]int64) []string {
+	ids := make([]string, 0, len(killed))
+	for id := range killed {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)

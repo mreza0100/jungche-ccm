@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"hostops/pfm/internal/deps"
 )
 
 var gitObjectIDPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
@@ -173,7 +175,7 @@ func parseDriftAnchors(body string) ([]driftAnchor, error) {
 }
 
 func resolveGitObject(repository, revision string) (objectID string, missing bool, err error) {
-	command := exec.Command("git", "-C", repository, "rev-parse", "--verify", "-q", revision)
+	command := exec.Command(deps.Executable("git"), "-C", repository, "rev-parse", "--verify", "-q", revision)
 	command.Env = gitReadEnvironment()
 	var stderr bytes.Buffer
 	command.Stderr = &stderr

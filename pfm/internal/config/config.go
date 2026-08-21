@@ -68,6 +68,21 @@ type CodexPrefs struct {
 // Codex is retained as an alias for callers that used the v1 public shape.
 type Codex = CodexPrefs
 
+// CodexAccount is one independently authenticated Codex home. Prefs overrides
+// the top-level Codex posture for this account only.
+type CodexAccount struct {
+	ID    int
+	Home  string
+	Emoji string
+	Prefs *CodexPrefs
+}
+
+// EngineCounts is the materialized engine roster summary every surface uses.
+type EngineCounts struct {
+	Claude int
+	Codex  int
+}
+
 type MCPServer struct {
 	Enabled bool
 }
@@ -96,15 +111,16 @@ type AskConfig struct {
 // Config is the fully materialized configuration. Sources records whether
 // each effective value came from the machine file or from a default.
 type Config struct {
-	Version      int
-	Theme        string
-	Accounts     []Account
-	AccountSkips []AccountSkip
-	Claude       Claude
-	Codex        Codex
-	MCPServers   map[string]MCPServer
-	MCP          MCPConfig
-	Ask          AskConfig
+	Version       int
+	Theme         string
+	Accounts      []Account
+	AccountSkips  []AccountSkip
+	CodexAccounts []CodexAccount
+	Claude        Claude
+	Codex         Codex
+	MCPServers    map[string]MCPServer
+	MCP           MCPConfig
+	Ask           AskConfig
 
 	Path    string
 	Exists  bool
@@ -142,6 +158,19 @@ type rawClaude struct {
 }
 
 type rawCodex struct {
+	Yolo   *bool           `json:"yolo,omitempty"`
+	Binary *string         `json:"binary,omitempty"`
+	Homes  *[]rawCodexHome `json:"homes,omitempty"`
+}
+
+type rawCodexHome struct {
+	ID    int            `json:"id"`
+	Home  string         `json:"home"`
+	Emoji string         `json:"emoji,omitempty"`
+	Prefs *rawCodexPrefs `json:"prefs,omitempty"`
+}
+
+type rawCodexPrefs struct {
 	Yolo   *bool   `json:"yolo,omitempty"`
 	Binary *string `json:"binary,omitempty"`
 }
@@ -183,14 +212,15 @@ func ResolvePath(home string) string {
 // Defaults returns today's effective behavior over the supplied discovery
 // roots. The roots are preserved byte-for-byte as discovery inputs; only the
 // corresponding launch directory is derived.
-func Defaults(home string, projectRoots []string) Config {
-	return defaultsWithMCPServers(home, projectRoots, productionMCPServers())
+func Defaults(home string, projectRoots []string, codexRoots ...string) Config {
+	return defaultsWithMCPServers(home, projectRoots, productionMCPServers(), codexRoots...)
 }
 
 func defaultsWithMCPServers(
 	home string,
 	projectRoots []string,
 	registered map[string]MCPServer,
+	codexRoots ...string,
 ) Config {
 	accounts := make([]Account, 0, len(projectRoots))
 	var accountSkips []AccountSkip
@@ -201,11 +231,19 @@ func defaultsWithMCPServers(
 			ConfigDir:  filepath.Clean(configDir),
 			ProjectDir: filepath.Clean(projectRoot),
 			Implicit:   index == 0,
-			Emoji:      defaultEmoji(index + 1),
+			Emoji:      DefaultEmoji(index + 1),
 		})
 	}
 	if len(accounts) == 0 {
 		accounts, accountSkips = discoverAccounts(home)
+	}
+	codexRoot := filepath.Join(home, ".codex")
+	if len(codexRoots) != 0 && strings.TrimSpace(codexRoots[0]) != "" {
+		codexRoot = filepath.Clean(codexRoots[0])
+	}
+	var codexAccounts []CodexAccount
+	if hasValidCodexCredentials(codexRoot) {
+		codexAccounts = []CodexAccount{{ID: 1, Home: codexRoot, Emoji: DefaultEmoji(1)}}
 	}
 	sources := map[string]Source{
 		"version":               SourceDefault,
@@ -215,6 +253,7 @@ func defaultsWithMCPServers(
 		"claude.binary":         SourceDefault,
 		"codex.yolo":            SourceDefault,
 		"codex.binary":          SourceDefault,
+		"codex.homes":           SourceDefault,
 		"mcp.http.port":         SourceDefault,
 		"ask.engine":            SourceDefault,
 		"ask.codex.model":       SourceDefault,
@@ -228,14 +267,15 @@ func defaultsWithMCPServers(
 		sources["mcp.servers."+name+".enabled"] = SourceDefault
 	}
 	return Config{
-		Version:      Version,
-		Theme:        "default",
-		Accounts:     accounts,
-		AccountSkips: accountSkips,
-		Claude:       Claude{PermissionMode: PermissionBypass, Binary: "claude"},
-		Codex:        Codex{Yolo: true, Binary: "codex"},
-		MCPServers:   servers,
-		MCP:          MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
+		Version:       Version,
+		Theme:         "default",
+		Accounts:      accounts,
+		AccountSkips:  accountSkips,
+		CodexAccounts: codexAccounts,
+		Claude:        Claude{PermissionMode: PermissionBypass, Binary: "claude"},
+		Codex:         Codex{Yolo: true, Binary: "codex"},
+		MCPServers:    servers,
+		MCP:           MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
 		Ask: AskConfig{
 			Engine: "codex",
 			Codex:  EnginePrefs{Model: "gpt-5.6-luna", Effort: "low"},
@@ -253,7 +293,10 @@ func cloneMCPServers(values map[string]MCPServer) map[string]MCPServer {
 	return cloned
 }
 
-func defaultEmoji(id int) string {
+// DefaultEmoji is the config-owned conventional badge for an account id.
+// Consumers with an explicit roster must still fail closed when an id is
+// absent from that roster instead of treating this convention as discovery.
+func DefaultEmoji(id int) string {
 	switch id {
 	case 1:
 		return "🥇"
@@ -327,7 +370,7 @@ func discoverAccounts(home string) ([]Account, []AccountSkip) {
 		accounts = append(accounts, Account{
 			ID: candidate.id, ConfigDir: candidate.path,
 			ProjectDir: filepath.Join(candidate.path, "projects"),
-			Implicit:   candidate.id == 1, Emoji: defaultEmoji(candidate.id),
+			Implicit:   candidate.id == 1, Emoji: DefaultEmoji(candidate.id),
 		})
 	}
 	return accounts, skips
@@ -344,6 +387,22 @@ func hasValidAccountCredentials(configDir string) bool {
 		} `json:"claudeAiOauth"`
 	}
 	return json.Unmarshal(body, &marker) == nil && strings.TrimSpace(marker.OAuth.AccessToken) != ""
+}
+
+func hasValidCodexCredentials(home string) bool {
+	body, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if err != nil {
+		return false
+	}
+	var marker struct {
+		Tokens struct {
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+		AccountID string `json:"account_id"`
+	}
+	return json.Unmarshal(body, &marker) == nil &&
+		strings.TrimSpace(marker.Tokens.AccessToken) != "" &&
+		strings.TrimSpace(marker.AccountID) != ""
 }
 
 func skipsOutsideRoster(skips []AccountSkip, accounts []Account) []AccountSkip {
@@ -365,16 +424,17 @@ func skipsOutsideRoster(skips []AccountSkip, accounts []Account) []AccountSkip {
 
 // Load reads a machine config over defaults. An absent file returns defaults;
 // every present-file error is returned with the file path attached.
-func Load(path, home string, projectRoots []string) (Config, error) {
-	return loadWithMCPServers(path, home, projectRoots, productionMCPServers())
+func Load(path, home string, projectRoots []string, codexRoots ...string) (Config, error) {
+	return loadWithMCPServers(path, home, projectRoots, productionMCPServers(), codexRoots...)
 }
 
 func loadWithMCPServers(
 	path, home string,
 	projectRoots []string,
 	registered map[string]MCPServer,
+	codexRoots ...string,
 ) (Config, error) {
-	result := defaultsWithMCPServers(home, projectRoots, registered)
+	result := defaultsWithMCPServers(home, projectRoots, registered, codexRoots...)
 	if path == "" {
 		path = ResolvePath(home)
 	} else if !filepath.IsAbs(path) {
@@ -477,6 +537,14 @@ func loadWithMCPServers(
 			result.Codex.Binary = prefs.Binary
 			result.Sources["codex.binary"] = SourceFile
 		}
+		if raw.Codex.Homes != nil {
+			accounts, err := validateCodexHomes(*raw.Codex.Homes, home, result.CodexAccounts, result.Path)
+			if err != nil {
+				return Config{}, err
+			}
+			result.CodexAccounts = accounts
+			result.Sources["codex.homes"] = SourceFile
+		}
 	}
 	if raw.MCP != nil {
 		for name, server := range raw.MCP.Servers {
@@ -526,6 +594,19 @@ func loadWithMCPServers(
 			}
 			if raw.Ask.Claude.Effort != nil {
 				result.Sources["ask.claude.effort"] = SourceFile
+			}
+		}
+	}
+	if raw.Ask != nil && raw.Ask.Engine != nil {
+		counts := result.Engines()
+		switch result.Ask.Engine {
+		case "claude":
+			if counts.Claude == 0 {
+				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero Claude accounts; add an accounts entry or choose codex", result.Path, result.Ask.Engine)
+			}
+		case "codex":
+			if counts.Codex == 0 {
+				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero Codex accounts; authenticate the default Codex home, add codex.homes, or choose claude", result.Path, result.Ask.Engine)
 			}
 		}
 	}
@@ -588,15 +669,23 @@ func decodeClaudePrefs(raw rawClaude, path, scope string, index int) (ClaudePref
 }
 
 func decodeCodexPrefs(raw rawCodex, path, scope string, index int) (CodexPrefs, error) {
+	return decodeCodexPrefValues(raw.Yolo, raw.Binary, path, scope, index)
+}
+
+func decodeCodexHomePrefs(raw rawCodexPrefs, path, scope string, index int) (CodexPrefs, error) {
+	return decodeCodexPrefValues(raw.Yolo, raw.Binary, path, scope, index)
+}
+
+func decodeCodexPrefValues(yolo *bool, binary *string, path, scope string, index int) (CodexPrefs, error) {
 	prefs := CodexPrefs{}
-	if raw.Yolo != nil {
-		prefs.Yolo = *raw.Yolo
+	if yolo != nil {
+		prefs.Yolo = *yolo
 	}
-	if raw.Binary != nil {
-		if strings.TrimSpace(*raw.Binary) == "" || strings.ContainsRune(*raw.Binary, '\x00') {
+	if binary != nil {
+		if strings.TrimSpace(*binary) == "" || strings.ContainsRune(*binary, '\x00') {
 			return CodexPrefs{}, fmt.Errorf("config %s: %s.binary must be a non-empty command", path, configScope(scope, index))
 		}
-		prefs.Binary = *raw.Binary
+		prefs.Binary = *binary
 	}
 	return prefs, nil
 }
@@ -618,9 +707,6 @@ func applyEnginePrefs(target *EnginePrefs, raw rawEngine) {
 }
 
 func validateAccounts(values []rawAccount, home string) ([]Account, error) {
-	if len(values) == 0 {
-		return nil, errors.New("roster must contain at least one account")
-	}
 	seen := make(map[int]bool, len(values))
 	accounts := make([]Account, 0, len(values))
 	for index, value := range values {
@@ -639,9 +725,69 @@ func validateAccounts(values []rawAccount, home string) ([]Account, error) {
 			ID:         value.ID,
 			ConfigDir:  configDir,
 			ProjectDir: filepath.Join(configDir, "projects"),
-			Emoji:      defaultEmoji(value.ID),
+			Emoji:      DefaultEmoji(value.ID),
 		})
 	}
+	return accounts, nil
+}
+
+func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAccount, path string) ([]CodexAccount, error) {
+	accounts := append([]CodexAccount(nil), existing...)
+	ids := make(map[int]int, len(accounts)+len(values))
+	homes := make(map[string]int, len(accounts)+len(values))
+	configuredIDs := make(map[int]bool, len(values))
+	for index, account := range accounts {
+		ids[account.ID] = index
+		homes[filepath.Clean(account.Home)] = index
+	}
+	for index, value := range values {
+		scope := fmt.Sprintf("codex.homes[%d]", index)
+		if value.ID < 1 {
+			return nil, fmt.Errorf("config %s: %s.id must be positive", path, scope)
+		}
+		if configuredIDs[value.ID] {
+			return nil, fmt.Errorf("config %s: %s duplicates id %d", path, scope, value.ID)
+		}
+		configuredIDs[value.ID] = true
+		codexHome, err := expandHomePath(value.Home, home)
+		if err != nil {
+			return nil, fmt.Errorf("config %s: %s.home: %w", path, scope, err)
+		}
+		if !hasValidCodexCredentials(codexHome) {
+			return nil, fmt.Errorf("config %s: %s must contain a valid auth.json with tokens.access_token and account_id", path, scope)
+		}
+		emoji := value.Emoji
+		if emoji == "" {
+			emoji = DefaultEmoji(value.ID)
+		}
+		var prefs *CodexPrefs
+		if value.Prefs != nil {
+			decoded, err := decodeCodexHomePrefs(*value.Prefs, path, "codex.homes", index)
+			if err != nil {
+				return nil, err
+			}
+			prefs = &decoded
+		}
+		cleanHome := filepath.Clean(codexHome)
+		if existingIndex, found := homes[cleanHome]; found {
+			if accounts[existingIndex].ID != value.ID {
+				return nil, fmt.Errorf("config %s: %s home duplicates Codex account %d", path, scope, accounts[existingIndex].ID)
+			}
+			accounts[existingIndex].Emoji = emoji
+			accounts[existingIndex].Prefs = prefs
+			continue
+		}
+		if existingIndex, found := ids[value.ID]; found {
+			delete(homes, filepath.Clean(accounts[existingIndex].Home))
+			accounts[existingIndex] = CodexAccount{ID: value.ID, Home: cleanHome, Emoji: emoji, Prefs: prefs}
+			homes[cleanHome] = existingIndex
+			continue
+		}
+		ids[value.ID] = len(accounts)
+		homes[cleanHome] = len(accounts)
+		accounts = append(accounts, CodexAccount{ID: value.ID, Home: cleanHome, Emoji: emoji, Prefs: prefs})
+	}
+	sort.SliceStable(accounts, func(left, right int) bool { return accounts[left].ID < accounts[right].ID })
 	return accounts, nil
 }
 
@@ -701,19 +847,32 @@ func (config Config) EffectiveClaude(id int) ClaudePrefs {
 	return result
 }
 
-// EffectiveCodex resolves an account override over the top-level Codex
-// posture and binary. Unknown accounts receive the top-level posture.
+// CodexAccountByID returns one independently authenticated Codex home.
+func (config Config) CodexAccountByID(id int) (CodexAccount, bool) {
+	for _, account := range config.CodexAccounts {
+		if account.ID == id {
+			return account, true
+		}
+	}
+	return CodexAccount{}, false
+}
+
+// EffectiveCodex resolves a Codex-account override over the top-level posture
+// and binary. The Claude-account lookup is retained only as v2 input
+// compatibility for configs that predate independent Codex homes.
 func (config Config) EffectiveCodex(id int) CodexPrefs {
 	result := config.Codex
-	if account, ok := config.AccountByID(id); ok && account.Codex != nil {
-		if account.Codex.Yolo {
-			result.Yolo = true
-		} else if account.Codex != nil {
-			// A false override is meaningful, so use the pointer's presence.
-			result.Yolo = account.Codex.Yolo
+	if account, ok := config.CodexAccountByID(id); ok && account.Prefs != nil {
+		result.Yolo = account.Prefs.Yolo
+		if account.Prefs.Binary != "" {
+			result.Binary = account.Prefs.Binary
 		}
-		if account.Codex.Binary != "" {
-			result.Binary = account.Codex.Binary
+		return result
+	}
+	if legacy, ok := config.AccountByID(id); ok && legacy.Codex != nil {
+		result.Yolo = legacy.Codex.Yolo
+		if legacy.Codex.Binary != "" {
+			result.Binary = legacy.Codex.Binary
 		}
 	}
 	return result
@@ -733,6 +892,52 @@ func (config Config) AccountIDs() []int {
 		ids = append(ids, account.ID)
 	}
 	return ids
+}
+
+func (config Config) CodexAccountIDs() []int {
+	ids := make([]int, 0, len(config.CodexAccounts))
+	for _, account := range config.CodexAccounts {
+		ids = append(ids, account.ID)
+	}
+	return ids
+}
+
+func (config Config) CodexEmojiFor(id int) string {
+	if account, ok := config.CodexAccountByID(id); ok && account.Emoji != "" {
+		return account.Emoji
+	}
+	return "·"
+}
+
+func (config Config) Engines() EngineCounts {
+	return EngineCounts{Claude: len(config.Accounts), Codex: len(config.CodexAccounts)}
+}
+
+func (config Config) DefaultEngine() (string, error) {
+	counts := config.Engines()
+	preferred := strings.ToLower(strings.TrimSpace(config.Ask.Engine))
+	if preferred == "" {
+		preferred = "codex"
+	}
+	switch preferred {
+	case "claude":
+		if counts.Claude > 0 {
+			return "claude", nil
+		}
+	case "codex":
+		if counts.Codex > 0 {
+			return "codex", nil
+		}
+	default:
+		return "", fmt.Errorf("ask.engine %q is not claude or codex", config.Ask.Engine)
+	}
+	if counts.Claude > 0 {
+		return "claude", nil
+	}
+	if counts.Codex > 0 {
+		return "codex", nil
+	}
+	return "", errors.New("no engines configured: Claude roster empty; Codex roster empty")
 }
 
 func (config Config) ProjectRoots() []string {
@@ -926,33 +1131,48 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 		}
 		accounts = append(accounts, value)
 	}
+	codexHomes := make([]map[string]any, 0, len(config.CodexAccounts))
+	for _, account := range config.CodexAccounts {
+		value := map[string]any{
+			"id": account.ID, "home": displayPath(account.Home, configHome(config)), "emoji": account.Emoji,
+		}
+		if account.Prefs != nil {
+			value["prefs"] = map[string]any{"yolo": account.Prefs.Yolo, "binary": account.Prefs.Binary}
+		}
+		codexHomes = append(codexHomes, value)
+	}
 	servers := make(map[string]any, len(config.MCP.Servers))
 	for name, server := range config.MCP.Servers {
 		servers[name] = map[string]any{"enabled": server.Enabled}
 	}
+	codexValue := map[string]any{
+		"yolo":   config.Codex.Yolo,
+		"binary": config.Codex.Binary,
+	}
+	if len(codexHomes) != 0 {
+		codexValue["homes"] = codexHomes
+	}
+	askValue := map[string]any{
+		"codex":  map[string]any{"model": config.Ask.Codex.Model, "effort": config.Ask.Codex.Effort},
+		"claude": map[string]any{"model": config.Ask.Claude.Model, "effort": config.Ask.Claude.Effort},
+	}
+	if engine, err := config.DefaultEngine(); err == nil {
+		askValue["engine"] = engine
+	}
 	value := map[string]any{
-		"version": config.Version,
-		"theme":   config.Theme,
+		"version":  config.Version,
+		"theme":    config.Theme,
+		"accounts": accounts,
 		"claude": map[string]any{
 			"permissionMode": config.Claude.PermissionMode,
 			"binary":         config.Claude.Binary,
 		},
-		"codex": map[string]any{
-			"yolo":   config.Codex.Yolo,
-			"binary": config.Codex.Binary,
-		},
+		"codex": codexValue,
 		"mcp": map[string]any{
 			"servers": servers,
 			"http":    map[string]any{"port": config.MCP.HTTP.Port},
 		},
-		"ask": map[string]any{
-			"engine": config.Ask.Engine,
-			"codex":  map[string]any{"model": config.Ask.Codex.Model, "effort": config.Ask.Codex.Effort},
-			"claude": map[string]any{"model": config.Ask.Claude.Model, "effort": config.Ask.Claude.Effort},
-		},
-	}
-	if len(accounts) != 0 {
-		value["accounts"] = accounts
+		"ask": askValue,
 	}
 	if config.MCP.AuthToken != "" {
 		value["mcp"].(map[string]any)["authToken"] = config.MCP.AuthToken

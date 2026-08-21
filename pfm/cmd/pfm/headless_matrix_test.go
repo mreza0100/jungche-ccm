@@ -89,6 +89,7 @@ func TestRunPromptSourcesAreExclusive(t *testing.T) {
 func TestModelAndEffortReachBothEngines(t *testing.T) {
 	home := "/home/tester"
 	machine := pfmconfig.Defaults(home, []string{pfmconfig.DefaultAccountProjectDir(home, 1)})
+	machine.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: home + "/.codex"}}
 	claude, err := action.HeadlessRun(action.HeadlessRequest{
 		Engine:         "cc",
 		Name:           "seat",
@@ -108,13 +109,14 @@ func TestModelAndEffortReachBothEngines(t *testing.T) {
 	}
 
 	codex, err := action.HeadlessRun(action.HeadlessRequest{
-		Engine: "cx",
-		Name:   "seat",
-		CWD:    "/work/alpha",
-		Home:   home,
-		Config: machine,
-		Model:  "gpt-5.6-sol",
-		Effort: "high",
+		Engine:         "cx",
+		Name:           "seat",
+		CWD:            "/work/alpha",
+		Home:           home,
+		PrimaryAccount: 1,
+		Config:         machine,
+		Model:          "gpt-5.6-sol",
+		Effort:         "high",
 	})
 	if err != nil {
 		t.Fatalf("codex plan error = %v", err)

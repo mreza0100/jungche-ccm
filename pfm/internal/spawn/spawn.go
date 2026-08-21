@@ -27,7 +27,7 @@ const (
 	// modalClearKeys is how many BSpace presses clear the rename field. Codex
 	// PRE-FILLS it with the thread's current name, so typing straight into it
 	// APPENDS — a retry after a half-finished attempt produced
-	// "_HIDE probeTIMING TEST" on a live box. Extra backspaces on an empty
+	// "_KILL probeTIMING TEST" on a live box. Extra backspaces on an empty
 	// field are ignored, so over-clearing is free and under-clearing is not.
 	modalClearKeys = 80
 
@@ -457,7 +457,7 @@ func submitPrompt(
 		return composerHolds(capture, needle)
 	}) {
 		// Not fatal on its own: a composer that elides or re-wraps what it was
-		// given can hide the fingerprint. It is recorded because it makes the
+		// given can kill the fingerprint. It is recorded because it makes the
 		// difference between "the Enter was dropped" and "the text never
 		// arrived" readable after the fact.
 		trace.step("the composer never showed the prompt")

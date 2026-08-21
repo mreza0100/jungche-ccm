@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-// TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch reproduces the
+// TestJailedPickerEscDoesNotWritePendingKillOrPrimarySwitch reproduces the
 // picker-cancel bug: Esc/⌃C must cancel the interactive picker without
-// applying a pending ⌃X hide or a pending ⌃S primary-account switch. It
+// applying a pending ⌃X kill or a pending ⌃S primary-account switch. It
 // drives the REAL Bubble Tea picker inside a scratch tmux pane — the same
 // subprocess-reexec technique TestJailedEvalAttachFromPlainAndNestedTmux uses
 // (attach_e2e_test.go) — because the bug lives in the command loop wired
 // around the picker (runLS), not in the pure Model in isolation.
-func TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch(t *testing.T) {
+func TestJailedPickerEscDoesNotWritePendingKillOrPrimarySwitch(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -83,14 +83,14 @@ func TestJailedPickerEscDoesNotWritePendingHideOrPrimarySwitch(t *testing.T) {
 		)
 	}
 
-	hidden := exec.Command(jail.binary, "ls", "--hidden")
-	hidden.Env = jail.env
-	output, err := hidden.CombinedOutput()
+	killed := exec.Command(jail.binary, "ls", "--killed")
+	killed.Env = jail.env
+	output, err := killed.CombinedOutput()
 	if err != nil {
-		t.Fatalf("pfm ls --hidden: %v: %s", err, output)
+		t.Fatalf("pfm ls --killed: %v: %s", err, output)
 	}
 	if got := strings.TrimSpace(string(output)); got != "" {
-		t.Fatalf("Esc left a hide behind: %q", got)
+		t.Fatalf("Esc left a kill behind: %q", got)
 	}
 }
 

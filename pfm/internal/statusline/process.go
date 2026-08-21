@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"hostops/pfm/internal/deps"
 )
 
 // SpawnDetached starts one refresher as a new session and releases the child.
@@ -53,7 +55,7 @@ func SpawnDetached(kind RefreshKind) error {
 func GCloudAccessToken(ctx context.Context) (string, error) {
 	child, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(child, "gcloud", "auth", "print-access-token").Output()
+	output, err := exec.CommandContext(child, deps.Executable("gcloud"), "auth", "print-access-token").Output()
 	if err != nil {
 		return "", fmt.Errorf("gcloud auth print-access-token: %w", err)
 	}
@@ -72,7 +74,7 @@ func ResolveVertexProject(ctx context.Context) (string, error) {
 	defer cancel()
 	output, err := exec.CommandContext(
 		child,
-		"gcloud", "config", "get-value", "project",
+		deps.Executable("gcloud"), "config", "get-value", "project",
 	).Output()
 	if err != nil {
 		return "", fmt.Errorf("gcloud config get-value project: %w", err)
@@ -97,7 +99,7 @@ func ReadGPTRateLimitsWithBinary(ctx context.Context, binary string) ([]byte, er
 	}
 	child, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	return readGPTRateLimitsCommand(exec.CommandContext(child, binary, "app-server"))
+	return readGPTRateLimitsCommand(exec.CommandContext(child, deps.Executable(binary), "app-server"))
 }
 
 func readGPTRateLimitsCommand(command *exec.Cmd) ([]byte, error) {

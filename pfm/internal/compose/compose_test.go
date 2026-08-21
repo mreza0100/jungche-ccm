@@ -44,30 +44,30 @@ func TestComposeCanonicalizesSymlinkedAccountRoots(t *testing.T) {
 	}
 }
 
-func TestPromptBaselineHideLiftsButPermanentHideDoesNot(t *testing.T) {
+func TestPromptBaselineKillLiftsButPermanentKillDoesNot(t *testing.T) {
 	baseline := int64(2)
 	chat := transcript(
-		"clear-hidden",
-		"/accounts/1/projects/clear/clear-hidden.jsonl",
+		"clear-killed",
+		"/accounts/1/projects/clear/clear-killed.jsonl",
 		"/work/clear",
-		"Clear hidden",
+		"Clear killed",
 		100,
 		3,
 		1000,
 	)
 	input := Input{
 		Transcripts: []store.Transcript{chat},
-		Hidden: []store.Hidden{{
-			ID: "clear-hidden", Engine: store.ClaudeEngine, BaselinePrompts: &baseline,
+		Killed: []store.Killed{{
+			ID: "clear-killed", Engine: store.ClaudeEngine, BaselinePrompts: &baseline,
 		}},
 		Options: Options{View: DefaultView},
 	}
 	if _, found := rowByID(Compose(input).Rows, chat.UUID); !found {
-		t.Fatal("a clear-hidden chat stayed hidden after its prompt count advanced")
+		t.Fatal("a clear-killed chat stayed killed after its prompt count advanced")
 	}
-	input.Hidden[0].BaselinePrompts = nil
+	input.Killed[0].BaselinePrompts = nil
 	if _, found := rowByID(Compose(input).Rows, chat.UUID); found {
-		t.Fatal("an explicit permanent hide lifted after prompt growth")
+		t.Fatal("an explicit permanent kill lifted after prompt growth")
 	}
 }
 
@@ -210,7 +210,7 @@ func TestSplitMergeAndNewestServerCollapse(t *testing.T) {
 		split[0].Size != 350 ||
 		split[0].PromptCount != 5 ||
 		split[0].SplitCount != 2 ||
-		split[0].Hidden ||
+		split[0].Killed ||
 		!reflect.DeepEqual(split[0].Accounts, []int{1, 2}) {
 		t.Fatalf("merged split = %#v", split[0])
 	}
@@ -255,7 +255,7 @@ func splitFixtureInput() Input {
 	baseline := int64(100)
 	return Input{
 		Transcripts: []store.Transcript{splitOne, splitTwo, duplicate},
-		Hidden: []store.Hidden{
+		Killed: []store.Killed{
 			{ID: "split-one", Engine: "cc", BaselinePrompts: &baseline},
 			{ID: "split-two", Engine: "cc", BaselinePrompts: &baseline},
 		},
@@ -300,35 +300,35 @@ func splitFixtureInput() Input {
 	}
 }
 
-func TestPermanentAndPromptBaselineHidesAcrossViews(t *testing.T) {
+func TestPermanentAndPromptBaselineKillsAcrossViews(t *testing.T) {
 	defaultOutput := Compose(fixtureInput(DefaultView))
-	for _, id := range []string{"hidden", "cx-hidden"} {
+	for _, id := range []string{"killed", "cx-killed"} {
 		if _, found := rowByID(defaultOutput.Rows, id); found {
-			t.Fatalf("hidden row %q leaked into default view", id)
+			t.Fatalf("killed row %q leaked into default view", id)
 		}
 	}
 	if _, found := rowByID(defaultOutput.Rows, "grown"); !found {
-		t.Fatal("prompt-baseline hide did not lift after the transcript grew")
+		t.Fatal("prompt-baseline kill did not lift after the transcript grew")
 	}
-	hiddenOutput := Compose(fixtureInput(HiddenView))
-	if got, want := rowIDs(hiddenOutput.Rows), []string{"cx-hidden", "hidden"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("hidden row IDs = %q, want %q", got, want)
+	killedOutput := Compose(fixtureInput(KilledView))
+	if got, want := rowIDs(killedOutput.Rows), []string{"cx-killed", "killed"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("killed row IDs = %q, want %q", got, want)
 	}
-	for _, row := range hiddenOutput.Rows {
-		if !row.Hidden {
-			t.Fatalf("HiddenView row is not tagged hidden: %#v", row)
+	for _, row := range killedOutput.Rows {
+		if !row.Killed {
+			t.Fatalf("KilledView row is not tagged killed: %#v", row)
 		}
 	}
 
 	allOutput := Compose(fixtureInput(AllView))
-	for _, id := range []string{"bg", "zero", "promptless", "hidden", "grown", "cx-hidden"} {
+	for _, id := range []string{"bg", "zero", "promptless", "killed", "grown", "cx-killed"} {
 		if _, found := rowByID(allOutput.Rows, id); !found {
 			t.Fatalf("-a omitted %q", id)
 		}
 	}
 }
 
-func TestBGAndEmptySuppressionNeverHidesAgent(t *testing.T) {
+func TestBGAndEmptySuppressionNeverKillsAgent(t *testing.T) {
 	output := Compose(fixtureInput(DefaultView))
 	for _, id := range []string{"bg", "zero", "promptless"} {
 		if _, found := rowByID(output.Rows, id); found {
@@ -339,10 +339,10 @@ func TestBGAndEmptySuppressionNeverHidesAgent(t *testing.T) {
 	if !found || agent.Kind != Agent || !agent.BG || agent.Size != 0 || agent.PromptCount != 0 {
 		t.Fatalf("empty bg agent was suppressed: %#v", agent)
 	}
-	if output.HiddenCount != 2 || output.SuppressedCount != 3 {
+	if output.KilledCount != 2 || output.SuppressedCount != 3 {
 		t.Fatalf(
-			"honest header counts hidden/empty=%d/%d, want 2/3",
-			output.HiddenCount,
+			"honest header counts killed/empty=%d/%d, want 2/3",
+			output.KilledCount,
 			output.SuppressedCount,
 		)
 	}
@@ -357,10 +357,10 @@ func TestResumeCapsApplyAfterFiltering(t *testing.T) {
 	if got := len(rowsByKind(defaultOutput.Rows, ResumeCodex)); got != 15 {
 		t.Fatalf("default Codex resumes = %d, want 15", got)
 	}
-	if defaultOutput.HiddenCount != 0 || defaultOutput.SuppressedCount != 10 {
+	if defaultOutput.KilledCount != 0 || defaultOutput.SuppressedCount != 10 {
 		t.Fatalf(
-			"hidden/suppressed = %d/%d, want 0/10 capped rows",
-			defaultOutput.HiddenCount,
+			"killed/suppressed = %d/%d, want 0/10 capped rows",
+			defaultOutput.KilledCount,
 			defaultOutput.SuppressedCount,
 		)
 	}
@@ -385,8 +385,8 @@ func TestResumeCapsApplyAfterFiltering(t *testing.T) {
 // half of the booting-chat fix: a crumbless-live entry gather emits must turn
 // into exactly one Booting row, visible in DefaultView (unlike an ordinary
 // empty-transcript live row, which the emptiness test would suppress), and
-// immune to a hide entry that happens to share its socket-as-id — a booting
-// row is never hideable because its "id" stops meaning anything the moment
+// immune to a kill entry that happens to share its socket-as-id — a booting
+// row is never killable because its "id" stops meaning anything the moment
 // the crumb lands and the row becomes an ordinary live one.
 func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 	input := Input{
@@ -402,7 +402,7 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 				PaneStartUnix: 0,
 			}},
 		},
-		Hidden:  []store.Hidden{{ID: "cc-new-fixture-1", Engine: "cc"}},
+		Killed:  []store.Killed{{ID: "cc-new-fixture-1", Engine: "cc"}},
 		Options: Options{View: DefaultView, CurrentDir: "/work/host-ops"},
 	}
 
@@ -420,13 +420,13 @@ func TestBootingRowSurfacesFromCrumblessLiveAndResistsHiding(t *testing.T) {
 		row.Name != "Promptless worker" ||
 		row.Project != "booting-project" ||
 		row.CWD != "/work/booting-project" ||
-		row.Hidden {
+		row.Killed {
 		t.Fatalf("booting row = %#v", row)
 	}
-	if output.HiddenCount != 0 {
+	if output.KilledCount != 0 {
 		t.Fatalf(
-			"a hide entry keyed on the crumbless socket was honored: hidden=%d",
-			output.HiddenCount,
+			"a kill entry keyed on the crumbless socket was honored: killed=%d",
+			output.KilledCount,
 		)
 	}
 }
@@ -490,29 +490,17 @@ func capsFixtureInput() Input {
 	return input
 }
 
-func TestRotationBijectionAndProjectDirTarget(t *testing.T) {
+func TestNaturalProjectOrderAndProjectDirTarget(t *testing.T) {
 	input := fixtureInput(DefaultView)
 	output := Compose(input)
 	if len(output.ProjectOrder) < 3 {
 		t.Fatalf("ProjectOrder = %q, want several blocks", output.ProjectOrder)
 	}
-	original := cloneOutput(output)
-	rotated := Rotate(output, 1)
-	if reflect.DeepEqual(rotated.ProjectOrder, output.ProjectOrder) {
-		t.Fatalf("rotation did not change project order: %q", output.ProjectOrder)
-	}
-	for _, row := range rotated.Rows[:2] {
-		if row.Project != rotated.ProjectOrder[0] ||
-			row.CWD != rotated.ProjectDirs[rotated.ProjectOrder[0]] {
-			t.Fatalf("rotated new row has stale launch target: %#v", row)
+	for _, row := range output.Rows[:2] {
+		if row.Project != output.ProjectOrder[0] ||
+			row.CWD != output.ProjectDirs[output.ProjectOrder[0]] {
+			t.Fatalf("new row has stale launch target: %#v", row)
 		}
-	}
-	for range len(output.ProjectOrder) - 1 {
-		rotated = Rotate(rotated, 1)
-	}
-	if !reflect.DeepEqual(rotated.Rows, original.Rows) ||
-		!reflect.DeepEqual(rotated.ProjectOrder, original.ProjectOrder) {
-		t.Fatal("N rotations of N project groups did not return the original view")
 	}
 	if got := output.ProjectDirs["alpha"]; got != "/work/alpha" {
 		t.Fatalf("PWD-seeded ProjectDirs[alpha] = %q", got)
@@ -520,14 +508,14 @@ func TestRotationBijectionAndProjectDirTarget(t *testing.T) {
 
 	again := Compose(input)
 	if !reflect.DeepEqual(output.Rows, again.Rows) ||
-		output.HiddenCount != again.HiddenCount ||
+		output.KilledCount != again.KilledCount ||
 		output.SuppressedCount != again.SuppressedCount {
 		t.Fatal("composition is not deterministic/idempotent for identical input")
 	}
 }
 
 func fixtureInput(view View) Input {
-	hiddenBaseline := int64(3)
+	killedBaseline := int64(3)
 	staleBaseline := int64(4)
 	transcripts := []store.Transcript{
 		transcript(
@@ -549,10 +537,10 @@ func fixtureInput(view View) Input {
 			1000,
 		),
 		transcript(
-			"hidden",
-			"/accounts/1/projects/beta/hidden.jsonl",
+			"killed",
+			"/accounts/1/projects/beta/killed.jsonl",
 			"/work/beta",
-			"Hidden",
+			"Killed",
 			100,
 			3,
 			800,
@@ -561,7 +549,7 @@ func fixtureInput(view View) Input {
 			"grown",
 			"/accounts/1/projects/gamma/grown.jsonl",
 			"/work/gamma",
-			"Grown Hidden",
+			"Grown Killed",
 			100,
 			5,
 			700,
@@ -634,13 +622,13 @@ func fixtureInput(view View) Input {
 			PromptCount: 6,
 		},
 		{
-			ID:          "cx-hidden",
-			Path:        "/codex/sessions/rollout-2026-01-01T00-00-00-cx-hidden.jsonl",
+			ID:          "cx-killed",
+			Path:        "/codex/sessions/rollout-2026-01-01T00-00-00-cx-killed.jsonl",
 			Size:        150,
 			MTimeNS:     550,
 			CWD:         "/work/beta",
 			UserThread:  true,
-			FirstPrompt: "Codex Hidden",
+			FirstPrompt: "Codex Killed",
 			PromptCount: 2,
 		},
 		{
@@ -659,11 +647,11 @@ func fixtureInput(view View) Input {
 		CxNames: map[string]string{
 			"cx-live": "Codex Live",
 		},
-		Hidden: []store.Hidden{
+		Killed: []store.Killed{
 			{
-				ID:              "hidden",
+				ID:              "killed",
 				Engine:          "cc",
-				BaselinePrompts: &hiddenBaseline,
+				BaselinePrompts: &killedBaseline,
 			},
 			{
 				// Prompt count 5 passed this /clear baseline, so the row is
@@ -673,7 +661,7 @@ func fixtureInput(view View) Input {
 				BaselinePrompts: &staleBaseline,
 			},
 			{
-				ID:     "cx-hidden",
+				ID:     "cx-killed",
 				Engine: "cx",
 			},
 		},
@@ -743,12 +731,13 @@ func fixtureInput(view View) Input {
 			Cache1HSockets: []string{"cc-200-1-1"},
 		},
 		Options: Options{
-			View:           view,
-			CurrentDir:     "/work/alpha",
-			CurrentSocket:  "cc-200-1-1",
-			PrimaryAccount: 2,
-			CodexAvailable: true,
-			NowNS:          5000,
+			View:                view,
+			CurrentDir:          "/work/alpha",
+			CurrentSocket:       "cc-200-1-1",
+			PrimaryAccount:      2,
+			CodexAccountIDs:     []int{1},
+			PrimaryCodexAccount: 1,
+			NowNS:               5000,
 		},
 	}
 }
@@ -818,10 +807,10 @@ func idNumber(prefix string, number int) string {
 
 // A paginated Codex conversation writes NO rollout file, so the live process
 // holds no rollout path and only gather's own resolution names it. Deriving
-// the row's id from the path alone minted the EMPTY id: an unhideable row
-// (applyHide refuses an empty id) that never marked its conversation live, so
+// the row's id from the path alone minted the EMPTY id: an unkillable row
+// (applyKill refuses an empty id) that never marked its conversation live, so
 // the same chat came back a second time as a resume row underneath itself.
-func TestLiveCodexWithoutARolloutFileIsOneHideableRow(t *testing.T) {
+func TestLiveCodexWithoutARolloutFileIsOneKillableRow(t *testing.T) {
 	paginated := store.Rollout{
 		ID:          "019fed79-74c9-7c62-a224-4581ba81d4f6",
 		Path:        "/codex/sessions/019fed79-74c9-7c62-a224-4581ba81d4f6.jsonl",
@@ -868,10 +857,10 @@ func TestLiveCodexWithoutARolloutFileIsOneHideableRow(t *testing.T) {
 		t.Fatalf("live Codex row lost its indexed content: %#v", codexRows[0])
 	}
 
-	// An id is what a hide keys on, so the row is hideable now.
-	hidden := Compose(Input{
+	// An id is what a kill keys on, so the row is killable now.
+	killed := Compose(Input{
 		Rollouts: []store.Rollout{paginated},
-		Hidden:   []store.Hidden{{ID: paginated.ID, Engine: store.CodexEngine}},
+		Killed:   []store.Killed{{ID: paginated.ID, Engine: store.CodexEngine}},
 		Snapshot: gather.Snapshot{
 			Codex: []gather.LiveCodex{{
 				PID:      300,
@@ -888,9 +877,9 @@ func TestLiveCodexWithoutARolloutFileIsOneHideableRow(t *testing.T) {
 		},
 		Options: Options{View: DefaultView},
 	})
-	for _, row := range hidden.Rows {
+	for _, row := range killed.Rows {
 		if row.Kind == LiveCodex || row.Kind == ResumeCodex {
-			t.Fatalf("hidden live Codex row is still listed: %#v", row)
+			t.Fatalf("killed live Codex row is still listed: %#v", row)
 		}
 	}
 }
@@ -966,14 +955,14 @@ func TestLiveMachineSpawnedCodexStaysSuppressed(t *testing.T) {
 	}
 }
 
-// TestHideOnAnyLineageMemberHidesTheWholeRow guards the RAW-id write shape
-// an older writer produced: it hides the RAW id of whatever rollout file the
+// TestKillOnAnyLineageMemberKillsTheWholeRow guards the RAW-id write shape
+// an older writer produced: it kills the RAW id of whatever rollout file the
 // live process currently holds, which on a resumed multi-file lineage is the
 // CHILD's id, never the ROOT compose keys every Codex row on
-// (composer.rolloutRow). A hide the `hide` manager itself writes is already
-// normalized onto the root; this proves the read side honors a hide that
+// (composer.rolloutRow). A kill the `kill` manager itself writes is already
+// normalized onto the root; this proves the read side honors a kill that
 // isn't.
-func TestHideOnAnyLineageMemberHidesTheWholeRow(t *testing.T) {
+func TestKillOnAnyLineageMemberKillsTheWholeRow(t *testing.T) {
 	root := store.Rollout{
 		ID:          "root-thread",
 		Path:        "/codex/sessions/rollout-2026-01-01T00-00-00-root-thread.jsonl",
@@ -1005,39 +994,39 @@ func TestHideOnAnyLineageMemberHidesTheWholeRow(t *testing.T) {
 		Options:  Options{View: DefaultView},
 	})
 	if _, found := rowByID(visible.Rows, "root-thread"); !found {
-		t.Fatalf("unhidden lineage is missing: %#v", visible.Rows)
+		t.Fatalf("unkilled lineage is missing: %#v", visible.Rows)
 	}
 
-	// The hide lands on the CHILD id, raw, exactly as that writer wrote it —
+	// The kill lands on the CHILD id, raw, exactly as that writer wrote it —
 	// never normalized onto the root.
-	hiddenOnChild := Compose(Input{
+	killedOnChild := Compose(Input{
 		Rollouts: rollouts,
-		Hidden:   []store.Hidden{{ID: "child-thread", Engine: store.CodexEngine}},
+		Killed:   []store.Killed{{ID: "child-thread", Engine: store.CodexEngine}},
 		Options:  Options{View: DefaultView},
 	})
-	if _, found := rowByID(hiddenOnChild.Rows, "root-thread"); found {
+	if _, found := rowByID(killedOnChild.Rows, "root-thread"); found {
 		t.Fatalf(
-			"a hide written raw on the resumed child left the lineage listed: %#v",
-			hiddenOnChild.Rows,
+			"a kill written raw on the resumed child left the lineage listed: %#v",
+			killedOnChild.Rows,
 		)
 	}
 
-	// HiddenView must show the same lineage, still keyed on the root — a
-	// child-keyed hide is not a second, orphaned hidden row.
-	hiddenView := Compose(Input{
+	// KilledView must show the same lineage, still keyed on the root — a
+	// child-keyed kill is not a second, orphaned killed row.
+	killedView := Compose(Input{
 		Rollouts: rollouts,
-		Hidden:   []store.Hidden{{ID: "child-thread", Engine: store.CodexEngine}},
-		Options:  Options{View: HiddenView},
+		Killed:   []store.Killed{{ID: "child-thread", Engine: store.CodexEngine}},
+		Options:  Options{View: KilledView},
 	})
-	row, found := rowByID(hiddenView.Rows, "root-thread")
-	if !found || !row.Hidden {
-		t.Fatalf("HiddenView lost the child-keyed hide: %#v", hiddenView.Rows)
+	row, found := rowByID(killedView.Rows, "root-thread")
+	if !found || !row.Killed {
+		t.Fatalf("KilledView lost the child-keyed kill: %#v", killedView.Rows)
 	}
-	for _, other := range hiddenView.Rows {
+	for _, other := range killedView.Rows {
 		if other.ID == "child-thread" {
 			t.Fatalf(
-				"a child-keyed hide rowed a second, orphaned entry: %#v",
-				hiddenView.Rows,
+				"a child-keyed kill rowed a second, orphaned entry: %#v",
+				killedView.Rows,
 			)
 		}
 	}

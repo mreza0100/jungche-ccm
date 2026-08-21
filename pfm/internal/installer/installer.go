@@ -117,6 +117,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := installer.wireClaudeLauncher(); err != nil {
+		return err
+	}
 	if err := installer.migrateOldState(); err != nil {
 		return err
 	}
@@ -212,6 +215,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
+	}
+	if err := installer.unwireClaudeLauncher(); err != nil {
+		return err
 	}
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
@@ -486,6 +492,8 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 		}
 		if asset.path == "shim/pfm.zsh" {
 			content = renderShimAsset(content, installer.options)
+		} else if asset.path == "bin/claude" {
+			content = renderClaudeLauncherAsset(content, installer.options)
 		}
 		target := filepath.Join(installer.managedRoot, filepath.FromSlash(asset.path))
 		if sameFile(target, content, asset.mode) {
@@ -920,6 +928,11 @@ func (installer *engine) wireSettings() error {
 	}
 	seen := map[string]bool{}
 	seenOwnershipPaths := map[string]bool{}
+	// Codex hooks share this ledger but are converged by wireCodexHooks after
+	// Claude settings. They are therefore visited, just not by this loop.
+	for _, codexHome := range installer.codexHomes() {
+		seenOwnershipPaths[physicalSettingsPath(filepath.Join(codexHome, "hooks.json"))] = true
+	}
 	for _, candidate := range candidates {
 		physical, err := filepath.EvalSymlinks(candidate)
 		if err != nil {
@@ -1017,37 +1030,73 @@ func (installer *engine) writeSettingsHookOwnership(
 }
 
 func (installer *engine) wireCodexHooks() error {
-	path := filepath.Join(installer.options.Home, ".codex", "hooks.json")
-	raw, err := os.ReadFile(path)
-	existed := true
-	if errors.Is(err, fs.ErrNotExist) {
-		existed = false
-		raw = []byte("{\"hooks\":{}}\n")
-	} else if err != nil {
-		return fmt.Errorf("read %s: %w", path, err)
-	}
-	updated, changed, err := updateCodexHooks(
-		raw,
-		installer.options.Home,
-		installer.options.Mode == ModeUninstall,
-	)
+	ownershipPath := filepath.Join(installer.managedRoot, "settings-hook-ownership.json")
+	ownership, ownershipRaw, err := readSettingsHookOwnership(ownershipPath)
 	if err != nil {
-		installer.skip("invalid Codex hooks JSON at " + path + ": " + err.Error())
-		return nil
+		return fmt.Errorf("read settings hook ownership %s: %w", ownershipPath, err)
 	}
-	if !changed {
-		installer.ok(path + " wiring")
-		return nil
-	}
-	return installer.change("rewrite "+path+" (backup preserved)", func() error {
-		if existed {
-			backup := availableBackup(path, installer.stamp)
-			if err := copyBackup(path, backup); err != nil {
-				return fmt.Errorf("backup %s: %w", path, err)
-			}
+	seen := map[string]bool{}
+	for _, codexHome := range installer.codexHomes() {
+		path := filepath.Join(codexHome, "hooks.json")
+		physical := physicalSettingsPath(path)
+		if seen[physical] {
+			continue
 		}
-		return atomicWrite(path, updated, 0o600)
-	})
+		seen[physical] = true
+		raw, readErr := os.ReadFile(path)
+		existed := true
+		if errors.Is(readErr, fs.ErrNotExist) {
+			existed = false
+			raw = []byte("{\"hooks\":{}}\n")
+			if installer.options.Mode == ModeUninstall {
+				delete(ownership, physical)
+				continue
+			}
+		} else if readErr != nil {
+			return fmt.Errorf("read %s: %w", path, readErr)
+		}
+		updated, changed, nextOwned, updateErr := updateCodexHooks(
+			raw,
+			installer.options.Home,
+			installer.options.Mode == ModeUninstall,
+			ownership[physical],
+		)
+		if updateErr != nil {
+			if installer.options.Mode == ModeUninstall && len(ownership[physical]) > 0 {
+				return fmt.Errorf("refuse to strand owned hooks in invalid Codex hooks JSON at %s: %w", path, updateErr)
+			}
+			installer.skip("invalid Codex hooks JSON at " + path + ": " + updateErr.Error())
+			continue
+		}
+		if len(nextOwned) == 0 {
+			delete(ownership, physical)
+		} else {
+			ownership[physical] = nextOwned
+		}
+		if !changed {
+			installer.ok(path + " wiring")
+			continue
+		}
+		if err := installer.change("rewrite "+path+" (backup preserved)", func() error {
+			if existed {
+				backup := availableBackup(path, installer.stamp)
+				if err := copyBackup(path, backup); err != nil {
+					return fmt.Errorf("backup %s: %w", path, err)
+				}
+			}
+			return atomicWrite(path, updated, 0o600)
+		}); err != nil {
+			return err
+		}
+	}
+	return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
+}
+
+func (installer *engine) codexHomes() []string {
+	if installer.options.CodexHomes == nil {
+		return []string{filepath.Join(installer.options.Home, ".codex")}
+	}
+	return installer.options.CodexHomes
 }
 
 func (installer *engine) wireShell(uninstall bool) error {
@@ -1123,13 +1172,13 @@ func (installer *engine) migrateOldState() error {
 }
 
 func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
 	file, err := os.Open(carrier)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("read retired hide carrier: %w", err)
+		return fmt.Errorf("read retired kill carrier: %w", err)
 	}
 	defer file.Close()
 	seen := map[string]bool{}
@@ -1143,10 +1192,10 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scan retired hide carrier: %w", err)
+		return fmt.Errorf("scan retired kill carrier: %w", err)
 	}
 	sort.Strings(ids)
-	return installer.change(fmt.Sprintf("merge %d retired carrier hide(s) into SQLite without overwriting existing rows", len(ids)), func() error {
+	return installer.change(fmt.Sprintf("merge %d retired carrier kill(s) into SQLite without overwriting existing rows", len(ids)), func() error {
 		values := paths.Values{
 			Home:     installer.options.Home,
 			SharedDB: filepath.Join(installer.options.Home, ".cc", "fleet.db"),
@@ -1156,16 +1205,16 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 		if err := state.Degraded(); err != nil {
 			return fmt.Errorf("open shared store before carrier retirement: %w", err)
 		}
-		existing, err := state.HiddenAt(ctx)
+		existing, err := state.KilledAt(ctx)
 		if err != nil {
-			return fmt.Errorf("read shared hides before carrier retirement: %w", err)
+			return fmt.Errorf("read shared kills before carrier retirement: %w", err)
 		}
 		for _, id := range ids {
 			if _, found := existing[id]; found {
 				continue
 			}
-			if err := state.Hide(ctx, id, 0); err != nil {
-				return fmt.Errorf("import retired carrier hide %q: %w", id, err)
+			if err := state.Kill(ctx, id, 0); err != nil {
+				return fmt.Errorf("import retired carrier kill %q: %w", id, err)
 			}
 		}
 		return nil
@@ -1175,7 +1224,7 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 func (installer *engine) retirePredecessors() error {
 	config := installer.options.ConfigDir
 	for _, name := range []string{
-		"cc-hide.sh", "cx-hide.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
+		"cc-kill.sh", "cx-kill.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
 		"cc-name-sync.sh", "cx-heal.sh", "cc-portable.sh", "cc-db.sh", "cx-recover.sh",
 		"cc-agent-open.sh", "cc-swap-chat.sh",
 	} {
@@ -1203,9 +1252,9 @@ func (installer *engine) retirePredecessors() error {
 			return err
 		}
 	}
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
 	for _, path := range []string{carrier, carrier + ".at", carrier + ".lock"} {
-		if err := installer.retire(path, "SQLite is the sole hide store"); err != nil {
+		if err := installer.retire(path, "SQLite is the sole kill store"); err != nil {
 			return err
 		}
 	}

@@ -21,13 +21,39 @@ import (
 // launch a foreign endpoint, and it would answer from a foreign model under an
 // Anthropic medal. The launcher's verdict is the account; the environment gets
 // no vote.
-const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR" +
+const hygiene = "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CONFIG_DIR" +
 	" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M" +
 	" -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL" +
 	" -u ANTHROPIC_SMALL_FAST_MODEL -u CLAUDE_CODE_AUTO_COMPACT_WINDOW" +
 	" -u CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" +
 	" -u CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK" +
 	" -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"
+
+// LauncherRun is the one argv-preserving Claude spawn command used by the
+// managed launcher. It shares the fleet hygiene list with picker/headless
+// launches, but intentionally adds no autonomy or resume flags of its own.
+func LauncherRun(real string, args []string, configDir string) (string, error) {
+	values := append([]string{real, configDir}, args...)
+	if hasNUL(values...) {
+		return "", errors.New("launcher values cannot contain NUL")
+	}
+	if real == "" {
+		return "", errors.New("real Claude binary is empty")
+	}
+	var command strings.Builder
+	command.WriteString(hygiene)
+	if configDir != "" {
+		command.WriteString(" CLAUDE_CONFIG_DIR=")
+		command.WriteString(Quote(configDir))
+	}
+	command.WriteString(" FORCE_PROMPT_CACHING_5M=1 ")
+	command.WriteString(Quote(real))
+	for _, argument := range args {
+		command.WriteByte(' ')
+		command.WriteString(Quote(argument))
+	}
+	return command.String(), nil
+}
 
 // autonomyFlags is CC_AUTONOMY_FLAGS — the full-autonomy
 // posture every path that STARTS a Claude chat carries. `--allow-…` is the
@@ -50,11 +76,21 @@ func Synthesize(request Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	if _, found := machine.Account(request.PrimaryAccount); !found {
-		return Plan{}, fmt.Errorf(
-			"primary account %d is not in the configured roster",
-			request.PrimaryAccount,
-		)
+	switch route {
+	case NewClaude, Agent, ResumeClaude:
+		if _, found := machine.Account(request.PrimaryAccount); !found {
+			return Plan{}, fmt.Errorf(
+				"Claude account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
+	case NewCodex, ResumeCodex:
+		if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
+			return Plan{}, fmt.Errorf(
+				"Codex account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
 	}
 	if hasNUL(
 		request.Row.ID,
@@ -87,7 +123,9 @@ func Synthesize(request Request) (Plan, error) {
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")
 		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && cx)"
+		account, _ := machine.CodexAccountByID(request.PrimaryAccount)
+		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && CODEX_HOME=" +
+			Quote(account.Home) + " cx)"
 	case Live:
 		if request.Row.Socket == "" {
 			return Plan{}, errors.New("live action requires a socket")
@@ -296,7 +334,7 @@ func continuityBanner(row compose.Row) string {
 		"    Loaded? Read the status line: no context/token counts means Codex" +
 			" did NOT rehydrate this thread.",
 		"    Scrollback is never restored — the prior tmux server is reaped on" +
-			" hide.",
+			" kill.",
 		"    Came up empty? The rollout is whole: pfm chat recover " + row.ID,
 	}
 	if row.Path != "" {
@@ -338,14 +376,19 @@ func codexCommandWithAccount(
 	args ...string,
 ) string {
 	var command strings.Builder
+	policy := machine.EffectiveCodex(account)
 	command.WriteString(environmentStrip)
+	if selected, found := machine.CodexAccountByID(account); found {
+		command.WriteString(" CODEX_HOME=")
+		command.WriteString(Quote(selected.Home))
+	}
 	command.WriteByte(' ')
 	command.WriteString(binaryWord(
-		machine.Codex.Binary,
+		policy.Binary,
 		"codex",
-		machine.Source("codex.binary") == pfmconfig.SourceFile,
+		policy.Binary != "" && policy.Binary != "codex",
 	))
-	if machine.EffectiveCodex(account).Yolo {
+	if policy.Yolo {
 		command.WriteString(" --dangerously-bypass-approvals-and-sandbox")
 	} else {
 		command.WriteString(" --sandbox workspace-write")
@@ -358,7 +401,8 @@ func codexCommandWithAccount(
 }
 
 func normalizedMachineConfig(machine pfmconfig.Config, home string) pfmconfig.Config {
-	if machine.Version == pfmconfig.Version && len(machine.Accounts) != 0 {
+	if machine.Version == pfmconfig.Version &&
+		(len(machine.Accounts) != 0 || len(machine.CodexAccounts) != 0) {
 		return machine
 	}
 	return pfmconfig.Defaults(home, nil)

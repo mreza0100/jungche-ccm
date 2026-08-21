@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"hostops/pfm/internal/statusline"
@@ -71,7 +72,8 @@ func runStatuslineWithRuntime(
 	}
 	if *refreshGPT {
 		options := statuslineGPTOptions()
-		options.Binary = machine.Config.Codex.Binary
+		account := accountForCodexHome(machine.Config, os.Getenv("CODEX_HOME"))
+		options.Binary = machine.Config.EffectiveCodex(account).Binary
 		if err := statusline.RefreshGPT(ctx, options); err != nil {
 			fmt.Fprintf(stderr, "pfm statusline: refresh GPT cache: %v\n", err)
 			return 1
@@ -89,17 +91,20 @@ func runStatuslineWithRuntime(
 		fmt.Fprintf(stderr, "pfm statusline: resolve runtime (fail-open): %v\n", err)
 		return 0
 	}
-	runtime.AccountDirs = make(map[string]int, len(machine.Config.Accounts))
-	runtime.AccountEmojis = make(map[int]string, len(machine.Config.Accounts))
-	for _, account := range machine.Config.Accounts {
-		configDir := account.ConfigDir
-		if resolved, err := filepath.EvalSymlinks(configDir); err == nil {
-			configDir = resolved
-		} else if absolute, err := filepath.Abs(configDir); err == nil {
-			configDir = absolute
+	if runtime.Engine == "codex" {
+		runtime.AccountDirs = make(map[string]int, len(machine.Config.CodexAccounts))
+		runtime.AccountEmojis = make(map[int]string, len(machine.Config.CodexAccounts))
+		for _, account := range machine.Config.CodexAccounts {
+			runtime.AccountDirs[canonicalAccountPath(account.Home)] = account.ID
+			runtime.AccountEmojis[account.ID] = machine.Config.CodexEmojiFor(account.ID)
 		}
-		runtime.AccountDirs[filepath.Clean(configDir)] = account.ID
-		runtime.AccountEmojis[account.ID] = machine.Config.EmojiFor(account.ID)
+	} else {
+		runtime.AccountDirs = make(map[string]int, len(machine.Config.Accounts))
+		runtime.AccountEmojis = make(map[int]string, len(machine.Config.Accounts))
+		for _, account := range machine.Config.Accounts {
+			runtime.AccountDirs[canonicalAccountPath(account.ConfigDir)] = account.ID
+			runtime.AccountEmojis[account.ID] = machine.Config.EmojiFor(account.ID)
+		}
 	}
 	runtime.Spawn = statusline.SpawnDetached
 	rendered, err := statusline.Render(ctx, raw, runtime)
@@ -111,6 +116,16 @@ func runStatuslineWithRuntime(
 		fmt.Fprintf(stderr, "pfm statusline: write output (fail-open): %v\n", err)
 	}
 	return 0
+}
+
+func canonicalAccountPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return filepath.Clean(resolved)
+	}
+	if absolute, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(absolute)
+	}
+	return filepath.Clean(path)
 }
 
 func runUsageHook(args []string, stdout, stderr io.Writer) int {
@@ -134,6 +149,9 @@ func runUsageHookWithRuntime(
 	if flags.NArg() != 0 {
 		flags.Usage()
 		return 2
+	}
+	if statusline.EngineFromEnvironment(os.Getenv) == "codex" {
+		return 0
 	}
 	accountDirs := make(map[string]int, len(runtime.Config.Accounts))
 	for _, account := range runtime.Config.Accounts {

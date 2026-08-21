@@ -2,14 +2,15 @@ package naming
 
 import "testing"
 
-func TestLabelHidden(t *testing.T) {
+func TestLabelKilled(t *testing.T) {
 	for _, testCase := range []struct {
 		name  string
 		label string
 		want  bool
 	}{
-		{"exact prefix", "_HIDE", true},
-		{"prefix with a payload", "_HIDE headless worker 3", true},
+		{"legacy exact prefix", "_HIDE", true},
+		{"legacy prefix with a payload", "_HIDE headless worker 3", true},
+		{"new kill prefix", "_KILL headless worker 3", true},
 		{"lower case", "_hide worker", true},
 		{"mixed case", "_HiDe worker", true},
 		{"no underscore", "HIDE worker", false},
@@ -19,8 +20,8 @@ func TestLabelHidden(t *testing.T) {
 		{"underscore only", "_", false},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := LabelHidden(testCase.label); got != testCase.want {
-				t.Fatalf("LabelHidden(%q) = %t, want %t",
+			if got := LabelKilled(testCase.label); got != testCase.want {
+				t.Fatalf("LabelKilled(%q) = %t, want %t",
 					testCase.label, got, testCase.want)
 			}
 		})

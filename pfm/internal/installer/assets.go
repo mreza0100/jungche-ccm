@@ -35,7 +35,7 @@ func assetFiles() ([]assetFile, error) {
 			return nil
 		}
 		mode := fs.FileMode(0o644)
-		if path.Ext(relative) == ".sh" {
+		if path.Ext(relative) == ".sh" || relative == "bin/claude" {
 			mode = 0o755
 		}
 		files = append(files, assetFile{path: relative, mode: mode})
@@ -91,6 +91,22 @@ func renderShimAsset(content []byte, options Options) []byte {
 	text := strings.Replace(string(content), "typeset -gA PFM_CLAUDE_PROMPTED=()", strings.Join(claude, "\n"), 1)
 	text = strings.Replace(text, "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"), 1)
 	return []byte(text)
+}
+
+func renderClaudeLauncherAsset(content []byte, options Options) []byte {
+	configured := ""
+	if strings.HasPrefix(options.ClaudeBinary, "/") {
+		configured = options.ClaudeBinary
+	}
+	return []byte(strings.ReplaceAll(
+		string(content),
+		"__PFM_CONFIGURED_CLAUDE__",
+		shellSingleQuoted(configured),
+	))
+}
+
+func shellSingleQuoted(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func sortedBoolKeys(values map[int]bool) []int {

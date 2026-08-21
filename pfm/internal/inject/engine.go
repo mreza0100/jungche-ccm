@@ -28,14 +28,14 @@ const (
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
-	resolver     Resolver
-	tmux         Tmux
-	spawner      ThenSpawner
-	options      Options
-	whoami       SelfIdentifier
-	codexSeat    SelfIdentifier
-	claudeBinary string
-	codexBinary  string
+	resolver      Resolver
+	tmux          Tmux
+	spawner       ThenSpawner
+	options       Options
+	whoami        SelfIdentifier
+	codexSeat     SelfIdentifier
+	claudeBinary  string
+	codexBinary   string
 	accountEmojis []string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
@@ -92,14 +92,14 @@ func New(dependencies Dependencies) (*Engine, error) {
 		dependencies.Identifier = identifier
 	}
 	return &Engine{
-		resolver:     dependencies.Resolver,
-		tmux:         dependencies.Tmux,
-		spawner:      dependencies.Spawner,
-		options:      options,
-		whoami:       dependencies.Identifier,
-		codexSeat:    dependencies.CodexSeat,
-		claudeBinary: binaries.Claude,
-		codexBinary:  binaries.Codex,
+		resolver:      dependencies.Resolver,
+		tmux:          dependencies.Tmux,
+		spawner:       dependencies.Spawner,
+		options:       options,
+		whoami:        dependencies.Identifier,
+		codexSeat:     dependencies.CodexSeat,
+		claudeBinary:  binaries.Claude,
+		codexBinary:   binaries.Codex,
 		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
 	}, nil
 }

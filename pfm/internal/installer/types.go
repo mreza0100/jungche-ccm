@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/harvestpy"
 )
 
@@ -60,6 +61,10 @@ type Options struct {
 	// the historical discovery of existing .cc account settings for callers
 	// that construct Options directly.
 	ConfigDirs []string
+	// CodexHomes is the config-driven hooks.json fanout. A nil value retains
+	// the historical single ~/.codex target for direct legacy callers; an
+	// explicitly empty roster installs no Codex hook.
+	CodexHomes []string
 	// SourceRepo is the clone whose blueprint and binary are being installed.
 	// Empty preserves an existing marker when install is invoked elsewhere.
 	SourceRepo string
@@ -72,6 +77,7 @@ type Options struct {
 	MCPPort        int
 	MCPAuthToken   string
 	MCPConfigPath  string
+	ClaudeBinary   string
 	ClaudePrompted map[int]bool
 	CodexYolo      map[int]bool
 
@@ -97,14 +103,14 @@ type Report struct {
 type execCommandRunner struct{}
 
 func (execCommandRunner) Run(ctx context.Context, name string, args ...string) error {
-	command := exec.CommandContext(ctx, name, args...)
+	command := exec.CommandContext(ctx, deps.Executable(name), args...)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
 	return command.Run()
 }
 
 func (execCommandRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+	return exec.CommandContext(ctx, deps.Executable(name), args...).Output()
 }
 
 func normalize(options Options) (Options, error) {

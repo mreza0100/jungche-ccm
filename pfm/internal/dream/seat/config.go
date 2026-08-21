@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"hostops/pfm/internal/deps"
 )
 
 const (
@@ -52,7 +54,7 @@ func (runner ExecCommandRunner) Run(
 	if runner.Binary != "" {
 		name = runner.Binary
 	}
-	command := exec.CommandContext(ctx, name, arguments...)
+	command := exec.CommandContext(ctx, deps.Executable(name), arguments...)
 	command.Dir = directory
 	var stdout, stderr strings.Builder
 	command.Stdout = &stdout

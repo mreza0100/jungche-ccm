@@ -10,11 +10,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"hostops/pfm/internal/compose"
 	pfmstats "hostops/pfm/internal/stats"
+	"hostops/pfm/internal/theme"
 )
 
 func TestRenderGoldens(t *testing.T) {
@@ -38,6 +41,20 @@ func TestRenderGoldens(t *testing.T) {
 			},
 		},
 		{
+			name: "Codex-only ansi 80 columns",
+			path: "ui_codex_only_80.ansi",
+			got: func() string {
+				return quoteANSI(engineOnlyGoldenSnapshot("cx", 80).View().Content)
+			},
+		},
+		{
+			name: "Claude-only ansi 80 columns",
+			path: "ui_claude_only_80.ansi",
+			got: func() string {
+				return quoteANSI(engineOnlyGoldenSnapshot("cc", 80).View().Content)
+			},
+		},
+		{
 			name: "Stats Chats ansi 80 columns",
 			path: "stats_chats_80.ansi",
 			got: func() string {
@@ -49,6 +66,20 @@ func TestRenderGoldens(t *testing.T) {
 			path: "stats_chats_120.ansi",
 			got: func() string {
 				return quoteANSI(statsGoldenModel(120).View().Content)
+			},
+		},
+		{
+			name: "Stats Limits ansi 80 columns",
+			path: "ui_limits_80.ansi",
+			got: func() string {
+				return quoteANSI(limitsGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Stats Limits ansi 120 columns",
+			path: "ui_limits_120.ansi",
+			got: func() string {
+				return quoteANSI(limitsGoldenModel(120).View().Content)
 			},
 		},
 		{
@@ -92,6 +123,28 @@ func TestRenderGoldens(t *testing.T) {
 	}
 }
 
+func engineOnlyGoldenSnapshot(engine string, width int) Model {
+	snapshot := fixtureSnapshot(width)
+	rows := make([]compose.Row, 0, len(snapshot.Rows))
+	for _, row := range snapshot.Rows {
+		if compose.EngineForKind(row.Kind) == engine {
+			rows = append(rows, row)
+		}
+	}
+	snapshot.Rows = rows
+	snapshot.MergeNewChat = true
+	if engine == "cx" {
+		snapshot.PrimaryAccount = 0
+		snapshot.AccountIDs = nil
+		snapshot.AccountEmojis = nil
+	} else {
+		snapshot.CodexPrimaryAccount = 0
+		snapshot.CodexAccountIDs = nil
+		snapshot.CodexAccountEmojis = nil
+	}
+	return NewModel(snapshot)
+}
+
 func statsGoldenModel(width int) Model {
 	model := NewModel(fixtureSnapshot(width))
 	model.tab = TabStats
@@ -124,6 +177,36 @@ func statsGoldenModel(width int) Model {
 	return model
 }
 
+func limitsGoldenModel(width int) Model {
+	model := NewModel(fixtureSnapshot(width))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	model.height = 24
+	now := time.Unix(0, fixtureNowNS)
+	model.stats = pfmstats.Snapshot{Ready: true, Limits: []pfmstats.AccountLimits{
+		{
+			Account: 1, Emoji: "🥇", Engine: "claude", Label: "account 1", Plan: "Max 20x", ConfirmedAt: now.Add(-12 * time.Second),
+			Windows: []pfmstats.Window{
+				{Name: "5h", UsedPct: 52.4, ResetAt: now.Add(2*time.Hour + 14*time.Minute)},
+				{Name: "7d-fable", UsedPct: 95, ResetAt: now.Add(14 * time.Minute)},
+			},
+		},
+		{
+			Account: 2, Emoji: "🥈", Engine: "claude", Label: "account 2", Plan: "Pro", ConfirmedAt: now.Add(-40 * time.Second),
+			Windows: []pfmstats.Window{
+				{Name: "5h", UsedPct: 55, ResetAt: now.Add(4 * time.Hour)},
+				{Name: "7d", UsedPct: 100, ResetAt: now.Add(-time.Minute)},
+			},
+		},
+		{Engine: "codex", Label: "Codex", Plan: "pro", ConfirmedAt: now.Add(-2 * time.Minute), Windows: []pfmstats.Window{
+			{Name: "7d", UsedPct: 31, ResetAt: now.Add(6*24*time.Hour + 20*time.Hour)},
+		}},
+		{Account: 4, Emoji: "🍀", Engine: "claude", Label: "account 4", Status: "Claude credential rejected (HTTP 403)"},
+		{Account: 3, Engine: "claude", Label: "account 3", Status: "skipped account 3: no valid credentials"},
+	}}
+	return model
+}
+
 func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {
 	agent := fmt.Sprint(agentStyle.GetForeground())
 	codex := fmt.Sprint(codexStyle.GetForeground())
@@ -132,6 +215,26 @@ func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {
 	}
 	if agent == codex {
 		t.Fatalf("agent and Codex foregrounds are both %q", agent)
+	}
+}
+
+func TestTokyoNightOwnsTheHeaderBackground(t *testing.T) {
+	configureStyles(theme.Load("tokyo-night"))
+	t.Cleanup(func() { configureStyles(theme.Load("default")) })
+	if got, want := fmt.Sprint(headerStyle.GetBackground()), "{65 72 104 255}"; got != want {
+		t.Fatalf("Tokyo Night header background=%s, want %s", got, want)
+	}
+}
+
+func TestAccountMedalUsesConfigOwnedDefaultsAndFailsClosedOnMissingRosterEntry(t *testing.T) {
+	configuredAccountEmojis = nil
+	if got := accountMedal(4); got != "🍀" {
+		t.Fatalf("default account 4 medal=%q, want config default", got)
+	}
+	configuredAccountEmojis = map[int]string{1: "🥇"}
+	t.Cleanup(func() { configuredAccountEmojis = nil })
+	if got := accountMedal(2); got != "·" {
+		t.Fatalf("missing configured account medal=%q, want honest unknown marker", got)
 	}
 }
 
@@ -161,13 +264,22 @@ func TestFancyRenderHasNoPreviewAtAnyWidth(t *testing.T) {
 	}
 }
 
-func TestHeaderSeparatesHiddenEmptyAndRefreshStatus(t *testing.T) {
+func TestFancyRenderHasNoProjectRotationControl(t *testing.T) {
+	content := ansi.Strip(NewModel(fixtureSnapshot(120)).View().Content)
+	for _, retired := range []string{"project rotation", "⌃R"} {
+		if strings.Contains(content, retired) {
+			t.Fatalf("picker still renders retired %q control:\n%s", retired, content)
+		}
+	}
+}
+
+func TestHeaderSeparatesKilledEmptyAndRefreshStatus(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
-	snapshot.HiddenCount = 12
+	snapshot.KilledCount = 12
 	snapshot.SuppressedCount = 153
 	snapshot.Refreshing = true
 	header := ansi.Strip(NewModel(snapshot).renderHeader(120))
-	for _, want := range []string{"12 hidden", "153 empty", "⟳ refreshing"} {
+	for _, want := range []string{"12 killed", "153 empty", "⟳ refreshing"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("header %q does not contain %q", header, want)
 		}

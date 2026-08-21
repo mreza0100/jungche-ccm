@@ -21,6 +21,7 @@ import (
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
@@ -359,14 +360,14 @@ func runChatSave(args []string, stdout, stderr io.Writer, runtimes ...commandRun
 }
 
 func writeRepositorySnapshot(writer io.Writer) {
-	inside := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	inside := exec.Command(deps.Executable("git"), "rev-parse", "--is-inside-work-tree")
 	if err := inside.Run(); err != nil {
 		fmt.Fprintln(writer, "(not a git repository)")
 		return
 	}
-	branch, branchErr := exec.Command("git", "branch", "--show-current").Output()
-	status, statusErr := exec.Command("git", "status", "--short").Output()
-	worktrees, worktreeErr := exec.Command("git", "worktree", "list").Output()
+	branch, branchErr := exec.Command(deps.Executable("git"), "branch", "--show-current").Output()
+	status, statusErr := exec.Command(deps.Executable("git"), "status", "--short").Output()
+	worktrees, worktreeErr := exec.Command(deps.Executable("git"), "worktree", "list").Output()
 	if branchErr != nil || statusErr != nil || worktreeErr != nil {
 		fmt.Fprintf(writer, "(repository snapshot failed: branch=%v status=%v worktrees=%v)\n", branchErr, statusErr, worktreeErr)
 		return
@@ -480,13 +481,13 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	} else {
 		fmt.Fprintln(stdout, "live chats in this repo (session · state · last activity):")
 	}
-	found, elsewhere, hidden := 0, 0, 0
+	found, elsewhere, killed := 0, 0, 0
 	for _, row := range scan.Output.Rows {
 		if !isLiveKind(row.Kind) {
 			continue
 		}
-		if row.Hidden || row.NameHidden {
-			hidden++
+		if row.Killed || row.NameKilled {
+			killed++
 			continue
 		}
 		if !all && !withinDirectory(row.CWD, root) {
@@ -518,8 +519,8 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	if !all && elsewhere > 0 {
 		fmt.Fprintf(stdout, "  (+%d live in other dirs — pfm chat ls --all to see them)\n", elsewhere)
 	}
-	if hidden > 0 {
-		fmt.Fprintf(stdout, "  (+%d hidden — pfm ls --hidden to manage)\n", hidden)
+	if killed > 0 {
+		fmt.Fprintf(stdout, "  (+%d killed — pfm ls --killed to manage)\n", killed)
 	}
 	return 0
 }
@@ -563,11 +564,11 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		fmt.Fprintf(stderr, "pfm chat branch: load config: %v\n", err)
 		return 1
 	}
-	if _, err := exec.LookPath(runtime.Config.Claude.Binary); err != nil {
+	if _, err := deps.Resolve(runtime.Config.Claude.Binary); err != nil {
 		fmt.Fprintf(stderr, "pfm chat branch: configured Claude binary %q is not executable: %v\n", runtime.Config.Claude.Binary, err)
 		return 1
 	}
-	if _, err := exec.LookPath("tmux"); err != nil {
+	if _, err := deps.Resolve("tmux"); err != nil {
 		fmt.Fprintln(stderr, "pfm chat branch: tmux is not on PATH")
 		return 1
 	}
@@ -770,13 +771,13 @@ func runChatModal(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	for index := 0; index < count; index++ {
-		if output, err := exec.Command("tmux", "-S", socketPath, "send-keys", "Down").CombinedOutput(); err != nil {
+		if output, err := exec.Command(deps.Executable("tmux"), "-S", socketPath, "send-keys", "Down").CombinedOutput(); err != nil {
 			fmt.Fprintf(stderr, "pfm chat modal: send Down: %v: %s\n", err, strings.TrimSpace(string(output)))
 			return 1
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	if output, err := exec.Command("tmux", "-S", socketPath, "send-keys", "Enter").CombinedOutput(); err != nil {
+	if output, err := exec.Command(deps.Executable("tmux"), "-S", socketPath, "send-keys", "Enter").CombinedOutput(); err != nil {
 		fmt.Fprintf(stderr, "pfm chat modal: send Enter: %v: %s\n", err, strings.TrimSpace(string(output)))
 		return 1
 	}

@@ -1,7 +1,9 @@
 package mcpserv
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -43,6 +45,31 @@ func (service *Service) chatStatus(
 	if strings.TrimSpace(input.Target) == "" {
 		return nil, StatusOutput{}, fmt.Errorf("target is required")
 	}
+	if !input.Summary && (input.Engine != "" || input.Model != "") {
+		return nil, StatusOutput{}, fmt.Errorf("engine and model require summary=true")
+	}
+	if input.Summary {
+		if service.backend.dispatch == nil {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command is not configured")
+		}
+		args := []string{"chat", "status", input.Target, "--json", "--summary"}
+		if input.Engine != "" {
+			args = append(args, "--engine", input.Engine)
+		}
+		if input.Model != "" {
+			args = append(args, "--model", input.Model)
+		}
+		var stdout, stderr bytes.Buffer
+		code := service.backend.dispatch(ctx, args, &stdout, &stderr)
+		var output StatusOutput
+		if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d stderr=%q: decode output: %w", code, strings.TrimSpace(stderr.String()), err)
+		}
+		if code != 0 && output.State != headless.StateDead {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d state=%s stderr=%q", code, output.State, strings.TrimSpace(stderr.String()))
+		}
+		return nil, output, nil
+	}
 	source, err := service.backend.resolveReadSource(ctx, input.Target)
 	if err != nil {
 		return nil, StatusOutput{}, err
@@ -66,6 +93,7 @@ func (service *Service) chatStatus(
 		Engine: status.Engine, Model: status.Model, CWD: status.CWD,
 		SessionID: status.SessionID, Socket: status.Socket,
 		ContextPct: status.ContextPct, Last: status.Last,
+		Summary: status.Summary, SummaryCached: status.SummaryCached,
 	}, nil
 }
 
@@ -129,16 +157,16 @@ func (service *Service) chatName(ctx context.Context, _ *mcp.CallToolRequest, in
 	return service.cliAction(ctx, "chat", "name", input.Target, input.Name)
 }
 
-func (service *Service) chatHide(ctx context.Context, _ *mcp.CallToolRequest, input HideInput) (*mcp.CallToolResult, ActionOutput, error) {
-	args := []string{"chat", "hide", input.Target}
+func (service *Service) chatKill(ctx context.Context, _ *mcp.CallToolRequest, input KillInput) (*mcp.CallToolResult, ActionOutput, error) {
+	args := []string{"chat", "kill", input.Target}
 	if input.Exit {
 		args = append(args, "--exit")
 	}
 	return service.cliAction(ctx, args...)
 }
 
-func (service *Service) chatUnhide(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
-	return service.cliTargetAction(ctx, "unhide", input.Target)
+func (service *Service) chatUnkill(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
+	return service.cliTargetAction(ctx, "unkill", input.Target)
 }
 
 func (service *Service) chatReload(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {

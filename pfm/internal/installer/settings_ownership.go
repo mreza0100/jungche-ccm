@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -81,18 +82,13 @@ func nextSettingsHookOwnership(
 }
 
 func installerOwnedHookCommand(command, pfmBinary string) bool {
-	switch command {
-	case pfmBinary + " chat group hook",
-		pfmBinary + " internal clear-hide",
-		pfmBinary + " usage-hook",
-		pfmBinary + " dream hook agent-inject",
-		pfmBinary + " dream hook nudge",
-		pfmBinary + " internal explore-deny",
-		pfmBinary + " internal epic-inject":
-		return true
-	default:
-		return false
+	home := filepath.Dir(filepath.Dir(filepath.Dir(pfmBinary)))
+	for _, hook := range claudeHookTemplates(home) {
+		if hook.Command == command {
+			return true
+		}
 	}
+	return codexHookTemplate(home).Command == command
 }
 
 func removeOwnedSettingsHooks(document map[string]any, owned settingsHookCounts) bool {

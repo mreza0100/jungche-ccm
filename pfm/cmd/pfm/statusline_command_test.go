@@ -157,3 +157,19 @@ func TestStatuslineAndUsageHookCommandsFailOpen(t *testing.T) {
 		t.Fatalf("usage hook: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 }
+
+func TestCodexSeatUsageHookNeverTouchesClaudeCredentials(t *testing.T) {
+	jailTest(t)
+	root := t.TempDir()
+	claudeConfig := filepath.Join(root, "claude-must-not-be-read")
+	if err := os.WriteFile(claudeConfig, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", filepath.Join(root, ".codex-2"))
+	t.Setenv("CODEX_THREAD_ID", "thread-2")
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeConfig)
+	var stdout, stderr bytes.Buffer
+	if code := runUsageHookWithRuntime(nil, &stdout, &stderr, commandRuntime{}); code != 0 || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("Codex usage hook touched Claude state: code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}

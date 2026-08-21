@@ -34,7 +34,7 @@ func TestStoreStress(t *testing.T) {
 	}
 
 	dbPath := setStoreTestJail(t)
-	stressHiddenContention(t, dbPath)
+	stressKilledContention(t, dbPath)
 
 	store := openTestStore(t)
 	stressTranscriptVolume(t, store)
@@ -46,7 +46,7 @@ func TestStoreStress(t *testing.T) {
 	stressReopen(t, dbPath)
 }
 
-func stressHiddenContention(t *testing.T, dbPath string) {
+func stressKilledContention(t *testing.T, dbPath string) {
 	t.Helper()
 
 	initial := openTestStore(t)
@@ -102,11 +102,11 @@ func stressHiddenContention(t *testing.T, dbPath string) {
 	defer store.Close()
 	var count int
 	if err := store.db.QueryRow("SELECT count(*) FROM hidden").Scan(&count); err != nil {
-		t.Fatalf("count stress hidden rows: %v", err)
+		t.Fatalf("count stress killed rows: %v", err)
 	}
 	want := storeStressProcesses * storeStressWrites
 	if count != want {
-		t.Fatalf("stress hidden row count = %d, want %d", count, want)
+		t.Fatalf("stress killed row count = %d, want %d", count, want)
 	}
 	t.Logf(
 		"contention: %d processes x %d upserts = %d rows in %s; busy warnings=%d",
@@ -322,7 +322,7 @@ func newStoreStressProcess(
 	process.cmd = exec.CommandContext(
 		ctx,
 		os.Args[0],
-		"-test.run=^TestStoreStressHiddenHelper$",
+		"-test.run=^TestStoreStressKilledHelper$",
 	)
 	process.cmd.Env = append(
 		os.Environ(),
@@ -345,7 +345,7 @@ func stressProcessOutput(processes []*storeStressProcess) string {
 	return output.String()
 }
 
-func TestStoreStressHiddenHelper(t *testing.T) {
+func TestStoreStressKilledHelper(t *testing.T) {
 	if os.Getenv(storeStressHelperEnv) != "1" {
 		t.Skip("store stress helper process only")
 	}
@@ -386,13 +386,13 @@ func TestStoreStressHiddenHelper(t *testing.T) {
 	}
 	for index := 0; index < count; index++ {
 		baseline := int64(index)
-		if err := store.Hide(ctx, Hidden{
+		if err := store.Kill(ctx, Killed{
 			ID:              fmt.Sprintf("%s-%04d", prefix, index),
 			Engine:          engine,
-			HiddenAt:        int64(index + 1),
+			KilledAt:        int64(index + 1),
 			BaselinePrompts: &baseline,
 		}); err != nil {
-			t.Fatalf("stress Hide(%s, %d): %v", prefix, index, err)
+			t.Fatalf("stress Kill(%s, %d): %v", prefix, index, err)
 		}
 	}
 }

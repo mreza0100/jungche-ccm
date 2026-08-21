@@ -20,6 +20,7 @@ const (
 	dreamPrefix      = modulePath + "/internal/dream"
 	dreamSeatPackage = dreamPrefix + "/seat"
 	storePackage     = modulePath + "/internal/store"
+	depsPackage      = modulePath + "/internal/deps"
 )
 
 var allowedSeatImports = map[string]struct{}{
@@ -34,7 +35,7 @@ var forbiddenDreamImports = map[string]struct{}{
 	storePackage:                     {},
 	modulePath + "/internal/ui":      {},
 	modulePath + "/internal/compose": {},
-	modulePath + "/internal/hide":    {},
+	modulePath + "/internal/kill":    {},
 	modulePath + "/internal/mcpserv": {},
 	modulePath + "/internal/gather":  {},
 }
@@ -65,6 +66,11 @@ func TestDreamPackagesRespectDirectImportBoundary(t *testing.T) {
 
 	for _, pkg := range dreamPackages {
 		for _, imported := range pkg.Imports {
+			// deps is a pure executable-resolution foundation: it imports no
+			// host subsystem and is the one registry every exec site must use.
+			if imported == depsPackage {
+				continue
+			}
 			if _, forbidden := forbiddenDreamImports[imported]; forbidden {
 				t.Errorf("%s directly imports forbidden host package %s", pkg.ImportPath, imported)
 				continue

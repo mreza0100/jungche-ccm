@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/dream/artifact"
 )
 
@@ -105,7 +106,7 @@ func (reader CommandGitReader) Resolve(tree, path string) (GitObject, bool, erro
 	if reader.Repo == "" {
 		return GitObject{}, false, errors.New("Git reader requires a repository")
 	}
-	resolve := exec.Command("git", "-C", reader.Repo, "rev-parse", "--verify", "-q", tree+":"+path)
+	resolve := exec.Command(deps.Executable("git"), "-C", reader.Repo, "rev-parse", "--verify", "-q", tree+":"+path)
 	resolve.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	output, err := resolve.Output()
 	if err != nil {
@@ -119,7 +120,7 @@ func (reader CommandGitReader) Resolve(tree, path string) (GitObject, bool, erro
 	if hash == "" {
 		return GitObject{}, false, errors.New("git rev-parse returned an empty object id")
 	}
-	typeCommand := exec.Command("git", "-C", reader.Repo, "cat-file", "-t", hash)
+	typeCommand := exec.Command(deps.Executable("git"), "-C", reader.Repo, "cat-file", "-t", hash)
 	typeCommand.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	typeOutput, err := typeCommand.Output()
 	if err != nil {

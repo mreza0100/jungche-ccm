@@ -28,7 +28,7 @@ func readCodexThreads(
 // reconcileCodexState folds the Codex state store into this pass's rollout
 // rows. The store decides which conversations exist and how they are
 // classified; a conversation that never wrote a rollout file still gets a row,
-// so it can be listed, named, resumed, and hidden like any other. Rows whose
+// so it can be listed, named, resumed, and killed like any other. Rows whose
 // rollout file was parsed keep their file-derived size and prompt count.
 func reconcileCodexState(
 	threads []store.CodexThread,

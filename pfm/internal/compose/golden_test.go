@@ -19,7 +19,7 @@ func TestGoldenRowScenarios(t *testing.T) {
 	}{
 		{name: "default", input: fixtureInput(DefaultView)},
 		{name: "all", input: fixtureInput(AllView)},
-		{name: "hidden", input: fixtureInput(HiddenView)},
+		{name: "killed", input: fixtureInput(KilledView)},
 		{name: "split-and-multiserver", input: splitFixtureInput()},
 		{name: "caps-overflow", input: capsFixtureInput()},
 	}
@@ -29,6 +29,12 @@ func TestGoldenRowScenarios(t *testing.T) {
 	rendered.Truncate(rendered.Len() - 1)
 
 	goldenPath := filepath.Join("..", "..", "testdata", "golden", "compose.tsv")
+	if os.Getenv("PFM_UPDATE_GOLDENS") == "1" {
+		if err := os.WriteFile(goldenPath, rendered.Bytes(), 0o644); err != nil {
+			t.Fatalf("regenerate compose golden: %v", err)
+		}
+		return
+	}
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("read compose golden: %v\nactual:\n%s", err, rendered.String())
@@ -67,8 +73,8 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 	fmt.Fprintf(output, "SCENARIO\t%s\n", name)
 	fmt.Fprintf(
 		output,
-		"META\thidden=%d\tempty=%d\tprojects=%s\n",
-		result.HiddenCount,
+		"META\tkilled=%d\tempty=%d\tprojects=%s\n",
+		result.KilledCount,
 		result.SuppressedCount,
 		strings.Join(result.ProjectOrder, ","),
 	)
@@ -97,7 +103,7 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 			row.AgeNS,
 			strconv.Itoa(row.Account),
 			renderInts(row.Accounts),
-			renderBool(row.Hidden),
+			renderBool(row.Killed),
 			renderBool(row.BG),
 			renderBool(row.C1H),
 			renderBool(row.Attached),

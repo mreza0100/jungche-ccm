@@ -656,7 +656,7 @@ func describeFetch(source string, result harvest.Result, sizeOnly bool) string {
 	if result.Error != "" {
 		return "# " + source + "\nERROR: " + result.Error
 	}
-	// Size probes never hide an empty extraction behind a zero-sized success;
+	// Size probes never kill an empty extraction behind a zero-sized success;
 	// this wording is part of the Python scheduler contract.
 	if sizeOnly {
 		if strings.TrimSpace(result.Content) == "" && result.Chars == 0 && result.Bytes == 0 {

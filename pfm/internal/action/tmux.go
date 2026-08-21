@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/tmuxfmt"
 )
@@ -166,7 +167,7 @@ func (tmux CommandTmux) command(
 ) *exec.Cmd {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	commandArguments := []string{
 		"-S",
@@ -189,7 +190,7 @@ func (runner ExecRunner) Run(
 	name string,
 	args ...string,
 ) error {
-	command := exec.CommandContext(ctx, name, args...)
+	command := exec.CommandContext(ctx, deps.Executable(name), args...)
 	command.Stdin = runner.Stdin
 	command.Stdout = runner.Stdout
 	command.Stderr = runner.Stderr

@@ -137,9 +137,9 @@ func setupCodexStateFixture(t *testing.T) codexStateFixture {
 	// knows Codex spawned it as a subagent.
 	writeLines(t, filepath.Join(
 		sessions,
-		"rollout-2026-01-01T00-00-02-hidden-subagent.jsonl",
+		"rollout-2026-01-01T00-00-02-killed-subagent.jsonl",
 	),
-		`{"type":"session_meta","payload":{"id":"hidden-subagent","cwd":"/work/kept"}}`,
+		`{"type":"session_meta","payload":{"id":"killed-subagent","cwd":"/work/kept"}}`,
 		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"delegated work"}]}}`,
 	)
 	writeLines(t, filepath.Join(codexRoot, "session_index.jsonl"),
@@ -177,10 +177,10 @@ func setupCodexStateFixture(t *testing.T) codexStateFixture {
 			TokensUsed:       99,
 		},
 		codexStateThread{
-			ID: "hidden-subagent",
+			ID: "killed-subagent",
 			RolloutPath: filepath.Join(
 				sessions,
-				"rollout-2026-01-01T00-00-02-hidden-subagent.jsonl",
+				"rollout-2026-01-01T00-00-02-killed-subagent.jsonl",
 			),
 			CWD:          "/work/kept",
 			Title:        "delegated work",
@@ -232,14 +232,14 @@ func codexRows(t *testing.T, database *store.Store) []compose.Row {
 	if err != nil {
 		t.Fatalf("CxNames() error = %v", err)
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
-		t.Fatalf("HiddenChats() error = %v", err)
+		t.Fatalf("KilledChats() error = %v", err)
 	}
 	output := compose.Compose(compose.Input{
 		Rollouts: rollouts,
 		CxNames:  names,
-		Hidden:   hidden,
+		Killed:   killed,
 		Options:  compose.Options{View: compose.AllView},
 	})
 	codex := make([]compose.Row, 0, len(output.Rows))
@@ -296,12 +296,12 @@ func TestCodexStateStoreDrivesListingAndNames(t *testing.T) {
 	if withFile.Size <= 0 || withFile.PromptCount != 2 || !withFile.UserThread {
 		t.Fatalf("file-thread row = %#v, want file-derived size and prompts", withFile)
 	}
-	subagent, found, err := database.Rollout(ctx, "hidden-subagent")
+	subagent, found, err := database.Rollout(ctx, "killed-subagent")
 	if err != nil || !found {
-		t.Fatalf("hidden-subagent Rollout() found = %v, error = %v", found, err)
+		t.Fatalf("killed-subagent Rollout() found = %v, error = %v", found, err)
 	}
 	if subagent.UserThread {
-		t.Fatal("the state store classified hidden-subagent as a subagent; it is still listed")
+		t.Fatal("the state store classified killed-subagent as a subagent; it is still listed")
 	}
 
 	names, err := database.CxNames(ctx)
@@ -730,7 +730,7 @@ func setupMachineSpawnedFixture(t *testing.T) string {
 
 // THE TWIN REGRESSION. A workflow's verify twins used to list as two of the
 // owner's own Codex chats, so hiding one left its identical sibling sitting in
-// the picker and the hide looked like it had "come back". They are background
+// the picker and the kill looked like it had "come back". They are background
 // work and the entry point says so; the chats around them stay listed.
 func TestMachineSpawnedCodexThreadsAreBackground(t *testing.T) {
 	setupMachineSpawnedFixture(t)

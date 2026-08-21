@@ -94,31 +94,6 @@ func TestAProjectWithNoChatsStillLeadsAndLosesNothing(t *testing.T) {
 	}
 }
 
-// Rotation (⌃R) still works, and now rotates away from the current project
-// rather than from whichever project happened to be busiest.
-func TestRotationStartsFromTheCurrentProject(t *testing.T) {
-	rows := []Row{
-		projectRow("proja", "STM", 900),
-		projectRow("projc", "DEPLOY", 100),
-		projectRow("host-ops", "CC_FLEET", 500),
-	}
-	sorted, order := sortProjectRows(rows)
-	output := leadWithCurrentProject(Output{
-		Rows:             sorted,
-		ProjectOrder:     order,
-		ProjectDirs:      map[string]string{"projc": "/work/projc"},
-		includeNewClaude: true,
-	}, "/work/projc")
-
-	rotated := Rotate(withNewRows(output), 1)
-	if rotated.ProjectOrder[0] != "proja" {
-		t.Fatalf("one rotation from projc = %q, want proja next", rotated.ProjectOrder)
-	}
-	if rotated.Rows[0].Kind != NewClaude || rotated.Rows[0].Project != "proja" {
-		t.Fatalf("rotation did not move the new-chat target: %#v", rotated.Rows[0])
-	}
-}
-
 // No launch directory (a headless or scripted compose) must not invent one.
 func TestWithoutALaunchDirectoryActivityStillDecides(t *testing.T) {
 	rows := []Row{

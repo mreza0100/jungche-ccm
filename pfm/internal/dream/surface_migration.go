@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/dream/lane"
 	"hostops/pfm/internal/dream/organ"
 )
@@ -333,7 +334,7 @@ func renderLegacySurfaceMap(
 
 func hookSurfaceBlob(gitRoot, relative string) (string, error) {
 	revision := "HEAD:" + relative
-	command := exec.Command("git", "-C", gitRoot, "rev-parse", "--verify", "-q", revision)
+	command := exec.Command(deps.Executable("git"), "-C", gitRoot, "rev-parse", "--verify", "-q", revision)
 	command.Env = hookGitReadEnvironment()
 	var stderr bytes.Buffer
 	command.Stderr = &stderr

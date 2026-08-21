@@ -3,8 +3,8 @@ package mcpserv
 
 // LSInput selects the fleet view returned by chat_ls.
 type LSInput struct {
-	All     bool   `json:"all,omitempty" jsonschema:"include hidden, background, and uncapped rows"`
-	Hidden  bool   `json:"hidden,omitempty" jsonschema:"return hidden rows only"`
+	All     bool   `json:"all,omitempty" jsonschema:"include killed, background, and uncapped rows"`
+	Killed  bool   `json:"killed,omitempty" jsonschema:"return killed rows only"`
 	Project string `json:"project,omitempty" jsonschema:"case-insensitive project or directory filter"`
 }
 
@@ -19,7 +19,7 @@ type ChatRow struct {
 	Name    string `json:"name"`
 	Account int    `json:"account,omitempty"`
 	Kind    string `json:"kind"`
-	Hidden  bool   `json:"hidden,omitempty"`
+	Killed  bool   `json:"killed,omitempty"`
 	Socket  string `json:"socket,omitempty"`
 	Pane    string `json:"pane,omitempty"`
 }
@@ -28,7 +28,7 @@ type ChatRow struct {
 type LSOutput struct {
 	Rows        []ChatRow `json:"rows"`
 	Count       int       `json:"count"`
-	HiddenCount int       `json:"hidden_count"`
+	KilledCount int       `json:"killed_count"`
 }
 
 // ResolveInput selects one chat.sh resolution namespace.
@@ -198,20 +198,25 @@ type LastOutput struct {
 
 // StatusInput selects one chat for headless status inspection.
 type StatusInput struct {
-	Target string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
+	Target  string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
+	Summary bool   `json:"summary,omitempty" jsonschema:"summarize the last human exchange; off by default"`
+	Engine  string `json:"engine,omitempty" jsonschema:"summary engine override: claude or codex"`
+	Model   string `json:"model,omitempty" jsonschema:"summary model override"`
 }
 
 type StatusOutput struct {
-	Name        string  `json:"name"`
-	State       string  `json:"state"`
-	IdleSeconds int64   `json:"idle_seconds"`
-	Engine      string  `json:"engine"`
-	Model       string  `json:"model,omitempty"`
-	CWD         string  `json:"cwd,omitempty"`
-	SessionID   string  `json:"session_id,omitempty"`
-	Socket      string  `json:"socket,omitempty"`
-	ContextPct  float64 `json:"context_pct,omitempty"`
-	Last        string  `json:"last,omitempty"`
+	Name          string  `json:"name"`
+	State         string  `json:"state"`
+	IdleSeconds   int64   `json:"idle_seconds"`
+	Engine        string  `json:"engine"`
+	Model         string  `json:"model,omitempty"`
+	CWD           string  `json:"cwd,omitempty"`
+	SessionID     string  `json:"session_id,omitempty"`
+	Socket        string  `json:"socket,omitempty"`
+	ContextPct    float64 `json:"context_pct,omitempty"`
+	Last          string  `json:"last,omitempty"`
+	Summary       string  `json:"summary,omitempty"`
+	SummaryCached bool    `json:"summary_cached,omitempty"`
 }
 
 // TargetInput is shared by chat actions whose CLI form takes one target.
@@ -246,7 +251,7 @@ type ActionOutput struct {
 	Message string `json:"message,omitempty"`
 }
 
-type HideInput struct {
+type KillInput struct {
 	Target string `json:"target"`
 	Exit   bool   `json:"exit,omitempty"`
 }

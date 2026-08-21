@@ -50,61 +50,64 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows              []compose.Row
-	search            []string
-	groups            []projectGroup
-	nameGroups        map[int]nameGroup
-	order             []int
-	filtered          []int
-	cursor            int
-	width             int
-	height            int
-	nowNS             int64
-	view              compose.View
-	hiddenCount       int
-	suppressedCount   int
-	refreshing        bool
-	primary           int
-	initialPrimary    int
-	accountIDs        []int
-	cache1H           bool
-	rotation          int
-	tab               Tab
-	statsSubtab       StatsSubtab
-	statsFocus        StatsFocus
-	statsSort         StatsSort
-	statsCursor       int
-	statsDockerCursor int
-	stats             pfmstats.Snapshot
-	statsSampler      StatsSampler
-	statsGeneration   uint64
-	statsLoading      bool
-	statsError        string
-	skyEnabled        bool
-	skyEvents         []sky.Event
-	mergeNewChat      bool
-	actionIndex       int
-	newChatEngine     string
+	rows                []compose.Row
+	search              []string
+	groups              []projectGroup
+	nameGroups          map[int]nameGroup
+	order               []int
+	filtered            []int
+	cursor              int
+	width               int
+	height              int
+	nowNS               int64
+	view                compose.View
+	killedCount         int
+	suppressedCount     int
+	refreshing          bool
+	primary             int
+	initialPrimary      int
+	accountIDs          []int
+	codexPrimary        int
+	initialCodexPrimary int
+	codexAccountIDs     []int
+	cache1H             bool
+	tab                 Tab
+	statsSubtab         StatsSubtab
+	statsFocus          StatsFocus
+	statsSort           StatsSort
+	statsCursor         int
+	statsDockerCursor   int
+	stats               pfmstats.Snapshot
+	statsSampler        StatsSampler
+	statsGeneration     uint64
+	statsLoading        bool
+	statsError          string
+	skyEnabled          bool
+	skyEvents           []sky.Event
+	mergeNewChat        bool
+	actionIndex         int
+	newChatEngine       string
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
 	query         textinput.Model
 	outcome       OutcomeKind
 	outcomeRow    compose.Row
-	initialHidden map[string]bool
-	hideChanges   map[string]HideChange
-	// applyHide performs a ⌃X the instant it is typed. hideStatus is the
+	initialKilled map[string]bool
+	killChanges   map[string]KillChange
+	// applyKill performs a ⌃X the instant it is typed. killStatus is the
 	// receipt: what landed, or why the keystroke was refused. A ⌃X NEVER goes
-	// silent — a keystroke that appears to do nothing reads as a hide that
+	// silent — a keystroke that appears to do nothing reads as a kill that
 	// took, and the row's return on the next open reads as data loss.
-	applyHide  func(HideChange) error
-	hideStatus string
+	applyKill  func(KillChange) error
+	killStatus string
 }
 
 // NewModel builds the first frame entirely from cached state.
 func NewModel(snapshot Snapshot) Model {
 	configureStyles(theme.Load(snapshot.Theme))
 	configuredAccountEmojis = copyEmojis(snapshot.AccountEmojis)
+	configuredCodexAccountEmojis = copyEmojis(snapshot.CodexAccountEmojis)
 	input := textinput.New()
 	input.Prompt = "find › "
 	input.Placeholder = "type project or name"
@@ -114,32 +117,34 @@ func NewModel(snapshot Snapshot) Model {
 	_ = input.Focus()
 
 	model := Model{
-		rows:            append([]compose.Row(nil), snapshot.Rows...),
-		width:           positiveOr(snapshot.Width, defaultWidth),
-		height:          positiveOr(snapshot.Height, defaultHeight),
-		nowNS:           snapshot.NowNS,
-		view:            snapshot.View,
-		hiddenCount:     snapshot.HiddenCount,
-		suppressedCount: snapshot.SuppressedCount,
-		refreshing:      snapshot.Refreshing,
-		primary:         validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		initialPrimary:  validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		accountIDs:      normalizedAccountIDs(snapshot.AccountIDs),
-		cache1H:         snapshot.Cache1H,
-		rotation:        snapshot.Rotation,
-		query:           input,
-		initialHidden:   make(map[string]bool),
-		hideChanges:     make(map[string]HideChange),
-		applyHide:       snapshot.ApplyHide,
-		statsSampler:    snapshot.StatsSampler,
-		skyEnabled:      !snapshot.NoSky,
-		activity:        snapshot.Activity,
-		mergeNewChat:    snapshot.MergeNewChat,
-		newChatEngine:   "claude",
+		rows:                append([]compose.Row(nil), snapshot.Rows...),
+		width:               positiveOr(snapshot.Width, defaultWidth),
+		height:              positiveOr(snapshot.Height, defaultHeight),
+		nowNS:               snapshot.NowNS,
+		view:                snapshot.View,
+		killedCount:         snapshot.KilledCount,
+		suppressedCount:     snapshot.SuppressedCount,
+		refreshing:          snapshot.Refreshing,
+		primary:             validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		initialPrimary:      validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		accountIDs:          normalizedAccountIDs(snapshot.AccountIDs),
+		codexPrimary:        validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
+		initialCodexPrimary: validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
+		codexAccountIDs:     normalizedAccountIDs(snapshot.CodexAccountIDs),
+		cache1H:             snapshot.Cache1H,
+		query:               input,
+		initialKilled:       make(map[string]bool),
+		killChanges:         make(map[string]KillChange),
+		applyKill:           snapshot.ApplyKill,
+		statsSampler:        snapshot.StatsSampler,
+		skyEnabled:          !snapshot.NoSky,
+		activity:            snapshot.Activity,
+		mergeNewChat:        snapshot.MergeNewChat,
+		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs),
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
-			model.initialHidden[row.ID] = row.Hidden
+			model.initialKilled[row.ID] = row.Killed
 		}
 	}
 	model.rebuild(snapshot.InitialCursorID, 0)
@@ -147,6 +152,14 @@ func NewModel(snapshot Snapshot) Model {
 }
 
 var configuredAccountEmojis map[int]string
+var configuredCodexAccountEmojis map[int]string
+
+func defaultNewChatEngine(claude, codex []int) string {
+	if len(normalizedAccountIDs(claude)) != 0 || len(normalizedAccountIDs(codex)) == 0 {
+		return "claude"
+	}
+	return "codex"
+}
 
 func copyEmojis(values map[int]string) map[int]string {
 	if len(values) == 0 {
@@ -166,22 +179,22 @@ func positiveOr(value, fallback int) int {
 	return fallback
 }
 
-func validAccount(account int, rosters ...[]int) int {
-	ids := []int{1, 2, 3}
-	if len(rosters) != 0 {
-		ids = normalizedAccountIDs(rosters[0])
-	}
+func validAccount(account int, roster []int) int {
+	ids := normalizedAccountIDs(roster)
 	for _, id := range ids {
 		if account == id {
 			return account
 		}
+	}
+	if len(ids) == 0 {
+		return 0
 	}
 	return ids[0]
 }
 
 func normalizedAccountIDs(values []int) []int {
 	if len(values) == 0 {
-		return []int{1, 2, 3}
+		return nil
 	}
 	result := make([]int, 0, len(values))
 	seen := make(map[int]bool, len(values))
@@ -190,9 +203,6 @@ func normalizedAccountIDs(values []int) []int {
 			seen[value] = true
 			result = append(result, value)
 		}
-	}
-	if len(result) == 0 {
-		return []int{1, 2, 3}
 	}
 	return result
 }
@@ -285,29 +295,14 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model.updateStatsKey(key)
 	}
 	switch key {
-	case "ctrl+t":
-		model.outcome = OutcomeReload
-		return model, tea.Quit
-	case "ctrl+r":
-		follow := model.selectedKey()
-		if count := len(model.groups); count > 0 {
-			model.rotation = (model.rotation + 1) % count
-		}
-		model.rebuild(follow, model.cursor)
-		return model, nil
 	case "ctrl+x":
-		model.toggleHidden()
+		model.toggleKilled()
 		return model, nil
 	case "ctrl+e":
 		model.cache1H = !model.cache1H
 		return model, nil
 	case "ctrl+s":
-		for index, account := range model.accountIDs {
-			if account == model.primary {
-				model.primary = model.accountIDs[(index+1)%len(model.accountIDs)]
-				break
-			}
-		}
+		model.cycleSelectedAccount()
 		return model, nil
 	// ⌃O, not ⌃B: the picker always runs inside tmux and C-b is tmux's PREFIX,
 	// so tmux swallowed the keystroke before the picker ever saw it. Any
@@ -329,28 +324,28 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 					row.Kind = compose.NewClaude
 					row.Name = "New Claude chat"
 				}
+				row.Account = model.accountForKind(row.Kind)
 				model.outcome = OutcomeSelected
 				model.outcomeRow = row
 				return model, tea.Quit
 			}
 			switch model.actionIndex {
 			case 1:
-				model.outcome = OutcomeReload
-				model.outcomeRow = row
-				return model, tea.Quit
-			case 2:
 				if isLive(row.Kind) {
 					model.outcome = OutcomeReboot
 					model.outcomeRow = row
 					return model, tea.Quit
 				}
-			case 3:
+			case 2:
 				model.cache1H = !model.cache1H
 				return model, nil
-			case 4:
-				model.toggleHidden()
+			case 3:
+				model.toggleKilled()
 				return model, nil
 			default:
+				if row.Kind == compose.NewClaude || row.Kind == compose.NewCodex {
+					row.Account = model.accountForKind(row.Kind)
+				}
 				model.outcome = OutcomeSelected
 				model.outcomeRow = row
 				return model, tea.Quit
@@ -358,14 +353,14 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return model, nil
 	case "up", "ctrl+p":
-		if model.cursor > 0 {
-			model.cursor--
+		if count := len(model.filtered); count > 0 {
+			model.cursor = (model.cursor - 1 + count) % count
 		}
 		model.actionIndex = 0
 		return model, nil
 	case "down", "ctrl+n":
-		if model.cursor+1 < len(model.filtered) {
-			model.cursor++
+		if count := len(model.filtered); count > 0 {
+			model.cursor = (model.cursor + 1) % count
 		}
 		model.actionIndex = 0
 		return model, nil
@@ -438,15 +433,51 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
 		(row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-		if direction > 0 {
+		if direction > 0 && len(model.codexAccountIDs) != 0 {
 			model.newChatEngine = "codex"
-		} else {
+		} else if direction < 0 && len(model.accountIDs) != 0 {
 			model.newChatEngine = "claude"
 		}
 		return model, nil
 	}
-	model.actionIndex = (model.actionIndex + 5 + direction) % 5
+	model.actionIndex = (model.actionIndex + len(carouselActions) + direction) % len(carouselActions)
 	return model, nil
+}
+
+func (model *Model) cycleSelectedAccount() {
+	row, ok := model.selectedRow()
+	if !ok {
+		return
+	}
+	engine := compose.EngineForKind(row.Kind)
+	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+		engine = model.newChatEngine
+	}
+	if engine == "cx" || engine == "codex" {
+		model.codexPrimary = nextAccount(model.codexPrimary, model.codexAccountIDs)
+		return
+	}
+	model.primary = nextAccount(model.primary, model.accountIDs)
+}
+
+func nextAccount(current int, ids []int) int {
+	if len(ids) == 0 {
+		return 0
+	}
+	for index, id := range ids {
+		if id == current {
+			return ids[(index+1)%len(ids)]
+		}
+	}
+	return ids[0]
+}
+
+func (model Model) accountForKind(kind compose.Kind) int {
+	engine := compose.EngineForKind(kind)
+	if engine == "cx" || engine == "codex" {
+		return model.codexPrimary
+	}
+	return model.primary
 }
 
 func (model Model) updateStatsKey(key string) (tea.Model, tea.Cmd) {
@@ -634,27 +665,27 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 	model.rows = append(model.rows[:0], snapshot.Rows...)
 	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View
-	model.hiddenCount = snapshot.HiddenCount
+	model.killedCount = snapshot.KilledCount
 	model.suppressedCount = snapshot.SuppressedCount
 	model.refreshing = snapshot.Refreshing
 	for index := range model.rows {
 		id := model.rows[index].ID
 		if id != "" {
-			if _, found := model.initialHidden[id]; !found {
-				model.initialHidden[id] = model.rows[index].Hidden
+			if _, found := model.initialKilled[id]; !found {
+				model.initialKilled[id] = model.rows[index].Killed
 			}
 		}
-		if change, ok := model.hideChanges[id]; ok {
-			if model.rows[index].Hidden != change.Hidden {
-				model.adjustHiddenCount(change.Hidden)
+		if change, ok := model.killChanges[id]; ok {
+			if model.rows[index].Killed != change.Killed {
+				model.adjustKilledCount(change.Killed)
 			}
-			model.rows[index].Hidden = change.Hidden
+			model.rows[index].Killed = change.Killed
 		}
 	}
 	model.rebuild(follow, fallback)
 }
 
-func (model *Model) toggleHidden() {
+func (model *Model) toggleKilled() {
 	if len(model.filtered) == 0 {
 		return
 	}
@@ -662,34 +693,34 @@ func (model *Model) toggleHidden() {
 	index := model.filtered[model.cursor]
 	row := model.rows[index]
 	// Refusals are SPOKEN, never silent: a swallowed ⌃X looks identical to a
-	// hide that landed, and the row's return on the next open then reads as
+	// kill that landed, and the row's return on the next open then reads as
 	// the store losing the order.
-	// A booting row's ID is its crumbless socket, not a chat identity — a hide
+	// A booting row's ID is its crumbless socket, not a chat identity — a kill
 	// keyed by it stops meaning anything once the crumb appears (compose's
-	// applyHide carries the same exclusion on the read side).
-	// A "_HIDE…" label is refused for a different reason: the row IS hideable,
-	// but its label is what hides it, so an unhide written here would delete a
-	// store row that is not holding it down and the chat would stay hidden
-	// anyway. Renaming it is the unhide.
+	// applyKill carries the same exclusion on the read side).
+	// A "_KILL…" label is refused for a different reason: the row IS killable,
+	// but its label is what kills it, so an unkill written here would delete a
+	// store row that is not holding it down and the chat would stay killed
+	// anyway. Renaming it is the unkill.
 	switch {
 	case row.Kind == compose.Booting:
-		model.hideStatus = "⌃X refused — " + row.Name +
+		model.killStatus = "⌃X refused — " + row.Name +
 			" is still booting (no identity yet); retry once it settles"
 		return
 	case row.Kind == compose.LiveSplit:
-		model.hideStatus = "⌃X refused — split live window; hide its chats individually"
+		model.killStatus = "⌃X refused — split live window; kill its chats individually"
 		return
-	case row.NameHidden:
-		model.hideStatus = "⌃X refused — hidden by its _HIDE label; rename it to unhide"
+	case row.NameKilled:
+		model.killStatus = "⌃X refused — killed by its _KILL label; rename it to unkill"
 		return
 	case row.ID == "":
-		model.hideStatus = "⌃X refused — " + row.Name + " is not a chat yet"
+		model.killStatus = "⌃X refused — " + row.Name + " is not a chat yet"
 		return
 	}
-	change := HideChange{
+	change := KillChange{
 		ID:     row.ID,
 		Engine: rowEngine(row.Kind),
-		Hidden: !row.Hidden,
+		Killed: !row.Killed,
 		Socket: row.Socket,
 		Live:   isLive(row.Kind),
 		Name:   row.Name,
@@ -699,30 +730,30 @@ func (model *Model) toggleHidden() {
 	// launched something ever applied it: closing the list the natural way
 	// discarded every mark that had just been typed.
 	// A nil applier means nothing can persist this keystroke: refuse rather
-	// than paint a cosmetic hide the next open would take back.
-	if model.applyHide == nil {
-		model.hideStatus = "⌃X refused — this picker cannot write hides"
+	// than paint a cosmetic kill the next open would take back.
+	if model.applyKill == nil {
+		model.killStatus = "⌃X refused — this picker cannot write kills"
 		return
 	}
-	if err := model.applyHide(change); err != nil {
-		model.hideStatus = fmt.Sprintf("⌃X failed — %s: %v", change.Name, err)
+	if err := model.applyKill(change); err != nil {
+		model.killStatus = fmt.Sprintf("⌃X failed — %s: %v", change.Name, err)
 		return
 	}
 	switch {
-	case change.Hidden && change.Live:
-		model.hideStatus = "ended + hidden — " + change.Name
-	case change.Hidden:
-		model.hideStatus = "hidden — " + change.Name
+	case change.Killed && change.Live:
+		model.killStatus = "ended + killed — " + change.Name
+	case change.Killed:
+		model.killStatus = "killed — " + change.Name
 	default:
-		model.hideStatus = "unhidden — " + change.Name
+		model.killStatus = "unkilled — " + change.Name
 	}
 	follow := rowKey(row)
-	model.rows[index].Hidden = change.Hidden
-	model.adjustHiddenCount(change.Hidden)
-	model.hideChanges[change.ID] = change
+	model.rows[index].Killed = change.Killed
+	model.adjustKilledCount(change.Killed)
+	model.killChanges[change.ID] = change
 	// The chat was running and has just been ended: demote the row rather than
 	// leave it claiming a server that no longer exists.
-	if change.Hidden && change.Live {
+	if change.Killed && change.Live {
 		model.rows[index] = demoteToResumable(model.rows[index])
 	}
 	model.rebuild(follow, fallback)
@@ -745,11 +776,11 @@ func demoteToResumable(row compose.Row) compose.Row {
 	return row
 }
 
-func (model *Model) adjustHiddenCount(hidden bool) {
-	if hidden {
-		model.hiddenCount++
-	} else if model.hiddenCount > 0 {
-		model.hiddenCount--
+func (model *Model) adjustKilledCount(killed bool) {
+	if killed {
+		model.killedCount++
+	} else if model.killedCount > 0 {
+		model.killedCount--
 	}
 }
 
@@ -783,16 +814,7 @@ func (model *Model) rebuild(follow string, fallback int) {
 func (model *Model) rebuildOrder() {
 	model.order = model.order[:0]
 	model.nameGroups = make(map[int]nameGroup)
-	if len(model.groups) == 0 {
-		model.rotation = 0
-		return
-	}
-	model.rotation %= len(model.groups)
-	if model.rotation < 0 {
-		model.rotation += len(model.groups)
-	}
-	for offset := range model.groups {
-		group := model.groups[(model.rotation+offset)%len(model.groups)]
+	for _, group := range model.groups {
 		members := make(map[string][]int)
 		for _, index := range group.indices {
 			row := model.rows[index]
@@ -808,7 +830,8 @@ func (model *Model) rebuildOrder() {
 			if !model.visibleInView(model.rows[index]) {
 				continue
 			}
-			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex {
+			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex &&
+				len(model.accountIDs) != 0 {
 				continue
 			}
 			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
@@ -907,10 +930,10 @@ func (model Model) visibleInView(row compose.Row) bool {
 	switch model.view {
 	case compose.AllView:
 		return true
-	case compose.HiddenView:
-		return row.Hidden
+	case compose.KilledView:
+		return row.Killed
 	default:
-		return !row.Hidden
+		return !row.Killed
 	}
 }
 
@@ -962,34 +985,34 @@ func isLive(kind compose.Kind) bool {
 // PrimaryAccount to what the picker opened with, since a ⌃S account switch is
 // only a pending intent until the picker exits deliberately.
 //
-// HideChanges survives a cancel: it is no longer a request to apply anything,
+// KillChanges survives a cancel: it is no longer a request to apply anything,
 // it is the RECEIPT of what ⌃X already did while the picker was open. Esc
-// closes the list; it does not resurrect a chat that was hidden and killed.
+// closes the list; it does not resurrect a chat that was killed and killed.
 func (model Model) Result() Outcome {
 	if model.outcome == OutcomeCancelled {
 		return Outcome{
-			Kind:           OutcomeCancelled,
-			PrimaryAccount: model.initialPrimary,
-			Cache1H:        model.cache1H,
-			Rotation:       model.rotation,
-			Query:          model.query.Value(),
-			HideChanges:    model.appliedChanges(),
+			Kind:                 OutcomeCancelled,
+			PrimaryAccount:       model.initialPrimary,
+			ClaudePrimaryAccount: model.initialPrimary,
+			Cache1H:              model.cache1H,
+			Query:                model.query.Value(),
+			KillChanges:          model.appliedChanges(),
 		}
 	}
 	return Outcome{
-		Kind:           model.outcome,
-		Row:            model.outcomeRow,
-		PrimaryAccount: model.primary,
-		Cache1H:        model.cache1H,
-		Rotation:       model.rotation,
-		Query:          model.query.Value(),
-		HideChanges:    model.appliedChanges(),
+		Kind:                 model.outcome,
+		Row:                  model.outcomeRow,
+		PrimaryAccount:       model.accountForKind(model.outcomeRow.Kind),
+		ClaudePrimaryAccount: model.primary,
+		Cache1H:              model.cache1H,
+		Query:                model.query.Value(),
+		KillChanges:          model.appliedChanges(),
 	}
 }
 
-func (model Model) appliedChanges() []HideChange {
-	changes := make([]HideChange, 0, len(model.hideChanges))
-	for _, change := range model.hideChanges {
+func (model Model) appliedChanges() []KillChange {
+	changes := make([]KillChange, 0, len(model.killChanges))
+	for _, change := range model.killChanges {
 		changes = append(changes, change)
 	}
 	sort.Slice(changes, func(left, right int) bool {
@@ -1008,7 +1031,6 @@ func (model Model) VisibleRows() []compose.Row {
 }
 
 func (model Model) Cursor() int           { return model.cursor }
-func (model Model) Rotation() int         { return model.rotation }
 func (model Model) Query() string         { return model.query.Value() }
 func (model Model) PrimaryAccount() int   { return model.primary }
 func (model Model) Cache1H() bool         { return model.cache1H }

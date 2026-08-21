@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,7 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 	for _, path := range []string{canonical, secondary} {
 		for _, command := range []string{
 			home + "/.local/bin/pfm chat group hook",
-			home + "/.local/bin/pfm internal clear-hide",
+			home + "/.local/bin/pfm internal clear-kill",
 		} {
 			if got := hookCommandCount(t, readFixture(t, path), "", command); got != 1 {
 				t.Fatalf("%s has %d copies of %q, want exactly one\n%s", path, got, command, readFixture(t, path))
@@ -57,8 +58,8 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 
 	codex := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
 	if !strings.Contains(codex, `"matcher": "startup|resume|clear"`) ||
-		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-hide") {
-		t.Fatalf("Codex clear-hide startup/resume/clear fixture regressed:\n%s", codex)
+		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-kill") {
+		t.Fatalf("Codex clear-kill startup/resume/clear fixture regressed:\n%s", codex)
 	}
 }
 
@@ -86,7 +87,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
 		{"UserPromptSubmit", "", prefix + " chat group hook"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
-		{"SessionEnd", "", prefix + " internal clear-hide"},
+		{"SessionStart", "", prefix + " internal launcher-repair"},
+		{"SessionEnd", "", prefix + " internal clear-kill"},
 	} {
 		if got := hookCommandCount(t, string(updated), hook.event, hook.command); got != 1 {
 			t.Fatalf("%s %s count=%d, want 1\n%s", hook.event, hook.command, got, updated)
@@ -95,8 +97,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 7 {
-		t.Fatalf("owned hooks=%d, want 7: %#v", len(owned), owned)
+	if len(owned) != 8 {
+		t.Fatalf("owned hooks=%d, want 8: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -187,7 +189,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
       {"type":"command","command":"`+pfm+` usage-hook"}
     ]}],
     "SessionEnd": [{"matcher":"","hooks":[
-      {"type":"command","command":"`+pfm+` internal clear-hide"}
+      {"type":"command","command":"`+pfm+` internal clear-kill"}
     ]}]
   }
 }`)
@@ -227,6 +229,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 1 {
 			t.Fatalf("managed secondary settings missing new installer hook %q: count=%d\n%s", command, got, secondary)
@@ -258,7 +261,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	for event, command := range map[string]string{
 		"PostToolUse":      pfm + " dream hook agent-inject",
 		"UserPromptSubmit": pfm + " chat group hook",
-		"SessionEnd":       pfm + " internal clear-hide",
+		"SessionEnd":       pfm + " internal clear-kill",
 	} {
 		if got := hookCommandCount(t, settings, event, command); got != 1 {
 			t.Fatalf("uninstall deleted manually wired %s hook: count=%d want 1\n%s", event, got, settings)
@@ -274,11 +277,12 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	for _, command := range []string{
 		pfm + " chat group hook",
 		pfm + " usage-hook",
-		pfm + " internal clear-hide",
+		pfm + " internal clear-kill",
 		pfm + " dream hook agent-inject",
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 0 {
 			t.Fatalf("uninstall retained installer-owned secondary hook %q: count=%d\n%s", command, got, secondary)
@@ -317,4 +321,43 @@ func hookCommandCount(t *testing.T, raw, event, wanted string) int {
 		}
 	}
 	return count
+}
+
+func TestUninstallRefusesToStrandOwnedHookInInvalidCodexJSON(t *testing.T) {
+	home := t.TempDir()
+	managed := filepath.Join(home, ".local", "share", "pfm", "install")
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+	writeFixture(t, hooksPath, "{broken\n")
+	expected := codexHookTemplate(home)
+	physical := physicalSettingsPath(hooksPath)
+	encoded, err := encodeSettingsHookOwnership(map[string]settingsHookCounts{
+		physical: {{Event: expected.Event, Matcher: expected.Matcher, Command: expected.Command}: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(managed, "settings-hook-ownership.json"), string(encoded))
+	installer := engine{options: Options{Mode: ModeUninstall, Home: home}, managedRoot: managed}
+	err = installer.wireCodexHooks()
+	if err == nil || !strings.Contains(err.Error(), "refuse to strand owned hooks in invalid Codex hooks JSON") {
+		t.Fatalf("wireCodexHooks error=%v", err)
+	}
+}
+
+func TestCodexHookWiringIteratesConfiguredHomes(t *testing.T) {
+	home := t.TempDir()
+	homes := []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-2")}
+	installer := engine{
+		options: Options{Mode: ModeApply, Home: home, CodexHomes: homes, Stdout: io.Discard},
+		apply:   true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"),
+	}
+	if err := installer.wireCodexHooks(); err != nil {
+		t.Fatal(err)
+	}
+	for _, codexHome := range homes {
+		raw := readFixture(t, filepath.Join(codexHome, "hooks.json"))
+		if got := hookCommandCount(t, raw, "SessionStart", home+"/.local/bin/pfm internal clear-kill"); got != 1 {
+			t.Fatalf("%s has %d canonical clear-kill hooks, want one\n%s", codexHome, got, raw)
+		}
+	}
 }
