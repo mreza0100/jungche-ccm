@@ -362,3 +362,18 @@ func Last(entries []Entry, role string) (Entry, bool) {
 	}
 	return Entry{}, false
 }
+
+// LastExchange isolates the newest human turn and every visible record that
+// followed it. The response may be empty or end in a tool call: callers use
+// that shape to label work as partial instead of pretending it was answered.
+func LastExchange(entries []Entry) (prompt, response []Entry, ok bool) {
+	for index := len(entries) - 1; index >= 0; index-- {
+		if entries[index].Role != RoleUser {
+			continue
+		}
+		prompt = append([]Entry(nil), entries[index])
+		response = append([]Entry(nil), entries[index+1:]...)
+		return prompt, response, true
+	}
+	return nil, nil, false
+}

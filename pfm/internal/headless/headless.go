@@ -41,16 +41,28 @@ type Chat struct {
 // Status is the machine-readable verdict. Field names are a contract — a
 // consumer scripts against them.
 type Status struct {
-	Name        string  `json:"name"`
-	State       string  `json:"state"`
-	IdleSeconds int64   `json:"idle_seconds"`
-	Engine      string  `json:"engine"`
-	Model       string  `json:"model,omitempty"`
-	CWD         string  `json:"cwd,omitempty"`
-	SessionID   string  `json:"session_id,omitempty"`
-	Socket      string  `json:"socket,omitempty"`
-	ContextPct  float64 `json:"context_pct,omitempty"`
-	Last        string  `json:"last,omitempty"`
+	Name          string  `json:"name"`
+	State         string  `json:"state"`
+	IdleSeconds   int64   `json:"idle_seconds"`
+	Engine        string  `json:"engine"`
+	Model         string  `json:"model,omitempty"`
+	CWD           string  `json:"cwd,omitempty"`
+	SessionID     string  `json:"session_id,omitempty"`
+	Socket        string  `json:"socket,omitempty"`
+	ContextPct    float64 `json:"context_pct,omitempty"`
+	Last          string  `json:"last,omitempty"`
+	Summary       string  `json:"summary,omitempty"`
+	SummaryCached bool    `json:"summary_cached,omitempty"`
+}
+
+// SummaryLine is the human status suffix. Cached summaries say so at the
+// label, while structured output carries SummaryCached separately.
+func (status Status) SummaryLine() string {
+	label := "summary"
+	if status.SummaryCached {
+		label = "summary(cached)"
+	}
+	return label + ": " + status.Summary
 }
 
 // Alive reports whether the chat is a running seat, which is the only

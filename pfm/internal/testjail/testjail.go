@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"hostops/pfm/internal/deps"
 )
 
 // Run points TMPDIR at a base that is both SHORT and CANONICAL, then runs the
@@ -87,7 +89,7 @@ func ShortRoot(t *testing.T) string {
 // "broken pipe", which reads as the code under test closing the pipe rather
 // than as the harness being wrong about the platform.
 func PTYCommand(argv ...string) *exec.Cmd {
-	scriptBinary, err := exec.LookPath("script")
+	scriptBinary, err := deps.Resolve("script")
 	if err != nil {
 		scriptBinary = "script"
 	}

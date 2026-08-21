@@ -24,14 +24,18 @@ type CodexIDNameResolver func(threadID string) string
 
 // Dependencies supplies probe interfaces and process-local policy.
 type Dependencies struct {
-	ProcFS       ProcFS
-	Tmux         TmuxClient
-	TmuxBinary   string
-	TmuxTmpDir   string
-	Now          func() time.Time
-	CodexName    CodexNameResolver
-	CodexIDName  CodexIDNameResolver
-	CodexThread  CodexThreadResolver
+	ProcFS      ProcFS
+	Tmux        TmuxClient
+	TmuxBinary  string
+	TmuxTmpDir  string
+	Now         func() time.Time
+	CodexName   CodexNameResolver
+	CodexIDName CodexIDNameResolver
+	CodexThread CodexThreadResolver
+	// CodexRoots is the config-owned roster. Nil preserves the historical
+	// paths.CodexRoot singleton for direct callers; an empty non-nil slice
+	// means no configured Codex engine.
+	CodexRoots   []string
 	ClaudeBinary string
 	CodexBinary  string
 	LabelEmojis  []string
@@ -47,6 +51,7 @@ type Gatherer struct {
 	codexName    CodexNameResolver
 	codexIDName  CodexIDNameResolver
 	codexThread  CodexThreadResolver
+	codexRoots   []string
 	claudeBinary string
 	codexBinary  string
 	labelEmojis  []string
@@ -81,6 +86,12 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 			TmuxTmpDir: tmuxTmpDir,
 		}
 	}
+	codexRoots := dependencies.CodexRoots
+	if codexRoots == nil {
+		codexRoots = []string{resolved.CodexRoot}
+	} else {
+		codexRoots = append([]string{}, codexRoots...)
+	}
 	return &Gatherer{
 		paths:        resolved,
 		proc:         proc,
@@ -89,6 +100,7 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 		codexName:    dependencies.CodexName,
 		codexIDName:  dependencies.CodexIDName,
 		codexThread:  dependencies.CodexThread,
+		codexRoots:   codexRoots,
 		claudeBinary: dependencies.ClaudeBinary,
 		codexBinary:  dependencies.CodexBinary,
 		labelEmojis:  append([]string(nil), dependencies.LabelEmojis...),
@@ -146,9 +158,9 @@ func (gatherer *Gatherer) Gather(ctx context.Context) (Snapshot, error) {
 	})
 	group.Go(func() error {
 		var err error
-		codex, err = DetectCodexThreads(
+		codex, err = DetectCodexThreadsInRoots(
 			gatherer.proc,
-			gatherer.paths.CodexRoot,
+			gatherer.codexRoots,
 			tmuxProbe.Panes,
 			gatherer.codexThread,
 			gatherer.codexBinary,

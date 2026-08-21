@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -60,10 +61,11 @@ func (c *fakeCommands) View(_ context.Context, config, cwd string) error {
 }
 
 type fakeProcesses struct {
-	mu   sync.Mutex
-	rows []Process
-	dead map[int]bool
-	term []int
+	mu     sync.Mutex
+	rows   []Process
+	dead   map[int]bool
+	term   []int
+	parent string
 }
 
 func (p *fakeProcesses) Processes(context.Context) ([]Process, error) {
@@ -89,6 +91,7 @@ func (p *fakeProcesses) Kill(pid int) error {
 	p.dead[pid] = true
 	return nil
 }
+func (p *fakeProcesses) ParentComm(int) string { return p.parent }
 
 type fakeTmux struct{ socket string }
 
@@ -97,22 +100,42 @@ func (t fakeTmux) Attach(context.Context, string) error              { return ni
 
 func newTestOpener(t *testing.T, commands Commands, processes Processes, tmux Tmux) *Opener {
 	t.Helper()
+	home := filepath.Join(t.TempDir(), "home")
 	return New(Dependencies{
-		SIDDir: filepath.Join(t.TempDir(), "sid"), Home: filepath.Join(t.TempDir(), "home"),
+		SIDDir: filepath.Join(t.TempDir(), "sid"), Home: home,
+		Accounts: []Account{
+			{ID: 1},
+			{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")},
+			{ID: 3, ConfigDir: filepath.Join(home, ".cc", "3")},
+		},
 		Commands: commands, Processes: processes, Tmux: tmux, Stderr: &bytes.Buffer{},
 		GracePeriod: 10 * time.Millisecond, PollInterval: time.Millisecond,
 	})
 }
 
-func TestOpenIdleTakesOverAndResumesCurrentPrimary(t *testing.T) {
+func TestNewDoesNotInventAnAccountRoster(t *testing.T) {
+	opener := New(Dependencies{
+		Home: t.TempDir(), Commands: &fakeCommands{},
+		Processes: &fakeProcesses{}, Tmux: fakeTmux{},
+	})
+	if len(opener.accounts) != 0 {
+		t.Fatalf("New() accounts=%#v, want an empty config-owned roster", opener.accounts)
+	}
+	err := opener.Open(context.Background(), Request{ID: "fixture", CWD: "/work"})
+	if err == nil || !strings.Contains(err.Error(), "configured account roster is empty") {
+		t.Fatalf("Open() error=%v, want empty-roster failure", err)
+	}
+}
+
+func TestOpenStaleIdleRegistryRowResumesCurrentPrimary(t *testing.T) {
 	id := "11111111-1111-4111-8111-111111111111"
 	commands := &fakeCommands{rows: map[string][]byte{"": []byte(`[{"sessionId":"` + id + `","name":"worker","pid":42,"status":"idle"}]`)}}
-	processes := &fakeProcesses{rows: []Process{{PID: 42, Argv: []string{"claude", "--resume", id}}}, dead: map[int]bool{}}
+	processes := &fakeProcesses{rows: []Process{{PID: 42, Argv: []string{"claude", "--resume", id}}}, dead: map[int]bool{42: true}}
 	opener := newTestOpener(t, commands, processes, fakeTmux{})
 	if err := opener.Open(context.Background(), Request{ID: id, CWD: "/jail/project", PrimaryAccount: 2}); err != nil {
 		t.Fatal(err)
 	}
-	if len(processes.term) != 1 || processes.term[0] != 42 {
+	if len(processes.term) != 0 {
 		t.Fatalf("term=%v", processes.term)
 	}
 	if got := commands.resumes; len(got) != 1 || got[0] != filepath.Join(opener.home, ".cc", "2")+"|/jail/project|"+id {
@@ -120,10 +143,10 @@ func TestOpenIdleTakesOverAndResumesCurrentPrimary(t *testing.T) {
 	}
 }
 
-func TestOpenBusyAttachesWithoutResume(t *testing.T) {
+func TestOpenStaleBusyRegistryRowOpensAgentViewWithoutResume(t *testing.T) {
 	id := "22222222-2222-4222-8222-222222222222"
 	commands := &fakeCommands{rows: map[string][]byte{"": []byte(`[{"sessionId":"` + id + `","name":"busy","pid":43,"status":"busy"}]`)}}
-	processes := &fakeProcesses{rows: []Process{{PID: 43, Argv: []string{"claude", "--resume", id}}}, dead: map[int]bool{}}
+	processes := &fakeProcesses{rows: []Process{{PID: 43, Argv: []string{"claude", "--resume", id}}}, dead: map[int]bool{43: true}}
 	tmux := fakeTmux{}
 	opener := newTestOpener(t, commands, processes, tmux)
 	if err := opener.Open(context.Background(), Request{ID: id, CWD: "/jail"}); err != nil {
@@ -144,6 +167,55 @@ func TestOpenTmuxResidentAgentAttaches(t *testing.T) {
 	}
 	if len(commands.resumes) != 0 || len(commands.views) != 0 {
 		t.Fatalf("commands resume=%v view=%v", commands.resumes, commands.views)
+	}
+}
+
+func TestOpenLiveAgentOutsidePFMReturnsOneActionableLine(t *testing.T) {
+	id := "66666666-6666-4666-8666-666666666666"
+	commands := &fakeCommands{rows: map[string][]byte{"": []byte(`[{"sessionId":"` + id + `","name":"rough-seas","pid":46,"status":"busy"}]`)}}
+	processes := &fakeProcesses{
+		rows: []Process{{PID: 46, Argv: []string{"claude", "--resume", id}}},
+		dead: map[int]bool{}, parent: "codex-app-server",
+	}
+	var stderr bytes.Buffer
+	home := t.TempDir()
+	opener := New(Dependencies{
+		SIDDir: filepath.Join(home, "sid"), Home: home,
+		Accounts: []Account{{ID: 1}},
+		Commands: commands, Processes: processes, Tmux: fakeTmux{}, Stderr: &stderr,
+	})
+	err := opener.Open(context.Background(), Request{ID: id, CWD: "/jail"})
+	want := "⚙ rough-seas: running outside pfm (pid 46, parent codex-app-server) — no pane to attach; kill 46 and open the row to resume it in a pane"
+	if err == nil || err.Error() != want {
+		t.Fatalf("Open() error=%q, want %q", err, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("outside-pfm path emitted extra lines: %q", stderr.String())
+	}
+	if len(commands.views) != 0 || len(commands.resumes) != 0 || len(processes.term) != 0 {
+		t.Fatalf("outside-pfm path mutated process: views=%v resumes=%v term=%v", commands.views, commands.resumes, processes.term)
+	}
+}
+
+func TestSocketForPIDSuppressesPerSocketProbeFailures(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{"cc-dead-one", "cc-dead-two"} {
+		if err := os.WriteFile(filepath.Join(directory, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	binary := filepath.Join(t.TempDir(), "tmux")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	tmux := RealTmux{Binary: binary, Dir: directory, Stderr: &stderr}
+	socket, err := tmux.SocketForPID(context.Background(), 46)
+	if err != nil || socket != "" {
+		t.Fatalf("SocketForPID() socket=%q err=%v", socket, err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("dead socket probes leaked to operator: %q", stderr.String())
 	}
 }
 

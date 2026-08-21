@@ -8,7 +8,6 @@ import (
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/inject"
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
 )
@@ -25,18 +24,6 @@ type backend struct {
 	resolver   resolve.Resolver
 	operations SharedOperations
 	dispatch   Dispatch
-}
-
-func newBackend(warnings io.Writer) (*backend, error) {
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return nil, err
-	}
-	machine := pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
-	return newBackendConfigured(warnings, Runtime{
-		Paths: resolved, Accounts: machine.Accounts,
-		ClaudeBinary: machine.Claude.Binary, CodexBinary: machine.Codex.Binary,
-	})
 }
 
 func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error) {
@@ -110,8 +97,8 @@ func (current *backend) list(ctx context.Context, input LSInput) (LSOutput, erro
 // only a crumbless socket — so it has no stable identity for the MCP tool
 // contract to hand a caller; whoami/find/resume all key on an id this row
 // does not have one of. It stays excluded here until that identity exists,
-// the same reason the picker's ⌃X hide guard (ui/model.go) and compose's
-// applyHide refuse it too.
+// the same reason the picker's ⌃X kill guard (ui/model.go) and compose's
+// applyKill refuse it too.
 func excludedFromChatLS(kind compose.Kind) bool {
 	return kind == compose.NewClaude ||
 		kind == compose.NewCodex ||

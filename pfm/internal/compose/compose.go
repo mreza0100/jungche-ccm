@@ -26,7 +26,7 @@ type composer struct {
 	codexLineages    []store.CodexLineage
 	lineageByRoot    map[string]store.CodexLineage
 	lineageRootByID  map[string]string
-	hiddenByID       map[string]store.Hidden
+	killedByID       map[string]store.Killed
 	panesBySocket    map[string][]gather.Pane
 	paneByTarget     map[string]gather.Pane
 	claudeSockets    map[string]struct{}
@@ -34,6 +34,7 @@ type composer struct {
 	liveTranscripts  map[string]struct{}
 	liveRollouts     map[string]struct{}
 	accountRoots     []AccountRoot
+	codexRoots       []AccountRoot
 	canonicalPaths   map[string]string
 	projectDirs      map[string]string
 }
@@ -56,22 +57,26 @@ func Compose(input Input) Output {
 
 	output := Output{
 		ProjectDirs:      cloneStringMap(current.projectDirs),
-		includeNewClaude: input.Options.View != HiddenView,
-		includeNewCodex:  input.Options.View != HiddenView && input.Options.CodexAvailable,
+		includeNewClaude: input.Options.View != KilledView && len(input.AccountRoots) != 0,
+		includeNewCodex:  input.Options.View != KilledView && len(input.Options.CodexAccountIDs) != 0,
 		primaryAccount:   input.Options.PrimaryAccount,
+		primaryCodex:     input.Options.PrimaryCodexAccount,
 		fallbackDir:      input.Options.CurrentDir,
 	}
 	if !configuredAccount(input.AccountRoots, output.primaryAccount) {
 		if len(input.AccountRoots) != 0 {
 			output.primaryAccount = input.AccountRoots[0].Account
-		} else {
-			output.primaryAccount = 1
+		}
+	}
+	if !configuredID(input.Options.CodexAccountIDs, output.primaryCodex) {
+		if len(input.Options.CodexAccountIDs) != 0 {
+			output.primaryCodex = input.Options.CodexAccountIDs[0]
 		}
 	}
 
 	for _, row := range append(liveRows, agentRows...) {
-		row = current.applyHide(row, EngineForKind(row.Kind))
-		countOmitted(row, &output.HiddenCount, &output.SuppressedCount)
+		row = current.applyKill(row, EngineForKind(row.Kind))
+		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if visibleInView(row, input.Options.View) {
 			output.Rows = append(output.Rows, current.finalize(row))
 		}
@@ -84,8 +89,8 @@ func Compose(input Input) Output {
 			continue
 		}
 		row := current.transcriptRow(transcript, ResumeClaude)
-		row = current.applyHide(row, "cc")
-		countOmitted(row, &output.HiddenCount, &output.SuppressedCount)
+		row = current.applyKill(row, "cc")
+		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if input.Options.View == DefaultView {
 			if defaultEligible(row) {
 				claudeEligible++
@@ -124,8 +129,8 @@ func Compose(input Input) Output {
 			continue
 		}
 		row := current.rolloutRow(lineage.Newest, ResumeCodex)
-		row = current.applyHide(row, "cx")
-		countOmitted(row, &output.HiddenCount, &output.SuppressedCount)
+		row = current.applyKill(row, "cx")
+		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if input.Options.View == DefaultView {
 			if defaultEligible(row) {
 				codexEligible++
@@ -160,9 +165,6 @@ func Compose(input Input) Output {
 	output.Rows, output.ProjectOrder = sortProjectRows(output.Rows)
 	output = leadWithCurrentProject(output, input.Options.CurrentDir)
 	output = withNewRows(output)
-	if input.Options.Rotation != 0 {
-		output = Rotate(output, input.Options.Rotation)
-	}
 	return output
 }
 
@@ -239,9 +241,9 @@ func (current *composer) buildIndexes() {
 	for project, directory := range directories {
 		current.projectDirs[project] = directory.path
 	}
-	current.hiddenByID = make(map[string]store.Hidden, len(current.input.Hidden))
-	for _, hidden := range current.input.Hidden {
-		current.hiddenByID[hidden.ID] = hidden
+	current.killedByID = make(map[string]store.Killed, len(current.input.Killed))
+	for _, killed := range current.input.Killed {
+		current.killedByID[killed.ID] = killed
 	}
 	current.panesBySocket = make(map[string][]gather.Pane)
 	current.paneByTarget = make(map[string]gather.Pane, len(current.input.Snapshot.Panes))
@@ -279,6 +281,11 @@ func (current *composer) buildIndexes() {
 	for _, root := range current.input.AccountRoots {
 		root.Path = canonicalPath(root.Path)
 		current.accountRoots = append(current.accountRoots, root)
+	}
+	current.codexRoots = make([]AccountRoot, 0, len(current.input.CodexRoots))
+	for _, root := range current.input.CodexRoots {
+		root.Path = canonicalPath(root.Path)
+		current.codexRoots = append(current.codexRoots, root)
 	}
 	current.canonicalPaths = make(map[string]string, len(current.input.Transcripts)+len(current.input.Snapshot.Agents))
 	for _, transcript := range current.input.Transcripts {
@@ -738,6 +745,7 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 		Size:        newest.Size,
 		PromptCount: newest.PromptCount,
 		ActivityNS:  newest.MTimeNS,
+		Account:     accountForPath(newest.Path, current.codexRoots),
 		BG:          newest.IsBG,
 	}
 }
@@ -758,50 +766,50 @@ func (current *composer) lineageRoot(rollout store.Rollout) string {
 	return rollout.ID
 }
 
-func (current *composer) applyHide(row Row, engine string) Row {
-	// A "_HIDE…" label is a hide the user writes by renaming the chat, so it
+func (current *composer) applyKill(row Row, engine string) Row {
+	// A "_KILL…" label is a kill the user writes by renaming the chat, so it
 	// needs no id, no store row and no picker keystroke — which is why it is
 	// tested BEFORE every id-shaped guard below and applies to a live chat the
 	// index has never seen. A split row is the one exclusion: its Name is a
 	// join of its panes' names, not a label anyone set on one chat.
-	if row.Kind != LiveSplit && naming.LabelHidden(row.Name) {
-		row.Hidden = true
-		row.NameHidden = true
+	if row.Kind != LiveSplit && naming.LabelKilled(row.Name) {
+		row.Killed = true
+		row.NameKilled = true
 		return row
 	}
 	// A Booting row's ID is the crumbless socket name, not a chat identity —
 	// unlike LiveSplit's empty-ID case, it WOULD pass the id check below, so
 	// it needs its own guard. The socket is reused by the picker's own
-	// hide-eligibility test (ui/model.go's toggleHidden): neither side may let
-	// a hide land on an identity that stops meaning anything the moment the
+	// kill-eligibility test (ui/model.go's toggleKilled): neither side may let
+	// a kill land on an identity that stops meaning anything the moment the
 	// crumb appears and the row becomes an ordinary live one.
 	if row.Kind == LiveSplit || row.Kind == Booting || row.ID == "" {
 		return row
 	}
-	// Explicit hides carry no baseline and stay permanent. A /clear hide is a
+	// Explicit kills carry no baseline and stay permanent. A /clear kill is a
 	// prompt-count ratchet: once this row grows past its stored baseline it is
-	// visible again, matching the store's persisted auto-unhide pass.
-	row.Hidden = current.hiddenMatch(row.ID, engine, row.PromptCount)
+	// visible again, matching the store's persisted auto-unkill pass.
+	row.Killed = current.killedMatch(row.ID, engine, row.PromptCount)
 	return row
 }
 
-// hiddenMatch reports whether id — or, for a Codex row, ANY id in its resume
-// lineage — carries a hide whose engine agrees.
+// killedMatch reports whether id — or, for a Codex row, ANY id in its resume
+// lineage — carries a kill whose engine agrees.
 //
 // A live Codex process exposes the raw id of its current rollout, which can be
 // the resumed CHILD's id
 // on a multi-file lineage, not the ROOT this row is keyed on (rolloutRow,
-// liveCodexRows) — a hide written that way lands on a key nothing else here
-// reads unless every member id is checked too. A hide the `hide` manager
+// liveCodexRows) — a kill written that way lands on a key nothing else here
+// reads unless every member id is checked too. A kill the `kill` manager
 // itself writes is already normalized onto the root
-// (internal/hide/manager.go), so this lineage walk only ever WIDENS what
+// (internal/kill/manager.go), so this lineage walk only ever WIDENS what
 // matches, never narrows it.
 //
-// See also codexLineageHidden (store/queries.go), the cached first frame's
+// See also codexLineageKilled (store/queries.go), the cached first frame's
 // copy of this same question — the two must never disagree about what the
 // user sees.
-func (current *composer) hiddenMatch(id, engine string, promptCount int64) bool {
-	if hideMatchesID(current.hiddenByID, id, engine, promptCount) {
+func (current *composer) killedMatch(id, engine string, promptCount int64) bool {
+	if killMatchesID(current.killedByID, id, engine, promptCount) {
 		return true
 	}
 	if engine != "cx" {
@@ -812,26 +820,26 @@ func (current *composer) hiddenMatch(id, engine string, promptCount int64) bool 
 		return false
 	}
 	for _, member := range lineage.MemberIDs {
-		if hideMatchesID(current.hiddenByID, member, engine, promptCount) {
+		if killMatchesID(current.killedByID, member, engine, promptCount) {
 			return true
 		}
 	}
 	return false
 }
 
-func hideMatchesID(
-	hiddenByID map[string]store.Hidden,
+func killMatchesID(
+	killedByID map[string]store.Killed,
 	id, engine string,
 	promptCount int64,
 ) bool {
-	hidden, found := hiddenByID[id]
+	killed, found := killedByID[id]
 	if !found {
 		return false
 	}
-	if hidden.Engine != "" && hidden.Engine != engine {
+	if killed.Engine != "" && killed.Engine != engine {
 		return false
 	}
-	return hidden.BaselinePrompts == nil || promptCount <= *hidden.BaselinePrompts
+	return killed.BaselinePrompts == nil || promptCount <= *killed.BaselinePrompts
 }
 
 func (current *composer) selectResumeRows(
@@ -850,10 +858,10 @@ func (current *composer) selectResumeRows(
 			*suppressedCount += defaultRows - capacity
 		}
 		return selected
-	case HiddenView:
+	case KilledView:
 		selected := make([]Row, 0)
 		for _, row := range rows {
-			if row.Hidden {
+			if row.Killed {
 				selected = append(selected, current.finalize(row))
 			}
 		}
@@ -867,9 +875,9 @@ func (current *composer) selectResumeRows(
 	}
 }
 
-func countOmitted(row Row, hiddenCount, suppressedCount *int) {
-	if row.Hidden {
-		*hiddenCount++
+func countOmitted(row Row, killedCount, suppressedCount *int) {
+	if row.Killed {
+		*killedCount++
 		return
 	}
 	if !defaultEligible(row) {
@@ -886,11 +894,11 @@ func (current *composer) finalize(row Row) Row {
 
 // defaultEligible answers whether a row belongs in the default listing.
 //
-// THE HIDE IS TESTED FIRST, before any liveness short-circuit: hidden is dead,
-// live or not. A split row is the one row with no single id to hide — compose
+// THE KILL IS TESTED FIRST, before any liveness short-circuit: killed is dead,
+// live or not. A split row is the one row with no single id to kill — compose
 // never marks it — so it short-circuits above the test rather than around it.
 func defaultEligible(row Row) bool {
-	if row.Hidden {
+	if row.Killed {
 		return false
 	}
 	if row.Kind == LiveSplit {
@@ -932,8 +940,8 @@ func visibleInView(row Row, view View) bool {
 	switch view {
 	case AllView:
 		return true
-	case HiddenView:
-		return row.Hidden
+	case KilledView:
+		return row.Killed
 	default:
 		return defaultEligible(row)
 	}
@@ -1030,7 +1038,7 @@ func transcriptIDFromPath(path string) string {
 // has — Codex 0.146.1 stopped writing one for a paginated thread.
 //
 // Deriving it from the path ALONE mints the empty id for such a process, and
-// an empty id is a row that cannot be hidden (applyHide and the picker both
+// an empty id is a row that cannot be killed (applyKill and the picker both
 // refuse one) and that never marks its conversation live — so the very same
 // chat also comes back as a resume row underneath itself.
 func liveCodexID(process gather.LiveCodex) string {
@@ -1108,9 +1116,18 @@ func configuredAccount(roots []AccountRoot, account int) bool {
 	return false
 }
 
+func configuredID(ids []int, account int) bool {
+	for _, id := range ids {
+		if id == account {
+			return true
+		}
+	}
+	return false
+}
+
 // EngineForKind reports the engine ("cc" or "cx") a row's kind belongs to —
 // exported so a caller resolving an id against a compose pass (cmd/pfm's
-// CLI hide) can vouch for the same engine the picker itself would.
+// CLI kill) can vouch for the same engine the picker itself would.
 func EngineForKind(kind Kind) string {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:

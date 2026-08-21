@@ -173,13 +173,17 @@ func (executor *Executor) prepareLive(
 	ctx context.Context,
 	request Request,
 ) error {
-	if request.Row.Kind == compose.LiveClaude {
+	if request.Row.Kind == compose.LiveClaude || request.Row.Kind == compose.LiveCodex {
+		birthCache, wantCache := request.Row.C1H, request.Cache1H
+		if request.Row.Kind == compose.LiveCodex {
+			birthCache, wantCache = false, false
+		}
 		reboot, err := executor.gate.Confirm(ctx, GateRequest{
 			Name:           request.Row.Name,
 			BirthAccount:   request.Row.Account,
 			PrimaryAccount: request.PrimaryAccount,
-			BirthCache1H:   request.Row.C1H,
-			WantCache1H:    request.Cache1H,
+			BirthCache1H:   birthCache,
+			WantCache1H:    wantCache,
 		})
 		if err != nil {
 			return fmt.Errorf("open gate: %w", err)

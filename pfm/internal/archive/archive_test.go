@@ -13,22 +13,22 @@ import (
 	"hostops/pfm/internal/paths"
 )
 
-// fakeHides is the hidden set with an audit trail of what was retired.
-type fakeHides struct {
-	rows     []HiddenChat
-	unhidden []string
+// fakeKills is the killed set with an audit trail of what was retired.
+type fakeKills struct {
+	rows     []KilledChat
+	unkilled []string
 	failOn   string
 }
 
-func (hides *fakeHides) Hidden(context.Context) ([]HiddenChat, error) {
-	return hides.rows, nil
+func (kills *fakeKills) Killed(context.Context) ([]KilledChat, error) {
+	return kills.rows, nil
 }
 
-func (hides *fakeHides) Unhide(_ context.Context, id string) error {
-	if id == hides.failOn {
+func (kills *fakeKills) Unkill(_ context.Context, id string) error {
+	if id == kills.failOn {
 		return errors.New("store is busy")
 	}
-	hides.unhidden = append(hides.unhidden, id)
+	kills.unkilled = append(kills.unkilled, id)
 	return nil
 }
 
@@ -81,7 +81,7 @@ func TestConfiguredArchiveRootsExcludeLegacyPrimaryAlias(t *testing.T) {
 	values := archiveJail(t)
 	runner, err := New(Dependencies{
 		Paths:            values,
-		Hides:            &fakeHides{},
+		Kills:            &fakeKills{},
 		Proc:             emptyProc{},
 		ExactClaudeRoots: true,
 	})
@@ -94,11 +94,11 @@ func TestConfiguredArchiveRootsExcludeLegacyPrimaryAlias(t *testing.T) {
 	}
 }
 
-// The whole hidden-chat contract in one run: the dry run moves nothing, the
-// apply moves exactly the resolvable dead chats, a LIVE hidden chat is left on
-// disk, and every decided id leaves the hidden list — including the live one,
+// The whole killed-chat contract in one run: the dry run moves nothing, the
+// apply moves exactly the resolvable dead chats, a LIVE killed chat is left on
+// disk, and every decided id leaves the killed list — including the live one,
 // which belongs back in the picker.
-func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
+func TestArchiveMovesOnlyResolvableDeadKilledChats(t *testing.T) {
 	values := archiveJail(t)
 	const (
 		deadID  = "11111111-1111-4111-8111-111111111111"
@@ -136,13 +136,13 @@ func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 			`{"id":"55555555-5555-4555-8555-555555555555","thread_name":"kept"}`+"\n",
 	)
 
-	hides := &fakeHides{rows: []HiddenChat{
+	kills := &fakeKills{rows: []KilledChat{
 		{ID: deadID, Engine: "cc"},
 		{ID: liveID, Engine: "cc"},
 		{ID: ghostID, Engine: "cc"},
 		{ID: codexID, Engine: "cx"},
 	}}
-	runner, err := New(Dependencies{Paths: values, Hides: hides, Proc: emptyProc{}})
+	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +157,8 @@ func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(transcripts, deadID+".jsonl")); err != nil {
 		t.Fatalf("the dry run moved a file: %v", err)
 	}
-	if len(hides.unhidden) != 0 {
-		t.Fatalf("the dry run retired hides: %v", hides.unhidden)
+	if len(kills.unkilled) != 0 {
+		t.Fatalf("the dry run retired kills: %v", kills.unkilled)
 	}
 
 	report, err := runner.Run(context.Background(), Options{Apply: true})
@@ -177,8 +177,8 @@ func TestArchiveMovesOnlyResolvableDeadHiddenChats(t *testing.T) {
 	if len(report.Orphans) != 1 || report.Orphans[0] != ghostID {
 		t.Fatalf("orphans = %v, want [%s]", report.Orphans, ghostID)
 	}
-	if report.Unhidden != 4 {
-		t.Fatalf("hides retired = %d, want 4 (every decided id)", report.Unhidden)
+	if report.Unkilled != 4 {
+		t.Fatalf("kills retired = %d, want 4 (every decided id)", report.Unkilled)
 	}
 
 	archived := filepath.Join(values.ArchiveDir, "claude", project, deadID+".jsonl")
@@ -223,15 +223,15 @@ func TestArchiveIsIdempotent(t *testing.T) {
 	const id = "11111111-1111-4111-8111-111111111111"
 	transcripts := filepath.Join(values.ClaudeRoots[0], "-p")
 	writeFile(t, filepath.Join(transcripts, id+".jsonl"), "{}\n")
-	hides := &fakeHides{rows: []HiddenChat{{ID: id, Engine: "cc"}}}
-	runner, err := New(Dependencies{Paths: values, Hides: hides, Proc: emptyProc{}})
+	kills := &fakeKills{rows: []KilledChat{{ID: id, Engine: "cc"}}}
+	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runner.Run(context.Background(), Options{Apply: true}); err != nil {
 		t.Fatal(err)
 	}
-	hides.rows = nil
+	kills.rows = nil
 	report, err := runner.Run(context.Background(), Options{Apply: true})
 	if err != nil {
 		t.Fatalf("second run: %v", err)
@@ -248,8 +248,8 @@ func TestRestorePutsAChatBackWhereItWas(t *testing.T) {
 	transcripts := filepath.Join(values.ClaudeRoots[0], "-p")
 	original := filepath.Join(transcripts, id+".jsonl")
 	writeFile(t, original, "{\"a\":1}\n")
-	hides := &fakeHides{rows: []HiddenChat{{ID: id, Engine: "cc"}}}
-	runner, err := New(Dependencies{Paths: values, Hides: hides, Proc: emptyProc{}})
+	kills := &fakeKills{rows: []KilledChat{{ID: id, Engine: "cc"}}}
+	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,8 +293,8 @@ func TestArchiveSubagentsRespectsTheAgeGate(t *testing.T) {
 		}
 	}
 
-	hides := &fakeHides{}
-	runner, err := New(Dependencies{Paths: values, Hides: hides, Proc: emptyProc{}})
+	kills := &fakeKills{}
+	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,8 +315,8 @@ func TestArchiveSubagentsRespectsTheAgeGate(t *testing.T) {
 	if _, err := os.Stat(chat); err != nil {
 		t.Fatalf("a real chat transcript was archived as a sidechain: %v", err)
 	}
-	if len(hides.unhidden) != 0 {
-		t.Fatalf("subagent mode touched the hidden list: %v", hides.unhidden)
+	if len(kills.unkilled) != 0 {
+		t.Fatalf("subagent mode touched the killed list: %v", kills.unkilled)
 	}
 }
 
@@ -336,7 +336,7 @@ func TestArchiveSubagentsSkipsLiveTranscripts(t *testing.T) {
 
 	runner, err := New(Dependencies{
 		Paths: values,
-		Hides: &fakeHides{},
+		Kills: &fakeKills{},
 		Proc:  emptyProc{},
 	})
 	if err != nil {

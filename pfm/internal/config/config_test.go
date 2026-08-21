@@ -93,6 +93,23 @@ func TestDefaultsRegisterHarvesterDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestDefaultEmojiOwnsTheConventionalBadgeRoster(t *testing.T) {
+	for _, testCase := range []struct {
+		id   int
+		want string
+	}{
+		{id: 1, want: "🥇"},
+		{id: 2, want: "🥈"},
+		{id: 3, want: "🥉"},
+		{id: 4, want: "🍀"},
+		{id: 99, want: "·"},
+	} {
+		if got := DefaultEmoji(testCase.id); got != testCase.want {
+			t.Fatalf("DefaultEmoji(%d)=%q, want %q", testCase.id, got, testCase.want)
+		}
+	}
+}
+
 func TestDefaultsWithoutDiscoveryRootsDiscoversCredentialedAccountsAndNamesSkips(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	for _, account := range []int{1, 2, 3, 4} {
@@ -285,7 +302,6 @@ func TestLoadRejectsInvalidAccountRoster(t *testing.T) {
 		json string
 		want string
 	}{
-		{name: "empty", json: `{"version":1,"accounts":[]}`, want: "at least one account"},
 		{name: "non-positive id", json: `{"version":1,"accounts":[{"id":0,"configDir":"/tmp/cc"}]}`, want: "positive"},
 		{name: "duplicate id", json: `{"version":1,"accounts":[{"id":2,"configDir":"/tmp/a"},{"id":2,"configDir":"/tmp/b"}]}`, want: "duplicate"},
 		{name: "relative path", json: `{"version":1,"accounts":[{"id":1,"configDir":"relative"}]}`, want: "must be absolute"},

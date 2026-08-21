@@ -54,18 +54,18 @@ type TmuxClient interface {
 // resolver compares their basenames without making the config package part of
 // the resolution contract.
 type Binaries struct {
-	Claude      string
-	Codex       string
+	Claude        string
+	Codex         string
 	AccountEmojis []string
 }
 
 // Resolver scans a caller-selected tmux and crumb jail.
 type Resolver struct {
-	tmux         TmuxClient
-	tmuxDir      string
-	sidDir       string
-	claudeBinary string
-	codexBinary  string
+	tmux          TmuxClient
+	tmuxDir       string
+	sidDir        string
+	claudeBinary  string
+	codexBinary   string
 	accountEmojis []string
 }
 
@@ -83,11 +83,11 @@ func New(client TmuxClient, configured ...Binaries) (*Resolver, error) {
 		binaries = configured[0]
 	}
 	return &Resolver{
-		tmux:         client,
-		tmuxDir:      resolved.TmuxDir,
-		sidDir:       resolved.SIDDir,
-		claudeBinary: binaries.Claude,
-		codexBinary:  binaries.Codex,
+		tmux:          client,
+		tmuxDir:       resolved.TmuxDir,
+		sidDir:        resolved.SIDDir,
+		claudeBinary:  binaries.Claude,
+		codexBinary:   binaries.Codex,
 		accountEmojis: append([]string(nil), binaries.AccountEmojis...),
 	}, nil
 }

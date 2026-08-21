@@ -269,10 +269,12 @@ _cc_tui_call() {
 }
 
 # A harness typed straight into a terminal closes that terminal on exit, exactly as a fleet
-# chat does. `command` keeps the wrapper from recursing, and only this shell's own typing is
-# affected — pfm, hooks and scripts exec the binary and never see these functions.
+# chat does. claude bypasses recursion by calling the managed absolute launcher path, while
+# codex uses `command` to resolve the external command without re-entering this wrapper.
+# Only this shell's own typing is affected — pfm, hooks and scripts exec the binary and never
+# see these functions.
 claude() {
-  command claude "$@"
+  "$HOME/.local/bin/claude" "$@"
   local exit_status=$?
   _cc_tui_call "$@" && _cc_own_terminal "$exit_status"
   return "$exit_status"

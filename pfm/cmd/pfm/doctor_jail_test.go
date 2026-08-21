@@ -34,6 +34,16 @@ func TestDoctorFreshTargetHomeIsClean(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(hostShimDir, "pfm"), []byte("host-pfm"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	managedClaude := filepath.Join(home, ".local", "share", "pfm", "install", "bin", "claude")
+	if err := os.MkdirAll(filepath.Dir(managedClaude), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedClaude, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(managedClaude, filepath.Join(canonicalDir, "claude")); err != nil {
+		t.Fatal(err)
+	}
 
 	t.Setenv("HOME", home)
 	t.Setenv("PFM_HOME", home)

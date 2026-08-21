@@ -2,6 +2,23 @@
   "five_hour": {"utilization": 42, "resets_at": "2030-01-01T10:00:00Z"},
   "seven_day": {"utilization": 58, "resets_at": "2030-01-07T10:00:00Z"},
   "seven_day_opus": {"utilization": 31, "resets_at": "2030-01-07T09:00:00Z"},
-  "seven_day_fable": {"utilization": 23, "resets_at": "2030-01-07T08:00:00Z"},
-  "seven_day_sonnet": {"utilization": 17, "resets_at": "2030-01-07T07:00:00Z"}
+  "limits": [
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 9,
+      "resets_at": "2030-01-07T08:00:00Z",
+      "scope": {"model": {"id": null, "display_name": " fable "}},
+      "is_active": false
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 24,
+      "resets_at": "2030-01-07T08:00:00Z",
+      "scope": {"model": {"id": null, "display_name": "Fable"}},
+      "is_active": true
+    }
+  ],
+  "seven_day_nimbus_quill": {"utilization": 17, "resets_at": "2030-01-07T07:00:00Z"}
 }

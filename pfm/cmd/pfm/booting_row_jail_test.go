@@ -21,7 +21,7 @@ import (
 // pre-fix tree this test failed with the socket entirely absent from the TSV
 // output. It drives a REAL tmux pane and REAL (jailed) /proc entries — no
 // fake ProcFS or TmuxClient — exactly like
-// TestHideCLIVouchesEngineForUnindexedButVisibleRows, so the fix under test
+// TestKillCLIVouchesEngineForUnindexedButVisibleRows, so the fix under test
 // is gather's actual pane-and-process walk, not a stand-in for it.
 //
 // Covers fixtures (a), (b), and (d): a fresh epoch-shaped socket with no
@@ -33,7 +33,7 @@ func TestBootingRowJailedTSV(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	jail := newHideCLIJail(t)
+	jail := newKillCLIJail(t)
 	sidDir := filepath.Join(jail.root, "sid")
 
 	epochSocket := "cc-" + strconv.FormatInt(time.Now().Unix(), 10) +
@@ -89,7 +89,7 @@ func TestPromptlessNamedChatResolvesByItsLaunchName(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	jail := newHideCLIJail(t)
+	jail := newKillCLIJail(t)
 	socket := "cc-" + strconv.FormatInt(time.Now().Unix(), 10) +
 		"-" + strconv.Itoa(os.Getpid()) + "-17"
 	panePID := startNamedBootingPane(t, socket, "Promptless worker")
@@ -172,7 +172,7 @@ func bootingRowsFromTSV(t *testing.T) map[string]string {
 
 // TestBootingRowInteractivePickerJailed is fixture (c): a REAL interactive
 // picker inside a scratch tmux pane. ⌃X on the booting row must be a no-op —
-// no hidden-store write, no non-zero exit on quit — and Enter must
+// no killed-store write, no non-zero exit on quit — and Enter must
 // synthesize the same Live attach line an ordinary live row gets and really
 // execute it, the same subprocess-reexec and raw/inside-tmux technique
 // attach_e2e_test.go's proveAttach uses (stdout is a real tty here, so
@@ -190,21 +190,21 @@ func TestBootingRowInteractivePickerJailed(t *testing.T) {
 		jail.startTarget(t, targetSocket)
 		jail.addBootingProcess(t, targetSocket, 92101)
 
-		marker := filepath.Join(jail.root, "hide.done")
-		scriptPath := filepath.Join(jail.root, "hide.sh")
+		marker := filepath.Join(jail.root, "kill.done")
+		scriptPath := filepath.Join(jail.root, "kill.sh")
 		script := "#!/bin/sh\n" + shellQuote(jail.binary) + " ls\n" +
 			"echo RC=$? > " + shellQuote(marker) + "\n"
 		if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		driverSocket := "driver-boot-hide-" + strconv.Itoa(os.Getpid())
+		driverSocket := "driver-boot-kill-" + strconv.Itoa(os.Getpid())
 		driver := exec.Command(
 			"tmux", "-L", driverSocket, "-f", "/dev/null",
 			"new-session", "-d", "-s", "driver", scriptPath,
 		)
 		driver.Env = jail.env
 		if output, err := driver.CombinedOutput(); err != nil {
-			t.Fatalf("start hide-probe driver: %v: %s", err, output)
+			t.Fatalf("start kill-probe driver: %v: %s", err, output)
 		}
 		t.Cleanup(func() {
 			_ = jail.tmux(driverSocket, "kill-server").Run()
@@ -225,20 +225,20 @@ func TestBootingRowInteractivePickerJailed(t *testing.T) {
 			time.Sleep(300 * time.Millisecond)
 		}
 		if !waitForAttachFile(marker, 10*time.Second) {
-			t.Fatal("hide-probe picker did not exit after Escape")
+			t.Fatal("kill-probe picker did not exit after Escape")
 		}
 		if content, err := os.ReadFile(marker); err != nil ||
 			strings.TrimSpace(string(content)) != "RC=0" {
-			t.Fatalf("hide-probe picker exit marker = %q, err=%v", content, err)
+			t.Fatalf("kill-probe picker exit marker = %q, err=%v", content, err)
 		}
-		hidden := exec.Command(jail.binary, "ls", "--hidden")
-		hidden.Env = jail.env
-		output, err := hidden.CombinedOutput()
+		killed := exec.Command(jail.binary, "ls", "--killed")
+		killed.Env = jail.env
+		output, err := killed.CombinedOutput()
 		if err != nil {
-			t.Fatalf("pfm ls --hidden: %v: %s", err, output)
+			t.Fatalf("pfm ls --killed: %v: %s", err, output)
 		}
 		if got := strings.TrimSpace(string(output)); got != "" {
-			t.Fatalf("⌃X on the booting row wrote a hide: %q", got)
+			t.Fatalf("⌃X on the booting row wrote a kill: %q", got)
 		}
 	})
 

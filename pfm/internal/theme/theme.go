@@ -22,6 +22,7 @@ type Palette struct {
 	Warn        string
 
 	Header      string
+	HeaderBg    string
 	GroupA      string
 	GroupB      string
 	Border      string
@@ -32,6 +33,9 @@ type Palette struct {
 	StatsToken  string
 	StatsGear   string
 	StatsImage  string
+	LimitGreen  string
+	LimitAmber  string
+	LimitRed    string
 	Label       string
 }
 
@@ -46,6 +50,7 @@ var defaultPalette = Palette{
 	Muted:       "#94a3b8",
 	Warn:        "#fde047",
 	Header:      "#ffffff",
+	HeaderBg:    "#5f3dc4",
 	GroupA:      "#5eead4",
 	GroupB:      "#7dd3fc",
 	Border:      "#64748b",
@@ -56,6 +61,9 @@ var defaultPalette = Palette{
 	StatsToken:  "#facc15",
 	StatsGear:   "#fb923c",
 	StatsImage:  "#c084fc",
+	LimitGreen:  "#4ade80",
+	LimitAmber:  "#facc15",
+	LimitRed:    "#fb7185",
 	Label:       "#67e8f9",
 }
 
@@ -70,6 +78,7 @@ var tokyoNightPalette = Palette{
 	Muted:       "#565f89",
 	Warn:        "#e0af68",
 	Header:      "#c0caf5",
+	HeaderBg:    "#414868",
 	GroupA:      "#73daca",
 	GroupB:      "#7dcfff",
 	Border:      "#3b4261",
@@ -80,6 +89,9 @@ var tokyoNightPalette = Palette{
 	StatsToken:  "#e0af68",
 	StatsGear:   "#ff9e64",
 	StatsImage:  "#bb9af7",
+	LimitGreen:  "#9ece6a",
+	LimitAmber:  "#e0af68",
+	LimitRed:    "#f7768e",
 	Label:       "#2ac3de",
 }
 

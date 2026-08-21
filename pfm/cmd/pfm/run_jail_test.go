@@ -254,6 +254,24 @@ func newRunJail(t *testing.T) *runJail {
 	}
 	write("codex", stubCodex)
 	write("claude", stubClaude)
+	if err := os.WriteFile(
+		filepath.Join(root, "codex", "auth.json"),
+		[]byte(`{"tokens":{"access_token":"fixture"},"account_id":"fixture"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	configDir := filepath.Join(root, "home", ".config", "pfm")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(configDir, "config.json"),
+		[]byte(`{"version":2,"ask":{"engine":"claude"}}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	// The engine stubs go on PATH BEFORE anything drives the CLI, and every
 	// self-identifying variable is cleared: a spawn made from inside this
@@ -355,16 +373,16 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	code := run([]string{
 		"chat", "new",
 		"--engine", "codex",
-		"--name", "_HIDE codex worker",
+		"--name", "_KILL codex worker",
 		"--cwd", filepath.Join(jail.root, "work"),
 		"read the incident report",
 	}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if got := jail.await(t, "cx-name", "_HIDE"); got != "_HIDE codex worker" {
+	if got := jail.await(t, "cx-name", "_KILL"); got != "_KILL codex worker" {
 		t.Fatalf("thread name = %q, want %q (stderr=%q)",
-			got, "_HIDE codex worker", stderr.String())
+			got, "_KILL codex worker", stderr.String())
 	}
 	got := jail.await(t, "cx-prompt", "incident")
 	if strings.TrimSpace(got) != "read the incident report" {
@@ -375,7 +393,7 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	}
 	report := stdout.String()
 	if !strings.Contains(report, "\tnamed\t") ||
-		!strings.Contains(report, "hidden by its _HIDE name") {
+		!strings.Contains(report, "killed by its _KILL name") {
 		t.Fatalf("run report = %q", report)
 	}
 	if !strings.Contains(report, "attach: tmux -L cx-") {
@@ -389,7 +407,7 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	if !strings.HasPrefix(entries[0].Name(), "cx-") {
 		t.Fatalf("codex chat born on socket %q", entries[0].Name())
 	}
-	if got := jail.onlyWindowName(t); got != "_HIDE codex worker" {
+	if got := jail.onlyWindowName(t); got != "_KILL codex worker" {
 		t.Fatalf("codex window=%q, want inline launch name", got)
 	}
 }

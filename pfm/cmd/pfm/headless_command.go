@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/resolve"
@@ -99,10 +100,10 @@ func runChatWithRuntime(
 		return runChatRecover(rest, stdout, stderr, runtime)
 	case "name":
 		return runChatName(rest, stdout, stderr, runtime)
-	case "hide":
-		return runChatHide(rest, stdout, stderr, runtime)
-	case "unhide":
-		return runChatUnhide(rest, stdout, stderr, runtime)
+	case "kill":
+		return runChatKill(rest, stdout, stderr, runtime)
+	case "unkill":
+		return runChatUnkill(rest, stdout, stderr, runtime)
 	case "end":
 		return runChatEnd(rest, stdout, stderr, runtime)
 	case "reload", "swap":
@@ -136,7 +137,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  new         start a named chat on its own server")
 	fmt.Fprintln(w, "  open        open a chat by name, socket, or id")
-	fmt.Fprintln(w, "  status      one line (or --json) on a chat's state")
+	fmt.Fprintln(w, "  status      inspect state; optionally summarize the last exchange")
 	fmt.Fprintln(w, "  last        the chat's last assistant message")
 	fmt.Fprintln(w, "  read        read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
@@ -147,8 +148,8 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  keys        press keys in a live chat's pane (Escape, Enter, C-c, …)")
 	fmt.Fprintln(w, "  recover     rebuild a Codex conversation from its rollout")
 	fmt.Fprintln(w, "  name        rename a chat and converge its window")
-	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
-	fmt.Fprintln(w, "  unhide      remove a chat hide")
+	fmt.Fprintln(w, "  kill        kill a chat, optionally closing it")
+	fmt.Fprintln(w, "  unkill      remove a chat kill")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
 	fmt.Fprintln(w, "  reload      reboot a Claude chat in place under another configured account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")
@@ -311,16 +312,23 @@ func headlessTarget(
 func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat status",
-		"usage: pfm chat status <target> [--json]",
+		"usage: pfm chat status <target> [--json] [--summary] [--engine claude|codex] [--model MODEL]",
 		stderr,
 	)
 	asJSON := flags.Bool("json", false, "emit one JSON object")
+	withSummary := flags.Bool("summary", false, "summarize the last exchange")
+	summaryEngine := flags.String("engine", "", "override the configured ask engine")
+	summaryModel := flags.String("model", "", "override the configured ask model")
 	names, code, ok := parseFlagsAnywhere(flags, args)
 	if !ok {
 		return code
 	}
 	if len(names) != 1 {
 		flags.Usage()
+		return 2
+	}
+	if !*withSummary && (*summaryEngine != "" || *summaryModel != "") {
+		fmt.Fprintln(stderr, "pfm chat status: --engine and --model require --summary")
 		return 2
 	}
 	ctx := context.Background()
@@ -333,10 +341,36 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		fmt.Fprintf(stderr, "pfm chat status: %v\n", err)
 		return 1
 	}
+	if *withSummary {
+		runtime, runtimeErr := optionalCommandRuntime(runtimes)
+		if runtimeErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: %v\n", runtimeErr)
+			return 1
+		}
+		database, openErr := store.Open(store.WithWarningWriter(stderr))
+		if openErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: %v\n", openErr)
+			return 1
+		}
+		summary := headless.Summarize(ctx, chat, headless.SummaryOptions{
+			Config: runtime.Config, Database: database,
+			Engine: *summaryEngine, Model: *summaryModel,
+		})
+		closeErr := database.Close()
+		if closeErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: close summary cache: %v\n", closeErr)
+			return 1
+		}
+		status.Summary = summary.Text
+		status.SummaryCached = summary.Cached
+	}
 	if *asJSON {
 		writeJSON(stdout, status)
 	} else {
 		fmt.Fprintln(stdout, status.Line())
+		if *withSummary {
+			fmt.Fprintln(stdout, status.SummaryLine())
+		}
 	}
 	if !status.Alive() {
 		return codeDeadChat
@@ -821,7 +855,7 @@ func hookRunner(command string, stderr io.Writer) func(headless.Status) error {
 		return nil
 	}
 	return func(status headless.Status) error {
-		process := exec.Command("sh", "-c", command)
+		process := exec.Command(deps.Executable("sh"), "-c", command)
 		process.Env = append(
 			os.Environ(),
 			"CC_CHAT_NAME="+status.Name,

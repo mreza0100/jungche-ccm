@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/tmuxfmt"
 )
 
@@ -65,7 +66,7 @@ type CommandTmux struct {
 func (tmux CommandTmux) ListPanes(ctx context.Context, socket string) ([]Pane, error) {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	// pane_current_path is asked for WHOLE, never through tmux's b: basename
 	// modifier. Pane.CurrentPath is a directory: it becomes a row's CWD, and it
@@ -251,7 +252,7 @@ func (tmux CommandTmux) CapturePane(
 ) (string, error) {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	command := exec.CommandContext(
 		ctx,
@@ -289,7 +290,7 @@ func (tmux CommandTmux) RenameWindow(
 ) error {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	command := exec.CommandContext(
 		ctx,

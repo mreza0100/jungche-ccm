@@ -193,7 +193,7 @@ func testTimings() Timings {
 func codexRequest() Request {
 	return Request{
 		Engine:  "cx",
-		Name:    "_HIDE codex worker",
+		Name:    "_KILL codex worker",
 		Socket:  "cx-1-2-3",
 		CWD:     "/work/alpha",
 		Run:     "codex",
@@ -214,14 +214,14 @@ func TestCodexThreadIsRenamedThenPrompted(t *testing.T) {
 	if !result.Named || !result.Prompted || len(result.Warnings) != 0 {
 		t.Fatalf("result = %#v", result)
 	}
-	if fake.name != "_HIDE codex worker" {
+	if fake.name != "_KILL codex worker" {
 		t.Fatalf("thread name = %q", fake.name)
 	}
 	want := []string{
 		"literal:/rename",
 		"key:Enter",
 		"clear",
-		"literal:_HIDE codex worker",
+		"literal:_KILL codex worker",
 		"key:Enter",
 		"literal:read the incident report",
 		"key:Enter",
@@ -246,7 +246,7 @@ func TestCodexBootsThroughStartupModals(t *testing.T) {
 	if !result.Named || !result.Prompted || len(result.Warnings) != 0 {
 		t.Fatalf("result = %#v", result)
 	}
-	if fake.name != "_HIDE codex worker" {
+	if fake.name != "_KILL codex worker" {
 		t.Fatalf("thread name = %q", fake.name)
 	}
 	escapes := 0
@@ -280,7 +280,7 @@ func TestCodexComposerFlashBeforeAModalIsNotReadiness(t *testing.T) {
 	if !result.Named || !result.Prompted || len(result.Warnings) != 0 {
 		t.Fatalf("result = %#v (warnings must be empty — the modal was survivable)", result)
 	}
-	if fake.name != "_HIDE codex worker" {
+	if fake.name != "_KILL codex worker" {
 		t.Fatalf("thread name = %q", fake.name)
 	}
 }
@@ -359,7 +359,7 @@ func TestCodexRenamePromptNeverOpensStaysUnnamed(t *testing.T) {
 		t.Fatalf("warnings = %#v", result.Warnings)
 	}
 	for _, key := range fake.keys {
-		if key == "literal:_HIDE codex worker" {
+		if key == "literal:_KILL codex worker" {
 			t.Fatalf("the name was typed with no prompt open: %v", fake.keys)
 		}
 	}
@@ -446,7 +446,7 @@ func TestChatThatDiesAtBirthIsReportedAsSuch(t *testing.T) {
 
 func TestWindowName(t *testing.T) {
 	for _, testCase := range []struct{ in, want string }{
-		{"_HIDE worker 3", "_HIDE worker 3"},
+		{"_KILL worker 3", "_KILL worker 3"},
 		{"a:b.c", "a-b-c"},
 		{"  spaced   out\t", "spaced out"},
 		{"", "chat"},

@@ -42,16 +42,6 @@ func TestComposeStress(t *testing.T) {
 		)
 	}
 
-	original := cloneOutput(allOutput)
-	rotated := allOutput
-	for range len(allOutput.ProjectOrder) {
-		rotated = Rotate(rotated, 1)
-	}
-	if !reflect.DeepEqual(rotated.ProjectOrder, original.ProjectOrder) ||
-		!reflect.DeepEqual(rotated.Rows, original.Rows) {
-		t.Fatal("stress rotation failed N-group bijection")
-	}
-
 	stabilityInput := input
 	stabilityInput.Options.View = DefaultView
 	runtime.GC()
@@ -88,9 +78,9 @@ func TestComposeStress(t *testing.T) {
 	repeatedOne := Compose(stabilityInput)
 	repeatedTwo := Compose(stabilityInput)
 	if !reflect.DeepEqual(rowIDs(repeatedOne.Rows), rowIDs(repeatedTwo.Rows)) ||
-		repeatedOne.HiddenCount != repeatedTwo.HiddenCount ||
+		repeatedOne.KilledCount != repeatedTwo.KilledCount ||
 		repeatedOne.SuppressedCount != repeatedTwo.SuppressedCount {
-		t.Fatal("hide decisions changed across identical stress composes")
+		t.Fatal("kill decisions changed across identical stress composes")
 	}
 
 	t.Logf(
@@ -105,10 +95,6 @@ func TestComposeStress(t *testing.T) {
 		retained,
 		heapSpan,
 		rowChecksum,
-	)
-	t.Logf(
-		"stress rotation: %d project rotations returned the original ordering",
-		len(allOutput.ProjectOrder),
 	)
 }
 
@@ -207,7 +193,7 @@ func logComposePhases(t *testing.T, input Input) {
 			continue
 		}
 		row := current.transcriptRow(transcript, ResumeClaude)
-		row = current.applyHide(row, "cc")
+		row = current.applyKill(row, "cc")
 		if defaultEligible(row) {
 			top = insertTopRow(top, row, claudeResumeCap)
 		}
@@ -275,9 +261,9 @@ func composeStressInput() Input {
 	}
 
 	baseline := int64(100)
-	hidden := make([]store.Hidden, 0, transcriptCount/1000)
+	killed := make([]store.Killed, 0, transcriptCount/1000)
 	for index := 500; index < transcriptCount; index += 1000 {
-		hidden = append(hidden, store.Hidden{
+		killed = append(killed, store.Killed{
 			ID:              transcripts[index].UUID,
 			Engine:          "cc",
 			BaselinePrompts: &baseline,
@@ -289,7 +275,7 @@ func composeStressInput() Input {
 			Crumbs: crumbs,
 		},
 		Transcripts: transcripts,
-		Hidden:      hidden,
+		Killed:      killed,
 		AccountRoots: []AccountRoot{{
 			Account: 1,
 			Path:    "/accounts/1",

@@ -36,6 +36,12 @@ func TestGoldenCommandLines(t *testing.T) {
 		)
 	}
 	path := filepath.Join("..", "..", "testdata", "golden", "cmdlines.txt")
+	if os.Getenv("PFM_UPDATE_GOLDENS") == "1" {
+		if err := os.WriteFile(path, actual.Bytes(), 0o644); err != nil {
+			t.Fatalf("regenerate command golden: %v", err)
+		}
+		return
+	}
 	want, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read command golden: %v\nactual:\n%s", err, actual.String())

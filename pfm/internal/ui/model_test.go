@@ -12,18 +12,20 @@ import (
 	"hostops/pfm/internal/compose"
 )
 
-func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
+func TestModelKeysKillModifiersAndCancel(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.InitialCursorID = snapshot.Rows[1].ID
 	model := NewModel(snapshot)
 	follow := model.SelectedKey()
+	visible := model.VisibleRows()
 	model, command := applyKey(t, model, controlKey('r'))
-	if command != nil || model.SelectedKey() != follow || model.Rotation() != 1 {
+	if command != nil || model.SelectedKey() != follow ||
+		!reflect.DeepEqual(model.VisibleRows(), visible) {
 		t.Fatalf(
-			"rotation command=%v selected=%q rotation=%d",
+			"ctrl+r command=%v selected=%q rows_changed=%t",
 			command,
 			model.SelectedKey(),
-			model.Rotation(),
+			!reflect.DeepEqual(model.VisibleRows(), visible),
 		)
 	}
 
@@ -31,44 +33,100 @@ func TestModelKeysRotationHideModifiersReloadAndCancel(t *testing.T) {
 	model, _ = applyKey(t, model, controlKey('x'))
 	result := model.Result()
 	if model.SelectedKey() != follow ||
-		len(result.HideChanges) != 1 ||
-		!result.HideChanges[0].Hidden ||
-		result.HideChanges[0].Engine != "cx" {
-		t.Fatalf("hide selected=%q result=%#v", model.SelectedKey(), result)
+		len(result.KillChanges) != 1 ||
+		!result.KillChanges[0].Killed ||
+		result.KillChanges[0].Engine != "cx" {
+		t.Fatalf("kill selected=%q result=%#v", model.SelectedKey(), result)
 	}
 	if !reflect.DeepEqual(snapshot.Rows, beforeRows) {
 		t.Fatal("pure model mutated input snapshot")
 	}
-	// A second ⌃X is an UNHIDE, applied like the first one. The receipt keeps
+	// A second ⌃X is an UNKILL, applied like the first one. The receipt keeps
 	// the row's final state rather than cancelling out to nothing: both writes
 	// really happened.
 	model, _ = applyKey(t, model, controlKey('x'))
 	undo := model.Result()
-	if len(undo.HideChanges) != 1 || undo.HideChanges[0].Hidden {
-		t.Fatalf("second ⌃X did not record an unhide: %#v", undo)
+	if len(undo.KillChanges) != 1 || undo.KillChanges[0].Killed {
+		t.Fatalf("second ⌃X did not record an unkill: %#v", undo)
 	}
 
 	model, _ = applyKey(t, model, controlKey('e'))
 	if model.Cache1H() {
 		t.Fatal("ctrl+e did not toggle 1h off")
 	}
-	// ⌃S cycles the default three-account roster and wraps.
+	// The selected row is Codex, so ⌃S cycles the Codex roster and leaves the
+	// independently persisted Claude primary alone.
 	for step := 0; step < 4; step++ {
-		before := model.PrimaryAccount()
+		before := model.codexPrimary
 		model, _ = applyKey(t, model, controlKey('s'))
 		want := before%3 + 1
-		if model.PrimaryAccount() != want {
-			t.Fatalf("account=%d want=%d", model.PrimaryAccount(), want)
+		if model.codexPrimary != want || model.PrimaryAccount() != 2 {
+			t.Fatalf("codex account=%d want=%d; Claude primary=%d", model.codexPrimary, want, model.PrimaryAccount())
 		}
 	}
 
-	reload, command := applyKey(t, model, controlKey('t'))
-	if command == nil || reload.Result().Kind != OutcomeReload {
-		t.Fatalf("reload command=%v result=%#v", command, reload.Result())
+	ignored, command := applyKey(t, model, controlKey('t'))
+	if command != nil || ignored.Result().Kind != OutcomeNone {
+		t.Fatalf("ctrl+t command=%v result=%#v, want no-op", command, ignored.Result())
 	}
 	cancelled, command := applyKey(t, model, specialKey(tea.KeyEscape))
 	if command == nil || cancelled.Result().Kind != OutcomeCancelled {
 		t.Fatalf("cancel command=%v result=%#v", command, cancelled.Result())
+	}
+}
+
+func TestChatCursorWrapsUpFromFirstRowToLast(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	if model.Cursor() != 0 || model.FilteredRowCount() < 2 {
+		t.Fatalf("setup cursor=%d rows=%d", model.Cursor(), model.FilteredRowCount())
+	}
+	model.actionIndex = 2
+	model, command := applyKey(t, model, specialKey(tea.KeyUp))
+	if command != nil || model.Cursor() != model.FilteredRowCount()-1 || model.ActionIndex() != 0 {
+		t.Fatalf(
+			"up wrap command=%v cursor=%d/%d action=%d",
+			command,
+			model.Cursor(),
+			model.FilteredRowCount(),
+			model.ActionIndex(),
+		)
+	}
+}
+
+func TestChatCursorWrapsDownFromLastRowToFirst(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model, _ = applyKey(t, model, specialKey(tea.KeyEnd))
+	if model.Cursor() != model.FilteredRowCount()-1 || model.FilteredRowCount() < 2 {
+		t.Fatalf("setup cursor=%d rows=%d", model.Cursor(), model.FilteredRowCount())
+	}
+	model.actionIndex = 2
+	model, command := applyKey(t, model, specialKey(tea.KeyDown))
+	if command != nil || model.Cursor() != 0 || model.ActionIndex() != 0 {
+		t.Fatalf(
+			"down wrap command=%v cursor=%d action=%d",
+			command,
+			model.Cursor(),
+			model.ActionIndex(),
+		)
+	}
+}
+
+func TestChatCursorMovementIsNoOpForEmptyList(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.Rows = nil
+	model := NewModel(snapshot)
+	for _, key := range []tea.KeyPressMsg{specialKey(tea.KeyUp), specialKey(tea.KeyDown)} {
+		var command tea.Cmd
+		model, command = applyKey(t, model, key)
+		if command != nil || model.Cursor() != 0 || model.FilteredRowCount() != 0 {
+			t.Fatalf(
+				"empty move %q command=%v cursor=%d rows=%d",
+				key.String(),
+				command,
+				model.Cursor(),
+				model.FilteredRowCount(),
+			)
+		}
 	}
 }
 
@@ -100,29 +158,103 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 		t.Fatalf("chat carousel index=%d command=%v", model.ActionIndex(), command)
 	}
 	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
-	if command == nil || model.Result().Kind != OutcomeReload {
+	if command == nil || model.Result().Kind != OutcomeReboot {
 		t.Fatalf("chat carousel Enter result=%#v command=%v", model.Result(), command)
 	}
 }
 
-// TestCancelKeepsAppliedHidesAndDropsPrimaryChange pins the split that ⌃X
+func TestNewChatUsesOnlyPresentEnginesAndCyclesTheirOwnRoster(t *testing.T) {
+	codexOnly := Snapshot{
+		Rows:                []compose.Row{{Kind: compose.NewCodex, Name: "New Codex chat", CWD: "/work/new", Account: 7}},
+		CodexPrimaryAccount: 7,
+		CodexAccountIDs:     []int{7, 9},
+		MergeNewChat:        true,
+		NowNS:               fixtureNowNS,
+	}
+	model := NewModel(codexOnly)
+	if model.NewChatEngine() != "codex" {
+		t.Fatalf("codex-only engine = %q", model.NewChatEngine())
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
+	if model.NewChatEngine() != "codex" {
+		t.Fatalf("single-engine carousel exposed Claude: %q", model.NewChatEngine())
+	}
+	model, _ = applyKey(t, model, controlKey('s'))
+	selected, command := applyKey(t, model, specialKey(tea.KeyEnter))
+	if command == nil || selected.Result().Row.Kind != compose.NewCodex || selected.Result().PrimaryAccount != 9 {
+		t.Fatalf("Codex account cycle result = %#v", selected.Result())
+	}
+
+	claudeOnly := Snapshot{
+		Rows:           []compose.Row{{Kind: compose.NewClaude, Name: "New Claude chat", CWD: "/work/new", Account: 2}},
+		PrimaryAccount: 2,
+		AccountIDs:     []int{2, 4},
+		MergeNewChat:   true,
+		NowNS:          fixtureNowNS,
+	}
+	model = NewModel(claudeOnly)
+	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
+	if model.NewChatEngine() != "claude" {
+		t.Fatalf("single-engine carousel exposed Codex: %q", model.NewChatEngine())
+	}
+}
+
+func TestLiveSelectionKeepsBirthAccountSeparateFromSelectedAccount(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		row    compose.Row
+		make   func() Snapshot
+		chosen int
+	}{
+		{
+			name: "claude",
+			row:  compose.Row{Kind: compose.LiveClaude, Account: 2},
+			make: func() Snapshot {
+				return Snapshot{PrimaryAccount: 4, AccountIDs: []int{2, 4}}
+			},
+			chosen: 4,
+		},
+		{
+			name: "codex",
+			row:  compose.Row{Kind: compose.LiveCodex, Account: 7},
+			make: func() Snapshot {
+				return Snapshot{CodexPrimaryAccount: 9, CodexAccountIDs: []int{7, 9}}
+			},
+			chosen: 9,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := test.make()
+			snapshot.Rows = []compose.Row{test.row}
+			snapshot.NowNS = fixtureNowNS
+			model := NewModel(snapshot)
+			selected, command := applyKey(t, model, specialKey(tea.KeyEnter))
+			result := selected.Result()
+			if command == nil || result.Row.Account != test.row.Account || result.PrimaryAccount != test.chosen {
+				t.Fatalf("live handoff row account=%d selected=%d, want birth=%d selected=%d", result.Row.Account, result.PrimaryAccount, test.row.Account, test.chosen)
+			}
+		})
+	}
+}
+
+// TestCancelKeepsAppliedKillsAndDropsPrimaryChange pins the split that ⌃X
 // acting immediately creates: Esc still abandons a ⌃S account switch, which is
-// only ever a pending intent, but it can no longer take back a hide. Batching
-// the hide until quit meant the only exits that applied one were the ones that
+// only ever a pending intent, but it can no longer take back a kill. Batching
+// the kill until quit meant the only exits that applied one were the ones that
 // launched something, so closing the list the natural way silently threw every
 // ⌃X away.
-func TestCancelKeepsAppliedHidesAndDropsPrimaryChange(t *testing.T) {
+func TestCancelKeepsAppliedKillsAndDropsPrimaryChange(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.PrimaryAccount = 1
-	var applied []HideChange
-	snapshot.ApplyHide = func(change HideChange) error {
+	var applied []KillChange
+	snapshot.ApplyKill = func(change KillChange) error {
 		applied = append(applied, change)
 		return nil
 	}
 	model := NewModel(snapshot)
 
 	model, _ = applyKey(t, model, controlKey('x'))
-	if len(applied) != 1 || !applied[0].Hidden {
+	if len(applied) != 1 || !applied[0].Killed {
 		t.Fatalf("⌃X did not apply on the keypress: %#v", applied)
 	}
 	model, _ = applyKey(t, model, controlKey('s'))
@@ -136,23 +268,23 @@ func TestCancelKeepsAppliedHidesAndDropsPrimaryChange(t *testing.T) {
 	}
 	result := cancelled.Result()
 	if result.Kind != OutcomeCancelled ||
-		len(result.HideChanges) != 1 ||
-		!result.HideChanges[0].Hidden ||
+		len(result.KillChanges) != 1 ||
+		!result.KillChanges[0].Killed ||
 		result.PrimaryAccount != 1 {
 		t.Fatalf(
-			"cancel result=%#v, want Cancelled/hide kept/account reverted to 1",
+			"cancel result=%#v, want Cancelled/kill kept/account reverted to 1",
 			result,
 		)
 	}
 	if len(applied) != 1 {
-		t.Fatalf("Esc re-applied or reverted the hide: %#v", applied)
+		t.Fatalf("Esc re-applied or reverted the kill: %#v", applied)
 	}
 }
 
-// TestHideAppliesImmediatelyAndEndsALiveChat is the whole point of the change:
-// the keypress writes the hide AND kills the chat's server, and the row stops
+// TestKillAppliesImmediatelyAndEndsALiveChat is the whole point of the change:
+// the keypress writes the kill AND kills the chat's server, and the row stops
 // claiming a server that is gone.
-func TestHideAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
+func TestKillAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	var live compose.Row
 	for _, row := range snapshot.Rows {
@@ -166,8 +298,8 @@ func TestHideAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
 	}
 	snapshot.Rows = []compose.Row{live}
 	snapshot.InitialCursorID = live.ID
-	var applied []HideChange
-	snapshot.ApplyHide = func(change HideChange) error {
+	var applied []KillChange
+	snapshot.ApplyKill = func(change KillChange) error {
 		applied = append(applied, change)
 		return nil
 	}
@@ -186,22 +318,22 @@ func TestHideAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
 	}
 }
 
-// TestHideThatCannotLandLeavesTheRowAlone: a ⌃X that fails must not pretend it
+// TestKillThatCannotLandLeavesTheRowAlone: a ⌃X that fails must not pretend it
 // worked. The row keeps its state and the failure takes the status line.
-func TestHideThatCannotLandLeavesTheRowAlone(t *testing.T) {
+func TestKillThatCannotLandLeavesTheRowAlone(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
-	snapshot.ApplyHide = func(HideChange) error {
+	snapshot.ApplyKill = func(KillChange) error {
 		return errors.New("store is locked")
 	}
 	model := NewModel(snapshot)
-	before := model.rows[model.filtered[model.cursor]].Hidden
+	before := model.rows[model.filtered[model.cursor]].Killed
 
 	model, _ = applyKey(t, model, controlKey('x'))
-	if model.rows[model.filtered[model.cursor]].Hidden != before {
+	if model.rows[model.filtered[model.cursor]].Killed != before {
 		t.Fatal("a failed ⌃X flipped the row anyway")
 	}
-	if len(model.Result().HideChanges) != 0 {
-		t.Fatalf("a failed ⌃X was recorded: %#v", model.Result().HideChanges)
+	if len(model.Result().KillChanges) != 0 {
+		t.Fatalf("a failed ⌃X was recorded: %#v", model.Result().KillChanges)
 	}
 	if !strings.Contains(model.View().Content, "store is locked") {
 		t.Fatal("a failed ⌃X was invisible to the user")
@@ -211,11 +343,14 @@ func TestHideThatCannotLandLeavesTheRowAlone(t *testing.T) {
 func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 	for _, row := range fixtureSnapshot(120).Rows {
 		snapshot := Snapshot{
-			Rows:           []compose.Row{row},
-			View:           compose.AllView,
-			PrimaryAccount: 3,
-			Cache1H:        true,
-			NowNS:          fixtureNowNS,
+			Rows:                []compose.Row{row},
+			View:                compose.AllView,
+			PrimaryAccount:      3,
+			AccountIDs:          []int{1, 2, 3},
+			CodexPrimaryAccount: 3,
+			CodexAccountIDs:     []int{1, 2, 3},
+			Cache1H:             true,
+			NowNS:               fixtureNowNS,
 		}
 		model := NewModel(snapshot)
 		selected, command := applyKey(t, model, specialKey(tea.KeyEnter))
@@ -248,12 +383,12 @@ func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 	}
 }
 
-// TestBootingRowIgnoresHideAndRebootButSelectsOnEnter is the pure-model half
+// TestBootingRowIgnoresKillAndRebootButSelectsOnEnter is the pure-model half
 // of the booting-row fix: ⌃X and ⌃O must both be no-ops on a booting row —
 // its "id" is a crumbless socket, not a chat identity, and stops meaning
 // anything once the crumb lands — while Enter still selects it normally, the
 // one live operation (attach) this Kind supports.
-func TestBootingRowIgnoresHideAndRebootButSelectsOnEnter(t *testing.T) {
+func TestBootingRowIgnoresKillAndRebootButSelectsOnEnter(t *testing.T) {
 	row := compose.Row{
 		Kind:    compose.Booting,
 		ID:      "cc-new-fixture-1",
@@ -270,7 +405,7 @@ func TestBootingRowIgnoresHideAndRebootButSelectsOnEnter(t *testing.T) {
 	model := NewModel(snapshot)
 
 	model, command := applyKey(t, model, controlKey('x'))
-	if command != nil || len(model.Result().HideChanges) != 0 || model.rows[0].Hidden {
+	if command != nil || len(model.Result().KillChanges) != 0 || model.rows[0].Killed {
 		t.Fatalf(
 			"⌃X on a booting row was not a no-op: command=%v result=%#v",
 			command,
@@ -312,6 +447,15 @@ func TestAccountsOffTheRosterFallBackToTheFirst(t *testing.T) {
 	}
 }
 
+func TestValidAccountUsesRosterOnly(t *testing.T) {
+	if got := validAccount(3, nil); got != 0 {
+		t.Fatalf("validAccount(3, nil) = %d, want 0", got)
+	}
+	if got := validAccount(3, []int{1, 2}); got != 1 {
+		t.Fatalf("validAccount(3, [1 2]) = %d, want 1", got)
+	}
+}
+
 func TestFuzzyFilterAndRefreshCursorFollow(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	snapshot.InitialCursorID = snapshot.Rows[3].ID
@@ -349,7 +493,7 @@ func TestFuzzyFilterAndRefreshCursorFollow(t *testing.T) {
 	}
 }
 
-func TestDefaultHideRemovesRowAndKeepsValidCursor(t *testing.T) {
+func TestDefaultKillRemovesRowAndKeepsValidCursor(t *testing.T) {
 	snapshot := fixtureSnapshot(80)
 	snapshot.View = compose.DefaultView
 	snapshot.Rows = snapshot.Rows[:3]
@@ -443,8 +587,8 @@ func specialKey(code rune) tea.KeyPressMsg {
 }
 
 // TestControlXAlwaysLeavesAReceipt is the no-silent-keystroke contract: every
-// ⌃X ends with hideStatus naming what landed or why it was refused. A swallowed
-// ⌃X looks identical to a hide that landed, and the row's return on the next
+// ⌃X ends with killStatus naming what landed or why it was refused. A swallowed
+// ⌃X looks identical to a kill that landed, and the row's return on the next
 // open then reads as the store losing the order.
 func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
 	cases := []struct {
@@ -473,11 +617,11 @@ func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
 			receipt: "split live window",
 		},
 		{
-			name: "label-hidden row is refused",
+			name: "label-killed row is refused",
 			mutate: func(snapshot *Snapshot) {
-				snapshot.Rows[1].NameHidden = true
+				snapshot.Rows[1].NameKilled = true
 			},
-			receipt: "_HIDE label",
+			receipt: "_KILL label",
 		},
 		{
 			name: "identityless row is refused",
@@ -491,25 +635,25 @@ func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
 			},
 		},
 		{
-			name: "nil applier refuses instead of painting a cosmetic hide",
+			name: "nil applier refuses instead of painting a cosmetic kill",
 			mutate: func(snapshot *Snapshot) {
-				snapshot.ApplyHide = nil
+				snapshot.ApplyKill = nil
 			},
-			receipt: "cannot write hides",
+			receipt: "cannot write kills",
 		},
 		{
 			name: "failed store write names the chat and the error",
 			mutate: func(snapshot *Snapshot) {
-				snapshot.ApplyHide = func(HideChange) error {
+				snapshot.ApplyKill = func(KillChange) error {
 					return errors.New("store is sealed")
 				}
 			},
 			receipt: "store is sealed",
 		},
 		{
-			name:    "landed hide prints its receipt",
+			name:    "landed kill prints its receipt",
 			mutate:  func(snapshot *Snapshot) {},
-			receipt: "hidden — ",
+			receipt: "killed — ",
 		},
 	}
 	for _, testCase := range cases {
@@ -530,13 +674,13 @@ func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
 				}
 			}
 			model, _ = applyKey(t, model, controlKey('x'))
-			if model.hideStatus == "" {
+			if model.killStatus == "" {
 				t.Fatal("⌃X left no receipt — the keystroke went silent")
 			}
-			if !strings.Contains(model.hideStatus, testCase.receipt) {
+			if !strings.Contains(model.killStatus, testCase.receipt) {
 				t.Fatalf(
 					"receipt = %q, want it to mention %q",
-					model.hideStatus,
+					model.killStatus,
 					testCase.receipt,
 				)
 			}

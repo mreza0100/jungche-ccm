@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -11,28 +12,35 @@ import (
 	"sync"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/usagehook"
 )
 
+const defaultCodexUsageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
+
 type LimitAccount struct {
-	ID             int
-	Emoji          string
-	Engine         string
-	Label          string
-	SkipReason     string
-	ConfigDir      string
-	ClaudeBinary   string
-	CodexCachePath string
+	ID            int
+	Emoji         string
+	Engine        string
+	Label         string
+	Absent        bool
+	SkipReason    string
+	ConfigDir     string
+	ClaudeBinary  string
+	CodexAuthPath string
 }
 
 type LimitsSampler struct {
-	Accounts []LimitAccount
-	Now      func() time.Time
-	TTL      time.Duration
-	Client   *http.Client
-	Endpoint string
-	Fetch    func(context.Context, LimitAccount) (usagehook.Usage, error)
-	Ack      func(context.Context, LimitAccount) error
+	Accounts      []LimitAccount
+	Now           func() time.Time
+	TTL           time.Duration
+	Client        *http.Client
+	Endpoint      string
+	CodexClient   *http.Client
+	CodexEndpoint string
+	Fetch         func(context.Context, LimitAccount) (usagehook.Usage, error)
+	FetchCodex    func(context.Context, LimitAccount) (codexUsage, error)
+	Ack           func(context.Context, LimitAccount) error
 
 	mu           sync.Mutex
 	cache        map[string]cachedLimits
@@ -60,6 +68,7 @@ func NewLimitsSampler(accounts []LimitAccount) *LimitsSampler {
 			Endpoint:  sampler.Endpoint,
 		})
 	}
+	sampler.FetchCodex = sampler.fetchCodex
 	sampler.Ack = defaultAck
 	return sampler
 }
@@ -69,6 +78,18 @@ func (sampler *LimitsSampler) client() *http.Client {
 		return sampler.Client
 	}
 	return &http.Client{Timeout: 6 * time.Second}
+}
+
+func (sampler *LimitsSampler) codexClient() *http.Client {
+	if sampler.CodexClient != nil {
+		return sampler.CodexClient
+	}
+	return &http.Client{
+		Timeout: 20 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }
 
 func (sampler *LimitsSampler) now() time.Time {
@@ -124,21 +145,30 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 		label = fmt.Sprintf("account %d", account.ID)
 	}
 	entry := cachedLimits{limits: AccountLimits{
-		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label,
+		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label, Absent: account.Absent,
 	}, when: now}
+	if account.Absent {
+		entry.limits.Status = label
+		sampler.store(key, entry)
+		return entry
+	}
 	if account.SkipReason != "" {
 		entry.limits.Status = fmt.Sprintf("skipped %s: %s", label, account.SkipReason)
 		sampler.store(key, entry)
 		return entry
 	}
-	if account.CodexCachePath != "" {
-		var err error
-		entry.limits.Windows, err = readCodexLimits(account.CodexCachePath)
+	if engine == "codex" {
+		usage, err := sampler.FetchCodex(ctx, account)
 		if err != nil {
 			entry.limits.Status = err.Error()
 			entry.warnings = append(entry.warnings, fmt.Sprintf("%s limits unavailable: %v", label, err))
-		} else if len(entry.limits.Windows) == 0 {
-			entry.limits.Status = "Codex cache carried no rate-limit windows"
+		} else {
+			entry.limits.Plan = usage.PlanType
+			entry.limits.ConfirmedAt = now
+			entry.limits.Windows = codexWindows(usage)
+		}
+		if err == nil && len(entry.limits.Windows) == 0 {
+			entry.limits.Status = "Codex payload unreadable"
 			entry.warnings = append(entry.warnings, entry.limits.Status)
 		}
 		sampler.store(key, entry)
@@ -158,7 +188,8 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 			entry.warnings = append(entry.warnings, entry.limits.Status)
 		}
 	} else {
-		entry.limits.Windows = usageWindows(usage)
+		entry.limits.ConfirmedAt = now
+		entry.limits.Windows = usageWindows(usage, now)
 		if len(entry.limits.Windows) == 0 {
 			entry.limits.Status = fmt.Sprintf("account %d limits unavailable: empty usage response", account.ID)
 			entry.warnings = append(entry.warnings, entry.limits.Status)
@@ -203,7 +234,7 @@ func (sampler *LimitsSampler) tryAck(ctx context.Context, account LimitAccount) 
 }
 
 func (account LimitAccount) cacheKey() string {
-	return fmt.Sprintf("%s:%d:%s:%s", account.Engine, account.ID, account.ConfigDir, account.CodexCachePath)
+	return fmt.Sprintf("%s:%d:%s:%s", account.Engine, account.ID, account.ConfigDir, account.CodexAuthPath)
 }
 
 func needsCredentialRefresh(err error) bool {
@@ -224,7 +255,7 @@ func defaultAck(ctx context.Context, account LimitAccount) error {
 	if binary == "" {
 		binary = "claude"
 	}
-	command := exec.CommandContext(ctx, binary, "-p", "ACK", "--model", "claude-haiku-4-5", "--max-turns", "1")
+	command := exec.CommandContext(ctx, deps.Executable(binary), "-p", "ACK", "--model", "claude-haiku-4-5", "--max-turns", "1")
 	command.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+account.ConfigDir)
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("refresh account %d OAuth token: %w (%s)", account.ID, err, strings.TrimSpace(string(output)))
@@ -232,8 +263,8 @@ func defaultAck(ctx context.Context, account LimitAccount) error {
 	return nil
 }
 
-func usageWindows(usage usagehook.Usage) []Window {
-	named := usage.NamedWindows()
+func usageWindows(usage usagehook.Usage, now time.Time) []Window {
+	named := usage.NamedWindowsAt(now)
 	windows := make([]Window, 0, len(named))
 	for _, entry := range named {
 		source := entry.Window
@@ -242,7 +273,7 @@ func usageWindows(usage usagehook.Usage) []Window {
 		}
 		resetAt, resetNote := parseReset(source.ResetsAt)
 		windows = append(windows, Window{
-			Name: entry.Label, UsedPct: int(*source.Utilization), ResetAt: resetAt, ResetNote: resetNote,
+			Name: entry.Label, UsedPct: *source.Utilization, ResetAt: resetAt, ResetNote: resetNote,
 		})
 	}
 	return windows
@@ -259,47 +290,129 @@ func parseReset(value string) (time.Time, string) {
 	return parsed, ""
 }
 
-type codexUsageCache struct {
-	Primary   *codexWindow `json:"primary"`
-	Secondary *codexWindow `json:"secondary"`
+type codexCredentialEnvelope struct {
+	Tokens struct {
+		AccessToken string `json:"access_token"`
+		AccountID   string `json:"account_id"`
+	} `json:"tokens"`
 }
 
-type codexWindow struct {
-	UsedPercent        float64 `json:"usedPercent"`
-	WindowDurationMins int64   `json:"windowDurationMins"`
-	ResetsAt           int64   `json:"resetsAt"`
+type codexUsage struct {
+	PlanType  string `json:"plan_type"`
+	RateLimit *struct {
+		PrimaryWindow   *codexRateLimitWindow `json:"primary_window"`
+		SecondaryWindow *codexRateLimitWindow `json:"secondary_window"`
+	} `json:"rate_limit"`
 }
 
-func readCodexLimits(path string) ([]Window, error) {
+type codexRateLimitWindow struct {
+	UsedPercent        float64 `json:"used_percent"`
+	ResetAt            int64   `json:"reset_at"`
+	LimitWindowSeconds int64   `json:"limit_window_seconds"`
+}
+
+func loadCodexCredentials(path string) (accessToken, accountID string, err error) {
+	if strings.TrimSpace(path) == "" {
+		return "", "", fmt.Errorf("no local Codex sign-in")
+	}
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read Codex cache: %w", err)
+		if os.IsNotExist(err) {
+			return "", "", fmt.Errorf("no local Codex sign-in")
+		}
+		return "", "", fmt.Errorf("Codex fetch failed: read local sign-in: %w", err)
 	}
-	var cache codexUsageCache
-	if err := json.Unmarshal(body, &cache); err != nil {
-		return nil, fmt.Errorf("decode Codex cache: %w", err)
+	var envelope codexCredentialEnvelope
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return "", "", fmt.Errorf("Codex session incomplete")
 	}
+	accessToken = strings.TrimSpace(envelope.Tokens.AccessToken)
+	accountID = strings.TrimSpace(envelope.Tokens.AccountID)
+	if accessToken == "" || accountID == "" {
+		return "", "", fmt.Errorf("Codex session incomplete")
+	}
+	return accessToken, accountID, nil
+}
+
+func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccount) (codexUsage, error) {
+	accessToken, accountID, err := loadCodexCredentials(account.CodexAuthPath)
+	if err != nil {
+		return codexUsage{}, err
+	}
+	endpoint := sampler.CodexEndpoint
+	if endpoint == "" {
+		endpoint = defaultCodexUsageEndpoint
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return codexUsage{}, fmt.Errorf("Codex fetch failed: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+	request.Header.Set("ChatGPT-Account-ID", accountID)
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Cache-Control", "no-cache")
+	request.Header.Set("Pragma", "no-cache")
+
+	response, err := sampler.codexClient().Do(request)
+	if err != nil {
+		return codexUsage{}, fmt.Errorf("Codex fetch failed: %v", err)
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return codexUsage{}, fmt.Errorf("Codex fetch failed: %v", readErr)
+	}
+	if closeErr != nil {
+		return codexUsage{}, fmt.Errorf("Codex fetch failed: %v", closeErr)
+	}
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+		return codexUsage{}, fmt.Errorf("Codex credential rejected (HTTP %d)", response.StatusCode)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return codexUsage{}, fmt.Errorf("Codex fetch failed: HTTP %d", response.StatusCode)
+	}
+
+	var usage codexUsage
+	if err := json.Unmarshal(body, &usage); err != nil || usage.RateLimit == nil || usage.RateLimit.PrimaryWindow == nil {
+		return codexUsage{}, fmt.Errorf("Codex payload unreadable")
+	}
+	return usage, nil
+}
+
+func codexWindows(usage codexUsage) []Window {
 	windows := make([]Window, 0, 2)
-	for _, entry := range []*codexWindow{cache.Primary, cache.Secondary} {
+	for _, entry := range []*codexRateLimitWindow{usage.RateLimit.PrimaryWindow, usage.RateLimit.SecondaryWindow} {
 		if entry == nil {
 			continue
 		}
 		window := Window{
-			Name:    fmt.Sprintf("codex-%s", durationLabel(entry.WindowDurationMins)),
-			UsedPct: int(entry.UsedPercent), ResetAt: time.Unix(entry.ResetsAt, 0),
+			Name:    codexWindowName(entry.LimitWindowSeconds),
+			UsedPct: entry.UsedPercent, ResetAt: time.Unix(entry.ResetAt, 0),
 		}
-		if entry.ResetsAt <= 0 {
+		if entry.ResetAt <= 0 {
 			window.ResetAt = time.Time{}
 			window.ResetNote = "reset unavailable"
 		}
 		windows = append(windows, window)
 	}
-	return windows, nil
+	return windows
 }
 
-func durationLabel(minutes int64) string {
-	if minutes >= 24*60 {
-		return fmt.Sprintf("%dd", minutes/(24*60))
+func codexWindowName(seconds int64) string {
+	switch seconds {
+	case 18_000:
+		return "5h"
+	case 604_800:
+		return "7d"
 	}
-	return fmt.Sprintf("%dh", minutes/60)
+	if seconds > 0 && seconds%86_400 == 0 {
+		return fmt.Sprintf("%dd", seconds/86_400)
+	}
+	if seconds > 0 && seconds%3_600 == 0 {
+		return fmt.Sprintf("%dh", seconds/3_600)
+	}
+	if seconds > 0 && seconds%60 == 0 {
+		return fmt.Sprintf("%dm", seconds/60)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }

@@ -46,8 +46,10 @@ type Counters struct {
 
 // Indexer incrementally mirrors transcript stores into SQLite.
 type Indexer struct {
-	database *store.Store
-	paths    paths.Values
+	database         *store.Store
+	paths            paths.Values
+	codexRoots       []string
+	configOwnedCodex bool
 }
 
 // New resolves the jailed or default host paths used by an Indexer.
@@ -66,10 +68,39 @@ func New(database *store.Store) (*Indexer, error) {
 // Callers that have loaded command policy must pass those paths here so the
 // indexer reads the same account roots as the rest of the command.
 func NewWithPaths(database *store.Store, resolved paths.Values) (*Indexer, error) {
+	indexer, err := newWithCodexRoots(database, resolved, []string{resolved.CodexRoot})
+	if indexer != nil {
+		indexer.configOwnedCodex = false
+	}
+	return indexer, err
+}
+
+// NewWithCodexRoots constructs an Indexer over the config-owned Codex roster.
+// An explicitly empty slice scans no Codex store; nil is also empty because
+// legacy callers that want paths.CodexRoot use NewWithPaths.
+func NewWithCodexRoots(database *store.Store, resolved paths.Values, roots []string) (*Indexer, error) {
+	indexer, err := newWithCodexRoots(database, resolved, roots)
+	if indexer != nil {
+		indexer.configOwnedCodex = true
+	}
+	return indexer, err
+}
+
+func newWithCodexRoots(database *store.Store, resolved paths.Values, roots []string) (*Indexer, error) {
 	if database == nil {
 		return nil, fmt.Errorf("index store is nil")
 	}
-	return &Indexer{database: database, paths: resolved}, nil
+	codexRoots := make([]string, 0, len(roots))
+	seen := make(map[string]bool, len(roots))
+	for _, root := range roots {
+		clean := filepath.Clean(strings.TrimSpace(root))
+		if clean == "." || seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		codexRoots = append(codexRoots, clean)
+	}
+	return &Indexer{database: database, paths: resolved, codexRoots: codexRoots}, nil
 }
 
 // Run executes one complete Claude, Codex, and session-index pass.
@@ -96,10 +127,14 @@ func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, err
 	)
 	var codexFiles []diskFile
 	if !options.PriorityOnly {
-		codexFiles, err = walkCodexRollouts(ctx, indexer.paths.CodexRoot)
-		if err != nil {
-			return counters, err
+		for _, codexRoot := range indexer.codexRoots {
+			files, walkErr := walkCodexRollouts(ctx, codexRoot)
+			if walkErr != nil {
+				return counters, walkErr
+			}
+			codexFiles = append(codexFiles, files...)
 		}
+		sort.Slice(codexFiles, func(left, right int) bool { return codexFiles[left].Path < codexFiles[right].Path })
 	}
 	counters.FilesSeen = len(claudeFiles) + len(codexFiles)
 
@@ -201,18 +236,21 @@ func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, err
 	// its classification, and the conversations that wrote no file at all.
 	var codexThreads []store.CodexThread
 	if !options.PriorityOnly {
-		codexThreads, err = readCodexThreads(ctx, indexer.paths.CodexRoot)
-		if err != nil {
-			return counters, err
+		for _, codexRoot := range indexer.codexRoots {
+			threads, readErr := readCodexThreads(ctx, codexRoot)
+			if readErr != nil {
+				return counters, readErr
+			}
+			codexThreads = append(codexThreads, threads...)
+			rolloutUpdates = reconcileCodexState(
+				threads,
+				codexRoot,
+				rolloutUpdates,
+				rolloutByID,
+				presentRolloutIDs,
+				&counters,
+			)
 		}
-		rolloutUpdates = reconcileCodexState(
-			codexThreads,
-			indexer.paths.CodexRoot,
-			rolloutUpdates,
-			rolloutByID,
-			presentRolloutIDs,
-			&counters,
-		)
 	}
 
 	transcriptDeletes := make([]string, 0)
@@ -255,13 +293,14 @@ func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, err
 	counters.Deleted = len(transcriptDeletes) + len(rolloutDeletes)
 	counters.RowsTouched = len(transcriptUpdates) + len(rolloutUpdates) + counters.Deleted
 	if !options.PriorityOnly {
-		if err := reloadCxNames(
-			ctx,
-			indexer.database,
-			indexer.paths.CodexRoot,
-			&counters,
-		); err != nil {
-			return counters, err
+		var namesErr error
+		if indexer.configOwnedCodex {
+			namesErr = reloadCxNamesFromRoots(ctx, indexer.database, indexer.codexRoots, &counters)
+		} else {
+			namesErr = reloadCxNames(ctx, indexer.database, indexer.paths.CodexRoot, &counters)
+		}
+		if namesErr != nil {
+			return counters, namesErr
 		}
 		// Store names are applied after the session_index mirror is rebuilt,
 		// so a rename made inside Codex outranks the file it left behind.

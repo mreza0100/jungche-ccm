@@ -37,8 +37,8 @@ func mcpRuntime(runtime commandRuntime) mcpserv.Runtime {
 func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 	return mcpserv.SharedOperations{
 		List: func(ctx context.Context, input mcpserv.LSInput) (mcpserv.LSOutput, error) {
-			if input.All && input.Hidden {
-				return mcpserv.LSOutput{}, fmt.Errorf("all and hidden are mutually exclusive")
+			if input.All && input.Killed {
+				return mcpserv.LSOutput{}, fmt.Errorf("all and killed are mutually exclusive")
 			}
 			database, err := store.Open(store.WithWarningWriter(os.Stderr))
 			if err != nil {
@@ -48,8 +48,8 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 			view := compose.DefaultView
 			if input.All {
 				view = compose.AllView
-			} else if input.Hidden {
-				view = compose.HiddenView
+			} else if input.Killed {
+				view = compose.KilledView
 			}
 			scan, err := scanFleet(ctx, database, scanRequest{
 				View: view, Query: input.Project, Runtime: &runtime,
@@ -77,12 +77,12 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 				rows = append(rows, mcpserv.ChatRow{
 					Session: session, ID: row.ID, Engine: compose.EngineForKind(row.Kind),
 					State: state, Dir: row.CWD, Project: row.Project, Name: row.Name,
-					Account: account, Kind: row.Kind.String(), Hidden: row.Hidden,
+					Account: account, Kind: row.Kind.String(), Killed: row.Killed,
 					Socket: row.Socket, Pane: row.PaneID,
 				})
 			}
 			return mcpserv.LSOutput{
-				Rows: rows, Count: len(rows), HiddenCount: scan.Output.HiddenCount,
+				Rows: rows, Count: len(rows), KilledCount: scan.Output.KilledCount,
 			}, nil
 		},
 		Find: func(ctx context.Context, input mcpserv.FindInput) (mcpserv.FindOutput, error) {

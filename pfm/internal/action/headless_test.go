@@ -14,7 +14,7 @@ import (
 func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
 	plan, err := headlessWithTestConfig(HeadlessRequest{
 		Engine:         "cc",
-		Name:           "_HIDE worker 3",
+		Name:           "_KILL worker 3",
 		CWD:            "/work/alpha",
 		Prompt:         "audit the firewall rules",
 		Home:           "/home/tester",
@@ -26,7 +26,7 @@ func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
 	if !plan.PromptOnCommandLine {
 		t.Fatal("Claude takes its prompt on the command line")
 	}
-	want := "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CONFIG_DIR" +
+	want := "env -u CLAUDE_CODE_SESSION_ID -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CONFIG_DIR" +
 		" -u ENABLE_PROMPT_CACHING_1H -u FORCE_PROMPT_CACHING_5M" +
 		" -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_MODEL" +
 		" -u ANTHROPIC_SMALL_FAST_MODEL -u CLAUDE_CODE_AUTO_COMPACT_WINDOW" +
@@ -35,7 +35,7 @@ func TestHeadlessClaudeCarriesTheFullLaunchCeremony(t *testing.T) {
 		" -u CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY" +
 		" -u CODEX_THREAD_ID" +
 		" CLAUDE_CONFIG_DIR='/home/tester/.cc/2' FORCE_PROMPT_CACHING_5M=1" +
-		" claude '--name' '_HIDE worker 3' 'audit the firewall rules'" +
+		" claude '--name' '_KILL worker 3' 'audit the firewall rules'" +
 		" --allow-dangerously-skip-permissions --dangerously-skip-permissions"
 	if plan.Run != want {
 		t.Fatalf("run command\n got: %s\nwant: %s", plan.Run, want)
@@ -71,11 +71,12 @@ func TestHeadlessClaudeAccountOneAndCacheArmed(t *testing.T) {
 // before that can happen.
 func TestHeadlessCodexTakesNeitherNameNorPrompt(t *testing.T) {
 	plan, err := headlessWithTestConfig(HeadlessRequest{
-		Engine: "codex",
-		Name:   "_HIDE codex worker",
-		CWD:    "/work/alpha",
-		Prompt: "read the incident report",
-		Home:   "/home/tester",
+		Engine:         "codex",
+		Name:           "_KILL codex worker",
+		CWD:            "/work/alpha",
+		Prompt:         "read the incident report",
+		Home:           "/home/tester",
+		PrimaryAccount: 1,
 	})
 	if err != nil {
 		t.Fatalf("HeadlessRun() error = %v", err)
@@ -90,7 +91,7 @@ func TestHeadlessCodexTakesNeitherNameNorPrompt(t *testing.T) {
 		t.Fatalf("unexpected codex command: %s", plan.Run)
 	}
 	if strings.Contains(plan.Run, "read the incident report") ||
-		strings.Contains(plan.Run, "_HIDE codex worker") {
+		strings.Contains(plan.Run, "_KILL codex worker") {
 		t.Fatalf("codex command carried a name or prompt: %s", plan.Run)
 	}
 	if !strings.Contains(plan.Run, "-u CODEX_THREAD_ID") {

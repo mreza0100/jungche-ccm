@@ -63,7 +63,7 @@ func (h *Harvester) fetchUnshared(ctx context.Context, source string, options Fe
 	}
 	var result Result
 	if id := ClassifyIdentifier(source); id != IdentifierNone {
-		result = h.fetchIdentifier(ctx, source, id, options)
+		result = h.fetchKnownID(ctx, source, id, options)
 	} else if isLocalSource(source) {
 		result = h.fetchLocal(ctx, source, options)
 	} else {

@@ -14,16 +14,20 @@ func fixtureSnapshot(width int) Snapshot {
 		return fixtureNowNS - int64(duration)
 	}
 	return Snapshot{
-		View:           compose.AllView,
-		HiddenCount:    1,
-		PrimaryAccount: 2,
-		Cache1H:        true,
-		NowNS:          fixtureNowNS,
-		Width:          width,
-		Height:         17,
+		View:                compose.AllView,
+		KilledCount:         1,
+		PrimaryAccount:      2,
+		AccountIDs:          []int{1, 2, 3},
+		CodexPrimaryAccount: 3,
+		CodexAccountIDs:     []int{1, 2, 3},
+		CodexAccountEmojis:  map[int]string{1: "🥇", 2: "🥈", 3: "🥉"},
+		Cache1H:             true,
+		NowNS:               fixtureNowNS,
+		Width:               width,
+		Height:              17,
 		// The production picker always wires an applier (a ⌃X with nowhere to
 		// persist is refused), so the fixture carries one too.
-		ApplyHide: func(HideChange) error { return nil },
+		ApplyKill: func(KillChange) error { return nil },
 		Rows: []compose.Row{
 			{
 				Kind:        compose.LiveClaude,
@@ -78,7 +82,7 @@ func fixtureSnapshot(width int) Snapshot {
 				PromptCount: 7,
 				ActivityNS:  ago(26 * time.Hour),
 				Account:     3,
-				Hidden:      true,
+				Killed:      true,
 			},
 			{
 				Kind:        compose.ResumeClaude,
@@ -144,6 +148,7 @@ func largeSnapshot(count int) Snapshot {
 		Rows:           rows,
 		View:           compose.AllView,
 		PrimaryAccount: 1,
+		AccountIDs:     []int{1, 2, 3},
 		NowNS:          fixtureNowNS,
 		Width:          120,
 		Height:         30,

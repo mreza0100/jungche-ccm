@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"testing"
 
+	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/harvestpy"
+	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/testjail"
 )
 
@@ -59,5 +63,24 @@ func noNetworkHarvestDigest() harvestpy.EnvironmentDigest {
 func TestMain(m *testing.M) {
 	installHarvestProvisionerOverride = noNetworkHarvestProvisioner{}
 	harvestDoctorOverride = noNetworkHarvestDoctor{}
+	dependencyProbeOverride = func(_ context.Context, entries []deps.Entry, _ deps.ProbeOptions) []deps.Result {
+		results := make([]deps.Result, 0, len(entries))
+		for _, entry := range entries {
+			if !entry.AppliesTo(runtime.GOOS) {
+				results = append(results, deps.Result{Entry: entry, State: deps.StateSkipped, Error: "not this platform"})
+				continue
+			}
+			results = append(results, deps.Result{Entry: entry, State: deps.StateOK, Path: "/test/bin/" + entry.Name, Version: entry.MinVersion})
+		}
+		return results
+	}
+	hookProbeOverride = func(home string, machine pfmconfig.Config) []installer.HookProbeResult {
+		expected := installer.ExpectedHooks(home, machine)
+		results := make([]installer.HookProbeResult, 0, len(expected))
+		for _, hook := range expected {
+			results = append(results, installer.HookProbeResult{Hook: hook, State: "ok"})
+		}
+		return results
+	}
 	os.Exit(testjail.Run(m))
 }

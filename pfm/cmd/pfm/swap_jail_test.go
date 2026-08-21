@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/paths"
 )
 
@@ -90,7 +91,7 @@ func TestChatSwapRefusesAnOpenSelectorOnAProbeSocket(t *testing.T) {
 	}
 }
 
-func TestChatSwapSchedulesAHiddenWorker(t *testing.T) {
+func TestChatReloadSchedulesADetachedWorker(t *testing.T) {
 	root := jailTest(t)
 	configPath := writeConfigFixture(t, root, `{
   "version": 1,
@@ -175,6 +176,7 @@ func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 	}
 	_, _, err := resolveReloadSession(
 		resolved,
+		pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot),
 		"/tmp/tmux-1000/probe-pfm-swap-target",
 		"%7",
 		false,

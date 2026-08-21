@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-// TestLabelHiddenCandidatesNeverSpendAFrameSlot is the cached first frame's
-// half of the rename-to-hide rule. compose would drop these rows anyway, so
+// TestLabelKilledCandidatesNeverSpendAFrameSlot is the cached first frame's
+// half of the rename-to-kill rule. compose would drop these rows anyway, so
 // the point of the SQL/lineage predicates is the WINDOW: a fleet of headless
-// "_HIDE…" workers must not push real chats out of the limited candidate set
-// the frame is built from, and the counts must call them hidden, not
+// "_KILL…" workers must not push real chats out of the limited candidate set
+// the frame is built from, and the counts must call them killed, not
 // suppressed.
-func TestLabelHiddenCandidatesNeverSpendAFrameSlot(t *testing.T) {
+func TestLabelKilledCandidatesNeverSpendAFrameSlot(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	defer database.Close()
@@ -22,12 +22,12 @@ func TestLabelHiddenCandidatesNeverSpendAFrameSlot(t *testing.T) {
 	for _, transcript := range []Transcript{
 		{
 			UUID: "worker-upper", Path: "/cc/worker-upper.jsonl", Size: 100,
-			MTimeNS: 300, CWD: "/work/a", CustomTitle: "_HIDE worker 1",
+			MTimeNS: 300, CWD: "/work/a", CustomTitle: "_KILL worker 1",
 			FirstPrompt: "go", PromptCount: 2,
 		},
 		{
 			UUID: "worker-lower", Path: "/cc/worker-lower.jsonl", Size: 100,
-			MTimeNS: 200, CWD: "/work/a", FirstPrompt: "_hide worker 2",
+			MTimeNS: 200, CWD: "/work/a", FirstPrompt: "_kill worker 2",
 			PromptCount: 2,
 		},
 		{
@@ -48,17 +48,17 @@ func TestLabelHiddenCandidatesNeverSpendAFrameSlot(t *testing.T) {
 	if len(transcripts) != 1 || transcripts[0].UUID != "real" {
 		t.Fatalf("cached candidates = %#v, want only the real chat", transcripts)
 	}
-	if counts.Hidden != 2 {
-		t.Fatalf("hidden count = %d, want 2", counts.Hidden)
+	if counts.Killed != 2 {
+		t.Fatalf("killed count = %d, want 2", counts.Killed)
 	}
 	if counts.Suppressed != 0 {
 		t.Fatalf("suppressed count = %d, want 0", counts.Suppressed)
 	}
 }
 
-// TestLabelHiddenCodexLineageLeavesTheCachedFrame covers the Codex half, whose
+// TestLabelKilledCodexLineageLeavesTheCachedFrame covers the Codex half, whose
 // name comes from cx_names through the lineage walk rather than from a column.
-func TestLabelHiddenCodexLineageLeavesTheCachedFrame(t *testing.T) {
+func TestLabelKilledCodexLineageLeavesTheCachedFrame(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	defer database.Close()
@@ -82,7 +82,7 @@ func TestLabelHiddenCodexLineageLeavesTheCachedFrame(t *testing.T) {
 	}
 	if err := database.UpsertCxName(ctx, CxName{
 		ID:         "cx-worker",
-		ThreadName: "_HIDE codex worker",
+		ThreadName: "_KILL codex worker",
 		Source:     CxNameSourceStore,
 	}); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestLabelHiddenCodexLineageLeavesTheCachedFrame(t *testing.T) {
 	if len(rollouts) != 1 || rollouts[0].ID != "cx-real" {
 		t.Fatalf("cached rollouts = %#v, want only the real thread", rollouts)
 	}
-	if counts.Hidden != 1 {
-		t.Fatalf("hidden count = %d, want 1", counts.Hidden)
+	if counts.Killed != 1 {
+		t.Fatalf("killed count = %d, want 1", counts.Killed)
 	}
 }

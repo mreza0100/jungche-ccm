@@ -21,6 +21,7 @@ import (
 
 	"hostops/pfm/internal/agentopen"
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -228,7 +229,7 @@ func liveCrumbSession(
 }
 
 // registeredDaemonSession asks every configured account. A partial or failed
-// registry query cannot be interpreted as absence: the exact session hidden
+// registry query cannot be interpreted as absence: the exact session killed
 // behind the failed account is the one a transcript append would lose.
 func registeredDaemonSession(
 	ctx context.Context,
@@ -256,7 +257,7 @@ func registeredDaemonSession(
 	if binaryName == "" {
 		binaryName = "claude"
 	}
-	binary, err := exec.LookPath(binaryName)
+	binary, err := deps.Resolve(binaryName)
 	if err != nil {
 		if filepath.IsAbs(binaryName) {
 			binary = binaryName

@@ -252,3 +252,24 @@ func TestDetectCodexThreadsKeepsRolloutDescriptorIdentity(t *testing.T) {
 		t.Fatalf("DetectCodexThreads() = %#v, want %#v", live, want)
 	}
 }
+
+func TestDetectCodexThreadsMatchesRolloutsUnderEveryConfiguredRoot(t *testing.T) {
+	roots := []string{"/jail/codex-1", "/jail/codex-2"}
+	rollout := filepath.Join(roots[1], "sessions", "2026", "rollout-second.jsonl")
+	proc := &fakeProcFS{processes: map[int]fakeProcess{
+		100: {stat: ProcStat{ParentPID: 1}},
+		400: {
+			cmdline: []string{"/usr/bin/codex"},
+			fdLinks: []FDLink{{FD: 9, Target: rollout}},
+			stat:    ProcStat{ParentPID: 100},
+		},
+	}}
+	panes := []Pane{{Socket: "cx-1-2-3", PaneID: "%4", PID: 100}}
+	live, err := DetectCodexThreadsInRoots(proc, roots, panes, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(live) != 1 || live[0].RolloutPath != rollout {
+		t.Fatalf("multi-root live Codex=%#v, want rollout %q", live, rollout)
+	}
+}

@@ -31,7 +31,7 @@ type CodexThread struct {
 // created nearest its own start within CodexBirthWindowSeconds in the same
 // directory; a tie prefers the newer thread. A pane that matches nothing
 // returns an error rather than a guess, because a wrong identity would attach,
-// rename, or hide the wrong chat.
+// rename, or kill the wrong chat.
 func CodexThreadID(
 	exported string,
 	cwd string,

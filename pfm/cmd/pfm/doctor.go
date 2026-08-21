@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/harvest"
 	"hostops/pfm/internal/harvestpy"
+	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -33,6 +35,9 @@ type pinnedHarvestDoctor struct{}
 // fleet health without requiring a user-managed Python environment.
 var harvestDoctorOverride harvestDoctor
 
+var dependencyProbeOverride func(context.Context, []deps.Entry, deps.ProbeOptions) []deps.Result
+var hookProbeOverride func(string, config.Config) []installer.HookProbeResult
+
 func (pinnedHarvestDoctor) Inspect(root string, platform harvestpy.Platform) (harvestpy.EnvironmentDigest, error) {
 	return harvestpy.Inspect(root, platform)
 }
@@ -46,7 +51,8 @@ func runDoctor(
 	stdout, stderr io.Writer,
 	runtime commandRuntime,
 ) int {
-	flags := newFlagSet("doctor", "usage: pfm doctor", stderr)
+	flags := newFlagSet("doctor", "usage: pfm doctor [--verbose]", stderr)
+	verbose := flags.Bool("verbose", false, "write raw dependency probe output under tmp/")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -61,6 +67,7 @@ func runDoctor(
 		warnings++
 	}
 	printDoctorConfig(stdout, runtime)
+	warnings += printEngineDoctor(stdout, runtime.Config)
 	if mcpConfigured(runtime) {
 		status, daemonErr := mcpDaemonReachability(runtime)
 		if daemonErr != nil {
@@ -92,6 +99,34 @@ func runDoctor(
 	if len(pathWarnings) == 0 {
 		fmt.Fprintln(stdout, "doctor: path canonical")
 	}
+	launcher, launcherErr := installer.InspectClaudeLauncher(resolved.Home)
+	if launcherErr != nil {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: launcher: unreadable error=%v — run pfm install\n", launcherErr)
+	} else {
+		switch launcher.State {
+		case installer.LauncherOK:
+			fmt.Fprintln(stdout, "doctor: launcher: ok")
+		case installer.LauncherMissing:
+			warnings++
+			fmt.Fprintln(stdout, "doctor: launcher: missing — run pfm install")
+		case installer.LauncherDisplaced:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: launcher: DISPLACED by %s — run pfm install\n", launcher.Target)
+		default:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: launcher: unknown state=%s — run pfm install\n", launcher.State)
+		}
+	}
+	verboseDir := ""
+	if *verbose {
+		verboseDir = filepath.Join("tmp", "pfm-doctor")
+	}
+	warnings += printDependencyDoctor(ctx, stdout, deps.Registry(deps.Options{
+		Home: resolved.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
+		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
+	}), deps.ProbeOptions{VerboseDir: verboseDir})
+	warnings += printHookDoctor(stdout, resolved.Home, runtime.Config)
 
 	version, err := database.UserVersion(ctx)
 	if err != nil {
@@ -114,7 +149,7 @@ func runDoctor(
 		check,
 	)
 
-	// Hides live in the fleet's shared database, not this binary's cache.
+	// Kills live in the fleet's shared database, not this binary's cache.
 	sharedState := "ok"
 	if degraded := database.SharedDegraded(); degraded != nil {
 		warnings++
@@ -132,17 +167,17 @@ func runDoctor(
 		fmt.Fprintf(stdout, "doctor: unhealthy row counts: %v\n", err)
 		return 1
 	}
-	if counts.OrphanedHides != 0 {
+	if counts.OrphanedKills != 0 {
 		warnings++
 	}
 	fmt.Fprintf(
 		stdout,
-		"doctor: rows transcripts=%d rollouts=%d cx_names=%d hidden=%d orphaned_hidden=%d\n",
+		"doctor: rows transcripts=%d rollouts=%d cx_names=%d killed=%d orphaned_killed=%d\n",
 		counts.Transcripts,
 		counts.Rollouts,
 		counts.CxNames,
-		counts.Hidden,
-		counts.OrphanedHides,
+		counts.Killed,
+		counts.OrphanedKills,
 	)
 
 	walBytes := int64(0)
@@ -154,24 +189,24 @@ func runDoctor(
 	}
 	fmt.Fprintf(stdout, "doctor: wal_bytes=%d\n", walBytes)
 
-	hideWarnings, err := metaCounter(ctx, database, "busy_hide_warnings")
+	killWarnings, err := metaCounter(ctx, database, "busy_kill_warnings")
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy busy counter: %v\n", err)
 		return 1
 	}
-	unhideWarnings, err := metaCounter(ctx, database, "busy_unhide_warnings")
+	unkillWarnings, err := metaCounter(ctx, database, "busy_unkill_warnings")
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy busy counter: %v\n", err)
 		return 1
 	}
-	if hideWarnings != 0 || unhideWarnings != 0 {
+	if killWarnings != 0 || unkillWarnings != 0 {
 		warnings++
 	}
 	fmt.Fprintf(
 		stdout,
-		"doctor: busy_warnings hide=%d unhide=%d\n",
-		hideWarnings,
-		unhideWarnings,
+		"doctor: busy_warnings kill=%d unkill=%d\n",
+		killWarnings,
+		unkillWarnings,
 	)
 
 	// The process table is probed by READING it, not by stat'ing /proc. macOS has
@@ -187,8 +222,13 @@ func runDoctor(
 	}
 
 	rootWarnings := 0
-	roots := append([]string(nil), resolved.ClaudeRoots...)
-	roots = append(roots, resolved.CodexRoot)
+	roots := make([]string, 0, len(runtime.Config.Accounts)+len(runtime.Config.CodexAccounts))
+	for _, account := range runtime.Config.Accounts {
+		roots = append(roots, account.ProjectDir)
+	}
+	for _, account := range runtime.Config.CodexAccounts {
+		roots = append(roots, account.Home)
+	}
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {
@@ -227,6 +267,111 @@ func runDoctor(
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+func printEngineDoctor(stdout io.Writer, machine config.Config) int {
+	counts := machine.Engines()
+	engine, err := machine.DefaultEngine()
+	if err != nil {
+		fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=none error=%v\n", counts.Claude, counts.Codex, err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=%s\n", counts.Claude, counts.Codex, engine)
+	return 0
+}
+
+func configuredDependencyProbe(ctx context.Context, entries []deps.Entry, options deps.ProbeOptions) []deps.Result {
+	if dependencyProbeOverride != nil {
+		return dependencyProbeOverride(ctx, entries, options)
+	}
+	return deps.Probe(ctx, entries, options)
+}
+
+func printDependencyDoctor(ctx context.Context, stdout io.Writer, entries []deps.Entry, options deps.ProbeOptions) int {
+	warnings := 0
+	for _, result := range configuredDependencyProbe(ctx, entries, options) {
+		entry := result.Entry
+		switch result.State {
+		case deps.StateSkipped:
+			platform := strings.Join(entry.Platforms, ",")
+			if platform == "" {
+				platform = "all"
+			}
+			fmt.Fprintf(stdout, "doctor: dep %s platform=%s skipped (%s)\n", entry.Name, platform, result.Error)
+		case deps.StateMissing:
+			requirement := "optional"
+			if entry.Required {
+				requirement = "required"
+				warnings++
+			}
+			fmt.Fprintf(stdout, "doctor: dep %s path=(none) MISSING %s — install: %s\n", entry.Name, requirement, entry.InstallHint)
+		case deps.StateBroken:
+			if entry.Required {
+				warnings++
+			}
+			raw := deps.FirstLine(result.Raw)
+			if raw != "" && !strings.Contains(result.Error, "raw=") {
+				fmt.Fprintf(stdout, "doctor: dep %s path=%s broken error=%s raw=%q\n", entry.Name, result.Path, result.Error, raw)
+			} else {
+				fmt.Fprintf(stdout, "doctor: dep %s path=%s broken error=%s\n", entry.Name, result.Path, result.Error)
+			}
+		case deps.StateOK:
+			fmt.Fprintf(stdout, "doctor: dep %s path=%s", entry.Name, result.Path)
+			if result.Version != "" {
+				fmt.Fprintf(stdout, " version=%s", result.Version)
+			}
+			if entry.MinVersion != "" {
+				fmt.Fprintf(stdout, " min=%s", entry.MinVersion)
+			}
+			if result.SelfDoctor != "" {
+				fmt.Fprintf(stdout, " self_doctor=%s", result.SelfDoctor)
+			}
+			fmt.Fprintln(stdout, " ok")
+		default:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: dep %s broken error=unknown probe state %q\n", entry.Name, result.State)
+		}
+		if result.VerboseErr != "" {
+			warnings++
+			fmt.Fprintf(stdout, "doctor: dep %s verbose broken error=%s\n", entry.Name, result.VerboseErr)
+		}
+	}
+	return warnings
+}
+
+func printHookDoctor(stdout io.Writer, home string, machine config.Config) int {
+	var results []installer.HookProbeResult
+	if hookProbeOverride != nil {
+		results = hookProbeOverride(home, machine)
+	} else {
+		results = installer.ProbeExpectedHooks(home, machine)
+	}
+	warnings := 0
+	for _, result := range results {
+		hook := result.Hook
+		file := filepath.Base(hook.File)
+		if file == "." || file == "" {
+			file = "(unknown)"
+		}
+		prefix := fmt.Sprintf("doctor: hook %s %s %s %s", hook.Target, file, hook.Event, hook.Name)
+		switch result.State {
+		case "ok":
+			fmt.Fprintln(stdout, prefix+" ok")
+		case "missing":
+			warnings++
+			fmt.Fprintln(stdout, prefix+" MISSING — run pfm install")
+		case "broken":
+			warnings++
+			fmt.Fprintf(stdout, "%s broken error=%s\n", prefix, result.Error)
+		case "drift":
+			warnings++
+			fmt.Fprintf(stdout, "%s drift error=%s\n", prefix, result.Error)
+		default:
+			warnings++
+			fmt.Fprintf(stdout, "%s broken error=unknown hook state %q\n", prefix, result.State)
+		}
+	}
+	return warnings
 }
 
 func printHarvestCacheDoctor(stdout io.Writer) int {

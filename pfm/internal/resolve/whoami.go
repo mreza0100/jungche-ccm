@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 )
 
@@ -321,7 +322,7 @@ func (namer CommandTmuxNamer) SessionName(
 	command.Env = append(os.Environ(), "TMUX=")
 	output, err := command.Output()
 	if err != nil && target != "" {
-		// A stale pane id must not hide a live session: retry untargeted, the
+		// A stale pane id must not kill a live session: retry untargeted, the
 		// way chat.sh's bare `tmux display-message -p` does.
 		return namer.SessionName(ctx, socketPath, "")
 	}
@@ -330,9 +331,9 @@ func (namer CommandTmuxNamer) SessionName(
 
 func (namer CommandTmuxNamer) binary() string {
 	if namer.Binary == "" {
-		return "tmux"
+		return deps.Executable("tmux")
 	}
-	return namer.Binary
+	return deps.Executable(namer.Binary)
 }
 
 // CommandPaneOwners lists pane pids on one tmux socket.
@@ -356,7 +357,9 @@ func (lister CommandPaneOwners) PaneOwners(
 ) ([]PaneOwner, error) {
 	binary := lister.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
+	} else {
+		binary = deps.Executable(binary)
 	}
 	command := exec.CommandContext(
 		ctx,

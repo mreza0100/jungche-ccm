@@ -92,6 +92,25 @@ func callTool[T any](
 	return output
 }
 
+func TestChatStatusSummaryUsesCanonicalCommandAndReturnsField(t *testing.T) {
+	var gotArgs []string
+	service := newService("test", &backend{dispatch: func(_ context.Context, args []string, stdout, _ io.Writer) int {
+		gotArgs = append([]string(nil), args...)
+		_, _ = io.WriteString(stdout, `{"name":"seat","state":"idle","idle_seconds":2,"engine":"cc","summary":"done","summary_cached":true}`+"\n")
+		return 0
+	}})
+	protocol := connectInMemory(t, service.Server())
+	output := callTool[StatusOutput](t, protocol.clientSession, "chat_status", StatusInput{
+		Target: "seat", Summary: true, Engine: "codex", Model: "test-model",
+	})
+	if strings.Join(gotArgs, " ") != "chat status seat --json --summary --engine codex --model test-model" {
+		t.Fatalf("dispatch args=%q", gotArgs)
+	}
+	if output.Summary != "done" || !output.SummaryCached {
+		t.Fatalf("status output=%+v", output)
+	}
+}
+
 func setupBackendFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -199,9 +218,9 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 	wantTools := []string{
 		"chat_capture",
 		"chat_find",
-		"chat_hide",
 		"chat_inject",
 		"chat_keys",
+		"chat_kill",
 		"chat_last",
 		"chat_ls",
 		"chat_name",
@@ -212,7 +231,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		"chat_resolve",
 		"chat_save",
 		"chat_status",
-		"chat_unhide",
+		"chat_unkill",
 		"chat_whoami",
 	}
 	if !reflect.DeepEqual(toolNames, wantTools) {
@@ -509,7 +528,7 @@ func newStdioJail(t *testing.T) *stdioJail {
 			"type": "assistant",
 			"message": map[string]any{"content": []any{
 				map[string]any{"type": "text", "text": "Assistant visible"},
-				map[string]any{"type": "tool_result", "content": "hidden tool"},
+				map[string]any{"type": "tool_result", "content": "killed tool"},
 			}},
 		},
 		map[string]any{
@@ -952,7 +971,7 @@ func TestChatReadBudgetsAndJunkFilter(t *testing.T) {
 	writeJSONL(t, path, []any{
 		map[string]any{
 			"type": "user", "cwd": "/work/alpha",
-			"message": map[string]any{"content": "<system-reminder>hidden"},
+			"message": map[string]any{"content": "<system-reminder>killed"},
 		},
 		map[string]any{
 			"type": "user", "cwd": "/work/alpha",

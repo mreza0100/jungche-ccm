@@ -35,11 +35,11 @@ func (picker TSVPicker) Pick(
 
 func passiveOutcome(snapshot Snapshot) Outcome {
 	return Outcome{
-		Kind:           OutcomeNone,
-		PrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
-		Cache1H:        snapshot.Cache1H,
-		Rotation:       snapshot.Rotation,
-		Query:          snapshot.InitialQuery,
+		Kind:                 OutcomeNone,
+		PrimaryAccount:       validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		ClaudePrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
+		Cache1H:              snapshot.Cache1H,
+		Query:                snapshot.InitialQuery,
 	}
 }
 
@@ -64,7 +64,7 @@ func RenderPlain(snapshot Snapshot) string {
 			rowMarker(row.Kind) + " " +
 				clipRunes(cleanField(row.Name), 30),
 		}
-		if badges := stripANSI(rowBadges(row)); badges != "" {
+		if badges := stripANSI(model.rowBadges(row)); badges != "" {
 			parts = append(parts, badges)
 		}
 		parts = append(
@@ -84,7 +84,7 @@ func RenderTSV(snapshot Snapshot) string {
 	model := NewModel(snapshot)
 	var output strings.Builder
 	output.WriteString(
-		"kind\tid\tproject\tcwd\tname\tprompts\tsize\tactivity_ns\taccount\thidden\tsocket\n",
+		"kind\tid\tproject\tcwd\tname\tprompts\tsize\tactivity_ns\taccount\tkilled\tsocket\n",
 	)
 	for _, row := range model.VisibleRows() {
 		fields := []string{
@@ -97,7 +97,7 @@ func RenderTSV(snapshot Snapshot) string {
 			strconv.FormatInt(row.Size, 10),
 			strconv.FormatInt(row.ActivityNS, 10),
 			strconv.Itoa(row.Account),
-			strconv.FormatBool(row.Hidden),
+			strconv.FormatBool(row.Killed),
 			row.Socket,
 		}
 		for index := range fields {
