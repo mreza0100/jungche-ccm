@@ -3,6 +3,7 @@ package harvest
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha1"
@@ -571,6 +572,42 @@ func TestDetectTablesMatchOracle(t *testing.T) {
 	} {
 		if got := IsPlainText(tc.name, tc.ct, tc.sample); got != tc.want {
 			t.Errorf("IsPlainText(%q,%q) = %v, want %v", tc.name, tc.ct, got, tc.want)
+		}
+	}
+}
+
+// TestClassifyKindOOXMLExtensionBeatsZipMagic pins the fetchLocal regression:
+// every OOXML document (.docx/.xlsx/.pptx) IS a zip container, so its body
+// starts with the "PK\x03\x04" zip signature. classifyKind's magic-byte sniff
+// (net.go, right after the openxmlformats content-type/extension branches)
+// must not shadow the file-extension classification that runs afterward —
+// otherwise a local .docx reaches harvestpy's converter tagged "zip", and the
+// converter refuses archive kinds outright (harvestpy/converter.go:84).
+func TestClassifyKindOOXMLExtensionBeatsZipMagic(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("[Content_Types].xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(w, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	body := buf.Bytes()
+	if !bytes.HasPrefix(body, []byte("PK\x03\x04")) {
+		t.Fatalf("fixture is not a zip container: %q", body[:minInt(len(body), 4)])
+	}
+	for _, tc := range []struct{ name, want string }{
+		{"report.docx", "docx"},
+		{"report.xlsx", "xlsx"},
+		{"report.pptx", "pptx"},
+		{"report.zip", "zip"},
+	} {
+		if got := classifyKind(tc.name, "", body); got != tc.want {
+			t.Errorf("classifyKind(%q, ct=%q, body=OOXML-zip-magic) = %q, want %q — the zip magic-byte sniff must not shadow the file extension", tc.name, "", got, tc.want)
 		}
 	}
 }

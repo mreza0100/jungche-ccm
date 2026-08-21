@@ -103,11 +103,12 @@ func TestDoctorHarvestDistinguishesBrokenEnvironmentAndSmoke(t *testing.T) {
 		t.Fatalf("broken doctor warnings=%d, want nonzero\n%s", warnings, output.String())
 	}
 	text := output.String()
+	// digest.State is "ready" here (doctorHarvestDigest): the lock check
+	// failed against a provision that DID finish, so the failure word is
+	// "broken" — "incomplete" is reserved for digest.State == "incomplete".
 	for _, want := range []string{
-		"doctor: harvestpy lock=(file) incomplete",
-		"installed inventory differs from provisioned lock",
-		"doctor: harvestpy live_smoke=(file) broken",
-		"interpreter missing",
+		"doctor: harvestpy lock=(file) broken error=installed inventory differs from provisioned lock",
+		"doctor: harvestpy live_smoke=(file) broken error=harvestpy smoke subprocess: interpreter missing",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("broken doctor output missing %q:\n%s", want, text)
@@ -115,6 +116,42 @@ func TestDoctorHarvestDistinguishesBrokenEnvironmentAndSmoke(t *testing.T) {
 	}
 	if strings.Contains(text, "live_smoke=(file) healthy") || strings.Contains(text, "lock=(file) complete") {
 		t.Fatalf("broken doctor reused healthy rendering:\n%s", text)
+	}
+	if strings.Contains(text, "lock=(file) incomplete") {
+		t.Fatalf("broken doctor rendered the interrupted-provision word for a State==ready digest:\n%s", text)
+	}
+}
+
+func TestDoctorHarvestLockIncompleteReflectsInterruptedProvisionState(t *testing.T) {
+	digest := doctorHarvestDigest()
+	digest.State = "incomplete"
+	digest.LockSHA256 = ""
+	fake := harvestDoctorFake{
+		digest: digest,
+		check: harvestpy.CheckReport{
+			Healthy: false,
+			Digest:  digest,
+			Checks: map[string]harvestpy.CheckStatus{
+				"lock_completeness": {Error: "provision interrupted: lock file missing"},
+			},
+		},
+		checkErr: errors.New("harvestpy environment check failed"),
+	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "state", "pfm", "harvest-python"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	warnings := printHarvestPythonDoctor(context.Background(), &output, home, harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}, fake)
+	if warnings == 0 {
+		t.Fatalf("interrupted-provision doctor warnings=%d, want nonzero\n%s", warnings, output.String())
+	}
+	text := output.String()
+	if want := "doctor: harvestpy lock=(file) incomplete error=provision interrupted: lock file missing"; !strings.Contains(text, want) {
+		t.Fatalf("interrupted-provision doctor output missing %q:\n%s", want, text)
+	}
+	if strings.Contains(text, "lock=(file) broken") {
+		t.Fatalf("interrupted-provision doctor rendered the finished-provision word for a State==incomplete digest:\n%s", text)
 	}
 }
 

@@ -181,7 +181,7 @@ func runMCP(
 		return 1
 	}
 	if name == "harvester" {
-		return runHarvesterMCP(args[1:], stdout, stderr, runtime)
+		return runHarvesterMCP(args[2:], stdout, stderr, runtime)
 	}
 	if name != "chat" {
 		fmt.Fprintf(stderr, "pfm mcp %s: registered server has no implementation\n", name)
