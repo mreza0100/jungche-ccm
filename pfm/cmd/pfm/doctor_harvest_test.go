@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -53,8 +55,12 @@ func TestDoctorHarvestReportsPinnedInterpreterLockInventoryAndLiveSmokeHealthy(t
 			},
 		},
 	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "state", "pfm", "harvest-python"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	var output strings.Builder
-	warnings := printHarvestPythonDoctor(context.Background(), &output, t.TempDir(), harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}, fake)
+	warnings := printHarvestPythonDoctor(context.Background(), &output, home, harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}, fake)
 	if warnings != 0 {
 		t.Fatalf("healthy doctor warnings=%d, want 0\n%s", warnings, output.String())
 	}
@@ -87,8 +93,12 @@ func TestDoctorHarvestDistinguishesBrokenEnvironmentAndSmoke(t *testing.T) {
 		},
 		checkErr: errors.New("harvestpy environment check failed"),
 	}
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".local", "state", "pfm", "harvest-python"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	var output strings.Builder
-	warnings := printHarvestPythonDoctor(context.Background(), &output, t.TempDir(), harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}, fake)
+	warnings := printHarvestPythonDoctor(context.Background(), &output, home, harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}, fake)
 	if warnings == 0 {
 		t.Fatalf("broken doctor warnings=%d, want nonzero\n%s", warnings, output.String())
 	}
@@ -105,5 +115,53 @@ func TestDoctorHarvestDistinguishesBrokenEnvironmentAndSmoke(t *testing.T) {
 	}
 	if strings.Contains(text, "live_smoke=(file) healthy") || strings.Contains(text, "lock=(file) complete") {
 		t.Fatalf("broken doctor reused healthy rendering:\n%s", text)
+	}
+}
+
+func TestDoctorHarvestMissingRootIsSkipped(t *testing.T) {
+	var output strings.Builder
+	warnings := printHarvestPythonDoctor(
+		context.Background(),
+		&output,
+		t.TempDir(),
+		harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"},
+		harvestDoctorFake{
+			inspect:  errors.New("harvestpy root is absent"),
+			checkErr: errors.New("harvestpy root is absent"),
+		},
+	)
+	if warnings != 0 {
+		t.Fatalf("missing harvest root warnings=%d, want 0\n%s", warnings, output.String())
+	}
+	if got, want := output.String(), "doctor: harvestpy skipped\n"; got != want {
+		t.Fatalf("missing harvest root output=%q, want %q", got, want)
+	}
+}
+
+func TestDoctorHarvestUnreadableRootIsNotSkipped(t *testing.T) {
+	home := t.TempDir()
+	local := filepath.Join(home, ".local")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("state", filepath.Join(local, "state")); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	warnings := printHarvestPythonDoctor(
+		context.Background(),
+		&output,
+		home,
+		harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"},
+		harvestDoctorFake{
+			inspect:  os.ErrPermission,
+			checkErr: os.ErrPermission,
+		},
+	)
+	if warnings == 0 {
+		t.Fatalf("unreadable harvest root warnings=0, want a visible probe failure\n%s", output.String())
+	}
+	if strings.Contains(output.String(), "doctor: harvestpy skipped") {
+		t.Fatalf("unreadable harvest root rendered as skipped:\n%s", output.String())
 	}
 }

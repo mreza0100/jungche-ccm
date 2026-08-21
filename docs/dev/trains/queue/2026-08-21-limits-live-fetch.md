@@ -2,7 +2,7 @@
 
 Status: QUEUED · Refined: 2026-08-21 by CCC (user-ordered; anchors verified against pfm and the reference) · Project: pfm · Fenced wave · Depends on: `2026-08-21-picker-kill-rename.md` landing first only if both touch `internal/ui/render.go` in the same lines — otherwise independent.
 
-**Reference implementation (the user's ruling — follow its way of fetching):** `mreza0100/limit-dashboard`, cloned at `~/work/limit-dashboard` (Swift). Anchors below are in that clone; the builder reads them, never guesses.
+**Reference implementation (the user's ruling — follow its way of fetching):** `mreza0100/limit-dashboard` (Swift), cloned locally at the path the builder goal names (`$LIMIT_DASHBOARD_REF`). Anchors below are in that clone; the builder reads them, never guesses.
 
 ## Why (verified 2026-08-21)
 
