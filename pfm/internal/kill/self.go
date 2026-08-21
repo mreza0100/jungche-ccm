@@ -109,15 +109,15 @@ func (manager *Manager) identifyCodexSelf(
 	// The state-store resolver is what lets a chat whose Codex session writes
 	// no rollout file kill ITSELF; a rollout-backed pane still resolves
 	// through its open file descriptor exactly as before.
-	live, err := gather.DetectCodexThreads(
+	live, err := gather.DetectCodexThreadsInRoots(
 		manager.proc,
-		manager.paths.codexRoot,
+		manager.paths.codexRoots,
 		[]gather.Pane{{
 			Socket: socketName,
 			PaneID: paneID,
 			PID:    panePID,
 		}},
-		store.NewCodexThreadResolver(ctx, manager.paths.codexRoot),
+		store.NewCodexThreadResolverRoots(ctx, manager.paths.codexRoots),
 	)
 	if err != nil {
 		return Target{}, err

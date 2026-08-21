@@ -54,13 +54,14 @@ func TestModelKeysKillModifiersAndCancel(t *testing.T) {
 	if model.Cache1H() {
 		t.Fatal("ctrl+e did not toggle 1h off")
 	}
-	// ⌃S cycles the default three-account roster and wraps.
+	// The selected row is Codex, so ⌃S cycles the Codex roster and leaves the
+	// independently persisted Claude primary alone.
 	for step := 0; step < 4; step++ {
-		before := model.PrimaryAccount()
+		before := model.codexPrimary
 		model, _ = applyKey(t, model, controlKey('s'))
 		want := before%3 + 1
-		if model.PrimaryAccount() != want {
-			t.Fatalf("account=%d want=%d", model.PrimaryAccount(), want)
+		if model.codexPrimary != want || model.PrimaryAccount() != 2 {
+			t.Fatalf("codex account=%d want=%d; Claude primary=%d", model.codexPrimary, want, model.PrimaryAccount())
 		}
 	}
 
@@ -159,6 +160,80 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
 	if command == nil || model.Result().Kind != OutcomeReboot {
 		t.Fatalf("chat carousel Enter result=%#v command=%v", model.Result(), command)
+	}
+}
+
+func TestNewChatUsesOnlyPresentEnginesAndCyclesTheirOwnRoster(t *testing.T) {
+	codexOnly := Snapshot{
+		Rows:                []compose.Row{{Kind: compose.NewCodex, Name: "New Codex chat", CWD: "/work/new", Account: 7}},
+		CodexPrimaryAccount: 7,
+		CodexAccountIDs:     []int{7, 9},
+		MergeNewChat:        true,
+		NowNS:               fixtureNowNS,
+	}
+	model := NewModel(codexOnly)
+	if model.NewChatEngine() != "codex" {
+		t.Fatalf("codex-only engine = %q", model.NewChatEngine())
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
+	if model.NewChatEngine() != "codex" {
+		t.Fatalf("single-engine carousel exposed Claude: %q", model.NewChatEngine())
+	}
+	model, _ = applyKey(t, model, controlKey('s'))
+	selected, command := applyKey(t, model, specialKey(tea.KeyEnter))
+	if command == nil || selected.Result().Row.Kind != compose.NewCodex || selected.Result().PrimaryAccount != 9 {
+		t.Fatalf("Codex account cycle result = %#v", selected.Result())
+	}
+
+	claudeOnly := Snapshot{
+		Rows:           []compose.Row{{Kind: compose.NewClaude, Name: "New Claude chat", CWD: "/work/new", Account: 2}},
+		PrimaryAccount: 2,
+		AccountIDs:     []int{2, 4},
+		MergeNewChat:   true,
+		NowNS:          fixtureNowNS,
+	}
+	model = NewModel(claudeOnly)
+	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
+	if model.NewChatEngine() != "claude" {
+		t.Fatalf("single-engine carousel exposed Codex: %q", model.NewChatEngine())
+	}
+}
+
+func TestLiveSelectionKeepsBirthAccountSeparateFromSelectedAccount(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		row    compose.Row
+		make   func() Snapshot
+		chosen int
+	}{
+		{
+			name: "claude",
+			row:  compose.Row{Kind: compose.LiveClaude, Account: 2},
+			make: func() Snapshot {
+				return Snapshot{PrimaryAccount: 4, AccountIDs: []int{2, 4}}
+			},
+			chosen: 4,
+		},
+		{
+			name: "codex",
+			row:  compose.Row{Kind: compose.LiveCodex, Account: 7},
+			make: func() Snapshot {
+				return Snapshot{CodexPrimaryAccount: 9, CodexAccountIDs: []int{7, 9}}
+			},
+			chosen: 9,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			snapshot := test.make()
+			snapshot.Rows = []compose.Row{test.row}
+			snapshot.NowNS = fixtureNowNS
+			model := NewModel(snapshot)
+			selected, command := applyKey(t, model, specialKey(tea.KeyEnter))
+			result := selected.Result()
+			if command == nil || result.Row.Account != test.row.Account || result.PrimaryAccount != test.chosen {
+				t.Fatalf("live handoff row account=%d selected=%d, want birth=%d selected=%d", result.Row.Account, result.PrimaryAccount, test.row.Account, test.chosen)
+			}
+		})
 	}
 }
 
@@ -268,12 +343,14 @@ func TestKillThatCannotLandLeavesTheRowAlone(t *testing.T) {
 func TestEnterOutcomeEveryKindAndLiveReboot(t *testing.T) {
 	for _, row := range fixtureSnapshot(120).Rows {
 		snapshot := Snapshot{
-			Rows:           []compose.Row{row},
-			View:           compose.AllView,
-			PrimaryAccount: 3,
-			AccountIDs:     []int{1, 2, 3},
-			Cache1H:        true,
-			NowNS:          fixtureNowNS,
+			Rows:                []compose.Row{row},
+			View:                compose.AllView,
+			PrimaryAccount:      3,
+			AccountIDs:          []int{1, 2, 3},
+			CodexPrimaryAccount: 3,
+			CodexAccountIDs:     []int{1, 2, 3},
+			Cache1H:             true,
+			NowNS:               fixtureNowNS,
 		}
 		model := NewModel(snapshot)
 		selected, command := applyKey(t, model, specialKey(tea.KeyEnter))

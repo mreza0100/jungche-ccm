@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -340,5 +341,23 @@ func TestUninstallRefusesToStrandOwnedHookInInvalidCodexJSON(t *testing.T) {
 	err = installer.wireCodexHooks()
 	if err == nil || !strings.Contains(err.Error(), "refuse to strand owned hooks in invalid Codex hooks JSON") {
 		t.Fatalf("wireCodexHooks error=%v", err)
+	}
+}
+
+func TestCodexHookWiringIteratesConfiguredHomes(t *testing.T) {
+	home := t.TempDir()
+	homes := []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-2")}
+	installer := engine{
+		options: Options{Mode: ModeApply, Home: home, CodexHomes: homes, Stdout: io.Discard},
+		apply:   true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"),
+	}
+	if err := installer.wireCodexHooks(); err != nil {
+		t.Fatal(err)
+	}
+	for _, codexHome := range homes {
+		raw := readFixture(t, filepath.Join(codexHome, "hooks.json"))
+		if got := hookCommandCount(t, raw, "SessionStart", home+"/.local/bin/pfm internal clear-kill"); got != 1 {
+			t.Fatalf("%s has %d canonical clear-kill hooks, want one\n%s", codexHome, got, raw)
+		}
 	}
 }

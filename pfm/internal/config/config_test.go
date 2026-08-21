@@ -302,7 +302,6 @@ func TestLoadRejectsInvalidAccountRoster(t *testing.T) {
 		json string
 		want string
 	}{
-		{name: "empty", json: `{"version":1,"accounts":[]}`, want: "at least one account"},
 		{name: "non-positive id", json: `{"version":1,"accounts":[{"id":0,"configDir":"/tmp/cc"}]}`, want: "positive"},
 		{name: "duplicate id", json: `{"version":1,"accounts":[{"id":2,"configDir":"/tmp/a"},{"id":2,"configDir":"/tmp/b"}]}`, want: "duplicate"},
 		{name: "relative path", json: `{"version":1,"accounts":[{"id":1,"configDir":"relative"}]}`, want: "must be absolute"},

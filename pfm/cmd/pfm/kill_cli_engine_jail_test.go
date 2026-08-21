@@ -211,6 +211,7 @@ func newKillCLIJail(t *testing.T) *killCLIJail {
 			t.Fatal(err)
 		}
 	}
+	writeJailedCodexAuth(t, root)
 	t.Setenv("TMUX_TMPDIR", root)
 	t.Setenv("PFM_HOME", home)
 	t.Setenv("PFM_DB", filepath.Join(root, "fleet.db"))

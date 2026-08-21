@@ -254,6 +254,24 @@ func newRunJail(t *testing.T) *runJail {
 	}
 	write("codex", stubCodex)
 	write("claude", stubClaude)
+	if err := os.WriteFile(
+		filepath.Join(root, "codex", "auth.json"),
+		[]byte(`{"tokens":{"access_token":"fixture"},"account_id":"fixture"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	configDir := filepath.Join(root, "home", ".config", "pfm")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(configDir, "config.json"),
+		[]byte(`{"version":2,"ask":{"engine":"claude"}}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 
 	// The engine stubs go on PATH BEFORE anything drives the CLI, and every
 	// self-identifying variable is cleared: a spawn made from inside this

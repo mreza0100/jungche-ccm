@@ -76,11 +76,21 @@ func Synthesize(request Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	if _, found := machine.Account(request.PrimaryAccount); !found {
-		return Plan{}, fmt.Errorf(
-			"primary account %d is not in the configured roster",
-			request.PrimaryAccount,
-		)
+	switch route {
+	case NewClaude, Agent, ResumeClaude:
+		if _, found := machine.Account(request.PrimaryAccount); !found {
+			return Plan{}, fmt.Errorf(
+				"Claude account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
+	case NewCodex, ResumeCodex:
+		if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
+			return Plan{}, fmt.Errorf(
+				"Codex account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
 	}
 	if hasNUL(
 		request.Row.ID,
@@ -113,7 +123,9 @@ func Synthesize(request Request) (Plan, error) {
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")
 		}
-		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && cx)"
+		account, _ := machine.CodexAccountByID(request.PrimaryAccount)
+		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && CODEX_HOME=" +
+			Quote(account.Home) + " cx)"
 	case Live:
 		if request.Row.Socket == "" {
 			return Plan{}, errors.New("live action requires a socket")
@@ -364,14 +376,19 @@ func codexCommandWithAccount(
 	args ...string,
 ) string {
 	var command strings.Builder
+	policy := machine.EffectiveCodex(account)
 	command.WriteString(environmentStrip)
+	if selected, found := machine.CodexAccountByID(account); found {
+		command.WriteString(" CODEX_HOME=")
+		command.WriteString(Quote(selected.Home))
+	}
 	command.WriteByte(' ')
 	command.WriteString(binaryWord(
-		machine.Codex.Binary,
+		policy.Binary,
 		"codex",
-		machine.Source("codex.binary") == pfmconfig.SourceFile,
+		policy.Binary != "" && policy.Binary != "codex",
 	))
-	if machine.EffectiveCodex(account).Yolo {
+	if policy.Yolo {
 		command.WriteString(" --dangerously-bypass-approvals-and-sandbox")
 	} else {
 		command.WriteString(" --sandbox workspace-write")
@@ -384,7 +401,8 @@ func codexCommandWithAccount(
 }
 
 func normalizedMachineConfig(machine pfmconfig.Config, home string) pfmconfig.Config {
-	if machine.Version == pfmconfig.Version && len(machine.Accounts) != 0 {
+	if machine.Version == pfmconfig.Version &&
+		(len(machine.Accounts) != 0 || len(machine.CodexAccounts) != 0) {
 		return machine
 	}
 	return pfmconfig.Defaults(home, nil)

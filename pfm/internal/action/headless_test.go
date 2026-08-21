@@ -71,11 +71,12 @@ func TestHeadlessClaudeAccountOneAndCacheArmed(t *testing.T) {
 // before that can happen.
 func TestHeadlessCodexTakesNeitherNameNorPrompt(t *testing.T) {
 	plan, err := headlessWithTestConfig(HeadlessRequest{
-		Engine: "codex",
-		Name:   "_KILL codex worker",
-		CWD:    "/work/alpha",
-		Prompt: "read the incident report",
-		Home:   "/home/tester",
+		Engine:         "codex",
+		Name:           "_KILL codex worker",
+		CWD:            "/work/alpha",
+		Prompt:         "read the incident report",
+		Home:           "/home/tester",
+		PrimaryAccount: 1,
 	})
 	if err != nil {
 		t.Fatalf("HeadlessRun() error = %v", err)

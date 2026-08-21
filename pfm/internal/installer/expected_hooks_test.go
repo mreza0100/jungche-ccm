@@ -27,7 +27,7 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 
 	t.Run("missing owned hook", func(t *testing.T) {
 		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "claude[global]", "usage")
+		hook := findExpectedHook(t, home, machine, "claude[2]", "usage")
 		removeHookFixture(t, hook)
 		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "missing")
 		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "drift")
@@ -35,7 +35,7 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 
 	t.Run("stale binary", func(t *testing.T) {
 		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "claude[global]", "clear-kill")
+		hook := findExpectedHook(t, home, machine, "claude[2]", "clear-kill")
 		raw, err := os.ReadFile(hook.File)
 		if err != nil {
 			t.Fatal(err)
@@ -49,7 +49,7 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 
 	t.Run("corrupt Codex hooks", func(t *testing.T) {
 		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "codex", "clear-kill")
+		hook := findExpectedHook(t, home, machine, "codex[1]", "clear-kill")
 		if err := os.WriteFile(hook.File, []byte("{broken\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -58,10 +58,32 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 
 	t.Run("canonical command with wrong hook type", func(t *testing.T) {
 		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "codex", "clear-kill")
+		hook := findExpectedHook(t, home, machine, "codex[1]", "clear-kill")
 		setHookTypeFixture(t, hook, "prompt")
 		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "broken")
 	})
+}
+
+func TestExpectedHooksIteratesEveryConfiguredCodexHome(t *testing.T) {
+	home := t.TempDir()
+	machine := pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{
+		{ID: 1, Home: filepath.Join(home, ".codex")},
+		{ID: 2, Home: filepath.Join(home, ".codex-2")},
+	}}
+	hooks := ExpectedHooks(home, machine)
+	got := map[string]string{}
+	for _, hook := range hooks {
+		if strings.HasPrefix(hook.Target, "codex[") {
+			got[hook.Target] = hook.File
+		}
+	}
+	want := map[string]string{
+		"codex[1]": filepath.Join(home, ".codex", "hooks.json"),
+		"codex[2]": filepath.Join(home, ".codex-2", "hooks.json"),
+	}
+	if len(hooks) != 2 || len(got) != 2 || got["codex[1]"] != want["codex[1]"] || got["codex[2]"] != want["codex[2]"] {
+		t.Fatalf("ExpectedHooks()=%#v, want only both configured Codex homes", hooks)
+	}
 }
 
 func TestHookWiringRepairsCanonicalCommandType(t *testing.T) {
@@ -89,7 +111,10 @@ func TestHookWiringRepairsCanonicalCommandType(t *testing.T) {
 func stageExpectedHookFixtures(t *testing.T) (string, pfmconfig.Config) {
 	t.Helper()
 	home := t.TempDir()
-	machine := pfmconfig.Config{Accounts: []pfmconfig.Account{{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")}}}
+	machine := pfmconfig.Config{
+		Accounts:      []pfmconfig.Account{{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")}},
+		CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}},
+	}
 	ownership := map[string]settingsHookCounts{}
 	seen := map[string]bool{}
 	for _, hook := range ExpectedHooks(home, machine) {
@@ -99,7 +124,7 @@ func stageExpectedHookFixtures(t *testing.T) (string, pfmconfig.Config) {
 		}
 		seen[physical] = true
 		raw := []byte("{\"hooks\":{}}\n")
-		if hook.Target == "codex" {
+		if strings.HasPrefix(hook.Target, "codex[") {
 			updated, _, owned, err := updateCodexHooks(raw, home, false, nil)
 			if err != nil {
 				t.Fatal(err)

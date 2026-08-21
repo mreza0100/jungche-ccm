@@ -165,9 +165,13 @@ func runLS(
 	// A ⌃S account switch IS still a pending intent, and backing out with
 	// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
 	// mean a deliberate choice — see primaryWriteback.
+	claudePrimary := outcome.ClaudePrimaryAccount
+	if claudePrimary == 0 && compose.EngineForKind(outcome.Row.Kind) != store.CodexEngine {
+		claudePrimary = outcome.PrimaryAccount
+	}
 	if account, should := primaryWriteback(
 		outcome.Kind,
-		outcome.PrimaryAccount,
+		claudePrimary,
 		readPrimaryAccount(scan.Paths, runtime.Config),
 	); should {
 		if err := writePrimaryAccount(scan.Paths, runtime.Config, account); err != nil {
@@ -203,7 +207,12 @@ func runLS(
 }
 
 func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
-	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+1)
+	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+len(runtime.Config.CodexAccounts)+2)
+	if len(runtime.Config.Accounts) == 0 {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			Engine: "claude", Label: "no Claude accounts configured", Absent: true,
+		})
+	}
 	for _, account := range runtime.Config.Accounts {
 		claude := runtime.Config.EffectiveClaude(account.ID)
 		accounts = append(accounts, pfmstats.LimitAccount{
@@ -219,10 +228,18 @@ func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
 			ConfigDir: skip.ConfigDir, SkipReason: skip.Reason,
 		})
 	}
-	accounts = append(accounts, pfmstats.LimitAccount{
-		Engine: "codex", Label: "Codex",
-		CodexAuthPath: filepath.Join(runtime.Paths.CodexRoot, "auth.json"),
-	})
+	if len(runtime.Config.CodexAccounts) == 0 {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			Engine: "codex", Label: "no Codex accounts configured", Absent: true,
+		})
+	}
+	for _, account := range runtime.Config.CodexAccounts {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			ID: account.ID, Emoji: runtime.Config.CodexEmojiFor(account.ID),
+			Engine: "codex", Label: fmt.Sprintf("Codex %d", account.ID),
+			CodexAuthPath: filepath.Join(account.Home, "auth.json"),
+		})
+	}
 	return accounts
 }
 
@@ -291,10 +308,14 @@ func openRow(
 	// The Codex projection repair rides the resume path itself: a wedged
 	// thread is repaired in the same breath that opens it, with no shell
 	// helper in the run string to be missing, unexecutable, or stale.
+	healCodexRoot := resolved.CodexRoot
+	if account, found := runtime.Config.CodexAccountByID(primary); found {
+		healCodexRoot = account.Home
+	}
 	executor, err := action.New(action.Dependencies{
 		Stderr: stderr,
 		Heal: func(ctx context.Context, threadID string) string {
-			return heal.Thread(ctx, resolved.CodexRoot, threadID)
+			return heal.Thread(ctx, healCodexRoot, threadID)
 		},
 	})
 	if err != nil {
@@ -409,6 +430,7 @@ func killDependencies(runtime commandRuntime) kill.Dependencies {
 	return kill.Dependencies{
 		Paths:       runtime.Paths,
 		ClaudeRoots: append([]string(nil), runtime.Paths.ClaudeRoots...),
+		CodexRoots:  codexHomes(runtime.Config),
 		ConfigPath:  runtime.Config.Path,
 	}
 }
@@ -498,7 +520,7 @@ func runIndex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 		return 1
 	}
 	defer database.Close()
-	indexer, err := fleetindex.NewWithPaths(database, runtime.Paths)
+	indexer, err := fleetindex.NewWithCodexRoots(database, runtime.Paths, codexHomes(runtime.Config))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm index: %v\n", err)
 		return 1

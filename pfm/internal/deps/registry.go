@@ -27,11 +27,13 @@ type Entry struct {
 
 // Options materializes the config- and platform-owned registry entries.
 type Options struct {
-	Home         string
-	ClaudeBinary string
-	CodexBinary  string
-	GOOS         string
-	GOARCH       string
+	Home           string
+	ClaudeBinary   string
+	CodexBinary    string
+	ClaudeAccounts int
+	CodexAccounts  int
+	GOOS           string
+	GOARCH         string
 }
 
 var fixedCommands = []Entry{
@@ -79,11 +81,11 @@ func Registry(options ...Options) []Entry {
 		codex = "codex"
 	}
 	entries = append(entries,
-		Entry{Name: "claude", Command: claude, Purpose: "configured Claude engine", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Claude CLI", SelfDoctorArgs: []string{"doctor"}},
+		Entry{Name: "claude", Command: claude, Purpose: "configured Claude engine", Required: resolved.ClaudeAccounts > 0, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Claude CLI", SelfDoctorArgs: []string{"doctor"}},
 		// Official Codex CLI reference documents doctor as stable and these
 		// flags as its bounded, non-interactive summary surface:
 		// https://developers.openai.com/codex/cli/reference#codex-doctor
-		Entry{Name: "codex", Command: codex, Purpose: "configured Codex engine", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Codex CLI", SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}},
+		Entry{Name: "codex", Command: codex, Purpose: "configured Codex engine", Required: resolved.CodexAccounts > 0, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Codex CLI", SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}},
 	)
 	harvestRoot := filepath.Join(resolved.Home, ".local", "state", "pfm", "harvest-python")
 	current := filepath.Join(harvestRoot, "env", resolved.GOOS+"-"+resolved.GOARCH, "current")

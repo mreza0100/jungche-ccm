@@ -30,14 +30,13 @@ const (
 type indexRefresher struct {
 	database    *store.Store
 	claudeRoots []string
-	codexRoot   string
+	codexRoots  []string
 }
 
 func (refresher indexRefresher) Refresh(ctx context.Context) error {
-	indexer, err := index.NewWithPaths(refresher.database, paths.Values{
+	indexer, err := index.NewWithCodexRoots(refresher.database, paths.Values{
 		ClaudeRoots: refresher.claudeRoots,
-		CodexRoot:   refresher.codexRoot,
-	})
+	}, refresher.codexRoots)
 	if err != nil {
 		return err
 	}
@@ -69,6 +68,12 @@ func NewFinisher(
 	if now == nil {
 		now = time.Now
 	}
+	codexRoots := dependencies.CodexRoots
+	if codexRoots == nil {
+		codexRoots = []string{resolved.CodexRoot}
+	} else {
+		codexRoots = append([]string{}, codexRoots...)
+	}
 	refresher := dependencies.Refresher
 	if refresher == nil {
 		claudeRoots := dependencies.ClaudeRoots
@@ -81,7 +86,7 @@ func NewFinisher(
 		refresher = indexRefresher{
 			database:    database,
 			claudeRoots: append([]string(nil), claudeRoots...),
-			codexRoot:   resolved.CodexRoot,
+			codexRoots:  append([]string(nil), codexRoots...),
 		}
 	}
 	delay := dependencies.Delay
@@ -105,10 +110,10 @@ func NewFinisher(
 		pollEvery:    pollEvery,
 		pollAttempts: pollAttempts,
 		paths: resolvedPaths{
-			home:      resolved.Home,
-			sidDir:    resolved.SIDDir,
-			codexRoot: resolved.CodexRoot,
-			tmuxDir:   resolved.TmuxDir,
+			home:       resolved.Home,
+			sidDir:     resolved.SIDDir,
+			codexRoots: codexRoots,
+			tmuxDir:    resolved.TmuxDir,
 		},
 	}, nil
 }

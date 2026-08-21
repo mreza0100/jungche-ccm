@@ -30,14 +30,14 @@ type HookProbeResult struct {
 }
 
 // ExpectedHooks is the installer's exported source of truth for doctor. The
-// installer writes global and configured account settings only; it never
-// writes a project-level .claude/settings.json.
+// installer writes configured account settings only; it never writes a
+// project-level .claude/settings.json or invents an engine account.
 func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 	type target struct {
 		name string
 		file string
 	}
-	targets := []target{{name: "claude[global]", file: filepath.Join(home, ".claude", "settings.json")}}
+	targets := make([]target, 0, len(config.Accounts))
 	for _, account := range config.Accounts {
 		targets = append(targets, target{
 			name: fmt.Sprintf("claude[%d]", account.ID),
@@ -45,7 +45,7 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 		})
 	}
 	seen := map[string]bool{}
-	result := make([]ExpectedHook, 0, len(targets)*8+1)
+	result := make([]ExpectedHook, 0, len(targets)*8+len(config.CodexAccounts))
 	for _, target := range targets {
 		physical := physicalSettingsPath(target.file)
 		if seen[physical] {
@@ -58,10 +58,13 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 			result = append(result, hook)
 		}
 	}
-	codex := codexHookTemplate(home)
-	codex.Target = "codex"
-	codex.File = filepath.Join(home, ".codex", "hooks.json")
-	return append(result, codex)
+	for _, account := range config.CodexAccounts {
+		codex := codexHookTemplate(home)
+		codex.Target = fmt.Sprintf("codex[%d]", account.ID)
+		codex.File = filepath.Join(account.Home, "hooks.json")
+		result = append(result, codex)
+	}
+	return result
 }
 
 func claudeHookTemplates(home string) []ExpectedHook {

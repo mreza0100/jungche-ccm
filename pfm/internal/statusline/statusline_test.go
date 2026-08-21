@@ -12,6 +12,22 @@ import (
 	"time"
 )
 
+func TestDefaultRuntimeUsesTheCodexSeatsOwnHome(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, ".codex-2")
+	t.Setenv("PFM_HOME", home)
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CODEX_THREAD_ID", "thread-2")
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "claude-must-not-win"))
+	runtime, err := DefaultRuntime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.Engine != "codex" || runtime.ConfigDir != codexHome {
+		t.Fatalf("DefaultRuntime() engine=%q account home=%q, want codex/%q", runtime.Engine, runtime.ConfigDir, codexHome)
+	}
+}
+
 func TestUnknownConfigDirHasNoAccountBadge(t *testing.T) {
 	runtime := Runtime{
 		Home:        t.TempDir(),

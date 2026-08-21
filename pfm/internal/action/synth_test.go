@@ -130,7 +130,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 			PrimaryAccount: account,
 			Home:           "/home/test",
 		})
-		if err == nil || !strings.Contains(err.Error(), "primary account") {
+		if err == nil || !strings.Contains(err.Error(), "Claude account") {
 			t.Fatalf("account %d error = %v, want a roster rejection", account, err)
 		}
 	}

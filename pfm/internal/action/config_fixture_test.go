@@ -7,11 +7,17 @@ import (
 )
 
 func testMachineConfig(home string) pfmconfig.Config {
-	return pfmconfig.Defaults(home, []string{
+	machine := pfmconfig.Defaults(home, []string{
 		pfmconfig.DefaultAccountProjectDir(home, 1),
 		pfmconfig.DefaultAccountProjectDir(home, 2),
 		pfmconfig.DefaultAccountProjectDir(home, 3),
 	})
+	machine.CodexAccounts = []pfmconfig.CodexAccount{
+		{ID: 1, Home: home + "/.codex"},
+		{ID: 2, Home: home + "/.codex-2"},
+		{ID: 3, Home: home + "/.codex-3"},
+	}
+	return machine
 }
 
 func synthesizeWithTestConfig(request Request) (Plan, error) {

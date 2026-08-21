@@ -68,12 +68,13 @@ type AccountRoot struct {
 
 // Options controls pure presentation choices.
 type Options struct {
-	View           View
-	CurrentDir     string
-	CurrentSocket  string
-	PrimaryAccount int
-	CodexAvailable bool
-	NowNS          int64
+	View                View
+	CurrentDir          string
+	CurrentSocket       string
+	PrimaryAccount      int
+	CodexAccountIDs     []int
+	PrimaryCodexAccount int
+	NowNS               int64
 }
 
 // Input is the complete immutable input to one composition pass.
@@ -84,6 +85,7 @@ type Input struct {
 	CxNames      map[string]string
 	Killed       []store.Killed
 	AccountRoots []AccountRoot
+	CodexRoots   []AccountRoot
 	Options      Options
 }
 
@@ -135,5 +137,6 @@ type Output struct {
 	includeNewClaude bool
 	includeNewCodex  bool
 	primaryAccount   int
+	primaryCodex     int
 	fallbackDir      string
 }

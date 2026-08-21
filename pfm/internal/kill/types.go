@@ -97,6 +97,7 @@ type Refresher interface {
 type Dependencies struct {
 	Paths        paths.Values
 	ClaudeRoots  []string
+	CodexRoots   []string
 	ConfigPath   string
 	ProcFS       gather.ProcFS
 	Tmux         TmuxClient
@@ -132,8 +133,8 @@ type Finisher struct {
 }
 
 type resolvedPaths struct {
-	home      string
-	sidDir    string
-	codexRoot string
-	tmuxDir   string
+	home       string
+	sidDir     string
+	codexRoots []string
+	tmuxDir    string
 }

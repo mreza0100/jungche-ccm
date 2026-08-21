@@ -23,6 +23,7 @@ type LimitAccount struct {
 	Emoji         string
 	Engine        string
 	Label         string
+	Absent        bool
 	SkipReason    string
 	ConfigDir     string
 	ClaudeBinary  string
@@ -144,8 +145,13 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 		label = fmt.Sprintf("account %d", account.ID)
 	}
 	entry := cachedLimits{limits: AccountLimits{
-		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label,
+		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label, Absent: account.Absent,
 	}, when: now}
+	if account.Absent {
+		entry.limits.Status = label
+		sampler.store(key, entry)
+		return entry
+	}
 	if account.SkipReason != "" {
 		entry.limits.Status = fmt.Sprintf("skipped %s: %s", label, account.SkipReason)
 		sampler.store(key, entry)

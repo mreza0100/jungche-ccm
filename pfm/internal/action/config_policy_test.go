@@ -18,6 +18,10 @@ func configuredMachinePolicy(home string) pfmconfig.Config {
 			ConfigDir:  configDir,
 			ProjectDir: filepath.Join(configDir, "projects"),
 		}},
+		CodexAccounts: []pfmconfig.CodexAccount{{
+			ID:   42,
+			Home: filepath.Join(home, "codex", "account 42"),
+		}},
 		Claude: pfmconfig.Claude{
 			PermissionMode: pfmconfig.PermissionPrompt,
 			Binary:         "/opt/tools/claude enterprise",
@@ -92,11 +96,12 @@ func TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy(t *testing.T) {
 	}
 
 	codex, err := HeadlessRun(HeadlessRequest{
-		Engine: "codex",
-		Name:   "configured codex",
-		CWD:    "/work/project",
-		Home:   home,
-		Config: machine,
+		Engine:         "codex",
+		Name:           "configured codex",
+		CWD:            "/work/project",
+		Home:           home,
+		PrimaryAccount: 42,
+		Config:         machine,
 	})
 	if err != nil {
 		t.Fatalf("HeadlessRun(Codex) error = %v", err)
@@ -153,11 +158,11 @@ func TestSynthesizePickerNewRowsIgnoreConfiguredLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Synthesize(NewCodex) error = %v", err)
 	}
-	wantCodex := "(cd -- '/work/project' && cx)"
+	wantCodex := "(cd -- '/work/project' && CODEX_HOME=" + Quote(machine.CodexAccounts[0].Home) + " cx)"
 	if codexPlan.Line != wantCodex {
 		t.Fatalf("new Codex picker line = %q, want %q", codexPlan.Line, wantCodex)
 	}
-	if strings.Contains(codexPlan.Line, "codex") {
+	if strings.Contains(codexPlan.Line, machine.Codex.Binary) {
 		t.Fatalf("new Codex picker line names the configured binary instead of calling cx: %q", codexPlan.Line)
 	}
 }

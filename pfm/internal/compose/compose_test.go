@@ -731,12 +731,13 @@ func fixtureInput(view View) Input {
 			Cache1HSockets: []string{"cc-200-1-1"},
 		},
 		Options: Options{
-			View:           view,
-			CurrentDir:     "/work/alpha",
-			CurrentSocket:  "cc-200-1-1",
-			PrimaryAccount: 2,
-			CodexAvailable: true,
-			NowNS:          5000,
+			View:                view,
+			CurrentDir:          "/work/alpha",
+			CurrentSocket:       "cc-200-1-1",
+			PrimaryAccount:      2,
+			CodexAccountIDs:     []int{1},
+			PrimaryCodexAccount: 1,
+			NowNS:               5000,
 		},
 	}
 }

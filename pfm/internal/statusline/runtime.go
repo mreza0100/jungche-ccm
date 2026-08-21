@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"hostops/pfm/internal/deps"
@@ -68,8 +69,14 @@ func DefaultRuntime() (Runtime, error) {
 		return Runtime{}, err
 	}
 	columns, _ := strconv.Atoi(os.Getenv("COLUMNS"))
+	engine := EngineFromEnvironment(os.Getenv)
 	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if configDir == "" {
+	if engine == "codex" {
+		configDir = os.Getenv("CODEX_HOME")
+		if configDir == "" {
+			configDir = resolved.CodexRoot
+		}
+	} else if configDir == "" {
 		configDir = filepath.Join(resolved.Home, ".claude")
 	}
 	cacheDir := filepath.Dir(GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid()))
@@ -85,9 +92,25 @@ func DefaultRuntime() (Runtime, error) {
 		ProcRoot:     resolved.ProcRoot,
 		Columns:      columns,
 		UID:          os.Getuid(),
-		Engine:       "claude",
+		Engine:       engine,
 		Command:      commandRunner{},
 	}, nil
+}
+
+// EngineFromEnvironment resolves the current seat, not merely its parent.
+// A live Codex thread is authoritative even when a Codex-launched Claude child
+// inherited CODEX_HOME; an explicit Claude config otherwise wins that tie.
+func EngineFromEnvironment(getenv func(string) string) string {
+	if strings.TrimSpace(getenv("CODEX_THREAD_ID")) != "" {
+		return "codex"
+	}
+	if strings.TrimSpace(getenv("CLAUDE_CONFIG_DIR")) != "" {
+		return "claude"
+	}
+	if strings.TrimSpace(getenv("CODEX_HOME")) != "" {
+		return "codex"
+	}
+	return "claude"
 }
 
 // GPTCachePath is the one filesystem rule for the Codex App Server limits

@@ -14,6 +14,7 @@ import (
 
 func TestJailedCodexLineageCollapseKillSiblingStaysKilled(t *testing.T) {
 	root := jailTest(t)
+	writeJailedCodexAuth(t, root)
 	t.Setenv(codexAvailableEnv, "0")
 	const (
 		rootID   = "11111111-1111-4111-8111-111111111111"

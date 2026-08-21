@@ -143,10 +143,16 @@ func (model Model) renderHeader(width int) string {
 	if model.refreshing {
 		refresh = " · ⟳ refreshing"
 	}
+	headerAccount := model.primary
+	headerMedal := accountMedal(headerAccount)
+	if len(model.accountIDs) == 0 && len(model.codexAccountIDs) != 0 {
+		headerAccount = model.codexPrimary
+		headerMedal = codexAccountMedal(headerAccount)
+	}
 	text := fmt.Sprintf(
 		" pfm  %s account %d · %s · %d rows · %d killed · %d empty%s",
-		accountMedal(model.primary),
-		model.primary,
+		headerMedal,
+		headerAccount,
 		cache,
 		len(model.rows),
 		model.killedCount,
@@ -402,6 +408,14 @@ func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 		}
 	}
 	for _, account := range model.stats.Limits {
+		if account.Absent {
+			message := cleanField(account.Status)
+			if message == "" {
+				message = cleanField(account.Label)
+			}
+			appendLine(dimStyle.Render(fillLine("  "+message, innerWidth)))
+			continue
+		}
 		if strings.HasPrefix(account.Status, "skipped ") {
 			skips = append(skips, cleanField(account.Status))
 			continue
@@ -711,18 +725,20 @@ func (model Model) renderGroupedRow(
 		name = "(unnamed)"
 	}
 	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-		claude := "Claude"
-		codex := "Codex"
-		if model.newChatEngine == "claude" {
-			claude = "[ Claude ]"
-		} else {
-			codex = "[ Codex ]"
+		if len(model.accountIDs) != 0 && len(model.codexAccountIDs) != 0 {
+			claude := "Claude"
+			codex := "Codex"
+			if model.newChatEngine == "claude" {
+				claude = "[ Claude ]"
+			} else {
+				codex = "[ Codex ]"
+			}
+			name = claude + " " + codex
 		}
-		name = claude + " " + codex
 	}
 	name = fixedDisplayColumn(name, 30)
 	marker := rowMarker(row.Kind)
-	badges := rowBadges(row)
+	badges := model.rowBadges(row)
 	badges = fixedDisplayColumn(badges, 20)
 	prompts := fmt.Sprintf("%dp", row.PromptCount)
 	size := formatSize(row.Size)
@@ -819,7 +835,7 @@ func rowMarker(kind compose.Kind) string {
 	}
 }
 
-func rowBadges(row compose.Row) string {
+func (model Model) rowBadges(row compose.Row) string {
 	badges := make([]string, 0, 7)
 	switch row.Kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
@@ -841,7 +857,11 @@ func rowBadges(row compose.Row) string {
 			badges = append(badges, accountMedal(account))
 		}
 	} else if row.Account != 0 {
-		badges = append(badges, accountMedal(row.Account))
+		if compose.EngineForKind(row.Kind) == "cx" {
+			badges = append(badges, codexAccountMedal(row.Account))
+		} else {
+			badges = append(badges, accountMedal(row.Account))
+		}
 	}
 	if row.C1H {
 		badges = append(badges, "⚡")
@@ -942,6 +962,16 @@ func maxInt64(left, right int64) int64 {
 func accountMedal(account int) string {
 	if configuredAccountEmojis != nil {
 		if emoji := configuredAccountEmojis[account]; emoji != "" {
+			return emoji
+		}
+		return "·"
+	}
+	return pfmconfig.DefaultEmoji(account)
+}
+
+func codexAccountMedal(account int) string {
+	if configuredCodexAccountEmojis != nil {
+		if emoji := configuredCodexAccountEmojis[account]; emoji != "" {
 			return emoji
 		}
 		return "·"

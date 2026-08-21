@@ -25,11 +25,14 @@ func TestDoctorEnumeratesExternalDependenciesAndInstalledHooks(t *testing.T) {
 	}
 	for _, wanted := range []string{
 		"doctor: dep tmux ",
-		"doctor: hook codex ",
+		"doctor: hook claude[1] ",
 	} {
 		if !strings.Contains(stdout.String(), wanted) {
 			t.Fatalf("doctor output missing %q:\n%s", wanted, stdout.String())
 		}
+	}
+	if strings.Contains(stdout.String(), "doctor: hook codex[") {
+		t.Fatalf("doctor invented a Codex hook for an empty roster:\n%s", stdout.String())
 	}
 }
 

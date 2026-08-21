@@ -13,7 +13,6 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
-	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/kill"
@@ -187,7 +186,7 @@ func scanFleet(
 	if err != nil {
 		return scanResult{}, err
 	}
-	indexer, err := fleetindex.NewWithPaths(database, environment.paths)
+	indexer, err := fleetindex.NewWithCodexRoots(database, environment.paths, codexHomes(environment.config))
 	if err != nil {
 		return scanResult{}, err
 	}
@@ -306,7 +305,7 @@ func resolveScanEnvironment(request scanRequest) (scanEnvironment, error) {
 		if err != nil {
 			return scanEnvironment{}, err
 		}
-		machine = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots)
+		machine = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
 	}
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -408,7 +407,8 @@ func gatherFleet(
 		CodexIDName: func(threadID string) string {
 			return codexNamesByID[threadID]
 		},
-		CodexThread:  store.NewCodexThreadResolver(ctx, resolved.CodexRoot),
+		CodexThread:  store.NewCodexThreadResolverRoots(ctx, codexHomes(machine)),
+		CodexRoots:   codexHomes(machine),
 		ClaudeBinary: machine.Claude.Binary,
 		CodexBinary:  machine.Codex.Binary,
 		LabelEmojis:  configuredAccountEmojis(machine),
@@ -464,13 +464,15 @@ func composeFleet(
 		CxNames:      data.cxNames,
 		Killed:       data.killed,
 		AccountRoots: accountRoots(environment.config.Accounts),
+		CodexRoots:   codexAccountRoots(environment.config.CodexAccounts),
 		Options: compose.Options{
-			View:           request.View,
-			CurrentDir:     environment.currentDir,
-			CurrentSocket:  currentSocket(),
-			PrimaryAccount: environment.primary,
-			CodexAvailable: codexAvailable(environment.paths.CodexRoot, environment.config.Codex.Binary),
-			NowNS:          environment.nowNS,
+			View:                request.View,
+			CurrentDir:          environment.currentDir,
+			CurrentSocket:       currentSocket(),
+			PrimaryAccount:      environment.primary,
+			CodexAccountIDs:     environment.config.CodexAccountIDs(),
+			PrimaryCodexAccount: firstCodexAccount(environment.config),
+			NowNS:               environment.nowNS,
 		},
 	})
 	if data.cachedCounts != nil {
@@ -478,18 +480,21 @@ func composeFleet(
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
 	snapshot := ui.Snapshot{
-		Rows:            output.Rows,
-		View:            request.View,
-		KilledCount:     output.KilledCount,
-		SuppressedCount: output.SuppressedCount,
-		PrimaryAccount:  environment.primary,
-		AccountIDs:      environment.config.AccountIDs(),
-		AccountEmojis:   accountEmojis(environment.config),
-		Theme:           environment.config.Theme,
-		Cache1H:         request.Cache1H,
-		NowNS:           environment.nowNS,
-		InitialQuery:    request.Query,
-		NoSky:           request.NoSky,
+		Rows:                output.Rows,
+		View:                request.View,
+		KilledCount:         output.KilledCount,
+		SuppressedCount:     output.SuppressedCount,
+		PrimaryAccount:      environment.primary,
+		AccountIDs:          environment.config.AccountIDs(),
+		AccountEmojis:       accountEmojis(environment.config),
+		CodexPrimaryAccount: firstCodexAccount(environment.config),
+		CodexAccountIDs:     environment.config.CodexAccountIDs(),
+		CodexAccountEmojis:  codexAccountEmojis(environment.config),
+		Theme:               environment.config.Theme,
+		Cache1H:             request.Cache1H,
+		NowNS:               environment.nowNS,
+		InitialQuery:        request.Query,
+		NoSky:               request.NoSky,
 	}
 	return scanResult{
 		Output:   output,
@@ -504,6 +509,37 @@ func accountEmojis(machine pfmconfig.Config) map[int]string {
 		result[account.ID] = machine.EmojiFor(account.ID)
 	}
 	return result
+}
+
+func codexAccountRoots(accounts []pfmconfig.CodexAccount) []compose.AccountRoot {
+	result := make([]compose.AccountRoot, 0, len(accounts))
+	for _, account := range accounts {
+		result = append(result, compose.AccountRoot{Account: account.ID, Path: account.Home})
+	}
+	return result
+}
+
+func codexHomes(machine pfmconfig.Config) []string {
+	result := make([]string, 0, len(machine.CodexAccounts))
+	for _, account := range machine.CodexAccounts {
+		result = append(result, account.Home)
+	}
+	return result
+}
+
+func codexAccountEmojis(machine pfmconfig.Config) map[int]string {
+	result := make(map[int]string, len(machine.CodexAccounts))
+	for _, account := range machine.CodexAccounts {
+		result[account.ID] = machine.CodexEmojiFor(account.ID)
+	}
+	return result
+}
+
+func firstCodexAccount(machine pfmconfig.Config) int {
+	if len(machine.CodexAccounts) == 0 {
+		return 0
+	}
+	return machine.CodexAccounts[0].ID
 }
 
 func streamFleetRefreshes(
@@ -582,7 +618,7 @@ func streamFleetRefreshesWith(
 	newIndexer := dependencies.newIndexer
 	if newIndexer == nil {
 		newIndexer = func(database *store.Store) (indexRunner, error) {
-			return fleetindex.NewWithPaths(database, environment.paths)
+			return fleetindex.NewWithCodexRoots(database, environment.paths, codexHomes(environment.config))
 		}
 	}
 	indexer, err := newIndexer(database)
@@ -906,22 +942,4 @@ func currentSocket() string {
 
 func inBunker() bool {
 	return currentSocket() == "vsct"
-}
-
-func codexAvailable(codexRoot string, binaries ...string) bool {
-	switch os.Getenv(codexAvailableEnv) {
-	case "1":
-		return true
-	case "0":
-		return false
-	}
-	binary := "codex"
-	if len(binaries) != 0 && binaries[0] != "" {
-		binary = binaries[0]
-	}
-	if _, err := deps.Resolve(binary); err == nil {
-		return true
-	}
-	info, err := os.Stat(codexRoot)
-	return err == nil && info.IsDir()
 }

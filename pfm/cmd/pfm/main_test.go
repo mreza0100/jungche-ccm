@@ -358,7 +358,7 @@ func TestWiredIndexListOpenReviveAndDoctor(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "files=1") ||
 		!strings.Contains(stdout.String(), "full=1") ||
-		!strings.Contains(stdout.String(), "touched=3") {
+		!strings.Contains(stdout.String(), "touched=2") {
 		t.Fatalf("index stdout=%q", stdout.String())
 	}
 
@@ -666,4 +666,15 @@ func jailTest(t *testing.T) string {
 	// not, or the machine it runs on steers the test.
 	t.Setenv("PFM_TMUX_CONF", "/dev/null")
 	return root
+}
+
+func writeJailedCodexAuth(t *testing.T, root string) {
+	t.Helper()
+	if err := os.WriteFile(
+		filepath.Join(root, "codex", "auth.json"),
+		[]byte(`{"tokens":{"access_token":"fixture"},"account_id":"fixture"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -34,6 +34,7 @@ type composer struct {
 	liveTranscripts  map[string]struct{}
 	liveRollouts     map[string]struct{}
 	accountRoots     []AccountRoot
+	codexRoots       []AccountRoot
 	canonicalPaths   map[string]string
 	projectDirs      map[string]string
 }
@@ -56,16 +57,20 @@ func Compose(input Input) Output {
 
 	output := Output{
 		ProjectDirs:      cloneStringMap(current.projectDirs),
-		includeNewClaude: input.Options.View != KilledView,
-		includeNewCodex:  input.Options.View != KilledView && input.Options.CodexAvailable,
+		includeNewClaude: input.Options.View != KilledView && len(input.AccountRoots) != 0,
+		includeNewCodex:  input.Options.View != KilledView && len(input.Options.CodexAccountIDs) != 0,
 		primaryAccount:   input.Options.PrimaryAccount,
+		primaryCodex:     input.Options.PrimaryCodexAccount,
 		fallbackDir:      input.Options.CurrentDir,
 	}
 	if !configuredAccount(input.AccountRoots, output.primaryAccount) {
 		if len(input.AccountRoots) != 0 {
 			output.primaryAccount = input.AccountRoots[0].Account
-		} else {
-			output.primaryAccount = 1
+		}
+	}
+	if !configuredID(input.Options.CodexAccountIDs, output.primaryCodex) {
+		if len(input.Options.CodexAccountIDs) != 0 {
+			output.primaryCodex = input.Options.CodexAccountIDs[0]
 		}
 	}
 
@@ -276,6 +281,11 @@ func (current *composer) buildIndexes() {
 	for _, root := range current.input.AccountRoots {
 		root.Path = canonicalPath(root.Path)
 		current.accountRoots = append(current.accountRoots, root)
+	}
+	current.codexRoots = make([]AccountRoot, 0, len(current.input.CodexRoots))
+	for _, root := range current.input.CodexRoots {
+		root.Path = canonicalPath(root.Path)
+		current.codexRoots = append(current.codexRoots, root)
 	}
 	current.canonicalPaths = make(map[string]string, len(current.input.Transcripts)+len(current.input.Snapshot.Agents))
 	for _, transcript := range current.input.Transcripts {
@@ -735,6 +745,7 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 		Size:        newest.Size,
 		PromptCount: newest.PromptCount,
 		ActivityNS:  newest.MTimeNS,
+		Account:     accountForPath(newest.Path, current.codexRoots),
 		BG:          newest.IsBG,
 	}
 }
@@ -1099,6 +1110,15 @@ func accountForPath(path string, roots []AccountRoot) int {
 func configuredAccount(roots []AccountRoot, account int) bool {
 	for _, root := range roots {
 		if root.Account == account {
+			return true
+		}
+	}
+	return false
+}
+
+func configuredID(ids []int, account int) bool {
+	for _, id := range ids {
+		if id == account {
 			return true
 		}
 	}

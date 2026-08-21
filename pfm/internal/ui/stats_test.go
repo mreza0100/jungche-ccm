@@ -141,6 +141,27 @@ func TestStatsLimitsRendersProviderMaxTotals(t *testing.T) {
 	}
 }
 
+func TestStatsLimitsRendersEngineAbsencesAsTwoDimLines(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{Engine: "claude", Label: "no Claude accounts configured", Status: "no Claude accounts configured", Absent: true},
+		{Engine: "codex", Label: "no Codex accounts configured", Status: "no Codex accounts configured", Absent: true},
+	}}
+	plain := ansi.Strip(model.renderStatsPanel(120, 8))
+	for _, want := range []string{"no Claude accounts configured", "no Codex accounts configured"} {
+		if strings.Count(plain, want) != 1 {
+			t.Fatalf("Limits panel did not render exactly one plain absence line for %q:\n%s", want, plain)
+		}
+	}
+	for _, reject := range []string{"provider confirmation unavailable", "⚠ no Claude", "⚠ no Codex"} {
+		if strings.Contains(plain, reject) {
+			t.Fatalf("Limits absence rendered as a card/error %q:\n%s", reject, plain)
+		}
+	}
+}
+
 func TestStatsLimitsSubtabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testing.T) {
 	home := "/home/test"
 	label1 := pfmconfig.DisplayAccountDir(home, 1, pfmconfig.DefaultAccountDir(home, 1))

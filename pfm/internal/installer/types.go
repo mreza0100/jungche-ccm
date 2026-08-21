@@ -61,6 +61,10 @@ type Options struct {
 	// the historical discovery of existing .cc account settings for callers
 	// that construct Options directly.
 	ConfigDirs []string
+	// CodexHomes is the config-driven hooks.json fanout. A nil value retains
+	// the historical single ~/.codex target for direct legacy callers; an
+	// explicitly empty roster installs no Codex hook.
+	CodexHomes []string
 	// SourceRepo is the clone whose blueprint and binary are being installed.
 	// Empty preserves an existing marker when install is invoked elsewhere.
 	SourceRepo string
