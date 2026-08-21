@@ -16,6 +16,10 @@ import (
 const (
 	tokenRateWindow   = time.Minute
 	tokenRewriteGuard = 256
+	// usageSparkPoints caps the per-chat usage chart: 12 samples at the Stats
+	// tab's 2s cadence is a ~24s burn window, wide enough to read a pulse and
+	// narrow enough to stay live.
+	usageSparkPoints = 12
 )
 
 type tokenCacheEntry struct {
@@ -45,6 +49,15 @@ type tokenRateSample struct {
 type tokenRateState struct {
 	identity string
 	samples  []tokenRateSample
+}
+
+// tokenHistoryState keeps the per-socket usage chart baseline: the transcript
+// identity it tracks, the last cumulative total seen, and the capped delta ring.
+type tokenHistoryState struct {
+	identity    string
+	last        int64
+	hasBaseline bool
+	deltas      []int64
 }
 
 type tokenRecord struct {
@@ -125,6 +138,9 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 	if sampler.tokenRates == nil {
 		sampler.tokenRates = make(map[string]*tokenRateState)
 	}
+	if sampler.tokenHistory == nil {
+		sampler.tokenHistory = make(map[string]*tokenHistoryState)
+	}
 	usedSockets := make(map[string]bool)
 	for index := range chats {
 		socket := chats[index].Socket
@@ -137,13 +153,44 @@ func (sampler *Sampler) attachTokenUsage(rows []compose.Row, chats []Chat, now i
 		}
 		usedSockets[socket] = true
 		sampler.attachTokenRateLocked(&chats[index], measure, now)
+		sampler.attachUsageSparkLocked(&chats[index], measure)
 	}
 	for socket := range sampler.tokenRates {
 		if !usedSockets[socket] {
 			delete(sampler.tokenRates, socket)
 		}
 	}
+	for socket := range sampler.tokenHistory {
+		if !usedSockets[socket] {
+			delete(sampler.tokenHistory, socket)
+		}
+	}
 	return warnings
+}
+
+// attachUsageSparkLocked folds this sample's cumulative total into the chat's
+// usage chart: a ring of per-sample token deltas, oldest first. The first
+// sample only sets the baseline — a chart needs two points to draw a step.
+func (sampler *Sampler) attachUsageSparkLocked(chat *Chat, measure tokenMeasure) {
+	if !measure.known || measure.identity == "" {
+		delete(sampler.tokenHistory, chat.Socket)
+		return
+	}
+	state := sampler.tokenHistory[chat.Socket]
+	if state == nil || state.identity != measure.identity || measure.total < state.last {
+		sampler.tokenHistory[chat.Socket] = &tokenHistoryState{
+			identity:    measure.identity,
+			last:        measure.total,
+			hasBaseline: true,
+		}
+		return
+	}
+	state.deltas = append(state.deltas, measure.total-state.last)
+	if len(state.deltas) > usageSparkPoints {
+		state.deltas = state.deltas[len(state.deltas)-usageSparkPoints:]
+	}
+	state.last = measure.total
+	chat.Spark = append([]int64(nil), state.deltas...)
 }
 
 func (sampler *Sampler) attachTokenRateLocked(chat *Chat, measure tokenMeasure, now int64) {
