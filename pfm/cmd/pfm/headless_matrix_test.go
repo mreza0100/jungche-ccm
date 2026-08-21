@@ -10,6 +10,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 )
 
 func TestHeadlessCompatibilityAliasIsHiddenAndDeprecated(t *testing.T) {
@@ -86,12 +87,15 @@ func TestRunPromptSourcesAreExclusive(t *testing.T) {
 // TestModelAndEffortReachBothEngines proves item 4 of the order: a seat is
 // born with its tier, on the engine's own spelling.
 func TestModelAndEffortReachBothEngines(t *testing.T) {
+	home := "/home/tester"
+	machine := pfmconfig.Defaults(home, []string{pfmconfig.DefaultAccountProjectDir(home, 1)})
 	claude, err := action.HeadlessRun(action.HeadlessRequest{
 		Engine:         "cc",
 		Name:           "seat",
 		CWD:            "/work/alpha",
-		Home:           "/home/tester",
+		Home:           home,
 		PrimaryAccount: 1,
+		Config:         machine,
 		Model:          "claude-opus-5",
 		Effort:         "XHIGH",
 	})
@@ -107,7 +111,8 @@ func TestModelAndEffortReachBothEngines(t *testing.T) {
 		Engine: "cx",
 		Name:   "seat",
 		CWD:    "/work/alpha",
-		Home:   "/home/tester",
+		Home:   home,
+		Config: machine,
 		Model:  "gpt-5.6-sol",
 		Effort: "high",
 	})
