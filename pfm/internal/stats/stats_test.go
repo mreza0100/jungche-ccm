@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -164,6 +165,81 @@ func TestSamplerCountsClaudeAndCodexLifetimeTokensIncrementally(t *testing.T) {
 	}
 	if got := chats["codex-socket"]; got.TokenCount != 12000 || !got.TokenRateValid || got.TokensPerMinute != 6000 {
 		t.Fatalf("incremental Codex token accounting = %#v, want latest 12000 total and 6000/min", got)
+	}
+}
+
+func TestSamplerUsageSparkTracksBurnDeltasResetsAndCap(t *testing.T) {
+	root := t.TempDir()
+	proc := filepath.Join(root, "proc")
+	cgroup := filepath.Join(root, "cgroup")
+	if err := os.MkdirAll(filepath.Join(proc, "pressure"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cgroup, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeStatsFixture(t, proc, 1000, 100)
+	transcript := filepath.Join(root, "spark.jsonl")
+	if err := os.WriteFile(transcript, []byte(
+		`{"timestamp":"2026-08-16T10:00:00Z","type":"assistant","message":{"usage":{"input_tokens":100}}}`+"\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC).UnixNano()
+	sampler := &Sampler{
+		ProcRoot: proc, CgroupRoot: cgroup, CPUCount: 1,
+		Clock: func() int64 { return now },
+	}
+	rows := []compose.Row{{
+		Kind: compose.LiveClaude, Socket: "spark-socket", Name: "spark",
+		Path: transcript, PanePIDs: []int{100},
+	}}
+	sample := func() Chat {
+		t.Helper()
+		snapshot, err := sampler.Sample(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return chatsBySocket(snapshot.Chats)["spark-socket"]
+	}
+
+	first := sample()
+	if len(first.Spark) != 0 {
+		t.Fatalf("first sample spark = %v, want empty until a second sample exists", first.Spark)
+	}
+	appendFile(t, transcript,
+		`{"timestamp":"2026-08-16T12:01:00Z","type":"assistant","message":{"usage":{"input_tokens":150}}}`+"\n")
+	now += int64(30 * time.Second)
+	if got := sample(); len(got.Spark) != 1 || got.Spark[0] != 150 {
+		t.Fatalf("growth sample spark = %v, want [150]", got.Spark)
+	}
+	now += int64(30 * time.Second)
+	if got := sample(); len(got.Spark) != 2 || got.Spark[1] != 0 {
+		t.Fatalf("idle sample spark = %v, want [150 0]", got.Spark)
+	}
+	for index := 0; index < 20; index++ {
+		appendFile(t, transcript, fmt.Sprintf(
+			`{"timestamp":"2026-08-16T12:%02d:00Z","type":"assistant","message":{"usage":{"input_tokens":10}}}`+"\n", index%60))
+		now += int64(30 * time.Second)
+		got := sample()
+		if len(got.Spark) > 12 {
+			t.Fatalf("spark grew past its cap: %d points", len(got.Spark))
+		}
+	}
+	last := sample()
+	if len(last.Spark) != 12 || last.Spark[10] != 10 || last.Spark[11] != 0 {
+		t.Fatalf("capped sample spark = %v (len=%d), want 12 points with a burn then an idle step", last.Spark, len(last.Spark))
+	}
+
+	if err := os.WriteFile(transcript, []byte(
+		`{"timestamp":"2026-08-16T13:00:00Z","type":"assistant","message":{"usage":{"input_tokens":5}}}`+"\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	now += int64(30 * time.Second)
+	if got := sample(); len(got.Spark) != 0 {
+		t.Fatalf("rewrite-discontinuity sample spark = %v, want an emptied chart", got.Spark)
 	}
 }
 
