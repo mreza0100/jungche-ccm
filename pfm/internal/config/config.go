@@ -242,7 +242,12 @@ func defaultsWithMCPServers(
 		codexRoot = filepath.Clean(codexRoots[0])
 	}
 	var codexAccounts []CodexAccount
-	if hasValidCodexCredentials(codexRoot) {
+	codexValid, codexErr := hasValidCodexCredentials(codexRoot)
+	if codexErr != nil {
+		accountSkips = append(accountSkips, AccountSkip{
+			ConfigDir: codexRoot, Reason: fmt.Sprintf("codex discovery failed: %v", codexErr),
+		})
+	} else if codexValid {
 		codexAccounts = []CodexAccount{{ID: 1, Home: codexRoot, Emoji: DefaultEmoji(1)}}
 	}
 	sources := map[string]Source{
@@ -389,20 +394,29 @@ func hasValidAccountCredentials(configDir string) bool {
 	return json.Unmarshal(body, &marker) == nil && strings.TrimSpace(marker.OAuth.AccessToken) != ""
 }
 
-func hasValidCodexCredentials(home string) bool {
+// hasValidCodexCredentials reports whether home/auth.json is the real Codex
+// CLI shape: access_token and account_id both live INSIDE tokens. An absent
+// file is the ordinary "no account here" case (ok=false, err=nil). Any other
+// read failure (permission denied, etc.) is NOT folded into that silence —
+// it comes back as a non-nil error the caller must surface, never swallow.
+func hasValidCodexCredentials(home string) (bool, error) {
 	body, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
 	if err != nil {
-		return false
+		return false, err
 	}
 	var marker struct {
 		Tokens struct {
 			AccessToken string `json:"access_token"`
+			AccountID   string `json:"account_id"`
 		} `json:"tokens"`
-		AccountID string `json:"account_id"`
 	}
-	return json.Unmarshal(body, &marker) == nil &&
+	valid := json.Unmarshal(body, &marker) == nil &&
 		strings.TrimSpace(marker.Tokens.AccessToken) != "" &&
-		strings.TrimSpace(marker.AccountID) != ""
+		strings.TrimSpace(marker.Tokens.AccountID) != ""
+	return valid, nil
 }
 
 func skipsOutsideRoster(skips []AccountSkip, accounts []Account) []AccountSkip {
@@ -753,7 +767,11 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 		if err != nil {
 			return nil, fmt.Errorf("config %s: %s.home: %w", path, scope, err)
 		}
-		if !hasValidCodexCredentials(codexHome) {
+		valid, credErr := hasValidCodexCredentials(codexHome)
+		if credErr != nil {
+			return nil, fmt.Errorf("config %s: %s auth.json: %w", path, scope, credErr)
+		}
+		if !valid {
 			return nil, fmt.Errorf("config %s: %s must contain a valid auth.json with tokens.access_token and account_id", path, scope)
 		}
 		emoji := value.Emoji
