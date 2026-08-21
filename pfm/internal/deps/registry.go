@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode"
 )
 
 // Entry describes one external command pfm may execute. Command is the
@@ -166,7 +167,10 @@ func prefixedVersion(prefix string) func(string) (string, error) {
 func firstVersion(output string) (string, error) {
 	line := FirstLine(output)
 	for _, field := range strings.Fields(line) {
-		trimmed := strings.TrimLeft(field, "vV")
+		// Strip any leading letter run — not only "v"/"V" — so a field like
+		// "go1.24.13" (real `go version` output) reaches its digit run the
+		// same way "v1.8" or "0.148.0" already did.
+		trimmed := strings.TrimLeftFunc(field, unicode.IsLetter)
 		if trimmed != "" && trimmed[0] >= '0' && trimmed[0] <= '9' {
 			return strings.TrimRight(trimmed, ",;"), nil
 		}
