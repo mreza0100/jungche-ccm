@@ -347,8 +347,9 @@ To relocate the cache and enable web search, pass environment variables:
 | `HARVESTER_MAX_INLINE_CHARS` | `50000` | Cap on the Markdown returned inline per source; the cache file always holds the full text (read the returned path for everything). |
 | `HARVESTER_NEG_TTL` | `120` | Seconds a failed fetch is remembered in the negative cache. |
 | `HARVESTER_NEG_TTL_TRANSIENT` | `15` | Shorter negative-cache TTL for a transient failure (timeout, connection error, HTTP 429). |
-| `HARVESTER_PDF_OCR` | off | Run Tesseract OCR on image-only PDF pages (slow; off by default for fast text-layer extraction). |
+| `HARVESTER_PDF_OCR` | off | Run Tesseract OCR on image-only PDF pages (slow; off by default for fast text-layer extraction). A scanned PDF fetched from the web always gets ONE automatic OCR pass when its text layer converts to empty, regardless of this setting — this flag turns OCR on for every PDF. |
 | `HARVESTER_PDF_LAYOUT` | off | Run the pymupdf4llm layout model for higher table/heading fidelity (slow). |
+| `HARVESTER_LOCALIZE_IMAGES` | off | When set, `fetch` downloads the figures a successfully fetched page references into the cache and rewrites the markdown links to local paths (read them with vision). Off by default: image refs stay as URLs and are viewed via `fetchImage`. |
 | `HARVESTER_LOG_FILE` | unset | Write logs to this file. |
 | `HARVESTER_LOG_LEVEL` | `INFO` | Log level. |
 | `SEARXNG_URL` | empty | Self-hosted SearXNG base URL — primary `search` backend (enables the tool). |

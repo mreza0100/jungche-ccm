@@ -407,6 +407,73 @@ async def _find_arxiv(query: str, client: "AsyncClient", limit: int) -> list[dic
     return out
 
 
+async def _find_crossref(query: str, client: "AsyncClient", limit: int) -> list[dict]:
+    """Crossref bibliographic search → candidates for works OpenAlex indexes thinly or not at
+    all (newly published, conference proceedings, non-OA-heavy fields). Similarity-gated like
+    every title→work path — Crossref's relevance ranking happily returns near-misses."""
+    data = await _get_json(
+        client, f"https://api.crossref.org/works?query.bibliographic={quote(query)}"
+        f"&rows={limit}&select=DOI,title,author,issued&mailto={CONTACT_EMAIL}")
+    out: list[dict] = []
+    for it in (data.get("message", {}).get("items") or []) if isinstance(data, dict) else []:
+        titles = it.get("title") or []
+        title = titles[0] if titles else ""
+        doi = _bare_doi(it.get("DOI") or "")
+        if not title or not doi:
+            continue
+        m = _match(query, title)
+        if m < 0.5:
+            continue
+        issued = (((it.get("issued") or {}).get("date-parts") or [[None]])[0] or [None])[0]
+        out.append({
+            "kind": "paper", "title": title,
+            "authors": _fmt_authors([
+                " ".join(x for x in (a.get("given"), a.get("family")) if x)
+                for a in (it.get("author") or [])]),
+            "year": issued, "fetch": doi, "source": "crossref", "free": "",
+            "match": round(m, 2),
+        })
+    return out
+
+
+async def _find_s2(query: str, client: "AsyncClient", limit: int) -> list[dict]:
+    """Semantic Scholar paper search → candidates with a DIRECT free-PDF handle when one exists
+    (openAccessPdf / arXiv id), so a findable-and-free paper is fetchable in one step."""
+    headers = {"x-api-key": S2_API_KEY} if S2_API_KEY else None
+    data = await _get_json(
+        client,
+        f"https://api.semanticscholar.org/graph/v1/paper/search?query={quote(query)}"
+        f"&limit={limit}&fields=title,year,authors,externalIds,openAccessPdf",
+        headers=headers)
+    out: list[dict] = []
+    for p in (data.get("data") or []) if isinstance(data, dict) else []:
+        title = p.get("title") or ""
+        if not title:
+            continue
+        m = _match(query, title)
+        if m < 0.5:
+            continue
+        ext = p.get("externalIds") or {}
+        oa_pdf = (p.get("openAccessPdf") or {}).get("url") or ""
+        doi = _bare_doi(ext.get("DOI") or "")
+        if doi:
+            fetch = doi
+        elif ext.get("ArXiv"):
+            fetch = f"https://arxiv.org/pdf/{ext['ArXiv']}"
+        elif oa_pdf:
+            fetch = oa_pdf
+        else:
+            continue  # no fetchable handle → useless as a candidate
+        free = "green" if (oa_pdf or ext.get("ArXiv")) else ""
+        out.append({
+            "kind": "paper", "title": title,
+            "authors": _fmt_authors([a.get("name", "") for a in (p.get("authors") or [])]),
+            "year": p.get("year"), "fetch": fetch, "source": "semanticscholar",
+            "free": free, "match": round(m, 2),
+        })
+    return out
+
+
 async def _find_books(query: str, client: "AsyncClient", limit: int) -> list[dict]:
     out: list[dict] = []
     ol = await _get_json(
@@ -450,14 +517,16 @@ async def find_works(query: str, client: "AsyncClient", limit: int = 8) -> list[
     query = query.strip().strip('"').strip("'")
     if not query:
         return []
-    papers, arxiv, books = await asyncio.gather(
+    papers, arxiv, crossref, s2, books = await asyncio.gather(
         _safe_find(_find_papers, query, client, limit),
         _safe_find(_find_arxiv, query, client, limit),
+        _safe_find(_find_crossref, query, client, limit),
+        _safe_find(_find_s2, query, client, limit),
         _safe_find(_find_books, query, client, limit),
     )
     # Dedupe by fetch handle (keep the highest match per handle).
     best: dict[str, dict] = {}
-    for c in papers + arxiv + books:
+    for c in papers + arxiv + crossref + s2 + books:
         k = c["fetch"]
         if k and (k not in best or c["match"] > best[k]["match"]):
             best[k] = c

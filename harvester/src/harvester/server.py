@@ -250,8 +250,8 @@ def build_server(
 A *source* is either a **location** (where something lives) or an **identity** (what the thing is — you need not know where to find it). Harvester resolves both and hands back the content.
 
 **Locations — fetched directly to document markdown:**
-- Web URL / local path / `file://` → web page, PDF, DOCX, XLSX, PPTX, CSV, or JSON.
-- HTML via trafilatura. Image references stay as URLs in the markdown — `fetch` never downloads image binaries and never OCRs; to VIEW an image, pass its URL to `fetchImage`, which returns a local path to read with vision. PDF via pymupdf4llm (extensionless URLs like `arxiv.org/pdf/…` are header-sniffed). DOCX/XLSX/PPTX via Docling, CSV via MarkItDown, JSON pretty-printed. Credential/secret files are refused.
+- Web URL / local path / `file://` → web page, PDF, DOCX, XLSX, PPTX, CSV, JSON, or EPUB.
+- HTML via trafilatura. Image references stay as URLs in the markdown — `fetch` never downloads image binaries and never OCRs; to VIEW an image, pass its URL to `fetchImage`, which returns a local path to read with vision (deployments can opt into downloading figures locally with `HARVESTER_LOCALIZE_IMAGES=1`). PDF via pymupdf4llm (extensionless URLs like `arxiv.org/pdf/…` are header-sniffed; a scanned PDF whose text layer is empty gets one automatic OCR pass). DOCX/XLSX/PPTX via Docling, CSV/EPUB via MarkItDown, JSON pretty-printed. Credential/secret files are refused.
 - An IMAGE → use the `fetchImage` tool. An ARCHIVE (.zip/.tar/.7z/.rar) → use the `archive` tool. `fetch` will redirect you if you pass one here.
 
 **Identities — resolved to a free, legal copy, then converted:**
@@ -274,7 +274,7 @@ Returns the content of every source in the SAME order. Each result: a short head
 
 Use it whenever you have a TITLE or a fuzzy description rather than a URL / DOI / ISBN — `fetch` deliberately won't guess which work a title means, so `findWorks` shows you the matches and you choose. Each result lists: title · authors · year · kind (paper|book) · source · free-access status · a `fetch:` handle (a DOI, an `isbn:` string, or a direct URL). Then call `fetch` with the handle of the one you want.
 
-Two-step pattern, exactly like WebSearch → WebFetch: **findWorks → fetch**. (Papers come from OpenAlex; books from Open Library + Project Gutenberg.)""",
+Two-step pattern, exactly like WebSearch → WebFetch: **findWorks → fetch**. (Papers come from OpenAlex + Crossref + Semantic Scholar + arXiv; books from Open Library + Project Gutenberg.)""",
                 inputSchema=FindWorks.model_json_schema(),
             ),
             Tool(
