@@ -22,6 +22,10 @@ import (
 
 var ErrOfflineUnavailable = errors.New("harvestpy input is unavailable offline")
 
+const incompleteMarkerName = "INCOMPLETE"
+
+var errProvisioningIncomplete = errors.New("harvestpy provisioning did not finish")
+
 // DownloadFunc is injected by tests/build tooling; the default is an atomic
 // HTTP downloader with no shell interpolation.
 type DownloadFunc func(context.Context, string, string) error
@@ -30,6 +34,10 @@ type DownloadFunc func(context.Context, string, string) error
 // executable/arguments are never passed through a shell.
 type RunFunc func(context.Context, string, []string, string) ([]byte, error)
 
+// SmokeFunc verifies that one provisioned runtime can start the converter and
+// complete its no-download smoke protocol.
+type SmokeFunc func(context.Context, Runtime) (map[string]any, error)
+
 type ProvisionOptions struct {
 	Root     string
 	Cache    string
@@ -37,6 +45,7 @@ type ProvisionOptions struct {
 	Offline  bool
 	Download DownloadFunc
 	Run      RunFunc
+	Smoke    SmokeFunc
 }
 
 type ProvisionResult struct {
@@ -124,9 +133,9 @@ func RuntimeRoot(root string, platform Platform) string {
 	return filepath.Join(root, "env", platform.String(), "current")
 }
 
-// Provision downloads/verifies inputs, converges an isolated environment in a
-// staging directory, runs a no-download smoke, then atomically publishes the
-// versioned environment and current pointer.
+// Provision downloads/verifies inputs, converges an isolated environment at
+// its final versioned path, runs two no-download smokes, then atomically
+// publishes the current pointer.
 func Provision(ctx context.Context, options ProvisionOptions) (ProvisionResult, error) {
 	return provision(ctx, options, immutableTargets)
 }
@@ -148,6 +157,9 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	}
 	if options.Run == nil {
 		options.Run = runCommand
+	}
+	if options.Smoke == nil {
+		options.Smoke = smokeRuntime
 	}
 	if err := os.MkdirAll(options.Cache, 0o700); err != nil {
 		return ProvisionResult{}, fmt.Errorf("create harvestpy cache: %w", err)
@@ -181,14 +193,38 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	if err := os.MkdirAll(envRoot, 0o700); err != nil {
 		return ProvisionResult{}, fmt.Errorf("create harvestpy environment root: %w", err)
 	}
-	staging, err := os.MkdirTemp(envRoot, ".staging-")
-	if err != nil {
-		return ProvisionResult{}, fmt.Errorf("create harvestpy environment staging: %w", err)
+	final := filepath.Join(envRoot, desired)
+	backup := ""
+	if _, err := os.Stat(final); err == nil {
+		backup = final + fmt.Sprintf(".repair-%d", time.Now().UnixNano())
+		if err := os.Rename(final, backup); err != nil {
+			return ProvisionResult{}, fmt.Errorf("quarantine invalid harvestpy versioned environment: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ProvisionResult{}, fmt.Errorf("inspect harvestpy versioned environment: %w", err)
 	}
-	defer os.RemoveAll(staging)
+	staging := final
+	restoreOld := func() {
+		_ = os.RemoveAll(staging)
+		if backup != "" {
+			_ = os.Rename(backup, final)
+		}
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			restoreOld()
+		}
+	}()
+	if err := os.Mkdir(staging, 0o700); err != nil {
+		return ProvisionResult{}, fmt.Errorf("create harvestpy versioned environment: %w", err)
+	}
+	if err := writePrivate(filepath.Join(staging, incompleteMarkerName), []byte(errProvisioningIncomplete.Error()+"\n")); err != nil {
+		return ProvisionResult{}, fmt.Errorf("mark harvestpy environment incomplete: %w", err)
+	}
 	project := filepath.Join(staging, "project")
 	if err := os.MkdirAll(project, 0o700); err != nil {
-		return ProvisionResult{}, fmt.Errorf("create harvestpy project staging: %w", err)
+		return ProvisionResult{}, fmt.Errorf("create harvestpy project: %w", err)
 	}
 	if err := writePrivate(filepath.Join(project, "converter.py"), ConverterSource()); err != nil {
 		return ProvisionResult{}, err
@@ -204,7 +240,7 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 		return ProvisionResult{}, fmt.Errorf("extract harvestpy uv: %w", err)
 	}
 	// The standalone archive already carries its top-level `python/` tree;
-	// extract into the version staging root so the published layout is
+	// extract into the final version root so the published layout is
 	// <digest>/python/{BUILD,bin,lib,...}, not a double python/python nesting.
 	pythonPath, err := extractPython(pythonArchive, staging)
 	if err != nil {
@@ -240,9 +276,7 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	}
 	base.InventorySHA256 = inventorySHA
 	base.InventoryCount = inventoryCount
-	smokeConverter := NewConverter(Runtime{Python: venvPython, Script: filepath.Join(project, "converter.py")})
-	smoke, err := smokeConverter.Smoke(ctx)
-	_ = smokeConverter.Close()
+	smoke, err := options.Smoke(ctx, Runtime{Python: venvPython, Script: filepath.Join(project, "converter.py")})
 	if err != nil {
 		return ProvisionResult{}, fmt.Errorf("harvestpy no-download smoke: %w", err)
 	}
@@ -259,56 +293,29 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 	}
 	base.Imports = imports
 	base.State = "ready"
-	base.Environment = filepath.Join(envRoot, desired)
-	base.Sizes = measureTree(staging)
-	final := filepath.Join(envRoot, desired)
-	backup := ""
-	if _, err := os.Stat(final); err == nil {
-		backup = final + fmt.Sprintf(".repair-%d", time.Now().UnixNano())
-		if err := os.Rename(final, backup); err != nil {
-			return ProvisionResult{}, fmt.Errorf("quarantine invalid harvestpy versioned environment: %w", err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return ProvisionResult{}, fmt.Errorf("inspect harvestpy versioned environment: %w", err)
-	}
-	if err := os.Rename(staging, final); err != nil {
-		if backup != "" {
-			_ = os.Rename(backup, final)
-		}
-		return ProvisionResult{}, fmt.Errorf("publish harvestpy versioned environment: %w", err)
-	}
-	staging = ""
-	restoreOld := func() {
-		_ = os.RemoveAll(final)
-		if backup != "" {
-			_ = os.Rename(backup, final)
-		}
-	}
-	// Verify the relocated environment, not merely the pre-rename staging
-	// path.  uv may choose links whose target changes when the versioned root
-	// is published; the live smoke is the judge of the actual runtime.
+	base.Environment = final
+	// The environment is never renamed after uv sync; both smokes judge the
+	// same final runtime path.
 	finalRuntime := Runtime{
 		Python: filepath.Join(final, "project", ".venv", "bin", "python"),
 		Script: filepath.Join(final, "project", "converter.py"),
 	}
-	finalConverter := NewConverter(finalRuntime)
-	_, smokeErr := finalConverter.Smoke(ctx)
-	_ = finalConverter.Close()
+	_, smokeErr := options.Smoke(ctx, finalRuntime)
 	if smokeErr != nil {
-		restoreOld()
 		return ProvisionResult{}, fmt.Errorf("harvestpy post-publish smoke: %w", smokeErr)
 	}
+	if err := os.Remove(filepath.Join(final, incompleteMarkerName)); err != nil {
+		return ProvisionResult{}, fmt.Errorf("complete harvestpy environment: %w", err)
+	}
+	base.Sizes = measureTree(final)
 	marker, err := json.MarshalIndent(base, "", "  ")
 	if err != nil {
-		restoreOld()
 		return ProvisionResult{}, fmt.Errorf("marshal harvestpy environment digest: %w", err)
 	}
 	if err := writePrivate(filepath.Join(final, "environment.json"), append(marker, '\n')); err != nil {
-		restoreOld()
 		return ProvisionResult{}, err
 	}
 	if err := atomicCurrent(envRoot, desired); err != nil {
-		restoreOld()
 		return ProvisionResult{}, err
 	}
 	if backup != "" {
@@ -316,10 +323,18 @@ func provision(ctx context.Context, options ProvisionOptions, targets map[Platfo
 			return ProvisionResult{}, fmt.Errorf("remove quarantined harvestpy environment: %w", err)
 		}
 	}
+	finished = true
 	return ProvisionResult{Digest: desired, Environment: base, Runtime: Runtime{
 		Python: filepath.Join(current, "project", ".venv", "bin", "python"),
 		Script: filepath.Join(current, "project", "converter.py"),
 	}}, nil
+}
+
+func smokeRuntime(ctx context.Context, runtime Runtime) (map[string]any, error) {
+	converter := NewConverter(runtime)
+	result, err := converter.Smoke(ctx)
+	_ = converter.Close()
+	return result, err
 }
 
 // Inspect reads the current machine-readable environment record without
@@ -328,7 +343,45 @@ func Inspect(root string, platform Platform) (EnvironmentDigest, error) {
 	if platform.GOOS == "" {
 		platform.GOOS, platform.GOARCH = runtime.GOOS, runtime.GOARCH
 	}
+	if incomplete, found, err := findIncompleteEnvironment(root, platform); err != nil {
+		return EnvironmentDigest{}, err
+	} else if found {
+		return incomplete, fmt.Errorf("%w: %s", errProvisioningIncomplete, incomplete.Environment)
+	}
 	return ReadEnvironmentDigest(filepath.Join(RuntimeRoot(root, platform), "environment.json"))
+}
+
+func findIncompleteEnvironment(root string, platform Platform) (EnvironmentDigest, bool, error) {
+	envRoot := filepath.Join(root, "env", platform.String())
+	entries, err := os.ReadDir(envRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return EnvironmentDigest{}, false, nil
+	}
+	if err != nil {
+		return EnvironmentDigest{}, false, fmt.Errorf("inspect harvestpy environment root for incomplete provisioning: %w", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.Contains(entry.Name(), ".repair-") {
+			continue
+		}
+		environment := filepath.Join(envRoot, entry.Name())
+		marker := filepath.Join(environment, incompleteMarkerName)
+		info, err := os.Lstat(marker)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return EnvironmentDigest{}, false, fmt.Errorf("inspect harvestpy incomplete marker %s: %w", marker, err)
+		}
+		if !info.Mode().IsRegular() {
+			return EnvironmentDigest{}, false, fmt.Errorf("harvestpy incomplete marker is not a regular file: %s", marker)
+		}
+		return EnvironmentDigest{
+			Target: platform.String(), Environment: environment,
+			Digest: entry.Name(), State: "incomplete",
+		}, true, nil
+	}
+	return EnvironmentDigest{}, false, nil
 }
 
 func ensureInput(ctx context.Context, path string, input Artifact, offline bool, download DownloadFunc) error {
