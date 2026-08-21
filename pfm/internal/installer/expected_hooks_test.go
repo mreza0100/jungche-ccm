@@ -64,6 +64,62 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 	})
 }
 
+// TestProbeExpectedHooksFlagsRetiredHookCommandsAsStale pins the deep-doctor
+// defect: a settings.json that still carries the pre-rename `internal
+// clear-hide` command (retired in favor of `internal clear-kill`; `internal
+// clear-hide` is not a recognized subcommand at all — cmd/pfm/main.go's
+// `internal` dispatch falls through to its usage error for it) produces NO
+// probe row at all. ProbeExpectedHooks only ever walks the installer's own
+// `expected` hook list; a command that matches no expected hook AND is not
+// (and never was) claimed by the ownership ledger is invisible end to end —
+// doctor prints nothing about a stale command sitting in a live host's hooks.
+func TestProbeExpectedHooksFlagsRetiredHookCommandsAsStale(t *testing.T) {
+	home, machine := stageExpectedHookFixtures(t)
+	hook := findExpectedHook(t, home, machine, "claude[2]", "clear-kill")
+	retired := strings.Replace(hook.Command, "internal clear-kill", "internal clear-hide", 1)
+	if retired == hook.Command {
+		t.Fatalf("fixture command %q did not contain internal clear-kill", hook.Command)
+	}
+
+	raw, err := os.ReadFile(hook.File)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(raw, &document); err != nil {
+		t.Fatal(err)
+	}
+	appendHookWithMatcher(document, hook.Event, hook.Matcher, retired)
+	updated, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook.File, append(updated, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	results := ProbeExpectedHooks(home, machine)
+	var retiredResult *HookProbeResult
+	warnings := 0
+	for index, result := range results {
+		if result.State != "ok" {
+			warnings++
+		}
+		if strings.Contains(result.Hook.Command, "clear-hide") {
+			retiredResult = &results[index]
+		}
+	}
+	if retiredResult == nil {
+		t.Fatalf("doctor hook probe said nothing about the retired command %q: %#v", retired, results)
+	}
+	if !strings.Contains(strings.ToLower(retiredResult.State), "stale") {
+		t.Fatalf("retired command result state=%q, want it to say stale: %#v", retiredResult.State, retiredResult)
+	}
+	if warnings == 0 {
+		t.Fatalf("retired command did not surface as a warning-worthy probe result: %#v", results)
+	}
+}
+
 func TestExpectedHooksIteratesEveryConfiguredCodexHome(t *testing.T) {
 	home := t.TempDir()
 	machine := pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{

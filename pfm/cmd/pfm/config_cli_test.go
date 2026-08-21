@@ -110,6 +110,46 @@ func TestConfigCLIDisabledHarvesterMCPServeExplainsEnablePath(t *testing.T) {
 	}
 }
 
+// TestConfigCLIEnabledHarvesterMCPServeReachesServerStart pins the argv
+// regression at main.go's mcp dispatch: runHarvesterMCP must receive its OWN
+// flag args with both "harvester" and "serve" already stripped. Passing
+// args[1:] instead of args[2:] leaves "serve" as a leftover positional
+// argument, so harvestRunHarvesterMCP's `flags.NArg() != 0` guard prints its
+// own usage and exits 2 before ever reaching the transport switch — even
+// though the server is enabled and the flags typed are entirely valid. Stdin
+// is closed immediately so a reachable server terminates instead of blocking
+// the test on stdio framing.
+func TestConfigCLIEnabledHarvesterMCPServeReachesServerStart(t *testing.T) {
+	root := jailTest(t)
+	path := writeConfigFixture(t, root, `{
+  "version": 1,
+  "mcp": {"servers": {"harvester": {"enabled": true}}}
+}`)
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	previous := os.Stdin
+	os.Stdin = reader
+	defer func() {
+		os.Stdin = previous
+		_ = reader.Close()
+	}()
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--config", path, "mcp", "harvester", "serve", "--transport", "stdio"}, &stdout, &stderr)
+	if code == 2 {
+		t.Fatalf("run(mcp harvester serve --transport stdio) code=%d stdout=%q stderr=%q, want it to reach the server start rather than print usage for a leftover \"serve\" arg", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "usage: pfm mcp harvester serve") {
+		t.Fatalf("run(mcp harvester serve --transport stdio) stderr=%q, want no usage line — the enabled server and its flags must be reachable", stderr.String())
+	}
+}
+
 func TestConfigCLIMCPEnableDisableAreIdempotentWithoutStartingStdio(t *testing.T) {
 	root := jailTest(t)
 	path := writeConfigFixture(t, root, `{

@@ -366,6 +366,9 @@ func printHookDoctor(stdout io.Writer, home string, machine config.Config) int {
 		case "drift":
 			warnings++
 			fmt.Fprintf(stdout, "%s drift error=%s\n", prefix, result.Error)
+		case "stale":
+			warnings++
+			fmt.Fprintln(stdout, prefix+" stale — run pfm install")
 		default:
 			warnings++
 			fmt.Fprintf(stdout, "%s broken error=unknown hook state %q\n", prefix, result.State)
@@ -475,6 +478,16 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 		fmt.Fprintf(stdout, "doctor: harvestpy marker=(file) broken error=%v\n", inspectErr)
 	}
 
+	// "incomplete" is the word reserved for a marker left by an interrupted
+	// provision (digest.State == "incomplete"); any other lock/inventory
+	// failure is a live check failure against a provision that DID finish —
+	// a decode error, a stale lock, a dependency drift — and that is
+	// "broken", never "incomplete".
+	harvestFailureWord := "broken"
+	if digest.State == "incomplete" {
+		harvestFailureWord = "incomplete"
+	}
+
 	lockOK, lockErr := harvestDoctorCheck(report, "lock_completeness", checkErr)
 	if lockOK && digest.LockSHA256 != "" {
 		fmt.Fprintf(stdout, "doctor: harvestpy lock=(file) complete digest=%s\n", digest.LockSHA256)
@@ -483,7 +496,7 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 		if lockErr == "" {
 			lockErr = "lock digest or completeness check is missing"
 		}
-		fmt.Fprintf(stdout, "doctor: harvestpy lock=(file) incomplete error=%s\n", lockErr)
+		fmt.Fprintf(stdout, "doctor: harvestpy lock=(file) %s error=%s\n", harvestFailureWord, lockErr)
 	}
 
 	inventoryOK, inventoryErr := harvestDoctorCheck(report, "lock_completeness", checkErr)
@@ -494,7 +507,7 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 		if inventoryErr == "" {
 			inventoryErr = "installed inventory digest/count is missing"
 		}
-		fmt.Fprintf(stdout, "doctor: harvestpy inventory=(file) incomplete error=%s\n", inventoryErr)
+		fmt.Fprintf(stdout, "doctor: harvestpy inventory=(file) %s error=%s\n", harvestFailureWord, inventoryErr)
 	}
 
 	smokeOK, smokeErr := harvestDoctorCheck(report, "live_smoke", checkErr)

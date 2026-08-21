@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pfmconfig "hostops/pfm/internal/config"
 )
 
 func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
@@ -112,6 +114,93 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	}
 	if strings.Contains(string(removed), prefix+" ") || !strings.Contains(string(removed), "operator-keep") {
 		t.Fatalf("uninstall ownership result=%s", removed)
+	}
+}
+
+// TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings pins the
+// deep-doctor defect: a host whose settings.json already carries every
+// expected hook command — because it predates the ownership ledger, or a
+// prior install ran before the ledger existed for that hook — never gets
+// those hooks claimed. nextSettingsHookOwnership only credits a hook whose
+// per-call count went UP (before[key] != after[key]); a hook that was already
+// there and stays unchanged contributes zero "added" count forever, so the
+// ledger stays empty for it and doctor reports permanent ownership drift
+// (`ownership=0 file=1`) for a hook that is, in fact, correctly wired.
+func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T) {
+	home := t.TempDir()
+
+	// Build the settings document a fully-wired install produces — this is
+	// exactly what a real host's settings.json looks like today, regardless
+	// of whether any ledger ever tracked it.
+	preexisting, _, _, err := updateSettings([]byte("{}\n"), home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Today's install run starts from an EMPTY ownership ledger against that
+	// already-wired file — the exact shape `wireSettings` reads via
+	// `ownership[physical]` when the ledger has no entry for this path yet.
+	_, changed, owned, err := updateSettings(preexisting, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatalf("an already fully-wired settings.json was unexpectedly rewritten")
+	}
+	if len(owned) != 8 {
+		t.Fatalf("owned hooks=%d, want 8 — every already-present expected hook must be claimed: %#v", len(owned), owned)
+	}
+	for key, count := range owned {
+		if count != 1 {
+			t.Fatalf("owned[%#v]=%d, want 1", key, count)
+		}
+	}
+
+	// The doctor hook probe must agree: an already-owned hook is never drift.
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	writeFixture(t, settingsPath, string(preexisting))
+	encoded, err := encodeSettingsHookOwnership(map[string]settingsHookCounts{physicalSettingsPath(settingsPath): owned})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", "settings-hook-ownership.json"), string(encoded))
+	machine := pfmconfig.Config{Accounts: []pfmconfig.Account{{ID: 1, ConfigDir: filepath.Join(home, ".claude")}}}
+	for _, result := range ProbeExpectedHooks(home, machine) {
+		if result.State == "drift" {
+			t.Fatalf("hook probe reported drift for an already-owned hook: %#v", result)
+		}
+	}
+}
+
+// TestSettingsInstallRemovesRetiredClearHideAndKeepsOneClearKill pins the
+// deep-doctor defect: the kill-rename retired `internal clear-hide` in favor
+// of `internal clear-kill` (cmd/pfm/main.go's `internal` dispatch has no
+// `clear-hide` case at all — it falls through to the usage error), but the
+// installer's SessionEnd wiring only recognizes and dedups the CURRENT
+// clear-kill command. A settings.json still carrying the pre-rename command
+// keeps it forever; the installer neither removes it nor even notices it.
+func TestSettingsInstallRemovesRetiredClearHideAndKeepsOneClearKill(t *testing.T) {
+	home := filepath.Join("neutral", "home")
+	binary := home + "/.local/bin/pfm"
+	retired := binary + " internal clear-hide"
+	raw := []byte(`{"hooks":{"SessionEnd":[{"matcher":"","hooks":[{"type":"command","command":"` + retired + `"}]}]}}`)
+
+	updated, changed, owned, err := updateSettings(raw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatalf("retired clear-hide hook was not rewritten at all")
+	}
+	if strings.Contains(string(updated), "clear-hide") {
+		t.Fatalf("retired command %q survived installer wiring:\n%s", retired, updated)
+	}
+	clearKill := binary + " internal clear-kill"
+	if got := hookCommandCount(t, string(updated), "SessionEnd", clearKill); got != 1 {
+		t.Fatalf("clear-kill count=%d after wiring, want exactly 1:\n%s", got, updated)
+	}
+	if owned[settingsHookKey{Event: "SessionEnd", Command: clearKill}] != 1 {
+		t.Fatalf("owned ledger did not claim the replacement clear-kill hook: %#v", owned)
 	}
 }
 

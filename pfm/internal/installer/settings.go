@@ -100,7 +100,7 @@ func updateSettings(
 				hook["type"] = "command"
 				changed = true
 			}
-			if isRetiredBBCommand(command) {
+			if isRetiredHookCommand(command) {
 				changed = true
 				continue
 			}
@@ -139,6 +139,10 @@ func updateSettings(
 		for _, hookValue := range hooks {
 			hook, _ := hookValue.(map[string]any)
 			command, _ := hook["command"].(string)
+			if isRetiredHookCommand(command) {
+				changed = true
+				continue
+			}
 			if command == clearCommand {
 				if !uninstall && clearSeen {
 					changed = true
@@ -235,12 +239,58 @@ func rewriteCommandFields(value any, rewrite func(string) string) bool {
 	return changed
 }
 
-func isRetiredBBCommand(command string) bool {
+// retiredHookCommands is the installer's single table of subcommands a
+// settings.json or Codex hooks.json hook entry may still carry from before a
+// rename or a full retirement. Both wiring loops below strip any hook whose
+// command matches one of these — from either binary name, prefixed by any
+// path, or invoked bare via $PATH — and ProbeExpectedHooks (and the shared
+// Codex path it also serves) reads the same table to flag a live host that
+// still carries one as "stale" rather than saying nothing about it at all.
+var retiredHookCommands = []struct {
+	Name       string
+	Subcommand string
+}{
+	{Name: "bb", Subcommand: "bb"},
+	{Name: "bb", Subcommand: "chat bb"},
+	{Name: "clear-hide", Subcommand: "internal clear-hide"},
+}
+
+// retiredHookShimHints are legacy shell-script hook file substrings that
+// predate the pfm/cc-fleet binary hooks entirely, matched by substring
+// rather than by binary-prefixed subcommand.
+var retiredHookShimHints = []struct {
+	Name string
+	Hint string
+}{
+	{Name: "bb", Hint: "bb-hook.sh"},
+}
+
+// retiredHookCommandName reports whether command matches a retired hook
+// table entry and, if so, the name to report it under.
+func retiredHookCommandName(command string) (string, bool) {
 	command = strings.TrimSpace(command)
-	return command == "pfm bb" || command == "pfm chat bb" ||
-		strings.HasSuffix(command, "/pfm bb") || strings.HasSuffix(command, "/pfm chat bb") ||
-		strings.HasSuffix(command, "/cc-fleet bb") || strings.HasSuffix(command, "/cc-fleet chat bb") ||
-		strings.Contains(command, "bb-hook.sh")
+	if command == "" {
+		return "", false
+	}
+	for _, binary := range []string{"pfm", "cc-fleet"} {
+		for _, retired := range retiredHookCommands {
+			full := binary + " " + retired.Subcommand
+			if command == full || strings.HasSuffix(command, "/"+full) {
+				return retired.Name, true
+			}
+		}
+	}
+	for _, hint := range retiredHookShimHints {
+		if strings.Contains(command, hint.Hint) {
+			return hint.Name, true
+		}
+	}
+	return "", false
+}
+
+func isRetiredHookCommand(command string) bool {
+	_, retired := retiredHookCommandName(command)
+	return retired
 }
 
 func hookEntries(document map[string]any, event string, create bool) []map[string]any {
