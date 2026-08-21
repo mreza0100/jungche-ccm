@@ -92,6 +92,25 @@ func callTool[T any](
 	return output
 }
 
+func TestChatStatusSummaryUsesCanonicalCommandAndReturnsField(t *testing.T) {
+	var gotArgs []string
+	service := newService("test", &backend{dispatch: func(_ context.Context, args []string, stdout, _ io.Writer) int {
+		gotArgs = append([]string(nil), args...)
+		_, _ = io.WriteString(stdout, `{"name":"seat","state":"idle","idle_seconds":2,"engine":"cc","summary":"done","summary_cached":true}`+"\n")
+		return 0
+	}})
+	protocol := connectInMemory(t, service.Server())
+	output := callTool[StatusOutput](t, protocol.clientSession, "chat_status", StatusInput{
+		Target: "seat", Summary: true, Engine: "codex", Model: "test-model",
+	})
+	if strings.Join(gotArgs, " ") != "chat status seat --json --summary --engine codex --model test-model" {
+		t.Fatalf("dispatch args=%q", gotArgs)
+	}
+	if output.Summary != "done" || !output.SummaryCached {
+		t.Fatalf("status output=%+v", output)
+	}
+}
+
 func setupBackendFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
