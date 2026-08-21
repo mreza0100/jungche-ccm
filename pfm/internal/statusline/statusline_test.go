@@ -40,6 +40,24 @@ func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
 	}
 }
 
+func TestStatuslineUsesCanonicalUnknownWindowLabelAndIgnoresNonWindows(t *testing.T) {
+	got, err := Render(context.Background(), []byte(`{
+  "rate_limits":{
+    "seven_day_nimbus_quill":{"used_percentage":17,"resets_at":1800086400},
+    "plan_type":"fixture"
+  }
+}`), Runtime{
+		Home: t.TempDir(), Columns: 120, UID: 1000, Command: quietRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
+	if !strings.Contains(plain, "unknown[seven_day_nimbus_quill]-used:17%") {
+		t.Fatalf("unknown-window statusline=%q", plain)
+	}
+}
+
 type quietRunner struct{}
 
 func (quietRunner) Output(

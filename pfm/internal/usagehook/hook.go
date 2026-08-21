@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -48,6 +49,81 @@ type Usage struct {
 	SevenOpus  Window            `json:"seven_day_opus"`
 	SevenFable Window            `json:"seven_day_fable"`
 	Extra      map[string]Window `json:"-"`
+}
+
+// WindowDescriptor is the canonical public name and ordering metadata for one
+// raw API window key. Unknown keys retain their raw spelling so a newly added
+// server window is visible as a named compatibility gap, never a codename that
+// looks supported.
+type WindowDescriptor struct {
+	Key   string
+	Label string
+	Known bool
+}
+
+// NamedWindow couples canonical name metadata with the window carried by a
+// usage response.
+type NamedWindow struct {
+	WindowDescriptor
+	Window Window
+}
+
+var knownWindowDescriptors = []WindowDescriptor{
+	{Key: "five_hour", Label: "5h", Known: true},
+	{Key: "seven_day", Label: "7d", Known: true},
+	{Key: "seven_day_opus", Label: "7d-opus", Known: true},
+	{Key: "seven_day_fable", Label: "7d-fable", Known: true},
+}
+
+// DescribeWindows returns present keys in canonical order, followed by sorted
+// unknown keys whose labels explicitly retain the raw API spelling.
+func DescribeWindows(keys []string) []WindowDescriptor {
+	present := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		present[key] = true
+	}
+	described := make([]WindowDescriptor, 0, len(present))
+	for _, descriptor := range knownWindowDescriptors {
+		if present[descriptor.Key] {
+			described = append(described, descriptor)
+			delete(present, descriptor.Key)
+		}
+	}
+	unknown := make([]string, 0, len(present))
+	for key := range present {
+		unknown = append(unknown, key)
+	}
+	sort.Strings(unknown)
+	for _, key := range unknown {
+		described = append(described, WindowDescriptor{
+			Key: key, Label: "unknown[" + key + "]", Known: false,
+		})
+	}
+	return described
+}
+
+// NamedWindows returns only windows actually carried by the response. A zero
+// utilization pointer is still present and therefore remains visible.
+func (usage Usage) NamedWindows() []NamedWindow {
+	windows := map[string]Window{
+		"five_hour": usage.FiveHour, "seven_day": usage.SevenDay,
+		"seven_day_opus": usage.SevenOpus, "seven_day_fable": usage.SevenFable,
+	}
+	for key, window := range usage.Extra {
+		windows[key] = window
+	}
+	keys := make([]string, 0, len(windows))
+	for key, window := range windows {
+		if window.Utilization != nil || window.ResetsAt != "" {
+			keys = append(keys, key)
+		}
+	}
+	descriptors := DescribeWindows(keys)
+	named := make([]NamedWindow, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		named = append(named, NamedWindow{WindowDescriptor: descriptor, Window: windows[descriptor.Key]})
+	}
+	return named
 }
 
 func (usage *Usage) UnmarshalJSON(content []byte) error {

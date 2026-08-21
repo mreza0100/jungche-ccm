@@ -31,6 +31,37 @@ func TestUsageParsesFableAndRetainsUnknownWindows(t *testing.T) {
 	}
 }
 
+func TestNamedWindowsUsesOneCanonicalMappingAndLabelsUnknownKeys(t *testing.T) {
+	var parsed Usage
+	content := []byte(`{
+		"seven_day":{"utilization":11,"resets_at":"2026-08-28T00:00:00Z"},
+		"seven_day_opus":{"utilization":22,"resets_at":"2026-08-28T00:00:00Z"},
+		"seven_day_fable":{"utilization":0,"resets_at":""},
+		"seven_day_nimbus_quill":{"utilization":33,"resets_at":"2026-08-28T00:00:00Z"}
+	}`)
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	windows := parsed.NamedWindows()
+	want := []struct {
+		key, label string
+		known      bool
+	}{
+		{key: "seven_day", label: "7d", known: true},
+		{key: "seven_day_opus", label: "7d-opus", known: true},
+		{key: "seven_day_fable", label: "7d-fable", known: true},
+		{key: "seven_day_nimbus_quill", label: "unknown[seven_day_nimbus_quill]", known: false},
+	}
+	if len(windows) != len(want) {
+		t.Fatalf("NamedWindows() = %#v, want %d windows", windows, len(want))
+	}
+	for index, expected := range want {
+		if windows[index].Key != expected.key || windows[index].Label != expected.label || windows[index].Known != expected.known {
+			t.Fatalf("NamedWindows()[%d] = %#v, want %#v", index, windows[index], expected)
+		}
+	}
+}
+
 func TestWarnRecoverQuietTransition(t *testing.T) {
 	root := t.TempDir()
 	configDir := filepath.Join(root, ".claude")

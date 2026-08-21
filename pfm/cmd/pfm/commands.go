@@ -14,6 +14,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/heal"
 	"hostops/pfm/internal/hide"
@@ -21,6 +22,7 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
+	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
 )
@@ -128,21 +130,7 @@ func runLS(
 				scan.Paths.ProcRoot,
 				scan.Paths.CgroupRoot,
 			)
-			limitAccounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts))
-			for _, account := range runtime.Config.Accounts {
-				claude := runtime.Config.EffectiveClaude(account.ID)
-				limitAccount := pfmstats.LimitAccount{
-					ID: account.ID, Emoji: runtime.Config.EmojiFor(account.ID),
-					ConfigDir: account.ConfigDir, ClaudeBinary: claude.Binary,
-				}
-				if account.ID == 4 {
-					limitAccount.CodexCachePath = filepath.Join(
-						runtime.Paths.Home, "tmp", fmt.Sprintf("cc-gpt-usage-%d.json", os.Getuid()),
-					)
-				}
-				limitAccounts = append(limitAccounts, limitAccount)
-			}
-			statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts)
+			statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts(runtime))
 			scan.Snapshot.StatsSampler = statsSampler
 			refreshContext, refreshCancel := context.WithCancel(ctx)
 			updates := make(chan ui.Snapshot, 1)
@@ -227,6 +215,30 @@ func runLS(
 			return 1
 		}
 	}
+}
+
+func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
+	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+1)
+	for _, account := range runtime.Config.Accounts {
+		claude := runtime.Config.EffectiveClaude(account.ID)
+		accounts = append(accounts, pfmstats.LimitAccount{
+			ID: account.ID, Emoji: runtime.Config.EmojiFor(account.ID),
+			Engine: "claude", Label: pfmconfig.DisplayAccountDir(runtime.Paths.Home, account.ID, account.ConfigDir),
+			ConfigDir: account.ConfigDir, ClaudeBinary: claude.Binary,
+		})
+	}
+	for _, skip := range runtime.Config.AccountSkips {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			ID: skip.ID, Engine: "claude",
+			Label:     pfmconfig.DisplayAccountDir(runtime.Paths.Home, skip.ID, skip.ConfigDir),
+			ConfigDir: skip.ConfigDir, SkipReason: skip.Reason,
+		})
+	}
+	accounts = append(accounts, pfmstats.LimitAccount{
+		Engine: "codex", Label: "Codex",
+		CodexCachePath: statusline.GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid()),
+	})
+	return accounts
 }
 
 func boolCount(values ...bool) int {

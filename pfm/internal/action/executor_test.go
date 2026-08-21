@@ -345,7 +345,7 @@ func TestOpenEmptyKeepSetIsDestructiveOnlyForResumeClaude(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			line, err := executor.Open(context.Background(), Request{
+			line, err := openWithTestConfig(executor, context.Background(), Request{
 				Row: compose.Row{
 					Kind: test.kind,
 					ID:   id,
@@ -411,7 +411,7 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 		Home:           "/home/test",
 		FreshSocket:    "cc-900-1-1",
 	}
-	line, err := executor.Open(context.Background(), request)
+	line, err := openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -425,7 +425,7 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 	}
 
 	request.CurrentTMUX = "/tmp/jail/cc-100-1-1,1,0"
-	line, err = executor.Open(context.Background(), request)
+	line, err = openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 	request.CurrentTMUX = ""
 	request.Row.Socket = "cc-404-1-1"
 	request.Row.CWD = "/work/dead"
-	line, err = executor.Open(context.Background(), request)
+	line, err = openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestExecutorGateSelfSwitchDeadFallbackAndCodexPrepare(t *testing.T) {
 		Home:           "/home/test",
 		FreshSocket:    "cx-901-1-1",
 	}
-	line, err = executor.Open(context.Background(), codexRequest)
+	line, err = openWithTestConfig(executor, context.Background(), codexRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +516,7 @@ func TestExecutorCodexWindowVerificationAndDeadFallback(t *testing.T) {
 		FreshSocket:    "cx-fresh",
 		Home:           "/home/test",
 	}
-	line, err := executor.Open(context.Background(), request)
+	line, err := openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +525,7 @@ func TestExecutorCodexWindowVerificationAndDeadFallback(t *testing.T) {
 	}
 
 	request.Row.Socket = "cx-live"
-	line, err = executor.Open(context.Background(), request)
+	line, err = openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +534,7 @@ func TestExecutorCodexWindowVerificationAndDeadFallback(t *testing.T) {
 	}
 
 	request.Row.Socket = "cx-dead"
-	line, err = executor.Open(context.Background(), request)
+	line, err = openWithTestConfig(executor, context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +577,7 @@ func TestOpenDeadLiveSplitWithNoResumableIDHardErrors(t *testing.T) {
 		Home:           "/home/test",
 		FreshSocket:    "cc-900-1-1",
 	}
-	line, err := executor.Open(context.Background(), request)
+	line, err := openWithTestConfig(executor, context.Background(), request)
 	if line != "" {
 		t.Fatalf("dead split line = %q, want empty", line)
 	}

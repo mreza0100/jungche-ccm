@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	pfmstats "hostops/pfm/internal/stats"
 )
 
@@ -65,6 +66,46 @@ func TestStatsLimitsSubtabRendersAccountWindows(t *testing.T) {
 	plain := ansi.Strip(model.renderStatsPanel(120, 8))
 	if !strings.Contains(plain, "7d-fable") || !strings.Contains(plain, "23%") || !strings.Contains(plain, "🔹") {
 		t.Fatalf("limits panel=%q", plain)
+	}
+}
+
+func TestStatsLimitsSubtabRendersNamedSkipsUnknownsAndCodexErrors(t *testing.T) {
+	home := "/home/test"
+	label1 := pfmconfig.DisplayAccountDir(home, 1, pfmconfig.DefaultAccountDir(home, 1))
+	label3 := pfmconfig.DisplayAccountDir(home, 3, pfmconfig.DefaultAccountDir(home, 3))
+	label4 := pfmconfig.DisplayAccountDir(home, 4, pfmconfig.DefaultAccountDir(home, 4))
+	emoji1 := pfmconfig.Defaults(home, []string{pfmconfig.DefaultAccountProjectDir(home, 1)}).EmojiFor(1)
+	model := NewModel(fixtureSnapshot(140))
+	model.tab = TabStats
+	model.statsSubtab = StatsLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{
+			Account: 1, Emoji: emoji1, Engine: "claude", Label: label1,
+			Windows: []pfmstats.Window{
+				{Name: "7d-fable", UsedPct: 0, ResetNote: "reset unavailable"},
+				{Name: "unknown[seven_day_nimbus_quill]", UsedPct: 0, ResetNote: "reset unavailable"},
+			},
+		},
+		{Account: 3, Engine: "claude", Label: label3, Status: "skipped " + label3 + ": credentials rejected"},
+		{Account: 4, Engine: "claude", Label: label4, Status: "skipped " + label4 + ": no valid credentials"},
+		{Engine: "codex", Label: "Codex", Status: "read Codex cache: fixture missing"},
+	}}
+	plain := ansi.Strip(model.renderStatsPanel(140, 10))
+	for _, want := range []string{
+		"7d-fable 0% (reset unavailable)",
+		"unknown[seven_day_nimbus_quill] 0% (reset unavailable)",
+		"skipped " + label3 + ": credentials rejected",
+		"skipped " + label4 + ": no valid credentials",
+		"Codex", "read Codex cache: fixture missing",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("limits panel missing %q:\n%s", want, plain)
+		}
+	}
+	for _, reject := range []string{"(?)", "403 Forbidden"} {
+		if strings.Contains(plain, reject) {
+			t.Fatalf("limits panel contains unexplained/retired output %q:\n%s", reject, plain)
+		}
 	}
 }
 

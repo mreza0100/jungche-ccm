@@ -53,7 +53,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 		Home:           "/home/test",
 		FreshSocket:    "cc-1700000000-123-456",
 	}
-	plan, err := Synthesize(request)
+	plan, err := synthesizeWithTestConfig(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestSynthesizeRoutesAndEnvHygiene(t *testing.T) {
 	}
 	request.Cache1H = false
 	request.Bunker = false
-	plan, err = Synthesize(request)
+	plan, err = synthesizeWithTestConfig(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 	// An account outside the launcher's two-seat roster must never reach a
 	// command line.
 	for _, account := range []int{0, 4, 9} {
-		_, err := Synthesize(Request{
+		_, err := synthesizeWithTestConfig(Request{
 			Row: compose.Row{
 				Kind: compose.NewClaude,
 				CWD:  "/work/project",
@@ -135,7 +135,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 		}
 	}
 	for account := 1; account <= 3; account++ {
-		if _, err := Synthesize(Request{
+		if _, err := synthesizeWithTestConfig(Request{
 			Row: compose.Row{
 				Kind: compose.NewClaude,
 				CWD:  "/work/project",
@@ -149,7 +149,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 }
 
 func TestAgentRouteUsesHiddenInternalWiring(t *testing.T) {
-	plan, err := Synthesize(Request{
+	plan, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind: compose.Agent,
 			ID:   "33333333-3333-4333-8333-333333333333",
@@ -175,7 +175,7 @@ func TestCodexLiveUsesOnlyVerifiedWindow(t *testing.T) {
 		SessionName: "cx-session",
 		Name:        strings.Repeat("界", 30),
 	}
-	plan, err := Synthesize(Request{
+	plan, err := synthesizeWithTestConfig(Request{
 		Row:            row,
 		PrimaryAccount: 1,
 		Home:           "/home/test",
@@ -188,7 +188,7 @@ func TestCodexLiveUsesOnlyVerifiedWindow(t *testing.T) {
 		t.Fatalf("unverified Codex attach line = %q", plan.Line)
 	}
 	row.WindowName = "already-converged"
-	plan, err = Synthesize(Request{
+	plan, err = synthesizeWithTestConfig(Request{
 		Row:            row,
 		PrimaryAccount: 1,
 		Home:           "/home/test",
@@ -206,7 +206,7 @@ func TestCodexLiveUsesOnlyVerifiedWindow(t *testing.T) {
 // "existing Live attach synthesis" the fix promises, with no other operation
 // reachable through this row's Kind.
 func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
-	bootingLine, err := Synthesize(Request{
+	bootingLine, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind:        compose.Booting,
 			ID:          "cc-new-fixture-1",
@@ -219,7 +219,7 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	liveLine, err := Synthesize(Request{
+	liveLine, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind:        compose.LiveClaude,
 			Socket:      "cc-new-fixture-1",
@@ -249,7 +249,7 @@ func TestBootingRowAttachesLikeAnOrdinaryLiveRow(t *testing.T) {
 	// A socket-less booting row (should never happen, but the guard is shared
 	// with every other Live kind) still refuses cleanly rather than emitting a
 	// bare "attach" with no target.
-	if _, err := Synthesize(Request{
+	if _, err := synthesizeWithTestConfig(Request{
 		Row:            compose.Row{Kind: compose.Booting},
 		PrimaryAccount: 1,
 		Home:           "/home/test",
@@ -281,7 +281,7 @@ exit 2
 } > "$ACTION_RESULT"
 `, 0o700)
 	id := "22222222-2222-4222-8222-222222222222"
-	plan, err := Synthesize(Request{
+	plan, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind:      compose.Agent,
 			ID:        id,
@@ -335,7 +335,7 @@ exit 2
 }
 
 func TestSynthesizeRejectsNUL(t *testing.T) {
-	_, err := Synthesize(Request{
+	_, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind: compose.NewClaude,
 			CWD:  "/work/a\x00b",

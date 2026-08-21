@@ -55,14 +55,18 @@ type Container struct {
 }
 
 type Window struct {
-	Name    string
-	UsedPct int
-	ResetAt time.Time
+	Name      string
+	UsedPct   int
+	ResetAt   time.Time
+	ResetNote string
 }
 
 type AccountLimits struct {
 	Account int
 	Emoji   string
+	Engine  string
+	Label   string
+	Status  string
 	Windows []Window
 }
 
