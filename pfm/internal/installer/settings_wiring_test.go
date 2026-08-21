@@ -86,6 +86,7 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
 		{"UserPromptSubmit", "", prefix + " chat group hook"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
+		{"SessionStart", "", prefix + " internal launcher-repair"},
 		{"SessionEnd", "", prefix + " internal clear-kill"},
 	} {
 		if got := hookCommandCount(t, string(updated), hook.event, hook.command); got != 1 {
@@ -95,8 +96,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 7 {
-		t.Fatalf("owned hooks=%d, want 7: %#v", len(owned), owned)
+	if len(owned) != 8 {
+		t.Fatalf("owned hooks=%d, want 8: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -227,6 +228,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 1 {
 			t.Fatalf("managed secondary settings missing new installer hook %q: count=%d\n%s", command, got, secondary)
@@ -279,6 +281,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
+		pfm + " internal launcher-repair",
 	} {
 		if got := hookCommandCount(t, secondary, "", command); got != 0 {
 			t.Fatalf("uninstall retained installer-owned secondary hook %q: count=%d\n%s", command, got, secondary)

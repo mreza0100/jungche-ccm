@@ -88,7 +88,8 @@ func installerOwnedHookCommand(command, pfmBinary string) bool {
 		pfmBinary + " dream hook agent-inject",
 		pfmBinary + " dream hook nudge",
 		pfmBinary + " internal explore-deny",
-		pfmBinary + " internal epic-inject":
+		pfmBinary + " internal epic-inject",
+		pfmBinary + " internal launcher-repair":
 		return true
 	default:
 		return false

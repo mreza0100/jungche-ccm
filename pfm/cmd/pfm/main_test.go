@@ -644,6 +644,16 @@ func jailTest(t *testing.T) string {
 	if err := os.WriteFile(canonical, []byte("jailed-pfm"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	managedClaude := filepath.Join(root, "home", ".local", "share", "pfm", "install", "bin", "claude")
+	if err := os.MkdirAll(filepath.Dir(managedClaude), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedClaude, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(managedClaude, filepath.Join(root, "home", ".local", "bin", "claude")); err != nil {
+		t.Fatal(err)
+	}
 	testPath := []string{filepath.Dir(canonical)}
 	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
 		if _, err := os.Stat(filepath.Join(directory, "pfm")); os.IsNotExist(err) {

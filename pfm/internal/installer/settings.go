@@ -26,6 +26,7 @@ func updateSettings(
 	nudgeCommand := pfmBinary + " dream hook nudge"
 	exploreDenyCommand := pfmBinary + " internal explore-deny"
 	epicInjectCommand := pfmBinary + " internal epic-inject"
+	launcherRepairCommand := pfmBinary + " internal launcher-repair"
 
 	changed := false
 	before := countSettingsHookCommands(document)
@@ -151,6 +152,10 @@ func updateSettings(
 	pruneEmptyHooks(document, "SessionEnd")
 
 	if !uninstall {
+		if !hasHookCommandWithMatcher(hookEntries(document, "SessionStart", true), launcherRepairCommand, "") {
+			appendHookWithMatcher(document, "SessionStart", "", launcherRepairCommand)
+			changed = true
+		}
 		if !hasHookCommand(hookEntries(document, "UserPromptSubmit", true), groupCommand) {
 			appendHook(document, "UserPromptSubmit", groupCommand)
 			changed = true

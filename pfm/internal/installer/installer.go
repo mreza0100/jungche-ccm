@@ -117,6 +117,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := installer.wireClaudeLauncher(); err != nil {
+		return err
+	}
 	if err := installer.migrateOldState(); err != nil {
 		return err
 	}
@@ -212,6 +215,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
+	}
+	if err := installer.unwireClaudeLauncher(); err != nil {
+		return err
 	}
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
@@ -486,6 +492,8 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 		}
 		if asset.path == "shim/pfm.zsh" {
 			content = renderShimAsset(content, installer.options)
+		} else if asset.path == "bin/claude" {
+			content = renderClaudeLauncherAsset(content, installer.options)
 		}
 		target := filepath.Join(installer.managedRoot, filepath.FromSlash(asset.path))
 		if sameFile(target, content, asset.mode) {

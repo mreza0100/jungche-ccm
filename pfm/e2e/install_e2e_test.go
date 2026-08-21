@@ -32,6 +32,7 @@ const (
 	e2eSourceMarker    = ".local/share/pfm/install/source-repo"
 	e2eManagedRoot     = ".local/share/pfm/install"
 	e2eCanonicalPFM    = ".local/bin/pfm"
+	e2eCanonicalClaude = ".local/bin/claude"
 	e2eSettings        = ".claude/settings.json"
 	e2eCodexHooks      = ".codex/hooks.json"
 	e2eZshrc           = ".zshrc"
@@ -59,6 +60,7 @@ var managedAssets = []string{
 	"chat/group/ls.command.md", "chat/group/read.command.md",
 	"chat/group/send.command.md", "chat/group/subscribe.command.md",
 	"shim/pfm.zsh",
+	"bin/claude",
 }
 
 var managedSettings = []string{
@@ -75,6 +77,7 @@ var expectedHooks = []string{
 	"dream hook nudge",
 	"internal explore-deny",
 	"internal epic-inject",
+	"internal launcher-repair",
 }
 
 type e2eHarness struct {
@@ -192,6 +195,10 @@ func runInstallE2E(t *testing.T) {
 		result := harness.pfm(freshHome, "init", project)
 		harness.requireSuccess("init", result)
 		harness.assertInit(project, repo)
+	})
+
+	t.Run("launcher", func(t *testing.T) {
+		harness.assertLauncherRuntime(freshHome)
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -376,7 +383,26 @@ func (h *e2eHarness) newHome(binary string) string {
 	if err := copyFile(binary, filepath.Join(home, e2eCanonicalPFM), 0o755); err != nil {
 		h.t.Fatalf("stage pfm binary: %v", err)
 	}
+	native := filepath.Join(home, ".local", "share", "claude", "versions", "fixture")
+	launcherEvidence := filepath.Join(home, "launcher-evidence")
+	body := "#!/bin/sh\n" +
+		"if [ \"${1-}\" = --version ]; then printf 'claude fixture\\n'; exit 0; fi\n" +
+		"printf '%s\\n' \"${TMUX%%,*}\" > " + shellQuoteFixture(launcherEvidence) + "\n" +
+		"exit 0\n"
+	if err := os.MkdirAll(filepath.Dir(native), 0o700); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.WriteFile(native, []byte(body), 0o700); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := os.Symlink(native, filepath.Join(home, e2eCanonicalClaude)); err != nil {
+		h.t.Fatal(err)
+	}
 	return home
+}
+
+func shellQuoteFixture(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func (h *e2eHarness) pfm(home string, args ...string) commandResult {
@@ -487,6 +513,19 @@ func (h *e2eHarness) assertInstalled(home string) {
 			h.t.Fatalf("install surface failed; differing paths: %s; status: %v", filepath.Join(e2eManagedRoot, relative), err)
 		}
 	}
+	canonicalClaude := filepath.Join(home, e2eCanonicalClaude)
+	managedClaude := filepath.Join(managed, "bin", "claude")
+	info, err := os.Lstat(canonicalClaude)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		h.t.Fatalf("install surface failed; differing paths: %s launcher link; status: %v", e2eCanonicalClaude, err)
+	}
+	target, err := os.Readlink(canonicalClaude)
+	if err != nil || filepath.Clean(target) != filepath.Clean(managedClaude) {
+		h.t.Fatalf("install surface failed; differing paths: %s target=%q; status: %v", e2eCanonicalClaude, target, err)
+	}
+	if _, err := os.Stat(filepath.Join(managed, "launcher.state")); err != nil {
+		h.t.Fatalf("install surface failed; differing paths: launcher.state; status: %v", err)
+	}
 	h.readJSON(filepath.Join(managed, "binary-ownership.json"))
 	h.readJSON(filepath.Join(managed, "settings-hook-ownership.json"))
 	if runtime.GOOS == "linux" {
@@ -528,8 +567,8 @@ func (h *e2eHarness) assertInstalled(home string) {
 	}
 	h.assertTmuxConfig(home)
 	codex := h.readJSON(filepath.Join(home, e2eCodexHooks))
-	if !containsJSONString(codex, filepath.Join(home, ".local", "bin", "pfm")+" internal clear-hide") {
-		h.t.Fatalf("install surface failed; differing paths: .codex/hooks.json clear-hide")
+	if !containsJSONString(codex, filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
+		h.t.Fatalf("install surface failed; differing paths: .codex/hooks.json clear-kill")
 	}
 	if _, err := os.Stat(filepath.Join(home, e2eSourceMarker)); err != nil {
 		h.t.Fatalf("install surface failed; differing paths: %s; status: %v", e2eSourceMarker, err)
@@ -546,6 +585,64 @@ func (h *e2eHarness) assertInstalled(home string) {
 	} else if _, err := os.Stat(filepath.Join(home, "Library", "LaunchAgents", "com.professor.pfm.name-sync.plist")); err != nil {
 		h.t.Fatalf("install surface failed; differing paths: launchd name-sync; status: %v", err)
 	}
+}
+
+func (h *e2eHarness) assertLauncherRuntime(home string) {
+	h.t.Helper()
+	tmuxBefore, err := os.ReadDir(filepath.Join(home, "tmux"))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	version := h.tool(home, filepath.Join(home, e2eCanonicalClaude), "--version")
+	if version.err != nil || version.stdout != "claude fixture\n" {
+		h.t.Fatalf("launcher version pass-through failed: output=%q stderr=%q status=%v", version.stdout, version.stderr, version.err)
+	}
+	tmuxAfter, err := os.ReadDir(filepath.Join(home, "tmux"))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if strings.Join(dirEntryNames(tmuxAfter), "\x00") != strings.Join(dirEntryNames(tmuxBefore), "\x00") {
+		h.t.Fatalf("launcher version pass-through changed tmux state: before=%v after=%v", tmuxBefore, tmuxAfter)
+	}
+	interactive := h.tool(home, filepath.Join(home, e2eCanonicalClaude), "--resume", "fixture-session")
+	if interactive.err != nil {
+		h.t.Fatalf("interactive no-TTY launcher failed: stdout=%q stderr=%q status=%v", interactive.stdout, interactive.stderr, interactive.err)
+	}
+	if !strings.HasPrefix(interactive.stdout, "pfm launch: cc-") {
+		h.t.Fatalf("interactive no-TTY launcher omitted socket line: %q", interactive.stdout)
+	}
+	evidence, err := os.ReadFile(filepath.Join(home, "launcher-evidence"))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if !strings.HasPrefix(filepath.Base(strings.TrimSpace(string(evidence))), "cc-") {
+		h.t.Fatalf("interactive fake Claude ran outside cc tmux: %q", evidence)
+	}
+}
+
+func dirEntryNames(entries []os.DirEntry) []string {
+	names := make([]string, len(entries))
+	for index, entry := range entries {
+		names[index] = entry.Name()
+	}
+	return names
+}
+
+func (h *e2eHarness) tool(home, name string, args ...string) commandResult {
+	h.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	command := exec.CommandContext(ctx, name, args...)
+	command.Dir = h.repo
+	command.Env = h.environment(home)
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	err := command.Run()
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		err = fmt.Errorf("command timed out")
+	}
+	return commandResult{stdout: stdout.String(), stderr: stderr.String(), err: err}
 }
 
 func (h *e2eHarness) assertTmuxConfig(home string) {
@@ -679,6 +776,11 @@ func (h *e2eHarness) assertUninstalled(home string) {
 			h.t.Fatalf("uninstall failed; differing paths: %s; status: %v", relative, err)
 		}
 	}
+	canonical := filepath.Join(home, e2eCanonicalClaude)
+	target, err := os.Readlink(canonical)
+	if err != nil || !strings.HasSuffix(filepath.ToSlash(target), "/.local/share/claude/versions/fixture") {
+		h.t.Fatalf("uninstall failed; differing paths: native Claude launcher restore target=%q status=%v", target, err)
+	}
 	if runtime.GOOS == "linux" {
 		for _, relative := range []string{
 			".config/systemd/user/pfm-name-sync.path",
@@ -704,7 +806,7 @@ func (h *e2eHarness) assertUninstalled(home string) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "commands", "foreign-fixture.md")); err != nil {
 		h.t.Fatalf("uninstall failed; differing paths: foreign-fixture.md; status: %v", err)
 	}
-	if containsJSONString(h.readJSON(filepath.Join(home, e2eCodexHooks)), filepath.Join(home, ".local", "bin", "pfm")+" internal clear-hide") {
+	if containsJSONString(h.readJSON(filepath.Join(home, e2eCodexHooks)), filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
 		h.t.Fatalf("uninstall failed; differing paths: installer Codex hook")
 	}
 }

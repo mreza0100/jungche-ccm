@@ -335,6 +335,12 @@ func runInternal(
 	if len(args) != 0 && args[0] == "agent-open" {
 		return runInternalAgentOpen(args[1:], stderr, runtime)
 	}
+	if len(args) != 0 && args[0] == "launch" {
+		return runInternalLaunch(args[1:], stdout, stderr, runtime)
+	}
+	if len(args) != 0 && args[0] == "launcher-repair" {
+		return runInternalLauncherRepair(args[1:], stderr, runtime)
+	}
 	if len(args) != 0 && args[0] == "explore-deny" {
 		return runExploreDeny(os.Stdin, stdout, stderr)
 	}
