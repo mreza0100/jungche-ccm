@@ -29,10 +29,18 @@ Status: QUEUED · Refined: 2026-08-21 by CCC (user ruling: "the doctor has to be
 
 - `pfm install` runs `deps` preflight first and refuses (exit 1, the rows printed) when a `Required` dep is missing — instead of failing later inside tmux or git with a raw exec error. `--force` does not bypass a missing Required dep; `--skip-harvest` only skips the harvestpy rows. TESTPLAN rows added.
 
+### #4 — `doctor hooks`: every hook pfm installed is present and points at THIS binary (user-ordered 2026-08-21)
+
+- Anchors: `internal/installer/settings.go:79-159` (Claude: `UserPromptSubmit` group+usage commands, `SessionEnd` clear-kill, statusline), `installer.go:912-918` (candidate `settings.json` per account config dir), `codex_hooks.go:11-68` (`~/.codex/hooks.json`, `appendCodexClearHook`), `settings_ownership.go:34-157` (the ownership ledger: which commands pfm owns, per file), `doctor.go` has no hook probe today (`grep -i hook cmd/pfm/doctor.go` → 0).
+- Source of truth = the installer's own expected-hook list (the same function that installs them, exported as `installer.ExpectedHooks(config)` → `[{File, Event, Command}]`) — doctor never carries a second list (NO duplication). For each expected hook: file exists and parses → event array present → a command entry matching `installerOwnedHookCommand` → its binary path equals the canonical `~/.local/bin/pfm` (a hook pointing at a stale/foreign pfm is **broken**, not ok).
+- Scope: every Claude account in the roster (global config-dir `settings.json`; plus a project-level `.claude/settings.json` ONLY if the installer writes one — verify in `installer.go`; if it never does, say so in the row grammar and probe nothing there), and every Codex home (`hooks.json`). Rows: `doctor: hook claude[1] SessionEnd clear-kill ok` · `doctor: hook codex ~/.codex/hooks.json UserPromptSubmit usage MISSING — run pfm install` · `doctor: hook claude[2] settings.json broken error=<parse error>` · a hooks file that exists but is unreadable is **broken**, never "missing".
+- Ownership ledger cross-check: a command present in the file but absent from the ledger (or vice versa) is a named `drift` row — the state `pfm uninstall` would mishandle.
+- Tests (JAIL, RED-first): plant a settings.json missing one owned hook → MISSING row + warning; point one hook at `/usr/local/bin/pfm` → broken row; corrupt hooks.json → broken; all present → ok rows and zero warnings. Watched failing against HEAD where doctor prints nothing about hooks.
+
 ## Acceptance
 
 - `dev.sh iso test pfm` + `iso verify pfm` green with fence proof. The registry guard test is RED-then-GREEN in the ledger line.
-- Host proof (user-run after mirror build): `pfm doctor` shows one `dep` row per registry entry with real versions for tmux/git/claude/codex; renaming `tmux` out of PATH in a jail HOME makes the row say `MISSING required` and doctor exit non-zero.
+- Host proof (user-run after mirror build): `pfm doctor` shows one `hook` row per installed hook (all ok on this host) and one `dep` row per registry entry with real versions for tmux/git/claude/codex; renaming `tmux` out of PATH in a jail HOME makes the row say `MISSING required` and doctor exit non-zero.
 - `docs/dev/pfm-surface.md` doctor row updated; no machine-absolute path in any tracked file.
 - Walker with HONEST-ABSENCE armed — the three-state contract is the invariant under test.
 
