@@ -18,6 +18,8 @@ services:
     working_dir: /worktree
     environment:
       PFM_DEV_FENCE: "1"
+      # root-vs-uid1000 dubious ownership + an unmounted worktree gitdir break `git`-shelling go builds; pfm reports version "dev", so no VCS stamp is lost.
+      GOFLAGS: "-buildvcs=false"
 
 volumes:
   pfm-dev-gocache:

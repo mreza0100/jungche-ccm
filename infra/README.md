@@ -2,6 +2,8 @@
 
 Development must never destabilize the live box: code changes happen in a git worktree under `.worktrees/`, and every build/test runs inside the `pfm-dev` container with that worktree mounted at `/worktree` — own HOME, own tmux, no published ports. Files are edited on the host; the container only builds and tests. Design and law: `docs/dev/isolated-dev-foundation.md`.
 
+The container runs as root over that read-only, uid-1000-owned mount (and, for a worktree, a gitdir the mount does not include), so `git`-shelling Go commands see "dubious ownership" — `docker-compose.yml` sets `GOFLAGS=-buildvcs=false` to route around it rather than fix ownership.
+
 Entry point — from the worktree checkout:
 
 ```bash
