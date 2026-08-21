@@ -38,6 +38,10 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 			for _, hookValue := range hooks {
 				hook, _ := hookValue.(map[string]any)
 				command, _ := hook["command"].(string)
+				if isRetiredHookCommand(command) {
+					changed = true
+					continue
+				}
 				if command != clearCommand {
 					kept = append(kept, hookValue)
 					continue

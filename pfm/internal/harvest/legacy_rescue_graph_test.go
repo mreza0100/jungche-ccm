@@ -42,6 +42,84 @@ func TestLegacyUnresolvedBotChallengeIsNeverCached(t *testing.T) {
 	}
 }
 
+// TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess pins the rung-1
+// escalation gate against a REAL Cloudflare "Sorry, you have been blocked"
+// (error 1020) interstitial, not the short synthetic wall text the sibling
+// tests above use. Genuine Cloudflare block pages ship several KB of inline
+// CSS, so the raw body comfortably exceeds isChallenge's 4000-byte
+// weak-marker gate ("cloudflare"/"attention required" only count under that
+// gate) — and its copy ("Sorry, you have been blocked", "Why have I been
+// blocked?") matches none of the length-independent strong phrases either.
+// A 403 body this large, once converted, also clears the html "thin content"
+// floor (500 chars), so nothing forces a retry: the wall is cached as an
+// ordinary successful "html" result at the direct rung. Per
+// harvester/src/harvester/dispatch.py:431-432, a Cloudflare 403 must escalate
+// through chrome-impersonation, then jina, then wayback, and only report a
+// named challenge failure — never a cached success — once every rung is
+// exhausted.
+func TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess(t *testing.T) {
+	blockPage := cloudflareBlockPageFixture()
+	if len(blockPage) <= 4000 {
+		t.Fatalf("fixture must exceed the 4000-byte weak-marker gate to reproduce the live page, got %d bytes", len(blockPage))
+	}
+	wallTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return response(request, http.StatusForbidden, "text/html", blockPage), nil
+	})
+	missingTransport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return response(request, http.StatusNotFound, "application/json", `{}`), nil
+	})
+	h := New(Options{
+		CacheDir:  t.TempDir(),
+		Client:    &http.Client{Transport: wallTransport},
+		Chrome:    &http.Client{Transport: wallTransport},
+		Jina:      &http.Client{Transport: missingTransport},
+		OA:        &http.Client{Transport: missingTransport},
+		Converter: legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+	})
+	result := h.Fetch(context.Background(), "https://blocked.example.test/article")
+	if result.Error == "" {
+		t.Fatalf("Cloudflare 403 block page returned as a cached SUCCESS instead of escalating: %#v", result)
+	}
+	if !result.Challenge || !strings.Contains(strings.ToLower(result.Error), "challenge") {
+		t.Fatalf("Cloudflare 403 block page not classified as a challenge failure: %#v", result)
+	}
+	if !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, wayback") {
+		t.Fatalf("Cloudflare 403 block page did not escalate the full rung ladder: %#v", result)
+	}
+	var artifacts []string
+	_ = filepath.Walk(h.options.CacheDir, func(path string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && !info.IsDir() {
+			artifacts = append(artifacts, path)
+		}
+		return nil
+	})
+	if len(artifacts) != 0 {
+		t.Fatalf("blocked page entered the positive cache: %#v", artifacts)
+	}
+}
+
+// cloudflareBlockPageFixture reproduces the shape of Cloudflare's live
+// "Attention Required! | Cloudflare" / error-1020 interstitial: real inline
+// CSS bulk, an h1 reading "Sorry, you have been blocked", and a footer naming
+// Cloudflare and a Ray ID — the exact wording an operator would paste from a
+// live block, not a stripped-down synthetic "captcha" string.
+func cloudflareBlockPageFixture() string {
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html><html lang=\"en-US\"><head><title>Attention Required! | Cloudflare</title>")
+	b.WriteString("<meta charset=\"UTF-8\" /><meta name=\"robots\" content=\"noindex, nofollow\" />")
+	b.WriteString("<style type=\"text/css\">")
+	b.WriteString(strings.Repeat(".cf-error-details{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;margin:0;padding:0;color:#494949} ", 60))
+	b.WriteString("</style></head><body><div class=\"cf-wrapper\"><div class=\"cf-error-details\">")
+	b.WriteString("<h1>Sorry, you have been blocked</h1>")
+	b.WriteString("<p>You are unable to access blocked.example.test</p>")
+	b.WriteString("<p>This website is using a security service to protect itself from online attacks. The action you just performed triggered the security solution. There are several actions that could trigger this block including submitting a certain word or phrase, a SQL command or malformed data.</p>")
+	b.WriteString("<h2>Why have I been blocked?</h2>")
+	b.WriteString("<p>What can I do to resolve this? You can email the site owner to let them know you were blocked. Please include what you were doing when this page came up and the Cloudflare Ray ID found at the bottom of this page.</p>")
+	b.WriteString("<div class=\"cf-error-footer\">Cloudflare Ray ID: <strong>00000000000000</strong> &bull; Your IP: <strong>203.0.113.1</strong> &bull; Performance &amp; security by <a href=\"https://www.cloudflare.com\">Cloudflare</a></div>")
+	b.WriteString("</div></div></body></html>")
+	return b.String()
+}
+
 func TestLegacyChallengeCanRecoverAtChromeAndPersistsTrace(t *testing.T) {
 	direct := roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		return response(request, http.StatusForbidden, "text/html", "<html>checking your browser</html>"), nil

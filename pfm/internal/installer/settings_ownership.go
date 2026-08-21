@@ -61,6 +61,24 @@ func nextSettingsHookOwnership(
 	if uninstall {
 		return settingsHookCounts{}
 	}
+	// A settings.json is "pure" when EVERY hook command it carries, once
+	// this run's wiring has converged it, is one of the installer's own
+	// canonical (event, matcher, command) triples — nothing foreign,
+	// nothing sitting at a non-canonical spot. Only a whole document that
+	// clean could have been produced entirely by a pfm install, whether or
+	// not the ownership ledger tracked it; a single stray or misplaced
+	// command (an operator's own hook, a not-yet-migrated legacy entry)
+	// means the file's history is not provably ours. Purity is computed
+	// once per document, not per key, and is stable across repeat runs:
+	// wiring never removes foreign content, so an impure file never
+	// "becomes" pure just because a later apply happens to be a no-op.
+	pure := true
+	for key := range after {
+		if !installerOwnedHookKey(key, pfmBinary) {
+			pure = false
+			break
+		}
+	}
 	next := settingsHookCounts{}
 	for key, afterCount := range after {
 		if !installerOwnedHookCommand(key.Command, pfmBinary) {
@@ -71,6 +89,31 @@ func nextSettingsHookOwnership(
 			added = 0
 		}
 		count := owned[key] + added
+		// The delta above already covers a hook this run wrote at a NEW
+		// slot — including a legacy hook whose text `rewriteCommandFields`
+		// converts to canonical in place without moving it to the
+		// template's own event (e.g. a `dreamer-nudge.sh` SessionStart
+		// entry rewritten to the canonical nudge command but left under
+		// SessionStart, not UserPromptSubmit; see
+		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks).
+		// What it never credits is a hook nothing changed this run AND the
+		// ledger never recorded — an already fully-wired host predating the
+		// ownership ledger, or one converged by an install version before
+		// it existed for that hook
+		// (TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings).
+		// That hook belongs to the installer when — and ONLY when — it
+		// sits at exactly the canonical triple a template wires AND the
+		// whole document is pure: a command that merely shares its TEXT
+		// with a template while parked under a different event or matcher,
+		// in a document that also carries an operator's own hook, is never
+		// claimed this way (the PostToolUse/UserPromptSubmit manual copies
+		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks
+		// pins as permanently NOT owned); uninstall only ever removes what
+		// `owned` lists, so a wrongly claimed key is a wrongly deleted
+		// operator hook.
+		if count == 0 && afterCount > 0 && pure && installerOwnedHookKey(key, pfmBinary) {
+			count = afterCount
+		}
 		if count > afterCount {
 			count = afterCount
 		}
@@ -89,6 +132,17 @@ func installerOwnedHookCommand(command, pfmBinary string) bool {
 		}
 	}
 	return codexHookTemplate(home).Command == command
+}
+
+func installerOwnedHookKey(key settingsHookKey, pfmBinary string) bool {
+	home := filepath.Dir(filepath.Dir(filepath.Dir(pfmBinary)))
+	for _, hook := range claudeHookTemplates(home) {
+		if hook.Event == key.Event && hook.Matcher == key.Matcher && hook.Command == key.Command {
+			return true
+		}
+	}
+	codex := codexHookTemplate(home)
+	return codex.Event == key.Event && codex.Matcher == key.Matcher && codex.Command == key.Command
 }
 
 func removeOwnedSettingsHooks(document map[string]any, owned settingsHookCounts) bool {
