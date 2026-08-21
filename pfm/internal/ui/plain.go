@@ -38,7 +38,6 @@ func passiveOutcome(snapshot Snapshot) Outcome {
 		Kind:           OutcomeNone,
 		PrimaryAccount: validAccount(snapshot.PrimaryAccount, snapshot.AccountIDs),
 		Cache1H:        snapshot.Cache1H,
-		Rotation:       snapshot.Rotation,
 		Query:          snapshot.InitialQuery,
 	}
 }
@@ -84,7 +83,7 @@ func RenderTSV(snapshot Snapshot) string {
 	model := NewModel(snapshot)
 	var output strings.Builder
 	output.WriteString(
-		"kind\tid\tproject\tcwd\tname\tprompts\tsize\tactivity_ns\taccount\thidden\tsocket\n",
+		"kind\tid\tproject\tcwd\tname\tprompts\tsize\tactivity_ns\taccount\tkilled\tsocket\n",
 	)
 	for _, row := range model.VisibleRows() {
 		fields := []string{
@@ -97,7 +96,7 @@ func RenderTSV(snapshot Snapshot) string {
 			strconv.FormatInt(row.Size, 10),
 			strconv.FormatInt(row.ActivityNS, 10),
 			strconv.Itoa(row.Account),
-			strconv.FormatBool(row.Hidden),
+			strconv.FormatBool(row.Killed),
 			row.Socket,
 		}
 		for index := range fields {

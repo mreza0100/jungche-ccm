@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type SelfEnvironment struct {
 	ClaudeSessionID string
 }
 
-// Target is one hide identity and its optional live tmux address.
+// Target is one kill identity and its optional live tmux address.
 type Target struct {
 	Engine     string
 	ID         string
@@ -33,7 +33,7 @@ type Target struct {
 	PaneID     string
 }
 
-// Request describes a public hide invocation.
+// Request describes a public kill invocation.
 type Request struct {
 	ID   string
 	Self bool
@@ -41,8 +41,8 @@ type Request struct {
 	// is looking at the row — the picker. It vouches for a chat the index has
 	// not caught up with, which is every freshly spawned agent: their
 	// transcripts reach the store only after Claude flushes the file. Left
-	// empty, an unknown id is still an error, so a mistyped `pfm hide`
-	// argument cannot quietly record a hide for nothing.
+	// empty, an unknown id is still an error, so a mistyped `pfm kill`
+	// argument cannot quietly record a kill for nothing.
 	Engine string
 	// RolloutPath names the Codex rollout file the caller's own row carries,
 	// when known. It lets an unindexed lineage member resolve to its root
@@ -53,7 +53,7 @@ type Request struct {
 	RolloutPath string
 	// SocketName and PaneID carry a live address already resolved by the fleet
 	// composer. Codex tool shells have no ambient TMUX, so this is the only way
-	// their `hide self --exit` call can name the pane it owns. SocketName stays
+	// their `kill self --exit` call can name the pane it owns. SocketName stays
 	// the immutable tmux socket name; the manager derives its path inside the
 	// configured tmux directory and accepts no caller-supplied path.
 	SocketName  string
@@ -62,7 +62,7 @@ type Request struct {
 	Environment SelfEnvironment
 }
 
-// ExitArgs are serialized onto the internal hide-exit argv.
+// ExitArgs are serialized onto the internal kill-exit argv.
 type ExitArgs struct {
 	Engine     string
 	ID         string
@@ -109,7 +109,7 @@ type Dependencies struct {
 	Refresher    Refresher
 }
 
-// Manager performs public hide operations.
+// Manager performs public kill operations.
 type Manager struct {
 	database *store.Store
 	proc     gather.ProcFS

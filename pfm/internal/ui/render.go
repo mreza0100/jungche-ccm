@@ -12,15 +12,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/sky"
 	"hostops/pfm/internal/theme"
 )
 
 var (
 	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#ffffff")).
-			Background(lipgloss.Color("#5f3dc4"))
+			Bold(true)
 	groupStyleA = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#5eead4"))
@@ -62,7 +61,7 @@ var (
 )
 
 func configureStyles(palette theme.Palette) {
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color("#5f3dc4"))
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color(palette.HeaderBg))
 	groupStyleA = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupA))
 	groupStyleB = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupB))
 	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Border))
@@ -130,12 +129,12 @@ func (model Model) renderHeader(width int) string {
 		refresh = " · ⟳ refreshing"
 	}
 	text := fmt.Sprintf(
-		" pfm  %s account %d · %s · %d rows · %d hidden · %d empty%s",
+		" pfm  %s account %d · %s · %d rows · %d killed · %d empty%s",
 		accountMedal(model.primary),
 		model.primary,
 		cache,
 		len(model.rows),
-		model.hiddenCount,
+		model.killedCount,
 		model.suppressedCount,
 		refresh,
 	)
@@ -175,17 +174,12 @@ func (model Model) renderQuery(width int) string {
 		return model.renderStatsSubtabs(width)
 	}
 	input := model.query.View()
-	status := fmt.Sprintf(
-		"%d/%d visible · project rotation %d",
-		len(model.filtered),
-		len(model.order),
-		model.rotation,
-	)
+	status := fmt.Sprintf("%d/%d visible", len(model.filtered), len(model.order))
 	// ⌃X takes the status line either way: the receipt when it landed, the
 	// reason when it was refused. It acts immediately, so its outcome has to
 	// be as immediate — and as visible — as the keystroke.
-	if model.hideStatus != "" {
-		status = model.hideStatus
+	if model.killStatus != "" {
+		status = model.killStatus
 	}
 	available := maxInt(8, width-lipgloss.Width(status)-2)
 	input = ansi.Truncate(input, available, "…")
@@ -251,10 +245,10 @@ func (model Model) renderFooter(width int) string {
 			dimStyle.Render(fillLine(second, width))
 	}
 	first := " ↑↓ move  enter open  esc cancel  type to fuzzy-find"
-	second := " ⌃T reload  ⌃R projects  ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot"
+	second := " ⌃X kill  ⌃E 1h  ⌃S account  ⌃O reboot"
 	if width < 96 {
 		first = " ↑↓ move · enter open · esc cancel · type find"
-		second = " ⌃T reload · ⌃R rotate · ⌃X hide · ⌃E 1h · ⌃S acct · ⌃O reboot"
+		second = " ⌃X kill · ⌃E 1h · ⌃S acct · ⌃O reboot"
 	}
 	return dimStyle.Render(fillLine(first, width)) + "\n" +
 		dimStyle.Render(fillLine(second, width))
@@ -573,16 +567,15 @@ func (model Model) renderGroupedRow(
 // Each carries its label: an emoji alone leaves the row guessing what ⚡ does.
 var carouselActions = []struct{ Glyph, Label string }{
 	{"▶", "open"},
-	{"⟳", "reload"},
 	{"⚡", "reboot"},
 	{"🕐", "1h"},
-	{"✖", "hide"},
+	{"✖", "kill"},
 }
 
 // carouselBoxes draws every action as its own labelled box at the row's right
 // edge, the current one filled with block edges instead of light brackets. The
 // whole set is visible the moment a row is highlighted — a single box whose
-// contents change hides four of the five actions behind blind → presses, and
+// contents change conceals three of the four actions behind blind → presses, and
 // the fill marks the selection without colour, which the row-wide selected
 // style would otherwise swallow.
 func carouselBoxes(index int) string {
@@ -596,21 +589,6 @@ func carouselBoxes(index int) string {
 		boxes = append(boxes, "["+body+"]")
 	}
 	return strings.Join(boxes, " ")
-}
-
-func carouselAction(index int) string {
-	switch index {
-	case 1:
-		return "⟳"
-	case 2:
-		return "⚡"
-	case 3:
-		return "🕐"
-	case 4:
-		return "✖"
-	default:
-		return "▶"
-	}
 }
 
 func framePanel(title string, lines []string, width int) string {
@@ -683,8 +661,8 @@ func rowBadges(row compose.Row) string {
 	if row.Here {
 		badges = append(badges, "←here")
 	}
-	if row.Hidden {
-		badges = append(badges, dimStyle.Render("·hidden"))
+	if row.Killed {
+		badges = append(badges, dimStyle.Render("·killed"))
 	}
 	return strings.Join(badges, " ")
 }
@@ -771,19 +749,13 @@ func maxInt64(left, right int64) int64 {
 }
 
 func accountMedal(account int) string {
-	if emoji := configuredAccountEmojis[account]; emoji != "" {
-		return emoji
-	}
-	switch account {
-	case 1:
-		return "🥇"
-	case 2:
-		return "🥈"
-	case 3:
-		return "🥉"
-	default:
+	if configuredAccountEmojis != nil {
+		if emoji := configuredAccountEmojis[account]; emoji != "" {
+			return emoji
+		}
 		return "·"
 	}
+	return pfmconfig.DefaultEmoji(account)
 }
 
 func fillLine(value string, width int) string {

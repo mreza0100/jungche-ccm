@@ -24,6 +24,43 @@ func TestUnknownConfigDirHasNoAccountBadge(t *testing.T) {
 	}
 }
 
+func TestMissingConfiguredAccountHasNoFallbackBadge(t *testing.T) {
+	badge, account := accountBadgeForID(Runtime{
+		AccountEmojis: map[int]string{1: "🥇"},
+	}, 2)
+	if badge != "" || account != 0 {
+		t.Fatalf("missing configured account badge=%q account=%d, want empty/0", badge, account)
+	}
+}
+
+func TestClaudeAccountFourDoesNotRenderCodexUsage(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".cc", "4")
+	got, err := Render(context.Background(), []byte(`{}`), Runtime{
+		Now:           time.Now,
+		Home:          root,
+		ConfigDir:     configDir,
+		CacheDir:      filepath.Join(root, "cache"),
+		RateLimitDir:  filepath.Join(root, "rates"),
+		SIDDir:        filepath.Join(root, "sid"),
+		TmuxDir:       filepath.Join(root, "tmux"),
+		ProcRoot:      filepath.Join(root, "proc"),
+		Columns:       120,
+		UID:           1000,
+		AccountDirs:   map[string]int{configDir: 4},
+		AccountEmojis: map[int]string{4: "🍀"},
+		Env:           map[string]string{},
+		Command:       quietRunner{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
+	if strings.Contains(plain, "ChatGPT") || strings.Contains(plain, "proxy") {
+		t.Fatalf("Claude account 4 rendered Codex usage: %q", plain)
+	}
+}
+
 func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
 	got, err := Render(context.Background(), []byte(`{
   "model":{"display_name":"Fable"},
@@ -72,10 +109,11 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 	for _, sample := range []struct {
 		name    string
 		account int
+		engine  string
 		env     map[string]string
 	}{
-		{name: "primary", account: 1, env: map[string]string{"PFM_TEST_PROBE_SOCKETS": "1"}},
-		{name: "gpt", account: 4, env: map[string]string{
+		{name: "primary", account: 1, engine: "claude", env: map[string]string{"PFM_TEST_PROBE_SOCKETS": "1"}},
+		{name: "gpt", account: 4, engine: "codex", env: map[string]string{
 			"PFM_TEST_PROBE_SOCKETS": "1",
 			"ANTHROPIC_MODEL":        "gpt-5.6-sol[1m]",
 		}},
@@ -132,6 +170,7 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 				ProcRoot:     procRoot,
 				Columns:      120,
 				UID:          1000,
+				Engine:       sample.engine,
 				Env:          sample.env,
 				Command:      quietRunner{},
 			})
@@ -227,7 +266,7 @@ func TestRenderCarriesNativeIdentityMetricsAndSky(t *testing.T) {
 	}
 }
 
-func TestDormantFourthAccountCloverAndRealContextWindow(t *testing.T) {
+func TestCodexEngineOwnsGPTUsageIndependentOfAccountID(t *testing.T) {
 	root := t.TempDir()
 	input := []byte(`{
   "model":{"display_name":"Claude"},
@@ -238,23 +277,24 @@ func TestDormantFourthAccountCloverAndRealContextWindow(t *testing.T) {
 	got, err := Render(context.Background(), input, Runtime{
 		Now:       func() time.Time { return time.Unix(1_786_838_400, 0) },
 		Home:      root,
-		ConfigDir: filepath.Join(root, ".cc", "4"),
+		ConfigDir: filepath.Join(root, ".cc", "2"),
 		CacheDir:  filepath.Join(root, "cache"),
 		TmuxDir:   filepath.Join(root, "tmux"),
 		ProcRoot:  filepath.Join(root, "proc"),
 		Columns:   120,
 		UID:       1000,
+		Engine:    "codex",
 		Env:       map[string]string{"ANTHROPIC_MODEL": "gpt-5.6-sol[1m]"},
 		Command:   quietRunner{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, "🍀 ") ||
+	if !strings.Contains(got, "🥈 ") ||
 		!strings.Contains(got, "🍀 gpt-5.6-sol") ||
 		!strings.Contains(got, "50%") ||
 		strings.Contains(got, "💰$99.00") {
-		t.Fatalf("fourth-account rendering drifted:\n%q", got)
+		t.Fatalf("Codex-engine rendering drifted:\n%q", got)
 	}
 }
 

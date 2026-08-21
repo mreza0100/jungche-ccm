@@ -21,8 +21,8 @@ const mcpProtocolVersion = "2025-06-18"
 var chatMCPTools = []string{
 	"chat_capture", "chat_find", "chat_inject", "chat_keys", "chat_last",
 	"chat_ls", "chat_name", "chat_new", "chat_open", "chat_read",
-	"chat_reload", "chat_resolve", "chat_save", "chat_status", "chat_unhide",
-	"chat_hide", "chat_whoami",
+	"chat_reload", "chat_resolve", "chat_save", "chat_status", "chat_unkill",
+	"chat_kill", "chat_whoami",
 }
 
 var harvesterMCPTools = []string{

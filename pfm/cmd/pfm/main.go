@@ -11,7 +11,7 @@ import (
 	"strconv"
 
 	"hostops/pfm/internal/config"
-	"hostops/pfm/internal/hide"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/mcpserv"
 	"hostops/pfm/internal/store"
 )
@@ -217,14 +217,14 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+func runKill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
-		"chat hide",
-		"usage: pfm chat hide [self | id] [--exit]",
+		"chat kill",
+		"usage: pfm chat kill [self | id] [--exit]",
 		stderr,
 	)
-	self := flags.Bool("self", false, "hide the calling tmux chat")
-	exit := flags.Bool("exit", false, "gracefully close after hiding")
+	self := flags.Bool("self", false, "kill the calling tmux chat")
+	exit := flags.Bool("exit", false, "gracefully close after killing")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -236,10 +236,10 @@ func runHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 
 	runtime, err := optionalCommandRuntime(runtimes)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat hide: config: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat kill: config: %v\n", err)
 		return 1
 	}
-	database, manager, code := openHideManager(stderr, runtime)
+	database, manager, code := openKillManager(stderr, runtime)
 	if code != 0 {
 		return code
 	}
@@ -257,24 +257,24 @@ func runHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 		// for exactly the ids the picker would let you ⌃X, and nothing else.
 		engine, rolloutPath = resolveRowEngine(ctx, database, id, stderr, runtime)
 	}
-	target, err := manager.Hide(ctx, hide.Request{
+	target, err := manager.Kill(ctx, kill.Request{
 		ID:          id,
 		Engine:      engine,
 		RolloutPath: rolloutPath,
 		Self:        *self,
 		Exit:        *exit,
-		Environment: hide.Environment(),
+		Environment: kill.Environment(),
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "hidden %s\n", target.ID)
+	fmt.Fprintf(stdout, "killed %s\n", target.ID)
 	return 0
 }
 
-func runUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
-	flags := newFlagSet("chat unhide", "usage: pfm chat unhide id", stderr)
+func runUnkill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet("chat unkill", "usage: pfm chat unkill id", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -282,23 +282,23 @@ func runUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		flags.Usage()
 		return 2
 	}
-	database, manager, code := openHideManager(stderr, runtimes...)
+	database, manager, code := openKillManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
 	defer database.Close()
-	if err := manager.Unhide(context.Background(), flags.Arg(0)); err != nil {
-		fmt.Fprintf(stderr, "pfm chat unhide: %v\n", err)
+	if err := manager.Unkill(context.Background(), flags.Arg(0)); err != nil {
+		fmt.Fprintf(stderr, "pfm chat unkill: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "unhidden %s\n", flags.Arg(0))
+	fmt.Fprintf(stdout, "unkilled %s\n", flags.Arg(0))
 	return 0
 }
 
-func runHidden(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+func runKilled(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
-		"ls --hidden",
-		"usage: pfm ls --hidden",
+		"ls --killed",
+		"usage: pfm ls --killed",
 		stderr,
 	)
 	if code, ok := parseFlags(flags, args); !ok {
@@ -308,18 +308,18 @@ func runHidden(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		flags.Usage()
 		return 2
 	}
-	database, manager, code := openHideManager(stderr, runtimes...)
+	database, manager, code := openKillManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
 	defer database.Close()
-	rows, err := manager.Hidden(context.Background())
+	rows, err := manager.Killed(context.Background())
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm ls --hidden: %v\n", err)
+		fmt.Fprintf(stderr, "pfm ls --killed: %v\n", err)
 		return 1
 	}
 	for _, row := range rows {
-		fmt.Fprintf(stdout, "%s\t%s\t%d\n", row.ID, row.Engine, row.HiddenAt)
+		fmt.Fprintf(stdout, "%s\t%s\t%d\n", row.ID, row.Engine, row.KilledAt)
 	}
 	return 0
 }
@@ -329,8 +329,8 @@ func runInternal(
 	stdout, stderr io.Writer,
 	runtime commandRuntime,
 ) int {
-	if len(args) != 0 && args[0] == "clear-hide" {
-		return runClearHide(args[1:], os.Stdin, stderr, runtime)
+	if len(args) != 0 && args[0] == "clear-kill" {
+		return runClearKill(args[1:], os.Stdin, stderr, runtime)
 	}
 	if len(args) != 0 && args[0] == "agent-open" {
 		return runInternalAgentOpen(args[1:], stderr, runtime)
@@ -375,13 +375,13 @@ func runInternal(
 		}
 		return 0
 	}
-	if len(args) == 0 || args[0] != "hide-exit" {
-		fmt.Fprintln(stderr, "usage: pfm internal clear-hide|hide-exit|then|explore-deny|epic-inject [options]")
+	if len(args) == 0 || args[0] != "kill-exit" {
+		fmt.Fprintln(stderr, "usage: pfm internal clear-kill|kill-exit|then|explore-deny|epic-inject [options]")
 		return 2
 	}
 	flags := newFlagSet(
-		"internal hide-exit",
-		"usage: pfm internal hide-exit --engine cc|cx --id id --path path --socket path --socket-name name --pane %id",
+		"internal kill-exit",
+		"usage: pfm internal kill-exit --engine cc|cx --id id --path path --socket path --socket-name name --pane %id",
 		stderr,
 	)
 	engine := flags.String("engine", "", "engine name")
@@ -400,16 +400,16 @@ func runInternal(
 	}
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm internal hide-exit: %v\n", err)
+		fmt.Fprintf(stderr, "pfm internal kill-exit: %v\n", err)
 		return 1
 	}
 	defer database.Close()
-	finisher, err := hide.NewFinisher(database, hide.Dependencies{
+	finisher, err := kill.NewFinisher(database, kill.Dependencies{
 		Paths:       runtime.Paths,
 		ClaudeRoots: runtime.Config.ProjectRoots(),
 	})
 	if err == nil {
-		err = finisher.Run(context.Background(), hide.ExitArgs{
+		err = finisher.Run(context.Background(), kill.ExitArgs{
 			Engine:     *engine,
 			ID:         *id,
 			DataPath:   *dataPath,
@@ -419,16 +419,16 @@ func runInternal(
 		})
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm internal hide-exit: %v\n", err)
+		fmt.Fprintf(stderr, "pfm internal kill-exit: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-func openHideManager(
+func openKillManager(
 	stderr io.Writer,
 	runtimes ...commandRuntime,
-) (*store.Store, *hide.Manager, int) {
+) (*store.Store, *kill.Manager, int) {
 	runtime, err := optionalCommandRuntime(runtimes)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm: config: %v\n", err)
@@ -439,7 +439,7 @@ func openHideManager(
 		fmt.Fprintf(stderr, "pfm: %v\n", err)
 		return nil, nil, 1
 	}
-	manager, err := hide.New(database, hideDependencies(runtime))
+	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
 		_ = database.Close()
 		fmt.Fprintf(stderr, "pfm: %v\n", err)
@@ -495,14 +495,14 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "operator commands:")
 	fmt.Fprintln(w, "  ls        list or pick fleet chats")
-	fmt.Fprintln(w, "  chat      operate on one chat: new, open, inject, ask, read, stream, name, hide, end")
+	fmt.Fprintln(w, "  chat      operate on one chat: new, open, inject, ask, read, stream, name, kill, end")
 	fmt.Fprintln(w, "  harvest   fetch and convert URL, DOI, ISBN, PMID, PMCID, or local path")
 	fmt.Fprintln(w, "  dream     build and inject repository memory organs")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
 	fmt.Fprintln(w, "  revive    list resumable chats by project")
 	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
-	fmt.Fprintln(w, "  archive   move hidden chats and old subagent transcripts out of sight, reversibly")
+	fmt.Fprintln(w, "  archive   move killed chats and old subagent transcripts out of sight, reversibly")
 	fmt.Fprintln(w, "  heal      report or repair wedged Codex history projections")
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
 	fmt.Fprintln(w, "  uninstall remove the self-contained host integration")

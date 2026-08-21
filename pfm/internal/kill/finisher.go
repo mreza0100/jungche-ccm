@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"bufio"
@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
@@ -44,20 +45,20 @@ func (refresher indexRefresher) Refresh(ctx context.Context) error {
 	return err
 }
 
-// NewFinisher constructs the hidden internal subcommand worker.
+// NewFinisher constructs the killed internal subcommand worker.
 func NewFinisher(
 	database *store.Store,
 	dependencies Dependencies,
 ) (*Finisher, error) {
 	if database == nil {
-		return nil, errors.New("hide finisher store is nil")
+		return nil, errors.New("kill finisher store is nil")
 	}
 	resolved := dependencies.Paths
 	if resolved.Home == "" {
 		var err error
 		resolved, err = paths.Resolve()
 		if err != nil {
-			return nil, fmt.Errorf("resolve hide finisher paths: %w", err)
+			return nil, fmt.Errorf("resolve kill finisher paths: %w", err)
 		}
 	}
 	tmux := dependencies.Tmux
@@ -72,7 +73,10 @@ func NewFinisher(
 	if refresher == nil {
 		claudeRoots := dependencies.ClaudeRoots
 		if len(claudeRoots) == 0 {
-			claudeRoots = resolved.ClaudeRoots
+			claudeRoots = pfmconfig.Defaults(
+				resolved.Home,
+				resolved.ClaudeRoots,
+			).ProjectRoots()
 		}
 		refresher = indexRefresher{
 			database:    database,
@@ -110,16 +114,16 @@ func NewFinisher(
 }
 
 // Run performs the delayed graceful close, fallback kill, cleanup, refresh,
-// post-exit hide, and teammate reap.
+// post-exit kill, and teammate reap.
 func (finisher *Finisher) Run(
 	ctx context.Context,
 	args ExitArgs,
 ) error {
 	if args.Engine != ClaudeEngine && args.Engine != CodexEngine {
-		return fmt.Errorf("unknown hide-exit engine %q", args.Engine)
+		return fmt.Errorf("unknown kill-exit engine %q", args.Engine)
 	}
 	if args.ID == "" || args.SocketPath == "" || args.PaneID == "" {
-		return errors.New("hide-exit requires id, socket, and pane")
+		return errors.New("kill-exit requires id, socket, and pane")
 	}
 	if err := waitContext(ctx, finisher.delay); err != nil {
 		return err
@@ -157,7 +161,7 @@ func (finisher *Finisher) Run(
 
 	if err := finisher.refresher.Refresh(ctx); err != nil {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("refresh post-exit index: %w", err))
-	} else if err := finisher.recordPostExitHide(ctx, args); err != nil {
+	} else if err := finisher.recordPostExitKill(ctx, args); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
 	}
 	if err := finisher.reapTeammates(ctx, args.ID); err != nil {
@@ -174,7 +178,7 @@ func (finisher *Finisher) Run(
 // and the pane whose shell merely spawned it as a child — which is why the tty
 // is used instead of inspecting processes. Only the second shape needs closing:
 // the exec'd pane dies with the client on its own. Any failure returns nothing,
-// because a chat that closes without taking its tab is far better than a hide
+// because a chat that closes without taking its tab is far better than a kill
 // that dies trying.
 func (finisher *Finisher) viewportPanes(
 	ctx context.Context,
@@ -212,25 +216,25 @@ func (finisher *Finisher) closeViewports(ctx context.Context, viewports []string
 	}
 }
 
-// recordPostExitHide re-asserts the hide after the post-exit index refresh so
-// the chat stays hidden whatever the exit flush wrote, keeping the original
-// hide time.
-func (finisher *Finisher) recordPostExitHide(
+// recordPostExitKill re-asserts the kill after the post-exit index refresh so
+// the chat stays killed whatever the exit flush wrote, keeping the original
+// kill time.
+func (finisher *Finisher) recordPostExitKill(
 	ctx context.Context,
 	args ExitArgs,
 ) error {
-	hiddenAt := finisher.now().Unix()
-	if hidden, exists, err := finisher.database.Hidden(ctx, args.ID); err != nil {
+	killedAt := finisher.now().Unix()
+	if killed, exists, err := finisher.database.Killed(ctx, args.ID); err != nil {
 		return err
 	} else if exists {
-		hiddenAt = hidden.HiddenAt
+		killedAt = killed.KilledAt
 	}
-	if err := finisher.database.Hide(ctx, store.Hidden{
+	if err := finisher.database.Kill(ctx, store.Killed{
 		ID:       args.ID,
 		Engine:   args.Engine,
-		HiddenAt: hiddenAt,
+		KilledAt: killedAt,
 	}); err != nil {
-		return fmt.Errorf("record post-exit hide: %w", err)
+		return fmt.Errorf("record post-exit kill: %w", err)
 	}
 	return nil
 }

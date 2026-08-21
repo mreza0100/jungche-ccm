@@ -11,22 +11,22 @@ import (
 	"testing"
 )
 
-// THE BUG. `pfm hide <member-id>` addressed by a Codex lineage member's
-// own id records the hide on that raw id when the member is not yet
+// THE BUG. `pfm kill <member-id>` addressed by a Codex lineage member's
+// own id records the kill on that raw id when the member is not yet
 // indexed — a live process holding its rollout file open (the normal shape
 // right after `codex resume`) is exactly what vouches a non-empty engine
 // without the index ever having parsed the file's session_id link back to
-// its root. `pfm hidden` reads that raw record with no reindex in
+// its root. `pfm killed` reads that raw record with no reindex in
 // between (unlike `ls`, which always reindexes first and would silently
 // self-heal this the moment the member's file gets parsed) — so it is the
 // one CLI surface that can observe the wrong id actually landing.
-func TestHideCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
+func TestKillCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	jail := newHideCLIJail(t)
+	jail := newKillCLIJail(t)
 
-	socket := "cc-hidecli-lineage-" + strconv.Itoa(os.Getpid())
+	socket := "cc-killcli-lineage-" + strconv.Itoa(os.Getpid())
 	session := exec.Command(
 		"tmux", "-L", socket, "-f", "/dev/null",
 		"new-session", "-d", "-s", "bg", "sleep", "120",
@@ -124,18 +124,18 @@ func TestHideCLIResolvesUnindexedLineageMemberToRoot(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"chat", "hide", memberID}, &stdout, &stderr); code != 0 {
-		t.Fatalf("hide %s code=%d stdout=%q stderr=%q", memberID, code, stdout.String(), stderr.String())
+	if code := run([]string{"chat", "kill", memberID}, &stdout, &stderr); code != 0 {
+		t.Fatalf("kill %s code=%d stdout=%q stderr=%q", memberID, code, stdout.String(), stderr.String())
 	}
 
-	var hiddenOut, hiddenErr bytes.Buffer
-	if code := run([]string{"ls", "--hidden"}, &hiddenOut, &hiddenErr); code != 0 {
-		t.Fatalf("hidden code=%d stderr=%q", code, hiddenErr.String())
+	var killedOut, killedErr bytes.Buffer
+	if code := run([]string{"ls", "--killed"}, &killedOut, &killedErr); code != 0 {
+		t.Fatalf("killed code=%d stderr=%q", code, killedErr.String())
 	}
-	got := hiddenOut.String()
+	got := killedOut.String()
 	if !strings.HasPrefix(got, rootID+"\t") {
 		t.Fatalf(
-			"hide %s recorded = %q, want the lineage root %q, not the member's own unindexed id",
+			"kill %s recorded = %q, want the lineage root %q, not the member's own unindexed id",
 			memberID,
 			got,
 			rootID,

@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"os/exec"
 )
 
-// CommandSpawner starts the binary's hidden finisher under a new session.
+// CommandSpawner starts the binary's killed finisher under a new session.
 type CommandSpawner struct {
 	Executable string
 	Setsid     string
@@ -36,7 +36,7 @@ func (spawner CommandSpawner) Spawn(
 	}
 	arguments = append(arguments,
 		"internal",
-		"hide-exit",
+		"kill-exit",
 		"--engine",
 		args.Engine,
 		"--id",
@@ -53,14 +53,14 @@ func (spawner CommandSpawner) Spawn(
 	command := exec.CommandContext(ctx, setsid, arguments...)
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
-		return fmt.Errorf("open null device for hide finisher: %w", err)
+		return fmt.Errorf("open null device for kill finisher: %w", err)
 	}
 	defer null.Close()
 	command.Stdin = null
 	command.Stdout = null
 	command.Stderr = null
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("start detached hide finisher: %w", err)
+		return fmt.Errorf("start detached kill finisher: %w", err)
 	}
 	return nil
 }

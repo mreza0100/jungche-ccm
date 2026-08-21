@@ -227,7 +227,7 @@ func TestIncumbentUnionFixtureBuildThenReadOnlyCheck(t *testing.T) {
 	writeTestFile(t, filepath.Join(root, "sample-api", "CLAUDE.md"), "# API\n")
 	writeTestFile(t, filepath.Join(root, "template", "CLAUDE.md"), "# Must stay excluded\n")
 	writeTestFile(t, filepath.Join(root, ".claude", "commands", "wave", "go.md"), "---\ndescription: >-\n  Run sonnet cards\n  safely\n---\nBody keeps CLAUDE.md and /wave:go with sonnet.\n")
-	writeTestFile(t, filepath.Join(root, ".claude", "commands", "references", "hidden.md"), "hidden\n")
+	writeTestFile(t, filepath.Join(root, ".claude", "commands", "references", "killed.md"), "killed\n")
 	writeTestFile(t, filepath.Join(root, ".claude", "agents", "reviewer.md"), "---\ndescription: >-\n  Review \\\"quoted\\\" output\nmodel: sonnet\ntools: Read, Grep\n---\nFollow /wave:go.\n")
 	writeTestFile(t, filepath.Join(root, ".claude", "agents", "private.md"), "---\ndescription: private\n---\nno\n")
 	writeTestFile(t, filepath.Join(root, "sample-api", ".claude", "agents", "worker.md"), "---\ndescription: child\n---\nchild\n")
@@ -258,7 +258,7 @@ func TestIncumbentUnionFixtureBuildThenReadOnlyCheck(t *testing.T) {
 	if strings.Contains(string(mustReadTestFile(t, commandSkill)), "Run gpt-fixture cards") {
 		t.Fatal("command frontmatter model alias was rewritten")
 	}
-	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "references-hidden", "SKILL.md")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, ".codex", "skills", "references-killed", "SKILL.md")); !os.IsNotExist(err) {
 		t.Fatalf("excluded command exists: %v", err)
 	}
 	if target, err := os.Readlink(filepath.Join(root, ".codex", "skills", "native")); err != nil || target == "" {

@@ -1,4 +1,4 @@
-kind	id	project	cwd	name	prompts	size	activity_ns	account	hidden	socket
+kind	id	project	cwd	name	prompts	size	activity_ns	account	killed	socket
 live-claude	11111111-1111-4111-8111-111111111111	alpha	/work/alpha	123456789012345678901234567890X	42	1536	1799999995000000000	2	false	cc-1800000000-1-1
 live-codex	22222222-2222-4222-8222-222222222222	alpha	/work/alpha	RR	9	3145728	1799998800000000000	0	false	cx-1799999900-1-1
 live-split		alpha	/work/alpha	🚀🧭🛠️📦🧪✨ fleet	21	7200	1799992800000000000	0	false	cc-1799999800-1-1

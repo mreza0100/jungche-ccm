@@ -12,7 +12,7 @@ import (
 )
 
 // transcriptColumns is alias-qualified because every transcript query joins
-// the effective-hidden mirror, whose key column is also named uuid.
+// the effective-killed mirror, whose key column is also named uuid.
 const transcriptColumns = `
 t.uuid, t.path, t.size, t.mtime_ns, t.parsed_offset, t.cwd, t.custom_title,
 t.ai_title, t.first_prompt, t.last_prompt, t.prompt_count, t.is_bg`
@@ -22,32 +22,32 @@ id, path, size, mtime_ns, parsed_offset, cwd, user_thread, session_id,
 parent_thread, lineage_root, first_prompt, prompt_count, is_bg`
 
 // transcriptLabelSQL is naming.DisplayName's precedence in SQL, and
-// labelHiddenSQL is naming.LabelHidden over it. Both are built from the
+// labelKilledSQL is naming.LabelKilled over it. Both are built from the
 // naming constants rather than spelled out, so the cached frame cannot drift
-// from compose's applyHide when the prefix changes. upper() is ASCII-only in
-// SQLite, which is exactly the case-folding LabelHidden does.
+// from compose's applyKill when the prefix changes. upper() is ASCII-only in
+// SQLite, which is exactly the case-folding LabelKilled does.
 const transcriptLabelSQL = `COALESCE(NULLIF(t.custom_title,''), NULLIF(t.ai_title,''), t.first_prompt)`
 
-var labelHiddenSQL = fmt.Sprintf(
+var labelKilledSQL = fmt.Sprintf(
 	`upper(substr(%s, 1, %d))=%s`,
 	transcriptLabelSQL,
-	len(naming.HidePrefix),
-	"'"+strings.ToUpper(naming.HidePrefix)+"'",
+	len(naming.KillPrefix),
+	"'"+strings.ToUpper(naming.KillPrefix)+"'",
 )
 
 type rowScanner interface {
 	Scan(...any) error
 }
 
-// CachedCounts separates explicit hides from rows omitted because
+// CachedCounts separates explicit kills from rows omitted because
 // they are empty, background, or beyond the default resume caps.
 type CachedCounts struct {
-	Hidden     int
+	Killed     int
 	Suppressed int
 }
 
 // DefaultCandidates reads only the rows capable of appearing in the default
-// cached first frame. SQL applies the same hide and empty/background
+// cached first frame. SQL applies the same kill and empty/background
 // predicates as compose, avoiding a full corpus decode before the TUI opens.
 func (s *Store) DefaultCandidates(
 	ctx context.Context,
@@ -56,7 +56,7 @@ func (s *Store) DefaultCandidates(
 	// One refill for all three queries below: they run back to back on the
 	// same connection, and re-reading the shared store between them could only
 	// make the frame disagree with itself.
-	if err := s.syncEffectiveHidden(ctx); err != nil {
+	if err := s.syncEffectiveKilled(ctx); err != nil {
 		return nil, nil, CachedCounts{}, err
 	}
 	transcripts, err := s.defaultTranscripts(ctx, transcriptLimit)
@@ -81,9 +81,9 @@ func (s *Store) defaultTranscripts(
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+transcriptColumns+`
 FROM transcripts AS t
-LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid
+LEFT JOIN `+effectiveKilled+` AS h ON h.uuid=t.uuid
 WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.uuid IS NULL
-  AND NOT `+labelHiddenSQL+`
+  AND NOT `+labelKilledSQL+`
 ORDER BY t.mtime_ns DESC, t.uuid
 LIMIT ?`, limit)
 	if err != nil {
@@ -108,14 +108,14 @@ func (s *Store) defaultRollouts(
 	ctx context.Context,
 	limit int,
 ) ([]Rollout, error) {
-	lineages, hiddenByID, cxNames, err := s.codexLineageRows(ctx)
+	lineages, killedByID, cxNames, err := s.codexLineageRows(ctx)
 	if err != nil {
 		return nil, err
 	}
 	rollouts := make([]Rollout, 0, min(limit, len(lineages)))
 	for _, lineage := range lineages {
-		if codexLineageHidden(lineage, hiddenByID) ||
-			codexLineageLabelHidden(lineage, cxNames) {
+		if codexLineageKilled(lineage, killedByID) ||
+			codexLineageLabelKilled(lineage, cxNames) {
 			continue
 		}
 		if codexLineageSuppressed(lineage) {
@@ -135,37 +135,37 @@ func (s *Store) defaultCounts(
 ) (CachedCounts, error) {
 	var counts CachedCounts
 	var claudeEligible, codexEligible int
-	// A label-hidden row counts as HIDDEN, not suppressed, and never as
-	// eligible — compose's countOmitted tests row.Hidden first for the same
-	// reason: hidden is dead, empty or not.
+	// A label-killed row counts as HIDDEN, not suppressed, and never as
+	// eligible — compose's countOmitted tests row.Killed first for the same
+	// reason: killed is dead, empty or not.
 	err := s.db.QueryRowContext(ctx, `
 SELECT
   COALESCE(SUM(CASE
-    WHEN h.uuid IS NOT NULL OR `+labelHiddenSQL+`
+    WHEN h.uuid IS NOT NULL OR `+labelKilledSQL+`
     THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.uuid IS NULL AND NOT `+labelHiddenSQL+`
+    WHEN h.uuid IS NULL AND NOT `+labelKilledSQL+`
       AND (t.is_bg!=0 OR t.size<=0 OR t.prompt_count<=0)
     THEN 1 ELSE 0 END), 0),
   COALESCE(SUM(CASE
-    WHEN h.uuid IS NULL AND NOT `+labelHiddenSQL+`
+    WHEN h.uuid IS NULL AND NOT `+labelKilledSQL+`
       AND t.is_bg=0 AND t.size>0 AND t.prompt_count>0
     THEN 1 ELSE 0 END), 0)
 FROM transcripts AS t
-LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
-	).Scan(&counts.Hidden, &counts.Suppressed, &claudeEligible)
+LEFT JOIN `+effectiveKilled+` AS h ON h.uuid=t.uuid`,
+	).Scan(&counts.Killed, &counts.Suppressed, &claudeEligible)
 	if err != nil {
 		return CachedCounts{}, fmt.Errorf("count cached transcripts: %w", err)
 	}
-	lineages, hiddenByID, cxNames, err := s.codexLineageRows(ctx)
+	lineages, killedByID, cxNames, err := s.codexLineageRows(ctx)
 	if err != nil {
 		return CachedCounts{}, err
 	}
-	var codexHidden, codexSuppressed int
+	var codexKilled, codexSuppressed int
 	for _, lineage := range lineages {
-		if codexLineageHidden(lineage, hiddenByID) ||
-			codexLineageLabelHidden(lineage, cxNames) {
-			codexHidden++
+		if codexLineageKilled(lineage, killedByID) ||
+			codexLineageLabelKilled(lineage, cxNames) {
+			codexKilled++
 			continue
 		}
 		if codexLineageSuppressed(lineage) {
@@ -174,7 +174,7 @@ LEFT JOIN `+effectiveHidden+` AS h ON h.uuid=t.uuid`,
 		}
 		codexEligible++
 	}
-	counts.Hidden += codexHidden
+	counts.Killed += codexKilled
 	counts.Suppressed += codexSuppressed
 	if claudeEligible > transcriptLimit {
 		counts.Suppressed += claudeEligible - transcriptLimit
@@ -195,47 +195,47 @@ func codexLineageSuppressed(lineage CodexLineage) bool {
 		lineage.PromptCount <= 0
 }
 
-// codexLineageHidden is the cached frame's copy of compose's own hide test
-// for a Codex conversation (composer.hiddenMatch, compose/compose.go), and
+// codexLineageKilled is the cached frame's copy of compose's own kill test
+// for a Codex conversation (composer.killedMatch, compose/compose.go), and
 // the two must stay identical for the same reason codexLineageSuppressed
-// does: a lineage the SQL half counts hidden and compose does not (or the
+// does: a lineage the SQL half counts killed and compose does not (or the
 // reverse) is a chat that flickers between the cached first frame and the
 // rescan.
 //
 // A live Codex process can expose the raw id of its current rollout — the
 // resumed CHILD's id on a
-// multi-file lineage, not the root this cache keys hides on — so the root
-// alone is not enough; every member id must be checked too. A hide the
-// `hide` manager writes is already normalized onto the root
-// (internal/hide/manager.go), so this is only ever a WIDER match, never a
+// multi-file lineage, not the root this cache keys kills on — so the root
+// alone is not enough; every member id must be checked too. A kill the
+// `kill` manager writes is already normalized onto the root
+// (internal/kill/manager.go), so this is only ever a WIDER match, never a
 // narrower one.
-func codexLineageHidden(lineage CodexLineage, hiddenByID map[string]Hidden) bool {
-	if hiddenApplies(hiddenByID[lineage.RootID], lineage.PromptCount) {
+func codexLineageKilled(lineage CodexLineage, killedByID map[string]Killed) bool {
+	if killedApplies(killedByID[lineage.RootID], lineage.PromptCount) {
 		return true
 	}
 	for _, member := range lineage.MemberIDs {
-		if hiddenApplies(hiddenByID[member], lineage.PromptCount) {
+		if killedApplies(killedByID[member], lineage.PromptCount) {
 			return true
 		}
 	}
 	return false
 }
 
-func hiddenApplies(hidden Hidden, promptCount int64) bool {
-	return hidden.ID != "" &&
-		(hidden.BaselinePrompts == nil || promptCount <= *hidden.BaselinePrompts)
+func killedApplies(killed Killed, promptCount int64) bool {
+	return killed.ID != "" &&
+		(killed.BaselinePrompts == nil || promptCount <= *killed.BaselinePrompts)
 }
 
-// codexLineageLabelHidden is the cached frame's copy of the "_HIDE…" label
-// test compose's applyHide runs on the row it composes, and the two must stay
-// identical for the same reason codexLineageHidden does. Both name the lineage
+// codexLineageLabelKilled is the cached frame's copy of the "_KILL…" label
+// test compose's applyKill runs on the row it composes, and the two must stay
+// identical for the same reason codexLineageKilled does. Both name the lineage
 // through naming.CodexRowName, so only the test itself lives twice, never the
 // naming walk.
-func codexLineageLabelHidden(
+func codexLineageLabelKilled(
 	lineage CodexLineage,
 	cxNames map[string]string,
 ) bool {
-	return naming.LabelHidden(naming.CodexRowName(
+	return naming.LabelKilled(naming.CodexRowName(
 		lineage.Newest.ID,
 		lineage.Newest.SessionID,
 		lineage.Newest.ParentThread,
@@ -247,7 +247,7 @@ func codexLineageLabelHidden(
 
 func (s *Store) codexLineageRows(
 	ctx context.Context,
-) ([]CodexLineage, map[string]Hidden, map[string]string, error) {
+) ([]CodexLineage, map[string]Killed, map[string]string, error) {
 	rollouts, err := s.Rollouts(ctx)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("query cached rollout lineages: %w", err)
@@ -259,25 +259,25 @@ func (s *Store) codexLineageRows(
 		}
 		return lineages[left].RootID < lineages[right].RootID
 	})
-	hiddenRows, err := s.HiddenChats(ctx)
+	killedRows, err := s.KilledChats(ctx)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("query cached lineage hides: %w", err)
+		return nil, nil, nil, fmt.Errorf("query cached lineage kills: %w", err)
 	}
 	cxNames, err := s.CxNames(ctx)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("query cached lineage names: %w", err)
 	}
 	// Anything but a derived "cc" counts. An engine derives empty when neither
-	// index table claims the id, and an empty engine means "hidden whatever the
-	// engine" everywhere else in the tree (compose.go:665) — a hide must not
+	// index table claims the id, and an empty engine means "killed whatever the
+	// engine" everywhere else in the tree (compose.go:665) — a kill must not
 	// quietly lapse because the row that named its engine was pruned.
-	hiddenByID := make(map[string]Hidden, len(hiddenRows))
-	for _, hidden := range hiddenRows {
-		if hidden.Engine != ClaudeEngine {
-			hiddenByID[hidden.ID] = hidden
+	killedByID := make(map[string]Killed, len(killedRows))
+	for _, killed := range killedRows {
+		if killed.Engine != ClaudeEngine {
+			killedByID[killed.ID] = killed
 		}
 	}
-	return lineages, hiddenByID, cxNames, nil
+	return lineages, killedByID, cxNames, nil
 }
 
 // CodexThreads projects rollout rows onto the naming package's own thread

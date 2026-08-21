@@ -24,47 +24,47 @@ const (
 	helperWriteCount = 200
 )
 
-func TestPromptBaselineHideAutoUnhidesAfterTranscriptGrowth(t *testing.T) {
+func TestPromptBaselineKillAutoUnkillsAfterTranscriptGrowth(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	t.Cleanup(func() { _ = database.Close() })
 	ctx := context.Background()
-	id := "clear-hidden"
+	id := "clear-killed"
 	if err := database.UpsertTranscript(ctx, Transcript{
-		UUID: id, Path: "/claude/clear-hidden.jsonl", PromptCount: 2,
+		UUID: id, Path: "/claude/clear-killed.jsonl", PromptCount: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	baseline := int64(2)
-	if err := database.Hide(ctx, Hidden{
-		ID: id, Engine: ClaudeEngine, HiddenAt: 10, BaselinePrompts: &baseline,
+	if err := database.Kill(ctx, Killed{
+		ID: id, Engine: ClaudeEngine, KilledAt: 10, BaselinePrompts: &baseline,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	hidden, found, err := database.Hidden(ctx, id)
-	if err != nil || !found || hidden.BaselinePrompts == nil || *hidden.BaselinePrompts != baseline {
-		t.Fatalf("baseline hide = %#v found=%v error=%v", hidden, found, err)
+	killed, found, err := database.Killed(ctx, id)
+	if err != nil || !found || killed.BaselinePrompts == nil || *killed.BaselinePrompts != baseline {
+		t.Fatalf("baseline kill = %#v found=%v error=%v", killed, found, err)
 	}
 	if err := database.UpsertTranscript(ctx, Transcript{
-		UUID: id, Path: "/claude/clear-hidden.jsonl", PromptCount: 3,
+		UUID: id, Path: "/claude/clear-killed.jsonl", PromptCount: 3,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if hidden, found, err = database.Hidden(ctx, id); err != nil || found {
-		t.Fatalf("grown baseline hide = %#v found=%v error=%v", hidden, found, err)
+	if killed, found, err = database.Killed(ctx, id); err != nil || found {
+		t.Fatalf("grown baseline kill = %#v found=%v error=%v", killed, found, err)
 	}
-	raw, err := database.state.HiddenAt(ctx)
+	raw, err := database.state.KilledAt(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, found := raw[id]; found {
-		t.Fatalf("expired baseline hide remains in shared state: %#v", raw)
+		t.Fatalf("expired baseline kill remains in shared state: %#v", raw)
 	}
 }
 
 // A persistent busy database must be loud and nonzero; success would claim an
 // operator decision was durable when no row was written.
-func TestHiddenBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {
+func TestKilledBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {
 	setStoreTestJail(t)
 
 	var warnings bytes.Buffer
@@ -72,37 +72,37 @@ func TestHiddenBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {
 	t.Cleanup(func() { _ = writer.Close() })
 	ctx := context.Background()
 
-	if err := writer.Hide(ctx, Hidden{ID: "busy-unhide", HiddenAt: 2}); err != nil {
-		t.Fatalf("seed Hide() error = %v", err)
+	if err := writer.Kill(ctx, Killed{ID: "busy-unkill", KilledAt: 2}); err != nil {
+		t.Fatalf("seed Kill() error = %v", err)
 	}
 	if err := writer.state.SetBusyTimeout(ctx, 1); err != nil {
 		t.Fatalf("shorten shared busy timeout: %v", err)
 	}
 	release := holdSharedWriteLock(t, writer.SharedPath())
 
-	if err := writer.Hide(ctx, Hidden{ID: "busy-hide", HiddenAt: 1}); err == nil {
-		t.Fatal("Hide() under persistent SQLITE_BUSY reported success")
+	if err := writer.Kill(ctx, Killed{ID: "busy-kill", KilledAt: 1}); err == nil {
+		t.Fatal("Kill() under persistent SQLITE_BUSY reported success")
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
 		!strings.Contains(got, "was NOT") {
 		t.Fatalf("busy warning = %q, want a loud not-written warning", got)
 	}
-	if _, found, err := writer.Hidden(ctx, "busy-hide"); err != nil || found {
-		t.Fatalf("Hidden() after rejected hide found=%v err=%v", found, err)
+	if _, found, err := writer.Killed(ctx, "busy-kill"); err != nil || found {
+		t.Fatalf("Killed() after rejected kill found=%v err=%v", found, err)
 	}
 
 	warnings.Reset()
-	if err := writer.Unhide(ctx, "busy-unhide"); err == nil {
-		t.Fatal("Unhide() under persistent SQLITE_BUSY reported success")
+	if err := writer.Unkill(ctx, "busy-unkill"); err == nil {
+		t.Fatal("Unkill() under persistent SQLITE_BUSY reported success")
 	}
 	if got := warnings.String(); !strings.Contains(got, "WARNING:") ||
 		!strings.Contains(got, "was NOT") {
 		t.Fatalf("busy warning = %q, want a loud not-written warning", got)
 	}
-	// The delete never reached the row, so the chat is still hidden. Reporting
+	// The delete never reached the row, so the chat is still killed. Reporting
 	// otherwise would be the drift this store exists to end.
-	if _, found, err := writer.Hidden(ctx, "busy-unhide"); err != nil || !found {
-		t.Fatalf("Hidden() after a busy unhide found = %v, error = %v; want true, nil", found, err)
+	if _, found, err := writer.Killed(ctx, "busy-unkill"); err != nil || !found {
+		t.Fatalf("Killed() after a busy unkill found = %v, error = %v; want true, nil", found, err)
 	}
 	release()
 }
@@ -140,7 +140,7 @@ func holdSharedWriteLock(t *testing.T, path string) func() {
 	return release
 }
 
-func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {
+func TestOrphanedKillsListMatchesCountsAndPrunes(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	t.Cleanup(func() { _ = database.Close() })
@@ -165,19 +165,19 @@ func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	live := []Hidden{
-		{ID: "live-cc", Engine: "cc", HiddenAt: 1},
-		{ID: "live-cx", Engine: "cx", HiddenAt: 2},
-		{ID: "lineage-root", Engine: "cx", HiddenAt: 3},
+	live := []Killed{
+		{ID: "live-cc", Engine: "cc", KilledAt: 1},
+		{ID: "live-cx", Engine: "cx", KilledAt: 2},
+		{ID: "lineage-root", Engine: "cx", KilledAt: 3},
 	}
-	orphaned := []Hidden{
-		{ID: "dead-cc", Engine: "cc", HiddenAt: 4},
-		{ID: "dead-cx", Engine: "cx", HiddenAt: 5},
-		{ID: "named-only-cx", Engine: "cx", HiddenAt: 6},
+	orphaned := []Killed{
+		{ID: "dead-cc", Engine: "cc", KilledAt: 4},
+		{ID: "dead-cx", Engine: "cx", KilledAt: 5},
+		{ID: "named-only-cx", Engine: "cx", KilledAt: 6},
 	}
-	for _, hidden := range append(append([]Hidden(nil), live...), orphaned...) {
-		if err := database.Hide(ctx, hidden); err != nil {
-			t.Fatalf("Hide(%s) error = %v", hidden.ID, err)
+	for _, killed := range append(append([]Killed(nil), live...), orphaned...) {
+		if err := database.Kill(ctx, killed); err != nil {
+			t.Fatalf("Kill(%s) error = %v", killed.ID, err)
 		}
 	}
 
@@ -185,15 +185,15 @@ func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	orphans, err := database.OrphanedHides(ctx)
+	orphans, err := database.OrphanedKills(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(orphans) != counts.OrphanedHides {
+	if len(orphans) != counts.OrphanedKills {
 		t.Fatalf(
-			"OrphanedHides() = %d rows, Counts().OrphanedHides = %d; want the same predicate",
+			"OrphanedKills() = %d rows, Counts().OrphanedKills = %d; want the same predicate",
 			len(orphans),
-			counts.OrphanedHides,
+			counts.OrphanedKills,
 		)
 	}
 	got := make([]string, 0, len(orphans))
@@ -202,43 +202,43 @@ func TestOrphanedHidesListMatchesCountsAndPrunes(t *testing.T) {
 	}
 	want := []string{"dead-cc", "dead-cx", "named-only-cx"}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("OrphanedHides() ids = %v, want %v", got, want)
+		t.Fatalf("OrphanedKills() ids = %v, want %v", got, want)
 	}
 
-	deleted, err := database.DeleteOrphanedHides(ctx)
+	deleted, err := database.DeleteOrphanedKills(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if deleted != len(want) {
-		t.Fatalf("DeleteOrphanedHides() = %d, want %d", deleted, len(want))
+		t.Fatalf("DeleteOrphanedKills() = %d, want %d", deleted, len(want))
 	}
-	remaining, err := database.HiddenChats(ctx)
+	remaining, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	survivors := make([]string, 0, len(remaining))
-	for _, hidden := range remaining {
-		survivors = append(survivors, hidden.ID)
+	for _, killed := range remaining {
+		survivors = append(survivors, killed.ID)
 	}
 	wantSurvivors := []string{"lineage-root", "live-cc", "live-cx"}
 	if !reflect.DeepEqual(survivors, wantSurvivors) {
-		t.Fatalf("HiddenChats() after prune = %v, want %v", survivors, wantSurvivors)
+		t.Fatalf("KilledChats() after prune = %v, want %v", survivors, wantSurvivors)
 	}
 
 	counts, err = database.Counts(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts.OrphanedHides != 0 {
-		t.Fatalf("Counts().OrphanedHides after prune = %d, want 0", counts.OrphanedHides)
+	if counts.OrphanedKills != 0 {
+		t.Fatalf("Counts().OrphanedKills after prune = %d, want 0", counts.OrphanedKills)
 	}
-	deleted, err = database.DeleteOrphanedHides(ctx)
+	deleted, err = database.DeleteOrphanedKills(ctx)
 	if err != nil || deleted != 0 {
-		t.Fatalf("second DeleteOrphanedHides() = %d, %v; want 0, nil", deleted, err)
+		t.Fatalf("second DeleteOrphanedKills() = %d, %v; want 0, nil", deleted, err)
 	}
 }
 
-func TestConcurrentHiddenWritesAcrossProcesses(t *testing.T) {
+func TestConcurrentKilledWritesAcrossProcesses(t *testing.T) {
 	dbPath := setStoreTestJail(t)
 	initial := openTestStore(t)
 	if err := initial.Close(); err != nil {
@@ -288,23 +288,23 @@ func TestConcurrentHiddenWritesAcrossProcesses(t *testing.T) {
 
 	store := openTestStore(t)
 	t.Cleanup(func() { _ = store.Close() })
-	hiddenChats, err := store.HiddenChats(context.Background())
+	killedChats, err := store.KilledChats(context.Background())
 	if err != nil {
-		t.Fatalf("HiddenChats() error = %v", err)
+		t.Fatalf("KilledChats() error = %v", err)
 	}
-	if got, want := len(hiddenChats), len(processes)*helperWriteCount; got != want {
-		t.Fatalf("concurrent hidden write count = %d, want %d", got, want)
+	if got, want := len(killedChats), len(processes)*helperWriteCount; got != want {
+		t.Fatalf("concurrent killed write count = %d, want %d", got, want)
 	}
 
-	seen := make(map[string]bool, len(hiddenChats))
-	for _, hidden := range hiddenChats {
-		seen[hidden.ID] = true
+	seen := make(map[string]bool, len(killedChats))
+	for _, killed := range killedChats {
+		seen[killed.ID] = true
 	}
 	for _, prefix := range []string{"a", "b"} {
 		for index := 0; index < helperWriteCount; index++ {
 			id := fmt.Sprintf("%s-%03d", prefix, index)
 			if !seen[id] {
-				t.Fatalf("concurrent hidden writes lost %q", id)
+				t.Fatalf("concurrent killed writes lost %q", id)
 			}
 		}
 	}
@@ -326,7 +326,7 @@ func newHelperCommand(
 	helper.cmd = exec.CommandContext(
 		ctx,
 		os.Args[0],
-		"-test.run=^TestHiddenWriteHelperProcess$",
+		"-test.run=^TestKilledWriteHelperProcess$",
 	)
 	helper.cmd.Env = append(
 		os.Environ(),
@@ -340,7 +340,7 @@ func newHelperCommand(
 	return helper
 }
 
-func TestHiddenWriteHelperProcess(t *testing.T) {
+func TestKilledWriteHelperProcess(t *testing.T) {
 	if os.Getenv(helperProcessEnv) != "1" {
 		t.Skip("helper process only")
 	}
@@ -369,13 +369,13 @@ func TestHiddenWriteHelperProcess(t *testing.T) {
 	}
 	for index := 0; index < helperWriteCount; index++ {
 		baseline := int64(index)
-		if err := store.Hide(ctx, Hidden{
+		if err := store.Kill(ctx, Killed{
 			ID:              fmt.Sprintf("%s-%03d", prefix, index),
 			Engine:          engine,
-			HiddenAt:        int64(index + 1),
+			KilledAt:        int64(index + 1),
 			BaselinePrompts: &baseline,
 		}); err != nil {
-			t.Fatalf("Hide(%s, %d) error = %v", prefix, index, err)
+			t.Fatalf("Kill(%s, %d) error = %v", prefix, index, err)
 		}
 	}
 }

@@ -15,8 +15,8 @@ import (
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
-	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
@@ -120,7 +120,7 @@ func (buffer *bufferedWarnings) add(warning string) {
 }
 
 // flush prints every warning collected so far and clears the buffer, so a
-// caller that flushes between picker frames — the reload loop in runLS — never
+// caller that flushes between picker frames never
 // prints the same warning twice.
 func (buffer *bufferedWarnings) flush(stderr io.Writer) {
 	buffer.mu.Lock()
@@ -133,14 +133,12 @@ func (buffer *bufferedWarnings) flush(stderr io.Writer) {
 }
 
 type scanRequest struct {
-	View      compose.View
-	Rotation  int
-	Query     string
-	ReadOnly  bool
-	Cache1H   bool
-	ForceFull bool
-	NoSky     bool
-	Runtime   *commandRuntime
+	View     compose.View
+	Query    string
+	ReadOnly bool
+	Cache1H  bool
+	NoSky    bool
+	Runtime  *commandRuntime
 }
 
 type scanResult struct {
@@ -155,7 +153,7 @@ type fleetData struct {
 	transcripts  []store.Transcript
 	rollouts     []store.Rollout
 	cxNames      map[string]string
-	hidden       []store.Hidden
+	killed       []store.Killed
 	cachedCounts *store.CachedCounts
 }
 
@@ -226,21 +224,21 @@ func scanFleet(
 // now — and reports the engine and rollout path of the row that carries it.
 // It finds exactly the ids the picker displays, including a live agent row
 // and a live Codex pane the index has not caught up with; an id nothing
-// composes returns "", "", which leaves an ordinary hide free to refuse it as
+// composes returns "", "", which leaves an ordinary kill free to refuse it as
 // unindexed. Errors from the pass itself are swallowed the same way: a
 // failed vouch attempt falls through to that same refusal rather than
-// replacing the hide's own error.
+// replacing the kill's own error.
 //
-// The rollout path lets hide.Manager resolve an UNINDEXED Codex lineage
+// The rollout path lets kill.Manager resolve an UNINDEXED Codex lineage
 // member to its root through the file's own session_meta header
 // (resolveUnindexedCodexParent) instead of hiding under the member's own id
 // — the id compose never carries once a full lineage IS indexed, since a
 // Codex row is always keyed on its lineage root, never a member.
 //
 // This deliberately skips the indexer scanFleet runs: a caller resolving one
-// id for a hide has no business reconciling the whole filesystem index, and
+// id for a kill has no business reconciling the whole filesystem index, and
 // a delta run can prune a transcript row whose file is not there YET — the
-// exact row a hide right after spawning a chat is racing to catch.
+// exact row a kill right after spawning a chat is racing to catch.
 func resolveRowEngine(
 	ctx context.Context,
 	database *store.Store,
@@ -344,7 +342,7 @@ func loadFleetData(ctx context.Context, database *store.Store) (fleetData, error
 	if err != nil {
 		return fleetData{}, err
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		return fleetData{}, err
 	}
@@ -352,7 +350,7 @@ func loadFleetData(ctx context.Context, database *store.Store) (fleetData, error
 		transcripts: transcripts,
 		rollouts:    rollouts,
 		cxNames:     cxNames,
-		hidden:      hidden,
+		killed:      killed,
 	}, nil
 }
 
@@ -372,7 +370,7 @@ func loadDefaultFleetData(
 	if err != nil {
 		return fleetData{}, err
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		return fleetData{}, err
 	}
@@ -380,7 +378,7 @@ func loadDefaultFleetData(
 		transcripts:  transcripts,
 		rollouts:     rollouts,
 		cxNames:      cxNames,
-		hidden:       hidden,
+		killed:       killed,
 		cachedCounts: &counts,
 	}, nil
 }
@@ -464,7 +462,7 @@ func composeFleet(
 		Transcripts:  data.transcripts,
 		Rollouts:     data.rollouts,
 		CxNames:      data.cxNames,
-		Hidden:       data.hidden,
+		Killed:       data.killed,
 		AccountRoots: accountRoots(environment.config.Accounts),
 		Options: compose.Options{
 			View:           request.View,
@@ -472,25 +470,23 @@ func composeFleet(
 			CurrentSocket:  currentSocket(),
 			PrimaryAccount: environment.primary,
 			CodexAvailable: codexAvailable(environment.paths.CodexRoot, environment.config.Codex.Binary),
-			Rotation:       request.Rotation,
 			NowNS:          environment.nowNS,
 		},
 	})
 	if data.cachedCounts != nil {
-		output.HiddenCount = data.cachedCounts.Hidden
+		output.KilledCount = data.cachedCounts.Killed
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
 	snapshot := ui.Snapshot{
 		Rows:            output.Rows,
 		View:            request.View,
-		HiddenCount:     output.HiddenCount,
+		KilledCount:     output.KilledCount,
 		SuppressedCount: output.SuppressedCount,
 		PrimaryAccount:  environment.primary,
 		AccountIDs:      environment.config.AccountIDs(),
 		AccountEmojis:   accountEmojis(environment.config),
 		Theme:           environment.config.Theme,
 		Cache1H:         request.Cache1H,
-		Rotation:        request.Rotation,
 		NowNS:           environment.nowNS,
 		InitialQuery:    request.Query,
 		NoSky:           request.NoSky,
@@ -594,39 +590,18 @@ func streamFleetRefreshesWith(
 		fmt.Fprintf(stderr, "pfm refresh index: %v\n", err)
 		return
 	}
-	if !request.ForceFull {
-		if _, err := indexer.Run(ctx, fleetindex.Options{
-			PriorityCWD:  environment.currentDir,
-			PriorityOnly: true,
-		}); err != nil {
-			fmt.Fprintf(stderr, "pfm refresh project index: %v\n", err)
-			return
-		}
-		data, err = loadFleetData(ctx, database)
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
-			return
-		}
-		if !sendRefresh(ctx, environment, request, data, live, true, updates) {
-			return
-		}
-	}
-
-	if request.ForceFull {
-		if _, err := indexer.Run(ctx, fleetindex.Options{
-			Full:        true,
-			PriorityCWD: environment.currentDir,
-		}); err != nil {
-			fmt.Fprintf(stderr, "pfm refresh full index: %v\n", err)
-			return
-		}
+	if _, err := indexer.Run(ctx, fleetindex.Options{
+		PriorityCWD:  environment.currentDir,
+		PriorityOnly: true,
+	}); err != nil {
+		fmt.Fprintf(stderr, "pfm refresh project index: %v\n", err)
+		return
 	}
 	data, err = loadFleetData(ctx, database)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
 		return
 	}
-	request.ForceFull = false
 	result := composeFleet(environment, request, data, live)
 	result.Snapshot.Refreshing = false
 	select {
@@ -716,7 +691,7 @@ func rememberCodexPaneBindings(
 	runtime commandRuntime,
 	stderr io.Writer,
 ) {
-	manager, err := hide.New(database, hideDependencies(runtime))
+	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh Codex clear binding: %v\n", err)
 		return
@@ -907,7 +882,7 @@ func writePrimaryAccount(
 // deliberate choice — so it means "nothing to save", not "save account 0".
 // Treating it as a real value sent it straight into writePrimaryAccount's
 // roster check, which rejected it and aborted the whole `pfm ls` run before
-// the picker's actual selection (or reload) ever executed. A cancelled
+// the picker's actual selection ever executed. A cancelled
 // picker (Esc/⌃C) never writes either: a ⌃S account switch is only a
 // pending intent until the picker exits deliberately. An outcome that
 // already matches the persisted primary has nothing new to write.

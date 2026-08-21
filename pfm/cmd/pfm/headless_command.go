@@ -99,10 +99,10 @@ func runChatWithRuntime(
 		return runChatRecover(rest, stdout, stderr, runtime)
 	case "name":
 		return runChatName(rest, stdout, stderr, runtime)
-	case "hide":
-		return runChatHide(rest, stdout, stderr, runtime)
-	case "unhide":
-		return runChatUnhide(rest, stdout, stderr, runtime)
+	case "kill":
+		return runChatKill(rest, stdout, stderr, runtime)
+	case "unkill":
+		return runChatUnkill(rest, stdout, stderr, runtime)
 	case "end":
 		return runChatEnd(rest, stdout, stderr, runtime)
 	case "reload", "swap":
@@ -147,8 +147,8 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "  keys        press keys in a live chat's pane (Escape, Enter, C-c, …)")
 	fmt.Fprintln(w, "  recover     rebuild a Codex conversation from its rollout")
 	fmt.Fprintln(w, "  name        rename a chat and converge its window")
-	fmt.Fprintln(w, "  hide        hide a chat, optionally closing it")
-	fmt.Fprintln(w, "  unhide      remove a chat hide")
+	fmt.Fprintln(w, "  kill        kill a chat, optionally closing it")
+	fmt.Fprintln(w, "  unkill      remove a chat kill")
 	fmt.Fprintln(w, "  end         end a chat's tmux server")
 	fmt.Fprintln(w, "  reload      reboot a Claude chat in place under another configured account/cache mode")
 	fmt.Fprintln(w, "  find/save/load/branch/history/ls/group/resolve")

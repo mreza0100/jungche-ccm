@@ -256,9 +256,6 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 }
 
 func rosterContains(accounts []int, wanted int) bool {
-	if len(accounts) == 0 {
-		accounts = []int{1, 2, 3}
-	}
 	for _, account := range accounts {
 		if account == wanted {
 			return true

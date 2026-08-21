@@ -83,7 +83,7 @@ func nextSettingsHookOwnership(
 func installerOwnedHookCommand(command, pfmBinary string) bool {
 	switch command {
 	case pfmBinary + " chat group hook",
-		pfmBinary + " internal clear-hide",
+		pfmBinary + " internal clear-kill",
 		pfmBinary + " usage-hook",
 		pfmBinary + " dream hook agent-inject",
 		pfmBinary + " dream hook nudge",

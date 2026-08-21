@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"bufio"
@@ -9,7 +9,7 @@ import (
 // codexRolloutHeader is the minimal subset of a rollout file's session_meta
 // line this package needs: the conversation the file resumes from. It
 // deliberately reads far less than the indexer's own parseCodex — no prompt
-// counting, no whole-file scan — because resolving one hide's target must
+// counting, no whole-file scan — because resolving one kill's target must
 // stay fast, not reconcile a file the indexer has not reached yet.
 type codexRolloutHeader struct {
 	SessionID      string `json:"session_id"`

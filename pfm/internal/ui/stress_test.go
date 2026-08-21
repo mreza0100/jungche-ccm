@@ -108,21 +108,18 @@ func TestUIStress(t *testing.T) {
 
 func stressRandomKeys(t *testing.T) {
 	t.Helper()
-	rotation := NewModel(largeSnapshot(5_000))
-	for turn := 0; turn < rotation.GroupCount(); turn++ {
-		rows := rotation.VisibleRows()
-		seen := make(map[string]struct{}, len(rows))
-		for _, row := range rows {
-			key := rowKey(row)
-			if _, duplicate := seen[key]; duplicate {
-				t.Fatalf("rotation %d duplicated %q", turn, key)
-			}
-			seen[key] = struct{}{}
+	large := NewModel(largeSnapshot(5_000))
+	rows := large.VisibleRows()
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		key := rowKey(row)
+		if _, duplicate := seen[key]; duplicate {
+			t.Fatalf("natural order duplicated %q", key)
 		}
-		if len(seen) != 5_000 {
-			t.Fatalf("rotation %d covers %d rows", turn, len(seen))
-		}
-		rotation, _ = applyKey(t, rotation, controlKey('r'))
+		seen[key] = struct{}{}
+	}
+	if len(seen) != 5_000 {
+		t.Fatalf("natural order covers %d rows", len(seen))
 	}
 
 	model := NewModel(largeSnapshot(128))
@@ -149,24 +146,18 @@ func stressRandomKeys(t *testing.T) {
 			keys[random.Intn(len(keys))],
 		)
 		_ = command
-		if !model.HasVisibleSelection() ||
-			!model.ValidUTF8Query() ||
-			(model.GroupCount() > 0 &&
-				(model.Rotation() < 0 ||
-					model.Rotation() >= model.GroupCount())) {
+		if !model.HasVisibleSelection() || !model.ValidUTF8Query() {
 			t.Fatalf(
-				"invariant failed at %d: cursor=%d rows=%d rotation=%d/%d query=%q",
+				"invariant failed at %d: cursor=%d rows=%d query=%q",
 				index,
 				model.Cursor(),
 				model.FilteredRowCount(),
-				model.Rotation(),
-				model.GroupCount(),
 				model.Query(),
 			)
 		}
 	}
 	t.Logf(
-		"STRESS key_messages=%d panics=0 cursor_invariant=true rotation_bijection=true",
+		"STRESS key_messages=%d panics=0 cursor_invariant=true natural_order_bijection=true",
 		messages,
 	)
 }

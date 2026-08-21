@@ -148,7 +148,7 @@ func TestSynthesizeRejectsAccountsOffTheRoster(t *testing.T) {
 	}
 }
 
-func TestAgentRouteUsesHiddenInternalWiring(t *testing.T) {
+func TestAgentRouteUsesKilledInternalWiring(t *testing.T) {
 	plan, err := synthesizeWithTestConfig(Request{
 		Row: compose.Row{
 			Kind: compose.Agent,

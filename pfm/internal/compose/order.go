@@ -10,58 +10,6 @@ type projectDirectory struct {
 	seeded     bool
 }
 
-// Rotate returns a copy whose project blocks are shifted by steps. Chat rows
-// are unchanged; only their block order and the two generated new-chat rows'
-// launch target change.
-func Rotate(output Output, steps int) Output {
-	chatRows := output.Rows
-	for len(chatRows) > 0 &&
-		(chatRows[0].Kind == NewClaude || chatRows[0].Kind == NewCodex) {
-		chatRows = chatRows[1:]
-	}
-
-	projectCount := len(output.ProjectOrder)
-	if projectCount == 0 {
-		copy := cloneOutput(output)
-		copy.Rows = append([]Row(nil), chatRows...)
-		return withNewRows(copy)
-	}
-	rotation := steps % projectCount
-	if rotation < 0 {
-		rotation += projectCount
-	}
-	if rotation == 0 {
-		return cloneOutput(output)
-	}
-
-	rowsByProject := make(map[string][]Row, projectCount)
-	for _, row := range chatRows {
-		rowsByProject[row.Project] = append(rowsByProject[row.Project], row)
-	}
-	order := append([]string(nil), output.ProjectOrder...)
-	order = append(order[rotation:], order[:rotation]...)
-	rows := make([]Row, 0, len(chatRows))
-	for _, project := range order {
-		rows = append(rows, rowsByProject[project]...)
-	}
-
-	copy := cloneOutput(output)
-	copy.Rows = rows
-	copy.ProjectOrder = order
-	return withNewRows(copy)
-}
-
-func cloneOutput(output Output) Output {
-	copy := output
-	copy.Rows = append([]Row(nil), output.Rows...)
-	copy.ProjectOrder = append([]string(nil), output.ProjectOrder...)
-	copy.ProjectDirs = make(map[string]string, len(output.ProjectDirs))
-	for project, directory := range output.ProjectDirs {
-		copy.ProjectDirs[project] = directory
-	}
-	return copy
-}
-
 func cloneStringMap(values map[string]string) map[string]string {
 	copy := make(map[string]string, len(values))
 	for key, value := range values {

@@ -18,7 +18,7 @@ func updateSettings(
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
-	clearCommand := pfmBinary + " internal clear-hide"
+	clearCommand := pfmBinary + " internal clear-kill"
 	groupCommand := pfmBinary + " chat group hook"
 	statusCommand := pfmBinary + " statusline"
 	usageCommand := pfmBinary + " usage-hook"

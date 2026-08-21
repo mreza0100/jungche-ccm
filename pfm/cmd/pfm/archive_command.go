@@ -8,28 +8,28 @@ import (
 
 	"hostops/pfm/internal/archive"
 	pfmconfig "hostops/pfm/internal/config"
-	"hostops/pfm/internal/hide"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
 )
 
-// hideStoreAdapter exposes the hide manager as the archive's hidden-chat
-// source. The manager stays the ONE writer of a hide (shared store plus
+// killStoreAdapter exposes the kill manager as the archive's killed-chat
+// source. The manager stays the ONE writer of a kill (shared store plus
 // carrier file); archive asks it questions and asks it to retire rows, and
 // never writes that pair itself.
-type hideStoreAdapter struct {
-	manager *hide.Manager
+type killStoreAdapter struct {
+	manager *kill.Manager
 }
 
-func (adapter hideStoreAdapter) Hidden(
+func (adapter killStoreAdapter) Killed(
 	ctx context.Context,
-) ([]archive.HiddenChat, error) {
-	rows, err := adapter.manager.Hidden(ctx)
+) ([]archive.KilledChat, error) {
+	rows, err := adapter.manager.Killed(ctx)
 	if err != nil {
 		return nil, err
 	}
-	chats := make([]archive.HiddenChat, 0, len(rows))
+	chats := make([]archive.KilledChat, 0, len(rows))
 	for _, row := range rows {
-		chats = append(chats, archive.HiddenChat{
+		chats = append(chats, archive.KilledChat{
 			ID:     row.ID,
 			Engine: row.Engine,
 		})
@@ -37,8 +37,8 @@ func (adapter hideStoreAdapter) Hidden(
 	return chats, nil
 }
 
-func (adapter hideStoreAdapter) Unhide(ctx context.Context, id string) error {
-	return adapter.manager.Unhide(ctx, id)
+func (adapter killStoreAdapter) Unkill(ctx context.Context, id string) error {
+	return adapter.manager.Unkill(ctx, id)
 }
 
 // runArchive moves chats out of both engines' sight, reversibly.
@@ -56,7 +56,7 @@ func runArchive(args []string, stdout, stderr io.Writer, runtime commandRuntime)
 	subagents := flags.Bool(
 		"subagents",
 		false,
-		"archive sidechain transcripts instead of hidden chats",
+		"archive sidechain transcripts instead of killed chats",
 	)
 	olderThan := flags.Int(
 		"older-than",
@@ -64,7 +64,7 @@ func runArchive(args []string, stdout, stderr io.Writer, runtime commandRuntime)
 		"with --subagents, the age in days a transcript must reach",
 	)
 	restore := flags.String("restore", "", "put one archived chat back")
-	pruneOrphans := flags.Bool("prune-orphans", false, "report orphaned hide rows")
+	pruneOrphans := flags.Bool("prune-orphans", false, "report orphaned kill rows")
 	yes := flags.Bool("yes", false, "with --prune-orphans, delete the reported rows")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -87,24 +87,24 @@ func runArchive(args []string, stdout, stderr io.Writer, runtime commandRuntime)
 		return 0
 	}
 	if *pruneOrphans {
-		database, _, code := openHideManager(stderr, runtime)
+		database, _, code := openKillManager(stderr, runtime)
 		if code != 0 {
 			return code
 		}
 		defer database.Close()
-		return pruneOrphanedHides(
+		return pruneOrphanedKills(
 			context.Background(), database, *yes || *apply, stdout, stderr,
 		)
 	}
 
-	database, manager, code := openHideManager(stderr, runtime)
+	database, manager, code := openKillManager(stderr, runtime)
 	if code != 0 {
 		return code
 	}
 	defer database.Close()
 	runner, err := archive.New(archive.Dependencies{
 		Paths:            resolved,
-		Hides:            hideStoreAdapter{manager: manager},
+		Kills:            killStoreAdapter{manager: manager},
 		CodexBinary:      runtime.Config.Codex.Binary,
 		ExactClaudeRoots: runtime.Config.Source("accounts") == pfmconfig.SourceFile,
 	})
@@ -131,7 +131,7 @@ func printArchiveReport(
 	resolved paths.Values,
 	stdout io.Writer,
 ) {
-	mode := "hidden chats"
+	mode := "killed chats"
 	if subagents {
 		mode = "sidechain transcripts"
 	}
@@ -149,7 +149,7 @@ func printArchiveReport(
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(
 		stdout,
-		"archive: %d file(s), %s   live (skipped): %d   orphaned hides: %d\n",
+		"archive: %d file(s), %s   live (skipped): %d   orphaned kills: %d\n",
 		len(report.Moves),
 		archive.FormatBytes(report.Bytes),
 		len(report.Live),
@@ -176,8 +176,8 @@ func printArchiveReport(
 	if !subagents {
 		fmt.Fprintf(
 			stdout,
-			"hides retired: %d   history.jsonl lines dropped: %d   codex index rows dropped: %d\n",
-			report.Unhidden,
+			"kills retired: %d   history.jsonl lines dropped: %d   codex index rows dropped: %d\n",
+			report.Unkilled,
 			report.HistoryPruned,
 			report.IndexPruned,
 		)

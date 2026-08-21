@@ -189,8 +189,8 @@ type Dependencies struct {
 	// ClaudeBinary and CodexBinary are the configured launch commands. Tmux
 	// exposes only each foreground process basename, so Engine uses these
 	// values to verify a live pane without assuming the defaults.
-	ClaudeBinary string
-	CodexBinary  string
+	ClaudeBinary  string
+	CodexBinary   string
 	AccountEmojis []string
 	// CodexSeat is the last sender-identity rung. It maps this process's
 	// CODEX_THREAD_ID to the live fleet seat after ambient tmux and ancestry

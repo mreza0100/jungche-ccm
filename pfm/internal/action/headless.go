@@ -22,7 +22,7 @@ const (
 // interactive routes are eval'd by the user's own shell, which never carries
 // one; `run` is called from inside other chats and from scripts, where an
 // inherited thread id would make the new chat answer `whoami` — and therefore
-// `hide --self` — with its PARENT's identity.
+// `kill --self` — with its PARENT's identity.
 const headlessHygiene = hygiene + " -u CODEX_THREAD_ID"
 
 // HeadlessRequest is one detached, named chat to start.

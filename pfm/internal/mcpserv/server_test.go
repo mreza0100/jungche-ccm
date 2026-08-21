@@ -199,9 +199,9 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 	wantTools := []string{
 		"chat_capture",
 		"chat_find",
-		"chat_hide",
 		"chat_inject",
 		"chat_keys",
+		"chat_kill",
 		"chat_last",
 		"chat_ls",
 		"chat_name",
@@ -212,7 +212,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		"chat_resolve",
 		"chat_save",
 		"chat_status",
-		"chat_unhide",
+		"chat_unkill",
 		"chat_whoami",
 	}
 	if !reflect.DeepEqual(toolNames, wantTools) {
@@ -509,7 +509,7 @@ func newStdioJail(t *testing.T) *stdioJail {
 			"type": "assistant",
 			"message": map[string]any{"content": []any{
 				map[string]any{"type": "text", "text": "Assistant visible"},
-				map[string]any{"type": "tool_result", "content": "hidden tool"},
+				map[string]any{"type": "tool_result", "content": "killed tool"},
 			}},
 		},
 		map[string]any{
@@ -952,7 +952,7 @@ func TestChatReadBudgetsAndJunkFilter(t *testing.T) {
 	writeJSONL(t, path, []any{
 		map[string]any{
 			"type": "user", "cwd": "/work/alpha",
-			"message": map[string]any{"content": "<system-reminder>hidden"},
+			"message": map[string]any{"content": "<system-reminder>killed"},
 		},
 		map[string]any{
 			"type": "user", "cwd": "/work/alpha",

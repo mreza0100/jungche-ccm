@@ -39,7 +39,7 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 	for _, path := range []string{canonical, secondary} {
 		for _, command := range []string{
 			home + "/.local/bin/pfm chat group hook",
-			home + "/.local/bin/pfm internal clear-hide",
+			home + "/.local/bin/pfm internal clear-kill",
 		} {
 			if got := hookCommandCount(t, readFixture(t, path), "", command); got != 1 {
 				t.Fatalf("%s has %d copies of %q, want exactly one\n%s", path, got, command, readFixture(t, path))
@@ -57,8 +57,8 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 
 	codex := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
 	if !strings.Contains(codex, `"matcher": "startup|resume|clear"`) ||
-		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-hide") {
-		t.Fatalf("Codex clear-hide startup/resume/clear fixture regressed:\n%s", codex)
+		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-kill") {
+		t.Fatalf("Codex clear-kill startup/resume/clear fixture regressed:\n%s", codex)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
 		{"UserPromptSubmit", "", prefix + " chat group hook"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
-		{"SessionEnd", "", prefix + " internal clear-hide"},
+		{"SessionEnd", "", prefix + " internal clear-kill"},
 	} {
 		if got := hookCommandCount(t, string(updated), hook.event, hook.command); got != 1 {
 			t.Fatalf("%s %s count=%d, want 1\n%s", hook.event, hook.command, got, updated)
@@ -187,7 +187,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
       {"type":"command","command":"`+pfm+` usage-hook"}
     ]}],
     "SessionEnd": [{"matcher":"","hooks":[
-      {"type":"command","command":"`+pfm+` internal clear-hide"}
+      {"type":"command","command":"`+pfm+` internal clear-kill"}
     ]}]
   }
 }`)
@@ -258,7 +258,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	for event, command := range map[string]string{
 		"PostToolUse":      pfm + " dream hook agent-inject",
 		"UserPromptSubmit": pfm + " chat group hook",
-		"SessionEnd":       pfm + " internal clear-hide",
+		"SessionEnd":       pfm + " internal clear-kill",
 	} {
 		if got := hookCommandCount(t, settings, event, command); got != 1 {
 			t.Fatalf("uninstall deleted manually wired %s hook: count=%d want 1\n%s", event, got, settings)
@@ -274,7 +274,7 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	for _, command := range []string{
 		pfm + " chat group hook",
 		pfm + " usage-hook",
-		pfm + " internal clear-hide",
+		pfm + " internal clear-kill",
 		pfm + " dream hook agent-inject",
 		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",

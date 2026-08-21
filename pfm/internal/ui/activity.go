@@ -45,7 +45,7 @@ func (clock *ActivityClock) Stamp(now time.Time) {
 // StampNS returns the raw stamp of the last interaction, or 0 for a nil or
 // never-stamped clock. The refresh stream compares it for CHANGE rather than
 // reading an elapsed duration: equality needs no wall clock, so a machine
-// whose time steps backwards cannot fake an interaction or hide one.
+// whose time steps backwards cannot fake an interaction or kill one.
 func (clock *ActivityClock) StampNS() int64 {
 	if clock == nil {
 		return 0

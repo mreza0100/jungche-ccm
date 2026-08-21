@@ -15,7 +15,7 @@ func updateCodexHooks(raw []byte, home string, uninstall bool) ([]byte, bool, er
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
-	clearCommand := pfmBinary + " internal clear-hide"
+	clearCommand := pfmBinary + " internal clear-kill"
 	changed := false
 	if !uninstall {
 		changed = rewriteCommandFields(document, func(command string) string {

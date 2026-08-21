@@ -17,8 +17,8 @@ import (
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/heal"
-	"hostops/pfm/internal/hide"
 	fleetindex "hostops/pfm/internal/index"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
@@ -34,15 +34,15 @@ func runLS(
 ) int {
 	flags := newFlagSet(
 		"ls",
-		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --hidden [--tsv]",
+		"usage: pfm ls [-a|--all] [--plain|--tsv] [id] | pfm ls --killed [--tsv]",
 		stderr,
 	)
 	var all bool
-	var hidden bool
-	flags.BoolVar(&all, "a", false, "include hidden, background, and uncapped rows")
-	flags.BoolVar(&all, "all", false, "include hidden, background, and uncapped rows")
-	flags.BoolVar(&hidden, "H", false, "list the hidden ledger")
-	flags.BoolVar(&hidden, "hidden", false, "list the hidden ledger")
+	var killed bool
+	flags.BoolVar(&all, "a", false, "include killed, background, and uncapped rows")
+	flags.BoolVar(&all, "all", false, "include killed, background, and uncapped rows")
+	flags.BoolVar(&killed, "K", false, "list the killed ledger")
+	flags.BoolVar(&killed, "killed", false, "list the killed ledger")
 	plain := flags.Bool("plain", false, "render a noninteractive list")
 	tsv := flags.Bool("tsv", false, "render stable tab-separated rows")
 	noSky := flags.Bool("no-sky", false, "disable the interactive sky widget")
@@ -54,15 +54,15 @@ func runLS(
 		flags.Usage()
 		return 2
 	}
-	if hidden {
+	if killed {
 		if flags.NArg() != 0 || all || *plain {
 			flags.Usage()
 			return 2
 		}
-		// The hidden ledger is already a stable three-column TSV contract.
+		// The killed ledger is already a stable three-column TSV contract.
 		// Accepting --tsv makes that format explicit for scripts instead of
 		// returning an empty success or rejecting a harmless format request.
-		return runHidden(nil, stdout, stderr, runtime)
+		return runKilled(nil, stdout, stderr, runtime)
 	}
 	if flags.NArg() == 1 {
 		if all || *plain || *tsv {
@@ -84,136 +84,122 @@ func runLS(
 	defer database.Close()
 
 	ctx := context.Background()
-	rotation := 0
-	query := ""
-	cache1H := initialCache1H()
-	forceFull := false
-	for {
-		request := scanRequest{
-			View:      view,
-			Rotation:  rotation,
-			Query:     query,
-			Cache1H:   cache1H,
-			ForceFull: forceFull,
-			NoSky:     *noSky,
-			Runtime:   &runtime,
-		}
-		var scan scanResult
-		var outcome ui.Outcome
-		if *plain || *tsv {
-			scan, err = scanFleet(ctx, database, request, stderr)
-			if err != nil {
-				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
-				return 1
-			}
-			var picker ui.Picker
-			if *plain {
-				picker = ui.PlainPicker{Writer: stdout}
-			} else {
-				picker = ui.TSVPicker{Writer: stdout}
-			}
-			outcome, err = picker.Pick(ctx, scan.Snapshot)
-		} else {
-			scan, err = scanFleetCached(ctx, database, request)
-			if err != nil {
-				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
-				return 1
-			}
-			applier, err := hideApplier(ctx, database, runtime)
-			if err != nil {
-				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
-				return 1
-			}
-			scan.Snapshot.ApplyHide = applier
-			scan.Snapshot.MergeNewChat = true
-			statsSampler := pfmstats.NewSampler(
-				scan.Paths.ProcRoot,
-				scan.Paths.CgroupRoot,
-			)
-			statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts(runtime))
-			scan.Snapshot.StatsSampler = statsSampler
-			refreshContext, refreshCancel := context.WithCancel(ctx)
-			updates := make(chan ui.Snapshot, 1)
-			// Bubble Tea owns the tty for as long as Pick runs: a probe warning
-			// the background refresh raises mid-frame corrupts the alt-screen,
-			// so it is buffered here and flushed only once Pick has released
-			// the terminal.
-			var warnings bufferedWarnings
-			// Opening the picker IS an interaction, so the clock starts stamped
-			// and the first frames refresh at full cadence. Every keystroke
-			// restamps it; going quiet is what makes the stream back off.
-			activity := ui.NewActivityClock(time.Now())
-			scan.Snapshot.Activity = activity
-			go streamFleetRefreshes(
-				refreshContext,
-				database,
-				request,
-				warnings.add,
-				stderr,
-				updates,
-				activity,
-			)
-			outcome, err = (ui.BubblePicker{Updates: updates}).Pick(
-				ctx,
-				scan.Snapshot,
-			)
-			refreshCancel()
-			warnings.flush(stderr)
-		}
+	request := scanRequest{
+		View:    view,
+		Cache1H: initialCache1H(),
+		NoSky:   *noSky,
+		Runtime: &runtime,
+	}
+	var scan scanResult
+	var outcome ui.Outcome
+	if *plain || *tsv {
+		scan, err = scanFleet(ctx, database, request, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 			return 1
 		}
-		if *plain || *tsv {
-			return 0
+		var picker ui.Picker
+		if *plain {
+			picker = ui.PlainPicker{Writer: stdout}
+		} else {
+			picker = ui.TSVPicker{Writer: stdout}
 		}
-		// Every ⌃X already landed the moment it was typed, so there is nothing
-		// here to apply and no exit key that can lose one. What remains is the
-		// receipt, printed once the picker has released the terminal.
-		reportHides(outcome.HideChanges, stderr)
-		// A ⌃S account switch IS still a pending intent, and backing out with
-		// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
-		// mean a deliberate choice — see primaryWriteback.
-		if account, should := primaryWriteback(
-			outcome.Kind,
-			outcome.PrimaryAccount,
-			readPrimaryAccount(scan.Paths, runtime.Config),
-		); should {
-			if err := writePrimaryAccount(scan.Paths, runtime.Config, account); err != nil {
-				fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
-				return 1
-			}
-		}
-		rotation = outcome.Rotation
-		query = outcome.Query
-		cache1H = outcome.Cache1H
-		switch outcome.Kind {
-		case ui.OutcomeReload:
-			forceFull = true
-			continue
-		case ui.OutcomeReboot:
-			row, err := rebootRow(ctx, scan.Paths, outcome.Row, stderr)
-			if err != nil {
-				fmt.Fprintf(stderr, "pfm ls: %v\n", err)
-				return 1
-			}
-			return openRow(ctx, row, outcome.PrimaryAccount, cache1H, stdout, stderr, runtime)
-		case ui.OutcomeSelected:
-			return openRow(
-				ctx,
-				outcome.Row,
-				outcome.PrimaryAccount,
-				cache1H,
-				stdout,
-				stderr,
-				runtime,
-			)
-		case ui.OutcomeCancelled, ui.OutcomeNone:
-			return 0
-		default:
-			fmt.Fprintf(stderr, "pfm ls: unsupported picker outcome %d\n", outcome.Kind)
+		outcome, err = picker.Pick(ctx, scan.Snapshot)
+	} else {
+		scan, err = scanFleetCached(ctx, database, request)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 			return 1
 		}
+		applier, err := killApplier(ctx, database, runtime)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm ls: %v\n", err)
+			return 1
+		}
+		scan.Snapshot.ApplyKill = applier
+		scan.Snapshot.MergeNewChat = true
+		statsSampler := pfmstats.NewSampler(
+			scan.Paths.ProcRoot,
+			scan.Paths.CgroupRoot,
+		)
+		statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts(runtime))
+		scan.Snapshot.StatsSampler = statsSampler
+		refreshContext, refreshCancel := context.WithCancel(ctx)
+		updates := make(chan ui.Snapshot, 1)
+		// Bubble Tea owns the tty for as long as Pick runs: a probe warning
+		// the background refresh raises mid-frame corrupts the alt-screen,
+		// so it is buffered here and flushed only once Pick has released
+		// the terminal.
+		var warnings bufferedWarnings
+		// Opening the picker IS an interaction, so the clock starts stamped
+		// and the first frames refresh at full cadence. Every keystroke
+		// restamps it; going quiet is what makes the stream back off.
+		activity := ui.NewActivityClock(time.Now())
+		scan.Snapshot.Activity = activity
+		go streamFleetRefreshes(
+			refreshContext,
+			database,
+			request,
+			warnings.add,
+			stderr,
+			updates,
+			activity,
+		)
+		outcome, err = (ui.BubblePicker{Updates: updates}).Pick(
+			ctx,
+			scan.Snapshot,
+		)
+		refreshCancel()
+		warnings.flush(stderr)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm ls: %v\n", err)
+		return 1
+	}
+	if *plain || *tsv {
+		return 0
+	}
+	// Every ⌃X already landed the moment it was typed, so there is nothing
+	// here to apply and no exit key that can lose one. What remains is the
+	// receipt, printed once the picker has released the terminal.
+	reportKills(outcome.KillChanges, stderr)
+	// A ⌃S account switch IS still a pending intent, and backing out with
+	// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
+	// mean a deliberate choice — see primaryWriteback.
+	if account, should := primaryWriteback(
+		outcome.Kind,
+		outcome.PrimaryAccount,
+		readPrimaryAccount(scan.Paths, runtime.Config),
+	); should {
+		if err := writePrimaryAccount(scan.Paths, runtime.Config, account); err != nil {
+			fmt.Fprintf(stderr, "pfm ls: save primary account: %v\n", err)
+			return 1
+		}
+	}
+	cache1H := outcome.Cache1H
+	switch outcome.Kind {
+	case ui.OutcomeReboot:
+		row, err := rebootRow(ctx, scan.Paths, outcome.Row, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm ls: %v\n", err)
+			return 1
+		}
+		return openRow(ctx, row, outcome.PrimaryAccount, cache1H, stdout, stderr, runtime)
+	case ui.OutcomeSelected:
+		return openRow(
+			ctx,
+			outcome.Row,
+			outcome.PrimaryAccount,
+			cache1H,
+			stdout,
+			stderr,
+			runtime,
+		)
+	case ui.OutcomeCancelled, ui.OutcomeNone:
+		return 0
+	default:
+		fmt.Fprintf(stderr, "pfm ls: unsupported picker outcome %d\n", outcome.Kind)
+		return 1
 	}
 }
 
@@ -366,48 +352,48 @@ func initialCache1H() bool {
 		os.Getenv("CLAUDECODE") == ""
 }
 
-// reportHides is the receipt for what ⌃X did while the picker was open. A
-// hide that ENDED a running chat is worth saying out loud — it is the one
+// reportKills is the receipt for what ⌃X did while the picker was open. A
+// kill that ENDED a running chat is worth saying out loud — it is the one
 // picker keystroke that destroys something.
-func reportHides(changes []ui.HideChange, stderr io.Writer) {
-	hidden, killed := 0, 0
+func reportKills(changes []ui.KillChange, stderr io.Writer) {
+	killed, liveEnded := 0, 0
 	for _, change := range changes {
-		if !change.Hidden {
+		if !change.Killed {
 			continue
 		}
-		hidden++
+		killed++
 		if change.Live && change.Socket != "" {
-			killed++
+			liveEnded++
 			fmt.Fprintf(stderr, "pfm ls: ended %s (%s)\n", change.Name, change.Socket)
 		}
 	}
 	if killed > 0 {
-		fmt.Fprintf(stderr, "pfm ls: hid %d, ended %d\n", hidden, killed)
+		fmt.Fprintf(stderr, "pfm ls: killed %d (%d live ended)\n", killed, liveEnded)
 	}
 }
 
-// hideApplier performs a picker ⌃X the instant it is typed: the store write,
+// killApplier performs a picker ⌃X the instant it is typed: the store write,
 // and the kill when the row is live. Hiding a running chat ENDS it — a chat
 // that has left the list is a chat nobody can reach to stop.
 //
 // It reports failure by returning it, never by writing to stderr: Bubble Tea
 // owns the terminal for as long as the picker is open.
-func hideApplier(
+func killApplier(
 	ctx context.Context,
 	database *store.Store,
 	runtime commandRuntime,
-) (func(ui.HideChange) error, error) {
-	manager, err := hide.New(database, hideDependencies(runtime))
+) (func(ui.KillChange) error, error) {
+	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
 		return nil, err
 	}
-	return func(change ui.HideChange) error {
-		if !change.Hidden {
-			return manager.Unhide(ctx, change.ID)
+	return func(change ui.KillChange) error {
+		if !change.Killed {
+			return manager.Unkill(ctx, change.ID)
 		}
 		// The picker was showing the row, so it vouches for the engine: a live
-		// agent whose transcript the index has not seen yet still hides.
-		if _, err := manager.Hide(ctx, hide.Request{
+		// agent whose transcript the index has not seen yet still kills.
+		if _, err := manager.Kill(ctx, kill.Request{
 			ID:     change.ID,
 			Engine: change.Engine,
 		}); err != nil {
@@ -420,8 +406,8 @@ func hideApplier(
 	}, nil
 }
 
-func hideDependencies(runtime commandRuntime) hide.Dependencies {
-	return hide.Dependencies{
+func killDependencies(runtime commandRuntime) kill.Dependencies {
+	return kill.Dependencies{
 		Paths:       runtime.Paths,
 		ClaudeRoots: append([]string(nil), runtime.Paths.ClaudeRoots...),
 		ConfigPath:  runtime.Config.Path,
@@ -601,16 +587,16 @@ func runRevive(args []string, stdout, stderr io.Writer, runtime commandRuntime) 
 	return 0
 }
 
-// pruneOrphanedHides reports, and only with confirm deletes, the hides doctor
-// counts as orphaned_hidden. A hide cannot be recovered once deleted, so the
+// pruneOrphanedKills reports, and only with confirm deletes, the kills doctor
+// counts as orphaned_killed. A kill cannot be recovered once deleted, so the
 // dry run is the default and the count is always printed.
-func pruneOrphanedHides(
+func pruneOrphanedKills(
 	ctx context.Context,
 	database *store.Store,
 	confirm bool,
 	stdout, stderr io.Writer,
 ) int {
-	orphans, err := database.OrphanedHides(ctx)
+	orphans, err := database.OrphanedKills(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm archive: %v\n", err)
 		return 1
@@ -622,17 +608,17 @@ func pruneOrphanedHides(
 				"would prune\t%s\t%s\t%d\n",
 				orphan.ID,
 				orphan.Engine,
-				orphan.HiddenAt,
+				orphan.KilledAt,
 			)
 		}
 		fmt.Fprintf(
 			stdout,
-			"pfm archive: %d orphaned hide(s); re-run with --yes to delete\n",
+			"pfm archive: %d orphaned kill(s); re-run with --yes to delete\n",
 			len(orphans),
 		)
 		return 0
 	}
-	deleted, err := database.DeleteOrphanedHides(ctx)
+	deleted, err := database.DeleteOrphanedKills(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm archive: %v\n", err)
 		return 1
@@ -643,12 +629,12 @@ func pruneOrphanedHides(
 			"pruned\t%s\t%s\t%d\n",
 			orphan.ID,
 			orphan.Engine,
-			orphan.HiddenAt,
+			orphan.KilledAt,
 		)
 	}
 	fmt.Fprintf(
 		stdout,
-		"pfm archive: pruned %d orphaned hide(s)\n",
+		"pfm archive: pruned %d orphaned kill(s)\n",
 		deleted,
 	)
 	return 0

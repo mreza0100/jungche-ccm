@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/index"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/store"
@@ -170,13 +171,43 @@ func (function refreshFunc) Refresh(ctx context.Context) error {
 	return function(ctx)
 }
 
+func TestFinisherDiscoversConfigOwnedClaudeRoots(t *testing.T) {
+	jail := newKillJail(t)
+	database := jail.open(t)
+	defer database.Close()
+
+	configDir := filepath.Join(jail.home, ".cc", "7")
+	writeTestFile(
+		t,
+		filepath.Join(configDir, ".credentials.json"),
+		`{"claudeAiOauth":{"accessToken":"fixture"}}`,
+	)
+	finisher, err := NewFinisher(database, Dependencies{Paths: paths.Values{
+		Home:      jail.home,
+		SIDDir:    jail.sidDir,
+		CodexRoot: jail.codexRoot,
+		TmuxDir:   jail.tmuxDir,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresher, ok := finisher.refresher.(indexRefresher)
+	if !ok {
+		t.Fatalf("refresher = %T, want indexRefresher", finisher.refresher)
+	}
+	want := []string{filepath.Join(configDir, "projects")}
+	if !reflect.DeepEqual(refresher.claudeRoots, want) {
+		t.Fatalf("Claude roots = %q, want config-owned discovery %q", refresher.claudeRoots, want)
+	}
+}
+
 // A Codex tool shell is served by app-server and therefore has no ambient
 // TMUX/TMUX_PANE even though its thread still owns a live fleet seat. The CLI
-// resolves that seat before it reaches Manager.Hide; the manager must preserve
-// the resolved address so `pfm chat hide self --exit` can hand the exact pane
+// resolves that seat before it reaches Manager.Kill; the manager must preserve
+// the resolved address so `pfm chat kill self --exit` can hand the exact pane
 // to the detached finisher.
 func TestManagerCanExitResolvedCodexSelfWithoutAmbientTmux(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	spawner := &captureSpawner{}
@@ -189,7 +220,7 @@ func TestManagerCanExitResolvedCodexSelfWithoutAmbientTmux(t *testing.T) {
 	}
 
 	const id = "20202020-2020-4020-8020-202020202020"
-	target, err := manager.Hide(context.Background(), Request{
+	target, err := manager.Kill(context.Background(), Request{
 		ID:         id,
 		Engine:     CodexEngine,
 		Exit:       true,
@@ -212,7 +243,7 @@ func TestManagerCanExitResolvedCodexSelfWithoutAmbientTmux(t *testing.T) {
 }
 
 func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -266,7 +297,7 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	}
 
 	socketPath := filepath.Join(jail.tmuxDir, "cc-100-1-1")
-	target, err := manager.Hide(ctx, Request{
+	target, err := manager.Kill(ctx, Request{
 		Self: true,
 		Environment: SelfEnvironment{
 			TMUX:            socketPath + ",1,0",
@@ -280,10 +311,10 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	if target.ID != claudeID || target.Engine != ClaudeEngine {
 		t.Fatalf("Claude target = %#v", target)
 	}
-	assertHidden(t, database, claudeID, ClaudeEngine, now.Unix())
+	assertKilled(t, database, claudeID, ClaudeEngine, now.Unix())
 
 	cxSocket := filepath.Join(jail.tmuxDir, "cx-200-1-1")
-	target, err = manager.Hide(ctx, Request{
+	target, err = manager.Kill(ctx, Request{
 		Self: true,
 		Exit: true,
 		Environment: SelfEnvironment{
@@ -297,7 +328,7 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	if target.ID != codexID || target.Engine != CodexEngine {
 		t.Fatalf("Codex target = %#v", target)
 	}
-	assertHidden(t, database, codexID, CodexEngine, now.Unix())
+	assertKilled(t, database, codexID, CodexEngine, now.Unix())
 	if len(spawner.args) != 1 ||
 		spawner.args[0].ID != codexID ||
 		spawner.args[0].PaneID != "%8" ||
@@ -305,19 +336,19 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 		t.Fatalf("spawned args = %#v", spawner.args)
 	}
 
-	if err := manager.Unhide(ctx, claudeID); err != nil {
+	if err := manager.Unkill(ctx, claudeID); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := database.Hidden(ctx, claudeID); err != nil || found {
-		t.Fatalf("Hidden(Claude) found=%v err=%v, want absent", found, err)
+	if _, found, err := database.Killed(ctx, claudeID); err != nil || found {
+		t.Fatalf("Killed(Claude) found=%v err=%v, want absent", found, err)
 	}
 }
 
 // A Codex session that writes no rollout file — the normal shape of a
 // paginated thread since Codex 0.146.1 — holds no rollout file descriptor,
-// so pid ancestry alone cannot name it. It must still be able to hide ITSELF.
-func TestManagerStoreOnlyCodexSelfHides(t *testing.T) {
-	jail := newHideJail(t)
+// so pid ancestry alone cannot name it. It must still be able to kill ITSELF.
+func TestManagerStoreOnlyCodexSelfKills(t *testing.T) {
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -355,7 +386,7 @@ func TestManagerStoreOnlyCodexSelfHides(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := manager.Hide(ctx, Request{
+	target, err := manager.Kill(ctx, Request{
 		Self: true,
 		Environment: SelfEnvironment{
 			TMUX:     filepath.Join(jail.tmuxDir, "cx-600-1-1") + ",4,0",
@@ -363,20 +394,20 @@ func TestManagerStoreOnlyCodexSelfHides(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("store-only Codex self-hide: %v", err)
+		t.Fatalf("store-only Codex self-kill: %v", err)
 	}
 	if target.ID != threadID || target.Engine != CodexEngine {
 		t.Fatalf("store-only Codex target = %#v", target)
 	}
 	// No rollout row exists for this thread — it lives only in Codex's own
 	// state sqlite — so the fleet index cannot name its engine.
-	assertHidden(t, database, threadID, "", now.Unix())
+	assertKilled(t, database, threadID, "", now.Unix())
 }
 
 // A paginated thread that wrote a rollout file earlier but no longer holds it
 // open is named by the state store's own rollout_path, not by a file walk.
 func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -420,7 +451,7 @@ func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := manager.Hide(ctx, Request{
+	target, err := manager.Kill(ctx, Request{
 		Self: true,
 		Environment: SelfEnvironment{
 			TMUX:     filepath.Join(jail.tmuxDir, "cx-700-1-1") + ",5,0",
@@ -428,7 +459,7 @@ func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("paginated Codex self-hide: %v", err)
+		t.Fatalf("paginated Codex self-kill: %v", err)
 	}
 	if target.ID != rolloutID || target.DataPath != rolloutPath {
 		t.Fatalf(
@@ -437,11 +468,11 @@ func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
 			rolloutID,
 		)
 	}
-	assertHidden(t, database, rolloutID, "", now.Unix())
+	assertKilled(t, database, rolloutID, "", now.Unix())
 }
 
 func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	socketName := "cc-300-1-1"
@@ -467,7 +498,7 @@ func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := manager.Hide(context.Background(), Request{
+	target, err := manager.Kill(context.Background(), Request{
 		Self: true,
 		Environment: SelfEnvironment{
 			TMUX:     filepath.Join(jail.tmuxDir, socketName) + ",1,0",
@@ -480,19 +511,19 @@ func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
 	if target.ID != paneIDValue {
 		t.Fatalf("crumb selected %q, want pane crumb %q", target.ID, paneIDValue)
 	}
-	hidden, found, err := database.Hidden(context.Background(), paneIDValue)
+	killed, found, err := database.Killed(context.Background(), paneIDValue)
 	if err != nil || !found {
-		t.Fatalf("Hidden() found=%v err=%v", found, err)
+		t.Fatalf("Killed() found=%v err=%v", found, err)
 	}
-	if hidden.BaselinePrompts != nil {
-		t.Fatalf("baseline = %v, want an explicit hide to stay permanent", *hidden.BaselinePrompts)
+	if killed.BaselinePrompts != nil {
+		t.Fatalf("baseline = %v, want an explicit kill to stay permanent", *killed.BaselinePrompts)
 	}
 }
 
-// A hide is permanent: new prompts on the transcript never bring the chat
-// back, and only an explicit unhide does.
-func TestHiddenChatStaysHiddenAsItGrowsUntilUnhide(t *testing.T) {
-	jail := newHideJail(t)
+// A kill is permanent: new prompts on the transcript never bring the chat
+// back, and only an explicit unkill does.
+func TestKilledChatStaysKilledAsItGrowsUntilUnkill(t *testing.T) {
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -518,12 +549,12 @@ func TestHiddenChatStaysHiddenAsItGrowsUntilUnhide(t *testing.T) {
 	if !listedByDefault(t, database, id) {
 		t.Fatal("indexed chat is missing from the default listing")
 	}
-	if _, err := manager.Hide(ctx, Request{ID: id}); err != nil {
+	if _, err := manager.Kill(ctx, Request{ID: id}); err != nil {
 		t.Fatal(err)
 	}
-	assertHidden(t, database, id, ClaudeEngine, 50)
+	assertKilled(t, database, id, ClaudeEngine, 50)
 	if listedByDefault(t, database, id) {
-		t.Fatal("hidden chat is still listed")
+		t.Fatal("killed chat is still listed")
 	}
 
 	appendTestFile(
@@ -538,15 +569,15 @@ func TestHiddenChatStaysHiddenAsItGrowsUntilUnhide(t *testing.T) {
 		t.Fatalf("regrown transcript = %#v found=%v err=%v", transcript, found, err)
 	}
 	if listedByDefault(t, database, id) {
-		t.Fatal("a hidden chat returned once its prompt count grew")
+		t.Fatal("a killed chat returned once its prompt count grew")
 	}
-	assertHidden(t, database, id, ClaudeEngine, 50)
+	assertKilled(t, database, id, ClaudeEngine, 50)
 
-	if err := manager.Unhide(ctx, id); err != nil {
+	if err := manager.Unkill(ctx, id); err != nil {
 		t.Fatal(err)
 	}
 	if !listedByDefault(t, database, id) {
-		t.Fatal("unhide did not bring the chat back")
+		t.Fatal("unkill did not bring the chat back")
 	}
 }
 
@@ -578,13 +609,13 @@ func listedByDefault(t *testing.T, database *store.Store, id string) bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	output := compose.Compose(compose.Input{
 		Transcripts: transcripts,
-		Hidden:      hidden,
+		Killed:      killed,
 		Options:     compose.Options{View: compose.DefaultView},
 	})
 	composed := false
@@ -602,17 +633,17 @@ func listedByDefault(t *testing.T, database *store.Store, id string) bool {
 	return composed
 }
 
-// TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide is the Codex twin of
-// TestHiddenChatStaysHiddenAsItGrowsUntilUnhide, guarding a different
+// TestKilledCodexLineageMatchesAnyMemberIDUntilUnkill is the Codex twin of
+// TestKilledChatStaysKilledAsItGrowsUntilUnkill, guarding a different
 // regression: a live resumed process can expose the CHILD rollout id rather
 // than the ROOT every Codex row is keyed on
-// (composer.rolloutRow). The hide below is written exactly that way — no
-// lineage math, straight into the shared store — and must still hide the row;
-// the unhide that follows
+// (composer.rolloutRow). The kill below is written exactly that way — no
+// lineage math, straight into the shared store — and must still kill the row;
+// the unkill that follows
 // is issued on the ROOT, the only id the picker ever shows, and must still
 // lift it.
-func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
-	jail := newHideJail(t)
+func TestKilledCodexLineageMatchesAnyMemberIDUntilUnkill(t *testing.T) {
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -653,20 +684,20 @@ func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
 	// rollout file the live process
 	// happened to hold — the CHILD, since it is the newer file a resumed
 	// session appends to.
-	if err := database.Hide(ctx, store.Hidden{
+	if err := database.Kill(ctx, store.Killed{
 		ID:       childID,
 		Engine:   CodexEngine,
-		HiddenAt: 50,
+		KilledAt: 50,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if listedCodexByDefault(t, database, rootID) {
-		t.Fatal("a hide written raw on the resumed child left the lineage listed")
+		t.Fatal("a kill written raw on the resumed child left the lineage listed")
 	}
 
-	// Unhide is issued on the id the picker actually shows: the root. It must
-	// still clear the child-keyed hide, or the row would come right back
-	// hidden the next time this same lineage is composed.
+	// Unkill is issued on the id the picker actually shows: the root. It must
+	// still clear the child-keyed kill, or the row would come right back
+	// killed the next time this same lineage is composed.
 	manager, err := New(database, Dependencies{
 		ProcFS:  &fakeProc{},
 		Tmux:    &fakeTmux{},
@@ -676,18 +707,18 @@ func TestHiddenCodexLineageMatchesAnyMemberIDUntilUnhide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.Unhide(ctx, rootID); err != nil {
+	if err := manager.Unkill(ctx, rootID); err != nil {
 		t.Fatal(err)
 	}
 	if !listedCodexByDefault(t, database, rootID) {
-		t.Fatal("unhide via the root did not bring the lineage back")
+		t.Fatal("unkill via the root did not bring the lineage back")
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 0 {
-		t.Fatalf("hides survived unhide: %#v", hidden)
+	if len(killed) != 0 {
+		t.Fatalf("kills survived unkill: %#v", killed)
 	}
 }
 
@@ -709,13 +740,13 @@ func listedCodexByDefault(t *testing.T, database *store.Store, rootID string) bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	output := compose.Compose(compose.Input{
 		Rollouts: rollouts,
-		Hidden:   hidden,
+		Killed:   killed,
 		Options:  compose.Options{View: compose.DefaultView},
 	})
 	composed := false
@@ -734,7 +765,7 @@ func listedCodexByDefault(t *testing.T, database *store.Store, rootID string) bo
 }
 
 func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -747,10 +778,10 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.Hide(ctx, store.Hidden{
+	if err := database.Kill(ctx, store.Killed{
 		ID:       id,
 		Engine:   ClaudeEngine,
-		HiddenAt: 100,
+		KilledAt: 100,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -829,7 +860,7 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 			t.Fatalf("%s remains after cleanup: %v", path, err)
 		}
 	}
-	assertHidden(t, database, id, ClaudeEngine, 100)
+	assertKilled(t, database, id, ClaudeEngine, 100)
 }
 
 // The live fleet registers teammates in the shared store and writes no flat
@@ -837,7 +868,7 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 // kills from it: kill-server for a
 // detached teammate on its own socket, kill-pane for one sharing this server.
 func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -917,7 +948,7 @@ func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
 }
 
 func TestFinisherCodexUsesQuit(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -955,7 +986,7 @@ func TestFinisherCodexUsesQuit(t *testing.T) {
 	if !reflect.DeepEqual(tmux.sent, []string{"/quit"}) {
 		t.Fatalf("sent = %q, want /quit", tmux.sent)
 	}
-	assertHidden(t, database, id, CodexEngine, tmuxHiddenAt(t, database, id))
+	assertKilled(t, database, id, CodexEngine, tmuxKilledAt(t, database, id))
 }
 
 func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
@@ -1000,7 +1031,7 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 		"--config",
 		"/jail/config/pfm.json",
 		"internal",
-		"hide-exit",
+		"kill-exit",
 		"--engine",
 		args.Engine,
 		"--id",
@@ -1020,7 +1051,7 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 	}
 }
 
-type hideJail struct {
+type killJail struct {
 	root       string
 	home       string
 	sidDir     string
@@ -1030,10 +1061,10 @@ type hideJail struct {
 	dbPath     string
 }
 
-func newHideJail(t *testing.T) hideJail {
+func newKillJail(t *testing.T) killJail {
 	t.Helper()
 	root := t.TempDir()
-	jail := hideJail{
+	jail := killJail{
 		root:       root,
 		home:       filepath.Join(root, "home"),
 		sidDir:     filepath.Join(root, "sid"),
@@ -1063,7 +1094,7 @@ func newHideJail(t *testing.T) hideJail {
 	return jail
 }
 
-func (jail hideJail) open(t *testing.T) *store.Store {
+func (jail killJail) open(t *testing.T) *store.Store {
 	t.Helper()
 	database, err := store.Open()
 	if err != nil {
@@ -1137,48 +1168,48 @@ INSERT INTO threads (
 	}
 }
 
-// assertHidden also pins the prompt baseline to NULL: these are explicit
-// hides, so none may acquire /clear's auto-unhide behavior.
+// assertKilled also pins the prompt baseline to NULL: these are explicit
+// kills, so none may acquire /clear's auto-unkill behavior.
 //
 // The engine argument is the DERIVED one. A chat the fleet index has never
 // seen — a Codex thread known only to Codex's own state store, say — derives
-// no engine at all, and the caller passes "" for it: the hide holds either way,
-// because an empty engine means "hidden whatever the engine".
-func assertHidden(
+// no engine at all, and the caller passes "" for it: the kill holds either way,
+// because an empty engine means "killed whatever the engine".
+func assertKilled(
 	t *testing.T,
 	database *store.Store,
 	id, engine string,
-	hiddenAt int64,
+	killedAt int64,
 ) {
 	t.Helper()
-	hidden, found, err := database.Hidden(context.Background(), id)
+	killed, found, err := database.Killed(context.Background(), id)
 	if err != nil || !found {
-		t.Fatalf("Hidden(%q) found=%v err=%v", id, found, err)
+		t.Fatalf("Killed(%q) found=%v err=%v", id, found, err)
 	}
-	if hidden.Engine != engine ||
-		hidden.HiddenAt != hiddenAt ||
-		hidden.BaselinePrompts != nil {
-		t.Fatalf("Hidden(%q) = %#v", id, hidden)
+	if killed.Engine != engine ||
+		killed.KilledAt != killedAt ||
+		killed.BaselinePrompts != nil {
+		t.Fatalf("Killed(%q) = %#v", id, killed)
 	}
 }
 
-func tmuxHiddenAt(t *testing.T, database *store.Store, id string) int64 {
+func tmuxKilledAt(t *testing.T, database *store.Store, id string) int64 {
 	t.Helper()
-	hidden, found, err := database.Hidden(context.Background(), id)
+	killed, found, err := database.Killed(context.Background(), id)
 	if err != nil || !found {
-		t.Fatalf("Hidden(%q) found=%v err=%v", id, found, err)
+		t.Fatalf("Killed(%q) found=%v err=%v", id, found, err)
 	}
-	return hidden.HiddenAt
+	return killed.KilledAt
 }
 
 // THE AGENT-ROW REGRESSION. ⌃X on a live agent row wrote NOTHING: the agent's
-// transcript had not reached the index yet, and the hide refused every id the
+// transcript had not reached the index yet, and the kill refused every id the
 // index could not name. The row is composed straight from the running process,
-// so "not indexed" is its NORMAL state, not an error — and the hide must land
+// so "not indexed" is its NORMAL state, not an error — and the kill must land
 // on the agent's own session uuid, reach the shared store, and hold while the
 // process is still alive.
 func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -1206,13 +1237,13 @@ func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 	}
 	agentRow := func(t *testing.T) (compose.Row, bool) {
 		t.Helper()
-		hidden, err := database.HiddenChats(ctx)
+		killed, err := database.KilledChats(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		output := compose.Compose(compose.Input{
 			Snapshot: snapshot,
-			Hidden:   hidden,
+			Killed:   killed,
 			Options:  compose.Options{View: compose.DefaultView},
 		})
 		for _, row := range output.Rows {
@@ -1224,7 +1255,7 @@ func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 	}
 
 	if row, listed := agentRow(t); !listed || row.Project != "?" {
-		t.Fatalf("agent row before the hide = %#v listed=%t", row, listed)
+		t.Fatalf("agent row before the kill = %#v listed=%t", row, listed)
 	}
 
 	manager, err := New(database, Dependencies{
@@ -1237,35 +1268,35 @@ func TestHidingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The picker's own call: it holds the row, so it names the engine.
-	target, err := manager.Hide(ctx, Request{ID: agentID, Engine: ClaudeEngine})
+	target, err := manager.Kill(ctx, Request{ID: agentID, Engine: ClaudeEngine})
 	if err != nil {
-		t.Fatalf("Hide() on a live agent row error = %v", err)
+		t.Fatalf("Kill() on a live agent row error = %v", err)
 	}
 	if target.ID != agentID || target.Engine != ClaudeEngine {
-		t.Fatalf("Hide() target = %#v, want the agent's own session uuid", target)
+		t.Fatalf("Kill() target = %#v, want the agent's own session uuid", target)
 	}
 
 	// An unindexed id derives no engine, but its shared database row is durable.
-	assertHidden(t, database, agentID, "", 4242)
+	assertKilled(t, database, agentID, "", 4242)
 
 	// STICK: the process is still live and the row is still composed, so the
-	// hide has to beat the live-agent short-circuit, not be skipped by it.
+	// kill has to beat the live-agent short-circuit, not be skipped by it.
 	if row, listed := agentRow(t); listed {
-		t.Fatalf("hidden agent row is still listed while its process lives: %#v", row)
+		t.Fatalf("killed agent row is still listed while its process lives: %#v", row)
 	}
-	if err := manager.Unhide(ctx, agentID); err != nil {
+	if err := manager.Unkill(ctx, agentID); err != nil {
 		t.Fatal(err)
 	}
 	if _, listed := agentRow(t); !listed {
-		t.Fatal("unhide did not bring the agent row back")
+		t.Fatal("unkill did not bring the agent row back")
 	}
 }
 
 // A bare id the index cannot name is still an error, so a mistyped
-// `pfm hide` argument cannot quietly record a hide for nothing. Only a
+// `pfm kill` argument cannot quietly record a kill for nothing. Only a
 // caller holding the row vouches for it.
 func TestHidingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -1279,10 +1310,10 @@ func TestHidingAnUnknownIDStillFailsWithoutAnEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Hide(ctx, Request{ID: "no-such-chat"}); err == nil {
-		t.Fatal("Hide() accepted an id no caller vouched for")
+	if _, err := manager.Kill(ctx, Request{ID: "no-such-chat"}); err == nil {
+		t.Fatal("Kill() accepted an id no caller vouched for")
 	}
-	if _, found, err := database.Hidden(ctx, "no-such-chat"); err != nil || found {
-		t.Fatalf("Hidden() found = %v, error = %v; want nothing recorded", found, err)
+	if _, found, err := database.Killed(ctx, "no-such-chat"); err != nil || found {
+		t.Fatalf("Killed() found = %v, error = %v; want nothing recorded", found, err)
 	}
 }

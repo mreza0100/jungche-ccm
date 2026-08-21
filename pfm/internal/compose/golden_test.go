@@ -19,7 +19,7 @@ func TestGoldenRowScenarios(t *testing.T) {
 	}{
 		{name: "default", input: fixtureInput(DefaultView)},
 		{name: "all", input: fixtureInput(AllView)},
-		{name: "hidden", input: fixtureInput(HiddenView)},
+		{name: "killed", input: fixtureInput(KilledView)},
 		{name: "split-and-multiserver", input: splitFixtureInput()},
 		{name: "caps-overflow", input: capsFixtureInput()},
 	}
@@ -67,8 +67,8 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 	fmt.Fprintf(output, "SCENARIO\t%s\n", name)
 	fmt.Fprintf(
 		output,
-		"META\thidden=%d\tempty=%d\tprojects=%s\n",
-		result.HiddenCount,
+		"META\tkilled=%d\tempty=%d\tprojects=%s\n",
+		result.KilledCount,
 		result.SuppressedCount,
 		strings.Join(result.ProjectOrder, ","),
 	)
@@ -97,7 +97,7 @@ func renderScenario(output *bytes.Buffer, name string, result Output) {
 			row.AgeNS,
 			strconv.Itoa(row.Account),
 			renderInts(row.Accounts),
-			renderBool(row.Hidden),
+			renderBool(row.Killed),
 			renderBool(row.BG),
 			renderBool(row.C1H),
 			renderBool(row.Attached),

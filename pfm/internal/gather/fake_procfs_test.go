@@ -9,7 +9,7 @@ type fakeProcess struct {
 	cmdline []string
 	environ map[string]string
 	// environErr models a process whose environment cannot be read — the
-	// normal case on macOS, where SIP hides one process's env from another.
+	// normal case on macOS, where SIP kills one process's env from another.
 	environErr bool
 	fdLinks    []FDLink
 	stat       ProcStat

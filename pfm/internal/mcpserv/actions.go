@@ -129,16 +129,16 @@ func (service *Service) chatName(ctx context.Context, _ *mcp.CallToolRequest, in
 	return service.cliAction(ctx, "chat", "name", input.Target, input.Name)
 }
 
-func (service *Service) chatHide(ctx context.Context, _ *mcp.CallToolRequest, input HideInput) (*mcp.CallToolResult, ActionOutput, error) {
-	args := []string{"chat", "hide", input.Target}
+func (service *Service) chatKill(ctx context.Context, _ *mcp.CallToolRequest, input KillInput) (*mcp.CallToolResult, ActionOutput, error) {
+	args := []string{"chat", "kill", input.Target}
 	if input.Exit {
 		args = append(args, "--exit")
 	}
 	return service.cliAction(ctx, args...)
 }
 
-func (service *Service) chatUnhide(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
-	return service.cliTargetAction(ctx, "unhide", input.Target)
+func (service *Service) chatUnkill(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
+	return service.cliTargetAction(ctx, "unkill", input.Target)
 }
 
 func (service *Service) chatReload(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {

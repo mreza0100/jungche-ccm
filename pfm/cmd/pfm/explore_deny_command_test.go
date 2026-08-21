@@ -9,8 +9,8 @@ import (
 func TestExploreDenyFailsOpenAndSteersExploreToTracer(t *testing.T) {
 	for _, test := range []struct {
 		name, payload string
-		code         int
-		want         string
+		code          int
+		want          string
 	}{
 		{
 			name: "explore is denied", payload: `{"tool_input":{"subagent_type":"Explore","model":"sonnet"}}`,

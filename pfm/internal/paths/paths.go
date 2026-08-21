@@ -40,7 +40,7 @@ func TmuxConfigArguments() []string {
 // Values contains the filesystem locations used by pfm.
 //
 // DB is this binary's own derived cache (transcripts, rollouts, names) and
-// nothing else reads it. SharedDB is the authoritative operator state: hides,
+// nothing else reads it. SharedDB is the authoritative operator state: kills,
 // teammates, and the primary account.
 type Values struct {
 	DB          string

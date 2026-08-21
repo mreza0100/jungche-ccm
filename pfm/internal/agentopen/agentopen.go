@@ -144,6 +144,7 @@ type Opener struct {
 	tmux                      Tmux
 	stderr                    io.Writer
 	gracePeriod, pollInterval time.Duration
+	configurationError        error
 }
 
 func New(dependencies Dependencies) *Opener {
@@ -160,12 +161,9 @@ func New(dependencies Dependencies) *Opener {
 		stderr = os.Stderr
 	}
 	accounts := append([]Account(nil), dependencies.Accounts...)
+	var configurationError error
 	if len(accounts) == 0 {
-		accounts = []Account{
-			{ID: 1},
-			{ID: 2, ConfigDir: filepath.Join(dependencies.Home, ".cc", "2")},
-			{ID: 3, ConfigDir: filepath.Join(dependencies.Home, ".cc", "3")},
-		}
+		configurationError = errors.New("agent opener configured account roster is empty")
 	}
 	claudeBinary := dependencies.ClaudeBinary
 	if claudeBinary == "" {
@@ -176,12 +174,16 @@ func New(dependencies Dependencies) *Opener {
 		claudeBinary: claudeBinary,
 		commands:     dependencies.Commands, processes: dependencies.Processes,
 		tmux: dependencies.Tmux, stderr: stderr,
-		gracePeriod: grace, pollInterval: poll}
+		gracePeriod: grace, pollInterval: poll,
+		configurationError: configurationError}
 }
 
 func (opener *Opener) Open(ctx context.Context, request Request) error {
 	if opener == nil {
 		return errors.New("agent opener is nil")
+	}
+	if opener.configurationError != nil {
+		return opener.configurationError
 	}
 	if request.ID == "" || strings.ContainsAny(request.ID, "/\\\x00") {
 		return errors.New("agent open requires a safe session id")

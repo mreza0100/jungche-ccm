@@ -38,7 +38,7 @@ type EnvironmentDigest struct {
 }
 
 // SizeReport records measured bytes rather than estimates.  Download and
-// install are separate because archive compression can hide the shipping cost.
+// install are separate because archive compression can kill the shipping cost.
 type SizeReport struct {
 	UVDownloadBytes     int64 `json:"uv_download_bytes,omitempty"`
 	PythonDownloadBytes int64 `json:"python_download_bytes,omitempty"`

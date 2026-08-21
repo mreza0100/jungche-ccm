@@ -86,21 +86,21 @@ func TestHidingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 	}
 	defer database.Close()
 	resolved := jailPaths(t)
-	apply, err := hideApplier(context.Background(), database, commandRuntime{Paths: resolved})
+	apply, err := killApplier(context.Background(), database, commandRuntime{Paths: resolved})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	const id = "11111111-1111-4111-8111-111111111111"
-	if err := apply(ui.HideChange{
+	if err := apply(ui.KillChange{
 		ID:     id,
 		Engine: "cc",
-		Hidden: true,
+		Killed: true,
 		Socket: socket,
 		Live:   true,
 		Name:   "DOOMED",
 	}); err != nil {
-		t.Fatalf("hide a live chat: %v", err)
+		t.Fatalf("kill a live chat: %v", err)
 	}
 
 	if jailServerAlive(tmuxDir, socket) {
@@ -130,19 +130,19 @@ func TestHidingAChatThatIsNotRunningKillsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	apply, err := hideApplier(context.Background(), database, commandRuntime{Paths: jailPaths(t)})
+	apply, err := killApplier(context.Background(), database, commandRuntime{Paths: jailPaths(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := apply(ui.HideChange{
+	if err := apply(ui.KillChange{
 		ID:     "22222222-2222-4222-8222-222222222222",
 		Engine: "cc",
-		Hidden: true,
+		Killed: true,
 		Live:   false,
 		Name:   "ARCHIVED",
 	}); err != nil {
-		t.Fatalf("hide a resumable chat: %v", err)
+		t.Fatalf("kill a resumable chat: %v", err)
 	}
 	if !jailServerAlive(tmuxDir, bystander) {
 		t.Fatal("hiding a resumable row killed a server that was not its own")
@@ -151,7 +151,7 @@ func TestHidingAChatThatIsNotRunningKillsNothing(t *testing.T) {
 
 // TestHidingAChatWhoseServerAlreadyDiedStillSucceeds: killing a corpse fails
 // loudly at the tmux level for no reason an operator can act on. The goal is
-// "not running", so a chat that died on its own still hides cleanly.
+// "not running", so a chat that died on its own still kills cleanly.
 func TestHidingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
@@ -169,15 +169,15 @@ func TestHidingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	apply, err := hideApplier(context.Background(), database, commandRuntime{Paths: jailPaths(t)})
+	apply, err := killApplier(context.Background(), database, commandRuntime{Paths: jailPaths(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := apply(ui.HideChange{
+	if err := apply(ui.KillChange{
 		ID:     "33333333-3333-4333-8333-333333333333",
 		Engine: "cc",
-		Hidden: true,
+		Killed: true,
 		Socket: socket,
 		Live:   true,
 		Name:   "ALREADY-GONE",

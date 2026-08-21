@@ -432,7 +432,7 @@ func consentPage(txn, message string) string {
 <form method="post">
   <h1>Authorize harvester</h1>
   ` + banner + `
-  <input type="hidden" name="txn" value="` + html.EscapeString(txn) + `">
+  <input type="killed" name="txn" value="` + html.EscapeString(txn) + `">
   <input type="password" name="passphrase" placeholder="Operator passphrase" autofocus required>
   <button type="submit">Authorize</button>
 </form></body></html>`

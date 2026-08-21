@@ -201,7 +201,7 @@ func defaultsWithMCPServers(
 			ConfigDir:  filepath.Clean(configDir),
 			ProjectDir: filepath.Clean(projectRoot),
 			Implicit:   index == 0,
-			Emoji:      defaultEmoji(index + 1),
+			Emoji:      DefaultEmoji(index + 1),
 		})
 	}
 	if len(accounts) == 0 {
@@ -253,7 +253,10 @@ func cloneMCPServers(values map[string]MCPServer) map[string]MCPServer {
 	return cloned
 }
 
-func defaultEmoji(id int) string {
+// DefaultEmoji is the config-owned conventional badge for an account id.
+// Consumers with an explicit roster must still fail closed when an id is
+// absent from that roster instead of treating this convention as discovery.
+func DefaultEmoji(id int) string {
 	switch id {
 	case 1:
 		return "🥇"
@@ -327,7 +330,7 @@ func discoverAccounts(home string) ([]Account, []AccountSkip) {
 		accounts = append(accounts, Account{
 			ID: candidate.id, ConfigDir: candidate.path,
 			ProjectDir: filepath.Join(candidate.path, "projects"),
-			Implicit:   candidate.id == 1, Emoji: defaultEmoji(candidate.id),
+			Implicit:   candidate.id == 1, Emoji: DefaultEmoji(candidate.id),
 		})
 	}
 	return accounts, skips
@@ -639,7 +642,7 @@ func validateAccounts(values []rawAccount, home string) ([]Account, error) {
 			ID:         value.ID,
 			ConfigDir:  configDir,
 			ProjectDir: filepath.Join(configDir, "projects"),
-			Emoji:      defaultEmoji(value.ID),
+			Emoji:      DefaultEmoji(value.ID),
 		})
 	}
 	return accounts, nil

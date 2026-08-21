@@ -17,43 +17,43 @@ const (
 	sqliteBusyCode = 5
 	busyRetryDelay = 25 * time.Millisecond
 
-	// effectiveHidden is a per-connection mirror of the shared store's hidden
+	// effectiveKilled is a per-connection mirror of the shared store's killed
 	// set, so the cached
-	// first-frame queries can still express "not hidden" as a join. It is
+	// first-frame queries can still express "not killed" as a join. It is
 	// refilled from the shared store on every read that consults it, which is
-	// what lets a concurrent hide show up with no sync step in between.
-	effectiveHidden = "temp.effective_hidden"
+	// what lets a concurrent kill show up with no sync step in between.
+	effectiveKilled = "temp.effective_killed"
 
-	effectiveHiddenDDL = `
-CREATE TABLE IF NOT EXISTS ` + effectiveHidden + `(
+	effectiveKilledDDL = `
+CREATE TABLE IF NOT EXISTS ` + effectiveKilled + `(
   uuid TEXT PRIMARY KEY,
-  hidden_at INTEGER NOT NULL
+  killed_at INTEGER NOT NULL
 )`
 )
 
-// Hide records a permanent hide or a /clear prompt-baseline hide in the shared
+// Kill records a permanent kill or a /clear prompt-baseline kill in the shared
 // store. A persistent SQLITE_BUSY is retried, reported, and returned so a
 // caller never reports an unrecorded decision as durable.
-func (s *Store) Hide(ctx context.Context, hidden Hidden) error {
-	if hidden.BaselinePrompts != nil {
-		baseline := *hidden.BaselinePrompts
-		return s.hiddenWrite(ctx, "hide", hidden.ID, func() error {
-			return s.state.HideUntilPrompt(ctx, hidden.ID, hidden.HiddenAt, baseline)
+func (s *Store) Kill(ctx context.Context, killed Killed) error {
+	if killed.BaselinePrompts != nil {
+		baseline := *killed.BaselinePrompts
+		return s.killedWrite(ctx, "kill", killed.ID, func() error {
+			return s.state.KillUntilPrompt(ctx, killed.ID, killed.KilledAt, baseline)
 		})
 	}
-	return s.hiddenWrite(ctx, "hide", hidden.ID, func() error {
-		return s.state.Hide(ctx, hidden.ID, hidden.HiddenAt)
+	return s.killedWrite(ctx, "kill", killed.ID, func() error {
+		return s.state.Kill(ctx, killed.ID, killed.KilledAt)
 	})
 }
 
-// Unhide removes a hide from the shared store under the same busy policy.
-func (s *Store) Unhide(ctx context.Context, id string) error {
-	return s.hiddenWrite(ctx, "unhide", id, func() error {
-		return s.state.Unhide(ctx, id)
+// Unkill removes a kill from the shared store under the same busy policy.
+func (s *Store) Unkill(ctx context.Context, id string) error {
+	return s.killedWrite(ctx, "unkill", id, func() error {
+		return s.state.Unkill(ctx, id)
 	})
 }
 
-func (s *Store) hiddenWrite(
+func (s *Store) killedWrite(
 	ctx context.Context,
 	action string,
 	id string,
@@ -96,14 +96,14 @@ func isBusy(err error) bool {
 		sqliteError.Code()&0xff == sqliteBusyCode
 }
 
-// UpsertHidden inserts or replaces a row in the RETIRED local hidden table.
+// UpsertKilled inserts or replaces a row in the RETIRED local killed table.
 // Only the v1→v2 Codex lineage migration calls it, and only to tidy rows that
-// the shared store adopts during migration; no live hide reaches this table.
-func (tx *ImmediateTx) UpsertHidden(ctx context.Context, hidden Hidden) error {
-	return upsertHidden(ctx, tx, hidden)
+// the shared store adopts during migration; no live kill reaches this table.
+func (tx *ImmediateTx) UpsertKilled(ctx context.Context, killed Killed) error {
+	return upsertKilled(ctx, tx, killed)
 }
 
-func upsertHidden(ctx context.Context, db queryExecer, hidden Hidden) error {
+func upsertKilled(ctx context.Context, db queryExecer, killed Killed) error {
 	_, err := execWrite(ctx, db, `
 INSERT INTO hidden (id, engine, hidden_at, baseline_prompts)
 VALUES (?, ?, ?, ?)
@@ -111,76 +111,76 @@ ON CONFLICT(id) DO UPDATE SET
   engine=excluded.engine,
   hidden_at=excluded.hidden_at,
   baseline_prompts=excluded.baseline_prompts`,
-		hidden.ID,
-		hidden.Engine,
-		hidden.HiddenAt,
-		hidden.BaselinePrompts,
+		killed.ID,
+		killed.Engine,
+		killed.KilledAt,
+		killed.BaselinePrompts,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert hidden chat %q: %w", hidden.ID, err)
+		return fmt.Errorf("upsert killed chat %q: %w", killed.ID, err)
 	}
 	return nil
 }
 
-// Hidden reports whether one chat is hidden, by exact chat ID.
-func (s *Store) Hidden(ctx context.Context, id string) (Hidden, bool, error) {
-	records, err := s.activeHiddenRecords(ctx)
+// Killed reports whether one chat is killed, by exact chat ID.
+func (s *Store) Killed(ctx context.Context, id string) (Killed, bool, error) {
+	records, err := s.activeKilledRecords(ctx)
 	if err != nil {
-		return Hidden{}, false, err
+		return Killed{}, false, err
 	}
 	record, found := records[id]
 	if !found {
-		return Hidden{}, false, nil
+		return Killed{}, false, nil
 	}
 	engines, err := s.deriveEngines(ctx, []string{id})
 	if err != nil {
-		return Hidden{}, false, err
+		return Killed{}, false, err
 	}
-	return Hidden{
-		ID: id, Engine: engines[id], HiddenAt: record.HiddenAt,
+	return Killed{
+		ID: id, Engine: engines[id], KilledAt: record.KilledAt,
 		BaselinePrompts: record.AtPayload,
 	}, true, nil
 }
 
-// HiddenChats returns the shared database's hidden rows ordered by chat ID.
-func (s *Store) HiddenChats(ctx context.Context) ([]Hidden, error) {
-	records, err := s.activeHiddenRecords(ctx)
+// KilledChats returns the shared database's killed rows ordered by chat ID.
+func (s *Store) KilledChats(ctx context.Context) ([]Killed, error) {
+	records, err := s.activeKilledRecords(ctx)
 	if err != nil {
 		return nil, err
 	}
-	hiddenAt := make(map[string]int64, len(records))
+	killedAt := make(map[string]int64, len(records))
 	for id, record := range records {
-		hiddenAt[id] = record.HiddenAt
+		killedAt[id] = record.KilledAt
 	}
-	ids := shared.SortedIDs(hiddenAt)
+	ids := shared.SortedIDs(killedAt)
 	engines, err := s.deriveEngines(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	hiddenChats := make([]Hidden, 0, len(ids))
+	killedChats := make([]Killed, 0, len(ids))
 	for _, id := range ids {
 		record := records[id]
-		hiddenChats = append(hiddenChats, Hidden{
+		killedChats = append(killedChats, Killed{
 			ID:              id,
 			Engine:          engines[id],
-			HiddenAt:        record.HiddenAt,
+			KilledAt:        record.KilledAt,
 			BaselinePrompts: record.AtPayload,
 		})
 	}
-	if len(hiddenChats) == 0 {
+	if len(killedChats) == 0 {
 		return nil, nil
 	}
-	return hiddenChats, nil
+	return killedChats, nil
 }
 
-// activeHiddenRecords expires prompt-baseline hides whose indexed transcript
+// activeKilledRecords expires prompt-baseline kills whose indexed transcript
 // has grown. The conditional shared-store delete protects a concurrent newer
-// /clear or explicit permanent hide from the stale read/delete race.
-func (s *Store) activeHiddenRecords(
+// /clear or explicit permanent kill from the stale read/delete race.
+func (s *Store) activeKilledRecords(
 	ctx context.Context,
-) (map[string]shared.HiddenRecord, error) {
+) (map[string]shared.KilledRecord, error) {
 	for attempt := 0; attempt < 3; attempt++ {
-		records, err := s.state.HiddenRecords(ctx)
+		records, err := s.state.KilledRecords(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -200,9 +200,9 @@ func (s *Store) activeHiddenRecords(
 				continue
 			}
 			removed := false
-			err := s.hiddenWrite(ctx, "auto-unhide", id, func() error {
+			err := s.killedWrite(ctx, "auto-unkill", id, func() error {
 				var deleteErr error
-				removed, deleteErr = s.state.UnhideIfPayload(ctx, id, *record.AtPayload)
+				removed, deleteErr = s.state.UnkillIfPayload(ctx, id, *record.AtPayload)
 				return deleteErr
 			})
 			if err != nil {
@@ -218,7 +218,7 @@ func (s *Store) activeHiddenRecords(
 			return records, nil
 		}
 	}
-	return nil, errors.New("clear-hide state changed repeatedly during auto-unhide")
+	return nil, errors.New("clear-kill state changed repeatedly during auto-unkill")
 }
 
 func (s *Store) transcriptPromptCounts(
@@ -239,22 +239,22 @@ func (s *Store) transcriptPromptCounts(
 			arguments...,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("query clear-hide prompt counts: %w", err)
+			return nil, fmt.Errorf("query clear-kill prompt counts: %w", err)
 		}
 		for rows.Next() {
 			var id string
 			var count int64
 			if err := rows.Scan(&id, &count); err != nil {
 				_ = rows.Close()
-				return nil, fmt.Errorf("scan clear-hide prompt count: %w", err)
+				return nil, fmt.Errorf("scan clear-kill prompt count: %w", err)
 			}
 			counts[id] = count
 		}
 		if err := rows.Close(); err != nil {
-			return nil, fmt.Errorf("close clear-hide prompt counts: %w", err)
+			return nil, fmt.Errorf("close clear-kill prompt counts: %w", err)
 		}
 		if err := rows.Err(); err != nil {
-			return nil, fmt.Errorf("iterate clear-hide prompt counts: %w", err)
+			return nil, fmt.Errorf("iterate clear-kill prompt counts: %w", err)
 		}
 	}
 	unresolved := make(map[string]struct{}, len(ids))
@@ -268,7 +268,7 @@ func (s *Store) transcriptPromptCounts(
 	}
 	rollouts, err := s.Rollouts(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("query clear-hide Codex prompt counts: %w", err)
+		return nil, fmt.Errorf("query clear-kill Codex prompt counts: %w", err)
 	}
 	lineages, _ := ResolveCodexLineages(rollouts)
 	for _, lineage := range lineages {
@@ -285,11 +285,11 @@ func (s *Store) transcriptPromptCounts(
 }
 
 // deriveEngines answers "Claude or Codex?" from the index rather than from a
-// stored column. The shared hidden table is keyed by uuid alone, so the engine
+// stored column. The shared killed table is keyed by uuid alone, so the engine
 // is read back out of whichever index table claims the id:
 // a transcript is "cc", a rollout or a Codex lineage root is "cx". An id
-// neither table knows is an orphaned hide and keeps an empty engine, which
-// compose reads as "hidden whatever the engine".
+// neither table knows is an orphaned kill and keeps an empty engine, which
+// compose reads as "killed whatever the engine".
 func (s *Store) deriveEngines(
 	ctx context.Context,
 	ids []string,
@@ -332,13 +332,13 @@ SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
 
 	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
-		return fmt.Errorf("derive hidden chat engines: %w", err)
+		return fmt.Errorf("derive killed chat engines: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id, engine string
 		if err := rows.Scan(&id, &engine); err != nil {
-			return fmt.Errorf("scan hidden chat engine: %w", err)
+			return fmt.Errorf("scan killed chat engine: %w", err)
 		}
 		// A transcript wins a collision, whatever order the union arms come
 		// back in: SQL does not promise that order, and an id that resolved
@@ -350,27 +350,27 @@ SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate hidden chat engines: %w", err)
+		return fmt.Errorf("iterate killed chat engines: %w", err)
 	}
 	return nil
 }
 
-// scanHidden reads a row of the RETIRED local hidden table, which still has the
+// scanKilled reads a row of the RETIRED local killed table, which still has the
 // engine and baseline_prompts columns. The v1→v2 Codex lineage migration and
 // the orphan report are its only readers.
-func scanHidden(row rowScanner) (Hidden, error) {
-	var hidden Hidden
+func scanKilled(row rowScanner) (Killed, error) {
+	var killed Killed
 	var baseline sql.NullInt64
 	err := row.Scan(
-		&hidden.ID,
-		&hidden.Engine,
-		&hidden.HiddenAt,
+		&killed.ID,
+		&killed.Engine,
+		&killed.KilledAt,
 		&baseline,
 	)
 	if baseline.Valid {
-		hidden.BaselinePrompts = &baseline.Int64
+		killed.BaselinePrompts = &baseline.Int64
 	}
-	return hidden, err
+	return killed, err
 }
 
 func placeholders(count int) string {
@@ -387,22 +387,22 @@ func placeholders(count int) string {
 	return string(marks)
 }
 
-// syncEffectiveHidden refills the per-connection mirror of the shared hidden
-// set. Every query that joins against effectiveHidden calls this first: the
+// syncEffectiveKilled refills the per-connection mirror of the shared killed
+// set. Every query that joins against effectiveKilled calls this first: the
 // mirror is a query convenience, never a second copy of the truth.
-func (s *Store) syncEffectiveHidden(ctx context.Context) error {
-	records, err := s.activeHiddenRecords(ctx)
+func (s *Store) syncEffectiveKilled(ctx context.Context) error {
+	records, err := s.activeKilledRecords(ctx)
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, effectiveHiddenDDL); err != nil {
-		return fmt.Errorf("create effective hidden mirror: %w", err)
+	if _, err := s.db.ExecContext(ctx, effectiveKilledDDL); err != nil {
+		return fmt.Errorf("create effective killed mirror: %w", err)
 	}
 	if _, err := s.db.ExecContext(
 		ctx,
-		"DELETE FROM "+effectiveHidden,
+		"DELETE FROM "+effectiveKilled,
 	); err != nil {
-		return fmt.Errorf("clear effective hidden mirror: %w", err)
+		return fmt.Errorf("clear effective killed mirror: %w", err)
 	}
 	ids := make([]string, 0, len(records))
 	for id := range records {
@@ -418,14 +418,14 @@ func (s *Store) syncEffectiveHidden(ctx context.Context) error {
 				values = append(values, ',')
 			}
 			values = append(values, "(?,?)"...)
-			arguments = append(arguments, ids[index], records[ids[index]].HiddenAt)
+			arguments = append(arguments, ids[index], records[ids[index]].KilledAt)
 		}
 		if _, err := s.db.ExecContext(
 			ctx,
-			"INSERT INTO "+effectiveHidden+"(uuid,hidden_at) VALUES "+string(values),
+			"INSERT INTO "+effectiveKilled+"(uuid,killed_at) VALUES "+string(values),
 			arguments...,
 		); err != nil {
-			return fmt.Errorf("fill effective hidden mirror: %w", err)
+			return fmt.Errorf("fill effective killed mirror: %w", err)
 		}
 	}
 	return nil

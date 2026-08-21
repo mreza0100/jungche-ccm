@@ -201,7 +201,7 @@ func TestReapNeverKillsASocketHostingNonChatWork(t *testing.T) {
 	runInPane(t, root, hosting, "sleep 600", "sleep")
 
 	// Both sockets carry a breadcrumb: without one a claude socket is
-	// busy-unknown and skipped, which would hide the difference under a rule
+	// busy-unknown and skipped, which would kill the difference under a rule
 	// that is not the one under test.
 	for _, socket := range []string{hosting, orphan} {
 		crumb := filepath.Join(root, "sid", socket)

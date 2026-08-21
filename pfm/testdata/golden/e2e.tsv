@@ -1,4 +1,4 @@
-kind	id	project	cwd	name	prompts	size	activity_ns	account	hidden	socket
+kind	id	project	cwd	name	prompts	size	activity_ns	account	killed	socket
 new-claude		agent	/work/agent	New Claude chat	0	0	0	2	false	
 new-codex		agent	/work/agent	New Codex chat	0	0	0	0	false	
 resume-claude	agent	agent	/work/agent	Agent manual name	1	127	1700000000000000000	1	false	

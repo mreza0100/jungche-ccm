@@ -296,7 +296,7 @@ func continuityBanner(row compose.Row) string {
 		"    Loaded? Read the status line: no context/token counts means Codex" +
 			" did NOT rehydrate this thread.",
 		"    Scrollback is never restored — the prior tmux server is reaped on" +
-			" hide.",
+			" kill.",
 		"    Came up empty? The rollout is whole: pfm chat recover " + row.ID,
 	}
 	if row.Path != "" {

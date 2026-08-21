@@ -480,13 +480,13 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	} else {
 		fmt.Fprintln(stdout, "live chats in this repo (session · state · last activity):")
 	}
-	found, elsewhere, hidden := 0, 0, 0
+	found, elsewhere, killed := 0, 0, 0
 	for _, row := range scan.Output.Rows {
 		if !isLiveKind(row.Kind) {
 			continue
 		}
-		if row.Hidden || row.NameHidden {
-			hidden++
+		if row.Killed || row.NameKilled {
+			killed++
 			continue
 		}
 		if !all && !withinDirectory(row.CWD, root) {
@@ -518,8 +518,8 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 	if !all && elsewhere > 0 {
 		fmt.Fprintf(stdout, "  (+%d live in other dirs — pfm chat ls --all to see them)\n", elsewhere)
 	}
-	if hidden > 0 {
-		fmt.Fprintf(stdout, "  (+%d hidden — pfm ls --hidden to manage)\n", hidden)
+	if killed > 0 {
+		fmt.Fprintf(stdout, "  (+%d killed — pfm ls --killed to manage)\n", killed)
 	}
 	return 0
 }
