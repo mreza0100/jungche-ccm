@@ -11,25 +11,25 @@ import (
 	"testing"
 )
 
-// TestHideCLIVouchesEngineForUnindexedButVisibleRows reproduces the CLI hide
-// bug: `pfm hide <id>` only accepted an id the store already indexed,
-// because runHide never told hide.Manager which engine the caller was
-// looking at (hide/manager.go's lookupTarget requires a non-empty voucher for
+// TestKillCLIVouchesEngineForUnindexedButVisibleRows reproduces the CLI kill
+// bug: `pfm kill <id>` only accepted an id the store already indexed,
+// because runKill never told kill.Manager which engine the caller was
+// looking at (kill/manager.go's lookupTarget requires a non-empty voucher for
 // an id neither the transcript nor the Codex lineage table knows). That
 // silently refused ⌃X on exactly the rows the picker shows before the index
 // catches up: a fresh agent's live session, and a live Codex pane identified
 // only by its exported CODEX_THREAD_ID. Both shapes are reproduced here
 // against a REAL tmux pane and REAL (jailed) /proc entries, driving
-// `pfm hide` in-process exactly as the CLI does — no fake ProcFS or
-// TmuxClient, since runHide's fix must resolve through the same compose pass
+// `pfm kill` in-process exactly as the CLI does — no fake ProcFS or
+// TmuxClient, since runKill's fix must resolve through the same compose pass
 // the picker itself uses (scanFleet), not an injected stand-in.
-func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
+func TestKillCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	jail := newHideCLIJail(t)
+	jail := newKillCLIJail(t)
 
-	socket := "probe-hidecli-" + strconv.Itoa(os.Getpid())
+	socket := "probe-killcli-" + strconv.Itoa(os.Getpid())
 	session := exec.Command(
 		"tmux", "-L", socket, "-f", "/dev/null",
 		"new-session", "-d", "-s", "bg", "sleep", "120",
@@ -83,50 +83,50 @@ func TestHideCLIVouchesEngineForUnindexedButVisibleRows(t *testing.T) {
 
 	for _, id := range []string{agentID, codexID} {
 		var stdout, stderr bytes.Buffer
-		if code := run([]string{"chat", "hide", id}, &stdout, &stderr); code != 0 {
+		if code := run([]string{"chat", "kill", id}, &stdout, &stderr); code != 0 {
 			t.Fatalf(
-				"hide %s code=%d stdout=%q stderr=%q",
+				"kill %s code=%d stdout=%q stderr=%q",
 				id, code, stdout.String(), stderr.String(),
 			)
 		}
-		if got, want := stdout.String(), "hidden "+id+"\n"; got != want {
-			t.Fatalf("hide %s stdout=%q, want %q", id, got, want)
+		if got, want := stdout.String(), "killed "+id+"\n"; got != want {
+			t.Fatalf("kill %s stdout=%q, want %q", id, got, want)
 		}
 	}
 
 	// A Codex tool shell has the thread id but no tmux environment. It still
 	// resolves `self` to the live composed row instead of falling into the
 	// tmux-only self identifier used by Claude hooks.
-	var unhideOut, unhideErr bytes.Buffer
-	if code := run([]string{"chat", "unhide", codexID}, &unhideOut, &unhideErr); code != 0 {
-		t.Fatalf("unhide Codex fixture code=%d stderr=%q", code, unhideErr.String())
+	var unkillOut, unkillErr bytes.Buffer
+	if code := run([]string{"chat", "unkill", codexID}, &unkillOut, &unkillErr); code != 0 {
+		t.Fatalf("unkill Codex fixture code=%d stderr=%q", code, unkillErr.String())
 	}
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CODEX_THREAD_ID", codexID)
 	var selfOut, selfErr bytes.Buffer
-	if code := run([]string{"chat", "hide", "self"}, &selfOut, &selfErr); code != 0 {
+	if code := run([]string{"chat", "kill", "self"}, &selfOut, &selfErr); code != 0 {
 		t.Fatalf(
-			"Codex app-server hide self code=%d stdout=%q stderr=%q",
+			"Codex app-server kill self code=%d stdout=%q stderr=%q",
 			code,
 			selfOut.String(),
 			selfErr.String(),
 		)
 	}
-	if got, want := selfOut.String(), "hidden "+codexID+"\n"; got != want {
-		t.Fatalf("Codex app-server hide self stdout=%q, want %q", got, want)
+	if got, want := selfOut.String(), "killed "+codexID+"\n"; got != want {
+		t.Fatalf("Codex app-server kill self stdout=%q, want %q", got, want)
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"chat", "hide", unknown}, &stdout, &stderr); code != codeUnknownChat {
+	if code := run([]string{"chat", "kill", unknown}, &stdout, &stderr); code != codeUnknownChat {
 		t.Fatalf(
-			"hide unknown code=%d stdout=%q stderr=%q",
+			"kill unknown code=%d stdout=%q stderr=%q",
 			code, stdout.String(), stderr.String(),
 		)
 	}
 	if !strings.Contains(stderr.String(), "not indexed") {
-		t.Fatalf("hide unknown stderr=%q, want a not-indexed refusal", stderr.String())
+		t.Fatalf("kill unknown stderr=%q, want a not-indexed refusal", stderr.String())
 	}
 }
 
@@ -183,19 +183,19 @@ func writeFakeProcess(t *testing.T, procRoot string, spec fakeProcessSpec) {
 	}
 }
 
-type hideCLIJail struct {
+type killCLIJail struct {
 	root     string
 	home     string
 	procRoot string
 }
 
-// newHideCLIJail wires the PFM_* env exactly like jailTest, except the
+// newKillCLIJail wires the PFM_* env exactly like jailTest, except the
 // tmux directories agree with each other (TMUX_TMPDIR's parent equals
 // PFM_TMUX_DIR, tmux's own "tmux-<uid>" convention) so a REAL
 // backgrounded tmux session this test starts is the one ProbeTmux finds —
 // jailTest's own tmux/t split is fine for its callers, which never start a
 // real tmux server, but this test does.
-func newHideCLIJail(t *testing.T) *hideCLIJail {
+func newKillCLIJail(t *testing.T) *killCLIJail {
 	t.Helper()
 	root := testjail.ShortRoot(t)
 	home := filepath.Join(root, "home")
@@ -220,5 +220,5 @@ func newHideCLIJail(t *testing.T) *hideCLIJail {
 	t.Setenv("PFM_TMUX_DIR", tmuxDir)
 	t.Setenv("PFM_PROC_ROOT", procRoot)
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
-	return &hideCLIJail{root: root, home: home, procRoot: procRoot}
+	return &killCLIJail{root: root, home: home, procRoot: procRoot}
 }

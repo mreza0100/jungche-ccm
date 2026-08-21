@@ -37,7 +37,7 @@ var legacyBatteryChecks = []struct {
 	{"morning wrapper runs sequentially, names each lane, and continues after failure", []string{"TestMorningContinuesAfterFailureAndDiscoversLanesWithoutDuplicateExplorer"}},
 	{"morning wrapper discovers organ lanes once and never duplicates explorer.md", []string{"TestMorningContinuesAfterFailureAndDiscoversLanesWithoutDuplicateExplorer"}},
 	{"explorer surface stays byte-identical to the live organ under lanes", []string{"TestLiveExplorerSurfaceRegeneratesByteIdentically"}},
-	{"lane membership backfills a pre-lane pool and fails closed on a hidden map", []string{"TestBuildMembershipBackfillsLegacyAndAssignsNewMaps", "TestBuildMembershipPreservesLedgerAndFailsClosedOnOldHole"}},
+	{"lane membership backfills a pre-lane pool and fails closed on a killed map", []string{"TestBuildMembershipBackfillsLegacyAndAssignsNewMaps", "TestBuildMembershipPreservesLedgerAndFailsClosedOnOldHole"}},
 	{"each lane is injected only its own surface, and a lane-less type gets nothing", []string{"TestHooksAreLaneIsolatedAndUnsafeOrMissingLanesStaySilent"}},
 	{"an organ-local lane profile takes precedence over the same global lane", []string{"TestResolveProfileIsOrganFirstAndNamesBothMissingPaths"}},
 	{"corpus-file pins an explicit corpus, records its digest and lane, and fails closed on a ghost path", []string{"TestExplicitCorpusReadsOnceCopiesExactBytesAndDeduplicates", "TestExplicitCorpusRejectsGhostRelativeControlAndNonregularPaths", "TestNightGhostCorpusPathNamesExactTranscriptInDurableMarker"}},

@@ -9,6 +9,12 @@ import (
 	"hostops/pfm/internal/action"
 )
 
+func TestRosterContainsFailsClosedWhenRosterIsEmpty(t *testing.T) {
+	if rosterContains(nil, 1) {
+		t.Fatal("rosterContains(nil, 1) accepted an account invented outside config")
+	}
+}
+
 func TestRunRespawnsWithConfiguredClaudePolicy(t *testing.T) {
 	tmux := &fakeReloadTmux{}
 	configDir := filepath.Join(t.TempDir(), "account 42")

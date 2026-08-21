@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/sky"
 	"hostops/pfm/internal/usagehook"
 )
@@ -192,7 +193,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		l2 += " " + dim + "(" + formatTokens(data.ContextWindow.TotalInputTokens) + "→" +
 			formatTokens(data.ContextWindow.TotalOutputTokens) + ")" + reset
 	}
-	if data.Cost.TotalCostUSD > 0 && account != 4 {
+	if data.Cost.TotalCostUSD > 0 && runtime.Engine != "codex" {
 		color := dim
 		if data.Cost.TotalCostUSD >= 10 {
 			color = red
@@ -204,7 +205,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	l2 += sep + dim + "⏱ " + formatDuration(data.Cost.TotalDurationMS) + reset
 
 	l3 := vertexSegment(runtime, now)
-	if account == 4 {
+	if runtime.Engine == "codex" {
 		gptLine, replacement := gptSegment(runtime, now, contextTokens, l2)
 		if replacement != "" {
 			l2 = replacement
@@ -443,21 +444,16 @@ func canonicalRuntimePath(path string) string {
 }
 
 func accountBadgeForID(runtime Runtime, account int) (string, int) {
-	if emoji := runtime.AccountEmojis[account]; emoji != "" && emoji != "·" {
-		return emoji + " ", account
-	}
-	switch account {
-	case 1:
-		return "🥇 ", 1
-	case 2:
-		return "🥈 ", 2
-	case 3:
-		return "🥉 ", 3
-	case 4:
-		return "🍀 ", 4
-	default:
+	if runtime.AccountEmojis != nil {
+		if emoji := runtime.AccountEmojis[account]; emoji != "" && emoji != "·" {
+			return emoji + " ", account
+		}
 		return "", 0
 	}
+	if emoji := pfmconfig.DefaultEmoji(account); emoji != "·" {
+		return emoji + " ", account
+	}
+	return "", 0
 }
 
 func fleetCounts(runtime Runtime) (int, int) {

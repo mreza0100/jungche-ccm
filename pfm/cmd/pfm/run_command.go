@@ -40,7 +40,7 @@ func runRun(
 			"[--await [--timeout SECS] [--settle SECS] [--progress]] [--attach] [prompt]",
 		stderr,
 	)
-	name := flags.String("name", "", "chat name (a _HIDE… name stays out of the list)")
+	name := flags.String("name", "", "chat name (a _KILL… name stays out of the list)")
 	engine := flags.String("engine", "cc", "engine: cc|claude or cx|codex")
 	cwd := flags.String("cwd", "", "project directory (default: the current one)")
 	account := flags.Int("account", 0, "Claude account (default: the primary one)")
@@ -405,8 +405,8 @@ func printRunResult(
 		state = "UNNAMED"
 	}
 	listing := "listed"
-	if naming.LabelHidden(result.Name) {
-		listing = "hidden by its " + naming.HidePrefix + " name"
+	if naming.LabelKilled(result.Name) {
+		listing = "killed by its " + naming.KillPrefix + " name"
 	}
 	fmt.Fprintf(
 		stdout,

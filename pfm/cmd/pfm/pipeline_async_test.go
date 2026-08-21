@@ -108,49 +108,6 @@ refreshed:
 	}
 }
 
-func TestPickerExplicitReloadStillRunsOneFullIndex(t *testing.T) {
-	jailTest(t)
-	t.Setenv(codexAvailableEnv, "0")
-	database, err := store.Open()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	updates := make(chan ui.Snapshot, 1)
-	runner := &immediateIndexRunner{}
-	var stderr bytes.Buffer
-	go streamFleetRefreshesWith(
-		ctx,
-		database,
-		scanRequest{ForceFull: true},
-		printWarn(&stderr),
-		&stderr,
-		updates,
-		refreshDependencies{newIndexer: func(*store.Store) (indexRunner, error) {
-			return runner, nil
-		}},
-	)
-	for {
-		snapshot, ok := <-updates
-		if !ok {
-			t.Fatalf("explicit refresh stream closed early: %s", stderr.String())
-		}
-		if !snapshot.Refreshing {
-			break
-		}
-	}
-	cancel()
-	for range updates {
-	}
-	runner.mutex.Lock()
-	options := append([]fleetindex.Options(nil), runner.options...)
-	runner.mutex.Unlock()
-	if len(options) != 1 || !options[0].Full || options[0].PriorityOnly {
-		t.Fatalf("explicit reload index stages = %#v, want one full pass", options)
-	}
-}
-
 func (runner *slowIndexRunner) Run(
 	ctx context.Context,
 	options fleetindex.Options,
@@ -221,12 +178,12 @@ func TestCachedFirstPaintWhileIndexRefreshIsSlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cached.Snapshot.Rows) != 31 ||
-		cached.Snapshot.HiddenCount != 0 ||
+		cached.Snapshot.KilledCount != 0 ||
 		cached.Snapshot.SuppressedCount != rows-30 {
 		t.Fatalf(
-			"cached snapshot rows/hidden/empty=%d/%d/%d, want 31/0/%d",
+			"cached snapshot rows/killed/empty=%d/%d/%d, want 31/0/%d",
 			len(cached.Snapshot.Rows),
-			cached.Snapshot.HiddenCount,
+			cached.Snapshot.KilledCount,
 			cached.Snapshot.SuppressedCount,
 			rows-30,
 		)
@@ -516,11 +473,9 @@ func TestPrimaryWritebackIgnoresTheUnsetSentinel(t *testing.T) {
 		wantAccount int
 	}{
 		{"unset sentinel on an otherwise-real outcome", ui.OutcomeSelected, 0, 2, false, 0},
-		{"unset sentinel on reload", ui.OutcomeReload, 0, 1, false, 0},
 		{"cancelled never writes, even with a real account", ui.OutcomeCancelled, 3, 1, false, 0},
 		{"unchanged primary has nothing to persist", ui.OutcomeSelected, 2, 2, false, 0},
 		{"a deliberate switch persists", ui.OutcomeSelected, 3, 1, true, 3},
-		{"a reload that changed the on-disk primary persists", ui.OutcomeReload, 2, 1, true, 2},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {

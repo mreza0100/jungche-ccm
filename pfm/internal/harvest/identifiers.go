@@ -1192,7 +1192,7 @@ func titleMatch(query, title string) float64 {
 	return j
 }
 
-func (h *Harvester) fetchIdentifier(ctx context.Context, source string, kind IdentifierKind, options FetchOptions) Result {
+func (h *Harvester) fetchKnownID(ctx context.Context, source string, kind IdentifierKind, options FetchOptions) Result {
 	canonical := NormalizeIdentifier(source)
 	if canonical == "" {
 		canonical = strings.TrimSpace(source)

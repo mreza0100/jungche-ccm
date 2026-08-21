@@ -20,7 +20,7 @@ const (
 	// Booting is a chat still sitting at a startup prompt (folder trust, MCP
 	// approval): its pane and process are live but its statusline has not
 	// written a SID crumb yet, so no transcript identity exists to key an
-	// ordinary live row on. Not hideable, not resumable — Enter is the only
+	// ordinary live row on. Not killable, not resumable — Enter is the only
 	// live operation it supports (attach), matching the socket-only identity
 	// it carries.
 	Booting
@@ -51,13 +51,13 @@ func (kind Kind) String() string {
 	}
 }
 
-// View selects the default, all, or hidden-only row set.
+// View selects the default, all, or killed-only row set.
 type View uint8
 
 const (
 	DefaultView View = iota
 	AllView
-	HiddenView
+	KilledView
 )
 
 // AccountRoot associates one transcript/config root with its fleet account.
@@ -73,7 +73,6 @@ type Options struct {
 	CurrentSocket  string
 	PrimaryAccount int
 	CodexAvailable bool
-	Rotation       int
 	NowNS          int64
 }
 
@@ -83,7 +82,7 @@ type Input struct {
 	Transcripts  []store.Transcript
 	Rollouts     []store.Rollout
 	CxNames      map[string]string
-	Hidden       []store.Hidden
+	Killed       []store.Killed
 	AccountRoots []AccountRoot
 	Options      Options
 }
@@ -111,11 +110,11 @@ type Row struct {
 	AgeNS       int64
 	Account     int
 	Accounts    []int
-	Hidden      bool
-	// NameHidden marks a row hidden by its "_HIDE…" label rather than by a
-	// store row: the picker's hide key cannot toggle it, because the label —
-	// not the hidden table — is what keeps it out of the list.
-	NameHidden  bool
+	Killed      bool
+	// NameKilled marks a row killed by its "_KILL…" label rather than by a
+	// store row: the picker's kill key cannot toggle it, because the label —
+	// not the killed table — is what keeps it out of the list.
+	NameKilled  bool
 	BG          bool
 	C1H         bool
 	Attached    bool
@@ -124,13 +123,13 @@ type Row struct {
 	SplitCount  int
 }
 
-// Output contains the rows plus project metadata. Composition reads the hide
+// Output contains the rows plus project metadata. Composition reads the kill
 // list; the store owns persistence and expiry of /clear prompt baselines.
 type Output struct {
 	Rows            []Row
 	ProjectDirs     map[string]string
 	ProjectOrder    []string
-	HiddenCount     int
+	KilledCount     int
 	SuppressedCount int
 
 	includeNewClaude bool

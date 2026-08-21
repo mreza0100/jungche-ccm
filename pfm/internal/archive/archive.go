@@ -1,9 +1,9 @@
 // Package archive moves chats out of both engines' sight, reversibly.
 //
-// A hide is a row in a list; an archive is the file itself leaving the tree.
-// That distinction is the point: the hidden list is rewritten by every writer
-// that touches it, so two pickers racing each other lose each other's hides —
-// the "my hidden chats came back" bug. A chat that is not on disk cannot come
+// A kill is a row in a list; an archive is the file itself leaving the tree.
+// That distinction is the point: the killed list is rewritten by every writer
+// that touches it, so two pickers racing each other lose each other's kills —
+// the "my killed chats came back" bug. A chat that is not on disk cannot come
 // back, and a manifest row puts it back exactly where it was when you ask.
 //
 // Nothing here ever deletes. Every move is recorded, and every recorded move
@@ -35,15 +35,15 @@ const sidechainMarker = `"isSidechain":true`
 // headBytes is how much of a transcript is read to classify it.
 const headBytes = 4096
 
-// HideStore is the hidden set and the one way to leave it. Archive never
-// rewrites the hidden list itself.
-type HideStore interface {
-	Hidden(ctx context.Context) ([]HiddenChat, error)
-	Unhide(ctx context.Context, id string) error
+// KillStore is the killed set and the one way to leave it. Archive never
+// rewrites the killed list itself.
+type KillStore interface {
+	Killed(ctx context.Context) ([]KilledChat, error)
+	Unkill(ctx context.Context, id string) error
 }
 
-// HiddenChat is one hidden chat as the store reports it.
-type HiddenChat struct {
+// KilledChat is one killed chat as the store reports it.
+type KilledChat struct {
 	ID     string
 	Engine string
 }
@@ -53,7 +53,7 @@ type Options struct {
 	// Apply performs the moves. Without it the run prints its plan and
 	// touches nothing.
 	Apply bool
-	// Subagents archives sidechain transcripts instead of hidden chats.
+	// Subagents archives sidechain transcripts instead of killed chats.
 	Subagents bool
 	// OlderThan is the age a sidechain transcript must reach before it is
 	// archived. A subagent writes its transcript for as long as it runs, so
@@ -75,19 +75,19 @@ type Move struct {
 // Report is one run's outcome.
 type Report struct {
 	Moves []Move
-	// Live are hidden chats skipped because they are running. They leave the
-	// hidden list too: a chat the operator is still using belongs in the
+	// Live are killed chats skipped because they are running. They leave the
+	// killed list too: a chat the operator is still using belongs in the
 	// picker, not filed away.
 	Live []string
-	// Orphans are hidden ids whose file is already gone. Nothing to move, but
-	// the hide is pruned — it points at nothing.
+	// Orphans are killed ids whose file is already gone. Nothing to move, but
+	// the kill is pruned — it points at nothing.
 	Orphans []string
 	// Young counts sidechain transcripts left alone as too new.
 	Young int
 	// Bytes is the total planned or moved.
 	Bytes int64
-	// Unhidden counts hide rows retired by this run.
-	Unhidden int
+	// Unkilled counts kill rows retired by this run.
+	Unkilled int
 	// SidecarBackups are the copies taken before any sidecar was rewritten.
 	SidecarBackups []string
 	// HistoryPruned and IndexPruned are the line counts dropped from
@@ -99,7 +99,7 @@ type Report struct {
 // Dependencies are the runner's collaborators.
 type Dependencies struct {
 	Paths            paths.Values
-	Hides            HideStore
+	Kills            KillStore
 	Proc             gather.ProcFS
 	Now              func() time.Time
 	CodexBinary      string
@@ -109,7 +109,7 @@ type Dependencies struct {
 // Runner performs one archive pass.
 type Runner struct {
 	paths            paths.Values
-	hides            HideStore
+	kills            KillStore
 	proc             gather.ProcFS
 	now              func() time.Time
 	codexBinary      string
@@ -126,8 +126,8 @@ func New(dependencies Dependencies) (*Runner, error) {
 			return nil, fmt.Errorf("resolve archive paths: %w", err)
 		}
 	}
-	if dependencies.Hides == nil {
-		return nil, errors.New("archive needs a hidden-chat source")
+	if dependencies.Kills == nil {
+		return nil, errors.New("archive needs a killed-chat source")
 	}
 	proc := dependencies.Proc
 	if proc == nil {
@@ -139,7 +139,7 @@ func New(dependencies Dependencies) (*Runner, error) {
 	}
 	return &Runner{
 		paths:            resolved,
-		hides:            dependencies.Hides,
+		kills:            dependencies.Kills,
 		proc:             proc,
 		now:              now,
 		codexBinary:      dependencies.CodexBinary,
@@ -161,23 +161,23 @@ func (runner *Runner) Run(
 	if options.Subagents {
 		return runner.runSubagents(options, live)
 	}
-	return runner.runHidden(ctx, options, live)
+	return runner.runKilled(ctx, options, live)
 }
 
-func (runner *Runner) runHidden(
+func (runner *Runner) runKilled(
 	ctx context.Context,
 	options Options,
 	live map[string]struct{},
 ) (Report, error) {
 	var report Report
-	hidden, err := runner.hides.Hidden(ctx)
+	killed, err := runner.kills.Killed(ctx)
 	if err != nil {
-		return Report{}, fmt.Errorf("read the hidden set: %w", err)
+		return Report{}, fmt.Errorf("read the killed set: %w", err)
 	}
 	// decided is every id this run resolved one way or another — moved,
-	// orphaned, or skipped as live. All three leave the hidden list.
-	decided := make([]string, 0, len(hidden))
-	for _, chat := range hidden {
+	// orphaned, or skipped as live. All three leave the killed list.
+	decided := make([]string, 0, len(killed))
+	for _, chat := range killed {
 		decided = append(decided, chat.ID)
 		if _, running := live[strings.ToLower(chat.ID)]; running {
 			report.Live = append(report.Live, chat.ID)
@@ -240,10 +240,10 @@ func (runner *Runner) runHidden(
 	report.IndexPruned = pruned
 
 	for _, id := range decided {
-		if err := runner.hides.Unhide(ctx, id); err != nil {
-			return Report{}, fmt.Errorf("retire the hide for %s: %w", id, err)
+		if err := runner.kills.Unkill(ctx, id); err != nil {
+			return Report{}, fmt.Errorf("retire the kill for %s: %w", id, err)
 		}
-		report.Unhidden++
+		report.Unkilled++
 	}
 	return report, nil
 }
@@ -311,17 +311,17 @@ func (runner *Runner) runSubagents(
 	if !options.Apply {
 		return report, nil
 	}
-	// Subagent mode touches no sidecar: a sidechain transcript has no hide
+	// Subagent mode touches no sidecar: a sidechain transcript has no kill
 	// row, no history prompt (nobody typed into it) and no codex index row,
 	// so there is nothing to prune and nothing to back up.
 	report.Moves = runner.performMoves(report.Moves)
 	return report, nil
 }
 
-// findTranscript resolves a hidden chat to the file that holds it. The store's
-// engine is the hint, never the authority: a hide written before the lineage
+// findTranscript resolves a killed chat to the file that holds it. The store's
+// engine is the hint, never the authority: a kill written before the lineage
 // was indexed carries no engine at all.
-func (runner *Runner) findTranscript(chat HiddenChat) (string, string) {
+func (runner *Runner) findTranscript(chat KilledChat) (string, string) {
 	if chat.Engine != "cx" {
 		if path := runner.findClaudeTranscript(chat.ID); path != "" {
 			return path, "cc"
@@ -379,7 +379,7 @@ func (runner *Runner) findCodexRollout(id string) string {
 
 // claudeRoots is every account's projects directory, plus the default account
 // spelled its other way: ~/.cc/1 is a symlink to ~/.claude on this machine,
-// and a hide written through one spelling must resolve through the other.
+// and a kill written through one spelling must resolve through the other.
 func (runner *Runner) claudeRoots() []string {
 	roots := append(
 		[]string(nil),

@@ -61,7 +61,7 @@ type Picker interface {
 type Snapshot struct {
 	Rows            []compose.Row
 	View            compose.View
-	HiddenCount     int
+	KilledCount     int
 	SuppressedCount int
 	Refreshing      bool
 	PrimaryAccount  int
@@ -69,7 +69,6 @@ type Snapshot struct {
 	AccountEmojis   map[int]string
 	Theme           string
 	Cache1H         bool
-	Rotation        int
 	NowNS           int64
 	Width           int
 	Height          int
@@ -78,13 +77,13 @@ type Snapshot struct {
 	// MergeNewChat is used only by the interactive picker. Plain and TSV
 	// output leave it false so their existing two-row output remains stable.
 	MergeNewChat bool
-	// ApplyHide performs a ⌃X the instant it is typed — the store write, and
+	// ApplyKill performs a ⌃X the instant it is typed — the store write, and
 	// the kill when the row is live. It is deliberately NOT deferred to quit:
-	// the only exits that ever applied a batched hide were the ones that
-	// launched something (Enter, ⌃T, ⌃O), so closing the picker the natural
+	// the only exits that ever applied a batched kill were the ones that
+	// launched something (Enter, ⌃O), so closing the picker the natural
 	// way threw every mark away. Nil leaves the picker read-only (the plain
 	// twin, tests).
-	ApplyHide    func(HideChange) error
+	ApplyKill    func(KillChange) error
 	StatsSampler StatsSampler
 	NoSky        bool
 	// Activity is the presence clock the background refresh reads to pick its
@@ -100,18 +99,17 @@ type OutcomeKind uint8
 const (
 	OutcomeNone OutcomeKind = iota
 	OutcomeSelected
-	OutcomeReload
 	OutcomeReboot
 	OutcomeCancelled
 )
 
-// HideChange is one hidden-state change, applied the moment it is typed.
-type HideChange struct {
+// KillChange is one killed-state change, applied the moment it is typed.
+type KillChange struct {
 	ID     string
 	Engine string
-	Hidden bool
-	// Socket, Live and Name carry what hiding a RUNNING chat needs beyond the
-	// store write: hiding it ends it, and only the picker knows the row was
+	Killed bool
+	// Socket, Live and Name carry what killing a RUNNING chat needs beyond the
+	// store write: killing it ends it, and only the picker knows the row was
 	// live, which server it owns, and what to call it in the receipt.
 	Socket string
 	Live   bool
@@ -126,9 +124,8 @@ type Outcome struct {
 	Row            compose.Row
 	PrimaryAccount int
 	Cache1H        bool
-	Rotation       int
 	Query          string
-	HideChanges    []HideChange
+	KillChanges    []KillChange
 }
 
 // RefreshMsg replaces the cached compose snapshot without doing I/O in Model.

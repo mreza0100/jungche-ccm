@@ -93,6 +93,23 @@ func TestDefaultsRegisterHarvesterDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestDefaultEmojiOwnsTheConventionalBadgeRoster(t *testing.T) {
+	for _, testCase := range []struct {
+		id   int
+		want string
+	}{
+		{id: 1, want: "🥇"},
+		{id: 2, want: "🥈"},
+		{id: 3, want: "🥉"},
+		{id: 4, want: "🍀"},
+		{id: 99, want: "·"},
+	} {
+		if got := DefaultEmoji(testCase.id); got != testCase.want {
+			t.Fatalf("DefaultEmoji(%d)=%q, want %q", testCase.id, got, testCase.want)
+		}
+	}
+}
+
 func TestDefaultsWithoutDiscoveryRootsDiscoversCredentialedAccountsAndNamesSkips(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
 	for _, account := range []int{1, 2, 3, 4} {

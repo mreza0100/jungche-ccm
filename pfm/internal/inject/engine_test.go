@@ -58,7 +58,7 @@ type fakeTmux struct {
 	inMode        bool
 	modeAfterEsc  bool
 	cancelModes   int
-	hideLiteral   bool
+	killLiteral   bool
 }
 
 // fakeSpawner records the detached --then waiter instead of starting one.
@@ -120,7 +120,7 @@ func (fake *fakeTmux) SendLiteral(
 	fake.literal = text
 	fake.literalBuffer += text
 	fake.literals = append(fake.literals, text)
-	if fake.hideLiteral {
+	if fake.killLiteral {
 		return nil
 	}
 	marker := "❯"
@@ -675,13 +675,13 @@ func TestInjectShortExplicitFileUsesPasteTransport(t *testing.T) {
 func TestRenderSettleMissStillFallsThroughToEnter(t *testing.T) {
 	fake := &fakeTmux{
 		capture:       "conversation\n❯ ",
-		hideLiteral:   true,
+		killLiteral:   true,
 		submitOnEnter: true,
 	}
 	engine := newTestEngine(t, "cc-1-2-3", fake)
 	result, err := engine.Inject(context.Background(), Request{
 		Target:  "chat",
-		Message: "terminal echo is deliberately hidden",
+		Message: "terminal echo is deliberately killed",
 	})
 	if err != nil {
 		t.Fatal(err)

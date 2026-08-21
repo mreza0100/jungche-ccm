@@ -282,10 +282,10 @@ CREATE TABLE threads (id TEXT PRIMARY KEY, cwd TEXT, created_at INTEGER)`); err 
 	}
 }
 
-// A store-only conversation is hidden by its lineage root like any other, and
-// the hide is permanent: new prompts and a rollout file that finally appears
+// A store-only conversation is killed by its lineage root like any other, and
+// the kill is permanent: new prompts and a rollout file that finally appears
 // never lift it, and nothing writes a baseline to lift it with.
-func TestHideStoreOnlyCodexLineageIsPermanent(t *testing.T) {
+func TestKillStoreOnlyCodexLineageIsPermanent(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	t.Cleanup(func() { _ = database.Close() })
@@ -317,15 +317,15 @@ func TestHideStoreOnlyCodexLineageIsPermanent(t *testing.T) {
 			t.Fatalf("UpsertRollout(%q) error = %v", rollout.ID, err)
 		}
 	}
-	if err := database.Hide(ctx, Hidden{
+	if err := database.Kill(ctx, Killed{
 		ID:       storeOnly.ID,
 		Engine:   "cx",
-		HiddenAt: 1,
+		KilledAt: 1,
 	}); err != nil {
-		t.Fatalf("Hide() error = %v", err)
+		t.Fatalf("Kill() error = %v", err)
 	}
 
-	assertStoreOnlyHidden := func(stage string) {
+	assertStoreOnlyKilled := func(stage string) {
 		t.Helper()
 		_, rollouts, counts, err := database.DefaultCandidates(ctx, 30, 15)
 		if err != nil {
@@ -333,25 +333,25 @@ func TestHideStoreOnlyCodexLineageIsPermanent(t *testing.T) {
 		}
 		for _, rollout := range rollouts {
 			if rollout.ID == storeOnly.ID {
-				t.Fatalf("%s: hidden store-only lineage reappeared", stage)
+				t.Fatalf("%s: killed store-only lineage reappeared", stage)
 			}
 		}
-		if counts.Hidden != 1 {
-			t.Fatalf("%s: hidden count = %d, want 1", stage, counts.Hidden)
+		if counts.Killed != 1 {
+			t.Fatalf("%s: killed count = %d, want 1", stage, counts.Killed)
 		}
-		hidden, found, err := database.Hidden(ctx, storeOnly.ID)
+		killed, found, err := database.Killed(ctx, storeOnly.ID)
 		if err != nil || !found {
-			t.Fatalf("%s Hidden() found = %v, error = %v", stage, found, err)
+			t.Fatalf("%s Killed() found = %v, error = %v", stage, found, err)
 		}
-		if hidden.BaselinePrompts != nil {
+		if killed.BaselinePrompts != nil {
 			t.Fatalf(
-				"%s: hide carries baseline %d; hides are permanent and write none",
+				"%s: kill carries baseline %d; kills are permanent and write none",
 				stage,
-				*hidden.BaselinePrompts,
+				*killed.BaselinePrompts,
 			)
 		}
 	}
-	assertStoreOnlyHidden("after hide")
+	assertStoreOnlyKilled("after kill")
 
 	// The conversation gains a prompt and finally writes its rollout file.
 	grown := storeOnly
@@ -361,5 +361,5 @@ func TestHideStoreOnlyCodexLineageIsPermanent(t *testing.T) {
 	if err := database.UpsertRollout(ctx, grown); err != nil {
 		t.Fatalf("UpsertRollout(grown) error = %v", err)
 	}
-	assertStoreOnlyHidden("after a new prompt")
+	assertStoreOnlyKilled("after a new prompt")
 }

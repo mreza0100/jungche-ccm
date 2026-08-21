@@ -1123,13 +1123,13 @@ func (installer *engine) migrateOldState() error {
 }
 
 func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
 	file, err := os.Open(carrier)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("read retired hide carrier: %w", err)
+		return fmt.Errorf("read retired kill carrier: %w", err)
 	}
 	defer file.Close()
 	seen := map[string]bool{}
@@ -1143,10 +1143,10 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scan retired hide carrier: %w", err)
+		return fmt.Errorf("scan retired kill carrier: %w", err)
 	}
 	sort.Strings(ids)
-	return installer.change(fmt.Sprintf("merge %d retired carrier hide(s) into SQLite without overwriting existing rows", len(ids)), func() error {
+	return installer.change(fmt.Sprintf("merge %d retired carrier kill(s) into SQLite without overwriting existing rows", len(ids)), func() error {
 		values := paths.Values{
 			Home:     installer.options.Home,
 			SharedDB: filepath.Join(installer.options.Home, ".cc", "fleet.db"),
@@ -1156,16 +1156,16 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 		if err := state.Degraded(); err != nil {
 			return fmt.Errorf("open shared store before carrier retirement: %w", err)
 		}
-		existing, err := state.HiddenAt(ctx)
+		existing, err := state.KilledAt(ctx)
 		if err != nil {
-			return fmt.Errorf("read shared hides before carrier retirement: %w", err)
+			return fmt.Errorf("read shared kills before carrier retirement: %w", err)
 		}
 		for _, id := range ids {
 			if _, found := existing[id]; found {
 				continue
 			}
-			if err := state.Hide(ctx, id, 0); err != nil {
-				return fmt.Errorf("import retired carrier hide %q: %w", id, err)
+			if err := state.Kill(ctx, id, 0); err != nil {
+				return fmt.Errorf("import retired carrier kill %q: %w", id, err)
 			}
 		}
 		return nil
@@ -1175,7 +1175,7 @@ func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
 func (installer *engine) retirePredecessors() error {
 	config := installer.options.ConfigDir
 	for _, name := range []string{
-		"cc-hide.sh", "cx-hide.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
+		"cc-kill.sh", "cx-kill.sh", "bb-hook.sh", "cc-archive.sh", "cc-reap.sh",
 		"cc-name-sync.sh", "cx-heal.sh", "cc-portable.sh", "cc-db.sh", "cx-recover.sh",
 		"cc-agent-open.sh", "cc-swap-chat.sh",
 	} {
@@ -1203,9 +1203,9 @@ func (installer *engine) retirePredecessors() error {
 			return err
 		}
 	}
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
 	for _, path := range []string{carrier, carrier + ".at", carrier + ".lock"} {
-		if err := installer.retire(path, "SQLite is the sole hide store"); err != nil {
+		if err := installer.retire(path, "SQLite is the sole kill store"); err != nil {
 			return err
 		}
 	}

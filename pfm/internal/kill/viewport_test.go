@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 // which is what happens whenever the pane spawned its viewport as a child
 // instead of being exec'd into it. The tty is the join between the two.
 
-func exitFinisher(t *testing.T, jail hideJail, tmux *fakeTmux) (*Finisher, *store.Store, string) {
+func exitFinisher(t *testing.T, jail killJail, tmux *fakeTmux) (*Finisher, *store.Store, string) {
 	t.Helper()
 	database := jail.open(t)
 	ctx := context.Background()
@@ -42,7 +42,7 @@ func exitFinisher(t *testing.T, jail hideJail, tmux *fakeTmux) (*Finisher, *stor
 }
 
 func TestExitClosesTheBunkerPaneWatchingTheChat(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	tmux := &fakeTmux{
 		clientTTYs: []string{"/dev/pts/9"},
 		panesByTTY: map[string]string{"/dev/pts/9": "%42", "/dev/pts/3": "%7"},
@@ -67,7 +67,7 @@ func TestExitClosesTheBunkerPaneWatchingTheChat(t *testing.T) {
 }
 
 func TestExitLeavesPanesThatWereNotWatchingAlone(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	// a client on a real terminal (an ssh viewer) — no bunker pane is that tty
 	tmux := &fakeTmux{
 		clientTTYs: []string{"/dev/pts/77"},
@@ -92,7 +92,7 @@ func TestExitLeavesPanesThatWereNotWatchingAlone(t *testing.T) {
 }
 
 func TestExitWithNoViewportKillsOnlyTheChat(t *testing.T) {
-	jail := newHideJail(t)
+	jail := newKillJail(t)
 	tmux := &fakeTmux{}
 	finisher, database, id := exitFinisher(t, jail, tmux)
 	defer database.Close()

@@ -22,6 +22,7 @@ type Palette struct {
 	Warn        string
 
 	Header      string
+	HeaderBg    string
 	GroupA      string
 	GroupB      string
 	Border      string
@@ -46,6 +47,7 @@ var defaultPalette = Palette{
 	Muted:       "#94a3b8",
 	Warn:        "#fde047",
 	Header:      "#ffffff",
+	HeaderBg:    "#5f3dc4",
 	GroupA:      "#5eead4",
 	GroupB:      "#7dd3fc",
 	Border:      "#64748b",
@@ -70,6 +72,7 @@ var tokyoNightPalette = Palette{
 	Muted:       "#565f89",
 	Warn:        "#e0af68",
 	Header:      "#c0caf5",
+	HeaderBg:    "#414868",
 	GroupA:      "#73daca",
 	GroupB:      "#7dcfff",
 	Border:      "#3b4261",

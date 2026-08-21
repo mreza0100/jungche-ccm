@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	pfmstats "hostops/pfm/internal/stats"
+	"hostops/pfm/internal/theme"
 )
 
 func TestRenderGoldens(t *testing.T) {
@@ -135,6 +136,26 @@ func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {
 	}
 }
 
+func TestTokyoNightOwnsTheHeaderBackground(t *testing.T) {
+	configureStyles(theme.Load("tokyo-night"))
+	t.Cleanup(func() { configureStyles(theme.Load("default")) })
+	if got, want := fmt.Sprint(headerStyle.GetBackground()), "{65 72 104 255}"; got != want {
+		t.Fatalf("Tokyo Night header background=%s, want %s", got, want)
+	}
+}
+
+func TestAccountMedalUsesConfigOwnedDefaultsAndFailsClosedOnMissingRosterEntry(t *testing.T) {
+	configuredAccountEmojis = nil
+	if got := accountMedal(4); got != "🍀" {
+		t.Fatalf("default account 4 medal=%q, want config default", got)
+	}
+	configuredAccountEmojis = map[int]string{1: "🥇"}
+	t.Cleanup(func() { configuredAccountEmojis = nil })
+	if got := accountMedal(2); got != "·" {
+		t.Fatalf("missing configured account medal=%q, want honest unknown marker", got)
+	}
+}
+
 func TestFancyRenderNeverWrapsAtFixedWidths(t *testing.T) {
 	for _, width := range []int{80, 120} {
 		snapshot := fixtureSnapshot(width)
@@ -161,13 +182,22 @@ func TestFancyRenderHasNoPreviewAtAnyWidth(t *testing.T) {
 	}
 }
 
-func TestHeaderSeparatesHiddenEmptyAndRefreshStatus(t *testing.T) {
+func TestFancyRenderHasNoProjectRotationControl(t *testing.T) {
+	content := ansi.Strip(NewModel(fixtureSnapshot(120)).View().Content)
+	for _, retired := range []string{"project rotation", "⌃R"} {
+		if strings.Contains(content, retired) {
+			t.Fatalf("picker still renders retired %q control:\n%s", retired, content)
+		}
+	}
+}
+
+func TestHeaderSeparatesKilledEmptyAndRefreshStatus(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
-	snapshot.HiddenCount = 12
+	snapshot.KilledCount = 12
 	snapshot.SuppressedCount = 153
 	snapshot.Refreshing = true
 	header := ansi.Strip(NewModel(snapshot).renderHeader(120))
-	for _, want := range []string{"12 hidden", "153 empty", "⟳ refreshing"} {
+	for _, want := range []string{"12 killed", "153 empty", "⟳ refreshing"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("header %q does not contain %q", header, want)
 		}

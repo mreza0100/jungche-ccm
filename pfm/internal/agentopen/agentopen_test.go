@@ -97,11 +97,31 @@ func (t fakeTmux) Attach(context.Context, string) error              { return ni
 
 func newTestOpener(t *testing.T, commands Commands, processes Processes, tmux Tmux) *Opener {
 	t.Helper()
+	home := filepath.Join(t.TempDir(), "home")
 	return New(Dependencies{
-		SIDDir: filepath.Join(t.TempDir(), "sid"), Home: filepath.Join(t.TempDir(), "home"),
+		SIDDir: filepath.Join(t.TempDir(), "sid"), Home: home,
+		Accounts: []Account{
+			{ID: 1},
+			{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")},
+			{ID: 3, ConfigDir: filepath.Join(home, ".cc", "3")},
+		},
 		Commands: commands, Processes: processes, Tmux: tmux, Stderr: &bytes.Buffer{},
 		GracePeriod: 10 * time.Millisecond, PollInterval: time.Millisecond,
 	})
+}
+
+func TestNewDoesNotInventAnAccountRoster(t *testing.T) {
+	opener := New(Dependencies{
+		Home: t.TempDir(), Commands: &fakeCommands{},
+		Processes: &fakeProcesses{}, Tmux: fakeTmux{},
+	})
+	if len(opener.accounts) != 0 {
+		t.Fatalf("New() accounts=%#v, want an empty config-owned roster", opener.accounts)
+	}
+	err := opener.Open(context.Background(), Request{ID: "fixture", CWD: "/work"})
+	if err == nil || !strings.Contains(err.Error(), "configured account roster is empty") {
+		t.Fatalf("Open() error=%v, want empty-roster failure", err)
+	}
 }
 
 func TestOpenIdleTakesOverAndResumesCurrentPrimary(t *testing.T) {

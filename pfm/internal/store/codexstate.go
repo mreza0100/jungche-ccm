@@ -213,7 +213,7 @@ func NewCodexThreadResolver(
 }
 
 // readCodexState reads one state store. The handle is read-only through the
-// mode=ro URI and never immutable=1, which would hide the -wal and serve a
+// mode=ro URI and never immutable=1, which would kill the -wal and serve a
 // stale snapshot of a store Codex is actively writing.
 func readCodexState(ctx context.Context, file string) ([]CodexThread, error) {
 	dsn := "file:" + file + "?mode=ro&_pragma=busy_timeout(2000)"

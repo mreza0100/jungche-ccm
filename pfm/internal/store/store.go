@@ -54,7 +54,7 @@ var migrations = [...]string{
 // binary's private cache — transcripts, rollouts, Codex names — every row of it
 // derived from files on disk and rebuildable by a rescan. `state` is the
 // fleet's shared store at ~/.cc/fleet.db. It holds
-// operator decisions such as hides, teammates, and the primary account.
+// operator decisions such as kills, teammates, and the primary account.
 type Store struct {
 	db    *sql.DB
 	state *shared.Store
@@ -130,13 +130,13 @@ func OpenContext(ctx context.Context, options ...OpenOption) (*Store, error) {
 			degraded,
 		)
 	}
-	if err := store.adoptLocalHides(ctx); err != nil {
+	if err := store.adoptLocalKills(ctx); err != nil {
 		return nil, errors.Join(err, store.Close())
 	}
 	return store, nil
 }
 
-// SharedPath reports the shared state database this Store writes hides to.
+// SharedPath reports the shared state database this Store writes kills to.
 func (s *Store) SharedPath() string { return s.state.Path() }
 
 // SharedDegraded reports why the shared database half is unavailable, or nil.
@@ -195,30 +195,30 @@ func (s *Store) migrate(ctx context.Context) error {
 			}
 		}
 		if startingVersion < 2 {
-			if err := migrateCodexLineageHides(ctx, tx); err != nil {
-				return fmt.Errorf("migrate Codex lineage hides: %w", err)
+			if err := migrateCodexLineageKills(ctx, tx); err != nil {
+				return fmt.Errorf("migrate Codex lineage kills: %w", err)
 			}
 		}
 		return nil
 	})
 }
 
-// adoptedHidesMeta marks the one-time move of hides out of this binary's
+// adoptedKillsMeta marks the one-time move of kills out of this binary's
 // private cache and into the fleet's shared store.
-const adoptedHidesMeta = "shared_hidden_adopted"
+const adoptedKillsMeta = "shared_hidden_adopted"
 
-// adoptLocalHides merges, once, the hides this binary used to keep to itself
+// adoptLocalKills merges, once, the kills this binary used to keep to itself
 // into the shared store, then stops consulting the local table for good.
 //
-// Local rows become shared rows. Nothing is deleted: a hide is
-// permanent and an unhide is the only removal, so a startup that could drop a
+// Local rows become shared rows. Nothing is deleted: a kill is
+// permanent and an unkill is the only removal, so a startup that could drop a
 // row is a startup that could lose a decision.
 //
 // The v1 `hidden` table is left in place, populated, and unread. It costs a few
-// kilobytes and it is the rollback: an older binary still finds its hides
+// kilobytes and it is the rollback: an older binary still finds its kills
 // there. `pfm doctor` reports it; nothing else looks at it.
-func (s *Store) adoptLocalHides(ctx context.Context) error {
-	done, found, err := s.Meta(ctx, adoptedHidesMeta)
+func (s *Store) adoptLocalKills(ctx context.Context) error {
+	done, found, err := s.Meta(ctx, adoptedKillsMeta)
 	if err != nil {
 		return err
 	}
@@ -228,26 +228,26 @@ func (s *Store) adoptLocalHides(ctx context.Context) error {
 
 	rows, err := s.db.QueryContext(ctx, "SELECT id, hidden_at FROM hidden")
 	if err != nil {
-		return fmt.Errorf("read hides awaiting adoption: %w", err)
+		return fmt.Errorf("read kills awaiting adoption: %w", err)
 	}
 	adopted := make(map[string]int64)
 	for rows.Next() {
 		var id string
-		var hiddenAt int64
-		if err := rows.Scan(&id, &hiddenAt); err != nil {
+		var killedAt int64
+		if err := rows.Scan(&id, &killedAt); err != nil {
 			_ = rows.Close()
-			return fmt.Errorf("scan hide awaiting adoption: %w", err)
+			return fmt.Errorf("scan kill awaiting adoption: %w", err)
 		}
-		adopted[id] = hiddenAt
+		adopted[id] = killedAt
 	}
 	if err := rows.Close(); err != nil {
-		return fmt.Errorf("read hides awaiting adoption: %w", err)
+		return fmt.Errorf("read kills awaiting adoption: %w", err)
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read hides awaiting adoption: %w", err)
+		return fmt.Errorf("read kills awaiting adoption: %w", err)
 	}
 
-	existing, err := s.state.HiddenAt(ctx)
+	existing, err := s.state.KilledAt(ctx)
 	if err != nil {
 		return err
 	}
@@ -255,11 +255,11 @@ func (s *Store) adoptLocalHides(ctx context.Context) error {
 		if _, alreadyShared := existing[id]; alreadyShared {
 			continue
 		}
-		if err := s.state.Hide(ctx, id, adopted[id]); err != nil {
+		if err := s.state.Kill(ctx, id, adopted[id]); err != nil {
 			return err
 		}
 	}
-	return s.SetMeta(ctx, adoptedHidesMeta, "1")
+	return s.SetMeta(ctx, adoptedKillsMeta, "1")
 }
 
 func userVersion(ctx context.Context, query rowQueryer) (int, error) {

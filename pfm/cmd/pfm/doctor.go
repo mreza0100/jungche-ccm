@@ -113,7 +113,7 @@ func runDoctor(
 		check,
 	)
 
-	// Hides live in the fleet's shared database, not this binary's cache.
+	// Kills live in the fleet's shared database, not this binary's cache.
 	sharedState := "ok"
 	if degraded := database.SharedDegraded(); degraded != nil {
 		warnings++
@@ -131,17 +131,17 @@ func runDoctor(
 		fmt.Fprintf(stdout, "doctor: unhealthy row counts: %v\n", err)
 		return 1
 	}
-	if counts.OrphanedHides != 0 {
+	if counts.OrphanedKills != 0 {
 		warnings++
 	}
 	fmt.Fprintf(
 		stdout,
-		"doctor: rows transcripts=%d rollouts=%d cx_names=%d hidden=%d orphaned_hidden=%d\n",
+		"doctor: rows transcripts=%d rollouts=%d cx_names=%d killed=%d orphaned_killed=%d\n",
 		counts.Transcripts,
 		counts.Rollouts,
 		counts.CxNames,
-		counts.Hidden,
-		counts.OrphanedHides,
+		counts.Killed,
+		counts.OrphanedKills,
 	)
 
 	walBytes := int64(0)
@@ -153,24 +153,24 @@ func runDoctor(
 	}
 	fmt.Fprintf(stdout, "doctor: wal_bytes=%d\n", walBytes)
 
-	hideWarnings, err := metaCounter(ctx, database, "busy_hide_warnings")
+	killWarnings, err := metaCounter(ctx, database, "busy_kill_warnings")
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy busy counter: %v\n", err)
 		return 1
 	}
-	unhideWarnings, err := metaCounter(ctx, database, "busy_unhide_warnings")
+	unkillWarnings, err := metaCounter(ctx, database, "busy_unkill_warnings")
 	if err != nil {
 		fmt.Fprintf(stdout, "doctor: unhealthy busy counter: %v\n", err)
 		return 1
 	}
-	if hideWarnings != 0 || unhideWarnings != 0 {
+	if killWarnings != 0 || unkillWarnings != 0 {
 		warnings++
 	}
 	fmt.Fprintf(
 		stdout,
-		"doctor: busy_warnings hide=%d unhide=%d\n",
-		hideWarnings,
-		unhideWarnings,
+		"doctor: busy_warnings kill=%d unkill=%d\n",
+		killWarnings,
+		unkillWarnings,
 	)
 
 	// The process table is probed by READING it, not by stat'ing /proc. macOS has

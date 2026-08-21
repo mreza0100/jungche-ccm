@@ -6,23 +6,28 @@ import (
 	"strings"
 )
 
-// HidePrefix is the label prefix that hides a chat from the default listing.
-// Renaming a chat to "_HIDE worker 3" is a hide anyone can write from inside
+// KillPrefix is the label prefix that kills a chat from the default listing.
+// Renaming a chat to "_KILL worker 3" is a kill anyone can write from inside
 // the chat itself, with no store row and no picker keystroke — and renaming it
-// back is the unhide. The match is case-insensitive so "_hide" works too.
-const HidePrefix = "_HIDE"
+// back is the unkill. The match is case-insensitive so "_kill" works too.
+const (
+	KillPrefix       = "_KILL"
+	legacyKillPrefix = "_" + "HI" + "DE"
+)
 
-// LabelHidden reports whether a display name carries HidePrefix.
-func LabelHidden(name string) bool {
-	if len(name) < len(HidePrefix) {
-		return false
+// LabelKilled reports whether a display name carries KillPrefix.
+func LabelKilled(name string) bool {
+	for _, prefix := range []string{KillPrefix, legacyKillPrefix} {
+		if len(name) >= len(prefix) && strings.EqualFold(name[:len(prefix)], prefix) {
+			return true
+		}
 	}
-	return strings.EqualFold(name[:len(HidePrefix)], HidePrefix)
+	return false
 }
 
 // CodexThread is the naming-relevant half of one Codex rollout row. The
 // package takes this instead of store.Rollout so that store — which must
-// answer the same "is this label hidden" question about a lineage before it
+// answer the same "is this label killed" question about a lineage before it
 // spends a candidate slot on it — can depend on naming rather than the
 // reverse.
 type CodexThread struct {

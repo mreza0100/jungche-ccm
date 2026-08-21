@@ -1,7 +1,7 @@
 package store
 
 // ClaudeEngine and CodexEngine name the two chat engines. They are the source
-// of the same pair in internal/hide, which aliases them rather than repeating
+// of the same pair in internal/kill, which aliases them rather than repeating
 // the literals.
 const (
 	ClaudeEngine = "cc"
@@ -69,21 +69,21 @@ const (
 	CxNameSourceSessionIndex = "session_index"
 )
 
-// Hidden records a hide for a Claude or Codex chat. A nil prompt baseline is
-// permanent; a /clear hide carries the prompt count at that event and lifts
+// Killed records a kill for a Claude or Codex chat. A nil prompt baseline is
+// permanent; a /clear kill carries the prompt count at that event and lifts
 // after the transcript grows.
 //
 // The row lives in the fleet's shared store, keyed by uuid and nothing else.
-type Hidden struct {
+type Killed struct {
 	ID string
 	// Engine is DERIVED at read time, not stored: "cc" when the id resolves to
 	// an indexed transcript, "cx" when it resolves to a rollout or a Codex
 	// lineage root, and empty when neither table knows it. An empty engine
-	// means "hidden whatever the engine" — it never lifts a hide.
+	// means "killed whatever the engine" — it never lifts a kill.
 	Engine string
-	// HiddenAt is the shared row's hidden_at, or 0 for a hide that reached only
+	// KilledAt is the shared row's killed_at, or 0 for a kill that reached only
 	// the carrier file, which records no time.
-	HiddenAt int64
-	// BaselinePrompts is the /clear auto-unhide ratchet in at_payload.
+	KilledAt int64
+	// BaselinePrompts is the /clear auto-unkill ratchet in at_payload.
 	BaselinePrompts *int64
 }

@@ -123,38 +123,38 @@ func TestPlainQueries(t *testing.T) {
 
 	// A prompt baseline is the /clear ratchet and survives in shared state.
 	baseline := int64(7)
-	hidden := Hidden{
+	killed := Killed{
 		ID:              "cc-1",
 		Engine:          "cc",
-		HiddenAt:        1234,
+		KilledAt:        1234,
 		BaselinePrompts: &baseline,
 	}
-	if err := store.Hide(ctx, hidden); err != nil {
-		t.Fatalf("Hide() error = %v", err)
+	if err := store.Kill(ctx, killed); err != nil {
+		t.Fatalf("Kill() error = %v", err)
 	}
-	gotHidden, found, err := store.Hidden(ctx, hidden.ID)
+	gotKilled, found, err := store.Killed(ctx, killed.ID)
 	if err != nil {
-		t.Fatalf("Hidden() error = %v", err)
+		t.Fatalf("Killed() error = %v", err)
 	}
-	wantHidden := hidden
-	if !found || !reflect.DeepEqual(gotHidden, wantHidden) {
-		t.Fatalf("Hidden() = %#v, %v, want %#v, true", gotHidden, found, wantHidden)
+	wantKilled := killed
+	if !found || !reflect.DeepEqual(gotKilled, wantKilled) {
+		t.Fatalf("Killed() = %#v, %v, want %#v, true", gotKilled, found, wantKilled)
 	}
-	if err := store.Hide(ctx, Hidden{ID: "cx-1", Engine: "cx", HiddenAt: 2345}); err != nil {
-		t.Fatalf("Hide() with lazy baseline error = %v", err)
+	if err := store.Kill(ctx, Killed{ID: "cx-1", Engine: "cx", KilledAt: 2345}); err != nil {
+		t.Fatalf("Kill() with lazy baseline error = %v", err)
 	}
-	hiddenChats, err := store.HiddenChats(ctx)
+	killedChats, err := store.KilledChats(ctx)
 	if err != nil {
-		t.Fatalf("HiddenChats() error = %v", err)
+		t.Fatalf("KilledChats() error = %v", err)
 	}
-	if len(hiddenChats) != 2 || hiddenChats[1].BaselinePrompts != nil {
-		t.Fatalf("HiddenChats() = %#v, want two rows and a nil lazy baseline", hiddenChats)
+	if len(killedChats) != 2 || killedChats[1].BaselinePrompts != nil {
+		t.Fatalf("KilledChats() = %#v, want two rows and a nil lazy baseline", killedChats)
 	}
-	if err := store.Unhide(ctx, hidden.ID); err != nil {
-		t.Fatalf("Unhide() error = %v", err)
+	if err := store.Unkill(ctx, killed.ID); err != nil {
+		t.Fatalf("Unkill() error = %v", err)
 	}
-	if _, found, err := store.Hidden(ctx, hidden.ID); err != nil || found {
-		t.Fatalf("Hidden() after unhide found = %v, error = %v; want false, nil", found, err)
+	if _, found, err := store.Killed(ctx, killed.ID); err != nil || found {
+		t.Fatalf("Killed() after unkill found = %v, error = %v; want false, nil", found, err)
 	}
 
 	if err := store.DeleteTranscript(ctx, transcript.UUID); err != nil {
@@ -238,18 +238,18 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 	}
 	current := int64(2)
 	if err := database.UpsertTranscript(ctx, Transcript{
-		UUID: "cc-hidden", Path: "/cc/hidden.jsonl", Size: 100,
+		UUID: "cc-killed", Path: "/cc/killed.jsonl", Size: 100,
 		MTimeNS: 100, CWD: "/work/cc", PromptCount: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.Hide(ctx, Hidden{
-		ID: "cc-hidden", Engine: "cc", BaselinePrompts: &current,
+	if err := database.Kill(ctx, Killed{
+		ID: "cc-killed", Engine: "cc", BaselinePrompts: &current,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// cc-grown carries a /clear baseline its prompt count already passed, so
-	// the cached frame must auto-unhide it.
+	// the cached frame must auto-unkill it.
 	stale := int64(1)
 	if err := database.UpsertTranscript(ctx, Transcript{
 		UUID: "cc-grown", Path: "/cc/grown.jsonl", Size: 100,
@@ -257,7 +257,7 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.Hide(ctx, Hidden{
+	if err := database.Kill(ctx, Killed{
 		ID: "cc-grown", Engine: "cc", BaselinePrompts: &stale,
 	}); err != nil {
 		t.Fatal(err)
@@ -276,13 +276,13 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 		}
 	}
 	if err := database.UpsertRollout(ctx, Rollout{
-		ID: "cx-hidden", Path: "/cx/hidden.jsonl", Size: 100,
+		ID: "cx-killed", Path: "/cx/killed.jsonl", Size: 100,
 		MTimeNS: 100, CWD: "/work/cx", UserThread: true, PromptCount: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.Hide(ctx, Hidden{
-		ID: "cx-hidden", Engine: "cx",
+	if err := database.Kill(ctx, Killed{
+		ID: "cx-killed", Engine: "cx",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -294,23 +294,23 @@ func TestDefaultCandidatesAreCappedAndCountsStayHonest(t *testing.T) {
 	if len(transcripts) != 30 || len(rollouts) != 15 {
 		t.Fatalf("candidate lengths=%d/%d, want 30/15", len(transcripts), len(rollouts))
 	}
-	if counts.Hidden != 2 || counts.Suppressed != 18 {
-		t.Fatalf("cached counts=%+v, want hidden=2 suppressed=18", counts)
+	if counts.Killed != 2 || counts.Suppressed != 18 {
+		t.Fatalf("cached counts=%+v, want killed=2 suppressed=18", counts)
 	}
 	for _, transcript := range transcripts {
 		if transcript.IsBG || transcript.Size <= 0 || transcript.PromptCount <= 0 ||
-			transcript.UUID == "cc-hidden" {
+			transcript.UUID == "cc-killed" {
 			t.Fatalf("ineligible cached transcript: %#v", transcript)
 		}
 	}
 }
 
-// TestDefaultRolloutsHiddenOnAnyLineageMember is codexLineageHidden's own
-// fixture: a hide keyed on a MEMBER id — never the lineage root — must still pull the
+// TestDefaultRolloutsKilledOnAnyLineageMember is codexLineageKilled's own
+// fixture: a kill keyed on a MEMBER id — never the lineage root — must still pull the
 // whole conversation out of the cached first frame. "child-old" is neither
 // the root nor the newest file, so a fix that only special-cases those two
 // would still miss it.
-func TestDefaultRolloutsHiddenOnAnyLineageMember(t *testing.T) {
+func TestDefaultRolloutsKilledOnAnyLineageMember(t *testing.T) {
 	setStoreTestJail(t)
 	database := openTestStore(t)
 	defer database.Close()
@@ -326,13 +326,13 @@ func TestDefaultRolloutsHiddenOnAnyLineageMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rollouts) != 1 || rollouts[0].LineageRoot != "root" {
-		t.Fatalf("unhidden lineage = %#v, want exactly the root-lineage row", rollouts)
+		t.Fatalf("unkilled lineage = %#v, want exactly the root-lineage row", rollouts)
 	}
-	if counts.Hidden != 0 {
-		t.Fatalf("counts before hide = %+v, want zero hidden", counts)
+	if counts.Killed != 0 {
+		t.Fatalf("counts before kill = %+v, want zero killed", counts)
 	}
 
-	if err := database.Hide(ctx, Hidden{ID: "child-old", Engine: "cx"}); err != nil {
+	if err := database.Kill(ctx, Killed{ID: "child-old", Engine: "cx"}); err != nil {
 		t.Fatal(err)
 	}
 	_, rollouts, counts, err = database.DefaultCandidates(ctx, 10, 10)
@@ -341,15 +341,15 @@ func TestDefaultRolloutsHiddenOnAnyLineageMember(t *testing.T) {
 	}
 	if len(rollouts) != 0 {
 		t.Fatalf(
-			"a hide on a non-root, non-newest member left the lineage listed: %#v",
+			"a kill on a non-root, non-newest member left the lineage listed: %#v",
 			rollouts,
 		)
 	}
-	if counts.Hidden != 1 {
-		t.Fatalf("counts after member hide = %+v, want hidden=1", counts)
+	if counts.Killed != 1 {
+		t.Fatalf("counts after member kill = %+v, want killed=1", counts)
 	}
 
-	if err := database.Unhide(ctx, "child-old"); err != nil {
+	if err := database.Unkill(ctx, "child-old"); err != nil {
 		t.Fatal(err)
 	}
 	_, rollouts, _, err = database.DefaultCandidates(ctx, 10, 10)
@@ -357,7 +357,7 @@ func TestDefaultRolloutsHiddenOnAnyLineageMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rollouts) != 1 || rollouts[0].LineageRoot != "root" {
-		t.Fatalf("unhide did not bring the lineage back: %#v", rollouts)
+		t.Fatalf("unkill did not bring the lineage back: %#v", rollouts)
 	}
 }
 

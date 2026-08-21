@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -18,14 +18,14 @@ import (
 // New constructs a manager from the already-open fleet store.
 func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 	if database == nil {
-		return nil, errors.New("hide store is nil")
+		return nil, errors.New("kill store is nil")
 	}
 	resolved := dependencies.Paths
 	if resolved.Home == "" {
 		var err error
 		resolved, err = paths.Resolve()
 		if err != nil {
-			return nil, fmt.Errorf("resolve hide paths: %w", err)
+			return nil, fmt.Errorf("resolve kill paths: %w", err)
 		}
 	}
 	proc := dependencies.ProcFS
@@ -71,10 +71,10 @@ func Environment() SelfEnvironment {
 	}
 }
 
-// Hide records a permanent hide and optionally starts the detached exit
-// finisher. The hide lifts only on an explicit unhide, so no prompt baseline
+// Kill records a permanent kill and optionally starts the detached exit
+// finisher. The kill lifts only on an explicit unkill, so no prompt baseline
 // is recorded.
-func (manager *Manager) Hide(
+func (manager *Manager) Kill(
 	ctx context.Context,
 	request Request,
 ) (Target, error) {
@@ -86,7 +86,7 @@ func (manager *Manager) Hide(
 	case request.ID != "":
 		target, err = manager.lookupTarget(ctx, request.ID, request.Engine, request.RolloutPath)
 	default:
-		err = errors.New("hide requires --self or an id")
+		err = errors.New("kill requires --self or an id")
 	}
 	if err != nil {
 		return Target{}, err
@@ -106,10 +106,10 @@ func (manager *Manager) Hide(
 		return Target{}, errors.New("--exit requires a live --self tmux pane")
 	}
 
-	if err := manager.database.Hide(ctx, store.Hidden{
+	if err := manager.database.Kill(ctx, store.Killed{
 		ID:       target.ID,
 		Engine:   target.Engine,
-		HiddenAt: manager.now().Unix(),
+		KilledAt: manager.now().Unix(),
 	}); err != nil {
 		return Target{}, err
 	}
@@ -129,11 +129,11 @@ func (manager *Manager) Hide(
 	return target, nil
 }
 
-// HideCleared records a prompt-baseline hide only when id is already an
+// KillCleared records a prompt-baseline kill only when id is already an
 // indexed Claude fleet chat. The SessionEnd hook supplies the id directly;
 // no tmux or cwd guess may turn an ordinary bare Claude session into a fleet
-// hide.
-func (manager *Manager) HideCleared(
+// kill.
+func (manager *Manager) KillCleared(
 	ctx context.Context,
 	id string,
 ) (Target, bool, error) {
@@ -145,8 +145,8 @@ func (manager *Manager) HideCleared(
 		return Target{}, false, err
 	}
 	baseline := transcript.PromptCount
-	if err := manager.database.Hide(ctx, store.Hidden{
-		ID: id, Engine: ClaudeEngine, HiddenAt: manager.now().Unix(),
+	if err := manager.database.Kill(ctx, store.Killed{
+		ID: id, Engine: ClaudeEngine, KilledAt: manager.now().Unix(),
 		BaselinePrompts: &baseline,
 	}); err != nil {
 		return Target{}, false, err
@@ -207,10 +207,10 @@ func (manager *Manager) SeedCodexPane(
 	return manager.database.SetMeta(ctx, key, threadID)
 }
 
-// HideClearedCodex records a prompt-baseline hide on the visible lineage root
+// KillClearedCodex records a prompt-baseline kill on the visible lineage root
 // for an already indexed Codex thread. It never guesses an id: callers must
 // supply the pane binding established before /clear created the replacement.
-func (manager *Manager) HideClearedCodex(
+func (manager *Manager) KillClearedCodex(
 	ctx context.Context,
 	id string,
 ) (Target, bool, error) {
@@ -222,8 +222,8 @@ func (manager *Manager) HideClearedCodex(
 		return Target{}, false, err
 	}
 	baseline := lineage.PromptCount
-	if err := manager.database.Hide(ctx, store.Hidden{
-		ID: lineage.RootID, Engine: CodexEngine, HiddenAt: manager.now().Unix(),
+	if err := manager.database.Kill(ctx, store.Killed{
+		ID: lineage.RootID, Engine: CodexEngine, KilledAt: manager.now().Unix(),
 		BaselinePrompts: &baseline,
 	}); err != nil {
 		return Target{}, false, err
@@ -243,20 +243,20 @@ func codexPaneBindingKey(socket, pane string) (string, bool) {
 	return "codex_clear_pane_" + address, true
 }
 
-// Unhide removes one hide through the store's non-fatal busy policy.
+// Unkill removes one kill through the store's non-fatal busy policy.
 //
-// A Codex hide is not always keyed on the id this call receives: the live
+// A Codex kill is not always keyed on the id this call receives: the live
 // process can expose a resumed CHILD rollout id, while every id
 // the picker shows the user is the lineage ROOT — compose keys every Codex
 // row on it (composer.rolloutRow). Resolving id to the root and unhiding
-// only that key would leave a child-keyed hide standing: the row would come
-// right back hidden (composer.hiddenMatch, store.codexLineageHidden both
-// check every member). So every id in the lineage is unhidden, root and
-// members alike; the shared store's Unhide is a safe no-op for an id that
-// carries no hide.
-func (manager *Manager) Unhide(ctx context.Context, id string) error {
+// only that key would leave a child-keyed kill standing: the row would come
+// right back killed (composer.killedMatch, store.codexLineageKilled both
+// check every member). So every id in the lineage is unkilled, root and
+// members alike; the shared store's Unkill is a safe no-op for an id that
+// carries no kill.
+func (manager *Manager) Unkill(ctx context.Context, id string) error {
 	if id == "" {
-		return errors.New("unhide id is empty")
+		return errors.New("unkill id is empty")
 	}
 	if _, found, err := manager.database.Transcript(ctx, id); err != nil {
 		return err
@@ -267,38 +267,38 @@ func (manager *Manager) Unhide(ctx context.Context, id string) error {
 		); err != nil {
 			return err
 		} else if found {
-			return manager.unhideLineage(ctx, lineage)
+			return manager.unkillLineage(ctx, lineage)
 		}
 	}
-	return manager.database.Unhide(ctx, id)
+	return manager.database.Unkill(ctx, id)
 }
 
-// unhideLineage clears every id in a Codex resume lineage, root and members
-// alike — see Unhide's own comment for why the root alone is not enough.
-func (manager *Manager) unhideLineage(
+// unkillLineage clears every id in a Codex resume lineage, root and members
+// alike — see Unkill's own comment for why the root alone is not enough.
+func (manager *Manager) unkillLineage(
 	ctx context.Context,
 	lineage store.CodexLineage,
 ) error {
-	if err := manager.database.Unhide(ctx, lineage.RootID); err != nil {
+	if err := manager.database.Unkill(ctx, lineage.RootID); err != nil {
 		return err
 	}
 	for _, member := range lineage.MemberIDs {
 		if member == lineage.RootID {
 			continue
 		}
-		if err := manager.database.Unhide(ctx, member); err != nil {
+		if err := manager.database.Unkill(ctx, member); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Hidden returns every current hide in stable ID order.
-func (manager *Manager) Hidden(ctx context.Context) ([]store.Hidden, error) {
-	return manager.database.HiddenChats(ctx)
+// Killed returns every current kill in stable ID order.
+func (manager *Manager) Killed(ctx context.Context) ([]store.Killed, error) {
+	return manager.database.KilledChats(ctx)
 }
 
-// lookupTarget resolves the chat a hide is aimed at. engine is the caller's
+// lookupTarget resolves the chat a kill is aimed at. engine is the caller's
 // own answer to "which engine?", supplied only by a caller holding the row;
 // rolloutPath is that same caller's own answer to "which file?" for a Codex
 // id, used only to resolve an UNINDEXED lineage member to its root before
@@ -339,9 +339,9 @@ func (manager *Manager) lookupTarget(
 		// running process, so the picker shows it long before its transcript
 		// reaches the index — and the index is what the two lookups above ask.
 		// Refusing here is what made ⌃X on an agent row a silent no-op. The
-		// shared hidden store is keyed by uuid alone and derives the engine
+		// shared killed store is keyed by uuid alone and derives the engine
 		// back out of the index, so the agent's own session uuid is the whole
-		// key this hide needs.
+		// key this kill needs.
 		return Target{Engine: engine, ID: id}, nil
 	}
 	return Target{}, fmt.Errorf("chat %q is not indexed", id)

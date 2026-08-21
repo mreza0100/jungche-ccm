@@ -7,15 +7,15 @@ import (
 	"hostops/pfm/internal/store"
 )
 
-// TestLabelHiddenChatLeavesTheDefaultListing pins the rename-to-hide rule: a
-// chat whose label starts with "_HIDE" is out of the default list, in the
-// hidden view, and counted as hidden — with no row in the hidden table.
-func TestLabelHiddenChatLeavesTheDefaultListing(t *testing.T) {
+// TestLabelKilledChatLeavesTheDefaultListing pins the rename-to-kill rule: a
+// chat whose label starts with "_KILL" is out of the default list, in the
+// killed view, and counted as killed — with no row in the killed table.
+func TestLabelKilledChatLeavesTheDefaultListing(t *testing.T) {
 	worker := transcript(
 		"labelled",
 		"/accounts/1/projects/alpha/labelled.jsonl",
 		"/work/alpha",
-		"_HIDE headless worker",
+		"_KILL headless worker",
 		100,
 		5,
 		900,
@@ -37,41 +37,41 @@ func TestLabelHiddenChatLeavesTheDefaultListing(t *testing.T) {
 
 	output := Compose(input)
 	if _, found := rowByID(output.Rows, "labelled"); found {
-		t.Fatalf("_HIDE-labelled chat listed by default: %#v", output.Rows)
+		t.Fatalf("_KILL-labelled chat listed by default: %#v", output.Rows)
 	}
 	if _, found := rowByID(output.Rows, "plain"); !found {
 		t.Fatalf("ordinary chat missing from the default list: %#v", output.Rows)
 	}
-	if output.HiddenCount != 1 {
-		t.Fatalf("hidden count = %d, want 1", output.HiddenCount)
+	if output.KilledCount != 1 {
+		t.Fatalf("killed count = %d, want 1", output.KilledCount)
 	}
 	if output.SuppressedCount != 0 {
 		t.Fatalf("suppressed count = %d, want 0", output.SuppressedCount)
 	}
 
-	input.Options.View = HiddenView
-	hidden := Compose(input)
-	row, found := rowByID(hidden.Rows, "labelled")
+	input.Options.View = KilledView
+	killed := Compose(input)
+	row, found := rowByID(killed.Rows, "labelled")
 	if !found {
-		t.Fatalf("_HIDE-labelled chat missing from the hidden view: %#v", hidden.Rows)
+		t.Fatalf("_KILL-labelled chat missing from the killed view: %#v", killed.Rows)
 	}
-	if !row.Hidden || !row.NameHidden {
-		t.Fatalf("label hide not marked on the row: %#v", row)
+	if !row.Killed || !row.NameKilled {
+		t.Fatalf("label kill not marked on the row: %#v", row)
 	}
-	if _, found := rowByID(hidden.Rows, "plain"); found {
-		t.Fatalf("ordinary chat leaked into the hidden view: %#v", hidden.Rows)
+	if _, found := rowByID(killed.Rows, "plain"); found {
+		t.Fatalf("ordinary chat leaked into the killed view: %#v", killed.Rows)
 	}
 }
 
-// TestLabelHideCoversLiveAndCodexRowsAndFoldsCase covers the two row shapes a
+// TestLabelKillCoversLiveAndCodexRowsAndFoldsCase covers the two row shapes a
 // headless worker actually takes — a live Claude pane and a resumable Codex
 // lineage — and the lower-case spelling.
-func TestLabelHideCoversLiveAndCodexRowsAndFoldsCase(t *testing.T) {
+func TestLabelKillCoversLiveAndCodexRowsAndFoldsCase(t *testing.T) {
 	live := transcript(
 		"live-worker",
 		"/accounts/1/projects/alpha/live-worker.jsonl",
 		"/work/alpha",
-		"_hide live worker",
+		"_kill live worker",
 		100,
 		5,
 		900,
@@ -89,7 +89,7 @@ func TestLabelHideCoversLiveAndCodexRowsAndFoldsCase(t *testing.T) {
 	input := Input{
 		Transcripts: []store.Transcript{live},
 		Rollouts:    []store.Rollout{rollout},
-		CxNames:     map[string]string{"019f-worker": "_HIDE codex worker"},
+		CxNames:     map[string]string{"019f-worker": "_KILL codex worker"},
 		Snapshot: gather.Snapshot{
 			Panes: []gather.Pane{{Socket: "cc-1-2-3", PaneID: "%1"}},
 			Crumbs: []gather.Crumb{{
@@ -105,25 +105,69 @@ func TestLabelHideCoversLiveAndCodexRowsAndFoldsCase(t *testing.T) {
 
 	output := Compose(input)
 	if row, found := rowByID(output.Rows, "live-worker"); found {
-		t.Fatalf("live _hide chat listed by default: %#v", row)
+		t.Fatalf("live _kill chat listed by default: %#v", row)
 	}
 	if row, found := rowByID(output.Rows, "019f-worker"); found {
-		t.Fatalf("Codex _HIDE chat listed by default: %#v", row)
+		t.Fatalf("Codex _KILL chat listed by default: %#v", row)
 	}
-	if output.HiddenCount != 2 {
-		t.Fatalf("hidden count = %d, want 2", output.HiddenCount)
+	if output.KilledCount != 2 {
+		t.Fatalf("killed count = %d, want 2", output.KilledCount)
+	}
+}
+
+func TestLegacyKillLabelAndKilledTableRowRemainKilled(t *testing.T) {
+	labelled := transcript(
+		"legacy-label",
+		"/accounts/1/projects/alpha/legacy-label.jsonl",
+		"/work/alpha",
+		"_HIDE legacy worker",
+		100,
+		5,
+		900,
+	)
+	stored := transcript(
+		"legacy-store",
+		"/accounts/1/projects/alpha/legacy-store.jsonl",
+		"/work/alpha",
+		"Stored kill",
+		100,
+		5,
+		800,
+	)
+	input := Input{
+		Transcripts:  []store.Transcript{labelled, stored},
+		Killed:       []store.Killed{{ID: stored.UUID, Engine: store.ClaudeEngine}},
+		AccountRoots: fixtureAccountRoots(),
+		Options:      Options{View: DefaultView, PrimaryAccount: 1},
+	}
+	if output := Compose(input); output.KilledCount != 2 {
+		t.Fatalf("legacy kill count = %d, want 2", output.KilledCount)
+	} else if _, found := rowByID(output.Rows, labelled.UUID); found {
+		t.Fatalf("legacy label kill listed by default: %#v", output.Rows)
+	} else if _, found := rowByID(output.Rows, stored.UUID); found {
+		t.Fatalf("legacy stored kill listed by default: %#v", output.Rows)
+	}
+	input.Options.View = KilledView
+	output := Compose(input)
+	if len(output.Rows) != 2 {
+		t.Fatalf("legacy kills missing from killed view: %#v", output.Rows)
+	}
+	for _, row := range output.Rows {
+		if !row.Killed {
+			t.Fatalf("legacy kill not marked killed: %#v", row)
+		}
 	}
 }
 
 // TestSplitRowKeepsItsJoinedName guards the one exclusion: a split row's Name
-// is a join of its panes' names, so a "_HIDE…" first member must not take the
+// is a join of its panes' names, so a "_KILL…" first member must not take the
 // whole socket out of the list.
 func TestSplitRowKeepsItsJoinedName(t *testing.T) {
 	first := transcript(
 		"split-a",
 		"/accounts/1/projects/alpha/split-a.jsonl",
 		"/work/alpha",
-		"_HIDE left pane",
+		"_KILL left pane",
 		100,
 		5,
 		900,
@@ -168,7 +212,7 @@ func TestSplitRowKeepsItsJoinedName(t *testing.T) {
 	if len(splits) != 1 {
 		t.Fatalf("split row missing from the default list: %#v", output.Rows)
 	}
-	if splits[0].Hidden || splits[0].NameHidden {
-		t.Fatalf("split row hidden by a member's label: %#v", splits[0])
+	if splits[0].Killed || splits[0].NameKilled {
+		t.Fatalf("split row killed by a member's label: %#v", splits[0])
 	}
 }

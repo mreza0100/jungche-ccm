@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -107,7 +107,7 @@ func (manager *Manager) identifyCodexSelf(
 		return Target{}, fmt.Errorf("read Codex pane pid: %w", err)
 	}
 	// The state-store resolver is what lets a chat whose Codex session writes
-	// no rollout file hide ITSELF; a rollout-backed pane still resolves
+	// no rollout file kill ITSELF; a rollout-backed pane still resolves
 	// through its open file descriptor exactly as before.
 	live, err := gather.DetectCodexThreads(
 		manager.proc,

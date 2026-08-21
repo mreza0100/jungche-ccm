@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// TestSharedHidesNeedNoBridgeInEitherDirection pins the shared-state boundary:
+// TestSharedKillsNeedNoBridgeInEitherDirection pins the shared-state boundary:
 // a raw SQLite writer is visible through an already-open Go store, and a Go
-// hide is immediately visible to a fresh SQLite reader.
-func TestSharedHidesNeedNoBridgeInEitherDirection(t *testing.T) {
+// kill is immediately visible to a fresh SQLite reader.
+func TestSharedKillsNeedNoBridgeInEitherDirection(t *testing.T) {
 	sqlite3 := lookSQLite3(t)
 	setStoreTestJail(t)
 	database := openTestStore(t)
@@ -33,13 +33,13 @@ ON CONFLICT(uuid) DO UPDATE SET
   hidden_at=1700000000,
   at_payload=COALESCE(excluded.at_payload, hidden.at_payload);`)
 
-	hidden, err := database.HiddenChats(ctx)
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 1 || hidden[0].ID != "zsh-hid" ||
-		hidden[0].Engine != ClaudeEngine || hidden[0].HiddenAt != 1700000000 {
-		t.Fatalf("HiddenChats() after a CLI hide = %#v, want the zsh hide", hidden)
+	if len(killed) != 1 || killed[0].ID != "zsh-hid" ||
+		killed[0].Engine != ClaudeEngine || killed[0].KilledAt != 1700000000 {
+		t.Fatalf("KilledChats() after a CLI kill = %#v, want the zsh kill", killed)
 	}
 	transcripts, _, counts, err := database.DefaultCandidates(ctx, 30, 15)
 	if err != nil {
@@ -47,15 +47,15 @@ ON CONFLICT(uuid) DO UPDATE SET
 	}
 	for _, transcript := range transcripts {
 		if transcript.UUID == "zsh-hid" {
-			t.Fatal("the cached first frame still lists an externally hidden chat")
+			t.Fatal("the cached first frame still lists an externally killed chat")
 		}
 	}
-	if counts.Hidden != 1 {
-		t.Fatalf("cached hidden count = %d, want 1", counts.Hidden)
+	if counts.Killed != 1 {
+		t.Fatalf("cached killed count = %d, want 1", counts.Killed)
 	}
 
 	// Go → shared SQLite.
-	if err := database.Hide(ctx, Hidden{ID: "go-hid", HiddenAt: 1700000001}); err != nil {
+	if err := database.Kill(ctx, Killed{ID: "go-hid", KilledAt: 1700000001}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,11 +67,11 @@ ON CONFLICT(uuid) DO UPDATE SET
 		"SELECT uuid FROM hidden ORDER BY hidden_at DESC;",
 	)
 	if listed != "go-hid\nzsh-hid\n" {
-		t.Fatalf("external hidden listing = %q, want both hides", listed)
+		t.Fatalf("external killed listing = %q, want both kills", listed)
 	}
 
-	// And an unhide clears the authoritative row.
-	if err := database.Unhide(ctx, "go-hid"); err != nil {
+	// And an unkill clears the authoritative row.
+	if err := database.Unkill(ctx, "go-hid"); err != nil {
 		t.Fatal(err)
 	}
 	if listed = runSQLite3(
@@ -80,25 +80,25 @@ ON CONFLICT(uuid) DO UPDATE SET
 		database.SharedPath(),
 		"SELECT uuid FROM hidden ORDER BY uuid;",
 	); listed != "zsh-hid\n" {
-		t.Fatalf("hidden rows after unhide = %q", listed)
+		t.Fatalf("killed rows after unkill = %q", listed)
 	}
 }
 
 // The one-time adoption unions the retired local table into shared SQLite and
 // runs once. It never deletes the rollback rows.
-func TestAdoptingLocalHidesUnionsOnceAndDeletesNothing(t *testing.T) {
+func TestAdoptingLocalKillsUnionsOnceAndDeletesNothing(t *testing.T) {
 	setStoreTestJail(t)
 
 	first := openTestStore(t)
 	ctx := context.Background()
-	// A hide in the shape the retired local table held: engine column and all,
+	// A kill in the shape the retired local table held: engine column and all,
 	// written straight to the private cache as an older binary would have.
 	if _, err := first.db.ExecContext(ctx, `
 INSERT INTO hidden(id, engine, hidden_at, baseline_prompts)
-VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
+VALUES ('cache-kill', 'cc', 4242, 9)`); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.SetMeta(ctx, adoptedHidesMeta, ""); err != nil {
+	if err := first.SetMeta(ctx, adoptedKillsMeta, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := first.Close(); err != nil {
@@ -106,13 +106,13 @@ VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 	}
 
 	second := openTestStore(t)
-	hidden, err := second.HiddenChats(ctx)
+	killed, err := second.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 1 ||
-		hidden[0].ID != "cache-hide" || hidden[0].HiddenAt != 4242 {
-		t.Fatalf("adopted hides = %#v", hidden)
+	if len(killed) != 1 ||
+		killed[0].ID != "cache-kill" || killed[0].KilledAt != 4242 {
+		t.Fatalf("adopted kills = %#v", killed)
 	}
 	// The retired table is left populated: it is the rollback, not a leak.
 	var remaining int
@@ -123,11 +123,11 @@ VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 		t.Fatal(err)
 	}
 	if remaining != 1 {
-		t.Fatalf("retired local hidden rows = %d, want the original left in place", remaining)
+		t.Fatalf("retired local killed rows = %d, want the original left in place", remaining)
 	}
 
-	// An unhide now, and a reopen must NOT resurrect it: adoption ran once.
-	if err := second.Unhide(ctx, "cache-hide"); err != nil {
+	// An unkill now, and a reopen must NOT resurrect it: adoption ran once.
+	if err := second.Unkill(ctx, "cache-kill"); err != nil {
 		t.Fatal(err)
 	}
 	if err := second.Close(); err != nil {
@@ -136,12 +136,12 @@ VALUES ('cache-hide', 'cc', 4242, 9)`); err != nil {
 
 	third := openTestStore(t)
 	t.Cleanup(func() { _ = third.Close() })
-	hidden, err = third.HiddenChats(ctx)
+	killed, err = third.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hidden) != 0 {
-		t.Fatalf("hides after reopen = %#v, want the unhide to have stuck", hidden)
+	if len(killed) != 0 {
+		t.Fatalf("kills after reopen = %#v, want the unkill to have stuck", killed)
 	}
 }
 

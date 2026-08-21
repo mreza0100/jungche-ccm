@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"

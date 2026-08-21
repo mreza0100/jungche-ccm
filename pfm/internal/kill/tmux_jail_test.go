@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"hostops/pfm/internal/store"
 )
 
-type hideTmuxJail struct {
+type killTmuxJail struct {
 	root       string
 	tmuxDir    string
 	sidDir     string
@@ -27,7 +27,7 @@ type hideTmuxJail struct {
 	sockets    []string
 }
 
-func newHideTmuxJail(t *testing.T) *hideTmuxJail {
+func newKillTmuxJail(t *testing.T) *killTmuxJail {
 	t.Helper()
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux binary is not installed")
@@ -36,7 +36,7 @@ func newHideTmuxJail(t *testing.T) *hideTmuxJail {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jail := &hideTmuxJail{
+	jail := &killTmuxJail{
 		root:       root,
 		tmuxDir:    filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid())),
 		sidDir:     filepath.Join(root, "sid"),
@@ -69,13 +69,13 @@ func newHideTmuxJail(t *testing.T) *hideTmuxJail {
 			_ = jail.command("-L", socket, "kill-server").Run()
 		}
 		if err := os.RemoveAll(jail.root); err != nil {
-			t.Errorf("remove hide tmux jail: %v", err)
+			t.Errorf("remove kill tmux jail: %v", err)
 		}
 	})
 	return jail
 }
 
-func (jail *hideTmuxJail) command(arguments ...string) *exec.Cmd {
+func (jail *killTmuxJail) command(arguments ...string) *exec.Cmd {
 	command := exec.Command("tmux", arguments...)
 	command.Env = append(
 		os.Environ(),
@@ -86,7 +86,7 @@ func (jail *hideTmuxJail) command(arguments ...string) *exec.Cmd {
 	return command
 }
 
-func (jail *hideTmuxJail) startReader(
+func (jail *killTmuxJail) startReader(
 	t *testing.T,
 	socket, session, transcriptPath string,
 	appendPrompt bool,
@@ -135,8 +135,8 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
-func TestJailedHideExitFlushesAndSweeps(t *testing.T) {
-	jail := newHideTmuxJail(t)
+func TestJailedKillExitFlushesAndSweeps(t *testing.T) {
+	jail := newKillTmuxJail(t)
 	ctx := context.Background()
 	database, err := store.Open()
 	if err != nil {
@@ -200,7 +200,7 @@ func TestJailedHideExitFlushesAndSweeps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Hide(ctx, Request{
+	if _, err := manager.Kill(ctx, Request{
 		Self: true,
 		Exit: true,
 		Environment: SelfEnvironment{
@@ -228,7 +228,7 @@ func TestJailedHideExitFlushesAndSweeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	if (CommandTmux{}).PaneExists(ctx, socketPath, paneID) {
-		t.Fatal("target pane survived hide-exit")
+		t.Fatal("target pane survived kill-exit")
 	}
 	for _, path := range []string{
 		filepath.Join(jail.sidDir, socketName),
@@ -240,11 +240,11 @@ func TestJailedHideExitFlushesAndSweeps(t *testing.T) {
 			t.Fatalf("%s remains: %v", path, err)
 		}
 	}
-	assertHidden(t, database, id, ClaudeEngine, 500)
+	assertKilled(t, database, id, ClaudeEngine, 500)
 }
 
-func TestStressTenSimultaneousHideExits(t *testing.T) {
-	jail := newHideTmuxJail(t)
+func TestStressTenSimultaneousKillExits(t *testing.T) {
+	jail := newKillTmuxJail(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	database, err := store.Open()
@@ -256,7 +256,7 @@ func TestStressTenSimultaneousHideExits(t *testing.T) {
 	const count = 10
 	args := make([]ExitArgs, 0, count)
 	for index := 0; index < count; index++ {
-		id := fmt.Sprintf("hide-exit-%02d", index)
+		id := fmt.Sprintf("kill-exit-%02d", index)
 		path := filepath.Join(jail.claudeRoot, id+".jsonl")
 		if err := database.UpsertTranscript(ctx, store.Transcript{
 			UUID:        id,
@@ -265,10 +265,10 @@ func TestStressTenSimultaneousHideExits(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if err := database.Hide(ctx, store.Hidden{
+		if err := database.Kill(ctx, store.Killed{
 			ID:       id,
 			Engine:   ClaudeEngine,
-			HiddenAt: int64(index + 1),
+			KilledAt: int64(index + 1),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -276,7 +276,7 @@ func TestStressTenSimultaneousHideExits(t *testing.T) {
 		paneID := jail.startReader(
 			t,
 			socketName,
-			fmt.Sprintf("hide-%02d", index),
+			fmt.Sprintf("kill-%02d", index),
 			path,
 			false,
 		)
@@ -342,7 +342,7 @@ func TestStressTenSimultaneousHideExits(t *testing.T) {
 		}
 	}
 	t.Logf(
-		"STRESS hide-exit panes=%d dead=%d crumbs_remaining=0 elapsed=%s",
+		"STRESS kill-exit panes=%d dead=%d crumbs_remaining=0 elapsed=%s",
 		count,
 		count,
 		elapsed,

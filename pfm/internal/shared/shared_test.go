@@ -25,10 +25,10 @@ ORDER BY name`)
 		t.Fatalf("shared tables = %v, want %v", tables, want)
 	}
 
-	// Hides are uuid-keyed, with no engine column.
+	// Kills are uuid-keyed, with no engine column.
 	columns := queryColumn(t, state, "SELECT name FROM pragma_table_info('hidden')")
 	if !reflect.DeepEqual(columns, []string{"uuid", "hidden_at", "at_payload"}) {
-		t.Fatalf("hidden columns = %v", columns)
+		t.Fatalf("killed columns = %v", columns)
 	}
 	columns = queryColumn(t, state, "SELECT name FROM pragma_table_info('children')")
 	if !reflect.DeepEqual(columns, []string{"kind", "key", "val", "created_at"}) {
@@ -61,63 +61,63 @@ ORDER BY name`)
 	}
 }
 
-func TestHideDoesNotRecreateTheRetiredCarrier(t *testing.T) {
+func TestKillDoesNotRecreateTheRetiredCarrier(t *testing.T) {
 	state, values := openTestStore(t)
 	legacyCarrier := filepath.Join(
 		values.Home,
 		".claude",
 		".cc-ls-hidden",
 	)
-	if err := state.Hide(context.Background(), "database-only", 42); err != nil {
+	if err := state.Kill(context.Background(), "database-only", 42); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(legacyCarrier); !os.IsNotExist(err) {
-		t.Fatalf("Hide recreated retired carrier %s: %v", legacyCarrier, err)
+		t.Fatalf("Kill recreated retired carrier %s: %v", legacyCarrier, err)
 	}
 }
 
-func TestClearHideBaselineIsMonotonicAndRaceSafe(t *testing.T) {
+func TestClearKillBaselineIsMonotonicAndRaceSafe(t *testing.T) {
 	state, _ := openTestStore(t)
 	ctx := context.Background()
 	const id = "11111111-1111-4111-8111-111111111111"
 
-	if err := state.HideUntilPrompt(ctx, id, 10, 2); err != nil {
+	if err := state.KillUntilPrompt(ctx, id, 10, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.HideUntilPrompt(ctx, id, 11, 3); err != nil {
+	if err := state.KillUntilPrompt(ctx, id, 11, 3); err != nil {
 		t.Fatal(err)
 	}
-	records, err := state.HiddenRecords(ctx)
+	records, err := state.KilledRecords(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := records[id]; got.HiddenAt != 11 || got.AtPayload == nil || *got.AtPayload != 3 {
-		t.Fatalf("repeated clear hide = %#v, want hidden_at=11 baseline=3", got)
+	if got := records[id]; got.KilledAt != 11 || got.AtPayload == nil || *got.AtPayload != 3 {
+		t.Fatalf("repeated clear kill = %#v, want hidden_at=11 baseline=3", got)
 	}
-	if removed, err := state.UnhideIfPayload(ctx, id, 2); err != nil || removed {
-		t.Fatalf("stale conditional unhide = %v, %v; want false, nil", removed, err)
+	if removed, err := state.UnkillIfPayload(ctx, id, 2); err != nil || removed {
+		t.Fatalf("stale conditional unkill = %v, %v; want false, nil", removed, err)
 	}
 
-	if err := state.Hide(ctx, id, 12); err != nil {
+	if err := state.Kill(ctx, id, 12); err != nil {
 		t.Fatal(err)
 	}
-	if err := state.HideUntilPrompt(ctx, id, 13, 4); err != nil {
+	if err := state.KillUntilPrompt(ctx, id, 13, 4); err != nil {
 		t.Fatal(err)
 	}
-	records, err = state.HiddenRecords(ctx)
+	records, err = state.KilledRecords(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := records[id]; got.HiddenAt != 12 || got.AtPayload != nil {
-		t.Fatalf("clear weakened permanent hide = %#v", got)
+	if got := records[id]; got.KilledAt != 12 || got.AtPayload != nil {
+		t.Fatalf("clear weakened permanent kill = %#v", got)
 	}
 
 	const expiring = "22222222-2222-4222-8222-222222222222"
-	if err := state.HideUntilPrompt(ctx, expiring, 20, 5); err != nil {
+	if err := state.KillUntilPrompt(ctx, expiring, 20, 5); err != nil {
 		t.Fatal(err)
 	}
-	if removed, err := state.UnhideIfPayload(ctx, expiring, 5); err != nil || !removed {
-		t.Fatalf("matching conditional unhide = %v, %v; want true, nil", removed, err)
+	if removed, err := state.UnkillIfPayload(ctx, expiring, 5); err != nil || !removed {
+		t.Fatalf("matching conditional unkill = %v, %v; want true, nil", removed, err)
 	}
 }
 
@@ -138,11 +138,11 @@ func TestDegradedStoreRejectsOperatorStateChanges(t *testing.T) {
 	if state.Degraded() == nil {
 		t.Fatal("Degraded() = nil, want the reason the database is unusable")
 	}
-	if err := state.Hide(ctx, "not-written", 7); err == nil {
-		t.Fatal("degraded Hide() reported success")
+	if err := state.Kill(ctx, "not-written", 7); err == nil {
+		t.Fatal("degraded Kill() reported success")
 	}
-	if _, err := state.HiddenAt(ctx); err == nil {
-		t.Fatal("degraded HiddenAt() reported an empty set instead of its lookup failure")
+	if _, err := state.KilledAt(ctx); err == nil {
+		t.Fatal("degraded KilledAt() reported an empty set instead of its lookup failure")
 	}
 }
 

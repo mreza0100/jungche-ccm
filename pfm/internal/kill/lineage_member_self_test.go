@@ -1,4 +1,4 @@
-package hide
+package kill
 
 import (
 	"context"
@@ -12,19 +12,19 @@ import (
 )
 
 // THE BUG. A resumed Codex lineage member's rollout file lands on disk the
-// moment `codex resume` starts it, but the CLI's own hide path deliberately
+// moment `codex resume` starts it, but the CLI's own kill path deliberately
 // never runs the indexer first (pipeline.go's resolveRowEngine comment: "a
-// caller resolving one id for a hide has no business reconciling the whole
+// caller resolving one id for a kill has no business reconciling the whole
 // filesystem index"). --self identifies the live pane by the rollout file
 // its FD holds (identifyCodexSelf), extracts an id from the FILENAME alone
 // (dataID) — the member's own — and then asks database.CodexLineage for its
 // root, which can only answer from what is ALREADY indexed. An unindexed
 // member's session_id link exists only in the file's own header, so
-// CodexLineage reports "not found" and the hide lands on the member's own
+// CodexLineage reports "not found" and the kill lands on the member's own
 // id: the id the picker's composed row (keyed on the lineage ROOT) never
-// carries, so the hide never suppresses it.
-func TestSelfHideOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
-	jail := newHideJail(t)
+// carries, so the kill never suppresses it.
+func TestSelfKillOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
+	jail := newKillJail(t)
 	database := jail.open(t)
 	defer database.Close()
 	ctx := context.Background()
@@ -83,7 +83,7 @@ func TestSelfHideOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target, err := manager.Hide(ctx, Request{
+	target, err := manager.Kill(ctx, Request{
 		Self: true,
 		Environment: SelfEnvironment{
 			TMUX:     filepath.Join(jail.tmuxDir, "cx-800-1-1") + ",6,0",
@@ -91,11 +91,11 @@ func TestSelfHideOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("self-hide on an unindexed lineage member: %v", err)
+		t.Fatalf("self-kill on an unindexed lineage member: %v", err)
 	}
 	if target.ID != rootID {
 		t.Fatalf(
-			"self-hide target = %#v, want the lineage root %q, not the member's own unindexed id",
+			"self-kill target = %#v, want the lineage root %q, not the member's own unindexed id",
 			target,
 			rootID,
 		)
@@ -103,8 +103,8 @@ func TestSelfHideOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
 
 	// The picker's own source of truth: a compose pass over the root alone
 	// (the member is still unindexed, exactly as the picker would see it a
-	// moment after the hide) must not list the root row.
-	hidden, err := database.HiddenChats(ctx)
+	// moment after the kill) must not list the root row.
+	killed, err := database.KilledChats(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,12 +113,12 @@ func TestSelfHideOnUnindexedLineageMemberResolvesToRoot(t *testing.T) {
 			ID: rootID, Path: rootPath, UserThread: true,
 			FirstPrompt: "start", PromptCount: 1,
 		}},
-		Hidden:  hidden,
+		Killed:  killed,
 		Options: compose.Options{View: compose.DefaultView},
 	})
 	for _, row := range output.Rows {
 		if row.ID == rootID {
-			t.Fatalf("root row is still listed after the self-hide: %#v", row)
+			t.Fatalf("root row is still listed after the self-kill: %#v", row)
 		}
 	}
 }

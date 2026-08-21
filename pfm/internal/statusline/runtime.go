@@ -52,6 +52,7 @@ type Runtime struct {
 	UID           int
 	AccountDirs   map[string]int
 	AccountEmojis map[int]string
+	Engine        string
 
 	// A non-nil Env is a closed test environment. Nil reads os.Getenv.
 	Env map[string]string
@@ -83,6 +84,7 @@ func DefaultRuntime() (Runtime, error) {
 		ProcRoot:     resolved.ProcRoot,
 		Columns:      columns,
 		UID:          os.Getuid(),
+		Engine:       "claude",
 		Command:      commandRunner{},
 	}, nil
 }
@@ -113,6 +115,9 @@ func (runtime Runtime) now() time.Time {
 }
 
 func (runtime Runtime) normalized() Runtime {
+	if runtime.Engine == "" {
+		runtime.Engine = "claude"
+	}
 	if runtime.Home == "" {
 		runtime.Home, _ = os.UserHomeDir()
 	}

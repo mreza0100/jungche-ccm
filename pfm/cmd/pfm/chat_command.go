@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/headless"
-	"hostops/pfm/internal/hide"
 	"hostops/pfm/internal/inject"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/recovery"
 	"hostops/pfm/internal/resolve"
@@ -54,9 +54,9 @@ func runChatOpen(
 	return openID(context.Background(), chat.ID, stdout, stderr, runtime)
 }
 
-func runChatHide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
-	flags := newFlagSet("chat hide", "usage: pfm chat hide <target> [--exit]", stderr)
-	exit := flags.Bool("exit", false, "gracefully close after hiding")
+func runChatKill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet("chat kill", "usage: pfm chat kill <target> [--exit]", stderr)
+	exit := flags.Bool("exit", false, "gracefully close after killing")
 	targets, code, ok := parseFlagsAnywhere(flags, args)
 	if !ok {
 		return code
@@ -72,27 +72,27 @@ func runChatHide(args []string, stdout, stderr io.Writer, runtimes ...commandRun
 		if os.Getenv("TMUX") == "" && os.Getenv(resolve.CodexThreadEnv) != "" {
 			chat, found, err := resolveChat(context.Background(), "self", io.Discard, runtimes...)
 			if err != nil {
-				fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+				fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 				return 1
 			}
 			if !found {
-				fmt.Fprintln(stderr, "pfm chat hide: this Codex chat has no live fleet seat")
+				fmt.Fprintln(stderr, "pfm chat kill: this Codex chat has no live fleet seat")
 				return codeUnknownChat
 			}
-			return runResolvedChatHide(chat, *exit, stdout, stderr, runtimes...)
+			return runResolvedChatKill(chat, *exit, stdout, stderr, runtimes...)
 		}
-		hideArgs := []string{"--self"}
+		killArgs := []string{"--self"}
 		if *exit {
-			hideArgs = append(hideArgs, "--exit")
+			killArgs = append(killArgs, "--exit")
 		}
-		return runHide(hideArgs, stdout, stderr, runtimes...)
+		return runKill(killArgs, stdout, stderr, runtimes...)
 	}
 	target := targets[0]
 	id := target
 	if !chatUUIDPattern.MatchString(target) {
 		chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 			return 1
 		}
 		if !found {
@@ -102,33 +102,33 @@ func runChatHide(args []string, stdout, stderr io.Writer, runtimes ...commandRun
 		}
 		id = chat.ID
 	}
-	hideArgs := make([]string, 0, 2)
+	killArgs := make([]string, 0, 2)
 	if *exit {
-		hideArgs = append(hideArgs, "--exit")
+		killArgs = append(killArgs, "--exit")
 	}
-	hideArgs = append(hideArgs, id)
-	var hideOut, hideErr strings.Builder
-	code = runHide(hideArgs, &hideOut, &hideErr, runtimes...)
-	_, _ = io.WriteString(stdout, hideOut.String())
-	_, _ = io.WriteString(stderr, hideErr.String())
-	if code != 0 && strings.Contains(hideErr.String(), "not indexed") {
+	killArgs = append(killArgs, id)
+	var killOut, killErr strings.Builder
+	code = runKill(killArgs, &killOut, &killErr, runtimes...)
+	_, _ = io.WriteString(stdout, killOut.String())
+	_, _ = io.WriteString(stderr, killErr.String())
+	if code != 0 && strings.Contains(killErr.String(), "not indexed") {
 		return codeUnknownChat
 	}
 	return code
 }
 
-func runResolvedChatHide(
+func runResolvedChatKill(
 	chat headless.Chat,
 	exit bool,
 	stdout, stderr io.Writer,
 	runtimes ...commandRuntime,
 ) int {
-	database, manager, code := openHideManager(stderr, runtimes...)
+	database, manager, code := openKillManager(stderr, runtimes...)
 	if code != 0 {
 		return code
 	}
 	defer database.Close()
-	target, err := manager.Hide(context.Background(), hide.Request{
+	target, err := manager.Kill(context.Background(), kill.Request{
 		ID:          chat.ID,
 		Engine:      chat.Engine,
 		RolloutPath: chat.Path,
@@ -137,15 +137,15 @@ func runResolvedChatHide(
 		Exit:        exit,
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat hide: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat kill: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "hidden %s\n", target.ID)
+	fmt.Fprintf(stdout, "killed %s\n", target.ID)
 	return 0
 }
 
-func runChatUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
-	flags := newFlagSet("chat unhide", "usage: pfm chat unhide <target>", stderr)
+func runChatUnkill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet("chat unkill", "usage: pfm chat unkill <target>", stderr)
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -157,7 +157,7 @@ func runChatUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandR
 	if !chatUUIDPattern.MatchString(target) {
 		chat, found, err := resolveChat(context.Background(), target, io.Discard, runtimes...)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat unhide: %v\n", err)
+			fmt.Fprintf(stderr, "pfm chat unkill: %v\n", err)
 			return 1
 		}
 		if !found {
@@ -167,7 +167,7 @@ func runChatUnhide(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		}
 		target = chat.ID
 	}
-	return runUnhide([]string{target}, stdout, stderr, runtimes...)
+	return runUnkill([]string{target}, stdout, stderr, runtimes...)
 }
 
 func runChatResolve(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {

@@ -114,8 +114,8 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 }`)
 	secondarySettings := filepath.Join(home, ".cc", "2", "settings.json")
 	writeFixture(t, secondarySettings, `{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"pfm chat bb"},{"type":"command","command":"secondary-keep"}]}]}}`)
-	writeFixture(t, filepath.Join(config, ".cc-ls-hidden"), "hidden-b\nhidden-a\n")
-	writeFixture(t, filepath.Join(config, "bin", "cc-hide.sh"), "retired\n")
+	writeFixture(t, filepath.Join(config, ".cc-ls-killed"), "killed-b\nkilled-a\n")
+	writeFixture(t, filepath.Join(config, "bin", "cc-kill.sh"), "retired\n")
 	writeFixture(t, filepath.Join(home, ".zshrc"), "alias keep=yes\nsource /old/cc-fleet.zsh\n")
 	unitDirectory := filepath.Join(home, ".config", "systemd", "user")
 	legacyPathWant := filepath.Join(unitDirectory, "default.target.wants", "cc-name-sync.path")
@@ -133,7 +133,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	seed := shared.Open(context.Background(), paths.Values{
 		Home: home, SharedDB: filepath.Join(home, ".cc", "fleet.db"),
 	})
-	if err := seed.Hide(context.Background(), "hidden-a", 99); err != nil {
+	if err := seed.Kill(context.Background(), "killed-a", 99); err != nil {
 		t.Fatal(err)
 	}
 	if err := seed.Close(); err != nil {
@@ -211,8 +211,8 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("install backed up an unowned bb.md: %v", err)
 	}
 	for _, retired := range []string{
-		filepath.Join(config, ".cc-ls-hidden"),
-		filepath.Join(config, "bin", "cc-hide.sh"),
+		filepath.Join(config, ".cc-ls-killed"),
+		filepath.Join(config, "bin", "cc-kill.sh"),
 	} {
 		if _, err := os.Lstat(retired); !os.IsNotExist(err) {
 			t.Fatalf("retired file remains at %s: %v", retired, err)
@@ -222,7 +222,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	for _, wanted := range []string{
 		home + "/.local/bin/pfm statusline",
 		home + "/.local/bin/pfm usage-hook",
-		home + "/.local/bin/pfm internal clear-hide",
+		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm chat group hook",
 		home + "/.local/bin/pfm dream hook agent-inject",
 	} {
@@ -237,7 +237,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
 	for _, wanted := range []string{
-		home + "/.local/bin/pfm internal clear-hide",
+		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm dream hook codex-subagent-inject",
 		"fixture-codex-keep",
 		`"SessionStart"`,
@@ -253,7 +253,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	secondary := readFixture(t, secondarySettings)
 	if strings.Contains(secondary, "chat bb") ||
 		!strings.Contains(secondary, home+"/.local/bin/pfm chat group hook") ||
-		!strings.Contains(secondary, home+"/.local/bin/pfm internal clear-hide") ||
+		!strings.Contains(secondary, home+"/.local/bin/pfm internal clear-kill") ||
 		!strings.Contains(secondary, "secondary-keep") {
 		t.Fatalf("secondary settings did not receive the complete hook wiring:\n%s", secondary)
 	}
@@ -265,10 +265,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	state := shared.Open(context.Background(), paths.Values{
 		Home: home, SharedDB: filepath.Join(home, ".cc", "fleet.db"),
 	})
-	hidden, err := state.HiddenAt(context.Background())
+	killed, err := state.KilledAt(context.Background())
 	closeErr := state.Close()
-	if err != nil || closeErr != nil || len(hidden) != 2 || hidden["hidden-a"] != 99 || hidden["hidden-b"] != 0 {
-		t.Fatalf("migrated hidden=%v err=%v close=%v", hidden, err, closeErr)
+	if err != nil || closeErr != nil || len(killed) != 2 || killed["killed-a"] != 99 || killed["killed-b"] != 0 {
+		t.Fatalf("migrated killed=%v err=%v close=%v", killed, err, closeErr)
 	}
 
 	var second bytes.Buffer
@@ -290,10 +290,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	if content := readFixture(t, bbTarget); content != "operator copy\n" {
 		t.Fatalf("uninstall changed operator bb.md = %q", content)
 	}
-	if settings := readFixture(t, filepath.Join(config, "settings.json")); strings.Contains(settings, "internal clear-hide") {
-		t.Fatalf("uninstall retained clear-hide hook:\n%s", settings)
+	if settings := readFixture(t, filepath.Join(config, "settings.json")); strings.Contains(settings, "internal clear-kill") {
+		t.Fatalf("uninstall retained clear-kill hook:\n%s", settings)
 	}
-	if codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json")); strings.Contains(codexHooks, "internal clear-hide") ||
+	if codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json")); strings.Contains(codexHooks, "internal clear-kill") ||
 		!strings.Contains(codexHooks, "fixture-codex-keep") ||
 		!strings.Contains(codexHooks, "pfm dream hook codex-subagent-inject") {
 		t.Fatalf("uninstall did not remove only the owned Codex clear hook:\n%s", codexHooks)
@@ -370,8 +370,8 @@ func TestApplyRetiresInstalledBBCardsAndHook(t *testing.T) {
 	}
 	settings := readFixture(t, filepath.Join(config, "settings.json"))
 	if strings.Contains(settings, "chat bb") || !strings.Contains(settings, "fixture-keep") ||
-		!strings.Contains(settings, home+"/.local/bin/pfm internal clear-hide") {
-		t.Fatalf("settings did not retire /bb and wire clear-hide:\n%s", settings)
+		!strings.Contains(settings, home+"/.local/bin/pfm internal clear-kill") {
+		t.Fatalf("settings did not retire /bb and wire clear-kill:\n%s", settings)
 	}
 
 	var second bytes.Buffer

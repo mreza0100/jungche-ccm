@@ -9,22 +9,22 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/gather"
-	"hostops/pfm/internal/hide"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/store"
 )
 
-func TestClaudeClearHideHookOwnsOnlySessionEndClear(t *testing.T) {
+func TestClaudeClearKillHookOwnsOnlySessionEndClear(t *testing.T) {
 	for _, test := range []struct {
 		name     string
 		payload  string
 		fleet    bool
-		wantHide bool
+		wantKill bool
 	}{
 		{
 			name:     "clear fleet chat",
 			payload:  `{"hook_event_name":"SessionEnd","reason":"clear","session_id":"11111111-1111-4111-8111-111111111111"}`,
 			fleet:    true,
-			wantHide: true,
+			wantKill: true,
 		},
 		{
 			name:    "exit stays untouched",
@@ -77,30 +77,30 @@ func TestClaudeClearHideHookOwnsOnlySessionEndClear(t *testing.T) {
 				}
 			}
 
-			code, stdout, stderr := runClearHidePayload(t, test.payload)
+			code, stdout, stderr := runClearKillPayload(t, test.payload)
 			if code != 0 || stdout != "" {
-				t.Fatalf("clear-hide rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+				t.Fatalf("clear-kill rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 			}
 			database, err := store.Open()
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer database.Close()
-			hidden, found, err := database.Hidden(context.Background(), id)
+			killed, found, err := database.Killed(context.Background(), id)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if found != test.wantHide {
-				t.Fatalf("hidden found=%v row=%#v stderr=%q, want %v", found, hidden, stderr, test.wantHide)
+			if found != test.wantKill {
+				t.Fatalf("killed found=%v row=%#v stderr=%q, want %v", found, killed, stderr, test.wantKill)
 			}
-			if test.wantHide && (hidden.BaselinePrompts == nil || *hidden.BaselinePrompts != 2) {
-				t.Fatalf("clear baseline = %#v, want refreshed prompt count 2", hidden.BaselinePrompts)
+			if test.wantKill && (killed.BaselinePrompts == nil || *killed.BaselinePrompts != 2) {
+				t.Fatalf("clear baseline = %#v, want refreshed prompt count 2", killed.BaselinePrompts)
 			}
 		})
 	}
 }
 
-func TestClearHideHookDoubleFireIsIdempotent(t *testing.T) {
+func TestClearKillHookDoubleFireIsIdempotent(t *testing.T) {
 	root := jailTest(t)
 	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
 	id := "22222222-2222-4222-8222-222222222222"
@@ -127,7 +127,7 @@ func TestClearHideHookDoubleFireIsIdempotent(t *testing.T) {
 	}
 	payload := `{"hook_event_name":"SessionEnd","reason":"clear","session_id":"` + id + `"}`
 	for fire := 0; fire < 2; fire++ {
-		code, stdout, stderr := runClearHidePayload(t, payload)
+		code, stdout, stderr := runClearKillPayload(t, payload)
 		if code != 0 || stdout != "" || stderr != "" {
 			t.Fatalf("fire %d rc=%d stdout=%q stderr=%q", fire+1, code, stdout, stderr)
 		}
@@ -137,14 +137,14 @@ func TestClearHideHookDoubleFireIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	hidden, err := database.HiddenChats(context.Background())
-	if err != nil || len(hidden) != 1 || hidden[0].ID != id ||
-		hidden[0].BaselinePrompts == nil || *hidden[0].BaselinePrompts != 1 {
-		t.Fatalf("double-fire hidden=%#v error=%v", hidden, err)
+	killed, err := database.KilledChats(context.Background())
+	if err != nil || len(killed) != 1 || killed[0].ID != id ||
+		killed[0].BaselinePrompts == nil || *killed[0].BaselinePrompts != 1 {
+		t.Fatalf("double-fire killed=%#v error=%v", killed, err)
 	}
 }
 
-func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
+func TestCodexClearKillsPreviousPaneThreadAndThenAutoUnkills(t *testing.T) {
 	root := jailTest(t)
 	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
 	t.Setenv("TMUX", filepath.Join(root, "tmux", "cx-probe")+",123,0")
@@ -187,11 +187,11 @@ func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
 	}
 
 	startup := `{"hook_event_name":"SessionStart","source":"startup","session_id":"` + oldID + `"}`
-	if code, stdout, stderr := runClearHidePayload(t, startup); code != 0 || stdout != "" || stderr != "" {
+	if code, stdout, stderr := runClearKillPayload(t, startup); code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("Codex startup bind rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	clear := `{"hook_event_name":"SessionStart","source":"clear","session_id":"` + newID + `"}`
-	if code, stdout, stderr := runClearHidePayload(t, clear); code != 0 || stdout != "" || stderr != "" {
+	if code, stdout, stderr := runClearKillPayload(t, clear); code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("Codex clear rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 
@@ -208,7 +208,7 @@ func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
 		commandRuntime{Paths: jailPaths(t)},
 		&bytes.Buffer{},
 	)
-	manager, err := hide.New(database, hide.Dependencies{})
+	manager, err := kill.New(database, kill.Dependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,10 +216,10 @@ func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
 	if err != nil || !found || bound != newID {
 		t.Fatalf("stale live scan replaced clear-hook binding: bound=%q found=%v error=%v", bound, found, err)
 	}
-	hidden, found, err := database.Hidden(context.Background(), oldID)
-	if err != nil || !found || hidden.Engine != store.CodexEngine ||
-		hidden.BaselinePrompts == nil || *hidden.BaselinePrompts != 2 {
-		t.Fatalf("Codex clear hidden=%#v found=%v error=%v", hidden, found, err)
+	killed, found, err := database.Killed(context.Background(), oldID)
+	if err != nil || !found || killed.Engine != store.CodexEngine ||
+		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 2 {
+		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
 	}
 	rollout, found, err := database.Rollout(context.Background(), oldID)
 	if err != nil || !found {
@@ -229,15 +229,15 @@ func TestCodexClearHidesPreviousPaneThreadAndThenAutoUnhides(t *testing.T) {
 	if err := database.UpsertRollout(context.Background(), rollout); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := database.Hidden(context.Background(), oldID); err != nil || found {
-		t.Fatalf("grown Codex thread remained hidden: found=%v error=%v", found, err)
+	if _, found, err := database.Killed(context.Background(), oldID); err != nil || found {
+		t.Fatalf("grown Codex thread remained killed: found=%v error=%v", found, err)
 	}
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func runClearHidePayload(t *testing.T, payload string) (int, string, string) {
+func runClearKillPayload(t *testing.T, payload string) (int, string, string) {
 	t.Helper()
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -256,6 +256,6 @@ func runClearHidePayload(t *testing.T, payload string) (int, string, string) {
 		_ = reader.Close()
 	}()
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"internal", "clear-hide"}, &stdout, &stderr)
+	code := run([]string{"internal", "clear-kill"}, &stdout, &stderr)
 	return code, stdout.String(), strings.TrimSpace(stderr.String())
 }

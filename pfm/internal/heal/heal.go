@@ -148,7 +148,7 @@ func storeGeneration(name, prefix string) (int, bool) {
 }
 
 // Sweep reads every projection cursor and judges it. It opens both stores
-// READ-ONLY, and never immutable: an immutable handle hides the -wal and
+// READ-ONLY, and never immutable: an immutable handle kills the -wal and
 // would judge a store Codex is actively writing from a stale snapshot.
 //
 // only, when set, limits the sweep to one thread id.

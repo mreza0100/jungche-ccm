@@ -199,7 +199,7 @@ func TestRunRefusesAnOverlappingPaneReload(t *testing.T) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Run(context.Background(), Request{SocketPath: "/tmp/probe-1", Pane: "%7", Account: 2}, Options{SIDDir: dir, Delay: -1}, nil, nil, nil)
+	_, err = Run(context.Background(), Request{SocketPath: "/tmp/probe-1", Pane: "%7", Account: 2, AccountIDs: []int{2}}, Options{SIDDir: dir, Delay: -1}, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "already in flight") {
 		t.Fatalf("overlap error = %v", err)
 	}
@@ -232,6 +232,7 @@ func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 			SessionID:        "11111111-1111-4111-8111-111111111111",
 			CWD:              "/jail/project",
 			Account:          2,
+			AccountIDs:       []int{2},
 			AccountConfigDir: "/jail/home/.cc/2",
 			Cache1H:          false,
 		},
@@ -269,6 +270,7 @@ func TestRunWaitsForTheRebornPromptBeforeCheckingClaudeAndSubmittingThen(t *test
 			SessionID:  "11111111-1111-4111-8111-111111111111",
 			CWD:        "/jail/project",
 			Account:    1,
+			AccountIDs: []int{1},
 			Cache1H:    true,
 			Then:       "continue the task",
 		},
@@ -305,6 +307,7 @@ func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
 			SessionID:  "11111111-1111-4111-8111-111111111111",
 			CWD:        "/jail/project",
 			Account:    2,
+			AccountIDs: []int{2},
 			Then:       "continue the task",
 		},
 		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2, ThenTries: 2},

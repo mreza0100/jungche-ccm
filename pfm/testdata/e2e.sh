@@ -143,10 +143,10 @@ if [[ "${PFM_STRESS:-0}" == 1 ]]; then
   concurrent_ids=(agent alpha compact junk)
   for id in "${concurrent_ids[@]}"; do
     (
-      "$BIN" hide "$id"
-      "$BIN" unhide "$id"
-    ) > "$JAIL/concurrent-hide-$id.out" \
-      2> "$JAIL/concurrent-hide-$id.err" &
+      "$BIN" chat kill "$id"
+      "$BIN" chat unkill "$id"
+    ) > "$JAIL/concurrent-kill-$id.out" \
+      2> "$JAIL/concurrent-kill-$id.err" &
     pids+=("$!")
   done
   for pid in "${pids[@]}"; do
@@ -156,14 +156,14 @@ if [[ "${PFM_STRESS:-0}" == 1 ]]; then
     printf 'e2e: concurrent CLI emitted a busy warning\n' >&2
     exit 1
   fi
-  [[ "$("$BIN" ls --hidden --tsv | wc -l | tr -d ' ')" == 1 ]]
+  [[ "$("$BIN" ls --killed --tsv | wc -l | tr -d ' ')" == 1 ]]
   "$BIN" ls --tsv > "$JAIL/concurrent-final.tsv"
   assert_file \
     "$JAIL/concurrent-final.tsv" \
     "$ROOT/testdata/golden/e2e.tsv" \
     "concurrent final parity"
   "$BIN" doctor > "$JAIL/concurrent.doctor"
-  printf 'STRESS concurrent_cli ls=8 hide_unhide=4 busy_warnings=0 corruption=0\n'
+  printf 'STRESS concurrent_cli ls=8 kill_unkill=4 busy_warnings=0 corruption=0\n'
 
   cp -- "$DB" "$JAIL/damaged.db"
   truncate -s 16 "$JAIL/damaged.db"
@@ -176,26 +176,26 @@ if [[ "${PFM_STRESS:-0}" == 1 ]]; then
   printf 'STRESS damaged_doctor exit=1 panic=false unhealthy=true\n'
 fi
 
-"$BIN" hide alpha > "$JAIL/hide.out"
-"$BIN" ls --tsv > "$JAIL/hidden.tsv"
-assert_tsv_lacks "$JAIL/hidden.tsv" alpha
-"$BIN" unhide alpha > "$JAIL/unhide.out"
-"$BIN" ls --tsv > "$JAIL/unhidden.tsv"
-assert_tsv_has "$JAIL/unhidden.tsv" alpha
+"$BIN" chat kill alpha > "$JAIL/kill.out"
+"$BIN" ls --tsv > "$JAIL/killed.tsv"
+assert_tsv_lacks "$JAIL/killed.tsv" alpha
+"$BIN" chat unkill alpha > "$JAIL/unkill.out"
+"$BIN" ls --tsv > "$JAIL/unkilled.tsv"
+assert_tsv_has "$JAIL/unkilled.tsv" alpha
 
-"$BIN" hide alpha > "$JAIL/hide-again.out"
+"$BIN" chat kill alpha > "$JAIL/kill-again.out"
 printf '%s\n' \
   '{"type":"user","cwd":"/work/alpha","message":{"content":"Alpha wakes again"}}' \
   >> "$ALPHA"
 delta="$("$BIN" index)"
 [[ "$delta" == files=8\ skipped=7\ delta=1\ full=0\ deleted=0\ touched=1\ bytes=*" cx_names=false" ]]
-"$BIN" ls --tsv > "$JAIL/still-hidden.tsv"
-assert_tsv_lacks "$JAIL/still-hidden.tsv" alpha
-if ! "$BIN" ls --hidden --tsv | awk -F $'\t' '$1 == "alpha" { found=1 } END { exit !found }'; then
-  printf 'e2e: alpha stopped being hidden after a new prompt\n' >&2
+"$BIN" ls --tsv > "$JAIL/still-killed.tsv"
+assert_tsv_lacks "$JAIL/still-killed.tsv" alpha
+if ! "$BIN" ls --killed --tsv | awk -F $'\t' '$1 == "alpha" { found=1 } END { exit !found }'; then
+  printf 'e2e: alpha stopped being killed after a new prompt\n' >&2
   exit 1
 fi
-printf 'e2e: hide/unhide/permanent-hide round-trip passed\n'
+printf 'e2e: kill/unkill/permanent-kill round-trip passed\n'
 
 "$BIN" doctor | tee "$JAIL/doctor.out"
 printf 'e2e: PASS\n'
