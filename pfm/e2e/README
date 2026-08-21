@@ -1,0 +1,13 @@
+# pfm installer end-to-end test
+
+Run the serial harness with:
+
+    go test -tags e2e -p 1 ./e2e/...
+
+From a development machine, use `scripts/e2e-linux.sh` to run the same test
+inside a Debian-based Linux container. The harness runs only with the explicit
+`PFM_DEV_FENCE=1` signal, stages its source repository, and creates every HOME
+and state directory under `t.TempDir()`.
+
+The update phase needs a reachable local release tag. Set `PFM_E2E_PREVIOUS_TAG`
+to the tag to use when the local clone has more than one release tag.
