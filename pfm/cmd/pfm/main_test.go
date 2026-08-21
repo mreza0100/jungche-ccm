@@ -672,7 +672,7 @@ func writeJailedCodexAuth(t *testing.T, root string) {
 	t.Helper()
 	if err := os.WriteFile(
 		filepath.Join(root, "codex", "auth.json"),
-		[]byte(`{"tokens":{"access_token":"fixture"},"account_id":"fixture"}`),
+		[]byte(`{"tokens":{"access_token":"fixture","account_id":"fixture"}}`),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
