@@ -3,7 +3,11 @@ package ask
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
 )
@@ -55,7 +59,7 @@ func TestResolveInputUsesExplicitValuesBeforeConfig(t *testing.T) {
 		Engine: "claude",
 		Codex:  pfmconfig.EnginePrefs{Model: "codex-default", Effort: "medium"},
 		Claude: pfmconfig.EnginePrefs{Model: "claude-default", Effort: "low"},
-	}}
+	}, Accounts: []pfmconfig.Account{{ID: 1}}}
 	resolved, err := ResolveInput(AskInput{
 		ContentFiles: []string{"prepared.md"}, SourceLabels: []string{"fixture"}, Prompt: "answer",
 		Engine: "codex", Model: "custom-model",
@@ -75,19 +79,6 @@ func TestResolveInputUsesExplicitValuesBeforeConfig(t *testing.T) {
 	}
 }
 
-func TestBothStubEnginesResolveAndReturnSentinel(t *testing.T) {
-	for _, name := range []string{"codex", "claude"} {
-		engine, err := ResolveEngine(name)
-		if err != nil {
-			t.Fatalf("ResolveEngine(%q): %v", name, err)
-		}
-		_, err = engine.Run(context.Background(), AskInput{})
-		if !errors.Is(err, ErrNotImplemented) {
-			t.Fatalf("%s Run error=%v, want ErrNotImplemented", name, err)
-		}
-	}
-}
-
 func TestEvidenceStaysContentAgnosticForTranscriptAndHarvesterAdapters(t *testing.T) {
 	adapters := map[string]fakeAskAdapter{
 		"transcript": fakeTranscriptAdapter{},
@@ -95,19 +86,12 @@ func TestEvidenceStaysContentAgnosticForTranscriptAndHarvesterAdapters(t *testin
 	}
 	for name, adapter := range adapters {
 		input, evidence := adapter.Prepare()
-		resolved, err := ResolveInput(input, pfmconfig.Config{})
+		resolved, err := ResolveInput(input, askMachine("codex"))
 		if err != nil {
 			t.Fatalf("%s adapter ResolveInput(): %v", name, err)
 		}
 		if _, err := BuildPrompt(resolved); err != nil {
 			t.Fatalf("%s adapter BuildPrompt(): %v", name, err)
-		}
-		engine, err := ResolveEngine(resolved.Engine)
-		if err != nil {
-			t.Fatalf("%s adapter ResolveEngine(): %v", name, err)
-		}
-		if _, err := engine.Run(context.Background(), resolved); !errors.Is(err, ErrNotImplemented) {
-			t.Fatalf("%s adapter engine error=%v, want ErrNotImplemented", name, err)
 		}
 		if evidence.File != resolved.ContentFiles[0] || evidence.Label != resolved.SourceLabels[0] {
 			t.Fatalf("%s adapter evidence=%+v does not feed resolved input=%+v", name, evidence, resolved)
@@ -115,5 +99,156 @@ func TestEvidenceStaysContentAgnosticForTranscriptAndHarvesterAdapters(t *testin
 		if evidence.Span.Kind != adapter.WantSpanKind() {
 			t.Fatalf("%s adapter span kind=%q, want %q", name, evidence.Span.Kind, adapter.WantSpanKind())
 		}
+	}
+}
+
+func TestProcessEnginesUseRosterHomesConfigAndPrompt(t *testing.T) {
+	directory := t.TempDir()
+	writeAskStub(t, directory, "codex", `
+printf 'home=%s\n' "$CODEX_HOME"
+printf 'args=%s\n' "$*"
+IFS= read -r first
+printf 'prompt=%s\n' "$first"
+printf 'usage: input_tokens=11 cached_input_tokens=3 output_tokens=5\n'
+printf 'codex answer\n'`)
+	writeAskStub(t, directory, "claude", `
+printf 'home=%s\n' "$CLAUDE_CONFIG_DIR"
+printf 'args=%s\n' "$*"
+IFS= read -r first
+printf 'prompt=%s\n' "$first"
+printf 'usage: input_tokens=7 cached_input_tokens=2 output_tokens=4\n'
+printf 'claude answer\n'`)
+	t.Setenv("PATH", directory)
+
+	machine := pfmconfig.Config{
+		Accounts:      []pfmconfig.Account{{ID: 2, ConfigDir: "/fixture/claude-2"}},
+		CodexAccounts: []pfmconfig.CodexAccount{{ID: 4, Home: "/fixture/codex-4"}},
+		Claude:        pfmconfig.Claude{Binary: "claude"},
+		Codex:         pfmconfig.Codex{Binary: "codex"},
+	}
+	tests := []struct {
+		name       string
+		input      AskInput
+		wantHome   string
+		wantArgs   []string
+		wantAnswer string
+		wantUsage  TokenUsage
+	}{
+		{
+			name: "codex", input: AskInput{Engine: "codex", Model: "cx-model", Effort: "high"},
+			wantHome: "/fixture/codex-4", wantArgs: []string{"exec", "--model cx-model", `model_reasoning_effort="high"`, "--ephemeral", "--skip-git-repo-check", "-"},
+			wantAnswer: "codex answer", wantUsage: TokenUsage{Input: 11, CachedInput: 3, Output: 5},
+		},
+		{
+			name: "claude", input: AskInput{Engine: "claude", Model: "cc-model", Effort: "medium"},
+			wantHome: "/fixture/claude-2", wantArgs: []string{"-p", "--model cc-model", "--effort medium", "--output-format text"},
+			wantAnswer: "claude answer", wantUsage: TokenUsage{Input: 7, CachedInput: 2, Output: 4},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			engine, err := ResolveEngine(test.name, machine)
+			if err != nil {
+				t.Fatalf("ResolveEngine(): %v", err)
+			}
+			input := test.input
+			input.ContentFiles = []string{"/fixture/exchange.md"}
+			input.SourceLabels = []string{"last exchange"}
+			input.Prompt = "summarize"
+			result, err := engine.Run(context.Background(), input)
+			if err != nil {
+				t.Fatalf("Run(): %v", err)
+			}
+			for _, want := range append([]string{"home=" + test.wantHome, "prompt=Read the prepared content files"}, test.wantArgs...) {
+				if !strings.Contains(result.Answer, want) {
+					t.Errorf("answer %q does not contain %q", result.Answer, want)
+				}
+			}
+			if strings.Contains(result.Answer, "usage:") || !strings.Contains(result.Answer, test.wantAnswer) {
+				t.Errorf("answer = %q", result.Answer)
+			}
+			if result.Usage == nil || *result.Usage != test.wantUsage {
+				t.Fatalf("usage = %#v, want %#v", result.Usage, test.wantUsage)
+			}
+		})
+	}
+}
+
+func TestProcessEngineUsageIsNilWhenAbsent(t *testing.T) {
+	directory := t.TempDir()
+	writeAskStub(t, directory, "codex", "printf 'answer only\\n'")
+	t.Setenv("PATH", directory)
+	engine, err := ResolveEngine("codex", askMachine("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.Run(context.Background(), validAskInput("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Usage != nil {
+		t.Fatalf("usage = %#v, want nil", result.Usage)
+	}
+}
+
+func TestProcessEngineDistinguishesMissingCrashAndTimeout(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("PATH", directory)
+	machine := askMachine("codex")
+	machine.Codex.Binary = "missing-codex"
+	_, err := ResolveEngine("codex", machine)
+	var missing *BinaryMissingError
+	if !errors.As(err, &missing) || !strings.Contains(err.Error(), "codex binary MISSING") {
+		t.Fatalf("missing error = %v", err)
+	}
+
+	writeAskStub(t, directory, "codex", "printf 'first error\\nfatal tail\\n' >&2\nexit 7")
+	engine, err := ResolveEngine("codex", askMachine("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = engine.Run(context.Background(), validAskInput("codex"))
+	if err == nil || !strings.Contains(err.Error(), "exit status 7") || !strings.Contains(err.Error(), `"first error\nfatal tail"`) {
+		t.Fatalf("crash error = %v", err)
+	}
+
+	writeAskStub(t, directory, "codex", "/bin/sleep 5")
+	engine, err = ResolveEngine("codex", askMachine("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = engine.Run(ctx, validAskInput("codex"))
+	if err == nil || !strings.Contains(err.Error(), "codex ask timed out") {
+		t.Fatalf("timeout error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("timeout returned after %s, want under 1s", elapsed)
+	}
+}
+
+func askMachine(engine string) pfmconfig.Config {
+	return pfmconfig.Config{
+		Accounts:      []pfmconfig.Account{{ID: 1, ConfigDir: "/fixture/claude"}},
+		CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: "/fixture/codex"}},
+		Claude:        pfmconfig.Claude{Binary: "claude"},
+		Codex:         pfmconfig.Codex{Binary: "codex"},
+		Ask:           pfmconfig.AskConfig{Engine: engine},
+	}
+}
+
+func validAskInput(engine string) AskInput {
+	return AskInput{
+		ContentFiles: []string{"/fixture/exchange.md"}, SourceLabels: []string{"last exchange"},
+		Prompt: "summarize", Engine: engine,
+	}
+}
+
+func writeAskStub(t *testing.T, directory, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(directory, name), []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
 	}
 }

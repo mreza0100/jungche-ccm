@@ -1,7 +1,9 @@
 package mcpserv
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -43,6 +45,31 @@ func (service *Service) chatStatus(
 	if strings.TrimSpace(input.Target) == "" {
 		return nil, StatusOutput{}, fmt.Errorf("target is required")
 	}
+	if !input.Summary && (input.Engine != "" || input.Model != "") {
+		return nil, StatusOutput{}, fmt.Errorf("engine and model require summary=true")
+	}
+	if input.Summary {
+		if service.backend.dispatch == nil {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command is not configured")
+		}
+		args := []string{"chat", "status", input.Target, "--json", "--summary"}
+		if input.Engine != "" {
+			args = append(args, "--engine", input.Engine)
+		}
+		if input.Model != "" {
+			args = append(args, "--model", input.Model)
+		}
+		var stdout, stderr bytes.Buffer
+		code := service.backend.dispatch(ctx, args, &stdout, &stderr)
+		var output StatusOutput
+		if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d stderr=%q: decode output: %w", code, strings.TrimSpace(stderr.String()), err)
+		}
+		if code != 0 && output.State != headless.StateDead {
+			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d state=%s stderr=%q", code, output.State, strings.TrimSpace(stderr.String()))
+		}
+		return nil, output, nil
+	}
 	source, err := service.backend.resolveReadSource(ctx, input.Target)
 	if err != nil {
 		return nil, StatusOutput{}, err
@@ -66,6 +93,7 @@ func (service *Service) chatStatus(
 		Engine: status.Engine, Model: status.Model, CWD: status.CWD,
 		SessionID: status.SessionID, Socket: status.Socket,
 		ContextPct: status.ContextPct, Last: status.Last,
+		Summary: status.Summary, SummaryCached: status.SummaryCached,
 	}, nil
 }
 

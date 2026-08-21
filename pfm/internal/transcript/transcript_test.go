@@ -121,6 +121,61 @@ func TestLastFindsTheNewestAssistantTurn(t *testing.T) {
 	}
 }
 
+func TestLastExchangeIsEngineAgnosticAndKeepsTools(t *testing.T) {
+	tests := []struct {
+		engine  string
+		content string
+	}{
+		{
+			engine: "cc",
+			content: `{"type":"user","message":{"role":"user","content":"older question"}}
+{"type":"assistant","message":{"role":"assistant","content":"older answer"}}
+{"type":"user","message":{"role":"user","content":"latest question"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"prepared.md"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":"latest answer"}}
+`,
+		},
+		{
+			engine: "cx",
+			content: `{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"older question"}]}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"older answer"}]}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"latest question"}]}}
+{"type":"response_item","payload":{"type":"function_call","name":"read_file","arguments":"{\"path\":\"prepared.md\"}"}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"latest answer"}]}}
+`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.engine, func(t *testing.T) {
+			entries, err := All(context.Background(), writeTranscript(t, "exchange.jsonl", test.content), test.engine)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prompt, response, ok := LastExchange(entries)
+			if !ok || len(prompt) != 1 || Condensed(prompt[0]) != "U latest question" {
+				t.Fatalf("prompt=%#v ok=%t", prompt, ok)
+			}
+			if len(response) != 2 || !strings.HasPrefix(Condensed(response[0]), "T ") || Condensed(response[1]) != "A latest answer" {
+				t.Fatalf("response=%#v", response)
+			}
+		})
+	}
+}
+
+func TestLastExchangeNamesPartialAndMissingShapesWithoutGuessing(t *testing.T) {
+	prompt, response, ok := LastExchange([]Entry{
+		{Role: RoleAssistant, Text: "orphan answer"},
+		{Role: RoleUser, Text: "new question"},
+		{Role: RoleTool, Tool: "Bash", Input: "go test ./..."},
+	})
+	if !ok || len(prompt) != 1 || len(response) != 1 || response[0].Role != RoleTool {
+		t.Fatalf("partial prompt=%#v response=%#v ok=%t", prompt, response, ok)
+	}
+	if prompt, response, ok := LastExchange([]Entry{{Role: RoleAssistant, Text: "orphan"}}); ok || prompt != nil || response != nil {
+		t.Fatalf("missing prompt=%#v response=%#v ok=%t", prompt, response, ok)
+	}
+}
+
 func TestReadMetaTakesTheLiveModelAndContext(t *testing.T) {
 	codex := writeTranscript(t, "rollout.jsonl", codexLines)
 	meta, err := ReadMeta(codex, "cx")

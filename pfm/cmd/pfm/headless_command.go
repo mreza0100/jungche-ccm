@@ -137,7 +137,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  new         start a named chat on its own server")
 	fmt.Fprintln(w, "  open        open a chat by name, socket, or id")
-	fmt.Fprintln(w, "  status      one line (or --json) on a chat's state")
+	fmt.Fprintln(w, "  status      inspect state; optionally summarize the last exchange")
 	fmt.Fprintln(w, "  last        the chat's last assistant message")
 	fmt.Fprintln(w, "  read        read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
@@ -312,16 +312,23 @@ func headlessTarget(
 func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat status",
-		"usage: pfm chat status <target> [--json]",
+		"usage: pfm chat status <target> [--json] [--summary] [--engine claude|codex] [--model MODEL]",
 		stderr,
 	)
 	asJSON := flags.Bool("json", false, "emit one JSON object")
+	withSummary := flags.Bool("summary", false, "summarize the last exchange")
+	summaryEngine := flags.String("engine", "", "override the configured ask engine")
+	summaryModel := flags.String("model", "", "override the configured ask model")
 	names, code, ok := parseFlagsAnywhere(flags, args)
 	if !ok {
 		return code
 	}
 	if len(names) != 1 {
 		flags.Usage()
+		return 2
+	}
+	if !*withSummary && (*summaryEngine != "" || *summaryModel != "") {
+		fmt.Fprintln(stderr, "pfm chat status: --engine and --model require --summary")
 		return 2
 	}
 	ctx := context.Background()
@@ -334,10 +341,36 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		fmt.Fprintf(stderr, "pfm chat status: %v\n", err)
 		return 1
 	}
+	if *withSummary {
+		runtime, runtimeErr := optionalCommandRuntime(runtimes)
+		if runtimeErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: %v\n", runtimeErr)
+			return 1
+		}
+		database, openErr := store.Open(store.WithWarningWriter(stderr))
+		if openErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: %v\n", openErr)
+			return 1
+		}
+		summary := headless.Summarize(ctx, chat, headless.SummaryOptions{
+			Config: runtime.Config, Database: database,
+			Engine: *summaryEngine, Model: *summaryModel,
+		})
+		closeErr := database.Close()
+		if closeErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: close summary cache: %v\n", closeErr)
+			return 1
+		}
+		status.Summary = summary.Text
+		status.SummaryCached = summary.Cached
+	}
 	if *asJSON {
 		writeJSON(stdout, status)
 	} else {
 		fmt.Fprintln(stdout, status.Line())
+		if *withSummary {
+			fmt.Fprintln(stdout, status.SummaryLine())
+		}
 	}
 	if !status.Alive() {
 		return codeDeadChat
