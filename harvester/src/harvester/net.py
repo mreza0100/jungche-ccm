@@ -5,6 +5,7 @@ and an error_kind on failure. httpx and curl_cffi are imported lazily.
 
 import asyncio
 import ipaddress
+import os
 import socket
 from typing import Tuple
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -17,6 +18,10 @@ DEFAULT_USER_AGENT_AUTONOMOUS = "Mozilla/5.0 (compatible; harvester/1.0)"
 DEFAULT_USER_AGENT_MANUAL = "Mozilla/5.0 (compatible; harvester/1.0)"
 
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+
+# Jina Reader keyless = 20 req/min (verified live 2026-08-22 via x-ratelimit-limit). A FREE key
+# from jina.ai raises the ceiling to ~500 RPM — set JINA_API_KEY to opt in; nothing is hard-gated.
+JINA_API_KEY = os.environ.get("JINA_API_KEY", "")
 
 # Redirect handling for the curl_cffi paths (httpx follows in-library under the request hook).
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
@@ -418,11 +423,13 @@ async def fetch_jina(url: str, user_agent: str, proxy_url: str | None = None) ->
         return ""
     from httpx import HTTPError
     jina_url = f"https://r.jina.ai/{url}"
+    headers = {"User-Agent": user_agent}
+    if JINA_API_KEY:
+        headers["Authorization"] = f"Bearer {JINA_API_KEY}"
     try:
         async with _client(proxy_url) as client:
             response = await client.get(
-                jina_url, follow_redirects=True,
-                headers={"User-Agent": user_agent}, timeout=30,
+                jina_url, follow_redirects=True, headers=headers, timeout=30,
             )
         if response.status_code >= 400:
             log.warning("jina %s -> HTTP %d", url, response.status_code)
@@ -540,3 +547,61 @@ async def download_impersonated(url: str, proxy_url: str | None = None) -> Tuple
         return b"", r.status_code or None
     log.debug("curl_cffi download %s -> %s (%d bytes)", url, r.status_code, len(r.content))
     return r.content[:MAX_DOWNLOAD_BYTES], r.status_code
+
+
+# ── browser rung (opt-in): Patchright + system Chrome ───────────────────────────
+# State of the art for passive bot walls (2026-08 research probe): a real Chrome via Patchright
+# (the maintained Playwright fork that hides the CDP automation handshake vanilla Playwright
+# leaks) passes Cloudflare's MANAGED CHALLENGE tier without solving anything. Vanilla
+# playwright-stealth/rebrowser are dead ends (bench ≈ vanilla); Turnstile CAPTCHAs remain a
+# hard stop — this rung never solves anything interactive.
+
+async def fetch_browser(url: str, proxy_url: str | None = None,
+                        timeout_ms: int = 45_000) -> Tuple[str, int | None]:
+    """Render *url* in a real system Chrome via Patchright; return (html, status).
+
+    Opt-in rung — the caller gates it behind HARVESTER_BROWSER=1 because a browser launch is
+    ~100ms+ and needs Chrome installed. patchright is an OPTIONAL dependency
+    (`pip install harvester-mcp[browser]`); when absent this returns ("", None) and the ladder
+    falls through, never raises. SSRF-checked like every other fetch primitive.
+    """
+    await assert_fetchable(url)
+    try:
+        from patchright.async_api import async_playwright  # type: ignore[import-not-found]
+    except ImportError:
+        log.info("browser rung skipped %s (patchright not installed)", url)
+        return "", None
+    proxy = {"server": proxy_url} if proxy_url else None
+
+    async def _render(headless: bool) -> Tuple[str, int | None]:
+        async with async_playwright() as p:  # type: ignore[attr-defined]
+            browser = await p.chromium.launch(channel="chrome", headless=headless, proxy=proxy)
+            try:
+                page = await browser.new_page()
+                resp = await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=15_000)
+                except Exception as e:
+                    log.debug("browser networkidle wait ended early for %s: %s", url, e)
+                html = await page.content()
+                status = resp.status if resp else None
+                log.info("browser rung %s -> HTTP %s (%d chars, headless=%s)",
+                         url, status, len(html), headless)
+                return html, status
+            finally:
+                await browser.close()
+
+    # Headed Chrome passes passive checks far more reliably than headless (research bench);
+    # on a display-less host the headed launch fails → retry once headless before giving up.
+    try:
+        html, status = await _render(headless=False)
+        if html:
+            return html, status
+    except Exception as e:
+        log.warning("browser headed launch failed for %s (%s) — retrying headless", url,
+                    type(e).__name__)
+    try:
+        return await _render(headless=True)
+    except Exception as e:
+        log.warning("browser rung failed for %s: %s", url, e)
+        return "", None

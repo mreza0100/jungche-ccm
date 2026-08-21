@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
 ]
 dependencies = [
-    "curl-cffi>=0.15.0",
+    "curl-cffi>=0.16.1",
     "docling>=2.107.0",
     "httpx>=0.27",
     "markitdown>=0.1.6",
@@ -28,6 +28,11 @@ dependencies = [
     "requests>=2.32.3",
     "trafilatura>=2.0.0",
 ]
+
+[project.optional-dependencies]
+# `browser` extra: the opt-in real-Chrome wall-bypass rung (HARVESTER_BROWSER=1). Not installed
+# by default — patchright pulls Playwright + needs a system Chrome (`patchright install chrome`).
+browser = ["patchright>=1.49"]
 # `remote.py` imports starlette and uvicorn directly. They are not listed above because `mcp`
 # hard-requires both (`starlette>=0.27`, `uvicorn>=0.31.1`), so they are always present; adding them
 # here forces a `uv lock` regeneration that rewrites unrelated dependency markers across the file.

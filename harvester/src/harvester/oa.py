@@ -47,9 +47,11 @@ _OSF_PREFIXES = {
 _SOURCE_BASE = {
     "arxiv": 0, "osf": 2, "citation_pdf_url": 4,
     "unpaywall": 10, "openalex": 12, "semanticscholar": 14, "europepmc": 16,
+    "openaire": 20, "zenodo": 26,
     "crossref": 30, "core": 40, "doaj": 45,
     # books
-    "gutenberg": 5, "oapen": 8, "internetarchive": 18, "doab": 22, "googlebooks": 50,
+    "gutenberg": 5, "oapen": 8, "internetarchive": 18, "doab": 22, "hathitrust": 24,
+    "googlebooks": 50,
 }
 
 GOOGLE_BOOKS_API_KEY = os.environ.get("GOOGLE_BOOKS_API_KEY", "")
@@ -149,6 +151,14 @@ async def _get_json(client: "AsyncClient", url: str, headers: dict | None = None
 # ── per-source resolvers (each → list[Candidate], never raises) ──────────────────
 
 async def from_unpaywall(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """Unpaywall now REQUIRES a real contact email per call — a placeholder/example address is
+    rejected with 422 ('Please use your own email address', verified live 2026-08-22). So this
+    source is active only when the operator sets HARVESTER_CONTACT_EMAIL; keyless runs skip it
+    (OpenAlex/S2/EuropePMC cover most of the same OA locations) instead of burning a doomed
+    request on every DOI."""
+    if not CONTACT_EMAIL:
+        log.info("unpaywall skipped for %s: no HARVESTER_CONTACT_EMAIL configured", doi)
+        return []
     data = await _get_json(client, f"https://api.unpaywall.org/v2/{quote(doi)}?email={CONTACT_EMAIL}")
     if not isinstance(data, dict) or not data.get("is_oa"):
         return []
@@ -262,7 +272,76 @@ async def from_europepmc(doi: str, client: "AsyncClient") -> list[Candidate]:
     if not pmcid:
         return []
     return [Candidate(_score("europepmc"), f"https://europepmc.org/articles/{pmcid}?pdf=render",
-                     "europepmc", "green", "", "pdf", note=pmcid)]
+                      "europepmc", "green", "", "pdf", note=pmcid)]
+
+
+def _walk_webresource_urls(obj: object) -> list[str]:
+    """Collect every webresource URL string in an OpenAIRE JSON tree (shape varies by record
+    version — walk recursively instead of hard-coding one nesting depth). ITERATIVE with an
+    explicit stack: upstream JSON can nest arbitrarily deep and a recursive walk blew the
+    Python stack on a 5000-deep input (caught by tests/test_stress.py)."""
+    urls: list[str] = []
+    stack: list[object] = [obj]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, dict):
+            wr = cur.get("webresource")
+            if wr is not None:
+                wr_list = wr if isinstance(wr, list) else [wr]
+                for w in wr_list:
+                    u = w.get("url") if isinstance(w, dict) else None
+                    val = u.get("$") if isinstance(u, dict) else u
+                    if isinstance(val, str) and val.startswith("http"):
+                        urls.append(val)
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return urls
+
+
+async def from_openaire(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """OpenAIRE (EU aggregator): DOI → every repository instance's full-text URL.
+
+    Endpoint + shape verified live 2026-08-22 (NumPy DOI → escholarship.org PDF). Keyless.
+    """
+    data = await _get_json(
+        client, f"https://api.openaire.eu/search/publications?doi={quote(doi)}&format=json")
+    out: list[Candidate] = []
+    seen: set[str] = set()
+    for u in _walk_webresource_urls(data if isinstance(data, (dict, list)) else {}):
+        if u in seen:
+            continue
+        seen.add(u)
+        kind = "pdf" if u.lower().endswith(".pdf") else "html"
+        out.append(Candidate(_score("openaire", kind=kind), u, "openaire", "green", "", kind))
+    return out
+
+
+async def from_zenodo(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """Zenodo: DOI (or concept DOI) → record file download links.
+
+    Endpoint verified live 2026-08-22; keyless, ~100 req/min documented cap.
+    """
+    data = await _get_json(
+        client, f"https://zenodo.org/api/records?q=doi:{quote(doi)}&size=3&sort=mostrecent")
+    hits = data.get("hits", {}).get("hits", []) if isinstance(data, dict) else []
+    out: list[Candidate] = []
+    for h in hits:
+        if not isinstance(h, dict):
+            continue
+        rec_doi = _bare_doi(h.get("doi") or "")
+        exact = bool(rec_doi and rec_doi.lower() == doi.lower())
+        for f in (h.get("files") or []):
+            if not isinstance(f, dict):
+                continue
+            url = ((f.get("links") or {}).get("self")) or ""
+            key = f.get("key") or ""
+            if not url or (not key.lower().endswith((".pdf", ".epub")) and not exact):
+                continue  # only the record's document files, not stray datasets
+            ext = ".epub" if key.lower().endswith(".epub") else ""
+            out.append(Candidate(_score("zenodo"), url, "zenodo", "green", "",
+                                  "epub" if ext else "pdf"))
+    return out
 
 
 async def from_osf(doi: str, client: "AsyncClient") -> list[Candidate]:
@@ -582,7 +661,7 @@ async def resolve_doi(doi: str, client: "AsyncClient") -> list[Candidate]:
         if cands:
             return _dedupe(cands)  # OSF is authoritative for its own DOIs
     sources = [from_unpaywall, from_openalex, from_semanticscholar,
-               from_europepmc, from_crossref, from_core, from_doaj]
+               from_europepmc, from_openaire, from_zenodo, from_crossref, from_core, from_doaj]
     results = await asyncio.gather(*[_safe(f, doi, client) for f in sources])
     cands = [c for sub in results for c in sub]
     log.info("resolve_doi %s -> %d candidate(s)", doi, len(cands))
@@ -773,6 +852,31 @@ async def from_doab(query: str, client: "AsyncClient") -> list[Candidate]:
     return [Candidate(_score("doab"), download, "doab", "gold", "", "pdf", note=detail.get("name", ""))]
 
 
+async def from_hathitrust(query: str, client: "AsyncClient") -> list[Candidate]:
+    """HathiTrust Bibliographic API: ISBN → FULL VIEW (public-domain) volume page.
+
+    Endpoint verified live 2026-08-22 — NOTE the suffix style `/brief/json/{isbn}.json` is
+    WRONG (400s); the working form is `/brief/{fmt}/isbn/{id}`. Only `Full view` rights are
+    served; search-only/lending items are skipped (legality gate, mirrors internetarchive's).
+    """
+    isbn = normalize_isbn(query)
+    if not isbn:
+        return []
+    data = await _get_json(
+        client, f"https://catalog.hathitrust.org/api/volumes/brief/isbn/{isbn}.json")
+    if not isinstance(data, dict):
+        return []
+    out: list[Candidate] = []
+    for item in data.get("items") or []:
+        if not isinstance(item, dict) or item.get("usRightsString") != "Full view":
+            continue
+        url = item.get("itemURL") or ""
+        if url:
+            out.append(Candidate(_score("hathitrust", kind="html"), url, "hathitrust",
+                                 "pd", "", "html", note="HathiTrust full-view scan"))
+    return out
+
+
 async def from_googlebooks(query: str, client: "AsyncClient") -> list[Candidate]:
     """Google Books — public-domain PDF/EPUB links. Needs a key (keyless = 0-quota from datacenter IPs)."""
     if not GOOGLE_BOOKS_API_KEY:
@@ -797,7 +901,8 @@ async def resolve_book(query: str, client: "AsyncClient") -> list[Candidate]:
     query = query.strip().strip('"').strip("'")
     if len(query) < 2:  # empty/blank → no silent "arbitrary book" result
         return []
-    sources = [from_oapen, from_internetarchive, from_gutendex, from_doab, from_googlebooks]
+    sources = [from_oapen, from_internetarchive, from_gutendex, from_doab,
+               from_hathitrust, from_googlebooks]
     results = await asyncio.gather(*[_safe(f, query, client) for f in sources])
     cands = [c for sub in results for c in sub]
     log.info("resolve_book %r -> %d candidate(s)", query, len(cands))

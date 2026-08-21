@@ -350,12 +350,14 @@ To relocate the cache and enable web search, pass environment variables:
 | `HARVESTER_PDF_OCR` | off | Run Tesseract OCR on image-only PDF pages (slow; off by default for fast text-layer extraction). A scanned PDF fetched from the web always gets ONE automatic OCR pass when its text layer converts to empty, regardless of this setting — this flag turns OCR on for every PDF. |
 | `HARVESTER_PDF_LAYOUT` | off | Run the pymupdf4llm layout model for higher table/heading fidelity (slow). |
 | `HARVESTER_LOCALIZE_IMAGES` | off | When set, `fetch` downloads the figures a successfully fetched page references into the cache and rewrites the markdown links to local paths (read them with vision). Off by default: image refs stay as URLs and are viewed via `fetchImage`. |
+| `HARVESTER_BROWSER` | off | Enable the real-browser wall-bypass rung: when a page survives httpx + Chrome-impersonation + Jina, it is rendered in a system Chrome via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyasa/patchright) (passes passive bot walls incl. Cloudflare's managed challenge; never solves CAPTCHAs). Needs the optional `browser` extra: `uv sync --extra browser` / `pip install harvester-mcp[browser]`, then `patchright install chrome`. |
+| `JINA_API_KEY` | empty | Optional free [Jina Reader](https://jina.ai) key. Keyless works at 20 req/min; the key raises the ceiling to ~500 req/min. Never required. |
 | `HARVESTER_LOG_FILE` | unset | Write logs to this file. |
 | `HARVESTER_LOG_LEVEL` | `INFO` | Log level. |
 | `SEARXNG_URL` | empty | Self-hosted SearXNG base URL — primary `search` backend (enables the tool). |
 | `BRAVE_API_KEY` | empty | Brave Search API token — fallback `search` backend (enables the tool). |
 | `HARVESTER_DISABLE_SEARCH` | off | Force-hide the `search` tool even when a backend is configured. |
-| `HARVESTER_CONTACT_EMAIL` | **empty** | Polite-pool contact for scholarly APIs (Crossref / Unpaywall / NCBI). Empty by default, so the published tool sends **no** contact; operators opt in. When set, it is sent as a `mailto:` UA suffix and `?email=` / `?mailto=` parameter — better rate limits, never required. |
+| `HARVESTER_CONTACT_EMAIL` | **empty** | Polite-pool contact for scholarly APIs. Empty by default, so the published tool sends **no** contact; operators opt in. When set, it is sent as a `mailto:` UA suffix and `?email=` / `?mailto=` parameter — better rate limits. **Unpaywall now hard-requires a real email per call** (placeholder addresses are rejected with HTTP 422), so setting this also ENABLES the Unpaywall source; keyless runs skip it cleanly. All other sources work without it. |
 | `CORE_API_KEY` | empty | Optional [CORE](https://core.ac.uk) API key. |
 | `SEMANTIC_SCHOLAR_API_KEY` | empty | Optional Semantic Scholar API key. |
 | `GOOGLE_BOOKS_API_KEY` | empty | Optional Google Books API key. |

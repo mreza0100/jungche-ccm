@@ -26,6 +26,11 @@ log = get_logger("dispatch")
 # remain URLs"; see AGENTS.md § Conventions (images are bifurcated by `media`).
 _LOCALIZE_IMAGES = convert._envflag("HARVESTER_LOCALIZE_IMAGES")
 
+# Opt-in real-browser rung (HARVESTER_BROWSER=1) for the residual bot-wall class that survives
+# httpx + curl_cffi + Jina. Needs the optional `browser` extra (patchright + a system Chrome);
+# without it the rung is a no-op and the ladder is unchanged.
+_BROWSER_ENABLED = convert._envflag("HARVESTER_BROWSER")
+
 _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
 # Bare scholarly identifiers handled by get_or_fetch's no-URL/no-DOI branch.
@@ -472,6 +477,30 @@ async def _html_result(
         else:
             trace.append(Attempt("jina", src, classify_outcome(
                 body_len=len(jina_body), content_chars=jina_chars, status=200 if jina_body else None)))
+
+    # (d2) browser rung (HARVESTER_BROWSER=1): render in a real system Chrome via Patchright.
+    # Passes passive bot walls (TLS/H2 fingerprint + Cloudflare managed challenge) that no
+    # HTTP-client trick can. Sits after Jina (cheap) and before the mirror chain (last resort).
+    if (not local and _BROWSER_ENABLED
+            and (content_chars < THIN_MIN_CHARS or challenge)
+            and not net.is_private_host(src)):
+        log.info("html %s still thin/challenge -> browser rung", key)
+        b_html, b_status = await net.fetch_browser(src, proxy_url)
+        if b_html:
+            b_body = html.extract_content_from_html(b_html)
+            b_challenge = net.looks_like_challenge(b_html)
+            if len(b_body.strip()) > content_chars:
+                raw, body, content_chars = b_html, b_body, len(b_body.strip())
+                method = "browser-chrome"
+                challenge = b_challenge
+                trace.append(Attempt("browser", src, classify_outcome(
+                    body_len=len(b_html), content_chars=content_chars, status=b_status,
+                    challenge=b_challenge)))
+                log.info("html %s browser rung won chars=%d", key, content_chars)
+            else:
+                trace.append(Attempt("browser", src, Outcome.THIN))
+        else:
+            trace.append(Attempt("browser", src, Outcome.DEAD_NET))
 
     # (e) mirror fallback: scholarly DOI embedded in URL, or Wayback snapshot
     # Only when the full ladder still yields thin content or a bot challenge.
@@ -1163,7 +1192,8 @@ async def _doi_mirror_result(
     log.warning("doi mirror %s -> no open-access source", doi)
     msg = _with_rungs(
         f"Found DOI {doi}, but no free, legal full text exists in any open-access source (checked "
-        "Unpaywall, OpenAlex, Semantic Scholar, Europe PMC, CORE, DOAJ, arXiv/OSF, and the Wayback "
+        "Unpaywall, OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, CORE, DOAJ, "
+        "arXiv/OSF, and the Wayback "
         "Machine). The paper is likely paywalled — use `search` to find an author preprint or the "
         "publisher's page directly.", trace)
     return {"error": msg, "body": ""}
