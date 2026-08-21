@@ -55,15 +55,20 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 		Home: runtime.Paths.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
 		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
 	})
-	if warnings := printDependencyDoctor(context.Background(), stdout, entries, deps.ProbeOptions{
+	preflight := printDependencyDoctor(context.Background(), stdout, entries, deps.ProbeOptions{
 		SkipHarvest: *skipHarvest, Provisioning: true,
-	}); warnings != 0 {
+	})
+	if preflight != 0 && mode == installer.ModeApply {
 		fmt.Fprintln(stderr, "pfm install: required dependency preflight failed")
 		return 1
 	}
 	options := newInstallerOptions(mode, *configDir, *force, *skipHarvest, stdout, runtime)
 	code := runInstallerCommand("install", options, stderr)
 	if code == 0 && mode == installer.ModeDryRun {
+		if preflight != 0 {
+			fmt.Fprintln(stderr, "pfm install: required dependency preflight failed — the preview above is read-only; fix the dependencies it names before applying")
+			return 1
+		}
 		confirmation := "if you agree, run again: pfm install --yes"
 		if *skipHarvest {
 			confirmation += " --skip-harvest"
