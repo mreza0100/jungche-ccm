@@ -122,7 +122,8 @@ class TestExtractMetaLinks:
 # ── article sources ──────────────────────────────────────────────────────────────
 
 class TestUnpaywall:
-    async def test_best_url_for_pdf(self):
+    async def test_best_url_for_pdf(self, monkeypatch):
+        monkeypatch.setattr(oa, "CONTACT_EMAIL", "test@example.org")
         c = FakeClient([("api.unpaywall.org", FakeResp(json_data={
             "is_oa": True, "oa_status": "gold",
             "best_oa_location": {"url_for_pdf": "https://plos.example/a.pdf", "version": "publishedVersion"},

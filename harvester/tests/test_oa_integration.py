@@ -31,19 +31,31 @@ async def _client():
 
 
 @pytest.mark.parametrize("fn,doi", [
-    (oa.from_unpaywall, PLOS),
     (oa.from_openalex, PLOS),
     (oa.from_semanticscholar, PLOS),
     (oa.from_crossref, NATURE),
     (oa.from_doaj, PLOS),
     (oa.from_europepmc, PCBI),
     (oa.from_osf, OSF_DOI),
+    (oa.from_openaire, NATURE),   # verified live 2026-08-22 → repository full-text URLs
+    (oa.from_zenodo, "10.20944/preprints202511.2248.v1"),  # real record w/ a .pdf file
 ])
 async def test_article_source_returns_a_candidate(fn, doi):
     async with await _client() as client:
         cands = await fn(doi, client)
     assert cands, f"{fn.__name__} returned no candidate for {doi}"
     assert cands[0].url.startswith("http")
+
+
+async def test_unpaywall_gated_on_contact_email():
+    """Unpaywall 422s without an operator email (verified live 2026-08-22). Keyless runs must
+    SKIP it cleanly ([]); with HARVESTER_CONTACT_EMAIL set it must resolve the OA copy."""
+    async with await _client() as client:
+        cands = await oa.from_unpaywall(PLOS, client)
+    if oa.CONTACT_EMAIL:
+        assert cands and cands[0].url.startswith("http")
+    else:
+        assert cands == [], "keyless run must skip unpaywall, not hammer a doomed request"
 
 
 async def test_core_runs_without_error():
@@ -64,6 +76,15 @@ async def test_book_source_returns_a_candidate(fn, ident):
         cands = await fn(ident, client)
     assert cands, f"{fn.__name__} returned no candidate for {ident}"
     assert cands[0].url.startswith("http")
+
+
+async def test_hathitrust_runs_and_gates_on_rights():
+    """HathiTrust coverage under a given ISBN is hit-or-miss — assert it RUNS and only ever
+    returns Full-view items (the rights gate), not that every ISBN hits."""
+    async with await _client() as client:
+        cands = await oa.from_hathitrust(OAPEN_ISBN, client)
+    assert isinstance(cands, list)
+    assert all(c.source == "hathitrust" for c in cands)
 
 
 async def test_resolve_doi_arxiv_is_offline_deterministic():
