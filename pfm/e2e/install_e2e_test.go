@@ -26,8 +26,6 @@ const (
 	e2eHomeEnv         = "PFM_E2E_HOME"
 	e2ePreviousTag     = "PFM_E2E_PREVIOUS_TAG"
 	e2eSourceRepo      = "PFM_E2E_SOURCE_REPO"
-	e2eHarvestGate     = "PFM_E2E_HARVESTPY_GATE"
-	e2eGateExpected    = "blocked, not attempted"
 	e2eHarvestSkipLine = "harvestpy: skipped (blocked, not attempted)"
 	e2eFixtureSkill    = ".claude/skills/e2e-fixture/SKILL.md"
 	e2eBinaryEnv       = "PFM_E2E_BINARY"
@@ -97,21 +95,21 @@ func TestInstallInitUpdateUninstallE2E(t *testing.T) {
 	runInstallE2E(t)
 }
 
-func TestRefuseRealHomeHonorsTheIsolatedFence(t *testing.T) {
-	const helper = "PFM_E2E_REFUSE_REAL_HOME_HELPER"
+func TestE2EFenceIsRequiredEvenWithoutHome(t *testing.T) {
+	const helper = "PFM_E2E_REQUIRE_FENCE_HELPER"
 	if os.Getenv(helper) == "1" {
-		refuseRealHome(t)
+		requireE2EFence(t)
 		return
 	}
 	realHome, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := func(fenced bool) commandResult {
+	run := func(home string, fenced bool) commandResult {
 		t.Helper()
-		command := exec.Command(os.Args[0], "-test.run", "^TestRefuseRealHomeHonorsTheIsolatedFence$")
+		command := exec.Command(os.Args[0], "-test.run", "^TestE2EFenceIsRequiredEvenWithoutHome$")
 		environment := map[string]string{
-			"HOME": realHome,
+			"HOME": home,
 			helper: "1",
 		}
 		if fenced {
@@ -124,17 +122,53 @@ func TestRefuseRealHomeHonorsTheIsolatedFence(t *testing.T) {
 		err := command.Run()
 		return commandResult{stdout: stdout.String(), stderr: stderr.String(), err: err}
 	}
-	if result := run(false); result.err == nil || !strings.Contains(result.stdout+result.stderr, "e2e harness refuses") {
-		t.Fatalf("unfenced real-home helper result=%+v, want refusal", result)
+	for _, home := range []string{realHome, ""} {
+		if result := run(home, false); result.err == nil || !strings.Contains(result.stdout+result.stderr, "e2e harness refuses") {
+			t.Fatalf("unfenced HOME=%q helper result=%+v, want refusal", home, result)
+		}
 	}
-	if result := run(true); result.err != nil {
-		t.Fatalf("fenced helper result=%+v, want allowed", result)
+	for _, home := range []string{realHome, ""} {
+		if result := run(home, true); result.err != nil {
+			t.Fatalf("fenced HOME=%q helper result=%+v, want allowed", home, result)
+		}
+	}
+}
+
+func TestPrepareSourceRepoStagesEvenAReadyRepository(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "ready-source")
+	for _, relative := range []string{
+		"CLAUDE.md", "AGENTS.md", ".claude/settings.json",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("fixture\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, relative := range []string{
+		".claude/output-styles", ".claude/commands", ".claude/agents", ".claude/skills",
+	} {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(relative)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGitFixture(t, root, "init", "-q")
+	runGitFixture(t, root, "config", "user.email", "fixture.invalid")
+	runGitFixture(t, root, "config", "user.name", "fixture-identity")
+	runGitFixture(t, root, "add", "-A")
+	runGitFixture(t, root, "commit", "-qm", "ready source")
+	runGitFixture(t, root, "tag", "v0.0.1")
+	staged := prepareSourceRepo(t, root)
+	if filepath.Clean(staged) == filepath.Clean(root) {
+		t.Fatalf("prepareSourceRepo returned live source %q, want a staged TempDir copy", staged)
 	}
 }
 
 func runInstallE2E(t *testing.T) {
 	t.Helper()
-	refuseRealHome(t)
+	requireE2EFence(t)
 	repo := sourceRepo(t)
 	harness := &e2eHarness{t: t, repo: repo}
 	harness.headBinary = harness.build(repo, filepath.Join(t.TempDir(), "pfm-head"))
@@ -184,18 +218,10 @@ func runInstallE2E(t *testing.T) {
 	})
 }
 
-func refuseRealHome(t *testing.T) {
+func requireE2EFence(t *testing.T) {
 	t.Helper()
-	if os.Getenv("PFM_DEV_FENCE") == "1" {
-		return
-	}
-	actual := strings.TrimSpace(os.Getenv("HOME"))
-	if actual == "" {
-		return
-	}
-	real, err := os.UserHomeDir()
-	if err == nil && filepath.Clean(actual) == filepath.Clean(real) {
-		t.Fatalf("e2e harness refuses to run with HOME equal to the invoking user's real home")
+	if os.Getenv("PFM_DEV_FENCE") != "1" {
+		t.Fatal("e2e harness refuses to run without PFM_DEV_FENCE=1")
 	}
 }
 
@@ -221,10 +247,6 @@ func sourceRepo(t *testing.T) string {
 
 func prepareSourceRepo(t *testing.T, root string) string {
 	t.Helper()
-	if sourceRepositoryReady(root) {
-		return root
-	}
-
 	fixture := filepath.Join(t.TempDir(), "source")
 	if err := copySourceTree(root, fixture); err != nil {
 		t.Fatalf("stage e2e source repository: %v", err)
@@ -261,63 +283,6 @@ func prepareSourceRepo(t *testing.T, root string) string {
 	runGitFixture(t, fixture, "add", ".e2e-current-source")
 	runGitFixture(t, fixture, "commit", "-qm", "fixture current source")
 	return fixture
-}
-
-func sourceRepositoryReady(root string) bool {
-	if !usableGitMetadata(root) || !sourceHasInitTemplates(root) {
-		return false
-	}
-	result := runGit(root, "tag", "--list", "v*")
-	if result.err != nil {
-		return false
-	}
-	wanted := strings.TrimSpace(os.Getenv(e2ePreviousTag))
-	for _, candidate := range strings.Fields(result.stdout) {
-		if !isReleaseTag(candidate) {
-			continue
-		}
-		if wanted == "" || candidate == wanted {
-			return true
-		}
-	}
-	return false
-}
-
-func sourceHasInitTemplates(root string) bool {
-	for _, relative := range []string{
-		"CLAUDE.md", "AGENTS.md", ".claude/settings.json",
-		".claude/output-styles", ".claude/commands", ".claude/agents", ".claude/skills",
-	} {
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func usableGitMetadata(root string) bool {
-	metadata := filepath.Join(root, ".git")
-	info, err := os.Stat(metadata)
-	if err != nil {
-		return false
-	}
-	if info.IsDir() {
-		return true
-	}
-	raw, err := os.ReadFile(metadata)
-	if err != nil {
-		return false
-	}
-	line := strings.TrimSpace(string(raw))
-	if !strings.HasPrefix(line, "gitdir:") {
-		return false
-	}
-	gitDir := strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
-	if !filepath.IsAbs(gitDir) {
-		gitDir = filepath.Join(root, gitDir)
-	}
-	_, err = os.Stat(gitDir)
-	return err == nil
 }
 
 func copySourceTree(source, target string) error {
@@ -461,7 +426,6 @@ func (h *e2eHarness) environment(home string) []string {
 		"PATH":                  path,
 		e2eSourceRepo:           h.repo,
 		e2eHomeEnv:              home,
-		e2eHarvestGate:          e2eGateExpected,
 		"PFM_HARVESTPY_OFFLINE": "1",
 	}
 	return appendCleanEnv(os.Environ(), values)

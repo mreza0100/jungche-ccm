@@ -17,6 +17,7 @@ import (
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/harvest"
 	"hostops/pfm/internal/harvestpy"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
 
@@ -413,6 +414,7 @@ func pfmPathWarnings(home, pathEnvironment string) []string {
 	canonical := filepath.Join(home, ".local", "bin", "pfm")
 	canonical, _ = filepath.Abs(canonical)
 	targetHome, _ := filepath.Abs(home)
+	jailed := os.Getenv(paths.EnvHome) != "" || os.Getenv("PFM_DEV_FENCE") != ""
 	canonicalHash, err := executableHash(canonical)
 	if err != nil {
 		return []string{fmt.Sprintf("pfm_canonical=%s error=%v", canonical, err)}
@@ -435,9 +437,11 @@ func pfmPathWarnings(home, pathEnvironment string) []string {
 			continue
 		}
 		seen[candidate] = true
-		relative, err := filepath.Rel(targetHome, candidate)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
-			continue
+		if jailed {
+			relative, err := filepath.Rel(targetHome, candidate)
+			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
+				continue
+			}
 		}
 		info, err := os.Stat(candidate)
 		if err != nil {
@@ -504,7 +508,15 @@ func metaCounter(
 }
 
 func crumbHealth(path string) (entries, invalid int, err error) {
-	info, err := os.Stat(path)
+	return crumbHealthWith(path, os.Stat, os.ReadDir)
+}
+
+func crumbHealthWith(
+	path string,
+	stat func(string) (os.FileInfo, error),
+	readDir func(string) ([]os.DirEntry, error),
+) (entries, invalid int, err error) {
+	info, err := stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, 0, nil
@@ -514,7 +526,7 @@ func crumbHealth(path string) (entries, invalid int, err error) {
 	if !info.IsDir() {
 		return 0, 0, fmt.Errorf("%s is not a directory", path)
 	}
-	directory, err := os.ReadDir(path)
+	directory, err := readDir(path)
 	if err != nil {
 		return 0, 0, err
 	}

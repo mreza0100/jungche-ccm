@@ -37,7 +37,6 @@ jobs:
         env:
           PFM_DEV_FENCE: "1"
           PFM_HARVESTPY_OFFLINE: "1"
-          PFM_E2E_HARVESTPY_GATE: blocked, not attempted
         run: |
           set -euo pipefail
           export HOME="$(mktemp -d)"
@@ -65,7 +64,6 @@ jobs:
         env:
           PFM_DEV_FENCE: "1"
           PFM_HARVESTPY_OFFLINE: "1"
-          PFM_E2E_HARVESTPY_GATE: blocked, not attempted
         run: |
           set -euo pipefail
           export HOME="$(mktemp -d)"

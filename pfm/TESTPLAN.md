@@ -526,7 +526,7 @@ delegates fleet operations to the Go binary. `pfm install` wires this single act
 | `pfm-name-sync.service` `ExecStart` runs the BINARY, never a `.sh`                                                | JAIL+sh          | `systemd/pfm-name-sync.service`           |            |
 | installer retires the carrier, old units, script links, statusline shell, segments and Python refreshers         | JAIL             | `internal/installer`, installer tests     |            |
 | installer rewires Claude and Codex clear-hide, group, statusline, usage and dream hooks while preserving unrelated entries | JAIL | `internal/installer`, installer tests | |
-| fenced e2e install/update/uninstall uses `--skip-harvest`, asserts the exact skip line, and permits `PFM_DEV_FENCE=1` only while retaining real-home refusal without the fence | JAIL | `e2e/install_e2e_test.go`, `scripts/e2e-linux.sh`, `.github/workflows/install-verify.yml` | |
+| fenced e2e install/update/uninstall requires `PFM_DEV_FENCE=1`, stages the source plus every HOME/state path under `t.TempDir()`, uses `--skip-harvest`, and asserts the exact skip line | JAIL | `e2e/install_e2e_test.go`, `scripts/e2e-linux.sh`, `.github/workflows/install-verify.yml` | |
 
 ## L — Dream runtime resources
 
