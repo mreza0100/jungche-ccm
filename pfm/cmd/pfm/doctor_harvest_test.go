@@ -137,3 +137,31 @@ func TestDoctorHarvestMissingRootIsSkipped(t *testing.T) {
 		t.Fatalf("missing harvest root output=%q, want %q", got, want)
 	}
 }
+
+func TestDoctorHarvestUnreadableRootIsNotSkipped(t *testing.T) {
+	home := t.TempDir()
+	local := filepath.Join(home, ".local")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("state", filepath.Join(local, "state")); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	warnings := printHarvestPythonDoctor(
+		context.Background(),
+		&output,
+		home,
+		harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"},
+		harvestDoctorFake{
+			inspect:  os.ErrPermission,
+			checkErr: os.ErrPermission,
+		},
+	)
+	if warnings == 0 {
+		t.Fatalf("unreadable harvest root warnings=0, want a visible probe failure\n%s", output.String())
+	}
+	if strings.Contains(output.String(), "doctor: harvestpy skipped") {
+		t.Fatalf("unreadable harvest root rendered as skipped:\n%s", output.String())
+	}
+}

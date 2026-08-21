@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +65,8 @@ func TestDoctorFreshTargetHomeIsClean(t *testing.T) {
 
 func TestPFMPathWarningsIgnoreHostShimsOutsideTargetHome(t *testing.T) {
 	home := t.TempDir()
+	t.Setenv("PFM_HOME", home)
+	t.Setenv("PFM_DEV_FENCE", "")
 	canonicalDir := filepath.Join(home, ".local", "bin")
 	hostShimDir := filepath.Join(t.TempDir(), "host-bin")
 	for _, directory := range []string{canonicalDir, hostShimDir} {
@@ -87,13 +90,53 @@ func TestPFMPathWarningsIgnoreHostShimsOutsideTargetHome(t *testing.T) {
 	}
 }
 
-func TestCrumbHealthUnreadablePathRemainsAnError(t *testing.T) {
+func TestPFMPathWarningsReportHostShimsOutsideHomeWithoutAJail(t *testing.T) {
+	t.Setenv("PFM_HOME", "")
+	t.Setenv("PFM_DEV_FENCE", "")
+	home := t.TempDir()
+	canonicalDir := filepath.Join(home, ".local", "bin")
+	hostShimDir := filepath.Join(t.TempDir(), "host-bin")
+	for _, directory := range []string{canonicalDir, hostShimDir} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(canonicalDir, "pfm"), []byte("canonical-pfm"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hostShim := filepath.Join(hostShimDir, "pfm")
+	if err := os.WriteFile(hostShim, []byte("shadowing-pfm"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	warnings := pfmPathWarnings(
+		home,
+		strings.Join([]string{canonicalDir, hostShimDir}, string(os.PathListSeparator)),
+	)
+	if !strings.Contains(strings.Join(warnings, "\n"), hostShim) {
+		t.Fatalf("PATH warnings=%q, want out-of-home shadow %q reported", warnings, hostShim)
+	}
+}
+
+func TestCrumbHealthNonDirectoryRemainsAnError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sid-file")
 	if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := crumbHealth(path); err == nil {
 		t.Fatal("crumbHealth returned nil for a non-directory probe target")
+	}
+}
+
+func TestCrumbHealthPermissionDeniedRemainsAnError(t *testing.T) {
+	path := t.TempDir()
+	_, _, err := crumbHealthWith(
+		path,
+		os.Stat,
+		func(string) ([]os.DirEntry, error) { return nil, os.ErrPermission },
+	)
+	if !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("crumbHealth permission error=%v, want permission denied", err)
 	}
 }
 
