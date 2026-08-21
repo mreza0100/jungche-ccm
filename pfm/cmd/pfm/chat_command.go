@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/kill"
@@ -383,7 +384,7 @@ func runChatEnd(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 		fmt.Fprintf(stderr, "pfm chat end: %v\n", err)
 		return 1
 	}
-	command := exec.Command("tmux", "-S", socketPath, "kill-server")
+	command := exec.Command(deps.Executable("tmux"), "-S", socketPath, "kill-server")
 	if output, err := command.CombinedOutput(); err != nil {
 		fmt.Fprintf(stderr, "pfm chat end: %v: %s\n", err, strings.TrimSpace(string(output)))
 		return 1
@@ -400,7 +401,7 @@ func renameChatWindow(ctx context.Context, socket, target, name string) error {
 	if target == "" {
 		target = socket
 	}
-	command := exec.CommandContext(ctx, "tmux", "-S", socketPath, "rename-window", "-t", target, name)
+	command := exec.CommandContext(ctx, deps.Executable("tmux"), "-S", socketPath, "rename-window", "-t", target, name)
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux rename-window: %w: %s", err, strings.TrimSpace(string(output)))
 	}
@@ -467,7 +468,7 @@ func runChatScript(
 		fmt.Fprintf(stderr, "pfm chat: %v\n", err)
 		return 1
 	}
-	command := exec.Command("bash", append([]string{path}, args...)...)
+	command := exec.Command(deps.Executable("bash"), append([]string{path}, args...)...)
 	command.Stdin = stdin
 	command.Stdout = stdout
 	command.Stderr = stderr

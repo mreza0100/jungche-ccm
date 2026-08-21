@@ -321,3 +321,24 @@ func hookCommandCount(t *testing.T, raw, event, wanted string) int {
 	}
 	return count
 }
+
+func TestUninstallRefusesToStrandOwnedHookInInvalidCodexJSON(t *testing.T) {
+	home := t.TempDir()
+	managed := filepath.Join(home, ".local", "share", "pfm", "install")
+	hooksPath := filepath.Join(home, ".codex", "hooks.json")
+	writeFixture(t, hooksPath, "{broken\n")
+	expected := codexHookTemplate(home)
+	physical := physicalSettingsPath(hooksPath)
+	encoded, err := encodeSettingsHookOwnership(map[string]settingsHookCounts{
+		physical: {{Event: expected.Event, Matcher: expected.Matcher, Command: expected.Command}: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(managed, "settings-hook-ownership.json"), string(encoded))
+	installer := engine{options: Options{Mode: ModeUninstall, Home: home}, managedRoot: managed}
+	err = installer.wireCodexHooks()
+	if err == nil || !strings.Contains(err.Error(), "refuse to strand owned hooks in invalid Codex hooks JSON") {
+		t.Fatalf("wireCodexHooks error=%v", err)
+	}
+}

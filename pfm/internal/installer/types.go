@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/harvestpy"
 )
 
@@ -98,14 +99,14 @@ type Report struct {
 type execCommandRunner struct{}
 
 func (execCommandRunner) Run(ctx context.Context, name string, args ...string) error {
-	command := exec.CommandContext(ctx, name, args...)
+	command := exec.CommandContext(ctx, deps.Executable(name), args...)
 	command.Stdout = io.Discard
 	command.Stderr = io.Discard
 	return command.Run()
 }
 
 func (execCommandRunner) Output(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+	return exec.CommandContext(ctx, deps.Executable(name), args...).Output()
 }
 
 func normalize(options Options) (Options, error) {

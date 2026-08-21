@@ -928,6 +928,9 @@ func (installer *engine) wireSettings() error {
 	}
 	seen := map[string]bool{}
 	seenOwnershipPaths := map[string]bool{}
+	// Codex hooks share this ledger but are converged by wireCodexHooks after
+	// Claude settings. They are therefore visited, just not by this loop.
+	seenOwnershipPaths[physicalSettingsPath(filepath.Join(installer.options.Home, ".codex", "hooks.json"))] = true
 	for _, candidate := range candidates {
 		physical, err := filepath.EvalSymlinks(candidate)
 		if err != nil {
@@ -1026,28 +1029,47 @@ func (installer *engine) writeSettingsHookOwnership(
 
 func (installer *engine) wireCodexHooks() error {
 	path := filepath.Join(installer.options.Home, ".codex", "hooks.json")
+	physical := physicalSettingsPath(path)
+	ownershipPath := filepath.Join(installer.managedRoot, "settings-hook-ownership.json")
+	ownership, ownershipRaw, err := readSettingsHookOwnership(ownershipPath)
+	if err != nil {
+		return fmt.Errorf("read settings hook ownership %s: %w", ownershipPath, err)
+	}
 	raw, err := os.ReadFile(path)
 	existed := true
 	if errors.Is(err, fs.ErrNotExist) {
 		existed = false
 		raw = []byte("{\"hooks\":{}}\n")
+		if installer.options.Mode == ModeUninstall {
+			delete(ownership, physical)
+			return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
+		}
 	} else if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
-	updated, changed, err := updateCodexHooks(
+	updated, changed, nextOwned, err := updateCodexHooks(
 		raw,
 		installer.options.Home,
 		installer.options.Mode == ModeUninstall,
+		ownership[physical],
 	)
 	if err != nil {
+		if installer.options.Mode == ModeUninstall && len(ownership[physical]) > 0 {
+			return fmt.Errorf("refuse to strand owned hooks in invalid Codex hooks JSON at %s: %w", path, err)
+		}
 		installer.skip("invalid Codex hooks JSON at " + path + ": " + err.Error())
 		return nil
 	}
+	if len(nextOwned) == 0 {
+		delete(ownership, physical)
+	} else {
+		ownership[physical] = nextOwned
+	}
 	if !changed {
 		installer.ok(path + " wiring")
-		return nil
+		return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
 	}
-	return installer.change("rewrite "+path+" (backup preserved)", func() error {
+	if err := installer.change("rewrite "+path+" (backup preserved)", func() error {
 		if existed {
 			backup := availableBackup(path, installer.stamp)
 			if err := copyBackup(path, backup); err != nil {
@@ -1055,7 +1077,10 @@ func (installer *engine) wireCodexHooks() error {
 			}
 		}
 		return atomicWrite(path, updated, 0o600)
-	})
+	}); err != nil {
+		return err
+	}
+	return installer.writeSettingsHookOwnership(ownershipPath, ownershipRaw, ownership)
 }
 
 func (installer *engine) wireShell(uninstall bool) error {

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/dream/apply"
 	"hostops/pfm/internal/dream/artifact"
 	"hostops/pfm/internal/dream/corpus"
@@ -524,7 +525,7 @@ type commandNightGit struct {
 }
 
 func (reader commandNightGit) Head(ctx context.Context) (string, error) {
-	command := exec.CommandContext(ctx, "git", "-C", reader.repo, "rev-parse", "--verify", "HEAD")
+	command := exec.CommandContext(ctx, deps.Executable("git"), "-C", reader.repo, "rev-parse", "--verify", "HEAD")
 	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 	output, err := command.CombinedOutput()
 	if err != nil {

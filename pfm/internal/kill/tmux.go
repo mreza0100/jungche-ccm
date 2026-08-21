@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"hostops/pfm/internal/deps"
 )
 
 // CommandTmux invokes tmux only through an explicit socket pathname.
@@ -160,7 +162,7 @@ func (tmux CommandTmux) command(
 ) *exec.Cmd {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	commandArguments := make([]string, 0, len(arguments)+2)
 	commandArguments = append(commandArguments, "-S", socketPath)

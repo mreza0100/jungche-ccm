@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/spawn"
 )
@@ -165,7 +166,7 @@ func (host CommandHost) command(
 ) *exec.Cmd {
 	binary := host.binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	commandArguments := []string{"-S", filepath.Join(host.tmuxDirectory, socket)}
 	commandArguments = append(commandArguments, arguments...)

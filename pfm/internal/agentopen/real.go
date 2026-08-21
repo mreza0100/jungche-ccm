@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 )
 
@@ -27,9 +28,9 @@ type ExecCommands struct {
 
 func (commands ExecCommands) binary() string {
 	if commands.Binary != "" {
-		return commands.Binary
+		return deps.Executable(commands.Binary)
 	}
-	return "claude"
+	return deps.Executable("claude")
 }
 func (commands ExecCommands) environment(config string, cache1H bool) []string {
 	dropped := map[string]struct{}{
@@ -138,9 +139,9 @@ type RealTmux struct {
 
 func (tmux RealTmux) binary() string {
 	if tmux.Binary != "" {
-		return tmux.Binary
+		return deps.Executable(tmux.Binary)
 	}
-	return "tmux"
+	return deps.Executable("tmux")
 }
 func (tmux RealTmux) command(ctx context.Context, socket string, args ...string) *exec.Cmd {
 	command := exec.CommandContext(ctx, tmux.binary(), append([]string{"-S", filepath.Join(tmux.Dir, socket)}, args...)...)

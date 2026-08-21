@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 	"syscall"
 	"unicode"
 
 	"github.com/charmbracelet/x/term"
+
+	"hostops/pfm/internal/deps"
 )
 
 var (
@@ -18,7 +19,7 @@ var (
 		file, ok := writer.(interface{ Fd() uintptr })
 		return ok && term.IsTerminal(file.Fd())
 	}
-	actionLookPath = exec.LookPath
+	actionLookPath = deps.Resolve
 	actionExec     = syscall.Exec
 )
 

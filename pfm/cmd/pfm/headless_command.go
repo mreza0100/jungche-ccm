@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/resolve"
@@ -821,7 +822,7 @@ func hookRunner(command string, stderr io.Writer) func(headless.Status) error {
 		return nil
 	}
 	return func(status headless.Status) error {
-		process := exec.Command("sh", "-c", command)
+		process := exec.Command(deps.Executable("sh"), "-c", command)
 		process.Env = append(
 			os.Environ(),
 			"CC_CHAT_NAME="+status.Name,

@@ -18,15 +18,16 @@ func updateSettings(
 	}
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
-	clearCommand := pfmBinary + " internal clear-kill"
-	groupCommand := pfmBinary + " chat group hook"
+	expected := claudeHookTemplates(home)
+	clearCommand := commandByName(expected, "clear-kill")
+	groupCommand := commandByName(expected, "group")
 	statusCommand := pfmBinary + " statusline"
-	usageCommand := pfmBinary + " usage-hook"
-	agentInjectCommand := pfmBinary + " dream hook agent-inject"
-	nudgeCommand := pfmBinary + " dream hook nudge"
-	exploreDenyCommand := pfmBinary + " internal explore-deny"
-	epicInjectCommand := pfmBinary + " internal epic-inject"
-	launcherRepairCommand := pfmBinary + " internal launcher-repair"
+	usageCommand := commandByName(expected, "usage")
+	agentInjectCommand := commandByName(expected, "agent-inject")
+	nudgeCommand := commandByName(expected, "nudge")
+	exploreDenyCommand := commandByName(expected, "explore-deny")
+	epicInjectCommand := commandByName(expected, "epic-inject")
+	launcherRepairCommand := commandByName(expected, "launcher-repair")
 
 	changed := false
 	before := countSettingsHookCommands(document)
@@ -184,6 +185,9 @@ func updateSettings(
 			appendHookWithMatcher(document, "UserPromptSubmit", "", epicInjectCommand)
 			changed = true
 		}
+		if normalizeExpectedHookTypes(document, expected) {
+			changed = true
+		}
 	}
 	nextOwned := nextSettingsHookOwnership(
 		before,
@@ -289,6 +293,27 @@ func hasHookCommandWithMatcher(entries []map[string]any, wanted, matcher string)
 		}
 	}
 	return false
+}
+
+func normalizeExpectedHookTypes(document map[string]any, expected []ExpectedHook) bool {
+	changed := false
+	for _, wanted := range expected {
+		for _, entry := range hookEntries(document, wanted.Event, false) {
+			matcher, _ := entry["matcher"].(string)
+			if matcher != wanted.Matcher {
+				continue
+			}
+			hooks, _ := entry["hooks"].([]any)
+			for _, hookValue := range hooks {
+				hook, _ := hookValue.(map[string]any)
+				if hook["command"] == wanted.Command && hook["type"] != "command" {
+					hook["type"] = "command"
+					changed = true
+				}
+			}
+		}
+	}
+	return changed
 }
 
 func appendHook(document map[string]any, event, command string) {

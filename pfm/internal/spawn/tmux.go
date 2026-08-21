@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
 )
 
@@ -94,7 +95,7 @@ func (tmux CommandTmux) command(
 ) *exec.Cmd {
 	binary := tmux.Binary
 	if binary == "" {
-		binary = "tmux"
+		binary = deps.Executable("tmux")
 	}
 	commandArguments := []string{"-S", filepath.Join(tmux.TmuxDir, socket)}
 	commandArguments = append(commandArguments, arguments...)

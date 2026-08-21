@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 )
 
@@ -47,7 +48,7 @@ func nativeProcesses(ctx context.Context) ([]Process, error) {
 // Linux reader gets this from /proc/<pid>/fd/0 and strips the /dev/ prefix; ps
 // already prints the short form, and "??" for a process with no terminal.
 func terminalByPID() map[int]string {
-	output, err := exec.Command("ps", "-A", "-o", "pid=,tty=").Output()
+	output, err := exec.Command(deps.Executable("ps"), "-A", "-o", "pid=,tty=").Output()
 	if err != nil {
 		return nil
 	}

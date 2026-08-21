@@ -12,6 +12,8 @@ import (
 	"sync"
 
 	"golang.org/x/sys/unix"
+
+	"hostops/pfm/internal/deps"
 )
 
 // DarwinProcFS answers the same questions RealProcFS answers, on a kernel that
@@ -121,7 +123,7 @@ func (proc *DarwinProcFS) RSSKB(pid int) (int64, error) {
 }
 
 func (proc *DarwinProcFS) loadResident() {
-	output, err := exec.Command("ps", "-A", "-o", "pid=,rss=").Output()
+	output, err := exec.Command(deps.Executable("ps"), "-A", "-o", "pid=,rss=").Output()
 	if err != nil {
 		proc.residentErr = fmt.Errorf("sample resident memory via ps: %w", err)
 		return
@@ -149,7 +151,7 @@ func (proc *DarwinProcFS) loadResident() {
 // shrug — reporting it falsely would let archive evict a file still in use.
 func (proc *DarwinProcFS) FDLinks(pid int) ([]FDLink, error) {
 	output, err := exec.Command(
-		"lsof", "-w", "-n", "-P", "-p", strconv.Itoa(pid), "-F", "fn",
+		deps.Executable("lsof"), "-w", "-n", "-P", "-p", strconv.Itoa(pid), "-F", "fn",
 	).Output()
 	if err != nil {
 		// lsof exits non-zero when a pid owns no matching files at all, and it

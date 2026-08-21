@@ -21,6 +21,7 @@ import (
 
 	"hostops/pfm/internal/agentopen"
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -256,7 +257,7 @@ func registeredDaemonSession(
 	if binaryName == "" {
 		binaryName = "claude"
 	}
-	binary, err := exec.LookPath(binaryName)
+	binary, err := deps.Resolve(binaryName)
 	if err != nil {
 		if filepath.IsAbs(binaryName) {
 			binary = binaryName

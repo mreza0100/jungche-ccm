@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/installer"
 )
 
@@ -276,7 +277,7 @@ func containsString(values []string, want string) bool {
 }
 
 func updateGitRun(ctx context.Context, repo string, args ...string) error {
-	command := exec.CommandContext(ctx, "git", args...)
+	command := exec.CommandContext(ctx, deps.Executable("git"), args...)
 	command.Dir = repo
 	command.Env = os.Environ()
 	var output bytes.Buffer
@@ -289,7 +290,7 @@ func updateGitRun(ctx context.Context, repo string, args ...string) error {
 }
 
 func updateGitOutput(ctx context.Context, repo string, args ...string) (string, error) {
-	command := exec.CommandContext(ctx, "git", args...)
+	command := exec.CommandContext(ctx, deps.Executable("git"), args...)
 	command.Dir = repo
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -303,7 +304,7 @@ func buildUpdateCandidate(ctx context.Context, repo, output string) error {
 	if _, err := os.Stat(filepath.Join(repo, "pfm", "go.mod")); err == nil {
 		moduleRoot = filepath.Join(repo, "pfm")
 	}
-	command := exec.CommandContext(ctx, "go", "-C", moduleRoot, "build", "-trimpath", "-o", output, "./cmd/pfm")
+	command := exec.CommandContext(ctx, deps.Executable("go"), "-C", moduleRoot, "build", "-trimpath", "-o", output, "./cmd/pfm")
 	command.Env = envWithEmptyGOFLAGS()
 	command.Dir = repo
 	outputBytes, err := command.CombinedOutput()
