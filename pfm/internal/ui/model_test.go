@@ -523,12 +523,31 @@ func TestTabsDefaultToChatsAndTabKeysWrap(t *testing.T) {
 		t.Fatalf("tab: tab=%d selected=%q command=%v", model.Tab(), model.SelectedKey(), command)
 	}
 	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
+	if model.Tab() != TabLimits {
+		t.Fatalf("tab: tab=%d, want Limits", model.Tab())
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
 	if model.Tab() != TabChats {
 		t.Fatalf("tab wrap = %d, want Chats", model.Tab())
 	}
 	model, _ = applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+	if model.Tab() != TabLimits {
+		t.Fatalf("shift+tab wrap = %d, want Limits", model.Tab())
+	}
+}
+
+func TestEnteringStatsTabDefaultsFocusToSubtabs(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
+	if model.statsFocus != StatsFocusSubtab {
+		t.Fatalf("entering Stats statsFocus = %d, want StatsFocusSubtab", model.statsFocus)
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
 	if model.Tab() != TabStats {
-		t.Fatalf("shift+tab wrap = %d, want Stats", model.Tab())
+		t.Fatalf("right from subtab focus left Stats: tab=%d, want TabStats", model.Tab())
+	}
+	if model.statsSubtab != StatsDocker {
+		t.Fatalf("right from subtab focus statsSubtab = %d, want StatsDocker", model.statsSubtab)
 	}
 }
 
@@ -554,6 +573,29 @@ func TestColonNameGroupsClusterInsideProject(t *testing.T) {
 	plain := ansi.Strip(model.View().Content)
 	if strings.Count(plain, "BUILDER (3)") != 1 || strings.Contains(plain, "fix (1)") {
 		t.Fatalf("group rendering:\n%s", plain)
+	}
+}
+
+func TestColonNameGroupsClusterAcrossProjects(t *testing.T) {
+	snapshot := fixtureSnapshot(120)
+	snapshot.Rows = []compose.Row{
+		{Kind: compose.LiveClaude, ID: "orch", Name: "P:CCC", Project: "professor", ActivityNS: 100},
+		{Kind: compose.LiveCodex, ID: "builder", Name: "P:BUILDER", Project: "limits-own-tab", ActivityNS: 90},
+	}
+	model := NewModel(snapshot)
+	rows := model.VisibleRows()
+	want := []string{"P:CCC", "P:BUILDER"}
+	if len(rows) != len(want) {
+		t.Fatalf("visible rows = %#v", rows)
+	}
+	for index := range want {
+		if rows[index].Name != want[index] {
+			t.Fatalf("row %d = %q, want %q", index, rows[index].Name, want[index])
+		}
+	}
+	plain := ansi.Strip(model.View().Content)
+	if strings.Count(plain, "P (2)") != 1 {
+		t.Fatalf("group rendering did not fold across projects:\n%s", plain)
 	}
 }
 
