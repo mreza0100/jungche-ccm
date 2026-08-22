@@ -220,6 +220,29 @@ func (converter pythonConverter) Convert(ctx context.Context, kind, source strin
 	return result.Markdown, nil
 }
 
+// ConvertOCR forces ONE Tesseract pass for this document only — the dispatch's
+// last-resort rung for scanned PDFs whose text layer converts empty.
+func (converter pythonConverter) ConvertOCR(ctx context.Context, kind, source string, body []byte) (markdown string, returnErr error) {
+	directory, err := os.MkdirTemp("", "pfm-harvest-ocr-")
+	if err != nil {
+		return "", fmt.Errorf("create OCR scratch: %w", err)
+	}
+	defer func() {
+		if cleanupErr := os.RemoveAll(directory); cleanupErr != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("remove OCR scratch: %w", cleanupErr))
+		}
+	}()
+	path := filepath.Join(directory, "input."+strings.TrimPrefix(filepath.Ext(source), "."))
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		return "", fmt.Errorf("write OCR scratch: %w", err)
+	}
+	result, convertErr := converter.worker.Convert(ctx, harvestpy.Request{Path: path, Kind: kind, Source: source, OCR: true})
+	if convertErr != nil {
+		return "", convertErr
+	}
+	return result.Markdown, nil
+}
+
 // Server exposes the SDK server for in-memory protocol tests.
 func (service *Service) Server() *mcp.Server { return service.server }
 
@@ -306,10 +329,10 @@ A *source* is either a **location** (where something lives) or an **identity** (
 - **DOI** — ` + codeTick + `10.xxxx/…` + codeTick + `, ` + codeTick + `doi:…` + codeTick + `, or a ` + codeTick + `doi.org` + codeTick + ` URL.
 - **Book by ISBN** — ` + codeTick + `isbn:9780262300988` + codeTick + ` (or a bare ISBN) → a free OA/public-domain copy.
 - **PMID / PMCID** — a bare PubMed ID (e.g. 30220343) or a PMC accession (PMC1234567) → resolved via Europe PMC/PMC.
-Harvester runs the legal open-access chain — for papers: Unpaywall → OpenAlex → Semantic Scholar → Europe PMC → CORE → DOAJ (arXiv & OSF/SocArXiv resolve by DOI prefix); for books: OAPEN → Internet Archive → Project Gutenberg → DOAB — returning the first copy that yields real content. Only API-sanctioned sources; no shadow libraries.
+Harvester runs the legal open-access chain — for papers: OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, Crossref, CORE, DOAJ (+ Unpaywall when HARVESTER_CONTACT_EMAIL is set; arXiv/ar5iv & OSF/SocArXiv resolve by DOI prefix); for books: OAPEN, DOAB, Internet Archive, HathiTrust (full view), Project Gutenberg — returning the first copy that yields real content. Only API-sanctioned sources; no shadow libraries.
 **Have only a TITLE?** Titles are ambiguous, so ` + codeTick + `fetch` + codeTick + ` won't guess — call the **` + codeTick + `findWorks` + codeTick + ` tool first (it lists candidate works), then fetch the one you choose by its DOI/URL.
 
-**Wall-bypass — when ANY URL is blocked, it goes down the rabbit hole:** httpx → curl_cffi Chrome-impersonation → Jina Reader → then it extracts the DOI from the page/URL (or a ` + codeTick + `citation_pdf_url` + codeTick + ` meta tag) and runs the open-access chain → Wayback Machine. So a paywalled or bot-blocked publisher link still returns the open copy when one legally exists. Hard IP-reputation blocks need a residential exit — the server says so plainly.
+**Wall-bypass — when ANY URL is blocked, it goes down the rabbit hole:** httpx → Chrome-fingerprint impersonation (tls-client) → Jina Reader → defuddle.md → then it extracts the DOI from the page/URL (or a ` + codeTick + `citation_pdf_url` + codeTick + ` meta tag) and runs the open-access chain → Wayback Machine. So a paywalled or bot-blocked publisher link still returns the open copy when one legally exists. Hard IP-reputation blocks need a residential exit — the server says so plainly.
 
 **Sibling tools:** ` + codeTick + `search` + codeTick + ` (open-web search → URLs to fetch), ` + codeTick + `findWorks` + codeTick + ` (a title → candidate works to choose from), ` + codeTick + `fetchImage` + codeTick + ` (an image → a local path to read with vision), ` + codeTick + `archive` + codeTick + ` (browse a .zip/.tar/.7z/.rar), ` + codeTick + `searchCache` + codeTick + ` (search what you already fetched).
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -177,12 +178,17 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	lastChallenge := false
 	lastContentChars := 0
 	emptyPDFConvert := false
+	var emptyPDFBody []byte
 	wrongPDF := false
 	directClient, chromeClient := h.client, h.chrome
 	switch guess {
 	case "pdf", "docx", "xlsx", "pptx", "csv", "zip", "tar", "7z", "rar":
 		directClient, chromeClient = h.binaryDirectOrClient(), h.binaryChromeOrChrome()
 	}
+	// Ladder note: the Python reference also carries a defuddle.md reader rung and an
+	// opt-in real-browser rung (Patchright + system Chrome); on this engine defuddle is
+	// wired below and Chrome impersonation is tls-client at the wire level. There is no
+	// Go real-browser rung by design.
 	for _, rung := range []struct {
 		name   string
 		client *http.Client
@@ -240,6 +246,9 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 		}
 		if kind == "pdf" && strings.TrimSpace(converted) == "" {
 			emptyPDFConvert = true
+			if len(emptyPDFBody) == 0 {
+				emptyPDFBody = append([]byte(nil), body...)
+			}
 		}
 		lastContentChars = contentChars(converted)
 		binary4xxOK := status >= 400 && kind == "pdf" && strings.HasPrefix(string(body), "%PDF-")
@@ -341,12 +350,33 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			}
 		}
 	}
+	// LAST resort for a remote PDF whose text layer converted EMPTY (a scan):
+	// ONE forced-OCR pass. Every faster rescue just failed; OCR is slow, so it
+	// fires exactly when nothing else worked. Needs an OCR-capable converter —
+	// a plain Converter skips this rung and the ladder's error stands.
+	if emptyPDFConvert && len(emptyPDFBody) > 0 {
+		if ocrConverter, ok := h.options.Converter.(OCRConverter); ok {
+			rungs = append(rungs, "ocr")
+			ocrConverted, ocrErr := ocrConverter.ConvertOCR(ctx, "pdf", source, emptyPDFBody)
+			switch {
+			case ocrErr != nil:
+				log.Printf("harvest: OCR escalation backend failed for %s: %v", source, ocrErr)
+			case usableContent(ocrConverted, "pdf"):
+				return h.storeResult(source, "pdf", "pdf:ocr", ocrConverted, int64(len(emptyPDFBody)), lastStatus, rungs, options)
+			}
+		}
+	}
 	message := failureMessage(source, lastStatus, lastErrorKind, lastChallenge)
 	if wrongPDF {
 		message = fmt.Sprintf("%s has a .pdf address but did not return a PDF (non-PDF content — likely an HTML paywall/login wall or a bot-block). Use `search` to find an open-access copy.", source)
 	}
 	if emptyPDFConvert {
-		message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it. Use `search` to find an alternative copy.", source)
+		_, canOCR := h.options.Converter.(OCRConverter)
+		if canOCR && len(emptyPDFBody) > 0 {
+			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — an OCR pass was already attempted on this copy and produced nothing. Use `search` to find an alternative copy.", source)
+		} else {
+			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it. Use `search` to find an alternative copy.", source)
+		}
 	}
 	if lastContentChars == 0 && len(lastPage) > 0 {
 		lastContentChars = contentChars(string(lastPage))
