@@ -101,3 +101,69 @@ func TestWaveZenodoOnlyMatchingRecordDocumentFiles(t *testing.T) {
 		t.Fatalf("zenodo candidates=%#v err=%v", got, err)
 	}
 }
+
+// ocrTestConverter is a plain Converter that returns empty text for PDFs (a
+// "scan") plus an OCR-capable escalation path, mirroring pythonConverter.
+type ocrTestConverter struct{}
+
+func (ocrTestConverter) Convert(_ context.Context, kind, _ string, _ []byte) (string, error) {
+	if kind == "pdf" {
+		return "", nil // scanned page: empty text layer
+	}
+	return "web body", nil
+}
+
+func (ocrTestConverter) ConvertOCR(_ context.Context, _, _ string, _ []byte) (string, error) {
+	return strings.Repeat("OCR TEXT ", 120), nil
+}
+
+func TestWaveOCREscalationRescuesScannedPDF(t *testing.T) {
+	pdfTransport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return response(r, http.StatusOK, "application/pdf", "%PDF-1.7 scanned pages"), nil
+	})
+	h := New(Options{
+		ContactEmail: "test@example.org",
+		CacheDir:     t.TempDir(),
+		Client:       &http.Client{Transport: pdfTransport},
+		Chrome:       &http.Client{Transport: pdfTransport},
+		Jina: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return response(nil, http.StatusNotFound, "text/plain", ""), nil
+		})},
+		OA: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return response(nil, http.StatusNotFound, "application/json", `{}`), nil
+		})},
+		Converter: ocrTestConverter{},
+	})
+	result := h.Fetch(context.Background(), "https://journals.example.test/scanned-paper.pdf")
+	if result.Error != "" || result.Method != "pdf:ocr" {
+		t.Fatalf("OCR rung should rescue the scan: method=%q err=%q", result.Method, result.Error)
+	}
+	if !strings.Contains(result.Content, "OCR TEXT") {
+		t.Fatalf("OCR content missing: %q", result.Content[:80])
+	}
+	found := false
+	for _, rung := range result.Rungs {
+		if rung == "ocr" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the ocr rung must appear in the rescue trace: %#v", result.Rungs)
+	}
+}
+
+func TestWavePMCOAPDFURLRewritesDeadFTP(t *testing.T) {
+	payload := `<OA><records><record id="PMC10450651">` +
+		`<link format="tgz" href="ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_package/67/4a/PMC10450651.tar.gz"/>` +
+		`<link format="pdf" href="ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_pdf/b8/d6/pnas.202302738.PMC10450651.pdf"/>` +
+		`</record></records></OA>`
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return response(r, http.StatusOK, "text/xml", payload), nil
+	})}
+	url2, err := PMCOAPDFURL(context.Background(), client, "PMC10450651")
+	// NCBI's own ftp href is DEAD; only the deprecated/ https path serves the file.
+	want := "https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/oa_pdf/b8/d6/pnas.202302738.PMC10450651.pdf"
+	if err != nil || url2 != want {
+		t.Fatalf("PMCOAPDFURL=%q err=%v want=%q", url2, err, want)
+	}
+}
