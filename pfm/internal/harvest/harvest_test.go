@@ -148,6 +148,7 @@ func TestIdentifiersAndOAOrdering(t *testing.T) {
 		t.Fatalf("PMCID class = %q", got)
 	}
 
+	// Unpaywall is gated on an operator email (it 422s keyless) — the test opts in.
 	resolver := &Resolver{Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		u := r.URL.String()
 		switch {
@@ -159,6 +160,7 @@ func TestIdentifiersAndOAOrdering(t *testing.T) {
 			return response(r, http.StatusNotFound, "application/json", `{}`), nil
 		}
 	})}}
+	resolver.ContactEmail = "test@example.org"
 	cands, err := resolver.ResolveDOI(context.Background(), "10.1000/test")
 	if err != nil || len(cands) == 0 || cands[0].URL != "https://repo.test/paper.pdf" {
 		t.Fatalf("ResolveDOI() = %#v err=%v", cands, err)

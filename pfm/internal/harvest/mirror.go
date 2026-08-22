@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -73,6 +74,30 @@ func EuropePMCFiguresURL(pmcid string) string {
 func PMCArticleURL(pmcid string) string {
 	return "https://pmc.ncbi.nlm.nih.gov/articles/" + pmcid + "/"
 }
+
+// PMCOAPDFURL resolves a PMCID through the PMC OA service (oa.fcgi) to a DIRECT
+// downloadable PDF URL. Verified live 2026-08-22: NCBI's own API still hands out
+// `ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/...` hrefs whose plain paths now 404 — the
+// files live under `deprecated/`, and the rewritten https path serves the real
+// PDF. Returns "" when no pdf-format link exists.
+func PMCOAPDFURL(ctx context.Context, client *http.Client, pmcid string) (string, error) {
+	body, status, _, err := getBody(ctx, client, "https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id="+url.QueryEscape(pmcid), defaultUA, 10<<20)
+	if err != nil || status >= 400 {
+		return "", fmt.Errorf("pmc oa.fcgi lookup failed for %s (status %d): %w", pmcid, status, err)
+	}
+	match := regexp.MustCompile(`<link[^>]+format="pdf"[^>]+href="([^"]+)"`).FindSubmatch(body)
+	if match == nil {
+		return "", nil
+	}
+	href := string(match[1])
+	fixed := strings.Replace(href, "ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/",
+		"https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/", 1)
+	if strings.HasPrefix(fixed, "https://") {
+		return fixed, nil
+	}
+	return "", nil
+}
+
 func WaybackRawURL(ctx context.Context, client *http.Client, source string) (string, error) {
 	if client == nil {
 		client = safeHTTPClientTimeout(false, 15*time.Second)

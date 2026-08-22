@@ -165,7 +165,7 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 		// Extensionless scholarly/PDF URLs are classified from response headers
 		// on the first request. Search every type partition on subsequent calls
 		// so the sniffed kind remains cacheable without a sidecar index.
-		if body, kind, meta, path, ok := h.cache.loadAny(source, []string{"pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "html"}); ok {
+		if body, kind, meta, path, ok := h.cache.loadAny(source, []string{"pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "epub", "html"}); ok {
 			return h.resultFromCache(source, kind, body, meta, path)
 		}
 	}
@@ -225,7 +225,14 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			return Result{Source: source, Kind: "image", Error: fmt.Sprintf("%s is an image — use the `fetchImage` tool, not `fetch`.", source), HTTPStatus: status, ErrorKind: "wrong_kind"}
 		}
 		if kind == "zip" || kind == "tar" || kind == "7z" || kind == "rar" {
-			return Result{Source: source, Kind: "archive", Error: fmt.Sprintf("%s is a %s archive — use the `archive` tool, not `fetch`.", source, kind), HTTPStatus: status, ErrorKind: "wrong_kind"}
+			// An EPUB is zip-SHAPED but is a book; OA book sources (OAPEN/DOAB/
+			// Gutenberg/Zenodo) serve EPUB constantly. Detect it by its uncompressed
+			// `mimetype` member and convert it instead of throwing the found book away.
+			if kind == "zip" && LooksLikeEpub(body) {
+				kind = "epub"
+			} else {
+				return Result{Source: source, Kind: "archive", Error: fmt.Sprintf("%s is a %s archive — use the `archive` tool, not `fetch`.", source, kind), HTTPStatus: status, ErrorKind: "wrong_kind"}
+			}
 		}
 		converted, err := h.convert(ctx, kind, source, body)
 		if err != nil {
@@ -277,6 +284,19 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			converted, convErr := stripJinaEnvelope(string(body)), error(nil)
 			if convErr == nil && usableContent(converted, kind) {
 				return h.storeResult(source, kind, "jina", converted, int64(len(body)), status, rungs, options)
+			}
+		}
+	}
+	// defuddle.md — a second keyless reader beside Jina (different infra,
+	// different blocks), tried before the legal mirror pivot.
+	if !isPrivateURL(source) && guess != "pdf" {
+		rungs = append(rungs, "defuddle")
+		target := "https://defuddle.md/" + source
+		body, status, _, err := getBody(ctx, h.client, target, h.userAgent, h.options.MaxBytes)
+		if err == nil && status < 400 && !isChallenge(body, status) {
+			converted := stripDefuddleEnvelope(string(body))
+			if usableContent(converted, "html") && contentChars(converted) > lastContentChars {
+				return h.storeResult(source, "html", "defuddle-reader", converted, int64(len(body)), status, rungs, options)
 			}
 		}
 	}
