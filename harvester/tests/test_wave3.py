@@ -137,3 +137,48 @@ class TestArxivAr5iv:
         ]
         assert cands[0].kind_hint == "pdf" and cands[1].kind_hint == "html"
         assert cands[0].priority <= cands[1].priority, "PDF must be tried first"
+
+
+# ── wave-4: eLife / PLOS / NBER deterministic resolvers ─────────────────────────
+
+class _JsonResp:
+    def __init__(self, data):
+        self._d = data
+
+    def json(self):
+        return self._d
+
+
+class TestElifePlosNber:
+    ELIFE_JSON = {"total": 1, "items": [{
+        "doi": "10.7554/eLife.52570",
+        "pdf": "https://cdn.elifesciences.org/articles/52570/elife-52570-v3.pdf"}]}
+
+    async def test_elife_parses_pdf_and_gates_prefix(self):
+        class C:
+            async def get(self, url, **kw):
+                return _XmlResp('') if False else _JsonResp(self.json_data)
+            json_data = None
+        # use the dict-route client from test_perfection for JSON
+        from tests.test_perfection import oa_tests_client
+        client = oa_tests_client({"api.elifesciences.org": self.ELIFE_JSON})
+        out = await oa.from_elife("10.7554/eLife.52570", client)
+        assert out and out[0].url.endswith("elife-52570-v3.pdf") and out[0].source == "elife"
+        assert await oa.from_elife("10.1038/not-elife", oa_tests_client({})) == []
+
+    async def test_plos_is_offline_deterministic(self):
+        class NoNet:
+            async def get(self, *a, **k):
+                raise AssertionError("plos must be derived from the DOI, no API call")
+        out = await oa.from_plos("10.1371/journal.pcbi.1003285", NoNet())
+        assert out[0].url == ("https://journals.plos.org/pcbi/article/file?"
+                              "id=10.1371/journal.pcbi.1003285&type=printable")
+        assert await oa.from_plos("10.1038/s41586-020-2649-2", NoNet()) == []
+
+    async def test_nber_is_offline_deterministic(self):
+        class NoNet:
+            async def get(self, *a, **k):
+                raise AssertionError("nber must be derived from the DOI, no API call")
+        out = await oa.from_nber("10.3386/W33186", NoNet())
+        assert out[0].url == "https://www.nber.org/system/files/working_papers/w33186/w33186.pdf"
+        assert await oa.from_nber("10.3386/not-a-wp-id", NoNet()) == []
