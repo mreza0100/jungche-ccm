@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/usagehook"
 )
 
@@ -299,5 +300,229 @@ func TestLimitsSamplerKeepsRealFetchFailureVisible(t *testing.T) {
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "network route unavailable") {
 		t.Fatalf("warnings=%v, want real-account diagnostic", warnings)
+	}
+}
+
+// --- shared on-disk cache regression coverage -------------------------------
+//
+// Every picker process constructs its own LimitsSampler (cmd/pfm/commands.go,
+// `statsSampler.Limits = pfmstats.NewLimitsSampler(...)` runs once per `pfm ls`
+// invocation). LimitsSampler.cache today (limits.go:47-48) is an unexported,
+// in-process map — nothing on disk backs it — so two samplers standing in for
+// two concurrently open pickers each pay their own TTL and their own fetch,
+// exactly like two independent processes would on a real host. The tests below
+// construct a fresh LimitsSampler per "process" (never reusing a Go value) and
+// assert on observable network-call counts, matching the existing package's
+// httptest-server style (TestLimitsSamplerIgnoresStaleCodexCacheForLiveFetch
+// above). None of them add a field to LimitsSampler or usagehook.Options —
+// they drive the contract entirely through what already compiles today, so a
+// failure below is a real, running assertion mismatch, never a build error.
+
+// writeFixtureCredentials plants an invented, secret-free OAuth credential so
+// usagehook.Fetch / usagehook.Evaluate treat configDir as a signed-in account.
+func writeFixtureCredentials(t *testing.T, configDir string) {
+	t.Helper()
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"claudeAiOauth":{"accessToken":"fixture-oauth-token-not-a-real-secret"}}`
+	if err := os.WriteFile(filepath.Join(configDir, ".credentials.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// usageJSONBody renders a minimal, valid usagehook.Usage payload — the exact
+// wire shape both usagehook.Fetch and usagehook.Evaluate decode.
+func usageJSONBody(five, seven float64, now time.Time) string {
+	return fmt.Sprintf(
+		`{"five_hour":{"utilization":%v,"resets_at":%q},"seven_day":{"utilization":%v,"resets_at":%q}}`,
+		five, now.Add(5*time.Hour).Format(time.RFC3339),
+		seven, now.Add(7*24*time.Hour).Format(time.RFC3339),
+	)
+}
+
+// TestLimitsSamplerSharesFetchAcrossProcessesWithinTTL pins the shared-cache
+// contract: a second `pfm ls` opened moments after the first must reuse
+// whatever the first one just fetched instead of making its own request.
+//
+// Fails at HEAD: LimitsSampler has no on-disk cache at all (limits.go:47-48
+// `cache map[string]cachedLimits` lives only on the struct value), so sampler
+// B — a brand-new value, exactly like a second process — starts with an empty
+// cache and fetches again. hits ends at 2, not 1.
+func TestLimitsSamplerSharesFetchAcrossProcessesWithinTTL(t *testing.T) {
+	configDir := t.TempDir()
+	writeFixtureCredentials(t, configDir)
+	five, seven := 11.0, 22.0
+	now := time.Now()
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(five, seven, now))
+	}))
+	defer server.Close()
+
+	account := LimitAccount{ID: 1, Engine: "claude", Label: "account 1", ConfigDir: configDir}
+
+	samplerA := NewLimitsSampler([]LimitAccount{account})
+	samplerA.Endpoint = server.URL
+	limitsA, warningsA := samplerA.Sample(context.Background())
+	if hits != 1 || len(warningsA) != 0 || len(limitsA) != 1 || len(limitsA[0].Windows) != 2 {
+		t.Fatalf("sampler A (first process): hits=%d warnings=%v limits=%#v, want one clean fetch", hits, warningsA, limitsA)
+	}
+
+	// A fresh LimitsSampler value, same account, same endpoint — a second
+	// picker process opened a moment later against the same host state.
+	samplerB := NewLimitsSampler([]LimitAccount{account})
+	samplerB.Endpoint = server.URL
+	limitsB, warningsB := samplerB.Sample(context.Background())
+	if hits != 1 {
+		t.Fatalf("sampler B (second process) fetched independently: hits=%d, want 1 (shared cache hit, 0 new fetches)", hits)
+	}
+	if len(warningsB) != 0 || len(limitsB) != 1 || len(limitsB[0].Windows) != len(limitsA[0].Windows) {
+		t.Fatalf("sampler B limits=%#v warnings=%v, want the same windows sampler A already fetched", limitsB, warningsB)
+	}
+}
+
+// TestLimitsSamplerRespectsShortTTLWithinAndAcrossWindow is not a regression
+// test — the single-sampler in-memory TTL already works today. It pins the
+// TTL boundary itself (300ms: 0/100/200ms stay cached, 400ms refetches) so a
+// shared-cache rewrite of refresh()/cached() cannot silently widen or drop
+// the existing per-sampler freshness window while fixing the cross-process
+// gap above.
+func TestLimitsSamplerRespectsShortTTLWithinAndAcrossWindow(t *testing.T) {
+	configDir := t.TempDir()
+	writeFixtureCredentials(t, configDir)
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(10, 20, time.Now()))
+	}))
+	defer server.Close()
+
+	now := time.Unix(1_800_000_000, 0)
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 4, Engine: "claude", ConfigDir: configDir}})
+	sampler.Endpoint = server.URL
+	sampler.TTL = 300 * time.Millisecond
+	sampler.Now = func() time.Time { return now }
+
+	if _, warnings := sampler.Sample(context.Background()); len(warnings) != 0 || hits != 1 {
+		t.Fatalf("t=0: hits=%d warnings=%v, want 1 clean fetch", hits, warnings)
+	}
+	now = now.Add(100 * time.Millisecond)
+	sampler.Sample(context.Background())
+	now = now.Add(100 * time.Millisecond) // t=200ms
+	sampler.Sample(context.Background())
+	if hits != 1 {
+		t.Fatalf("hits=%d at t=200ms, want 1 (still inside the 300ms TTL)", hits)
+	}
+	now = now.Add(200 * time.Millisecond) // t=400ms
+	sampler.Sample(context.Background())
+	if hits != 2 {
+		t.Fatalf("hits=%d at t=400ms, want 2 (TTL expired, one refetch)", hits)
+	}
+}
+
+// TestLimitsSamplerBacksOff429AcrossProcessesForAtLeastTenMinutes pins the
+// 429-backoff half of the shared-cache contract: a rate-limited response must
+// be recorded where every sampler can see it, and a fresh sampler standing in
+// for a second process must not repeat the request that just got rate-limited.
+//
+// Fails at HEAD for the same reason as the fetch-sharing test above: sampler
+// B starts with an empty in-memory cache and has no shared record of A's 429,
+// so it fetches again — hits ends at 2, not 1.
+func TestLimitsSamplerBacksOff429AcrossProcessesForAtLeastTenMinutes(t *testing.T) {
+	configDir := t.TempDir()
+	writeFixtureCredentials(t, configDir)
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	account := LimitAccount{ID: 5, Engine: "claude", Label: "account 5", ConfigDir: configDir}
+
+	samplerA := NewLimitsSampler([]LimitAccount{account})
+	samplerA.Endpoint = server.URL
+	limitsA, _ := samplerA.Sample(context.Background())
+	if hits != 1 || len(limitsA) != 1 || !strings.Contains(limitsA[0].Status, "429") {
+		t.Fatalf("sampler A: hits=%d limits=%#v, want one recorded 429", hits, limitsA)
+	}
+
+	samplerB := NewLimitsSampler([]LimitAccount{account})
+	samplerB.Endpoint = server.URL
+	limitsB, _ := samplerB.Sample(context.Background())
+	if hits != 1 {
+		t.Fatalf("sampler B retried during the shared 429 backoff window: hits=%d, want 1 (no new request)", hits)
+	}
+	if len(limitsB) != 1 || !strings.Contains(limitsB[0].Status, "429") {
+		t.Fatalf("sampler B limits=%#v, want the shared 429 status surfaced without a fetch", limitsB)
+	}
+}
+
+// TestLimitsSamplerReadsCachePayloadTheHookWroteWithoutFetching pins the other
+// direction of the same shared cache: the UserPromptSubmit hook
+// (usagehook.Evaluate, hook.go:182-215) already writes a shared, on-disk
+// acct-<id>.json through its own refresh() (hook.go:280-284 for the CacheDir
+// default, keyed off PFM_HOME exactly like every other jail override in this
+// package — see pfm/CLAUDE.md § Environment Variables). Once LimitsSampler
+// reads that same file/location, a picker opened right after a prompt already
+// ran must render instantly from the hook's cache instead of firing its own
+// request.
+//
+// Fails at HEAD: LimitsSampler never looks at CacheDir/PFM_HOME or any
+// acct-<id>.json at all — refresh() (limits.go:151) goes straight to
+// sampler.Fetch — so it fetches from the network regardless of what the hook
+// already wrote. samplerHits ends at 1, not 0.
+func TestLimitsSamplerReadsCachePayloadTheHookWroteWithoutFetching(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	configDir := filepath.Join(home, ".claude")
+	writeFixtureCredentials(t, configDir)
+
+	five, seven := 41.0, 62.0
+	now := time.Now()
+
+	var hookHits int
+	hookServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hookHits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(five, seven, now))
+	}))
+	defer hookServer.Close()
+
+	// Plant the shared cache file the way a running host already does today:
+	// through the hook's own writer (usagehook.Evaluate -> refresh ->
+	// atomicWrite, hook.go:280-284/300-304), before any LimitsSampler runs.
+	if _, err := usagehook.Evaluate(context.Background(), usagehook.Options{
+		Home: home, ConfigDir: configDir, Endpoint: hookServer.URL, Client: hookServer.Client(),
+	}); err != nil {
+		t.Fatalf("plant hook cache via usagehook.Evaluate: %v", err)
+	}
+	if hookHits != 1 {
+		t.Fatalf("hook fixture setup hits=%d, want exactly 1 (the cache-planting fetch)", hookHits)
+	}
+
+	var samplerHits int
+	limitsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		samplerHits++
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(five, seven, now))
+	}))
+	defer limitsServer.Close()
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 1, Engine: "claude", Label: "account 1", ConfigDir: configDir}})
+	sampler.Endpoint = limitsServer.URL
+	limits, warnings := sampler.Sample(context.Background())
+	if samplerHits != 0 {
+		t.Fatalf("sampler fetched instead of reading the hook's cache: samplerHits=%d, want 0", samplerHits)
+	}
+	if len(warnings) != 0 || len(limits) != 1 || len(limits[0].Windows) != 2 {
+		t.Fatalf("limits=%#v warnings=%v, want the hook-planted windows with no warnings", limits, warnings)
+	}
+	if limits[0].Windows[0].UsedPct != five || limits[0].Windows[1].UsedPct != seven {
+		t.Fatalf("windows=%#v, want five=%v seven=%v read from the planted cache", limits[0].Windows, five, seven)
 	}
 }
