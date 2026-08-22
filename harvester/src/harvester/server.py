@@ -258,10 +258,10 @@ A *source* is either a **location** (where something lives) or an **identity** (
 - **DOI** — `10.xxxx/…`, `doi:…`, or a `doi.org` URL.
 - **Book by ISBN** — `isbn:9780262300988` (or a bare ISBN).
 - **PMID / PMCID** — a bare PubMed ID (e.g. `30220343`) or a PMC accession (`PMC1234567`), resolved via Europe PMC/PMC.
-Harvester runs the legal open-access chain — for papers: Unpaywall → OpenAlex → Semantic Scholar → Europe PMC → CORE → DOAJ (arXiv & OSF/SocArXiv resolve by DOI prefix); for books: OAPEN → Internet Archive → Project Gutenberg → DOAB — returning the first copy that yields real content. Only API-sanctioned sources; no shadow libraries.
+Harvester runs the legal open-access chain — for papers: OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, Crossref, CORE, DOAJ (+ Unpaywall when HARVESTER_CONTACT_EMAIL is set; arXiv/ar5iv & OSF/SocArXiv resolve by DOI prefix); for books: OAPEN, DOAB, Internet Archive, HathiTrust (full view), Project Gutenberg — returning the first copy that yields real content. Only API-sanctioned sources; no shadow libraries.
 **Have only a TITLE?** Titles are ambiguous, so `fetch` won't guess — call the **`findWorks`** tool first (it lists candidate works), then fetch the one you choose by its DOI/URL.
 
-**Wall-bypass — when ANY URL is blocked, it goes down the rabbit hole:** httpx → curl_cffi Chrome-impersonation → Jina Reader → then it extracts the DOI from the page/URL (or a `citation_pdf_url` meta tag) and runs the open-access chain → Wayback Machine. So a paywalled or bot-blocked publisher link still returns the open copy when one legally exists. Hard IP-reputation blocks need a residential exit — the server says so plainly.
+**Wall-bypass — when ANY URL is blocked, it goes down the rabbit hole:** httpx → curl_cffi Chrome-impersonation → Jina Reader → defuddle.md → (opt-in) a real system Chrome via Patchright → then it extracts the DOI from the page/URL (or a `citation_pdf_url` meta tag) and runs the open-access chain → Wayback Machine. So a paywalled or bot-blocked publisher link still returns the open copy when one legally exists. Hard IP-reputation blocks need a residential exit — the server says so plainly.
 
 **Sibling tools:** `search` (open-web search → URLs to fetch), `findWorks` (a title → candidate works to choose from), `fetchImage` (an image → a local path to read with vision), `archive` (browse a .zip/.tar/.7z/.rar), `searchCache` (search what you already fetched).
 

@@ -367,6 +367,9 @@ class TestWalledUrlWithDoiFallback:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_doi_to_pmcid(doi: str, client):
             return "PMC99999"
 
@@ -379,6 +382,7 @@ class TestWalledUrlWithDoiFallback:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "doi_to_pmcid", fake_doi_to_pmcid)
         monkeypatch.setattr(mirror, "europepmc_pdf", fake_europepmc_pdf)
         monkeypatch.setattr(convert, "pdf_to_md", fake_pdf_to_md)
@@ -403,6 +407,9 @@ class TestWalledUrlWithDoiFallback:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_doi_to_pmcid(doi: str, client):
             return "PMC77777"
 
@@ -415,6 +422,7 @@ class TestWalledUrlWithDoiFallback:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "doi_to_pmcid", fake_doi_to_pmcid)
         monkeypatch.setattr(mirror, "europepmc_pdf", fake_europepmc_pdf)
         monkeypatch.setattr(convert, "pdf_to_md", fake_pdf_to_md)
@@ -475,6 +483,9 @@ class TestWalledUrlNoDoiWayback:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_wayback_raw_url(url: str, client):
             return "https://web.archive.org/web/20230601000000id_/https://wall.example/page"
 
@@ -486,6 +497,7 @@ class TestWalledUrlNoDoiWayback:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "wayback_raw_url", fake_wayback_raw_url)
         monkeypatch.setattr(net, "fetch_raw", fake_fetch_raw)
 
@@ -508,6 +520,9 @@ class TestWalledUrlNoDoiWayback:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         wayback_called = []
 
         async def fake_wayback_raw_url(url: str, client):
@@ -517,6 +532,7 @@ class TestWalledUrlNoDoiWayback:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "wayback_raw_url", fake_wayback_raw_url)
 
         await dispatch._html_result(
@@ -537,6 +553,9 @@ class TestWalledUrlNoDoiWayback:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_wayback_raw_url(url: str, client):
             return "https://web.archive.org/web/20230601000000id_/https://wall.example/page"
 
@@ -546,6 +565,7 @@ class TestWalledUrlNoDoiWayback:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "wayback_raw_url", fake_wayback_raw_url)
         monkeypatch.setattr(net, "fetch_raw", fake_fetch_raw)
 

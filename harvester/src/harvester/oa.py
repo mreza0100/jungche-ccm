@@ -314,7 +314,7 @@ async def from_openaire(doi: str, client: "AsyncClient") -> list[Candidate]:
         seen.add(u)
         kind = "pdf" if u.lower().endswith(".pdf") else "html"
         out.append(Candidate(_score("openaire", kind=kind), u, "openaire", "green", "", kind))
-    return out
+    return sorted(out)  # PDF instances first, regardless of JSON encounter order
 
 
 async def from_zenodo(doi: str, client: "AsyncClient") -> list[Candidate]:
@@ -330,14 +330,18 @@ async def from_zenodo(doi: str, client: "AsyncClient") -> list[Candidate]:
         if not isinstance(h, dict):
             continue
         rec_doi = _bare_doi(h.get("doi") or "")
-        exact = bool(rec_doi and rec_doi.lower() == doi.lower())
+        if not rec_doi or rec_doi.lower() != doi.lower():
+            continue  # only THE record for THIS doi — never a neighboring record's files
         for f in (h.get("files") or []):
             if not isinstance(f, dict):
                 continue
             url = ((f.get("links") or {}).get("self")) or ""
             key = f.get("key") or ""
-            if not url or (not key.lower().endswith((".pdf", ".epub")) and not exact):
-                continue  # only the record's document files, not stray datasets
+            # ONLY document files by extension — a DOI match never turns a .zip dataset
+            # into article text (caught by the hermetic tests).
+            if not url or not (key.lower().endswith((".pdf", ".epub"))
+                               or url.lower().endswith((".pdf", ".epub"))):
+                continue
             ext = ".epub" if key.lower().endswith(".epub") else ""
             out.append(Candidate(_score("zenodo"), url, "zenodo", "green", "",
                                   "epub" if ext else "pdf"))
@@ -914,7 +918,14 @@ async def from_hathitrust(query: str, client: "AsyncClient") -> list[Candidate]:
         return []
     data = await _get_json(
         client, f"https://catalog.hathitrust.org/api/volumes/brief/isbn/{isbn}.json")
-    if not isinstance(data, dict):
+    if data is None:
+        # _get_json only returns None when the LOOKUP itself failed (unreachable/malformed) —
+        # that is an outage, not evidence of absence; say so at warning level.
+        log.warning("hathitrust %s -> API lookup FAILED (outage?) — treated as no-copy, "
+                    "not as 'no full-view volume exists'", isbn)
+        return []
+    if not isinstance(data, dict) or not (data.get("items") or []):
+        log.info("hathitrust %s -> no volumes indexed for this ISBN", query)
         return []
     out: list[Candidate] = []
     for item in data.get("items") or []:

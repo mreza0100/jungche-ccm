@@ -23,20 +23,30 @@ and escalates through a four-stage wall-bypass ladder before surfacing an error.
 detects the format, routes it to the right converter, caches the Markdown result, and returns the
 full content. A second call on the same input is served from cache with no refetch.
 
-**Wall-bypass ladder.** For an HTML page the server tries four methods in order, stopping as soon
+**Wall-bypass ladder.** For an HTML page the server tries these methods in order, stopping as soon
 as it gets rich content:
 
 1. **httpx** — standard HTTP with trafilatura extraction (`favor_recall`); article images are
-   downloaded locally and `![](remote)` links are rewritten to local cache paths.
-2. **curl_cffi Chrome impersonation** — replays a real Chrome TLS/JA3 fingerprint; bypasses many
-   bot-detection CDNs.
+   downloaded locally and `![](remote)` links are rewritten to local cache paths when
+   `HARVESTER_LOCALIZE_IMAGES=1` is set.
+2. **curl_cffi Chrome impersonation** — replays a real Chrome TLS/JA3 fingerprint (pinned
+   ≥0.16.1: current TLS + HTTP/2 fingerprints); bypasses many bot-detection CDNs.
 3. **Jina Reader** (`https://r.jina.ai/<url>`) — external headless extraction; skipped for
-   private/internal hosts.
-4. **Open-access mirror** — extracts a DOI from the URL (or scrapes a `citation_pdf_url` /
+   private/internal hosts. Keyless = 20 req/min; set `JINA_API_KEY` for ~500 req/min.
+4. **defuddle.md reader** (`https://defuddle.md/<url>`) — a second keyless reader on different
+   infrastructure, tried before the browser rung.
+5. **Browser rung** (`HARVESTER_BROWSER=1`, needs the optional `[browser]` extra) — renders the
+   page in a real system Chrome via Patchright; passes passive bot walls including Cloudflare's
+   managed challenge. Every request the page makes is SSRF-checked at the route layer.
+6. **Open-access mirror** — extracts a DOI from the URL (or scrapes a `citation_pdf_url` /
    `citation_doi` meta tag from the blocked landing page), then resolves through Europe PMC PDF →
-   PMC article HTML → the full open-access chain (Unpaywall, OpenAlex, Semantic Scholar, CORE,
-   DOAJ, arXiv/OSF) → a Wayback Machine snapshot. This is the headline path for walled academic
+   the PMC OA service direct PDF → PMC article HTML → the full open-access chain (Unpaywall¹,
+   OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, CORE, DOAJ,
+   arXiv/ar5iv/OSF) → a Wayback Machine snapshot. This is the headline path for walled academic
    publishers.
+
+¹ Unpaywall now requires an operator email per call; keyless runs skip it cleanly — set
+`HARVESTER_CONTACT_EMAIL` to enable it.
 
 PDF/Office/archive downloads share the spirit of the ladder: an empty or 403 download is retried
 with curl_cffi impersonation, and a walled publisher PDF URL that carries an extractable DOI pivots

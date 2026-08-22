@@ -252,6 +252,10 @@ class TestBrowserRungGating:
             order.append("jina")
             return ""  # jina fails too
 
+        async def fake_defuddle(url, ua, proxy=None):
+            order.append("defuddle")
+            return ""  # defuddle fails too — browser rung gets its shot
+
         async def fake_browser(url, proxy=None, timeout_ms=45000):
             order.append("browser")
             return "<html><body>" + "real content " * 120 + "</body></html>", 200
@@ -267,13 +271,14 @@ class TestBrowserRungGating:
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_html_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_imp_text)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(net, "fetch_browser", fake_browser)
         monkeypatch.setattr(dispatch.html, "extract_content_from_html", fake_extract)
         monkeypatch.setattr(dispatch, "_try_mirror_for_url", fake_mirror)
 
         res = await dispatch.get_or_fetch("https://walled.example/article", "ua")
-        assert order[:2] == ["chrome-impersonation", "jina"], f"got {order}"
-        assert order == ["chrome-impersonation", "jina", "browser"], (
+        assert order[:3] == ["chrome-impersonation", "jina", "defuddle"], f"got {order}"
+        assert order == ["chrome-impersonation", "jina", "defuddle", "browser"], (
             f"browser won → ladder stops there, mirror never needed; got {order}")
         assert "error" not in res and res["method"] == "browser-chrome"
         assert "real content" in res["body"]

@@ -182,3 +182,50 @@ class TestElifePlosNber:
         out = await oa.from_nber("10.3386/W33186", NoNet())
         assert out[0].url == "https://www.nber.org/system/files/working_papers/w33186/w33186.pdf"
         assert await oa.from_nber("10.3386/not-a-wp-id", NoNet()) == []
+
+
+# ── wave-5 review fixes: hermetic coverage for OpenAIRE / Zenodo / HathiTrust ────
+
+class TestOpenAireZenodoHathitrustHermetic:
+    OPENAIRE = {'response': {'results': {'result': [{'metadata': {'oaf:entity': {'oaf:result': {'children': {'instance': [{'webresource': {'url': {'$': 'https://escholarship.org/content/qt5g41c0hp/qt5g41c0hp.pdf'}}}, {'webresource': [{'url': {'$': 'https://doi.org/10.17863/cam.62701'}}]}, {'webresource': {'url': {'$': 'http://arxiv.org/abs/2006.10256'}}}]}}}}}]}}}
+
+    ZENODO = {"hits": {"hits": [
+        {"doi": "10.5281/zenodo.13235113",
+         "files": [{"key": "article.pdf",
+                    "links": {"self": "https://zenodo.org/api/records/13235113/files/article.pdf/content"}},
+                   {"key": "dataset.zip",
+                    "links": {"self": "https://zenodo.org/api/records/13235113/files/dataset.zip/content"}}]},
+        {"doi": "10.5281/zenodo.99999999",   # a DIFFERENT record — must be ignored
+         "files": [{"key": "other.epub",
+                    "links": {"self": "https://zenodo.org/api/records/9/files/other.epub/content"}}]},
+    ]}}
+
+    HATHI = {"records": {"005783760": {}}, "items": [
+        {"usRightsString": "Full view", "itemURL": "https://babel.hathitrust.org/cgi/pt?id=mdp.x"},
+        {"usRightsString": "Limited (search-only)", "itemURL": "https://babel.hathitrust.org/cgi/pt?id=mdl.y"},
+    ]}
+
+    async def test_openaire_walks_real_shape_and_dedupes(self):
+        from tests.test_perfection import oa_tests_client
+        client = oa_tests_client({"api.openaire.eu": self.OPENAIRE})
+        out = await oa.from_openaire("10.1038/s41586-020-2649-2", client)
+        urls = [c.url for c in out]
+        assert "https://escholarship.org/content/qt5g41c0hp/qt5g41c0hp.pdf" in urls
+        assert len(urls) == len(set(urls)), "duplicate webresources must dedupe"
+        assert out[0].kind_hint == "pdf", "the .pdf instance must sort first"
+
+    async def test_zenodo_only_the_matching_record_document_files(self):
+        from tests.test_perfection import oa_tests_client
+        client = oa_tests_client({"zenodo.org/api/records": self.ZENODO})
+        out = await oa.from_zenodo("10.5281/zenodo.13235113", client)
+        urls = [c.url for c in out]
+        assert any(u.endswith("files/article.pdf/content") for u in urls)
+        assert all("dataset.zip" not in u for u in urls), "zip files are not article text"
+        assert all("other.epub" not in u for u in urls), "another record's files must not leak in"
+
+    async def test_hathitrust_full_view_gate(self):
+        from tests.test_perfection import oa_tests_client
+        client = oa_tests_client({"catalog.hathitrust.org": self.HATHI})
+        out = await oa.from_hathitrust("9780553212525", client)
+        assert len(out) == 1, "only the Full-view item passes the rights gate"
+        assert out[0].url.endswith("id=mdp.x") and out[0].source == "hathitrust"

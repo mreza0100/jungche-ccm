@@ -932,6 +932,10 @@ async def _pmcid_to_result(
         else:
             trace.append(Attempt("oa:pmc-oa-pdf", oa_pdf_url,
                                  classify_outcome(body_len=len(data), status=status)))
+    else:
+        # The oa.fcgi rung RAN and found nothing usable — record it so the rescue trace shows
+        # the lookup happened (mirror.py logs warning on outage vs info on no-link).
+        trace.append(Attempt("oa:pmc-fcgi", pmcid, Outcome.DEAD_NET))
     # PDF unavailable — try the PMC article HTML
     pmc_url = mirror.pmc_article_url(pmcid)
     pmc_raw = await net.fetch_raw(pmc_url, user_agent, proxy_url)
