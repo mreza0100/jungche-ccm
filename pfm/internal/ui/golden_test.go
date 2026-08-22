@@ -181,8 +181,7 @@ func statsGoldenModel(width int) Model {
 
 func limitsGoldenModel(width int) Model {
 	model := NewModel(fixtureSnapshot(width))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	model.height = 24
 	now := time.Unix(0, fixtureNowNS)
 	model.stats = pfmstats.Snapshot{Ready: true, Limits: []pfmstats.AccountLimits{

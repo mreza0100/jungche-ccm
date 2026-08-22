@@ -116,18 +116,25 @@ func (model Model) render() string {
 	if model.tab == TabStats {
 		body = model.renderStatsPanel(width, bodyHeight)
 	}
+	if model.tab == TabLimits {
+		body = model.renderLimitsPanel(width, bodyHeight)
+	}
 	return strings.Join([]string{header, query, body, footer}, "\n")
 }
 
 func (model Model) renderTabs(width int) string {
 	chat := " Chats "
 	stats := " Stats "
-	if model.tab == TabChats {
+	limits := " Limits "
+	switch model.tab {
+	case TabChats:
 		chat = selectedStyle.Render(chat)
-	} else {
+	case TabStats:
 		stats = selectedStyle.Render(stats)
+	default:
+		limits = selectedStyle.Render(limits)
 	}
-	return fillLine(" tabs  "+chat+" "+stats+"   tab/shift+tab", width)
+	return fillLine(" tabs  "+chat+" "+stats+" "+limits+"   tab/shift+tab", width)
 }
 
 func (model Model) renderHeader(width int) string {
@@ -163,9 +170,15 @@ func (model Model) renderHeader(width int) string {
 		headerStyle.Render(fillLine(text, contentWidth)),
 		model.renderTabs(contentWidth),
 	}
-	if model.tab == TabStats {
+	switch model.tab {
+	case TabStats:
 		lines = append(lines, model.renderStatsHeader(contentWidth))
-	} else {
+	case TabLimits:
+		lines = append(lines, dimStyle.Render(fillLine(
+			" Limits · live usage windows across every account",
+			contentWidth,
+		)))
+	default:
 		lines = append(lines, dimStyle.Render(fillLine(
 			" Chats · fuzzy search and all existing chat controls",
 			contentWidth,
@@ -194,6 +207,9 @@ func (model Model) renderQuery(width int) string {
 	if model.tab == TabStats {
 		return model.renderStatsSubtabs(width)
 	}
+	if model.tab == TabLimits {
+		return dimStyle.Render(fillLine(" limits  live usage windows, no controls", width))
+	}
 	input := model.query.View()
 	status := fmt.Sprintf("%d/%d visible", len(model.filtered), len(model.order))
 	// ⌃X takes the status line either way: the receipt when it landed, the
@@ -214,19 +230,16 @@ func (model Model) renderQuery(width int) string {
 func (model Model) renderStatsSubtabs(width int) string {
 	chats := " Chats "
 	docker := " Docker "
-	limits := " Limits "
 	if model.statsSubtab == StatsChats {
 		chats = selectedStyle.Render(chats)
-	} else if model.statsSubtab == StatsDocker {
-		docker = selectedStyle.Render(docker)
 	} else {
-		limits = selectedStyle.Render(limits)
+		docker = selectedStyle.Render(docker)
 	}
 	prefix := " subtabs  "
 	if model.statsFocus == StatsFocusSubtab {
 		prefix = "›subtabs  "
 	}
-	return fillLine(prefix+chats+" "+docker+" "+limits+"   ←/→", width)
+	return fillLine(prefix+chats+" "+docker+"   ←/→", width)
 }
 
 func (model Model) renderStatsHeader(width int) string {
@@ -262,6 +275,12 @@ func (model Model) renderFooter(width int) string {
 	if model.tab == TabStats {
 		first := " ↑↓ focus/rows  ←→ focused tab  c CPU sort  m RAM sort"
 		second := " esc cancel · live samples every 2s only while Stats is focused"
+		return dimStyle.Render(fillLine(first, width)) + "\n" +
+			dimStyle.Render(fillLine(second, width))
+	}
+	if model.tab == TabLimits {
+		first := " tab/shift+tab cycle tabs  ←→ cycle tabs"
+		second := " esc cancel · live samples every 2s only while Limits is focused"
 		return dimStyle.Render(fillLine(first, width)) + "\n" +
 			dimStyle.Render(fillLine(second, width))
 	}
@@ -333,7 +352,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsTokenStyle.Render(fmt.Sprintf("%12s", usageSpark(chat.Spark)))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
-	} else if model.statsSubtab == StatsDocker {
+	} else {
 		available := maxInt(16, innerWidth-36)
 		nameWidth := minInt(24, maxInt(8, available/3))
 		imageWidth := maxInt(8, available-nameWidth)
@@ -375,8 +394,6 @@ func (model Model) renderStatsPanel(width, height int) string {
 				" " + statsMemoryStyle.Render(fmt.Sprintf("%5.1f%%", container.MemoryPercent))
 			lines = append(lines, fillLine(line, innerWidth))
 		}
-	} else {
-		lines = append(lines, model.renderLimitCards(innerWidth, innerHeight)...)
 	}
 	if len(lines) == 1 && len(lines) < innerHeight {
 		message := "  waiting for first sample…"
@@ -391,18 +408,27 @@ func (model Model) renderStatsPanel(width, height int) string {
 	return framePanel(" stats ", lines, width)
 }
 
-type limitProviderTotal struct {
-	count   int
-	order   []string
-	windows map[string]float64
+func (model Model) renderLimitsPanel(width, height int) string {
+	innerWidth := maxInt(1, width-2)
+	innerHeight := maxInt(1, height-2)
+	lines := model.renderLimitCards(innerWidth, innerHeight)
+	if len(lines) == 0 && len(lines) < innerHeight {
+		message := "  waiting for first sample…"
+		if model.stats.Ready {
+			message = "  no live rows"
+		}
+		lines = append(lines, dimStyle.Render(fillLine(message, innerWidth)))
+	}
+	for len(lines) < innerHeight {
+		lines = append(lines, strings.Repeat(" ", innerWidth))
+	}
+	return framePanel(" limits ", lines, width)
 }
 
 func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 	now := time.Unix(0, model.nowNS)
 	lines := make([]string, 0, innerHeight)
 	skips := make([]string, 0)
-	providers := make(map[string]*limitProviderTotal)
-	providerOrder := make([]string, 0)
 	appendLine := func(line string) {
 		if len(lines) < innerHeight {
 			lines = append(lines, line)
@@ -421,30 +447,6 @@ func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 			skips = append(skips, cleanField(account.Status))
 			continue
 		}
-		engine := strings.ToLower(strings.TrimSpace(account.Engine))
-		if engine == "" {
-			engine = "claude"
-		}
-		total, found := providers[engine]
-		if !found {
-			total = &limitProviderTotal{windows: make(map[string]float64)}
-			providers[engine] = total
-			providerOrder = append(providerOrder, engine)
-		}
-		total.count++
-		for _, window := range account.Windows {
-			name := cleanField(window.Name)
-			if strings.HasPrefix(name, "unknown[") {
-				continue
-			}
-			if _, found := total.windows[name]; !found {
-				total.order = append(total.order, name)
-			}
-			if window.UsedPct > total.windows[name] {
-				total.windows[name] = window.UsedPct
-			}
-		}
-
 		appendLine(statsHeaderStyle.Render(fillLine("  "+limitAccountHeader(account, now), innerWidth)))
 		appendLine(borderStyle.Render(fillLine("  "+strings.Repeat("─", maxInt(0, innerWidth-2)), innerWidth)))
 		if account.Status != "" {
@@ -462,17 +464,6 @@ func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 		if renderedWindows == 0 {
 			appendLine(dimStyle.Render(fillLine("  ⚠ limits unavailable", innerWidth)))
 		}
-	}
-	for _, engine := range providerOrder {
-		total := providers[engine]
-		if total.count < 2 {
-			continue
-		}
-		parts := make([]string, 0, len(total.order))
-		for _, name := range total.order {
-			parts = append(parts, fmt.Sprintf("%s %.0f%%", name, total.windows[name]))
-		}
-		appendLine(statsHeaderStyle.Render(fillLine("  Σ "+engine+" · "+strings.Join(parts, " · "), innerWidth)))
 	}
 	if len(skips) > 0 {
 		appendLine(dimStyle.Render(fillLine("  "+strings.Join(skips, " · "), innerWidth)))
@@ -644,7 +635,13 @@ func (model Model) renderListPanel(width, height int) string {
 			if project == "" {
 				project = "?"
 			}
-			if project != previousProject {
+			nameGroup, grouped := model.nameGroups[model.filtered[position]]
+			// A name group folded across projects (rebuildOrder already placed
+			// every member contiguously, at the first project's slot) reads as
+			// ONE panel: crossing into a member's own project here must not
+			// reopen a second project banner or repeat the group's label.
+			continuesGroup := grouped && nameGroup.name == previousNameGroup
+			if project != previousProject && !continuesGroup {
 				if len(lines)+1 >= innerHeight && position == model.cursor {
 					// The selected row always wins the final viewport line.
 				} else {
@@ -658,13 +655,12 @@ func (model Model) renderListPanel(width, height int) string {
 						style.Render(fillLine(group, innerWidth)),
 					)
 				}
-				previousProject = project
 				previousNameGroup = ""
 			}
+			previousProject = project
 			if len(lines) >= innerHeight {
 				break
 			}
-			nameGroup, grouped := model.nameGroups[model.filtered[position]]
 			if grouped && nameGroup.name != previousNameGroup && len(lines) < innerHeight {
 				lines = append(lines, labelStyle.Render(fillLine(
 					"│  "+nameGroup.name+fmt.Sprintf(" (%d)", nameGroup.count),
