@@ -69,7 +69,7 @@ func TestLegacyConcurrentFailuresShareOneInFlightFetch(t *testing.T) {
 		return nil, fmt.Errorf("fixture connection failure")
 	})
 	client := func() *http.Client { return &http.Client{Transport: transport} }
-	h := New(Options{CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil })})
+	h := New(Options{ContactEmail: "test@example.org", CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil })})
 	start := make(chan struct{})
 	results := make(chan Result, 2)
 	for range 2 {
@@ -94,17 +94,17 @@ func TestLegacyConcurrentFailuresShareOneInFlightFetch(t *testing.T) {
 	if first.Error == "" || second.Error != first.Error {
 		t.Fatalf("shared failures=(%#v,%#v)", first, second)
 	}
-	wantRungs := []string{"direct", "chrome-impersonation", "jina", "wayback"}
+	wantRungs := []string{"direct", "chrome-impersonation", "jina", "defuddle", "wayback"}
 	if fmt.Sprint(first.Rungs) != fmt.Sprint(wantRungs) {
 		t.Fatalf("terminal rescue trace=%#v, want %#v", first.Rungs, wantRungs)
 	}
-	// One logical fetch walks direct, Chrome, Jina, and Wayback. Its twin must
-	// share that whole walk instead of doubling the transport count.
+	// One logical fetch walks direct, Chrome, Jina, defuddle, and Wayback. Its
+	// twin must share that whole walk instead of doubling the transport count.
 	mu.Lock()
 	gotCalls := calls
 	mu.Unlock()
-	if gotCalls != 4 {
-		t.Fatalf("transport calls=%d, want one four-rung walk", gotCalls)
+	if gotCalls != 5 {
+		t.Fatalf("transport calls=%d, want one five-rung walk", gotCalls)
 	}
 }
 
@@ -158,7 +158,9 @@ func TestLegacyPDFErrorBodiesNeverBecomeConvertedSuccess(t *testing.T) {
 	}
 	var artifacts []string
 	_ = filepath.Walk(h.options.CacheDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() {
+		if err == nil && info != nil && !info.IsDir() && filepath.Base(path) != "stats.jsonl" {
+			// stats.jsonl is the fetch-outcome SCOREBOARD (telemetry), not a
+			// content artifact — a failing fetch may still record its outcome.
 			artifacts = append(artifacts, path)
 		}
 		return nil
@@ -272,11 +274,12 @@ func TestLegacyDOISuccessCachesUnderCanonicalIdentifierBeforeProviderResolution(
 		return response(request, http.StatusOK, "application/pdf", "%PDF-1.7 fixture"), nil
 	})
 	h := New(Options{
-		CacheDir: t.TempDir(),
-		Client:   &http.Client{Transport: documentTransport},
-		Chrome:   &http.Client{Transport: documentTransport},
-		Jina:     &http.Client{Transport: documentTransport},
-		OA:       &http.Client{Transport: oaTransport},
+		ContactEmail: "test@example.org",
+		CacheDir:     t.TempDir(),
+		Client:       &http.Client{Transport: documentTransport},
+		Chrome:       &http.Client{Transport: documentTransport},
+		Jina:         &http.Client{Transport: documentTransport},
+		OA:           &http.Client{Transport: oaTransport},
 		Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) {
 			return "# Open paper\n\ncomplete scholarly fixture", nil
 		}),

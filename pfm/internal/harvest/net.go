@@ -689,6 +689,19 @@ func isChallenge(body []byte, status int) bool {
 	return false
 }
 
+// stripDefuddleEnvelope drops the YAML block defuddle.md prefixes
+// (`title:/source:/word_count:`) so it cannot masquerade as the artifact's own
+// frontmatter when the body is cached.
+func stripDefuddleEnvelope(text string) string {
+	if !strings.HasPrefix(text, "---") {
+		return text
+	}
+	if end := strings.Index(text[3:], "\n---"); end >= 0 {
+		return strings.TrimLeft(text[3+end+4:], "\r\n")
+	}
+	return text
+}
+
 func stripJinaEnvelope(text string) string {
 	if idx := strings.Index(text, "Markdown Content:"); idx >= 0 {
 		return strings.TrimLeft(text[idx+len("Markdown Content:"):], "\r\n")
