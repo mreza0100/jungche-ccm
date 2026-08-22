@@ -447,6 +447,47 @@ async def fetch_jina(url: str, user_agent: str, proxy_url: str | None = None) ->
         return ""
 
 
+def _strip_reader_frontmatter(text: str) -> str:
+    """defuddle.md prefixes a YAML block (`title:/source:/word_count:`) — drop it so it is not
+    mistaken for harvester's own artifact frontmatter when the body is cached."""
+    if not text.startswith("---"):
+        return text
+    end = text.find("\n---", 3)
+    if end == -1:
+        return text
+    return text[end + 4:].lstrip("\n")
+
+
+async def fetch_defuddle(url: str, user_agent: str, proxy_url: str | None = None) -> str:
+    """Fetch via the defuddle.md reader (https://defuddle.md/<url>) — a SECOND keyless
+    reader rung beside Jina (verified live 2026-08-22). Returns markdown, or "" on any
+    failure. Never raises. Skips private hosts like every external-service path."""
+    if is_private_host(url):
+        log.debug("defuddle skipped private host %s", url)
+        return ""
+    from httpx import HTTPError
+    try:
+        async with _client(proxy_url) as client:
+            response = await client.get(
+                f"https://defuddle.md/{url}", follow_redirects=True,
+                headers={"User-Agent": user_agent}, timeout=30,
+            )
+        if response.status_code >= 400:
+            log.warning("defuddle %s -> HTTP %d", url, response.status_code)
+            return ""
+        log.debug("defuddle %s -> %d chars", url, len(response.text))
+        return _strip_reader_frontmatter(response.text)
+    except FetchNotAllowed as e:
+        log.warning("defuddle refused %s: %s", url, e)
+        return ""
+    except HTTPError as e:
+        log.warning("defuddle httpx error %s: %s", url, e)
+        return ""
+    except Exception as e:
+        log.warning("defuddle unexpected error %s: %s", url, e)
+        return ""
+
+
 def _cffi_session_kwargs() -> dict:
     """curl_cffi Session kwargs that lock libcurl to http/https on the initial transfer AND on any
     redirect — defense-in-depth behind `assert_fetchable`'s scheme gate (blocks file://, gopher://,

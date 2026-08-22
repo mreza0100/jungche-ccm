@@ -226,8 +226,11 @@ class TestResolveDoi:
     async def test_arxiv_prefix_is_deterministic(self):
         c = FakeClient([])  # no API calls needed
         cands = await oa.resolve_doi("10.48550/arXiv.1706.03762", c)
-        assert len(cands) == 1
-        assert cands[0].url == "https://arxiv.org/pdf/1706.03762"
+        assert [x.url for x in cands] == [
+            "https://arxiv.org/pdf/1706.03762",
+            "https://ar5iv.labs.arxiv.org/html/1706.03762",
+        ]
+        assert cands[0].url.endswith("1706.03762")
         assert c.calls == []  # short-circuit: no network
 
     async def test_osf_prefix_routes_to_osf(self):
