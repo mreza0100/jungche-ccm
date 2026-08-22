@@ -3,6 +3,8 @@ package harvest
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -165,5 +167,48 @@ func TestWavePMCOAPDFURLRewritesDeadFTP(t *testing.T) {
 	want := "https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/oa_pdf/b8/d6/pnas.202302738.PMC10450651.pdf"
 	if err != nil || url2 != want {
 		t.Fatalf("PMCOAPDFURL=%q err=%v want=%q", url2, err, want)
+	}
+}
+
+func TestWaveStatsScoreboardRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	h := New(Options{CacheDir: dir})
+	h.recordStat("https://a.example/x", Result{Method: "jina"})
+	h.recordStat("https://b.example/y", Result{Error: "timeout", ErrorKind: "timeout"})
+	h.recordStat("https://c.example/z", Result{Method: "jina"})
+	buckets, err := SummarizeStats(dir, 100)
+	if err != nil {
+		t.Fatalf("SummarizeStats: %v", err)
+	}
+	got := buckets["jina"]
+	if got == nil || got.Total != 2 || got.OK != 2 || got.Rate != 1.0 {
+		t.Fatalf("jina bucket=%#v", got)
+	}
+	fails := buckets["timeout"]
+	if fails == nil || fails.Total != 1 || fails.Rate != 0.0 {
+		t.Fatalf("timeout bucket=%#v", fails)
+	}
+}
+
+func TestWaveStatsWrittenByRealFetch(t *testing.T) {
+	// The scoreboard provably RUNS on the live dispatch path — an absent stats.jsonl
+	// after a real fetch means the recorder never fired (coincidence-detector failure).
+	dir := t.TempDir()
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return response(r, http.StatusNotFound, "application/json", `{}`), nil
+	})}
+	h := New(Options{
+		ContactEmail: "test@example.org",
+		CacheDir:     dir,
+		Client:       client,
+		Chrome:       client,
+		Jina:         client,
+		OA:           client,
+	})
+	_ = h.Fetch(context.Background(), "10.9999/no-copy")
+	if _, err := os.Stat(filepath.Join(dir, "stats.jsonl")); err != nil {
+		t.Fatalf("stats.jsonl missing after a real fetch (recorder never fired): %v", err)
 	}
 }

@@ -49,12 +49,15 @@ func (h *Harvester) FetchWithOptions(ctx context.Context, source string, options
 		if result.Error != "" {
 			h.neg.put(key, result)
 		}
+		h.recordStat(source, result) // scoreboard: every terminal outcome lands in stats.jsonl
 		if options.SizeOnly && result.Error == "" {
 			result.Content = ""
 		}
 		return result
 	}
-	return h.fetchUnshared(ctx, source, options)
+	result := h.fetchUnshared(ctx, source, options)
+	h.recordStat(source, result)
+	return result
 }
 
 func (h *Harvester) fetchUnshared(ctx context.Context, source string, options FetchOptions) Result {

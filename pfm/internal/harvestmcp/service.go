@@ -322,7 +322,7 @@ A *source* is either a **location** (where something lives) or an **identity** (
 
 **Locations — fetched directly to document markdown:**
 - Web URL / local path / ` + codeTick + `file://` + codeTick + ` → web page, PDF, DOCX, XLSX, PPTX, CSV, or JSON.
-- HTML via trafilatura. Image references stay as URLs in the markdown — ` + codeTick + `fetch` + codeTick + ` never downloads image binaries and never OCRs; to VIEW one, pass its URL to ` + codeTick + `fetchImage` + codeTick + `, which returns a local path to read with vision. PDF via pymupdf4llm (extensionless URLs like ` + codeTick + `arxiv.org/pdf/…` + codeTick + ` are header-sniffed). DOCX/XLSX/PPTX via Docling, CSV via MarkItDown, JSON pretty-printed. Credential/secret files are refused.
+- HTML via trafilatura. Image references stay as URLs in the markdown — ` + codeTick + `fetch` + codeTick + ` never downloads image binaries and never OCRs; to VIEW one, pass its URL to ` + codeTick + `fetchImage` + codeTick + `, which returns a local path to read with vision. PDF via pymupdf4llm (extensionless URLs like ` + codeTick + `arxiv.org/pdf/…` + codeTick + ` are header-sniffed; a scanned PDF whose text layer is empty gets one automatic OCR pass). DOCX/XLSX/PPTX via Docling, CSV/EPUB via MarkItDown, JSON pretty-printed. Credential/secret files are refused.
 - An IMAGE → use the ` + codeTick + `fetchImage` + codeTick + ` tool. An ARCHIVE (.zip/.tar/.7z/.rar) → use the ` + codeTick + `archive` + codeTick + ` tool. ` + codeTick + `fetch` + codeTick + ` will redirect you if you pass one here.
 
 **Identities — resolved to a free, legal copy, then converted:**
