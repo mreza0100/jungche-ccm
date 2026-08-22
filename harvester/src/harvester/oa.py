@@ -363,7 +363,13 @@ async def from_osf(doi: str, client: "AsyncClient") -> list[Candidate]:
 
 def arxiv_candidates(arxiv_id: str) -> list[Candidate]:
     aid = arxiv_id.strip().lstrip("/")
-    return [Candidate(_score("arxiv"), f"https://arxiv.org/pdf/{aid}", "arxiv", "green", "", "pdf")]
+    return [
+        # direct PDF first; ar5iv's HTML rendering (verified live 2026-08-22) is the insurance
+        # copy for when the PDF endpoint rate-limits or a wall appears on the CDN.
+        Candidate(_score("arxiv"), f"https://arxiv.org/pdf/{aid}", "arxiv", "green", "", "pdf"),
+        Candidate(_score("arxiv", kind="html"), f"https://ar5iv.labs.arxiv.org/html/{aid}",
+                  "ar5iv", "green", "", "html", note="arXiv HTML rendering"),
+    ]
 
 
 # ── page-scraped <meta> links (the rabbit hole on a blocked publisher page) ──────

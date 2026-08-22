@@ -478,6 +478,24 @@ async def _html_result(
             trace.append(Attempt("jina", src, classify_outcome(
                 body_len=len(jina_body), content_chars=jina_chars, status=200 if jina_body else None)))
 
+    # (d1) defuddle.md — a second keyless reader beside Jina (different infra, different
+    # blocks); same thin/challenge trigger, tried before the expensive browser rung.
+    if not local and (content_chars < THIN_MIN_CHARS or challenge) and not net.is_private_host(src):
+        log.info("html %s still thin/challenge -> defuddle", key)
+        d_body = await net.fetch_defuddle(src, user_agent, proxy_url)
+        d_chars = len(d_body.strip())
+        if d_chars > content_chars:
+            body = d_body
+            content_chars = d_chars
+            method = "defuddle-reader"
+            challenge = False  # the reader bypassed the wall
+            trace.append(Attempt("defuddle", src, Outcome.OK))
+            log.info("html %s defuddle won chars=%d", key, content_chars)
+        else:
+            trace.append(Attempt("defuddle", src, classify_outcome(
+                body_len=len(d_body), content_chars=d_chars,
+                status=200 if d_body else None)))
+
     # (d2) browser rung (HARVESTER_BROWSER=1): render in a real system Chrome via Patchright.
     # Passes passive bot walls (TLS/H2 fingerprint + Cloudflare managed challenge) that no
     # HTTP-client trick can. Sits after Jina (cheap) and before the mirror chain (last resort).
@@ -844,11 +862,14 @@ def _extract_doi_from_input(item: str) -> str | None:
 
 async def _mirror_pdf_result(
     pdf_bytes: bytes, key: str, pmcid: str, user_agent: str, proxy_url: str | None,
-    trace: "list[Attempt] | None" = None,
+    trace: "list[Attempt] | None" = None, method: str = "mirror:europepmc-pdf",
+    figures_note: bool = True,
 ) -> dict | None:
     """Save *pdf_bytes* to the cache, convert to markdown, append figures note.
 
-    Returns a result dict (method ``mirror:europepmc-pdf``) or None on failure.
+    Returns a result dict (method ``method``, default ``mirror:europepmc-pdf``) or None on
+    failure. `figures_note=False` suppresses the Europe PMC figures ZIP pointer (it only
+    makes sense for an actual Europe PMC copy).
     """
     trace = trace if trace is not None else []
     bin_path = cache.cache_file(key, "pdf", ".pdf")
@@ -862,16 +883,17 @@ async def _mirror_pdf_result(
     if not body.strip():
         log.warning("mirror pdf %s converted to empty markdown", key)
         return None
-    figs_url = mirror.europepmc_figures_zip_url(pmcid)
-    body += (
-        f"\n\n---\n\n*Figures available as a ZIP: {figs_url}"
-        " (fetch it to list+extract individual figures).*\n"
-    )
+    if figures_note:
+        figs_url = mirror.europepmc_figures_zip_url(pmcid)
+        body += (
+            f"\n\n---\n\n*Figures available as a ZIP: {figs_url}"
+            " (fetch it to list+extract individual figures).*\n"
+        )
     md_path = cache.cache_file(key, "pdf", ".md")
     extra = {"rungs": _rungs_summary(trace)} if len(trace) > 1 else None
-    cache._write_md(md_path, key, "mirror:europepmc-pdf", body, extra=extra)
-    log.info("mirror %s -> europepmc-pdf (%s)", key, pmcid)
-    return _ok(md_path, "mirror:europepmc-pdf", body)
+    cache._write_md(md_path, key, method, body, extra=extra)
+    log.info("mirror %s -> %s (%s)", key, method, pmcid)
+    return _ok(md_path, method, body)
 
 
 async def _pmcid_to_result(
@@ -894,6 +916,22 @@ async def _pmcid_to_result(
         trace.append(Attempt("oa:europepmc-pdf", pmcid, Outcome.EMPTY_CONVERT))
     else:
         trace.append(Attempt("oa:europepmc-pdf", pmcid, Outcome.DEAD_NET))
+    # Europe PMC had no renderable PDF — try the PMC OA service (oa.fcgi) for the direct
+    # repository PDF (its ftp hrefs need the verified `deprecated/` rewrite; mirror.py).
+    async with net._client(proxy_url) as client:
+        oa_pdf_url = await mirror.pmc_oa_pdf_url(pmcid, client)
+    if oa_pdf_url:
+        data, status, _err = await net.download_bytes(oa_pdf_url, user_agent, proxy_url)
+        if data and data.startswith(b"%PDF"):
+            result = await _mirror_pdf_result(data, key, pmcid, user_agent, proxy_url, trace,
+                                              method="mirror:pmc-oa-pdf", figures_note=False)
+            if result:
+                trace.append(Attempt("oa:pmc-oa-pdf", oa_pdf_url, Outcome.OK))
+                return result
+            trace.append(Attempt("oa:pmc-oa-pdf", oa_pdf_url, Outcome.EMPTY_CONVERT))
+        else:
+            trace.append(Attempt("oa:pmc-oa-pdf", oa_pdf_url,
+                                 classify_outcome(body_len=len(data), status=status)))
     # PDF unavailable — try the PMC article HTML
     pmc_url = mirror.pmc_article_url(pmcid)
     pmc_raw = await net.fetch_raw(pmc_url, user_agent, proxy_url)

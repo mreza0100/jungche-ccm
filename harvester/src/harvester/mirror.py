@@ -131,6 +131,37 @@ async def europepmc_fulltext_xml(pmcid: str, client: "AsyncClient") -> str:
         return ""
 
 
+async def pmc_oa_pdf_url(pmcid: str, client: "AsyncClient") -> str | None:
+    """PMC OA service (oa.fcgi) → a DIRECT downloadable PDF URL for *pmcid*, or None.
+
+    Verified live 2026-08-22: NCBI's own API still hands out `ftp://ftp.ncbi.nlm.nih.gov/
+    pub/pmc/...` hrefs whose plain paths now 404 — the files live under `deprecated/`. The
+    rewritten https path returns the real PDF (verified HEAD 200, application/pdf). Never
+    raises; returns None when no pdf-format link exists or the lookup fails.
+    """
+    url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id={pmcid}"
+    try:
+        r = await client.get(url, headers={"User-Agent": _MIRROR_UA}, timeout=20,
+                             follow_redirects=True)
+        m = re.search(r'<link[^>]+format="pdf"[^>]+href="([^"]+)"', r.text)
+        if not m:
+            log.info("pmc_oa_pdf_url %s -> no pdf link", pmcid)
+            return None
+        href = m.group(1)
+        fixed = href.replace("ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/",
+                             "https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/")
+        if fixed.startswith("https://") and fixed != href:
+            log.info("pmc_oa_pdf_url %s -> %s", pmcid, fixed)
+            return fixed
+        if fixed == href and href.startswith("https://"):
+            return href  # already an https link that works as-is
+        log.info("pmc_oa_pdf_url %s -> unusable link %r", pmcid, href)
+        return None
+    except Exception as e:
+        log.warning("pmc_oa_pdf_url failed for %s: %s", pmcid, e)
+        return None
+
+
 def europepmc_figures_zip_url(pmcid: str) -> str:
     """URL for the supplementary files (figures) ZIP for *pmcid* on Europe PMC."""
     return f"https://www.ebi.ac.uk/europepmc/webservices/rest/{pmcid}/supplementaryFiles"
