@@ -357,12 +357,15 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	// ONE forced-OCR pass. Every faster rescue just failed; OCR is slow, so it
 	// fires exactly when nothing else worked. Needs an OCR-capable converter —
 	// a plain Converter skips this rung and the ladder's error stands.
+	ocrRan, ocrBackendFailed := false, false
 	if emptyPDFConvert && len(emptyPDFBody) > 0 {
 		if ocrConverter, ok := h.options.Converter.(OCRConverter); ok {
 			rungs = append(rungs, "ocr")
+			ocrRan = true
 			ocrConverted, ocrErr := ocrConverter.ConvertOCR(ctx, "pdf", source, emptyPDFBody)
 			switch {
 			case ocrErr != nil:
+				ocrBackendFailed = true
 				log.Printf("harvest: OCR escalation backend failed for %s: %v", source, ocrErr)
 			case usableContent(ocrConverted, "pdf"):
 				return h.storeResult(source, "pdf", "pdf:ocr", ocrConverted, int64(len(emptyPDFBody)), lastStatus, rungs, options)
@@ -374,10 +377,15 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 		message = fmt.Sprintf("%s has a .pdf address but did not return a PDF (non-PDF content — likely an HTML paywall/login wall or a bot-block). Use `search` to find an open-access copy.", source)
 	}
 	if emptyPDFConvert {
-		_, canOCR := h.options.Converter.(OCRConverter)
-		if canOCR && len(emptyPDFBody) > 0 {
+		// A BROKEN OCR backend and an OCR pass that legitimately found no text
+		// are different answers; collapsing them would let an outage read as
+		// "this PDF has nothing in it".
+		switch {
+		case ocrBackendFailed:
+			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text, and the OCR escalation could not RUN (converter backend error — see the server log). That is a tool outage, not proof the PDF is textless: retry, or use `search` to find an alternative copy.", source)
+		case ocrRan:
 			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — an OCR pass was already attempted on this copy and produced nothing. Use `search` to find an alternative copy.", source)
-		} else {
+		default:
 			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it. Use `search` to find an alternative copy.", source)
 		}
 	}

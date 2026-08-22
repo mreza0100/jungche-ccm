@@ -1276,7 +1276,13 @@ func (h *Harvester) fetchKnownID(ctx context.Context, source string, kind Identi
 				// PMC OA service (oa.fcgi) direct PDF — the ftp hrefs NCBI hands out
 				// are dead; PMCOAPDFURL rewrites them to the live deprecated/ https path.
 				trace = append(trace, "oa:pmc-fcgi")
-				if oaPDF, oaErr := PMCOAPDFURL(ctx, h.oa, pmcid); oaErr == nil && oaPDF != "" {
+				oaPDF, oaErr := PMCOAPDFURL(ctx, h.oa, pmcid)
+				if oaErr != nil {
+					// The lookup FAILED — that is an outage, not proof the PMC
+					// OA service holds no PDF for this accession.
+					log.Printf("harvest: pmc oa.fcgi lookup failed for %s: %v", pmcid, oaErr)
+				}
+				if oaErr == nil && oaPDF != "" {
 					result := h.fetchURLWithPolicy(ctx, oaPDF, options, false)
 					if result.Error == "" {
 						result.Method = "mirror:pmc-oa-pdf"
@@ -1304,7 +1310,15 @@ func (h *Harvester) fetchKnownID(ctx context.Context, source string, kind Identi
 				return h.storeResultAlias(source, canonical, result, append([]string(nil), trace...), options)
 			}
 		}
-		message := fmt.Sprintf("Found DOI %s, but no free, legal full text exists in any open-access source (checked Unpaywall, OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, CORE, DOAJ, arXiv/ar5iv/OSF, and the Wayback Machine). The paper is likely paywalled — use `search` to find an author preprint or the publisher's page directly.", canonical)
+		// Name only what was ACTUALLY queried: Unpaywall is gated on an operator
+		// email, so a keyless run must not claim to have checked it.
+		checked := "OpenAlex, Semantic Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, CORE, DOAJ, arXiv/ar5iv/OSF, and the Wayback Machine"
+		skipped := " Unpaywall was SKIPPED — it requires an operator email (HARVESTER_CONTACT_EMAIL)."
+		if h.resolver().contact() != "" {
+			checked = "Unpaywall, " + checked
+			skipped = ""
+		}
+		message := fmt.Sprintf("Found DOI %s, but no free, legal full text exists in any open-access source (checked %s).%s The paper is likely paywalled — use `search` to find an author preprint or the publisher's page directly.", canonical, checked, skipped)
 		return Result{Source: source, Error: withRungs(message, trace), Rungs: trace}
 	}
 	return Result{Source: source, Error: withRungs("all legal open-access candidates failed", trace), Rungs: trace}
@@ -1334,6 +1348,11 @@ func (h *Harvester) fetchOA(ctx context.Context, doi string, rungs []string, opt
 
 // ── wave additions: OpenAIRE / Zenodo / eLife / PLOS / NBER / HathiTrust ──────
 
+var (
+	plosJournalCodeRe  = regexp.MustCompile(`(?i)^10\.1371/journal\.([a-z]+)\.`)
+	nberWorkingPaperRe = regexp.MustCompile(`^w\d+$`)
+)
+
 // openAIRE resolves a DOI to every repository instance's full-text URL via the
 // EU aggregator. Endpoint verified live 2026-08-22; keyless. The JSON shape of
 // instances varies by record version, so webresource URLs are collected with an
@@ -1361,7 +1380,9 @@ func (r *Resolver) openAIRE(ctx context.Context, client *http.Client, doi string
 			stack = append(stack, v...)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Priority < out[j].Priority })
+	// Stable: the walk order over a JSON map is already arbitrary, so a
+	// non-stable sort would let equal-priority instances swap between runs.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority < out[j].Priority })
 	return out, nil
 }
 
@@ -1473,7 +1494,7 @@ func doiPrefixOf(doi string) string {
 // code (verified live 2026-08-22: journals.plos.org/{code}/article/file?id={doi}
 // &type=printable serves application/pdf to a plain UA). No API call needed.
 func plosCandidates(doi string) []Candidate {
-	matched := regexp.MustCompile(`(?i)^10\.1371/journal\.([a-z]+)\.`).FindStringSubmatch(doi)
+	matched := plosJournalCodeRe.FindStringSubmatch(doi)
 	if matched == nil {
 		return nil
 	}
@@ -1488,7 +1509,7 @@ func nberCandidates(doi string) []Candidate {
 		return nil
 	}
 	wp := strings.ToLower(doi[strings.Index(doi, "/")+1:])
-	if !regexp.MustCompile(`^w\d+$`).MatchString(wp) {
+	if !nberWorkingPaperRe.MatchString(wp) {
 		return nil
 	}
 	target := "https://www.nber.org/system/files/working_papers/" + wp + "/" + wp + ".pdf"
@@ -1546,10 +1567,16 @@ func (r *Resolver) findCrossref(ctx context.Context, client *http.Client, query 
 			} `json:"items"`
 		} `json:"message"`
 	}
-	endpoint := "https://api.crossref.org/works?query.bibliographic=" + url.QueryEscape(query) +
-		fmt.Sprintf("&rows=%d", limit) + r.withContact("", "mailto")
+	// withContact wraps the WHOLE url — appending its "?mailto=…" to an already
+	// built query string would fold the contact into the `rows` value and 400
+	// every search on any host that configures a contact email.
+	endpoint := r.withContact("https://api.crossref.org/works?query.bibliographic="+url.QueryEscape(query)+
+		fmt.Sprintf("&rows=%d", limit), "mailto")
 	out := []Candidate{}
 	if err := getJSON(ctx, client, endpoint, &data); err != nil {
+		// An outage is not an empty shelf — name it instead of returning a
+		// silent nil that reads as "Crossref knows nothing about this title".
+		log.Printf("harvest: findWorks crossref search failed for %q: %v", query, err)
 		return nil
 	}
 	for _, item := range data.Message.Items {
@@ -1597,6 +1624,7 @@ func (r *Resolver) findSemanticScholar(ctx context.Context, client *http.Client,
 	endpoint := "https://api.semanticscholar.org/graph/v1/paper/search?query=" + url.QueryEscape(query) +
 		fmt.Sprintf("&limit=%d", limit) + "&fields=title,year,authors,externalIds,openAccessPdf"
 	if err := getJSON(ctx, client, endpoint, &data); err != nil {
+		log.Printf("harvest: findWorks semantic-scholar search failed for %q: %v", query, err)
 		return nil
 	}
 	out := []Candidate{}
