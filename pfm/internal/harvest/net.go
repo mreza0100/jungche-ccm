@@ -558,7 +558,7 @@ func classifyKind(source, contentType string, body []byte) string {
 	// Every OOXML document (.docx/.xlsx/.pptx) IS a zip container, so its body
 	// always matches the "PK\x03\x04" magic sniff below. The extension must
 	// win before any magic-byte sniff runs — mirroring
-	// harvester/src/harvester/dispatch.py's local-file rule, where
+	// the retired Python dispatch.py's local-file rule, where
 	// detect.detect_kind(base) (extension) is consulted first and
 	// detect.sniff_magic only ever refines an ambiguous ("html") verdict.
 	if kind, ok := ooxmlExtensionKind(source); ok {
@@ -659,7 +659,7 @@ func ooxmlExtensionKind(source string) (string, bool) {
 
 func isChallenge(body []byte, status int) bool {
 	low := strings.ToLower(string(body))
-	// Strong, specific bot-wall phrases (mirrors harvester/src/harvester/net.py's
+	// Strong, specific bot-wall phrases (mirrors the retired Python net.py's
 	// _CHALLENGE_PHRASES) flag at any body length — plus the real Cloudflare
 	// "Sorry, you have been blocked" (error 1020) block-page copy, which the
 	// Python oracle's list also lacks.

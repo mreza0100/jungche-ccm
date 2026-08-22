@@ -1,8 +1,9 @@
 package harvest
 
-// This file is the Go regression oracle for harvester/tests/test_safe_archive.py
-// and the archive cases in harvester/tests/test_dispatch_hardening.py.  The
-// source-line crosswalk lives in tmp/archive_legacy_parity_crosswalk.md.
+// This file is the Go regression oracle for the RETIRED Python harvester's
+// test_safe_archive.py and the archive cases in test_dispatch_hardening.py
+// (harvester/ was deleted after full migration to pfm; read those suites at
+// their last tracked revision, `git show 4edf9c5^:harvester/tests/...`).
 
 import (
 	"archive/tar"

@@ -56,8 +56,10 @@ func TestLegacyUnresolvedBotChallengeIsNeverCached(t *testing.T) {
 // A 403 body this large, once converted, also clears the html "thin content"
 // floor (500 chars), so nothing forces a retry: the wall is cached as an
 // ordinary successful "html" result at the direct rung. Per
-// harvester/src/harvester/dispatch.py:431-432, a Cloudflare 403 must escalate
-// through chrome-impersonation, then jina, then wayback, and only report a
+// the retired Python dispatch.py's html rescue ladder (`git show
+// 4edf9c5^:harvester/src/harvester/dispatch.py`), a Cloudflare 403 must escalate
+// through chrome-impersonation, then jina, then defuddle, then wayback, and
+// only report a
 // named challenge failure — never a cached success — once every rung is
 // exhausted.
 func TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess(t *testing.T) {
@@ -86,12 +88,14 @@ func TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess(t *testing.T) {
 	if !result.Challenge || !strings.Contains(strings.ToLower(result.Error), "challenge") {
 		t.Fatalf("Cloudflare 403 block page not classified as a challenge failure: %#v", result)
 	}
-	if !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, wayback") {
+	if !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, defuddle, wayback") {
 		t.Fatalf("Cloudflare 403 block page did not escalate the full rung ladder: %#v", result)
 	}
 	var artifacts []string
 	_ = filepath.Walk(h.options.CacheDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() {
+		if err == nil && info != nil && !info.IsDir() && filepath.Base(path) != "stats.jsonl" {
+			// stats.jsonl is the fetch-outcome SCOREBOARD (telemetry), not a
+			// content artifact — a failing fetch may still record its outcome.
 			artifacts = append(artifacts, path)
 		}
 		return nil

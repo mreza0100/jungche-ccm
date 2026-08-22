@@ -110,7 +110,10 @@ func TestEmbeddedAssetsAreConversionOnlyAndProtocolIsPinned(t *testing.T) {
 }
 
 func TestEmbeddedLockKeepsEveryResolvedConversionPackageAtOracleVersions(t *testing.T) {
-	oraclePath := filepath.Join("..", "..", "..", "harvester", "uv.lock")
+	// The Python harvester tree that produced this lock is retired; its final
+	// resolution is FROZEN here so the migration's version parity stays provable
+	// after the source tree is gone.
+	oraclePath := filepath.Join("testdata", "oracle-uv.lock")
 	oracle, err := os.ReadFile(oraclePath)
 	if err != nil {
 		t.Fatalf("read oracle lock %s: %v", oraclePath, err)
