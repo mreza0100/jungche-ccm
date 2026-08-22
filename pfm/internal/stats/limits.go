@@ -3,11 +3,13 @@ package stats
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -53,22 +55,35 @@ type cachedLimits struct {
 	when     time.Time
 }
 
+// defaultLimitsTTL is shared by the in-memory per-process read-through
+// layer (cached()/store()) and the on-disk shared-cache freshness check
+// (cacheFresh(), via fetchClaudeCached/fetchCodexCached) — rule (4) is "no
+// second TTL," so both read this SAME constant. It intentionally stays at
+// one minute rather than moving to the hook's 180s CC_USAGE_TTL default:
+// TestLimitsSamplerACKFallbackIsAtMostOncePerAccount pins a two-minute gap
+// as "the in-memory cache has expired," and a 180s default would make that
+// gap still count as fresh and silently stop the ACK-retry it exercises.
+const defaultLimitsTTL = time.Minute
+
 func NewLimitsSampler(accounts []LimitAccount) *LimitsSampler {
 	copyAccounts := append([]LimitAccount(nil), accounts...)
 	sampler := &LimitsSampler{
 		Accounts:     copyAccounts,
-		TTL:          time.Minute,
+		TTL:          defaultLimitsTTL,
 		cache:        make(map[string]cachedLimits),
 		ackAttempted: make(map[string]bool),
 	}
+	// The default Fetch/FetchCodex closures are the ONLY path that reads and
+	// writes the shared on-disk cache — every picker process (pfm ls) and
+	// the UserPromptSubmit hook share the same acct-<id>.json / codex-<id>.json
+	// file, so a fetch only fires when it's missing or stale. A test that
+	// overrides Fetch/FetchCodex directly (a stub closure) intentionally
+	// bypasses the shared cache entirely, exactly like it bypasses the real
+	// network call.
 	sampler.Fetch = func(ctx context.Context, account LimitAccount) (usagehook.Usage, error) {
-		return usagehook.Fetch(ctx, usagehook.Options{
-			ConfigDir: account.ConfigDir,
-			Client:    sampler.client(),
-			Endpoint:  sampler.Endpoint,
-		})
+		return sampler.fetchClaudeCached(ctx, account)
 	}
-	sampler.FetchCodex = sampler.fetchCodex
+	sampler.FetchCodex = sampler.fetchCodexCached
 	sampler.Ack = defaultAck
 	return sampler
 }
@@ -97,6 +112,95 @@ func (sampler *LimitsSampler) now() time.Time {
 		return sampler.Now()
 	}
 	return time.Now()
+}
+
+// fetchClaudeCached is the default Fetch implementation: it reads and writes
+// the SAME acct-<id>.json the UserPromptSubmit hook owns
+// (usagehook.DefaultCacheDir/CachePath), so a second `pfm ls` opened moments
+// after the first — or opened right after the hook already ran — renders
+// from that file instead of paying for its own request. A record whose
+// stored ConfigDir doesn't match this account's is never trusted: an empty
+// ConfigDir means the hook wrote it (hook cache files carry no identity, and
+// are always trusted), a mismatched one means a DIFFERENT account is
+// occupying this account-number slot and the cached payload is not ours.
+func (sampler *LimitsSampler) fetchClaudeCached(ctx context.Context, account LimitAccount) (usagehook.Usage, error) {
+	now := sampler.now()
+	path := usagehook.CachePath(usagehook.DefaultCacheDir(), account.ID)
+	record, readErr := usagehook.ReadCacheRecord(path)
+	matches := readErr == nil && (record.ConfigDir == "" || record.ConfigDir == account.ConfigDir)
+	if matches && record.Backoff != nil && now.Before(record.Backoff.RetryAfter) {
+		return usagehook.Usage{}, errors.New(record.Backoff.Message)
+	}
+	if matches && cacheFresh(record.FetchedAt, path, now, sampler.ttl()) {
+		return record.Usage, nil
+	}
+	previousUsage, previousFetchedAt := usagehook.Usage{}, (*time.Time)(nil)
+	if matches {
+		previousUsage, previousFetchedAt = record.Usage, record.FetchedAt
+	}
+	usage, err := usagehook.Fetch(ctx, usagehook.Options{
+		ConfigDir: account.ConfigDir,
+		Client:    sampler.client(),
+		Endpoint:  sampler.Endpoint,
+	})
+	if err != nil {
+		message, retryAfter := backoffFor(err, now)
+		// Best-effort: a failed cache write never turns a real fetch result
+		// (here, a real error) into something else. The next reader that
+		// finds no usable record simply refetches — this file is a shared
+		// accelerator, never the only copy of the truth.
+		_ = usagehook.WriteCacheRecord(path, usagehook.CacheRecord{
+			Usage: previousUsage, ConfigDir: account.ConfigDir, FetchedAt: previousFetchedAt,
+			Backoff: &usagehook.CacheBackoff{Message: message, RetryAfter: retryAfter, RecordedAt: now},
+		})
+		var rateLimit *usagehook.RateLimitError
+		if errors.As(err, &rateLimit) {
+			return usagehook.Usage{}, errors.New(message)
+		}
+		return usagehook.Usage{}, err
+	}
+	fetchedAt := now
+	_ = usagehook.WriteCacheRecord(path, usagehook.CacheRecord{
+		Usage: usage, ConfigDir: account.ConfigDir, FetchedAt: &fetchedAt,
+	})
+	return usage, nil
+}
+
+// cacheFresh reports whether a cached payload is still inside ttl. FetchedAt
+// is nil for a bare, hook-written file (usage-hook's own refresh() has never
+// stamped one); freshness then falls back to the file's own mtime, which is
+// exactly the signal the hook's own cacheAge() uses.
+func cacheFresh(fetchedAt *time.Time, path string, now time.Time, ttl time.Duration) bool {
+	if fetchedAt != nil {
+		return now.Sub(*fetchedAt) < ttl
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return now.Sub(info.ModTime()) < ttl
+}
+
+// backoffFor turns a fetch error into the shared cache's backoff record: a
+// 429 backs off for at least ten minutes — honoring whatever Retry-After the
+// server sent — and reports the SAME "limits unavailable: 429 ... — retry at
+// HH:MM" message whether a caller hit the 429 directly or is replaying the
+// record. Every other failure backs off for sixty seconds, just long enough
+// that two pickers opened together don't both pay for the same dead
+// endpoint, and keeps its original message so isCredentialRejection /
+// needsCredentialRefresh still recognize a replayed failure exactly like a
+// live one.
+func backoffFor(err error, now time.Time) (message string, retryAfter time.Time) {
+	var rateLimit *usagehook.RateLimitError
+	if errors.As(err, &rateLimit) {
+		wait := rateLimit.RetryAfter
+		if wait < 10*time.Minute {
+			wait = 10 * time.Minute
+		}
+		retryAfter = now.Add(wait)
+		return fmt.Sprintf("limits unavailable: 429 Too Many Requests — retry at %s", retryAfter.Format("15:04")), retryAfter
+	}
+	return err.Error(), now.Add(time.Minute)
 }
 
 func (sampler *LimitsSampler) Sample(ctx context.Context) ([]AccountLimits, []string) {
@@ -130,7 +234,7 @@ func (sampler *LimitsSampler) cached(key string, now time.Time) (cachedLimits, b
 
 func (sampler *LimitsSampler) ttl() time.Duration {
 	if sampler.TTL <= 0 {
-		return time.Minute
+		return defaultLimitsTTL
 	}
 	return sampler.TTL
 }
@@ -365,6 +469,11 @@ func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccou
 	if closeErr != nil {
 		return codexUsage{}, fmt.Errorf("Codex fetch failed: %v", closeErr)
 	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		return codexUsage{}, &usagehook.RateLimitError{
+			RetryAfter: usagehook.ParseRetryAfter(response.Header.Get("Retry-After"), sampler.now()),
+		}
+	}
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
 		return codexUsage{}, fmt.Errorf("Codex credential rejected (HTTP %d)", response.StatusCode)
 	}
@@ -376,6 +485,85 @@ func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccou
 	if err := json.Unmarshal(body, &usage); err != nil || usage.RateLimit == nil || usage.RateLimit.PrimaryWindow == nil {
 		return codexUsage{}, fmt.Errorf("Codex payload unreadable")
 	}
+	return usage, nil
+}
+
+// codexCacheRecord is codex's on-disk shape of the shared usage cache —
+// codex-<id>.json alongside the hook's own acct-<id>.json, same directory,
+// same rules. There is no hook writer for codex to stay compatible with (the
+// UserPromptSubmit hook never fetches Codex usage), so unlike CacheRecord's
+// ConfigDir this always carries the CodexAuthPath that produced it.
+type codexCacheRecord struct {
+	codexUsage
+	CodexAuthPath string                  `json:"codex_auth_path,omitempty"`
+	FetchedAt     *time.Time              `json:"fetched_at,omitempty"`
+	Backoff       *usagehook.CacheBackoff `json:"backoff,omitempty"`
+}
+
+func codexCachePath(cacheDir string, account int) string {
+	return filepath.Join(cacheDir, fmt.Sprintf("codex-%d.json", account))
+}
+
+func readCodexCacheRecord(path string) (codexCacheRecord, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return codexCacheRecord{}, err
+	}
+	var record codexCacheRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return codexCacheRecord{}, fmt.Errorf("decode codex usage cache %s: %w", path, err)
+	}
+	return record, nil
+}
+
+func writeCodexCacheRecord(path string, record codexCacheRecord) error {
+	if err := usagehook.EnsurePrivateDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
+	body, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode codex usage cache %s: %w", path, err)
+	}
+	return usagehook.AtomicWrite(path, body, 0o600)
+}
+
+// fetchCodexCached is the default FetchCodex implementation — codex's twin
+// of fetchClaudeCached. A record whose stored CodexAuthPath doesn't match
+// this account's is never trusted: it belongs to a different Codex sign-in
+// that previously occupied this account-number slot.
+func (sampler *LimitsSampler) fetchCodexCached(ctx context.Context, account LimitAccount) (codexUsage, error) {
+	now := sampler.now()
+	path := codexCachePath(usagehook.DefaultCacheDir(), account.ID)
+	record, readErr := readCodexCacheRecord(path)
+	matches := readErr == nil && record.CodexAuthPath == account.CodexAuthPath
+	if matches && record.Backoff != nil && now.Before(record.Backoff.RetryAfter) {
+		return codexUsage{}, errors.New(record.Backoff.Message)
+	}
+	if matches && cacheFresh(record.FetchedAt, path, now, sampler.ttl()) {
+		return record.codexUsage, nil
+	}
+	previousUsage, previousFetchedAt := codexUsage{}, (*time.Time)(nil)
+	if matches {
+		previousUsage, previousFetchedAt = record.codexUsage, record.FetchedAt
+	}
+	usage, err := sampler.fetchCodex(ctx, account)
+	if err != nil {
+		message, retryAfter := backoffFor(err, now)
+		// Best-effort — see fetchClaudeCached's identical comment.
+		_ = writeCodexCacheRecord(path, codexCacheRecord{
+			codexUsage: previousUsage, CodexAuthPath: account.CodexAuthPath, FetchedAt: previousFetchedAt,
+			Backoff: &usagehook.CacheBackoff{Message: message, RetryAfter: retryAfter, RecordedAt: now},
+		})
+		var rateLimit *usagehook.RateLimitError
+		if errors.As(err, &rateLimit) {
+			return codexUsage{}, errors.New(message)
+		}
+		return codexUsage{}, err
+	}
+	fetchedAt := now
+	_ = writeCodexCacheRecord(path, codexCacheRecord{
+		codexUsage: usage, CodexAuthPath: account.CodexAuthPath, FetchedAt: &fetchedAt,
+	})
 	return usage, nil
 }
 
