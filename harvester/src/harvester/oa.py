@@ -47,7 +47,7 @@ _OSF_PREFIXES = {
 _SOURCE_BASE = {
     "arxiv": 0, "osf": 2, "citation_pdf_url": 4,
     "unpaywall": 10, "openalex": 12, "semanticscholar": 14, "europepmc": 16,
-    "openaire": 20, "zenodo": 26,
+    "openaire": 20, "zenodo": 26, "elife": 21, "plos": 23, "nber": 24,
     "crossref": 30, "core": 40, "doaj": 45,
     # books
     "gutenberg": 5, "oapen": 8, "internetarchive": 18, "doab": 22, "hathitrust": 24,
@@ -342,6 +342,49 @@ async def from_zenodo(doi: str, client: "AsyncClient") -> list[Candidate]:
             out.append(Candidate(_score("zenodo"), url, "zenodo", "green", "",
                                   "epub" if ext else "pdf"))
     return out
+
+
+async def from_elife(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """eLife: DOI → direct CDN PDF. Endpoint verified live 2026-08-22 (by-doi → items[].pdf);
+    keyless, CC-BY OA by charter. Cheap DOI-prefix gate skips non-eLife DOIs entirely."""
+    if doi_prefix(doi) != "10.7554":
+        return []
+    data = await _get_json(
+        client, f"https://api.elifesciences.org/articles?by-doi={quote(doi)}")
+    for it in (data.get("items") or [])[:1] if isinstance(data, dict) else []:
+        pdf = (it or {}).get("pdf") if isinstance(it, dict) else None
+        if pdf:
+            return [Candidate(_score("elife"), pdf, "elife", "gold", "", "pdf")]
+    return []
+
+
+def _plos_journal_code(doi: str) -> str | None:
+    """`10.1371/journal.pcbi.1003285` → `pcbi` (the journal path segment on journals.plos.org)."""
+    m = re.match(r"10\.1371/journal\.([a-z]+)\.", doi, re.IGNORECASE)
+    return m.group(1).lower() if m else None
+
+
+async def from_plos(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """PLOS: every article serves a printable PDF at journals.plos.org/{journal}/article/file?
+    id={doi}&type=printable — verified live 2026-08-22 (200, application/pdf, plain UA).
+    Deterministic from the DOI; no API call needed."""
+    code = _plos_journal_code(doi)
+    if not code:
+        return []
+    url = f"https://journals.plos.org/{code}/article/file?id={quote(doi)}&type=printable"
+    return [Candidate(_score("plos"), url, "plos", "gold", "", "pdf")]
+
+
+async def from_nber(doi: str, client: "AsyncClient") -> list[Candidate]:
+    """NBER working papers: DOI 10.3386/w{id} → the free system-file PDF (verified live
+    2026-08-22: HEAD 200 application/pdf). Deterministic from the DOI; no API call."""
+    if doi_prefix(doi) != "10.3386":
+        return []
+    wp = doi.split("/", 1)[1].strip().lower()
+    if not re.fullmatch(r"w\d+", wp):
+        return []
+    url = f"https://www.nber.org/system/files/working_papers/{wp}/{wp}.pdf"
+    return [Candidate(_score("nber"), url, "nber", "green", "", "pdf")]
 
 
 async def from_osf(doi: str, client: "AsyncClient") -> list[Candidate]:
@@ -667,7 +710,8 @@ async def resolve_doi(doi: str, client: "AsyncClient") -> list[Candidate]:
         if cands:
             return _dedupe(cands)  # OSF is authoritative for its own DOIs
     sources = [from_unpaywall, from_openalex, from_semanticscholar,
-               from_europepmc, from_openaire, from_zenodo, from_crossref, from_core, from_doaj]
+               from_europepmc, from_openaire, from_zenodo, from_elife, from_plos,
+               from_nber, from_crossref, from_core, from_doaj]
     results = await asyncio.gather(*[_safe(f, doi, client) for f in sources])
     cands = [c for sub in results for c in sub]
     log.info("resolve_doi %s -> %d candidate(s)", doi, len(cands))
