@@ -62,8 +62,6 @@ func (h *Harvester) recordStat(item string, result Result) {
 	}
 }
 
-
-
 // StatBucket aggregates one detail's outcomes.
 type StatBucket struct {
 	Total int     `json:"total"`

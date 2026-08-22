@@ -31,19 +31,17 @@ func buildMinimalEpub(t *testing.T) []byte {
 	t.Helper()
 	// Hand-rolled minimal EPUB: mimetype STORED first (spec order), then container + OPF.
 	var out []byte
-	appendFile := func(name string, data []byte, store bool) {
+	// Every member is written STORED (compression method 0) — the fixture only
+	// needs the mimetype member's bytes to sit where the spec puts them.
+	appendFile := func(name string, data []byte) {
 		out = append(out, 'P', 'K', 3, 4)
-		flags := byte(0)
-		if store {
-			flags = 0
-		}
-		out = append(out, 14, flags, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+		out = append(out, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 		out = append(out, byte(len(name)), 0)
 		out = append(out, name...)
 		out = append(out, data...)
 	}
-	appendFile("mimetype", []byte(epubContentMarker), true)
-	appendFile("OEBPS/c1.xhtml", []byte("<html><body><h1>Hello</h1></body></html>"), false)
+	appendFile("mimetype", []byte(epubContentMarker))
+	appendFile("OEBPS/c1.xhtml", []byte("<html><body><h1>Hello</h1></body></html>"))
 	return out
 }
 

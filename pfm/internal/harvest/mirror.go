@@ -75,6 +75,8 @@ func PMCArticleURL(pmcid string) string {
 	return "https://pmc.ncbi.nlm.nih.gov/articles/" + pmcid + "/"
 }
 
+var pmcOAPDFLinkRe = regexp.MustCompile(`<link[^>]+format="pdf"[^>]+href="([^"]+)"`)
+
 // PMCOAPDFURL resolves a PMCID through the PMC OA service (oa.fcgi) to a DIRECT
 // downloadable PDF URL. Verified live 2026-08-22: NCBI's own API still hands out
 // `ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/...` hrefs whose plain paths now 404 — the
@@ -85,17 +87,19 @@ func PMCOAPDFURL(ctx context.Context, client *http.Client, pmcid string) (string
 	if err != nil || status >= 400 {
 		return "", fmt.Errorf("pmc oa.fcgi lookup failed for %s (status %d): %w", pmcid, status, err)
 	}
-	match := regexp.MustCompile(`<link[^>]+format="pdf"[^>]+href="([^"]+)"`).FindSubmatch(body)
+	match := pmcOAPDFLinkRe.FindSubmatch(body)
 	if match == nil {
 		return "", nil
 	}
 	href := string(match[1])
 	fixed := strings.Replace(href, "ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/",
 		"https://ftp.ncbi.nlm.nih.gov/pub/pmc/deprecated/", 1)
-	if strings.HasPrefix(fixed, "https://") {
-		return fixed, nil
+	if !strings.HasPrefix(fixed, "https://") {
+		// A pdf link EXISTS but this rewrite could not reach it — that is a
+		// failure to resolve, never "no pdf-format link exists".
+		return "", fmt.Errorf("pmc oa.fcgi gave %s an unfetchable pdf href: %q", pmcid, href)
 	}
-	return "", nil
+	return fixed, nil
 }
 
 func WaybackRawURL(ctx context.Context, client *http.Client, source string) (string, error) {
