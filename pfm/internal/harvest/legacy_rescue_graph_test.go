@@ -19,20 +19,23 @@ func TestLegacyUnresolvedBotChallengeIsNeverCached(t *testing.T) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
 	h := New(Options{
-		CacheDir:  t.TempDir(),
-		Client:    &http.Client{Transport: wallTransport},
-		Chrome:    &http.Client{Transport: wallTransport},
-		Jina:      &http.Client{Transport: missingTransport},
-		OA:        &http.Client{Transport: missingTransport},
-		Converter: legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		ContactEmail: "test@example.org",
+		CacheDir:     t.TempDir(),
+		Client:       &http.Client{Transport: wallTransport},
+		Chrome:       &http.Client{Transport: wallTransport},
+		Jina:         &http.Client{Transport: missingTransport},
+		OA:           &http.Client{Transport: missingTransport},
+		Converter:    legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
 	})
 	result := h.Fetch(context.Background(), "https://blocked.example.test/article")
-	if result.Error == "" || !strings.Contains(strings.ToLower(result.Error), "challenge") || !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, wayback") {
+	if result.Error == "" || !strings.Contains(strings.ToLower(result.Error), "challenge") || !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, defuddle, wayback") {
 		t.Fatalf("unresolved challenge receipt=%#v", result)
 	}
 	var artifacts []string
 	_ = filepath.Walk(h.options.CacheDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() {
+		if err == nil && info != nil && !info.IsDir() && filepath.Base(path) != "stats.jsonl" {
+			// stats.jsonl is the fetch-outcome SCOREBOARD (telemetry), not a
+			// content artifact — a failing fetch may still record its outcome.
 			artifacts = append(artifacts, path)
 		}
 		return nil
@@ -179,7 +182,7 @@ func TestLegacyCitationPDFMetaRescueCachesThePublisherSource(t *testing.T) {
 		}),
 	})
 	first := h.Fetch(context.Background(), publisher)
-	wantRungs := "direct,chrome-impersonation,jina,oa:citation_pdf_url"
+	wantRungs := "direct,chrome-impersonation,jina,defuddle,oa:citation_pdf_url"
 	if first.Error != "" || first.Source != publisher || strings.Join(first.Rungs, ",") != wantRungs {
 		t.Fatalf("citation PDF rescue=%#v want rungs=%s", first, wantRungs)
 	}
@@ -208,12 +211,13 @@ func TestLegacySelfReferentialOACandidateCannotRecurse(t *testing.T) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
 	h := New(Options{
-		CacheDir:  t.TempDir(),
-		Client:    &http.Client{Transport: wallTransport},
-		Chrome:    &http.Client{Transport: wallTransport},
-		Jina:      &http.Client{Transport: missingTransport},
-		OA:        &http.Client{Transport: oaTransport},
-		Converter: legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		ContactEmail: "test@example.org", // unpaywall is gated on an operator email
+		CacheDir:     t.TempDir(),
+		Client:       &http.Client{Transport: wallTransport},
+		Chrome:       &http.Client{Transport: wallTransport},
+		Jina:         &http.Client{Transport: missingTransport},
+		OA:           &http.Client{Transport: oaTransport},
+		Converter:    legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
 	})
 	result := h.Fetch(context.Background(), source)
 	if result.Error == "" || providerCalls.Load() != 1 {

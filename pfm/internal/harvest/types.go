@@ -22,6 +22,13 @@ type Converter interface {
 	Convert(ctx context.Context, kind string, source string, body []byte) (string, error)
 }
 
+// OCRConverter is implemented by converters that can force one OCR pass for a
+// single document (the dispatch escalation rung for scanned PDFs whose text
+// layer converts empty). Optional: a plain Converter simply never escalates.
+type OCRConverter interface {
+	ConvertOCR(ctx context.Context, kind, source string, body []byte) (string, error)
+}
+
 // Options configures a Harvester. Nil HTTP clients use safe defaults.
 type Options struct {
 	CacheDir       string

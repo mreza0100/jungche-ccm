@@ -102,10 +102,14 @@ def tidy_markdown(markdown: str) -> str:
 def convert_pdf(path: pathlib.Path, request: dict) -> tuple[str, dict]:
     import pymupdf4llm
 
-    # The old Harvester snapshots these flags when the long-lived process
-    # starts. Per-request changes would be a behavior drift.
+    # Env flags snapshot at process start set the DEFAULTS; a request carrying
+    # ocr=True forces one OCR pass for THIS document (the dispatch escalation
+    # rung for scanned PDFs whose text layer converts empty).
     layout = _PDF_LAYOUT
     ocr = _PDF_OCR
+    if request.get("ocr"):
+        ocr = True
+        layout = True
     if hasattr(pymupdf4llm, "use_layout"):
         try:
             pymupdf4llm.use_layout(layout)
@@ -129,6 +133,13 @@ def convert_pdf(path: pathlib.Path, request: dict) -> tuple[str, dict]:
 def convert_office(path: pathlib.Path) -> str:
     with _quiet_stdout():
         return _docling().convert(str(path)).document.export_to_markdown() or ""
+
+
+def convert_epub(path: pathlib.Path) -> str:
+    from markitdown import MarkItDown
+
+    with _quiet_stdout():
+        return MarkItDown().convert(str(path)).text_content or ""
 
 
 def convert_csv(path: pathlib.Path) -> str:
@@ -188,6 +199,8 @@ def convert(request: dict) -> dict:
             markdown, features = convert_office(path), {}
         elif kind == "csv":
             markdown, features = convert_csv(path), {}
+        elif kind == "epub":
+            markdown, features = convert_epub(path), {}
         elif kind == "json":
             markdown, features = convert_json(path), {}
         else:
