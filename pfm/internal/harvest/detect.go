@@ -13,8 +13,23 @@ var detectImageExts = map[string]struct{}{
 
 var detectExtKinds = map[string]string{
 	".pdf": "pdf", ".docx": "docx", ".xlsx": "xlsx", ".pptx": "pptx",
-	".csv": "csv", ".json": "json", ".zip": "zip", ".7z": "7z", ".rar": "rar",
-	".htm": "html", ".html": "html",
+	".csv": "csv", ".json": "json", ".epub": "epub", ".zip": "zip", ".7z": "7z",
+	".rar": "rar", ".htm": "html", ".html": "html",
+}
+
+// epubContentMarker: an EPUB is a ZIP whose FIRST, UNCOMPRESSED member is a
+// `mimetype` file holding exactly `application/epub+zip`, so those bytes sit in
+// the first ~60 bytes of the file. This separates an EPUB (a book to convert)
+// from a plain zip (an archive to browse) when both arrive as PK\x03\x04.
+const epubContentMarker = "application/epub+zip"
+
+// LooksLikeEpub mirrors detect.looks_like_epub.
+func LooksLikeEpub(body []byte) bool {
+	head := body
+	if len(head) > 200 {
+		head = head[:200]
+	}
+	return strings.Contains(string(head), epubContentMarker)
 }
 
 // DetectKind mirrors detect.detect_kind: source names are only a hint and an
@@ -53,6 +68,8 @@ func SniffKind(contentType string, head []byte) string {
 		return "xlsx"
 	case ct == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
 		return "pptx"
+	case ct == "application/epub+zip":
+		return "epub"
 	case ct == "application/zip", ct == "application/x-zip-compressed", ct == "application/x-zip":
 		return "zip"
 	case ct == "application/x-7z-compressed":

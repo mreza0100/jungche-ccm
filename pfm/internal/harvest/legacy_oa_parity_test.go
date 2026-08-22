@@ -13,7 +13,9 @@ func TestLegacyOAMixedCaseArxivDOIShortCircuitsExactly(t *testing.T) {
 		return nil, nil
 	})}}
 	candidates, err := resolver.ResolveDOI(context.Background(), "10.48550/arXiv.1706.03762")
-	if err != nil || len(candidates) != 1 || candidates[0].URL != "https://arxiv.org/pdf/1706.03762" {
+	// Since the wave: the direct PDF is joined by the ar5iv HTML insurance copy
+	// (parity with harvester oa.arxiv_candidates).
+	if err != nil || len(candidates) != 2 || candidates[0].URL != "https://arxiv.org/pdf/1706.03762" || candidates[1].URL != "https://ar5iv.labs.arxiv.org/html/1706.03762" {
 		t.Fatalf("mixed-case arXiv candidates=%#v err=%v", candidates, err)
 	}
 }
@@ -42,7 +44,7 @@ func TestLegacyResolveTitleExpandsConfidentDOIThroughOAChain(t *testing.T) {
 			return `{}`
 		}
 	})
-	resolver := &Resolver{Client: client}
+	resolver := &Resolver{Client: client, ContactEmail: "test@example.org"}
 	candidates, err := resolver.ResolveTitle(context.Background(), "Array programming with NumPy")
 	if err != nil || len(candidates) == 0 || candidates[0].URL != "https://public.example.test/numpy.pdf" {
 		t.Fatalf("title OA expansion=%#v err=%v", candidates, err)
@@ -54,7 +56,7 @@ func TestLegacyOAProviderEdgeShapes(t *testing.T) {
 		client := legacyOAClient(t, func(*http.Request) string {
 			return `{"is_oa":true,"oa_status":"gold","best_oa_location":{"url_for_pdf":"https://public.example.test/best.pdf","version":"publishedVersion"},"oa_locations":[{"url_for_pdf":"https://public.example.test/alternate.pdf","version":"acceptedVersion"}]}`
 		})
-		got, err := (&Resolver{}).unpaywall(context.Background(), client, "10.1234/example")
+		got, err := (&Resolver{ContactEmail: "test@example.org"}).unpaywall(context.Background(), client, "10.1234/example")
 		if err != nil || len(got) != 2 || got[1].URL != "https://public.example.test/alternate.pdf" || got[1].Priority != 17 {
 			t.Fatalf("Unpaywall candidates=%#v err=%v", got, err)
 		}
