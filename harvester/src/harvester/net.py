@@ -604,7 +604,12 @@ async def fetch_browser(url: str, proxy_url: str | None = None,
     Opt-in rung — the caller gates it behind HARVESTER_BROWSER=1 because a browser launch is
     ~100ms+ and needs Chrome installed. patchright is an OPTIONAL dependency
     (`pip install harvester-mcp[browser]`); when absent this returns ("", None) and the ladder
-    falls through, never raises. SSRF-checked like every other fetch primitive.
+    falls through, never raises.
+
+    SSRF: `assert_fetchable` runs on the initial URL AND on EVERY request the page makes —
+    a context.route() interceptor re-checks each request/redirect/subresource and aborts any
+    that targets a private/blocked host (a public URL 302ing to 169.254.169.254 must die at
+    the route layer; the one-shot pre-check alone would let Chrome walk straight past it).
     """
     await assert_fetchable(url)
     try:
@@ -618,7 +623,21 @@ async def fetch_browser(url: str, proxy_url: str | None = None,
         async with async_playwright() as p:  # type: ignore[attr-defined]
             browser = await p.chromium.launch(channel="chrome", headless=headless, proxy=proxy)
             try:
-                page = await browser.new_page()
+                context = await browser.new_context()
+                # Per-request SSRF chokepoint — same contract as the httpx event hook and
+                # curl_cffi's per-hop checks: EVERY url Chrome touches gets re-validated.
+                async def _ssrf_route_guard(route) -> None:
+                    target = str(route.request.url)
+                    try:
+                        await assert_fetchable(target)
+                    except FetchNotAllowed as e:
+                        log.warning("browser route refused (ssrf) %s: %s", target, e)
+                        await route.abort("blocked")
+                        return
+                    await route.continue_()
+
+                await context.route("**/*", _ssrf_route_guard)
+                page = await context.new_page()
                 resp = await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
                 try:
                     await page.wait_for_load_state("networkidle", timeout=15_000)
