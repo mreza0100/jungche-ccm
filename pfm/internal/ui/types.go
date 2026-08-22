@@ -9,12 +9,14 @@ import (
 )
 
 // Tab is one top-level picker body. Chats preserves the original picker and
-// remains the default; Stats is sampled only while it is focused.
+// remains the default; Stats and Limits are sampled only while one of them is
+// focused.
 type Tab uint8
 
 const (
 	TabChats Tab = iota
 	TabStats
+	TabLimits
 	tabCount
 )
 
@@ -23,7 +25,6 @@ type StatsSubtab uint8
 const (
 	StatsChats StatsSubtab = iota
 	StatsDocker
-	StatsLimits
 	statsSubtabCount
 )
 

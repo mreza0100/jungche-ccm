@@ -55,25 +55,23 @@ func TestStatsSamplerIsLazyAndStopsAfterLeaving(t *testing.T) {
 	}
 }
 
-func TestStatsLimitsSubtabRendersAccountWindows(t *testing.T) {
+func TestLimitsTabRendersAccountWindows(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
 		Account: 2,
 		Emoji:   "🔹",
 		Windows: []pfmstats.Window{{Name: "7d-fable", UsedPct: 23, ResetAt: time.Unix(1_800_000_000, 0)}},
 	}}}
-	plain := ansi.Strip(model.renderStatsPanel(120, 8))
+	plain := ansi.Strip(model.renderLimitsPanel(120, 8))
 	if !strings.Contains(plain, "7d-fable") || !strings.Contains(plain, "23%") || !strings.Contains(plain, "🔹") {
 		t.Fatalf("limits panel=%q", plain)
 	}
 }
 
-func TestStatsLimitsSubtabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
+func TestLimitsTabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	now := time.Unix(0, model.nowNS)
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
 		Account: 1, Emoji: "🥇", Engine: "claude",
@@ -82,7 +80,7 @@ func TestStatsLimitsSubtabRendersFancyCardsAndRefreshesPastResets(t *testing.T) 
 			{Name: "7d", UsedPct: 100, ResetAt: now.Add(-time.Minute)},
 		},
 	}}}
-	panel := model.renderStatsPanel(120, 10)
+	panel := model.renderLimitsPanel(120, 10)
 	plain := ansi.Strip(panel)
 	for _, want := range []string{"🥇 account 1", "█", "52%", "FULL", "↻ refreshing…"} {
 		if !strings.Contains(plain, want) {
@@ -107,16 +105,15 @@ func TestLimitBarsKeepEighthCellPrecisionAndFullTail(t *testing.T) {
 	}
 }
 
-func TestStatsLimitsNarrowRowsDropResetAndNeverWrap(t *testing.T) {
+func TestLimitsTabNarrowRowsDropResetAndNeverWrap(t *testing.T) {
 	model := NewModel(fixtureSnapshot(50))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	now := time.Unix(0, model.nowNS)
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
 		Account: 1, Emoji: "🥇", Engine: "claude",
 		Windows: []pfmstats.Window{{Name: "7d-fable", UsedPct: 52.4, ResetAt: now.Add(14 * time.Minute)}},
 	}}}
-	panel := model.renderStatsPanel(50, 8)
+	panel := model.renderLimitsPanel(50, 8)
 	if strings.Contains(ansi.Strip(panel), "↻") {
 		t.Fatalf("narrow Limits panel kept reset column:\n%s", ansi.Strip(panel))
 	}
@@ -127,29 +124,32 @@ func TestStatsLimitsNarrowRowsDropResetAndNeverWrap(t *testing.T) {
 	}
 }
 
-func TestStatsLimitsRendersProviderMaxTotals(t *testing.T) {
+func TestLimitsTabOmitsProviderMaxTotals(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
 		{Account: 1, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 52}}},
 		{Account: 2, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 75}}},
 	}}
-	plain := ansi.Strip(model.renderStatsPanel(120, 10))
-	if !strings.Contains(plain, "Σ claude · 5h 75%") {
-		t.Fatalf("provider totals missing max window:\n%s", plain)
+	plain := ansi.Strip(model.renderLimitsPanel(120, 10))
+	if strings.Contains(plain, "Σ") {
+		t.Fatalf("provider max-totals line still rendered:\n%s", plain)
+	}
+	for _, want := range []string{"5h", "52%", "75%"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("Limits panel missing per-account window %q:\n%s", want, plain)
+		}
 	}
 }
 
-func TestStatsLimitsRendersEngineAbsencesAsTwoDimLines(t *testing.T) {
+func TestLimitsTabRendersEngineAbsencesAsTwoDimLines(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
 		{Engine: "claude", Label: "no Claude accounts configured", Status: "no Claude accounts configured", Absent: true},
 		{Engine: "codex", Label: "no Codex accounts configured", Status: "no Codex accounts configured", Absent: true},
 	}}
-	plain := ansi.Strip(model.renderStatsPanel(120, 8))
+	plain := ansi.Strip(model.renderLimitsPanel(120, 8))
 	for _, want := range []string{"no Claude accounts configured", "no Codex accounts configured"} {
 		if strings.Count(plain, want) != 1 {
 			t.Fatalf("Limits panel did not render exactly one plain absence line for %q:\n%s", want, plain)
@@ -162,15 +162,14 @@ func TestStatsLimitsRendersEngineAbsencesAsTwoDimLines(t *testing.T) {
 	}
 }
 
-func TestStatsLimitsSubtabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testing.T) {
+func TestLimitsTabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testing.T) {
 	home := "/home/test"
 	label1 := pfmconfig.DisplayAccountDir(home, 1, pfmconfig.DefaultAccountDir(home, 1))
 	label3 := pfmconfig.DisplayAccountDir(home, 3, pfmconfig.DefaultAccountDir(home, 3))
 	label4 := pfmconfig.DisplayAccountDir(home, 4, pfmconfig.DefaultAccountDir(home, 4))
 	emoji1 := pfmconfig.Defaults(home, []string{pfmconfig.DefaultAccountProjectDir(home, 1)}).EmojiFor(1)
 	model := NewModel(fixtureSnapshot(140))
-	model.tab = TabStats
-	model.statsSubtab = StatsLimits
+	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
 		{
 			Account: 1, Emoji: emoji1, Engine: "claude", Label: label1,
@@ -183,7 +182,7 @@ func TestStatsLimitsSubtabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testin
 		{Account: 4, Engine: "claude", Label: label4, Status: "skipped " + label4 + ": no valid credentials"},
 		{Engine: "codex", Label: "Codex", Status: "Codex credential rejected (HTTP 401)"},
 	}}
-	plain := ansi.Strip(model.renderStatsPanel(140, 18))
+	plain := ansi.Strip(model.renderLimitsPanel(140, 18))
 	for _, want := range []string{
 		"7d-fable", "0%", "↻ reset unavailable",
 		"skipped " + label3 + ": credentials rejected",

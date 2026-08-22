@@ -228,7 +228,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.applyRefresh(message.Snapshot)
 		return model, nil
 	case statsSampleMsg:
-		if model.tab != TabStats || message.generation != model.statsGeneration {
+		if !isSamplingTab(model.tab) || message.generation != model.statsGeneration {
 			return model, nil
 		}
 		model.statsLoading = false
@@ -240,7 +240,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return model, statsWaitCmd(message.generation)
 	case statsTickMsg:
-		if model.tab != TabStats || message.generation != model.statsGeneration {
+		if !isSamplingTab(model.tab) || message.generation != model.statsGeneration {
 			return model, nil
 		}
 		return model, model.startStatsSample()
@@ -291,8 +291,11 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		return model.switchTab(-1)
 	}
-	if model.tab != TabChats {
+	if model.tab == TabStats {
 		return model.updateStatsKey(key)
+	}
+	if model.tab == TabLimits {
+		return model, nil
 	}
 	switch key {
 	case "ctrl+x":
@@ -413,8 +416,10 @@ func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
 	}
 	previous := model.tab
 	model.tab = Tab((int(model.tab) + int(tabCount) + direction) % int(tabCount))
-	if previous != TabStats && model.tab == TabStats {
-		model.statsFocus = StatsFocusTop
+	if model.tab == TabStats {
+		model.statsFocus = StatsFocusSubtab
+	}
+	if !isSamplingTab(previous) && isSamplingTab(model.tab) {
 		return model, model.startStatsSample()
 	}
 	return model, nil
@@ -423,11 +428,20 @@ func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
 func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 	previous := model.tab
 	model.tab = Tab((int(model.tab) + int(tabCount) + direction) % int(tabCount))
-	if previous != TabStats && model.tab == TabStats {
-		model.statsFocus = StatsFocusTop
+	if model.tab == TabStats {
+		model.statsFocus = StatsFocusSubtab
+	}
+	if !isSamplingTab(previous) && isSamplingTab(model.tab) {
 		return model, model.startStatsSample()
 	}
 	return model, nil
+}
+
+// isSamplingTab reports whether tab is one of the two live tabs backed by the
+// same pfmstats.Snapshot sample loop (Stats and Limits) — one Sample() call
+// every 2s while either is focused, none while the picker sits on Chats.
+func isSamplingTab(tab Tab) bool {
+	return tab == TabStats || tab == TabLimits
 }
 
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
@@ -814,8 +828,12 @@ func (model *Model) rebuild(follow string, fallback int) {
 func (model *Model) rebuildOrder() {
 	model.order = model.order[:0]
 	model.nameGroups = make(map[int]nameGroup)
+	// members and emitted are scanned/shared across every project group, not
+	// rebuilt per group, so a name prefix folds into one panel across the
+	// whole fleet — a colon-prefixed row in project A groups with its
+	// namesakes in project B, not just its own project's rows.
+	members := make(map[string][]int)
 	for _, group := range model.groups {
-		members := make(map[string][]int)
 		for _, index := range group.indices {
 			row := model.rows[index]
 			if !model.visibleInView(row) || !isLiveNameGroupRow(row.Kind) {
@@ -825,7 +843,9 @@ func (model *Model) rebuildOrder() {
 				members[prefix] = append(members[prefix], index)
 			}
 		}
-		emitted := make(map[string]bool)
+	}
+	emitted := make(map[string]bool)
+	for _, group := range model.groups {
 		for _, index := range group.indices {
 			if !model.visibleInView(model.rows[index]) {
 				continue
