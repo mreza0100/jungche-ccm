@@ -303,31 +303,38 @@ func (r *Resolver) ResolveDOI(ctx context.Context, doi string) ([]Candidate, err
 		go func(i int, source string) {
 			defer wg.Done()
 			var candidates []Candidate
+			var err error
 			switch source {
 			case "unpaywall":
-				candidates, _ = r.unpaywall(ctx, client, doi)
+				candidates, err = r.unpaywall(ctx, client, doi)
 			case "openalex":
-				candidates, _ = r.openAlexDOI(ctx, client, doi)
+				candidates, err = r.openAlexDOI(ctx, client, doi)
 			case "semanticscholar":
-				candidates, _ = r.semanticScholar(ctx, client, doi)
+				candidates, err = r.semanticScholar(ctx, client, doi)
 			case "europepmc":
-				candidates, _ = r.europePMCDOI(ctx, client, doi)
+				candidates, err = r.europePMCDOI(ctx, client, doi)
 			case "openaire":
-				candidates, _ = r.openAIRE(ctx, client, doi)
+				candidates, err = r.openAIRE(ctx, client, doi)
 			case "zenodo":
-				candidates, _ = r.zenodo(ctx, client, doi)
+				candidates, err = r.zenodo(ctx, client, doi)
 			case "elife":
-				candidates, _ = r.eLife(ctx, client, doi)
+				candidates, err = r.eLife(ctx, client, doi)
 			case "plos":
 				candidates = plosCandidates(doi)
 			case "nber":
 				candidates = nberCandidates(doi)
 			case "crossref":
-				candidates, _ = r.crossref(ctx, client, doi)
+				candidates, err = r.crossref(ctx, client, doi)
 			case "core":
-				candidates, _ = r.core(ctx, client, doi)
+				candidates, err = r.core(ctx, client, doi)
 			case "doaj":
-				candidates, _ = r.doaj(ctx, client, doi)
+				candidates, err = r.doaj(ctx, client, doi)
+			}
+			if err != nil {
+				// A dead/misbehaving provider is an OUTAGE, not evidence of
+				// absence — name it at warning level instead of collapsing the
+				// failure into an empty candidate list.
+				log.Printf("harvest: oa source %s failed for %s: %v", source, doi, err)
 			}
 			results[i] = candidates
 		}(i, source)
@@ -656,11 +663,13 @@ func (r *Resolver) FindWorks(ctx context.Context, query string, limit int) ([]Ca
 	}
 	ctx = resolverContext(ctx, r)
 	client := r.client()
-	parts := make([][]Candidate, 3)
+	parts := make([][]Candidate, 5)
 	var wait sync.WaitGroup
 	for index, gather := range []func(context.Context, *http.Client, string, int) []Candidate{
 		r.findPapers,
 		r.findArxiv,
+		r.findCrossref,
+		r.findSemanticScholar,
 		r.findBooks,
 	} {
 		wait.Add(1)
@@ -1264,6 +1273,17 @@ func (h *Harvester) fetchKnownID(ctx context.Context, source string, kind Identi
 	if kind == IdentifierPMCID || kind == IdentifierPMID {
 		for _, c := range candidates {
 			if pmcid := extractPMCID(c.URL); pmcid != "" {
+				// PMC OA service (oa.fcgi) direct PDF — the ftp hrefs NCBI hands out
+				// are dead; PMCOAPDFURL rewrites them to the live deprecated/ https path.
+				trace = append(trace, "oa:pmc-fcgi")
+				if oaPDF, oaErr := PMCOAPDFURL(ctx, h.oa, pmcid); oaErr == nil && oaPDF != "" {
+					result := h.fetchURLWithPolicy(ctx, oaPDF, options, false)
+					if result.Error == "" {
+						result.Method = "mirror:pmc-oa-pdf"
+						return h.storeResultAlias(source, canonical, result, append([]string(nil), trace...), options)
+					}
+					trace = append(trace, "oa:pmc-oa-pdf")
+				}
 				for _, mirrorURL := range []string{PMCArticleURL(pmcid), "https://www.ebi.ac.uk/europepmc/webservices/rest/" + pmcid + "/fullTextXML"} {
 					result := h.fetchURL(ctx, mirrorURL, options)
 					if result.Error == "" {
@@ -1509,4 +1529,106 @@ func (r *Resolver) hathitrust(ctx context.Context, client *http.Client, query st
 		out = append(out, Candidate{URL: item.URL, Source: "hathitrust", Priority: candidatePriority("hathitrust", "", "", "html"), Kind: "html", Free: "pd"})
 	}
 	return out, nil
+}
+
+// findCrossref widens discovery (parity with Python _find_crossref): works
+// OpenAlex indexes thinly surface through Crossref's bibliographic search,
+// similarity-gated so near-misses never substitute for the asked-for title.
+func (r *Resolver) findCrossref(ctx context.Context, client *http.Client, query string, limit int) []Candidate {
+	var data struct {
+		Message struct {
+			Items []struct {
+				DOI    string   `json:"DOI"`
+				Title  []string `json:"title"`
+				Issued struct {
+					DateParts [][]int `json:"date-parts"`
+				} `json:"issued"`
+			} `json:"items"`
+		} `json:"message"`
+	}
+	endpoint := "https://api.crossref.org/works?query.bibliographic=" + url.QueryEscape(query) +
+		fmt.Sprintf("&rows=%d", limit) + r.withContact("", "mailto")
+	out := []Candidate{}
+	if err := getJSON(ctx, client, endpoint, &data); err != nil {
+		return nil
+	}
+	for _, item := range data.Message.Items {
+		title := ""
+		if len(item.Title) > 0 {
+			title = item.Title[0]
+		}
+		doi := DOIFrom(item.DOI)
+		if title == "" || doi == "" {
+			continue
+		}
+		match := titleMatch(query, title)
+		if match < 0.5 {
+			continue
+		}
+		year := 0
+		if len(item.Issued.DateParts) > 0 && len(item.Issued.DateParts[0]) > 0 {
+			year = item.Issued.DateParts[0][0]
+		}
+		out = append(out, Candidate{URL: doi, Source: "crossref", Kind: "paper", Title: title,
+			Year: year, Match: match})
+	}
+	return out
+}
+
+// findSemanticScholar widens discovery (parity with Python _find_s2): papers with
+// a direct free PDF handle surface fetchable in one step.
+func (r *Resolver) findSemanticScholar(ctx context.Context, client *http.Client, query string, limit int) []Candidate {
+	var data struct {
+		Data []struct {
+			Title   string `json:"title"`
+			Year    int    `json:"year"`
+			Authors []struct {
+				Name string `json:"name"`
+			} `json:"authors"`
+			ExternalIds struct {
+				DOI   string `json:"DOI"`
+				ArXiv string `json:"ArXiv"`
+			} `json:"externalIds"`
+			OpenAccessPDF struct {
+				URL string `json:"url"`
+			} `json:"openAccessPdf"`
+		} `json:"data"`
+	}
+	endpoint := "https://api.semanticscholar.org/graph/v1/paper/search?query=" + url.QueryEscape(query) +
+		fmt.Sprintf("&limit=%d", limit) + "&fields=title,year,authors,externalIds,openAccessPdf"
+	if err := getJSON(ctx, client, endpoint, &data); err != nil {
+		return nil
+	}
+	out := []Candidate{}
+	for _, paper := range data.Data {
+		if paper.Title == "" {
+			continue
+		}
+		match := titleMatch(query, paper.Title)
+		if match < 0.5 {
+			continue
+		}
+		handle := ""
+		free := ""
+		if doi := DOIFrom(paper.ExternalIds.DOI); doi != "" {
+			handle = doi
+		} else if paper.ExternalIds.ArXiv != "" {
+			handle = "https://arxiv.org/pdf/" + paper.ExternalIds.ArXiv
+		} else if paper.OpenAccessPDF.URL != "" {
+			handle = paper.OpenAccessPDF.URL
+		} else {
+			continue // no fetchable handle → useless as a candidate
+		}
+		if paper.OpenAccessPDF.URL != "" || paper.ExternalIds.ArXiv != "" {
+			free = "green"
+		}
+		names := make([]string, 0, len(paper.Authors))
+		for _, a := range paper.Authors {
+			names = append(names, a.Name)
+		}
+		out = append(out, Candidate{URL: handle, Source: "semanticscholar", Kind: "paper",
+			Title: paper.Title, Year: paper.Year, Free: free, Match: match,
+			Authors: strings.Join(names, ", ")})
+	}
+	return out
 }

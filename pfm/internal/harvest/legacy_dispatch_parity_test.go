@@ -158,7 +158,9 @@ func TestLegacyPDFErrorBodiesNeverBecomeConvertedSuccess(t *testing.T) {
 	}
 	var artifacts []string
 	_ = filepath.Walk(h.options.CacheDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && info != nil && !info.IsDir() {
+		if err == nil && info != nil && !info.IsDir() && filepath.Base(path) != "stats.jsonl" {
+			// stats.jsonl is the fetch-outcome SCOREBOARD (telemetry), not a
+			// content artifact — a failing fetch may still record its outcome.
 			artifacts = append(artifacts, path)
 		}
 		return nil

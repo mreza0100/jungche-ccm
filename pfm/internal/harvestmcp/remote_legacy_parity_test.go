@@ -1,6 +1,8 @@
 package harvestmcp
 
-// This file is the executable crosswalk for harvester/tests/test_remote_auth.py.
+// This file is the executable crosswalk for the RETIRED standalone Python
+// harvester's remote-auth suite (harvester/ was deleted after full migration to
+// pfm; this parity suite keeps its guarantees alive on the Go side).
 // Keep one test per legacy case (unless the crosswalk names an exact existing
 // pin), because these are contract tests for the remote HTTP/OAuth boundary.
 
