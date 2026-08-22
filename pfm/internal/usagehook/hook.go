@@ -179,12 +179,16 @@ func Evaluate(ctx context.Context, options Options) (string, error) {
 		return "", fmt.Errorf("stat usage credentials: %w", err)
 	}
 	account := accountNumber(options.Home, options.ConfigDir, options.AccountDirs)
-	if err := ensurePrivateDirectory(options.CacheDir); err != nil {
+	if err := EnsurePrivateDirectory(options.CacheDir); err != nil {
 		return "", err
 	}
 	now := options.Now()
-	cachePath := filepath.Join(options.CacheDir, fmt.Sprintf("acct-%d.json", account))
-	if cacheAge(cachePath, now) >= options.TTL {
+	cachePath := CachePath(options.CacheDir, account)
+	// A picker process may already have recorded a shared backoff here (a
+	// 429 or another failure) — honor it and skip our own request too,
+	// exactly like every other reader of this file, instead of rediscovering
+	// the same failure independently.
+	if cacheAge(cachePath, now) >= options.TTL && !backoffActive(cachePath, now) {
 		if err := refresh(ctx, options, cachePath); err != nil {
 			// A stale cache remains usable for one hour, exactly like the shell.
 			fmt.Fprintf(options.Log, "pfm usage-hook: refresh failed; trying stale cache: %v\n", err)
@@ -278,11 +282,7 @@ func normalize(options Options) Options {
 		}
 	}
 	if options.CacheDir == "" {
-		if jailHome := os.Getenv(paths.EnvHome); jailHome != "" {
-			options.CacheDir = filepath.Join(jailHome, "tmp", "cc-usage-"+strconv.Itoa(os.Getuid()))
-		} else {
-			options.CacheDir = filepath.Join(os.TempDir(), "cc-usage-"+strconv.Itoa(os.Getuid()))
-		}
+		options.CacheDir = DefaultCacheDir()
 	}
 	if options.Warn <= 0 {
 		options.Warn = envInt("CC_USAGE_WARN", 80)
@@ -336,7 +336,121 @@ func accountNumber(home, configDir string, accountDirs ...map[string]int) int {
 	return 1
 }
 
-func ensurePrivateDirectory(path string) error {
+// DefaultCacheDir returns the shared usage cache directory every caller gets
+// when it doesn't override Options.CacheDir: PFM_HOME-anchored exactly like
+// every other jail override in this package, uid-scoped otherwise. The
+// Limits tab (`stats.LimitsSampler`) resolves the SAME directory so it reads
+// and writes the one file this hook already owns instead of keeping a
+// second, per-process cache.
+func DefaultCacheDir() string {
+	if jailHome := os.Getenv(paths.EnvHome); jailHome != "" {
+		return filepath.Join(jailHome, "tmp", "cc-usage-"+strconv.Itoa(os.Getuid()))
+	}
+	return filepath.Join(os.TempDir(), "cc-usage-"+strconv.Itoa(os.Getuid()))
+}
+
+// CachePath returns the shared cache file for one Claude account number
+// under cacheDir — the exact file this hook's own refresh() reads and
+// writes, and the one `stats.LimitsSampler` reads and writes too.
+func CachePath(cacheDir string, account int) string {
+	return filepath.Join(cacheDir, fmt.Sprintf("acct-%d.json", account))
+}
+
+// CacheBackoff records a rate-limited or otherwise failed fetch so every
+// reader of the shared cache — this hook, and every `pfm ls` Limits tab —
+// skips its own request until RetryAfter instead of each picker process
+// rediscovering the same failure independently.
+type CacheBackoff struct {
+	Message    string    `json:"message"`
+	RetryAfter time.Time `json:"retry_after"`
+	RecordedAt time.Time `json:"recorded_at"`
+}
+
+// CacheRecord is the on-disk shape of the shared usage cache file. The bare
+// Usage JSON this hook's own refresh() has always written decodes into this
+// completely unchanged — ConfigDir, FetchedAt, and Backoff are additive
+// fields nothing that only wants Usage needs to know exist.
+type CacheRecord struct {
+	Usage
+	ConfigDir string        `json:"config_dir,omitempty"`
+	FetchedAt *time.Time    `json:"fetched_at,omitempty"`
+	Backoff   *CacheBackoff `json:"backoff,omitempty"`
+}
+
+// ReadCacheRecord decodes the shared cache file at path. A missing or
+// unreadable file is reported through the error return — callers treat it as
+// "nothing usable cached yet," never as a record with an empty Backoff.
+func ReadCacheRecord(path string) (CacheRecord, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return CacheRecord{}, err
+	}
+	var record CacheRecord
+	if err := json.Unmarshal(body, &record); err != nil {
+		return CacheRecord{}, fmt.Errorf("decode usage cache %s: %w", path, err)
+	}
+	return record, nil
+}
+
+// WriteCacheRecord atomically writes record to path with the same private
+// directory and atomic-rename discipline this hook's own refresh() has
+// always used.
+func WriteCacheRecord(path string, record CacheRecord) error {
+	if err := EnsurePrivateDirectory(filepath.Dir(path)); err != nil {
+		return err
+	}
+	body, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode usage cache %s: %w", path, err)
+	}
+	return AtomicWrite(path, body, 0o600)
+}
+
+// backoffActive reports whether the shared cache at path carries an
+// unexpired CacheBackoff — a 429 or another picker-recorded failure this
+// hook honors by making no request of its own before RetryAfter. A missing
+// or corrupt file is never treated as an active backoff: it just means
+// nothing usable is cached yet, so the normal TTL-driven refresh proceeds.
+func backoffActive(path string, now time.Time) bool {
+	record, err := ReadCacheRecord(path)
+	if err != nil || record.Backoff == nil {
+		return false
+	}
+	return now.Before(record.Backoff.RetryAfter)
+}
+
+// RateLimitError reports an HTTP 429 from a usage endpoint. RetryAfter is
+// whatever the server's own Retry-After header parsed to, or zero if the
+// server sent none or an unparseable value — callers apply their own floor.
+type RateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (err *RateLimitError) Error() string {
+	return "usage endpoint returned 429 Too Many Requests"
+}
+
+// ParseRetryAfter decodes an HTTP Retry-After header value — either a delay
+// in seconds or an HTTP-date — into a duration measured from now. An empty
+// or unparseable value returns zero, which callers treat as "the server
+// didn't say."
+func ParseRetryAfter(value string, now time.Time) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		if wait := when.Sub(now); wait > 0 {
+			return wait
+		}
+	}
+	return 0
+}
+
+func EnsurePrivateDirectory(path string) error {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
 	}
@@ -393,7 +507,7 @@ func refresh(ctx context.Context, options Options, cachePath string) error {
 	if decoded.FiveHour.Utilization == nil {
 		return fmt.Errorf("usage response omitted five_hour utilization")
 	}
-	return atomicWrite(cachePath, fresh, 0o600)
+	return AtomicWrite(cachePath, fresh, 0o600)
 }
 
 // Fetch reads one account's current OAuth usage without touching the warning
@@ -423,6 +537,9 @@ func Fetch(ctx context.Context, options Options) (Usage, error) {
 		return Usage{}, fmt.Errorf("fetch usage endpoint: %w", err)
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusTooManyRequests {
+		return Usage{}, &RateLimitError{RetryAfter: ParseRetryAfter(response.Header.Get("Retry-After"), options.Now())}
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return Usage{}, fmt.Errorf("usage endpoint returned %s", response.Status)
 	}
@@ -466,7 +583,11 @@ func logUnknownUsageKeys(body []byte, logger io.Writer) {
 	fmt.Fprintf(logger, "pfm usage-hook: debug: ignored usage keys: %s\n", strings.Join(unknown, ","))
 }
 
-func atomicWrite(path string, body []byte, mode os.FileMode) error {
+// AtomicWrite writes body to path via a same-directory temp file plus
+// rename, so a reader never observes a partially written cache file. Shared
+// by this hook's own refresh() and WriteCacheRecord — the one writer every
+// shared-cache caller uses.
+func AtomicWrite(path string, body []byte, mode os.FileMode) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".usage-*")
 	if err != nil {
 		return err
