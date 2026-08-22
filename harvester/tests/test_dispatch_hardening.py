@@ -337,12 +337,16 @@ class TestUnresolvedChallenge:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_mirror(src, key, ua, proxy, trace=None, page_html=None):
             return None  # no open-access copy
 
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(dispatch, "_try_mirror_for_url", fake_mirror)
         monkeypatch.setattr(images, "localize_html_images", _noop_localise)
 
@@ -582,12 +586,16 @@ class TestDeadUrlErrorListsRungs:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_mirror(src, key, ua, proxy, trace=None, page_html=None):
             return None
 
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(dispatch, "_try_mirror_for_url", fake_mirror)
 
         url = "https://www.dead-walled.example/paper"
@@ -1097,12 +1105,16 @@ class TestR6ThinFourOhFourIsError:
         async def fake_jina(url, ua, proxy=None):
             return ""
 
+        async def fake_defuddle(url, ua, proxy=None):
+            return ""
+
         async def fake_wayback(url, client):
             return None
 
         monkeypatch.setattr(net, "fetch_bytes_with_meta", fake_bytes)
         monkeypatch.setattr(net, "fetch_impersonated", fake_impersonated)
         monkeypatch.setattr(net, "fetch_jina", fake_jina)
+        monkeypatch.setattr(net, "fetch_defuddle", fake_defuddle)
         monkeypatch.setattr(mirror, "wayback_raw_url", fake_wayback)
 
     async def test_thin_404_is_error_not_near_empty_success(self, monkeypatch, isolated_cache):

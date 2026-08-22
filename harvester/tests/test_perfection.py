@@ -406,3 +406,69 @@ class TestStatsScoreboard:
         lines = [json.loads(ln) for ln in stats.stats_path().read_text().splitlines() if ln.strip()]
         rec = [r for r in lines if r["item"] == "https://stats.example/live"]
         assert rec and rec[0]["ok"] is True and rec[0]["detail"] == "test-method"
+
+
+# ── review walk 2: the browser SSRF route guard must execute under CI ───────────
+
+class TestBrowserRouteGuard:
+    async def test_private_redirect_target_is_aborted(self):
+        """A public URL that 302s to a metadata endpoint dies at the ROUTE layer —
+        the exact walk-1 Critical, now proven under CI with no browser installed."""
+        from harvester.net import FetchNotAllowed, browser_route_guard
+
+        class FakeRequest:
+            url = "http://169.254.169.254/latest/meta-data/"
+
+        class FakeRoute:
+            def __init__(self):
+                self.aborted = None
+                self.continued = False
+
+            @property
+            def request(self):
+                return FakeRequest()
+
+            async def abort(self, reason):
+                self.aborted = reason
+
+            async def continue_(self):
+                self.continued = True
+
+        route = FakeRoute()
+        await browser_route_guard()(route)
+        assert route.aborted == "blocked" and not route.continued, (
+            "a metadata-endpoint request must be aborted before Chrome connects")
+
+    async def test_public_target_continues(self):
+        from harvester.net import browser_route_guard
+
+        class FakeRequest:
+            url = "https://example.com/page"
+
+        class FakeRoute:
+            def __init__(self):
+                self.aborted = None
+                self.continued = False
+
+            @property
+            def request(self):
+                return FakeRequest()
+
+            async def abort(self, reason):
+                self.aborted = reason
+
+            async def continue_(self):
+                self.continued = True
+
+        route = FakeRoute()
+        await browser_route_guard()(route)
+        assert route.continued and route.aborted is None
+
+    def test_fetch_browser_wires_the_guard(self, monkeypatch):
+        """The production path must register THE guard on context.route(**/*)."""
+        import inspect
+
+        import harvester.net as net
+        src = inspect.getsource(net.fetch_browser)
+        assert 'context.route("**/*", browser_route_guard())' in src, (
+            "fetch_browser must install the shared guard on every request")

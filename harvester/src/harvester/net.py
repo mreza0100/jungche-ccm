@@ -597,6 +597,25 @@ async def download_impersonated(url: str, proxy_url: str | None = None) -> Tuple
 # playwright-stealth/rebrowser are dead ends (bench ≈ vanilla); Turnstile CAPTCHAs remain a
 # hard stop — this rung never solves anything interactive.
 
+def browser_route_guard():
+    """The per-request SSRF chokepoint for the browser rung, as a Playwright/Patchright
+    route handler. Same contract as the httpx event hook and curl_cffi's per-hop checks:
+    EVERY url Chrome touches — redirects, subresources, XHR — is re-validated through
+    assert_fetchable, and blocked targets are aborted before Chrome ever connects.
+    Extracted from fetch_browser so it is testable WITHOUT a browser under CI."""
+    async def _ssrf_route_guard(route) -> None:
+        target = str(route.request.url)
+        try:
+            await assert_fetchable(target)
+        except FetchNotAllowed as e:
+            log.warning("browser route refused (ssrf) %s: %s", target, e)
+            await route.abort("blocked")
+            return
+        await route.continue_()
+
+    return _ssrf_route_guard
+
+
 async def fetch_browser(url: str, proxy_url: str | None = None,
                         timeout_ms: int = 45_000) -> Tuple[str, int | None]:
     """Render *url* in a real system Chrome via Patchright; return (html, status).
@@ -624,19 +643,8 @@ async def fetch_browser(url: str, proxy_url: str | None = None,
             browser = await p.chromium.launch(channel="chrome", headless=headless, proxy=proxy)
             try:
                 context = await browser.new_context()
-                # Per-request SSRF chokepoint — same contract as the httpx event hook and
-                # curl_cffi's per-hop checks: EVERY url Chrome touches gets re-validated.
-                async def _ssrf_route_guard(route) -> None:
-                    target = str(route.request.url)
-                    try:
-                        await assert_fetchable(target)
-                    except FetchNotAllowed as e:
-                        log.warning("browser route refused (ssrf) %s: %s", target, e)
-                        await route.abort("blocked")
-                        return
-                    await route.continue_()
+                await context.route("**/*", browser_route_guard())
 
-                await context.route("**/*", _ssrf_route_guard)
                 page = await context.new_page()
                 resp = await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
                 try:
