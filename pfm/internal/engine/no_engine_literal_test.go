@@ -19,7 +19,9 @@ func TestNoEngineLiteralOutsideEnginePackage(t *testing.T) {
 		t.Fatal("locate engine sweep source")
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
-	allow := map[string]string{}
+	allow := map[string]string{
+		"internal/config/config.go": "(b) engine-named JSON keys are the shipped on-disk config format",
+	}
 	literals := []string{
 		"cc", "cx", "ox", "claude", "codex", "opencode",
 		"cc-", "cx-", "ox-", "Claude", "Codex", "OpenCode",

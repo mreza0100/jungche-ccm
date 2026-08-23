@@ -1,5 +1,7 @@
 package store
 
+import "hostops/pfm/internal/engine"
+
 // OcSession is one indexed OpenCode session, read from OpenCode's own SQLite
 // store (opencode.db). It is the OpenCode twin of Transcript/Rollout: every
 // field is derived data, rebuildable by re-reading that store.
@@ -98,11 +100,11 @@ const (
 // The row lives in the fleet's shared store, keyed by uuid and nothing else.
 type Killed struct {
 	ID string
-	// Engine is DERIVED at read time, not stored: "cc" when the id resolves to
-	// an indexed transcript, "cx" when it resolves to a rollout or a Codex
+	// Engine is DERIVED at read time, not stored: engine.Claude when the id
+	// resolves to an indexed transcript, engine.Codex when it resolves to a rollout or a Codex
 	// lineage root, and empty when neither table knows it. An empty engine
 	// means "killed whatever the engine" — it never lifts a kill.
-	Engine string
+	Engine engine.ID
 	// KilledAt is the shared row's killed_at, or 0 for a kill that reached only
 	// the carrier file, which records no time.
 	KilledAt int64

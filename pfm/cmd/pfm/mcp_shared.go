@@ -137,7 +137,7 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 			turns, bytes, budgetTruncated := boundMCPTurns(entries, maxBytes)
 			truncated = truncated || budgetTruncated
 			return mcpserv.ReadOutput{
-				ID: chat.ID, Path: chat.Path, Engine: chat.Engine,
+				ID: chat.ID, Path: chat.Path, Engine: string(chat.Engine),
 				Turns: turns, Count: len(turns), Truncated: truncated, Bytes: bytes,
 			}, nil
 		},

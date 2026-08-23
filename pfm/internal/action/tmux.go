@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/tmuxfmt"
 )
@@ -134,7 +135,7 @@ func (tmux CommandTmux) CreateCodexServer(
 		"-c",
 		server.CWD,
 		"-n",
-		"Codex",
+		pfmengine.MustLookup(pfmengine.Codex).Short,
 		server.Run,
 	)
 	if output, err := tmux.command(

@@ -35,9 +35,10 @@ type indexRefresher struct {
 }
 
 func (refresher indexRefresher) Refresh(ctx context.Context) error {
-	indexer, err := index.NewWithCodexRoots(refresher.database, paths.Values{
-		ClaudeRoots: refresher.claudeRoots,
-	}, refresher.codexRoots)
+	indexer, err := index.NewWithRoots(refresher.database, paths.Values{}, map[pfmengine.ID][]string{
+		pfmengine.Claude: refresher.claudeRoots,
+		pfmengine.Codex:  refresher.codexRoots,
+	})
 	if err != nil {
 		return err
 	}
@@ -71,7 +72,7 @@ func NewFinisher(
 	}
 	codexRoots := dependencies.CodexRoots
 	if codexRoots == nil {
-		codexRoots = []string{resolved.CodexRoot}
+		codexRoots = append([]string(nil), resolved.Roots[pfmengine.Codex]...)
 	} else {
 		codexRoots = append([]string{}, codexRoots...)
 	}
@@ -81,7 +82,7 @@ func NewFinisher(
 		if len(claudeRoots) == 0 {
 			claudeRoots = pfmconfig.Defaults(
 				resolved.Home,
-				resolved.ClaudeRoots,
+				resolved.Roots[pfmengine.Claude],
 			).ProjectRoots()
 		}
 		refresher = indexRefresher{
@@ -125,7 +126,7 @@ func (finisher *Finisher) Run(
 	ctx context.Context,
 	args ExitArgs,
 ) error {
-	if args.Engine != string(pfmengine.Claude) && args.Engine != string(pfmengine.Codex) {
+	if args.Engine != pfmengine.Claude && args.Engine != pfmengine.Codex {
 		return fmt.Errorf("unknown kill-exit engine %q", args.Engine)
 	}
 	if args.ID == "" || args.SocketPath == "" || args.PaneID == "" {
@@ -140,7 +141,7 @@ func (finisher *Finisher) Run(
 	viewports := finisher.viewportPanes(ctx, args.SocketPath)
 
 	command := "/exit"
-	if args.Engine == string(pfmengine.Codex) {
+	if args.Engine == pfmengine.Codex {
 		command = "/quit"
 	}
 	_ = finisher.tmux.SendLine(ctx, args.SocketPath, args.PaneID, command)

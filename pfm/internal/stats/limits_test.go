@@ -12,6 +12,7 @@ import (
 	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/usagehook"
 )
@@ -20,7 +21,7 @@ func TestLimitsSamplerMapsCanonicalAndScopedWindowsAndCaches(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	five, seven := 12.0, 34.0
 	var calls int
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 2, Emoji: "🔹", ConfigDir: "config"}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 2, Emoji: "🔹", Engine: pfmengine.Claude, ConfigDir: "config"}})
 	sampler.Now = func() time.Time { return now }
 	sampler.Fetch = func(context.Context, LimitAccount) (usagehook.Usage, error) {
 		calls++
@@ -50,7 +51,7 @@ func TestLimitsSamplerMapsCanonicalAndScopedWindowsAndCaches(t *testing.T) {
 func TestLimitsSamplerACKFallbackIsAtMostOncePerAccount(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	var fetches, acks int
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 7, ConfigDir: "config"}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 7, Engine: pfmengine.Claude, ConfigDir: "config"}})
 	sampler.Now = func() time.Time { return now }
 	sampler.Fetch = func(context.Context, LimitAccount) (usagehook.Usage, error) {
 		fetches++
@@ -83,7 +84,7 @@ func TestLimitsSamplerTurnsPersistentCredentialRejectionIntoNamedSkip(t *testing
 	label := pfmconfig.DisplayAccountDir(home, 3, configDir)
 	var fetches, acks int
 	sampler := NewLimitsSampler([]LimitAccount{{
-		ID: 3, Engine: "claude", Label: label, ConfigDir: configDir,
+		ID: 3, Engine: pfmengine.Claude, Label: label, ConfigDir: configDir,
 	}})
 	sampler.Fetch = func(context.Context, LimitAccount) (usagehook.Usage, error) {
 		fetches++
@@ -124,7 +125,7 @@ func TestLimitsSamplerCredentialRefreshCanRetryBeforeBackoff(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 6, Engine: "claude", Label: "account 6", ConfigDir: configDir}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 6, Engine: pfmengine.Claude, Label: "account 6", ConfigDir: configDir}})
 	sampler.Now = func() time.Time { return now }
 	sampler.Endpoint = server.URL
 	sampler.Ack = func(context.Context, LimitAccount) error {
@@ -203,7 +204,7 @@ func TestLimitsSamplerIgnoresStaleCodexCacheForLiveFetch(t *testing.T) {
 	}))
 	defer server.Close()
 	sampler := NewLimitsSampler([]LimitAccount{{
-		Engine: "codex", Label: "Codex", CodexAuthPath: authPath,
+		Engine: pfmengine.Codex, Label: "Codex", CodexAuthPath: authPath,
 	}})
 	sampler.CodexEndpoint = server.URL
 	sampler.CodexClient = server.Client()
@@ -327,7 +328,7 @@ func assertCodexStatusPrefix(t *testing.T, authPath, endpoint string, client *ht
 
 func sampleCodexStatus(authPath, endpoint string, client *http.Client) ([]AccountLimits, []string) {
 	sampler := NewLimitsSampler([]LimitAccount{{
-		Engine: "codex", Label: "Codex", CodexAuthPath: authPath,
+		Engine: pfmengine.Codex, Label: "Codex", CodexAuthPath: authPath,
 	}})
 	sampler.CodexEndpoint = endpoint
 	sampler.CodexClient = client
@@ -335,7 +336,7 @@ func sampleCodexStatus(authPath, endpoint string, client *http.Client) ([]Accoun
 }
 
 func TestLimitsSamplerKeepsRealFetchFailureVisible(t *testing.T) {
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 2, Engine: "claude", Label: "account 2"}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 2, Engine: pfmengine.Claude, Label: "account 2"}})
 	sampler.Fetch = func(context.Context, LimitAccount) (usagehook.Usage, error) {
 		return usagehook.Usage{}, fmt.Errorf("network route unavailable")
 	}
@@ -368,7 +369,7 @@ func TestLimitsSamplerServesLastGoodClaudeCacheDuringSharedBackoff(t *testing.T)
 	}))
 	defer server.Close()
 
-	account := LimitAccount{ID: 8, Engine: "claude", Label: "account 8", ConfigDir: configDir}
+	account := LimitAccount{ID: 8, Engine: pfmengine.Claude, Label: "account 8", ConfigDir: configDir}
 	samplerA := NewLimitsSampler([]LimitAccount{account})
 	samplerA.Now = func() time.Time { return now }
 	samplerA.Endpoint = server.URL
@@ -465,7 +466,7 @@ func TestLimitsSamplerSharesFetchAcrossProcessesWithinTTL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	account := LimitAccount{ID: 1, Engine: "claude", Label: "account 1", ConfigDir: configDir}
+	account := LimitAccount{ID: 1, Engine: pfmengine.Claude, Label: "account 1", ConfigDir: configDir}
 
 	samplerA := NewLimitsSampler([]LimitAccount{account})
 	samplerA.Endpoint = server.URL
@@ -505,7 +506,7 @@ func TestLimitsSamplerRespectsShortTTLWithinAndAcrossWindow(t *testing.T) {
 	defer server.Close()
 
 	now := time.Unix(1_800_000_000, 0)
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 4, Engine: "claude", ConfigDir: configDir}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 4, Engine: pfmengine.Claude, ConfigDir: configDir}})
 	sampler.Endpoint = server.URL
 	sampler.TTL = 300 * time.Millisecond
 	sampler.Now = func() time.Time { return now }
@@ -545,7 +546,7 @@ func TestLimitsSamplerBacksOff429AcrossProcessesForAtLeastTenMinutes(t *testing.
 	}))
 	defer server.Close()
 
-	account := LimitAccount{ID: 5, Engine: "claude", Label: "account 5", ConfigDir: configDir}
+	account := LimitAccount{ID: 5, Engine: pfmengine.Claude, Label: "account 5", ConfigDir: configDir}
 
 	samplerA := NewLimitsSampler([]LimitAccount{account})
 	samplerA.Endpoint = server.URL
@@ -616,7 +617,7 @@ func TestLimitsSamplerReadsCachePayloadTheHookWroteWithoutFetching(t *testing.T)
 	}))
 	defer limitsServer.Close()
 
-	sampler := NewLimitsSampler([]LimitAccount{{ID: 1, Engine: "claude", Label: "account 1", ConfigDir: configDir}})
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 1, Engine: pfmengine.Claude, Label: "account 1", ConfigDir: configDir}})
 	sampler.Endpoint = limitsServer.URL
 	limits, warnings := sampler.Sample(context.Background())
 	if samplerHits != 0 {

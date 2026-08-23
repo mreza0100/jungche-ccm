@@ -302,7 +302,7 @@ ORDER BY id`)
 		if target == nil {
 			target = &migratedKill{killed: Killed{
 				ID:       root,
-				Engine:   string(pfmengine.Codex),
+				Engine:   pfmengine.Codex,
 				KilledAt: killed.KilledAt,
 			}}
 			migrated[root] = target

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 
 	"golang.org/x/sync/errgroup"
@@ -88,7 +89,7 @@ func New(dependencies Dependencies) (*Gatherer, error) {
 	}
 	codexRoots := dependencies.CodexRoots
 	if codexRoots == nil {
-		codexRoots = []string{resolved.CodexRoot}
+		codexRoots = append([]string(nil), resolved.Roots[pfmengine.Codex]...)
 	} else {
 		codexRoots = append([]string{}, codexRoots...)
 	}

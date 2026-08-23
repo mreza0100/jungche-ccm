@@ -4,6 +4,8 @@ package theme
 import (
 	"fmt"
 	"os"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // Palette is the color vocabulary shared by the picker and status panels.
@@ -11,10 +13,9 @@ import (
 // the default renderer, so a palette change cannot leave a stray hardcoded
 // color behind.
 type Palette struct {
-	CodexRow    string
-	ClaudeRow   string
+	EngineRow   map[pfmengine.ID]string
 	AgentRow    string
-	StatsClaude string
+	StatsEngine map[pfmengine.ID]string
 	StatsCPU    string
 	StatsRAM    string
 	Accent      string
@@ -40,10 +41,13 @@ type Palette struct {
 }
 
 var defaultPalette = Palette{
-	CodexRow:    "#e879f9",
-	ClaudeRow:   "#5eead4",
-	AgentRow:    "#fb923c",
-	StatsClaude: "#5eead4",
+	EngineRow: map[pfmengine.ID]string{
+		pfmengine.Claude: "#5eead4", pfmengine.Codex: "#e879f9", pfmengine.Opencode: "#60a5fa",
+	},
+	AgentRow: "#fb923c",
+	StatsEngine: map[pfmengine.ID]string{
+		pfmengine.Claude: "#5eead4", pfmengine.Codex: "#e879f9", pfmengine.Opencode: "#60a5fa",
+	},
 	StatsCPU:    "#4ade80",
 	StatsRAM:    "#60a5fa",
 	Accent:      "#22d3ee",
@@ -68,10 +72,13 @@ var defaultPalette = Palette{
 }
 
 var tokyoNightPalette = Palette{
-	CodexRow:    "#bb9af7",
-	ClaudeRow:   "#73daca",
-	AgentRow:    "#ff9e64",
-	StatsClaude: "#73daca",
+	EngineRow: map[pfmengine.ID]string{
+		pfmengine.Claude: "#73daca", pfmengine.Codex: "#bb9af7", pfmengine.Opencode: "#7aa2f7",
+	},
+	AgentRow: "#ff9e64",
+	StatsEngine: map[pfmengine.ID]string{
+		pfmengine.Claude: "#73daca", pfmengine.Codex: "#bb9af7", pfmengine.Opencode: "#7aa2f7",
+	},
 	StatsCPU:    "#9ece6a",
 	StatsRAM:    "#7aa2f7",
 	Accent:      "#7dcfff",

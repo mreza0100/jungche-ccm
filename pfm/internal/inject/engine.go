@@ -29,16 +29,14 @@ const (
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
-	resolver       Resolver
-	tmux           Tmux
-	spawner        ThenSpawner
-	options        Options
-	whoami         SelfIdentifier
-	codexSeat      SelfIdentifier
-	claudeBinary   string
-	codexBinary    string
-	opencodeBinary string
-	accountEmojis  []string
+	resolver      Resolver
+	tmux          Tmux
+	spawner       ThenSpawner
+	options       Options
+	whoami        SelfIdentifier
+	codexSeat     SelfIdentifier
+	binaries      map[pfmengine.ID]string
+	accountEmojis []string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -48,8 +46,11 @@ type Engine struct {
 // New constructs a jailed-path-aware injection engine.
 func New(dependencies Dependencies) (*Engine, error) {
 	binaries := resolve.Binaries{
-		Claude:        dependencies.ClaudeBinary,
-		Codex:         dependencies.CodexBinary,
+		Values: map[pfmengine.ID]string{
+			pfmengine.Claude:   dependencies.ClaudeBinary,
+			pfmengine.Codex:    dependencies.CodexBinary,
+			pfmengine.Opencode: dependencies.OpencodeBinary,
+		},
 		AccountEmojis: dependencies.AccountEmojis,
 	}
 	if dependencies.Resolver == nil {
@@ -94,17 +95,23 @@ func New(dependencies Dependencies) (*Engine, error) {
 		dependencies.Identifier = identifier
 	}
 	return &Engine{
-		resolver:       dependencies.Resolver,
-		tmux:           dependencies.Tmux,
-		spawner:        dependencies.Spawner,
-		options:        options,
-		whoami:         dependencies.Identifier,
-		codexSeat:      dependencies.CodexSeat,
-		claudeBinary:   binaries.Claude,
-		codexBinary:    binaries.Codex,
-		opencodeBinary: dependencies.OpencodeBinary,
-		accountEmojis:  append([]string(nil), dependencies.AccountEmojis...),
+		resolver:      dependencies.Resolver,
+		tmux:          dependencies.Tmux,
+		spawner:       dependencies.Spawner,
+		options:       options,
+		whoami:        dependencies.Identifier,
+		codexSeat:     dependencies.CodexSeat,
+		binaries:      cloneEngineBinaries(binaries.Values),
+		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
 	}, nil
+}
+
+func cloneEngineBinaries(values map[pfmengine.ID]string) map[pfmengine.ID]string {
+	cloned := make(map[pfmengine.ID]string, len(values))
+	for id, binary := range values {
+		cloned[id] = binary
+	}
+	return cloned
 }
 
 // tempRoot is chat.sh's ${TMPDIR:-/tmp}, the root both implementations share
@@ -275,7 +282,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 		}
 		target := targetFromParts(identity.SocketPath, pane)
 		if identity.Engine == string(pfmengine.Codex) {
-			target.Engine = "cx"
+			target.Engine = string(pfmengine.Codex)
 		}
 		return target, 0, "", nil
 	}
@@ -313,7 +320,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 			}
 			target := targetFromParts(socket, pane)
 			if kind == resolve.CxWindow {
-				target.Engine = "cx"
+				target.Engine = string(pfmengine.Codex)
 			}
 			return target, 0, outcome.Stderr, nil
 		case 2:
@@ -406,12 +413,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	)
 	verifiedEngine := ""
 	if commandErr == nil {
-		verifiedEngine = paneCommandEngine(
-			command,
-			engine.claudeBinary,
-			engine.codexBinary,
-			engine.opencodeBinary,
-		)
+		verifiedEngine = paneCommandEngine(command, engine.binaries)
 		if verifiedEngine != "" {
 			target.Engine = verifiedEngine
 		}
@@ -887,15 +889,12 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	return base, nil
 }
 
-func engineName(engine string) string {
-	switch engine {
-	case "cx":
-		return "Codex"
-	case string(pfmengine.Opencode):
-		return "OpenCode"
-	default:
-		return "Claude"
+func engineName(value string) string {
+	id, err := pfmengine.Parse(value)
+	if err != nil {
+		return fmt.Sprintf("engine %q", value)
 	}
+	return pfmengine.MustLookup(id).Short
 }
 
 func (engine *Engine) sendPacedLiteral(
@@ -927,30 +926,14 @@ func (engine *Engine) sendPacedLiteral(
 	return chunks, nil
 }
 
-func paneCommandEngine(command string, binaries ...string) string {
+func paneCommandEngine(command string, binaries map[pfmengine.ID]string) string {
 	name := filepath.Base(strings.TrimSpace(command))
-	claudeBinary := ""
-	codexBinary := ""
-	opencodeBinary := ""
-	if len(binaries) > 0 {
-		claudeBinary = binaries[0]
-	}
-	if len(binaries) > 1 {
-		codexBinary = binaries[1]
-	}
-	if len(binaries) > 2 {
-		opencodeBinary = binaries[2]
-	}
-	if name == "opencode" ||
-		(opencodeBinary != "" && name == filepath.Base(opencodeBinary)) {
-		return string(pfmengine.Opencode)
-	}
-	if name == "codex" || (codexBinary != "" && name == filepath.Base(codexBinary)) {
-		return "cx"
-	}
-	if strings.HasPrefix(name, "claude") ||
-		(claudeBinary != "" && name == filepath.Base(claudeBinary)) {
-		return "cc"
+	for _, id := range pfmengine.All() {
+		descriptor := pfmengine.MustLookup(id)
+		configured := binaries[id]
+		if name == descriptor.Binary || configured != "" && name == filepath.Base(configured) {
+			return string(id)
+		}
 	}
 	// Claude's version-managed native executable is named like 2.1.47. This
 	// is the same process-name seam the live resolver already recognizes.
@@ -963,7 +946,7 @@ func paneCommandEngine(command string, binaries ...string) string {
 			return ""
 		}
 	}
-	return "cc"
+	return string(pfmengine.Claude)
 }
 
 // checkSteerChain applies chat.sh:596-625 before anything is resolved or
@@ -1206,17 +1189,12 @@ func (engine *Engine) steerLogPath(target string) string {
 }
 
 func targetFromParts(socketPath, pane string) Target {
-	engine := "cc"
 	base := filepath.Base(socketPath)
-	if strings.HasPrefix(base, "cx-") ||
-		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-cx-")) {
-		engine = "cx"
+	id, ok := pfmengine.FromSocket(base)
+	if !ok && os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" {
+		id, _ = pfmengine.FromSocket(strings.TrimPrefix(base, "probe-"))
 	}
-	if strings.HasPrefix(base, pfmengine.MustLookup(pfmengine.Opencode).SocketPrefix) ||
-		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-"+pfmengine.MustLookup(pfmengine.Opencode).SocketPrefix)) {
-		engine = string(pfmengine.Opencode)
-	}
-	return Target{SocketPath: socketPath, Pane: pane, Engine: engine}
+	return Target{SocketPath: socketPath, Pane: pane, Engine: string(id)}
 }
 
 func parseTargetLine(line string) (string, string, bool) {

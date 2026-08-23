@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/usagehook"
 )
@@ -42,6 +44,7 @@ func runStatuslineWithRuntime(
 	stdout, stderr io.Writer,
 	machine commandRuntime,
 ) int {
+	const statuslineHostEngine = pfmengine.Claude // pfm statusline is launched only by Claude Code's statusline hook; an environment that names no engine is that hook's
 	flags := newFlagSet(
 		"statusline",
 		"usage: pfm statusline [--refresh-vertex | --refresh-gpt]",
@@ -86,12 +89,19 @@ func runStatuslineWithRuntime(
 		fmt.Fprintf(stderr, "pfm statusline: read input (fail-open): %v\n", err)
 		return 0
 	}
-	runtime, err := statusline.DefaultRuntime()
+	id, engineErr := statusline.EngineFromEnvironment(os.Getenv)
+	if errors.Is(engineErr, statusline.ErrNoEngineInEnvironment) {
+		id = statuslineHostEngine
+	} else if engineErr != nil {
+		fmt.Fprintf(stderr, "pfm statusline: resolve engine (fail-open): %v\n", engineErr)
+		return 0
+	}
+	runtime, err := statusline.DefaultRuntime(id)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm statusline: resolve runtime (fail-open): %v\n", err)
 		return 0
 	}
-	if runtime.Engine == "codex" {
+	if runtime.Engine == pfmengine.Codex {
 		runtime.AccountDirs = make(map[string]int, len(machine.Config.CodexAccounts))
 		runtime.AccountEmojis = make(map[int]string, len(machine.Config.CodexAccounts))
 		for _, account := range machine.Config.CodexAccounts {
@@ -150,7 +160,8 @@ func runUsageHookWithRuntime(
 		flags.Usage()
 		return 2
 	}
-	if statusline.EngineFromEnvironment(os.Getenv) == "codex" {
+	id, _ := statusline.EngineFromEnvironment(os.Getenv)
+	if id == pfmengine.Codex {
 		return 0
 	}
 	accountDirs := make(map[string]int, len(runtime.Config.Accounts))

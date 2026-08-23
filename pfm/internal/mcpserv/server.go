@@ -39,7 +39,7 @@ type Runtime struct {
 	ClaudeBinary string
 	CodexBinary  string
 	// OpencodeBinary is the configured OpenCode launch command; empty means
-	// the default "opencode".
+	// the registered OpenCode descriptor's default binary.
 	OpencodeBinary string
 	Operations     SharedOperations
 	Dispatch       Dispatch

@@ -113,7 +113,7 @@ ON CONFLICT(id) DO UPDATE SET
   hidden_at=excluded.hidden_at,
   baseline_prompts=excluded.baseline_prompts`,
 		killed.ID,
-		killed.Engine,
+		string(killed.Engine),
 		killed.KilledAt,
 		killed.BaselinePrompts,
 	)
@@ -288,14 +288,15 @@ func (s *Store) transcriptPromptCounts(
 // deriveEngines answers "Claude or Codex?" from the index rather than from a
 // stored column. The shared killed table is keyed by uuid alone, so the engine
 // is read back out of whichever index table claims the id:
-// a transcript is "cc", a rollout or a Codex lineage root is "cx". An id
+// a transcript uses engine.Claude, while a rollout or lineage root uses
+// engine.Codex. An id
 // neither table knows is an orphaned kill and keeps an empty engine, which
 // compose reads as "killed whatever the engine".
 func (s *Store) deriveEngines(
 	ctx context.Context,
 	ids []string,
-) (map[string]string, error) {
-	engines := make(map[string]string, len(ids))
+) (map[string]pfmengine.ID, error) {
+	engines := make(map[string]pfmengine.ID, len(ids))
 	if len(ids) == 0 {
 		return engines, nil
 	}
@@ -312,20 +313,21 @@ func (s *Store) deriveEngines(
 func (s *Store) deriveEngineChunk(
 	ctx context.Context,
 	ids []string,
-	engines map[string]string,
+	engines map[string]pfmengine.ID,
 ) error {
 	marks := placeholders(len(ids))
 	query := `
-SELECT uuid, 'cc' FROM transcripts WHERE uuid IN (` + marks + `)
+SELECT uuid, ? FROM transcripts WHERE uuid IN (` + marks + `)
 UNION ALL
-SELECT id, 'cx' FROM rollouts WHERE id IN (` + marks + `)
+SELECT id, ? FROM rollouts WHERE id IN (` + marks + `)
 UNION ALL
-SELECT lineage_root, 'cx' FROM rollouts WHERE lineage_root IN (` + marks + `)
+SELECT lineage_root, ? FROM rollouts WHERE lineage_root IN (` + marks + `)
 UNION ALL
-SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
+SELECT id, ? FROM cx_names WHERE id IN (` + marks + `)`
 	// One bound id list per IN clause: four clauses, four copies.
-	arguments := make([]any, 0, len(ids)*4)
-	for clause := 0; clause < 4; clause++ {
+	arguments := make([]any, 0, (len(ids)+1)*4)
+	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex, pfmengine.Codex, pfmengine.Codex} {
+		arguments = append(arguments, string(id))
 		for _, id := range ids {
 			arguments = append(arguments, id)
 		}
@@ -341,13 +343,17 @@ SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
 		if err := rows.Scan(&id, &engine); err != nil {
 			return fmt.Errorf("scan killed chat engine: %w", err)
 		}
+		engineID, err := pfmengine.Parse(engine)
+		if err != nil {
+			return fmt.Errorf("fleet.db row %s: %w", id, err)
+		}
 		// A transcript wins a collision, whatever order the union arms come
 		// back in: SQL does not promise that order, and an id that resolved
 		// one way this run and the other way next run would flicker a chat in
 		// and out of the listing.
 		_, alreadyDerived := engines[id]
-		if engine == string(pfmengine.Claude) || !alreadyDerived {
-			engines[id] = engine
+		if engineID == pfmengine.Claude || !alreadyDerived {
+			engines[id] = engineID
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -361,17 +367,26 @@ SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
 // the orphan report are its only readers.
 func scanKilled(row rowScanner) (Killed, error) {
 	var killed Killed
+	var engine string
 	var baseline sql.NullInt64
 	err := row.Scan(
 		&killed.ID,
-		&killed.Engine,
+		&engine,
 		&killed.KilledAt,
 		&baseline,
 	)
 	if baseline.Valid {
 		killed.BaselinePrompts = &baseline.Int64
 	}
-	return killed, err
+	if err != nil {
+		return killed, err
+	}
+	id, err := pfmengine.Parse(engine)
+	if err != nil {
+		return Killed{}, fmt.Errorf("fleet.db row %s: %w", killed.ID, err)
+	}
+	killed.Engine = id
+	return killed, nil
 }
 
 func placeholders(count int) string {

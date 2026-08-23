@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const maxCrumbNameLength = 128
@@ -53,7 +55,10 @@ func validCrumbSocket(socket string) bool {
 	}
 
 	parts := strings.Split(socket, "-")
-	if len(parts) != 4 || (parts[0] != "cc" && parts[0] != "cx") {
+	if len(parts) != 4 {
+		return false
+	}
+	if _, ok := pfmengine.FromSocket(socket); !ok {
 		return false
 	}
 	return allDigits(parts[1]) && allDigits(parts[2]) && allDigits(parts[3])

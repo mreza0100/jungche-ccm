@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"testing"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
@@ -287,6 +288,7 @@ func TestRunWaitsForTheRebornPromptBeforeCheckingClaudeAndSubmittingThen(t *test
 	_, err := Run(
 		context.Background(),
 		Request{
+			Engine:     pfmengine.Claude,
 			SocketPath: "/tmp/tmux-1000/probe-reload-then",
 			Pane:       "%7",
 			PanePID:    700,
@@ -324,6 +326,7 @@ func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
 	_, err := Run(
 		context.Background(),
 		Request{
+			Engine:     pfmengine.Claude,
 			SocketPath: "/tmp/tmux-1000/probe-reload-then-pid",
 			Pane:       "%7",
 			PanePID:    tmux.oldPID,

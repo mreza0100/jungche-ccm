@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestLoadEngineRosterMatrixAndDefaultEngine(t *testing.T) {
@@ -16,13 +18,13 @@ func TestLoadEngineRosterMatrixAndDefaultEngine(t *testing.T) {
 		codex       bool
 		askEngine   string
 		wantCounts  EngineCounts
-		wantDefault string
+		wantDefault pfmengine.ID
 		wantError   string
 	}{
 		{name: "0/0", wantCounts: EngineCounts{}, wantError: "Claude roster empty"},
-		{name: "N/0", claude: true, wantCounts: EngineCounts{Claude: 1}, wantDefault: "claude"},
-		{name: "0/N", codex: true, wantCounts: EngineCounts{Codex: 1}, wantDefault: "codex"},
-		{name: "N/N", claude: true, codex: true, askEngine: "claude", wantCounts: EngineCounts{Claude: 1, Codex: 1}, wantDefault: "claude"},
+		{name: "N/0", claude: true, wantCounts: EngineCounts{pfmengine.Claude: 1}, wantDefault: pfmengine.Claude},
+		{name: "0/N", codex: true, wantCounts: EngineCounts{pfmengine.Codex: 1}, wantDefault: pfmengine.Codex},
+		{name: "N/N", claude: true, codex: true, askEngine: "claude", wantCounts: EngineCounts{pfmengine.Claude: 1, pfmengine.Codex: 1}, wantDefault: pfmengine.Claude},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			home := t.TempDir()
@@ -46,7 +48,7 @@ func TestLoadEngineRosterMatrixAndDefaultEngine(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load() error=%v", err)
 			}
-			if got := machine.Engines(); got != testCase.wantCounts {
+			if got := machine.Engines(); !reflect.DeepEqual(got, testCase.wantCounts) {
 				t.Fatalf("Engines()=%#v, want %#v", got, testCase.wantCounts)
 			}
 			engine, defaultErr := machine.DefaultEngine()
@@ -244,11 +246,11 @@ func TestCodexAuthAccountIDNestedUnderTokensIsDiscovered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error=%v, want nil — a Codex auth.json with account_id nested under tokens (the real CLI shape) must be discovered", err)
 	}
-	if got := machine.Engines(); got != (EngineCounts{Codex: 1}) {
+	if got := machine.Engines(); !reflect.DeepEqual(got, EngineCounts{pfmengine.Codex: 1}) {
 		t.Fatalf("Engines()=%#v, want {Codex: 1} — the .codex account with a real-shape auth.json was not counted", got)
 	}
-	if engine, defaultErr := machine.DefaultEngine(); defaultErr != nil || engine != "codex" {
-		t.Fatalf("DefaultEngine()=(%q,%v), want (\"codex\", nil)", engine, defaultErr)
+	if engine, defaultErr := machine.DefaultEngine(); defaultErr != nil || engine != pfmengine.Codex {
+		t.Fatalf("DefaultEngine()=(%q,%v), want (%q, nil)", engine, defaultErr, pfmengine.Codex)
 	}
 }
 

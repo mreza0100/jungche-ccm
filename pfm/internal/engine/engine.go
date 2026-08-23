@@ -119,3 +119,14 @@ func MustLookup(id ID) Descriptor {
 	}
 	return d
 }
+
+// FromSocket resolves an engine from its tmux socket name. Unknown socket
+// prefixes are named absence, never a fallback to another engine.
+func FromSocket(name string) (ID, bool) {
+	for _, id := range All() {
+		if strings.HasPrefix(name, registry[id].SocketPrefix) {
+			return id, true
+		}
+	}
+	return "", false
+}

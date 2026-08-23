@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 var ErrBusy = errors.New("another agent open is already in flight")
@@ -179,7 +181,7 @@ func New(dependencies Dependencies) *Opener {
 	}
 	claudeBinary := dependencies.ClaudeBinary
 	if claudeBinary == "" {
-		claudeBinary = "claude"
+		claudeBinary = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
 	return &Opener{sidDir: dependencies.SIDDir, home: dependencies.Home,
 		accounts:     accounts,
@@ -255,7 +257,7 @@ func (opener *Opener) Open(ctx context.Context, request Request) error {
 		if err != nil {
 			return fmt.Errorf("locate tmux socket for agent %d: %w", hit.PID, err)
 		}
-		if strings.HasPrefix(socket, "cc-") {
+		if id, ok := pfmengine.FromSocket(socket); ok && id == pfmengine.Claude {
 			fmt.Fprintf(opener.stderr, "⚙ %s is a tmux-resident chat on %s — attaching its window\n", displayName(hit), socket)
 			if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
 				return fmt.Errorf("release attach lock: %w", err)

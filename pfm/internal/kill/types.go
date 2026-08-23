@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
@@ -18,7 +19,7 @@ type SelfEnvironment struct {
 
 // Target is one kill identity and its optional live tmux address.
 type Target struct {
-	Engine     string
+	Engine     pfmengine.ID
 	ID         string
 	DataPath   string
 	SocketPath string
@@ -36,7 +37,7 @@ type Request struct {
 	// transcripts reach the store only after Claude flushes the file. Left
 	// empty, an unknown id is still an error, so a mistyped `pfm kill`
 	// argument cannot quietly record a kill for nothing.
-	Engine string
+	Engine pfmengine.ID
 	// RolloutPath names the Codex rollout file the caller's own row carries,
 	// when known. It lets an unindexed lineage member resolve to its root
 	// through the file's own session_meta header (resolveUnindexedCodexParent)
@@ -57,7 +58,7 @@ type Request struct {
 
 // ExitArgs are serialized onto the internal kill-exit argv.
 type ExitArgs struct {
-	Engine     string
+	Engine     pfmengine.ID
 	ID         string
 	DataPath   string
 	SocketPath string

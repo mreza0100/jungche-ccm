@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -35,6 +36,13 @@ const sidechainMarker = `"isSidechain":true`
 // headBytes is how much of a transcript is read to classify it.
 const headBytes = 4096
 
+func firstEngineRoot(roots []string) string {
+	if len(roots) == 0 {
+		return ""
+	}
+	return roots[0]
+}
+
 // KillStore is the killed set and the one way to leave it. Archive never
 // rewrites the killed list itself.
 type KillStore interface {
@@ -45,7 +53,7 @@ type KillStore interface {
 // KilledChat is one killed chat as the store reports it.
 type KilledChat struct {
 	ID     string
-	Engine string
+	Engine pfmengine.ID
 }
 
 // Options are one archive run's knobs.
@@ -154,7 +162,7 @@ func (runner *Runner) Run(
 ) (Report, error) {
 	live := LiveSessions(
 		runner.proc,
-		runner.paths.CodexRoot,
+		firstEngineRoot(runner.paths.Roots[pfmengine.Codex]),
 		runner.paths.SIDDir,
 		runner.codexBinary,
 	)
@@ -195,7 +203,7 @@ func (runner *Runner) runKilled(
 		}
 		move := Move{
 			ID:     chat.ID,
-			Engine: engine,
+			Engine: string(engine),
 			Source: source,
 			Target: runner.targetFor(engine, source),
 			Bytes:  info.Size(),
@@ -231,7 +239,7 @@ func (runner *Runner) runKilled(
 	}
 	report.HistoryPruned = pruned
 	pruned, err = runner.pruneLines(
-		filepath.Join(runner.paths.CodexRoot, "session_index.jsonl"),
+		filepath.Join(firstEngineRoot(runner.paths.Roots[pfmengine.Codex]), "session_index.jsonl"),
 		archived,
 	)
 	if err != nil {
@@ -254,7 +262,7 @@ func (runner *Runner) runSubagents(
 ) (Report, error) {
 	var report Report
 	cutoff := runner.now().Add(-options.OlderThan)
-	for _, root := range runner.paths.ClaudeRoots {
+	for _, root := range runner.paths.Roots[pfmengine.Claude] {
 		err := filepath.WalkDir(root, func(
 			path string,
 			entry fs.DirEntry,
@@ -321,18 +329,18 @@ func (runner *Runner) runSubagents(
 // findTranscript resolves a killed chat to the file that holds it. The store's
 // engine is the hint, never the authority: a kill written before the lineage
 // was indexed carries no engine at all.
-func (runner *Runner) findTranscript(chat KilledChat) (string, string) {
-	if chat.Engine != "cx" {
+func (runner *Runner) findTranscript(chat KilledChat) (string, pfmengine.ID) {
+	if chat.Engine != pfmengine.Codex {
 		if path := runner.findClaudeTranscript(chat.ID); path != "" {
-			return path, "cc"
+			return path, pfmengine.Claude
 		}
 	}
 	if path := runner.findCodexRollout(chat.ID); path != "" {
-		return path, "cx"
+		return path, pfmengine.Codex
 	}
-	if chat.Engine == "cx" {
+	if chat.Engine == pfmengine.Codex {
 		if path := runner.findClaudeTranscript(chat.ID); path != "" {
-			return path, "cc"
+			return path, pfmengine.Claude
 		}
 	}
 	return "", ""
@@ -359,7 +367,7 @@ func (runner *Runner) findClaudeTranscript(id string) string {
 
 func (runner *Runner) findCodexRollout(id string) string {
 	found := ""
-	root := filepath.Join(runner.paths.CodexRoot, "sessions")
+	root := filepath.Join(firstEngineRoot(runner.paths.Roots[pfmengine.Codex]), "sessions")
 	_ = filepath.WalkDir(root, func(
 		path string,
 		entry fs.DirEntry,
@@ -383,7 +391,7 @@ func (runner *Runner) findCodexRollout(id string) string {
 func (runner *Runner) claudeRoots() []string {
 	roots := append(
 		[]string(nil),
-		runner.paths.ClaudeRoots...,
+		runner.paths.Roots[pfmengine.Claude]...,
 	)
 	if !runner.exactClaudeRoots {
 		roots = append(roots, filepath.Join(runner.paths.Home, ".claude", "projects"))
@@ -393,17 +401,17 @@ func (runner *Runner) claudeRoots() []string {
 
 // targetFor mirrors the source layout under the archive, so a restore is an
 // exact reverse rather than a guess about where a file came from.
-func (runner *Runner) targetFor(engine, source string) string {
-	if engine == "cx" {
+func (runner *Runner) targetFor(engine pfmengine.ID, source string) string {
+	if engine == pfmengine.Codex {
 		return filepath.Join(
 			runner.paths.ArchiveDir,
-			"codex",
+			pfmengine.MustLookup(pfmengine.Codex).LongName,
 			filepath.Base(source),
 		)
 	}
 	return filepath.Join(
 		runner.paths.ArchiveDir,
-		"claude",
+		pfmengine.MustLookup(pfmengine.Claude).LongName,
 		filepath.Base(filepath.Dir(source)),
 		filepath.Base(source),
 	)
@@ -452,7 +460,7 @@ func (runner *Runner) backupSidecars() ([]string, error) {
 	stamp := runner.now().UTC().Format("20060102-150405")
 	sources := []string{
 		filepath.Join(runner.paths.Home, ".claude", "history.jsonl"),
-		filepath.Join(runner.paths.CodexRoot, "session_index.jsonl"),
+		filepath.Join(firstEngineRoot(runner.paths.Roots[pfmengine.Codex]), "session_index.jsonl"),
 	}
 	backups := make([]string, 0, len(sources))
 	for _, source := range sources {

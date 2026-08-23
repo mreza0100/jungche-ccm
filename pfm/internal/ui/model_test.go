@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestModelKeysKillModifiersAndCancel(t *testing.T) {
@@ -138,11 +139,11 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 	}
 	snapshot.MergeNewChat = true
 	model := NewModel(snapshot)
-	if model.NewChatEngine() != "claude" {
-		t.Fatalf("new chat engine=%q, want claude", model.NewChatEngine())
+	if model.NewChatEngine() != pfmengine.Claude {
+		t.Fatalf("new chat engine=%q, want %s", model.NewChatEngine(), pfmengine.Claude)
 	}
 	model, command := applyKey(t, model, specialKey(tea.KeyRight))
-	if command != nil || model.NewChatEngine() != "codex" {
+	if command != nil || model.NewChatEngine() != pfmengine.Codex {
 		t.Fatalf("right new-chat engine=%q command=%v", model.NewChatEngine(), command)
 	}
 	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
@@ -172,11 +173,11 @@ func TestNewChatUsesOnlyPresentEnginesAndCyclesTheirOwnRoster(t *testing.T) {
 		NowNS:               fixtureNowNS,
 	}
 	model := NewModel(codexOnly)
-	if model.NewChatEngine() != "codex" {
+	if model.NewChatEngine() != pfmengine.Codex {
 		t.Fatalf("codex-only engine = %q", model.NewChatEngine())
 	}
 	model, _ = applyKey(t, model, specialKey(tea.KeyLeft))
-	if model.NewChatEngine() != "codex" {
+	if model.NewChatEngine() != pfmengine.Codex {
 		t.Fatalf("single-engine carousel exposed Claude: %q", model.NewChatEngine())
 	}
 	model, _ = applyKey(t, model, controlKey('s'))
@@ -194,7 +195,7 @@ func TestNewChatUsesOnlyPresentEnginesAndCyclesTheirOwnRoster(t *testing.T) {
 	}
 	model = NewModel(claudeOnly)
 	model, _ = applyKey(t, model, specialKey(tea.KeyRight))
-	if model.NewChatEngine() != "claude" {
+	if model.NewChatEngine() != pfmengine.Claude {
 		t.Fatalf("single-engine carousel exposed Codex: %q", model.NewChatEngine())
 	}
 }

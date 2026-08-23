@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // SessionSpec is one detached tmux session to create.
@@ -34,15 +36,18 @@ type Tmux interface {
 // which owns the launch ceremony; this package owns only the session and the
 // keystrokes.
 type Request struct {
-	Engine  string
-	Name    string
-	Socket  string
-	CWD     string
-	Run     string
-	Prompt  string
-	Width   int
-	Height  int
-	Timings Timings
+	Engine pfmengine.ID
+	Name   string
+	Socket string
+	CWD    string
+	Run    string
+	Prompt string
+	// PromptOnCommandLine means the launch command already carries Prompt;
+	// the spawner records delivery without typing into the TUI.
+	PromptOnCommandLine bool
+	Width               int
+	Height              int
+	Timings             Timings
 	// Trace, when set, receives one line per step of the choreography. A TUI
 	// this code cannot see is the whole difficulty of driving one, so the
 	// screen it decided on is printed with the decision.
@@ -54,6 +59,9 @@ type tracer struct {
 	writer io.Writer
 	start  time.Time
 }
+
+// Trace is the launcher's choreography trace value.
+type Trace = tracer
 
 func newTracer(writer io.Writer, now time.Time) tracer {
 	return tracer{writer: writer, start: now}

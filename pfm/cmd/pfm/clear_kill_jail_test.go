@@ -222,7 +222,7 @@ func TestCodexClearKillsPreviousPaneThreadAndThenAutoUnkills(t *testing.T) {
 		t.Fatalf("stale live scan replaced clear-hook binding: bound=%q found=%v error=%v", bound, found, err)
 	}
 	killed, found, err := database.Killed(context.Background(), oldID)
-	if err != nil || !found || killed.Engine != string(pfmengine.Codex) ||
+	if err != nil || !found || killed.Engine != pfmengine.Codex ||
 		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 2 {
 		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
 	}
@@ -296,7 +296,7 @@ func TestCodexClearWithoutTmuxKillsInheritedThread(t *testing.T) {
 	}
 	defer database.Close()
 	killed, found, err := database.Killed(context.Background(), oldID)
-	if err != nil || !found || killed.Engine != store.CodexEngine ||
+	if err != nil || !found || killed.Engine != pfmengine.Codex ||
 		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
 		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
 	}
@@ -360,7 +360,7 @@ func TestCodexClearWithoutTmuxUsesHookParentBinding(t *testing.T) {
 	}
 	defer database.Close()
 	killed, found, err := database.Killed(context.Background(), oldID)
-	if err != nil || !found || killed.Engine != store.CodexEngine ||
+	if err != nil || !found || killed.Engine != pfmengine.Codex ||
 		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
 		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
 	}

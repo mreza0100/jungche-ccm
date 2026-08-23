@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // ProcessRecord is one observed /proc parent relation and sanitized executable
@@ -274,8 +276,9 @@ func commandShape(argv []string) string {
 		return ""
 	}
 	command := filepath.Base(argv[0])
-	if command == "node" && len(argv) >= 2 && filepath.Base(argv[1]) == "codex" {
-		return "node:codex"
+	binary := pfmengine.MustLookup(pfmengine.Codex).Binary
+	if command == "node" && len(argv) >= 2 && filepath.Base(argv[1]) == binary {
+		return "node:" + binary
 	}
 	return command
 }
@@ -294,7 +297,7 @@ func validateProcessTreeVerification(verification ProcessTreeVerification) error
 		)
 	case verification.Root.Command == "":
 		return fmt.Errorf("exact pane root process %d has no readable command line", verification.PaneRootPID)
-	case verification.Root.Command != "node:codex":
+	case verification.Root.Command != "node:"+pfmengine.MustLookup(pfmengine.Codex).Binary:
 		return fmt.Errorf(
 			"exact pane root process %d is command shape %q, not the Codex Node launcher",
 			verification.PaneRootPID,
@@ -310,7 +313,7 @@ func validateProcessTreeVerification(verification ProcessTreeVerification) error
 	allowedNativePID := 0
 	for _, descendant := range verification.Descendants {
 		if allowedNativePID == 0 && descendant.ParentPID == verification.PaneRootPID &&
-			descendant.Command == "codex" {
+			descendant.Command == pfmengine.MustLookup(pfmengine.Codex).Binary {
 			allowedNativePID = descendant.PID
 			continue
 		}

@@ -9,6 +9,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // EventKind labels a fleet event the caller observed.
@@ -81,10 +83,10 @@ func Frame(o Options) []string {
 // an amber cluster, each a tier-scaled glyph plus the honest count.
 // Count 0 renders as a lone faint dot.
 func Snapshot(claude, codex int) string {
-	return snapHalf(claude, engClaude) + " " + snapHalf(codex, engCodex)
+	return snapHalf(claude, pfmengine.Claude) + " " + snapHalf(codex, pfmengine.Codex)
 }
 
-func snapHalf(n int, e engine) string {
+func snapHalf(n int, id pfmengine.ID) string {
 	if n <= 0 {
 		return styleTab[clsBgStar].Render("·")
 	}
@@ -98,7 +100,7 @@ func snapHalf(n int, e engine) string {
 	default:
 		glyph, lvl = "✹", 3
 	}
-	return styleTab[bodyCls(e, lvl)].Render(glyph + strconv.Itoa(n))
+	return styleTab[bodyCls(id, lvl)].Render(glyph + strconv.Itoa(n))
 }
 
 // tier maps a live-chat count to visual weight.
@@ -217,17 +219,17 @@ func drawBodies(g *grid, o Options) {
 	}
 
 	type body struct {
-		e        engine
+		e        pfmengine.ID
 		count    int
 		r        float64
 		sin, cos float64
 	}
 	var bodies []body
 	if mc > 0 {
-		bodies = append(bodies, body{engClaude, mc, rClaude, math.Sin(theta), math.Cos(theta)})
+		bodies = append(bodies, body{pfmengine.Claude, mc, rClaude, math.Sin(theta), math.Cos(theta)})
 	}
 	if mx > 0 {
-		bodies = append(bodies, body{engCodex, mx, rCodex, -math.Sin(theta), -math.Cos(theta)})
+		bodies = append(bodies, body{pfmengine.Codex, mx, rCodex, -math.Sin(theta), -math.Cos(theta)})
 	}
 	// The far body (smaller sin) draws first so the near one overlaps it.
 	if len(bodies) == 2 && bodies[0].sin > bodies[1].sin {
@@ -243,7 +245,7 @@ func drawBodies(g *grid, o Options) {
 
 // drawBody paints one star at its tier's visual weight. far drops every
 // part one brightness level — the depth cue that sells the orbit.
-func drawBody(g *grid, e engine, count int, fx, fy float64, far bool, timeNS int64) {
+func drawBody(g *grid, e pfmengine.ID, count int, fx, fy float64, far bool, timeNS int64) {
 	t := tier(count)
 	if t == 0 {
 		return

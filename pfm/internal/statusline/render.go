@@ -16,6 +16,7 @@ import (
 	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/sky"
 	"hostops/pfm/internal/usagehook"
 )
@@ -150,7 +151,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		return "", fmt.Errorf("decode statusline input: %w", err)
 	}
 	if data.Model.DisplayName == "" {
-		data.Model.DisplayName = "Claude"
+		data.Model.DisplayName = pfmengine.MustLookup(pfmengine.Claude).Short
 	}
 	directory := data.Workspace.CurrentDir
 	if directory == "" {
@@ -210,8 +211,8 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		}
 		l1 += sep + color + data.Vim.Mode + reset
 	}
-	claudeCount, codexCount := fleetCounts(runtime)
-	l1 += sep + sky.Snapshot(claudeCount, codexCount)
+	counts := fleetCounts(runtime)
+	l1 += sep + sky.Snapshot(counts[pfmengine.Claude], counts[pfmengine.Codex])
 
 	percent := int(data.ContextWindow.UsedPercentage)
 	urgency := urgencyEmoji(percent)
@@ -234,7 +235,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		l2 += " " + dim + "(" + formatTokens(data.ContextWindow.TotalInputTokens) + "→" +
 			formatTokens(data.ContextWindow.TotalOutputTokens) + ")" + reset
 	}
-	if data.Cost.TotalCostUSD > 0 && runtime.Engine != "codex" {
+	if data.Cost.TotalCostUSD > 0 && runtime.Engine != pfmengine.Codex {
 		color := dim
 		if data.Cost.TotalCostUSD >= 10 {
 			color = red
@@ -246,7 +247,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	l2 += sep + dim + "⏱ " + formatDuration(data.Cost.TotalDurationMS) + reset
 
 	l3 := vertexSegment(runtime, now)
-	if runtime.Engine == "codex" {
+	if runtime.Engine == pfmengine.Codex {
 		gptLine, replacement := gptSegment(runtime, now, contextTokens, l2)
 		if replacement != "" {
 			l2 = replacement
@@ -497,10 +498,19 @@ func accountBadgeForID(runtime Runtime, account int) (string, int) {
 	return "", 0
 }
 
-func fleetCounts(runtime Runtime) (int, int) {
+func fleetCounts(runtime Runtime) map[pfmengine.ID]int {
 	allowProbe := runtime.getenv("PFM_TEST_PROBE_SOCKETS") == "1"
+	counts := make(map[pfmengine.ID]int)
+	count := func(name string) {
+		id, ok := pfmengine.FromSocket(name)
+		if !ok && allowProbe {
+			id, ok = pfmengine.FromSocket(strings.TrimPrefix(name, "probe-"))
+		}
+		if ok {
+			counts[id]++
+		}
+	}
 	if body, err := os.ReadFile(filepath.Join(runtime.ProcRoot, "net", "unix")); err == nil {
-		claude, codex := 0, 0
 		seen := map[string]bool{}
 		for _, line := range strings.Split(string(body), "\n") {
 			fields := strings.Fields(line)
@@ -516,38 +526,18 @@ func fleetCounts(runtime Runtime) (int, int) {
 				continue
 			}
 			seen[name] = true
-			switch {
-			case strings.HasPrefix(name, "cc-"):
-				claude++
-			case strings.HasPrefix(name, "cx-"):
-				codex++
-			case allowProbe && strings.HasPrefix(name, "probe-cc-"):
-				claude++
-			case allowProbe && strings.HasPrefix(name, "probe-cx-"):
-				codex++
-			}
+			count(name)
 		}
-		return claude, codex
+		return counts
 	}
 	entries, err := os.ReadDir(runtime.TmuxDir)
 	if err != nil {
-		return 0, 0
+		return counts
 	}
-	claude, codex := 0, 0
 	for _, entry := range entries {
-		name := entry.Name()
-		switch {
-		case strings.HasPrefix(name, "cc-"):
-			claude++
-		case strings.HasPrefix(name, "cx-"):
-			codex++
-		case allowProbe && strings.HasPrefix(name, "probe-cc-"):
-			claude++
-		case allowProbe && strings.HasPrefix(name, "probe-cx-"):
-			codex++
-		}
+		count(entry.Name())
 	}
-	return claude, codex
+	return counts
 }
 
 func writeBreadcrumb(runtime Runtime, transcriptPath string) {

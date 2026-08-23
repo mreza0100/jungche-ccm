@@ -241,7 +241,7 @@ func TestJailedKillExitFlushesAndSweeps(t *testing.T) {
 			t.Fatalf("%s remains: %v", path, err)
 		}
 	}
-	assertKilled(t, database, id, string(pfmengine.Claude), 500)
+	assertKilled(t, database, id, pfmengine.Claude, 500)
 }
 
 func TestStressTenSimultaneousKillExits(t *testing.T) {
@@ -268,7 +268,7 @@ func TestStressTenSimultaneousKillExits(t *testing.T) {
 		}
 		if err := database.Kill(ctx, store.Killed{
 			ID:       id,
-			Engine:   string(pfmengine.Claude),
+			Engine:   pfmengine.Claude,
 			KilledAt: int64(index + 1),
 		}); err != nil {
 			t.Fatal(err)
@@ -288,7 +288,7 @@ func TestStressTenSimultaneousKillExits(t *testing.T) {
 			path,
 		)
 		args = append(args, ExitArgs{
-			Engine:     string(pfmengine.Claude),
+			Engine:     pfmengine.Claude,
 			ID:         id,
 			DataPath:   path,
 			SocketPath: filepath.Join(jail.tmuxDir, socketName),

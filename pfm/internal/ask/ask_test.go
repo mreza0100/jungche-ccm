@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 type fakeAskAdapter interface {
@@ -56,25 +57,27 @@ func (fakeHarvesterAdapter) WantSpanKind() string { return "lines" }
 
 func TestResolveInputUsesExplicitValuesBeforeConfig(t *testing.T) {
 	cfg := pfmconfig.Config{Ask: pfmconfig.AskConfig{
-		Engine: "claude",
-		Codex:  pfmconfig.EnginePrefs{Model: "codex-default", Effort: "medium"},
-		Claude: pfmconfig.EnginePrefs{Model: "claude-default", Effort: "low"},
+		Engine: pfmengine.Claude,
+		Prefs: map[pfmengine.ID]pfmconfig.EnginePrefs{
+			pfmengine.Codex:  {Model: "codex-default", Effort: "medium"},
+			pfmengine.Claude: {Model: "claude-default", Effort: "low"},
+		},
 	}, Accounts: []pfmconfig.Account{{ID: 1}}}
 	resolved, err := ResolveInput(AskInput{
 		ContentFiles: []string{"prepared.md"}, SourceLabels: []string{"fixture"}, Prompt: "answer",
-		Engine: "codex", Model: "custom-model",
+		Engine: pfmengine.Codex, Model: "custom-model",
 	}, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Engine != "codex" || resolved.Model != "custom-model" || resolved.Effort != "medium" {
+	if resolved.Engine != pfmengine.Codex || resolved.Model != "custom-model" || resolved.Effort != "medium" {
 		t.Fatalf("resolved = %+v", resolved)
 	}
 	resolved, err = ResolveInput(AskInput{ContentFiles: []string{"prepared.md"}, Prompt: "answer"}, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Engine != "claude" || resolved.Model != "claude-default" || resolved.Effort != "low" {
+	if resolved.Engine != pfmengine.Claude || resolved.Model != "claude-default" || resolved.Effort != "low" {
 		t.Fatalf("config resolution = %+v", resolved)
 	}
 }
@@ -135,19 +138,23 @@ printf 'claude answer\n'`)
 		wantUsage  TokenUsage
 	}{
 		{
-			name: "codex", input: AskInput{Engine: "codex", Model: "cx-model", Effort: "high"},
+			name: "codex", input: AskInput{Engine: pfmengine.Codex, Model: "cx-model", Effort: "high"},
 			wantHome: "/fixture/codex-4", wantArgs: []string{"exec", "--model cx-model", `model_reasoning_effort="high"`, "--ephemeral", "--skip-git-repo-check", "-"},
 			wantAnswer: "codex answer", wantUsage: TokenUsage{Input: 11, CachedInput: 3, Output: 5},
 		},
 		{
-			name: "claude", input: AskInput{Engine: "claude", Model: "cc-model", Effort: "medium"},
+			name: "claude", input: AskInput{Engine: pfmengine.Claude, Model: "cc-model", Effort: "medium"},
 			wantHome: "/fixture/claude-2", wantArgs: []string{"-p", "--model cc-model", "--effort medium", "--output-format text"},
 			wantAnswer: "claude answer", wantUsage: TokenUsage{Input: 7, CachedInput: 2, Output: 4},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			engine, err := ResolveEngine(test.name, machine)
+			id, parseErr := pfmengine.Parse(test.name)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			engine, err := ResolveEngine(id, machine)
 			if err != nil {
 				t.Fatalf("ResolveEngine(): %v", err)
 			}
@@ -178,7 +185,7 @@ func TestProcessEngineUsageIsNilWhenAbsent(t *testing.T) {
 	directory := t.TempDir()
 	writeAskStub(t, directory, "codex", "printf 'answer only\\n'")
 	t.Setenv("PATH", directory)
-	engine, err := ResolveEngine("codex", askMachine("codex"))
+	engine, err := ResolveEngine(pfmengine.Codex, askMachine("codex"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +203,14 @@ func TestProcessEngineDistinguishesMissingCrashAndTimeout(t *testing.T) {
 	t.Setenv("PATH", directory)
 	machine := askMachine("codex")
 	machine.Codex.Binary = "missing-codex"
-	_, err := ResolveEngine("codex", machine)
+	_, err := ResolveEngine(pfmengine.Codex, machine)
 	var missing *BinaryMissingError
 	if !errors.As(err, &missing) || !strings.Contains(err.Error(), "codex binary MISSING") {
 		t.Fatalf("missing error = %v", err)
 	}
 
 	writeAskStub(t, directory, "codex", "printf 'first error\\nfatal tail\\n' >&2\nexit 7")
-	engine, err := ResolveEngine("codex", askMachine("codex"))
+	engine, err := ResolveEngine(pfmengine.Codex, askMachine("codex"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +220,7 @@ func TestProcessEngineDistinguishesMissingCrashAndTimeout(t *testing.T) {
 	}
 
 	writeAskStub(t, directory, "codex", "/bin/sleep 5")
-	engine, err = ResolveEngine("codex", askMachine("codex"))
+	engine, err = ResolveEngine(pfmengine.Codex, askMachine("codex"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,20 +236,28 @@ func TestProcessEngineDistinguishesMissingCrashAndTimeout(t *testing.T) {
 	}
 }
 
-func askMachine(engine string) pfmconfig.Config {
+func askMachine(engineName string) pfmconfig.Config {
+	id, err := pfmengine.Parse(engineName)
+	if err != nil {
+		panic(err)
+	}
 	return pfmconfig.Config{
 		Accounts:      []pfmconfig.Account{{ID: 1, ConfigDir: "/fixture/claude"}},
 		CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: "/fixture/codex"}},
 		Claude:        pfmconfig.Claude{Binary: "claude"},
 		Codex:         pfmconfig.Codex{Binary: "codex"},
-		Ask:           pfmconfig.AskConfig{Engine: engine},
+		Ask:           pfmconfig.AskConfig{Engine: id},
 	}
 }
 
-func validAskInput(engine string) AskInput {
+func validAskInput(engineName string) AskInput {
+	id, err := pfmengine.Parse(engineName)
+	if err != nil {
+		panic(err)
+	}
 	return AskInput{
 		ContentFiles: []string{"/fixture/exchange.md"}, SourceLabels: []string{"last exchange"},
-		Prompt: "summarize", Engine: engine,
+		Prompt: "summarize", Engine: id,
 	}
 }
 

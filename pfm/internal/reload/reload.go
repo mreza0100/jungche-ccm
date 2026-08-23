@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/action"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
@@ -48,7 +49,7 @@ type Process interface {
 }
 
 type Request struct {
-	Engine            string
+	Engine            pfmengine.ID
 	SocketPath        string
 	Pane              string
 	PanePID           int
@@ -292,9 +293,9 @@ func claudeRun(request Request) string {
 	}
 	binary := request.ClaudeBinary
 	if binary == "" {
-		binary = "claude"
+		binary = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
-	if binary != "claude" {
+	if binary != pfmengine.MustLookup(pfmengine.Claude).Binary {
 		binary = action.Quote(binary)
 	}
 	parts = append(parts, binary)
@@ -308,7 +309,7 @@ func claudeRun(request Request) string {
 }
 
 func engineRun(request Request) string {
-	if request.Engine == "cx" || request.Engine == "codex" {
+	if request.Engine == pfmengine.Codex {
 		return codexRun(request)
 	}
 	return claudeRun(request)
@@ -324,9 +325,9 @@ func codexRun(request Request) string {
 	}
 	binary := request.CodexBinary
 	if binary == "" {
-		binary = "codex"
+		binary = pfmengine.MustLookup(pfmengine.Codex).Binary
 	}
-	if binary != "codex" {
+	if binary != pfmengine.MustLookup(pfmengine.Codex).Binary {
 		binary = action.Quote(binary)
 	}
 	parts = append(parts, binary)
@@ -477,17 +478,14 @@ func lastComposerLine(capture string) string {
 }
 
 func claudeLive(proc Process, panePID int) (bool, error) {
-	return engineLive(proc, panePID, "cc", "", "")
+	return engineLive(proc, panePID, pfmengine.Claude, "", "")
 }
 
-func engineLabel(engine string) string {
-	if engine == "cx" || engine == "codex" {
-		return "Codex"
-	}
-	return "Claude"
+func engineLabel(id pfmengine.ID) string {
+	return pfmengine.MustLookup(id).Short
 }
 
-func engineLive(proc Process, panePID int, engine, claudeBinary, codexBinary string) (bool, error) {
+func engineLive(proc Process, panePID int, engine pfmengine.ID, claudeBinary, codexBinary string) (bool, error) {
 	if proc == nil {
 		return false, errors.New("process reader is unavailable")
 	}
@@ -498,6 +496,14 @@ func engineLive(proc Process, panePID int, engine, claudeBinary, codexBinary str
 	if err != nil {
 		return false, err
 	}
+	matcher, err := gather.MatcherFor(engine)
+	if err != nil {
+		return false, err
+	}
+	binary := claudeBinary
+	if engine == pfmengine.Codex {
+		binary = codexBinary
+	}
 processes:
 	for _, pid := range pids {
 		argv, err := proc.Cmdline(pid)
@@ -507,11 +513,7 @@ processes:
 			}
 			return false, fmt.Errorf("read process %d command: %w", pid, err)
 		}
-		matching := gather.IsClaudeCommand(argv, claudeBinary)
-		if engine == "cx" || engine == "codex" {
-			matching = gather.IsCodexCommand(argv, codexBinary)
-		}
-		if !matching {
+		if !matcher.IsCommand(argv, binary) {
 			continue
 		}
 		current := pid

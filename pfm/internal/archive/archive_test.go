@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -46,17 +47,19 @@ func archiveJail(t *testing.T) paths.Values {
 	t.Helper()
 	root := t.TempDir()
 	values := paths.Values{
-		Home:        filepath.Join(root, "home"),
-		ClaudeRoots: []string{filepath.Join(root, "home", ".cc", "1", "projects")},
-		CodexRoot:   filepath.Join(root, "home", ".codex"),
-		SIDDir:      filepath.Join(root, "sid"),
-		ArchiveDir:  filepath.Join(root, "home", ".claude-archive"),
-		TmuxDir:     filepath.Join(root, "tmux"),
-		ProcRoot:    filepath.Join(root, "proc"),
+		Home: filepath.Join(root, "home"),
+		Roots: map[pfmengine.ID][]string{
+			pfmengine.Claude: {filepath.Join(root, "home", ".cc", "1", "projects")},
+			pfmengine.Codex:  {filepath.Join(root, "home", ".codex")},
+		},
+		SIDDir:     filepath.Join(root, "sid"),
+		ArchiveDir: filepath.Join(root, "home", ".claude-archive"),
+		TmuxDir:    filepath.Join(root, "tmux"),
+		ProcRoot:   filepath.Join(root, "proc"),
 	}
 	for _, directory := range []string{
-		filepath.Join(values.ClaudeRoots[0], "-home-user-work-x"),
-		filepath.Join(values.CodexRoot, "sessions", "2026", "08", "15"),
+		filepath.Join(values.Roots[pfmengine.Claude][0], "-home-user-work-x"),
+		filepath.Join(values.Roots[pfmengine.Codex][0], "sessions", "2026", "08", "15"),
 		values.SIDDir,
 		filepath.Join(values.Home, ".claude"),
 	} {
@@ -89,8 +92,8 @@ func TestConfiguredArchiveRootsExcludeLegacyPrimaryAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	roots := runner.claudeRoots()
-	if len(roots) != 1 || roots[0] != values.ClaudeRoots[0] {
-		t.Fatalf("configured archive roots = %#v, want exact roster %#v", roots, values.ClaudeRoots)
+	if len(roots) != 1 || roots[0] != values.Roots[pfmengine.Claude][0] {
+		t.Fatalf("configured archive roots = %#v, want exact roster %#v", roots, values.Roots[pfmengine.Claude])
 	}
 }
 
@@ -108,12 +111,12 @@ func TestArchiveMovesOnlyResolvableDeadKilledChats(t *testing.T) {
 		rollout = "rollout-2026-08-15T10-00-00-44444444-4444-4444-8444-444444444444.jsonl"
 		project = "-home-user-work-x"
 	)
-	transcripts := filepath.Join(values.ClaudeRoots[0], project)
+	transcripts := filepath.Join(values.Roots[pfmengine.Claude][0], project)
 	writeFile(t, filepath.Join(transcripts, deadID+".jsonl"), "{}\n")
 	writeFile(t, filepath.Join(transcripts, liveID+".jsonl"), "{}\n")
 	writeFile(
 		t,
-		filepath.Join(values.CodexRoot, "sessions", "2026", "08", "15", rollout),
+		filepath.Join(values.Roots[pfmengine.Codex][0], "sessions", "2026", "08", "15", rollout),
 		"{}\n",
 	)
 	// The live chat states itself through its socket crumb, exactly as a
@@ -131,7 +134,7 @@ func TestArchiveMovesOnlyResolvableDeadKilledChats(t *testing.T) {
 	)
 	writeFile(
 		t,
-		filepath.Join(values.CodexRoot, "session_index.jsonl"),
+		filepath.Join(values.Roots[pfmengine.Codex][0], "session_index.jsonl"),
 		`{"id":"`+codexID+`","thread_name":"gone"}`+"\n"+
 			`{"id":"55555555-5555-4555-8555-555555555555","thread_name":"kept"}`+"\n",
 	)
@@ -201,7 +204,7 @@ func TestArchiveMovesOnlyResolvableDeadKilledChats(t *testing.T) {
 	if !strings.Contains(string(history), liveID) {
 		t.Fatal("history.jsonl lost a live chat's prompts")
 	}
-	index, err := os.ReadFile(filepath.Join(values.CodexRoot, "session_index.jsonl"))
+	index, err := os.ReadFile(filepath.Join(values.Roots[pfmengine.Codex][0], "session_index.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +224,7 @@ func TestArchiveMovesOnlyResolvableDeadKilledChats(t *testing.T) {
 func TestArchiveIsIdempotent(t *testing.T) {
 	values := archiveJail(t)
 	const id = "11111111-1111-4111-8111-111111111111"
-	transcripts := filepath.Join(values.ClaudeRoots[0], "-p")
+	transcripts := filepath.Join(values.Roots[pfmengine.Claude][0], "-p")
 	writeFile(t, filepath.Join(transcripts, id+".jsonl"), "{}\n")
 	kills := &fakeKills{rows: []KilledChat{{ID: id, Engine: "cc"}}}
 	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
@@ -245,7 +248,7 @@ func TestArchiveIsIdempotent(t *testing.T) {
 func TestRestorePutsAChatBackWhereItWas(t *testing.T) {
 	values := archiveJail(t)
 	const id = "11111111-1111-4111-8111-111111111111"
-	transcripts := filepath.Join(values.ClaudeRoots[0], "-p")
+	transcripts := filepath.Join(values.Roots[pfmengine.Claude][0], "-p")
 	original := filepath.Join(transcripts, id+".jsonl")
 	writeFile(t, original, "{\"a\":1}\n")
 	kills := &fakeKills{rows: []KilledChat{{ID: id, Engine: "cc"}}}
@@ -279,7 +282,7 @@ func TestRestorePutsAChatBackWhereItWas(t *testing.T) {
 // transcript for as long as it runs.
 func TestArchiveSubagentsRespectsTheAgeGate(t *testing.T) {
 	values := archiveJail(t)
-	project := filepath.Join(values.ClaudeRoots[0], "-p")
+	project := filepath.Join(values.Roots[pfmengine.Claude][0], "-p")
 	old := filepath.Join(project, "aaaaaaaa-0000-4000-8000-000000000001.jsonl")
 	fresh := filepath.Join(project, "bbbbbbbb-0000-4000-8000-000000000002.jsonl")
 	chat := filepath.Join(project, "cccccccc-0000-4000-8000-000000000003.jsonl")
@@ -324,7 +327,7 @@ func TestArchiveSubagentsRespectsTheAgeGate(t *testing.T) {
 // liveness is re-read at run time and outranks the age gate.
 func TestArchiveSubagentsSkipsLiveTranscripts(t *testing.T) {
 	values := archiveJail(t)
-	project := filepath.Join(values.ClaudeRoots[0], "-p")
+	project := filepath.Join(values.Roots[pfmengine.Claude][0], "-p")
 	const id = "aaaaaaaa-0000-4000-8000-000000000001"
 	path := filepath.Join(project, id+".jsonl")
 	writeFile(t, path, `{"isSidechain":true}`+"\n")

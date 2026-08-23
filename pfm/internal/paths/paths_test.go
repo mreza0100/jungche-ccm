@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestResolveOverrides(t *testing.T) {
@@ -41,14 +43,16 @@ func TestResolveOverrides(t *testing.T) {
 		t.Fatalf("Resolve() error = %v", err)
 	}
 	want := Values{
-		DB:           db,
-		SharedDB:     sharedDB,
-		SIDDir:       sidDir,
-		ClaudeRoots:  claudeRoots,
-		CodexRoot:    codexRoot,
-		OpenCodeRoot: opencodeRoot,
-		TmuxDir:      tmuxDir,
-		Home:         home,
+		DB:       db,
+		SharedDB: sharedDB,
+		SIDDir:   sidDir,
+		Roots: map[pfmengine.ID][]string{
+			pfmengine.Claude:   claudeRoots,
+			pfmengine.Codex:    {codexRoot},
+			pfmengine.Opencode: {opencodeRoot},
+		},
+		TmuxDir: tmuxDir,
+		Home:    home,
 		// The carrier and the archive have no override of their own: both are
 		// defined relative to Home, and jailing Home jails them.
 		ArchiveDir: filepath.Join(home, ".claude-archive"),
@@ -84,15 +88,17 @@ func TestResolveSharedStoreDefaultsOutsideThePrivateCache(t *testing.T) {
 
 func TestResolveDoesNotFabricateClaudeAccountRoots(t *testing.T) {
 	testRoot := t.TempDir()
-	t.Setenv(EnvHome, filepath.Join(testRoot, "home"))
+	home := filepath.Join(testRoot, "home")
+	t.Setenv(EnvHome, home)
 	t.Setenv(EnvClaudeRoots, "")
 
 	got, err := Resolve()
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if len(got.ClaudeRoots) != 0 {
-		t.Fatalf("Resolve().ClaudeRoots = %#v, want discovery delegated to internal/config", got.ClaudeRoots)
+	wantClaude := pfmengine.MustLookup(pfmengine.Claude).DefaultRoots(home)
+	if !reflect.DeepEqual(got.Roots[pfmengine.Claude], wantClaude) {
+		t.Fatalf("Resolve().Roots[cc] = %#v, want %#v", got.Roots[pfmengine.Claude], wantClaude)
 	}
 }
 
@@ -109,8 +115,8 @@ func TestResolveOpencodeRootDefaultsUnderHome(t *testing.T) {
 		t.Fatalf("Resolve() error = %v", err)
 	}
 	want := filepath.Join(home, ".local", "share", "opencode")
-	if got.OpenCodeRoot != want {
-		t.Fatalf("Resolve().OpenCodeRoot = %q, want %q", got.OpenCodeRoot, want)
+	if roots := got.Roots[pfmengine.Opencode]; len(roots) != 1 || roots[0] != want {
+		t.Fatalf("Resolve().Roots[ox] = %#v, want %q", roots, want)
 	}
 }
 

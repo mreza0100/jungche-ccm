@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 type LauncherState string
@@ -23,11 +25,11 @@ type ClaudeLauncherStatus struct {
 }
 
 func managedClaudeLauncher(home string) string {
-	return filepath.Join(home, ".local", "share", "pfm", "install", "bin", "claude")
+	return filepath.Join(home, ".local", "share", "pfm", "install", "bin", pfmengine.MustLookup(pfmengine.Claude).Binary)
 }
 
 func canonicalClaudeLauncher(home string) string {
-	return filepath.Join(home, ".local", "bin", "claude")
+	return filepath.Join(home, ".local", "bin", pfmengine.MustLookup(pfmengine.Claude).Binary)
 }
 
 func claudeLauncherStatePath(home string) string {

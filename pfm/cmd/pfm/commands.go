@@ -167,7 +167,7 @@ func runLS(
 	// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
 	// mean a deliberate choice — see primaryWriteback.
 	claudePrimary := outcome.ClaudePrimaryAccount
-	if claudePrimary == 0 && compose.EngineForKind(outcome.Row.Kind) != string(pfmengine.Codex) {
+	if claudePrimary == 0 && compose.EngineForKind(outcome.Row.Kind) != pfmengine.Codex {
 		claudePrimary = outcome.PrimaryAccount
 	}
 	if account, should := primaryWriteback(
@@ -211,33 +211,33 @@ func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
 	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+len(runtime.Config.CodexAccounts)+2)
 	if len(runtime.Config.Accounts) == 0 {
 		accounts = append(accounts, pfmstats.LimitAccount{
-			Engine: "claude", Label: "no Claude accounts configured", Absent: true,
+			Engine: pfmengine.Claude, Label: "no " + pfmengine.MustLookup(pfmengine.Claude).Short + " accounts configured", Absent: true,
 		})
 	}
 	for _, account := range runtime.Config.Accounts {
 		claude := runtime.Config.EffectiveClaude(account.ID)
 		accounts = append(accounts, pfmstats.LimitAccount{
 			ID: account.ID, Emoji: runtime.Config.EmojiFor(account.ID),
-			Engine: "claude", Label: pfmconfig.DisplayAccountDir(runtime.Paths.Home, account.ID, account.ConfigDir),
+			Engine: pfmengine.Claude, Label: pfmconfig.DisplayAccountDir(runtime.Paths.Home, account.ID, account.ConfigDir),
 			ConfigDir: account.ConfigDir, ClaudeBinary: claude.Binary,
 		})
 	}
 	for _, skip := range runtime.Config.AccountSkips {
 		accounts = append(accounts, pfmstats.LimitAccount{
-			ID: skip.ID, Engine: "claude",
+			ID: skip.ID, Engine: pfmengine.Claude,
 			Label:     pfmconfig.DisplayAccountDir(runtime.Paths.Home, skip.ID, skip.ConfigDir),
 			ConfigDir: skip.ConfigDir, SkipReason: skip.Reason,
 		})
 	}
 	if len(runtime.Config.CodexAccounts) == 0 {
 		accounts = append(accounts, pfmstats.LimitAccount{
-			Engine: "codex", Label: "no Codex accounts configured", Absent: true,
+			Engine: pfmengine.Codex, Label: "no " + pfmengine.MustLookup(pfmengine.Codex).Short + " accounts configured", Absent: true,
 		})
 	}
 	for _, account := range runtime.Config.CodexAccounts {
 		accounts = append(accounts, pfmstats.LimitAccount{
 			ID: account.ID, Emoji: runtime.Config.CodexEmojiFor(account.ID),
-			Engine: "codex", Label: fmt.Sprintf("Codex %d", account.ID),
+			Engine: pfmengine.Codex, Label: fmt.Sprintf("%s %d", pfmengine.MustLookup(pfmengine.Codex).Short, account.ID),
 			CodexAuthPath: filepath.Join(account.Home, "auth.json"),
 		})
 	}
@@ -309,7 +309,7 @@ func openRow(
 	// The Codex projection repair rides the resume path itself: a wedged
 	// thread is repaired in the same breath that opens it, with no shell
 	// helper in the run string to be missing, unexecutable, or stale.
-	healCodexRoot := resolved.CodexRoot
+	healCodexRoot := firstRoot(resolved.Roots[pfmengine.Codex])
 	if account, found := runtime.Config.CodexAccountByID(primary); found {
 		healCodexRoot = account.Home
 	}
@@ -347,21 +347,19 @@ func openRow(
 }
 
 func freshSocket(kind compose.Kind) string {
+	return freshEngineSocket(compose.EngineForKind(kind))
+}
+
+func freshEngineSocket(id pfmengine.ID) string {
 	if value := os.Getenv(testFreshSocketEnv); value != "" {
 		return value
 	}
-	prefix := "cc"
-	if kind == compose.ResumeCodex || kind == compose.NewCodex {
-		prefix = "cx"
-	}
-	if kind == compose.ResumeOpencode {
-		prefix = "ox"
-	}
+	descriptor := pfmengine.MustLookup(id)
 	var randomBytes [2]byte
 	_, _ = rand.Read(randomBytes[:])
 	return fmt.Sprintf(
-		"%s-%d-%d-%d",
-		prefix,
+		"%s%d-%d-%d",
+		descriptor.SocketPrefix,
 		time.Now().Unix(),
 		os.Getpid(),
 		binary.BigEndian.Uint16(randomBytes[:]),
@@ -433,7 +431,7 @@ func killApplier(
 func killDependencies(runtime commandRuntime) kill.Dependencies {
 	return kill.Dependencies{
 		Paths:       runtime.Paths,
-		ClaudeRoots: append([]string(nil), runtime.Paths.ClaudeRoots...),
+		ClaudeRoots: append([]string(nil), runtime.Paths.Roots[pfmengine.Claude]...),
 		CodexRoots:  codexHomes(runtime.Config),
 		ConfigPath:  runtime.Config.Path,
 	}
@@ -524,7 +522,7 @@ func runIndex(args []string, stdout, stderr io.Writer, runtime commandRuntime) i
 		return 1
 	}
 	defer database.Close()
-	indexer, err := fleetindex.NewWithCodexRoots(database, runtime.Paths, codexHomes(runtime.Config))
+	indexer, err := fleetindex.NewWithRoots(database, runtime.Paths, runtime.Paths.Roots)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm index: %v\n", err)
 		return 1

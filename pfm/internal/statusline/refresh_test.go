@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestVertexRefresherWritesSpendAndPriceCachesFromRecordedAPIs(t *testing.T) {
@@ -123,7 +125,7 @@ func TestRenderSchedulesStaleRefreshersWithoutWaiting(t *testing.T) {
 		TmuxDir:      filepath.Join(root, "tmux"),
 		ProcRoot:     filepath.Join(root, "proc"),
 		UID:          1000,
-		Engine:       "codex",
+		Engine:       pfmengine.Codex,
 		Env:          map[string]string{},
 		Command:      quietRunner{},
 		Spawn: func(kind RefreshKind) error {
@@ -158,7 +160,7 @@ func TestRenderSchedulesStaleRefreshersWithoutWaiting(t *testing.T) {
 		TmuxDir:      filepath.Join(root, "tmux"),
 		ProcRoot:     filepath.Join(root, "proc"),
 		UID:          1000,
-		Engine:       "codex",
+		Engine:       pfmengine.Codex,
 		Env:          map[string]string{},
 		Command:      quietRunner{},
 		Spawn: func(kind RefreshKind) error {
