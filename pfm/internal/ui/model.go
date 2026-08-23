@@ -435,10 +435,7 @@ func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if model.tab == TabStats {
 		model.statsFocus = StatsFocusSubtab
 	}
-	if !isSamplingTab(previous) && isSamplingTab(model.tab) {
-		return model, model.startStatsSample()
-	}
-	return model, nil
+	return model, model.statsTabTransition(previous)
 }
 
 func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
@@ -447,10 +444,30 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 	if model.tab == TabStats {
 		model.statsFocus = StatsFocusSubtab
 	}
-	if !isSamplingTab(previous) && isSamplingTab(model.tab) {
-		return model, model.startStatsSample()
+	return model, model.statsTabTransition(previous)
+}
+
+// statsTabTransition owns cancellation-by-generation for the two sampling
+// tabs. Switching Stats↔Limits starts the newly appropriate sampler at once;
+// a late result from the tab just left carries the old generation and is
+// ignored. Leaving both tabs also clears the in-flight latch so a quick return
+// can start fresh instead of waiting for an obsolete command to finish.
+func (model *Model) statsTabTransition(previous Tab) tea.Cmd {
+	wasSampling := isSamplingTab(previous)
+	isSampling := isSamplingTab(model.tab)
+	switch {
+	case wasSampling && !isSampling:
+		model.statsGeneration++
+		model.statsLoading = false
+		return nil
+	case !wasSampling && isSampling:
+		return model.startStatsSample()
+	case wasSampling && isSampling && previous != model.tab:
+		model.statsLoading = false
+		return model.startStatsSample()
+	default:
+		return nil
 	}
-	return model, nil
 }
 
 // isSamplingTab reports whether tab is one of the two live tabs backed by the
@@ -661,8 +678,17 @@ func (model *Model) startStatsSample() tea.Cmd {
 	model.statsLoading = true
 	rows := append([]compose.Row(nil), model.rows...)
 	sampler := model.statsSampler
+	resourcesOnly := model.tab == TabStats
 	return func() tea.Msg {
-		snapshot, err := sampler.Sample(rows)
+		var snapshot pfmstats.Snapshot
+		var err error
+		if resourceSampler, ok := sampler.(interface {
+			SampleResources([]compose.Row) (pfmstats.Snapshot, error)
+		}); resourcesOnly && ok {
+			snapshot, err = resourceSampler.SampleResources(rows)
+		} else {
+			snapshot, err = sampler.Sample(rows)
+		}
 		return statsSampleMsg{generation: generation, snapshot: snapshot, err: err}
 	}
 }

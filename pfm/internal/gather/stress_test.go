@@ -212,9 +212,9 @@ func stressSocketStorm(t *testing.T) {
 		t.Fatalf("second ProbeTmux() escalated dead sockets: %v", secondResult.err)
 	}
 	if len(secondResult.probe.Panes) != 15 ||
-		len(secondResult.probe.ProbeWarnings) != 15 {
+		len(secondResult.probe.ProbeWarnings) != 0 {
 		t.Fatalf(
-			"second ProbeTmux() got %d panes and %d warnings; want 15 each",
+			"second ProbeTmux() got %d panes and %d warnings; want 15 panes and silence for ended servers",
 			len(secondResult.probe.Panes),
 			len(secondResult.probe.ProbeWarnings),
 		)

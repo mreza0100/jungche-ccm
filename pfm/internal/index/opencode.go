@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,10 @@ type opencodeRow struct {
 // checkable answer ("no store exists"), not a silent failure, so it returns
 // zero sessions and a nil error; a PRESENT database that cannot be opened or
 // parsed is an error and says so.
-func ReadOpencodeSessions(ctx context.Context, root string) ([]store.OcSession, error) {
+func ReadOpencodeSessions(ctx context.Context, root string) (
+	sessions []store.OcSession,
+	returnErr error,
+) {
 	dbPath := filepath.Join(root, "opencode.db")
 	info, err := os.Stat(dbPath)
 	if err != nil {
@@ -63,21 +67,58 @@ func ReadOpencodeSessions(ctx context.Context, root string) ([]store.OcSession, 
 	if err != nil {
 		return nil, fmt.Errorf("open opencode store read-only: %w", err)
 	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			returnErr = errors.Join(
+				returnErr,
+				fmt.Errorf("close opencode store read-only: %w", closeErr),
+			)
+		}
+	}()
 	rows, err := db.QueryContext(ctx, `
+WITH input_counts AS (
+  SELECT session_id, COUNT(*) AS prompt_count
+  FROM session_input
+  GROUP BY session_id
+),
+first_times AS (
+  SELECT session_id, MIN(time_created) AS first_time
+  FROM session_input
+  GROUP BY session_id
+),
+first_ids AS (
+  SELECT i.session_id, MIN(i.id) AS first_id
+  FROM session_input i
+  JOIN first_times f
+    ON f.session_id = i.session_id AND f.first_time = i.time_created
+  GROUP BY i.session_id
+),
+input_summary AS (
+  SELECT c.session_id, c.prompt_count, i.prompt AS first_prompt
+  FROM input_counts c
+  JOIN first_ids f ON f.session_id = c.session_id
+  JOIN session_input i ON i.id = f.first_id
+)
 SELECT s.id, s.title, s.directory, p.worktree, s.parent_id, s.agent, s.model,
        s.tokens_input, s.tokens_output, s.cost,
        s.time_created, s.time_updated, s.time_archived,
-       (SELECT COUNT(*) FROM session_input i WHERE i.session_id = s.id),
-       (SELECT i.prompt FROM session_input i WHERE i.session_id = s.id
-          AND i.time_created = (SELECT MIN(j.time_created) FROM session_input j
-                                WHERE j.session_id = s.id) LIMIT 1)
-FROM session s LEFT JOIN project p ON p.id = s.project_id`)
+	   COALESCE(i.prompt_count, 0), i.first_prompt
+FROM session s
+LEFT JOIN project p ON p.id = s.project_id
+LEFT JOIN input_summary i ON i.session_id = s.id`)
 	if err != nil {
 		return nil, fmt.Errorf("query opencode sessions: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			returnErr = errors.Join(
+				returnErr,
+				fmt.Errorf("close opencode session rows: %w", closeErr),
+			)
+		}
+	}()
 
-	sessions := make([]store.OcSession, 0)
+	sessions = make([]store.OcSession, 0)
 	for rows.Next() {
 		var row opencodeRow
 		if err := rows.Scan(

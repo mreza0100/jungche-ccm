@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,188 @@ import (
 type countingStatsSampler struct {
 	calls     int
 	snapshots []pfmstats.Snapshot
+}
+
+type splitStatsSampler struct {
+	fullCalls     int
+	resourceCalls int
+}
+
+type switchingStatsSampler struct {
+	fullStarted      chan struct{}
+	fullRelease      chan struct{}
+	resourceStarted  chan struct{}
+	resourceRelease  chan struct{}
+	fullSnapshot     pfmstats.Snapshot
+	resourceSnapshot pfmstats.Snapshot
+}
+
+func (sampler *switchingStatsSampler) Sample(_ []compose.Row) (pfmstats.Snapshot, error) {
+	select {
+	case sampler.fullStarted <- struct{}{}:
+	default:
+	}
+	<-sampler.fullRelease
+	return sampler.fullSnapshot, nil
+}
+
+func (sampler *switchingStatsSampler) SampleResources(_ []compose.Row) (pfmstats.Snapshot, error) {
+	select {
+	case sampler.resourceStarted <- struct{}{}:
+	default:
+	}
+	<-sampler.resourceRelease
+	return sampler.resourceSnapshot, nil
+}
+
+func waitForSample(t *testing.T, started <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sample command did not enter its in-flight gate")
+	}
+}
+
+func runStatsCommand(t *testing.T, command tea.Cmd) <-chan tea.Msg {
+	t.Helper()
+	if command == nil {
+		t.Fatal("tab switch returned no replacement stats command")
+	}
+	result := make(chan tea.Msg, 1)
+	go func() { result <- command() }()
+	return result
+}
+
+func statsMessage(t *testing.T, messages <-chan tea.Msg) statsSampleMsg {
+	t.Helper()
+	select {
+	case message := <-messages:
+		result, ok := message.(statsSampleMsg)
+		if !ok {
+			t.Fatalf("stats command returned %T", message)
+		}
+		return result
+	case <-time.After(2 * time.Second):
+		t.Fatal("stats command did not complete")
+		return statsSampleMsg{}
+	}
+}
+
+func TestRapidLimitsToStatsDropsInFlightLimitsResult(t *testing.T) {
+	oldResources := pfmstats.Snapshot{Ready: true, Chats: []pfmstats.Chat{{Socket: "old-resource"}}}
+	sampler := &switchingStatsSampler{
+		fullStarted:     make(chan struct{}, 1),
+		fullRelease:     make(chan struct{}),
+		resourceStarted: make(chan struct{}, 1),
+		resourceRelease: make(chan struct{}),
+		fullSnapshot:    pfmstats.Snapshot{Ready: true, Limits: []pfmstats.AccountLimits{{Account: 99}}},
+		resourceSnapshot: pfmstats.Snapshot{
+			Ready: true, Chats: []pfmstats.Chat{{Socket: "new-resource"}},
+		},
+	}
+	snapshot := fixtureSnapshot(120)
+	snapshot.StatsSampler = sampler
+	model := NewModel(snapshot)
+	model.stats = oldResources
+
+	model, limitsCommand := applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+	limitsResult := runStatsCommand(t, limitsCommand)
+	waitForSample(t, sampler.fullStarted)
+	model, statsCommand := applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
+	if model.Tab() != TabStats {
+		t.Fatalf("rapid Limits→Stats landed on tab %d", model.Tab())
+	}
+	close(sampler.fullRelease)
+	stale := statsMessage(t, limitsResult)
+	updated, _ := model.Update(stale)
+	model = updated.(Model)
+	if len(model.stats.Limits) != 0 || len(model.stats.Chats) != 1 || model.stats.Chats[0].Socket != "old-resource" {
+		t.Fatalf("stale Limits result overwrote Stats resources: %#v", model.stats)
+	}
+	resourceResult := runStatsCommand(t, statsCommand)
+	close(sampler.resourceRelease)
+	resourceMessage := statsMessage(t, resourceResult)
+	updated, _ = model.Update(resourceMessage)
+	model = updated.(Model)
+	if len(model.stats.Chats) != 1 || model.stats.Chats[0].Socket != "new-resource" {
+		t.Fatalf("fresh Stats resource result = %#v", model.stats)
+	}
+}
+
+func TestRapidStatsToLimitsDropsInFlightResourceResult(t *testing.T) {
+	oldLimits := pfmstats.Snapshot{Ready: true, Limits: []pfmstats.AccountLimits{{Account: 7}}}
+	sampler := &switchingStatsSampler{
+		fullStarted:     make(chan struct{}, 1),
+		fullRelease:     make(chan struct{}),
+		resourceStarted: make(chan struct{}, 1),
+		resourceRelease: make(chan struct{}),
+		fullSnapshot:    pfmstats.Snapshot{Ready: true, Limits: []pfmstats.AccountLimits{{Account: 8}}},
+		resourceSnapshot: pfmstats.Snapshot{
+			Ready: true, Chats: []pfmstats.Chat{{Socket: "stale-resource"}},
+		},
+	}
+	snapshot := fixtureSnapshot(120)
+	snapshot.StatsSampler = sampler
+	model := NewModel(snapshot)
+	model.stats = oldLimits
+
+	model, resourceCommand := applyKey(t, model, specialKey(tea.KeyTab))
+	resourceResult := runStatsCommand(t, resourceCommand)
+	waitForSample(t, sampler.resourceStarted)
+	model, limitsCommand := applyKey(t, model, specialKey(tea.KeyTab))
+	if model.Tab() != TabLimits {
+		t.Fatalf("rapid Stats→Limits landed on tab %d", model.Tab())
+	}
+	close(sampler.resourceRelease)
+	stale := statsMessage(t, resourceResult)
+	updated, _ := model.Update(stale)
+	model = updated.(Model)
+	if len(model.stats.Limits) != 1 || model.stats.Limits[0].Account != 7 || len(model.stats.Chats) != 0 {
+		t.Fatalf("stale Stats result overwrote Limits: %#v", model.stats)
+	}
+	fullResult := runStatsCommand(t, limitsCommand)
+	close(sampler.fullRelease)
+	fullMessage := statsMessage(t, fullResult)
+	updated, _ = model.Update(fullMessage)
+	model = updated.(Model)
+	if len(model.stats.Limits) != 1 || model.stats.Limits[0].Account != 8 {
+		t.Fatalf("fresh Limits result = %#v", model.stats)
+	}
+}
+
+func (sampler *splitStatsSampler) Sample(_ []compose.Row) (pfmstats.Snapshot, error) {
+	sampler.fullCalls++
+	return pfmstats.Snapshot{}, errors.New("limits fetch blocked the resource sample")
+}
+
+func (sampler *splitStatsSampler) SampleResources(_ []compose.Row) (pfmstats.Snapshot, error) {
+	sampler.resourceCalls++
+	return pfmstats.Snapshot{Ready: true}, nil
+}
+
+func TestStatsTabSamplesResourcesWithoutWaitingForLimits(t *testing.T) {
+	sampler := &splitStatsSampler{}
+	snapshot := fixtureSnapshot(120)
+	snapshot.StatsSampler = sampler
+	model := NewModel(snapshot)
+
+	model, command := applyKey(t, model, specialKey(tea.KeyTab))
+	if command == nil {
+		t.Fatal("entering Stats returned no sampling command")
+	}
+	message, ok := command().(statsSampleMsg)
+	if !ok {
+		t.Fatalf("Stats command returned %T", message)
+	}
+	if message.err != nil || sampler.resourceCalls != 1 || sampler.fullCalls != 0 {
+		t.Fatalf(
+			"Stats sample err=%v resource=%d full=%d; resource sampling must not wait for limits",
+			message.err,
+			sampler.resourceCalls,
+			sampler.fullCalls,
+		)
+	}
 }
 
 func (sampler *countingStatsSampler) Sample(_ []compose.Row) (pfmstats.Snapshot, error) {
