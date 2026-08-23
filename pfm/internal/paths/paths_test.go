@@ -30,6 +30,8 @@ func TestResolveOverrides(t *testing.T) {
 	t.Setenv(EnvSIDDir, sidDir)
 	t.Setenv(EnvClaudeRoots, strings.Join(claudeRoots, string(os.PathListSeparator)))
 	t.Setenv(EnvCodexRoot, codexRoot)
+	opencodeRoot := filepath.Join(testRoot, "opencode")
+	t.Setenv(EnvOpencodeRoot, opencodeRoot)
 	t.Setenv(EnvTmuxDir, tmuxDir)
 	t.Setenv(EnvProcRoot, procRoot)
 	t.Setenv(EnvCgroupRoot, cgroupRoot)
@@ -39,13 +41,14 @@ func TestResolveOverrides(t *testing.T) {
 		t.Fatalf("Resolve() error = %v", err)
 	}
 	want := Values{
-		DB:          db,
-		SharedDB:    sharedDB,
-		SIDDir:      sidDir,
-		ClaudeRoots: claudeRoots,
-		CodexRoot:   codexRoot,
-		TmuxDir:     tmuxDir,
-		Home:        home,
+		DB:           db,
+		SharedDB:     sharedDB,
+		SIDDir:       sidDir,
+		ClaudeRoots:  claudeRoots,
+		CodexRoot:    codexRoot,
+		OpenCodeRoot: opencodeRoot,
+		TmuxDir:      tmuxDir,
+		Home:         home,
 		// The carrier and the archive have no override of their own: both are
 		// defined relative to Home, and jailing Home jails them.
 		ArchiveDir: filepath.Join(home, ".claude-archive"),
@@ -90,6 +93,24 @@ func TestResolveDoesNotFabricateClaudeAccountRoots(t *testing.T) {
 	}
 	if len(got.ClaudeRoots) != 0 {
 		t.Fatalf("Resolve().ClaudeRoots = %#v, want discovery delegated to internal/config", got.ClaudeRoots)
+	}
+}
+
+// The OpenCode root defaults under Home and jails with it; the explicit
+// override wins over the default.
+func TestResolveOpencodeRootDefaultsUnderHome(t *testing.T) {
+	testRoot := t.TempDir()
+	home := filepath.Join(testRoot, "home")
+	t.Setenv(EnvHome, home)
+	t.Setenv(EnvOpencodeRoot, "")
+
+	got, err := Resolve()
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	want := filepath.Join(home, ".local", "share", "opencode")
+	if got.OpenCodeRoot != want {
+		t.Fatalf("Resolve().OpenCodeRoot = %q, want %q", got.OpenCodeRoot, want)
 	}
 }
 

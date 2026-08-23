@@ -15,8 +15,11 @@ const (
 	EnvSIDDir      = "PFM_SID_DIR"
 	EnvClaudeRoots = "PFM_CLAUDE_ROOTS"
 	EnvCodexRoot   = "PFM_CODEX_ROOT"
-	EnvTmuxDir     = "PFM_TMUX_DIR"
-	EnvHome        = "PFM_HOME"
+	// EnvOpencodeRoot jails OpenCode's data home (~/.local/share/opencode),
+	// the directory holding its SQLite session store opencode.db.
+	EnvOpencodeRoot = "PFM_OPENCODE_ROOT"
+	EnvTmuxDir      = "PFM_TMUX_DIR"
+	EnvHome         = "PFM_HOME"
 	// EnvRealHome lets the rare test that MUST see the operator's own
 	// machine — building against the real module cache, probing a live
 	// config — opt back in by name. Everything else running under `go
@@ -54,8 +57,11 @@ type Values struct {
 	SIDDir      string
 	ClaudeRoots []string
 	CodexRoot   string
-	TmuxDir     string
-	Home        string
+	// OpenCodeRoot is OpenCode's data home: the directory holding its SQLite
+	// session store (opencode.db). It is the OpenCode twin of CodexRoot.
+	OpenCodeRoot string
+	TmuxDir      string
+	Home         string
 	// ArchiveDir is ~/.claude-archive: where archived transcripts and rollouts
 	// go, with the manifest that puts them back. It is defined relative to Home.
 	ArchiveDir string
@@ -118,10 +124,14 @@ func Resolve() (Values, error) {
 		SIDDir:      EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
 		ClaudeRoots: claudeRoots,
 		CodexRoot:   EnvOr(EnvCodexRoot, filepath.Join(home, ".codex")),
-		TmuxDir:     EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
-		Home:        home,
-		ArchiveDir:  filepath.Join(home, ".claude-archive"),
-		ProcRoot:    EnvOr(EnvProcRoot, "/proc"),
-		CgroupRoot:  EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
+		OpenCodeRoot: EnvOr(
+			EnvOpencodeRoot,
+			filepath.Join(home, ".local", "share", "opencode"),
+		),
+		TmuxDir:    EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
+		Home:       home,
+		ArchiveDir: filepath.Join(home, ".claude-archive"),
+		ProcRoot:   EnvOr(EnvProcRoot, "/proc"),
+		CgroupRoot: EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
 	}, nil
 }

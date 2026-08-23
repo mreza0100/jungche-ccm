@@ -156,12 +156,25 @@ act_blueprint() { # the shipped product: mechanical gates, no build
       fi
 
       head_ "blueprint — codex generated-marker claim"
-      # The JS compiler and `pfm codex build` write the same $HOME/.codex outputs.
-      # A copy that stops claiming the other's marker reports its files STALE forever.
+      # The blueprint's shipped JS compiler and this repo's `pfm codex build`
+      # write the same $HOME/.codex outputs on adopter hosts. A copy that stops
+      # claiming the other's marker reports its files STALE forever; the gate
+      # also reconciles every marked file's declared source against disk, so a
+      # fossil generated from a deleted file fails BY NAME.
       if node scripts/check-codex-markers.mjs; then
-        ok "both build-codex.mjs copies claim every generation"
+        ok "compiler marker claims hold; every marked file has a live source"
       else
-        fail_step "codex marker claim FAILED — a compiler copy cannot reclaim the other's output"
+        fail_step "codex marker claim FAILED — a stranded marker or an orphaned generated file (see output)"
+      fi
+
+      head_ "blueprint — opencode mirror"
+      # The OpenCode mirror must be current AND valid: check re-derives every
+      # output from the Claude sources; doctor additionally parses each artifact.
+      if need_tool node blueprint && node .claude/scripts/build-opencode.mjs check \
+        && node .claude/scripts/build-opencode.mjs doctor | tail -1; then
+        ok "opencode mirror current and parseable"
+      else
+        fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
       fi
 
       head_ "blueprint — opencode mirror"

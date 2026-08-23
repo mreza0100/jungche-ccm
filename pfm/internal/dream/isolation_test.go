@@ -140,6 +140,8 @@ func TestPermittedHostStoreReferencesAreConstantsOnly(t *testing.T) {
 	allowedSelectors := map[string]struct{}{
 		"ClaudeEngine": {},
 		"CodexEngine":  {},
+		// The engine roster grew; the seam stays constants-only.
+		"OpencodeEngine": {},
 	}
 	for _, importPath := range []string{
 		modulePath + "/internal/action",
@@ -180,7 +182,7 @@ func TestPermittedHostStoreReferencesAreConstantsOnly(t *testing.T) {
 				references++
 				if _, allowed := allowedSelectors[selector.Sel.Name]; !allowed {
 					position := fset.Position(selector.Pos())
-					t.Errorf("%s:%d references store.%s; permitted host edges may use store only for ClaudeEngine and CodexEngine", filename, position.Line, selector.Sel.Name)
+					t.Errorf("%s:%d references store.%s; permitted host edges may use store only for engine constants (Claude/Codex/OpenCode)", filename, position.Line, selector.Sel.Name)
 				}
 				return true
 			})

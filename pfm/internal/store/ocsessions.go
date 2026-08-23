@@ -1,0 +1,150 @@
+package store
+
+import (
+	"context"
+	"fmt"
+)
+
+// The oc_sessions mirror: OpenCode sessions read from opencode.db, the same
+// rebuildable derived data as transcripts and rollouts. One writer —
+// internal/index — and these queries.
+
+const ocSessionColumns = `
+  id, title, directory, project_dir, parent_id, agent, model,
+  first_prompt, prompt_count, tokens_input, tokens_output,
+  cost_millicents, time_created_ms, time_updated_ms, time_archived_ms`
+
+func scanOcSession(row interface{ Scan(...any) error }) (OcSession, error) {
+	var session OcSession
+	err := row.Scan(
+		&session.ID,
+		&session.Title,
+		&session.Directory,
+		&session.ProjectDir,
+		&session.ParentID,
+		&session.Agent,
+		&session.Model,
+		&session.FirstPrompt,
+		&session.PromptCount,
+		&session.TokensInput,
+		&session.TokensOutput,
+		&session.CostMillicents,
+		&session.TimeCreatedMS,
+		&session.TimeUpdatedMS,
+		&session.TimeArchivedMS,
+	)
+	if err != nil {
+		return OcSession{}, err
+	}
+	return session, nil
+}
+
+// ReplaceOcSessions atomically mirrors one indexing pass's full view of
+// OpenCode's session store: every session seen on disk is upserted, every row
+// no longer present is deleted. A full replace (rather than delta upserts)
+// matches the source: OpenCode's database is a single file whose mtime is the
+// only change signal pfm gets, so per-row offsets do not exist.
+func (s *Store) ReplaceOcSessions(ctx context.Context, sessions []OcSession) (err error) {
+	return s.WithImmediateTx(ctx, func(tx *ImmediateTx) error {
+		rows, err := tx.QueryContext(ctx, "SELECT id FROM oc_sessions")
+		if err != nil {
+			return fmt.Errorf("query existing oc sessions: %w", err)
+		}
+		existing := make(map[string]bool)
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan existing oc session id: %w", err)
+			}
+			existing[id] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("iterate existing oc sessions: %w", err)
+		}
+		rows.Close()
+
+		for _, session := range sessions {
+			_, err := tx.ExecContext(ctx, `
+INSERT INTO oc_sessions (`+ocSessionColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  title=excluded.title,
+  directory=excluded.directory,
+  project_dir=excluded.project_dir,
+  parent_id=excluded.parent_id,
+  agent=excluded.agent,
+  model=excluded.model,
+  first_prompt=excluded.first_prompt,
+  prompt_count=excluded.prompt_count,
+  tokens_input=excluded.tokens_input,
+  tokens_output=excluded.tokens_output,
+  cost_millicents=excluded.cost_millicents,
+  time_created_ms=excluded.time_created_ms,
+  time_updated_ms=excluded.time_updated_ms,
+  time_archived_ms=excluded.time_archived_ms`,
+				session.ID,
+				session.Title,
+				session.Directory,
+				session.ProjectDir,
+				session.ParentID,
+				session.Agent,
+				session.Model,
+				session.FirstPrompt,
+				session.PromptCount,
+				session.TokensInput,
+				session.TokensOutput,
+				session.CostMillicents,
+				session.TimeCreatedMS,
+				session.TimeUpdatedMS,
+				session.TimeArchivedMS,
+			)
+			if err != nil {
+				return fmt.Errorf("upsert oc session %q: %w", session.ID, err)
+			}
+			delete(existing, session.ID)
+		}
+
+		for id := range existing {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM oc_sessions WHERE id = ?", id); err != nil {
+				return fmt.Errorf("delete vanished oc session %q: %w", id, err)
+			}
+		}
+		return nil
+	})
+}
+
+// OcSessions returns every indexed OpenCode session, newest activity first.
+func (s *Store) OcSessions(ctx context.Context) ([]OcSession, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT `+ocSessionColumns+` FROM oc_sessions ORDER BY time_updated_ms DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("query oc sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := make([]OcSession, 0)
+	for rows.Next() {
+		session, err := scanOcSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan oc session: %w", err)
+		}
+		sessions = append(sessions, session)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate oc sessions: %w", err)
+	}
+	return sessions, nil
+}
+
+// CountOcSessions returns the number of indexed OpenCode sessions. A count of
+// zero means "no sessions indexed"; whether that is emptiness or a store that
+// was never scanned is meta-key business, not this query's.
+func (s *Store) CountOcSessions(ctx context.Context) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM oc_sessions").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count oc sessions: %w", err)
+	}
+	return count, nil
+}

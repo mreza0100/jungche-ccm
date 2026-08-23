@@ -9,7 +9,7 @@
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 # Mirrors CLAUDE.md § Model Selection. The alias→model mapping the compiler
-# applies lives in .claude/scripts/build-codex.mjs (MODEL_MAP):
+# applies lives in pfm/internal/codexgen + .claude/codex-build.json:
 #   opus (frontier-judgment) → gpt-5.6-sol
 #   sonnet (spec-execution)  → gpt-5.6-luna
 #   haiku (collector)        → gpt-5.6-luna   ← NAMED GAP: no cheaper tier on
@@ -25,7 +25,7 @@ network_access = true
 
 # ─── MCP servers ─────────────────────────────────────────────────────────────
 # This repo ships no .mcp.json, so the compiler's managed fence is empty. If one
-# is added, `build-codex.mjs generate` writes the [mcp_servers] block between its
+# is added, `pfm codex build` writes the [mcp_servers] block between its
 # own markers — everything outside them stays hand-written. PIN every version:
 # an unpinned server changes under you between sessions, and a protocol that
 # changed shape mid-task gets blamed on your own code first.

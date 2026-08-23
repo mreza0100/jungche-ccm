@@ -151,6 +151,7 @@ type scanResult struct {
 type fleetData struct {
 	transcripts  []store.Transcript
 	rollouts     []store.Rollout
+	ocSessions   []store.OcSession
 	cxNames      map[string]string
 	killed       []store.Killed
 	cachedCounts *store.CachedCounts
@@ -337,6 +338,10 @@ func loadFleetData(ctx context.Context, database *store.Store) (fleetData, error
 	if err != nil {
 		return fleetData{}, err
 	}
+	ocSessions, err := database.OcSessions(ctx)
+	if err != nil {
+		return fleetData{}, err
+	}
 	cxNames, err := database.CxNames(ctx)
 	if err != nil {
 		return fleetData{}, err
@@ -348,6 +353,7 @@ func loadFleetData(ctx context.Context, database *store.Store) (fleetData, error
 	return fleetData{
 		transcripts: transcripts,
 		rollouts:    rollouts,
+		ocSessions:  ocSessions,
 		cxNames:     cxNames,
 		killed:      killed,
 	}, nil
@@ -365,6 +371,13 @@ func loadDefaultFleetData(
 	if err != nil {
 		return fleetData{}, err
 	}
+	// The default view caps resume rows per engine; the OpenCode mirror is a
+	// full read (it has no per-file delta machinery), so it bypasses
+	// DefaultCandidates by design and compose applies ocResumeCap itself.
+	ocSessions, err := database.OcSessions(ctx)
+	if err != nil {
+		return fleetData{}, err
+	}
 	cxNames, err := database.CxNames(ctx)
 	if err != nil {
 		return fleetData{}, err
@@ -376,6 +389,7 @@ func loadDefaultFleetData(
 	return fleetData{
 		transcripts:  transcripts,
 		rollouts:     rollouts,
+		ocSessions:   ocSessions,
 		cxNames:      cxNames,
 		killed:       killed,
 		cachedCounts: &counts,
@@ -461,6 +475,7 @@ func composeFleet(
 		Snapshot:     live,
 		Transcripts:  data.transcripts,
 		Rollouts:     data.rollouts,
+		OcSessions:   data.ocSessions,
 		CxNames:      data.cxNames,
 		Killed:       data.killed,
 		AccountRoots: accountRoots(environment.config.Accounts),

@@ -37,6 +37,9 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 	if runtime.ClaudeBinary == "" {
 		runtime.ClaudeBinary = "claude"
 	}
+	if runtime.OpencodeBinary == "" {
+		runtime.OpencodeBinary = "opencode"
+	}
 	database, err := store.Open(store.WithWarningWriter(warnings))
 	if err != nil {
 		return nil, err
@@ -51,11 +54,12 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 		return nil, err
 	}
 	injector, err := inject.New(inject.Dependencies{
-		Resolver:      resolver,
-		Spawner:       inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
-		ClaudeBinary:  runtime.ClaudeBinary,
-		CodexBinary:   runtime.CodexBinary,
-		AccountEmojis: accountEmojis(runtime.Accounts),
+		Resolver:       resolver,
+		Spawner:        inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
+		ClaudeBinary:   runtime.ClaudeBinary,
+		CodexBinary:    runtime.CodexBinary,
+		OpencodeBinary: runtime.OpencodeBinary,
+		AccountEmojis:  accountEmojis(runtime.Accounts),
 	})
 	if err != nil {
 		_ = database.Close()

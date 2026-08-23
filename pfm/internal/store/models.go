@@ -6,7 +6,41 @@ package store
 const (
 	ClaudeEngine = "cc"
 	CodexEngine  = "cx"
+	// OpengineEngine is deliberately not a third spelling of the pair above:
+	// OpenCode chats stamp "ox" everywhere engine strings travel — kills,
+	// inject targets, socket prefixes — exactly like its two siblings.
+	OpencodeEngine = "ox"
 )
+
+// OcSession is one indexed OpenCode session, read from OpenCode's own SQLite
+// store (opencode.db). It is the OpenCode twin of Transcript/Rollout: every
+// field is derived data, rebuildable by re-reading that store.
+type OcSession struct {
+	ID    string
+	Title string
+	// Directory is the session's working directory; ProjectDir the project
+	// worktree it belongs to. They differ for a session started in a
+	// subdirectory.
+	Directory  string
+	ProjectDir string
+	// ParentID is non-empty for subagent sessions — children spawned by an
+	// agent turn. They never earn picker rows of their own.
+	ParentID     string
+	Agent        string
+	Model        string
+	FirstPrompt  string
+	PromptCount  int64
+	TokensInput  int64
+	TokensOutput int64
+	// CostMillicents keeps the session's cumulative cost in integer
+	// millicents — SQLite has no decimal and float money drifts.
+	CostMillicents int64
+	TimeCreatedMS  int64
+	TimeUpdatedMS  int64
+	// TimeArchivedMS is nonzero when the user archived the session inside
+	// OpenCode; archived sessions stay out of the default listing.
+	TimeArchivedMS int64
+}
 
 // Transcript is one indexed Claude transcript.
 type Transcript struct {

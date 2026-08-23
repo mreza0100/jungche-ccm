@@ -18,13 +18,13 @@ func TestDoctorEngineRosterMatrix(t *testing.T) {
 		{
 			name:        "zero zero",
 			machine:     pfmconfig.Config{},
-			want:        "doctor: engines claude=0 codex=0 default=none error=no engines configured: Claude roster empty; Codex roster empty\n",
+			want:        "doctor: engines claude=0 codex=0 opencode=0 default=none error=no engines configured: Claude roster empty; Codex roster empty; OpenCode store absent\n",
 			wantWarning: 1,
 		},
 		{
 			name:    "claude only",
 			machine: pfmconfig.Config{Accounts: []pfmconfig.Account{{ID: 1}}},
-			want:    "doctor: engines claude=1 codex=0 default=claude\n",
+			want:    "doctor: engines claude=1 codex=0 opencode=0 default=claude\n",
 		},
 		{
 			name: "codex only",
@@ -32,7 +32,7 @@ func TestDoctorEngineRosterMatrix(t *testing.T) {
 				Ask:           pfmconfig.AskConfig{Engine: "claude"},
 				CodexAccounts: []pfmconfig.CodexAccount{{ID: 1}},
 			},
-			want: "doctor: engines claude=0 codex=1 default=codex\n",
+			want: "doctor: engines claude=0 codex=1 opencode=0 default=codex\n",
 		},
 		{
 			name: "both",
@@ -41,7 +41,22 @@ func TestDoctorEngineRosterMatrix(t *testing.T) {
 				Accounts:      []pfmconfig.Account{{ID: 1}, {ID: 2}},
 				CodexAccounts: []pfmconfig.CodexAccount{{ID: 1}},
 			},
-			want: "doctor: engines claude=2 codex=1 default=codex\n",
+			want: "doctor: engines claude=2 codex=1 opencode=0 default=codex\n",
+		},
+		{
+			name: "opencode only",
+			machine: pfmconfig.Config{
+				OpencodeAccounts: []pfmconfig.OpenCodeAccount{{ID: 1}},
+			},
+			want: "doctor: engines claude=0 codex=0 opencode=1 default=opencode\n",
+		},
+		{
+			name: "opencode requested but store absent",
+			machine: pfmconfig.Config{
+				Ask: pfmconfig.AskConfig{Engine: "opencode"},
+			},
+			want:        "doctor: engines claude=0 codex=0 opencode=0 default=none error=no engines configured: Claude roster empty; Codex roster empty; OpenCode store absent\n",
+			wantWarning: 1,
 		},
 	}
 	for _, test := range tests {

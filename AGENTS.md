@@ -24,9 +24,11 @@ Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verif
 `AGENTS.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `AGENTS.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `AGENTS.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where the repo law is pinned at the harness layer — guarded-file edit denies and gitter's git monopoly as bash denies. A Codex role gets read-only git (`status`/`log`/`diff`/`show`) and nothing more — there is no `gitter.toml`, and there must not be one; the same holds for OpenCode roles (`gitter` is in every compiler's never-register set). After a Bash-driven write bypassed the hook:
 
 ```bash
-node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-codex.mjs check
+pfm codex build . && pfm codex check .
 node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-opencode.mjs doctor
 ```
+
+`pfm codex build` is the SINGLE writer of the Codex mirror; the legacy repo-local JS compiler is retired — `blueprint/scripts/build-codex.mjs` lives only in the adopter blueprint.
 
 ## Path vars
 
