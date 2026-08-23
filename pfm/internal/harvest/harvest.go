@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -149,7 +150,7 @@ func (h *Harvester) fetchURL(ctx context.Context, source string, options FetchOp
 }
 
 func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, options FetchOptions, allowOAPivot bool) Result {
-	if err := assertFetchable(source); err != nil {
+	if err := assertFetchable(source, false); err != nil {
 		if strings.Contains(err.Error(), "unsupported URL scheme") {
 			return Result{Source: source, Error: fmt.Sprintf("unsupported URL scheme in %q — fetch handles http(s):// and file:// URLs, local paths, DOIs, and ISBNs.", source)}
 		}
@@ -188,10 +189,11 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	case "pdf", "docx", "xlsx", "pptx", "csv", "zip", "tar", "7z", "rar":
 		directClient, chromeClient = h.binaryDirectOrClient(), h.binaryChromeOrChrome()
 	}
-	// Ladder note: the Python reference also carries a defuddle.md reader rung and an
-	// opt-in real-browser rung (Patchright + system Chrome); on this engine defuddle is
-	// wired below and Chrome impersonation is tls-client at the wire level. There is no
-	// Go real-browser rung by design.
+	// Ladder note: the Python reference also carried this defuddle.md reader
+	// rung and an opt-in real-browser rung (Patchright + system Chrome); both
+	// are wired below. Chrome impersonation here remains tls-client at the
+	// wire level — no JS, no real browser surface — which is why the opt-in
+	// browser rung exists as the ladder's last wall-bypass step.
 	for _, rung := range []struct {
 		name   string
 		client *http.Client
@@ -286,8 +288,12 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 		if err != nil {
 			lastErr = err
 			lastErrorKind = errorKind(err)
+			// getBody returns status=0 on every transport-error path; letting
+			// that clobber a genuine earlier HTTP status would make the
+			// receipt report HTTPStatus 0 for a walled 403.
+		} else {
+			lastStatus = status
 		}
-		lastStatus = status
 		if err == nil && status < 400 && !isChallenge(body, status) {
 			// Jina Reader already returns clean Markdown. Feeding it back into an
 			// HTML converter loses headings and code blocks, so preserve it as the
@@ -309,6 +315,67 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			converted := stripDefuddleEnvelope(string(body))
 			if usableContent(converted, "html") && contentChars(converted) > lastContentChars {
 				return h.storeResult(source, "html", "defuddle-reader", converted, int64(len(body)), status, rungs, options)
+			}
+		}
+	}
+	// Real-browser rung (opt-in, HARVESTER_BROWSER=1): Patchright + system
+	// Chrome. Passes passive bot walls — including the Cloudflare MANAGED
+	// challenge tier — that no HTTP-client trick can, because it holds a real
+	// browser surface. It never solves anything interactive. Sits after
+	// defuddle and before the legal mirror pivot, exactly like the retired
+	// Python dispatch ladder.
+	browserRan := false
+	browserEmptyRender := false
+	browserUnavailable := ""
+	browserPolicyRefused := false
+	converterOutage := false
+	if h.env.browser && !isPrivateURL(source) && guess != "pdf" {
+		rungs = append(rungs, "browser")
+		if browserFetcher, ok := h.options.Converter.(BrowserFetcher); !ok {
+			browserUnavailable = "no BrowserFetcher adapter is wired into this Harvester"
+		} else {
+			html, status, err := browserFetcher.FetchBrowser(ctx, source)
+			switch {
+			case errors.Is(err, ErrBrowserPolicyDenied):
+				// The SSRF guard refused — a PERMANENT policy answer about
+				// this address, never an outage and never IP reputation.
+				browserPolicyRefused = true
+				log.Printf("harvest: browser rung refused %s by policy: %v", source, err)
+			case err != nil:
+				browserUnavailable = err.Error()
+				log.Printf("harvest: browser rung could not run for %s: %v", source, err)
+			case html == "" || blankRenderPage(html):
+				// The render COMPLETED and found nothing — a real attempt with
+				// an empty result, never an outage. Chrome serialises at least
+				// a minimal document for ANY navigated page, so emptiness is
+				// judged on visible TEXT, not on the raw string.
+				browserRan = true
+				browserEmptyRender = true
+			default:
+				browserRan = true
+				if isChallenge([]byte(html), status) {
+					// A challenge page that is merely LONGER than what the
+					// earlier rungs extracted must never be accepted as content.
+					// The flag travels even when rung one saw no challenge: the
+					// browser surface is what identified the wall.
+					lastChallenge = true
+					log.Printf("harvest: browser rung hit a challenge wall for %s (HTTP %d)", source, status)
+				} else {
+					converted, convErr := h.convert(ctx, "html", source, []byte(html))
+					if convErr != nil {
+						// The render SUCCEEDED; the conversion step failing is
+						// a tool outage on this server — it must never read as
+						// "the wall won".
+						converterOutage = true
+						log.Printf("harvest: browser rung conversion failed for %s: %v", source, convErr)
+					} else if usableContent(converted, "html") &&
+						contentChars(converted) > lastContentChars && contentChars(converted) >= 500 {
+						// Same thin-page floor as the HTML ladder above: a JS
+						// paywall overlay converting to a few hundred chars is
+						// a shell, not the article.
+						return h.storeResult(source, "html", "browser-chrome", converted, int64(len(html)), status, rungs, options)
+					}
+				}
 			}
 		}
 	}
@@ -387,6 +454,32 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — an OCR pass was already attempted on this copy and produced nothing. Use `search` to find an alternative copy.", source)
 		default:
 			message = fmt.Sprintf("Downloaded the PDF from %s but it converted to EMPTY text. It is likely scanned/image-only, corrupt, or password-protected — if it's a scanned/image-only PDF, set HARVESTER_PDF_OCR=1 to OCR it. Use `search` to find an alternative copy.", source)
+		}
+	}
+	// A dead-ended challenge must say what the real-browser rung did — the
+	// states are different answers and never collapse: DISABLED (never
+	// attempted), REFUSED BY POLICY (the SSRF guard said no — permanent,
+	// not an outage), COULD NOT RUN (enabled but the environment/launch
+	// failed — an outage, not proof of IP reputation), RAN BUT CONVERSION
+	// FAILED (the wall was beaten and the tool dropped it — an outage),
+	// RAN AND RETURNED AN EMPTY PAGE, RAN AND STILL BLOCKED. The addendum
+	// fires on ANY challenge terminal, including one only the browser surface
+	// identified, on an empty render, and whenever the rung ran at all so a
+	// completed attempt is never silent.
+	if guess != "pdf" && (lastChallenge || browserRan || browserPolicyRefused) {
+		switch {
+		case !h.env.browser:
+			message += " No real-browser bypass was attempted: this server's Patchright + system-Chrome rung is DISABLED (opt-in) — set HARVESTER_BROWSER=1 to enable it."
+		case browserPolicyRefused:
+			message += " The real-browser rung did not run because this server's SSRF guard refused the address (private or internal network). That is policy working as designed, not an outage."
+		case converterOutage:
+			message += " The real-browser rung DID run and got real content past the wall, but the conversion step then failed on this server — a tool outage, not proof of IP reputation: retry, or use `search` to find an alternative copy."
+		case browserUnavailable != "":
+			message += fmt.Sprintf(" The real-browser rung (HARVESTER_BROWSER=1) could NOT RUN (%s) — that is a tool outage on this server, not proof of IP reputation.", browserUnavailable)
+		case browserEmptyRender:
+			message += " The real-browser rung DID run and returned an EMPTY page — a completed attempt with nothing usable, not an outage."
+		case browserRan:
+			message += " The real-browser rung (Patchright + system Chrome) DID run against this wall and still could not pass it."
 		}
 	}
 	if lastContentChars == 0 && len(lastPage) > 0 {
@@ -530,6 +623,26 @@ func (h *Harvester) resultFromCache(source, kind string, content string, meta ma
 }
 
 func contentChars(content string) int { return len([]rune(strings.TrimSpace(content))) }
+
+// blankRenderPage reports whether a rendered document carries no visible
+// text. Chrome serialises at least <html><head></head><body></body></html>
+// for any navigated page — the raw string is never empty, so emptiness is
+// judged on tag-stripped text: script/style bodies dropped, tags removed,
+// and effectively nothing left. BLANK is not THIN: a short-but-real page
+// must fall through to the 500-char acceptance floor instead, where it
+// reads as "ran and could not pass", never as an empty render.
+var (
+	scriptRe  = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	styleRe   = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	htmlTagRe = regexp.MustCompile(`(?s)<[^>]*>`)
+)
+
+func blankRenderPage(html string) bool {
+	text := scriptRe.ReplaceAllString(html, " ")
+	text = styleRe.ReplaceAllString(text, " ")
+	text = htmlTagRe.ReplaceAllString(text, " ")
+	return contentChars(text) < 10
+}
 
 func kindFromName(source string) string {
 	return DetectKind(source)

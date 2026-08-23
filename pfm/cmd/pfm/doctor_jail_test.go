@@ -10,6 +10,7 @@ import (
 )
 
 func TestDoctorFreshTargetHomeIsClean(t *testing.T) {
+	t.Setenv("HARVESTER_BROWSER", "") // the golden "clean" output must not depend on the ambient opt-in gate (review-2 S3)
 	home := t.TempDir()
 	canonicalDir := filepath.Join(home, ".local", "bin")
 	hostShimDir := filepath.Join(t.TempDir(), "bin")

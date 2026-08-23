@@ -133,7 +133,7 @@ func safeHTTPClientTimeoutWithResolver(chrome bool, timeout time.Duration, resol
 		ua = chromeUA
 	}
 	client := &http.Client{Transport: &userAgentTransport{base: transport, ua: ua, chrome: chrome}, Timeout: timeout}
-	client.CheckRedirect = func(req *http.Request, _ []*http.Request) error { return assertFetchable(req.URL.String()) }
+	client.CheckRedirect = func(req *http.Request, _ []*http.Request) error { return assertFetchable(req.URL.String(), false) }
 	return client
 }
 
@@ -254,7 +254,7 @@ type userAgentTransport struct {
 }
 
 func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := assertFetchable(req.URL.String()); err != nil {
+	if err := assertFetchable(req.URL.String(), false); err != nil {
 		return nil, err
 	}
 	clone := req.Clone(req.Context())
@@ -276,7 +276,7 @@ func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return t.base.RoundTrip(clone)
 }
 
-func assertFetchable(raw string) error {
+func assertFetchable(raw string, strictDNS bool) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return fmt.Errorf("invalid URL: %s", raw)
@@ -297,24 +297,50 @@ func assertFetchable(raw string) error {
 		}
 		return nil
 	}
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "local" || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" {
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "local" || strings.HasSuffix(host, ".local") || host == "metadata.google.internal" ||
+		strings.HasSuffix(host, ".internal") || strings.HasSuffix(host, ".ts.net") {
 		return fmt.Errorf("refusing private/internal host %s", host)
 	}
-	// DNS rebind defense: if resolution succeeds, every address must be public.
-	ips, lookupErr := net.LookupIP(host)
-	if lookupErr == nil {
-		for _, ip := range ips {
-			if privateIP(ip) {
-				return fmt.Errorf("refusing private/internal host %s", host)
-			}
+	// DNS rebind defense. Strict mode FAILS CLOSED: Chrome performs its own
+	// resolution with no pinning hop, so a resolver failure there must
+	// refuse — allowing on SERVFAIL/timeout would let a TTL-0 record pass
+	// validation and re-resolve to a loopback address inside the browser.
+	// The HTTP-client rungs stay lenient on RESOLVER FAILURE because their
+	// dialer pins the address it validated (pinnedDialContext); any address
+	// that DOES resolve is checked here in both modes.
+	ips, lookupErr := lookupIP(host)
+	if lookupErr != nil {
+		if strictDNS {
+			return fmt.Errorf("DNS resolution failed for %s: %w", host, lookupErr)
+		}
+		return nil
+	}
+	if len(ips) == 0 {
+		if strictDNS {
+			return fmt.Errorf("DNS returned no addresses for %s", host)
+		}
+		return nil
+	}
+	for _, ip := range ips {
+		if privateIP(ip) {
+			return fmt.Errorf("refusing private/internal host %s", host)
 		}
 	}
 	return nil
 }
 
-// AssertFetchable is the public SSRF/scheme chokepoint for adapters that need
-// to validate a URL before handing it to another worker.
-func AssertFetchable(raw string) error { return assertFetchable(raw) }
+// lookupIP is the resolver seam; tests stub it to simulate SERVFAIL and
+// rebind records without touching the network.
+var lookupIP = net.LookupIP
+
+// AssertFetchable is the public SSRF/scheme chokepoint for adapters whose
+// transport dials only the address it validated itself.
+func AssertFetchable(raw string) error { return assertFetchable(raw, false) }
+
+// AssertFetchableStrict additionally FAILS CLOSED on resolver failure. It is
+// the authority for the browser worker: Chrome re-resolves every URL with no
+// pinning hop, so an unverifiable address must be refused outright.
+func AssertFetchableStrict(raw string) error { return assertFetchable(raw, true) }
 
 func IsPrivateHost(raw string) bool {
 	u, err := url.Parse(raw)
@@ -394,7 +420,7 @@ func getBody(ctx context.Context, client *http.Client, rawURL, ua string, max in
 }
 
 func getBodyWithHeaders(ctx context.Context, client *http.Client, rawURL, ua string, headers map[string]string, max int64) ([]byte, int, string, error) {
-	if err := assertFetchable(rawURL); err != nil {
+	if err := assertFetchable(rawURL, false); err != nil {
 		return nil, 0, "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
@@ -409,7 +435,7 @@ func getBodyWithHeaders(ctx context.Context, client *http.Client, rawURL, ua str
 	// per request so every 3xx target re-enters the SSRF chokepoint without
 	// mutating shared client state.
 	requestClient := *client
-	requestClient.CheckRedirect = func(next *http.Request, _ []*http.Request) error { return assertFetchable(next.URL.String()) }
+	requestClient.CheckRedirect = func(next *http.Request, _ []*http.Request) error { return assertFetchable(next.URL.String(), false) }
 	resp, err := requestClient.Do(req)
 	if err != nil {
 		return nil, 0, "", err

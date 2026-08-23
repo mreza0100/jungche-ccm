@@ -26,6 +26,7 @@ func TestLegacyUnresolvedBotChallengeIsNeverCached(t *testing.T) {
 		Jina:         &http.Client{Transport: missingTransport},
 		OA:           &http.Client{Transport: missingTransport},
 		Converter:    legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		BrowserRung:  browserOff(),
 	})
 	result := h.Fetch(context.Background(), "https://blocked.example.test/article")
 	if result.Error == "" || !strings.Contains(strings.ToLower(result.Error), "challenge") || !strings.Contains(result.Error, "Rungs tried: direct, chrome-impersonation, jina, defuddle, wayback") {
@@ -74,12 +75,13 @@ func TestCloudflare403BlockPageEscalatesInsteadOfCachingSuccess(t *testing.T) {
 		return response(request, http.StatusNotFound, "application/json", `{}`), nil
 	})
 	h := New(Options{
-		CacheDir:  t.TempDir(),
-		Client:    &http.Client{Transport: wallTransport},
-		Chrome:    &http.Client{Transport: wallTransport},
-		Jina:      &http.Client{Transport: missingTransport},
-		OA:        &http.Client{Transport: missingTransport},
-		Converter: legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		CacheDir:    t.TempDir(),
+		Client:      &http.Client{Transport: wallTransport},
+		Chrome:      &http.Client{Transport: wallTransport},
+		Jina:        &http.Client{Transport: missingTransport},
+		OA:          &http.Client{Transport: missingTransport},
+		Converter:   legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		BrowserRung: browserOff(),
 	})
 	result := h.Fetch(context.Background(), "https://blocked.example.test/article")
 	if result.Error == "" {
@@ -184,6 +186,7 @@ func TestLegacyCitationPDFMetaRescueCachesThePublisherSource(t *testing.T) {
 			}
 			return "", nil
 		}),
+		BrowserRung: browserOff(),
 	})
 	first := h.Fetch(context.Background(), publisher)
 	wantRungs := "direct,chrome-impersonation,jina,defuddle,oa:citation_pdf_url"
@@ -222,6 +225,7 @@ func TestLegacySelfReferentialOACandidateCannotRecurse(t *testing.T) {
 		Jina:         &http.Client{Transport: missingTransport},
 		OA:           &http.Client{Transport: oaTransport},
 		Converter:    legacyConverterFunc(func(_ context.Context, _ string, _ string, raw []byte) (string, error) { return string(raw), nil }),
+		BrowserRung:  browserOff(),
 	})
 	result := h.Fetch(context.Background(), source)
 	if result.Error == "" || providerCalls.Load() != 1 {

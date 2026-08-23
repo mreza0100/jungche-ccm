@@ -9,6 +9,7 @@ import (
 )
 
 //go:embed assets/converter.py assets/pyproject.toml assets/uv.lock assets/targets.json assets/size-report.json
+//go:embed assets/browser/browser.py assets/browser/pyproject.toml assets/browser/uv.lock
 var embeddedAssets embed.FS
 
 // Platform is the native target for which the managed runtime is provisioned.
@@ -124,6 +125,33 @@ func LockMetadata() []byte {
 	body, err := embeddedAssets.ReadFile("assets/uv.lock")
 	if err != nil {
 		panic(fmt.Sprintf("read embedded conversion lock: %v", err))
+	}
+	return append([]byte(nil), body...)
+}
+
+// BrowserWorkerSource returns the exact embedded real-browser worker source.
+func BrowserWorkerSource() []byte {
+	body, err := embeddedAssets.ReadFile("assets/browser/browser.py")
+	if err != nil {
+		panic(fmt.Sprintf("read embedded browser worker source: %v", err))
+	}
+	return append([]byte(nil), body...)
+}
+
+// BrowserProjectMetadata returns the minimal opt-in browser pyproject.
+func BrowserProjectMetadata() []byte {
+	body, err := embeddedAssets.ReadFile("assets/browser/pyproject.toml")
+	if err != nil {
+		panic(fmt.Sprintf("read embedded browser project: %v", err))
+	}
+	return append([]byte(nil), body...)
+}
+
+// BrowserLockMetadata returns the frozen transitive lock for the browser env.
+func BrowserLockMetadata() []byte {
+	body, err := embeddedAssets.ReadFile("assets/browser/uv.lock")
+	if err != nil {
+		panic(fmt.Sprintf("read embedded browser lock: %v", err))
 	}
 	return append([]byte(nil), body...)
 }
