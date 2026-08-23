@@ -19,3 +19,5 @@ engines/wave-walker/engine/runtime-smoke-input.json
 .claude/skills/
 # Local Codex artifacts compiled from the Claude sources by build-codex.mjs.
 .codex/skills/
+# R&D scratch (walker consumer trees and the like): never a tracked artifact.
+.professor/RND/
