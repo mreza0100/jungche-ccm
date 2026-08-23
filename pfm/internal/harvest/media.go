@@ -33,7 +33,7 @@ func (h *Harvester) FetchImage(ctx context.Context, source string, refresh ...bo
 		}
 		return h.storeBinary(source, classifyKind(path, "", body), "local", body, refreshValue(refresh))
 	}
-	if err := assertFetchable(source); err != nil {
+	if err := assertFetchable(source, false); err != nil {
 		return Result{Source: source, Error: err.Error()}
 	}
 	if !refreshValue(refresh) {
@@ -155,7 +155,7 @@ func (h *Harvester) fetchArchiveBytes(ctx context.Context, source string, refres
 		}
 		return path, Result{Source: source, Path: path}
 	}
-	if err := assertFetchable(source); err != nil {
+	if err := assertFetchable(source, false); err != nil {
 		return "", Result{Source: source, Error: err.Error()}
 	}
 	if !refresh {

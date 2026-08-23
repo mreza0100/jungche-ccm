@@ -69,7 +69,7 @@ func TestLegacyConcurrentFailuresShareOneInFlightFetch(t *testing.T) {
 		return nil, fmt.Errorf("fixture connection failure")
 	})
 	client := func() *http.Client { return &http.Client{Transport: transport} }
-	h := New(Options{ContactEmail: "test@example.org", CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil })})
+	h := New(Options{ContactEmail: "test@example.org", CacheDir: t.TempDir(), Client: client(), Chrome: client(), Jina: client(), OA: client(), Converter: legacyConverterFunc(func(context.Context, string, string, []byte) (string, error) { return "", nil }), BrowserRung: browserOff()})
 	start := make(chan struct{})
 	results := make(chan Result, 2)
 	for range 2 {

@@ -148,7 +148,7 @@ func (t *chromeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req == nil || req.URL == nil {
 		return nil, errors.New("Chrome_146 transport received a nil request")
 	}
-	if err := assertFetchable(req.URL.String()); err != nil {
+	if err := assertFetchable(req.URL.String(), false); err != nil {
 		return nil, err
 	}
 	// Resolve before handing the request to the third-party transport. This

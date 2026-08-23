@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goRuntime "runtime"
 	"strconv"
@@ -518,7 +519,10 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 	interpreter := filepath.Join(current, "project", ".venv", "bin", "python")
 	if _, err := os.Lstat(root); errors.Is(err, os.ErrNotExist) {
 		fmt.Fprintln(stdout, "doctor: harvestpy skipped")
-		return 0
+		// The conversion env is absent (honest absence), but the opt-in
+		// browser row must still report: with HARVESTER_BROWSER=1 a missing
+		// environment is the NOT_PROVISIONED state, never silence.
+		return appendHarvestBrowserDoctorRow(ctx, stdout, root, platform, 0)
 	}
 	warnings := 0
 
@@ -601,7 +605,146 @@ func printHarvestPythonDoctor(ctx context.Context, stdout io.Writer, home string
 		}
 		fmt.Fprintf(stdout, "doctor: harvestpy live_smoke=(file) broken error=%s\n", smokeErr)
 	}
-	return warnings
+	return appendHarvestBrowserDoctorRow(ctx, stdout, root, platform, warnings)
+}
+
+// resolveChromeForDoctor re-checks the Google Chrome locations the browser
+// worker itself resolves (browser.py CHROME_CANDIDATES), without launching
+// anything. Chromium variants are deliberately absent: channel="chrome"
+// launches only GOOGLE Chrome, so reporting a chromium-only host as healthy
+// would pass smoke and fail every launch.
+func resolveChromeForDoctor() string {
+	for _, candidate := range []string{
+		"google-chrome", "google-chrome-stable",
+		"/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+	} {
+		if strings.ContainsRune(candidate, filepath.Separator) {
+			if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+				return candidate
+			}
+			continue
+		}
+		if path, err := exec.LookPath(candidate); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+// appendHarvestBrowserDoctorRow reports the opt-in real-browser rung
+// (Patchright + system Chrome). Its broken states are deliberately distinct:
+// NOT provisioned ≠ provisioned-but-Chrome-missing ≠ probe failed. With the
+// HARVESTER_BROWSER gate off the row is informational only — absence of an
+// opt-in environment is not a defect.
+// doctorChromeResolver is injectable so tests can simulate a Chrome-less
+// host without depending on the machine they run on.
+var doctorChromeResolver = resolveChromeForDoctor
+
+// doctorBrowserSmoke runs the worker's no-launch smoke probe LIVE — the same
+// verdict path a fetch would trust. Injectable so tests simulate smoke
+// results without provisioning an environment.
+var doctorBrowserSmoke = func(ctx context.Context, interpreter, script string) (map[string]any, error) {
+	worker := harvestpy.NewBrowserWorker(harvestpy.Runtime{Python: interpreter, Script: script})
+	return worker.Smoke(ctx)
+}
+
+func browserEnvFingerprint(digest harvestpy.EnvironmentDigest) string {
+	if len(digest.Digest) >= 8 {
+		return digest.Digest[:8]
+	}
+	return "unknown"
+}
+
+func appendHarvestBrowserDoctorRow(ctx context.Context, stdout io.Writer, root string, platform harvestpy.Platform, warnings int) int {
+	gateOn := harvest.BrowserGateEnabled() // ONE gate implementation, shared with the harvester core
+	digest, inspectErr := harvestpy.InspectBrowser(root, platform)
+	envDir := harvestpy.BrowserRuntimeRoot(root, platform)
+	interpreter := filepath.Join(envDir, "project", ".venv", "bin", "python")
+	script := filepath.Join(envDir, "project", "browser.py")
+	fingerprint := "env=UNKNOWN"
+	if inspectErr == nil {
+		fingerprint = fmt.Sprintf("env=%s", browserEnvFingerprint(digest))
+	}
+	// S7: the gate-off row stays informational, but its states NEVER
+	// collapse — never-provisioned, provisioned, and corrupt-record are
+	// three different answers even while disabled.
+	if !gateOn {
+		switch {
+		case inspectErr == nil && digest.State == "ready":
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser %s provisioned disabled gate=HARVESTER_BROWSER\n", fingerprint)
+		case errors.Is(inspectErr, os.ErrNotExist):
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser env=NOT_PROVISIONED disabled gate=HARVESTER_BROWSER\n")
+		case inspectErr != nil:
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser env=CORRUPT_RECORD disabled gate=HARVESTER_BROWSER error=%v\n", inspectErr)
+		default:
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser %s disabled gate=HARVESTER_BROWSER error=provision record state %q is not ready\n", fingerprint, digest.State)
+		}
+		return warnings
+	}
+	if inspectErr != nil {
+		if errors.Is(inspectErr, os.ErrNotExist) {
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser env=NOT_PROVISIONED interpreter=%s error=browser environment was never provisioned; run pfm install with HARVESTER_BROWSER=1\n", interpreter)
+		} else {
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser env=PROBE_FAILED error=%v\n", inspectErr)
+		}
+		return warnings + 1
+	}
+	if digest.State != "ready" {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser env=PROBE_FAILED state=%s error=browser environment record is not ready\n", digest.State)
+		return warnings + 1
+	}
+	if _, statErr := os.Stat(interpreter); statErr != nil {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s interpreter=%s PROBE_FAILED error=%v\n", fingerprint, interpreter, statErr)
+		return warnings + 1
+	}
+	// S2: verify the on-disk WORKER against the provision record before
+	// anything else — browser.py carries the SSRF route guard, and a file
+	// that does not match the pinned source invalidates every verdict below.
+	if strings.TrimSpace(digest.SourceSHA256) == "" {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s SOURCE_UNPINNED error=provision record predates source pinning; re-run pfm install with HARVESTER_BROWSER=1\n", fingerprint)
+		return warnings + 1
+	}
+	if err := harvestpy.VerifySHA256(script, digest.SourceSHA256); err != nil {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s SOURCE_MISMATCH error=on-disk browser.py does not match the pinned provision source (the SSRF route guard cannot be trusted): %v\n", fingerprint, err)
+		return warnings + 1
+	}
+	// S2: LIVE smoke — patchright importability and Chrome resolution are
+	// proven NOW, on this host, exactly as a fetch would; the provision-time
+	// record alone is a snapshot, and snapshots go stale silently.
+	smoke, smokeErr := doctorBrowserSmoke(ctx, interpreter, script)
+	if smokeErr != nil {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s BROKEN_SMOKE error=live worker smoke failed: %v\n", fingerprint, smokeErr)
+		return warnings + 1
+	}
+	patchrightLive, _ := smoke["patchright"].(bool)
+	if ok, _ := smoke["ok"].(bool); !ok || !patchrightLive {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s patchright=MISSING BROKEN_SMOKE error=live smoke reports patchright did not import\n", fingerprint)
+		return warnings + 1
+	}
+	liveChrome, _ := smoke["chrome_path"].(string)
+	chromePath, _ := digest.Imports["chrome_path"].(string)
+	// Prefer the live resolution; fall back to re-verifying the recorded
+	// path, then to a fresh host scan, before declaring Chrome missing.
+	for _, candidate := range []string{strings.TrimSpace(liveChrome), strings.TrimSpace(chromePath)} {
+		if candidate == "" || strings.ContainsRune(candidate, filepath.Separator) {
+			if info, statErr := os.Stat(candidate); candidate != "" && statErr == nil && info.Mode().IsRegular() {
+				fmt.Fprintf(stdout, "doctor: harvestpy_browser %s patchright=present(live smoke) chrome=%s healthy source_hash=ok\n", fingerprint, candidate)
+				return warnings
+			}
+			continue
+		}
+		if _, lookErr := exec.LookPath(candidate); lookErr == nil {
+			fmt.Fprintf(stdout, "doctor: harvestpy_browser %s patchright=present(live smoke) chrome=%s healthy source_hash=ok\n", fingerprint, candidate)
+			return warnings
+		}
+	}
+	if fallback := doctorChromeResolver(); fallback != "" {
+		fmt.Fprintf(stdout, "doctor: harvestpy_browser %s patchright=present(live smoke) chrome=%s healthy source_hash=ok\n", fingerprint, fallback)
+		return warnings
+	}
+	fmt.Fprintf(stdout, "doctor: harvestpy_browser %s patchright=present(live smoke) chrome=MISSING error=environment provisioned but no system Chrome binary resolves\n", fingerprint)
+	return warnings + 1
 }
 
 func harvestDoctorCheck(report harvestpy.CheckReport, name string, checkErr error) (bool, string) {

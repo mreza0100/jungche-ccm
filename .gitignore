@@ -33,3 +33,5 @@ engines/wave-walker/engine/runtime-smoke-input.json
 .opencode/package.json
 .opencode/package-lock.json
 .opencode/.gitignore
+# Python bytecode caches (harvestpy browser worker dev runs).
+__pycache__/
