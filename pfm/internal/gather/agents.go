@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // DetectAgents returns strict session identities for Claude processes using a
@@ -76,10 +78,16 @@ func IsClaudeCommand(cmdline []string, binaries ...string) bool {
 	if len(cmdline) == 0 {
 		return false
 	}
+	descriptor := pfmengine.MustLookup(pfmengine.Claude)
 	executable := filepath.ToSlash(cmdline[0])
 	name := filepath.Base(executable)
-	if name == "claude" || strings.Contains(executable, "/claude/versions/") {
+	if name == descriptor.Binary {
 		return true
+	}
+	for _, hint := range descriptor.BinaryPathHints {
+		if strings.Contains(executable, hint) {
+			return true
+		}
 	}
 	for _, binary := range binaries {
 		if binary != "" && name == filepath.Base(binary) {
@@ -95,7 +103,7 @@ func IsCodexCommand(cmdline []string, binaries ...string) bool {
 		return false
 	}
 	name := filepath.Base(filepath.ToSlash(cmdline[0]))
-	if name == "codex" {
+	if name == pfmengine.MustLookup(pfmengine.Codex).Binary {
 		return true
 	}
 	for _, binary := range binaries {

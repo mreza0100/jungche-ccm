@@ -2,9 +2,9 @@ package gather
 
 import (
 	"context"
-	"strings"
 	"sync"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/naming"
 )
 
@@ -43,7 +43,7 @@ func CaptureClaudeLabels(
 	}
 	candidates := make([]Pane, 0, len(panes))
 	for _, pane := range panes {
-		if !strings.HasPrefix(pane.Socket, "cc-") {
+		if id, ok := pfmengine.FromSocket(pane.Socket); !ok || id != pfmengine.Claude {
 			continue
 		}
 		if pane.SessionName != pane.Socket || pane.WindowID == "" {

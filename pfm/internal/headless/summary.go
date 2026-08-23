@@ -10,6 +10,7 @@ import (
 
 	"hostops/pfm/internal/ask"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
 )
@@ -20,7 +21,7 @@ type SummaryOptions struct {
 	Config   pfmconfig.Config
 	Database *store.Store
 	TempDir  string
-	Engine   string
+	Engine   pfmengine.ID
 	Model    string
 }
 
@@ -36,7 +37,7 @@ func Summarize(ctx context.Context, chat Chat, options SummaryOptions) SummaryRe
 	if options.Database == nil {
 		return failedSummary(fmt.Errorf("summary cache is not configured"))
 	}
-	entries, offset, err := transcript.From(ctx, chat.Path, chat.Engine, 0)
+	entries, offset, err := transcript.From(ctx, chat.Path, string(chat.Engine), 0)
 	if err != nil {
 		return failedSummary(fmt.Errorf("read exchange: %w", err))
 	}
@@ -55,7 +56,7 @@ func Summarize(ctx context.Context, chat Chat, options SummaryOptions) SummaryRe
 		}
 	}
 
-	engineName := strings.TrimSpace(options.Engine)
+	engineName := options.Engine
 	if engineName == "" {
 		engineName, err = options.Config.DefaultEngine()
 		if err != nil {

@@ -22,6 +22,7 @@ import (
 	"hostops/pfm/internal/agentopen"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/paths"
 )
@@ -237,9 +238,9 @@ func registeredDaemonSession(
 	machine pfmconfig.Config,
 	id string,
 ) (string, bool, error) {
-	configs := make([]string, 0, len(resolved.ClaudeRoots))
+	configs := make([]string, 0, len(resolved.Roots[pfmengine.Claude]))
 	seen := make(map[string]bool)
-	for _, root := range resolved.ClaudeRoots {
+	for _, root := range resolved.Roots[pfmengine.Claude] {
 		if filepath.Base(root) != "projects" {
 			continue
 		}
@@ -255,7 +256,7 @@ func registeredDaemonSession(
 	}
 	binaryName := machine.Claude.Binary
 	if binaryName == "" {
-		binaryName = "claude"
+		binaryName = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
 	binary, err := deps.Resolve(binaryName)
 	if err != nil {

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"hostops/pfm/internal/store"
 )
 
 // The Codex rename markers below are read from the codex binary's own strings
@@ -95,6 +93,10 @@ func Run(
 	if request.Socket == "" || request.Run == "" || request.CWD == "" {
 		return Result{}, errors.New("spawn requires a socket, command and directory")
 	}
+	launcher, err := LauncherFor(request.Engine)
+	if err != nil {
+		return Result{}, err
+	}
 	timings := request.Timings.orDefaults()
 	trace := newTracer(request.Trace, time.Now())
 	window := WindowName(request.Name)
@@ -122,7 +124,6 @@ func Run(
 		Session: spec.Session,
 		Window:  window,
 		Name:    request.Name,
-		Named:   request.Engine == store.ClaudeEngine,
 	}
 	target := spec.Session
 	trace.step("session %s created, running: %s", spec.Session, request.Run)
@@ -131,35 +132,33 @@ func Run(
 		return result, err
 	}
 	trace.step("booted | %s", screen(boot))
-	if request.Engine != store.CodexEngine {
-		result.Prompted = request.Prompt != ""
-		return result, nil
-	}
-
 	// Nothing is typed until a composer is on screen and STAYS there. A
 	// startup overlay swallows every keystroke sent to it — that is how a
 	// chat ended up unnamed AND unprompted, with its "/rename" and its first
 	// prompt both eaten by a hooks-review modal.
-	named, warning, blocked := nameCodexThread(
-		ctx,
-		tmux,
-		request.Socket,
-		target,
-		request.Name,
-		timings,
-		trace,
-	)
-	result.Named = named
+	warning, renameErr := launcher.Rename(ctx, tmux, request.Socket, target, request.Name, timings, trace)
+	if renameErr != nil {
+		return result, renameErr
+	}
+	result.Named = warning == ""
 	if warning != "" {
 		result.Warnings = append(result.Warnings, warning)
+		capture, captureErr := tmux.Capture(ctx, request.Socket, target)
+		if captureErr != nil || !launcher.ComposerReady(capture) {
+			return result, nil
+		}
 	}
-	if blocked || request.Prompt == "" {
+	if request.PromptOnCommandLine {
+		result.Prompted = request.Prompt != ""
+		return result, nil
+	}
+	if request.Prompt == "" {
 		return result, nil
 	}
 	// An overlay can arrive at any moment during startup (MCP notices land
 	// asynchronously), so the composer is re-confirmed before the prompt is
 	// typed, exactly as it was before the rename.
-	if !waitForCodexComposer(ctx, tmux, request.Socket, target, timings, trace) {
+	if !waitForComposer(ctx, tmux, request.Socket, target, timings, trace, launcher.ComposerReady) {
 		result.Warnings = append(
 			result.Warnings,
 			"a startup screen is holding the chat — the first prompt was not "+
@@ -254,6 +253,17 @@ func waitForCodexComposer(
 	timings Timings,
 	trace tracer,
 ) bool {
+	return waitForComposer(ctx, tmux, socket, target, timings, trace, composerReady)
+}
+
+func waitForComposer(
+	ctx context.Context,
+	tmux Tmux,
+	socket, target string,
+	timings Timings,
+	trace tracer,
+	ready func(string) bool,
+) bool {
 	deadline := time.Now().Add(timings.Boot)
 	previous := ""
 	escapes := 0
@@ -261,7 +271,7 @@ func waitForCodexComposer(
 	for {
 		capture, err := tmux.Capture(ctx, socket, target)
 		switch {
-		case err == nil && composerReady(capture):
+		case err == nil && ready(capture):
 			held++
 			if held >= composerHoldReads {
 				trace.step("composer held %d reads | %s", held, screen(capture))

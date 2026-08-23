@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/transcript"
 
@@ -81,8 +82,12 @@ func (service *Service) chatStatus(
 	if code != 0 && detail != "" {
 		return nil, StatusOutput{}, fmt.Errorf("resolve %q: %s", input.Target, detail)
 	}
+	engineID, err := pfmengine.Parse(source.engine)
+	if err != nil {
+		return nil, StatusOutput{}, err
+	}
 	status, err := headless.Inspect(ctx, headless.Chat{
-		Name: source.name, ID: source.id, Engine: source.engine, Path: source.path,
+		Name: source.name, ID: source.id, Engine: engineID, Path: source.path,
 		CWD: source.dir, Socket: target.SocketPath, Pane: target.Pane, Live: code == 0,
 	}, now())
 	if err != nil {
@@ -90,7 +95,7 @@ func (service *Service) chatStatus(
 	}
 	return nil, StatusOutput{
 		Name: status.Name, State: status.State, IdleSeconds: status.IdleSeconds,
-		Engine: status.Engine, Model: status.Model, CWD: status.CWD,
+		Engine: string(status.Engine), Model: status.Model, CWD: status.CWD,
 		SessionID: status.SessionID, Socket: status.Socket,
 		ContextPct: status.ContextPct, Last: status.Last,
 		Summary: status.Summary, SummaryCached: status.SummaryCached,

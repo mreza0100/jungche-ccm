@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"unicode"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // Entry describes one external command pfm may execute. Command is the
@@ -73,21 +75,31 @@ func Registry(options ...Options) []Entry {
 		resolved.GOOS, resolved.GOARCH = runtime.GOOS, runtime.GOARCH
 	}
 	entries := append([]Entry(nil), fixedCommands...)
-	claude := strings.TrimSpace(resolved.ClaudeBinary)
-	if claude == "" {
-		claude = "claude"
+	engineBinaries := map[pfmengine.ID]string{
+		pfmengine.Claude: strings.TrimSpace(resolved.ClaudeBinary),
+		pfmengine.Codex:  strings.TrimSpace(resolved.CodexBinary),
 	}
-	codex := strings.TrimSpace(resolved.CodexBinary)
-	if codex == "" {
-		codex = "codex"
+	engineAccounts := map[pfmengine.ID]int{
+		pfmengine.Claude: resolved.ClaudeAccounts,
+		pfmengine.Codex:  resolved.CodexAccounts,
 	}
-	entries = append(entries,
-		Entry{Name: "claude", Command: claude, Purpose: "configured Claude engine", Required: resolved.ClaudeAccounts > 0, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Claude CLI", SelfDoctorArgs: []string{"doctor"}},
-		// Official Codex CLI reference documents doctor as stable and these
-		// flags as its bounded, non-interactive summary surface:
-		// https://developers.openai.com/codex/cli/reference#codex-doctor
-		Entry{Name: "codex", Command: codex, Purpose: "configured Codex engine", Required: resolved.CodexAccounts > 0, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install the configured Codex CLI", SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}},
-	)
+	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex} {
+		descriptor := pfmengine.MustLookup(id)
+		binary := engineBinaries[id]
+		if binary == "" {
+			binary = descriptor.Binary
+		}
+		doctorArgs := []string{"doctor"}
+		if id == pfmengine.Codex {
+			doctorArgs = append(doctorArgs, "--summary", "--ascii", "--no-color")
+		}
+		entries = append(entries, Entry{
+			Name: descriptor.LongName, Command: binary,
+			Purpose: "configured " + descriptor.Short + " engine", Required: engineAccounts[id] > 0,
+			VersionArgs: []string{"--version"}, Parse: firstVersion,
+			InstallHint: "install the configured " + descriptor.Short + " CLI", SelfDoctorArgs: doctorArgs,
+		})
+	}
 	harvestRoot := filepath.Join(resolved.Home, ".local", "state", "pfm", "harvest-python")
 	current := filepath.Join(harvestRoot, "env", resolved.GOOS+"-"+resolved.GOARCH, "current")
 	entries = append(entries,

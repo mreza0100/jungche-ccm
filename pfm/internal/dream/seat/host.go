@@ -12,6 +12,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/spawn"
 )
@@ -60,7 +61,7 @@ func NewDefaultRunnerWithCodex(events EventSink, codexBinary string) (*Runner, e
 	if err != nil {
 		return nil, fmt.Errorf("resolve seat host paths: %w", err)
 	}
-	locator := FilesystemRolloutLocator{CodexRoot: values.CodexRoot}
+	locator := FilesystemRolloutLocator{CodexRoot: firstRoot(values.Roots[pfmengine.Codex])}
 	runner := NewRunner(Dependencies{
 		Commands:    ExecCommandRunner{Binary: codexBinary},
 		Host:        NewCommandHost("", values.TmuxDir),

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 
@@ -54,8 +55,7 @@ type TmuxClient interface {
 // resolver compares their basenames without making the config package part of
 // the resolution contract.
 type Binaries struct {
-	Claude        string
-	Codex         string
+	Values        map[pfmengine.ID]string
 	AccountEmojis []string
 }
 
@@ -64,8 +64,7 @@ type Resolver struct {
 	tmux          TmuxClient
 	tmuxDir       string
 	sidDir        string
-	claudeBinary  string
-	codexBinary   string
+	binaries      map[pfmengine.ID]string
 	accountEmojis []string
 }
 
@@ -86,10 +85,17 @@ func New(client TmuxClient, configured ...Binaries) (*Resolver, error) {
 		tmux:          client,
 		tmuxDir:       resolved.TmuxDir,
 		sidDir:        resolved.SIDDir,
-		claudeBinary:  binaries.Claude,
-		codexBinary:   binaries.Codex,
+		binaries:      cloneBinaries(binaries.Values),
 		accountEmojis: append([]string(nil), binaries.AccountEmojis...),
 	}, nil
+}
+
+func cloneBinaries(values map[pfmengine.ID]string) map[pfmengine.ID]string {
+	cloned := make(map[pfmengine.ID]string, len(values))
+	for id, binary := range values {
+		cloned[id] = binary
+	}
+	return cloned
 }
 
 // Resolve applies one exact chat.sh namespace contract.
@@ -336,7 +342,7 @@ func (resolver *Resolver) resolveSession(want string, panes []Pane) Outcome {
 		if len(sessionPanes) > 1 {
 			claudePanes := make([]Pane, 0)
 			for _, pane := range sessionPanes {
-				if isClaudePaneCommand(pane.CurrentCommand, resolver.claudeBinary) {
+				if isClaudePaneCommand(pane.CurrentCommand, resolver.binaries[pfmengine.Claude]) {
 					claudePanes = append(claudePanes, pane)
 				}
 			}
@@ -384,8 +390,9 @@ func (resolver *Resolver) resolveCxWindow(want string, panes []Pane) Outcome {
 		exact := strings.EqualFold(pane.WindowName, want)
 		clipped := queryRunes > 24 &&
 			strings.EqualFold(pane.WindowName, clippedWant)
-		codexSocket := strings.HasPrefix(filepath.Base(pane.SocketPath), "cx-")
-		if (!codexSocket && !isCodexCommand(pane.CurrentCommand, resolver.codexBinary)) ||
+		id, known := pfmengine.FromSocket(filepath.Base(pane.SocketPath))
+		codexSocket := known && id == pfmengine.Codex
+		if (!codexSocket && !isCodexCommand(pane.CurrentCommand, resolver.binaries[pfmengine.Codex])) ||
 			pane.PaneID == "" ||
 			pane.WindowName == "" ||
 			(!exact && !clipped) {
@@ -443,8 +450,9 @@ func isClaudePaneCommand(command string, binaries ...string) bool {
 }
 
 func isClaudeCommand(command string, binaries ...string) bool {
+	descriptor := pfmengine.MustLookup(pfmengine.Claude)
 	name := filepath.Base(strings.TrimSpace(command))
-	if strings.HasPrefix(name, "claude") {
+	if strings.HasPrefix(name, descriptor.Binary) {
 		return true
 	}
 	for _, binary := range binaries {
@@ -466,7 +474,7 @@ func isClaudeCommand(command string, binaries ...string) bool {
 
 func isCodexCommand(command string, binaries ...string) bool {
 	name := filepath.Base(strings.TrimSpace(command))
-	if name == "codex" {
+	if name == pfmengine.MustLookup(pfmengine.Codex).Binary {
 		return true
 	}
 	for _, binary := range binaries {

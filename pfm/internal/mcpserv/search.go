@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/naming"
 )
 
@@ -98,7 +99,7 @@ func (current *backend) searchableRows(
 			transcript.FirstPrompt,
 		)
 		rows = append(rows, searchable{
-			id: transcript.UUID, path: transcript.Path, engine: "cc", name: name,
+			id: transcript.UUID, path: transcript.Path, engine: string(pfmengine.Claude), name: name,
 			dir: transcript.CWD, mtimeNS: transcript.MTimeNS,
 			metadata: strings.Join([]string{
 				transcript.UUID, name, transcript.FirstPrompt,
@@ -112,7 +113,7 @@ func (current *backend) searchableRows(
 			names, rollout.FirstPrompt,
 		)
 		rows = append(rows, searchable{
-			id: rollout.ID, path: rollout.Path, engine: "cx", name: name,
+			id: rollout.ID, path: rollout.Path, engine: string(pfmengine.Codex), name: name,
 			dir: rollout.CWD, mtimeNS: rollout.MTimeNS,
 			metadata: strings.Join([]string{
 				rollout.ID, rollout.SessionID, name,

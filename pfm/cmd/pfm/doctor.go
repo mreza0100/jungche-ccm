@@ -13,13 +13,19 @@ import (
 	"strings"
 	"time"
 
+	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/ask"
 	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/harvest"
 	"hostops/pfm/internal/harvestpy"
+	"hostops/pfm/internal/index"
 	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/spawn"
+	"hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
 )
 
@@ -68,6 +74,7 @@ func runDoctor(
 	}
 	printDoctorConfig(stdout, runtime)
 	warnings += printEngineDoctor(stdout, runtime.Config)
+	warnings += printEngineCapabilities(stdout)
 	if mcpConfigured(runtime) {
 		status, daemonErr := mcpDaemonReachability(runtime)
 		if daemonErr != nil {
@@ -271,15 +278,58 @@ func runDoctor(
 
 func printEngineDoctor(stdout io.Writer, machine config.Config) int {
 	counts := machine.Engines()
-	engine, err := machine.DefaultEngine()
+	defaultEngine, err := machine.DefaultEngine()
+	parts := make([]string, 0, len(pfmengine.All()))
+	for _, id := range pfmengine.All() {
+		parts = append(parts, fmt.Sprintf("%s=%d", id, counts[id]))
+	}
 	if err != nil {
-		fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d opencode=%d default=none error=%v\n",
-			counts.Claude, counts.Codex, counts.Opencode, err)
+		fmt.Fprintf(stdout, "doctor: roster %s default=none error=%v\n", strings.Join(parts, " "), err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d opencode=%d default=%s\n",
-		counts.Claude, counts.Codex, counts.Opencode, engine)
+	fmt.Fprintf(stdout, "doctor: roster %s default=%s\n", strings.Join(parts, " "), defaultEngine)
 	return 0
+}
+
+func printEngineCapabilities(stdout io.Writer) int {
+	capabilities := []struct {
+		name string
+		ids  []pfmengine.ID
+	}{
+		{name: "index", ids: index.RegisteredSources()},
+		{name: "launcher", ids: spawn.RegisteredLaunchers()},
+		{name: "matcher", ids: gather.RegisteredMatchers()},
+		{name: "usage", ids: stats.RegisteredUsageSources()},
+		{name: "headless", ids: action.RegisteredPlanners()},
+		{name: "ask", ids: ask.RegisteredRunners()},
+	}
+	parts := make([]string, 0, len(pfmengine.All()))
+	warnings := 0
+	for _, id := range pfmengine.All() {
+		registered := make([]string, 0, len(capabilities))
+		for _, capability := range capabilities {
+			if containsEngine(capability.ids, id) {
+				registered = append(registered, capability.name)
+			}
+		}
+		if len(registered) == 0 {
+			parts = append(parts, fmt.Sprintf("%s=NONE (descriptor only)", id))
+			warnings++
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", id, strings.Join(registered, ",")))
+	}
+	fmt.Fprintf(stdout, "doctor: engines %s\n", strings.Join(parts, " "))
+	return warnings
+}
+
+func containsEngine(ids []pfmengine.ID, want pfmengine.ID) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
 }
 
 func configuredDependencyProbe(ctx context.Context, entries []deps.Entry, options deps.ProbeOptions) []deps.Result {

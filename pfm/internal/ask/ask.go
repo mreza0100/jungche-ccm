@@ -16,6 +16,7 @@ import (
 
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const engineTimeout = 60 * time.Second
@@ -24,7 +25,7 @@ type AskInput struct {
 	ContentFiles []string
 	SourceLabels []string
 	Prompt       string
-	Engine       string
+	Engine       pfmengine.ID
 	Model        string
 	Effort       string
 }
@@ -100,13 +101,7 @@ func ResolveInput(input AskInput, machine pfmconfig.Config) (AskInput, error) {
 			return AskInput{}, err
 		}
 	}
-	if resolved.Engine != "codex" && resolved.Engine != "claude" {
-		return AskInput{}, fmt.Errorf("unknown ask engine %q", resolved.Engine)
-	}
-	prefs := machine.Ask.Codex
-	if resolved.Engine == "claude" {
-		prefs = machine.Ask.Claude
-	}
+	prefs := machine.Ask.PrefsFor(resolved.Engine)
 	if resolved.Model == "" {
 		resolved.Model = prefs.Model
 	}
@@ -160,40 +155,49 @@ func (err *BinaryMissingError) Unwrap() error { return err.Err }
 // ResolveEngine binds one configured engine to its first roster account. The
 // config roster owns both the account home and the configured binary; deps
 // owns executable resolution.
-func ResolveEngine(name string, machine pfmconfig.Config) (Engine, error) {
-	var binary, home, homeVariable string
-	switch name {
-	case "codex":
-		if len(machine.CodexAccounts) == 0 {
-			return nil, fmt.Errorf("no Codex accounts configured")
-		}
-		binary = strings.TrimSpace(machine.Codex.Binary)
-		if binary == "" {
-			binary = "codex"
-		}
-		home = machine.CodexAccounts[0].Home
-		homeVariable = "CODEX_HOME"
-	case "claude":
-		if len(machine.Accounts) == 0 {
-			return nil, fmt.Errorf("no Claude accounts configured")
-		}
-		binary = strings.TrimSpace(machine.Claude.Binary)
-		if binary == "" {
-			binary = "claude"
-		}
-		home = machine.Accounts[0].ConfigDir
-		homeVariable = "CLAUDE_CONFIG_DIR"
-	default:
-		return nil, fmt.Errorf("unknown ask engine %q", name)
+func ResolveEngine(id pfmengine.ID, machine pfmconfig.Config) (Engine, error) {
+	runner, err := RunnerFor(id)
+	if err != nil {
+		return nil, err
 	}
+	return runner.Resolve(machine)
+}
+
+// ResolveClaude binds the first configured Claude account to its process.
+func ResolveClaude(machine pfmconfig.Config) (Engine, error) {
+	if len(machine.Accounts) == 0 {
+		return nil, fmt.Errorf("no Claude accounts configured")
+	}
+	descriptor := pfmengine.MustLookup(pfmengine.Claude)
+	binary := strings.TrimSpace(machine.Claude.Binary)
+	if binary == "" {
+		binary = descriptor.Binary
+	}
+	return resolveProcess(descriptor, binary, machine.Accounts[0].ConfigDir, claudeArguments)
+}
+
+// ResolveCodex binds the first configured Codex account to its process.
+func ResolveCodex(machine pfmconfig.Config) (Engine, error) {
+	if len(machine.CodexAccounts) == 0 {
+		return nil, fmt.Errorf("no Codex accounts configured")
+	}
+	descriptor := pfmengine.MustLookup(pfmengine.Codex)
+	binary := strings.TrimSpace(machine.Codex.Binary)
+	if binary == "" {
+		binary = descriptor.Binary
+	}
+	return resolveProcess(descriptor, binary, machine.CodexAccounts[0].Home, codexArguments)
+}
+
+func resolveProcess(descriptor pfmengine.Descriptor, binary, home string, arguments func(AskInput) []string) (Engine, error) {
 	path, err := deps.Resolve(binary)
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, &BinaryMissingError{Engine: name, Binary: binary, Err: err}
+			return nil, &BinaryMissingError{Engine: descriptor.LongName, Binary: binary, Err: err}
 		}
-		return nil, fmt.Errorf("resolve %s binary %q: %w", name, binary, err)
+		return nil, fmt.Errorf("resolve %s binary %q: %w", descriptor.LongName, binary, err)
 	}
-	return processEngine{name: name, path: path, homeVariable: homeVariable, home: home}, nil
+	return processEngine{name: descriptor.LongName, path: path, homeVariable: descriptor.HomeEnv, home: home, argumentsFor: arguments}, nil
 }
 
 type processEngine struct {
@@ -201,6 +205,7 @@ type processEngine struct {
 	path         string
 	homeVariable string
 	home         string
+	argumentsFor func(AskInput) []string
 }
 
 func (engine processEngine) Run(parent context.Context, input AskInput) (AskResult, error) {
@@ -210,7 +215,7 @@ func (engine processEngine) Run(parent context.Context, input AskInput) (AskResu
 	}
 	ctx, cancel := context.WithTimeout(parent, engineTimeout)
 	defer cancel()
-	args := engine.arguments(input)
+	args := engine.argumentsFor(input)
 	command := exec.CommandContext(ctx, engine.path, args...)
 	configureBoundedCommand(command)
 	command.Env = replaceEnvironment(os.Environ(), engine.homeVariable, engine.home)
@@ -238,19 +243,9 @@ func (engine processEngine) Run(parent context.Context, input AskInput) (AskResu
 	return AskResult{Answer: answer, Usage: usage, Duration: duration}, nil
 }
 
-func (engine processEngine) arguments(input AskInput) []string {
+func claudeArguments(input AskInput) []string {
 	model := strings.TrimSpace(input.Model)
 	effort := strings.ToLower(strings.TrimSpace(input.Effort))
-	if engine.name == "codex" {
-		args := []string{"exec"}
-		if model != "" {
-			args = append(args, "--model", model)
-		}
-		if effort != "" {
-			args = append(args, "-c", `model_reasoning_effort="`+effort+`"`)
-		}
-		return append(args, "--ephemeral", "--skip-git-repo-check", "--color", "never", "-")
-	}
 	args := []string{"-p"}
 	if model != "" {
 		args = append(args, "--model", model)
@@ -259,6 +254,19 @@ func (engine processEngine) arguments(input AskInput) []string {
 		args = append(args, "--effort", effort)
 	}
 	return append(args, "--output-format", "text")
+}
+
+func codexArguments(input AskInput) []string {
+	model := strings.TrimSpace(input.Model)
+	effort := strings.ToLower(strings.TrimSpace(input.Effort))
+	args := []string{"exec"}
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+	if effort != "" {
+		args = append(args, "-c", `model_reasoning_effort="`+effort+`"`)
+	}
+	return append(args, "--ephemeral", "--skip-git-repo-check", "--color", "never", "-")
 }
 
 func replaceEnvironment(environment []string, name, value string) []string {

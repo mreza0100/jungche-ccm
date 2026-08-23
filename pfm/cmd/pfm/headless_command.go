@@ -15,6 +15,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/resolve"
@@ -331,6 +332,15 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		fmt.Fprintln(stderr, "pfm chat status: --engine and --model require --summary")
 		return 2
 	}
+	var summaryEngineID pfmengine.ID
+	if *summaryEngine != "" {
+		var parseErr error
+		summaryEngineID, parseErr = pfmengine.Parse(*summaryEngine)
+		if parseErr != nil {
+			fmt.Fprintf(stderr, "pfm chat status: %v\n", parseErr)
+			return 1
+		}
+	}
 	ctx := context.Background()
 	chat, code := headlessTarget(ctx, names[0], stdout, stderr, *asJSON, runtimes...)
 	if code != 0 {
@@ -354,7 +364,7 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		}
 		summary := headless.Summarize(ctx, chat, headless.SummaryOptions{
 			Config: runtime.Config, Database: database,
-			Engine: *summaryEngine, Model: *summaryModel,
+			Engine: summaryEngineID, Model: *summaryModel,
 		})
 		closeErr := database.Close()
 		if closeErr != nil {
@@ -454,7 +464,7 @@ func readChatEntries(
 	if chat.Path == "" {
 		return chat, nil, false, fmt.Errorf("%w: %q", errChatNoTranscript, chat.Name)
 	}
-	entries, truncated, err := transcript.Tail(ctx, chat.Path, chat.Engine, tail, 0)
+	entries, truncated, err := transcript.Tail(ctx, chat.Path, string(chat.Engine), tail, 0)
 	if err != nil {
 		return chat, nil, false, err
 	}
@@ -486,7 +496,7 @@ func runHeadlessLast(args []string, stdout, stderr io.Writer, runtimes ...comman
 	}
 	// A wide window, then the newest assistant entry within it: the last thing
 	// SAID, however many tool calls have happened since.
-	entries, _, err := transcript.Tail(ctx, chat.Path, chat.Engine, 200, 0)
+	entries, _, err := transcript.Tail(ctx, chat.Path, string(chat.Engine), 200, 0)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat last: %v\n", err)
 		return 1
@@ -701,7 +711,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 			prepared, prepareErr := engine.PrepareForResume(
 				ctx,
 				target.ID,
-				"cc",
+				string(pfmengine.Claude),
 				message,
 			)
 			if prepareErr != nil {
@@ -860,7 +870,7 @@ func hookRunner(command string, stderr io.Writer) func(headless.Status) error {
 			os.Environ(),
 			"CC_CHAT_NAME="+status.Name,
 			"CC_CHAT_STATE="+status.State,
-			"CC_CHAT_ENGINE="+status.Engine,
+			"CC_CHAT_ENGINE="+string(status.Engine),
 			"CC_CHAT_SOCKET="+status.Socket,
 			"CC_CHAT_SESSION_ID="+status.SessionID,
 		)

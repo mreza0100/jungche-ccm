@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -118,13 +119,19 @@ func summaryTestStore(t *testing.T) (string, *store.Store) {
 	return root, database
 }
 
-func summaryMachine(engine string) pfmconfig.Config {
+func summaryMachine(engineName string) pfmconfig.Config {
+	id, err := pfmengine.Parse(engineName)
+	if err != nil {
+		panic(err)
+	}
 	return pfmconfig.Config{
 		Accounts:      []pfmconfig.Account{{ID: 1, ConfigDir: "/fixture/claude"}},
 		CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: "/fixture/codex"}},
 		Claude:        pfmconfig.Claude{Binary: "claude"},
 		Codex:         pfmconfig.Codex{Binary: "codex"},
-		Ask:           pfmconfig.AskConfig{Engine: engine, Codex: pfmconfig.EnginePrefs{Model: "cx-test", Effort: "low"}, Claude: pfmconfig.EnginePrefs{Model: "cc-test", Effort: "low"}},
+		Ask: pfmconfig.AskConfig{Engine: id, Prefs: map[pfmengine.ID]pfmconfig.EnginePrefs{
+			pfmengine.Codex: {Model: "cx-test", Effort: "low"}, pfmengine.Claude: {Model: "cc-test", Effort: "low"},
+		}},
 	}
 }
 

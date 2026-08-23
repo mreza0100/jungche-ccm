@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"hostops/pfm/internal/compose"
+	pfmengine "hostops/pfm/internal/engine"
 	pfmstats "hostops/pfm/internal/stats"
 )
 
@@ -110,7 +111,7 @@ const (
 // KillChange is one killed-state change, applied the moment it is typed.
 type KillChange struct {
 	ID     string
-	Engine string
+	Engine pfmengine.ID
 	Killed bool
 	// Socket, Live and Name carry what killing a RUNNING chat needs beyond the
 	// store write: killing it ends it, and only the picker knows the row was

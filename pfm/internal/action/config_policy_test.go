@@ -7,6 +7,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func configuredMachinePolicy(home string) pfmconfig.Config {
@@ -77,7 +78,7 @@ func TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy(t *testing.T) {
 	home := t.TempDir()
 	machine := configuredMachinePolicy(home)
 	claude, err := HeadlessRun(HeadlessRequest{
-		Engine:         "claude",
+		Engine:         pfmengine.Claude,
 		Name:           "configured worker",
 		CWD:            "/work/project",
 		Prompt:         "inspect the configured account",
@@ -96,7 +97,7 @@ func TestHeadlessRunUsesConfiguredClaudeAndCodexPolicy(t *testing.T) {
 	}
 
 	codex, err := HeadlessRun(HeadlessRequest{
-		Engine:         "codex",
+		Engine:         pfmengine.Codex,
 		Name:           "configured codex",
 		CWD:            "/work/project",
 		Home:           home,

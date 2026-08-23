@@ -323,7 +323,7 @@ func TestKillSelfResolveAndInternalCLI(t *testing.T) {
 		"--socket-name", "cc-1-1-1",
 		"--pane", "%1",
 	}, &stdout, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "unknown kill-exit engine") {
+	if code != 1 || !strings.Contains(stderr.String(), `unknown engine "invalid"`) {
 		t.Fatalf("internal code=%d stderr=%q", code, stderr.String())
 	}
 }

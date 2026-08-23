@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/compose"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -265,7 +266,10 @@ func (executor *Executor) SelfSwitch(
 }
 
 func chooseEngineWindow(panes []Pane, engineCommands ...string) int {
-	engines := map[string]bool{"claude": true, "codex": true}
+	engines := make(map[string]bool, len(pfmengine.All())+len(engineCommands))
+	for _, id := range pfmengine.All() {
+		engines[pfmengine.MustLookup(id).Binary] = true
+	}
 	for _, command := range engineCommands {
 		if base := filepath.Base(command); base != "." && base != "" {
 			engines[base] = true

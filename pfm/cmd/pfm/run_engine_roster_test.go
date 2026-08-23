@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestResolveRunEngineAccountUsesTheChosenRoster(t *testing.T) {
 	machine := pfmconfig.Config{
 		Version:       pfmconfig.Version,
 		CodexAccounts: []pfmconfig.CodexAccount{{ID: 3, Home: "/codex/3"}, {ID: 8, Home: "/codex/8"}},
-		Ask:           pfmconfig.AskConfig{Engine: "codex"},
+		Ask:           pfmconfig.AskConfig{Engine: pfmengine.Codex},
 	}
 
 	engine, account, err := resolveRunEngineAccount("", 0, machine, 0)

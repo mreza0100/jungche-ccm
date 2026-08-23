@@ -17,6 +17,7 @@ import (
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/spawn"
 )
 
@@ -38,7 +39,7 @@ func launchPassThrough(arguments []string, tmux string, forced bool) bool {
 	}
 	if socketPath, _, _ := strings.Cut(tmux, ","); socketPath != "" {
 		socket := filepath.Base(socketPath)
-		if strings.HasPrefix(socket, "cc-") || strings.HasPrefix(socket, "cx-") {
+		if _, ok := pfmengine.FromSocket(socket); ok {
 			return true
 		}
 	}

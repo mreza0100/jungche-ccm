@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -31,7 +32,7 @@ func TestChatSaveUsesConfiguredImplicitAccountRoot(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", id)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	target := filepath.Join(root, "saved.md")
-	runtime := commandRuntime{Paths: paths.Values{Home: filepath.Join(root, "home"), ClaudeRoots: []string{projects}}}
+	runtime := commandRuntime{Paths: paths.Values{Home: filepath.Join(root, "home"), Roots: map[pfmengine.ID][]string{pfmengine.Claude: {projects}}}}
 	var stdout, stderr bytes.Buffer
 	if code := runChatSave([]string{target}, &stdout, &stderr, runtime); code != 0 {
 		t.Fatalf("save code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -63,8 +64,8 @@ func TestCurrentClaudeModelUsesConfiguredAccountRoot(t *testing.T) {
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	got := currentClaudeModel(id, commandRuntime{Paths: paths.Values{
-		Home:        filepath.Join(root, "home"),
-		ClaudeRoots: []string{projects},
+		Home:  filepath.Join(root, "home"),
+		Roots: map[pfmengine.ID][]string{pfmengine.Claude: {projects}},
 	}})
 	if got != "opus[1m]" {
 		t.Fatalf("currentClaudeModel()=%q, want opus[1m]", got)
@@ -119,12 +120,12 @@ func TestChatHistoryPassesConfiguredRootsToChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PFM_HOME", root)
-	runtime := commandRuntime{Paths: paths.Values{ClaudeRoots: []string{filepath.Join(root, "account", "projects")}}}
+	runtime := commandRuntime{Paths: paths.Values{Roots: map[pfmengine.ID][]string{pfmengine.Claude: {filepath.Join(root, "account", "projects")}}}}
 	var stdout, stderr bytes.Buffer
 	if code := runChatSatellite("history", []string{"session"}, strings.NewReader(""), &stdout, &stderr, runtime); code != 0 {
 		t.Fatalf("history code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if want := `["` + runtime.Paths.ClaudeRoots[0] + `"]`; stdout.String() != want {
+	if want := `["` + runtime.Paths.Roots[pfmengine.Claude][0] + `"]`; stdout.String() != want {
 		t.Fatalf("history roots=%q, want %q", stdout.String(), want)
 	}
 }

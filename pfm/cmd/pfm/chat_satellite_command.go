@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"io/fs"
 	"os"
@@ -163,7 +164,7 @@ func excerptNeedles(value string) []string {
 }
 
 func claudeTranscriptFiles(resolved paths.Values, includeLegacyPrimary bool) ([]string, error) {
-	roots := append([]string(nil), resolved.ClaudeRoots...)
+	roots := append([]string(nil), resolved.Roots[pfmengine.Claude]...)
 	if includeLegacyPrimary {
 		roots = append([]string{filepath.Join(resolved.Home, ".claude", "projects")}, roots...)
 	}
@@ -240,7 +241,7 @@ func runChatReadExcerpt(args []string, stdout, stderr io.Writer, runtimes ...com
 		fmt.Fprintf(stderr, "pfm chat read: %v\n", err)
 		return 2
 	}
-	entries, err := transcript.All(context.Background(), match.Path, store.ClaudeEngine)
+	entries, err := transcript.All(context.Background(), match.Path, string(pfmengine.Claude))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat read: %v\n", err)
 		return 1
@@ -320,7 +321,7 @@ func runChatSave(args []string, stdout, stderr io.Writer, runtimes ...commandRun
 			return 1
 		}
 	}
-	entries, err := transcript.All(context.Background(), transcriptPath, store.ClaudeEngine)
+	entries, err := transcript.All(context.Background(), transcriptPath, string(pfmengine.Claude))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat save: read transcript: %v\n", err)
 		return 1
@@ -662,7 +663,7 @@ func currentClaudeModel(id string, runtimes ...commandRuntime) string {
 	if path == "" {
 		return ""
 	}
-	meta, err := transcript.ReadMeta(path, store.ClaudeEngine)
+	meta, err := transcript.ReadMeta(path, string(pfmengine.Claude))
 	if err != nil {
 		return ""
 	}
@@ -690,7 +691,7 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 		return filepath.Join(config, "projects", slug, id+".jsonl")
 	}
 	if len(runtimes) != 0 {
-		roots := runtimes[0].Paths.ClaudeRoots
+		roots := runtimes[0].Paths.Roots[pfmengine.Claude]
 		for _, root := range roots {
 			candidate := filepath.Join(root, slug, id+".jsonl")
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
@@ -713,7 +714,7 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 
 func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) string {
 	machine := pfmconfig.Config{
-		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: "claude"},
+		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary},
 	}
 	if len(machines) != 0 {
 		machine = machines[0]

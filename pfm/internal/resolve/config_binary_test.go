@@ -3,11 +3,13 @@ package resolve
 import (
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestResolverUsesConfiguredClaudeBasenameForSplitSessions(t *testing.T) {
 	customClaude := "/opt/tools/claude enterprise"
-	resolver, err := New(fakeTmux{}, Binaries{Claude: customClaude})
+	resolver, err := New(fakeTmux{}, Binaries{Values: map[pfmengine.ID]string{pfmengine.Claude: customClaude}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -32,7 +34,7 @@ func TestResolverUsesConfiguredClaudeBasenameForSplitSessions(t *testing.T) {
 
 func TestResolverUsesConfiguredCodexBasenameForWindowNames(t *testing.T) {
 	customCodex := "/opt/tools/codex safe"
-	resolver, err := New(fakeTmux{}, Binaries{Codex: customCodex})
+	resolver, err := New(fakeTmux{}, Binaries{Values: map[pfmengine.ID]string{pfmengine.Codex: customCodex}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

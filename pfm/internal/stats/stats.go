@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
+
 	"hostops/pfm/internal/compose"
 )
 
@@ -67,7 +69,7 @@ type Window struct {
 type AccountLimits struct {
 	Account     int
 	Emoji       string
-	Engine      string
+	Engine      pfmengine.ID
 	Label       string
 	Absent      bool
 	Plan        string
@@ -450,17 +452,22 @@ func liveKind(kind compose.Kind) bool {
 
 func engineName(kind compose.Kind) string {
 	if kind == compose.LiveCodex {
-		return "codex"
+		return pfmengine.MustLookup(pfmengine.Codex).LongName
 	}
 	if kind == compose.LiveSplit {
 		return "mixed"
 	}
-	return "claude"
+	return pfmengine.MustLookup(pfmengine.Claude).LongName
 }
 
 func engineCommand(command string) bool {
 	name := strings.ToLower(filepath.Base(command))
-	return strings.Contains(name, "claude") || strings.Contains(name, "codex")
+	for _, id := range pfmengine.All() {
+		if strings.Contains(name, pfmengine.MustLookup(id).Binary) {
+			return true
+		}
+	}
+	return false
 }
 
 func shellCommand(command string) bool {

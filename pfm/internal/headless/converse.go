@@ -144,7 +144,7 @@ func Await(
 			continue
 		}
 		turn.Name = chat.Name
-		turn.Engine = chat.Engine
+		turn.Engine = string(chat.Engine)
 		if chat.Path != path {
 			// The chat's record moved — a transcript that did not exist when
 			// the message was sent, or a resumed thread writing a new file.
@@ -155,7 +155,7 @@ func Await(
 			}
 			path = chat.Path
 		}
-		entries, next, err := transcript.From(ctx, path, chat.Engine, offset)
+		entries, next, err := transcript.From(ctx, path, string(chat.Engine), offset)
 		if err != nil {
 			return finish(turn, answers, start, options.Now()), err
 		}

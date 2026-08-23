@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
@@ -30,8 +31,10 @@ func TestNewWithPathsUsesInjectedRoots(t *testing.T) {
 	database := openIndexStore(t)
 	t.Cleanup(func() { _ = database.Close() })
 	indexer, err := NewWithPaths(database, paths.Values{
-		ClaudeRoots: []string{fixture.claudeRoot},
-		CodexRoot:   fixture.codexRoot,
+		Roots: map[pfmengine.ID][]string{
+			pfmengine.Claude: {fixture.claudeRoot},
+			pfmengine.Codex:  {fixture.codexRoot},
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewWithPaths() error = %v", err)
@@ -61,7 +64,7 @@ func TestIndexerIteratesEveryConfiguredCodexRoot(t *testing.T) {
 	}
 	database := openIndexStore(t)
 	t.Cleanup(func() { _ = database.Close() })
-	indexer, err := NewWithCodexRoots(database, paths.Values{}, codexRoots)
+	indexer, err := NewWithRoots(database, paths.Values{}, map[pfmengine.ID][]string{pfmengine.Codex: codexRoots})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -50,7 +51,7 @@ func New(database *store.Store, dependencies Dependencies) (*Manager, error) {
 	}
 	codexRoots := dependencies.CodexRoots
 	if codexRoots == nil {
-		codexRoots = []string{resolved.CodexRoot}
+		codexRoots = append([]string(nil), resolved.Roots[pfmengine.Codex]...)
 	} else {
 		codexRoots = append([]string{}, codexRoots...)
 	}
@@ -153,13 +154,13 @@ func (manager *Manager) KillCleared(
 	}
 	baseline := transcript.PromptCount
 	if err := manager.database.Kill(ctx, store.Killed{
-		ID: id, Engine: ClaudeEngine, KilledAt: manager.now().Unix(),
+		ID: id, Engine: pfmengine.Claude, KilledAt: manager.now().Unix(),
 		BaselinePrompts: &baseline,
 	}); err != nil {
 		return Target{}, false, err
 	}
 	return Target{
-		Engine: ClaudeEngine, ID: id, DataPath: transcript.Path,
+		Engine: pfmengine.Claude, ID: id, DataPath: transcript.Path,
 	}, true, nil
 }
 
@@ -262,13 +263,13 @@ func (manager *Manager) KillClearedCodex(
 	}
 	baseline := lineage.PromptCount
 	if err := manager.database.Kill(ctx, store.Killed{
-		ID: lineage.RootID, Engine: CodexEngine, KilledAt: manager.now().Unix(),
+		ID: lineage.RootID, Engine: pfmengine.Codex, KilledAt: manager.now().Unix(),
 		BaselinePrompts: &baseline,
 	}); err != nil {
 		return Target{}, false, err
 	}
 	return Target{
-		Engine: CodexEngine, ID: lineage.RootID, DataPath: lineage.Newest.Path,
+		Engine: pfmengine.Codex, ID: lineage.RootID, DataPath: lineage.Newest.Path,
 	}, true, nil
 }
 
@@ -353,7 +354,9 @@ func (manager *Manager) Killed(ctx context.Context) ([]store.Killed, error) {
 // falling back to naming the member's own (wrong) id.
 func (manager *Manager) lookupTarget(
 	ctx context.Context,
-	id, engine, rolloutPath string,
+	id string,
+	engine pfmengine.ID,
+	rolloutPath string,
 ) (Target, error) {
 	transcript, found, err := manager.database.Transcript(ctx, id)
 	if err != nil {
@@ -361,7 +364,7 @@ func (manager *Manager) lookupTarget(
 	}
 	if found {
 		return Target{
-			Engine:   ClaudeEngine,
+			Engine:   pfmengine.Claude,
 			ID:       id,
 			DataPath: transcript.Path,
 		}, nil
@@ -372,12 +375,12 @@ func (manager *Manager) lookupTarget(
 	}
 	if found {
 		return Target{
-			Engine:   CodexEngine,
+			Engine:   pfmengine.Codex,
 			ID:       lineage.RootID,
 			DataPath: lineage.Newest.Path,
 		}, nil
 	}
-	if engine == CodexEngine {
+	if engine == pfmengine.Codex {
 		if target, resolved := manager.resolveUnindexedCodexParent(ctx, rolloutPath); resolved {
 			return target, nil
 		}
@@ -408,7 +411,7 @@ func (manager *Manager) codexTarget(
 			return target, nil
 		}
 		return Target{
-			Engine:   CodexEngine,
+			Engine:   pfmengine.Codex,
 			ID:       id,
 			DataPath: fallbackPath,
 		}, nil
@@ -418,7 +421,7 @@ func (manager *Manager) codexTarget(
 		path = fallbackPath
 	}
 	return Target{
-		Engine:   CodexEngine,
+		Engine:   pfmengine.Codex,
 		ID:       lineage.RootID,
 		DataPath: path,
 	}, nil
@@ -445,7 +448,7 @@ func (manager *Manager) resolveUnindexedCodexParent(
 		return Target{}, false
 	}
 	return Target{
-		Engine:   CodexEngine,
+		Engine:   pfmengine.Codex,
 		ID:       lineage.RootID,
 		DataPath: lineage.Newest.Path,
 	}, true

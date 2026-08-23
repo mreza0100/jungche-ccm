@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
@@ -14,11 +15,11 @@ import (
 // snapshot, so a sweep sees ONE consistent moment rather than a tree that
 // shifts under it.
 type ProcessTree struct {
-	children     map[int][]int
-	cmdline      map[int][]string
-	rssKB        map[int]int64
-	claudeBinary string
-	codexBinary  string
+	children map[int][]int
+	cmdline  map[int][]string
+	rssKB    map[int]int64
+	matchers map[pfmengine.ID]gather.Matcher
+	binaries map[pfmengine.ID]string
 }
 
 // NewProcessTree reads every process once.
@@ -32,12 +33,21 @@ func NewProcessTree(proc gather.ProcFS, binaries ...string) (*ProcessTree, error
 		children: make(map[int][]int, len(pids)),
 		cmdline:  make(map[int][]string, len(pids)),
 		rssKB:    make(map[int]int64, len(pids)),
+		matchers: make(map[pfmengine.ID]gather.Matcher, 2),
+		binaries: make(map[pfmengine.ID]string, 2),
 	}
 	if len(binaries) > 0 {
-		tree.claudeBinary = binaries[0]
+		tree.binaries[pfmengine.Claude] = binaries[0]
 	}
 	if len(binaries) > 1 {
-		tree.codexBinary = binaries[1]
+		tree.binaries[pfmengine.Codex] = binaries[1]
+	}
+	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex} {
+		matcher, err := gather.MatcherFor(id)
+		if err != nil {
+			return nil, err
+		}
+		tree.matchers[id] = matcher
 	}
 	for _, pid := range pids {
 		stat, err := proc.Stat(pid)
@@ -96,7 +106,7 @@ func (tree *ProcessTree) ForeignProcesses(panePIDs []int) []string {
 	for _, panePID := range panePIDs {
 		tree.walk([]int{panePID}, func(pid int) bool {
 			cmdline := tree.cmdline[pid]
-			if isChatProcess(cmdline, tree.claudeBinary, tree.codexBinary) {
+			if tree.isChatProcess(cmdline) {
 				return false
 			}
 			if isShellProcess(cmdline) {
@@ -135,15 +145,13 @@ func (tree *ProcessTree) walk(roots []int, visit func(pid int) bool) {
 	}
 }
 
-func isChatProcess(cmdline []string, binaries ...string) bool {
-	claude, codex := "", ""
-	if len(binaries) > 0 {
-		claude = binaries[0]
+func (tree *ProcessTree) isChatProcess(cmdline []string) bool {
+	for id, matcher := range tree.matchers {
+		if matcher.IsCommand(cmdline, tree.binaries[id]) {
+			return true
+		}
 	}
-	if len(binaries) > 1 {
-		codex = binaries[1]
-	}
-	return gather.IsClaudeCommand(cmdline, claude) || gather.IsCodexCommand(cmdline, codex)
+	return false
 }
 
 // shells is every process a chat pane legitimately sits in. A login shell

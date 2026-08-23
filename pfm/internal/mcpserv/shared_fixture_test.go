@@ -2,6 +2,7 @@ package mcpserv
 
 import (
 	"context"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +11,6 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/paths"
-	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/transcript"
 )
 
@@ -68,7 +68,7 @@ func fixtureSharedOperations() SharedOperations {
 				}
 				if hits != 0 {
 					candidates = append(candidates, FindCandidate{
-						ID: id, Path: path, Engine: store.ClaudeEngine,
+						ID: id, Path: path, Engine: string(pfmengine.Claude),
 						Hits: hits, Confirmed: true,
 					})
 				}
@@ -112,7 +112,7 @@ func fixtureSharedOperations() SharedOperations {
 			if path == "" {
 				return ReadOutput{}, io.ErrUnexpectedEOF
 			}
-			entries, truncated, err := transcript.Tail(ctx, path, store.ClaudeEngine, lastN, 0)
+			entries, truncated, err := transcript.Tail(ctx, path, string(pfmengine.Claude), lastN, 0)
 			if err != nil {
 				return ReadOutput{}, err
 			}
@@ -138,7 +138,7 @@ func fixtureSharedOperations() SharedOperations {
 			}
 			return ReadOutput{
 				ID: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), Path: path,
-				Engine: store.ClaudeEngine, Turns: turns, Count: len(turns),
+				Engine: string(pfmengine.Claude), Turns: turns, Count: len(turns),
 				Truncated: truncated, Bytes: bytes,
 			}, nil
 		},

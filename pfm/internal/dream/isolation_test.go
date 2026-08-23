@@ -2,7 +2,6 @@ package dream
 
 import (
 	"encoding/json"
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
@@ -25,6 +24,7 @@ const (
 
 var allowedSeatImports = map[string]struct{}{
 	modulePath + "/internal/action":     {},
+	modulePath + "/internal/engine":     {},
 	modulePath + "/internal/spawn":      {},
 	modulePath + "/internal/headless":   {},
 	modulePath + "/internal/transcript": {},
@@ -126,10 +126,9 @@ func TestDreamImportArrowIsOneWay(t *testing.T) {
 	}
 }
 
-func TestPermittedHostStoreReferencesAreConstantsOnly(t *testing.T) {
-	// RULING-04 permits seat's transitive store dependency only while action and
-	// spawn use store solely to name engines. This is the load-bearing pin for
-	// that exception: a future store.Open, query, or handle reference fails here.
+func TestActionAndSpawnDoNotImportStore(t *testing.T) {
+	// Engine identity lives in the standard-library-only engine leaf. Action
+	// and spawn no longer need even a constants-only edge to the store.
 	root := moduleRoot(t)
 	packages := goList(t, root, "-json", "./internal/action", "./internal/spawn")
 	byImportPath := make(map[string]listedPackage, len(packages))
@@ -137,12 +136,6 @@ func TestPermittedHostStoreReferencesAreConstantsOnly(t *testing.T) {
 		byImportPath[pkg.ImportPath] = pkg
 	}
 
-	allowedSelectors := map[string]struct{}{
-		"ClaudeEngine": {},
-		"CodexEngine":  {},
-		// The engine roster grew; the seam stays constants-only.
-		"OpencodeEngine": {},
-	}
 	for _, importPath := range []string{
 		modulePath + "/internal/action",
 		modulePath + "/internal/spawn",
@@ -153,42 +146,10 @@ func TestPermittedHostStoreReferencesAreConstantsOnly(t *testing.T) {
 			continue
 		}
 
-		references := 0
-		for _, name := range packageFiles(pkg) {
-			filename := filepath.Join(pkg.Dir, name)
-			fset := token.NewFileSet()
-			file, err := parser.ParseFile(fset, filename, nil, 0)
-			if err != nil {
-				t.Fatalf("parse %s: %v", filename, err)
+		for _, imported := range pkg.Imports {
+			if imported == storePackage {
+				t.Errorf("%s still imports %s after engine identity moved to internal/engine", importPath, storePackage)
 			}
-
-			aliases := storeImportAliases(t, filename, file)
-			if len(aliases) == 0 {
-				continue
-			}
-			ast.Inspect(file, func(node ast.Node) bool {
-				selector, ok := node.(*ast.SelectorExpr)
-				if !ok {
-					return true
-				}
-				ident, ok := selector.X.(*ast.Ident)
-				if !ok {
-					return true
-				}
-				if _, isStoreAlias := aliases[ident.Name]; !isStoreAlias {
-					return true
-				}
-
-				references++
-				if _, allowed := allowedSelectors[selector.Sel.Name]; !allowed {
-					position := fset.Position(selector.Pos())
-					t.Errorf("%s:%d references store.%s; permitted host edges may use store only for engine constants (Claude/Codex/OpenCode)", filename, position.Line, selector.Sel.Name)
-				}
-				return true
-			})
-		}
-		if references == 0 {
-			t.Errorf("found no store references in %s; refusing to treat an empty constants-only scan as proof", importPath)
 		}
 	}
 }
@@ -272,30 +233,4 @@ func fileImports(t *testing.T, filename string) []string {
 		imports = append(imports, path)
 	}
 	return imports
-}
-
-func storeImportAliases(t *testing.T, filename string, file *ast.File) map[string]struct{} {
-	t.Helper()
-
-	aliases := make(map[string]struct{})
-	for _, spec := range file.Imports {
-		path, err := strconv.Unquote(spec.Path.Value)
-		if err != nil {
-			t.Fatalf("unquote import %s in %s: %v", spec.Path.Value, filename, err)
-		}
-		if path != storePackage {
-			continue
-		}
-
-		alias := "store"
-		if spec.Name != nil {
-			alias = spec.Name.Name
-		}
-		if alias == "." || alias == "_" {
-			t.Errorf("%s imports %s as %q; constants-only verification requires a named import", filename, storePackage, alias)
-			continue
-		}
-		aliases[alias] = struct{}{}
-	}
-	return aliases
 }

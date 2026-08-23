@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // State is one socket's verdict, as reported.
@@ -255,7 +257,8 @@ func planSocket(input Input, socket Socket) Decision {
 		decision.Reason = "busy-unknown (busy query failed)"
 		return decision
 	}
-	if !socket.HasCrumb && strings.HasPrefix(socket.Name, "cc-") {
+	id, known := pfmengine.FromSocket(socket.Name)
+	if !socket.HasCrumb && known && id == pfmengine.Claude {
 		decision.State = StateSkip
 		decision.Reason = "busy-unknown (no breadcrumb)"
 		return decision

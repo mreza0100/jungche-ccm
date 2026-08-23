@@ -15,6 +15,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/sky"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/theme"
@@ -39,6 +40,8 @@ var (
 			Foreground(lipgloss.Color("#94a3b8"))
 	codexStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#e879f9"))
+	opencodeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#60a5fa"))
 	agentStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#fb923c"))
 	statsHeaderStyle = lipgloss.NewStyle().
@@ -72,10 +75,11 @@ func configureStyles(palette theme.Palette) {
 	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Border))
 	selectedStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color(palette.Selected))
 	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.Dim))
-	codexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.CodexRow))
+	codexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.EngineRow[pfmengine.Codex]))
+	opencodeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.EngineRow[pfmengine.Opencode]))
 	agentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.AgentRow))
 	statsHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.StatsHeader))
-	statsClaudeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsClaude))
+	statsClaudeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsEngine[pfmengine.Claude]))
 	statsCPUStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsCPU))
 	statsMemoryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsRAM))
 	statsTokenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsToken))
@@ -337,7 +341,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 				continue
 			}
 			engineStyle := statsClaudeStyle
-			if strings.EqualFold(chat.Engine, "codex") {
+			if id, err := pfmengine.Parse(chat.Engine); err == nil && id == pfmengine.Codex {
 				engineStyle = codexStyle
 			}
 			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
@@ -476,22 +480,25 @@ func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 func limitAccountHeader(account pfmstats.AccountLimits, now time.Time) string {
 	emoji := cleanField(account.Emoji)
 	identity := "account " + strconv.Itoa(account.Account)
-	if strings.EqualFold(account.Engine, "codex") {
+	if account.Engine == pfmengine.Codex {
 		if emoji == "" {
 			emoji = "⬢"
 		}
 		identity = cleanField(account.Label)
 		if identity == "" {
-			identity = "Codex"
+			identity = pfmengine.MustLookup(pfmengine.Codex).Short
 		}
 	} else if emoji == "" {
 		emoji = "·"
 	}
 	plan := titleWord(cleanField(account.Plan))
 	if plan == "" {
-		plan = titleWord(account.Engine)
-		if plan == "" {
-			plan = "Claude"
+		if descriptor, err := pfmengine.Lookup(account.Engine); err == nil {
+			plan = descriptor.Short
+		} else if account.Engine != "" {
+			plan = titleWord(string(account.Engine))
+		} else {
+			plan = pfmengine.MustLookup(pfmengine.Claude).Short
 		}
 	}
 	confirmation := "provider confirmation unavailable"
@@ -724,16 +731,16 @@ func (model Model) renderGroupedRow(
 		name = "(unnamed)"
 	}
 	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-		if len(model.accountIDs) != 0 && len(model.codexAccountIDs) != 0 {
-			claude := "Claude"
-			codex := "Codex"
-			if model.newChatEngine == "claude" {
-				claude = "[ Claude ]"
-			} else {
-				codex = "[ Codex ]"
+		ids := model.newChatEngines()
+		labels := make([]string, 0, len(ids))
+		for _, id := range ids {
+			label := pfmengine.MustLookup(id).Short
+			if id == model.newChatEngine {
+				label = "[ " + label + " ]"
 			}
-			name = claude + " " + codex
+			labels = append(labels, label)
 		}
+		name = strings.Join(labels, " ")
 	}
 	name = fixedDisplayColumn(name, 30)
 	marker := rowMarker(row.Kind)
@@ -760,6 +767,8 @@ func (model Model) renderGroupedRow(
 	switch row.Kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		return codexStyle.Render(line)
+	case compose.ResumeOpencode:
+		return opencodeStyle.Render(line)
 	case compose.LiveClaude, compose.ResumeClaude, compose.NewClaude:
 		return statsClaudeStyle.Render(line)
 	case compose.Agent:
@@ -825,7 +834,7 @@ func rowMarker(kind compose.Kind) string {
 		return "◐"
 	case compose.Agent:
 		return "⚙"
-	case compose.ResumeClaude, compose.ResumeCodex:
+	case compose.ResumeClaude, compose.ResumeCodex, compose.ResumeOpencode:
 		return "↻"
 	case compose.NewClaude, compose.NewCodex:
 		return "✦"
@@ -856,7 +865,7 @@ func (model Model) rowBadges(row compose.Row) string {
 			badges = append(badges, accountMedal(account))
 		}
 	} else if row.Account != 0 {
-		if compose.EngineForKind(row.Kind) == "cx" {
+		if compose.EngineForKind(row.Kind) == pfmengine.Codex {
 			badges = append(badges, codexAccountMedal(row.Account))
 		} else {
 			badges = append(badges, accountMedal(row.Account))

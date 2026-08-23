@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"strings"
@@ -105,7 +106,7 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 			candidates := make([]mcpserv.FindCandidate, 0, len(matches))
 			for _, item := range matches {
 				candidates = append(candidates, mcpserv.FindCandidate{
-					ID: item.ID, Path: item.Path, Engine: store.ClaudeEngine,
+					ID: item.ID, Path: item.Path, Engine: string(pfmengine.Claude),
 					Date: item.Last, Hits: item.Hits, Confirmed: true,
 				})
 			}
@@ -136,7 +137,7 @@ func mcpSharedOperations(runtime commandRuntime) mcpserv.SharedOperations {
 			turns, bytes, budgetTruncated := boundMCPTurns(entries, maxBytes)
 			truncated = truncated || budgetTruncated
 			return mcpserv.ReadOutput{
-				ID: chat.ID, Path: chat.Path, Engine: chat.Engine,
+				ID: chat.ID, Path: chat.Path, Engine: string(chat.Engine),
 				Turns: turns, Count: len(turns), Truncated: truncated, Bytes: bytes,
 			}, nil
 		},

@@ -11,6 +11,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	pfmstats "hostops/pfm/internal/stats"
 )
 
@@ -74,7 +75,7 @@ func TestLimitsTabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
 	model.tab = TabLimits
 	now := time.Unix(0, model.nowNS)
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
-		Account: 1, Emoji: "🥇", Engine: "claude",
+		Account: 1, Emoji: "🥇", Engine: pfmengine.Claude,
 		Windows: []pfmstats.Window{
 			{Name: "5h", UsedPct: 52, ResetAt: now.Add(90 * time.Minute)},
 			{Name: "7d", UsedPct: 100, ResetAt: now.Add(-time.Minute)},
@@ -127,7 +128,7 @@ func TestLimitsTabNarrowRowsDropResetAndNeverWrap(t *testing.T) {
 	model.tab = TabLimits
 	now := time.Unix(0, model.nowNS)
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
-		Account: 1, Emoji: "🥇", Engine: "claude",
+		Account: 1, Emoji: "🥇", Engine: pfmengine.Claude,
 		Windows: []pfmstats.Window{{Name: "7d-fable", UsedPct: 52.4, ResetAt: now.Add(14 * time.Minute)}},
 	}}}
 	panel := model.renderLimitsPanel(50, 8)
@@ -145,8 +146,8 @@ func TestLimitsTabOmitsProviderMaxTotals(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
 	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
-		{Account: 1, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 52}}},
-		{Account: 2, Engine: "claude", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 75}}},
+		{Account: 1, Engine: pfmengine.Claude, Windows: []pfmstats.Window{{Name: "5h", UsedPct: 52}}},
+		{Account: 2, Engine: pfmengine.Claude, Windows: []pfmstats.Window{{Name: "5h", UsedPct: 75}}},
 	}}
 	plain := ansi.Strip(model.renderLimitsPanel(120, 10))
 	if strings.Contains(plain, "Σ") {
@@ -163,8 +164,8 @@ func TestLimitsTabRendersEngineAbsencesAsTwoDimLines(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
 	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
-		{Engine: "claude", Label: "no Claude accounts configured", Status: "no Claude accounts configured", Absent: true},
-		{Engine: "codex", Label: "no Codex accounts configured", Status: "no Codex accounts configured", Absent: true},
+		{Engine: pfmengine.Claude, Label: "no Claude accounts configured", Status: "no Claude accounts configured", Absent: true},
+		{Engine: pfmengine.Codex, Label: "no Codex accounts configured", Status: "no Codex accounts configured", Absent: true},
 	}}
 	plain := ansi.Strip(model.renderLimitsPanel(120, 8))
 	for _, want := range []string{"no Claude accounts configured", "no Codex accounts configured"} {
@@ -189,15 +190,15 @@ func TestLimitsTabConsolidatesSkipsDropsUnknownsAndKeepsErrors(t *testing.T) {
 	model.tab = TabLimits
 	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
 		{
-			Account: 1, Emoji: emoji1, Engine: "claude", Label: label1,
+			Account: 1, Emoji: emoji1, Engine: pfmengine.Claude, Label: label1,
 			Windows: []pfmstats.Window{
 				{Name: "7d-fable", UsedPct: 0, ResetNote: "reset unavailable"},
 				{Name: "unknown[seven_day_nimbus_quill]", UsedPct: 0, ResetNote: "reset unavailable"},
 			},
 		},
-		{Account: 3, Engine: "claude", Label: label3, Status: "skipped " + label3 + ": credentials rejected"},
-		{Account: 4, Engine: "claude", Label: label4, Status: "skipped " + label4 + ": no valid credentials"},
-		{Engine: "codex", Label: "Codex", Status: "Codex credential rejected (HTTP 401)"},
+		{Account: 3, Engine: pfmengine.Claude, Label: label3, Status: "skipped " + label3 + ": credentials rejected"},
+		{Account: 4, Engine: pfmengine.Claude, Label: label4, Status: "skipped " + label4 + ": no valid credentials"},
+		{Engine: pfmengine.Codex, Label: "Codex", Status: "Codex credential rejected (HTTP 401)"},
 	}}
 	plain := ansi.Strip(model.renderLimitsPanel(140, 18))
 	for _, want := range []string{

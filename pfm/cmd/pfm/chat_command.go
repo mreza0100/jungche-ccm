@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/kill"
@@ -240,21 +241,26 @@ func runChatRecover(args []string, stdout, stderr io.Writer, runtimes ...command
 		flags.Usage()
 		return 2
 	}
-	runtime, err := optionalCommandRuntime(runtimes)
+	_, err := optionalCommandRuntime(runtimes)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat recover: load config: %v\n", err)
 		return 1
 	}
-	resolved := runtime.Paths
-	result, err := recovery.Run(context.Background(), resolved.CodexRoot, flags.Arg(0))
+	resolved, err := paths.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat recover: resolve source paths: %v\n", err)
+		return 1
+	}
+	codexRoot := firstRoot(resolved.Roots[pfmengine.Codex])
+	result, err := recovery.Run(context.Background(), codexRoot, flags.Arg(0))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat recover: %v\n", err)
 		return 1
 	}
 	fmt.Fprintf(stdout, "messages=%d carried=%d malformed=%d\n", result.Messages, result.Carried, result.Malformed)
 	fmt.Fprintf(stdout, "recovered thread %s\n", result.ThreadID)
-	fmt.Fprintf(stdout, "  %s\n  %s\n  %s\n", filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "brief.md"), filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "compaction-memory.md"), filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "transcript.md"))
-	fmt.Fprintf(stdout, "\nBrief a replacement seat with:\n  pfm chat inject <socket> 'RECOVERY: read %s, then compaction-memory.md, then the end of transcript.md.'\n", filepath.Join(resolved.CodexRoot, "recovered-"+result.ThreadID, "brief.md"))
+	fmt.Fprintf(stdout, "  %s\n  %s\n  %s\n", filepath.Join(codexRoot, "recovered-"+result.ThreadID, "brief.md"), filepath.Join(codexRoot, "recovered-"+result.ThreadID, "compaction-memory.md"), filepath.Join(codexRoot, "recovered-"+result.ThreadID, "transcript.md"))
+	fmt.Fprintf(stdout, "\nBrief a replacement seat with:\n  pfm chat inject <socket> 'RECOVERY: read %s, then compaction-memory.md, then the end of transcript.md.'\n", filepath.Join(codexRoot, "recovered-"+result.ThreadID, "brief.md"))
 	return 0
 }
 
@@ -473,7 +479,7 @@ func runChatScript(
 	command.Stdout = stdout
 	command.Stderr = stderr
 	if name == "history.sh" && len(runtimes) != 0 {
-		roots, err := json.Marshal(runtimes[0].Paths.ClaudeRoots)
+		roots, err := json.Marshal(runtimes[0].Paths.Roots[pfmengine.Claude])
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat: encode history roots: %v\n", err)
 			return 1

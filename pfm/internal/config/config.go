@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const Version = 2
@@ -95,11 +97,7 @@ type OpenCodeAccount struct {
 	Home string
 }
 
-type EngineCounts struct {
-	Claude   int
-	Codex    int
-	Opencode int
-}
+type EngineCounts map[pfmengine.ID]int
 
 type MCPServer struct {
 	Enabled bool
@@ -121,9 +119,12 @@ type EnginePrefs struct {
 }
 
 type AskConfig struct {
-	Engine string
-	Codex  EnginePrefs
-	Claude EnginePrefs
+	Engine pfmengine.ID
+	Prefs  map[pfmengine.ID]EnginePrefs
+}
+
+func (config AskConfig) PrefsFor(id pfmengine.ID) EnginePrefs {
+	return config.Prefs[id]
 }
 
 // Config is the fully materialized configuration. Sources records whether
@@ -215,14 +216,41 @@ type rawMCPHTTP struct {
 }
 
 type rawAsk struct {
-	Engine *string    `json:"engine,omitempty"`
-	Codex  *rawEngine `json:"codex,omitempty"`
-	Claude *rawEngine `json:"claude,omitempty"`
+	Engine *string
+	Prefs  map[pfmengine.ID]rawEngine
 }
 
 type rawEngine struct {
 	Model  *string `json:"model,omitempty"`
 	Effort *string `json:"effort,omitempty"`
+}
+
+func (raw *rawAsk) UnmarshalJSON(content []byte) error {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(content, &values); err != nil {
+		return err
+	}
+	raw.Prefs = make(map[pfmengine.ID]rawEngine)
+	for key, value := range values {
+		if key == "engine" {
+			var selected string
+			if err := json.Unmarshal(value, &selected); err != nil {
+				return fmt.Errorf("ask.engine: %w", err)
+			}
+			raw.Engine = &selected
+			continue
+		}
+		id, err := pfmengine.Parse(key)
+		if err != nil {
+			return fmt.Errorf("ask.%s: %w", key, err)
+		}
+		var prefs rawEngine
+		if err := decodeStrict(value, &prefs); err != nil {
+			return fmt.Errorf("ask.%s: %w", key, err)
+		}
+		raw.Prefs[id] = prefs
+	}
+	return nil
 }
 
 // ResolvePath applies pfm's XDG rule: only an absolute XDG_CONFIG_HOME wins.
@@ -262,7 +290,7 @@ func defaultsWithMCPServers(
 	if len(accounts) == 0 {
 		accounts, accountSkips = discoverAccounts(home)
 	}
-	codexRoot := filepath.Join(home, ".codex")
+	codexRoot := pfmengine.MustLookup(pfmengine.Codex).DefaultRoots(home)[0]
 	if len(codexRoots) != 0 && strings.TrimSpace(codexRoots[0]) != "" {
 		codexRoot = filepath.Clean(codexRoots[0])
 	}
@@ -276,7 +304,7 @@ func defaultsWithMCPServers(
 		codexAccounts = []CodexAccount{{ID: 1, Home: codexRoot, Emoji: DefaultEmoji(1)}}
 	}
 	var opencodeAccounts []OpenCodeAccount
-	opencodeHome := filepath.Join(home, ".local", "share", "opencode")
+	opencodeHome := pfmengine.MustLookup(pfmengine.Opencode).DefaultRoots(home)[0]
 	if _, err := os.Stat(filepath.Join(opencodeHome, "opencode.db")); err == nil {
 		opencodeAccounts = []OpenCodeAccount{{ID: 1, Home: opencodeHome}}
 	}
@@ -292,10 +320,11 @@ func defaultsWithMCPServers(
 		"opencode.binary":       SourceDefault,
 		"mcp.http.port":         SourceDefault,
 		"ask.engine":            SourceDefault,
-		"ask.codex.model":       SourceDefault,
-		"ask.codex.effort":      SourceDefault,
-		"ask.claude.model":      SourceDefault,
-		"ask.claude.effort":     SourceDefault,
+	}
+	for _, id := range pfmengine.All() {
+		name := pfmengine.MustLookup(id).LongName
+		sources["ask."+name+".model"] = SourceDefault
+		sources["ask."+name+".effort"] = SourceDefault
 	}
 	servers := make(map[string]MCPServer, len(registered))
 	for name, server := range registered {
@@ -309,15 +338,17 @@ func defaultsWithMCPServers(
 		AccountSkips:     accountSkips,
 		CodexAccounts:    codexAccounts,
 		OpencodeAccounts: opencodeAccounts,
-		Claude:           Claude{PermissionMode: PermissionBypass, Binary: "claude"},
-		Codex:            Codex{Yolo: true, Binary: "codex"},
-		OpenCode:         OpenCode{Binary: "opencode"},
+		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary},
+		Codex:            Codex{Yolo: true, Binary: pfmengine.MustLookup(pfmengine.Codex).Binary},
+		OpenCode:         OpenCode{Binary: pfmengine.MustLookup(pfmengine.Opencode).Binary},
 		MCPServers:       servers,
 		MCP:              MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
 		Ask: AskConfig{
-			Engine: "codex",
-			Codex:  EnginePrefs{Model: "gpt-5.6-luna", Effort: "low"},
-			Claude: EnginePrefs{Model: "claude-haiku-4-5", Effort: "low"},
+			Engine: pfmengine.Codex,
+			Prefs: map[pfmengine.ID]EnginePrefs{
+				pfmengine.Codex:  {Model: "gpt-5.6-luna", Effort: "low"},
+				pfmengine.Claude: {Model: "claude-haiku-4-5", Effort: "low"},
+			},
 		},
 		Sources: sources,
 	}
@@ -629,40 +660,35 @@ func loadWithMCPServers(
 	}
 	if raw.Ask != nil {
 		if raw.Ask.Engine != nil {
-			if *raw.Ask.Engine != "codex" && *raw.Ask.Engine != "claude" {
-				return Config{}, fmt.Errorf("config %s: ask.engine must be %q or %q, got %q", result.Path, "codex", "claude", *raw.Ask.Engine)
+			id, err := pfmengine.Parse(*raw.Ask.Engine)
+			if err != nil {
+				return Config{}, fmt.Errorf("config %s: %w", result.Path, err)
 			}
-			result.Ask.Engine = *raw.Ask.Engine
+			result.Ask.Engine = id
 			result.Sources["ask.engine"] = SourceFile
 		}
-		if raw.Ask.Codex != nil {
-			applyEnginePrefs(&result.Ask.Codex, *raw.Ask.Codex)
-			if raw.Ask.Codex.Model != nil {
-				result.Sources["ask.codex.model"] = SourceFile
+		for id, rawPrefs := range raw.Ask.Prefs {
+			prefs := result.Ask.Prefs[id]
+			applyEnginePrefs(&prefs, rawPrefs)
+			result.Ask.Prefs[id] = prefs
+			name := pfmengine.MustLookup(id).LongName
+			if rawPrefs.Model != nil {
+				result.Sources["ask."+name+".model"] = SourceFile
 			}
-			if raw.Ask.Codex.Effort != nil {
-				result.Sources["ask.codex.effort"] = SourceFile
-			}
-		}
-		if raw.Ask.Claude != nil {
-			applyEnginePrefs(&result.Ask.Claude, *raw.Ask.Claude)
-			if raw.Ask.Claude.Model != nil {
-				result.Sources["ask.claude.model"] = SourceFile
-			}
-			if raw.Ask.Claude.Effort != nil {
-				result.Sources["ask.claude.effort"] = SourceFile
+			if rawPrefs.Effort != nil {
+				result.Sources["ask."+name+".effort"] = SourceFile
 			}
 		}
 	}
 	if raw.Ask != nil && raw.Ask.Engine != nil {
 		counts := result.Engines()
 		switch result.Ask.Engine {
-		case "claude":
-			if counts.Claude == 0 {
+		case pfmengine.Claude:
+			if counts[pfmengine.Claude] == 0 {
 				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero Claude accounts; add an accounts entry or choose codex", result.Path, result.Ask.Engine)
 			}
-		case "codex":
-			if counts.Codex == 0 {
+		case pfmengine.Codex:
+			if counts[pfmengine.Codex] == 0 {
 				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero Codex accounts; authenticate the default Codex home, add codex.homes, or choose claude", result.Path, result.Ask.Engine)
 			}
 		}
@@ -971,43 +997,48 @@ func (config Config) CodexEmojiFor(id int) string {
 }
 
 func (config Config) Engines() EngineCounts {
-	return EngineCounts{
-		Claude:   len(config.Accounts),
-		Codex:    len(config.CodexAccounts),
-		Opencode: len(config.OpencodeAccounts),
+	counts := EngineCounts{}
+	if count := len(config.Accounts); count != 0 {
+		counts[pfmengine.Claude] = count
 	}
+	if count := len(config.CodexAccounts); count != 0 {
+		counts[pfmengine.Codex] = count
+	}
+	if count := len(config.OpencodeAccounts); count != 0 {
+		counts[pfmengine.Opencode] = count
+	}
+	return counts
 }
 
-func (config Config) DefaultEngine() (string, error) {
+func (config Config) DefaultEngine() (pfmengine.ID, error) {
 	counts := config.Engines()
-	preferred := strings.ToLower(strings.TrimSpace(config.Ask.Engine))
+	preferred := config.Ask.Engine
 	if preferred == "" {
-		preferred = "codex"
+		preferred = pfmengine.Codex
 	}
-	switch preferred {
-	case "claude":
-		if counts.Claude > 0 {
-			return "claude", nil
+	id := preferred
+	switch id {
+	case pfmengine.Claude:
+		if counts[pfmengine.Claude] > 0 {
+			return pfmengine.Claude, nil
 		}
-	case "codex":
-		if counts.Codex > 0 {
-			return "codex", nil
+	case pfmengine.Codex:
+		if counts[pfmengine.Codex] > 0 {
+			return pfmengine.Codex, nil
 		}
-	case "opencode", "ox":
-		if counts.Opencode > 0 {
-			return "opencode", nil
+	case pfmengine.Opencode:
+		if counts[pfmengine.Opencode] > 0 {
+			return pfmengine.Opencode, nil
 		}
-	default:
-		return "", fmt.Errorf("ask.engine %q is not claude, codex, or opencode", config.Ask.Engine)
 	}
-	if counts.Claude > 0 {
-		return "claude", nil
+	if counts[pfmengine.Claude] > 0 {
+		return pfmengine.Claude, nil
 	}
-	if counts.Codex > 0 {
-		return "codex", nil
+	if counts[pfmengine.Codex] > 0 {
+		return pfmengine.Codex, nil
 	}
-	if counts.Opencode > 0 {
-		return "opencode", nil
+	if counts[pfmengine.Opencode] > 0 {
+		return pfmengine.Opencode, nil
 	}
 	return "", errors.New("no engines configured: Claude roster empty; Codex roster empty; OpenCode store absent")
 }
@@ -1224,12 +1255,18 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 	if len(codexHomes) != 0 {
 		codexValue["homes"] = codexHomes
 	}
-	askValue := map[string]any{
-		"codex":  map[string]any{"model": config.Ask.Codex.Model, "effort": config.Ask.Codex.Effort},
-		"claude": map[string]any{"model": config.Ask.Claude.Model, "effort": config.Ask.Claude.Effort},
+	askValue := make(map[string]any, len(config.Ask.Prefs)+1)
+	for _, id := range pfmengine.All() {
+		prefs, found := config.Ask.Prefs[id]
+		if !found {
+			continue
+		}
+		askValue[pfmengine.MustLookup(id).LongName] = map[string]any{
+			"model": prefs.Model, "effort": prefs.Effort,
+		}
 	}
 	if engine, err := config.DefaultEngine(); err == nil {
-		askValue["engine"] = engine
+		askValue["engine"] = pfmengine.MustLookup(engine).LongName
 	}
 	value := map[string]any{
 		"version":  config.Version,

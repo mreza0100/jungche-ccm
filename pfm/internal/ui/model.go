@@ -12,7 +12,9 @@ import (
 	"github.com/sahilm/fuzzy"
 
 	"hostops/pfm/internal/compose"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/sky"
+	"hostops/pfm/internal/spawn"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/theme"
 )
@@ -86,7 +88,7 @@ type Model struct {
 	skyEvents           []sky.Event
 	mergeNewChat        bool
 	actionIndex         int
-	newChatEngine       string
+	newChatEngine       pfmengine.ID
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -154,11 +156,11 @@ func NewModel(snapshot Snapshot) Model {
 var configuredAccountEmojis map[int]string
 var configuredCodexAccountEmojis map[int]string
 
-func defaultNewChatEngine(claude, codex []int) string {
+func defaultNewChatEngine(claude, codex []int) pfmengine.ID {
 	if len(normalizedAccountIDs(claude)) != 0 || len(normalizedAccountIDs(codex)) == 0 {
-		return "claude"
+		return pfmengine.Claude
 	}
-	return "codex"
+	return pfmengine.Codex
 }
 
 func copyEmojis(values map[int]string) map[int]string {
@@ -320,12 +322,16 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if row, ok := model.selectedRow(); ok {
 			if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-				if model.newChatEngine == "codex" {
+				switch model.newChatEngine {
+				case pfmengine.Codex:
 					row.Kind = compose.NewCodex
-					row.Name = "New Codex chat"
-				} else {
+					row.Name = "New " + pfmengine.MustLookup(pfmengine.Codex).Short + " chat"
+				case pfmengine.Claude:
 					row.Kind = compose.NewClaude
-					row.Name = "New Claude chat"
+					row.Name = "New " + pfmengine.MustLookup(pfmengine.Claude).Short + " chat"
+				default:
+					model.killStatus = "new chat is not available for " + pfmengine.MustLookup(model.newChatEngine).Short
+					return model, nil
 				}
 				row.Account = model.accountForKind(row.Kind)
 				model.outcome = OutcomeSelected
@@ -447,15 +453,69 @@ func isSamplingTab(tab Tab) bool {
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
 		(row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
-		if direction > 0 && len(model.codexAccountIDs) != 0 {
-			model.newChatEngine = "codex"
-		} else if direction < 0 && len(model.accountIDs) != 0 {
-			model.newChatEngine = "claude"
-		}
+		model.newChatEngine = adjacentID(model.newChatEngine, direction, model.newChatEngines())
 		return model, nil
 	}
 	model.actionIndex = (model.actionIndex + len(carouselActions) + direction) % len(carouselActions)
 	return model, nil
+}
+
+func adjacentEngine(current pfmengine.ID, direction int) pfmengine.ID {
+	ids := spawn.RegisteredLaunchers()
+	if len(ids) == 0 {
+		// Unit packages do not execute cmd/pfm's composition root. Keep the two
+		// shipped launchers available there without registering production
+		// behaviour outside that root.
+		ids = []pfmengine.ID{pfmengine.Claude, pfmengine.Codex}
+	}
+	return adjacentID(current, direction, ids)
+}
+
+func adjacentID(current pfmengine.ID, direction int, ids []pfmengine.ID) pfmengine.ID {
+	if len(ids) == 0 {
+		return ""
+	}
+	for index, id := range ids {
+		if id == current {
+			if direction < 0 {
+				return ids[(index+len(ids)-1)%len(ids)]
+			}
+			return ids[(index+1)%len(ids)]
+		}
+	}
+	return ids[0]
+}
+
+func (model Model) newChatEngines() []pfmengine.ID {
+	ids := make([]pfmengine.ID, 0, len(pfmengine.All()))
+	appendUnique := func(id pfmengine.ID) {
+		for _, present := range ids {
+			if present == id {
+				return
+			}
+		}
+		ids = append(ids, id)
+	}
+	for _, row := range model.rows {
+		switch row.Kind {
+		case compose.NewClaude:
+			appendUnique(pfmengine.Claude)
+		case compose.NewCodex:
+			appendUnique(pfmengine.Codex)
+		}
+	}
+	for _, id := range spawn.RegisteredLaunchers() {
+		if id != pfmengine.Claude && id != pfmengine.Codex {
+			appendUnique(id)
+		}
+	}
+	return ids
+}
+
+// AdjacentEngine returns the previous or next registered engine in stable
+// picker order. Unknown inputs start at the first registered engine.
+func AdjacentEngine(current pfmengine.ID, direction int) pfmengine.ID {
+	return adjacentEngine(current, direction)
 }
 
 func (model *Model) cycleSelectedAccount() {
@@ -467,7 +527,7 @@ func (model *Model) cycleSelectedAccount() {
 	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
 		engine = model.newChatEngine
 	}
-	if engine == "cx" || engine == "codex" {
+	if engine == pfmengine.Codex {
 		model.codexPrimary = nextAccount(model.codexPrimary, model.codexAccountIDs)
 		return
 	}
@@ -488,7 +548,7 @@ func nextAccount(current int, ids []int) int {
 
 func (model Model) accountForKind(kind compose.Kind) int {
 	engine := compose.EngineForKind(kind)
-	if engine == "cx" || engine == "codex" {
+	if engine == pfmengine.Codex {
 		return model.codexPrimary
 	}
 	return model.primary
@@ -986,15 +1046,8 @@ func rowKey(row compose.Row) string {
 	return row.Kind.String() + "\x00" + row.CWD + "\x00" + row.Project
 }
 
-func rowEngine(kind compose.Kind) string {
-	switch kind {
-	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
-		return "cx"
-	case compose.ResumeOpencode:
-		return "ox"
-	default:
-		return "cc"
-	}
+func rowEngine(kind compose.Kind) pfmengine.ID {
+	return compose.EngineForKind(kind)
 }
 
 func isLive(kind compose.Kind) bool {
@@ -1052,18 +1105,18 @@ func (model Model) VisibleRows() []compose.Row {
 	return rows
 }
 
-func (model Model) Cursor() int           { return model.cursor }
-func (model Model) Query() string         { return model.query.Value() }
-func (model Model) PrimaryAccount() int   { return model.primary }
-func (model Model) Cache1H() bool         { return model.cache1H }
-func (model Model) Tab() Tab              { return model.tab }
-func (model Model) SelectedKey() string   { return model.selectedKey() }
-func (model Model) GroupCount() int       { return len(model.groups) }
-func (model Model) OrderedRowCount() int  { return len(model.order) }
-func (model Model) FilteredRowCount() int { return len(model.filtered) }
-func (model Model) ActionIndex() int      { return model.actionIndex }
-func (model Model) NewChatEngine() string { return model.newChatEngine }
-func (model Model) ValidUTF8Query() bool  { return utf8.ValidString(model.Query()) }
+func (model Model) Cursor() int                 { return model.cursor }
+func (model Model) Query() string               { return model.query.Value() }
+func (model Model) PrimaryAccount() int         { return model.primary }
+func (model Model) Cache1H() bool               { return model.cache1H }
+func (model Model) Tab() Tab                    { return model.tab }
+func (model Model) SelectedKey() string         { return model.selectedKey() }
+func (model Model) GroupCount() int             { return len(model.groups) }
+func (model Model) OrderedRowCount() int        { return len(model.order) }
+func (model Model) FilteredRowCount() int       { return len(model.filtered) }
+func (model Model) ActionIndex() int            { return model.actionIndex }
+func (model Model) NewChatEngine() pfmengine.ID { return model.newChatEngine }
+func (model Model) ValidUTF8Query() bool        { return utf8.ValidString(model.Query()) }
 func (model Model) HasVisibleSelection() bool { // compact invariant helper
 	return len(model.filtered) == 0 ||
 		(model.cursor >= 0 && model.cursor < len(model.filtered))
