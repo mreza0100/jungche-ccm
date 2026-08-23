@@ -14,6 +14,7 @@ type Route byte
 const (
 	NewClaude    Route = 'N'
 	NewCodex     Route = 'C'
+	NewOpencode  Route = 'P'
 	Live         Route = 'L'
 	Agent        Route = 'A'
 	ResumeClaude Route = 'R'

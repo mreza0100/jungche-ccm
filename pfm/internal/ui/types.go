@@ -61,24 +61,26 @@ type Picker interface {
 // Snapshot is all state needed for a frame. Rendering never probes the
 // filesystem, processes, tmux, or the clock.
 type Snapshot struct {
-	Rows                []compose.Row
-	View                compose.View
-	KilledCount         int
-	SuppressedCount     int
-	Refreshing          bool
-	PrimaryAccount      int
-	AccountIDs          []int
-	AccountEmojis       map[int]string
-	CodexPrimaryAccount int
-	CodexAccountIDs     []int
-	CodexAccountEmojis  map[int]string
-	Theme               string
-	Cache1H             bool
-	NowNS               int64
-	Width               int
-	Height              int
-	InitialQuery        string
-	InitialCursorID     string
+	Rows                   []compose.Row
+	View                   compose.View
+	KilledCount            int
+	SuppressedCount        int
+	Refreshing             bool
+	PrimaryAccount         int
+	AccountIDs             []int
+	AccountEmojis          map[int]string
+	CodexPrimaryAccount    int
+	CodexAccountIDs        []int
+	CodexAccountEmojis     map[int]string
+	OpencodePrimaryAccount int
+	OpencodeAccountIDs     []int
+	Theme                  string
+	Cache1H                bool
+	NowNS                  int64
+	Width                  int
+	Height                 int
+	InitialQuery           string
+	InitialCursorID        string
 	// MergeNewChat is used only by the interactive picker. Plain and TSV
 	// output leave it false so their existing two-row output remains stable.
 	MergeNewChat bool
