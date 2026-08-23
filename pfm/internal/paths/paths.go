@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"testing"
 )
 
 const (
@@ -16,8 +17,13 @@ const (
 	EnvCodexRoot   = "PFM_CODEX_ROOT"
 	EnvTmuxDir     = "PFM_TMUX_DIR"
 	EnvHome        = "PFM_HOME"
-	EnvProcRoot    = "PFM_PROC_ROOT"
-	EnvCgroupRoot  = "PFM_CGROUP_ROOT"
+	// EnvRealHome lets the rare test that MUST see the operator's own
+	// machine — building against the real module cache, probing a live
+	// config — opt back in by name. Everything else running under `go
+	// test` is refused the real home rather than handed it silently.
+	EnvRealHome   = "PFM_TEST_REAL_HOME"
+	EnvProcRoot   = "PFM_PROC_ROOT"
+	EnvCgroupRoot = "PFM_CGROUP_ROOT"
 	// EnvTmuxConf pins the config a chat's tmux server is born with. Unset —
 	// the way a real chat runs — the server loads ~/.tmux.conf like every other
 	// terminal on the machine, because a chat IS a terminal the user lives in:
@@ -70,6 +76,26 @@ func EnvOr(name, fallback string) string {
 func Resolve() (Values, error) {
 	home := os.Getenv(EnvHome)
 	if home == "" {
+		// A test that never set up its jail would otherwise resolve to the
+		// OPERATOR'S OWN home: the fleet.db their live chats are indexed in,
+		// the ~/.claude/projects their transcripts live in. That is not a
+		// hypothetical — one `go test ./...` run outside the fence has written
+		// fixture transcripts into a real account and held write transactions
+		// on a real fleet.db until the TUI could no longer open it.
+		//
+		// Resolving is silent by design: it computes pathnames and touches
+		// nothing, so a jailed run and an escaped one are byte-identical here
+		// and stay indistinguishable until something WRITES. This is the last
+		// place the difference is visible, so a missing jail is an error here
+		// rather than a surprise several layers down.
+		if testing.Testing() && os.Getenv(EnvRealHome) == "" {
+			return Values{}, fmt.Errorf(
+				"refusing to resolve the operator's real home directory inside a test: "+
+					"point %s at a temporary directory (see internal/testjail), or set %s=1 "+
+					"if this test genuinely must read the host",
+				EnvHome, EnvRealHome,
+			)
+		}
 		var err error
 		home, err = os.UserHomeDir()
 		if err != nil {

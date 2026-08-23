@@ -639,7 +639,14 @@ func jailTest(t *testing.T) string {
 	t.Setenv("PFM_CLAUDE_ROOTS", filepath.Join(root, "claude"))
 	t.Setenv("PFM_CODEX_ROOT", filepath.Join(root, "codex"))
 	t.Setenv("PFM_TMUX_DIR", filepath.Join(root, "tmux"))
-	t.Setenv("PFM_HOME", filepath.Join(root, "home"))
+	jailedHome := filepath.Join(root, "home")
+	t.Setenv("PFM_HOME", jailedHome)
+	// HOME is the same concept under its other name. Pinning only
+	// PFM_HOME leaves anything reading the plain variable — the test
+	// itself, a subprocess, a library — writing into the operator's real
+	// account, which is how fixture transcripts reached a live
+	// ~/.claude/projects. The two must never be allowed to disagree.
+	t.Setenv("HOME", jailedHome)
 	canonical := filepath.Join(root, "home", ".local", "bin", "pfm")
 	if err := os.WriteFile(canonical, []byte("jailed-pfm"), 0o700); err != nil {
 		t.Fatal(err)

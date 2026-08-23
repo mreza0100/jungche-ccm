@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/config"
+	"hostops/pfm/internal/paths"
 )
 
 func TestConfigCLIRejectsGlobalConfigSyntaxAndLoadErrors(t *testing.T) {
@@ -301,7 +302,14 @@ func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 
 func TestConfiguredAccountRosterIsTheExactTranscriptSearchBoundary(t *testing.T) {
 	root := jailTest(t)
-	home := os.Getenv("HOME")
+	// The jail's home, not the plain HOME variable: this test writes a fixture
+	// transcript under it, and reading the raw variable once put that fixture
+	// in the operator's live ~/.claude/projects.
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := resolved.Home
 	configuredRoot := filepath.Join(home, "configured-account")
 	configuredProject := filepath.Join(configuredRoot, "projects", "configured-project")
 	legacyProject := filepath.Join(home, ".claude", "projects", "legacy-project")
