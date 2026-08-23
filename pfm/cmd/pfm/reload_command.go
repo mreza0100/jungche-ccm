@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"io/fs"
 	"os"
@@ -20,7 +21,6 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/reload"
 	"hostops/pfm/internal/resolve"
-	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/tmuxfmt"
 )
 
@@ -439,7 +439,7 @@ func reloadBirth(
 ) (int, bool, error) {
 	engine := reloadEngine(socketPath)
 	ids := machine.AccountIDs()
-	if engine == store.CodexEngine {
+	if engine == string(pfmengine.Codex) {
 		ids = machine.CodexAccountIDs()
 	}
 	if len(ids) == 0 {
@@ -460,7 +460,7 @@ func reloadBirth(
 			continue
 		}
 		matching := gather.IsClaudeCommand(argv, machine.Claude.Binary)
-		if engine == store.CodexEngine {
+		if engine == string(pfmengine.Codex) {
 			matching = gather.IsCodexCommand(argv, machine.Codex.Binary)
 		}
 		if !matching {
@@ -479,7 +479,7 @@ func reloadBirth(
 			fmt.Fprintf(stderr, "pfm chat reload: inspect process %d environment: %v\n", pid, err)
 			continue
 		}
-		if engine == store.CodexEngine {
+		if engine == string(pfmengine.Codex) {
 			account = accountForCodexHome(machine, env["CODEX_HOME"])
 		} else {
 			account = accountForConfig(machine, env["CLAUDE_CONFIG_DIR"])
@@ -489,7 +489,7 @@ func reloadBirth(
 	}
 	// A tool shell can be detached from the seat's process tree. In that case
 	// its own birth config is the only safe account rung for a cache-only reload.
-	if engine == store.CodexEngine {
+	if engine == string(pfmengine.Codex) {
 		account = accountForCodexHome(machine, os.Getenv("CODEX_HOME"))
 	} else {
 		account = accountForConfig(machine, os.Getenv("CLAUDE_CONFIG_DIR"))
@@ -499,13 +499,13 @@ func reloadBirth(
 
 func reloadEngine(socketPath string) string {
 	if strings.HasPrefix(filepath.Base(socketPath), "cx-") {
-		return store.CodexEngine
+		return string(pfmengine.Codex)
 	}
-	return store.ClaudeEngine
+	return string(pfmengine.Claude)
 }
 
 func reloadEngineLabel(engine string) string {
-	if engine == store.CodexEngine {
+	if engine == string(pfmengine.Codex) {
 		return "Codex"
 	}
 	return "Claude"
@@ -564,7 +564,7 @@ type reloadAccountSelection struct {
 }
 
 func validateReloadAccount(machine pfmconfig.Config, engine string, account int) (reloadAccountSelection, error) {
-	if engine == store.CodexEngine || engine == "codex" {
+	if engine == string(pfmengine.Codex) || engine == "codex" {
 		if len(machine.CodexAccounts) == 0 {
 			return reloadAccountSelection{}, errors.New("no Codex accounts configured")
 		}
@@ -642,7 +642,7 @@ func resolveReloadSession(
 	engine := reloadEngine(socketPath)
 	if id == "" && allowAmbient {
 		ambient := os.Getenv("CLAUDE_CODE_SESSION_ID")
-		if engine == store.CodexEngine {
+		if engine == string(pfmengine.Codex) {
 			ambient = os.Getenv("CODEX_THREAD_ID")
 		}
 		if chatUUIDPattern.MatchString(ambient) {
@@ -675,7 +675,7 @@ func resolveReloadSession(
 }
 
 func findEngineTranscript(resolved paths.Values, machine pfmconfig.Config, engine, id string) (string, error) {
-	if engine != store.CodexEngine {
+	if engine != string(pfmengine.Codex) {
 		return findClaudeTranscript(resolved.ClaudeRoots, id)
 	}
 	for _, account := range machine.CodexAccounts {

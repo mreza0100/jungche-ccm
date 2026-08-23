@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"sort"
 	"strings"
 
@@ -273,7 +274,7 @@ func (s *Store) codexLineageRows(
 	// quietly lapse because the row that named its engine was pruned.
 	killedByID := make(map[string]Killed, len(killedRows))
 	for _, killed := range killedRows {
-		if killed.Engine != ClaudeEngine {
+		if killed.Engine != string(pfmengine.Claude) {
 			killedByID[killed.ID] = killed
 		}
 	}

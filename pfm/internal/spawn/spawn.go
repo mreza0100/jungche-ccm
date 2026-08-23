@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"strings"
 	"time"
-
-	"hostops/pfm/internal/store"
 )
 
 // The Codex rename markers below are read from the codex binary's own strings
@@ -122,7 +121,7 @@ func Run(
 		Session: spec.Session,
 		Window:  window,
 		Name:    request.Name,
-		Named:   request.Engine == store.ClaudeEngine,
+		Named:   request.Engine == string(pfmengine.Claude),
 	}
 	target := spec.Session
 	trace.step("session %s created, running: %s", spec.Session, request.Run)
@@ -131,7 +130,7 @@ func Run(
 		return result, err
 	}
 	trace.step("booted | %s", screen(boot))
-	if request.Engine != store.CodexEngine {
+	if request.Engine != string(pfmengine.Codex) {
 		result.Prompted = request.Prompt != ""
 		return result, nil
 	}

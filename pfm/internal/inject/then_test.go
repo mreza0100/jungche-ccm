@@ -3,6 +3,7 @@ package inject
 import (
 	"context"
 	"errors"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -233,7 +234,7 @@ func TestWaiterCarriesTheSenderTheChatResolved(t *testing.T) {
 			SocketPath: "/tmp/tmux-jail/cx-1700000000-1-1",
 			SocketName: "cx-1700000000-1-1",
 			Pane:       "%3",
-			Engine:     resolve.CodexEngine,
+			Engine:     string(pfmengine.Codex),
 			ID:         "019ffd1e-300f",
 			Source:     "ancestry",
 			Recovered:  true,

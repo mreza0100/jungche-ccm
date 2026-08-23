@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,8 +12,6 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
-
-	"hostops/pfm/internal/resolve"
 )
 
 const (
@@ -98,7 +97,7 @@ func (engine *Engine) autoFileThreshold(engineName string) int {
 	// OpenCode inherits Codex's conservative bound: its composer paste edge is
 	// unverified, so it gets the smaller of the two measured thresholds rather
 	// than an invented one.
-	if engineName == "cx" || engineName == resolve.OpencodeEngine {
+	if engineName == "cx" || engineName == string(pfmengine.Opencode) {
 		return engine.options.CodexAutoFileMax
 	}
 	return engine.options.ClaudeAutoFileMax

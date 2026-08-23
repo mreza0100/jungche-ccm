@@ -3,6 +3,7 @@ package inject
 import (
 	"context"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -273,7 +274,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 			pane = identity.Pane
 		}
 		target := targetFromParts(identity.SocketPath, pane)
-		if identity.Engine == resolve.CodexEngine {
+		if identity.Engine == string(pfmengine.Codex) {
 			target.Engine = "cx"
 		}
 		return target, 0, "", nil
@@ -890,7 +891,7 @@ func engineName(engine string) string {
 	switch engine {
 	case "cx":
 		return "Codex"
-	case resolve.OpencodeEngine:
+	case string(pfmengine.Opencode):
 		return "OpenCode"
 	default:
 		return "Claude"
@@ -942,7 +943,7 @@ func paneCommandEngine(command string, binaries ...string) string {
 	}
 	if name == "opencode" ||
 		(opencodeBinary != "" && name == filepath.Base(opencodeBinary)) {
-		return resolve.OpencodeEngine
+		return string(pfmengine.Opencode)
 	}
 	if name == "codex" || (codexBinary != "" && name == filepath.Base(codexBinary)) {
 		return "cx"
@@ -1145,7 +1146,7 @@ func (engine *Engine) detectSender(ctx context.Context) Sender {
 	if err != nil || identity.Session == "" {
 		return sender
 	}
-	if sender.UUID == "" && identity.Engine == resolve.CodexEngine {
+	if sender.UUID == "" && identity.Engine == string(pfmengine.Codex) {
 		sender.UUID = identity.ID
 	}
 	sender.Session = identity.Session
@@ -1178,7 +1179,7 @@ func (engine *Engine) senderLabel(
 			return label
 		}
 	}
-	if identity.Engine != resolve.CodexEngine {
+	if identity.Engine != string(pfmengine.Codex) {
 		return ""
 	}
 	window, err := engine.tmux.WindowName(ctx, identity.SocketPath, target)
@@ -1211,9 +1212,9 @@ func targetFromParts(socketPath, pane string) Target {
 		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-cx-")) {
 		engine = "cx"
 	}
-	if strings.HasPrefix(base, resolve.OpencodeSocketPrefix) ||
-		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-"+resolve.OpencodeSocketPrefix)) {
-		engine = resolve.OpencodeEngine
+	if strings.HasPrefix(base, pfmengine.MustLookup(pfmengine.Opencode).SocketPrefix) ||
+		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-"+pfmengine.MustLookup(pfmengine.Opencode).SocketPrefix)) {
+		engine = string(pfmengine.Opencode)
 	}
 	return Target{SocketPath: socketPath, Pane: pane, Engine: engine}
 }

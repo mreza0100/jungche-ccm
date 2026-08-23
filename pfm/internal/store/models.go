@@ -1,17 +1,5 @@
 package store
 
-// ClaudeEngine and CodexEngine name the two chat engines. They are the source
-// of the same pair in internal/kill, which aliases them rather than repeating
-// the literals.
-const (
-	ClaudeEngine = "cc"
-	CodexEngine  = "cx"
-	// OpengineEngine is deliberately not a third spelling of the pair above:
-	// OpenCode chats stamp "ox" everywhere engine strings travel — kills,
-	// inject targets, socket prefixes — exactly like its two siblings.
-	OpencodeEngine = "ox"
-)
-
 // OcSession is one indexed OpenCode session, read from OpenCode's own SQLite
 // store (opencode.db). It is the OpenCode twin of Transcript/Rollout: every
 // field is derived data, rebuildable by re-reading that store.

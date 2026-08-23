@@ -1,6 +1,7 @@
 package compose
 
 import (
+	pfmengine "hostops/pfm/internal/engine"
 	"testing"
 
 	"hostops/pfm/internal/gather"
@@ -136,7 +137,7 @@ func TestLegacyKillLabelAndKilledTableRowRemainKilled(t *testing.T) {
 	)
 	input := Input{
 		Transcripts:  []store.Transcript{labelled, stored},
-		Killed:       []store.Killed{{ID: stored.UUID, Engine: store.ClaudeEngine}},
+		Killed:       []store.Killed{{ID: stored.UUID, Engine: string(pfmengine.Claude)}},
 		AccountRoots: fixtureAccountRoots(),
 		Options:      Options{View: DefaultView, PrimaryAccount: 1},
 	}

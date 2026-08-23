@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"io/fs"
 	"os"
@@ -132,7 +133,7 @@ func (locator FilesystemRolloutLocator) Locate(
 	return headless.Chat{
 		Name:    match.Name,
 		ID:      selected.meta.ID,
-		Engine:  codexEngine,
+		Engine:  string(pfmengine.Codex),
 		Path:    selected.path,
 		CWD:     selected.meta.CWD,
 		Socket:  match.Socket,

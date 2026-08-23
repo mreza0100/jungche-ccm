@@ -1,9 +1,8 @@
 package inject
 
 import (
+	pfmengine "hostops/pfm/internal/engine"
 	"testing"
-
-	"hostops/pfm/internal/resolve"
 )
 
 func TestPaneCommandEngineRecognizesOpencode(t *testing.T) {
@@ -12,9 +11,9 @@ func TestPaneCommandEngineRecognizesOpencode(t *testing.T) {
 		binaries []string
 		want     string
 	}{
-		{"opencode", nil, resolve.OpencodeEngine},
-		{"/home/me/.local/bin/opencode", nil, resolve.OpencodeEngine},
-		{"ocx", []string{"claude", "codex", "ocx"}, resolve.OpencodeEngine},
+		{"opencode", nil, string(pfmengine.Opencode)},
+		{"/home/me/.local/bin/opencode", nil, string(pfmengine.Opencode)},
+		{"ocx", []string{"claude", "codex", "ocx"}, string(pfmengine.Opencode)},
 		{"codex", []string{"claude", "codex"}, "cx"},
 		{"claude", nil, "cc"},
 		{"2.1.47", nil, "cc"},
@@ -31,7 +30,7 @@ func TestTargetFromPartsRecognizesOpencodeSockets(t *testing.T) {
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "")
 	for _, socket := range []string{"/tmp/tmux-0/ox-1-2-3,99,0"} {
 		target := targetFromParts(socket, "%5")
-		if target.Engine != resolve.OpencodeEngine {
+		if target.Engine != string(pfmengine.Opencode) {
 			t.Errorf("targetFromParts(%q).Engine = %q, want ox", socket, target.Engine)
 		}
 	}
@@ -43,13 +42,13 @@ func TestTargetFromPartsRecognizesOpencodeSockets(t *testing.T) {
 func TestTargetFromPartsProbeOpencodeSocket(t *testing.T) {
 	t.Setenv("PFM_TEST_PROBE_SOCKETS", "1")
 	target := targetFromParts("/tmp/jail/probe-ox-7,3,0", "%2")
-	if target.Engine != resolve.OpencodeEngine {
+	if target.Engine != string(pfmengine.Opencode) {
 		t.Errorf("probe socket engine = %q, want ox", target.Engine)
 	}
 }
 
 func TestEngineNameCoversOpencode(t *testing.T) {
-	if got := engineName(resolve.OpencodeEngine); got != "OpenCode" {
+	if got := engineName(string(pfmengine.Opencode)); got != "OpenCode" {
 		t.Errorf("engineName(ox) = %q, want OpenCode", got)
 	}
 }
@@ -59,7 +58,7 @@ func TestAutoFileThresholdInheritsCodexBoundForOpencode(t *testing.T) {
 		ClaudeAutoFileMax: 500,
 		CodexAutoFileMax:  300,
 	})}
-	if got := engine.autoFileThreshold(resolve.OpencodeEngine); got != 300 {
+	if got := engine.autoFileThreshold(string(pfmengine.Opencode)); got != 300 {
 		t.Errorf("ox threshold = %d, want Codex's 300", got)
 	}
 }
