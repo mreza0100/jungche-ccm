@@ -329,7 +329,7 @@ func TestReconcileCodexPanesUsesExistingBindingForDuplicateName(t *testing.T) {
 	}
 }
 
-func TestReconcileCodexPanesWarnsWhenDuplicateNameHasNoUsableBinding(t *testing.T) {
+func TestReconcileCodexPanesSkipsDuplicateNameWithoutUsableBindingQuietly(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -385,8 +385,8 @@ func TestReconcileCodexPanesWarnsWhenDuplicateNameHasNoUsableBinding(t *testing.
 				commandRuntime{Paths: resolved},
 				printWarn(&stderr),
 			)
-			if !strings.Contains(stderr.String(), `"FIX_HAND" matches more than one thread`) {
-				t.Fatalf("stderr = %q, want duplicate-name warning", stderr.String())
+			if stderr.Len() != 0 {
+				t.Fatalf("valid duplicate-name state printed a shutdown warning: %q", stderr.String())
 			}
 			bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
 			if err != nil {
@@ -401,5 +401,52 @@ func TestReconcileCodexPanesWarnsWhenDuplicateNameHasNoUsableBinding(t *testing.
 				}
 			}
 		})
+	}
+}
+
+func TestReconcileCodexPanesKeepsBoundThreadSilentWhenNameIsEmpty(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000007-1-1"
+	startCodexStatusPane(t, tmuxTmpDir, socket, `  · /work/example · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const boundID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+	codexJailRollout(t, database, root, boundID, 3)
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", boundID); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+	if stderr.Len() != 0 {
+		t.Fatalf("empty Codex name printed a shutdown warning: %q", stderr.String())
+	}
+	got, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+	if err != nil || !found || got != boundID {
+		t.Fatalf("empty-name binding = (%q, %v, %v), want unchanged %q", got, found, err, boundID)
+	}
+	if _, killed, err := database.Killed(context.Background(), boundID); err != nil || killed {
+		t.Fatalf("empty Codex name killed incumbent: killed=%v error=%v", killed, err)
 	}
 }

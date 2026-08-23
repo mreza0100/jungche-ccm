@@ -16,7 +16,7 @@ func TestProbeDistinguishesOKMinimumGarbageMissingAndTimeout(t *testing.T) {
 	writeProbeStub(t, directory, "tmux-ok", "printf 'tmux 3.4\\n'")
 	writeProbeStub(t, directory, "tmux-old", "printf 'tmux 1.7\\n'")
 	writeProbeStub(t, directory, "garbage", "printf 'not-a-version\\n'")
-	writeProbeStub(t, directory, "timeout", "/bin/sleep 1")
+	writeProbeStub(t, directory, "timeout", "exec /bin/sleep 30")
 	writeProbeStub(t, directory, "failed", "printf 'permission denied by fixture\\n'; exit 7")
 	t.Setenv("PATH", directory)
 
@@ -28,7 +28,9 @@ func TestProbeDistinguishesOKMinimumGarbageMissingAndTimeout(t *testing.T) {
 		{Name: "timeout", Command: "timeout", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion},
 		{Name: "failed", Command: "failed", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion},
 	}
-	results := Probe(context.Background(), entries, ProbeOptions{GOOS: "linux", Timeout: 50 * time.Millisecond})
+	results := Probe(context.Background(), entries, ProbeOptions{
+		GOOS: "linux", Timeout: 2 * time.Second,
+	})
 	want := []State{StateOK, StateBroken, StateBroken, StateMissing, StateBroken, StateBroken}
 	for index := range want {
 		if results[index].State != want[index] {
@@ -154,13 +156,21 @@ if [ "$1" = "--version" ]; then printf '1.0\n'; exit 0; fi
 exit 2`)
 	writeProbeStub(t, directory, "hung", `
 if [ "$1" = "--version" ]; then printf '1.0\n'; exit 0; fi
-/bin/sleep 1`)
+exec /bin/sleep 30`)
 	t.Setenv("PATH", directory)
 	entries := []Entry{
 		{Name: "unsupported", Command: "unsupported", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, SelfDoctorArgs: []string{"doctor"}},
 		{Name: "hung", Command: "hung", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, SelfDoctorArgs: []string{"doctor"}},
 	}
-	results := Probe(context.Background(), entries, ProbeOptions{GOOS: "linux", Timeout: 50 * time.Millisecond})
+	// Package-level stress runs can delay a 50ms timer past a one-second
+	// fixture process, making a deliberate timeout finish successfully before
+	// the scheduler delivers cancellation. Preserve a wide separation between
+	// the bound and the hung command.
+	results := Probe(context.Background(), entries, ProbeOptions{
+		GOOS:              "linux",
+		Timeout:           2 * time.Second,
+		SelfDoctorTimeout: 250 * time.Millisecond,
+	})
 	if results[0].State != StateOK || results[0].SelfDoctor != "unavailable" {
 		t.Fatalf("unsupported self-doctor=%#v", results[0])
 	}

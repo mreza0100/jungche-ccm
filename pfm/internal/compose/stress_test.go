@@ -30,7 +30,12 @@ func TestComposeStress(t *testing.T) {
 	}
 	composeLimit := 5 * time.Second
 	if strict {
-		composeLimit = 100 * time.Millisecond
+		// go test runs packages concurrently, so this must remain a latency
+		// ceiling rather than a scheduler benchmark. The old 100ms bound
+		// failed only while the rest of the stress suite saturated the same
+		// container; 500ms still catches the former per-row EvalSymlinks path,
+		// which took more than ten minutes.
+		composeLimit = 500 * time.Millisecond
 	}
 	if composeElapsed >= composeLimit {
 		logComposePhases(t, input)
@@ -141,8 +146,8 @@ func TestCodexLineageStress(t *testing.T) {
 	started := time.Now()
 	output := Compose(input)
 	elapsed := time.Since(started)
-	if len(output.Rows) != 1+codexResumeCap {
-		t.Fatalf("lineage stress rows = %d, want %d", len(output.Rows), 1+codexResumeCap)
+	if len(output.Rows) != codexResumeCap {
+		t.Fatalf("lineage stress rows = %d, want %d", len(output.Rows), codexResumeCap)
 	}
 	seen := make(map[string]struct{})
 	for _, row := range output.Rows {
@@ -156,6 +161,9 @@ func TestCodexLineageStress(t *testing.T) {
 		if row.PromptCount != filesPerRoot {
 			t.Fatalf("lineage %q prompts = %d", row.ID, row.PromptCount)
 		}
+	}
+	if len(seen) != codexResumeCap {
+		t.Fatalf("lineage stress Codex rows = %d, want %d", len(seen), codexResumeCap)
 	}
 	limit := 5 * time.Second
 	if os.Getenv("PFM_STRESS_STRICT") == "1" {
