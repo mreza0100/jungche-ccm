@@ -9,6 +9,19 @@ import (
 	"testing"
 )
 
+func TestMCPSystemdUnitStartsAtLogin(t *testing.T) {
+	raw, err := readAsset("systemd/pfm-mcp.service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit := string(raw)
+	for _, want := range []string{"[Install]", "WantedBy=default.target"} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("pfm-mcp.service missing %q; enabled Harvester would not return after login:\n%s", want, unit)
+		}
+	}
+}
+
 func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
@@ -37,8 +50,6 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 	} {
 		raw := readFixture(t, path)
 		for _, command := range []string{
-			home + "/.local/bin/pfm dream hook agent-inject",
-			home + "/.local/bin/pfm dream hook nudge",
 			home + "/.local/bin/pfm internal explore-deny",
 			home + "/.local/bin/pfm internal epic-inject",
 		} {

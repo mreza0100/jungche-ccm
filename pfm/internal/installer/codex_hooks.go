@@ -45,6 +45,9 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 			return command
 		})
 	}
+	if removeRetiredHookCommands(document) {
+		changed = true
+	}
 
 	for _, entry := range hookEntries(document, "SessionStart", false) {
 		hooks, _ := entry["hooks"].([]any)
