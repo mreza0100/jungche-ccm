@@ -27,7 +27,7 @@ const headlessHygiene = hygiene + " -u CODEX_THREAD_ID"
 
 // HeadlessRequest is one detached, named chat to start.
 type HeadlessRequest struct {
-	Engine         string
+	Engine         pfmengine.ID
 	Name           string
 	CWD            string
 	Prompt         string
@@ -62,91 +62,74 @@ type HeadlessPlan struct {
 // HeadlessRun synthesizes the engine command for a detached chat. It performs
 // no I/O and no tmux work: the caller owns the session.
 func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
-	if request.Name == "" {
-		return HeadlessPlan{}, errors.New("a headless chat requires a name")
-	}
-	if strings.ContainsAny(request.Name, "\n\r") {
-		return HeadlessPlan{}, errors.New("a chat name cannot contain newlines")
-	}
-	if request.CWD == "" {
-		return HeadlessPlan{}, errors.New(
-			"a headless chat requires a project directory",
-		)
-	}
-	if hasNUL(request.Name, request.CWD, request.Prompt, request.Home) {
-		return HeadlessPlan{}, errors.New("action values cannot contain NUL")
-	}
-
-	id, err := pfmengine.Parse(request.Engine)
+	planner, err := PlannerFor(request.Engine)
 	if err != nil {
 		return HeadlessPlan{}, err
 	}
-	switch id {
-	case pfmengine.Claude:
-		machine := normalizedMachineConfig(request.Config, request.Home)
-		if _, found := machine.Account(request.PrimaryAccount); !found {
-			return HeadlessPlan{}, fmt.Errorf(
-				"primary account %d is not in the configured roster",
-				request.PrimaryAccount,
-			)
-		}
-		if request.Effort != "" {
-			if _, known := claudeEfforts[strings.ToLower(request.Effort)]; !known {
-				return HeadlessPlan{}, fmt.Errorf(
-					"unknown Claude effort %q (want low, medium, high, xhigh or max)",
-					request.Effort,
-				)
-			}
-		}
-		arguments := []string{"--name", request.Name}
-		if request.Model != "" {
-			arguments = append(arguments, "--model", request.Model)
-		}
-		if request.Effort != "" {
-			arguments = append(arguments, "--effort", strings.ToLower(request.Effort))
-		}
-		if request.Prompt != "" {
-			arguments = append(arguments, request.Prompt)
-		}
-		return HeadlessPlan{
-			Run: claudeCommandWith(
-				headlessHygiene,
-				request.Home,
-				request.PrimaryAccount,
-				request.Cache1H,
-				machine,
-				arguments...,
-			),
-			PromptOnCommandLine: true,
-		}, nil
-	case pfmengine.Codex:
-		machine := normalizedMachineConfig(request.Config, request.Home)
-		if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
-			return HeadlessPlan{}, fmt.Errorf(
-				"Codex account %d is not in the configured roster",
-				request.PrimaryAccount,
-			)
-		}
-		// No name and no prompt on the command line: Codex has no launch flag
-		// for a thread name (codex 0.147 --help), so the name is set through
-		// the TUI's own rename, and a prompt given here would have the model
-		// working before that can land.
-		codexArguments := make([]string, 0, 4)
-		if request.Model != "" {
-			codexArguments = append(codexArguments, "--model", request.Model)
-		}
-		if request.Effort != "" {
-			// Codex takes reasoning effort as a config override, not a flag
-			// (codex --help: -c key=value); the value is quoted as TOML.
-			codexArguments = append(
-				codexArguments,
-				"-c",
-				`model_reasoning_effort="`+strings.ToLower(request.Effort)+`"`,
-			)
-		}
-		return HeadlessPlan{
-			Run: codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, codexArguments...),
-		}, nil
+	return planner.Plan(request)
+}
+
+func validateHeadlessRequest(request HeadlessRequest) error {
+	if request.Name == "" {
+		return errors.New("a headless chat requires a name")
 	}
-	return HeadlessPlan{}, fmt.Errorf("unsupported engine %q", request.Engine)
+	if strings.ContainsAny(request.Name, "\n\r") {
+		return errors.New("a chat name cannot contain newlines")
+	}
+	if request.CWD == "" {
+		return errors.New("a headless chat requires a project directory")
+	}
+	if hasNUL(request.Name, request.CWD, request.Prompt, request.Home) {
+		return errors.New("action values cannot contain NUL")
+	}
+	return nil
+}
+
+// PlanClaude contains the command synthesis used by Claude's planner.
+func PlanClaude(request HeadlessRequest) (HeadlessPlan, error) {
+	if err := validateHeadlessRequest(request); err != nil {
+		return HeadlessPlan{}, err
+	}
+	machine := normalizedMachineConfig(request.Config, request.Home)
+	if _, found := machine.Account(request.PrimaryAccount); !found {
+		return HeadlessPlan{}, fmt.Errorf("primary account %d is not in the configured roster", request.PrimaryAccount)
+	}
+	if request.Effort != "" {
+		if _, known := claudeEfforts[strings.ToLower(request.Effort)]; !known {
+			return HeadlessPlan{}, fmt.Errorf("unknown Claude effort %q (want low, medium, high, xhigh or max)", request.Effort)
+		}
+	}
+	arguments := []string{"--name", request.Name}
+	if request.Model != "" {
+		arguments = append(arguments, "--model", request.Model)
+	}
+	if request.Effort != "" {
+		arguments = append(arguments, "--effort", strings.ToLower(request.Effort))
+	}
+	if request.Prompt != "" {
+		arguments = append(arguments, request.Prompt)
+	}
+	return HeadlessPlan{
+		Run:                 claudeCommandWith(headlessHygiene, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...),
+		PromptOnCommandLine: true,
+	}, nil
+}
+
+// PlanCodex contains the command synthesis used by Codex's planner.
+func PlanCodex(request HeadlessRequest) (HeadlessPlan, error) {
+	if err := validateHeadlessRequest(request); err != nil {
+		return HeadlessPlan{}, err
+	}
+	machine := normalizedMachineConfig(request.Config, request.Home)
+	if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
+		return HeadlessPlan{}, fmt.Errorf("Codex account %d is not in the configured roster", request.PrimaryAccount)
+	}
+	arguments := make([]string, 0, 4)
+	if request.Model != "" {
+		arguments = append(arguments, "--model", request.Model)
+	}
+	if request.Effort != "" {
+		arguments = append(arguments, "-c", `model_reasoning_effort="`+strings.ToLower(request.Effort)+`"`)
+	}
+	return HeadlessPlan{Run: codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, arguments...)}, nil
 }

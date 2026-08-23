@@ -1,6 +1,10 @@
 package sky
 
-import lipgloss "charm.land/lipgloss/v2"
+import (
+	lipgloss "charm.land/lipgloss/v2"
+
+	pfmengine "hostops/pfm/internal/engine"
+)
 
 // styleClass enumerates every color role a cell can take. Each engine gets
 // four brightness levels; the depth cue drops the far body one level.
@@ -20,6 +24,11 @@ const (
 	clsCodex2 // bright gold
 	clsCodex3 // bold gold core
 
+	clsOpencode0 // far-dim magenta (faint)
+	clsOpencode1 // dim magenta
+	clsOpencode2 // bright magenta
+	clsOpencode3 // bold magenta core
+
 	clsCometHead
 	clsCometTail
 	clsCometFade
@@ -31,26 +40,33 @@ const (
 	numClasses
 )
 
-// engine selects which star a body renders as.
-type engine uint8
+const starFallback = clsBgStar
 
-const (
-	engClaude engine = iota
-	engCodex
-)
+var starBase = map[pfmengine.ID]styleClass{
+	pfmengine.Claude:   clsClaude0,
+	pfmengine.Codex:    clsCodex0,
+	pfmengine.Opencode: clsOpencode0,
+}
 
 // bodyCls maps engine x brightness level (0..3, clamped) to a styleClass.
-func bodyCls(e engine, lvl int) styleClass {
+func bodyCls(id pfmengine.ID, lvl int) styleClass {
 	if lvl < 0 {
 		lvl = 0
 	}
 	if lvl > 3 {
 		lvl = 3
 	}
-	if e == engClaude {
-		return clsClaude0 + styleClass(lvl)
+	base, ok := starBase[id]
+	if !ok {
+		return starFallback
 	}
-	return clsCodex0 + styleClass(lvl)
+	return base + styleClass(lvl)
+}
+
+// StarClass renders one cell with an engine's star style. Unknown engines use
+// the explicit fallback class rather than inheriting a built-in's identity.
+func StarClass(id pfmengine.ID) string {
+	return styleTab[bodyCls(id, 1)].Render("·")
 }
 
 // styleTab pre-renders one lipgloss style per class. 16-color ANSI only,
@@ -72,6 +88,13 @@ var styleTab = func() [numClasses]lipgloss.Style {
 	t[clsCodex1] = fg("3")
 	t[clsCodex2] = fg("11")
 	t[clsCodex3] = fg("11").Bold(true)
+
+	// The theme's third accent is magenta, deliberately distinct from the
+	// blue and amber built-ins.
+	t[clsOpencode0] = fg("5").Faint(true)
+	t[clsOpencode1] = fg("5")
+	t[clsOpencode2] = fg("13")
+	t[clsOpencode3] = fg("13").Bold(true)
 
 	t[clsCometHead] = fg("15").Bold(true)
 	t[clsCometTail] = fg("7")

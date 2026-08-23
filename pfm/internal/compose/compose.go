@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/store"
@@ -92,7 +93,7 @@ func Compose(input Input) Output {
 			continue
 		}
 		row := current.transcriptRow(transcript, ResumeClaude)
-		row = current.applyKill(row, "cc")
+		row = current.applyKill(row, pfmengine.Claude)
 		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if input.Options.View == DefaultView {
 			if defaultEligible(row) {
@@ -132,7 +133,7 @@ func Compose(input Input) Output {
 			continue
 		}
 		row := current.rolloutRow(lineage.Newest, ResumeCodex)
-		row = current.applyKill(row, "cx")
+		row = current.applyKill(row, pfmengine.Codex)
 		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if input.Options.View == DefaultView {
 			if defaultEligible(row) {
@@ -174,7 +175,7 @@ func Compose(input Input) Output {
 			continue
 		}
 		row := current.ocSessionRow(session)
-		row = current.applyKill(row, "ox")
+		row = current.applyKill(row, pfmengine.Opencode)
 		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
 		if input.Options.View == DefaultView {
 			if defaultEligible(row) {
@@ -379,7 +380,7 @@ func (current *composer) liveClaudeRows() ([]Row, []Row) {
 	crumbs := make(map[string]*crumbsForSocket)
 	for index := range current.input.Snapshot.Crumbs {
 		crumb := current.input.Snapshot.Crumbs[index]
-		if !strings.HasPrefix(crumb.Socket, "cc-") {
+		if id, ok := pfmengine.FromSocket(crumb.Socket); !ok || id != pfmengine.Claude {
 			continue
 		}
 		socketCrumbs := crumbs[crumb.Socket]
@@ -835,7 +836,7 @@ func (current *composer) lineageRoot(rollout store.Rollout) string {
 	return rollout.ID
 }
 
-func (current *composer) applyKill(row Row, engine string) Row {
+func (current *composer) applyKill(row Row, engine pfmengine.ID) Row {
 	// A "_KILL…" label is a kill the user writes by renaming the chat, so it
 	// needs no id, no store row and no picker keystroke — which is why it is
 	// tested BEFORE every id-shaped guard below and applies to a live chat the
@@ -877,11 +878,11 @@ func (current *composer) applyKill(row Row, engine string) Row {
 // See also codexLineageKilled (store/queries.go), the cached first frame's
 // copy of this same question — the two must never disagree about what the
 // user sees.
-func (current *composer) killedMatch(id, engine string, promptCount int64) bool {
+func (current *composer) killedMatch(id string, engine pfmengine.ID, promptCount int64) bool {
 	if killMatchesID(current.killedByID, id, engine, promptCount) {
 		return true
 	}
-	if engine != "cx" {
+	if engine != pfmengine.Codex {
 		return false
 	}
 	lineage, found := current.lineageByRoot[id]
@@ -898,7 +899,8 @@ func (current *composer) killedMatch(id, engine string, promptCount int64) bool 
 
 func killMatchesID(
 	killedByID map[string]store.Killed,
-	id, engine string,
+	id string,
+	engine pfmengine.ID,
 	promptCount int64,
 ) bool {
 	killed, found := killedByID[id]
@@ -1045,7 +1047,7 @@ func collapseLiveServers(rows []Row) []Row {
 			standalone = append(standalone, row)
 			continue
 		}
-		key := EngineForKind(row.Kind) + "\x00" + row.ID
+		key := string(EngineForKind(row.Kind)) + "\x00" + row.ID
 		incumbent, found := winners[key]
 		if !found {
 			winners[key] = winner{row: row, count: 1}
@@ -1081,7 +1083,10 @@ func newerSocket(challenger, incumbent string) bool {
 
 func socketEpoch(socket string) int64 {
 	parts := strings.Split(socket, "-")
-	if len(parts) != 4 || (parts[0] != "cc" && parts[0] != "cx") {
+	if len(parts) != 4 {
+		return 0
+	}
+	if _, ok := pfmengine.FromSocket(socket); !ok {
 		return 0
 	}
 	epoch, err := strconv.ParseInt(parts[1], 10, 64)
@@ -1201,17 +1206,19 @@ func configuredID(ids []int, account int) bool {
 	return false
 }
 
-// EngineForKind reports the engine ("cc" or "cx") a row's kind belongs to —
+// EngineForKind reports the engine ID a row's kind belongs to —
 // exported so a caller resolving an id against a compose pass (cmd/pfm's
 // CLI kill) can vouch for the same engine the picker itself would.
-func EngineForKind(kind Kind) string {
+func EngineForKind(kind Kind) pfmengine.ID {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:
-		return "cx"
+		return pfmengine.Codex
 	case ResumeOpencode:
-		return "ox"
+		return pfmengine.Opencode
+	case LiveClaude, ResumeClaude, NewClaude, LiveSplit, Agent, Booting:
+		return pfmengine.Claude
 	default:
-		return "cc"
+		return ""
 	}
 }
 

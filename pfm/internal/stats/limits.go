@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/usagehook"
 )
 
@@ -23,7 +24,7 @@ const defaultCodexUsageEndpoint = "https://chatgpt.com/backend-api/wham/usage"
 type LimitAccount struct {
 	ID            int
 	Emoji         string
-	Engine        string
+	Engine        pfmengine.ID
 	Label         string
 	Absent        bool
 	SkipReason    string
@@ -297,16 +298,20 @@ func (sampler *LimitsSampler) ttl() time.Duration {
 
 func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount, key string, now time.Time) cachedLimits {
 	engine := account.Engine
-	if engine == "" {
-		engine = "claude"
-	}
 	label := account.Label
-	if label == "" && engine == "claude" {
-		label = fmt.Sprintf("account %d", account.ID)
+	if label == "" && engine != "" {
+		label = fmt.Sprintf("%s account %d", pfmengine.MustLookup(engine).Short, account.ID)
 	}
 	entry := cachedLimits{limits: AccountLimits{
 		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label, Absent: account.Absent,
 	}, when: now}
+	source, err := UsageSourceFor(engine)
+	if err != nil {
+		entry.limits.Status = err.Error()
+		entry.warnings = append(entry.warnings, err.Error())
+		sampler.store(key, entry)
+		return entry
+	}
 	if account.Absent {
 		entry.limits.Status = label
 		sampler.store(key, entry)
@@ -317,64 +322,13 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 		sampler.store(key, entry)
 		return entry
 	}
-	if engine == "codex" {
-		usage, confirmedAt, err := sampler.fetchCodexForAccount(ctx, account)
-		if err != nil {
-			windows := codexWindows(usage)
-			if !confirmedAt.IsZero() && len(windows) > 0 && staleEligible(err) {
-				entry.limits.Plan = usage.PlanType
-				entry.limits.ConfirmedAt = confirmedAt
-				entry.limits.Windows = windows
-				entry.limits.Status = staleStatus(err)
-				entry.warnings = append(entry.warnings, fmt.Sprintf(
-					"%s limits refresh failed; showing cache confirmed %s: %v",
-					label, confirmedAt.Format(time.RFC3339), err,
-				))
-			} else {
-				entry.limits.Status = err.Error()
-				entry.warnings = append(entry.warnings, fmt.Sprintf("%s limits unavailable: %v", label, err))
-			}
-		} else {
-			entry.limits.Plan = usage.PlanType
-			entry.limits.ConfirmedAt = confirmedAt
-			entry.limits.Windows = codexWindows(usage)
+	fetched, fetchErr := source.Fetch(withLimitsSampler(ctx, sampler), account)
+	applyFetchedLimits(&entry.limits, fetched)
+	if fetchErr != nil {
+		if entry.limits.Status == "" {
+			entry.limits.Status = fetchErr.Error()
 		}
-		if err == nil && len(entry.limits.Windows) == 0 {
-			entry.limits.Status = "Codex payload unreadable"
-			entry.warnings = append(entry.warnings, entry.limits.Status)
-		}
-		sampler.store(key, entry)
-		return entry
-	}
-	usage, confirmedAt, err := sampler.fetchClaude(ctx, account)
-	if err != nil && needsCredentialRefresh(err) {
-		if sampler.tryAck(ctx, account) == nil {
-			usage, confirmedAt, err = sampler.fetchClaudeAfterCredentialRefresh(ctx, account)
-		}
-	}
-	if err != nil {
-		windows := usageWindows(usage, now)
-		if !confirmedAt.IsZero() && len(windows) > 0 && staleEligible(err) {
-			entry.limits.ConfirmedAt = confirmedAt
-			entry.limits.Windows = windows
-			entry.limits.Status = staleStatus(err)
-			entry.warnings = append(entry.warnings, fmt.Sprintf(
-				"%s limits refresh failed; showing cache confirmed %s: %v",
-				label, confirmedAt.Format(time.RFC3339), err,
-			))
-		} else if isCredentialRejection(err) {
-			entry.limits.Status = fmt.Sprintf("skipped %s: credentials rejected", label)
-		} else {
-			entry.limits.Status = fmt.Sprintf("account %d limits unavailable: %v", account.ID, err)
-			entry.warnings = append(entry.warnings, entry.limits.Status)
-		}
-	} else {
-		entry.limits.ConfirmedAt = confirmedAt
-		entry.limits.Windows = usageWindows(usage, now)
-		if len(entry.limits.Windows) == 0 {
-			entry.limits.Status = fmt.Sprintf("account %d limits unavailable: empty usage response", account.ID)
-			entry.warnings = append(entry.warnings, entry.limits.Status)
-		}
+		entry.warnings = append(entry.warnings, fetchErr.Error())
 	}
 	sampler.store(key, entry)
 	return entry
@@ -470,7 +424,7 @@ func needsCredentialRefresh(err error) bool {
 func defaultAck(ctx context.Context, account LimitAccount) error {
 	binary := account.ClaudeBinary
 	if binary == "" {
-		binary = "claude"
+		binary = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
 	command := exec.CommandContext(ctx, deps.Executable(binary), "-p", "ACK", "--model", "claude-haiku-4-5", "--max-turns", "1")
 	command.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+account.ConfigDir)

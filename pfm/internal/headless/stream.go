@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/transcript"
 )
 
@@ -42,7 +43,8 @@ type StreamOptions struct {
 // the file is drained.
 func Stream(
 	ctx context.Context,
-	path, engine string,
+	path string,
+	engine pfmengine.ID,
 	options StreamOptions,
 	out io.Writer,
 ) error {
@@ -76,7 +78,7 @@ func Stream(
 		case len(line) > 0 && readErr == nil:
 			full := append(pending, line...)
 			pending = nil
-			if entry, ok := transcript.Parse(full, engine); ok {
+			if entry, ok := transcript.Parse(full, string(engine)); ok {
 				if err := window.add(render(entry, options.Raw)); err != nil {
 					return err
 				}

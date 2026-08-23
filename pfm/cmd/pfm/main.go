@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/mcpserv"
 	"hostops/pfm/internal/store"
@@ -91,7 +92,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runWhoami(args[1:], stdout, stderr, runtime)
 	case "mcp":
 		return runMCP(args[1:], stdout, stderr, runtime)
-	case "codex":
+	case pfmengine.MustLookup(pfmengine.Codex).LongName:
 		return runCodex(args[1:], stdout, stderr, runtime)
 	case "internal":
 		return runInternal(args[1:], stdout, stderr, runtime)
@@ -246,7 +247,7 @@ func runKill(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 	defer database.Close()
 	ctx := context.Background()
 	id := ""
-	engine := ""
+	var engine pfmengine.ID
 	rolloutPath := ""
 	if flags.NArg() == 1 {
 		id = flags.Arg(0)
@@ -404,6 +405,11 @@ func runInternal(
 		flags.Usage()
 		return 2
 	}
+	engineID, err := pfmengine.Parse(*engine)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm internal kill-exit: %v\n", err)
+		return 1
+	}
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal kill-exit: %v\n", err)
@@ -417,7 +423,7 @@ func runInternal(
 	})
 	if err == nil {
 		err = finisher.Run(context.Background(), kill.ExitArgs{
-			Engine:     *engine,
+			Engine:     engineID,
 			ID:         *id,
 			DataPath:   *dataPath,
 			SocketPath: *socket,

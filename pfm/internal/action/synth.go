@@ -9,6 +9,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // hygiene is the launch-environment strip every fleet-born process carries
@@ -115,7 +116,7 @@ func Synthesize(request Request) (Plan, error) {
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Claude action requires a project directory")
 		}
-		command := "cc" + strconv.Itoa(request.PrimaryAccount)
+		command := string(pfmengine.Claude) + strconv.Itoa(request.PrimaryAccount)
 		armed := "CC_ARM_1H=0 ENABLE_PROMPT_CACHING_1H=0 "
 		if request.Cache1H {
 			armed = "CC_ARM_1H=1 "
@@ -141,7 +142,7 @@ func Synthesize(request Request) (Plan, error) {
 		command.WriteByte(' ')
 		command.WriteString(binaryWord(
 			machine.OpenCode.Binary,
-			"opencode",
+			pfmengine.MustLookup(pfmengine.Opencode).Binary,
 			machine.Source("opencode.binary") == pfmconfig.SourceFile,
 		))
 		command.WriteString(" --session ")
@@ -321,7 +322,7 @@ func claudeCommandWith(
 	command.WriteByte(' ')
 	command.WriteString(binaryWord(
 		machine.Claude.Binary,
-		"claude",
+		pfmengine.MustLookup(pfmengine.Claude).Binary,
 		machine.Source("claude.binary") == pfmconfig.SourceFile,
 	))
 	for _, argument := range args {
@@ -436,8 +437,8 @@ func codexCommandWithAccount(
 	command.WriteByte(' ')
 	command.WriteString(binaryWord(
 		policy.Binary,
-		"codex",
-		policy.Binary != "" && policy.Binary != "codex",
+		pfmengine.MustLookup(pfmengine.Codex).Binary,
+		policy.Binary != "" && policy.Binary != pfmengine.MustLookup(pfmengine.Codex).Binary,
 	))
 	if policy.Yolo {
 		command.WriteString(" --dangerously-bypass-approvals-and-sandbox")

@@ -164,7 +164,7 @@ func excerptNeedles(value string) []string {
 }
 
 func claudeTranscriptFiles(resolved paths.Values, includeLegacyPrimary bool) ([]string, error) {
-	roots := append([]string(nil), resolved.ClaudeRoots...)
+	roots := append([]string(nil), resolved.Roots[pfmengine.Claude]...)
 	if includeLegacyPrimary {
 		roots = append([]string{filepath.Join(resolved.Home, ".claude", "projects")}, roots...)
 	}
@@ -691,7 +691,7 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 		return filepath.Join(config, "projects", slug, id+".jsonl")
 	}
 	if len(runtimes) != 0 {
-		roots := runtimes[0].Paths.ClaudeRoots
+		roots := runtimes[0].Paths.Roots[pfmengine.Claude]
 		for _, root := range roots {
 			candidate := filepath.Join(root, slug, id+".jsonl")
 			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
@@ -714,7 +714,7 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 
 func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) string {
 	machine := pfmconfig.Config{
-		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: "claude"},
+		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary},
 	}
 	if len(machines) != 0 {
 		machine = machines[0]

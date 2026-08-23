@@ -137,7 +137,7 @@ func TestLegacyKillLabelAndKilledTableRowRemainKilled(t *testing.T) {
 	)
 	input := Input{
 		Transcripts:  []store.Transcript{labelled, stored},
-		Killed:       []store.Killed{{ID: stored.UUID, Engine: string(pfmengine.Claude)}},
+		Killed:       []store.Killed{{ID: stored.UUID, Engine: pfmengine.Claude}},
 		AccountRoots: fixtureAccountRoots(),
 		Options:      Options{View: DefaultView, PrimaryAccount: 1},
 	}

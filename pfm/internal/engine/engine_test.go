@@ -61,3 +61,16 @@ func TestRegisterRefusesADuplicate(t *testing.T) {
 	}()
 	Register(MustLookup(Claude))
 }
+
+func TestFromSocketRecognizesEveryEngine(t *testing.T) {
+	for _, id := range All() {
+		name := MustLookup(id).SocketPrefix + "session"
+		got, ok := FromSocket(name)
+		if !ok || got != id {
+			t.Fatalf("FromSocket(%q) = %q, %t; want %q, true", name, got, ok, id)
+		}
+	}
+	if got, ok := FromSocket("zz-session"); ok || got != "" {
+		t.Fatalf("FromSocket(unknown) = %q, %t; want empty, false", got, ok)
+	}
+}

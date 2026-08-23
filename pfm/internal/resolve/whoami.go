@@ -293,10 +293,8 @@ func socketFromTMUX(value string) (string, string) {
 }
 
 func engineForSocket(socketName string) string {
-	if strings.HasPrefix(socketName, "cx-") {
-		return string(pfmengine.Codex)
-	}
-	return string(pfmengine.Claude)
+	id, _ := pfmengine.FromSocket(socketName)
+	return string(id)
 }
 
 // CommandTmuxNamer asks a tmux server for a session name over its socket path.

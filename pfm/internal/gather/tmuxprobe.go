@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/tmuxfmt"
 )
 
@@ -470,7 +471,8 @@ func IsChatSocketName(name string) bool {
 		strings.HasPrefix(name, "probe-") {
 		return true
 	}
-	return strings.HasPrefix(name, "cc-") || strings.HasPrefix(name, "cx-")
+	_, ok := pfmengine.FromSocket(name)
+	return ok
 }
 
 func isChatSocketName(name string) bool {

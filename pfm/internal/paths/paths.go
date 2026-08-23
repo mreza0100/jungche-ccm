@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const (
@@ -52,16 +54,12 @@ func TmuxConfigArguments() []string {
 // nothing else reads it. SharedDB is the authoritative operator state: kills,
 // teammates, and the primary account.
 type Values struct {
-	DB          string
-	SharedDB    string
-	SIDDir      string
-	ClaudeRoots []string
-	CodexRoot   string
-	// OpenCodeRoot is OpenCode's data home: the directory holding its SQLite
-	// session store (opencode.db). It is the OpenCode twin of CodexRoot.
-	OpenCodeRoot string
-	TmuxDir      string
-	Home         string
+	DB       string
+	SharedDB string
+	SIDDir   string
+	Roots    map[pfmengine.ID][]string
+	TmuxDir  string
+	Home     string
 	// ArchiveDir is ~/.claude-archive: where archived transcripts and rollouts
 	// go, with the manifest that puts them back. It is defined relative to Home.
 	ArchiveDir string
@@ -109,9 +107,14 @@ func Resolve() (Values, error) {
 		}
 	}
 
-	var claudeRoots []string
-	if value := os.Getenv(EnvClaudeRoots); value != "" {
-		claudeRoots = filepath.SplitList(value)
+	roots := make(map[pfmengine.ID][]string, len(pfmengine.All()))
+	for _, id := range pfmengine.All() {
+		descriptor := pfmengine.MustLookup(id)
+		if value := os.Getenv(descriptor.RootEnv); value != "" {
+			roots[id] = filepath.SplitList(value)
+		} else {
+			roots[id] = descriptor.DefaultRoots(home)
+		}
 	}
 
 	tmuxBase := EnvOr("TMUX_TMPDIR", defaultTmpDir)
@@ -120,14 +123,9 @@ func Resolve() (Values, error) {
 		DB: EnvOr(EnvDB, filepath.Join(home, ".local", "state", "pfm", "fleet.db")),
 		// The shared database defaults to $HOME/.cc/fleet.db. PFM_DB already
 		// overrides the private cache, so the shared handle gets a distinct name.
-		SharedDB:    EnvOr(EnvSharedDB, filepath.Join(home, ".cc", "fleet.db")),
-		SIDDir:      EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
-		ClaudeRoots: claudeRoots,
-		CodexRoot:   EnvOr(EnvCodexRoot, filepath.Join(home, ".codex")),
-		OpenCodeRoot: EnvOr(
-			EnvOpencodeRoot,
-			filepath.Join(home, ".local", "share", "opencode"),
-		),
+		SharedDB:   EnvOr(EnvSharedDB, filepath.Join(home, ".cc", "fleet.db")),
+		SIDDir:     EnvOr(EnvSIDDir, filepath.Join(defaultTmpDir, "cc-sid")),
+		Roots:      roots,
 		TmuxDir:    EnvOr(EnvTmuxDir, filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))),
 		Home:       home,
 		ArchiveDir: filepath.Join(home, ".claude-archive"),

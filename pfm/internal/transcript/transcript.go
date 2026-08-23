@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/naming"
 )
 
@@ -87,7 +88,7 @@ func Parse(line []byte, engine string) (Entry, bool) {
 	if err := json.Unmarshal(line, &parsed); err != nil || parsed.IsSidechain {
 		return Entry{}, false
 	}
-	if engine == "cx" {
+	if engine == string(pfmengine.Codex) {
 		return parseCodex(parsed)
 	}
 	return parseClaude(parsed)

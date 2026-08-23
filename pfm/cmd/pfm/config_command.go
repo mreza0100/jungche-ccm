@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func runConfig(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
@@ -31,7 +32,7 @@ func runConfig(args []string, stdout, stderr io.Writer, runtime commandRuntime) 
 			fmt.Fprintln(stderr, "usage: pfm config validate")
 			return 2
 		}
-		loaded, err := pfmconfig.Load(runtime.Config.Path, runtime.Paths.Home, runtime.Paths.ClaudeRoots)
+		loaded, err := pfmconfig.Load(runtime.Config.Path, runtime.Paths.Home, runtime.Paths.Roots[pfmengine.Claude])
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm config validate: %v\n", err)
 			return 1
@@ -54,7 +55,7 @@ func runConfigInit(args []string, stdout, stderr io.Writer, runtime commandRunti
 		flags.Usage()
 		return 2
 	}
-	if err := pfmconfig.WriteDefault(runtime.Config.Path, runtime.Paths.Home, runtime.Paths.ClaudeRoots, *force); err != nil {
+	if err := pfmconfig.WriteDefault(runtime.Config.Path, runtime.Paths.Home, runtime.Paths.Roots[pfmengine.Claude], *force); err != nil {
 		fmt.Fprintf(stderr, "pfm config init: %v\n", err)
 		return 1
 	}
@@ -99,8 +100,10 @@ func printResolvedConfig(stdout io.Writer, runtime commandRuntime) {
 		fmt.Fprintf(stdout, "config mcp.authToken=<redacted> (%s)\n", config.Source("mcp.authToken"))
 	}
 	fmt.Fprintf(stdout, "config ask.engine=%s (%s)\n", config.Ask.Engine, config.Source("ask.engine"))
-	fmt.Fprintf(stdout, "config ask.codex.model=%s (%s)\n", config.Ask.Codex.Model, config.Source("ask.codex.model"))
-	fmt.Fprintf(stdout, "config ask.codex.effort=%s (%s)\n", config.Ask.Codex.Effort, config.Source("ask.codex.effort"))
-	fmt.Fprintf(stdout, "config ask.claude.model=%s (%s)\n", config.Ask.Claude.Model, config.Source("ask.claude.model"))
-	fmt.Fprintf(stdout, "config ask.claude.effort=%s (%s)\n", config.Ask.Claude.Effort, config.Source("ask.claude.effort"))
+	for _, id := range pfmengine.All() {
+		name := pfmengine.MustLookup(id).LongName
+		prefs := config.Ask.PrefsFor(id)
+		fmt.Fprintf(stdout, "config ask.%s.model=%s (%s)\n", name, prefs.Model, config.Source("ask."+name+".model"))
+		fmt.Fprintf(stdout, "config ask.%s.effort=%s (%s)\n", name, prefs.Effort, config.Source("ask."+name+".effort"))
+	}
 }

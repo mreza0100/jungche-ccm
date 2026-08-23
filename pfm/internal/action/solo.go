@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
@@ -60,7 +61,8 @@ func (executor *Executor) Solo(
 	}
 	for _, entry := range entries {
 		socket, paneID, ok := gather.ParseCrumbName(entry.Name())
-		if !ok || !strings.HasPrefix(socket, "cc-") ||
+		engineID, known := pfmengine.FromSocket(socket)
+		if !ok || !known || engineID != pfmengine.Claude ||
 			(keepSocket != "" && socket == keepSocket) {
 			continue
 		}
@@ -211,12 +213,22 @@ func isStrayClaude(process Process, id string, claudeBinaries ...string) bool {
 			break
 		}
 	}
-	if executableName != "claude" && !configured &&
-		!strings.Contains(executable, "/claude/versions/") {
+	descriptor := pfmengine.MustLookup(pfmengine.Claude)
+	if executableName != descriptor.Binary && !configured &&
+		!pathMatchesHints(executable, descriptor.BinaryPathHints) {
 		return false
 	}
 	for _, argument := range process.Argv {
 		if strings.Contains(argument, id) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathMatchesHints(path string, hints []string) bool {
+	for _, hint := range hints {
+		if strings.Contains(path, hint) {
 			return true
 		}
 	}

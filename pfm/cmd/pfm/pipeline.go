@@ -13,6 +13,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/kill"
@@ -187,7 +188,7 @@ func scanFleet(
 	if err != nil {
 		return scanResult{}, err
 	}
-	indexer, err := fleetindex.NewWithCodexRoots(database, environment.paths, codexHomes(environment.config))
+	indexer, err := fleetindex.NewWithRoots(database, environment.paths, environment.paths.Roots)
 	if err != nil {
 		return scanResult{}, err
 	}
@@ -245,7 +246,7 @@ func resolveRowEngine(
 	id string,
 	stderr io.Writer,
 	runtimes ...commandRuntime,
-) (string, string) {
+) (pfmengine.ID, string) {
 	request := scanRequest{View: compose.AllView}
 	if len(runtimes) != 0 {
 		request.Runtime = &runtimes[0]
@@ -306,7 +307,7 @@ func resolveScanEnvironment(request scanRequest) (scanEnvironment, error) {
 		if err != nil {
 			return scanEnvironment{}, err
 		}
-		machine = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
+		machine = pfmconfig.Defaults(resolved.Home, resolved.Roots[pfmengine.Claude], firstRoot(resolved.Roots[pfmengine.Codex]))
 	}
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -633,7 +634,7 @@ func streamFleetRefreshesWith(
 	newIndexer := dependencies.newIndexer
 	if newIndexer == nil {
 		newIndexer = func(database *store.Store) (indexRunner, error) {
-			return fleetindex.NewWithCodexRoots(database, environment.paths, codexHomes(environment.config))
+			return fleetindex.NewWithRoots(database, environment.paths, environment.paths.Roots)
 		}
 	}
 	indexer, err := newIndexer(database)
@@ -893,7 +894,7 @@ func readPrimaryAccount(
 	values paths.Values,
 	configs ...pfmconfig.Config,
 ) int {
-	machine := pfmconfig.Defaults(values.Home, values.ClaudeRoots)
+	machine := pfmconfig.Defaults(values.Home, values.Roots[pfmengine.Claude])
 	if len(configs) != 0 {
 		machine = configs[0]
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -12,7 +13,7 @@ func TestLimitAccountsKeepCodexIndependentFromClaudeRoster(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv(paths.EnvHome, home)
 	runtime := commandRuntime{
-		Paths: paths.Values{Home: home, CodexRoot: filepath.Join(home, ".codex")},
+		Paths: paths.Values{Home: home, Roots: map[pfmengine.ID][]string{pfmengine.Codex: {filepath.Join(home, ".codex")}}},
 		Config: pfmconfig.Config{
 			Claude: pfmconfig.Claude{Binary: "claude"},
 			Accounts: []pfmconfig.Account{
@@ -43,7 +44,7 @@ func TestLimitAccountsKeepCodexIndependentFromClaudeRoster(t *testing.T) {
 		{id: 2, offset: 4, label: "Codex 2", emoji: "🔷", auth: filepath.Join(home, ".codex-2", "auth.json")},
 	} {
 		codex := accounts[want.offset]
-		if codex.ID != want.id || codex.Engine != "codex" || codex.Label != want.label || codex.Emoji != want.emoji || codex.CodexAuthPath != want.auth {
+		if codex.ID != want.id || codex.Engine != pfmengine.Codex || codex.Label != want.label || codex.Emoji != want.emoji || codex.CodexAuthPath != want.auth {
 			t.Fatalf("Codex account %d=%#v, want id=%d label=%q emoji=%q auth=%q", index, codex, want.id, want.label, want.emoji, want.auth)
 		}
 	}

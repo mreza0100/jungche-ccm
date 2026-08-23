@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -33,13 +34,14 @@ func loadCommandRuntime(configPath string) (commandRuntime, error) {
 	effective, err := pfmconfig.Load(
 		configPath,
 		resolved.Home,
-		resolved.ClaudeRoots,
-		resolved.CodexRoot,
+		resolved.Roots[pfmengine.Claude],
+		firstRoot(resolved.Roots[pfmengine.Codex]),
 	)
 	if err != nil {
 		return commandRuntime{}, err
 	}
-	resolved.ClaudeRoots = effective.ProjectRoots()
+	resolved.Roots[pfmengine.Claude] = effective.ProjectRoots()
+	resolved.Roots[pfmengine.Codex] = codexHomes(effective)
 	return commandRuntime{Config: effective, Paths: resolved}, nil
 }
 
@@ -48,9 +50,10 @@ func loadDiagnosticRuntime(configPath string) (commandRuntime, error) {
 	if err != nil {
 		return commandRuntime{}, fmt.Errorf("resolve paths: %w", err)
 	}
-	effective, configErr := pfmconfig.Load(configPath, resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
+	effective, configErr := pfmconfig.Load(configPath, resolved.Home, resolved.Roots[pfmengine.Claude], firstRoot(resolved.Roots[pfmengine.Codex]))
 	if configErr == nil {
-		resolved.ClaudeRoots = effective.ProjectRoots()
+		resolved.Roots[pfmengine.Claude] = effective.ProjectRoots()
+		resolved.Roots[pfmengine.Codex] = codexHomes(effective)
 		return commandRuntime{Config: effective, Paths: resolved}, nil
 	}
 	// Diagnostics must remain usable on a broken config. They operate on
@@ -59,11 +62,19 @@ func loadDiagnosticRuntime(configPath string) (commandRuntime, error) {
 	if path == "" {
 		path = pfmconfig.ResolvePath(resolved.Home)
 	}
-	effective = pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot)
+	effective = pfmconfig.Defaults(resolved.Home, resolved.Roots[pfmengine.Claude], firstRoot(resolved.Roots[pfmengine.Codex]))
 	effective.Path = path
 	effective.Exists = true
-	resolved.ClaudeRoots = effective.ProjectRoots()
+	resolved.Roots[pfmengine.Claude] = effective.ProjectRoots()
+	resolved.Roots[pfmengine.Codex] = codexHomes(effective)
 	return commandRuntime{Config: effective, Paths: resolved, ConfigError: configErr}, nil
+}
+
+func firstRoot(roots []string) string {
+	if len(roots) == 0 {
+		return ""
+	}
+	return roots[0]
 }
 
 // splitGlobalConfig accepts the global flag only before the command. This is

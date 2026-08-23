@@ -3,6 +3,8 @@ package action
 import (
 	"errors"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // SandboxedCodexRequest is the launch-only portion of a Codex seat. The
@@ -46,7 +48,7 @@ func SandboxedCodexRun(request SandboxedCodexRequest) (HeadlessPlan, error) {
 	command.WriteString("exec ")
 	command.WriteString(headlessHygiene)
 	command.WriteByte(' ')
-	command.WriteString(binaryWord(request.Binary, "codex", request.Binary != ""))
+	command.WriteString(binaryWord(request.Binary, pfmengine.MustLookup(pfmengine.Codex).Binary, request.Binary != ""))
 	for _, argument := range arguments {
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))

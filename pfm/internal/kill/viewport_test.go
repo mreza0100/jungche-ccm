@@ -52,7 +52,7 @@ func TestExitClosesTheBunkerPaneWatchingTheChat(t *testing.T) {
 	defer database.Close()
 
 	if err := finisher.Run(context.Background(), ExitArgs{
-		Engine:     string(pfmengine.Claude),
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   filepath.Join(jail.claudeRoot, "projects", "p", id+".jsonl"),
 		SocketPath: filepath.Join(jail.tmuxDir, "cc-500-1-1"),
@@ -78,7 +78,7 @@ func TestExitLeavesPanesThatWereNotWatchingAlone(t *testing.T) {
 	defer database.Close()
 
 	if err := finisher.Run(context.Background(), ExitArgs{
-		Engine:     string(pfmengine.Claude),
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   filepath.Join(jail.claudeRoot, "projects", "p", id+".jsonl"),
 		SocketPath: filepath.Join(jail.tmuxDir, "cc-500-1-2"),
@@ -99,7 +99,7 @@ func TestExitWithNoViewportKillsOnlyTheChat(t *testing.T) {
 	defer database.Close()
 
 	if err := finisher.Run(context.Background(), ExitArgs{
-		Engine:     string(pfmengine.Claude),
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   filepath.Join(jail.claudeRoot, "projects", "p", id+".jsonl"),
 		SocketPath: filepath.Join(jail.tmuxDir, "cc-500-1-3"),

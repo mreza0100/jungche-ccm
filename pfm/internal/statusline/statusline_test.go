@@ -3,6 +3,7 @@ package statusline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,7 +11,39 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
+
+func TestEngineFromEnvironmentRefusesMissingEngine(t *testing.T) {
+	_, err := EngineFromEnvironment(func(string) string { return "" })
+	if !errors.Is(err, ErrNoEngineInEnvironment) {
+		t.Fatalf("EngineFromEnvironment(empty) error = %v, want ErrNoEngineInEnvironment", err)
+	}
+}
+
+func TestEngineFromEnvironmentUsesDescriptorVariables(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		key  string
+		want pfmengine.ID
+	}{
+		{name: "session", key: "CODEX_THREAD_ID", want: pfmengine.Codex},
+		{name: "home", key: "CLAUDE_CONFIG_DIR", want: pfmengine.Claude},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, err := EngineFromEnvironment(func(key string) string {
+				if key == testCase.key {
+					return "set"
+				}
+				return ""
+			})
+			if err != nil || got != testCase.want {
+				t.Fatalf("EngineFromEnvironment(%s) = (%q, %v), want (%q, nil)", testCase.key, got, err, testCase.want)
+			}
+		})
+	}
+}
 
 func TestDefaultRuntimeUsesTheCodexSeatsOwnHome(t *testing.T) {
 	home := t.TempDir()
@@ -19,11 +52,11 @@ func TestDefaultRuntimeUsesTheCodexSeatsOwnHome(t *testing.T) {
 	t.Setenv("CODEX_HOME", codexHome)
 	t.Setenv("CODEX_THREAD_ID", "thread-2")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "claude-must-not-win"))
-	runtime, err := DefaultRuntime()
+	runtime, err := DefaultRuntime(pfmengine.Codex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.Engine != "codex" || runtime.ConfigDir != codexHome {
+	if runtime.Engine != pfmengine.Codex || runtime.ConfigDir != codexHome {
 		t.Fatalf("DefaultRuntime() engine=%q account home=%q, want codex/%q", runtime.Engine, runtime.ConfigDir, codexHome)
 	}
 }
@@ -175,6 +208,10 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 				"__TRANSCRIPT__",
 				writeGoldenTranscript(t, root, now.Add(-12*time.Minute)),
 			))
+			engineID, parseErr := pfmengine.Parse(sample.engine)
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
 			got, err := Render(context.Background(), raw, Runtime{
 				Now:          func() time.Time { return now },
 				Home:         root,
@@ -186,7 +223,7 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 				ProcRoot:     procRoot,
 				Columns:      120,
 				UID:          1000,
-				Engine:       sample.engine,
+				Engine:       engineID,
 				Env:          sample.env,
 				Command:      quietRunner{},
 			})
@@ -299,7 +336,7 @@ func TestCodexEngineOwnsGPTUsageIndependentOfAccountID(t *testing.T) {
 		ProcRoot:  filepath.Join(root, "proc"),
 		Columns:   120,
 		UID:       1000,
-		Engine:    "codex",
+		Engine:    pfmengine.Codex,
 		Env:       map[string]string{"ANTHROPIC_MODEL": "gpt-5.6-sol[1m]"},
 		Command:   quietRunner{},
 	})

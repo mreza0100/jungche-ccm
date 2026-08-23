@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -146,7 +147,7 @@ func probeSwapSocket(t *testing.T, suffix string) string {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return filepath.Join(dir, "probe-pfm-swap-"+strconv.Itoa(os.Getpid())+"-"+suffix)
+	return filepath.Join(dir, "cc-probe-pfm-swap-"+strconv.Itoa(os.Getpid())+"-"+suffix)
 }
 
 func cleanupProbeSwapSocket(t *testing.T, socket string) {
@@ -171,12 +172,12 @@ func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "11111111-1111-4111-8111-111111111111")
 	resolved := paths.Values{
-		SIDDir:      filepath.Join(root, "sid"),
-		ClaudeRoots: []string{filepath.Join(root, "claude")},
+		SIDDir: filepath.Join(root, "sid"),
+		Roots:  map[pfmengine.ID][]string{pfmengine.Claude: {filepath.Join(root, "claude")}},
 	}
 	_, _, err := resolveReloadSession(
 		resolved,
-		pfmconfig.Defaults(resolved.Home, resolved.ClaudeRoots, resolved.CodexRoot),
+		pfmconfig.Defaults(resolved.Home, resolved.Roots[pfmengine.Claude], firstRoot(resolved.Roots[pfmengine.Codex])),
 		"/tmp/tmux-1000/probe-pfm-swap-target",
 		"%7",
 		false,

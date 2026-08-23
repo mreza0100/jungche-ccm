@@ -38,7 +38,7 @@ func TestPromptBaselineKillAutoUnkillsAfterTranscriptGrowth(t *testing.T) {
 	}
 	baseline := int64(2)
 	if err := database.Kill(ctx, Killed{
-		ID: id, Engine: string(pfmengine.Claude), KilledAt: 10, BaselinePrompts: &baseline,
+		ID: id, Engine: pfmengine.Claude, KilledAt: 10, BaselinePrompts: &baseline,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -60,6 +60,26 @@ func TestPromptBaselineKillAutoUnkillsAfterTranscriptGrowth(t *testing.T) {
 	}
 	if _, found := raw[id]; found {
 		t.Fatalf("expired baseline kill remains in shared state: %#v", raw)
+	}
+}
+
+type killedRowFixture struct {
+	id     string
+	engine string
+}
+
+func (row killedRowFixture) Scan(dest ...any) error {
+	*dest[0].(*string) = row.id
+	*dest[1].(*string) = row.engine
+	*dest[2].(*int64) = 1
+	*dest[3].(*sql.NullInt64) = sql.NullInt64{}
+	return nil
+}
+
+func TestDatabaseEngineEdgeRejectsUnknownWithAcceptedSet(t *testing.T) {
+	_, err := scanKilled(killedRowFixture{id: "row-7", engine: "bogus"})
+	if err == nil || !strings.Contains(err.Error(), `fleet.db row row-7: unknown engine "bogus" (want cc/claude, cx/codex, ox/opencode)`) {
+		t.Fatalf("scanKilled(bogus) error = %v", err)
 	}
 }
 
@@ -364,9 +384,9 @@ func TestKilledWriteHelperProcess(t *testing.T) {
 	}
 
 	prefix := os.Getenv(helperPrefixEnv)
-	engine := "cc"
+	engine := pfmengine.Claude
 	if prefix == "b" {
-		engine = "cx"
+		engine = pfmengine.Codex
 	}
 	for index := 0; index < helperWriteCount; index++ {
 		baseline := int64(index)

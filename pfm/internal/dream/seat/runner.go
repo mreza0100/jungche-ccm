@@ -372,7 +372,7 @@ func (runner *Runner) runSeat(
 		prompt:    input.Prompt,
 	}
 	spawnResult, spawnErr := spawn.Run(seatContext, gateHost, spawn.Request{
-		Engine:  string(pfmengine.Codex),
+		Engine:  pfmengine.Codex,
 		Name:    input.Name,
 		Socket:  input.Socket,
 		CWD:     stage,

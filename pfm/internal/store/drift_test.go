@@ -39,7 +39,7 @@ ON CONFLICT(uuid) DO UPDATE SET
 		t.Fatal(err)
 	}
 	if len(killed) != 1 || killed[0].ID != "zsh-hid" ||
-		killed[0].Engine != string(pfmengine.Claude) || killed[0].KilledAt != 1700000000 {
+		killed[0].Engine != pfmengine.Claude || killed[0].KilledAt != 1700000000 {
 		t.Fatalf("KilledChats() after a CLI kill = %#v, want the zsh kill", killed)
 	}
 	transcripts, _, counts, err := database.DefaultCandidates(ctx, 30, 15)

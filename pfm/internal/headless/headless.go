@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/transcript"
 )
 
@@ -29,7 +30,7 @@ const (
 type Chat struct {
 	Name    string
 	ID      string
-	Engine  string
+	Engine  pfmengine.ID
 	Path    string
 	CWD     string
 	Socket  string
@@ -41,18 +42,18 @@ type Chat struct {
 // Status is the machine-readable verdict. Field names are a contract — a
 // consumer scripts against them.
 type Status struct {
-	Name          string  `json:"name"`
-	State         string  `json:"state"`
-	IdleSeconds   int64   `json:"idle_seconds"`
-	Engine        string  `json:"engine"`
-	Model         string  `json:"model,omitempty"`
-	CWD           string  `json:"cwd,omitempty"`
-	SessionID     string  `json:"session_id,omitempty"`
-	Socket        string  `json:"socket,omitempty"`
-	ContextPct    float64 `json:"context_pct,omitempty"`
-	Last          string  `json:"last,omitempty"`
-	Summary       string  `json:"summary,omitempty"`
-	SummaryCached bool    `json:"summary_cached,omitempty"`
+	Name          string       `json:"name"`
+	State         string       `json:"state"`
+	IdleSeconds   int64        `json:"idle_seconds"`
+	Engine        pfmengine.ID `json:"engine"`
+	Model         string       `json:"model,omitempty"`
+	CWD           string       `json:"cwd,omitempty"`
+	SessionID     string       `json:"session_id,omitempty"`
+	Socket        string       `json:"socket,omitempty"`
+	ContextPct    float64      `json:"context_pct,omitempty"`
+	Last          string       `json:"last,omitempty"`
+	Summary       string       `json:"summary,omitempty"`
+	SummaryCached bool         `json:"summary_cached,omitempty"`
 }
 
 // SummaryLine is the human status suffix. Cached summaries say so at the
@@ -120,7 +121,7 @@ func Inspect(
 		}
 		return status, nil
 	}
-	meta, err := transcript.ReadMeta(chat.Path, chat.Engine)
+	meta, err := transcript.ReadMeta(chat.Path, string(chat.Engine))
 	if err != nil {
 		if chat.Live {
 			status.State = StateWorking
@@ -138,7 +139,7 @@ func Inspect(
 		status.IdleSeconds = idle / int64(time.Second)
 	}
 
-	entries, _, err := transcript.Tail(ctx, chat.Path, chat.Engine, 1, transcript.TextCap)
+	entries, _, err := transcript.Tail(ctx, chat.Path, string(chat.Engine), 1, transcript.TextCap)
 	if err == nil && len(entries) > 0 {
 		status.Last = transcript.Condensed(entries[len(entries)-1])
 		if chat.Live {

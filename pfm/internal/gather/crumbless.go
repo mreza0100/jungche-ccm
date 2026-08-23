@@ -2,7 +2,8 @@ package gather
 
 import (
 	"sort"
-	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // DetectCrumblessLive finds every live Claude pane on a valid cc-* socket
@@ -40,7 +41,8 @@ func DetectCrumblessLive(
 		// validCrumbSocket alone also accepts a 4-part cx-<epoch>-<pid>-<rand>
 		// shape (it is the crumb-filename grammar, shared by both engines); the
 		// prefix test narrows this to the Claude sockets the bug is about.
-		if !strings.HasPrefix(process.Socket, "cc-") ||
+		id, known := pfmengine.FromSocket(process.Socket)
+		if !known || id != pfmengine.Claude ||
 			!validCrumbSocket(process.Socket) {
 			continue
 		}

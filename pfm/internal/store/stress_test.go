@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -377,12 +378,12 @@ func TestStoreStressKilledHelper(t *testing.T) {
 	}
 
 	prefix := os.Getenv(storeStressPrefixEnv)
-	engine := "cc"
+	engine := pfmengine.Claude
 	if strings.HasSuffix(prefix, "1") ||
 		strings.HasSuffix(prefix, "3") ||
 		strings.HasSuffix(prefix, "5") ||
 		strings.HasSuffix(prefix, "7") {
-		engine = "cx"
+		engine = pfmengine.Codex
 	}
 	for index := 0; index < count; index++ {
 		baseline := int64(index)
