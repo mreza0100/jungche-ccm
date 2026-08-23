@@ -86,6 +86,25 @@ This file is compiled verbatim from CLAUDE.md by ${SELF}; Claude model aliases a
 - gitter's git monopoly binds unchanged, and here it is a PIN, not a promise: \`.codex/rules/repo-law.rules\` rejects \`git push\` / \`git tag\` / \`git commit\` outright. A rejection quoting its justification is the law working — never shell-trick around it
 `;
 
+// OpenCode reads this same compiled AGENTS.md (its loader prefers root
+// AGENTS.md over CLAUDE.md), so the shared contract carries a second adapter.
+// MUST stay byte-identical to the OpenCode section of .claude/codex-build.json's
+// rootAdapter — two compilers write this file, and a diverging adapter makes
+// each rewrite the other's output forever. The fence: after editing either
+// copy, regenerate and diff both mirrors green.
+const OPENCODE_ADAPTER = `
+## OpenCode adapter — reading this file in the OpenCode harness
+
+The law above binds an OpenCode session identically. Model aliases were already swapped for the Codex host (gpt-5.6-sol = frontier judgment, gpt-5.6-luna = spec execution AND collector); treat those as TIER LABELS here and run this host's matching model — no OpenCode model roster is pinned (\`.opencode/agent/*.md\` omit \`model\` on purpose). Mechanics:
+
+- Agent / Task spawn / \`subagent_type\` → dispatch to the matching \`.opencode/agent/*.md\` role
+- AskUserQuestion → ask the user in prose and end your turn
+- Workflow() scripts → no equivalent: decompose sequentially
+- Skills / slash commands → \`.opencode/command/*.md\`, invoked as \`/flat-name\` — nested Claude names are flattened (\`/wave:orchestrator\` → \`/wave-orchestrator\`); repo skills compile into \`.opencode/skills/\`
+- PreToolUse hooks (guarded files) → pinned at the harness layer instead: \`.opencode/opencode.jsonc\` \`permission.edit\` DENIES \`.claude/**\`, any \`CLAUDE.md\`, any \`AGENTS.md\`. A denial quoting this law IS the guard working — never route around it
+- gitter's git monopoly binds unchanged, and here too it is a PIN, not a promise: \`.opencode/opencode.jsonc\` \`permission.bash\` rejects \`git commit\` / \`git push\` / \`git tag\` / \`gh release\`. A rejection quoting its justification is the law working — never shell-trick around it
+`;
+
 const agentPreamble = (name) => `You are the ${name} role in the Professor repo, running as a native Codex subagent.
 First action: read the repo root AGENTS.md in full — its laws bind you (gitter's git monopoly, the publication boundary, guarded files are read-only for you) and its § Codex adapter maps any Claude-harness mechanic named below. Then execute the protocol below exactly; your mode/task comes from the dispatch prompt.
 Stamp every deliverable, report, or verdict you produce with: Executor: codex-subagent/${name}
@@ -205,7 +224,7 @@ for (const { src, dst, root } of [
   const srcRel = relative(ROOT, src);
   const body = cmdSwap(swap(stripPersona(read(src))).replaceAll('CLAUDE.md', 'AGENTS.md'));
   outputs.set(dst, {
-    content: `<!-- ${marker(srcRel)} -->\n${body}${root ? ADAPTER : ''}`,
+    content: `<!-- ${marker(srcRel)} -->\n${body}${root ? ADAPTER + OPENCODE_ADAPTER : ''}`,
   });
 }
 

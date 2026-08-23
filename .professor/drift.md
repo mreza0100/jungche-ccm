@@ -100,3 +100,16 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   remaining rules moved into Process. Every behavioral rule, threshold, and sacred-ground law
   survived verbatim in substance. Local file only — `blueprint/CLAUDE.md` is a different document
   and unchanged.
+
+- **KEEP-LOCAL: `/p:tokens` installed from `blueprint/commands/p/tokens/` into `.claude/commands/p/tokens/`**
+  (SKILL.md + README.md + token-ledger.mjs, 2026-08-21). Verbatim except the three Codex
+  `PRICING` rows: `{CODEX_MODEL_FRONTIER}` → `gpt-5.6-sol`, `{CODEX_MODEL_SPEC}` →
+  `gpt-5.6-luna`; the collector row is dropped because this host maps collector to the spec
+  model (`build-codex.mjs` MODEL_MAP) and a duplicate substring row can never match. The
+  `refresh-map.json` entries for these templates keep pointing at the source project's copies.
+
+- **KEEP-LOCAL: `/p:rnd` + `/p:360` installed from `blueprint/commands/p/` into `.claude/commands/p/`**
+  (2026-08-21). Value swaps only (sandbox path kept at `.professor/RND/{goal}` by the user's ruling); `/jc` · `/wave:builder` → `/wave:live`; `/km` + `knowledge/` → `/pcm` +
+  `.claude/`; `{AI_PROJECT}` chain clause → the wave-walker engine's prompt modules + dist build;
+  360's `{USER_NOUN} vs {SUBJECT_NOUN}` → `adopter vs maintainer`. 360 ships because rnd.md's
+  blind-spot sweep points at `.claude/commands/p/360.md`.

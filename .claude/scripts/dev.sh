@@ -163,6 +163,16 @@ act_blueprint() { # the shipped product: mechanical gates, no build
       else
         fail_step "codex marker claim FAILED — a compiler copy cannot reclaim the other's output"
       fi
+
+      head_ "blueprint — opencode mirror"
+      # The OpenCode mirror must be current AND valid: check re-derives every
+      # output from the Claude sources; doctor additionally parses each artifact.
+      if need_tool node blueprint && node .claude/scripts/build-opencode.mjs check \
+        && node .claude/scripts/build-opencode.mjs doctor | tail -1; then
+        ok "opencode mirror current and parseable"
+      else
+        fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
+      fi
       ;;
     *) return 0 ;;
   esac

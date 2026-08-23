@@ -5,26 +5,26 @@
 ## Repo structure
 
 - `blueprint/`: the shipped framework — agent/command/script/codex templates an adopter clones. Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
-- `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them.
+- `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them. Also the only harvester: `internal/harvest` + `internal/harvestmcp`, over a pinned Python conversion sidecar in `internal/harvestpy/`.
 - `dreamer/`: memory-organ engine — TypeScript ESM, Node ≥20.
 - `engines/wave-walker/engine/`: wave-walker engine — JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK.
-- `harvester/`: harvester service — Python/uv, own `CLAUDE.md`; outside `dev.sh`'s roster.
 - `agents/`: host-global agents (`tracer`, `frr`) — the live copies the host runs sit at `~/.claude/agents/`; the `.toml` twins are their Codex compile.
 - `docs/`: the specs — `BLUEPRINT.md` (philosophy), `SETUP.md` (generation), `PLACEHOLDERS.md` (substitution law) — plus `commands/` reference cards and `dev/` wave trains.
 - `scripts/`: repo-level gates (`leak-check.sh`, `refresh-scope.sh`); `.githooks/` runs the leak gate `pre-push`.
 - `releases/` + root `README.md` / `INSTALL.md` / `CHANGELOG.md` / `VERSION`: the public face — edited with template-grade care.
-- `.claude/`: this repo's live install — commands, skills, agents, scripts, output styles — the source of truth. `.codex/`: a pointer layer compiled over it, never a restatement.
+- `.claude/`: this repo's live install — commands, skills, agents, scripts, output styles — the source of truth. `.codex/` and `.opencode/`: pointer layers compiled over it, never a restatement.
 - `.professor/`: ledgers — `drift.md` (keep-local), `release.md` (pending upstream), `retro.md` (steering inbox).
 - `tmp/`: gitignored scratch — every generated artifact lands here, never in a tracked dir.
 
 Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verify|test} {blueprint|pfm|dreamer|walker}`.
 
-## Two-runtime team — Claude + Codex
+## Three-runtime team — Claude + Codex + OpenCode
 
-`CLAUDE.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `CLAUDE.md` and the `Stop` hook recompiles. A Codex role gets read-only git (`status`/`log`/`diff`/`show`) and nothing more — there is no `gitter.toml`, and there must not be one. After a Bash-driven write bypassed the hook:
+`CLAUDE.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `CLAUDE.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `CLAUDE.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where the repo law is pinned at the harness layer — guarded-file edit denies and gitter's git monopoly as bash denies. A Codex role gets read-only git (`status`/`log`/`diff`/`show`) and nothing more — there is no `gitter.toml`, and there must not be one; the same holds for OpenCode roles (`gitter` is in every compiler's never-register set). After a Bash-driven write bypassed the hook:
 
 ```bash
 node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-codex.mjs check
+node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-opencode.mjs doctor
 ```
 
 ## Path vars
