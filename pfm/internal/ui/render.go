@@ -451,7 +451,9 @@ func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
 		appendLine(borderStyle.Render(fillLine("  "+strings.Repeat("─", maxInt(0, innerWidth-2)), innerWidth)))
 		if account.Status != "" {
 			appendLine(dimStyle.Render(fillLine("  ⚠ "+cleanField(account.Status), innerWidth)))
-			continue
+			if len(account.Windows) == 0 {
+				continue
+			}
 		}
 		renderedWindows := 0
 		for _, window := range account.Windows {
