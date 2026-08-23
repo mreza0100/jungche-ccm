@@ -24,6 +24,12 @@
     "files": 30599,
     "note": "full pinned Docling/PyMuPDF4LLM/trafilatura/MarkItDown closure measured in isolated uv environment; includes native model/runtime data"
   },
+  "browser_environment": {
+    "target": "linux-amd64",
+    "bytes": 142097641,
+    "files": 327,
+    "note": "opt-in Patchright + system-Chrome rung (patchright==1.62.1, pyee, greenlet, typing-extensions) measured in isolated uv environment from the embedded browser lock; drives system Chrome, so no Chromium download is included or performed"
+  },
   "runtime_capability_price": {
     "ocr": "supported; default disabled exactly as old Harvester",
     "layout": "supported; default disabled exactly as old Harvester",

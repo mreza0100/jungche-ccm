@@ -1,0 +1,213 @@
+package harvestpy
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+)
+
+// BrowserRuntimeRoot is the stable current pointer for the opt-in real-browser
+// environment. It lives under a DISTINCT root suffix ("env-browser") so the
+// conversion environment's digest and directory are never touched by browser
+// provisioning — adding patchright to the conversion lock would invalidate the
+// 5.79 GB Docling/Torch closure on every host.
+func BrowserRuntimeRoot(root string, platform Platform) string {
+	return filepath.Join(root, "env-browser", platform.String(), "current")
+}
+
+// ProvisionBrowser converges the opt-in real-browser environment lazily: it
+// reuses the pinned uv + CPython toolchain from targets.json (no new
+// toolchain downloads), installs ONLY the embedded browser lock, and NEVER
+// downloads Chromium — patchright drives system Chrome via channel="chrome".
+// The conversion environment is not touched.
+func ProvisionBrowser(ctx context.Context, options ProvisionOptions) (ProvisionResult, error) {
+	return provisionBrowser(ctx, options, immutableTargets)
+}
+
+func provisionBrowser(ctx context.Context, options ProvisionOptions, targets map[Platform]Target) (ProvisionResult, error) {
+	if options.Root == "" {
+		return ProvisionResult{}, errors.New("harvestpy provision root is empty")
+	}
+	platform := options.Platform
+	if platform.GOOS == "" {
+		platform.GOOS, platform.GOARCH = runtime.GOOS, runtime.GOARCH
+	}
+	target, ok := targets[platform]
+	if !ok {
+		return ProvisionResult{}, fmt.Errorf("harvestpy has no pinned target for %s", platform)
+	}
+	if options.Cache == "" {
+		options.Cache = filepath.Join(options.Root, "cache")
+	}
+	if options.Run == nil {
+		options.Run = runCommand
+	}
+	if options.Smoke == nil {
+		options.Smoke = smokeBrowserRuntime
+	}
+	if err := os.MkdirAll(options.Cache, 0o700); err != nil {
+		return ProvisionResult{}, fmt.Errorf("create harvestpy cache: %w", err)
+	}
+	base := EnvironmentDigest{
+		Schema: 1, Target: platform.String(), Python: target.PythonVersion, UV: target.UVVersion,
+		PythonSHA256: target.Python.SHA256, UVSHA256: target.UV.SHA256,
+		LockSHA256: browserLockSHA256(), SourceSHA256: browserSourceSHA256(),
+		Features: FeatureStatus{OCR: "disabled", Layout: "disabled", Models: "not-requested"},
+	}
+	desired := digestID(base)
+	base.Digest = desired
+	current := BrowserRuntimeRoot(options.Root, platform)
+	envRoot := filepath.Join(options.Root, "env-browser", platform.String())
+	if existing, err := ReadEnvironmentDigest(filepath.Join(current, "environment.json")); err == nil && existing.Digest == desired && existing.State == "ready" {
+		runtime := Runtime{Python: filepath.Join(current, "project", ".venv", "bin", "python"), Script: filepath.Join(current, "project", "browser.py")}
+		if _, smokeErr := options.Smoke(ctx, runtime); smokeErr == nil {
+			return ProvisionResult{Digest: desired, Environment: existing, Runtime: runtime}, nil
+		}
+	}
+	uvArchive := filepath.Join(options.Cache, "uv-"+platform.String()+".tar.gz")
+	pythonArchive := filepath.Join(options.Cache, "python-"+platform.String()+".tar.gz")
+	if err := ensureInput(ctx, uvArchive, target.UV, options.Offline, options.Download); err != nil {
+		return ProvisionResult{}, fmt.Errorf("prepare browser uv input: %w", err)
+	}
+	if err := ensureInput(ctx, pythonArchive, target.Python, options.Offline, options.Download); err != nil {
+		return ProvisionResult{}, fmt.Errorf("prepare browser Python input: %w", err)
+	}
+	if err := os.MkdirAll(envRoot, 0o700); err != nil {
+		return ProvisionResult{}, fmt.Errorf("create browser environment root: %w", err)
+	}
+	final := filepath.Join(envRoot, desired)
+	if _, err := os.Stat(final); err == nil {
+		// A stale or broken environment at the exact digest path is replaced
+		// wholesale; there is nothing inside worth keeping.
+		if err := os.RemoveAll(final); err != nil {
+			return ProvisionResult{}, fmt.Errorf("clear stale browser environment: %w", err)
+		}
+	}
+	// Build DIRECTLY at the final path, like the conversion provisioner:
+	// uv records .venv/bin/python as an absolute symlink into the extracted
+	// interpreter, so a staging→final rename would dangle every link.
+	defer func() {
+		// A failed provision leaves nothing behind: honest absence
+		// (NOT_PROVISIONED) instead of a half-built tree.
+		if _, statErr := os.Stat(filepath.Join(final, "environment.json")); errors.Is(statErr, os.ErrNotExist) {
+			_ = os.RemoveAll(final)
+		}
+	}()
+	if err := os.Mkdir(final, 0o700); err != nil {
+		return ProvisionResult{}, fmt.Errorf("create browser environment: %w", err)
+	}
+	project := filepath.Join(final, "project")
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		return ProvisionResult{}, fmt.Errorf("create browser project: %w", err)
+	}
+	if err := writePrivate(filepath.Join(project, "browser.py"), BrowserWorkerSource()); err != nil {
+		return ProvisionResult{}, err
+	}
+	if err := writePrivate(filepath.Join(project, "pyproject.toml"), BrowserProjectMetadata()); err != nil {
+		return ProvisionResult{}, err
+	}
+	if err := writePrivate(filepath.Join(project, "uv.lock"), BrowserLockMetadata()); err != nil {
+		return ProvisionResult{}, err
+	}
+	uvPath := filepath.Join(final, "uv")
+	if err := extractNamedBinary(uvArchive, "uv", uvPath); err != nil {
+		return ProvisionResult{}, fmt.Errorf("extract browser uv: %w", err)
+	}
+	pythonPath, err := extractPython(pythonArchive, final)
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("extract browser Python: %w", err)
+	}
+	if err := stampPythonBuild(filepath.Join(final, "python", "BUILD"), target.PythonVersion); err != nil {
+		return ProvisionResult{}, fmt.Errorf("stamp browser Python build: %w", err)
+	}
+	args := []string{"sync", "--frozen", "--no-install-project", "--project", project, "--python", pythonPath}
+	if options.Offline {
+		args = append(args, "--offline")
+	}
+	// Deliberately NO `patchright install chromium`: the worker drives system
+	// Chrome (channel="chrome"); downloading a browser here would contradict
+	// the rung's whole point and add ~150 MB per host.
+	if _, err := options.Run(ctx, uvPath, args, project); err != nil {
+		return ProvisionResult{}, fmt.Errorf("install browser locked environment: %w", err)
+	}
+	venvPython := filepath.Join(project, ".venv", "bin", "python")
+	if _, err := os.Stat(venvPython); err != nil {
+		return ProvisionResult{}, fmt.Errorf("browser uv sync did not create Python environment: %w", err)
+	}
+	inventoryOutput, err := options.Run(ctx, uvPath, []string{"pip", "list", "--format", "freeze", "--python", venvPython}, project)
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("browser installed inventory failed: %w", err)
+	}
+	inventorySHA, inventoryCount, err := inventoryDigest(inventoryOutput)
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("browser installed inventory is invalid: %w", err)
+	}
+	base.InventorySHA256 = inventorySHA
+	base.InventoryCount = inventoryCount
+	smoke, err := options.Smoke(ctx, Runtime{Python: venvPython, Script: filepath.Join(project, "browser.py")})
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("browser no-download smoke: %w", err)
+	}
+	base.Imports = map[string]any{
+		"patchright":  smoke["patchright"],
+		"chrome_path": smoke["chrome_path"],
+	}
+	base.State = "ready"
+	base.Environment = final
+	finalRuntime := Runtime{
+		Python: filepath.Join(final, "project", ".venv", "bin", "python"),
+		Script: filepath.Join(final, "project", "browser.py"),
+	}
+	// The environment is never renamed after uv sync (the venv interpreter
+	// symlink is absolute); both smokes judge the same final runtime path.
+	if _, smokeErr := options.Smoke(ctx, finalRuntime); smokeErr != nil {
+		return ProvisionResult{}, fmt.Errorf("browser post-publish smoke: %w", smokeErr)
+	}
+	base.Sizes = measureTree(final)
+	marker, err := json.MarshalIndent(base, "", "  ")
+	if err != nil {
+		return ProvisionResult{}, fmt.Errorf("marshal browser environment digest: %w", err)
+	}
+	if err := writePrivate(filepath.Join(final, "environment.json"), append(marker, '\n')); err != nil {
+		return ProvisionResult{}, err
+	}
+	if err := atomicCurrent(envRoot, desired); err != nil {
+		return ProvisionResult{}, err
+	}
+	return ProvisionResult{Digest: desired, Environment: base, Runtime: Runtime{
+		Python: filepath.Join(current, "project", ".venv", "bin", "python"),
+		Script: filepath.Join(current, "project", "browser.py"),
+	}}, nil
+}
+
+func smokeBrowserRuntime(ctx context.Context, runtime Runtime) (map[string]any, error) {
+	worker := NewBrowserWorker(runtime)
+	result, err := worker.Smoke(ctx)
+	_ = worker.Close()
+	return result, err
+}
+
+// InspectBrowser reads the browser environment's machine-readable record
+// without executing anything. Absence is reported as absence (os.ErrNotExist
+// preserved), so doctor can distinguish NOT-provisioned from BROKEN.
+func InspectBrowser(root string, platform Platform) (EnvironmentDigest, error) {
+	if platform.GOOS == "" {
+		platform.GOOS, platform.GOARCH = runtime.GOOS, runtime.GOARCH
+	}
+	return ReadEnvironmentDigest(filepath.Join(BrowserRuntimeRoot(root, platform), "environment.json"))
+}
+
+func browserLockSHA256() string { return sha256Hex(BrowserLockMetadata()) }
+
+func browserSourceSHA256() string { return sha256Hex(BrowserWorkerSource()) }
+
+func sha256Hex(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
