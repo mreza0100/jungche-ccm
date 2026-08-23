@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"hostops/pfm/internal/index"
@@ -25,7 +26,6 @@ func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...
 		"usage: pfm internal clear-kill < hook-payload.json",
 		stderr,
 	)
-	parent := flags.String("parent", "", "Codex hook parent process id")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -49,7 +49,9 @@ func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...
 	}
 	if hook.Event == "SessionStart" &&
 		(hook.Source == "startup" || hook.Source == "resume" || hook.Source == "clear") {
-		return runCodexClearKill(hook.Source, hook.SessionID, hook.CWD, *parent, stderr, runtimes...)
+		return runCodexClearKill(
+			hook.Source, hook.SessionID, hook.CWD, strconv.Itoa(os.Getppid()), stderr, runtimes...,
+		)
 	}
 	if hook.Event != "SessionEnd" || hook.Reason != "clear" {
 		return 0
