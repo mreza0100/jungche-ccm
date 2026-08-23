@@ -269,7 +269,7 @@ func (current *composer) buildIndexes() {
 		if _, wanted := wantedTranscriptPaths[normalizedPath]; wanted {
 			current.transcriptByPath[normalizedPath] = transcript
 		}
-		rememberProjectDir(directories, transcript.CWD, transcript.MTimeNS)
+		rememberProjectDir(directories, transcript.CWD, transcript.EffectiveActivityNS())
 	}
 	current.rolloutByPath = make(map[string]store.Rollout, len(wantedRolloutPaths))
 	current.rolloutByID = make(map[string]store.Rollout, len(wantedRolloutIDs))
@@ -618,8 +618,8 @@ func (current *composer) splitRow(
 		row.PromptCount += transcript.PromptCount
 		row.BG = row.BG || transcript.IsBG
 		row.Attached = row.Attached || pane.Attached
-		if transcript.MTimeNS >= row.ActivityNS {
-			row.ActivityNS = transcript.MTimeNS
+		if transcript.EffectiveActivityNS() >= row.ActivityNS {
+			row.ActivityNS = transcript.EffectiveActivityNS()
 			row.CWD = transcript.CWD
 			if row.CWD == "" {
 				row.CWD = pane.CurrentPath
@@ -821,7 +821,7 @@ func (current *composer) transcriptRow(
 		CWD:         transcript.CWD,
 		Size:        transcript.Size,
 		PromptCount: transcript.PromptCount,
-		ActivityNS:  transcript.MTimeNS,
+		ActivityNS:  transcript.EffectiveActivityNS(),
 		Account:     current.accountFor(transcript.Path),
 		BG:          transcript.IsBG,
 	}

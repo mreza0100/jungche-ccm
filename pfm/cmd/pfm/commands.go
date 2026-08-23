@@ -183,6 +183,21 @@ func runLS(
 	}
 	cache1H := outcome.Cache1H
 	switch outcome.Kind {
+	case ui.OutcomeDeactivate:
+		if outcome.Row.Socket == "" {
+			fmt.Fprintf(stderr, "pfm ls: deactive %s: no live server\n", outcome.Row.Name)
+			return 1
+		}
+		if outcome.Row.Kind == compose.LiveSplit {
+			fmt.Fprintln(stderr, "pfm ls: deactive refused for split live window")
+			return 1
+		}
+		if err := killChatServer(ctx, scan.Paths, outcome.Row.Socket); err != nil {
+			fmt.Fprintf(stderr, "pfm ls: deactive %s: %v\n", outcome.Row.Name, err)
+			return 1
+		}
+		fmt.Fprintf(stderr, "pfm ls: deactivated %s — ready to resume\n", outcome.Row.Name)
+		return 0
 	case ui.OutcomeReboot:
 		row, err := rebootRow(ctx, scan.Paths, outcome.Row, stderr)
 		if err != nil {
@@ -239,6 +254,7 @@ func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
 		accounts = append(accounts, pfmstats.LimitAccount{
 			ID: account.ID, Emoji: runtime.Config.CodexEmojiFor(account.ID),
 			Engine: pfmengine.Codex, Label: fmt.Sprintf("%s %d", pfmengine.MustLookup(pfmengine.Codex).Short, account.ID),
+			CodexBinary: runtime.Config.Codex.Binary, CodexHome: account.Home,
 			CodexAuthPath: filepath.Join(account.Home, "auth.json"),
 		})
 	}
@@ -412,29 +428,23 @@ func initialCache1H(config pfmconfig.Config, account int) bool {
 	return config.EffectiveClaude(account).Cache1H
 }
 
-// reportKills is the receipt for what ⌃X did while the picker was open. A
-// kill that ENDED a running chat is worth saying out loud — it is the one
-// picker keystroke that destroys something.
+// reportKills is the receipt for hidden-state writes made while the picker was
+// open. Hiding never changes process lifecycle; deactive is a separate action.
 func reportKills(changes []ui.KillChange, stderr io.Writer) {
-	killed, liveEnded := 0, 0
+	hidden := 0
 	for _, change := range changes {
 		if !change.Killed {
 			continue
 		}
-		killed++
-		if change.Live && change.Socket != "" {
-			liveEnded++
-			fmt.Fprintf(stderr, "pfm ls: ended %s (%s)\n", change.Name, change.Socket)
-		}
+		hidden++
 	}
-	if killed > 0 {
-		fmt.Fprintf(stderr, "pfm ls: killed %d (%d live ended)\n", killed, liveEnded)
+	if hidden > 0 {
+		fmt.Fprintf(stderr, "pfm ls: hidden %d\n", hidden)
 	}
 }
 
-// killApplier performs a picker ⌃X the instant it is typed: the store write,
-// and the kill when the row is live. Hiding a running chat ENDS it — a chat
-// that has left the list is a chat nobody can reach to stop.
+// killApplier performs a picker ⌃X hidden-state write the instant it is typed.
+// Hiding changes list visibility only; deactive owns server termination.
 //
 // It reports failure by returning it, never by writing to stderr: Bubble Tea
 // owns the terminal for as long as the picker is open.
@@ -451,16 +461,12 @@ func killApplier(
 		if !change.Killed {
 			return manager.Unkill(ctx, change.ID)
 		}
-		// The picker was showing the row, so it vouches for the engine: a live
-		// agent whose transcript the index has not seen yet still kills.
+		// The picker was showing the row, so it vouches for the engine.
 		if _, err := manager.Kill(ctx, kill.Request{
 			ID:     change.ID,
 			Engine: change.Engine,
 		}); err != nil {
 			return err
-		}
-		if change.Live && change.Socket != "" {
-			return killChatServer(ctx, runtime.Paths, change.Socket)
 		}
 		return nil
 	}, nil
@@ -477,8 +483,8 @@ func killDependencies(runtime commandRuntime) kill.Dependencies {
 
 // killChatServer ends one chat's tmux server and removes every handle that
 // would otherwise keep pointing at it — the socket file, and the sid crumbs
-// that resolve a chat to its server. It is the single kill sequence: ⌃O
-// reboots a chat through it, ⌃X ends one through it.
+// that resolve a chat to its server. It is the single termination sequence:
+// ⌃O reboots a chat through it and deactive puts one to sleep through it.
 func killChatServer(
 	ctx context.Context,
 	resolved paths.Values,

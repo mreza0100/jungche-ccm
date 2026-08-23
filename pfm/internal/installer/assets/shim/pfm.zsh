@@ -2,9 +2,8 @@
 # Post-cutover pfm shell surface. WP10 only prepares this file; WP11 is
 # responsible for sourcing it. The binary is installed at ~/.local/bin/pfm.
 
-typeset -gr _PFM_BIN="$HOME/.local/bin/pfm"
-if [[ ! -x "$_PFM_BIN" ]]; then
-  print -u2 -- "pfm: $_PFM_BIN is missing or not executable"
+if [[ ! -x "$HOME/.local/bin/pfm" ]]; then
+  print -u2 -- "pfm: $HOME/.local/bin/pfm is missing or not executable"
   return 1
 fi
 
@@ -14,7 +13,7 @@ export CLAUDE_CODE_STOP_HOOK_BLOCK_CAP=2
 
 _pfm_eval() {
   local output rc
-  output="$("$_PFM_BIN" "$@")"
+  output="$("$HOME/.local/bin/pfm" "$@")"
   rc=$?
   if (( rc == 0 )) && [[ -n "$output" ]]; then
     eval "$output"
@@ -30,7 +29,7 @@ _pfm_eval() {
 cc-ls() {
   case " $* " in
     *" --plain "*|*" --tsv "*)
-      "$_PFM_BIN" ls "$@"
+      "$HOME/.local/bin/pfm" ls "$@"
       return $?
       ;;
   esac
@@ -38,7 +37,7 @@ cc-ls() {
 }
 
 cc-open() { _pfm_eval open "$@"; }
-cc-revive() { "$_PFM_BIN" revive "$@"; }
+cc-revive() { "$HOME/.local/bin/pfm" revive "$@"; }
 
 # The launch/account functions below are the shell owner of fresh interactive
 # launches; the Go action protocol emits lines that call them.
@@ -125,7 +124,7 @@ _cc_run() {
     _cc_own_terminal $?
   fi
 }
-_cc_primary() { local n; n="$("$_PFM_BIN" internal primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
+_cc_primary() { local n; n="$("$HOME/.local/bin/pfm" internal primary-get 2>/dev/null)"; case "$n" in 1|2) ;; *) n=1 ;; esac; echo "$n"; }
 cc()  { _cc_run "$(_cc_primary)" 1 "$@"; }   # tmux + primary account
 cc1() { _cc_run 1 1 "$@"; }                  # tmux + account 1
 cc2() { _cc_run 2 1 "$@"; }                  # tmux + account 2
@@ -211,7 +210,7 @@ cc-swap() {
   else
     echo "cc-swap: fzf not found — pass a number: cc-swap <1|2>"; return 1
   fi
-  "$_PFM_BIN" internal primary-set "$n" || { print -u2 -- "cc-swap: primary-set $n failed — primary unchanged"; return 1; }
+  "$HOME/.local/bin/pfm" internal primary-set "$n" || { print -u2 -- "cc-swap: primary-set $n failed — primary unchanged"; return 1; }
   echo "Primary → account $n  ($(_cc_label $n))"
   echo "  cc       → account $n"
   echo "  cc1/cc2  → explicit account"

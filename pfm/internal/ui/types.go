@@ -107,17 +107,17 @@ const (
 	OutcomeNone OutcomeKind = iota
 	OutcomeSelected
 	OutcomeReboot
+	OutcomeDeactivate
 	OutcomeCancelled
 )
 
-// KillChange is one killed-state change, applied the moment it is typed.
+// KillChange is one hidden-state change, applied the moment it is typed.
 type KillChange struct {
 	ID     string
 	Engine pfmengine.ID
 	Killed bool
-	// Socket, Live and Name carry what killing a RUNNING chat needs beyond the
-	// store write: killing it ends it, and only the picker knows the row was
-	// live, which server it owns, and what to call it in the receipt.
+	// Socket and Live are retained in the receipt for compatibility and
+	// diagnostics; hiding never ends the server. Name identifies the receipt.
 	Socket string
 	Live   bool
 	Name   string

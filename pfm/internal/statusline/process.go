@@ -96,12 +96,34 @@ func ReadGPTRateLimits(ctx context.Context) ([]byte, error) {
 
 // ReadGPTRateLimitsWithBinary uses the machine-configured Codex command.
 func ReadGPTRateLimitsWithBinary(ctx context.Context, binary string) ([]byte, error) {
+	return ReadGPTRateLimitsWithBinaryAtHome(ctx, binary, "")
+}
+
+// ReadGPTRateLimitsWithBinaryAtHome reads one configured Codex account. An
+// explicit home keeps multi-account limits isolated from the caller's own
+// CODEX_HOME.
+func ReadGPTRateLimitsWithBinaryAtHome(ctx context.Context, binary, codexHome string) ([]byte, error) {
 	if binary == "" {
 		binary = pfmengine.MustLookup(pfmengine.Codex).Binary
 	}
 	child, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	return readGPTRateLimitsCommand(exec.CommandContext(child, deps.Executable(binary), "app-server"))
+	command := exec.CommandContext(child, deps.Executable(binary), "app-server")
+	if codexHome != "" {
+		command.Env = replaceCommandEnv(os.Environ(), "CODEX_HOME", codexHome)
+	}
+	return readGPTRateLimitsCommand(command)
+}
+
+func replaceCommandEnv(environment []string, name, value string) []string {
+	prefix := name + "="
+	replaced := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, prefix) {
+			replaced = append(replaced, entry)
+		}
+	}
+	return append(replaced, prefix+value)
 }
 
 func readGPTRateLimitsCommand(command *exec.Cmd) ([]byte, error) {
@@ -129,7 +151,6 @@ func readGPTRateLimitsCommand(command *exec.Cmd) ([]byte, error) {
 		_ = command.Wait()
 		return nil, fmt.Errorf("write App Server handshake: %w", err)
 	}
-	_ = stdin.Close()
 
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 1<<20)
@@ -139,11 +160,13 @@ func readGPTRateLimitsCommand(command *exec.Cmd) ([]byte, error) {
 			ID json.RawMessage `json:"id"`
 		}
 		if json.Unmarshal(line, &envelope) == nil && string(envelope.ID) == "1" {
+			_ = stdin.Close()
 			_ = command.Process.Kill()
 			_ = command.Wait()
 			return append(line, '\n'), nil
 		}
 	}
+	_ = stdin.Close()
 	if err := scanner.Err(); err != nil {
 		_ = command.Process.Kill()
 		_ = command.Wait()

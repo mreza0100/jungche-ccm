@@ -81,6 +81,7 @@ type Model struct {
 	statsSort           StatsSort
 	statsCursor         int
 	statsDockerCursor   int
+	limitsOffset        int
 	stats               pfmstats.Snapshot
 	statsSampler        StatsSampler
 	statsGeneration     uint64
@@ -304,7 +305,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model.updateStatsKey(key)
 	}
 	if model.tab == TabLimits {
-		return model, nil
+		return model.updateLimitsKey(key)
 	}
 	switch key {
 	case "ctrl+x":
@@ -360,6 +361,18 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return model, nil
 			case 3:
 				model.toggleKilled()
+				return model, nil
+			case 4:
+				switch {
+				case row.Kind == compose.LiveSplit:
+					model.killStatus = "deactive refused — split live window; deactivate its chats individually"
+				case isLive(row.Kind) && row.Socket != "":
+					model.outcome = OutcomeDeactivate
+					model.outcomeRow = row
+					return model, tea.Quit
+				default:
+					model.killStatus = "deactive refused — " + row.Name + " is not running"
+				}
 				return model, nil
 			default:
 				if isNewChatKind(row.Kind) {
@@ -628,6 +641,33 @@ func (model Model) updateStatsKey(key string) (tea.Model, tea.Cmd) {
 	return model, nil
 }
 
+func (model Model) updateLimitsKey(key string) (tea.Model, tea.Cmd) {
+	innerWidth, innerHeight := model.limitViewportDimensions()
+	maximum := maxInt(0, len(model.renderLimitCards(innerWidth))-innerHeight)
+	switch key {
+	case "down", "ctrl+n":
+		model.limitsOffset = minInt(maximum, model.limitsOffset+1)
+	case "up", "ctrl+p":
+		model.limitsOffset = maxInt(0, model.limitsOffset-1)
+	case "pgdown":
+		model.limitsOffset = minInt(maximum, model.limitsOffset+innerHeight)
+	case "pgup":
+		model.limitsOffset = maxInt(0, model.limitsOffset-innerHeight)
+	case "home":
+		model.limitsOffset = 0
+	case "end":
+		model.limitsOffset = maximum
+	}
+	return model, nil
+}
+
+func (model Model) limitViewportDimensions() (int, int) {
+	width := maxInt(40, model.width)
+	height := maxInt(12, model.height)
+	bodyHeight := maxInt(4, height-6)
+	return maxInt(1, width-2), maxInt(1, bodyHeight-2)
+}
+
 type statsSampleMsg struct {
 	generation uint64
 	snapshot   pfmstats.Snapshot
@@ -703,6 +743,8 @@ func (model *Model) applyStats(snapshot pfmstats.Snapshot) {
 	follow := model.selectedStatsKey()
 	model.stats = snapshot
 	model.sortStats(follow)
+	innerWidth, innerHeight := model.limitViewportDimensions()
+	model.limitsOffset = minInt(model.limitsOffset, maxInt(0, len(model.renderLimitCards(innerWidth))-innerHeight))
 }
 
 func (model *Model) sortStats(follow string) {
@@ -860,40 +902,16 @@ func (model *Model) toggleKilled() {
 		return
 	}
 	switch {
-	case change.Killed && change.Live:
-		model.killStatus = "ended + killed — " + change.Name
 	case change.Killed:
-		model.killStatus = "killed — " + change.Name
+		model.killStatus = "hidden — " + change.Name
 	default:
-		model.killStatus = "unkilled — " + change.Name
+		model.killStatus = "unhidden — " + change.Name
 	}
 	follow := rowKey(row)
 	model.rows[index].Killed = change.Killed
 	model.adjustKilledCount(change.Killed)
 	model.killChanges[change.ID] = change
-	// The chat was running and has just been ended: demote the row rather than
-	// leave it claiming a server that no longer exists.
-	if change.Killed && change.Live {
-		model.rows[index] = demoteToResumable(model.rows[index])
-	}
 	model.rebuild(follow, fallback)
-}
-
-// demoteToResumable rewrites a row whose server has just been killed, mirroring
-// what a reboot does to one: the chat is still resumable from its transcript,
-// but every handle to the dead server is gone.
-func demoteToResumable(row compose.Row) compose.Row {
-	if row.Kind == compose.LiveCodex {
-		row.Kind = compose.ResumeCodex
-	} else {
-		row.Kind = compose.ResumeClaude
-	}
-	row.Socket = ""
-	row.PaneID = ""
-	row.SessionName = ""
-	row.WindowName = ""
-	row.Attached = false
-	return row
 }
 
 func (model *Model) adjustKilledCount(killed bool) {

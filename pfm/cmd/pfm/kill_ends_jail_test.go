@@ -21,9 +21,8 @@ func jailPaths(t *testing.T) paths.Values {
 	return resolved
 }
 
-// ⌃X on a LIVE row does not merely file the chat away — it ENDS it. These are
-// the fixtures for that, run against real tmux servers on scratch sockets
-// inside the jail, because a kill that only works in a mock is not a kill.
+// Hide and deactive are separate contracts, exercised against real tmux
+// servers on scratch sockets inside the jail.
 
 // startJailServer brings up a real tmux server on the jail's fleet socket dir,
 // addressed the way action.CommandTmux addresses one (-S <dir>/<socket>).
@@ -56,11 +55,7 @@ func jailServerAlive(tmuxDir, socket string) bool {
 	return command.Run() == nil
 }
 
-// TestKillingALiveChatEndsItAndClearsItsHandles is the whole contract of the
-// destructive half: the store row lands, the server dies, and every handle
-// that pointed at it — socket file, sid crumb — is gone, so nothing is left
-// resolving the chat to a server that no longer exists.
-func TestKillingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
+func TestHidingALiveChatKeepsItRunningAndKeepsItsHandles(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -103,14 +98,48 @@ func TestKillingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 		t.Fatalf("kill a live chat: %v", err)
 	}
 
+	if !jailServerAlive(tmuxDir, socket) {
+		t.Fatal("hiding the chat incorrectly stopped its server")
+	}
+	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); err != nil {
+		t.Fatalf("hiding removed the live socket: %v", err)
+	}
+	if _, err := os.Stat(crumb); err != nil {
+		t.Fatalf("hiding removed the live sid crumb: %v", err)
+	}
+	killed, found, err := database.Killed(context.Background(), id)
+	if err != nil || !found || killed.ID != id {
+		t.Fatalf("hidden state=%#v found=%t err=%v", killed, found, err)
+	}
+}
+
+func TestDeactivatingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxDir := filepath.Join(root, "tmux")
+	sidDir := filepath.Join(root, "sid")
+	const socket = "cc-1800000004-45-10"
+	startJailServer(t, tmuxDir, socket)
+	if err := os.MkdirAll(sidDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	crumb := filepath.Join(sidDir, socket+".%0")
+	if err := os.WriteFile(crumb, []byte("/transcript.jsonl\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := killChatServer(context.Background(), jailPaths(t), socket); err != nil {
+		t.Fatalf("deactive live chat: %v", err)
+	}
 	if jailServerAlive(tmuxDir, socket) {
-		t.Fatal("⌃X killed the chat but left it running")
+		t.Fatal("deactive left the chat running")
 	}
 	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); !os.IsNotExist(err) {
-		t.Fatalf("socket file outlived the kill: %v", err)
+		t.Fatalf("socket file outlived deactive: %v", err)
 	}
 	if _, err := os.Stat(crumb); !os.IsNotExist(err) {
-		t.Fatalf("sid crumb still points at a dead server: %v", err)
+		t.Fatalf("sid crumb outlived deactive: %v", err)
 	}
 }
 
@@ -149,10 +178,7 @@ func TestKillingAChatThatIsNotRunningKillsNothing(t *testing.T) {
 	}
 }
 
-// TestKillingAChatWhoseServerAlreadyDiedStillSucceeds: killing a corpse fails
-// loudly at the tmux level for no reason an operator can act on. The goal is
-// "not running", so a chat that died on its own still kills cleanly.
-func TestKillingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
+func TestHidingAChatDoesNotCleanUpADeadSocket(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -184,7 +210,7 @@ func TestKillingAChatWhoseServerAlreadyDiedStillSucceeds(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("killing an already-dead chat reported a failure: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); !os.IsNotExist(err) {
-		t.Fatalf("corpse socket survived: %v", err)
+	if _, err := os.Stat(filepath.Join(tmuxDir, socket)); err != nil {
+		t.Fatalf("hide changed process-lifecycle state: %v", err)
 	}
 }

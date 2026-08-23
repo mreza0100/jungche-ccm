@@ -176,7 +176,7 @@ func probeOne(ctx context.Context, entry Entry, options ProbeOptions) Result {
 // actually outruns.
 func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir string, timeout time.Duration) (string, string, error) {
 	helpArgs := []string{entry.SelfDoctorArgs[0], "--help"}
-	help, helpErr := boundedOutput(ctx, timeout, path, helpArgs...)
+	help, helpErr := boundedOutputWithEnvironment(ctx, timeout, terminalEnvironment(), path, helpArgs...)
 	if err := writeVerbose(verboseDir, entry.Name+"-self-doctor-help", help); err != nil {
 		return "", "", err
 	}
@@ -190,7 +190,7 @@ func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir s
 		}
 		return "broken", "", nil
 	}
-	output, err := boundedOutput(ctx, timeout, path, entry.SelfDoctorArgs...)
+	output, err := boundedOutputWithEnvironment(ctx, timeout, terminalEnvironment(), path, entry.SelfDoctorArgs...)
 	if writeErr := writeVerbose(verboseDir, entry.Name+"-self-doctor", output); writeErr != nil {
 		return "", "", writeErr
 	}
@@ -207,6 +207,10 @@ func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir s
 }
 
 func boundedOutput(parent context.Context, timeout time.Duration, path string, args ...string) ([]byte, error) {
+	return boundedOutputWithEnvironment(parent, timeout, nil, path, args...)
+}
+
+func boundedOutputWithEnvironment(parent context.Context, timeout time.Duration, environment []string, path string, args ...string) ([]byte, error) {
 	if timeout <= 0 {
 		timeout = ProbeTimeout
 	}
@@ -214,11 +218,28 @@ func boundedOutput(parent context.Context, timeout time.Duration, path string, a
 	defer cancel()
 	command := exec.CommandContext(ctx, path, args...)
 	command.Stdin = nil
+	if environment != nil {
+		command.Env = environment
+	}
 	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {
 		return output, ctx.Err()
 	}
 	return output, err
+}
+
+// terminalEnvironment gives interactive engine doctors a real terminal
+// capability description even though PFM itself runs them without a TTY.
+// Inheriting TERM=dumb makes Codex report a host defect that is not present.
+func terminalEnvironment() []string {
+	environment := os.Environ()
+	for index, value := range environment {
+		if strings.HasPrefix(value, "TERM=") {
+			environment[index] = "TERM=xterm-256color"
+			return environment
+		}
+	}
+	return append(environment, "TERM=xterm-256color")
 }
 
 func commandError(err error, output []byte) string {

@@ -253,6 +253,66 @@ func TestLimitsTabRendersAccountWindows(t *testing.T) {
 	}
 }
 
+func TestLimitsTabScrollsToAccountsBelowTheViewport(t *testing.T) {
+	model := NewModel(fixtureSnapshot(80))
+	model.tab = TabLimits
+	model.height = 12
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{Account: 1, Engine: pfmengine.Claude, Label: "Claude 1", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 1}}},
+		{Account: 2, Engine: pfmengine.Claude, Label: "Claude 2", Windows: []pfmstats.Window{{Name: "7d", UsedPct: 2}}},
+		{Account: 1, Engine: pfmengine.Codex, Label: "Codex 1", Windows: []pfmstats.Window{{Name: "5h-spark", UsedPct: 3}}},
+	}}
+	before := ansi.Strip(model.renderLimitsPanel(80, 6))
+	if strings.Contains(before, "Codex 1") {
+		t.Fatalf("setup did not place Codex below the viewport:\n%s", before)
+	}
+	model, command := applyKey(t, model, specialKey(tea.KeyEnd))
+	if command != nil || model.limitsOffset == 0 {
+		t.Fatalf("End did not scroll Limits: command=%v offset=%d", command, model.limitsOffset)
+	}
+	after := ansi.Strip(model.renderLimitsPanel(80, 6))
+	if !strings.Contains(after, "Codex 1") || !strings.Contains(after, "5h-spark") {
+		t.Fatalf("Codex remained unreachable after scrolling:\n%s", after)
+	}
+}
+
+func TestLimitsTabScrollsAcrossClaudeCodexAndOpenCodeCardsAfterResize(t *testing.T) {
+	model := NewModel(fixtureSnapshot(50))
+	model.tab = TabLimits
+	model.height = 12
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{Account: 1, Engine: pfmengine.Claude, Label: "Claude 1", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 1}}},
+		{Account: 2, Engine: pfmengine.Claude, Label: "Claude 2", Windows: []pfmstats.Window{{Name: "7d", UsedPct: 2}}},
+		{Account: 1, Engine: pfmengine.Codex, Label: "Codex 1", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 3}}},
+		{Account: 2, Engine: pfmengine.Codex, Label: "Codex 2", Windows: []pfmstats.Window{{Name: "7d", UsedPct: 4}}},
+		{Account: 1, Engine: pfmengine.Opencode, Label: "OpenCode 1", Windows: []pfmstats.Window{{Name: "5h", UsedPct: 5}}},
+		{Account: 2, Engine: pfmengine.Opencode, Label: "OpenCode 2", Windows: []pfmstats.Window{{Name: "7d", UsedPct: 6}}},
+	}}
+	if before := ansi.Strip(model.renderLimitsPanel(50, 6)); strings.Contains(before, "OpenCode 2") {
+		t.Fatalf("tiny viewport unexpectedly showed the final card:\n%s", before)
+	}
+	model, command := applyKey(t, model, specialKey(tea.KeyEnd))
+	if command != nil || model.limitsOffset == 0 {
+		t.Fatalf("End did not reach the bottom of the tiny Limits viewport: command=%v offset=%d", command, model.limitsOffset)
+	}
+	bottom := ansi.Strip(model.renderLimitsPanel(50, 6))
+	if !strings.Contains(bottom, "OpenCode") || !strings.Contains(bottom, " 6%") || !strings.Contains(bottom, "7d") {
+		t.Fatalf("bottom of Limits cards was unreachable:\n%s", bottom)
+	}
+
+	model.height = 30
+	model, command = applyKey(t, model, specialKey(tea.KeyHome))
+	if command != nil || model.limitsOffset != 0 {
+		t.Fatalf("Home after resize did not reset Limits offset: command=%v offset=%d", command, model.limitsOffset)
+	}
+	wide := ansi.Strip(model.renderLimitsPanel(80, 30))
+	for _, label := range []string{"Claude", "Codex", "OpenCode", " 1%", " 4%", " 6%"} {
+		if !strings.Contains(wide, label) {
+			t.Fatalf("resized Limits viewport lost %q:\n%s", label, wide)
+		}
+	}
+}
+
 func TestLimitsTabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
 	model := NewModel(fixtureSnapshot(120))
 	model.tab = TabLimits

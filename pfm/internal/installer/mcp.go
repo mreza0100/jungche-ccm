@@ -73,13 +73,14 @@ func (installer *engine) wireMCP() error {
 		}
 	}
 	names := enabledMCPNames(installer.options.MCPEnabled)
-	if err := installer.writeMCPClientJSON(token, names); err != nil {
+	wiredNames, err := installer.writeMCPClientJSON(token, names)
+	if err != nil {
 		return err
 	}
 	if err := installer.writeMCPCodeConfig(token, names); err != nil {
 		return err
 	}
-	return installer.writeMCPOwnership(names)
+	return installer.writeMCPOwnership(wiredNames)
 }
 
 func enabledMCPNames(servers map[string]bool) []string {
@@ -125,18 +126,20 @@ func isHex(value string) bool {
 	return err == nil
 }
 
-func (installer *engine) writeMCPClientJSON(token string, names []string) error {
+func (installer *engine) writeMCPClientJSON(token string, names []string) ([]string, error) {
 	path := filepath.Join(installer.options.Home, ".mcp.json")
 	document, existed, err := readJSONObject(path)
 	if err != nil {
-		return fmt.Errorf("read MCP client config %s: %w", path, err)
+		return nil, fmt.Errorf("read MCP client config %s: %w", path, err)
 	}
+	previouslyOwned := installer.previouslyOwnedMCPClients()
 	servers, _ := document["mcpServers"].(map[string]any)
 	if servers == nil {
 		servers = map[string]any{}
 		document["mcpServers"] = servers
 	}
 	changed := false
+	wired := make([]string, 0, len(names))
 	for _, name := range names {
 		wanted := map[string]any{
 			"type": "http",
@@ -145,24 +148,28 @@ func (installer *engine) writeMCPClientJSON(token string, names []string) error 
 				"Authorization": "Bearer " + token,
 			},
 		}
-		if current, ok := servers[name].(map[string]any); ok && !sameJSONValue(current, wanted) {
-			installer.skip("preserve conflicting manual MCP client " + name)
-			continue
+		if current, present := servers[name]; present && !sameJSONValue(current, wanted) {
+			registration, object := current.(map[string]any)
+			if !object || !previouslyOwned[name] || !installer.isPFMHTTPClient(name, registration) {
+				installer.skip("preserve conflicting manual MCP client " + name)
+				continue
+			}
 		}
 		if !sameJSONValue(servers[name], wanted) {
 			servers[name] = wanted
 			changed = true
 		}
+		wired = append(wired, name)
 	}
 	if !changed {
 		installer.ok(path + " wiring")
-		return nil
+		return wired, nil
 	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode MCP client config %s: %w", path, err)
+		return nil, fmt.Errorf("encode MCP client config %s: %w", path, err)
 	}
-	return installer.change("rewrite "+path+" (backup preserved)", func() error {
+	err = installer.change("rewrite "+path+" (backup preserved)", func() error {
 		if existed {
 			backup := availableBackup(path, installer.stamp)
 			if err := copyBackup(path, backup); err != nil {
@@ -171,6 +178,39 @@ func (installer *engine) writeMCPClientJSON(token string, names []string) error 
 		}
 		return atomicWrite(path, append(encoded, '\n'), 0o600)
 	})
+	return wired, err
+}
+
+func (installer *engine) previouslyOwnedMCPClients() map[string]bool {
+	owned := make(map[string]bool)
+	raw, err := os.ReadFile(installer.mcpOwnershipPath())
+	if err != nil {
+		return owned
+	}
+	var ownership mcpOwnership
+	if json.Unmarshal(raw, &ownership) != nil {
+		return owned
+	}
+	for _, name := range ownership.Clients {
+		owned[name] = true
+	}
+	return owned
+}
+
+func (installer *engine) isPFMHTTPClient(name string, registration map[string]any) bool {
+	if len(registration) != 3 || registration["type"] != "http" || registration["url"] != installer.mcpURL(name) {
+		return false
+	}
+	headers, ok := registration["headers"].(map[string]any)
+	if !ok || len(headers) != 1 {
+		return false
+	}
+	authorization, ok := headers["Authorization"].(string)
+	if !ok || !strings.HasPrefix(authorization, "Bearer ") {
+		return false
+	}
+	token := strings.TrimPrefix(authorization, "Bearer ")
+	return len(token) == 64 && isHex(token)
 }
 
 func (installer *engine) writeMCPCodeConfig(token string, names []string) error {

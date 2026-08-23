@@ -100,7 +100,7 @@ func (current *backend) searchableRows(
 		)
 		rows = append(rows, searchable{
 			id: transcript.UUID, path: transcript.Path, engine: string(pfmengine.Claude), name: name,
-			dir: transcript.CWD, mtimeNS: transcript.MTimeNS,
+			dir: transcript.CWD, mtimeNS: transcript.EffectiveActivityNS(),
 			metadata: strings.Join([]string{
 				transcript.UUID, name, transcript.FirstPrompt,
 				transcript.LastPrompt, transcript.CWD,

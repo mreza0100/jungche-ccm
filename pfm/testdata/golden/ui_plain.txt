@@ -4,7 +4,7 @@
 ● 🚀🧭🛠️📦🧪✨ fleet  ⊞3 🥇 🥉  21p  7.0K  2h
 
 [beta]
-⚙ Agent 界面 needle 列对齐测试名字  ⚙ agent 🥉 ·killed  7p  820B  1d
+⚙ Agent 界面 needle 列对齐测试名字  ⚙ agent 🥉 ·hidden  7p  820B  1d
 ↻ Resume Claude  🥇  12p  80K  3d
 ↻ Resume Codex  ⬢  4p  5.0K  4d
 

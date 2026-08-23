@@ -236,6 +236,44 @@ func TestCodexWindowNameUsesServerSeconds(t *testing.T) {
 	}
 }
 
+func TestCodexWindowsIncludesEveryAppServerBucket(t *testing.T) {
+	usage := codexUsage{
+		PlanType: "pro",
+		RateLimit: &codexRateLimitBucket{
+			LimitID: "codex",
+			PrimaryWindow: &codexRateLimitWindow{
+				UsedPercent: 31, LimitWindowSeconds: 604_800, ResetAt: 1_787_821_172,
+			},
+		},
+		RateLimitsByLimitID: map[string]codexRateLimitBucket{
+			"codex": {
+				LimitID: "codex",
+				PrimaryWindow: &codexRateLimitWindow{
+					UsedPercent: 31, LimitWindowSeconds: 604_800, ResetAt: 1_787_821_172,
+				},
+			},
+			"codex_bengalfox": {
+				LimitID: "codex_bengalfox", LimitName: "GPT-5.3-Codex-Spark",
+				PrimaryWindow: &codexRateLimitWindow{
+					UsedPercent: 5, LimitWindowSeconds: 18_000, ResetAt: 1_787_530_676,
+				},
+				SecondaryWindow: &codexRateLimitWindow{
+					UsedPercent: 8, LimitWindowSeconds: 604_800, ResetAt: 1_788_117_476,
+				},
+			},
+		},
+	}
+	windows := codexWindows(usage)
+	if len(windows) != 3 {
+		t.Fatalf("windows=%#v, want base weekly plus both Spark windows", windows)
+	}
+	for index, want := range []string{"7d", "5h-spark", "7d-spark"} {
+		if windows[index].Name != want {
+			t.Fatalf("window %d name=%q, want %q (all=%#v)", index, windows[index].Name, want, windows)
+		}
+	}
+}
+
 func TestLimitsSamplerKeepsCodexAuthAndPayloadFailuresVisible(t *testing.T) {
 	t.Run("missing sign-in", func(t *testing.T) {
 		assertCodexStatus(t, filepath.Join(t.TempDir(), "missing.json"), "", nil, "no local Codex sign-in")

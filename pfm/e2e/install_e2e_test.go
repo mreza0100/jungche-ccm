@@ -33,7 +33,7 @@ const (
 	e2eManagedRoot     = ".local/share/pfm/install"
 	e2eCanonicalPFM    = ".local/bin/pfm"
 	e2eCanonicalClaude = ".local/bin/claude"
-	e2eSettings        = ".claude/settings.json"
+	e2eSettings        = ".cc/1/settings.json"
 	e2eCodexHooks      = ".codex/hooks.json"
 	e2eZshrc           = ".zshrc"
 	e2eCommandRoot     = ".claude/commands"
@@ -64,7 +64,6 @@ var managedAssets = []string{
 }
 
 var managedSettings = []string{
-	".claude/settings.json",
 	".cc/1/settings.json",
 	".cc/2/settings.json",
 	".cc/3/settings.json",
@@ -73,8 +72,6 @@ var managedSettings = []string{
 var expectedHooks = []string{
 	"chat group hook",
 	"usage-hook",
-	"dream hook agent-inject",
-	"dream hook nudge",
 	"internal explore-deny",
 	"internal epic-inject",
 	"internal launcher-repair",
@@ -186,7 +183,7 @@ func runInstallE2E(t *testing.T) {
 		harness.requireHarvestGate("install", result)
 		harness.assertInstalled(home)
 		result = harness.pfm(home, "doctor")
-		harness.requireSuccess("doctor", result)
+		harness.requireSkippedHarvestDoctor(result)
 		fresh, _ = harness.snapshot(home)
 	})
 
@@ -386,7 +383,7 @@ func (h *e2eHarness) newHome(binary string) string {
 	native := filepath.Join(home, ".local", "share", "claude", "versions", "fixture")
 	launcherEvidence := filepath.Join(home, "launcher-evidence")
 	body := "#!/bin/sh\n" +
-		"if [ \"${1-}\" = --version ]; then printf 'claude fixture\\n'; exit 0; fi\n" +
+		"if [ \"${1-}\" = --version ]; then printf '2.1.238 (Claude Code)\\n'; exit 0; fi\n" +
 		"printf '%s\\n' \"${TMUX%%,*}\" > " + shellQuoteFixture(launcherEvidence) + "\n" +
 		"exit 0\n"
 	if err := os.MkdirAll(filepath.Dir(native), 0o700); err != nil {
@@ -396,6 +393,20 @@ func (h *e2eHarness) newHome(binary string) string {
 		h.t.Fatal(err)
 	}
 	if err := os.Symlink(native, filepath.Join(home, e2eCanonicalClaude)); err != nil {
+		h.t.Fatal(err)
+	}
+	codex := filepath.Join(home, ".local", "bin", "codex")
+	codexBody := `#!/bin/sh
+if [ "${1-}" = --version ]; then printf 'codex-cli 0.149.0\n'; exit 0; fi
+if [ "${1-}" = doctor ] && [ "${2-}" = --help ]; then printf 'usage: codex doctor\n'; exit 0; fi
+if [ "${1-}" = doctor ]; then printf 'healthy\n'; exit 0; fi
+exit 2
+`
+	if err := os.WriteFile(codex, []byte(codexBody), 0o700); err != nil {
+		h.t.Fatal(err)
+	}
+	auth := filepath.Join(home, ".codex", "auth.json")
+	if err := os.WriteFile(auth, []byte(`{"tokens":{"access_token":"fixture-token","account_id":"fixture-account"}}`+"\n"), 0o600); err != nil {
 		h.t.Fatal(err)
 	}
 	return home
@@ -484,16 +495,38 @@ func (h *e2eHarness) requireSuccess(phase string, result commandResult) {
 		return
 	}
 	differences := []string{"command exit"}
-	if strings.Contains(strings.ToLower(result.stdout+result.stderr), "harvestpy") {
+	output := result.stdout + result.stderr
+	if strings.Contains(strings.ToLower(output), "harvestpy") && !strings.Contains(output, e2eHarvestSkipLine) {
 		differences = append(differences, "harvestpy provisioning attempted; expected blocked, not attempted")
 	}
-	h.t.Fatalf("%s failed; differing paths: %s; status: %v", phase, strings.Join(differences, ", "), result.err)
+	h.t.Fatalf(
+		"%s failed; differing paths: %s; status: %v; stdout=%q stderr=%q",
+		phase, strings.Join(differences, ", "), result.err, result.stdout, result.stderr,
+	)
 }
 
 func (h *e2eHarness) requireHarvestGate(phase string, result commandResult) {
 	h.t.Helper()
 	if !strings.Contains(result.stdout+result.stderr, e2eHarvestSkipLine) {
 		h.t.Fatalf("%s failed; differing paths: harvestpy gate output; want %q", phase, e2eHarvestSkipLine)
+	}
+}
+
+func (h *e2eHarness) requireSkippedHarvestDoctor(result commandResult) {
+	h.t.Helper()
+	output := result.stdout + result.stderr
+	if result.err == nil {
+		h.t.Fatalf("doctor after --skip-harvest succeeded, want named unprovisioned dependencies; output=%q", output)
+	}
+	for _, want := range []string{
+		"doctor: dep uv path= broken",
+		"doctor: dep harvestpy path= broken",
+		"doctor: harvestpy skipped",
+		"doctor: warnings=2",
+	} {
+		if !strings.Contains(output, want) {
+			h.t.Fatalf("doctor after --skip-harvest omitted %q; stdout=%q stderr=%q", want, result.stdout, result.stderr)
+		}
 	}
 }
 
@@ -566,9 +599,17 @@ func (h *e2eHarness) assertInstalled(home string) {
 		h.t.Fatalf("install surface failed; differing paths: .zshrc source line")
 	}
 	h.assertTmuxConfig(home)
-	codex := h.readJSON(filepath.Join(home, e2eCodexHooks))
-	if !containsJSONString(codex, filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
-		h.t.Fatalf("install surface failed; differing paths: .codex/hooks.json clear-kill")
+	codexHooksPath := filepath.Join(home, e2eCodexHooks)
+	if raw, err := os.ReadFile(codexHooksPath); err == nil {
+		var codex map[string]any
+		if err := json.Unmarshal(raw, &codex); err != nil {
+			h.t.Fatalf("install surface failed; differing paths: .codex/hooks.json parse; status: %v", err)
+		}
+		if containsJSONString(codex, filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
+			h.t.Fatal("install surface failed; differing paths: .codex/hooks.json retained retired clear-kill")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		h.t.Fatalf("install surface failed; differing paths: .codex/hooks.json; status: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(home, e2eSourceMarker)); err != nil {
 		h.t.Fatalf("install surface failed; differing paths: %s; status: %v", e2eSourceMarker, err)
@@ -594,7 +635,7 @@ func (h *e2eHarness) assertLauncherRuntime(home string) {
 		h.t.Fatal(err)
 	}
 	version := h.tool(home, filepath.Join(home, e2eCanonicalClaude), "--version")
-	if version.err != nil || version.stdout != "claude fixture\n" {
+	if version.err != nil || version.stdout != "2.1.238 (Claude Code)\n" {
 		h.t.Fatalf("launcher version pass-through failed: output=%q stderr=%q status=%v", version.stdout, version.stderr, version.err)
 	}
 	tmuxAfter, err := os.ReadDir(filepath.Join(home, "tmux"))
@@ -806,8 +847,16 @@ func (h *e2eHarness) assertUninstalled(home string) {
 	if _, err := os.Stat(filepath.Join(home, ".claude", "commands", "foreign-fixture.md")); err != nil {
 		h.t.Fatalf("uninstall failed; differing paths: foreign-fixture.md; status: %v", err)
 	}
-	if containsJSONString(h.readJSON(filepath.Join(home, e2eCodexHooks)), filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
-		h.t.Fatalf("uninstall failed; differing paths: installer Codex hook")
+	if raw, err := os.ReadFile(filepath.Join(home, e2eCodexHooks)); err == nil {
+		var codex map[string]any
+		if err := json.Unmarshal(raw, &codex); err != nil {
+			h.t.Fatalf("uninstall failed; differing paths: .codex/hooks.json parse; status: %v", err)
+		}
+		if containsJSONString(codex, filepath.Join(home, ".local", "bin", "pfm")+" internal clear-kill") {
+			h.t.Fatalf("uninstall failed; differing paths: retired installer Codex hook")
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		h.t.Fatalf("uninstall failed; differing paths: .codex/hooks.json; status: %v", err)
 	}
 }
 

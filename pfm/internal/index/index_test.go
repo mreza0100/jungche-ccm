@@ -403,6 +403,54 @@ func TestParseCodexSubagentMessagesNeverPromoteToUserThread(t *testing.T) {
 	}
 }
 
+func TestClaudeMetadataAppendDoesNotRefreshPromptActivity(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "semantic-activity.jsonl")
+	const promptStamp = "2026-08-16T17:10:00.123Z"
+	content := `{"type":"user","timestamp":"` + promptStamp + `","cwd":"/work/marketing","message":{"content":"Ship the campaign"}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	physical := time.Date(2026, 8, 23, 21, 8, 27, 0, time.UTC)
+	if err := os.Chtimes(path, physical, physical); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := diskFile{ID: "semantic-activity", Path: path, Size: info.Size(), MTimeNS: info.ModTime().UnixNano()}
+	transcript, offset, err := parseClaude(file, 0, store.Transcript{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := time.Parse(time.RFC3339Nano, promptStamp)
+	if transcript.ActivityNS != want.UnixNano() {
+		t.Fatalf("full activity=%s, want last meaningful prompt %s (physical mtime %s)",
+			time.Unix(0, transcript.ActivityNS).UTC(), want, physical)
+	}
+
+	appendBytes(t, path, []byte(`{"type":"bridge-session","version":"1"}`+"\n"))
+	later := physical.Add(time.Hour)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.Size = info.Size()
+	file.MTimeNS = info.ModTime().UnixNano()
+	transcript, _, err = parseClaude(file, offset, transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcript.ActivityNS != want.UnixNano() {
+		t.Fatalf("metadata-only delta changed prompt activity to %s, want %s",
+			time.Unix(0, transcript.ActivityNS).UTC(), want)
+	}
+}
+
 func TestCodexFilenameIdentityPreventsForkCollisionAndWarmReparse(t *testing.T) {
 	root := t.TempDir()
 	codexRoot := filepath.Join(root, "codex")

@@ -102,3 +102,84 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 		t.Fatalf("uninstall retained credential: %v", err)
 	}
 }
+
+func TestMCPForceRotatesOwnedClientCredentialEverywhere(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	configPath := filepath.Join(home, ".config", "pfm", "config.json")
+	writeFixture(t, configPath, `{"version":2,"mcp":{"servers":{"chat":{"enabled":true}}}}`)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, MCPConfigPath: configPath, Runner: &fakeRunner{},
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	credentialPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpCredentialName)
+	first := strings.TrimSpace(readFixture(t, credentialPath))
+
+	options.Force = true
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	second := strings.TrimSpace(readFixture(t, credentialPath))
+	if second == first {
+		t.Fatal("forced install retained the old MCP credential")
+	}
+	for _, path := range []string{
+		configPath,
+		filepath.Join(home, ".mcp.json"),
+		filepath.Join(home, ".codex", "config.toml"),
+	} {
+		raw := readFixture(t, path)
+		if !strings.Contains(raw, second) || strings.Contains(raw, first) {
+			t.Fatalf("%s did not rotate atomically with the credential", path)
+		}
+	}
+}
+
+func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	manual := `{"mcpServers":{"harvester":{"type":"stdio","command":"manual-harvester"}}}`
+	writeFixture(t, filepath.Join(home, ".mcp.json"), manual)
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical},
+		MCPEnabled: map[string]bool{"chat": true, "harvester": true},
+		MCPPort:    8377, Runner: &fakeRunner{},
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	var ownership mcpOwnership
+	ownershipPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName)
+	if err := json.Unmarshal([]byte(readFixture(t, ownershipPath)), &ownership); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(ownership.Clients, ",") != "chat" {
+		t.Fatalf("owned clients=%v, want only the client PFM actually wired", ownership.Clients)
+	}
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeUninstall, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: options.MCPEnabled,
+		Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &document); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ := document["mcpServers"].(map[string]any)
+	if _, ok := servers["harvester"]; !ok {
+		t.Fatal("uninstall removed the conflicting manual Harvester registration")
+	}
+	if _, ok := servers["chat"]; ok {
+		t.Fatal("uninstall retained PFM's owned chat registration")
+	}
+}

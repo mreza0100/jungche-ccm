@@ -171,7 +171,7 @@ func (model Model) renderHeader(width int) string {
 		}
 	}
 	text := fmt.Sprintf(
-		" pfm  %s account %d · %s · %d rows · %d killed · %d empty%s",
+		" pfm  %s account %d · %s · %d rows · %d hidden · %d empty%s",
 		headerMedal,
 		headerAccount,
 		cache,
@@ -221,7 +221,7 @@ func (model Model) renderQuery(width int) string {
 		return model.renderStatsSubtabs(width)
 	}
 	if model.tab == TabLimits {
-		return dimStyle.Render(fillLine(" limits  live usage windows, no controls", width))
+		return dimStyle.Render(fillLine(" limits  live usage windows · ↑↓ scroll", width))
 	}
 	input := model.query.View()
 	status := fmt.Sprintf("%d/%d visible", len(model.filtered), len(model.order))
@@ -292,16 +292,16 @@ func (model Model) renderFooter(width int) string {
 			dimStyle.Render(fillLine(second, width))
 	}
 	if model.tab == TabLimits {
-		first := " tab/shift+tab cycle tabs  ←→ cycle tabs"
-		second := " esc cancel · live samples every 2s only while Limits is focused"
+		first := " ↑↓ scroll  pgup/pgdown page  home/end jump"
+		second := " tab/shift+tab cycle tabs · esc cancel · live samples every 2s while focused"
 		return dimStyle.Render(fillLine(first, width)) + "\n" +
 			dimStyle.Render(fillLine(second, width))
 	}
 	first := " ↑↓ move  enter open  esc cancel  type to fuzzy-find"
-	second := " ⌃X kill  ⌃E 1h  ⌃S account  ⌃O reboot"
+	second := " ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot"
 	if width < 96 {
 		first = " ↑↓ move · enter open · esc cancel · type find"
-		second = " ⌃X kill · ⌃E 1h · ⌃S acct · ⌃O reboot"
+		second = " ⌃X hide · ⌃E 1h · ⌃S acct · ⌃O reboot"
 	}
 	return dimStyle.Render(fillLine(first, width)) + "\n" +
 		dimStyle.Render(fillLine(second, width))
@@ -426,7 +426,15 @@ func (model Model) renderStatsPanel(width, height int) string {
 func (model Model) renderLimitsPanel(width, height int) string {
 	innerWidth := maxInt(1, width-2)
 	innerHeight := maxInt(1, height-2)
-	lines := model.renderLimitCards(innerWidth, innerHeight)
+	allLines := model.renderLimitCards(innerWidth)
+	maximum := maxInt(0, len(allLines)-innerHeight)
+	offset := minInt(maxInt(0, model.limitsOffset), maximum)
+	end := minInt(len(allLines), offset+innerHeight)
+	lines := append([]string(nil), allLines[offset:end]...)
+	title := " limits "
+	if maximum > 0 {
+		title = fmt.Sprintf(" limits %d-%d/%d ", offset+1, end, len(allLines))
+	}
 	if len(lines) == 0 && len(lines) < innerHeight {
 		message := "  waiting for first sample…"
 		if model.stats.Ready {
@@ -437,17 +445,15 @@ func (model Model) renderLimitsPanel(width, height int) string {
 	for len(lines) < innerHeight {
 		lines = append(lines, strings.Repeat(" ", innerWidth))
 	}
-	return framePanel(" limits ", lines, width)
+	return framePanel(title, lines, width)
 }
 
-func (model Model) renderLimitCards(innerWidth, innerHeight int) []string {
+func (model Model) renderLimitCards(innerWidth int) []string {
 	now := time.Unix(0, model.nowNS)
-	lines := make([]string, 0, innerHeight)
+	lines := make([]string, 0, len(model.stats.Limits)*4)
 	skips := make([]string, 0)
 	appendLine := func(line string) {
-		if len(lines) < innerHeight {
-			lines = append(lines, line)
-		}
+		lines = append(lines, line)
 	}
 	for _, account := range model.stats.Limits {
 		if account.Absent {
@@ -795,7 +801,8 @@ var carouselActions = []struct{ Glyph, Label string }{
 	{"▶", "open"},
 	{"⚡", "reboot"},
 	{"🕐", "1h"},
-	{"✖", "kill"},
+	{"✖", "hide"},
+	{"⏸", "deactive"},
 }
 
 // carouselBoxes draws every action as its own labelled box at the row's right
@@ -894,7 +901,7 @@ func (model Model) rowBadges(row compose.Row) string {
 		badges = append(badges, "←here")
 	}
 	if row.Killed {
-		badges = append(badges, dimStyle.Render("·killed"))
+		badges = append(badges, dimStyle.Render("·hidden"))
 	}
 	return strings.Join(badges, " ")
 }
