@@ -305,15 +305,15 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 	entry := cachedLimits{limits: AccountLimits{
 		Account: account.ID, Emoji: account.Emoji, Engine: engine, Label: label, Absent: account.Absent,
 	}, when: now}
+	if account.Absent {
+		entry.limits.Status = label
+		sampler.store(key, entry)
+		return entry
+	}
 	source, err := UsageSourceFor(engine)
 	if err != nil {
 		entry.limits.Status = err.Error()
 		entry.warnings = append(entry.warnings, err.Error())
-		sampler.store(key, entry)
-		return entry
-	}
-	if account.Absent {
-		entry.limits.Status = label
 		sampler.store(key, entry)
 		return entry
 	}

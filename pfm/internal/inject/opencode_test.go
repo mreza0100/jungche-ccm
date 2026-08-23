@@ -47,6 +47,14 @@ func TestTargetFromPartsProbeOpencodeSocket(t *testing.T) {
 	}
 }
 
+func TestTargetFromPartsNamesUnknownSocketEngine(t *testing.T) {
+	t.Setenv("PFM_TEST_PROBE_SOCKETS", "")
+	target := targetFromParts("/tmp/tmux-0/unmanaged,1,0", "%2")
+	if target.Engine != "unknown" {
+		t.Fatalf("unknown socket engine=%q, want an explicit unknown label", target.Engine)
+	}
+}
+
 func TestEngineNameCoversOpencode(t *testing.T) {
 	if got := engineName(string(pfmengine.Opencode)); got != "OpenCode" {
 		t.Errorf("engineName(ox) = %q, want OpenCode", got)

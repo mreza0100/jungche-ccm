@@ -19,6 +19,12 @@ type fakeProcTree struct {
 	environments map[int]map[string]string
 }
 
+func TestEngineForUnknownSocketIsExplicit(t *testing.T) {
+	if got := engineForSocket("unmanaged"); got != "unknown" {
+		t.Fatalf("engineForSocket(unmanaged)=%q, want explicit unknown", got)
+	}
+}
+
 type fakeParentProcFS struct {
 	parent int
 }

@@ -20,7 +20,7 @@ func TestNoEngineLiteralOutsideEnginePackage(t *testing.T) {
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
 	allow := map[string]string{
-		"internal/config/config.go": "(b) engine-named JSON keys are the shipped on-disk config format",
+		"cmd/pfm/engines.go": "(b) the composition root is the one permitted engine wiring roster",
 	}
 	literals := []string{
 		"cc", "cx", "ox", "claude", "codex", "opencode",
@@ -48,7 +48,7 @@ func TestNoEngineLiteralOutsideEnginePackage(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") || rel == "cmd/pfm/engines.go" {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
 			return nil
 		}
 		if reason, ok := allow[rel]; ok {

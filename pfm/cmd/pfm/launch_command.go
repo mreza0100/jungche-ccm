@@ -115,7 +115,11 @@ func runInternalLaunch(args []string, stdout, stderr io.Writer, runtime commandR
 		fmt.Fprintf(stderr, "pfm internal launch: find tmux: %v\n", err)
 		return 1
 	}
-	socket := freshSocket(compose.NewClaude)
+	socket, err := freshSocket(compose.NewClaude)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm internal launch: allocate socket: %v\n", err)
+		return 1
+	}
 	session := socket
 	socketPath := filepath.Join(runtime.Paths.TmuxDir, socket)
 	startChannel := "pfm-launch-start-" + socket

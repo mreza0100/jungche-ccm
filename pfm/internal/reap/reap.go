@@ -250,15 +250,15 @@ func planSocket(input Input, socket Socket) Decision {
 
 	// Fail closed twice over. With the busy set unknown, a chat here could be
 	// grinding a task; with no breadcrumb, its busy state was never readable
-	// in the first place. Codex writes no breadcrumb BY DESIGN — that is the
-	// tab-or-die tradeoff — so the second guard is cc-* only.
+	// in the first place. Codex writes no breadcrumb BY DESIGN and explicitly
+	// accepts the tab-or-die tradeoff. Every other known engine fails closed.
 	if !input.AgentsOK && socket.HasCrumb {
 		decision.State = StateSkip
 		decision.Reason = "busy-unknown (busy query failed)"
 		return decision
 	}
 	id, known := pfmengine.FromSocket(socket.Name)
-	if !socket.HasCrumb && known && id == pfmengine.Claude {
+	if !socket.HasCrumb && known && id != pfmengine.Codex {
 		decision.State = StateSkip
 		decision.Reason = "busy-unknown (no breadcrumb)"
 		return decision

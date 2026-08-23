@@ -285,12 +285,12 @@ func (s *Store) transcriptPromptCounts(
 	return counts, nil
 }
 
-// deriveEngines answers "Claude or Codex?" from the index rather than from a
+// deriveEngines answers which engine owns an id from the index rather than from a
 // stored column. The shared killed table is keyed by uuid alone, so the engine
 // is read back out of whichever index table claims the id:
-// a transcript uses engine.Claude, while a rollout or lineage root uses
-// engine.Codex. An id
-// neither table knows is an orphaned kill and keeps an empty engine, which
+// a transcript uses engine.Claude, a rollout or lineage root uses engine.Codex,
+// and an OpenCode mirror row uses engine.Opencode. An id no table knows is an
+// orphaned kill and keeps an empty engine, which
 // compose reads as "killed whatever the engine".
 func (s *Store) deriveEngines(
 	ctx context.Context,
@@ -323,10 +323,12 @@ SELECT id, ? FROM rollouts WHERE id IN (` + marks + `)
 UNION ALL
 SELECT lineage_root, ? FROM rollouts WHERE lineage_root IN (` + marks + `)
 UNION ALL
-SELECT id, ? FROM cx_names WHERE id IN (` + marks + `)`
-	// One bound id list per IN clause: four clauses, four copies.
-	arguments := make([]any, 0, (len(ids)+1)*4)
-	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex, pfmengine.Codex, pfmengine.Codex} {
+SELECT id, ? FROM cx_names WHERE id IN (` + marks + `)
+UNION ALL
+SELECT id, ? FROM oc_sessions WHERE id IN (` + marks + `)`
+	// One bound id list per IN clause: five clauses, five copies.
+	arguments := make([]any, 0, (len(ids)+1)*5)
+	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex, pfmengine.Codex, pfmengine.Codex, pfmengine.Opencode} {
 		arguments = append(arguments, string(id))
 		for _, id := range ids {
 			arguments = append(arguments, id)

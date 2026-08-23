@@ -23,6 +23,9 @@ func RegisterPlanner(id pfmengine.ID, planner HeadlessPlanner) {
 func PlannerFor(id pfmengine.ID) (HeadlessPlanner, error) {
 	planner, ok := planners[id]
 	if !ok {
+		if descriptor, err := pfmengine.Lookup(id); err == nil {
+			return nil, fmt.Errorf("%s does not support headless chat", descriptor.Short)
+		}
 		return nil, fmt.Errorf("engine %s: no headless planner registered", id)
 	}
 	return planner, nil

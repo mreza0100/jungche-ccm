@@ -19,6 +19,7 @@ import (
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/stats"
 	"hostops/pfm/internal/store"
+	"hostops/pfm/internal/theme"
 	"hostops/pfm/internal/ui"
 )
 
@@ -102,6 +103,14 @@ func TestFourthEngineNeedsOnlyItsOwnPackage(t *testing.T) {
 	}
 	if rendered := sky.StarClass(id); rendered == "" {
 		t.Fatal("fallback star rendered empty")
+	}
+	background := strings.SplitN(sky.Snapshot(0, 0), " ", 2)[0]
+	if rendered := sky.StarClass(id); rendered == background {
+		t.Fatalf("fourth engine star %q is the empty-fleet background star", rendered)
+	}
+	palette := theme.Load("default")
+	if palette.EngineRow[id] == "" || palette.StatsEngine[id] == "" {
+		t.Fatalf("fourth engine has no theme fallback: rows=%q stats=%q", palette.EngineRow[id], palette.StatsEngine[id])
 	}
 }
 

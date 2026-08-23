@@ -49,8 +49,9 @@ var (
 				Foreground(lipgloss.Color("#22d3ee"))
 	statsClaudeStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#5eead4"))
-	statsCPUStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#4ade80"))
+	statsEngineStyles map[pfmengine.ID]lipgloss.Style
+	statsCPUStyle     = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#4ade80"))
 	statsMemoryStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#60a5fa"))
 	statsTokenStyle = lipgloss.NewStyle().
@@ -80,6 +81,10 @@ func configureStyles(palette theme.Palette) {
 	agentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.AgentRow))
 	statsHeaderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.StatsHeader))
 	statsClaudeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsEngine[pfmengine.Claude]))
+	statsEngineStyles = make(map[pfmengine.ID]lipgloss.Style, len(pfmengine.All()))
+	for _, id := range pfmengine.All() {
+		statsEngineStyles[id] = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsEngine[id]))
+	}
 	statsCPUStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsCPU))
 	statsMemoryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsRAM))
 	statsTokenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsToken))
@@ -191,15 +196,14 @@ func (model Model) renderHeader(width int) string {
 	if !model.skyEnabled {
 		return strings.Join(lines, "\n")
 	}
-	claude, codex := liveEngineCounts(model.rows)
+	counts := liveEngineCounts(model.rows)
 	widget := sky.Frame(sky.Options{
-		ClaudeCount: claude,
-		CodexCount:  codex,
-		Width:       18,
-		Height:      3,
-		TimeNS:      model.nowNS,
-		Events:      model.skyEvents,
-		Colorize:    true,
+		Counts:   counts,
+		Width:    18,
+		Height:   3,
+		TimeNS:   model.nowNS,
+		Events:   model.skyEvents,
+		Colorize: true,
 	})
 	for index := range lines {
 		lines[index] = fillLine(lines[index], contentWidth) + widget[index]
@@ -341,8 +345,10 @@ func (model Model) renderStatsPanel(width, height int) string {
 				continue
 			}
 			engineStyle := statsClaudeStyle
-			if id, err := pfmengine.Parse(chat.Engine); err == nil && id == pfmengine.Codex {
-				engineStyle = codexStyle
+			if id, err := pfmengine.Parse(chat.Engine); err == nil {
+				if style, ok := statsEngineStyles[id]; ok {
+					engineStyle = style
+				}
 			}
 			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
 				"%-*s", nameWidth, clipRunes(cleanField(chat.Name), nameWidth),

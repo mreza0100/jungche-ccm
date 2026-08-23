@@ -212,7 +212,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 		l1 += sep + color + data.Vim.Mode + reset
 	}
 	counts := fleetCounts(runtime)
-	l1 += sep + sky.Snapshot(counts[pfmengine.Claude], counts[pfmengine.Codex])
+	l1 += sep + sky.SnapshotCounts(counts)
 
 	percent := int(data.ContextWindow.UsedPercentage)
 	urgency := urgencyEmoji(percent)

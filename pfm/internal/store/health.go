@@ -16,9 +16,10 @@ type RowCounts struct {
 }
 
 // orphanedKilledSource is the single definition of an orphaned kill: a chat in
-// the shared store's killed set that resolves to no transcript and no rollout,
-// directly or through a Codex lineage root. Counts, the listing, and the prune
-// all read it, so doctor and `killed --prune-orphans` can never disagree.
+// the shared store's killed set that resolves to no transcript, rollout, or
+// OpenCode session, directly or through a Codex lineage root. Counts, the
+// listing, and the prune all read it, so doctor and `killed --prune-orphans`
+// can never disagree.
 //
 // It reads the effective mirror, so a concurrent external kill counts here too;
 // every caller refills that mirror first. The engine test the v1 query carried
@@ -30,7 +31,8 @@ WHERE NOT EXISTS (SELECT 1 FROM transcripts t WHERE t.uuid=h.uuid)
   AND NOT EXISTS (
     SELECT 1 FROM rollouts r
     WHERE r.id=h.uuid OR r.lineage_root=h.uuid
-  )`
+  )
+  AND NOT EXISTS (SELECT 1 FROM oc_sessions o WHERE o.id=h.uuid)`
 
 // QuickCheck runs SQLite's bounded integrity probe.
 func (s *Store) QuickCheck(ctx context.Context) (string, error) {

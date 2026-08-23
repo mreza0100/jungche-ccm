@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/engine/matchutil"
 )
 
 // DetectAgents returns strict session identities for Claude processes using a
@@ -75,43 +76,12 @@ func DetectAgents(proc ProcFS, home string, panes []Pane, binaries ...string) ([
 // hosting a chat is not a process tree hosting somebody's dev server — so
 // there is one spelling of it (K3).
 func IsClaudeCommand(cmdline []string, binaries ...string) bool {
-	if len(cmdline) == 0 {
-		return false
-	}
-	descriptor := pfmengine.MustLookup(pfmengine.Claude)
-	executable := filepath.ToSlash(cmdline[0])
-	name := filepath.Base(executable)
-	if name == descriptor.Binary {
-		return true
-	}
-	for _, hint := range descriptor.BinaryPathHints {
-		if strings.Contains(executable, hint) {
-			return true
-		}
-	}
-	for _, binary := range binaries {
-		if binary != "" && name == filepath.Base(binary) {
-			return true
-		}
-	}
-	return false
+	return matchutil.Command(pfmengine.Claude, cmdline, true, binaries...)
 }
 
 // IsCodexCommand reports whether an argv belongs to a Codex process.
 func IsCodexCommand(cmdline []string, binaries ...string) bool {
-	if len(cmdline) == 0 {
-		return false
-	}
-	name := filepath.Base(filepath.ToSlash(cmdline[0]))
-	if name == pfmengine.MustLookup(pfmengine.Codex).Binary {
-		return true
-	}
-	for _, binary := range binaries {
-		if binary != "" && name == filepath.Base(binary) {
-			return true
-		}
-	}
-	return false
+	return matchutil.Command(pfmengine.Codex, cmdline, false, binaries...)
 }
 
 func isClaudeCommand(cmdline []string, binaries ...string) bool {

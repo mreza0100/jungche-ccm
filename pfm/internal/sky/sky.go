@@ -1,12 +1,13 @@
-// Package sky renders the pfm fleet picker's "binary star" corner widget:
-// two bodies — steel-blue Claude, amber Codex — orbiting a common center in
-// a strip of terminal cells (~18x3). Every frame is a pure function of the
-// clock and the two live-chat counts; the widget never gathers data itself.
+// Package sky renders the pfm fleet picker's orbiting-engine corner widget.
+// Every live engine is a distinct body in a strip of terminal cells (~18x3).
+// Each frame is a pure function of the clock and live-chat counts; the widget
+// never gathers data itself.
 // Births and deaths are injected by the caller as Events.
 package sky
 
 import (
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,9 @@ func (e Event) Expired(nowNS int64) bool {
 
 // Options is the complete input of one frame; Frame is pure in it.
 type Options struct {
+	// Counts is the engine-generic live roster. ClaudeCount/CodexCount remain
+	// compatibility inputs for callers that have not yet materialized a map.
+	Counts      map[pfmengine.ID]int
 	ClaudeCount int // live Claude chats: 0 = absent, 1-2 dim, 3-6 bright, 7+ ringed
 	CodexCount  int // live Codex chats, same scale
 
@@ -79,11 +83,25 @@ func Frame(o Options) []string {
 	return g.render(o.Colorize)
 }
 
-// Snapshot is the one-line static form for a statusline: a blue cluster and
-// an amber cluster, each a tier-scaled glyph plus the honest count.
+// Snapshot is the legacy two-engine one-line static form. New callers use
+// SnapshotCounts so every registered engine gets a cluster.
 // Count 0 renders as a lone faint dot.
 func Snapshot(claude, codex int) string {
 	return snapHalf(claude, pfmengine.Claude) + " " + snapHalf(codex, pfmengine.Codex)
+}
+
+// SnapshotCounts renders every live registered engine in stable ID order.
+// The two original engine slots remain visible at zero for statusline
+// continuity; later engines appear as soon as they have a live chat.
+func SnapshotCounts(counts map[pfmengine.ID]int) string {
+	parts := make([]string, 0, len(pfmengine.All()))
+	for _, id := range pfmengine.All() {
+		if id != pfmengine.Claude && id != pfmengine.Codex && counts[id] <= 0 {
+			continue
+		}
+		parts = append(parts, snapHalf(counts[id], id))
+	}
+	return strings.Join(parts, " ")
 }
 
 func snapHalf(n int, id pfmengine.ID) string {
@@ -191,15 +209,20 @@ func drawBackground(g *grid) {
 	}
 }
 
-// drawBodies places the two stars on their shared orbit. Barycenter rule:
-// each body circles the common center at a radius inversely proportional to
-// its chat count, scaled so the lighter body sweeps the full width — a busy
-// Claude sits heavy near the middle while a lone Codex swings wide.
+// drawBodies places every live engine on a shared orbit. Each body's radius
+// is proportional to the activity in the other bodies, so a busy engine sits
+// nearer the middle while lighter peers swing wide.
 // A body whose count is 0 is absent; a lone survivor rests at the center.
 func drawBodies(g *grid, o Options) {
-	mc, mx := o.ClaudeCount, o.CodexCount
-	if mc <= 0 && mx <= 0 {
-		return
+	counts := make(map[pfmengine.ID]int, len(o.Counts)+2)
+	for id, count := range o.Counts {
+		counts[id] = count
+	}
+	if _, present := counts[pfmengine.Claude]; !present {
+		counts[pfmengine.Claude] = o.ClaudeCount
+	}
+	if _, present := counts[pfmengine.Codex]; !present {
+		counts[pfmengine.Codex] = o.CodexCount
 	}
 	theta := 2 * math.Pi * float64(o.TimeNS) / float64(OrbitPeriodNS)
 	cx := float64(g.w-1) / 2
@@ -210,35 +233,41 @@ func drawBodies(g *grid, o Options) {
 	}
 	ryMax := cy * ryFrac
 
-	var rClaude, rCodex float64 // fractions of rxMax
-	if mc > 0 && mx > 0 {
-		fc := float64(mx) / float64(mc+mx) // heavier body orbits closer in
-		fx := float64(mc) / float64(mc+mx)
-		s := 1 / math.Max(fc, fx)
-		rClaude, rCodex = fc*s, fx*s
-	}
-
 	type body struct {
 		e        pfmengine.ID
 		count    int
 		r        float64
 		sin, cos float64
 	}
-	var bodies []body
-	if mc > 0 {
-		bodies = append(bodies, body{pfmengine.Claude, mc, rClaude, math.Sin(theta), math.Cos(theta)})
+	active := make([]body, 0, len(counts))
+	total := 0
+	for _, id := range pfmengine.All() {
+		if count := counts[id]; count > 0 {
+			active = append(active, body{e: id, count: count})
+			total += count
+		}
 	}
-	if mx > 0 {
-		bodies = append(bodies, body{pfmengine.Codex, mx, rCodex, -math.Sin(theta), -math.Cos(theta)})
+	if len(active) == 0 {
+		return
 	}
-	// The far body (smaller sin) draws first so the near one overlaps it.
-	if len(bodies) == 2 && bodies[0].sin > bodies[1].sin {
-		bodies[0], bodies[1] = bodies[1], bodies[0]
+	maxCounterweight := 0
+	for _, candidate := range active {
+		maxCounterweight = max(maxCounterweight, total-candidate.count)
 	}
-	for _, b := range bodies {
+	for index := range active {
+		phase := theta + 2*math.Pi*float64(index)/float64(len(active))
+		active[index].sin = math.Sin(phase)
+		active[index].cos = math.Cos(phase)
+		if len(active) > 1 && maxCounterweight > 0 {
+			active[index].r = float64(total-active[index].count) / float64(maxCounterweight)
+		}
+	}
+	// Far bodies draw first so nearer bodies remain legible on overlap.
+	sort.SliceStable(active, func(left, right int) bool { return active[left].sin < active[right].sin })
+	for _, b := range active {
 		fx := cx + b.r*rxMax*b.cos
 		fy := cy + b.r*ryMax*b.sin
-		far := len(bodies) == 2 && b.sin < depthFar
+		far := len(active) > 1 && b.sin < depthFar
 		drawBody(g, b.e, b.count, fx, fy, far, o.TimeNS)
 	}
 }

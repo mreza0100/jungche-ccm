@@ -49,8 +49,9 @@ func archiveJail(t *testing.T) paths.Values {
 	values := paths.Values{
 		Home: filepath.Join(root, "home"),
 		Roots: map[pfmengine.ID][]string{
-			pfmengine.Claude: {filepath.Join(root, "home", ".cc", "1", "projects")},
-			pfmengine.Codex:  {filepath.Join(root, "home", ".codex")},
+			pfmengine.Claude:   {filepath.Join(root, "home", ".cc", "1", "projects")},
+			pfmengine.Codex:    {filepath.Join(root, "home", ".codex")},
+			pfmengine.Opencode: {filepath.Join(root, "home", ".local", "share", "opencode")},
 		},
 		SIDDir:     filepath.Join(root, "sid"),
 		ArchiveDir: filepath.Join(root, "home", ".claude-archive"),
@@ -68,6 +69,30 @@ func archiveJail(t *testing.T) paths.Values {
 		}
 	}
 	return values
+}
+
+// OpenCode stores every session in one shared SQLite database, so the file
+// archive cannot move one session without moving all of them. A killed
+// OpenCode session must therefore stay killed and be reported as unsupported;
+// treating it as an orphan and retiring the kill makes the chat come back.
+func TestArchivePreservesUnsupportedOpencodeKill(t *testing.T) {
+	values := archiveJail(t)
+	kills := &fakeKills{rows: []KilledChat{{ID: "ses-opencode", Engine: pfmengine.Opencode}}}
+	runner, err := New(Dependencies{Paths: values, Kills: kills, Proc: emptyProc{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := runner.Run(context.Background(), Options{Apply: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Orphans) != 0 || report.Unkilled != 0 || len(kills.unkilled) != 0 {
+		t.Fatalf("OpenCode kill was treated as disposable: report=%+v unkilled=%v", report, kills.unkilled)
+	}
+	if len(report.Unsupported) != 1 || report.Unsupported[0] != "ses-opencode" {
+		t.Fatalf("OpenCode archive limitation was hidden: report=%+v", report)
+	}
 }
 
 func writeFile(t *testing.T, path, content string) {

@@ -27,3 +27,10 @@ func TestUnknownEngineIsANamedError(t *testing.T) {
 		t.Fatalf("RunnerFor(zz) error = %v", err)
 	}
 }
+
+func TestKnownUnsupportedEngineGetsProductFacingError(t *testing.T) {
+	_, err := RunnerFor(pfmengine.Opencode)
+	if err == nil || err.Error() != "OpenCode does not support ask" {
+		t.Fatalf("RunnerFor(OpenCode) error = %v", err)
+	}
+}

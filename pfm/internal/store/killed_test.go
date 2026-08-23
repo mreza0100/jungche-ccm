@@ -83,6 +83,69 @@ func TestDatabaseEngineEdgeRejectsUnknownWithAcceptedSet(t *testing.T) {
 	}
 }
 
+func TestKilledChatsDeriveOpencodeEngineFromMirror(t *testing.T) {
+	setStoreTestJail(t)
+	database := openTestStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	const id = "ses-opencode"
+	if err := database.ReplaceOcSessions(ctx, []OcSession{{ID: id, Title: "fixture"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Kill(ctx, Killed{ID: id, Engine: pfmengine.Opencode, KilledAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.KilledChats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Engine != pfmengine.Opencode {
+		t.Fatalf("KilledChats()=%#v, want one OpenCode row", rows)
+	}
+	counts, err := database.Counts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts.OrphanedKills != 0 {
+		t.Fatalf("live mirrored OpenCode kill counted as orphan: %+v", counts)
+	}
+}
+
+func TestOpenCodeKillBecomesPrunableOnlyAfterMirrorRemoval(t *testing.T) {
+	setStoreTestJail(t)
+	database := openTestStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	ctx := context.Background()
+	const id = "ses-opencode-prunable"
+	if err := database.ReplaceOcSessions(ctx, []OcSession{{ID: id, Title: "fixture"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Kill(ctx, Killed{ID: id, Engine: pfmengine.Opencode, KilledAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if counts, err := database.Counts(ctx); err != nil || counts.OrphanedKills != 0 {
+		t.Fatalf("mirrored OpenCode kill counts=%+v err=%v, want non-orphan", counts, err)
+	}
+	if err := database.ReplaceOcSessions(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := database.Counts(ctx)
+	if err != nil || counts.OrphanedKills != 1 {
+		t.Fatalf("unmirrored OpenCode kill counts=%+v err=%v, want one orphan", counts, err)
+	}
+	orphans, err := database.OrphanedKills(ctx)
+	if err != nil || len(orphans) != 1 || orphans[0].ID != id {
+		t.Fatalf("OrphanedKills()=%#v err=%v, want %q", orphans, err, id)
+	}
+	deleted, err := database.DeleteOrphanedKills(ctx)
+	if err != nil || deleted != 1 {
+		t.Fatalf("DeleteOrphanedKills()=%d err=%v, want one deletion", deleted, err)
+	}
+	if _, found, err := database.Killed(ctx, id); err != nil || found {
+		t.Fatalf("Killed(%q) found=%t err=%v after prune, want absent", id, found, err)
+	}
+}
+
 // A persistent busy database must be loud and nonzero; success would claim an
 // operator decision was durable when no row was written.
 func TestKilledBusyPolicyWarnsAndRejectsTheChange(t *testing.T) {

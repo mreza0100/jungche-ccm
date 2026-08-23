@@ -24,6 +24,9 @@ func RegisterRunner(id pfmengine.ID, runner Runner) {
 func RunnerFor(id pfmengine.ID) (Runner, error) {
 	runner, ok := runners[id]
 	if !ok {
+		if descriptor, err := pfmengine.Lookup(id); err == nil {
+			return nil, fmt.Errorf("%s does not support ask", descriptor.Short)
+		}
 		return nil, fmt.Errorf("engine %s: no ask runner registered", id)
 	}
 	return runner, nil

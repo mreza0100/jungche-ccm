@@ -124,20 +124,44 @@ exit 3
 
 	var stdout, stderr synchronizedBuffer
 	done := make(chan int, 1)
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		done <- run([]string{"internal", "launch", "--real", real, "--cwd", filepath.Join(root, "work"), "--", "--resume", "fixture-id", "--dangerously-skip-permissions"}, &stdout, &stderr)
 	}()
+	// A failed assertion must not strand the seven-day launcher wait or its
+	// fixture process. The original test leaked both when ls or readiness
+	// failed, which turned one failure into an 11-minute package hang.
+	t.Cleanup(func() {
+		select {
+		case <-finished:
+			return
+		default:
+		}
+		_ = os.WriteFile(release, []byte("cleanup\n"), 0o600)
+		kill := exec.Command("tmux", "-S", filepath.Join(tmuxDir, socket), "kill-server")
+		kill.Env = os.Environ()
+		_ = kill.Run()
+		select {
+		case <-finished:
+		case <-time.After(2 * time.Second):
+		}
+	})
 	waitForPath(t, ready)
 
 	var listOut, listErr bytes.Buffer
-	if code := run([]string{"ls", "--plain"}, &listOut, &listErr); code != 0 {
+	if code := runWithTestTimeout(t, 10*time.Second, "pfm ls --plain", func() int {
+		return run([]string{"ls", "--plain"}, &listOut, &listErr)
+	}); code != 0 {
 		t.Fatalf("pfm ls --plain code=%d stderr=%q", code, listErr.String())
 	}
 	if !strings.Contains(listOut.String(), "● fixture") {
 		t.Fatalf("pfm ls --plain did not list the fake Claude as live:\n%s", listOut.String())
 	}
 	var tsvOut, tsvErr bytes.Buffer
-	if code := run([]string{"ls", "--tsv"}, &tsvOut, &tsvErr); code != 0 {
+	if code := runWithTestTimeout(t, 10*time.Second, "pfm ls --tsv", func() int {
+		return run([]string{"ls", "--tsv"}, &tsvOut, &tsvErr)
+	}); code != 0 {
 		t.Fatalf("pfm ls --tsv code=%d stderr=%q", code, tsvErr.String())
 	}
 	if !strings.Contains(tsvOut.String(), "\t"+socket+"\n") {
@@ -317,4 +341,17 @@ func waitForPath(t *testing.T, path string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal(fmt.Sprintf("timed out waiting for %s", path))
+}
+
+func runWithTestTimeout(t *testing.T, timeout time.Duration, name string, run func() int) int {
+	t.Helper()
+	result := make(chan int, 1)
+	go func() { result <- run() }()
+	select {
+	case code := <-result:
+		return code
+	case <-time.After(timeout):
+		t.Fatalf("%s did not return within %s", name, timeout)
+		return -1
+	}
 }

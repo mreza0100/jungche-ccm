@@ -33,16 +33,16 @@ func NewProcessTree(proc gather.ProcFS, binaries ...string) (*ProcessTree, error
 		children: make(map[int][]int, len(pids)),
 		cmdline:  make(map[int][]string, len(pids)),
 		rssKB:    make(map[int]int64, len(pids)),
-		matchers: make(map[pfmengine.ID]gather.Matcher, 2),
-		binaries: make(map[pfmengine.ID]string, 2),
+		matchers: make(map[pfmengine.ID]gather.Matcher, len(pfmengine.All())),
+		binaries: make(map[pfmengine.ID]string, len(pfmengine.All())),
 	}
-	if len(binaries) > 0 {
-		tree.binaries[pfmengine.Claude] = binaries[0]
+	for index, id := range pfmengine.All() {
+		if index >= len(binaries) {
+			break
+		}
+		tree.binaries[id] = binaries[index]
 	}
-	if len(binaries) > 1 {
-		tree.binaries[pfmengine.Codex] = binaries[1]
-	}
-	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex} {
+	for _, id := range pfmengine.All() {
 		matcher, err := gather.MatcherFor(id)
 		if err != nil {
 			return nil, err

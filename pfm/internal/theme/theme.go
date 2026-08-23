@@ -105,13 +105,37 @@ var tokyoNightPalette = Palette{
 // Load returns an embedded palette. Unknown names intentionally degrade to
 // the default while making the repair visible to the operator.
 func Load(name string) Palette {
+	var palette Palette
 	switch name {
 	case "", "default":
-		return defaultPalette
+		palette = defaultPalette
 	case "tokyo-night":
-		return tokyoNightPalette
+		palette = tokyoNightPalette
 	default:
 		fmt.Fprintf(os.Stderr, "pfm: unknown theme %q; using default\n", name)
-		return defaultPalette
+		palette = defaultPalette
 	}
+	return withEngineFallbacks(palette)
+}
+
+func withEngineFallbacks(palette Palette) Palette {
+	engineRows := make(map[pfmengine.ID]string, len(palette.EngineRow)+len(pfmengine.All()))
+	for id, color := range palette.EngineRow {
+		engineRows[id] = color
+	}
+	statsRows := make(map[pfmengine.ID]string, len(palette.StatsEngine)+len(pfmengine.All()))
+	for id, color := range palette.StatsEngine {
+		statsRows[id] = color
+	}
+	for _, id := range pfmengine.All() {
+		if engineRows[id] == "" {
+			engineRows[id] = palette.Accent
+		}
+		if statsRows[id] == "" {
+			statsRows[id] = palette.Accent
+		}
+	}
+	palette.EngineRow = engineRows
+	palette.StatsEngine = statsRows
+	return palette
 }
