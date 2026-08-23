@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -58,10 +59,10 @@ func TestEveryClaudeSettingsFileGetsCompleteHookWiring(t *testing.T) {
 		t.Fatalf("second apply report=%#v err=%v\n%s", report, err, second.String())
 	}
 
-	codex := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
-	if !strings.Contains(codex, `"matcher": "startup|resume|clear"`) ||
-		!strings.Contains(codex, home+"/.local/bin/pfm internal clear-kill") {
-		t.Fatalf("Codex clear-kill startup/resume/clear fixture regressed:\n%s", codex)
+	// The retired Codex SessionStart clear-kill hook is never written fresh:
+	// a host with no existing hooks.json gets none created.
+	if _, err := os.Stat(filepath.Join(home, ".codex", "hooks.json")); !os.IsNotExist(err) {
+		t.Fatalf("install created a Codex hooks.json carrying the retired clear-kill hook: %v", err)
 	}
 }
 
@@ -537,7 +538,9 @@ func TestUninstallRefusesToStrandOwnedHookInInvalidCodexJSON(t *testing.T) {
 	}
 }
 
-func TestCodexHookWiringIteratesConfiguredHomes(t *testing.T) {
+// The retired Codex clear-kill hook is never written fresh: a host with no
+// existing hooks.json gets none created, across every configured home.
+func TestCodexHookWiringWritesNoClearKillHookAcrossConfiguredHomes(t *testing.T) {
 	home := t.TempDir()
 	homes := []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-2")}
 	installer := engine{
@@ -548,10 +551,41 @@ func TestCodexHookWiringIteratesConfiguredHomes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, codexHome := range homes {
+		hooksPath := filepath.Join(codexHome, "hooks.json")
+		if _, err := os.Stat(hooksPath); err == nil {
+			raw := readFixture(t, hooksPath)
+			if strings.Contains(raw, "internal clear-kill") {
+				t.Fatalf("%s carries the retired clear-kill hook:\n%s", hooksPath, raw)
+			}
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", hooksPath, err)
+		}
+	}
+}
+
+// A Codex home carrying a leftover clear-kill hook from a prior install has
+// it stripped, not repaired.
+func TestCodexHookWiringStripsALeftoverAcrossConfiguredHomes(t *testing.T) {
+	home := t.TempDir()
+	homes := []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-2")}
+	canonical := codexHookTemplate(home).Command
+	for _, codexHome := range homes {
+		writeFixture(t, filepath.Join(codexHome, "hooks.json"), fmt.Sprintf(
+			`{"hooks":{"SessionStart":[{"matcher":%q,"hooks":[{"type":"command","command":%q}]}]}}`,
+			codexClearMatcher, canonical,
+		))
+	}
+	installer := engine{
+		options: Options{Mode: ModeApply, Home: home, CodexHomes: homes, Stdout: io.Discard},
+		apply:   true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"),
+	}
+	if err := installer.wireCodexHooks(); err != nil {
+		t.Fatal(err)
+	}
+	for _, codexHome := range homes {
 		raw := readFixture(t, filepath.Join(codexHome, "hooks.json"))
-		command := codexHookTemplate(home).Command
-		if got := hookCommandCount(t, raw, "SessionStart", command); got != 1 {
-			t.Fatalf("%s has %d canonical clear-kill hooks, want one\n%s", codexHome, got, raw)
+		if got := hookCommandCount(t, raw, "SessionStart", canonical); got != 0 {
+			t.Fatalf("%s has %d leftover clear-kill hooks, want zero\n%s", codexHome, got, raw)
 		}
 	}
 }

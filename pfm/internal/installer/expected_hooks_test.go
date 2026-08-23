@@ -47,21 +47,6 @@ func TestProbeExpectedHooksStatesAndOwnership(t *testing.T) {
 		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "broken")
 	})
 
-	t.Run("corrupt Codex hooks", func(t *testing.T) {
-		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "codex[1]", "clear-kill")
-		if err := os.WriteFile(hook.File, []byte("{broken\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "broken")
-	})
-
-	t.Run("canonical command with wrong hook type", func(t *testing.T) {
-		home, machine := stageExpectedHookFixtures(t)
-		hook := findExpectedHook(t, home, machine, "codex[1]", "clear-kill")
-		setHookTypeFixture(t, hook, "prompt")
-		assertHookState(t, ProbeExpectedHooks(home, machine), hook, "broken")
-	})
 }
 
 // TestProbeExpectedHooksFlagsRetiredHookCommandsAsStale pins the deep-doctor
@@ -120,67 +105,67 @@ func TestProbeExpectedHooksFlagsRetiredHookCommandsAsStale(t *testing.T) {
 	}
 }
 
-func TestExpectedHooksIteratesEveryConfiguredCodexHome(t *testing.T) {
+// ExpectedHooks names no Codex SessionStart hook at all anymore: the hook is
+// retired (see updateCodexHooks), and doctor reporting "missing: run pfm
+// install" for a hook that is never coming back would be the lie, not the
+// silence.
+func TestExpectedHooksEmitsNoCodexHookEvenWithCodexAccountsConfigured(t *testing.T) {
 	home := t.TempDir()
 	machine := pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{
 		{ID: 1, Home: filepath.Join(home, ".codex")},
 		{ID: 2, Home: filepath.Join(home, ".codex-2")},
 	}}
 	hooks := ExpectedHooks(home, machine)
-	got := map[string]string{}
 	for _, hook := range hooks {
 		if strings.HasPrefix(hook.Target, "codex[") {
-			got[hook.Target] = hook.File
+			t.Fatalf("ExpectedHooks() still names a Codex hook: %#v", hooks)
 		}
 	}
-	want := map[string]string{
-		"codex[1]": filepath.Join(home, ".codex", "hooks.json"),
-		"codex[2]": filepath.Join(home, ".codex-2", "hooks.json"),
-	}
-	if len(hooks) != 2 || len(got) != 2 || got["codex[1]"] != want["codex[1]"] || got["codex[2]"] != want["codex[2]"] {
-		t.Fatalf("ExpectedHooks()=%#v, want only both configured Codex homes", hooks)
-	}
 }
 
-func TestHookWiringRepairsCanonicalCommandType(t *testing.T) {
+// A leftover Codex SessionStart clear-kill hook — canonical command, wrong
+// type, or the old shell-parent shape — is stripped outright, never
+// repaired or migrated forward: there is nothing left to converge it toward.
+func TestCodexHookWiringStripsALeftoverClearKillHookInEveryShape(t *testing.T) {
 	home := t.TempDir()
-	expected := codexHookTemplate(home)
-	raw := []byte(fmt.Sprintf(`{"hooks":{"SessionStart":[{"matcher":%q,"hooks":[{"type":"prompt","command":%q}]}]}}`, expected.Matcher, expected.Command))
-	updated, changed, _, err := updateCodexHooks(raw, home, false, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !changed {
-		t.Fatal("Codex hook wiring did not repair the canonical command type")
-	}
-	var document map[string]any
-	if err := json.Unmarshal(updated, &document); err != nil {
-		t.Fatal(err)
-	}
-	typed, _, globalIssue, eventIssues := inspectExpectedHookDocument(document)
-	key := settingsHookKey{Event: expected.Event, Matcher: expected.Matcher, Command: expected.Command}
-	if globalIssue != "" || eventIssues[expected.Event] != "" || typed[key] != 1 {
-		t.Fatalf("repaired hook is not a typed command: typed=%#v global=%q events=%#v", typed, globalIssue, eventIssues)
-	}
-}
-
-func TestCodexHookWiringMigratesShellParentClearKill(t *testing.T) {
-	home := t.TempDir()
-	legacy := filepath.Join(home, ".local", "bin", "pfm") + ` internal clear-kill --parent "$PPID"`
-	raw := []byte(fmt.Sprintf(`{"hooks":{"SessionStart":[{"matcher":%q,"hooks":[{"type":"command","command":%q}]}]}}`, codexClearMatcher, legacy))
-	updated, changed, _, err := updateCodexHooks(raw, home, false, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !changed {
-		t.Fatal("Codex hook wiring did not migrate the shell-parent clear-kill command")
-	}
 	canonical := codexHookTemplate(home).Command
-	if got := hookCommandCount(t, string(updated), "SessionStart", canonical); got != 1 {
-		t.Fatalf("canonical clear-kill count=%d, want one:\n%s", got, updated)
+	legacyParent := filepath.Join(home, ".local", "bin", "pfm") + ` internal clear-kill --parent "$PPID"`
+	raw := []byte(fmt.Sprintf(
+		`{"hooks":{"SessionStart":[`+
+			`{"matcher":%q,"hooks":[{"type":"prompt","command":%q}]},`+
+			`{"matcher":%q,"hooks":[{"type":"command","command":%q}]}`+
+			`]}}`,
+		codexClearMatcher, canonical,
+		codexClearMatcher, legacyParent,
+	))
+	updated, changed, owned, err := updateCodexHooks(raw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := hookCommandCount(t, string(updated), "SessionStart", legacy); got != 0 {
+	if !changed {
+		t.Fatal("Codex hook wiring did not strip the leftover clear-kill hook")
+	}
+	if len(owned) != 0 {
+		t.Fatalf("Codex hook wiring claimed ownership of a hook it just retired: %#v", owned)
+	}
+	if got := hookCommandCount(t, string(updated), "SessionStart", canonical); got != 0 {
+		t.Fatalf("canonical clear-kill count=%d, want zero:\n%s", got, updated)
+	}
+	if got := hookCommandCount(t, string(updated), "SessionStart", legacyParent); got != 0 {
 		t.Fatalf("shell-parent clear-kill count=%d, want zero:\n%s", got, updated)
+	}
+	if strings.Contains(string(updated), `"SessionStart"`) {
+		t.Fatalf("an empty SessionStart array was left behind:\n%s", updated)
+	}
+
+	// Idempotent: a second pass over the already-converged file changes
+	// nothing further.
+	again, changedAgain, _, err := updateCodexHooks(updated, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedAgain {
+		t.Fatalf("a converged Codex hooks file was rewritten again:\n%s", again)
 	}
 }
 
@@ -188,8 +173,7 @@ func stageExpectedHookFixtures(t *testing.T) (string, pfmconfig.Config) {
 	t.Helper()
 	home := t.TempDir()
 	machine := pfmconfig.Config{
-		Accounts:      []pfmconfig.Account{{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")}},
-		CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}},
+		Accounts: []pfmconfig.Account{{ID: 2, ConfigDir: filepath.Join(home, ".cc", "2")}},
 	}
 	ownership := map[string]settingsHookCounts{}
 	seen := map[string]bool{}
@@ -200,15 +184,6 @@ func stageExpectedHookFixtures(t *testing.T) (string, pfmconfig.Config) {
 		}
 		seen[physical] = true
 		raw := []byte("{\"hooks\":{}}\n")
-		if strings.HasPrefix(hook.Target, "codex[") {
-			updated, _, owned, err := updateCodexHooks(raw, home, false, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeFixture(t, hook.File, string(updated))
-			ownership[physical] = owned
-			continue
-		}
 		updated, _, owned, err := updateSettings(raw, home, false, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -254,45 +229,6 @@ func removeHookFixture(t *testing.T, hook ExpectedHook) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(hook.File, append(updated, '\n'), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func setHookTypeFixture(t *testing.T, expected ExpectedHook, hookType string) {
-	t.Helper()
-	raw, err := os.ReadFile(expected.File)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var document map[string]any
-	if err := json.Unmarshal(raw, &document); err != nil {
-		t.Fatal(err)
-	}
-	events, _ := document["hooks"].(map[string]any)
-	entries, _ := events[expected.Event].([]any)
-	found := false
-	for _, entryValue := range entries {
-		entry, _ := entryValue.(map[string]any)
-		if matcher, _ := entry["matcher"].(string); matcher != expected.Matcher {
-			continue
-		}
-		hooks, _ := entry["hooks"].([]any)
-		for _, hookValue := range hooks {
-			hook, _ := hookValue.(map[string]any)
-			if hook["command"] == expected.Command {
-				hook["type"] = hookType
-				found = true
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("fixture did not contain %s", expected.Command)
-	}
-	updated, err := json.MarshalIndent(document, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(expected.File, append(updated, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

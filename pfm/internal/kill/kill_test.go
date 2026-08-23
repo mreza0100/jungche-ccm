@@ -472,6 +472,56 @@ func TestManagerCodexSelfReadsRolloutPathFromStateStore(t *testing.T) {
 	assertKilled(t, database, rolloutID, "", now.Unix())
 }
 
+// AdvanceCodexPane is the reconcile step itself: the binding MOVES to
+// whatever the pane's status line shows on every pass, and reports the
+// thread it moved off of so the caller can decide whether that is a clear.
+func TestAdvanceCodexPaneReturnsThePreviousBindingAndChangedFlag(t *testing.T) {
+	jail := newKillJail(t)
+	database := jail.open(t)
+	defer database.Close()
+	ctx := context.Background()
+
+	manager, err := New(database, Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First sight of a pane: nothing to have moved off of, but the write
+	// still counts as a change.
+	previous, changed, err := manager.AdvanceCodexPane(ctx, "cx-probe", "%7", "thread-a")
+	if err != nil {
+		t.Fatalf("AdvanceCodexPane(first sight) error = %v", err)
+	}
+	if previous != "" || !changed {
+		t.Fatalf("AdvanceCodexPane(first sight) = (%q, %v), want (\"\", true)", previous, changed)
+	}
+
+	// The pane still shows the same thread: no change, and the binding it
+	// reports is the one already on file.
+	previous, changed, err = manager.AdvanceCodexPane(ctx, "cx-probe", "%7", "thread-a")
+	if err != nil {
+		t.Fatalf("AdvanceCodexPane(unchanged) error = %v", err)
+	}
+	if previous != "thread-a" || changed {
+		t.Fatalf("AdvanceCodexPane(unchanged) = (%q, %v), want (\"thread-a\", false)", previous, changed)
+	}
+
+	// The pane now shows a different thread: previous is the one it moved
+	// off of, and changed is true — the caller's own clear signal.
+	previous, changed, err = manager.AdvanceCodexPane(ctx, "cx-probe", "%7", "thread-b")
+	if err != nil {
+		t.Fatalf("AdvanceCodexPane(moved) error = %v", err)
+	}
+	if previous != "thread-a" || !changed {
+		t.Fatalf("AdvanceCodexPane(moved) = (%q, %v), want (\"thread-a\", true)", previous, changed)
+	}
+
+	bound, found, err := manager.CodexPaneBinding(ctx, "cx-probe", "%7")
+	if err != nil || !found || bound != "thread-b" {
+		t.Fatalf("CodexPaneBinding() = (%q, %v, %v), want (\"thread-b\", true, nil)", bound, found, err)
+	}
+}
+
 func TestManagerClaudeCrumbPrecedenceWritesNullBaseline(t *testing.T) {
 	jail := newKillJail(t)
 	database := jail.open(t)

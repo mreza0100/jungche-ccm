@@ -11,14 +11,19 @@ import (
 
 // CodexThreadResolver names the conversation behind a live codex process that
 // holds no rollout file descriptor. It receives the process's exported
-// CODEX_THREAD_ID, its pane directory, and its start time in epoch seconds,
-// and returns the thread id with the rollout path the Codex state store
+// CODEX_THREAD_ID, its pane directory, its start time in epoch seconds, and
+// the pane's own socket and id — the last two so an implementation can
+// consult a fleet-recorded pane binding, which outranks both the exported
+// variable and the birth-window guess (store.NewCodexThreadResolverRoots).
+// It returns the thread id with the rollout path the Codex state store
 // records for it. An empty id means the process could not be identified and
 // must not become a live row.
 type CodexThreadResolver func(
 	exported string,
 	cwd string,
 	birth int64,
+	socket string,
+	paneID string,
 ) (id string, rolloutPath string)
 
 // DetectCodex maps live codex processes to panes using pid ancestry. It sees
@@ -110,7 +115,7 @@ func DetectCodexThreadsInRoots(
 			continue
 		}
 		if rolloutPath == "" && identify != nil {
-			id, path := identify(threadID, pane.CurrentPath, processBirth(proc, pid))
+			id, path := identify(threadID, pane.CurrentPath, processBirth(proc, pid), pane.Socket, pane.PaneID)
 			if id == "" {
 				continue
 			}

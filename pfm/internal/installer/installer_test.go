@@ -262,11 +262,8 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
 	for _, wanted := range []string{
-		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm dream hook codex-subagent-inject",
 		"fixture-codex-keep",
-		`"SessionStart"`,
-		`"matcher": "startup|resume|clear"`,
 	} {
 		if !strings.Contains(codexHooks, wanted) {
 			t.Fatalf("Codex hooks missing %q:\n%s", wanted, codexHooks)
@@ -274,6 +271,14 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if strings.Contains(codexHooks, "/cc-fleet ") {
 		t.Fatalf("Codex hooks retained predecessor command:\n%s", codexHooks)
+	}
+	// The Codex SessionStart clear-kill hook is retired: SessionStart(source=
+	// clear) fires on the new session's first turn, by which point every
+	// Codex chat on the host shares one app-server daemon pid, so it could
+	// never say which pane cleared. Install strips a leftover one and never
+	// writes it back.
+	if strings.Contains(codexHooks, "internal clear-kill") || strings.Contains(codexHooks, `"SessionStart"`) {
+		t.Fatalf("install wrote the retired Codex SessionStart clear-kill hook:\n%s", codexHooks)
 	}
 	secondary := readFixture(t, secondarySettings)
 	if strings.Contains(secondary, "chat bb") ||

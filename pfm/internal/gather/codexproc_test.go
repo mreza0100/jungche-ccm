@@ -47,7 +47,7 @@ func TestDetectCodexThreadsIdentifiesSessionsWithoutRolloutFiles(t *testing.T) {
 		proc,
 		codexRoot,
 		panes,
-		func(exported, cwd string, birth int64) (string, string) {
+		func(exported, cwd string, birth int64, _, _ string) (string, string) {
 			gotExported, gotCWD, gotBirth = exported, cwd, birth
 			return "paginated", declared
 		},
@@ -140,7 +140,7 @@ func TestDetectCodexThreadsPrefersResumeArgvOverAnInheritedEnvironment(t *testin
 		proc,
 		"/jail/codex",
 		panes,
-		func(exported, _ string, _ int64) (string, string) {
+		func(exported, _ string, _ int64, _, _ string) (string, string) {
 			asked = exported
 			return exported, ""
 		},
@@ -202,7 +202,7 @@ func TestDetectCodexThreadsSkipsUnidentifiedProcesses(t *testing.T) {
 		proc,
 		codexRoot,
 		panes,
-		func(string, string, int64) (string, string) { return "", "" },
+		func(string, string, int64, string, string) (string, string) { return "", "" },
 	)
 	if err != nil {
 		t.Fatalf("DetectCodexThreads() error = %v", err)
@@ -232,7 +232,7 @@ func TestDetectCodexThreadsKeepsRolloutDescriptorIdentity(t *testing.T) {
 		proc,
 		codexRoot,
 		panes,
-		func(string, string, int64) (string, string) {
+		func(string, string, int64, string, string) (string, string) {
 			t.Fatal("the resolver was consulted for a session holding a rollout descriptor")
 			return "", ""
 		},

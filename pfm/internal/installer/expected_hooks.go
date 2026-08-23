@@ -45,7 +45,16 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 		})
 	}
 	seen := map[string]bool{}
-	result := make([]ExpectedHook, 0, len(targets)*8+len(config.CodexAccounts))
+	// Codex's own SessionStart(source=clear) hook is retired, not migrated:
+	// it fires on the new session's FIRST TURN, by which point every Codex
+	// chat on the host shares one app-server daemon pid, so it could never
+	// say which pane cleared (codex-clear-identity train). There is
+	// therefore no per-account ~/.codex/hooks.json entry to expect anymore;
+	// pfm install actively strips a leftover one (codex_hooks.go), and
+	// doctor reports nothing about a hook it no longer wires — reporting
+	// "missing: run pfm install" for a hook that was never coming back
+	// would be the lie, not the silence.
+	result := make([]ExpectedHook, 0, len(targets)*8)
 	for _, target := range targets {
 		physical := physicalSettingsPath(target.file)
 		if seen[physical] {
@@ -57,12 +66,6 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 			hook.File = target.file
 			result = append(result, hook)
 		}
-	}
-	for _, account := range config.CodexAccounts {
-		codex := codexHookTemplate(home)
-		codex.Target = fmt.Sprintf("codex[%d]", account.ID)
-		codex.File = filepath.Join(account.Home, "hooks.json")
-		result = append(result, codex)
 	}
 	return result
 }
