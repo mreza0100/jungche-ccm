@@ -54,14 +54,15 @@ func ExpectedHooks(home string, config pfmconfig.Config) []ExpectedHook {
 	// doctor reports nothing about a hook it no longer wires — reporting
 	// "missing: run pfm install" for a hook that was never coming back
 	// would be the lie, not the silence.
-	result := make([]ExpectedHook, 0, len(targets)*8)
+	templates := claudeHookTemplates(home)
+	result := make([]ExpectedHook, 0, len(targets)*len(templates))
 	for _, target := range targets {
 		physical := physicalSettingsPath(target.file)
 		if seen[physical] {
 			continue
 		}
 		seen[physical] = true
-		for _, hook := range claudeHookTemplates(home) {
+		for _, hook := range templates {
 			hook.Target = target.name
 			hook.File = target.file
 			result = append(result, hook)
@@ -77,9 +78,7 @@ func claudeHookTemplates(home string) []ExpectedHook {
 		{Event: "UserPromptSubmit", Command: binary + " chat group hook", Name: "group"},
 		{Event: "UserPromptSubmit", Command: binary + " usage-hook", Name: "usage"},
 		{Event: "SessionEnd", Command: binary + " internal clear-kill", Name: "clear-kill"},
-		{Event: "PreToolUse", Matcher: "Agent|Task", Command: binary + " dream hook agent-inject", Name: "agent-inject"},
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: binary + " internal explore-deny", Name: "explore-deny"},
-		{Event: "UserPromptSubmit", Command: binary + " dream hook nudge", Name: "nudge"},
 		{Event: "UserPromptSubmit", Command: binary + " internal epic-inject", Name: "epic-inject"},
 	}
 }

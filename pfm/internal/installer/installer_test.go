@@ -248,7 +248,6 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		home + "/.local/bin/pfm usage-hook",
 		home + "/.local/bin/pfm internal clear-kill",
 		home + "/.local/bin/pfm chat group hook",
-		home + "/.local/bin/pfm dream hook agent-inject",
 		home + "/.local/bin/pfm internal launcher-repair",
 	} {
 		if !strings.Contains(settings, wanted) {
@@ -261,16 +260,16 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		}
 	}
 	codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json"))
-	for _, wanted := range []string{
-		home + "/.local/bin/pfm dream hook codex-subagent-inject",
-		"fixture-codex-keep",
-	} {
+	for _, wanted := range []string{"fixture-codex-keep"} {
 		if !strings.Contains(codexHooks, wanted) {
 			t.Fatalf("Codex hooks missing %q:\n%s", wanted, codexHooks)
 		}
 	}
 	if strings.Contains(codexHooks, "/cc-fleet ") {
 		t.Fatalf("Codex hooks retained predecessor command:\n%s", codexHooks)
+	}
+	if strings.Contains(codexHooks, "dream hook codex-subagent-inject") {
+		t.Fatalf("Codex hooks retained paused Dream injection:\n%s", codexHooks)
 	}
 	// The Codex SessionStart clear-kill hook is retired: SessionStart(source=
 	// clear) fires on the new session's first turn, by which point every
@@ -325,7 +324,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	}
 	if codexHooks := readFixture(t, filepath.Join(home, ".codex", "hooks.json")); strings.Contains(codexHooks, "internal clear-kill") ||
 		!strings.Contains(codexHooks, "fixture-codex-keep") ||
-		!strings.Contains(codexHooks, "pfm dream hook codex-subagent-inject") {
+		strings.Contains(codexHooks, "dream hook codex-subagent-inject") {
 		t.Fatalf("uninstall did not remove only the owned Codex clear hook:\n%s", codexHooks)
 	}
 	if _, err := os.Lstat(managed); !os.IsNotExist(err) {
@@ -434,7 +433,7 @@ func TestApplyLeavesUnrelatedBBSymlinkAlone(t *testing.T) {
 	assertLink(t, target, operatorSource)
 }
 
-func TestUninstallDoesNotMigratePredecessorCommands(t *testing.T) {
+func TestUninstallAlsoRemovesRetiredDreamHooks(t *testing.T) {
 	home := t.TempDir()
 	settingsPath := filepath.Join(home, ".claude", "settings.json")
 	oldCommand := home + "/.local/bin/cc-fleet dream hook agent-inject"
@@ -445,8 +444,8 @@ func TestUninstallDoesNotMigratePredecessorCommands(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if settings := readFixture(t, settingsPath); !strings.Contains(settings, oldCommand) {
-		t.Fatalf("uninstall migrated predecessor command:\n%s", settings)
+	if settings := readFixture(t, settingsPath); strings.Contains(settings, oldCommand) {
+		t.Fatalf("uninstall retained retired Dream hook:\n%s", settings)
 	}
 }
 
