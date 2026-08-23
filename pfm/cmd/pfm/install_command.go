@@ -33,7 +33,7 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	)
 	yes := flags.Bool("yes", false, "apply the installation")
 	skipHarvest := flags.Bool("skip-harvest", false, "skip harvestpy provisioning")
-	force := flags.Bool("force", false, "regenerate installer-owned credentials")
+	force := flags.Bool("force", false, "reconcile installer-owned wiring")
 	configDir := flags.String("config-dir", "", "target config directory instead of ~/.claude")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -103,7 +103,6 @@ func newInstallerOptions(
 			options.MCPEnabled[name] = server.Enabled
 		}
 		options.MCPPort = runtime.Config.MCP.HTTP.Port
-		options.MCPAuthToken = runtime.Config.MCP.AuthToken
 		options.MCPConfigPath = runtime.Config.Path
 		options.ClaudeBinary = runtime.Config.Claude.Binary
 		options.ClaudePrompted = make(map[int]bool, len(runtime.Config.Accounts))

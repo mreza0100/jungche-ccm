@@ -75,7 +75,6 @@ type Options struct {
 
 	MCPEnabled     map[string]bool
 	MCPPort        int
-	MCPAuthToken   string
 	MCPConfigPath  string
 	ClaudeBinary   string
 	ClaudePrompted map[int]bool

@@ -492,9 +492,6 @@ func printHarvestCacheDoctor(stdout io.Writer) int {
 }
 
 func mcpConfigured(runtime commandRuntime) bool {
-	if runtime.Config.MCP.AuthToken != "" {
-		return true
-	}
 	for _, server := range runtime.Config.MCPServers {
 		if server.Enabled {
 			return true

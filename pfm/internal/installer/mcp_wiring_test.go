@@ -22,7 +22,7 @@ func TestMCPSystemdUnitStartsAtLogin(t *testing.T) {
 	}
 }
 
-func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
+func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T) {
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
 	secondary := filepath.Join(home, "account-two")
@@ -30,6 +30,7 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 	writeFixture(t, filepath.Join(secondary, "settings.json"), `{}`)
 	configPath := filepath.Join(home, ".config", "pfm", "config.json")
 	writeFixture(t, configPath, `{"version":2,"mcp":{"servers":{"chat":{"enabled":true}},"http":{"port":8456}}}`)
+	runner := &fakeRunner{manager: true}
 
 	options := Options{
 		Mode:          ModeApply,
@@ -39,7 +40,7 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 		MCPEnabled:    map[string]bool{"chat": true, "harvester": false},
 		MCPPort:       8456,
 		MCPConfigPath: configPath,
-		Runner:        &fakeRunner{},
+		Runner:        runner,
 	}
 	if _, err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
@@ -66,23 +67,33 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 		}
 	}
 	credential := filepath.Join(home, ".local", "share", "pfm", "install", mcpCredentialName)
-	info, err := os.Stat(credential)
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("credential info=%v err=%v, want 0600", info, err)
-	}
-	token := strings.TrimSpace(readFixture(t, credential))
-	if len(token) != 64 || !isHex(token) {
-		t.Fatalf("credential=%q, want 64 hex characters", token)
+	if _, err := os.Stat(credential); !os.IsNotExist(err) {
+		t.Fatalf("credential file exists in an unauthenticated MCP install: %v", err)
 	}
 	var clients map[string]any
 	if err := json.Unmarshal([]byte(readFixture(t, filepath.Join(home, ".mcp.json"))), &clients); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(readFixture(t, filepath.Join(home, ".mcp.json")), "127.0.0.1:8456/mcp/chat") {
-		t.Fatalf("client registration missing chat URL: %s", readFixture(t, filepath.Join(home, ".mcp.json")))
+	clientJSON := readFixture(t, filepath.Join(home, ".mcp.json"))
+	if !strings.Contains(clientJSON, "127.0.0.1:8456/mcp/chat") {
+		t.Fatalf("client registration missing chat URL: %s", clientJSON)
+	}
+	for _, forbidden := range []string{"Authorization", "Bearer", "headers"} {
+		if strings.Contains(clientJSON, forbidden) {
+			t.Fatalf("client registration retained MCP authentication %q: %s", forbidden, clientJSON)
+		}
+	}
+	if codex := readFixture(t, filepath.Join(home, ".codex", "config.toml")); strings.Contains(codex, "Authorization") || strings.Contains(codex, "Bearer") {
+		t.Fatalf("Codex registration retained MCP authentication: %s", codex)
+	}
+	if config := readFixture(t, configPath); strings.Contains(config, "authToken") {
+		t.Fatalf("PFM config retained MCP authentication: %s", config)
 	}
 	if _, err := os.Stat(filepath.Join(home, ".config", "systemd", "user", mcpUnitName)); err != nil {
 		t.Fatalf("MCP systemd unit missing: %v", err)
+	}
+	if calls := strings.Join(runner.calls, "\n"); !strings.Contains(calls, "systemctl --user restart "+mcpUnitName) {
+		t.Fatalf("MCP daemon was not restarted after complete client wiring:\n%s", calls)
 	}
 
 	if report, err := Run(context.Background(), options); err != nil || report.Changed != 0 {
@@ -103,30 +114,33 @@ func TestMCPInstallWiresConfigDrivenSettingsCredentialAndClients(t *testing.T) {
 	}
 }
 
-func TestMCPForceRotatesOwnedClientCredentialEverywhere(t *testing.T) {
+func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T) {
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
 	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
 	configPath := filepath.Join(home, ".config", "pfm", "config.json")
-	writeFixture(t, configPath, `{"version":2,"mcp":{"servers":{"chat":{"enabled":true}}}}`)
+	credentialPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpCredentialName)
+	legacyToken := strings.Repeat("a", 64)
+	writeFixture(t, configPath, `{"version":2,"mcp":{"servers":{"chat":{"enabled":true}},"authToken":"`+legacyToken+`"}}`)
+	writeFixture(t, credentialPath, legacyToken+"\n")
+	writeFixture(t, filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName), `{"credential":"`+credentialPath+`","clients":["chat"]}`)
+	writeFixture(t, filepath.Join(home, ".mcp.json"), `{"mcpServers":{"chat":{"type":"http","url":"http://127.0.0.1:8377/mcp/chat","headers":{"Authorization":"Bearer `+legacyToken+`"}}}}`)
+	writeFixture(t, filepath.Join(home, ".codex", "config.toml"), mcpFenceBegin+"\n"+
+		"[mcp_servers.chat]\n"+
+		"url = \"http://127.0.0.1:8377/mcp/chat\"\n"+
+		"[mcp_servers.chat.headers]\n"+
+		"Authorization = \"Bearer "+legacyToken+"\"\n"+
+		mcpFenceEnd+"\n")
 	options := Options{
 		Mode: ModeApply, Home: home, ConfigDir: canonical,
 		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
-		MCPPort: 8377, MCPConfigPath: configPath, Runner: &fakeRunner{},
+		MCPPort: 8377, MCPConfigPath: configPath, Force: true, Runner: &fakeRunner{},
 	}
 	if _, err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}
-	credentialPath := filepath.Join(home, ".local", "share", "pfm", "install", mcpCredentialName)
-	first := strings.TrimSpace(readFixture(t, credentialPath))
-
-	options.Force = true
-	if _, err := Run(context.Background(), options); err != nil {
-		t.Fatal(err)
-	}
-	second := strings.TrimSpace(readFixture(t, credentialPath))
-	if second == first {
-		t.Fatal("forced install retained the old MCP credential")
+	if _, err := os.Stat(credentialPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy credential remains: %v", err)
 	}
 	for _, path := range []string{
 		configPath,
@@ -134,8 +148,10 @@ func TestMCPForceRotatesOwnedClientCredentialEverywhere(t *testing.T) {
 		filepath.Join(home, ".codex", "config.toml"),
 	} {
 		raw := readFixture(t, path)
-		if !strings.Contains(raw, second) || strings.Contains(raw, first) {
-			t.Fatalf("%s did not rotate atomically with the credential", path)
+		for _, forbidden := range []string{legacyToken, "authToken", "Authorization", "Bearer"} {
+			if strings.Contains(raw, forbidden) {
+				t.Fatalf("%s retained legacy MCP authentication %q: %s", path, forbidden, raw)
+			}
 		}
 	}
 }
@@ -162,6 +178,13 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 	}
 	if strings.Join(ownership.Clients, ",") != "chat" {
 		t.Fatalf("owned clients=%v, want only the client PFM actually wired", ownership.Clients)
+	}
+	codexConfig := readFixture(t, filepath.Join(home, ".codex", "config.toml"))
+	if !strings.Contains(codexConfig, "[mcp_servers.chat]") {
+		t.Fatalf("Codex registration omitted owned chat client: %s", codexConfig)
+	}
+	if strings.Contains(codexConfig, "[mcp_servers.harvester]") {
+		t.Fatalf("Codex registration claimed manually conflicting Harvester client: %s", codexConfig)
 	}
 
 	if _, err := Run(context.Background(), Options{

@@ -94,11 +94,6 @@ func printResolvedConfig(stdout io.Writer, runtime commandRuntime) {
 		key := "mcp.servers." + name + ".enabled"
 		fmt.Fprintf(stdout, "config %s=%t (%s)\n", key, config.MCPServers[name].Enabled, config.Source(key))
 	}
-	if config.MCP.AuthToken == "" {
-		fmt.Fprintf(stdout, "config mcp.authToken=<redacted> (%s)\n", config.Source("mcp.authToken"))
-	} else {
-		fmt.Fprintf(stdout, "config mcp.authToken=<redacted> (%s)\n", config.Source("mcp.authToken"))
-	}
 	fmt.Fprintf(stdout, "config ask.engine=%s (%s)\n", config.Ask.Engine, config.Source("ask.engine"))
 	for _, id := range pfmengine.All() {
 		name := pfmengine.MustLookup(id).LongName

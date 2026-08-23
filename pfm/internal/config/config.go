@@ -112,9 +112,8 @@ type MCPHTTP struct {
 }
 
 type MCPConfig struct {
-	Servers   map[string]MCPServer
-	HTTP      MCPHTTP
-	AuthToken string
+	Servers map[string]MCPServer
+	HTTP    MCPHTTP
 }
 
 type EnginePrefs struct {
@@ -685,10 +684,9 @@ func loadWithMCPServers(
 			result.MCP.HTTP.Port = raw.MCP.HTTP.Port
 			result.Sources["mcp.http.port"] = SourceFile
 		}
-		if raw.MCP.AuthToken != nil {
-			result.MCP.AuthToken = *raw.MCP.AuthToken
-			result.Sources["mcp.authToken"] = SourceFile
-		}
+		// authToken was briefly installer-owned. Keep accepting the legacy key
+		// so install can remove it, but it has no effective runtime value: the
+		// local MCP daemon is loopback-only and deliberately unauthenticated.
 	}
 	if raw.Ask != nil {
 		if raw.Ask.Engine != nil {
@@ -1171,38 +1169,37 @@ func SetMCPServer(config Config, name string, enabled bool) (bool, error) {
 	return true, nil
 }
 
-// SetMCPAuthToken atomically records the installer-owned daemon credential in
-// the machine config while preserving every unrelated field.
-func SetMCPAuthToken(config Config, token string) (bool, error) {
+// RemoveMCPAuthToken removes the retired installer-owned daemon credential
+// while preserving every unrelated field. The strict loader still accepts the
+// legacy key so an existing host can reach this cleanup path.
+func RemoveMCPAuthToken(config Config) (bool, error) {
 	if config.Path == "" {
-		return false, errors.New("MCP auth token update has no config path")
-	}
-	if config.MCP.AuthToken == token && config.Exists {
-		return false, nil
+		return false, errors.New("MCP auth token cleanup has no config path")
 	}
 	top := make(map[string]json.RawMessage)
-	if config.Exists {
-		content, err := os.ReadFile(config.Path)
-		if err != nil {
-			return false, fmt.Errorf("read config %s for MCP auth update: %w", config.Path, err)
-		}
-		if err := json.Unmarshal(content, &top); err != nil {
-			return false, configJSONError(config.Path, err)
-		}
+	if !config.Exists {
+		return false, nil
 	}
-	version, _ := json.Marshal(Version)
-	top["version"] = version
+	content, err := os.ReadFile(config.Path)
+	if err != nil {
+		return false, fmt.Errorf("read config %s for MCP auth cleanup: %w", config.Path, err)
+	}
+	if err := json.Unmarshal(content, &top); err != nil {
+		return false, configJSONError(config.Path, err)
+	}
 	mcpObject := make(map[string]json.RawMessage)
 	if content := top["mcp"]; len(content) != 0 {
 		if err := json.Unmarshal(content, &mcpObject); err != nil {
-			return false, fmt.Errorf("decode config %s mcp for auth update: %w", config.Path, err)
+			return false, fmt.Errorf("decode config %s mcp for auth cleanup: %w", config.Path, err)
 		}
 	}
-	authContent, _ := json.Marshal(token)
-	mcpObject["authToken"] = authContent
+	if _, present := mcpObject["authToken"]; !present {
+		return false, nil
+	}
+	delete(mcpObject, "authToken")
 	mcpContent, _ := json.Marshal(mcpObject)
 	top["mcp"] = mcpContent
-	content, err := json.MarshalIndent(top, "", "  ")
+	content, err = json.MarshalIndent(top, "", "  ")
 	if err != nil {
 		return false, fmt.Errorf("encode config %s: %w", config.Path, err)
 	}
@@ -1341,9 +1338,6 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			"http":    map[string]any{"port": config.MCP.HTTP.Port},
 		},
 		"ask": askValue,
-	}
-	if config.MCP.AuthToken != "" {
-		value["mcp"].(map[string]any)["authToken"] = config.MCP.AuthToken
 	}
 	content, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

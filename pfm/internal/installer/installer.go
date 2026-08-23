@@ -177,6 +177,13 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireMCP(); err != nil {
 		return err
 	}
+	// A host build replaces the binary without changing the unit file, and MCP
+	// client wiring can change without changing either. enable --now leaves an
+	// already-running process untouched, so always restart the enabled Linux
+	// daemon after its complete config/client transaction has landed.
+	if !schedulerIsLaunchd && installer.apply && installer.mcpAnyEnabled() && installer.userManagerAvailable(ctx) {
+		installer.runSystemctl(ctx, "restart", mcpUnitName)
+	}
 	if err := installer.wireShell(false); err != nil {
 		return err
 	}
