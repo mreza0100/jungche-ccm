@@ -105,6 +105,11 @@ func TestChatKeysDrivesALiveChat(t *testing.T) {
 // TestChatKeysRefusesADeadChat keeps the verb from reporting a press into a
 // pane that is not there.
 func TestChatKeysRefusesADeadChat(t *testing.T) {
+	// Hermetic by law: without a jail override this verb would open the
+	// OPERATOR'S live database — which a newer mirror may already have
+	// migrated past this build's schema, turning an expected codeUnknownChat
+	// into a schema refusal.
+	t.Setenv("PFM_HOME", t.TempDir())
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"chat", "keys", "no-such-chat-here", "Enter"}, &stdout, &stderr)
 	if code != codeUnknownChat {

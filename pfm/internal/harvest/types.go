@@ -7,6 +7,7 @@ package harvest
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -14,6 +15,12 @@ import (
 	"sync"
 	"time"
 )
+
+// ErrBrowserPolicyDenied marks a browser fetch the SSRF guard refused — a
+// private or internal address. It is POLICY, not an outage: the terminal
+// message must never tell the caller to retry a permanent refusal, and it
+// must never read as proof of IP reputation.
+var ErrBrowserPolicyDenied = errors.New("fetch refused by policy (private or internal address)")
 
 // Converter turns one fetched body into markdown. Implementations must not
 // mutate body. kind is the detected content kind and source is the original
@@ -27,6 +34,13 @@ type Converter interface {
 // layer converts empty). Optional: a plain Converter simply never escalates.
 type OCRConverter interface {
 	ConvertOCR(ctx context.Context, kind, source string, body []byte) (string, error)
+}
+
+// BrowserFetcher is implemented by adapters that can render one URL in a real
+// browser (the ladder's last wall-bypass rung). Optional: a plain Converter
+// never escalates to it.
+type BrowserFetcher interface {
+	FetchBrowser(ctx context.Context, source string) (html string, status int, err error)
 }
 
 // Options configures a Harvester. Nil HTTP clients use safe defaults.
@@ -51,6 +65,11 @@ type Options struct {
 	// ResolvePublic is called once for each production dial. It is injectable
 	// for deterministic DNS-rebinding tests; nil uses net.LookupIP.
 	ResolvePublic func(context.Context, string) ([]net.IP, error)
+	// BrowserRung explicitly overrides the HARVESTER_BROWSER gate for tests
+	// and embeddings; nil reads the environment once at New. The rung is
+	// opt-in and OFF by default: any value other than 1/true/yes/on disables
+	// it and the ladder never starts the browser worker.
+	BrowserRung *bool
 	// Scholarly/search settings are snapshotted by New, matching the Python
 	// worker's import-time configuration. Non-empty values are explicit test
 	// or embedding overrides; empty values read the process environment once.
@@ -71,6 +90,7 @@ type envSnapshot struct {
 	searXNGURL         string
 	braveAPIKey        string
 	disableSearch      bool
+	browser            bool
 }
 
 func snapshotEnv() envSnapshot {
@@ -82,6 +102,7 @@ func snapshotEnv() envSnapshot {
 		searXNGURL:         strings.TrimSpace(os.Getenv("SEARXNG_URL")),
 		braveAPIKey:        strings.TrimSpace(os.Getenv("BRAVE_API_KEY")),
 		disableSearch:      envBool("HARVESTER_DISABLE_SEARCH"),
+		browser:            envBool("HARVESTER_BROWSER"),
 	}
 }
 
@@ -93,6 +114,11 @@ func envBool(name string) bool {
 		return false
 	}
 }
+
+// BrowserGateEnabled reports whether HARVESTER_BROWSER opts the real-browser
+// rung in. The single gate implementation: the harvester core snapshots it at
+// New and doctor reads it live, so their answers can never desync.
+func BrowserGateEnabled() bool { return envBool("HARVESTER_BROWSER") }
 
 // FetchOptions controls one fetch. Refresh bypasses both positive and
 // negative caches; SizeOnly still fetches/caches the complete artifact.
@@ -169,6 +195,9 @@ func New(options Options) *Harvester {
 	}
 	if options.DisableSearch {
 		env.disableSearch = true
+	}
+	if options.BrowserRung != nil {
+		env.browser = *options.BrowserRung
 	}
 	if options.CacheDir == "" {
 		options.CacheDir = defaultCacheDir()

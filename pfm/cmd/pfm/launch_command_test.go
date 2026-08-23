@@ -273,6 +273,7 @@ func TestReadLaunchStatusRejectsMissingAndInvalidFiles(t *testing.T) {
 }
 
 func TestDoctorReportsClaudeLauncherMissingDisplacedAndOK(t *testing.T) {
+	t.Setenv("HARVESTER_BROWSER", "") // golden doctor output must not depend on the ambient opt-in gate (review-2 S3)
 	root := jailTest(t)
 	home := filepath.Join(root, "home")
 	canonical := filepath.Join(home, ".local", "bin", "claude")
