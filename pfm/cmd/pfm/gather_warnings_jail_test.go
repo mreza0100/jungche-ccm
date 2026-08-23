@@ -137,11 +137,10 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 	}
 }
 
-// Codex clear reconciliation runs inside the same background refresh that
-// gathers tmux state. Its warnings must use the same deferred sink: writing
-// them directly to stderr while Bubble Tea owns the terminal corrupts the
-// active frame with text such as "matches more than one thread".
-func TestInteractiveRefreshBuffersCodexReconcileWarningsUntilFlushed(t *testing.T) {
+// A successfully captured Codex pane can transiently show footer text instead
+// of an indexed thread name. That is unresolved screen state, not a failed
+// probe: it must neither corrupt the active frame nor print on picker close.
+func TestInteractiveRefreshKeepsUnresolvedCodexNamesSilent(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
@@ -149,23 +148,13 @@ func TestInteractiveRefreshBuffersCodexReconcileWarningsUntilFlushed(t *testing.
 	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	t.Setenv("PFM_TMUX_DIR", tmuxDir)
 	const socket = "cx-1800000004-1-1"
-	startCodexStatusPane(t, root, socket, `  DUPLICATE · /work/example · Full Access\n`)
+	startCodexStatusPane(t, root, socket, `  STALE_NAME · /work/example · Full Access\n`)
 
 	database, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	const firstID = "77777777-7777-4777-8777-777777777777"
-	const secondID = "88888888-8888-4888-8888-888888888888"
-	codexJailRollout(t, database, root, firstID, 1)
-	codexJailRollout(t, database, root, secondID, 1)
-	if err := database.ReplaceCxNames(context.Background(), []store.CxName{
-		{ID: firstID, ThreadName: "DUPLICATE"},
-		{ID: secondID, ThreadName: "DUPLICATE"},
-	}); err != nil {
-		t.Fatal(err)
-	}
 
 	var warnings bufferedWarnings
 	var interactiveStderr bytes.Buffer
@@ -203,8 +192,8 @@ func TestInteractiveRefreshBuffersCodexReconcileWarningsUntilFlushed(t *testing.
 		)
 	}
 	warnings.flush(&interactiveStderr)
-	if got := interactiveStderr.String(); !strings.Contains(got, `"DUPLICATE" matches more than one thread`) {
-		t.Fatalf("flush did not emit the buffered Codex warning: %q", got)
+	if got := interactiveStderr.String(); got != "" {
+		t.Fatalf("unresolved Codex screen state printed on picker close: %q", got)
 	}
 }
 

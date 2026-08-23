@@ -129,6 +129,17 @@ type Sampler struct {
 }
 
 func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
+	return sampler.sample(rows, true)
+}
+
+// SampleResources returns the fast, local Stats view without waiting for
+// provider quota calls. The UI uses it on the Stats tab; the Limits tab uses
+// Sample so its account cards still refresh through the same sampler cache.
+func (sampler *Sampler) SampleResources(rows []compose.Row) (Snapshot, error) {
+	return sampler.sample(rows, false)
+}
+
+func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot, error) {
 	now := time.Now().UnixNano()
 	if sampler.Clock != nil {
 		now = sampler.Clock()
@@ -196,7 +207,7 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 	tokenWarnings := sampler.attachTokenUsage(rows, chats, now)
 	warnings = append(warnings, tokenWarnings...)
 	var limits []AccountLimits
-	if sampler.Limits != nil {
+	if includeLimits && sampler.Limits != nil {
 		var limitWarnings []string
 		limits, limitWarnings = sampler.Limits.Sample(context.Background())
 		warnings = append(warnings, limitWarnings...)

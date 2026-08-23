@@ -101,10 +101,11 @@ func stressKilledContention(t *testing.T, dbPath string) {
 
 	store := openTestStore(t)
 	defer store.Close()
-	var count int
-	if err := store.db.QueryRow("SELECT count(*) FROM hidden").Scan(&count); err != nil {
-		t.Fatalf("count stress killed rows: %v", err)
+	records, err := store.Shared().KilledRecords(context.Background())
+	if err != nil {
+		t.Fatalf("count shared stress killed rows: %v", err)
 	}
+	count := len(records)
 	want := storeStressProcesses * storeStressWrites
 	if count != want {
 		t.Fatalf("stress killed row count = %d, want %d", count, want)

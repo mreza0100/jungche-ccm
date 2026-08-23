@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 )
 
 func TestActionStress(t *testing.T) {
@@ -63,9 +64,14 @@ func TestActionStress(t *testing.T) {
 
 func stressRequests() []Request {
 	machine := testMachineConfig("/home/test")
+	machine.OpencodeAccounts = []pfmconfig.OpenCodeAccount{{
+		ID: 1, Home: "/home/test/.local/share/opencode",
+	}}
+	machine.OpenCode.Binary = "opencode"
 	rows := []compose.Row{
 		{Kind: compose.NewClaude, CWD: "/work/project"},
 		{Kind: compose.NewCodex, CWD: "/work/project"},
+		{Kind: compose.NewOpencode, CWD: "/work/project"},
 		{
 			Kind:        compose.LiveClaude,
 			ID:          "11111111-1111-4111-8111-111111111111",
@@ -85,6 +91,11 @@ func stressRequests() []Request {
 			CWD:  "/work/project",
 		},
 		{
+			Kind: compose.ResumeOpencode,
+			ID:   "ses_stress_opencode",
+			CWD:  "/work/project",
+		},
+		{
 			Kind: compose.ResumeCodex,
 			ID:   "44444444-4444-4444-8444-444444444444",
 			CWD:  "/work/project",
@@ -93,11 +104,18 @@ func stressRequests() []Request {
 	requests := make([]Request, 0, len(rows)*2*3*2)
 	for _, row := range rows {
 		for _, bunker := range []bool{false, true} {
-			for account := 1; account <= 3; account++ {
+			accounts := []int{1, 2, 3}
+			if row.Kind == compose.NewOpencode || row.Kind == compose.ResumeOpencode {
+				accounts = []int{1}
+			}
+			for _, account := range accounts {
 				for _, cache1H := range []bool{false, true} {
 					freshPrefix := "cc"
-					if row.Kind == compose.ResumeCodex {
+					switch row.Kind {
+					case compose.NewCodex, compose.ResumeCodex:
 						freshPrefix = "cx"
+					case compose.NewOpencode, compose.ResumeOpencode:
+						freshPrefix = "ox"
 					}
 					requests = append(requests, Request{
 						Row:            row,

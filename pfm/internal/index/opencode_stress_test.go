@@ -229,7 +229,10 @@ func TestStressOpencodeMirrorConcurrentPasses(t *testing.T) {
 // A live OpenCode process checkpoints into the WAL while we copy; the reader
 // must tolerate the database growing mid-copy without erroring or hanging.
 func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
-	const count = 400
+	const (
+		count      = 400
+		liveWrites = 2000
+	)
 	root := t.TempDir()
 	seedOpencodeStress(t, root, count)
 
@@ -243,7 +246,7 @@ func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
 			return
 		}
 		defer live.Close()
-		for round := 0; ; round++ {
+		for round := 0; round < liveWrites; round++ {
 			select {
 			case <-stop:
 				writerDone <- nil
@@ -261,6 +264,12 @@ func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
 			// never as a zero-gap spin, and a spin starves the snapshot.
 			time.Sleep(2 * time.Millisecond)
 		}
+		// Keep the writer connection live after the bounded write burst. An
+		// unbounded producer makes the fixture itself grow faster than a reader
+		// can finish under CPU contention, turning a concurrency probe into an
+		// ever-expanding benchmark that times out by construction.
+		<-stop
+		writerDone <- nil
 	}()
 
 	reads := 0

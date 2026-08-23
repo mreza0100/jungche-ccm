@@ -37,9 +37,8 @@ type composer struct {
 	cacheSockets     map[string]struct{}
 	liveTranscripts  map[string]struct{}
 	liveRollouts     map[string]struct{}
-	accountRoots     []AccountRoot
-	codexRoots       []AccountRoot
-	canonicalPaths   map[string]string
+	claudeAccounts   accountMatcher
+	codexAccounts    accountMatcher
 	projectDirs      map[string]string
 }
 
@@ -326,33 +325,23 @@ func (current *composer) buildIndexes() {
 	}
 	current.liveTranscripts = make(map[string]struct{})
 	current.liveRollouts = make(map[string]struct{})
-	current.accountRoots = make([]AccountRoot, 0, len(current.input.AccountRoots))
-	for _, root := range current.input.AccountRoots {
-		root.Path = canonicalPath(root.Path)
-		current.accountRoots = append(current.accountRoots, root)
-	}
-	current.codexRoots = make([]AccountRoot, 0, len(current.input.CodexRoots))
-	for _, root := range current.input.CodexRoots {
-		root.Path = canonicalPath(root.Path)
-		current.codexRoots = append(current.codexRoots, root)
-	}
-	current.canonicalPaths = make(map[string]string, len(current.input.Transcripts)+len(current.input.Snapshot.Agents))
-	for _, transcript := range current.input.Transcripts {
-		current.canonicalPaths[transcript.Path] = canonicalPath(transcript.Path)
-	}
-	for _, agent := range current.input.Snapshot.Agents {
-		current.canonicalPaths[agent.ConfigDir] = canonicalPath(agent.ConfigDir)
-	}
+	// Account roots are the stable side of the prefix match. Resolve each one
+	// once, then match the ordinary row path lexically against both its
+	// configured and canonical spellings. The previous implementation called
+	// EvalSymlinks for every transcript on every picker refresh: a 50k-row
+	// corpus repeated 1,000 times spent more than ten minutes in filesystem
+	// probes. A path with a third alias still takes the canonical fallback, so
+	// the symlink-safe attribution contract is preserved without putting the
+	// common path on the filesystem.
+	current.claudeAccounts = newAccountMatcher(current.input.AccountRoots)
+	current.codexAccounts = newAccountMatcher(current.input.CodexRoots)
 }
 
 func canonicalPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	cleaned := cleanPath(path)
-	if absolute, err := filepath.Abs(cleaned); err == nil {
-		cleaned = cleanPath(absolute)
-	}
+	cleaned := absoluteCleanPath(path)
 	probe := cleaned
 	suffix := make([]string, 0, 4)
 	for {
@@ -371,11 +360,80 @@ func canonicalPath(path string) string {
 	}
 }
 
-func (current *composer) accountFor(path string) int {
-	if canonical, ok := current.canonicalPaths[path]; ok {
-		return accountForPath(canonical, current.accountRoots)
+func absoluteCleanPath(path string) string {
+	cleaned := cleanPath(path)
+	if absolute, err := filepath.Abs(cleaned); err == nil {
+		return cleanPath(absolute)
 	}
-	return accountForPath(path, current.accountRoots)
+	return cleaned
+}
+
+type accountPathRoot struct {
+	account    int
+	configured string
+	canonical  string
+}
+
+type accountMatcher struct {
+	roots []accountPathRoot
+}
+
+func newAccountMatcher(roots []AccountRoot) accountMatcher {
+	matcher := accountMatcher{roots: make([]accountPathRoot, 0, len(roots))}
+	for _, root := range roots {
+		if root.Account < 1 || root.Path == "" {
+			continue
+		}
+		configured := absoluteCleanPath(root.Path)
+		matcher.roots = append(matcher.roots, accountPathRoot{
+			account:    root.Account,
+			configured: configured,
+			canonical:  canonicalPath(configured),
+		})
+	}
+	return matcher
+}
+
+func (matcher accountMatcher) accountFor(path string) int {
+	if path == "" {
+		return 0
+	}
+	normalized := absoluteCleanPath(path)
+	if account := matcher.match(normalized, true); account != 0 {
+		return account
+	}
+	canonical := canonicalPath(normalized)
+	if canonical == normalized {
+		return 0
+	}
+	return matcher.match(canonical, false)
+}
+
+func (matcher accountMatcher) match(path string, includeConfigured bool) int {
+	account := 0
+	longest := -1
+	for _, root := range matcher.roots {
+		candidates := []string{root.canonical}
+		if includeConfigured && root.configured != root.canonical {
+			candidates = append(candidates, root.configured)
+		}
+		for _, candidate := range candidates {
+			if !pathWithinRoot(path, candidate) || len(candidate) <= longest {
+				continue
+			}
+			longest = len(candidate)
+			account = root.account
+		}
+	}
+	return account
+}
+
+func pathWithinRoot(path, root string) bool {
+	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
+}
+
+func (current *composer) accountFor(path string) int {
+	return current.claudeAccounts.accountFor(path)
 }
 
 type crumbsForSocket struct {
@@ -794,7 +852,7 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 		Size:        newest.Size,
 		PromptCount: newest.PromptCount,
 		ActivityNS:  newest.MTimeNS,
-		Account:     accountForPath(newest.Path, current.codexRoots),
+		Account:     current.codexAccounts.accountFor(newest.Path),
 		BG:          newest.IsBG,
 	}
 }
@@ -1169,30 +1227,6 @@ func projectName(cwd string) string {
 		return "?"
 	}
 	return project
-}
-
-func accountForPath(path string, roots []AccountRoot) int {
-	if path == "" {
-		return 0
-	}
-	normalizedPath := cleanPath(path)
-	account := 0
-	longest := -1
-	for _, root := range roots {
-		if root.Account < 1 || root.Path == "" {
-			continue
-		}
-		cleanRoot := root.Path
-		if normalizedPath != cleanRoot &&
-			!strings.HasPrefix(normalizedPath, cleanRoot+string(filepath.Separator)) {
-			continue
-		}
-		if len(cleanRoot) > longest {
-			longest = len(cleanRoot)
-			account = root.Account
-		}
-	}
-	return account
 }
 
 func configuredAccount(roots []AccountRoot, account int) bool {

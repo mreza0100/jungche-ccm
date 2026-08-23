@@ -20,8 +20,19 @@ type claudeRecord struct {
 	PromptSource     string `json:"promptSource"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
 	Message          struct {
-		Content json.RawMessage `json:"content"`
+		Content borrowedRawMessage `json:"content"`
 	} `json:"message"`
+}
+
+// borrowedRawMessage is consumed before json.Unmarshal returns control to
+// readCompleteLines' caller. Unlike json.RawMessage it deliberately borrows
+// the current line buffer, avoiding one full prompt copy per transcript row.
+// It must never escape the parse callback.
+type borrowedRawMessage []byte
+
+func (message *borrowedRawMessage) UnmarshalJSON(content []byte) error {
+	*message = content
+	return nil
 }
 
 func parseClaude(
@@ -54,7 +65,7 @@ func parseClaude(
 			if record.IsCompactSummary {
 				return
 			}
-			prompt := naming.FlattenPromptText(record.Message.Content)
+			prompt := naming.FlattenPromptText(json.RawMessage(record.Message.Content))
 			if prompt == "" || naming.IsJunkPrompt(prompt) {
 				return
 			}
