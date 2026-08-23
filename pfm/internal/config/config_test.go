@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -208,6 +209,49 @@ func TestLoadConfiguredAccountsExpandHomeAndPreserveIDs(t *testing.T) {
 		if got.Source(key) != SourceFile {
 			t.Errorf("Source(%q) = %q, want %q", key, got.Source(key), SourceFile)
 		}
+	}
+}
+
+func TestLoadConfiguredAccountsDropUnregisteredDiscoverySkips(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	for _, account := range []int{1, 4} {
+		configDir := DefaultAccountDir(home, account)
+		if err := os.MkdirAll(configDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if account == 1 {
+			credentials := `{"claudeAiOauth":{"accessToken":"fixture"}}`
+			if err := os.WriteFile(filepath.Join(configDir, ".credentials.json"), []byte(credentials), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := fmt.Sprintf(`{"version":2,"accounts":[{"id":1,"configDir":%q}]}`, DefaultAccountDir(home, 1))
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load(configured) error = %v", err)
+	}
+	if len(got.AccountSkips) != 0 {
+		t.Fatalf("configured roster leaked unregistered discovery skips: %#v", got.AccountSkips)
+	}
+}
+
+func TestSkipsOutsideDirectoryPreservesUnrelatedDiscoveryFailures(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	claudeRoot := filepath.Join(home, ".cc")
+	codexFailure := AccountSkip{ConfigDir: filepath.Join(home, ".codex"), Reason: "codex discovery failed: fixture"}
+	got := skipsOutsideDirectory([]AccountSkip{
+		{ID: 4, ConfigDir: filepath.Join(claudeRoot, "4"), Reason: "no valid credentials"},
+		codexFailure,
+	}, claudeRoot)
+	if !reflect.DeepEqual(got, []AccountSkip{codexFailure}) {
+		t.Fatalf("skipsOutsideDirectory()=%#v, want only unrelated discovery failure", got)
 	}
 }
 

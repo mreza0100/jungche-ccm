@@ -452,17 +452,13 @@ func hasValidCodexCredentials(home string) (bool, error) {
 	return valid, nil
 }
 
-func skipsOutsideRoster(skips []AccountSkip, accounts []Account) []AccountSkip {
-	if len(skips) == 0 {
-		return nil
-	}
-	configured := make(map[string]bool, len(accounts))
-	for _, account := range accounts {
-		configured[filepath.Clean(account.ConfigDir)] = true
-	}
+func skipsOutsideDirectory(skips []AccountSkip, root string) []AccountSkip {
 	filtered := make([]AccountSkip, 0, len(skips))
 	for _, skip := range skips {
-		if !configured[filepath.Clean(skip.ConfigDir)] {
+		relative, err := filepath.Rel(root, skip.ConfigDir)
+		inside := err == nil && relative != ".." &&
+			!strings.HasPrefix(relative, ".."+string(os.PathSeparator))
+		if !inside {
 			filtered = append(filtered, skip)
 		}
 	}
@@ -530,7 +526,10 @@ func loadWithMCPServers(
 			return Config{}, fmt.Errorf("config %s: accounts: %w", result.Path, err)
 		}
 		result.Accounts = accounts
-		result.AccountSkips = skipsOutsideRoster(result.AccountSkips, accounts)
+		// An explicit Claude roster is authoritative. Diagnostics from default
+		// ~/.cc discovery must not re-enter observers as phantom skipped
+		// accounts; unrelated discovery failures remain visible.
+		result.AccountSkips = skipsOutsideDirectory(result.AccountSkips, filepath.Join(home, ".cc"))
 		result.Sources["accounts"] = SourceFile
 		for index, value := range *raw.Accounts {
 			if value.Emoji != "" {

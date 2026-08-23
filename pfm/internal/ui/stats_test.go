@@ -92,6 +92,23 @@ func TestLimitsTabRendersFancyCardsAndRefreshesPastResets(t *testing.T) {
 	}
 }
 
+func TestLimitsTabRendersCachedWindowsUnderRefreshWarning(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabLimits
+	now := time.Unix(0, model.nowNS)
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 2, Emoji: "🥈", Engine: "claude", ConfirmedAt: now.Add(-7 * time.Minute),
+		Status:  "refresh timed out; showing cached limits",
+		Windows: []pfmstats.Window{{Name: "7d", UsedPct: 73, ResetAt: now.Add(4 * 24 * time.Hour)}},
+	}}}
+	plain := ansi.Strip(model.renderLimitsPanel(120, 9))
+	for _, want := range []string{"provider confirmed 7m ago", "refresh timed out; showing cached limits", "7d", "73%"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("cached Limits card missing %q:\n%s", want, plain)
+		}
+	}
+}
+
 func TestLimitBarsKeepEighthCellPrecisionAndFullTail(t *testing.T) {
 	_ = NewModel(fixtureSnapshot(120))
 	left := ansi.Strip(limitBar(52.4, 20))

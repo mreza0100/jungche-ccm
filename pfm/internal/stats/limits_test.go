@@ -64,10 +64,16 @@ func TestLimitsSamplerACKFallbackIsAtMostOncePerAccount(t *testing.T) {
 	if acks != 1 || fetches != 1 || len(warnings) != 0 {
 		t.Fatalf("first sample fetches=%d acks=%d warnings=%v", fetches, acks, warnings)
 	}
-	now = now.Add(2 * time.Minute)
+	now = now.Add(defaultLimitsTTL + time.Minute)
 	_, warnings = sampler.Sample(context.Background())
 	if acks != 1 || fetches != 2 || len(warnings) != 0 {
 		t.Fatalf("expired sample fetches=%d acks=%d warnings=%v", fetches, acks, warnings)
+	}
+}
+
+func TestDefaultLimitsTTLMatchesSharedUsageCacheCadence(t *testing.T) {
+	if got := NewLimitsSampler(nil).ttl(); got != 3*time.Minute {
+		t.Fatalf("default Limits TTL=%s, want the shared usage cache's 3m cadence", got)
 	}
 }
 
@@ -96,6 +102,45 @@ func TestLimitsSamplerTurnsPersistentCredentialRejectionIntoNamedSkip(t *testing
 	}
 	if len(limits) != 1 || limits[0].Status != "skipped "+label+": credentials rejected" {
 		t.Fatalf("limits=%#v, want named stale-account skip", limits)
+	}
+}
+
+func TestLimitsSamplerCredentialRefreshCanRetryBeforeBackoff(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	configDir := filepath.Join(home, ".cc", "6")
+	writeFixtureCredentials(t, configDir)
+
+	now := time.Unix(1_800_000_000, 0)
+	var hits, acks int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if hits == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(8, 19, now))
+	}))
+	defer server.Close()
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 6, Engine: "claude", Label: "account 6", ConfigDir: configDir}})
+	sampler.Now = func() time.Time { return now }
+	sampler.Endpoint = server.URL
+	sampler.Ack = func(context.Context, LimitAccount) error {
+		acks++
+		return nil
+	}
+	limits, warnings := sampler.Sample(context.Background())
+	if hits != 2 || acks != 1 || len(warnings) != 0 || len(limits) != 1 || len(limits[0].Windows) != 2 {
+		t.Fatalf("credential refresh retry was blocked: hits=%d acks=%d warnings=%v limits=%#v", hits, acks, warnings, limits)
+	}
+}
+
+func TestStaleStatusClassifiesTimeout(t *testing.T) {
+	err := fmt.Errorf("fetch usage endpoint: %w", context.DeadlineExceeded)
+	if got := staleStatus(err); got != "refresh timed out; showing cached limits" {
+		t.Fatalf("staleStatus(timeout)=%q", got)
 	}
 }
 
@@ -300,6 +345,64 @@ func TestLimitsSamplerKeepsRealFetchFailureVisible(t *testing.T) {
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "network route unavailable") {
 		t.Fatalf("warnings=%v, want real-account diagnostic", warnings)
+	}
+}
+
+func TestLimitsSamplerServesLastGoodClaudeCacheDuringSharedBackoff(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	configDir := filepath.Join(home, ".cc", "8")
+	writeFixtureCredentials(t, configDir)
+
+	now := time.Unix(1_800_000_000, 0)
+	failed := false
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		if failed {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, usageJSONBody(17, 29, now))
+	}))
+	defer server.Close()
+
+	account := LimitAccount{ID: 8, Engine: "claude", Label: "account 8", ConfigDir: configDir}
+	samplerA := NewLimitsSampler([]LimitAccount{account})
+	samplerA.Now = func() time.Time { return now }
+	samplerA.Endpoint = server.URL
+	first, warnings := samplerA.Sample(context.Background())
+	if hits != 1 || len(warnings) != 0 || len(first) != 1 || !first[0].ConfirmedAt.Equal(now) {
+		t.Fatalf("initial sample: hits=%d warnings=%v limits=%#v", hits, warnings, first)
+	}
+
+	now = now.Add(30 * time.Second)
+	samplerB := NewLimitsSampler([]LimitAccount{account})
+	samplerB.Now = func() time.Time { return now }
+	samplerB.Endpoint = server.URL
+	cached, warnings := samplerB.Sample(context.Background())
+	if hits != 1 || len(warnings) != 0 || len(cached) != 1 || !cached[0].ConfirmedAt.Equal(now.Add(-30*time.Second)) {
+		t.Fatalf("fresh shared-cache sample invented confirmation time: hits=%d warnings=%v limits=%#v", hits, warnings, cached)
+	}
+
+	failed = true
+	now = now.Add(defaultLimitsTTL)
+	stale, warnings := samplerA.Sample(context.Background())
+	if hits != 2 || len(stale) != 1 || len(stale[0].Windows) != 2 || stale[0].Status != "provider temporarily unavailable; showing cached limits" {
+		t.Fatalf("failed refresh discarded last good payload: hits=%d warnings=%v limits=%#v", hits, warnings, stale)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "503 Service Unavailable") || !stale[0].ConfirmedAt.Equal(now.Add(-defaultLimitsTTL-30*time.Second)) {
+		t.Fatalf("failed refresh lost diagnostic/provenance: warnings=%v limits=%#v", warnings, stale)
+	}
+
+	now = now.Add(30 * time.Second)
+	samplerC := NewLimitsSampler([]LimitAccount{account})
+	samplerC.Now = func() time.Time { return now }
+	samplerC.Endpoint = server.URL
+	backedOff, warnings := samplerC.Sample(context.Background())
+	if hits != 2 || len(backedOff) != 1 || len(backedOff[0].Windows) != 2 || backedOff[0].Status != stale[0].Status {
+		t.Fatalf("shared backoff refetched or lost cache: hits=%d warnings=%v limits=%#v", hits, warnings, backedOff)
 	}
 }
 
