@@ -18,12 +18,13 @@ import (
 // only argument/result adaptation.
 func mcpRuntime(runtime commandRuntime) mcpserv.Runtime {
 	return mcpserv.Runtime{
-		Paths:        runtime.Paths,
-		Accounts:     runtime.Config.Accounts,
-		ConfigPath:   runtime.Config.Path,
-		ClaudeBinary: runtime.Config.Claude.Binary,
-		CodexBinary:  runtime.Config.Codex.Binary,
-		Operations:   mcpSharedOperations(runtime),
+		Paths:          runtime.Paths,
+		Accounts:       runtime.Config.Accounts,
+		ConfigPath:     runtime.Config.Path,
+		ClaudeBinary:   runtime.Config.Claude.Binary,
+		CodexBinary:    runtime.Config.Codex.Binary,
+		OpencodeBinary: runtime.Config.OpenCode.Binary,
+		Operations:     mcpSharedOperations(runtime),
 		Dispatch: func(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			if len(args) == 0 || args[0] != "chat" {
 				fmt.Fprintln(stderr, "pfm: MCP dispatch requires chat argv")

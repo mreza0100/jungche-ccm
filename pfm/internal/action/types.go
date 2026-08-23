@@ -18,6 +18,8 @@ const (
 	Agent        Route = 'A'
 	ResumeClaude Route = 'R'
 	ResumeCodex  Route = 'X'
+	// ResumeOpencode takes the next free letter; 'O' reads as OpenCode.
+	ResumeOpencode Route = 'O'
 )
 
 // Request is every value needed to synthesize and prepare one selected row.

@@ -167,6 +167,8 @@ func NormalizeEngine(value string) (string, bool) {
 		return store.ClaudeEngine, true
 	case "cx", "codex":
 		return store.CodexEngine, true
+	case "ox", "opencode":
+		return store.OpencodeEngine, true
 	default:
 		return "", false
 	}

@@ -1,6 +1,8 @@
 package compose
 
 import (
+	"time"
+
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -14,6 +16,7 @@ import (
 const (
 	claudeResumeCap = 30
 	codexResumeCap  = 15
+	ocResumeCap     = 10
 )
 
 type composer struct {
@@ -157,6 +160,44 @@ func Compose(input Input) Output {
 			current.selectResumeRows(
 				codexResume,
 				codexResumeCap,
+				&output.SuppressedCount,
+			)...,
+		)
+	}
+
+	ocResume := make([]Row, 0)
+	ocEligible := 0
+	for _, session := range input.OcSessions {
+		// Subagent children and archived sessions never earn rows: a child is
+		// part of its parent's turn, an archived one the user filed away.
+		if session.ParentID != "" || session.TimeArchivedMS != 0 {
+			continue
+		}
+		row := current.ocSessionRow(session)
+		row = current.applyKill(row, "ox")
+		countOmitted(row, &output.KilledCount, &output.SuppressedCount)
+		if input.Options.View == DefaultView {
+			if defaultEligible(row) {
+				ocEligible++
+				ocResume = insertTopRow(ocResume, row, ocResumeCap)
+			}
+		} else {
+			ocResume = append(ocResume, row)
+		}
+	}
+	if input.Options.View == DefaultView {
+		if ocEligible > ocResumeCap {
+			output.SuppressedCount += ocEligible - ocResumeCap
+		}
+		for _, row := range ocResume {
+			output.Rows = append(output.Rows, current.finalize(row))
+		}
+	} else {
+		output.Rows = append(
+			output.Rows,
+			current.selectResumeRows(
+				ocResume,
+				ocResumeCap,
 				&output.SuppressedCount,
 			)...,
 		)
@@ -750,6 +791,34 @@ func (current *composer) rolloutRow(rollout store.Rollout, kind Kind) Row {
 	}
 }
 
+// ocSessionRow renders one OpenCode session. The title is authoritative —
+// OpenCode names its sessions itself — with the first prompt as fallback for
+// sessions it never titled.
+func (current *composer) ocSessionRow(session store.OcSession) Row {
+	name := session.Title
+	if name == "" {
+		name = naming.DisplayName("", "", session.FirstPrompt)
+	}
+	return Row{
+		Kind:        ResumeOpencode,
+		ID:          session.ID,
+		Name:        name,
+		Project:     projectName(session.ProjectDir),
+		CWD:         firstNonEmpty(session.Directory, session.ProjectDir),
+		PromptCount: session.PromptCount,
+		ActivityNS:  session.TimeUpdatedMS * int64(time.Millisecond),
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (current *composer) lineageRoot(rollout store.Rollout) string {
 	if root := current.lineageRootByID[rollout.ID]; root != "" {
 		return root
@@ -932,6 +1001,13 @@ func defaultEligible(row Row) bool {
 	// empty content, never for who started the conversation.
 	if row.Kind == LiveCodex {
 		return !row.BG
+	}
+	// An OpenCode session has no file size at all — it lives entirely inside
+	// its engine's SQLite store, so the size half of this test would suppress
+	// every one of them forever. Its reality signal is the prompt count: a
+	// session with no admitted input was opened and never used.
+	if row.Kind == ResumeOpencode {
+		return !row.BG && row.PromptCount > 0
 	}
 	return !row.BG && row.Size > 0 && row.PromptCount > 0
 }
@@ -1132,6 +1208,8 @@ func EngineForKind(kind Kind) string {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:
 		return "cx"
+	case ResumeOpencode:
+		return "ox"
 	default:
 		return "cc"
 	}

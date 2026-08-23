@@ -273,10 +273,12 @@ func printEngineDoctor(stdout io.Writer, machine config.Config) int {
 	counts := machine.Engines()
 	engine, err := machine.DefaultEngine()
 	if err != nil {
-		fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=none error=%v\n", counts.Claude, counts.Codex, err)
+		fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d opencode=%d default=none error=%v\n",
+			counts.Claude, counts.Codex, counts.Opencode, err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d default=%s\n", counts.Claude, counts.Codex, engine)
+	fmt.Fprintf(stdout, "doctor: engines claude=%d codex=%d opencode=%d default=%s\n",
+		counts.Claude, counts.Codex, counts.Opencode, engine)
 	return 0
 }
 

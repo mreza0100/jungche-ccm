@@ -990,6 +990,8 @@ func rowEngine(kind compose.Kind) string {
 	switch kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		return "cx"
+	case compose.ResumeOpencode:
+		return "ox"
 	default:
 		return "cc"
 	}

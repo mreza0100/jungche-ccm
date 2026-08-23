@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"hostops/pfm/internal/resolve"
 )
 
 const (
@@ -93,7 +95,10 @@ func (engine *Engine) prepareMessage(
 }
 
 func (engine *Engine) autoFileThreshold(engineName string) int {
-	if engineName == "cx" {
+	// OpenCode inherits Codex's conservative bound: its composer paste edge is
+	// unverified, so it gets the smaller of the two measured thresholds rather
+	// than an invented one.
+	if engineName == "cx" || engineName == resolve.OpencodeEngine {
 		return engine.options.CodexAutoFileMax
 	}
 	return engine.options.ClaudeAutoFileMax
