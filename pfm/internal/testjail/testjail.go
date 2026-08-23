@@ -3,6 +3,7 @@
 package testjail
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/deps"
+	"hostops/pfm/internal/paths"
 )
 
 // Run points TMPDIR at a base that is both SHORT and CANONICAL, then runs the
@@ -44,6 +46,7 @@ func Run(m *testing.M) int {
 		// No canonical base to stand on. Run anyway rather than failing the
 		// whole package: on a platform where the default temp dir is already
 		// short and canonical, nothing here was needed in the first place.
+		defer jailHome(os.TempDir())()
 		return m.Run()
 	}
 	// No wrapper directory of our own: t.TempDir() already makes a unique path
@@ -51,7 +54,32 @@ func Run(m *testing.M) int {
 	// 104 bytes a socket path is allowed, which is exactly the budget the
 	// longest test names need.
 	os.Setenv("TMPDIR", base)
+	defer jailHome(base)()
 	return m.Run()
+}
+
+// jailHome points PFM_HOME at a private directory for the WHOLE package, so a
+// test that never builds a jail of its own still cannot reach the operator's
+// real home — the fleet.db their live chats are indexed in, the
+// ~/.claude/projects their transcripts live in.
+//
+// It deliberately does not touch HOME. Packages here shell out to `go build`,
+// and the module cache and build cache live under the real HOME; moving it
+// would trade a data-safety bug for a toolchain one. PFM_HOME is the variable
+// paths.Resolve() reads, and Resolve() refuses an unset one under test — so a
+// package that opts out of this helper fails loudly rather than escaping.
+//
+// BROKEN STATE: if the jail directory cannot be created this says so on stderr
+// and leaves PFM_HOME unset, which makes paths.Resolve() refuse. An unjailed
+// package fails its tests; it never silently writes to a live account.
+func jailHome(base string) func() {
+	home, err := os.MkdirTemp(base, "pfm-jail-home-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "testjail: no jailed home under %s: %v\n", base, err)
+		return func() {}
+	}
+	os.Setenv(paths.EnvHome, home)
+	return func() { os.RemoveAll(home) }
 }
 
 // ShortRoot returns a unique temporary directory whose path is as short as this
