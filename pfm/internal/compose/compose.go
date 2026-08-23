@@ -60,12 +60,14 @@ func Compose(input Input) Output {
 	agentRows := current.agentRows()
 
 	output := Output{
-		ProjectDirs:      cloneStringMap(current.projectDirs),
-		includeNewClaude: input.Options.View != KilledView && len(input.AccountRoots) != 0,
-		includeNewCodex:  input.Options.View != KilledView && len(input.Options.CodexAccountIDs) != 0,
-		primaryAccount:   input.Options.PrimaryAccount,
-		primaryCodex:     input.Options.PrimaryCodexAccount,
-		fallbackDir:      input.Options.CurrentDir,
+		ProjectDirs:        cloneStringMap(current.projectDirs),
+		includeNewClaude:   input.Options.View != KilledView && len(input.AccountRoots) != 0,
+		includeNewCodex:    input.Options.View != KilledView && len(input.Options.CodexAccountIDs) != 0,
+		includeNewOpenCode: input.Options.View != KilledView && len(input.Options.OpencodeAccountIDs) != 0,
+		primaryAccount:     input.Options.PrimaryAccount,
+		primaryCodex:       input.Options.PrimaryCodexAccount,
+		primaryOpenCode:    input.Options.PrimaryOpencode,
+		fallbackDir:        input.Options.CurrentDir,
 	}
 	if !configuredAccount(input.AccountRoots, output.primaryAccount) {
 		if len(input.AccountRoots) != 0 {
@@ -75,6 +77,11 @@ func Compose(input Input) Output {
 	if !configuredID(input.Options.CodexAccountIDs, output.primaryCodex) {
 		if len(input.Options.CodexAccountIDs) != 0 {
 			output.primaryCodex = input.Options.CodexAccountIDs[0]
+		}
+	}
+	if !configuredID(input.Options.OpencodeAccountIDs, output.primaryOpenCode) {
+		if len(input.Options.OpencodeAccountIDs) != 0 {
+			output.primaryOpenCode = input.Options.OpencodeAccountIDs[0]
 		}
 	}
 
@@ -1224,7 +1231,7 @@ func EngineForKindChecked(kind Kind) (pfmengine.ID, error) {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:
 		return pfmengine.Codex, nil
-	case ResumeOpencode:
+	case ResumeOpencode, NewOpencode:
 		return pfmengine.Opencode, nil
 	case LiveClaude, ResumeClaude, NewClaude, LiveSplit, Agent, Booting:
 		return pfmengine.Claude, nil
