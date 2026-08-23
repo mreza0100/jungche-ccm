@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/action"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestRosterContainsFailsClosedWhenRosterIsEmpty(t *testing.T) {
@@ -22,6 +23,7 @@ func TestRunRespawnsWithConfiguredClaudePolicy(t *testing.T) {
 	_, err := Run(
 		context.Background(),
 		Request{
+			Engine:            pfmengine.Claude,
 			SocketPath:        "/tmp/tmux-1000/configured-reload",
 			Pane:              "%7",
 			SessionID:         "11111111-1111-4111-8111-111111111111",

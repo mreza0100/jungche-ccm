@@ -115,6 +115,13 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !rosterContains(request.AccountIDs, request.Account) {
 		return Result{}, fmt.Errorf("account %d is not in the configured roster", request.Account)
 	}
+	run := engineRun(request)
+	if run == "" {
+		if descriptor, err := pfmengine.Lookup(request.Engine); err == nil {
+			return Result{}, fmt.Errorf("%s does not support in-place reload", descriptor.Short)
+		}
+		return Result{}, fmt.Errorf("engine %q does not support in-place reload", request.Engine)
+	}
 	if stderr == nil {
 		stderr = io.Discard
 	}
@@ -230,7 +237,6 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if !dead {
 		return Result{}, errors.New("/exit did not complete; chat left running")
 	}
-	run := engineRun(request)
 	if err := tmux.Respawn(ctx, request.SocketPath, request.Pane, request.CWD, run); err != nil {
 		return Result{}, fmt.Errorf("respawn pane: %w", err)
 	}
@@ -309,10 +315,14 @@ func claudeRun(request Request) string {
 }
 
 func engineRun(request Request) string {
-	if request.Engine == pfmengine.Codex {
+	switch request.Engine {
+	case pfmengine.Claude:
+		return claudeRun(request)
+	case pfmengine.Codex:
 		return codexRun(request)
+	default:
+		return ""
 	}
-	return claudeRun(request)
 }
 
 func codexRun(request Request) string {

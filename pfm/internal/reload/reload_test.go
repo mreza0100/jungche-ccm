@@ -200,7 +200,7 @@ func TestRunRefusesAnOverlappingPaneReload(t *testing.T) {
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Run(context.Background(), Request{SocketPath: "/tmp/probe-1", Pane: "%7", Account: 2, AccountIDs: []int{2}}, Options{SIDDir: dir, Delay: -1}, nil, nil, nil)
+	_, err = Run(context.Background(), Request{Engine: pfmengine.Claude, SocketPath: "/tmp/probe-1", Pane: "%7", Account: 2, AccountIDs: []int{2}}, Options{SIDDir: dir, Delay: -1}, nil, nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "already in flight") {
 		t.Fatalf("overlap error = %v", err)
 	}
@@ -245,11 +245,34 @@ func TestCodexRunUsesTheSelectedHomeAndRosterPolicy(t *testing.T) {
 	}
 }
 
+func TestOpencodeRunIsNotMisroutedToClaude(t *testing.T) {
+	if run := engineRun(Request{Engine: pfmengine.Opencode}); run != "" {
+		t.Fatalf("engineRun(OpenCode)=%q, want an explicit unsupported result", run)
+	}
+}
+
+func TestRunRefusesOpencodeBeforeExitingThePane(t *testing.T) {
+	tmux := &fakeReloadTmux{}
+	_, err := Run(
+		context.Background(),
+		Request{
+			Engine: pfmengine.Opencode, SocketPath: "/tmp/ox-session", Pane: "%7",
+			PanePID: 700, Account: 1, AccountIDs: []int{1}, CWD: "/work",
+		},
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 1},
+		tmux, nil, nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "OpenCode") || tmux.literal != "" {
+		t.Fatalf("OpenCode reload error=%v literal=%q, want refusal before /exit", err, tmux.literal)
+	}
+}
+
 func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 	tmux := &fakeReloadTmux{}
 	result, err := Run(
 		context.Background(),
 		Request{
+			Engine:           pfmengine.Claude,
 			SocketPath:       "/tmp/tmux-1000/probe-reload",
 			Pane:             "%7",
 			PanePID:          700,

@@ -585,7 +585,11 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 	}
 	model := currentClaudeModel(id, runtime)
 	command := branchClaudeCommand(id, name, model, runtime.Config)
-	socket := freshSocket(compose.ResumeClaude)
+	socket, err := freshSocket(compose.ResumeClaude)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: allocate socket: %v\n", err)
+		return 1
+	}
 	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
 	if err := tmux.NewSession(context.Background(), spawn.SessionSpec{
 		Socket: socket, Session: socket, Window: spawn.WindowName(name),

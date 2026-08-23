@@ -209,7 +209,7 @@ func runLS(
 }
 
 func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
-	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+len(runtime.Config.CodexAccounts)+2)
+	accounts := make([]pfmstats.LimitAccount, 0, len(runtime.Config.Accounts)+len(runtime.Config.AccountSkips)+len(runtime.Config.CodexAccounts)+len(runtime.Config.OpencodeAccounts)+3)
 	if len(runtime.Config.Accounts) == 0 {
 		accounts = append(accounts, pfmstats.LimitAccount{
 			Engine: pfmengine.Claude, Label: "no " + pfmengine.MustLookup(pfmengine.Claude).Short + " accounts configured", Absent: true,
@@ -240,6 +240,17 @@ func limitAccounts(runtime commandRuntime) []pfmstats.LimitAccount {
 			ID: account.ID, Emoji: runtime.Config.CodexEmojiFor(account.ID),
 			Engine: pfmengine.Codex, Label: fmt.Sprintf("%s %d", pfmengine.MustLookup(pfmengine.Codex).Short, account.ID),
 			CodexAuthPath: filepath.Join(account.Home, "auth.json"),
+		})
+	}
+	if len(runtime.Config.OpencodeAccounts) == 0 {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			Engine: pfmengine.Opencode, Label: "no " + pfmengine.MustLookup(pfmengine.Opencode).Short + " accounts configured", Absent: true,
+		})
+	}
+	for _, account := range runtime.Config.OpencodeAccounts {
+		accounts = append(accounts, pfmstats.LimitAccount{
+			ID: account.ID, Engine: pfmengine.Opencode,
+			Label: fmt.Sprintf("%s %d", pfmengine.MustLookup(pfmengine.Opencode).Short, account.ID),
 		})
 	}
 	return accounts
@@ -325,13 +336,18 @@ func openRow(
 		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
 		return 1
 	}
+	fresh, err := freshSocket(row.Kind)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat open: %v\n", err)
+		return 1
+	}
 	line, err := executor.Open(ctx, action.Request{
 		Row:            row,
 		PrimaryAccount: primary,
 		Cache1H:        cache1H,
 		Bunker:         inBunker(),
 		Home:           resolved.Home,
-		FreshSocket:    freshSocket(row.Kind),
+		FreshSocket:    fresh,
 		CurrentTMUX:    os.Getenv("TMUX"),
 		Config:         runtime.Config,
 	})
@@ -348,8 +364,12 @@ func openRow(
 	return 0
 }
 
-func freshSocket(kind compose.Kind) string {
-	return freshEngineSocket(compose.EngineForKind(kind))
+func freshSocket(kind compose.Kind) (string, error) {
+	id, err := compose.EngineForKindChecked(kind)
+	if err != nil {
+		return "", err
+	}
+	return freshEngineSocket(id), nil
 }
 
 func freshEngineSocket(id pfmengine.ID) string {

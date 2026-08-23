@@ -42,10 +42,11 @@ func runReap(args []string, stdout, stderr io.Writer, runtime commandRuntime) in
 	}
 	ctx := context.Background()
 	runner, err := reap.New(reap.Dependencies{
-		Paths:        resolved,
-		Busy:         reap.NewClaudeAgentsConfigured(resolved, runtime.Config.Claude.Binary, configDirs),
-		ClaudeBinary: runtime.Config.Claude.Binary,
-		CodexBinary:  runtime.Config.Codex.Binary,
+		Paths:          resolved,
+		Busy:           reap.NewClaudeAgentsConfigured(resolved, runtime.Config.Claude.Binary, configDirs),
+		ClaudeBinary:   runtime.Config.Claude.Binary,
+		CodexBinary:    runtime.Config.Codex.Binary,
+		OpencodeBinary: runtime.Config.OpenCode.Binary,
 		KillServer: func(ctx context.Context, socket string) error {
 			return killChatServer(ctx, resolved, socket)
 		},

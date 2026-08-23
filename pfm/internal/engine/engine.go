@@ -54,8 +54,24 @@ var registry = map[ID]Descriptor{}
 // nothing else. Registering an ID twice is a programming error and panics:
 // it can only happen at init time, never from user input.
 func Register(d Descriptor) {
+	if d.ID == "" || strings.TrimSpace(d.LongName) == "" || d.SocketPrefix == "" {
+		panic(fmt.Sprintf("engine descriptor is incomplete: id=%q long_name=%q socket_prefix=%q", d.ID, d.LongName, d.SocketPrefix))
+	}
 	if _, dup := registry[d.ID]; dup {
 		panic(fmt.Sprintf("engine %q registered twice", d.ID))
+	}
+	for id, existing := range registry {
+		for _, candidate := range []string{string(d.ID), d.LongName} {
+			for _, registered := range []string{string(id), existing.LongName} {
+				if strings.EqualFold(candidate, registered) {
+					panic(fmt.Sprintf("engine %q alias %q collides with engine %q alias %q", d.ID, candidate, id, registered))
+				}
+			}
+		}
+		if strings.HasPrefix(d.SocketPrefix, existing.SocketPrefix) ||
+			strings.HasPrefix(existing.SocketPrefix, d.SocketPrefix) {
+			panic(fmt.Sprintf("engine %q socket prefix %q collides with engine %q prefix %q", d.ID, d.SocketPrefix, id, existing.SocketPrefix))
+		}
 	}
 	registry[d.ID] = d
 }

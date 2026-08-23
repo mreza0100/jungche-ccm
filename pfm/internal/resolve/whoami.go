@@ -294,7 +294,10 @@ func socketFromTMUX(value string) (string, string) {
 }
 
 func engineForSocket(socketName string) string {
-	id, _ := pfmengine.FromSocket(socketName)
+	id, ok := pfmengine.FromSocket(socketName)
+	if !ok {
+		return "unknown"
+	}
 	return string(id)
 }
 

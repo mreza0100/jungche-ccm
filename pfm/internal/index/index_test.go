@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -20,6 +21,40 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
+
+const missingSourceHelper = "PFM_INDEX_MISSING_SOURCE_HELPER"
+
+func TestMissingSourceSkipUsesRegistryError(t *testing.T) {
+	if os.Getenv(missingSourceHelper) != "1" {
+		command := exec.Command(os.Args[0], "-test.run=^TestMissingSourceSkipUsesRegistryError$")
+		command.Env = append(os.Environ(), missingSourceHelper+"=1")
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("missing-source proof failed: %v\n%s", err, output)
+		}
+		return
+	}
+	id := pfmengine.ID("zz")
+	pfmengine.Register(pfmengine.Descriptor{
+		ID: id, Name: "Zed", Short: "Zed", LongName: "zed", Binary: "zed",
+		SocketPrefix: "zz-", RootEnv: "PFM_ZZ_ROOT",
+		DefaultRoots: func(home string) []string { return []string{home} },
+	})
+	database := openIndexStore(t)
+	t.Cleanup(func() { _ = database.Close() })
+	indexer, err := NewWithRoots(database, paths.Values{}, map[pfmengine.ID][]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counters, err := indexer.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sourceErr := SourceFor(id)
+	if sourceErr == nil || counters.Skipped[id] != sourceErr.Error() {
+		t.Fatalf("Skipped[%s]=%q SourceFor error=%v", id, counters.Skipped[id], sourceErr)
+	}
+}
 
 func TestNewWithPathsUsesInjectedRoots(t *testing.T) {
 	fixture := setupIndexFixture(t)

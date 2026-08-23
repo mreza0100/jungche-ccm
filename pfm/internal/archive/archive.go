@@ -90,6 +90,11 @@ type Report struct {
 	// Orphans are killed ids whose file is already gone. Nothing to move, but
 	// the kill is pruned — it points at nothing.
 	Orphans []string
+	// Unsupported are killed chats whose engine has durable storage that this
+	// file-move archive cannot isolate. Their kill rows are deliberately kept:
+	// retiring one would make the chat reappear, while moving OpenCode's shared
+	// database would archive every OpenCode session at once.
+	Unsupported []string
 	// Young counts sidechain transcripts left alone as too new.
 	Young int
 	// Bytes is the total planned or moved.
@@ -183,9 +188,14 @@ func (runner *Runner) runKilled(
 		return Report{}, fmt.Errorf("read the killed set: %w", err)
 	}
 	// decided is every id this run resolved one way or another — moved,
-	// orphaned, or skipped as live. All three leave the killed list.
+	// orphaned, or skipped as live. Those three leave the killed list;
+	// unsupported engines remain killed and are reported separately.
 	decided := make([]string, 0, len(killed))
 	for _, chat := range killed {
+		if chat.Engine == pfmengine.Opencode {
+			report.Unsupported = append(report.Unsupported, chat.ID)
+			continue
+		}
 		decided = append(decided, chat.ID)
 		if _, running := live[strings.ToLower(chat.ID)]; running {
 			report.Live = append(report.Live, chat.ID)

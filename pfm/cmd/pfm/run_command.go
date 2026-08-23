@@ -222,6 +222,13 @@ func resolveRunEngineIDAccount(
 		if _, found := machine.CodexAccountByID(account); !found {
 			return "", 0, fmt.Errorf("Codex account %d is not in the configured roster", account)
 		}
+	case pfmengine.Opencode:
+		if account == 0 && len(machine.OpencodeAccounts) != 0 {
+			account = machine.OpencodeAccounts[0].ID
+		}
+		if _, found := machine.OpencodeAccountByID(account); !found {
+			return "", 0, fmt.Errorf("OpenCode account %d is not in the configured roster", account)
+		}
 	}
 	return id, account, nil
 }
