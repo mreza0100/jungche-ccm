@@ -22,10 +22,14 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 		changed = removeOwnedSettingsHooks(document, owned)
 	} else {
 		changed = rewriteCommandFields(document, func(command string) string {
-			if command == oldBinary || strings.HasPrefix(command, oldBinary+" ") {
+			switch {
+			case command == oldBinary+" internal clear-kill", command == pfmBinary+" internal clear-kill":
+				return clearCommand
+			case command == oldBinary || strings.HasPrefix(command, oldBinary+" "):
 				return pfmBinary + strings.TrimPrefix(command, oldBinary)
+			default:
+				return command
 			}
-			return command
 		})
 	}
 

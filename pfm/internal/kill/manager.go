@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -194,6 +195,37 @@ func (manager *Manager) BindCodexPane(
 	return manager.database.SetMeta(ctx, key, threadID)
 }
 
+// CodexProcessBinding returns the last thread observed by SessionStart hooks
+// from one Codex TUI process. Codex keeps that process alive across /clear,
+// including when no tmux pane exists.
+func (manager *Manager) CodexProcessBinding(
+	ctx context.Context,
+	parent string,
+) (string, bool, error) {
+	key, ok := codexProcessBindingKey(parent)
+	if !ok {
+		return "", false, nil
+	}
+	return manager.database.Meta(ctx, key)
+}
+
+// BindCodexProcess records the current thread for one Codex TUI process in
+// pfm's private derived cache.
+func (manager *Manager) BindCodexProcess(
+	ctx context.Context,
+	parent, threadID string,
+) error {
+	key, ok := codexProcessBindingKey(parent)
+	if !ok || threadID == "" {
+		return nil
+	}
+	current, found, err := manager.database.Meta(ctx, key)
+	if err != nil || found && current == threadID {
+		return err
+	}
+	return manager.database.SetMeta(ctx, key, threadID)
+}
+
 // SeedCodexPane records a live-scan identity only when no hook binding exists.
 // A Codex process cannot rewrite its own inherited CODEX_THREAD_ID after
 // /clear, so later scans may still report the completed id and must never
@@ -215,8 +247,8 @@ func (manager *Manager) SeedCodexPane(
 
 // KillClearedCodex records a prompt-baseline kill on the visible lineage root
 // for an already indexed Codex thread. It never guesses an id: callers must
-// supply the hook-observed previous id from a pane binding or inherited
-// CODEX_THREAD_ID.
+// supply the hook-observed previous id from a pane/process binding or
+// inherited CODEX_THREAD_ID.
 func (manager *Manager) KillClearedCodex(
 	ctx context.Context,
 	id string,
@@ -248,6 +280,15 @@ func codexPaneBindingKey(socket, pane string) (string, bool) {
 	}
 	address := base64.RawURLEncoding.EncodeToString([]byte(socket + "\x00" + pane))
 	return "codex_clear_pane_" + address, true
+}
+
+func codexProcessBindingKey(parent string) (string, bool) {
+	parent = strings.TrimSpace(parent)
+	pid, err := strconv.ParseUint(parent, 10, 64)
+	if err != nil || pid == 0 {
+		return "", false
+	}
+	return "codex_clear_process_" + parent, true
 }
 
 // Unkill removes one kill through the store's non-fatal busy policy.

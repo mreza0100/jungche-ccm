@@ -549,7 +549,8 @@ func TestCodexHookWiringIteratesConfiguredHomes(t *testing.T) {
 	}
 	for _, codexHome := range homes {
 		raw := readFixture(t, filepath.Join(codexHome, "hooks.json"))
-		if got := hookCommandCount(t, raw, "SessionStart", home+"/.local/bin/pfm internal clear-kill"); got != 1 {
+		command := codexHookTemplate(home).Command
+		if got := hookCommandCount(t, raw, "SessionStart", command); got != 1 {
 			t.Fatalf("%s has %d canonical clear-kill hooks, want one\n%s", codexHome, got, raw)
 		}
 	}

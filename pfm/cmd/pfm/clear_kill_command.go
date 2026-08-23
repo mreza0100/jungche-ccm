@@ -15,15 +15,17 @@ import (
 // runClearKill is the fail-open /clear hook for both engines. Claude supplies
 // the completed id directly in SessionEnd(reason=clear). Codex supplies the
 // replacement id later in SessionStart(source=clear), so pfm resolves the
-// completed id from the same pane's previously observed binding or, outside
-// tmux, Codex's inherited CODEX_THREAD_ID. Every unrelated or malformed
-// payload returns 0 without output.
+// completed id from the same pane's previously observed binding or the same
+// Codex parent process outside tmux. The inherited CODEX_THREAD_ID remains a
+// compatibility fallback for hook runners that preserve it. Every unrelated
+// or malformed payload returns 0 without output.
 func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"internal clear-kill",
 		"usage: pfm internal clear-kill < hook-payload.json",
 		stderr,
 	)
+	parent := flags.String("parent", "", "Codex hook parent process id")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -47,7 +49,7 @@ func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...
 	}
 	if hook.Event == "SessionStart" &&
 		(hook.Source == "startup" || hook.Source == "resume" || hook.Source == "clear") {
-		return runCodexClearKill(hook.Source, hook.SessionID, hook.CWD, stderr, runtimes...)
+		return runCodexClearKill(hook.Source, hook.SessionID, hook.CWD, *parent, stderr, runtimes...)
 	}
 	if hook.Event != "SessionEnd" || hook.Reason != "clear" {
 		return 0
@@ -92,13 +94,14 @@ func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...
 	return 0
 }
 
-func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes ...commandRuntime) int {
+func runCodexClearKill(source, sessionID, cwd, parent string, stderr io.Writer, runtimes ...commandRuntime) int {
 	tmux := strings.SplitN(os.Getenv("TMUX"), ",", 2)[0]
 	socket := filepath.Base(tmux)
 	pane := os.Getenv("TMUX_PANE")
 	hasPane := tmux != "" && pane != ""
+	hasParent := strings.TrimSpace(parent) != ""
 	inheritedID := strings.TrimSpace(os.Getenv("CODEX_THREAD_ID"))
-	if !hasPane && (source != "clear" || inheritedID == "" || inheritedID == sessionID) {
+	if !hasPane && !hasParent && (source != "clear" || inheritedID == "" || inheritedID == sessionID) {
 		return 0
 	}
 	database, manager, code := openKillManager(stderr, runtimes...)
@@ -115,6 +118,13 @@ func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes
 		previous, found, err = manager.CodexPaneBinding(ctx, socket, pane)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm internal clear-kill: resolve Codex pane binding (fail-open): %v\n", err)
+			return 0
+		}
+	} else if hasParent {
+		var err error
+		previous, found, err = manager.CodexProcessBinding(ctx, parent)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm internal clear-kill: resolve Codex process binding (fail-open): %v\n", err)
 			return 0
 		}
 	}
@@ -156,6 +166,10 @@ func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes
 	if hasPane {
 		if err := manager.BindCodexPane(ctx, socket, pane, sessionID); err != nil {
 			fmt.Fprintf(stderr, "pfm internal clear-kill: bind Codex pane (fail-open): %v\n", err)
+		}
+	} else if hasParent {
+		if err := manager.BindCodexProcess(ctx, parent, sessionID); err != nil {
+			fmt.Fprintf(stderr, "pfm internal clear-kill: bind Codex process (fail-open): %v\n", err)
 		}
 	}
 	return 0
