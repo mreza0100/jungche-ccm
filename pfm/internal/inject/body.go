@@ -97,10 +97,10 @@ func (engine *Engine) autoFileThreshold(engineName string) int {
 	// OpenCode inherits Codex's conservative bound: its composer paste edge is
 	// unverified, so it gets the smaller of the two measured thresholds rather
 	// than an invented one.
-	if engineName == string(pfmengine.Codex) || engineName == string(pfmengine.Opencode) {
-		return engine.options.CodexAutoFileMax
+	if id, err := pfmengine.Parse(engineName); err == nil && id == pfmengine.Claude {
+		return engine.options.ClaudeAutoFileMax
 	}
-	return engine.options.ClaudeAutoFileMax
+	return engine.options.CodexAutoFileMax
 }
 
 func (engine *Engine) persistBody(body, target string) (string, []string, error) {

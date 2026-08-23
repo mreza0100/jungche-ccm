@@ -115,7 +115,7 @@ func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, err
 	for _, id := range pfmengine.All() {
 		source, err := SourceFor(id)
 		if err != nil {
-			counters.Skipped[id] = "no index source registered"
+			counters.Skipped[id] = err.Error()
 			continue
 		}
 		if err := source.Sync(ctx, indexer.database, indexer.roots[id], &counters); err != nil {

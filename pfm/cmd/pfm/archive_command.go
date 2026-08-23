@@ -146,14 +146,18 @@ func printArchiveReport(
 			fmt.Fprintf(stdout, "  plan   %s -> %s\n", move.Source, move.Target)
 		}
 	}
+	for _, id := range report.Unsupported {
+		fmt.Fprintf(stdout, "  kept   %s killed — OpenCode stores all sessions in one shared database; single-session file archive is unsupported\n", id)
+	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(
 		stdout,
-		"archive: %d file(s), %s   live (skipped): %d   orphaned kills: %d\n",
+		"archive: %d file(s), %s   live (skipped): %d   orphaned kills: %d   unsupported (kept killed): %d\n",
 		len(report.Moves),
 		archive.FormatBytes(report.Bytes),
 		len(report.Live),
 		len(report.Orphans),
+		len(report.Unsupported),
 	)
 	if subagents {
 		fmt.Fprintf(stdout, "younger than the age gate (left alone): %d\n", report.Young)

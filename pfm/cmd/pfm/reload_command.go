@@ -438,6 +438,9 @@ func reloadBirth(
 	stderr io.Writer,
 ) (int, bool, error) {
 	engine := reloadEngine(socketPath)
+	if engine == pfmengine.Opencode {
+		return 0, false, errors.New("OpenCode does not support in-place reload")
+	}
 	ids := machine.AccountIDs()
 	if engine == pfmengine.Codex {
 		ids = machine.CodexAccountIDs()
@@ -566,7 +569,10 @@ type reloadAccountSelection struct {
 }
 
 func validateReloadAccount(machine pfmconfig.Config, engine pfmengine.ID, account int) (reloadAccountSelection, error) {
-	if engine == pfmengine.Codex {
+	switch engine {
+	case pfmengine.Opencode:
+		return reloadAccountSelection{}, errors.New("OpenCode does not support in-place reload")
+	case pfmengine.Codex:
 		if len(machine.CodexAccounts) == 0 {
 			return reloadAccountSelection{}, errors.New("no Codex accounts configured")
 		}
@@ -579,6 +585,10 @@ func validateReloadAccount(machine pfmconfig.Config, engine pfmengine.ID, accoun
 			IDs: machine.CodexAccountIDs(), CodexHome: selected.Home,
 			CodexBinary: policy.Binary, CodexYolo: policy.Yolo,
 		}, nil
+	case pfmengine.Claude:
+		// Continue below: Claude has the legacy account/config-dir policy.
+	default:
+		return reloadAccountSelection{}, fmt.Errorf("unknown reload engine %q", engine)
 	}
 	if len(machine.Accounts) == 0 {
 		return reloadAccountSelection{}, errors.New("no Claude accounts configured")
@@ -677,8 +687,15 @@ func resolveReloadSession(
 }
 
 func findEngineTranscript(resolved paths.Values, machine pfmconfig.Config, engine pfmengine.ID, id string) (string, error) {
-	if engine != pfmengine.Codex {
+	switch engine {
+	case pfmengine.Opencode:
+		return "", errors.New("OpenCode does not support in-place reload")
+	case pfmengine.Claude:
 		return findClaudeTranscript(resolved.Roots[pfmengine.Claude], id)
+	case pfmengine.Codex:
+		// Continue below: Codex searches every configured rollout home.
+	default:
+		return "", fmt.Errorf("unknown reload engine %q", engine)
 	}
 	for _, account := range machine.CodexAccounts {
 		found := ""

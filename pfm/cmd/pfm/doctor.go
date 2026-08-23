@@ -305,19 +305,44 @@ func printEngineCapabilities(stdout io.Writer) int {
 	}
 	parts := make([]string, 0, len(pfmengine.All()))
 	warnings := 0
+	allNames := make([]string, 0, len(capabilities))
+	for _, capability := range capabilities {
+		allNames = append(allNames, capability.name)
+	}
 	for _, id := range pfmengine.All() {
 		registered := make([]string, 0, len(capabilities))
+		actual := make(map[string]bool, len(capabilities))
 		for _, capability := range capabilities {
 			if containsEngine(capability.ids, id) {
 				registered = append(registered, capability.name)
+				actual[capability.name] = true
 			}
 		}
-		if len(registered) == 0 {
-			parts = append(parts, fmt.Sprintf("%s=NONE (descriptor only)", id))
-			warnings++
-			continue
+		expected := expectedEngineCapabilities(id, allNames)
+		missing := make([]string, 0)
+		unexpected := make([]string, 0)
+		for _, name := range allNames {
+			if expected[name] && !actual[name] {
+				missing = append(missing, name)
+			}
+			if !expected[name] && actual[name] {
+				unexpected = append(unexpected, name)
+			}
 		}
-		parts = append(parts, fmt.Sprintf("%s=%s", id, strings.Join(registered, ",")))
+		row := fmt.Sprintf("%s=%s", id, strings.Join(registered, ","))
+		if len(registered) == 0 {
+			row = fmt.Sprintf("%s=NONE", id)
+		}
+		if len(missing) != 0 || len(unexpected) != 0 {
+			if len(missing) != 0 {
+				row += " MISSING(" + strings.Join(missing, ",") + ")"
+			}
+			if len(unexpected) != 0 {
+				row += " UNEXPECTED(" + strings.Join(unexpected, ",") + ")"
+			}
+			warnings++
+		}
+		parts = append(parts, row)
 	}
 	fmt.Fprintf(stdout, "doctor: engines %s\n", strings.Join(parts, " "))
 	return warnings

@@ -28,3 +28,18 @@ func TestResolveRunEngineAccountUsesTheChosenRoster(t *testing.T) {
 		t.Fatalf("empty Claude roster error = %v", err)
 	}
 }
+
+func TestResolveRunEngineAccountValidatesOpencodeRoster(t *testing.T) {
+	machine := pfmconfig.Config{
+		OpencodeAccounts: []pfmconfig.OpenCodeAccount{{ID: 5, Home: "/opencode"}},
+		Ask:              pfmconfig.AskConfig{Engine: pfmengine.Opencode},
+	}
+	engine, account, err := resolveRunEngineAccount("", 0, machine, 0)
+	if err != nil || engine != pfmengine.Opencode || account != 5 {
+		t.Fatalf("default OpenCode = %q/%d error=%v, want ox/5", engine, account, err)
+	}
+	_, _, err = resolveRunEngineAccount("opencode", 8, machine, 0)
+	if err == nil || !strings.Contains(err.Error(), "OpenCode account 8") {
+		t.Fatalf("invalid OpenCode account error = %v", err)
+	}
+}

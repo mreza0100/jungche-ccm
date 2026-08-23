@@ -95,6 +95,7 @@ func TestReapSocketSelectionDelegatesCanonicalClassifier(t *testing.T) {
 		want bool
 	}{
 		{name: "cx-fixture", want: true},
+		{name: "ox-fixture", want: true},
 		{name: "vsct-fixture", want: false},
 		{name: "revive-fixture", want: false},
 		{name: "probe-fixture", want: false},
@@ -261,6 +262,18 @@ func TestPlanClassifiesEverySocket(t *testing.T) {
 			},
 			want:   StateOrphan,
 			action: ActionKillServer,
+		},
+		{
+			name: "an OpenCode socket without a breadcrumb is still busy-unknown",
+			input: Input{
+				Apply: true,
+				// OpenCode exports no session environment, so its socket has no
+				// crumb to carry an engine busy result. A failed busy probe must
+				// not turn that absence into permission to kill the server.
+				Sockets: []Socket{{Name: "ox-100-1-1", HasServer: true}},
+			},
+			want:   StateSkip,
+			action: ActionNone,
 		},
 		{
 			name: "an old socket file with no server is a corpse",

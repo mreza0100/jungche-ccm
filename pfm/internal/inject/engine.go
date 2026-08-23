@@ -1192,7 +1192,10 @@ func targetFromParts(socketPath, pane string) Target {
 	base := filepath.Base(socketPath)
 	id, ok := pfmengine.FromSocket(base)
 	if !ok && os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" {
-		id, _ = pfmengine.FromSocket(strings.TrimPrefix(base, "probe-"))
+		id, ok = pfmengine.FromSocket(strings.TrimPrefix(base, "probe-"))
+	}
+	if !ok {
+		return Target{SocketPath: socketPath, Pane: pane, Engine: "unknown"}
 	}
 	return Target{SocketPath: socketPath, Pane: pane, Engine: string(id)}
 }
