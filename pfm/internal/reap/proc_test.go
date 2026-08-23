@@ -96,6 +96,38 @@ func TestForeignProcessesExemptsAChatsOwnSubtree(t *testing.T) {
 	}
 }
 
+func TestForeignProcessesExemptsOpenCodeOwnSubtree(t *testing.T) {
+	tree, err := NewProcessTree(fakeProc{
+		parents: map[int]int{500: 1, 501: 500},
+		cmdline: map[int][]string{
+			500: {"opencode", "--session", "fixture"},
+			501: {"node", "mcp-server"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProcessTree() error = %v", err)
+	}
+	if foreign := tree.ForeignProcesses([]int{500}); len(foreign) != 0 {
+		t.Fatalf("an OpenCode chat's own child processes read as foreign: %v", foreign)
+	}
+}
+
+func TestForeignProcessesUsesConfiguredOpenCodeBinary(t *testing.T) {
+	tree, err := NewProcessTree(fakeProc{
+		parents: map[int]int{600: 1, 601: 600},
+		cmdline: map[int][]string{
+			600: {"ocx", "--session", "fixture"},
+			601: {"node", "mcp-server"},
+		},
+	}, "claude", "codex", "/custom/ocx")
+	if err != nil {
+		t.Fatalf("NewProcessTree() error = %v", err)
+	}
+	if foreign := tree.ForeignProcesses([]int{600}); len(foreign) != 0 {
+		t.Fatalf("configured OpenCode binary was treated as foreign: %v", foreign)
+	}
+}
+
 func TestForeignProcessesFindsDevServersUnderAShell(t *testing.T) {
 	tree, err := NewProcessTree(newFleetProc())
 	if err != nil {

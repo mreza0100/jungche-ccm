@@ -1,12 +1,12 @@
 package compose
 
 import (
-	"time"
-
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
@@ -1210,15 +1210,26 @@ func configuredID(ids []int, account int) bool {
 // exported so a caller resolving an id against a compose pass (cmd/pfm's
 // CLI kill) can vouch for the same engine the picker itself would.
 func EngineForKind(kind Kind) pfmengine.ID {
+	id, err := EngineForKindChecked(kind)
+	if err != nil {
+		return pfmengine.ID(kind.String())
+	}
+	return id
+}
+
+// EngineForKindChecked is the input-boundary form of EngineForKind. An
+// unknown Kind is a named programming/data error, never an empty engine that
+// drifts into MustLookup several hops later.
+func EngineForKindChecked(kind Kind) (pfmengine.ID, error) {
 	switch kind {
 	case LiveCodex, ResumeCodex, NewCodex:
-		return pfmengine.Codex
+		return pfmengine.Codex, nil
 	case ResumeOpencode:
-		return pfmengine.Opencode
+		return pfmengine.Opencode, nil
 	case LiveClaude, ResumeClaude, NewClaude, LiveSplit, Agent, Booting:
-		return pfmengine.Claude
+		return pfmengine.Claude, nil
 	default:
-		return ""
+		return "", fmt.Errorf("unknown compose kind %d", kind)
 	}
 }
 

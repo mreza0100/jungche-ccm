@@ -618,18 +618,19 @@ func liveSockets(rows []compose.Row) map[string]bool {
 	return sockets
 }
 
-func liveEngineCounts(rows []compose.Row) (claude, codex int) {
+func liveEngineCounts(rows []compose.Row) map[pfmengine.ID]int {
+	counts := make(map[pfmengine.ID]int)
 	for _, row := range rows {
 		switch row.Kind {
 		case compose.LiveCodex:
-			codex++
+			counts[pfmengine.Codex]++
 		case compose.LiveSplit:
-			claude += maxInt(1, row.SplitCount)
+			counts[pfmengine.Claude] += maxInt(1, row.SplitCount)
 		case compose.LiveClaude, compose.Agent, compose.Booting:
-			claude++
+			counts[pfmengine.Claude]++
 		}
 	}
-	return claude, codex
+	return counts
 }
 
 func (model *Model) startStatsSample() tea.Cmd {

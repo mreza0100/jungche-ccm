@@ -274,6 +274,10 @@ func Defaults(home string, projectRoots []string, codexRoots ...string) Config {
 	return defaultsWithMCPServers(home, projectRoots, productionMCPServers(), codexRoots...)
 }
 
+func engineConfigKey(id pfmengine.ID, field string) string {
+	return pfmengine.MustLookup(id).LongName + "." + field
+}
+
 func defaultsWithMCPServers(
 	home string,
 	projectRoots []string,
@@ -314,18 +318,18 @@ func defaultsWithMCPServers(
 		opencodeAccounts = []OpenCodeAccount{{ID: 1, Home: opencodeHome}}
 	}
 	sources := map[string]Source{
-		"version":               SourceDefault,
-		"theme":                 SourceDefault,
-		"accounts":              SourceDefault,
-		"claude.permissionMode": SourceDefault,
-		"claude.binary":         SourceDefault,
-		"claude.cache1h":        SourceDefault,
-		"codex.yolo":            SourceDefault,
-		"codex.binary":          SourceDefault,
-		"codex.homes":           SourceDefault,
-		"opencode.binary":       SourceDefault,
-		"mcp.http.port":         SourceDefault,
-		"ask.engine":            SourceDefault,
+		"version":  SourceDefault,
+		"theme":    SourceDefault,
+		"accounts": SourceDefault,
+		engineConfigKey(pfmengine.Claude, "permissionMode"): SourceDefault,
+		engineConfigKey(pfmengine.Claude, "binary"):         SourceDefault,
+		engineConfigKey(pfmengine.Claude, "cache1h"):        SourceDefault,
+		engineConfigKey(pfmengine.Codex, "yolo"):            SourceDefault,
+		engineConfigKey(pfmengine.Codex, "binary"):          SourceDefault,
+		engineConfigKey(pfmengine.Codex, "homes"):           SourceDefault,
+		engineConfigKey(pfmengine.Opencode, "binary"):       SourceDefault,
+		"mcp.http.port": SourceDefault,
+		"ask.engine":    SourceDefault,
 	}
 	for _, id := range pfmengine.All() {
 		name := pfmengine.MustLookup(id).LongName
@@ -563,18 +567,18 @@ func loadWithMCPServers(
 	// PermissionMode/Binary do, so "unset at this account" is decided here,
 	// once, instead of guessed from a materialized zero value later.
 	if raw.Claude != nil {
-		prefs, err := decodeClaudePrefs(*raw.Claude, result.Path, "claude", -1)
+		prefs, err := decodeClaudePrefs(*raw.Claude, result.Path, pfmengine.MustLookup(pfmengine.Claude).LongName, -1)
 		if err != nil {
 			return Config{}, err
 		}
 		if raw.Claude.PermissionMode != nil {
-			result.Sources["claude.permissionMode"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Claude, "permissionMode")] = SourceFile
 		}
 		if raw.Claude.Binary != nil {
-			result.Sources["claude.binary"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Claude, "binary")] = SourceFile
 		}
 		if raw.Claude.Cache1H != nil {
-			result.Sources["claude.cache1h"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Claude, "cache1h")] = SourceFile
 		}
 		if raw.Claude.PermissionMode != nil {
 			result.Claude.PermissionMode = prefs.PermissionMode
@@ -630,17 +634,17 @@ func loadWithMCPServers(
 		}
 	}
 	if raw.Codex != nil {
-		prefs, err := decodeCodexPrefs(*raw.Codex, result.Path, "codex", -1)
+		prefs, err := decodeCodexPrefs(*raw.Codex, result.Path, pfmengine.MustLookup(pfmengine.Codex).LongName, -1)
 		if err != nil {
 			return Config{}, err
 		}
 		if raw.Codex.Yolo != nil {
 			result.Codex.Yolo = prefs.Yolo
-			result.Sources["codex.yolo"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Codex, "yolo")] = SourceFile
 		}
 		if raw.Codex.Binary != nil {
 			result.Codex.Binary = prefs.Binary
-			result.Sources["codex.binary"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Codex, "binary")] = SourceFile
 		}
 		if raw.Codex.Homes != nil {
 			accounts, err := validateCodexHomes(*raw.Codex.Homes, home, result.CodexAccounts, result.Path)
@@ -648,7 +652,7 @@ func loadWithMCPServers(
 				return Config{}, err
 			}
 			result.CodexAccounts = accounts
-			result.Sources["codex.homes"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Codex, "homes")] = SourceFile
 		}
 	}
 	if raw.OpenCode != nil {
@@ -658,7 +662,7 @@ func loadWithMCPServers(
 				return Config{}, fmt.Errorf("config %s: opencode.binary must be a non-empty command", result.Path)
 			}
 			result.OpenCode.Binary = binary
-			result.Sources["opencode.binary"] = SourceFile
+			result.Sources[engineConfigKey(pfmengine.Opencode, "binary")] = SourceFile
 		}
 	}
 
@@ -718,6 +722,11 @@ func loadWithMCPServers(
 		case pfmengine.Codex:
 			if counts[pfmengine.Codex] == 0 {
 				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero Codex accounts; authenticate the default Codex home, add codex.homes, or choose claude", result.Path, result.Ask.Engine)
+			}
+		case pfmengine.Opencode:
+			if counts[pfmengine.Opencode] == 0 {
+				descriptor := pfmengine.MustLookup(pfmengine.Opencode)
+				return Config{}, fmt.Errorf("config %s: ask.engine %q has zero %s accounts; create %s or choose another engine", result.Path, result.Ask.Engine, descriptor.Short, filepath.Join(descriptor.DefaultRoots(home)[0], "opencode.db"))
 			}
 		}
 	}
@@ -854,8 +863,9 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 		ids[account.ID] = index
 		homes[filepath.Clean(account.Home)] = index
 	}
+	homesScope := engineConfigKey(pfmengine.Codex, "homes")
 	for index, value := range values {
-		scope := fmt.Sprintf("codex.homes[%d]", index)
+		scope := fmt.Sprintf("%s[%d]", homesScope, index)
 		if value.ID < 1 {
 			return nil, fmt.Errorf("config %s: %s.id must be positive", path, scope)
 		}
@@ -880,7 +890,7 @@ func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAcco
 		}
 		var prefs *CodexPrefs
 		if value.Prefs != nil {
-			decoded, err := decodeCodexHomePrefs(*value.Prefs, path, "codex.homes", index)
+			decoded, err := decodeCodexHomePrefs(*value.Prefs, path, homesScope, index)
 			if err != nil {
 				return nil, err
 			}
@@ -977,6 +987,16 @@ func (config Config) CodexAccountByID(id int) (CodexAccount, bool) {
 		}
 	}
 	return CodexAccount{}, false
+}
+
+// OpencodeAccountByID returns the implicit OpenCode seat when its store exists.
+func (config Config) OpencodeAccountByID(id int) (OpenCodeAccount, bool) {
+	for _, account := range config.OpencodeAccounts {
+		if account.ID == id {
+			return account, true
+		}
+	}
+	return OpenCodeAccount{}, false
 }
 
 // EffectiveCodex resolves a Codex-account override over the top-level posture
@@ -1248,6 +1268,8 @@ func WriteDefault(path, home string, projectRoots []string, force bool) error {
 // Marshal encodes a resolved config as strict JSON. The redaction option is
 // intended for human-facing output only.
 func Marshal(config Config, redact bool) ([]byte, error) {
+	claudeName := pfmengine.MustLookup(pfmengine.Claude).LongName
+	codexName := pfmengine.MustLookup(pfmengine.Codex).LongName
 	accounts := make([]map[string]any, 0, len(config.Accounts))
 	for _, account := range config.Accounts {
 		value := map[string]any{
@@ -1256,14 +1278,14 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			"emoji":     account.Emoji,
 		}
 		if account.Claude != nil {
-			value["claude"] = map[string]any{
+			value[claudeName] = map[string]any{
 				"permissionMode": account.Claude.PermissionMode,
 				"binary":         account.Claude.Binary,
 				"cache1h":        account.Claude.Cache1H,
 			}
 		}
 		if account.Codex != nil {
-			value["codex"] = map[string]any{
+			value[codexName] = map[string]any{
 				"yolo":   account.Codex.Yolo,
 				"binary": account.Codex.Binary,
 			}
@@ -1308,12 +1330,12 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 		"version":  config.Version,
 		"theme":    config.Theme,
 		"accounts": accounts,
-		"claude": map[string]any{
+		claudeName: map[string]any{
 			"permissionMode": config.Claude.PermissionMode,
 			"binary":         config.Claude.Binary,
 			"cache1h":        config.Claude.Cache1H,
 		},
-		"codex": codexValue,
+		codexName: codexValue,
 		"mcp": map[string]any{
 			"servers": servers,
 			"http":    map[string]any{"port": config.MCP.HTTP.Port},

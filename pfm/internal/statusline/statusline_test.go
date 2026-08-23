@@ -361,14 +361,15 @@ func TestFleetSnapshotCountsOnlySocketsPresentInProcOnLinux(t *testing.T) {
 	if err := os.MkdirAll(procNet, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"probe-cc-live", "probe-cc-grave", "probe-cx-live"} {
+	for _, name := range []string{"probe-cc-live", "probe-cc-grave", "probe-cx-live", "probe-ox-live"} {
 		if err := os.WriteFile(filepath.Join(tmuxDir, name), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	proc := "Num RefCount Protocol Flags Type St Inode Path\n" +
 		"0: 2 0 00010000 0001 01 1 " + filepath.Join(tmuxDir, "probe-cc-live") + "\n" +
-		"1: 2 0 00010000 0001 01 2 " + filepath.Join(tmuxDir, "probe-cx-live") + "\n"
+		"1: 2 0 00010000 0001 01 2 " + filepath.Join(tmuxDir, "probe-cx-live") + "\n" +
+		"2: 2 0 00010000 0001 01 3 " + filepath.Join(tmuxDir, "probe-ox-live") + "\n"
 	if err := os.WriteFile(filepath.Join(procNet, "unix"), []byte(proc), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +382,7 @@ func TestFleetSnapshotCountsOnlySocketsPresentInProcOnLinux(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
-	if !strings.Contains(plain, "·1 ·1") || strings.Contains(plain, "·2 ·1") {
+	if !strings.Contains(plain, "·1 ·1 ·1") || strings.Contains(plain, "·2 ·1 ·1") {
 		t.Fatalf("graveyard socket affected live fleet count: %q", plain)
 	}
 }

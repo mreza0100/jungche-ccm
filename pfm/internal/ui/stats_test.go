@@ -383,3 +383,17 @@ func TestStatsPropertiesUseSemanticColors(t *testing.T) {
 		}
 	}
 }
+
+func TestStatsOpencodeEngineUsesItsOwnColor(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{Ready: true, Chats: []pfmstats.Chat{{
+		Name: "OPEN", Engine: pfmengine.MustLookup(pfmengine.Opencode).LongName,
+		CPUValid: true,
+	}}}
+	panel := model.renderStatsPanel(120, 8)
+	want := statsEngineStyles[pfmengine.Opencode].Render("opencode")
+	if !strings.Contains(panel, want) {
+		t.Fatalf("OpenCode stats row lacks its engine color %q:\n%s", want, panel)
+	}
+}

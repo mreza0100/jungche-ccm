@@ -29,6 +29,11 @@ const (
 	clsOpencode2 // bright magenta
 	clsOpencode3 // bold magenta core
 
+	clsFallback0 // far-dim fallback for a newly registered engine
+	clsFallback1 // dim fallback
+	clsFallback2 // bright fallback
+	clsFallback3 // bold fallback core
+
 	clsCometHead
 	clsCometTail
 	clsCometFade
@@ -40,7 +45,7 @@ const (
 	numClasses
 )
 
-const starFallback = clsBgStar
+const starFallback = clsFallback0
 
 var starBase = map[pfmengine.ID]styleClass{
 	pfmengine.Claude:   clsClaude0,
@@ -58,7 +63,7 @@ func bodyCls(id pfmengine.ID, lvl int) styleClass {
 	}
 	base, ok := starBase[id]
 	if !ok {
-		return starFallback
+		base = starFallback
 	}
 	return base + styleClass(lvl)
 }
@@ -95,6 +100,14 @@ var styleTab = func() [numClasses]lipgloss.Style {
 	t[clsOpencode1] = fg("5")
 	t[clsOpencode2] = fg("13")
 	t[clsOpencode3] = fg("13").Bold(true)
+
+	// A fourth engine is visible without a palette edit. The neutral cyan
+	// fallback is deliberately not clsBgStar: a live chat must never render as
+	// the same faint dot as an empty fleet.
+	t[clsFallback0] = fg("6").Faint(true)
+	t[clsFallback1] = fg("6")
+	t[clsFallback2] = fg("14")
+	t[clsFallback3] = fg("14").Bold(true)
 
 	t[clsCometHead] = fg("15").Bold(true)
 	t[clsCometTail] = fg("7")

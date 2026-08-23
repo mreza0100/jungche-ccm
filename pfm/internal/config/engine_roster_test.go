@@ -75,6 +75,7 @@ func TestLoadRejectsExplicitAskEngineWithEmptyRoster(t *testing.T) {
 	}{
 		{engine: "claude", codex: true, want: "zero Claude accounts", fix: "accounts"},
 		{engine: "codex", claude: true, want: "zero Codex accounts", fix: "codex.homes"},
+		{engine: "opencode", claude: true, want: "zero OpenCode accounts", fix: "opencode.db"},
 	} {
 		t.Run(testCase.engine, func(t *testing.T) {
 			home := t.TempDir()
