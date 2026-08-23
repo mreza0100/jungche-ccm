@@ -267,3 +267,139 @@ func TestReconcileCodexPanesOnlyKillsTheClearingPaneInASharedCWD(t *testing.T) {
 		t.Fatalf("the steady pane's own binding moved: bound=%q found=%v error=%v", bound, found, err)
 	}
 }
+
+// Duplicate display names are ordinary fleet state, not a broken tmux probe.
+// When the pane is already bound to one of the matching threads, that binding
+// is the only safe disambiguator: keep it steady without printing a warning
+// when the picker releases the terminal.
+func TestReconcileCodexPanesUsesExistingBindingForDuplicateName(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000005-1-1"
+	startCodexStatusPane(t, tmuxTmpDir, socket, `  FIX_HAND · /work/example · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const boundID = "99999999-9999-4999-8999-999999999999"
+	const duplicateID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	codexJailRollout(t, database, root, boundID, 1)
+	codexJailRollout(t, database, root, duplicateID, 1)
+	if err := database.ReplaceCxNames(context.Background(), []store.CxName{
+		{ID: boundID, ThreadName: "FIX_HAND"},
+		{ID: duplicateID, ThreadName: "FIX_HAND"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", boundID); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	if stderr.Len() != 0 {
+		t.Fatalf("steady duplicate name printed a shutdown warning: %q", stderr.String())
+	}
+	got, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+	if err != nil || !found || got != boundID {
+		t.Fatalf("binding = (%q, %v, %v), want unchanged %q", got, found, err, boundID)
+	}
+	if _, found, err := database.Killed(context.Background(), boundID); err != nil || found {
+		t.Fatalf("steady bound thread was killed: found=%v error=%v", found, err)
+	}
+}
+
+func TestReconcileCodexPanesWarnsWhenDuplicateNameHasNoUsableBinding(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	for _, test := range []struct {
+		name      string
+		boundID   string
+		wantBound bool
+	}{
+		{name: "no incumbent binding", wantBound: false},
+		{name: "incumbent is not one of the matches", boundID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", wantBound: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := jailTest(t)
+			tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+			socket := "cx-1800000006-" + strings.ReplaceAll(test.name, " ", "-")
+			startCodexStatusPane(t, tmuxTmpDir, socket, `  FIX_HAND · /work/example · Full Access\n`)
+
+			resolved := jailPaths(t)
+			resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+			database, err := store.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+
+			const firstID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+			const secondID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+			codexJailRollout(t, database, root, firstID, 1)
+			codexJailRollout(t, database, root, secondID, 1)
+			if err := database.ReplaceCxNames(context.Background(), []store.CxName{
+				{ID: firstID, ThreadName: "FIX_HAND"},
+				{ID: secondID, ThreadName: "FIX_HAND"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			manager, err := kill.New(database, kill.Dependencies{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.boundID != "" {
+				codexJailRollout(t, database, root, test.boundID, 1)
+				if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", test.boundID); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			var stderr bytes.Buffer
+			reconcileCodexPanes(
+				context.Background(),
+				database,
+				gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
+				commandRuntime{Paths: resolved},
+				printWarn(&stderr),
+			)
+			if !strings.Contains(stderr.String(), `"FIX_HAND" matches more than one thread`) {
+				t.Fatalf("stderr = %q, want duplicate-name warning", stderr.String())
+			}
+			bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found != test.wantBound || (found && bound != test.boundID) {
+				t.Fatalf("binding = (%q, %v), want incumbent (%q, %v)", bound, found, test.boundID, test.wantBound)
+			}
+			for _, id := range []string{firstID, secondID} {
+				if _, killed, err := database.Killed(context.Background(), id); err != nil || killed {
+					t.Fatalf("duplicate-name ambiguity killed %s: killed=%v error=%v", id, killed, err)
+				}
+			}
+		})
+	}
+}

@@ -72,6 +72,8 @@ type Model struct {
 	codexPrimary        int
 	initialCodexPrimary int
 	codexAccountIDs     []int
+	opencodePrimary     int
+	opencodeAccountIDs  []int
 	cache1H             bool
 	tab                 Tab
 	statsSubtab         StatsSubtab
@@ -133,6 +135,8 @@ func NewModel(snapshot Snapshot) Model {
 		codexPrimary:        validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
 		initialCodexPrimary: validAccount(snapshot.CodexPrimaryAccount, snapshot.CodexAccountIDs),
 		codexAccountIDs:     normalizedAccountIDs(snapshot.CodexAccountIDs),
+		opencodePrimary:     validAccount(snapshot.OpencodePrimaryAccount, snapshot.OpencodeAccountIDs),
+		opencodeAccountIDs:  normalizedAccountIDs(snapshot.OpencodeAccountIDs),
 		cache1H:             snapshot.Cache1H,
 		query:               input,
 		initialKilled:       make(map[string]bool),
@@ -142,7 +146,7 @@ func NewModel(snapshot Snapshot) Model {
 		skyEnabled:          !snapshot.NoSky,
 		activity:            snapshot.Activity,
 		mergeNewChat:        snapshot.MergeNewChat,
-		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs),
+		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs, snapshot.OpencodeAccountIDs),
 	}
 	for _, row := range model.rows {
 		if row.ID != "" {
@@ -156,11 +160,14 @@ func NewModel(snapshot Snapshot) Model {
 var configuredAccountEmojis map[int]string
 var configuredCodexAccountEmojis map[int]string
 
-func defaultNewChatEngine(claude, codex []int) pfmengine.ID {
-	if len(normalizedAccountIDs(claude)) != 0 || len(normalizedAccountIDs(codex)) == 0 {
+func defaultNewChatEngine(claude, codex, opencode []int) pfmengine.ID {
+	if len(normalizedAccountIDs(claude)) != 0 || (len(normalizedAccountIDs(codex)) == 0 && len(normalizedAccountIDs(opencode)) == 0) {
 		return pfmengine.Claude
 	}
-	return pfmengine.Codex
+	if len(normalizedAccountIDs(codex)) != 0 {
+		return pfmengine.Codex
+	}
+	return pfmengine.Opencode
 }
 
 func copyEmojis(values map[int]string) map[int]string {
@@ -321,7 +328,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case "enter":
 		if row, ok := model.selectedRow(); ok {
-			if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+			if model.mergeNewChat && isNewChatKind(row.Kind) {
 				switch model.newChatEngine {
 				case pfmengine.Codex:
 					row.Kind = compose.NewCodex
@@ -329,6 +336,9 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case pfmengine.Claude:
 					row.Kind = compose.NewClaude
 					row.Name = "New " + pfmengine.MustLookup(pfmengine.Claude).Short + " chat"
+				case pfmengine.Opencode:
+					row.Kind = compose.NewOpencode
+					row.Name = "New " + pfmengine.MustLookup(pfmengine.Opencode).Short + " chat"
 				default:
 					model.killStatus = "new chat is not available for " + pfmengine.MustLookup(model.newChatEngine).Short
 					return model, nil
@@ -352,7 +362,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				model.toggleKilled()
 				return model, nil
 			default:
-				if row.Kind == compose.NewClaude || row.Kind == compose.NewCodex {
+				if isNewChatKind(row.Kind) {
 					row.Account = model.accountForKind(row.Kind)
 				}
 				model.outcome = OutcomeSelected
@@ -452,7 +462,7 @@ func isSamplingTab(tab Tab) bool {
 
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
-		(row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+		isNewChatKind(row.Kind) {
 		model.newChatEngine = adjacentID(model.newChatEngine, direction, model.newChatEngines())
 		return model, nil
 	}
@@ -502,6 +512,8 @@ func (model Model) newChatEngines() []pfmengine.ID {
 			appendUnique(pfmengine.Claude)
 		case compose.NewCodex:
 			appendUnique(pfmengine.Codex)
+		case compose.NewOpencode:
+			appendUnique(pfmengine.Opencode)
 		}
 	}
 	for _, id := range spawn.RegisteredLaunchers() {
@@ -524,11 +536,15 @@ func (model *Model) cycleSelectedAccount() {
 		return
 	}
 	engine := compose.EngineForKind(row.Kind)
-	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+	if model.mergeNewChat && isNewChatKind(row.Kind) {
 		engine = model.newChatEngine
 	}
 	if engine == pfmengine.Codex {
 		model.codexPrimary = nextAccount(model.codexPrimary, model.codexAccountIDs)
+		return
+	}
+	if engine == pfmengine.Opencode {
+		model.opencodePrimary = nextAccount(model.opencodePrimary, model.opencodeAccountIDs)
 		return
 	}
 	model.primary = nextAccount(model.primary, model.accountIDs)
@@ -550,6 +566,9 @@ func (model Model) accountForKind(kind compose.Kind) int {
 	engine := compose.EngineForKind(kind)
 	if engine == pfmengine.Codex {
 		return model.codexPrimary
+	}
+	if engine == pfmengine.Opencode {
+		return model.opencodePrimary
 	}
 	return model.primary
 }
@@ -894,6 +913,7 @@ func (model *Model) rebuildOrder() {
 	// whole fleet — a colon-prefixed row in project A groups with its
 	// namesakes in project B, not just its own project's rows.
 	members := make(map[string][]int)
+	newChatEmitted := false
 	for _, group := range model.groups {
 		for _, index := range group.indices {
 			row := model.rows[index]
@@ -911,9 +931,11 @@ func (model *Model) rebuildOrder() {
 			if !model.visibleInView(model.rows[index]) {
 				continue
 			}
-			if model.mergeNewChat && model.rows[index].Kind == compose.NewCodex &&
-				len(model.accountIDs) != 0 {
-				continue
+			if model.mergeNewChat && isNewChatKind(model.rows[index].Kind) {
+				if newChatEmitted {
+					continue
+				}
+				newChatEmitted = true
 			}
 			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
 			grouped = grouped && len(members[prefix]) >= 2
@@ -931,6 +953,10 @@ func (model *Model) rebuildOrder() {
 			}
 		}
 	}
+}
+
+func isNewChatKind(kind compose.Kind) bool {
+	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.NewOpencode
 }
 
 func nameGroupPrefix(name string) (string, bool) {

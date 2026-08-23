@@ -81,6 +81,13 @@ func Synthesize(request Request) (Plan, error) {
 	case ResumeOpencode:
 		// One fleet-wide OpenCode seat: no per-account roster to satisfy, the
 		// binary comes from the machine config's opencode section.
+	case NewOpencode:
+		if _, found := machine.OpencodeAccountByID(request.PrimaryAccount); !found {
+			return Plan{}, fmt.Errorf(
+				"OpenCode account %d is not in the configured roster",
+				request.PrimaryAccount,
+			)
+		}
 	case NewClaude, Agent, ResumeClaude:
 		if _, found := machine.Account(request.PrimaryAccount); !found {
 			return Plan{}, fmt.Errorf(
@@ -130,6 +137,27 @@ func Synthesize(request Request) (Plan, error) {
 		account, _ := machine.CodexAccountByID(request.PrimaryAccount)
 		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && CODEX_HOME=" +
 			Quote(account.Home) + " cx)"
+	case NewOpencode:
+		if request.Row.CWD == "" || request.FreshSocket == "" {
+			return Plan{}, errors.New("new OpenCode action requires cwd and fresh socket")
+		}
+		var command strings.Builder
+		command.WriteString(hygiene)
+		command.WriteByte(' ')
+		command.WriteString(binaryWord(
+			machine.OpenCode.Binary,
+			pfmengine.MustLookup(pfmengine.Opencode).Binary,
+			machine.Source("opencode.binary") == pfmconfig.SourceFile,
+		))
+		command.WriteByte(' ')
+		command.WriteString(Quote(request.Row.CWD))
+		plan.Run = command.String()
+		plan.Line = newSessionLine(
+			request.FreshSocket,
+			request.Row.CWD,
+			plan.Run,
+			request.Bunker,
+		)
 	case ResumeOpencode:
 		if request.Row.ID == "" || request.Row.CWD == "" ||
 			request.FreshSocket == "" {
@@ -261,6 +289,8 @@ func routeForKind(kind compose.Kind) (Route, error) {
 		return NewClaude, nil
 	case compose.NewCodex:
 		return NewCodex, nil
+	case compose.NewOpencode:
+		return NewOpencode, nil
 	case compose.LiveClaude, compose.LiveCodex, compose.LiveSplit:
 		return Live, nil
 	// A booting row carries no other identity than its socket, so Enter can
@@ -454,7 +484,7 @@ func codexCommandWithAccount(
 
 func normalizedMachineConfig(machine pfmconfig.Config, home string) pfmconfig.Config {
 	if machine.Version == pfmconfig.Version &&
-		(len(machine.Accounts) != 0 || len(machine.CodexAccounts) != 0) {
+		(len(machine.Accounts) != 0 || len(machine.CodexAccounts) != 0 || len(machine.OpencodeAccounts) != 0) {
 		return machine
 	}
 	return pfmconfig.Defaults(home, nil)

@@ -21,10 +21,10 @@ func cloneStringMap(values map[string]string) map[string]string {
 func withNewRows(output Output) Output {
 	chatRows := output.Rows
 	for len(chatRows) > 0 &&
-		(chatRows[0].Kind == NewClaude || chatRows[0].Kind == NewCodex) {
+		isNewChatKind(chatRows[0].Kind) {
 		chatRows = chatRows[1:]
 	}
-	newCount := boolInt(output.includeNewClaude) + boolInt(output.includeNewCodex)
+	newCount := boolInt(output.includeNewClaude) + boolInt(output.includeNewCodex) + boolInt(output.includeNewOpenCode)
 	rows := make([]Row, 0, newCount+len(chatRows))
 	project, directory := newTarget(output)
 	if output.includeNewClaude {
@@ -43,6 +43,15 @@ func withNewRows(output Output) Output {
 			Project: project,
 			CWD:     directory,
 			Account: output.primaryCodex,
+		})
+	}
+	if output.includeNewOpenCode {
+		rows = append(rows, Row{
+			Kind:    NewOpencode,
+			Name:    "New OpenCode chat",
+			Project: project,
+			CWD:     directory,
+			Account: output.primaryOpenCode,
 		})
 	}
 	rows = append(rows, chatRows...)
@@ -96,7 +105,7 @@ func leadWithCurrentProject(output Output, currentDir string) Output {
 
 	rowsByProject := make(map[string][]Row, len(order))
 	for _, row := range output.Rows {
-		if row.Kind == NewClaude || row.Kind == NewCodex {
+		if isNewChatKind(row.Kind) {
 			continue
 		}
 		rowsByProject[row.Project] = append(rowsByProject[row.Project], row)
@@ -115,6 +124,10 @@ func leadWithCurrentProject(output Output, currentDir string) Output {
 		output.ProjectDirs[current] = cleanPath(currentDir)
 	}
 	return output
+}
+
+func isNewChatKind(kind Kind) bool {
+	return kind == NewClaude || kind == NewCodex || kind == NewOpencode
 }
 
 func sortProjectRows(rows []Row) ([]Row, []string) {
