@@ -393,7 +393,10 @@ func (jail *attachJail) tmux(socket string, arguments ...string) *exec.Cmd {
 func waitForAttachFile(path string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
+		// A shell redirection creates the marker before echo/print writes its
+		// payload. Waiting only for existence races the following ReadFile and
+		// can observe an empty marker under full-suite load.
+		if info, err := os.Stat(path); err == nil && info.Size() > 0 {
 			return true
 		}
 		time.Sleep(25 * time.Millisecond)

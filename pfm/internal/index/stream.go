@@ -2,6 +2,7 @@ package index
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -24,14 +25,31 @@ func readCompleteLines(
 	}
 
 	parsedOffset = start
-	reader := bufio.NewReader(file)
+	// Transcript records are commonly tens of KiB. ReadSlice lets those rows
+	// borrow the reader's storage instead of allocating a new slice for every
+	// record; only an unusually large record spills into the reusable buffer.
+	// On a long transcript this keeps peak memory tied to the largest record,
+	// not to allocator churn across the size of the file.
+	reader := bufio.NewReaderSize(file, 64<<10)
+	var overflow bytes.Buffer
 	for {
-		line, readErr := reader.ReadBytes('\n')
+		line, readErr := reader.ReadSlice('\n')
 		bytesRead += int64(len(line))
-		if len(line) != 0 && line[len(line)-1] == '\n' {
-			handle(line)
-			parsedOffset += int64(len(line))
+		if errors.Is(readErr, bufio.ErrBufferFull) {
+			_, _ = overflow.Write(line)
+			continue
 		}
+
+		lineBytes := line
+		if overflow.Len() != 0 {
+			_, _ = overflow.Write(line)
+			lineBytes = overflow.Bytes()
+		}
+		if len(lineBytes) != 0 && lineBytes[len(lineBytes)-1] == '\n' {
+			handle(lineBytes)
+			parsedOffset += int64(len(lineBytes))
+		}
+		overflow.Reset()
 
 		switch {
 		case readErr == nil:

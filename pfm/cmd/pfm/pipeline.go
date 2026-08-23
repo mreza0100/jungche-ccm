@@ -819,9 +819,10 @@ func streamFleetRefreshesWith(
 // name, so the pane would otherwise run the new thread unnamed forever.
 //
 // A capture that FAILED is never read as "this pane runs nothing" — it is
-// skipped outright, worded differently on stderr than a pane whose status
-// line genuinely names no thread. An observed name that resolves to zero or
-// to more than one cx_names row is the same refusal: never kill on a guess.
+// skipped outright. A successful capture that cannot be mapped to exactly one
+// thread is ordinary stale/ambiguous screen state, not a failed probe: use a
+// matching incumbent binding for duplicate names when one exists, otherwise
+// skip quietly. Either way, never kill or move a binding on a guess.
 func reconcileCodexPanes(
 	ctx context.Context,
 	database *store.Store,
@@ -857,7 +858,6 @@ func reconcileCodexPanes(
 			}
 			switch len(matches) {
 			case 0:
-				warn(fmt.Sprintf("codex pane %s %s: %q matches no known thread", identity.Socket, identity.PaneID, identity.Name))
 				continue
 			case 1:
 				threadID = matches[0]
@@ -866,8 +866,9 @@ func reconcileCodexPanes(
 				// one of the matches, that incumbent is the only safe identity:
 				// keeping it does not guess or move the binding, and avoids turning
 				// ordinary duplicate-name state into a warning when the picker
-				// releases the terminal. A missing or non-matching binding remains
-				// genuinely ambiguous and is still reported.
+				// releases the terminal. A missing or non-matching binding is still
+				// ambiguous, but ambiguity is not a failed probe: skip it without
+				// mutating or filling the terminal with shutdown warnings.
 				bound, found, bindErr := manager.CodexPaneBinding(
 					ctx,
 					identity.Socket,
@@ -888,12 +889,10 @@ func reconcileCodexPanes(
 				if threadID != "" {
 					break
 				}
-				warn(fmt.Sprintf("codex pane %s %s: %q matches more than one thread", identity.Socket, identity.PaneID, identity.Name))
 				continue
 			}
 		}
 		if threadID == "" {
-			warn(fmt.Sprintf("codex pane %s %s: status line named no thread", identity.Socket, identity.PaneID))
 			continue
 		}
 		previous, changed, err := manager.AdvanceCodexPane(ctx, identity.Socket, identity.PaneID, threadID)
