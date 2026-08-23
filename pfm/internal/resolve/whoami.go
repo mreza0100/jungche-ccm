@@ -169,6 +169,7 @@ func (identifier *Whoami) Identify(ctx context.Context) (Identity, error) {
 		thread, err := CodexThreadID(
 			identifier.environment.CodexThreadID,
 			"",
+			"",
 			0,
 			nil,
 		)

@@ -8,7 +8,6 @@ import (
 	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -166,8 +165,10 @@ func (manager *Manager) KillCleared(
 
 // CodexPaneBinding returns the last Codex thread observed in one immutable
 // tmux pane. Codex starts a new thread in the same pane for /clear, so this is
-// the only unambiguous way for its deferred SessionStart(source=clear) hook to
-// identify the completed thread without guessing from a shared cwd.
+// the only unambiguous way to identify the pane's CURRENT thread without
+// guessing from a shared cwd or a process birth time that never moves —
+// AdvanceCodexPane is the sole writer, kept current by
+// pipeline.reconcileCodexPanes on every gather pass.
 func (manager *Manager) CodexPaneBinding(
 	ctx context.Context,
 	socket, pane string,
@@ -179,77 +180,56 @@ func (manager *Manager) CodexPaneBinding(
 	return manager.database.Meta(ctx, key)
 }
 
-// BindCodexPane records the current thread for one live Codex pane in pfm's
-// private derived cache. The shared store remains reserved for operator state.
-func (manager *Manager) BindCodexPane(
-	ctx context.Context,
-	socket, pane, threadID string,
-) error {
-	key, ok := codexPaneBindingKey(socket, pane)
-	if !ok || threadID == "" {
-		return nil
+// CodexPaneBound adapts CodexPaneBinding to store.CodexPaneBound's shape over
+// ctx, for wiring a rollout-less live-process resolver's bound-pane priority
+// (store.NewCodexThreadResolverRoots). It swallows a genuine store error into
+// "no binding" rather than failing the live-scan identity resolve outright —
+// the same "an unresolved id is not a failure" tradeoff resolve.CodexThreadID's
+// own fallback chain already makes for every other rung; a store outage still
+// surfaces loudly through every OTHER read the caller depends on in the same
+// pass.
+func (manager *Manager) CodexPaneBound(ctx context.Context) store.CodexPaneBound {
+	return func(socket, pane string) (string, bool) {
+		id, found, err := manager.CodexPaneBinding(ctx, socket, pane)
+		if err != nil {
+			return "", false
+		}
+		return id, found
 	}
-	current, found, err := manager.database.Meta(ctx, key)
-	if err != nil || found && current == threadID {
-		return err
-	}
-	return manager.database.SetMeta(ctx, key, threadID)
 }
 
-// CodexProcessBinding returns the last thread observed by SessionStart hooks
-// from one Codex TUI process. Codex keeps that process alive across /clear,
-// including when no tmux pane exists.
-func (manager *Manager) CodexProcessBinding(
+// AdvanceCodexPane moves one live Codex pane's binding to threadID and
+// reports what it was bound to before this write. Unlike the write-once
+// SeedCodexPane this replaces, the binding MOVES on every pass: the pane's
+// status line is the only thing that knows a /clear happened (#1), and a
+// changed binding — previous non-empty, new different — IS that signal
+// (pipeline.reconcileCodexPanes, #3). changed is false only when the pane's
+// observed thread already matches the stored binding.
+func (manager *Manager) AdvanceCodexPane(
 	ctx context.Context,
-	parent string,
-) (string, bool, error) {
-	key, ok := codexProcessBindingKey(parent)
-	if !ok {
+	socket, pane, threadID string,
+) (previous string, changed bool, err error) {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok || threadID == "" {
 		return "", false, nil
 	}
-	return manager.database.Meta(ctx, key)
-}
-
-// BindCodexProcess records the current thread for one Codex TUI process in
-// pfm's private derived cache.
-func (manager *Manager) BindCodexProcess(
-	ctx context.Context,
-	parent, threadID string,
-) error {
-	key, ok := codexProcessBindingKey(parent)
-	if !ok || threadID == "" {
-		return nil
-	}
 	current, found, err := manager.database.Meta(ctx, key)
-	if err != nil || found && current == threadID {
-		return err
+	if err != nil {
+		return "", false, fmt.Errorf("read Codex pane binding: %w", err)
 	}
-	return manager.database.SetMeta(ctx, key, threadID)
-}
-
-// SeedCodexPane records a live-scan identity only when no hook binding exists.
-// A Codex process cannot rewrite its own inherited CODEX_THREAD_ID after
-// /clear, so later scans may still report the completed id and must never
-// overwrite the authoritative SessionStart payload.
-func (manager *Manager) SeedCodexPane(
-	ctx context.Context,
-	socket, pane, threadID string,
-) error {
-	key, ok := codexPaneBindingKey(socket, pane)
-	if !ok || threadID == "" {
-		return nil
+	if found && current == threadID {
+		return current, false, nil
 	}
-	_, found, err := manager.database.Meta(ctx, key)
-	if err != nil || found {
-		return err
+	if err := manager.database.SetMeta(ctx, key, threadID); err != nil {
+		return "", false, fmt.Errorf("advance Codex pane binding: %w", err)
 	}
-	return manager.database.SetMeta(ctx, key, threadID)
+	return current, true, nil
 }
 
 // KillClearedCodex records a prompt-baseline kill on the visible lineage root
-// for an already indexed Codex thread. It never guesses an id: callers must
-// supply the hook-observed previous id from a pane/process binding or
-// inherited CODEX_THREAD_ID.
+// for an already indexed Codex thread. It never guesses an id: the caller
+// (pipeline.reconcileCodexPanes) supplies the id AdvanceCodexPane just moved
+// a pane's binding OFF of — the thread a /clear it just observed replaced.
 func (manager *Manager) KillClearedCodex(
 	ctx context.Context,
 	id string,
@@ -281,15 +261,6 @@ func codexPaneBindingKey(socket, pane string) (string, bool) {
 	}
 	address := base64.RawURLEncoding.EncodeToString([]byte(socket + "\x00" + pane))
 	return "codex_clear_pane_" + address, true
-}
-
-func codexProcessBindingKey(parent string) (string, bool) {
-	parent = strings.TrimSpace(parent)
-	pid, err := strconv.ParseUint(parent, 10, 64)
-	if err != nil || pid == 0 {
-		return "", false
-	}
-	return "codex_clear_process_" + parent, true
 }
 
 // Unkill removes one kill through the store's non-fatal busy policy.

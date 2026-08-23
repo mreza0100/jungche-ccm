@@ -171,6 +171,14 @@ func ReadCodexThreads(ctx context.Context, files []string) ([]CodexThread, error
 	return threads, nil
 }
 
+// CodexPaneBound answers whether one live Codex pane (socket, paneID) has a
+// fleet-recorded thread binding — kill.Manager.CodexPaneBinding is the
+// authoritative writer, advanced by pipeline.reconcileCodexPanes on every
+// gather pass. Consulting it here is what lets a rollout-less live-process
+// scan follow a pane through /clear instead of matching the pane's own
+// process birth time back to whichever thread it started with, forever.
+type CodexPaneBound func(socket, paneID string) (id string, found bool)
+
 // NewCodexThreadResolver names the Codex conversation behind a live process
 // that holds no rollout file descriptor. The state stores are read once, on
 // the first such process, so an ordinary scan never pays for the query. The
@@ -179,8 +187,9 @@ func ReadCodexThreads(ctx context.Context, files []string) ([]CodexThread, error
 func NewCodexThreadResolver(
 	ctx context.Context,
 	codexRoot string,
-) func(exported, cwd string, birth int64) (id string, rolloutPath string) {
-	return NewCodexThreadResolverRoots(ctx, []string{codexRoot})
+	bound CodexPaneBound,
+) func(exported, cwd string, birth int64, socket, paneID string) (id string, rolloutPath string) {
+	return NewCodexThreadResolverRoots(ctx, []string{codexRoot}, bound)
 }
 
 // NewCodexThreadResolverRoots resolves rollout-less live processes across the
@@ -188,7 +197,8 @@ func NewCodexThreadResolver(
 func NewCodexThreadResolverRoots(
 	ctx context.Context,
 	codexRoots []string,
-) func(exported, cwd string, birth int64) (id string, rolloutPath string) {
+	bound CodexPaneBound,
+) func(exported, cwd string, birth int64, socket, paneID string) (id string, rolloutPath string) {
 	candidates := sync.OnceValue(func() []resolve.CodexThread {
 		files := make([]string, 0)
 		for _, codexRoot := range codexRoots {
@@ -216,8 +226,14 @@ func NewCodexThreadResolverRoots(
 		}
 		return rows
 	})
-	return func(exported, cwd string, birth int64) (string, string) {
-		thread, err := resolve.CodexThreadID(exported, cwd, birth, candidates())
+	return func(exported, cwd string, birth int64, socket, paneID string) (string, string) {
+		boundID := ""
+		if bound != nil {
+			if id, found := bound(socket, paneID); found {
+				boundID = id
+			}
+		}
+		thread, err := resolve.CodexThreadID(exported, boundID, cwd, birth, candidates())
 		if err != nil {
 			return "", ""
 		}

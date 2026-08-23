@@ -119,7 +119,7 @@ func (manager *Manager) identifyCodexSelf(
 			PaneID: paneID,
 			PID:    panePID,
 		}},
-		store.NewCodexThreadResolverRoots(ctx, manager.paths.codexRoots),
+		store.NewCodexThreadResolverRoots(ctx, manager.paths.codexRoots, manager.CodexPaneBound(ctx)),
 	)
 	if err != nil {
 		return Target{}, err
