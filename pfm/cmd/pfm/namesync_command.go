@@ -76,7 +76,7 @@ func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime
 		return 1
 	}
 	if !*dryRun {
-		reconcileCodexPanes(ctx, database, live, runtime, stderr)
+		reconcileCodexPanes(ctx, database, live, runtime, printWarn(stderr))
 	}
 	verb := "renamed"
 	if *dryRun {

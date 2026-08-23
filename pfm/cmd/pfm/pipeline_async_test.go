@@ -31,6 +31,36 @@ type immediateIndexRunner struct {
 	options []fleetindex.Options
 }
 
+func TestCanceledPickerRefreshExitsWithoutReportingARefreshFailure(t *testing.T) {
+	jailTest(t)
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	updates := make(chan ui.Snapshot)
+	var stderr bytes.Buffer
+	streamFleetRefreshesWith(
+		ctx,
+		database,
+		scanRequest{},
+		printWarn(&stderr),
+		&stderr,
+		updates,
+		refreshDependencies{},
+	)
+
+	if _, ok := <-updates; ok {
+		t.Fatal("canceled refresh left its update channel open")
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("canceled refresh wrote stderr=%q, want a quiet picker shutdown", got)
+	}
+}
+
 func (runner *immediateIndexRunner) Run(
 	_ context.Context,
 	options fleetindex.Options,

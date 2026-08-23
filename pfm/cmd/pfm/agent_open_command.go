@@ -55,7 +55,7 @@ func runInternalAgentOpen(
 		Tmux:      agentopen.RealTmux{Dir: resolved.TmuxDir, Stderr: stderr},
 		Stderr:    stderr,
 	})
-	if err := opener.Open(context.Background(), agentopen.Request{ID: *id, CWD: *cwd, OwningConfig: *configDir, PrimaryAccount: primary, Cache1H: initialCache1H()}); err != nil {
+	if err := opener.Open(context.Background(), agentopen.Request{ID: *id, CWD: *cwd, OwningConfig: *configDir, PrimaryAccount: primary, Cache1H: initialCache1H(runtime.Config, primary)}); err != nil {
 		var outside *agentopen.OutsidePFMError
 		if errors.As(err, &outside) {
 			fmt.Fprintln(stderr, outside.Error())

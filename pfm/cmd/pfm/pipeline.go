@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -117,6 +118,11 @@ type bufferedWarnings struct {
 func (buffer *bufferedWarnings) add(warning string) {
 	buffer.mu.Lock()
 	defer buffer.mu.Unlock()
+	for _, existing := range buffer.warnings {
+		if existing == warning {
+			return
+		}
+	}
 	buffer.warnings = append(buffer.warnings, warning)
 }
 
@@ -222,7 +228,7 @@ func scanFleet(
 	if !request.ReadOnly && reconcileCodexPanes(ctx, database, live, commandRuntime{
 		Config: environment.config,
 		Paths:  environment.paths,
-	}, stderr) {
+	}, printWarn(stderr)) {
 		data, err = loadFleetData(ctx, database)
 		if err != nil {
 			return scanResult{}, err
@@ -603,6 +609,17 @@ func streamFleetRefreshes(
 	)
 }
 
+// writeRefreshError keeps an intentional picker shutdown from rendering as a
+// failed refresh. Errors unrelated to the owning context still surface even
+// if cancellation happened concurrently.
+func writeRefreshError(ctx context.Context, stderr io.Writer, stage string, err error) bool {
+	if contextErr := ctx.Err(); contextErr != nil && errors.Is(err, contextErr) {
+		return false
+	}
+	fmt.Fprintf(stderr, "pfm refresh%s: %v\n", stage, err)
+	return true
+}
+
 func streamFleetRefreshesWith(
 	ctx context.Context,
 	database *store.Store,
@@ -615,7 +632,7 @@ func streamFleetRefreshesWith(
 	defer close(updates)
 	environment, err := resolveScanEnvironment(request)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+		writeRefreshError(ctx, stderr, "", err)
 		return
 	}
 	var data fleetData
@@ -625,7 +642,7 @@ func streamFleetRefreshesWith(
 		data, err = loadFleetData(ctx, database)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+		writeRefreshError(ctx, stderr, "", err)
 		return
 	}
 	live, err := gatherFleet(
@@ -639,12 +656,12 @@ func streamFleetRefreshesWith(
 		stderr,
 	)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh gather: %v\n", err)
+		writeRefreshError(ctx, stderr, " gather", err)
 		return
 	}
 	data, err = enrichLiveFleetData(ctx, database, data, live)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh live cache: %v\n", err)
+		writeRefreshError(ctx, stderr, " live cache", err)
 		return
 	}
 	if !sendRefresh(ctx, environment, request, data, live, true, updates) {
@@ -654,7 +671,7 @@ func streamFleetRefreshesWith(
 		reconcileCodexPanes(ctx, database, live, commandRuntime{
 			Config: environment.config,
 			Paths:  environment.paths,
-		}, stderr)
+		}, warn)
 	}
 
 	newIndexer := dependencies.newIndexer
@@ -665,19 +682,19 @@ func streamFleetRefreshesWith(
 	}
 	indexer, err := newIndexer(database)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh index: %v\n", err)
+		writeRefreshError(ctx, stderr, " index", err)
 		return
 	}
 	if _, err := indexer.Run(ctx, fleetindex.Options{
 		PriorityCWD:  environment.currentDir,
 		PriorityOnly: true,
 	}); err != nil {
-		fmt.Fprintf(stderr, "pfm refresh project index: %v\n", err)
+		writeRefreshError(ctx, stderr, " project index", err)
 		return
 	}
 	data, err = loadFleetData(ctx, database)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+		writeRefreshError(ctx, stderr, "", err)
 		return
 	}
 	result := composeFleet(environment, request, data, live)
@@ -705,7 +722,7 @@ func streamFleetRefreshesWith(
 		timer.Reset(cadence.next())
 		environment, err = resolveScanEnvironment(request)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			writeRefreshError(ctx, stderr, "", err)
 			continue
 		}
 		if request.View == compose.DefaultView {
@@ -714,7 +731,9 @@ func streamFleetRefreshesWith(
 			data, err = loadFleetData(ctx, database)
 		}
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			if !writeRefreshError(ctx, stderr, "", err) {
+				return
+			}
 			continue
 		}
 		live, err = gatherFleet(
@@ -728,19 +747,23 @@ func streamFleetRefreshesWith(
 			stderr,
 		)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh gather: %v\n", err)
+			if !writeRefreshError(ctx, stderr, " gather", err) {
+				return
+			}
 			continue
 		}
 		data, err = enrichLiveFleetData(ctx, database, data, live)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh live cache: %v\n", err)
+			if !writeRefreshError(ctx, stderr, " live cache", err) {
+				return
+			}
 			continue
 		}
 		if !request.ReadOnly {
 			reconcileCodexPanes(ctx, database, live, commandRuntime{
 				Config: environment.config,
 				Paths:  environment.paths,
-			}, stderr)
+			}, warn)
 		}
 		if !sendRefresh(ctx, environment, request, data, live, true, updates) {
 			return
@@ -749,12 +772,16 @@ func streamFleetRefreshesWith(
 			PriorityCWD:  environment.currentDir,
 			PriorityOnly: true,
 		}); err != nil {
-			fmt.Fprintf(stderr, "pfm refresh index: %v\n", err)
+			if !writeRefreshError(ctx, stderr, " index", err) {
+				return
+			}
 			continue
 		}
 		data, err = loadFleetData(ctx, database)
 		if err != nil {
-			fmt.Fprintf(stderr, "pfm refresh: %v\n", err)
+			if !writeRefreshError(ctx, stderr, "", err) {
+				return
+			}
 			continue
 		}
 		if !sendRefresh(ctx, environment, request, data, live, false, updates) {
@@ -781,24 +808,24 @@ func reconcileCodexPanes(
 	database *store.Store,
 	live gather.Snapshot,
 	runtime commandRuntime,
-	stderr io.Writer,
+	warn gatherWarn,
 ) bool {
 	killed := false
 	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: %v\n", err)
+		warn(fmt.Sprintf("Codex pane reconcile: %v", err))
 		return killed
 	}
 	cxNames, err := database.CxNames(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: read thread names: %v\n", err)
+		warn(fmt.Sprintf("Codex pane reconcile: read thread names: %v", err))
 		return killed
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	renamer := spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
 	for _, identity := range gather.CaptureCodexIdentity(ctx, capturer, live.Panes) {
 		if identity.Failed {
-			fmt.Fprintf(stderr, "codex pane %s %s: capture failed\n", identity.Socket, identity.PaneID)
+			warn(fmt.Sprintf("codex pane %s %s: capture failed", identity.Socket, identity.PaneID))
 			continue
 		}
 		threadID := identity.ThreadID
@@ -811,22 +838,22 @@ func reconcileCodexPanes(
 			}
 			switch len(matches) {
 			case 0:
-				fmt.Fprintf(stderr, "codex pane %s %s: %q matches no known thread\n", identity.Socket, identity.PaneID, identity.Name)
+				warn(fmt.Sprintf("codex pane %s %s: %q matches no known thread", identity.Socket, identity.PaneID, identity.Name))
 				continue
 			case 1:
 				threadID = matches[0]
 			default:
-				fmt.Fprintf(stderr, "codex pane %s %s: %q matches more than one thread\n", identity.Socket, identity.PaneID, identity.Name)
+				warn(fmt.Sprintf("codex pane %s %s: %q matches more than one thread", identity.Socket, identity.PaneID, identity.Name))
 				continue
 			}
 		}
 		if threadID == "" {
-			fmt.Fprintf(stderr, "codex pane %s %s: status line named no thread\n", identity.Socket, identity.PaneID)
+			warn(fmt.Sprintf("codex pane %s %s: status line named no thread", identity.Socket, identity.PaneID))
 			continue
 		}
 		previous, changed, err := manager.AdvanceCodexPane(ctx, identity.Socket, identity.PaneID, threadID)
 		if err != nil {
-			fmt.Fprintf(stderr, "codex pane %s %s: advance binding: %v\n", identity.Socket, identity.PaneID, err)
+			warn(fmt.Sprintf("codex pane %s %s: advance binding: %v", identity.Socket, identity.PaneID, err))
 			continue
 		}
 		if !changed || previous == "" {
@@ -834,7 +861,7 @@ func reconcileCodexPanes(
 		}
 		target, recorded, err := manager.KillClearedCodex(ctx, previous)
 		if err != nil {
-			fmt.Fprintf(stderr, "codex pane %s %s: record clear kill: %v\n", identity.Socket, identity.PaneID, err)
+			warn(fmt.Sprintf("codex pane %s %s: record clear kill: %v", identity.Socket, identity.PaneID, err))
 			continue
 		}
 		if !recorded {
@@ -849,9 +876,9 @@ func reconcileCodexPanes(
 			ctx, renamer, identity.Socket, identity.PaneID, name, spawn.Defaults(), spawn.Trace{},
 		)
 		if renameErr != nil {
-			fmt.Fprintf(stderr, "codex pane %s %s: re-apply chat name after clear: %v\n", identity.Socket, identity.PaneID, renameErr)
+			warn(fmt.Sprintf("codex pane %s %s: re-apply chat name after clear: %v", identity.Socket, identity.PaneID, renameErr))
 		} else if warning != "" {
-			fmt.Fprintf(stderr, "codex pane %s %s: chat name was not re-applied after clear: %s\n", identity.Socket, identity.PaneID, warning)
+			warn(fmt.Sprintf("codex pane %s %s: chat name was not re-applied after clear: %s", identity.Socket, identity.PaneID, warning))
 		}
 	}
 	return killed

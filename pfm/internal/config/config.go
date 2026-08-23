@@ -57,6 +57,10 @@ type AccountSkip struct {
 type ClaudePrefs struct {
 	PermissionMode string
 	Binary         string
+	// Cache1H is Claude Code's prompt-cache TTL choice: true selects the
+	// ~32%-cheaper 1-hour TTL (ENABLE_PROMPT_CACHING_1H), false the 5-minute
+	// TTL. Defaults true — see decodeClaudePrefs and defaultsWithMCPServers.
+	Cache1H bool
 }
 
 // Claude is retained as an alias for callers that used the v1 public shape.
@@ -177,6 +181,7 @@ type rawAccount struct {
 type rawClaude struct {
 	PermissionMode *string `json:"permissionMode,omitempty"`
 	Binary         *string `json:"binary,omitempty"`
+	Cache1H        *bool   `json:"cache1h,omitempty"`
 }
 
 type rawOpenCode struct {
@@ -314,6 +319,7 @@ func defaultsWithMCPServers(
 		"accounts":              SourceDefault,
 		"claude.permissionMode": SourceDefault,
 		"claude.binary":         SourceDefault,
+		"claude.cache1h":        SourceDefault,
 		"codex.yolo":            SourceDefault,
 		"codex.binary":          SourceDefault,
 		"codex.homes":           SourceDefault,
@@ -338,7 +344,7 @@ func defaultsWithMCPServers(
 		AccountSkips:     accountSkips,
 		CodexAccounts:    codexAccounts,
 		OpencodeAccounts: opencodeAccounts,
-		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary},
+		Claude:           Claude{PermissionMode: PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary, Cache1H: true},
 		Codex:            Codex{Yolo: true, Binary: pfmengine.MustLookup(pfmengine.Codex).Binary},
 		OpenCode:         OpenCode{Binary: pfmengine.MustLookup(pfmengine.Opencode).Binary},
 		MCPServers:       servers,
@@ -551,6 +557,35 @@ func loadWithMCPServers(
 		result.Sources["theme"] = SourceFile
 	}
 
+	// The top-level claude posture resolves before accounts so an unset
+	// per-account cache1h can inherit the FILE-resolved default (not the
+	// pre-file default) below — cache1h has no empty-value sentinel the way
+	// PermissionMode/Binary do, so "unset at this account" is decided here,
+	// once, instead of guessed from a materialized zero value later.
+	if raw.Claude != nil {
+		prefs, err := decodeClaudePrefs(*raw.Claude, result.Path, "claude", -1)
+		if err != nil {
+			return Config{}, err
+		}
+		if raw.Claude.PermissionMode != nil {
+			result.Sources["claude.permissionMode"] = SourceFile
+		}
+		if raw.Claude.Binary != nil {
+			result.Sources["claude.binary"] = SourceFile
+		}
+		if raw.Claude.Cache1H != nil {
+			result.Sources["claude.cache1h"] = SourceFile
+		}
+		if raw.Claude.PermissionMode != nil {
+			result.Claude.PermissionMode = prefs.PermissionMode
+		}
+		if raw.Claude.Binary != nil {
+			result.Claude.Binary = prefs.Binary
+		}
+		if raw.Claude.Cache1H != nil {
+			result.Claude.Cache1H = prefs.Cache1H
+		}
+	}
 	if raw.Accounts != nil {
 		accounts, err := validateAccounts(*raw.Accounts, home)
 		if err != nil {
@@ -572,6 +607,17 @@ func loadWithMCPServers(
 				if err != nil {
 					return Config{}, err
 				}
+				if value.Claude.Cache1H == nil {
+					// No account-level override: inherit the already-resolved
+					// top-level value rather than the type's false zero value,
+					// so EffectiveClaude can apply Cache1H unconditionally
+					// (like EffectiveCodex does for Yolo) without silently
+					// forcing 1h caching off for an account that only touched
+					// permissionMode or binary.
+					prefs.Cache1H = result.Claude.Cache1H
+				} else {
+					result.Sources[fmt.Sprintf("accounts[%d].claude.cache1h", index)] = SourceFile
+				}
 				result.Accounts[index].Claude = &prefs
 			}
 			if value.Codex != nil {
@@ -581,24 +627,6 @@ func loadWithMCPServers(
 				}
 				result.Accounts[index].Codex = &prefs
 			}
-		}
-	}
-	if raw.Claude != nil {
-		prefs, err := decodeClaudePrefs(*raw.Claude, result.Path, "claude", -1)
-		if err != nil {
-			return Config{}, err
-		}
-		if raw.Claude.PermissionMode != nil {
-			result.Sources["claude.permissionMode"] = SourceFile
-		}
-		if raw.Claude.Binary != nil {
-			result.Sources["claude.binary"] = SourceFile
-		}
-		if raw.Claude.PermissionMode != nil {
-			result.Claude.PermissionMode = prefs.PermissionMode
-		}
-		if raw.Claude.Binary != nil {
-			result.Claude.Binary = prefs.Binary
 		}
 	}
 	if raw.Codex != nil {
@@ -747,6 +775,9 @@ func decodeClaudePrefs(raw rawClaude, path, scope string, index int) (ClaudePref
 			return ClaudePrefs{}, fmt.Errorf("config %s: %s.binary must be a non-empty command", path, configScope(scope, index))
 		}
 		prefs.Binary = *raw.Binary
+	}
+	if raw.Cache1H != nil {
+		prefs.Cache1H = *raw.Cache1H
 	}
 	return prefs, nil
 }
@@ -930,6 +961,10 @@ func (config Config) EffectiveClaude(id int) ClaudePrefs {
 		if account.Claude.Binary != "" {
 			result.Binary = account.Claude.Binary
 		}
+		// Unconditional, like EffectiveCodex's Yolo: Load already seeded an
+		// unset account-level Cache1H with the resolved top-level value, so
+		// there is no false-zero ambiguity left to guard against here.
+		result.Cache1H = account.Claude.Cache1H
 	}
 	return result
 }
@@ -1224,6 +1259,7 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 			value["claude"] = map[string]any{
 				"permissionMode": account.Claude.PermissionMode,
 				"binary":         account.Claude.Binary,
+				"cache1h":        account.Claude.Cache1H,
 			}
 		}
 		if account.Codex != nil {
@@ -1275,6 +1311,7 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 		"claude": map[string]any{
 			"permissionMode": config.Claude.PermissionMode,
 			"binary":         config.Claude.Binary,
+			"cache1h":        config.Claude.Cache1H,
 		},
 		"codex": codexValue,
 		"mcp": map[string]any{
