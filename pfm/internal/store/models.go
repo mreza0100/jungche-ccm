@@ -38,6 +38,7 @@ type Transcript struct {
 	Path         string
 	Size         int64
 	MTimeNS      int64
+	ActivityNS   int64
 	ParsedOffset int64
 	CWD          string
 	CustomTitle  string
@@ -46,6 +47,15 @@ type Transcript struct {
 	LastPrompt   string
 	PromptCount  int64
 	IsBG         bool
+}
+
+// EffectiveActivityNS is the latest meaningful user-prompt timestamp. Older
+// rows and timestamp-less legacy fixtures fall back to the physical file time.
+func (transcript Transcript) EffectiveActivityNS() int64 {
+	if transcript.ActivityNS > 0 {
+		return transcript.ActivityNS
+	}
+	return transcript.MTimeNS
 }
 
 // Rollout is one indexed Codex rollout.

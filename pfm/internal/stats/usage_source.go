@@ -109,6 +109,10 @@ func FetchCodex(ctx context.Context, account LimitAccount) (AccountLimits, error
 		result.Status = "Codex payload unreadable"
 		return result, errors.New(result.Status)
 	}
+	if usage.Warning != "" {
+		result.Status = usage.Warning
+		return result, errors.New(usage.Warning)
+	}
 	return result, nil
 }
 

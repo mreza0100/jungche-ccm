@@ -169,6 +169,18 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 	if command == nil || model.Result().Kind != OutcomeReboot {
 		t.Fatalf("chat carousel Enter result=%#v command=%v", model.Result(), command)
 	}
+
+	model = NewModel(snapshot)
+	for step := 0; step < 4; step++ {
+		model, command = applyKey(t, model, specialKey(tea.KeyRight))
+		if command != nil {
+			t.Fatalf("deactive carousel step %d returned command", step)
+		}
+	}
+	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
+	if command == nil || model.Result().Kind != OutcomeDeactivate || model.Result().Row.Socket != "s" {
+		t.Fatalf("deactive carousel Enter result=%#v command=%v", model.Result(), command)
+	}
 }
 
 func TestNewChatUsesOnlyPresentEnginesAndCyclesTheirOwnRoster(t *testing.T) {
@@ -289,10 +301,9 @@ func TestCancelKeepsAppliedKillsAndDropsPrimaryChange(t *testing.T) {
 	}
 }
 
-// TestKillAppliesImmediatelyAndEndsALiveChat is the whole point of the change:
-// the keypress writes the kill AND kills the chat's server, and the row stops
-// claiming a server that is gone.
-func TestKillAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
+// TestHideAppliesImmediatelyWithoutEndingALiveChat separates visibility from
+// process lifecycle: hiding a row must not stop work that is still running.
+func TestHideAppliesImmediatelyWithoutEndingALiveChat(t *testing.T) {
 	snapshot := fixtureSnapshot(120)
 	var live compose.Row
 	for _, row := range snapshot.Rows {
@@ -320,9 +331,8 @@ func TestKillAppliesImmediatelyAndEndsALiveChat(t *testing.T) {
 	if !applied[0].Live || applied[0].Socket != live.Socket {
 		t.Fatalf("the kill had nothing to aim at: %#v", applied[0])
 	}
-	if got := model.rows[0]; got.Kind != compose.ResumeClaude ||
-		got.Socket != "" || got.PaneID != "" {
-		t.Fatalf("killed row still claims a live server: %#v", got)
+	if got := model.rows[0]; got.Kind != live.Kind || got.Socket != live.Socket {
+		t.Fatalf("hidden row was incorrectly deactivated: %#v", got)
 	}
 }
 
@@ -703,7 +713,7 @@ func TestControlXAlwaysLeavesAReceipt(t *testing.T) {
 		{
 			name:    "landed kill prints its receipt",
 			mutate:  func(snapshot *Snapshot) {},
-			receipt: "killed — ",
+			receipt: "hidden — ",
 		},
 	}
 	for _, testCase := range cases {

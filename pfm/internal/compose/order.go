@@ -179,7 +179,7 @@ func projectDirs(input Input) map[string]string {
 		}
 	}
 	for _, transcript := range input.Transcripts {
-		rememberProjectDir(directories, transcript.CWD, transcript.MTimeNS)
+		rememberProjectDir(directories, transcript.CWD, transcript.EffectiveActivityNS())
 	}
 	for _, rollout := range input.Rollouts {
 		if rollout.UserThread {

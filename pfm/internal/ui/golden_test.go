@@ -299,7 +299,7 @@ func TestHeaderSeparatesKilledEmptyAndRefreshStatus(t *testing.T) {
 	snapshot.SuppressedCount = 153
 	snapshot.Refreshing = true
 	header := ansi.Strip(NewModel(snapshot).renderHeader(120))
-	for _, want := range []string{"12 killed", "153 empty", "⟳ refreshing"} {
+	for _, want := range []string{"12 hidden", "153 empty", "⟳ refreshing"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("header %q does not contain %q", header, want)
 		}

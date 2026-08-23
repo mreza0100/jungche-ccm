@@ -15,7 +15,7 @@ import (
 // transcriptColumns is alias-qualified because every transcript query joins
 // the effective-killed mirror, whose key column is also named uuid.
 const transcriptColumns = `
-t.uuid, t.path, t.size, t.mtime_ns, t.parsed_offset, t.cwd, t.custom_title,
+t.uuid, t.path, t.size, t.mtime_ns, t.activity_ns, t.parsed_offset, t.cwd, t.custom_title,
 t.ai_title, t.first_prompt, t.last_prompt, t.prompt_count, t.is_bg`
 
 const rolloutColumns = `
@@ -85,7 +85,7 @@ FROM transcripts AS t
 LEFT JOIN `+effectiveKilled+` AS h ON h.uuid=t.uuid
 WHERE t.is_bg=0 AND t.size>0 AND t.prompt_count>0 AND h.uuid IS NULL
   AND NOT `+labelKilledSQL+`
-ORDER BY t.mtime_ns DESC, t.uuid
+ORDER BY CASE WHEN t.activity_ns>0 THEN t.activity_ns ELSE t.mtime_ns END DESC, t.uuid
 LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query cached transcript candidates: %w", err)
@@ -311,13 +311,14 @@ func (tx *ImmediateTx) UpsertTranscript(ctx context.Context, transcript Transcri
 func upsertTranscript(ctx context.Context, db queryExecer, transcript Transcript) error {
 	_, err := execWrite(ctx, db, `
 INSERT INTO transcripts (
-  uuid, path, size, mtime_ns, parsed_offset, cwd, custom_title, ai_title,
+  uuid, path, size, mtime_ns, activity_ns, parsed_offset, cwd, custom_title, ai_title,
   first_prompt, last_prompt, prompt_count, is_bg
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(uuid) DO UPDATE SET
   path=excluded.path,
   size=excluded.size,
   mtime_ns=excluded.mtime_ns,
+  activity_ns=excluded.activity_ns,
   parsed_offset=excluded.parsed_offset,
   cwd=excluded.cwd,
   custom_title=excluded.custom_title,
@@ -330,6 +331,7 @@ ON CONFLICT(uuid) DO UPDATE SET
 		transcript.Path,
 		transcript.Size,
 		transcript.MTimeNS,
+		transcript.ActivityNS,
 		transcript.ParsedOffset,
 		transcript.CWD,
 		transcript.CustomTitle,
@@ -397,6 +399,7 @@ func scanTranscript(row rowScanner) (Transcript, error) {
 		&transcript.Path,
 		&transcript.Size,
 		&transcript.MTimeNS,
+		&transcript.ActivityNS,
 		&transcript.ParsedOffset,
 		&transcript.CWD,
 		&transcript.CustomTitle,

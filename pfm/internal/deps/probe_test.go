@@ -268,6 +268,29 @@ exit 2`)
 	})
 }
 
+func TestSelfDoctorProbeDoesNotInventFailureFromDumbParentTerminal(t *testing.T) {
+	directory := t.TempDir()
+	writeProbeStub(t, directory, "codex", `
+if [ "$1" = "--version" ]; then printf 'codex-cli 0.149.0\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--help" ]; then printf 'usage: codex doctor\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then
+  if [ "$TERM" = "dumb" ]; then printf 'TERM=dumb\n'; exit 1; fi
+  printf 'healthy\n'; exit 0
+fi
+exit 2`)
+	t.Setenv("PATH", directory)
+	t.Setenv("TERM", "dumb")
+	entry := Entry{
+		Name: "codex", Command: "codex", Required: true,
+		VersionArgs: []string{"--version"}, Parse: firstVersion,
+		SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"},
+	}
+	result := Probe(context.Background(), []Entry{entry}, ProbeOptions{GOOS: "linux"})[0]
+	if result.State != StateOK || result.SelfDoctor != "ok" {
+		t.Fatalf("result=%#v, want a healthy engine independent of PFM's non-interactive TERM", result)
+	}
+}
+
 func writeProbeStub(t *testing.T, directory, name, body string) {
 	t.Helper()
 	path := filepath.Join(directory, name)

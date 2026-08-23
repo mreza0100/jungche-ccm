@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/store"
@@ -19,6 +20,7 @@ type claudeRecord struct {
 	Entrypoint       string `json:"entrypoint"`
 	PromptSource     string `json:"promptSource"`
 	IsCompactSummary bool   `json:"isCompactSummary"`
+	Timestamp        string `json:"timestamp"`
 	Message          struct {
 		Content borrowedRawMessage `json:"content"`
 	} `json:"message"`
@@ -77,6 +79,10 @@ func parseClaude(
 			}
 			transcript.LastPrompt = prompt
 			transcript.PromptCount++
+			if stamp, err := time.Parse(time.RFC3339Nano, record.Timestamp); err == nil &&
+				stamp.UnixNano() > transcript.ActivityNS {
+				transcript.ActivityNS = stamp.UnixNano()
+			}
 		}
 	})
 	if err != nil {
@@ -87,6 +93,9 @@ func parseClaude(
 	transcript.Path = file.Path
 	transcript.Size = file.Size
 	transcript.MTimeNS = file.MTimeNS
+	if start == 0 && transcript.ActivityNS == 0 {
+		transcript.ActivityNS = file.MTimeNS
+	}
 	transcript.ParsedOffset = parsedOffset
 	return transcript, bytesRead, nil
 }

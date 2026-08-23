@@ -10,12 +10,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/usagehook"
 )
 
@@ -30,6 +32,8 @@ type LimitAccount struct {
 	SkipReason    string
 	ConfigDir     string
 	ClaudeBinary  string
+	CodexBinary   string
+	CodexHome     string
 	CodexAuthPath string
 }
 
@@ -469,11 +473,17 @@ type codexCredentialEnvelope struct {
 }
 
 type codexUsage struct {
-	PlanType  string `json:"plan_type"`
-	RateLimit *struct {
-		PrimaryWindow   *codexRateLimitWindow `json:"primary_window"`
-		SecondaryWindow *codexRateLimitWindow `json:"secondary_window"`
-	} `json:"rate_limit"`
+	PlanType            string                          `json:"plan_type"`
+	RateLimit           *codexRateLimitBucket           `json:"rate_limit"`
+	RateLimitsByLimitID map[string]codexRateLimitBucket `json:"rate_limits_by_limit_id,omitempty"`
+	Warning             string                          `json:"warning,omitempty"`
+}
+
+type codexRateLimitBucket struct {
+	LimitID         string                `json:"limit_id,omitempty"`
+	LimitName       string                `json:"limit_name,omitempty"`
+	PrimaryWindow   *codexRateLimitWindow `json:"primary_window"`
+	SecondaryWindow *codexRateLimitWindow `json:"secondary_window"`
 }
 
 type codexRateLimitWindow struct {
@@ -506,6 +516,30 @@ func loadCodexCredentials(path string) (accessToken, accountID string, err error
 }
 
 func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccount) (codexUsage, error) {
+	if sampler.CodexEndpoint == "" && sampler.CodexClient == nil {
+		// The App Server is authoritative and may support credential shapes the
+		// direct HTTP fallback does not. Keep the direct credential diagnosis so
+		// that, if the App Server is unavailable too, a missing/partial sign-in
+		// remains the stable visible error instead of transport noise.
+		_, _, credentialErr := loadCodexCredentials(account.CodexAuthPath)
+		usage, appErr := sampler.fetchCodexAppServer(ctx, account)
+		if appErr == nil {
+			return usage, nil
+		}
+		if credentialErr != nil {
+			return codexUsage{}, credentialErr
+		}
+		usage, directErr := sampler.fetchCodexHTTP(ctx, account)
+		if directErr == nil {
+			usage.Warning = "Codex App Server limits unavailable; showing direct usage only: " + appErr.Error()
+			return usage, nil
+		}
+		return codexUsage{}, fmt.Errorf("Codex App Server failed: %v; direct usage failed: %w", appErr, directErr)
+	}
+	return sampler.fetchCodexHTTP(ctx, account)
+}
+
+func (sampler *LimitsSampler) fetchCodexHTTP(ctx context.Context, account LimitAccount) (codexUsage, error) {
 	accessToken, accountID, err := loadCodexCredentials(account.CodexAuthPath)
 	if err != nil {
 		return codexUsage{}, err
@@ -555,6 +589,70 @@ func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccou
 	return usage, nil
 }
 
+type codexAppWindow struct {
+	UsedPercent        float64 `json:"usedPercent"`
+	ResetsAt           int64   `json:"resetsAt"`
+	WindowDurationMins int64   `json:"windowDurationMins"`
+}
+
+type codexAppBucket struct {
+	LimitID   string          `json:"limitId"`
+	LimitName string          `json:"limitName"`
+	Primary   *codexAppWindow `json:"primary"`
+	Secondary *codexAppWindow `json:"secondary"`
+	PlanType  string          `json:"planType"`
+}
+
+func (sampler *LimitsSampler) fetchCodexAppServer(ctx context.Context, account LimitAccount) (codexUsage, error) {
+	home := account.CodexHome
+	if home == "" && account.CodexAuthPath != "" {
+		home = filepath.Dir(account.CodexAuthPath)
+	}
+	body, err := statusline.ReadGPTRateLimitsWithBinaryAtHome(ctx, account.CodexBinary, home)
+	if err != nil {
+		return codexUsage{}, err
+	}
+	var message struct {
+		ID     json.RawMessage `json:"id"`
+		Result struct {
+			RateLimits          *codexAppBucket           `json:"rateLimits"`
+			RateLimitsByLimitID map[string]codexAppBucket `json:"rateLimitsByLimitId"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &message); err != nil || string(message.ID) != "1" || message.Result.RateLimits == nil {
+		return codexUsage{}, fmt.Errorf("Codex App Server payload unreadable")
+	}
+	usage := codexUsage{
+		PlanType:            message.Result.RateLimits.PlanType,
+		RateLimit:           codexBucketFromApp(*message.Result.RateLimits),
+		RateLimitsByLimitID: make(map[string]codexRateLimitBucket, len(message.Result.RateLimitsByLimitID)),
+	}
+	for id, bucket := range message.Result.RateLimitsByLimitID {
+		usage.RateLimitsByLimitID[id] = *codexBucketFromApp(bucket)
+	}
+	if len(codexWindows(usage)) == 0 {
+		return codexUsage{}, fmt.Errorf("Codex App Server response carried no rate-limit windows")
+	}
+	return usage, nil
+}
+
+func codexBucketFromApp(source codexAppBucket) *codexRateLimitBucket {
+	return &codexRateLimitBucket{
+		LimitID: source.LimitID, LimitName: source.LimitName,
+		PrimaryWindow: codexWindowFromApp(source.Primary), SecondaryWindow: codexWindowFromApp(source.Secondary),
+	}
+}
+
+func codexWindowFromApp(source *codexAppWindow) *codexRateLimitWindow {
+	if source == nil {
+		return nil
+	}
+	return &codexRateLimitWindow{
+		UsedPercent: source.UsedPercent, ResetAt: source.ResetsAt,
+		LimitWindowSeconds: source.WindowDurationMins * 60,
+	}
+}
+
 // codexCacheRecord is codex's on-disk shape of the shared usage cache —
 // codex-<id>.json alongside the hook's own acct-<id>.json, same directory,
 // same rules. There is no hook writer for codex to stay compatible with (the
@@ -562,10 +660,13 @@ func (sampler *LimitsSampler) fetchCodex(ctx context.Context, account LimitAccou
 // ConfigDir this always carries the CodexAuthPath that produced it.
 type codexCacheRecord struct {
 	codexUsage
+	SourceVersion int                     `json:"source_version,omitempty"`
 	CodexAuthPath string                  `json:"codex_auth_path,omitempty"`
 	FetchedAt     *time.Time              `json:"fetched_at,omitempty"`
 	Backoff       *usagehook.CacheBackoff `json:"backoff,omitempty"`
 }
+
+const codexUsageSourceVersion = 2
 
 func codexCachePath(cacheDir string, account int) string {
 	return filepath.Join(cacheDir, fmt.Sprintf("codex-%d.json", account))
@@ -618,7 +719,7 @@ func (sampler *LimitsSampler) fetchCodexCached(
 	now := sampler.now()
 	path := codexCachePath(usagehook.DefaultCacheDir(), account.ID)
 	record, readErr := readCodexCacheRecord(path)
-	matches := readErr == nil && record.CodexAuthPath == account.CodexAuthPath
+	matches := readErr == nil && record.SourceVersion == codexUsageSourceVersion && record.CodexAuthPath == account.CodexAuthPath
 	confirmedAt, confirmed := cacheConfirmedAt(record.FetchedAt, path)
 	staleUsable := matches && confirmed && len(codexWindows(record.codexUsage)) > 0 &&
 		now.Sub(confirmedAt) <= maxStaleLimitsAge
@@ -645,7 +746,8 @@ func (sampler *LimitsSampler) fetchCodexCached(
 		message, retryAfter := backoffFor(err, now)
 		// Best-effort — see fetchClaudeCached's identical comment.
 		_ = writeCodexCacheRecord(path, codexCacheRecord{
-			codexUsage: previousUsage, CodexAuthPath: account.CodexAuthPath, FetchedAt: previousFetchedAt,
+			codexUsage: previousUsage, SourceVersion: codexUsageSourceVersion,
+			CodexAuthPath: account.CodexAuthPath, FetchedAt: previousFetchedAt,
 			Backoff: &usagehook.CacheBackoff{Message: message, RetryAfter: retryAfter, RecordedAt: now},
 		})
 		var rateLimit *usagehook.RateLimitError
@@ -659,22 +761,53 @@ func (sampler *LimitsSampler) fetchCodexCached(
 	}
 	fetchedAt := now
 	_ = writeCodexCacheRecord(path, codexCacheRecord{
-		codexUsage: usage, CodexAuthPath: account.CodexAuthPath, FetchedAt: &fetchedAt,
+		codexUsage: usage, SourceVersion: codexUsageSourceVersion,
+		CodexAuthPath: account.CodexAuthPath, FetchedAt: &fetchedAt,
 	})
 	return usage, fetchedAt, nil
 }
 
 func codexWindows(usage codexUsage) []Window {
+	baseLimitID := pfmengine.MustLookup(pfmengine.Codex).Binary
+	if len(usage.RateLimitsByLimitID) != 0 {
+		ids := make([]string, 0, len(usage.RateLimitsByLimitID))
+		for id := range usage.RateLimitsByLimitID {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(left, right int) bool {
+			if ids[left] == baseLimitID {
+				return true
+			}
+			if ids[right] == baseLimitID {
+				return false
+			}
+			return ids[left] < ids[right]
+		})
+		windows := make([]Window, 0, len(ids)*2)
+		for _, id := range ids {
+			bucket := usage.RateLimitsByLimitID[id]
+			windows = appendCodexWindows(windows, bucket, codexBucketSuffix(id, bucket))
+		}
+		return windows
+	}
 	if usage.RateLimit == nil {
 		return nil
 	}
 	windows := make([]Window, 0, 2)
-	for _, entry := range []*codexRateLimitWindow{usage.RateLimit.PrimaryWindow, usage.RateLimit.SecondaryWindow} {
+	return appendCodexWindows(windows, *usage.RateLimit, "")
+}
+
+func appendCodexWindows(windows []Window, bucket codexRateLimitBucket, suffix string) []Window {
+	for _, entry := range []*codexRateLimitWindow{bucket.PrimaryWindow, bucket.SecondaryWindow} {
 		if entry == nil {
 			continue
 		}
+		name := codexWindowName(entry.LimitWindowSeconds)
+		if suffix != "" {
+			name += "-" + suffix
+		}
 		window := Window{
-			Name:    codexWindowName(entry.LimitWindowSeconds),
+			Name:    name,
 			UsedPct: entry.UsedPercent, ResetAt: time.Unix(entry.ResetAt, 0),
 		}
 		if entry.ResetAt <= 0 {
@@ -684,6 +817,21 @@ func codexWindows(usage codexUsage) []Window {
 		windows = append(windows, window)
 	}
 	return windows
+}
+
+func codexBucketSuffix(id string, bucket codexRateLimitBucket) string {
+	baseLimitID := pfmengine.MustLookup(pfmengine.Codex).Binary
+	if id == baseLimitID || (bucket.LimitID == baseLimitID && id == "") {
+		return ""
+	}
+	parts := strings.FieldsFunc(strings.ToLower(bucket.LimitName), func(value rune) bool {
+		return (value < 'a' || value > 'z') && (value < '0' || value > '9')
+	})
+	if len(parts) != 0 {
+		return parts[len(parts)-1]
+	}
+	value := strings.TrimPrefix(strings.ToLower(id), baseLimitID+"_")
+	return strings.ReplaceAll(value, "_", "-")
 }
 
 func codexWindowName(seconds int64) string {

@@ -67,6 +67,31 @@ print -r -- "rc=$?"
 	}
 }
 
+func TestShimCanBeResourcedWithForeignReadOnlyPFMBinParameter(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh is not installed")
+	}
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeShimFile(t, filepath.Join(binDir, "pfm"), "#!/bin/sh\nprintf 'shim-ok\\n'\n")
+	shimPath := embeddedShimPath(t)
+	script := `typeset -gr _PFM_BIN=/foreign/read-only/value
+source ` + quoteZsh(shimPath) + `
+source ` + quoteZsh(shimPath) + `
+cc-ls --tsv
+`
+	command := exec.Command(zsh, "-c", script)
+	command.Env = append(os.Environ(), "HOME="+home)
+	output, err := command.CombinedOutput()
+	if err != nil || string(output) != "shim-ok\n" {
+		t.Fatalf("resource shim with foreign read-only parameter: err=%v output=%q", err, output)
+	}
+}
+
 // TestShimLaunchPosture drives the shell surface the Go action protocol emits
 // into, and fixtures what a launched chat actually receives: the autonomy flags
 // in argv, an endpoint-free environment, and the account the fleet's own state
