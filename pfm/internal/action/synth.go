@@ -77,6 +77,9 @@ func Synthesize(request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	switch route {
+	case ResumeOpencode:
+		// One fleet-wide OpenCode seat: no per-account roster to satisfy, the
+		// binary comes from the machine config's opencode section.
 	case NewClaude, Agent, ResumeClaude:
 		if _, found := machine.Account(request.PrimaryAccount); !found {
 			return Plan{}, fmt.Errorf(
@@ -126,6 +129,32 @@ func Synthesize(request Request) (Plan, error) {
 		account, _ := machine.CodexAccountByID(request.PrimaryAccount)
 		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && CODEX_HOME=" +
 			Quote(account.Home) + " cx)"
+	case ResumeOpencode:
+		if request.Row.ID == "" || request.Row.CWD == "" ||
+			request.FreshSocket == "" {
+			return Plan{}, errors.New(
+				"OpenCode resume requires id, cwd, and fresh socket",
+			)
+		}
+		var command strings.Builder
+		command.WriteString(hygiene)
+		command.WriteByte(' ')
+		command.WriteString(binaryWord(
+			machine.OpenCode.Binary,
+			"opencode",
+			machine.Source("opencode.binary") == pfmconfig.SourceFile,
+		))
+		command.WriteString(" --session ")
+		command.WriteString(Quote(request.Row.ID))
+		command.WriteByte(' ')
+		command.WriteString(Quote(request.Row.CWD))
+		plan.Run = opencodeContinuityBanner(request.Row) + command.String()
+		plan.Line = newSessionLine(
+			request.FreshSocket,
+			request.Row.CWD,
+			plan.Run,
+			request.Bunker,
+		)
 	case Live:
 		if request.Row.Socket == "" {
 			return Plan{}, errors.New("live action requires a socket")
@@ -248,6 +277,8 @@ func routeForKind(kind compose.Kind) (Route, error) {
 		return ResumeClaude, nil
 	case compose.ResumeCodex:
 		return ResumeCodex, nil
+	case compose.ResumeOpencode:
+		return ResumeOpencode, nil
 	default:
 		return 0, fmt.Errorf("unsupported row kind %s", kind)
 	}
@@ -342,6 +373,26 @@ func continuityBanner(row compose.Row) string {
 			lines,
 			"    Transcript, complete whatever this pane shows: "+row.Path,
 		)
+	}
+	var banner strings.Builder
+	banner.WriteString("printf '%s\\n'")
+	for _, line := range lines {
+		banner.WriteByte(' ')
+		banner.WriteString(Quote(line))
+	}
+	banner.WriteString("; ")
+	return banner.String()
+}
+
+// opencodeContinuityBanner is the OpenCode twin of continuityBanner, minus
+// everything Codex-specific. It names the id and states what is checkable;
+// whether OpenCode rehydrated the session is its own decision, so the banner
+// asserts nothing about memory.
+func opencodeContinuityBanner(row compose.Row) string {
+	lines := []string{
+		"═══ RESUME of " + row.ID + " — verify before trusting this pane ═══",
+		"    History loaded? Check the session list above the composer before",
+		"    treating this seat as continuing its prior work.",
 	}
 	var banner strings.Builder
 	banner.WriteString("printf '%s\\n'")

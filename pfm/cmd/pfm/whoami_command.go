@@ -163,6 +163,7 @@ func newInjectEngine(runtimes ...commandRuntime) (*inject.Engine, error) {
 		}
 		dependencies.ClaudeBinary = runtimes[0].Config.Claude.Binary
 		dependencies.CodexBinary = runtimes[0].Config.Codex.Binary
+		dependencies.OpencodeBinary = runtimes[0].Config.OpenCode.Binary
 		for _, account := range runtimes[0].Config.Accounts {
 			if emoji := runtimes[0].Config.EmojiFor(account.ID); emoji != "" && emoji != "·" {
 				dependencies.AccountEmojis = append(dependencies.AccountEmojis, emoji)

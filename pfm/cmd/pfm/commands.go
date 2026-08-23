@@ -353,6 +353,9 @@ func freshSocket(kind compose.Kind) string {
 	if kind == compose.ResumeCodex || kind == compose.NewCodex {
 		prefix = "cx"
 	}
+	if kind == compose.ResumeOpencode {
+		prefix = "ox"
+	}
 	var randomBytes [2]byte
 	_, _ = rand.Read(randomBytes[:])
 	return fmt.Sprintf(

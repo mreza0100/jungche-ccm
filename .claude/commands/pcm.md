@@ -29,7 +29,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 - `.claude/agents/*.md` — registered agents: `gitter` (the sole git writer) and `tracer` (consumer-tree trace)
 - `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set; source-fetched per `blueprint/skills/sources.json`, never vendored)
 - `.claude/output-styles/*.md` — persona registry: `professor.md` (session style) + `dr-house.md` (this command's overlay)
-- `.claude/scripts/*.{sh,mjs}` — dev.sh, pcm-guard.sh, guard-stamp.sh, format-md.sh, codex-sync.sh, build-codex.mjs (Claude→Codex compiler)
+- `.claude/scripts/*.{sh,mjs}` — dev.sh, pcm-guard.sh, guard-stamp.sh, format-md.sh, codex-sync.sh (mirror auto-compile; the Codex compiler itself is `pfm codex build`)
 - `docs/commands/{cmd}/references/` — command-owned reference docs (`$CDOCS/$CMD/$REFS/`); today: `pcm/references/{audit-scopes,refresh}.md`
 - **The shipped product** — `blueprint/**` is an adopter's live framework, one clone away. Same law, higher stakes: a change there ships to every future install. `docs/{BLUEPRINT,SETUP,PLACEHOLDERS}.md` are its spec; `blueprint/refresh-map.json` maps each template to the live source it is derived from.
 
@@ -95,7 +95,7 @@ For things that must happen every time (formatting, validation, secret-scanning)
 - Commands: `.claude/commands/**/*.md`; skills: `.claude/skills/*/SKILL.md`; output styles: `.claude/output-styles/*.md`
 - Scripts: `.claude/scripts/*.{sh,mjs}`; settings: `.claude/settings.json`
 - The shipped blueprint: `blueprint/**` — templates, spec, and `refresh-map.json`. `/pcm:release` publishes it; `/pcm` edits it.
-- Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — all generated from the Claude sources by `node .claude/scripts/build-codex.mjs`. Auto-compiled at turn end by the `codex-sync.sh` hooks whenever an Edit/Write touches a Claude source (Bash-driven writes are outside that hook's coverage — run `generate` yourself after one); `check` gates drift. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`
+- Codex mirror: `.codex/` + `AGENTS.md` files + `$HOME/.codex/` — all generated from the Claude sources by `pfm codex build` — the single writer. Auto-compiled at turn end by the `codex-sync.sh` hooks whenever an Edit/Write touches a Claude source (Bash-driven writes are outside that hook's coverage — run `pfm codex build .` yourself after one); `pfm codex check .` gates drift. Hand-written keepers: `.codex/config.toml` (except its generated `mcp_servers` fence, compiled from `.mcp.json`), `.codex/rules`
 - PCM reference docs: `docs/commands/pcm/references/`
 
 ---
@@ -174,7 +174,7 @@ Group changes: (1) **breaking** (must be atomic), (2) **non-breaking** (independ
 4. Command completeness — every `/command` referenced in a shipped or installed file has a file; every `.claude/commands/**/*.md` has a `description:`
 5. Script and reference-doc paths exist as stated (`docs/commands/**`, `.claude/scripts/**`)
 6. Directory name consistency across all files
-7. `node .claude/scripts/build-codex.mjs check` — the Codex mirror is not stale (a Bash-driven write skips the auto-compile hook)
+7. `pfm codex check .` — the Codex mirror is not stale (a Bash-driven write skips the auto-compile hook)
 
 ### Step 6 — Report
 
@@ -225,13 +225,13 @@ Ask: "Want me to fix these issues?"
 
 **Full rename:** Grep ALL occurrences (including `blueprint/**`, `README.md`, `BLUEPRINT.md`, `SETUP.md`, `refresh-map.json`) → update agents → update CLAUDE.md → final grep for zero stale refs → recompile the Codex mirror.
 
-**New agent:** Create `.claude/agents/{name}.md` — its `description:` is the registry entry, its `model:` pins the tier (root `CLAUDE.md` § Subagent dispatch carries no roster) → `build-codex.mjs generate` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/agents/{name}.md`.
+**New agent:** Create `.claude/agents/{name}.md` — its `description:` is the registry entry, its `model:` pins the tier (root `CLAUDE.md` § Subagent dispatch carries no roster) → `pfm codex build .` (it compiles a `.codex/agents/{name}.toml`) → decide whether it ships upstream as `blueprint/agents/{name}.md`.
 
 **New skill:** Create `.claude/skills/{name}/SKILL.md` → no CLAUDE.md edit needed (skills self-index from `description:` frontmatter). A skill meant for adopters is registered in `blueprint/skills/sources.json` and lives in its OWN public repo — the blueprint never vendors one.
 
 **New command:** Create `.claude/commands/{name}.md` with a `description:` → it self-indexes; add to CLAUDE.md ONLY if it's a guard or a non-obvious routing decision.
 
-**Codex mirror:** any of the above → `node .claude/scripts/build-codex.mjs generate && node .claude/scripts/build-codex.mjs check`. The `Stop` hook does this automatically after an Edit/Write; a Bash-driven write bypasses it, and `check` is the backstop.
+**Codex mirror:** any of the above → `pfm codex build . && pfm codex check .`. The `Stop` hook does this automatically after an Edit/Write; a Bash-driven write bypasses it, and `check` is the backstop.
 
 ---
 

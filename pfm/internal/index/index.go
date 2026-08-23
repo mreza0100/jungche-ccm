@@ -42,6 +42,10 @@ type Counters struct {
 	// conversations the rollout directory never showed.
 	CodexThreads     int
 	CodexRowsCreated int
+
+	// OcSessions counts the OpenCode sessions mirrored this pass. The mirror
+	// is a full replace, so this is the population, not a delta.
+	OcSessions int
 }
 
 // Indexer incrementally mirrors transcript stores into SQLite.
@@ -287,6 +291,12 @@ func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, err
 	if !options.PriorityOnly {
 		if err := indexer.database.ReconcileCodexLineageRoots(ctx); err != nil {
 			return counters, fmt.Errorf("reconcile Codex lineage roots: %w", err)
+		}
+	}
+
+	if !options.PriorityOnly {
+		if err := syncOpencodeMirror(ctx, indexer.database, indexer.paths.OpenCodeRoot, &counters); err != nil {
+			return counters, err
 		}
 	}
 

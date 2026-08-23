@@ -100,3 +100,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   remaining rules moved into Process. Every behavioral rule, threshold, and sacred-ground law
   survived verbatim in substance. Local file only — `blueprint/CLAUDE.md` is a different document
   and unchanged.
+- **KEEP-LOCAL: `/pcm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
+  repo's Codex mirror has one writer, the Go `pfm codex build`; the repo-local `build-codex.mjs` is
+  gone, so the "New agent" step and the scripts roster (a duplicated `codex-sync.sh`) now name the
+  live compiler. `blueprint/commands/pcm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.

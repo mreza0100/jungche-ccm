@@ -187,7 +187,7 @@ Three paths, shortest first — full protocol in **[`INSTALL.md`](./INSTALL.md)*
 | `scripts/` | Maintainer tooling — the pre-push leak gate, the release genericizer, the incremental template-refresh scanner. |
 | `releases/` | One file per tagged release; indexed by `CHANGELOG.md`. |
 | `.githooks/` | The committed pre-push hook — `git config core.hooksPath .githooks` arms it. |
-| `.claude/`, `.codex/` | This repo's own dogfooded config; `.codex/` is compiled from `.claude/` and never hand-edited. |
+| `.claude/`, `.codex/`, `.opencode/` | This repo's own dogfooded config; `.codex/` and `.opencode/` are compiled from `.claude/` and never hand-edited. |
 
 ---
 

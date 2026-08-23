@@ -14,9 +14,16 @@ import (
 )
 
 const (
-	// ClaudeEngine and CodexEngine name the two chat engines a caller can be.
+	// ClaudeEngine and CodexEngine name the chat engines a caller can be,
+	// with OpencodeEngine the third; OpencodeSocketPrefix is the tmux-socket
+	// naming convention that identifies a live OpenCode seat.
 	ClaudeEngine = "cc"
 	CodexEngine  = "cx"
+
+	// OpencodeEngine is OpenCode's engine short code.
+	OpencodeEngine = "ox"
+	// OpencodeSocketPrefix names the tmux servers OpenCode chats run on.
+	OpencodeSocketPrefix = "ox-"
 
 	// ClaudeSessionEnv is exported into every shell a Claude Code chat spawns.
 	ClaudeSessionEnv = "CLAUDE_CODE_SESSION_ID"
