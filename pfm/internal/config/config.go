@@ -78,9 +78,27 @@ type CodexAccount struct {
 }
 
 // EngineCounts is the materialized engine roster summary every surface uses.
+// OpenCodePrefs is OpenCode's launch posture. There is one fleet-wide
+// OpenCode home (its data lives under ~/.local/share/opencode), so unlike
+// Codex there are no per-account overrides to resolve.
+type OpenCodePrefs struct {
+	Binary string
+}
+
+// OpenCode is retained as an alias for callers that used the public shape.
+type OpenCode = OpenCodePrefs
+
+// OpenCodeAccount is the implicit single OpenCode seat. It exists only when
+// OpenCode's session store is present at load time.
+type OpenCodeAccount struct {
+	ID   int
+	Home string
+}
+
 type EngineCounts struct {
-	Claude int
-	Codex  int
+	Claude   int
+	Codex    int
+	Opencode int
 }
 
 type MCPServer struct {
@@ -111,16 +129,18 @@ type AskConfig struct {
 // Config is the fully materialized configuration. Sources records whether
 // each effective value came from the machine file or from a default.
 type Config struct {
-	Version       int
-	Theme         string
-	Accounts      []Account
-	AccountSkips  []AccountSkip
-	CodexAccounts []CodexAccount
-	Claude        Claude
-	Codex         Codex
-	MCPServers    map[string]MCPServer
-	MCP           MCPConfig
-	Ask           AskConfig
+	Version          int
+	Theme            string
+	Accounts         []Account
+	AccountSkips     []AccountSkip
+	CodexAccounts    []CodexAccount
+	OpencodeAccounts []OpenCodeAccount
+	Claude           Claude
+	Codex            Codex
+	OpenCode         OpenCode
+	MCPServers       map[string]MCPServer
+	MCP              MCPConfig
+	Ask              AskConfig
 
 	Path    string
 	Exists  bool
@@ -140,6 +160,7 @@ type rawConfig struct {
 	Accounts *[]rawAccount `json:"accounts,omitempty"`
 	Claude   *rawClaude    `json:"claude,omitempty"`
 	Codex    *rawCodex     `json:"codex,omitempty"`
+	OpenCode *rawOpenCode  `json:"opencode,omitempty"`
 	MCP      *rawMCP       `json:"mcp,omitempty"`
 	Ask      *rawAsk       `json:"ask,omitempty"`
 }
@@ -155,6 +176,10 @@ type rawAccount struct {
 type rawClaude struct {
 	PermissionMode *string `json:"permissionMode,omitempty"`
 	Binary         *string `json:"binary,omitempty"`
+}
+
+type rawOpenCode struct {
+	Binary *string `json:"binary,omitempty"`
 }
 
 type rawCodex struct {
@@ -250,6 +275,11 @@ func defaultsWithMCPServers(
 	} else if codexValid {
 		codexAccounts = []CodexAccount{{ID: 1, Home: codexRoot, Emoji: DefaultEmoji(1)}}
 	}
+	var opencodeAccounts []OpenCodeAccount
+	opencodeHome := filepath.Join(home, ".local", "share", "opencode")
+	if _, err := os.Stat(filepath.Join(opencodeHome, "opencode.db")); err == nil {
+		opencodeAccounts = []OpenCodeAccount{{ID: 1, Home: opencodeHome}}
+	}
 	sources := map[string]Source{
 		"version":               SourceDefault,
 		"theme":                 SourceDefault,
@@ -259,6 +289,7 @@ func defaultsWithMCPServers(
 		"codex.yolo":            SourceDefault,
 		"codex.binary":          SourceDefault,
 		"codex.homes":           SourceDefault,
+		"opencode.binary":       SourceDefault,
 		"mcp.http.port":         SourceDefault,
 		"ask.engine":            SourceDefault,
 		"ask.codex.model":       SourceDefault,
@@ -272,15 +303,17 @@ func defaultsWithMCPServers(
 		sources["mcp.servers."+name+".enabled"] = SourceDefault
 	}
 	return Config{
-		Version:       Version,
-		Theme:         "default",
-		Accounts:      accounts,
-		AccountSkips:  accountSkips,
-		CodexAccounts: codexAccounts,
-		Claude:        Claude{PermissionMode: PermissionBypass, Binary: "claude"},
-		Codex:         Codex{Yolo: true, Binary: "codex"},
-		MCPServers:    servers,
-		MCP:           MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
+		Version:          Version,
+		Theme:            "default",
+		Accounts:         accounts,
+		AccountSkips:     accountSkips,
+		CodexAccounts:    codexAccounts,
+		OpencodeAccounts: opencodeAccounts,
+		Claude:           Claude{PermissionMode: PermissionBypass, Binary: "claude"},
+		Codex:            Codex{Yolo: true, Binary: "codex"},
+		OpenCode:         OpenCode{Binary: "opencode"},
+		MCPServers:       servers,
+		MCP:              MCPConfig{Servers: cloneMCPServers(servers), HTTP: MCPHTTP{Port: 8377}},
 		Ask: AskConfig{
 			Engine: "codex",
 			Codex:  EnginePrefs{Model: "gpt-5.6-luna", Effort: "low"},
@@ -560,6 +593,17 @@ func loadWithMCPServers(
 			result.Sources["codex.homes"] = SourceFile
 		}
 	}
+	if raw.OpenCode != nil {
+		if raw.OpenCode.Binary != nil {
+			binary := strings.TrimSpace(*raw.OpenCode.Binary)
+			if binary == "" || strings.ContainsRune(binary, '\x00') {
+				return Config{}, fmt.Errorf("config %s: opencode.binary must be a non-empty command", result.Path)
+			}
+			result.OpenCode.Binary = binary
+			result.Sources["opencode.binary"] = SourceFile
+		}
+	}
+
 	if raw.MCP != nil {
 		for name, server := range raw.MCP.Servers {
 			if _, known := registered[name]; !known {
@@ -928,7 +972,11 @@ func (config Config) CodexEmojiFor(id int) string {
 }
 
 func (config Config) Engines() EngineCounts {
-	return EngineCounts{Claude: len(config.Accounts), Codex: len(config.CodexAccounts)}
+	return EngineCounts{
+		Claude:   len(config.Accounts),
+		Codex:    len(config.CodexAccounts),
+		Opencode: len(config.OpencodeAccounts),
+	}
 }
 
 func (config Config) DefaultEngine() (string, error) {
@@ -946,8 +994,12 @@ func (config Config) DefaultEngine() (string, error) {
 		if counts.Codex > 0 {
 			return "codex", nil
 		}
+	case "opencode", "ox":
+		if counts.Opencode > 0 {
+			return "opencode", nil
+		}
 	default:
-		return "", fmt.Errorf("ask.engine %q is not claude or codex", config.Ask.Engine)
+		return "", fmt.Errorf("ask.engine %q is not claude, codex, or opencode", config.Ask.Engine)
 	}
 	if counts.Claude > 0 {
 		return "claude", nil
@@ -955,7 +1007,10 @@ func (config Config) DefaultEngine() (string, error) {
 	if counts.Codex > 0 {
 		return "codex", nil
 	}
-	return "", errors.New("no engines configured: Claude roster empty; Codex roster empty")
+	if counts.Opencode > 0 {
+		return "opencode", nil
+	}
+	return "", errors.New("no engines configured: Claude roster empty; Codex roster empty; OpenCode store absent")
 }
 
 func (config Config) ProjectRoots() []string {

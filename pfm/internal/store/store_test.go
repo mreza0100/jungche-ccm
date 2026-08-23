@@ -24,6 +24,7 @@ func TestOpenMigratesAndReopensIdempotently(t *testing.T) {
 		"epic_injections",
 		"hidden",
 		"meta",
+		"oc_sessions",
 		"rollouts",
 		"transcripts",
 	})

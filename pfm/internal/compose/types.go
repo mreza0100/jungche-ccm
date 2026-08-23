@@ -24,6 +24,10 @@ const (
 	// live operation it supports (attach), matching the socket-only identity
 	// it carries.
 	Booting
+	// ResumeOpencode is one indexed OpenCode session. Appended last ON PURPOSE:
+	// Kind values are compared numerically in golden fixtures, so renumbering
+	// an existing kind would silently rewrite every fixture row.
+	ResumeOpencode
 )
 
 func (kind Kind) String() string {
@@ -46,6 +50,8 @@ func (kind Kind) String() string {
 		return "new-codex"
 	case Booting:
 		return "booting"
+	case ResumeOpencode:
+		return "resume-opencode"
 	default:
 		return "unknown"
 	}
@@ -82,6 +88,7 @@ type Input struct {
 	Snapshot     gather.Snapshot
 	Transcripts  []store.Transcript
 	Rollouts     []store.Rollout
+	OcSessions   []store.OcSession
 	CxNames      map[string]string
 	Killed       []store.Killed
 	AccountRoots []AccountRoot

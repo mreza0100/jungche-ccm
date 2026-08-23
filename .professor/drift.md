@@ -113,3 +113,8 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `.claude/`; `{AI_PROJECT}` chain clause → the wave-walker engine's prompt modules + dist build;
   360's `{USER_NOUN} vs {SUBJECT_NOUN}` → `adopter vs maintainer`. 360 ships because rnd.md's
   blind-spot sweep points at `.claude/commands/p/360.md`.
+
+- **KEEP-LOCAL: `/pcm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
+  repo's Codex mirror has one writer, the Go `pfm codex build`; the repo-local `build-codex.mjs` is
+  gone, so the "New agent" step and the scripts roster (a duplicated `codex-sync.sh`) now name the
+  live compiler. `blueprint/commands/pcm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.

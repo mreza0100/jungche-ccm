@@ -28,15 +28,16 @@ const (
 
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
-	resolver      Resolver
-	tmux          Tmux
-	spawner       ThenSpawner
-	options       Options
-	whoami        SelfIdentifier
-	codexSeat     SelfIdentifier
-	claudeBinary  string
-	codexBinary   string
-	accountEmojis []string
+	resolver       Resolver
+	tmux           Tmux
+	spawner        ThenSpawner
+	options        Options
+	whoami         SelfIdentifier
+	codexSeat      SelfIdentifier
+	claudeBinary   string
+	codexBinary    string
+	opencodeBinary string
+	accountEmojis  []string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -92,15 +93,16 @@ func New(dependencies Dependencies) (*Engine, error) {
 		dependencies.Identifier = identifier
 	}
 	return &Engine{
-		resolver:      dependencies.Resolver,
-		tmux:          dependencies.Tmux,
-		spawner:       dependencies.Spawner,
-		options:       options,
-		whoami:        dependencies.Identifier,
-		codexSeat:     dependencies.CodexSeat,
-		claudeBinary:  binaries.Claude,
-		codexBinary:   binaries.Codex,
-		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
+		resolver:       dependencies.Resolver,
+		tmux:           dependencies.Tmux,
+		spawner:        dependencies.Spawner,
+		options:        options,
+		whoami:         dependencies.Identifier,
+		codexSeat:      dependencies.CodexSeat,
+		claudeBinary:   binaries.Claude,
+		codexBinary:    binaries.Codex,
+		opencodeBinary: dependencies.OpencodeBinary,
+		accountEmojis:  append([]string(nil), dependencies.AccountEmojis...),
 	}, nil
 }
 
@@ -407,6 +409,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 			command,
 			engine.claudeBinary,
 			engine.codexBinary,
+			engine.opencodeBinary,
 		)
 		if verifiedEngine != "" {
 			target.Engine = verifiedEngine
@@ -884,10 +887,14 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 }
 
 func engineName(engine string) string {
-	if engine == "cx" {
+	switch engine {
+	case "cx":
 		return "Codex"
+	case resolve.OpencodeEngine:
+		return "OpenCode"
+	default:
+		return "Claude"
 	}
-	return "Claude"
 }
 
 func (engine *Engine) sendPacedLiteral(
@@ -923,11 +930,19 @@ func paneCommandEngine(command string, binaries ...string) string {
 	name := filepath.Base(strings.TrimSpace(command))
 	claudeBinary := ""
 	codexBinary := ""
+	opencodeBinary := ""
 	if len(binaries) > 0 {
 		claudeBinary = binaries[0]
 	}
 	if len(binaries) > 1 {
 		codexBinary = binaries[1]
+	}
+	if len(binaries) > 2 {
+		opencodeBinary = binaries[2]
+	}
+	if name == "opencode" ||
+		(opencodeBinary != "" && name == filepath.Base(opencodeBinary)) {
+		return resolve.OpencodeEngine
 	}
 	if name == "codex" || (codexBinary != "" && name == filepath.Base(codexBinary)) {
 		return "cx"
@@ -1195,6 +1210,10 @@ func targetFromParts(socketPath, pane string) Target {
 	if strings.HasPrefix(base, "cx-") ||
 		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-cx-")) {
 		engine = "cx"
+	}
+	if strings.HasPrefix(base, resolve.OpencodeSocketPrefix) ||
+		(os.Getenv("PFM_TEST_PROBE_SOCKETS") == "1" && strings.HasPrefix(base, "probe-"+resolve.OpencodeSocketPrefix)) {
+		engine = resolve.OpencodeEngine
 	}
 	return Target{SocketPath: socketPath, Pane: pane, Engine: engine}
 }

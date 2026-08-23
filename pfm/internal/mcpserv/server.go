@@ -38,8 +38,11 @@ type Runtime struct {
 	ConfigPath   string
 	ClaudeBinary string
 	CodexBinary  string
-	Operations   SharedOperations
-	Dispatch     Dispatch
+	// OpencodeBinary is the configured OpenCode launch command; empty means
+	// the default "opencode".
+	OpencodeBinary string
+	Operations     SharedOperations
+	Dispatch       Dispatch
 }
 
 // SharedOperations are the canonical chat operations supplied by the CLI

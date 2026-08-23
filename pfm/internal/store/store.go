@@ -20,7 +20,7 @@ import (
 
 const (
 	// SchemaVersion is the newest database schema understood by this binary.
-	SchemaVersion = 6
+	SchemaVersion = 7
 
 	driverName = "sqlite"
 )
@@ -43,6 +43,9 @@ var schemaV5 string
 //go:embed migration_v6.sql
 var schemaV6 string
 
+//go:embed migration_v7.sql
+var schemaV7 string
+
 var migrations = [...]string{
 	schemaV1,
 	schemaV2,
@@ -50,6 +53,7 @@ var migrations = [...]string{
 	schemaV4,
 	schemaV5,
 	schemaV6,
+	schemaV7,
 }
 
 // Store is a single-connection handle to the pfm SQLite database.
@@ -179,8 +183,18 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 		if version > SchemaVersion {
+			// Migrations are ONE-WAY. A newer binary migrated this database;
+			// every older binary on the machine is now locked out until it is
+			// upgraded — there is no automatic downgrade, and hand-editing
+			// user_version is only safe when the skipped migrations happen to
+			// be purely additive, which nothing here guarantees. Say so where
+			// the failure lands, with the recovery that always works.
 			return fmt.Errorf(
-				"database schema version %d is newer than supported version %d",
+				"database schema version %d is newer than supported version %d: "+
+					"this pfm binary is OLDER than the one that migrated it — "+
+					"upgrade every pfm on this machine, or restore a backup "+
+					"(sqlite3 <db> \".backup <backup-before-upgrade>\") taken before the newer binary first ran; "+
+					"migrations are one-way and no downgrade path exists",
 				version,
 				SchemaVersion,
 			)
