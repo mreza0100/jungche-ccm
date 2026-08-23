@@ -216,6 +216,18 @@ func scanFleet(
 	if err != nil {
 		return scanResult{}, err
 	}
+	// The one-shot path reconciles too: a /clear observed here must not wait
+	// for somebody to open the picker before the fleet stops pointing at the
+	// thread it replaced. A read-only scan still writes nothing.
+	if !request.ReadOnly && reconcileCodexPanes(ctx, database, live, commandRuntime{
+		Config: environment.config,
+		Paths:  environment.paths,
+	}, stderr) {
+		data, err = loadFleetData(ctx, database)
+		if err != nil {
+			return scanResult{}, err
+		}
+	}
 	result := composeFleet(environment, request, data, live)
 	result.Counters = counters
 	result.Live = live
@@ -770,16 +782,17 @@ func reconcileCodexPanes(
 	live gather.Snapshot,
 	runtime commandRuntime,
 	stderr io.Writer,
-) {
+) bool {
+	killed := false
 	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: %v\n", err)
-		return
+		return killed
 	}
 	cxNames, err := database.CxNames(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: read thread names: %v\n", err)
-		return
+		return killed
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	renamer := spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
@@ -819,14 +832,15 @@ func reconcileCodexPanes(
 		if !changed || previous == "" {
 			continue
 		}
-		target, killed, err := manager.KillClearedCodex(ctx, previous)
+		target, recorded, err := manager.KillClearedCodex(ctx, previous)
 		if err != nil {
 			fmt.Fprintf(stderr, "codex pane %s %s: record clear kill: %v\n", identity.Socket, identity.PaneID, err)
 			continue
 		}
-		if !killed {
+		if !recorded {
 			continue
 		}
+		killed = true
 		name := cxNames[target.ID]
 		if name == "" {
 			continue
@@ -840,8 +854,8 @@ func reconcileCodexPanes(
 			fmt.Fprintf(stderr, "codex pane %s %s: chat name was not re-applied after clear: %s\n", identity.Socket, identity.PaneID, warning)
 		}
 	}
+	return killed
 }
-
 func enrichLiveFleetData(
 	ctx context.Context,
 	database *store.Store,
