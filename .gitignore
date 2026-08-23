@@ -19,5 +19,17 @@ engines/wave-walker/engine/runtime-smoke-input.json
 .claude/skills/
 # Local Codex artifacts compiled from the Claude sources by build-codex.mjs.
 .codex/skills/
+# OpenCode mirror (build-opencode.mjs): skill symlinks stay untracked like
+# .codex/skills/; the goals/ tree is the goal plugin's live session state.
+.opencode/skills/
+.opencode/goals/
 # R&D scratch (walker consumer trees and the like): never a tracked artifact.
 .professor/RND/
+# Harvester conversion cache and OpenCode's own runtime files (plugin install
+# tree, nested config): host state, never repo content.
+.cache/
+.opencode/.opencode/
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/.gitignore

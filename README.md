@@ -123,7 +123,7 @@ brake. That trade-off is documented, not hidden.
 
 ---
 
-## Pillar 3 — the research department (`harvester/` + `engines/rr/`)
+## Pillar 3 — the research department (`pfm harvest` + `engines/rr/`)
 
 Ask an LLM to "research X" and it runs one search, reads the top hits, and summarizes. This
 pillar is for the questions that need more than that.
@@ -137,14 +137,17 @@ pillar is for the questions that need more than that.
   the agent that derives the answer is never the one that approves it. For a build-the-answer
   query the brainer authors a seeded Python derivation once, and a rerunner re-executes it as
   evidence lands.
-- **Harvester — multi-format fetch and search.** One MCP server: pass a URL, a local path, or a
-  scholarly identifier (DOI/ISBN/PMID) and it returns clean Markdown, caching every artifact on
-  disk. HTML pages escalate through a four-stage wall-bypass ladder — plain HTTP, Chrome
-  TLS-fingerprint impersonation, a headless-reader fallback, then the open-access mirror chain
-  (Unpaywall, OpenAlex, Europe PMC, Semantic Scholar, CORE, DOAJ, arXiv/OSF, Wayback) — the
-  headline path for walled academic publishers. PDFs, DOCX/XLSX/PPTX, archives, and images are
-  all first-class inputs; credential and key files are refused by a deny-list checked against
-  both a path and its symlink target.
+- **Harvester — multi-format fetch and search.** One MCP server, served by the fleet engine
+  (`pfm mcp harvester serve`): pass a URL, a local path, or a scholarly identifier
+  (DOI/ISBN/PMID) and it returns clean Markdown, caching every artifact on disk. HTML pages
+  escalate through a wall-bypass ladder — plain HTTP, Chrome TLS-fingerprint impersonation,
+  two independent reader services, then the open-access mirror chain (OpenAlex, Semantic
+  Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, CORE, DOAJ, arXiv/ar5iv/OSF, and
+  the Wayback Machine; Unpaywall joins them once an operator email is configured) — the
+  headline path for walled academic publishers. PDFs, EPUB, DOCX/XLSX/PPTX, archives, and
+  images are all first-class inputs, and a scanned PDF whose text layer comes back empty earns
+  one OCR pass; credential and key files are refused by a deny-list checked against both a
+  path and its symlink target.
 - **`rr fast` — instant sourced answers.** Skips the background Workflow: one Sonnet lead maps
   the question, dispatches a parallel wave of Haiku diggers down the 2-4 highest-value
   rabbit-holes, and synthesizes an answer with inline citations — minutes, not the ~45-90 for a
@@ -180,14 +183,13 @@ Three paths, shortest first — full protocol in **[`INSTALL.md`](./INSTALL.md)*
 | --- | --- |
 | `blueprint/` | The discipline layer's shipped product, flattened to the top level: `CLAUDE.md`, `agents/`, `commands/`, `codex/`, `output-styles/`, `per-project/`, `skills/`, `themes/`, `vscode/`, `workflows/`, plus `refresh-map.json` (every template ↔ its live source). |
 | `docs/` | The hand-curated spec: `BLUEPRINT.md` (philosophy), `SETUP.md` (the install interview), `ARCHITECTURE.md`, `PLACEHOLDERS.md`, `RELEASE.md`, `README.md`, `references/` — plus reference docs for this repo's own commands under `commands/`. |
-| `pfm/` | The Go fleet engine — CLI source, the embedded installer assets (command cards, launcher shim, scheduler units), embedded runtime prompts. |
-| `harvester/` | The multi-format fetch + search MCP server (Python). |
+| `pfm/` | The Go fleet engine — CLI source, the embedded installer assets (command cards, launcher shim, scheduler units), embedded runtime prompts, and the multi-format fetch + search MCP server (`internal/harvest*`). |
 | `engines/` | `rr/` — the deep-research Workflow (source + build) — and `wave-walker/` — the post-merge trace engine the discipline pipeline calls. |
 | `agents/` | Host-level agent definitions (`tracer`, `rr-fast`) and the TOML compiler that emits them. |
 | `scripts/` | Maintainer tooling — the pre-push leak gate, the release genericizer, the incremental template-refresh scanner. |
 | `releases/` | One file per tagged release; indexed by `CHANGELOG.md`. |
 | `.githooks/` | The committed pre-push hook — `git config core.hooksPath .githooks` arms it. |
-| `.claude/`, `.codex/` | This repo's own dogfooded config; `.codex/` is compiled from `.claude/` and never hand-edited. |
+| `.claude/`, `.codex/`, `.opencode/` | This repo's own dogfooded config; `.codex/` and `.opencode/` are compiled from `.claude/` and never hand-edited. |
 
 ---
 
