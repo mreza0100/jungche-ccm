@@ -301,7 +301,75 @@ func TestCodexClearWithoutTmuxKillsInheritedThread(t *testing.T) {
 	}
 }
 
+func TestCodexClearWithoutTmuxUsesHookParentBinding(t *testing.T) {
+	root := jailTest(t)
+	writeJailedCodexAuth(t, root)
+	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	t.Setenv("CODEX_THREAD_ID", "")
+	oldID := "77777777-7777-4777-8777-777777777777"
+	newID := "88888888-8888-4888-8888-888888888888"
+	rolloutPath := filepath.Join(
+		root,
+		"codex",
+		"sessions",
+		"2030",
+		"01",
+		"02",
+		"rollout-2030-01-02T03-04-05-"+oldID+".jsonl",
+	)
+	if err := os.MkdirAll(filepath.Dir(rolloutPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rolloutBody := strings.Join([]string{
+		`{"type":"session_meta","payload":{"id":"` + oldID + `","thread_source":"user","cwd":"/work/example"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(rolloutPath, []byte(rolloutBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertRollout(context.Background(), store.Rollout{
+		ID: oldID, Path: rolloutPath, CWD: "/work/example", UserThread: true,
+		PromptCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	startup := `{"hook_event_name":"SessionStart","source":"startup","session_id":"` + oldID + `","cwd":"/work/example"}`
+	if code, stdout, stderr := runClearKillPayloadArgs(t, []string{"--parent", "4242"}, startup); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Codex startup bind rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	clear := `{"hook_event_name":"SessionStart","source":"clear","session_id":"` + newID + `","cwd":"/work/example"}`
+	if code, stdout, stderr := runClearKillPayloadArgs(t, []string{"--parent", "4242"}, clear); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Codex clear rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	database, err = store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	killed, found, err := database.Killed(context.Background(), oldID)
+	if err != nil || !found || killed.Engine != store.CodexEngine ||
+		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
+		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
+	}
+}
+
 func runClearKillPayload(t *testing.T, payload string) (int, string, string) {
+	return runClearKillPayloadArgs(t, nil, payload)
+}
+
+func runClearKillPayloadArgs(t *testing.T, args []string, payload string) (int, string, string) {
 	t.Helper()
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -320,6 +388,7 @@ func runClearKillPayload(t *testing.T, payload string) (int, string, string) {
 		_ = reader.Close()
 	}()
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"internal", "clear-kill"}, &stdout, &stderr)
+	argv := append([]string{"internal", "clear-kill"}, args...)
+	code := run(argv, &stdout, &stderr)
 	return code, stdout.String(), strings.TrimSpace(stderr.String())
 }
