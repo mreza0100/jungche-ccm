@@ -106,6 +106,18 @@ func fastOptions() AwaitOptions {
 	}
 }
 
+type toolProgressSignal struct {
+	once sync.Once
+	seen chan struct{}
+}
+
+func (signal *toolProgressSignal) Write(content []byte) (int, error) {
+	if bytes.HasPrefix(content, []byte("T ")) {
+		signal.once.Do(func() { close(signal.seen) })
+	}
+	return len(content), nil
+}
+
 // TestAwaitReturnsTheAnswerToTheQuestionJustAsked is the two-way contract: the
 // frontier is taken before the message, so nothing said earlier can be
 // mistaken for the reply.
@@ -146,15 +158,19 @@ func TestAwaitReturnsTheAnswerToTheQuestionJustAsked(t *testing.T) {
 // is a preamble, not an answer.
 func TestAwaitWaitsThroughToolWork(t *testing.T) {
 	talk := newConversation(t)
+	talk.say(user("do the thing"), assistant("let me look"), tool("Bash"))
+	progress := &toolProgressSignal{seen: make(chan struct{})}
 	go func() {
-		talk.say(user("do the thing"), assistant("let me look"))
-		time.Sleep(30 * time.Millisecond)
-		talk.say(tool("Bash"))
-		time.Sleep(30 * time.Millisecond)
+		// Await's own progress stream is the proof it observed the tool turn.
+		// Releasing the final answer from that event keeps the ordering under
+		// arbitrary container load; wall-clock sleeps let Settle win the race.
+		<-progress.seen
 		talk.say(assistant("done, it was the firewall"))
 	}()
 
-	turn, err := Await(context.Background(), talk.resolve, fastOptions())
+	options := fastOptions()
+	options.Progress = progress
+	turn, err := Await(context.Background(), talk.resolve, options)
 	if err != nil {
 		t.Fatalf("Await() error = %v", err)
 	}
