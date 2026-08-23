@@ -185,7 +185,7 @@ Three paths, shortest first — full protocol in **[`INSTALL.md`](./INSTALL.md)*
 | `docs/` | The hand-curated spec: `BLUEPRINT.md` (philosophy), `SETUP.md` (the install interview), `ARCHITECTURE.md`, `PLACEHOLDERS.md`, `RELEASE.md`, `README.md`, `references/` — plus reference docs for this repo's own commands under `commands/`. |
 | `pfm/` | The Go fleet engine — CLI source, the embedded installer assets (command cards, launcher shim, scheduler units), embedded runtime prompts, and the multi-format fetch + search MCP server (`internal/harvest*`). |
 | `engines/` | `rr/` — the deep-research Workflow (source + build) — and `wave-walker/` — the post-merge trace engine the discipline pipeline calls. |
-| `agents/` | Host-level agent definitions (`tracer`, `rr-fast`) and the TOML compiler that emits them. |
+| `agents/` | Host-level agent definitions (`tracer`, `reviewer`, `frr`) and the TOML compiler that emits them. |
 | `scripts/` | Maintainer tooling — the pre-push leak gate, the release genericizer, the incremental template-refresh scanner. |
 | `releases/` | One file per tagged release; indexed by `CHANGELOG.md`. |
 | `.githooks/` | The committed pre-push hook — `git config core.hooksPath .githooks` arms it. |
