@@ -20,6 +20,7 @@ import (
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
+	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
 )
@@ -204,6 +205,7 @@ func scanFleet(
 	}
 	live, err := gatherFleet(
 		ctx,
+		database,
 		environment.paths,
 		environment.config,
 		data,
@@ -259,7 +261,7 @@ func resolveRowEngine(
 	if err != nil {
 		return "", ""
 	}
-	live, err := gatherFleet(ctx, environment.paths, environment.config, data, false, printWarn(stderr), stderr)
+	live, err := gatherFleet(ctx, database, environment.paths, environment.config, data, false, printWarn(stderr), stderr)
 	if err != nil {
 		return "", ""
 	}
@@ -399,6 +401,7 @@ func loadDefaultFleetData(
 
 func gatherFleet(
 	ctx context.Context,
+	database *store.Store,
 	resolved paths.Values,
 	machine pfmconfig.Config,
 	data fleetData,
@@ -413,6 +416,14 @@ func gatherFleet(
 	tmuxClient := gather.CommandTmux{
 		TmuxTmpDir: filepath.Dir(resolved.TmuxDir),
 	}
+	// The pane-binding manager lets the rollout-less live-process resolver
+	// (store.NewCodexThreadResolverRoots) rank a pane's fleet-recorded thread
+	// binding over its own birth-window guess — the guess never moves once a
+	// pane clears, since the pane's TUI process is not restarted.
+	bindingManager, err := kill.New(database, killDependencies(commandRuntime{Config: machine, Paths: resolved}))
+	if err != nil {
+		return gather.Snapshot{}, fmt.Errorf("prepare Codex pane binding resolver: %w", err)
+	}
 	gatherer, err := gather.New(gather.Dependencies{
 		Tmux:       tmuxClient,
 		TmuxTmpDir: filepath.Dir(resolved.TmuxDir),
@@ -422,7 +433,9 @@ func gatherFleet(
 		CodexIDName: func(threadID string) string {
 			return codexNamesByID[threadID]
 		},
-		CodexThread:  store.NewCodexThreadResolverRoots(ctx, codexHomes(machine)),
+		CodexThread: store.NewCodexThreadResolverRoots(
+			ctx, codexHomes(machine), bindingManager.CodexPaneBound(ctx),
+		),
 		CodexRoots:   codexHomes(machine),
 		ClaudeBinary: machine.Claude.Binary,
 		CodexBinary:  machine.Codex.Binary,
@@ -605,6 +618,7 @@ func streamFleetRefreshesWith(
 	}
 	live, err := gatherFleet(
 		ctx,
+		database,
 		environment.paths,
 		environment.config,
 		data,
@@ -625,7 +639,7 @@ func streamFleetRefreshesWith(
 		return
 	}
 	if !request.ReadOnly {
-		rememberCodexPaneBindings(ctx, database, live, commandRuntime{
+		reconcileCodexPanes(ctx, database, live, commandRuntime{
 			Config: environment.config,
 			Paths:  environment.paths,
 		}, stderr)
@@ -693,6 +707,7 @@ func streamFleetRefreshesWith(
 		}
 		live, err = gatherFleet(
 			ctx,
+			database,
 			environment.paths,
 			environment.config,
 			data,
@@ -710,7 +725,7 @@ func streamFleetRefreshesWith(
 			continue
 		}
 		if !request.ReadOnly {
-			rememberCodexPaneBindings(ctx, database, live, commandRuntime{
+			reconcileCodexPanes(ctx, database, live, commandRuntime{
 				Config: environment.config,
 				Paths:  environment.paths,
 			}, stderr)
@@ -736,7 +751,20 @@ func streamFleetRefreshesWith(
 	}
 }
 
-func rememberCodexPaneBindings(
+// reconcileCodexPanes is the clear-detection pass itself, run every gather
+// pass: for each live Codex pane it reads the pane's own status line (#1),
+// resolves it to a thread, and advances the pane's binding (#2). A binding
+// that MOVED off a non-empty previous thread means that thread just cleared
+// in this pane — KillClearedCodex records the same prompt-baseline kill
+// Claude's own SessionEnd hook gets, and the chat's established name is
+// re-applied to the new thread (#6): Codex has no launch flag for a thread
+// name, so the pane would otherwise run the new thread unnamed forever.
+//
+// A capture that FAILED is never read as "this pane runs nothing" — it is
+// skipped outright, worded differently on stderr than a pane whose status
+// line genuinely names no thread. An observed name that resolves to zero or
+// to more than one cx_names row is the same refusal: never kill on a guess.
+func reconcileCodexPanes(
 	ctx context.Context,
 	database *store.Store,
 	live gather.Snapshot,
@@ -745,21 +773,71 @@ func rememberCodexPaneBindings(
 ) {
 	manager, err := kill.New(database, killDependencies(runtime))
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm refresh Codex clear binding: %v\n", err)
+		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: %v\n", err)
 		return
 	}
-	for _, process := range live.Codex {
-		threadID := process.ThreadID
-		if threadID == "" {
-			threadID = rolloutIDFromPath(process.RolloutPath)
+	cxNames, err := database.CxNames(ctx)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm refresh Codex pane reconcile: read thread names: %v\n", err)
+		return
+	}
+	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
+	renamer := spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
+	for _, identity := range gather.CaptureCodexIdentity(ctx, capturer, live.Panes) {
+		if identity.Failed {
+			fmt.Fprintf(stderr, "codex pane %s %s: capture failed\n", identity.Socket, identity.PaneID)
+			continue
 		}
-		if err := manager.SeedCodexPane(
-			ctx,
-			process.Socket,
-			process.PaneID,
-			threadID,
-		); err != nil {
-			fmt.Fprintf(stderr, "pfm refresh Codex clear binding for %s %s: %v\n", process.Socket, process.PaneID, err)
+		threadID := identity.ThreadID
+		if threadID == "" && identity.Name != "" {
+			matches := make([]string, 0, 1)
+			for candidateID, candidateName := range cxNames {
+				if candidateName == identity.Name {
+					matches = append(matches, candidateID)
+				}
+			}
+			switch len(matches) {
+			case 0:
+				fmt.Fprintf(stderr, "codex pane %s %s: %q matches no known thread\n", identity.Socket, identity.PaneID, identity.Name)
+				continue
+			case 1:
+				threadID = matches[0]
+			default:
+				fmt.Fprintf(stderr, "codex pane %s %s: %q matches more than one thread\n", identity.Socket, identity.PaneID, identity.Name)
+				continue
+			}
+		}
+		if threadID == "" {
+			fmt.Fprintf(stderr, "codex pane %s %s: status line named no thread\n", identity.Socket, identity.PaneID)
+			continue
+		}
+		previous, changed, err := manager.AdvanceCodexPane(ctx, identity.Socket, identity.PaneID, threadID)
+		if err != nil {
+			fmt.Fprintf(stderr, "codex pane %s %s: advance binding: %v\n", identity.Socket, identity.PaneID, err)
+			continue
+		}
+		if !changed || previous == "" {
+			continue
+		}
+		target, killed, err := manager.KillClearedCodex(ctx, previous)
+		if err != nil {
+			fmt.Fprintf(stderr, "codex pane %s %s: record clear kill: %v\n", identity.Socket, identity.PaneID, err)
+			continue
+		}
+		if !killed {
+			continue
+		}
+		name := cxNames[target.ID]
+		if name == "" {
+			continue
+		}
+		warning, renameErr := spawn.RenameCodex(
+			ctx, renamer, identity.Socket, identity.PaneID, name, spawn.Defaults(), spawn.Trace{},
+		)
+		if renameErr != nil {
+			fmt.Fprintf(stderr, "codex pane %s %s: re-apply chat name after clear: %v\n", identity.Socket, identity.PaneID, renameErr)
+		} else if warning != "" {
+			fmt.Fprintf(stderr, "codex pane %s %s: chat name was not re-applied after clear: %s\n", identity.Socket, identity.PaneID, warning)
 		}
 	}
 }
