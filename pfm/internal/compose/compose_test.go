@@ -1,6 +1,7 @@
 package compose
 
 import (
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -58,7 +59,7 @@ func TestPromptBaselineKillLiftsButPermanentKillDoesNot(t *testing.T) {
 	input := Input{
 		Transcripts: []store.Transcript{chat},
 		Killed: []store.Killed{{
-			ID: "clear-killed", Engine: store.ClaudeEngine, BaselinePrompts: &baseline,
+			ID: "clear-killed", Engine: string(pfmengine.Claude), BaselinePrompts: &baseline,
 		}},
 		Options: Options{View: DefaultView},
 	}
@@ -860,7 +861,7 @@ func TestLiveCodexWithoutARolloutFileIsOneKillableRow(t *testing.T) {
 	// An id is what a kill keys on, so the row is killable now.
 	killed := Compose(Input{
 		Rollouts: []store.Rollout{paginated},
-		Killed:   []store.Killed{{ID: paginated.ID, Engine: store.CodexEngine}},
+		Killed:   []store.Killed{{ID: paginated.ID, Engine: string(pfmengine.Codex)}},
 		Snapshot: gather.Snapshot{
 			Codex: []gather.LiveCodex{{
 				PID:      300,
@@ -1001,7 +1002,7 @@ func TestKillOnAnyLineageMemberKillsTheWholeRow(t *testing.T) {
 	// never normalized onto the root.
 	killedOnChild := Compose(Input{
 		Rollouts: rollouts,
-		Killed:   []store.Killed{{ID: "child-thread", Engine: store.CodexEngine}},
+		Killed:   []store.Killed{{ID: "child-thread", Engine: string(pfmengine.Codex)}},
 		Options:  Options{View: DefaultView},
 	})
 	if _, found := rowByID(killedOnChild.Rows, "root-thread"); found {
@@ -1015,7 +1016,7 @@ func TestKillOnAnyLineageMemberKillsTheWholeRow(t *testing.T) {
 	// child-keyed kill is not a second, orphaned killed row.
 	killedView := Compose(Input{
 		Rollouts: rollouts,
-		Killed:   []store.Killed{{ID: "child-thread", Engine: store.CodexEngine}},
+		Killed:   []store.Killed{{ID: "child-thread", Engine: string(pfmengine.Codex)}},
 		Options:  Options{View: KilledView},
 	})
 	row, found := rowByID(killedView.Rows, "root-thread")

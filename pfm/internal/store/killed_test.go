@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,7 +38,7 @@ func TestPromptBaselineKillAutoUnkillsAfterTranscriptGrowth(t *testing.T) {
 	}
 	baseline := int64(2)
 	if err := database.Kill(ctx, Killed{
-		ID: id, Engine: ClaudeEngine, KilledAt: 10, BaselinePrompts: &baseline,
+		ID: id, Engine: string(pfmengine.Claude), KilledAt: 10, BaselinePrompts: &baseline,
 	}); err != nil {
 		t.Fatal(err)
 	}

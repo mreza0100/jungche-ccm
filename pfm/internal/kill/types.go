@@ -9,13 +9,6 @@ import (
 	"hostops/pfm/internal/store"
 )
 
-// ClaudeEngine and CodexEngine alias the store's engine names so the two
-// packages cannot drift apart on the spelling of "cc".
-const (
-	ClaudeEngine = store.ClaudeEngine
-	CodexEngine  = store.CodexEngine
-)
-
 // SelfEnvironment contains only the caller state used for self-identification.
 type SelfEnvironment struct {
 	TMUX            string

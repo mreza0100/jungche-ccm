@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"strings"
@@ -18,7 +19,6 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
-	"hostops/pfm/internal/store"
 )
 
 // spawnTraceEnv turns on the spawn choreography trace on stderr.
@@ -105,7 +105,7 @@ func runRun(
 	}
 
 	kind := compose.NewClaude
-	if engineName == store.CodexEngine {
+	if engineName == string(pfmengine.Codex) {
 		kind = compose.NewCodex
 	}
 	// PFM_SPAWN_TRACE turns on a step-by-step log of the TUI
@@ -193,14 +193,14 @@ func resolveRunEngineAccount(
 		}
 		engineInput = defaultEngine
 	}
-	engine, ok := action.NormalizeEngine(engineInput)
-	if !ok {
-		return "", 0, fmt.Errorf("unknown engine %q", requestedEngine)
+	id, err := pfmengine.Parse(engineInput)
+	if err != nil {
+		return "", 0, err
 	}
 
 	account := requestedAccount
-	switch engine {
-	case store.ClaudeEngine:
+	switch id {
+	case pfmengine.Claude:
 		if account == 0 {
 			account = primaryClaude
 			if _, found := machine.Account(account); !found && len(machine.Accounts) != 0 {
@@ -210,7 +210,7 @@ func resolveRunEngineAccount(
 		if _, found := machine.Account(account); !found {
 			return "", 0, fmt.Errorf("Claude account %d is not in the configured roster", account)
 		}
-	case store.CodexEngine:
+	case pfmengine.Codex:
 		if account == 0 && len(machine.CodexAccounts) != 0 {
 			account = machine.CodexAccounts[0].ID
 		}
@@ -218,7 +218,7 @@ func resolveRunEngineAccount(
 			return "", 0, fmt.Errorf("Codex account %d is not in the configured roster", account)
 		}
 	}
-	return engine, account, nil
+	return string(id), account, nil
 }
 
 func parentChatID() string {

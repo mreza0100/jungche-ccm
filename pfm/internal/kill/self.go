@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ func (manager *Manager) identifyClaudeSelf(
 		}
 		if found && looksLikeSessionID(transcript.UUID) {
 			return Target{
-				Engine:     ClaudeEngine,
+				Engine:     string(pfmengine.Claude),
 				ID:         transcript.UUID,
 				DataPath:   transcript.Path,
 				SocketPath: socketPath,
@@ -86,7 +87,7 @@ func (manager *Manager) identifyClaudeSelf(
 		transcriptPath = transcript.Path
 	}
 	return Target{
-		Engine:     ClaudeEngine,
+		Engine:     string(pfmengine.Claude),
 		ID:         id,
 		DataPath:   transcriptPath,
 		SocketPath: socketPath,

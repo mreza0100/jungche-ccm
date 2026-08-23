@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -124,7 +125,7 @@ func (finisher *Finisher) Run(
 	ctx context.Context,
 	args ExitArgs,
 ) error {
-	if args.Engine != ClaudeEngine && args.Engine != CodexEngine {
+	if args.Engine != string(pfmengine.Claude) && args.Engine != string(pfmengine.Codex) {
 		return fmt.Errorf("unknown kill-exit engine %q", args.Engine)
 	}
 	if args.ID == "" || args.SocketPath == "" || args.PaneID == "" {
@@ -139,7 +140,7 @@ func (finisher *Finisher) Run(
 	viewports := finisher.viewportPanes(ctx, args.SocketPath)
 
 	command := "/exit"
-	if args.Engine == CodexEngine {
+	if args.Engine == string(pfmengine.Codex) {
 		command = "/quit"
 	}
 	_ = finisher.tmux.SendLine(ctx, args.SocketPath, args.PaneID, command)

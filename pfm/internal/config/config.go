@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const Version = 2
@@ -980,34 +982,36 @@ func (config Config) Engines() EngineCounts {
 
 func (config Config) DefaultEngine() (string, error) {
 	counts := config.Engines()
-	preferred := strings.ToLower(strings.TrimSpace(config.Ask.Engine))
+	preferred := config.Ask.Engine
 	if preferred == "" {
-		preferred = "codex"
+		preferred = pfmengine.MustLookup(pfmengine.Codex).LongName
 	}
-	switch preferred {
-	case "claude":
+	id, err := pfmengine.Parse(preferred)
+	if err != nil {
+		return "", err
+	}
+	switch id {
+	case pfmengine.Claude:
 		if counts.Claude > 0 {
-			return "claude", nil
+			return pfmengine.MustLookup(pfmengine.Claude).LongName, nil
 		}
-	case "codex":
+	case pfmengine.Codex:
 		if counts.Codex > 0 {
-			return "codex", nil
+			return pfmengine.MustLookup(pfmengine.Codex).LongName, nil
 		}
-	case "opencode", "ox":
+	case pfmengine.Opencode:
 		if counts.Opencode > 0 {
-			return "opencode", nil
+			return pfmengine.MustLookup(pfmengine.Opencode).LongName, nil
 		}
-	default:
-		return "", fmt.Errorf("ask.engine %q is not claude, codex, or opencode", config.Ask.Engine)
 	}
 	if counts.Claude > 0 {
-		return "claude", nil
+		return pfmengine.MustLookup(pfmengine.Claude).LongName, nil
 	}
 	if counts.Codex > 0 {
-		return "codex", nil
+		return pfmengine.MustLookup(pfmengine.Codex).LongName, nil
 	}
 	if counts.Opencode > 0 {
-		return "opencode", nil
+		return pfmengine.MustLookup(pfmengine.Opencode).LongName, nil
 	}
 	return "", errors.New("no engines configured: Claude roster empty; Codex roster empty; OpenCode store absent")
 }

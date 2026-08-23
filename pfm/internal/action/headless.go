@@ -3,10 +3,10 @@ package action
 import (
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"strings"
 
 	pfmconfig "hostops/pfm/internal/config"
-	"hostops/pfm/internal/store"
 )
 
 // HeadlessWidth and HeadlessHeight are the geometry a detached chat is born
@@ -77,20 +77,12 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 		return HeadlessPlan{}, errors.New("action values cannot contain NUL")
 	}
 
-	// Normalized here as well as at the CLI: a caller that hands this the
-	// engine name a human typed must not silently fall through to the error
-	// branch, and one name for the engine is the whole point of the mapping.
-	engine, known := NormalizeEngine(request.Engine)
-	if !known {
-		return HeadlessPlan{}, fmt.Errorf(
-			"unsupported engine %q (want %q or %q)",
-			request.Engine,
-			store.ClaudeEngine,
-			store.CodexEngine,
-		)
+	id, err := pfmengine.Parse(request.Engine)
+	if err != nil {
+		return HeadlessPlan{}, err
 	}
-	switch engine {
-	case store.ClaudeEngine:
+	switch id {
+	case pfmengine.Claude:
 		machine := normalizedMachineConfig(request.Config, request.Home)
 		if _, found := machine.Account(request.PrimaryAccount); !found {
 			return HeadlessPlan{}, fmt.Errorf(
@@ -127,7 +119,7 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 			),
 			PromptOnCommandLine: true,
 		}, nil
-	case store.CodexEngine:
+	case pfmengine.Codex:
 		machine := normalizedMachineConfig(request.Config, request.Home)
 		if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
 			return HeadlessPlan{}, fmt.Errorf(
@@ -157,19 +149,4 @@ func HeadlessRun(request HeadlessRequest) (HeadlessPlan, error) {
 		}, nil
 	}
 	return HeadlessPlan{}, fmt.Errorf("unsupported engine %q", request.Engine)
-}
-
-// NormalizeEngine maps the spellings a human types onto the two engine names
-// the rest of the tree uses.
-func NormalizeEngine(value string) (string, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", "cc", "claude":
-		return store.ClaudeEngine, true
-	case "cx", "codex":
-		return store.CodexEngine, true
-	case "ox", "opencode":
-		return store.OpencodeEngine, true
-	default:
-		return "", false
-	}
 }

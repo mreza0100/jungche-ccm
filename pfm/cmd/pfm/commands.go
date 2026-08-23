@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"path/filepath"
@@ -166,7 +167,7 @@ func runLS(
 	// Esc/⌃C must not write it. Nor does a non-positive PrimaryAccount ever
 	// mean a deliberate choice — see primaryWriteback.
 	claudePrimary := outcome.ClaudePrimaryAccount
-	if claudePrimary == 0 && compose.EngineForKind(outcome.Row.Kind) != store.CodexEngine {
+	if claudePrimary == 0 && compose.EngineForKind(outcome.Row.Kind) != string(pfmengine.Codex) {
 		claudePrimary = outcome.PrimaryAccount
 	}
 	if account, should := primaryWriteback(

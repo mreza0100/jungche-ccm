@@ -10,21 +10,11 @@ import (
 	"strings"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
 const (
-	// ClaudeEngine and CodexEngine name the chat engines a caller can be,
-	// with OpencodeEngine the third; OpencodeSocketPrefix is the tmux-socket
-	// naming convention that identifies a live OpenCode seat.
-	ClaudeEngine = "cc"
-	CodexEngine  = "cx"
-
-	// OpencodeEngine is OpenCode's engine short code.
-	OpencodeEngine = "ox"
-	// OpencodeSocketPrefix names the tmux servers OpenCode chats run on.
-	OpencodeSocketPrefix = "ox-"
-
 	// ClaudeSessionEnv is exported into every shell a Claude Code chat spawns.
 	ClaudeSessionEnv = "CLAUDE_CODE_SESSION_ID"
 
@@ -172,7 +162,7 @@ func CallerEnvironment() WhoamiEnvironment {
 func (identifier *Whoami) Identify(ctx context.Context) (Identity, error) {
 	identity := Identity{Source: "tmux"}
 	if identifier.environment.ClaudeSessionID != "" {
-		identity.Engine = ClaudeEngine
+		identity.Engine = string(pfmengine.Claude)
 		identity.ID = identifier.environment.ClaudeSessionID
 		identity.Source = "env-claude"
 	} else if identifier.environment.CodexThreadID != "" {
@@ -185,7 +175,7 @@ func (identifier *Whoami) Identify(ctx context.Context) (Identity, error) {
 		if err == nil {
 			identity.ID = thread.ID
 		}
-		identity.Engine = CodexEngine
+		identity.Engine = string(pfmengine.Codex)
 		identity.Source = "env-codex"
 	}
 
@@ -304,9 +294,9 @@ func socketFromTMUX(value string) (string, string) {
 
 func engineForSocket(socketName string) string {
 	if strings.HasPrefix(socketName, "cx-") {
-		return CodexEngine
+		return string(pfmengine.Codex)
 	}
-	return ClaudeEngine
+	return string(pfmengine.Claude)
 }
 
 // CommandTmuxNamer asks a tmux server for a session name over its socket path.

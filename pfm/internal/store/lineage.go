@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"sort"
 )
 
@@ -301,7 +302,7 @@ ORDER BY id`)
 		if target == nil {
 			target = &migratedKill{killed: Killed{
 				ID:       root,
-				Engine:   CodexEngine,
+				Engine:   string(pfmengine.Codex),
 				KilledAt: killed.KilledAt,
 			}}
 			migrated[root] = target

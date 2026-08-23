@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"sort"
 	"time"
 
@@ -345,7 +346,7 @@ SELECT id, 'cx' FROM cx_names WHERE id IN (` + marks + `)`
 		// one way this run and the other way next run would flicker a chat in
 		// and out of the listing.
 		_, alreadyDerived := engines[id]
-		if engine == ClaudeEngine || !alreadyDerived {
+		if engine == string(pfmengine.Claude) || !alreadyDerived {
 			engines[id] = engine
 		}
 	}
