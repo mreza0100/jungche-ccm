@@ -145,7 +145,12 @@ func newAttachJail(t *testing.T) *attachJail {
 	path := filepath.Join(home, ".local", "bin") + string(os.PathListSeparator) +
 		os.Getenv("PATH")
 	env := replaceAttachEnv(os.Environ(), map[string]string{
-		attachHelperEnv:       "1",
+		attachHelperEnv: "1",
+		// The fixture's target pane runs sleep rather than Claude, so gather
+		// correctly has no 1h birth marker to observe. Match that explicit 5m
+		// posture now that the product default is 1h; otherwise the cache gate
+		// deliberately forks instead of proving the attach path.
+		"CC_ARM_1H":           "0",
 		"HOME":                home,
 		"PATH":                path,
 		"TERM":                "xterm-256color",

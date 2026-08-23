@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -133,5 +134,88 @@ func TestInteractiveRefreshBuffersGatherWarningsUntilFlushed(t *testing.T) {
 	}
 	if got := directStderr.String(); !strings.Contains(got, "tmux probe warning: "+socketName) {
 		t.Fatalf("scanFleet stopped printing immediately: %q", got)
+	}
+}
+
+// Codex clear reconciliation runs inside the same background refresh that
+// gathers tmux state. Its warnings must use the same deferred sink: writing
+// them directly to stderr while Bubble Tea owns the terminal corrupts the
+// active frame with text such as "matches more than one thread".
+func TestInteractiveRefreshBuffersCodexReconcileWarningsUntilFlushed(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
+	t.Setenv("PFM_TMUX_DIR", tmuxDir)
+	const socket = "cx-1800000004-1-1"
+	startCodexStatusPane(t, root, socket, `  DUPLICATE · /work/example · Full Access\n`)
+
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	const firstID = "77777777-7777-4777-8777-777777777777"
+	const secondID = "88888888-8888-4888-8888-888888888888"
+	codexJailRollout(t, database, root, firstID, 1)
+	codexJailRollout(t, database, root, secondID, 1)
+	if err := database.ReplaceCxNames(context.Background(), []store.CxName{
+		{ID: firstID, ThreadName: "DUPLICATE"},
+		{ID: secondID, ThreadName: "DUPLICATE"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var warnings bufferedWarnings
+	var interactiveStderr bytes.Buffer
+	updates := make(chan ui.Snapshot, 4)
+	refreshContext, cancelRefresh := context.WithCancel(context.Background())
+	go streamFleetRefreshesWith(
+		refreshContext,
+		database,
+		scanRequest{},
+		warnings.add,
+		&interactiveStderr,
+		updates,
+		refreshDependencies{
+			newIndexer: func(*store.Store) (indexRunner, error) {
+				return &immediateIndexRunner{}, nil
+			},
+		},
+	)
+	for {
+		snapshot, ok := <-updates
+		if !ok {
+			t.Fatalf("interactive refresh stream ended early: %s", interactiveStderr.String())
+		}
+		if !snapshot.Refreshing {
+			break
+		}
+	}
+	cancelRefresh()
+	for range updates {
+	}
+	if interactiveStderr.Len() != 0 {
+		t.Fatalf(
+			"Codex reconcile wrote to stderr before the picker released the terminal: %q",
+			interactiveStderr.String(),
+		)
+	}
+	warnings.flush(&interactiveStderr)
+	if got := interactiveStderr.String(); !strings.Contains(got, `"DUPLICATE" matches more than one thread`) {
+		t.Fatalf("flush did not emit the buffered Codex warning: %q", got)
+	}
+}
+
+func TestBufferedWarningsDeduplicateRepeatedRefreshFailures(t *testing.T) {
+	var warnings bufferedWarnings
+	warnings.add("same failure")
+	warnings.add("same failure")
+
+	var output bytes.Buffer
+	warnings.flush(&output)
+	if got := strings.Count(output.String(), "same failure"); got != 1 {
+		t.Fatalf("same warning printed %d times, want once: %q", got, output.String())
 	}
 }

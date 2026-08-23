@@ -128,7 +128,7 @@ func TestReconcileCodexPanesKillsThePreviousBoundThreadAndAdvancesTheBinding(t *
 		database,
 		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
 		commandRuntime{Paths: resolved},
-		&stderr,
+		printWarn(&stderr),
 	)
 
 	bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
@@ -184,7 +184,7 @@ func TestReconcileCodexPanesCaptureFailedKillsNothingAndNamesTheFailure(t *testi
 		database,
 		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
 		commandRuntime{Paths: resolved},
-		&stderr,
+		printWarn(&stderr),
 	)
 
 	if !strings.Contains(stderr.String(), "capture failed") {
@@ -253,7 +253,7 @@ func TestReconcileCodexPanesOnlyKillsTheClearingPaneInASharedCWD(t *testing.T) {
 			codexPane(steadySocket, "%0"),
 		}},
 		commandRuntime{Paths: resolved},
-		&stderr,
+		printWarn(&stderr),
 	)
 
 	if _, found, err := database.Killed(context.Background(), clearingOldID); err != nil || !found {

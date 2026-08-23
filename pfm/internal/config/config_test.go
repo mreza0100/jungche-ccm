@@ -62,7 +62,7 @@ func TestDefaultsWithDiscoveryRoots(t *testing.T) {
 	if !reflect.DeepEqual(got.Accounts, wantAccounts) {
 		t.Fatalf("Accounts = %#v, want %#v", got.Accounts, wantAccounts)
 	}
-	if got.Claude != (Claude{PermissionMode: PermissionBypass, Binary: "claude"}) {
+	if got.Claude != (Claude{PermissionMode: PermissionBypass, Binary: "claude", Cache1H: true}) {
 		t.Fatalf("Claude = %#v, want bypass/claude defaults", got.Claude)
 	}
 	if got.Codex != (Codex{Yolo: true, Binary: "codex"}) {
@@ -74,7 +74,7 @@ func TestDefaultsWithDiscoveryRoots(t *testing.T) {
 		t.Fatalf("MCPServers = %#v, want chat and harvester disabled", got.MCPServers)
 	}
 	for _, key := range []string{
-		"version", "accounts", "claude.permissionMode", "claude.binary", "codex.yolo", "codex.binary", "mcp.servers.chat.enabled", "mcp.servers.harvester.enabled",
+		"version", "accounts", "claude.permissionMode", "claude.binary", "claude.cache1h", "codex.yolo", "codex.binary", "mcp.servers.chat.enabled", "mcp.servers.harvester.enabled",
 	} {
 		if got.Source(key) != SourceDefault {
 			t.Errorf("Source(%q) = %q, want %q", key, got.Source(key), SourceDefault)
@@ -198,7 +198,7 @@ func TestLoadConfiguredAccountsExpandHomeAndPreserveIDs(t *testing.T) {
 	if got.AccountIDs() == nil || !reflect.DeepEqual(got.AccountIDs(), []int{9, 2, 17}) {
 		t.Fatalf("AccountIDs = %#v, want [9 2 17]", got.AccountIDs())
 	}
-	if got.Claude != (Claude{PermissionMode: PermissionPrompt, Binary: "claude-custom"}) {
+	if got.Claude != (Claude{PermissionMode: PermissionPrompt, Binary: "claude-custom", Cache1H: true}) {
 		t.Fatalf("Claude = %#v, want configured values", got.Claude)
 	}
 	if got.Codex != (Codex{Yolo: false, Binary: "codex-custom"}) {
@@ -600,6 +600,104 @@ func TestV1ConfigStillLoadsWithV2Defaults(t *testing.T) {
 	}
 	if got.EmojiFor(4) != "🍀" {
 		t.Fatalf("v1 account 4 emoji = %q, want 🍀", got.EmojiFor(4))
+	}
+}
+
+func TestLoadCache1HDefaultsTrueWhenAbsentFromFile(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := `{"version":2,"accounts":[{"id":1,"configDir":"~/one"}]}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !got.Claude.Cache1H {
+		t.Fatalf("Claude.Cache1H = %v, want true when cache1h is absent everywhere", got.Claude.Cache1H)
+	}
+	if got.Source("claude.cache1h") != SourceDefault {
+		t.Fatalf("Source(claude.cache1h) = %q, want %q", got.Source("claude.cache1h"), SourceDefault)
+	}
+	if !got.EffectiveClaude(1).Cache1H {
+		t.Fatalf("EffectiveClaude(1).Cache1H = %v, want true (account has no claude block at all)", got.EffectiveClaude(1).Cache1H)
+	}
+}
+
+func TestLoadCache1HExplicitFalseIsHonoredWithSource(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := `{"version":2,"claude":{"cache1h":false}}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got.Claude.Cache1H {
+		t.Fatal("Claude.Cache1H = true, want false: explicit top-level cache1h:false was not honored")
+	}
+	if got.Source("claude.cache1h") != SourceFile {
+		t.Fatalf("Source(claude.cache1h) = %q, want %q", got.Source("claude.cache1h"), SourceFile)
+	}
+}
+
+func TestLoadCache1HPerAccountOverridesTopLevel(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	content := `{
+  "version": 2,
+  "accounts": [{"id": 3, "configDir": "~/three", "claude": {"cache1h": false}}],
+  "claude": {"cache1h": true}
+}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !got.Claude.Cache1H {
+		t.Fatal("top-level Claude.Cache1H changed by a per-account override; it must stay true")
+	}
+	if got.EffectiveClaude(3).Cache1H {
+		t.Fatal("EffectiveClaude(3).Cache1H = true, want false: account-level cache1h:false was not applied")
+	}
+	if got.Source("accounts[0].claude.cache1h") != SourceFile {
+		t.Fatalf("Source(accounts[0].claude.cache1h) = %q, want %q", got.Source("accounts[0].claude.cache1h"), SourceFile)
+	}
+}
+
+func TestLoadCache1HPerAccountInheritsResolvedTopLevelWhenUnset(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	path := filepath.Join(t.TempDir(), "config.json")
+	// The account's claude block sets ONLY binary; cache1h is absent there.
+	// EffectiveClaude must inherit the resolved top-level true, not the
+	// ClaudePrefs zero value (false), which is the false-zero trap this test
+	// pins.
+	content := `{
+  "version": 2,
+  "accounts": [{"id": 5, "configDir": "~/five", "claude": {"binary": "claude-five"}}],
+  "claude": {"cache1h": true}
+}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !got.EffectiveClaude(5).Cache1H {
+		t.Fatal("EffectiveClaude(5).Cache1H = false, want true: an account claude block touching only binary must inherit the resolved top-level cache1h, not the bool zero value")
+	}
+	if got.Source("accounts[0].claude.cache1h") != SourceDefault {
+		t.Fatalf("Source(accounts[0].claude.cache1h) = %q, want %q (no account-level key was set)", got.Source("accounts[0].claude.cache1h"), SourceDefault)
 	}
 }
 

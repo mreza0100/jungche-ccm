@@ -85,8 +85,9 @@ func runLS(
 
 	ctx := context.Background()
 	request := scanRequest{
-		View:    view,
-		Cache1H: initialCache1H(),
+		View: view,
+		// Fleet-wide picker: no chat chosen yet, so no per-account override applies.
+		Cache1H: initialCache1H(runtime.Config, 0),
 		NoSky:   *noSky,
 		Runtime: &runtime,
 	}
@@ -273,11 +274,12 @@ func openID(
 	}
 	for _, row := range scan.Output.Rows {
 		if row.ID == id {
+			primary := readPrimaryAccount(scan.Paths, runtime.Config)
 			return openRow(
 				ctx,
 				row,
-				readPrimaryAccount(scan.Paths, runtime.Config),
-				initialCache1H(),
+				primary,
+				initialCache1H(runtime.Config, primary),
 				stdout,
 				stderr,
 				runtime,
@@ -366,12 +368,28 @@ func freshEngineSocket(id pfmengine.ID) string {
 	)
 }
 
-func initialCache1H() bool {
-	if os.Getenv("CC_ARM_1H") == "1" {
-		return true
+// initialCache1H resolves the prompt-cache TTL for a freshly launched chat.
+// Config sets the default; CC_ARM_1H or ENABLE_PROMPT_CACHING_1H, when
+// PRESENT in the environment at all (any value, not just "1"), is an
+// explicit override that wins over config — this is load-bearing for
+// synth.go's NewClaude route, which re-exports "CC_ARM_1H=0
+// ENABLE_PROMPT_CACHING_1H=0" into a spawned shell specifically to force
+// caching off downstream; a value-only check would silently ignore that.
+//
+// account is the Claude account the chat will be born under, or 0 when the
+// caller has no account context yet (the fleet-wide picker default).
+// EffectiveClaude resolves an unknown account to the top-level posture, so
+// 0 is the honest way to say "no per-account override applies here" — the
+// accounts[N].claude.cache1h key is otherwise decoded and marshalled but
+// never read, a knob that reports "set" while changing nothing.
+func initialCache1H(config pfmconfig.Config, account int) bool {
+	if value, ok := os.LookupEnv("CC_ARM_1H"); ok {
+		return value == "1"
 	}
-	return os.Getenv("ENABLE_PROMPT_CACHING_1H") == "1" &&
-		os.Getenv("CLAUDECODE") == ""
+	if value, ok := os.LookupEnv("ENABLE_PROMPT_CACHING_1H"); ok {
+		return value == "1" && os.Getenv("CLAUDECODE") == ""
+	}
+	return config.EffectiveClaude(account).Cache1H
 }
 
 // reportKills is the receipt for what ⌃X did while the picker was open. A

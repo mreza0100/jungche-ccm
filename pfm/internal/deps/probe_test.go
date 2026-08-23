@@ -213,7 +213,11 @@ func TestFirstVersionParsesRealCommandVersionStrings(t *testing.T) {
 // broken engine and block install preflight; it must be named as a timeout
 // distinct from a real failure.
 func TestProbeSelfDoctorTimeoutIsNotConflatedWithBroken(t *testing.T) {
-	const timeout = 200 * time.Millisecond
+	// Subprocess startup competes with every other package during `go test
+	// ./...`; 200ms made the quick --version/--help probes fail under ordinary
+	// suite contention before this test ever reached the deliberate timeout.
+	// Two seconds preserves a bounded test while leaving ample scheduling room.
+	const timeout = 2 * time.Second
 	durationPattern := regexp.MustCompile(`\d+(\.\d+)?\s*(ms|s|m)\b`)
 
 	t.Run("slow but healthy self-doctor stays ok and is named as a timeout", func(t *testing.T) {
@@ -221,7 +225,7 @@ func TestProbeSelfDoctorTimeoutIsNotConflatedWithBroken(t *testing.T) {
 		writeProbeStub(t, directory, "codex", `
 if [ "$1" = "--version" ]; then printf 'codex-cli 0.148.0\n'; exit 0; fi
 if [ "$1" = "doctor" ] && [ "$2" = "--help" ]; then printf 'usage: codex doctor\n'; exit 0; fi
-if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then /bin/sleep 1; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then exec /bin/sleep 30; fi
 exit 2`)
 		t.Setenv("PATH", directory)
 		entry := Entry{Name: "codex", Command: "codex", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"}}

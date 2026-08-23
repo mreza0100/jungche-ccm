@@ -70,6 +70,12 @@ func (buffer *synchronizedBuffer) String() string {
 
 func TestInternalLaunchNoTTYCreatesListedSessionAndPropagatesExit(t *testing.T) {
 	root := jailTest(t)
+	// The test calls run from a goroutine, so inheriting a managed parent
+	// socket would take the pass-through branch and syscall.Exec the fixture
+	// over the entire Go test process. Keep this launch outside tmux so the
+	// bounded readiness wait below remains alive to report fixture failures.
+	t.Setenv("TMUX", "")
+	t.Setenv("PFM_LAUNCH_PASSTHROUGH", "")
 	socket := "cc-1700000000-123-456"
 	tmuxDir := filepath.Join(root, "tmux-"+fmt.Sprint(os.Getuid()))
 	if err := os.MkdirAll(tmuxDir, 0o700); err != nil {
