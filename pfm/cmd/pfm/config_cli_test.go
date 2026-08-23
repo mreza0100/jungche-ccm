@@ -235,7 +235,7 @@ func TestConfigCLIInitShowValidateAndBrokenDiagnostics(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"--config", path, "config", "show"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "config mcp.authToken=<redacted>") {
+	if code := run([]string{"--config", path, "config", "show"}, &stdout, &stderr); code != 0 || strings.Contains(stdout.String(), "authToken") {
 		t.Fatalf("config show code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 

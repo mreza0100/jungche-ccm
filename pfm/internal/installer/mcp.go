@@ -1,7 +1,6 @@
 package installer
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -23,8 +22,7 @@ const (
 )
 
 type mcpOwnership struct {
-	Credential string   `json:"credential"`
-	Clients    []string `json:"clients"`
+	Clients []string `json:"clients"`
 }
 
 func (installer *engine) mcpAnyEnabled() bool {
@@ -56,28 +54,30 @@ func (installer *engine) wireMCP() error {
 		return nil
 	}
 	if !installer.apply {
-		installer.say("MCP enabled: would generate a 32-byte bearer credential, install daemon units, and register HTTP clients")
+		installer.say("MCP enabled: would install the loopback-only daemon units and register unauthenticated HTTP clients")
 		return nil
-	}
-	token, err := installer.ensureMCPCredential()
-	if err != nil {
-		return err
 	}
 	if installer.options.MCPConfigPath != "" {
 		effective, err := pfmconfig.Load(installer.options.MCPConfigPath, installer.options.Home, nil)
 		if err != nil {
-			return fmt.Errorf("load MCP config for installer credential: %w", err)
+			return fmt.Errorf("load MCP config for legacy auth cleanup: %w", err)
 		}
-		if _, err := pfmconfig.SetMCPAuthToken(effective, token); err != nil {
-			return fmt.Errorf("store MCP installer credential: %w", err)
+		if changed, err := pfmconfig.RemoveMCPAuthToken(effective); err != nil {
+			return fmt.Errorf("remove retired MCP installer credential: %w", err)
+		} else if changed {
+			installer.report.Changed++
+			installer.say("  change  remove retired MCP authToken from " + installer.options.MCPConfigPath)
 		}
 	}
 	names := enabledMCPNames(installer.options.MCPEnabled)
-	wiredNames, err := installer.writeMCPClientJSON(token, names)
+	wiredNames, err := installer.writeMCPClientJSON(names)
 	if err != nil {
 		return err
 	}
-	if err := installer.writeMCPCodeConfig(token, names); err != nil {
+	if err := installer.writeMCPCodeConfig(wiredNames); err != nil {
+		return err
+	}
+	if err := installer.removeLegacyMCPCredential(); err != nil {
 		return err
 	}
 	return installer.writeMCPOwnership(wiredNames)
@@ -94,31 +94,14 @@ func enabledMCPNames(servers map[string]bool) []string {
 	return names
 }
 
-func (installer *engine) ensureMCPCredential() (string, error) {
+func (installer *engine) removeLegacyMCPCredential() error {
 	path := installer.mcpCredentialPath()
-	if !installer.options.Force {
-		if raw, err := os.ReadFile(path); err == nil {
-			token := strings.TrimSpace(string(raw))
-			if len(token) == 64 && isHex(token) {
-				installer.ok(path)
-				return token, nil
-			}
-			return "", fmt.Errorf("invalid MCP credential at %s", path)
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("read MCP credential %s: %w", path, err)
-		}
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect retired MCP credential %s: %w", path, err)
 	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("generate MCP credential: %w", err)
-	}
-	token := hex.EncodeToString(raw)
-	if err := installer.change("write "+path, func() error {
-		return atomicWrite(path, []byte(token+"\n"), 0o600)
-	}); err != nil {
-		return "", err
-	}
-	return token, nil
+	return installer.change("remove retired "+path, func() error { return os.Remove(path) })
 }
 
 func isHex(value string) bool {
@@ -126,7 +109,7 @@ func isHex(value string) bool {
 	return err == nil
 }
 
-func (installer *engine) writeMCPClientJSON(token string, names []string) ([]string, error) {
+func (installer *engine) writeMCPClientJSON(names []string) ([]string, error) {
 	path := filepath.Join(installer.options.Home, ".mcp.json")
 	document, existed, err := readJSONObject(path)
 	if err != nil {
@@ -144,9 +127,6 @@ func (installer *engine) writeMCPClientJSON(token string, names []string) ([]str
 		wanted := map[string]any{
 			"type": "http",
 			"url":  installer.mcpURL(name),
-			"headers": map[string]any{
-				"Authorization": "Bearer " + token,
-			},
 		}
 		if current, present := servers[name]; present && !sameJSONValue(current, wanted) {
 			registration, object := current.(map[string]any)
@@ -198,9 +178,17 @@ func (installer *engine) previouslyOwnedMCPClients() map[string]bool {
 }
 
 func (installer *engine) isPFMHTTPClient(name string, registration map[string]any) bool {
-	if len(registration) != 3 || registration["type"] != "http" || registration["url"] != installer.mcpURL(name) {
+	if registration["type"] != "http" || registration["url"] != installer.mcpURL(name) {
 		return false
 	}
+	if len(registration) == 2 {
+		return true
+	}
+	if len(registration) != 3 {
+		return false
+	}
+	// Recognize only PFM's retired exact bearer shape so an owned registration
+	// can be migrated. Foreign headers remain a manual conflict.
 	headers, ok := registration["headers"].(map[string]any)
 	if !ok || len(headers) != 1 {
 		return false
@@ -213,7 +201,7 @@ func (installer *engine) isPFMHTTPClient(name string, registration map[string]an
 	return len(token) == 64 && isHex(token)
 }
 
-func (installer *engine) writeMCPCodeConfig(token string, names []string) error {
+func (installer *engine) writeMCPCodeConfig(names []string) error {
 	path := filepath.Join(installer.options.Home, ".codex", "config.toml")
 	raw, err := os.ReadFile(path)
 	existed := true
@@ -245,8 +233,6 @@ func (installer *engine) writeMCPCodeConfig(token string, names []string) error 
 		generated = append(generated,
 			"[mcp_servers."+name+"]",
 			"url = \""+installer.mcpURL(name)+"\"",
-			"[mcp_servers."+name+".headers]",
-			"Authorization = \"Bearer "+token+"\"",
 		)
 	}
 	generated = append(generated, mcpFenceEnd)
@@ -273,8 +259,7 @@ func (installer *engine) mcpURL(name string) string {
 
 func (installer *engine) writeMCPOwnership(names []string) error {
 	content, err := json.MarshalIndent(mcpOwnership{
-		Credential: installer.mcpCredentialPath(),
-		Clients:    names,
+		Clients: names,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -291,8 +276,14 @@ func (installer *engine) writeMCPOwnership(names []string) error {
 func (installer *engine) removeMCPClientRegistrations() error {
 	ownershipRaw, err := os.ReadFile(installer.mcpOwnershipPath())
 	if errors.Is(err, fs.ErrNotExist) {
-		installer.skip("MCP ownership ledger absent")
-		return nil
+		installer.skip("MCP ownership ledger absent; no JSON clients removed")
+		if err := installer.removeMCPCodeConfig(); err != nil {
+			return err
+		}
+		if err := installer.removeLegacyMCPConfigAuth(); err != nil {
+			return err
+		}
+		return installer.removeLegacyMCPCredential()
 	}
 	if err != nil {
 		return fmt.Errorf("read MCP ownership ledger: %w", err)
@@ -333,10 +324,32 @@ func (installer *engine) removeMCPClientRegistrations() error {
 	if err := installer.removeMCPCodeConfig(); err != nil {
 		return err
 	}
-	if err := installer.change("remove "+ownership.Credential, func() error { return os.Remove(ownership.Credential) }); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := installer.removeLegacyMCPConfigAuth(); err != nil {
+		return err
+	}
+	if err := installer.removeLegacyMCPCredential(); err != nil {
 		return err
 	}
 	return installer.change("remove "+installer.mcpOwnershipPath(), func() error { return os.Remove(installer.mcpOwnershipPath()) })
+}
+
+func (installer *engine) removeLegacyMCPConfigAuth() error {
+	if installer.options.MCPConfigPath == "" {
+		return nil
+	}
+	effective, err := pfmconfig.Load(installer.options.MCPConfigPath, installer.options.Home, nil)
+	if err != nil {
+		return fmt.Errorf("load MCP config for legacy auth cleanup: %w", err)
+	}
+	changed, err := pfmconfig.RemoveMCPAuthToken(effective)
+	if err != nil {
+		return fmt.Errorf("remove retired MCP installer credential: %w", err)
+	}
+	if changed {
+		installer.report.Changed++
+		installer.say("  change  remove retired MCP authToken from " + installer.options.MCPConfigPath)
+	}
+	return nil
 }
 
 func (installer *engine) removeMCPCodeConfig() error {

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"hostops/pfm/internal/harvestmcp"
@@ -42,7 +40,6 @@ type mcpDaemonStatus struct {
 
 type mcpDaemonOptions struct {
 	Version   string
-	Token     string
 	StartedAt time.Time
 	Endpoint  string
 	Chat      http.Handler
@@ -65,11 +62,6 @@ func newMCPDaemonHandler(options mcpDaemonOptions) http.Handler {
 		Endpoint:  options.Endpoint,
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if !mcpBearerMatches(request, options.Token) {
-			writer.Header().Set("WWW-Authenticate", `Bearer realm="pfm-mcp"`)
-			http.Error(writer, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		switch request.URL.Path {
 		case "/status":
 			if request.Method != http.MethodGet {
@@ -95,21 +87,6 @@ func newMCPDaemonHandler(options mcpDaemonOptions) http.Handler {
 	})
 }
 
-func mcpBearerMatches(request *http.Request, expected string) bool {
-	if strings.TrimSpace(expected) == "" {
-		return false
-	}
-	value := strings.TrimSpace(request.Header.Get("Authorization"))
-	if len(value) < len("Bearer ") || !strings.EqualFold(value[:len("Bearer ")], "Bearer ") {
-		return false
-	}
-	provided := strings.TrimSpace(value[len("Bearer "):])
-	if provided == "" || len(provided) != len(expected) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
-}
-
 func writeMCPJSON(writer http.ResponseWriter, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(writer).Encode(value); err != nil {
@@ -125,13 +102,8 @@ func runMCPServe(stdout, stderr io.Writer, runtime commandRuntime) int {
 		fmt.Fprintf(stderr, "pfm mcp serve: configured port %d is outside 1..65535\n", port)
 		return 2
 	}
-	token := runtime.Config.MCP.AuthToken
-	if token == "" {
-		fmt.Fprintln(stderr, "pfm mcp serve: bearer credential is empty; run pfm install --yes")
-		return 1
-	}
 	address := "127.0.0.1:" + strconv.Itoa(port)
-	if existing, ok := probeMCPDaemon(address, token); ok {
+	if existing, ok := probeMCPDaemon(address); ok {
 		fmt.Fprintf(stderr, "pfm mcp serve: already running (pid %d, since %s)\n", existing.PID, existing.StartTime)
 		return 1
 	}
@@ -156,7 +128,7 @@ func runMCPServe(stdout, stderr io.Writer, runtime commandRuntime) int {
 	defer harvester.Close()
 	started := time.Now().UTC()
 	handler := newMCPDaemonHandler(mcpDaemonOptions{
-		Version: version, Token: token, StartedAt: started,
+		Version: version, StartedAt: started,
 		Endpoint: "http://" + address,
 		Chat:     chat.NewHTTPHandler(), Harvester: harvester.NewHTTPHandler(),
 	})
@@ -169,12 +141,11 @@ func runMCPServe(stdout, stderr io.Writer, runtime commandRuntime) int {
 	return 0
 }
 
-func probeMCPDaemon(address, token string) (mcpDaemonStatus, bool) {
+func probeMCPDaemon(address string) (mcpDaemonStatus, bool) {
 	request, err := http.NewRequest(http.MethodGet, "http://"+address+"/status", nil)
 	if err != nil {
 		return mcpDaemonStatus{}, false
 	}
-	request.Header.Set("Authorization", "Bearer "+token)
 	client := &http.Client{Timeout: 300 * time.Millisecond}
 	response, err := client.Do(request)
 	if err != nil {
@@ -195,7 +166,7 @@ func probeMCPDaemon(address, token string) (mcpDaemonStatus, bool) {
 // report a failed probe as a named state rather than silently omitting it.
 func mcpDaemonReachability(runtime commandRuntime) (mcpDaemonStatus, error) {
 	address := "127.0.0.1:" + strconv.Itoa(runtime.Config.MCP.HTTP.Port)
-	status, ok := probeMCPDaemon(address, runtime.Config.MCP.AuthToken)
+	status, ok := probeMCPDaemon(address)
 	if !ok {
 		return mcpDaemonStatus{}, fmt.Errorf("unreachable at http://%s/status", address)
 	}

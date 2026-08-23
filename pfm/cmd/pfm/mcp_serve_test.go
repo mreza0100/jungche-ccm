@@ -20,42 +20,36 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func TestMCPDaemonHandlerRequiresBearerAndReportsSurface(t *testing.T) {
+func TestMCPDaemonHandlerIsUnauthenticatedAndReportsSurface(t *testing.T) {
 	handler := newMCPDaemonHandler(mcpDaemonOptions{
 		Version:   "test-version",
-		Token:     "neutral-token",
 		StartedAt: time.Unix(123, 0).UTC(),
 		Endpoint:  "http://127.0.0.1:8377",
 		Chat:      http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
 		Harvester: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
 	})
 
-	unauthenticated := httptest.NewRecorder()
-	handler.ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/status", nil))
-	if unauthenticated.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated status = %d, want 401", unauthenticated.Code)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status without credentials = %d, body=%s", response.Code, response.Body.String())
 	}
-
-	request := httptest.NewRequest(http.MethodGet, "/status", nil)
-	request.Header.Set("Authorization", "Bearer neutral-token")
-	authenticated := httptest.NewRecorder()
-	handler.ServeHTTP(authenticated, request)
-	if authenticated.Code != http.StatusOK {
-		t.Fatalf("authenticated status = %d, body=%s", authenticated.Code, authenticated.Body.String())
+	if got := response.Header().Get("WWW-Authenticate"); got != "" {
+		t.Fatalf("unauthenticated loopback service advertised auth challenge %q", got)
 	}
 	var status mcpDaemonStatus
-	if err := json.Unmarshal(authenticated.Body.Bytes(), &status); err != nil {
+	if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
 	if status.PFMVersion != "test-version" || status.ProtocolVersion == "" || status.PID < 1 || status.Endpoint == "" {
 		t.Fatalf("status = %+v", status)
 	}
-	if !strings.Contains(authenticated.Body.String(), "chat") || !strings.Contains(authenticated.Body.String(), "harvester") {
-		t.Fatalf("status surface = %s", authenticated.Body.String())
+	if !strings.Contains(response.Body.String(), "chat") || !strings.Contains(response.Body.String(), "harvester") {
+		t.Fatalf("status surface = %s", response.Body.String())
 	}
 }
 
-func TestMCPDaemonMountedServersRequireAuthAndServeTools(t *testing.T) {
+func TestMCPDaemonMountedServersNeedNoAuthAndServeTools(t *testing.T) {
 	root := jailTest(t)
 	resolved, err := paths.Resolve()
 	if err != nil {
@@ -75,12 +69,12 @@ func TestMCPDaemonMountedServersRequireAuthAndServeTools(t *testing.T) {
 	defer harvester.Close()
 
 	handler := newMCPDaemonHandler(mcpDaemonOptions{
-		Version: "test", Token: "neutral-token", StartedAt: time.Now(), Endpoint: "http://127.0.0.1:8377",
+		Version: "test", StartedAt: time.Now(), Endpoint: "http://127.0.0.1:8377",
 		Chat: chat.NewHTTPHandler(), Harvester: harvester.NewHTTPHandler(),
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
-	client := &http.Client{Transport: bearerRoundTripper{base: http.DefaultTransport, token: "neutral-token"}}
+	client := http.DefaultClient
 	ctx := context.Background()
 	chatSession, err := connectHTTPMCP(t, ctx, server.URL+"/mcp/chat", client)
 	if err != nil {
@@ -125,7 +119,7 @@ func TestMCPServeRefusesHealthySecondInstance(t *testing.T) {
 	portText := listener.Addr().(*net.TCPAddr).Port
 	port := strconv.Itoa(portText)
 	server := &http.Server{Handler: newMCPDaemonHandler(mcpDaemonOptions{
-		Version: "test", Token: "neutral-token", StartedAt: time.Unix(5, 0), Endpoint: "http://127.0.0.1:" + port,
+		Version: "test", StartedAt: time.Unix(5, 0), Endpoint: "http://127.0.0.1:" + port,
 		Chat: http.NotFoundHandler(), Harvester: http.NotFoundHandler(),
 	})}
 	go server.Serve(listener)
@@ -133,7 +127,6 @@ func TestMCPServeRefusesHealthySecondInstance(t *testing.T) {
 
 	runtime := commandRuntime{Config: config.Defaults(t.TempDir(), nil)}
 	runtime.Config.MCP.HTTP.Port = portText
-	runtime.Config.MCP.AuthToken = "neutral-token"
 	runtime.Config.MCPServers["chat"] = config.MCPServer{Enabled: true}
 	var stdout, stderr bytes.Buffer
 	if code := runMCPServe(&stdout, &stderr, runtime); code != 1 {
@@ -142,17 +135,6 @@ func TestMCPServeRefusesHealthySecondInstance(t *testing.T) {
 	if !strings.Contains(stderr.String(), "already running (pid") || !strings.Contains(stderr.String(), "since") {
 		t.Fatalf("second serve stderr=%q", stderr.String())
 	}
-}
-
-type bearerRoundTripper struct {
-	base  http.RoundTripper
-	token string
-}
-
-func (transport bearerRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	clone := request.Clone(request.Context())
-	clone.Header.Set("Authorization", "Bearer "+transport.token)
-	return transport.base.RoundTrip(clone)
 }
 
 func connectHTTPMCP(t *testing.T, ctx context.Context, endpoint string, client *http.Client) (*mcp.ClientSession, error) {
