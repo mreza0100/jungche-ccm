@@ -164,23 +164,23 @@ func TestHookWiringRepairsCanonicalCommandType(t *testing.T) {
 	}
 }
 
-func TestCodexHookWiringMigratesParentlessClearKill(t *testing.T) {
+func TestCodexHookWiringMigratesShellParentClearKill(t *testing.T) {
 	home := t.TempDir()
-	legacy := filepath.Join(home, ".local", "bin", "pfm") + " internal clear-kill"
+	legacy := filepath.Join(home, ".local", "bin", "pfm") + ` internal clear-kill --parent "$PPID"`
 	raw := []byte(fmt.Sprintf(`{"hooks":{"SessionStart":[{"matcher":%q,"hooks":[{"type":"command","command":%q}]}]}}`, codexClearMatcher, legacy))
 	updated, changed, _, err := updateCodexHooks(raw, home, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !changed {
-		t.Fatal("Codex hook wiring did not migrate the parentless clear-kill command")
+		t.Fatal("Codex hook wiring did not migrate the shell-parent clear-kill command")
 	}
 	canonical := codexHookTemplate(home).Command
 	if got := hookCommandCount(t, string(updated), "SessionStart", canonical); got != 1 {
 		t.Fatalf("canonical clear-kill count=%d, want one:\n%s", got, updated)
 	}
 	if got := hookCommandCount(t, string(updated), "SessionStart", legacy); got != 0 {
-		t.Fatalf("parentless clear-kill count=%d, want zero:\n%s", got, updated)
+		t.Fatalf("shell-parent clear-kill count=%d, want zero:\n%s", got, updated)
 	}
 }
 

@@ -345,11 +345,11 @@ func TestCodexClearWithoutTmuxUsesHookParentBinding(t *testing.T) {
 	}
 
 	startup := `{"hook_event_name":"SessionStart","source":"startup","session_id":"` + oldID + `","cwd":"/work/example"}`
-	if code, stdout, stderr := runClearKillPayloadArgs(t, []string{"--parent", "4242"}, startup); code != 0 || stdout != "" || stderr != "" {
+	if code, stdout, stderr := runClearKillPayload(t, startup); code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("Codex startup bind rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 	clear := `{"hook_event_name":"SessionStart","source":"clear","session_id":"` + newID + `","cwd":"/work/example"}`
-	if code, stdout, stderr := runClearKillPayloadArgs(t, []string{"--parent", "4242"}, clear); code != 0 || stdout != "" || stderr != "" {
+	if code, stdout, stderr := runClearKillPayload(t, clear); code != 0 || stdout != "" || stderr != "" {
 		t.Fatalf("Codex clear rc=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
 
@@ -366,10 +366,6 @@ func TestCodexClearWithoutTmuxUsesHookParentBinding(t *testing.T) {
 }
 
 func runClearKillPayload(t *testing.T, payload string) (int, string, string) {
-	return runClearKillPayloadArgs(t, nil, payload)
-}
-
-func runClearKillPayloadArgs(t *testing.T, args []string, payload string) (int, string, string) {
 	t.Helper()
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -388,7 +384,6 @@ func runClearKillPayloadArgs(t *testing.T, args []string, payload string) (int, 
 		_ = reader.Close()
 	}()
 	var stdout, stderr bytes.Buffer
-	argv := append([]string{"internal", "clear-kill"}, args...)
-	code := run(argv, &stdout, &stderr)
+	code := run([]string{"internal", "clear-kill"}, &stdout, &stderr)
 	return code, stdout.String(), strings.TrimSpace(stderr.String())
 }

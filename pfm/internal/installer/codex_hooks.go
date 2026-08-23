@@ -16,6 +16,8 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 	oldBinary := home + "/.local/bin/cc-fleet"
 	pfmBinary := home + "/.local/bin/pfm"
 	clearCommand := codexHookTemplate(home).Command
+	shellParentCommand := pfmBinary + ` internal clear-kill --parent "$PPID"`
+	oldShellParentCommand := oldBinary + ` internal clear-kill --parent "$PPID"`
 	before := countSettingsHookCommands(document)
 	changed := false
 	if uninstall {
@@ -23,6 +25,8 @@ func updateCodexHooks(raw []byte, home string, uninstall bool, owned settingsHoo
 	} else {
 		changed = rewriteCommandFields(document, func(command string) string {
 			switch {
+			case command == shellParentCommand, command == oldShellParentCommand:
+				return clearCommand
 			case command == oldBinary+" internal clear-kill", command == pfmBinary+" internal clear-kill":
 				return clearCommand
 			case command == oldBinary || strings.HasPrefix(command, oldBinary+" "):
