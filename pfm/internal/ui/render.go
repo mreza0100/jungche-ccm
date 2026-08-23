@@ -161,9 +161,14 @@ func (model Model) renderHeader(width int) string {
 	}
 	headerAccount := model.primary
 	headerMedal := accountMedal(headerAccount)
-	if len(model.accountIDs) == 0 && len(model.codexAccountIDs) != 0 {
-		headerAccount = model.codexPrimary
-		headerMedal = codexAccountMedal(headerAccount)
+	if len(model.accountIDs) == 0 {
+		if len(model.codexAccountIDs) != 0 {
+			headerAccount = model.codexPrimary
+			headerMedal = codexAccountMedal(headerAccount)
+		} else if len(model.opencodeAccountIDs) != 0 {
+			headerAccount = model.opencodePrimary
+			headerMedal = accountMedal(headerAccount)
+		}
 	}
 	text := fmt.Sprintf(
 		" pfm  %s account %d · %s · %d rows · %d killed · %d empty%s",
@@ -736,7 +741,7 @@ func (model Model) renderGroupedRow(
 	if name == "" {
 		name = "(unnamed)"
 	}
-	if model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex) {
+	if model.mergeNewChat && isNewChatKind(row.Kind) {
 		ids := model.newChatEngines()
 		labels := make([]string, 0, len(ids))
 		for _, id := range ids {
@@ -757,7 +762,7 @@ func (model Model) renderGroupedRow(
 	left := pointer + marker + " " + name + " " + badges + " " +
 		fmt.Sprintf("%4s %6s", prompts, size)
 	age := formatAge(row, model.nowNS)
-	if selected && !(model.mergeNewChat && (row.Kind == compose.NewClaude || row.Kind == compose.NewCodex)) {
+	if selected && !(model.mergeNewChat && isNewChatKind(row.Kind)) {
 		age += "  " + carouselBoxes(model.actionIndex)
 	}
 	leftWidth := maxInt(1, width-lipgloss.Width(age)-1)
@@ -773,7 +778,7 @@ func (model Model) renderGroupedRow(
 	switch row.Kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		return codexStyle.Render(line)
-	case compose.ResumeOpencode:
+	case compose.ResumeOpencode, compose.NewOpencode:
 		return opencodeStyle.Render(line)
 	case compose.LiveClaude, compose.ResumeClaude, compose.NewClaude:
 		return statsClaudeStyle.Render(line)
@@ -842,7 +847,7 @@ func rowMarker(kind compose.Kind) string {
 		return "⚙"
 	case compose.ResumeClaude, compose.ResumeCodex, compose.ResumeOpencode:
 		return "↻"
-	case compose.NewClaude, compose.NewCodex:
+	case compose.NewClaude, compose.NewCodex, compose.NewOpencode:
 		return "✦"
 	default:
 		return "·"
@@ -854,6 +859,8 @@ func (model Model) rowBadges(row compose.Row) string {
 	switch row.Kind {
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		badges = append(badges, "⬢")
+	case compose.ResumeOpencode, compose.NewOpencode:
+		badges = append(badges, "◇")
 	case compose.Agent:
 		badges = append(badges, "⚙ agent")
 	}

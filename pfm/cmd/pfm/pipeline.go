@@ -519,6 +519,8 @@ func composeFleet(
 			PrimaryAccount:      environment.primary,
 			CodexAccountIDs:     environment.config.CodexAccountIDs(),
 			PrimaryCodexAccount: firstCodexAccount(environment.config),
+			OpencodeAccountIDs:  opencodeAccountIDs(environment.config),
+			PrimaryOpencode:     firstOpencodeAccount(environment.config),
 			NowNS:               environment.nowNS,
 		},
 	})
@@ -527,21 +529,23 @@ func composeFleet(
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
 	snapshot := ui.Snapshot{
-		Rows:                output.Rows,
-		View:                request.View,
-		KilledCount:         output.KilledCount,
-		SuppressedCount:     output.SuppressedCount,
-		PrimaryAccount:      environment.primary,
-		AccountIDs:          environment.config.AccountIDs(),
-		AccountEmojis:       accountEmojis(environment.config),
-		CodexPrimaryAccount: firstCodexAccount(environment.config),
-		CodexAccountIDs:     environment.config.CodexAccountIDs(),
-		CodexAccountEmojis:  codexAccountEmojis(environment.config),
-		Theme:               environment.config.Theme,
-		Cache1H:             request.Cache1H,
-		NowNS:               environment.nowNS,
-		InitialQuery:        request.Query,
-		NoSky:               request.NoSky,
+		Rows:                   output.Rows,
+		View:                   request.View,
+		KilledCount:            output.KilledCount,
+		SuppressedCount:        output.SuppressedCount,
+		PrimaryAccount:         environment.primary,
+		AccountIDs:             environment.config.AccountIDs(),
+		AccountEmojis:          accountEmojis(environment.config),
+		CodexPrimaryAccount:    firstCodexAccount(environment.config),
+		CodexAccountIDs:        environment.config.CodexAccountIDs(),
+		CodexAccountEmojis:     codexAccountEmojis(environment.config),
+		OpencodePrimaryAccount: firstOpencodeAccount(environment.config),
+		OpencodeAccountIDs:     opencodeAccountIDs(environment.config),
+		Theme:                  environment.config.Theme,
+		Cache1H:                request.Cache1H,
+		NowNS:                  environment.nowNS,
+		InitialQuery:           request.Query,
+		NoSky:                  request.NoSky,
 	}
 	return scanResult{
 		Output:   output,
@@ -587,6 +591,21 @@ func firstCodexAccount(machine pfmconfig.Config) int {
 		return 0
 	}
 	return machine.CodexAccounts[0].ID
+}
+
+func opencodeAccountIDs(machine pfmconfig.Config) []int {
+	result := make([]int, 0, len(machine.OpencodeAccounts))
+	for _, account := range machine.OpencodeAccounts {
+		result = append(result, account.ID)
+	}
+	return result
+}
+
+func firstOpencodeAccount(machine pfmconfig.Config) int {
+	if len(machine.OpencodeAccounts) == 0 {
+		return 0
+	}
+	return machine.OpencodeAccounts[0].ID
 }
 
 func streamFleetRefreshes(
@@ -843,6 +862,32 @@ func reconcileCodexPanes(
 			case 1:
 				threadID = matches[0]
 			default:
+				// Display names are not unique. If this pane is already bound to
+				// one of the matches, that incumbent is the only safe identity:
+				// keeping it does not guess or move the binding, and avoids turning
+				// ordinary duplicate-name state into a warning when the picker
+				// releases the terminal. A missing or non-matching binding remains
+				// genuinely ambiguous and is still reported.
+				bound, found, bindErr := manager.CodexPaneBinding(
+					ctx,
+					identity.Socket,
+					identity.PaneID,
+				)
+				if bindErr != nil {
+					warn(fmt.Sprintf("codex pane %s %s: read binding for duplicate name %q: %v", identity.Socket, identity.PaneID, identity.Name, bindErr))
+					continue
+				}
+				if found {
+					for _, match := range matches {
+						if match == bound {
+							threadID = bound
+							break
+						}
+					}
+				}
+				if threadID != "" {
+					break
+				}
 				warn(fmt.Sprintf("codex pane %s %s: %q matches more than one thread", identity.Socket, identity.PaneID, identity.Name))
 				continue
 			}

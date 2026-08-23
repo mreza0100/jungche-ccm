@@ -7,6 +7,7 @@ func TestNewRowsFollowEngineRosterMatrix(t *testing.T) {
 		name         string
 		claude       []AccountRoot
 		codex        []int
+		opencode     []int
 		wantKinds    []Kind
 		wantAccounts []int
 	}{
@@ -30,6 +31,14 @@ func TestNewRowsFollowEngineRosterMatrix(t *testing.T) {
 			wantKinds:    []Kind{NewClaude, NewCodex},
 			wantAccounts: []int{4, 9},
 		},
+		{
+			name:         "all three",
+			claude:       []AccountRoot{{Account: 2, Path: "/cc/2"}},
+			codex:        []int{7},
+			opencode:     []int{1},
+			wantKinds:    []Kind{NewClaude, NewCodex, NewOpencode},
+			wantAccounts: []int{2, 7, 1},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -40,6 +49,7 @@ func TestNewRowsFollowEngineRosterMatrix(t *testing.T) {
 					PrimaryAccount:      4,
 					CodexAccountIDs:     test.codex,
 					PrimaryCodexAccount: 9,
+					OpencodeAccountIDs:  test.opencode,
 				},
 			})
 			if len(output.Rows) != len(test.wantKinds) {

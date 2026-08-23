@@ -172,5 +172,5 @@ func boundMCPTurns(entries []transcript.Entry, maxBytes int) ([]mcpserv.Turn, in
 }
 
 func excludedFromMCPList(kind compose.Kind) bool {
-	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.Booting
+	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.NewOpencode || kind == compose.Booting
 }

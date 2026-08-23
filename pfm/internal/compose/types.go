@@ -28,6 +28,9 @@ const (
 	// Kind values are compared numerically in golden fixtures, so renumbering
 	// an existing kind would silently rewrite every fixture row.
 	ResumeOpencode
+	// NewOpencode is appended for the same compatibility reason. It launches a
+	// fresh OpenCode TUI in a fleet-owned ox socket.
+	NewOpencode
 )
 
 func (kind Kind) String() string {
@@ -52,6 +55,8 @@ func (kind Kind) String() string {
 		return "booting"
 	case ResumeOpencode:
 		return "resume-opencode"
+	case NewOpencode:
+		return "new-opencode"
 	default:
 		return "unknown"
 	}
@@ -80,6 +85,8 @@ type Options struct {
 	PrimaryAccount      int
 	CodexAccountIDs     []int
 	PrimaryCodexAccount int
+	OpencodeAccountIDs  []int
+	PrimaryOpencode     int
 	NowNS               int64
 }
 
@@ -141,9 +148,11 @@ type Output struct {
 	KilledCount     int
 	SuppressedCount int
 
-	includeNewClaude bool
-	includeNewCodex  bool
-	primaryAccount   int
-	primaryCodex     int
-	fallbackDir      string
+	includeNewClaude   bool
+	includeNewCodex    bool
+	includeNewOpenCode bool
+	primaryAccount     int
+	primaryCodex       int
+	primaryOpenCode    int
+	fallbackDir        string
 }
