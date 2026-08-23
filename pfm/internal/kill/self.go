@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,8 @@ func (manager *Manager) IdentifySelf(
 	if socketPath == "" {
 		return Target{}, errors.New("could not identify this chat: TMUX is empty")
 	}
-	if strings.HasPrefix(socketName, "cx-") {
+	id, known := pfmengine.FromSocket(socketName)
+	if known && id == pfmengine.Codex {
 		return manager.identifyCodexSelf(
 			ctx,
 			socketPath,
@@ -52,7 +54,7 @@ func (manager *Manager) identifyClaudeSelf(
 		}
 		if found && looksLikeSessionID(transcript.UUID) {
 			return Target{
-				Engine:     ClaudeEngine,
+				Engine:     pfmengine.Claude,
 				ID:         transcript.UUID,
 				DataPath:   transcript.Path,
 				SocketPath: socketPath,
@@ -86,7 +88,7 @@ func (manager *Manager) identifyClaudeSelf(
 		transcriptPath = transcript.Path
 	}
 	return Target{
-		Engine:     ClaudeEngine,
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   transcriptPath,
 		SocketPath: socketPath,

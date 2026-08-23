@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestResolvePathUsesAbsoluteXDGOrHomeConfig(t *testing.T) {
@@ -291,6 +293,8 @@ func TestLoadRejectsUnknownKeysAtEveryConfigLevel(t *testing.T) {
 		{name: "mcp object", json: `{"version":1,"mcp":{"mystery":true}}`, want: "mystery"},
 		{name: "server object", json: `{"version":1,"mcp":{"servers":{"chat":{"enabled":false,"mystery":true}}}}`, want: "mystery"},
 		{name: "unregistered server", json: `{"version":1,"mcp":{"servers":{"not-registered":{"enabled":true}}}}`, want: "mcp.servers.not-registered"},
+		{name: "ask engine key", json: `{"version":1,"ask":{"bogus":{"model":"m"}}}`, want: `unknown engine "bogus" (want cc/claude, cx/codex, ox/opencode)`},
+		{name: "ask engine prefs", json: `{"version":1,"ask":{"claude":{"mystery":true}}}`, want: "mystery"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -567,7 +571,7 @@ func TestV2ConfigDefaultsAndPerAccountOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(v2) error = %v", err)
 	}
-	if got.Theme != "tokyo-night" || got.MCP.HTTP.Port != 9393 || got.Ask.Engine != "claude" {
+	if got.Theme != "tokyo-night" || got.MCP.HTTP.Port != 9393 || got.Ask.Engine != pfmengine.Claude {
 		t.Fatalf("v2 fields = theme:%q mcp:%#v ask:%#v", got.Theme, got.MCP, got.Ask)
 	}
 	if got.EffectiveClaude(1).PermissionMode != "prompted" || got.EffectiveClaude(2).PermissionMode != "bypass" {
@@ -591,7 +595,7 @@ func TestV1ConfigStillLoadsWithV2Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(v1) error = %v", err)
 	}
-	if got.Version != Version || got.Theme != "default" || got.MCP.HTTP.Port != 8377 || got.Ask.Engine != "codex" {
+	if got.Version != Version || got.Theme != "default" || got.MCP.HTTP.Port != 8377 || got.Ask.Engine != pfmengine.Codex {
 		t.Fatalf("v1 defaults = version:%d theme:%q port:%d engine:%q", got.Version, got.Theme, got.MCP.HTTP.Port, got.Ask.Engine)
 	}
 	if got.EmojiFor(4) != "🍀" {

@@ -77,7 +77,7 @@ func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...
 		fmt.Fprintf(stderr, "pfm internal clear-kill: config unavailable (fail-open): %v\n", runtimeErr)
 		return 0
 	}
-	indexer, err := index.NewWithCodexRoots(database, runtime.Paths, codexHomes(runtime.Config))
+	indexer, err := index.NewWithRoots(database, runtime.Paths, runtime.Paths.Roots)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal clear-kill: prepare transcript refresh (fail-open): %v\n", err)
 		return 0
@@ -147,7 +147,7 @@ func runCodexClearKill(source, sessionID, cwd, parent string, stderr io.Writer, 
 			fmt.Fprintf(stderr, "pfm internal clear-kill: config unavailable (fail-open): %v\n", runtimeErr)
 			return 0
 		}
-		indexer, indexErr := index.NewWithCodexRoots(database, runtime.Paths, codexHomes(runtime.Config))
+		indexer, indexErr := index.NewWithRoots(database, runtime.Paths, runtime.Paths.Roots)
 		if indexErr != nil {
 			fmt.Fprintf(stderr, "pfm internal clear-kill: prepare Codex refresh (fail-open): %v\n", indexErr)
 			return 0

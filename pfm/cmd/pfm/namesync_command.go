@@ -39,7 +39,7 @@ func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime
 	// A delta index first: a codex rename lands in session_index.jsonl or the
 	// thread store, and the name a window converges on is read from the index.
 	// Without this pass the sync would converge yesterday's names.
-	indexer, err := fleetindex.NewWithCodexRoots(database, runtime.Paths, codexHomes(runtime.Config))
+	indexer, err := fleetindex.NewWithRoots(database, runtime.Paths, runtime.Paths.Roots)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm name-sync: %v\n", err)
 		return 1

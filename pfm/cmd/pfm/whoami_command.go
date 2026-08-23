@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"io"
 	"os"
 	"path/filepath"
@@ -125,7 +126,7 @@ func codexSeatIdentity(ctx context.Context, runtimes ...commandRuntime) (resolve
 			Session:    row.Socket,
 			SocketPath: filepath.Join(scan.Paths.TmuxDir, row.Socket),
 			SocketName: row.Socket,
-			Engine:     resolve.CodexEngine,
+			Engine:     string(pfmengine.Codex),
 			ID:         thread,
 			Source:     "codex-thread",
 			Recovered:  true,

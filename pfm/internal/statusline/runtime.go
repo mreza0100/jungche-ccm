@@ -2,6 +2,7 @@ package statusline
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -54,7 +56,7 @@ type Runtime struct {
 	UID           int
 	AccountDirs   map[string]int
 	AccountEmojis map[int]string
-	Engine        string
+	Engine        pfmengine.ID
 
 	// A non-nil Env is a closed test environment. Nil reads os.Getenv.
 	Env map[string]string
@@ -63,18 +65,18 @@ type Runtime struct {
 	Spawn   func(RefreshKind) error
 }
 
-func DefaultRuntime() (Runtime, error) {
+func DefaultRuntime(id pfmengine.ID) (Runtime, error) {
 	resolved, err := paths.Resolve()
 	if err != nil {
 		return Runtime{}, err
 	}
 	columns, _ := strconv.Atoi(os.Getenv("COLUMNS"))
-	engine := EngineFromEnvironment(os.Getenv)
-	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
-	if engine == "codex" {
-		configDir = os.Getenv("CODEX_HOME")
+	descriptor := pfmengine.MustLookup(id)
+	configDir := os.Getenv(pfmengine.MustLookup(pfmengine.Claude).HomeEnv)
+	if id == pfmengine.Codex {
+		configDir = os.Getenv(descriptor.HomeEnv)
 		if configDir == "" {
-			configDir = resolved.CodexRoot
+			configDir = firstRoot(resolved.Roots[pfmengine.Codex])
 		}
 	} else if configDir == "" {
 		configDir = filepath.Join(resolved.Home, ".claude")
@@ -92,7 +94,7 @@ func DefaultRuntime() (Runtime, error) {
 		ProcRoot:     resolved.ProcRoot,
 		Columns:      columns,
 		UID:          os.Getuid(),
-		Engine:       engine,
+		Engine:       id,
 		Command:      commandRunner{},
 	}, nil
 }
@@ -100,17 +102,29 @@ func DefaultRuntime() (Runtime, error) {
 // EngineFromEnvironment resolves the current seat, not merely its parent.
 // A live Codex thread is authoritative even when a Codex-launched Claude child
 // inherited CODEX_HOME; an explicit Claude config otherwise wins that tie.
-func EngineFromEnvironment(getenv func(string) string) string {
-	if strings.TrimSpace(getenv("CODEX_THREAD_ID")) != "" {
-		return "codex"
+var ErrNoEngineInEnvironment = errors.New("no engine in environment")
+
+func firstRoot(roots []string) string {
+	if len(roots) == 0 {
+		return ""
 	}
-	if strings.TrimSpace(getenv("CLAUDE_CONFIG_DIR")) != "" {
-		return "claude"
+	return roots[0]
+}
+
+func EngineFromEnvironment(getenv func(string) string) (pfmengine.ID, error) {
+	for _, id := range pfmengine.All() {
+		d := pfmengine.MustLookup(id)
+		if d.SessionEnv != "" && strings.TrimSpace(getenv(d.SessionEnv)) != "" {
+			return id, nil
+		}
 	}
-	if strings.TrimSpace(getenv("CODEX_HOME")) != "" {
-		return "codex"
+	for _, id := range pfmengine.All() {
+		d := pfmengine.MustLookup(id)
+		if d.HomeEnv != "" && strings.TrimSpace(getenv(d.HomeEnv)) != "" {
+			return id, nil
+		}
 	}
-	return "claude"
+	return "", ErrNoEngineInEnvironment
 }
 
 // GPTCachePath is the one filesystem rule for the Codex App Server limits
@@ -140,7 +154,7 @@ func (runtime Runtime) now() time.Time {
 
 func (runtime Runtime) normalized() Runtime {
 	if runtime.Engine == "" {
-		runtime.Engine = "claude"
+		runtime.Engine = pfmengine.Claude
 	}
 	if runtime.Home == "" {
 		runtime.Home, _ = os.UserHomeDir()

@@ -9,6 +9,7 @@ import (
 
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 )
@@ -92,7 +93,7 @@ func TestInstallPreflightRefusesRequiredDependencyEvenWithForce(t *testing.T) {
 	home := t.TempDir()
 	runtime := commandRuntime{
 		Config: pfmconfig.Config{Claude: pfmconfig.Claude{Binary: "claude"}, Codex: pfmconfig.Codex{Binary: "codex"}},
-		Paths:  paths.Values{Home: home, CodexRoot: filepath.Join(home, ".codex")},
+		Paths:  paths.Values{Home: home, Roots: map[pfmengine.ID][]string{pfmengine.Codex: {filepath.Join(home, ".codex")}}},
 	}
 	var stdout, stderr bytes.Buffer
 	if code := runInstall([]string{"--yes", "--force", "--skip-harvest"}, &stdout, &stderr, runtime); code != 1 {
@@ -129,7 +130,7 @@ func TestInstallPreflightFailureStillPreviewsInDryRun(t *testing.T) {
 	home := t.TempDir()
 	runtime := commandRuntime{
 		Config: pfmconfig.Config{Claude: pfmconfig.Claude{Binary: "claude"}, Codex: pfmconfig.Codex{Binary: "codex"}},
-		Paths:  paths.Values{Home: home, CodexRoot: filepath.Join(home, ".codex")},
+		Paths:  paths.Values{Home: home, Roots: map[pfmengine.ID][]string{pfmengine.Codex: {filepath.Join(home, ".codex")}}},
 	}
 	var stdout, stderr bytes.Buffer
 	if code := runInstall([]string{"--skip-harvest"}, &stdout, &stderr, runtime); code != 1 {

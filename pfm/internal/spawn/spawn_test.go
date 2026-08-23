@@ -392,13 +392,14 @@ func TestCodexRefusingAnEmptyNameIsReportedAsSuch(t *testing.T) {
 func TestClaudeNeedsNoChoreography(t *testing.T) {
 	fake := newFakeCodex()
 	result, err := Run(context.Background(), fake, Request{
-		Engine:  "cc",
-		Name:    "worker",
-		Socket:  "cc-1-2-3",
-		CWD:     "/work/alpha",
-		Run:     "claude --name worker",
-		Prompt:  "audit the firewall",
-		Timings: testTimings(),
+		Engine:              "cc",
+		Name:                "worker",
+		Socket:              "cc-1-2-3",
+		CWD:                 "/work/alpha",
+		Run:                 "claude --name worker",
+		Prompt:              "audit the firewall",
+		PromptOnCommandLine: true,
+		Timings:             testTimings(),
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)

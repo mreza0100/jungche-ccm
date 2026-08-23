@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // metaWindow is how much of the tail is read for Meta. The newest records are
@@ -109,7 +111,7 @@ func applyMeta(meta *Meta, line []byte, engine string) {
 	if err := json.Unmarshal(line, &parsed); err != nil {
 		return
 	}
-	if engine == "cx" {
+	if engine == string(pfmengine.Codex) {
 		if parsed.Payload.Model != "" {
 			meta.Model = parsed.Payload.Model
 		}

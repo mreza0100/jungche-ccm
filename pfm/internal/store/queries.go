@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"sort"
 	"strings"
 
@@ -267,13 +268,13 @@ func (s *Store) codexLineageRows(
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("query cached lineage names: %w", err)
 	}
-	// Anything but a derived "cc" counts. An engine derives empty when neither
+	// Anything but a derived engine.Claude counts. An engine derives empty when neither
 	// index table claims the id, and an empty engine means "killed whatever the
 	// engine" everywhere else in the tree (compose.go:665) — a kill must not
 	// quietly lapse because the row that named its engine was pruned.
 	killedByID := make(map[string]Killed, len(killedRows))
 	for _, killed := range killedRows {
-		if killed.Engine != ClaudeEngine {
+		if killed.Engine != pfmengine.Claude {
 			killedByID[killed.ID] = killed
 		}
 	}

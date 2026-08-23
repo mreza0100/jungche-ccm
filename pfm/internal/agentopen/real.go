@@ -13,6 +13,7 @@ import (
 
 	"hostops/pfm/internal/action"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 )
 
@@ -30,7 +31,7 @@ func (commands ExecCommands) binary() string {
 	if commands.Binary != "" {
 		return deps.Executable(commands.Binary)
 	}
-	return deps.Executable("claude")
+	return deps.Executable(pfmengine.MustLookup(pfmengine.Claude).Binary)
 }
 func (commands ExecCommands) environment(config string, cache1H bool) []string {
 	dropped := map[string]struct{}{
@@ -154,7 +155,7 @@ func (tmux RealTmux) SocketForPID(ctx context.Context, pid int) (string, error) 
 		return "", err
 	}
 	for _, entry := range entries {
-		if !strings.HasPrefix(entry.Name(), "cc-") {
+		if id, ok := pfmengine.FromSocket(entry.Name()); !ok || id != pfmengine.Claude {
 			continue
 		}
 		output, err := tmux.command(ctx, entry.Name(), "list-panes", "-a", "-F", "#{pane_pid}").Output()

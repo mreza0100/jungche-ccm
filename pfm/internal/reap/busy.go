@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 )
 
@@ -33,11 +34,11 @@ type ClaudeAgents struct {
 
 // NewClaudeAgents wires the probe to the accounts on this machine.
 func NewClaudeAgents(resolved paths.Values) ClaudeAgents {
-	directories := make([]string, 0, len(resolved.ClaudeRoots))
-	for _, root := range resolved.ClaudeRoots {
+	directories := make([]string, 0, len(resolved.Roots[pfmengine.Claude]))
+	for _, root := range resolved.Roots[pfmengine.Claude] {
 		directories = append(directories, filepath.Dir(root))
 	}
-	return NewClaudeAgentsConfigured(resolved, "claude", directories)
+	return NewClaudeAgentsConfigured(resolved, pfmengine.MustLookup(pfmengine.Claude).Binary, directories)
 }
 
 // NewClaudeAgentsConfigured probes exactly the configured roster with the
@@ -48,7 +49,7 @@ func NewClaudeAgentsConfigured(
 	directories []string,
 ) ClaudeAgents {
 	if binaryName == "" {
-		binaryName = "claude"
+		binaryName = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
 	binary, err := deps.Resolve(binaryName)
 	if err != nil {

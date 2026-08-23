@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/heal"
 	"hostops/pfm/internal/paths"
 )
@@ -41,7 +42,7 @@ func runHeal(args []string, stdout, stderr io.Writer) int {
 	if *thread != "" {
 		if message := heal.Thread(
 			context.Background(),
-			resolved.CodexRoot,
+			firstRoot(resolved.Roots[pfmengine.Codex]),
 			*thread,
 		); message != "" {
 			fmt.Fprintln(stderr, message)
@@ -49,7 +50,7 @@ func runHeal(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	runner, err := heal.New(resolved.CodexRoot, nil)
+	runner, err := heal.New(firstRoot(resolved.Roots[pfmengine.Codex]), nil)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm heal: %v\n", err)
 		return 1

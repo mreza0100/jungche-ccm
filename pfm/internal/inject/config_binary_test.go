@@ -6,18 +6,21 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestPaneCommandEngineAcceptsConfiguredBinaryBasenames(t *testing.T) {
 	customClaude := "/opt/tools/claude enterprise"
 	customCodex := "/opt/tools/codex safe"
-	if got := paneCommandEngine(customClaude, customClaude, customCodex); got != "cc" {
+	binaries := map[pfmengine.ID]string{pfmengine.Claude: customClaude, pfmengine.Codex: customCodex}
+	if got := paneCommandEngine(customClaude, binaries); got != string(pfmengine.Claude) {
 		t.Fatalf("configured Claude command classified as %q", got)
 	}
-	if got := paneCommandEngine(customCodex, customClaude, customCodex); got != "cx" {
+	if got := paneCommandEngine(customCodex, binaries); got != string(pfmengine.Codex) {
 		t.Fatalf("configured Codex command classified as %q", got)
 	}
-	if got := paneCommandEngine("custom-codex", customClaude, customCodex); got != "" {
+	if got := paneCommandEngine("custom-codex", binaries); got != "" {
 		t.Fatalf("unknown command classified as %q", got)
 	}
 }

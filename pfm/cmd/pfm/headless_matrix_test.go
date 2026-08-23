@@ -51,6 +51,14 @@ func TestChatArgumentMatrix(t *testing.T) {
 	}
 }
 
+func TestCLIEngineEdgeRejectsUnknownWithAcceptedSet(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"chat", "new", "--name", "x", "--engine", "bogus"}, &stdout, &stderr)
+	if code != 2 || !strings.Contains(stderr.String(), `unknown engine "bogus" (want cc/claude, cx/codex, ox/opencode)`) {
+		t.Fatalf("chat new bogus exit=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
+
 // TestRunPromptSourcesAreExclusive pins --prompt-file's contract: it is the
 // transport for briefs too big to inline, and taking both would deliver a
 // truncated one while looking successful.

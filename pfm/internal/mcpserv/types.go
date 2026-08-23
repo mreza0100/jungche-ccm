@@ -1,6 +1,8 @@
 // Package mcpserv exposes the pfm chat family over stdio MCP.
 package mcpserv
 
+import pfmengine "hostops/pfm/internal/engine"
+
 // LSInput selects the fleet view returned by chat_ls.
 type LSInput struct {
 	All     bool   `json:"all,omitempty" jsonschema:"include killed, background, and uncapped rows"`
@@ -10,18 +12,18 @@ type LSInput struct {
 
 // ChatRow is one structured live or resumable fleet row.
 type ChatRow struct {
-	Session string `json:"session"`
-	ID      string `json:"id"`
-	Engine  string `json:"engine"`
-	State   string `json:"state"`
-	Dir     string `json:"dir"`
-	Project string `json:"project"`
-	Name    string `json:"name"`
-	Account int    `json:"account,omitempty"`
-	Kind    string `json:"kind"`
-	Killed  bool   `json:"killed,omitempty"`
-	Socket  string `json:"socket,omitempty"`
-	Pane    string `json:"pane,omitempty"`
+	Session string       `json:"session"`
+	ID      string       `json:"id"`
+	Engine  pfmengine.ID `json:"engine"`
+	State   string       `json:"state"`
+	Dir     string       `json:"dir"`
+	Project string       `json:"project"`
+	Name    string       `json:"name"`
+	Account int          `json:"account,omitempty"`
+	Kind    string       `json:"kind"`
+	Killed  bool         `json:"killed,omitempty"`
+	Socket  string       `json:"socket,omitempty"`
+	Pane    string       `json:"pane,omitempty"`
 }
 
 // LSOutput is chat_ls's structured response.

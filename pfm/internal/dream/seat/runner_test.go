@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -290,8 +291,8 @@ func successfulRunner(t *testing.T) (*Runner, *fakeHost, *fakeRollouts, *scripte
 
 	host := newFakeHost()
 	rollouts := &fakeRollouts{chats: map[string]headless.Chat{
-		"night-distill": {ID: "distill-id", Engine: codexEngine, Path: distillTranscript, CWD: stage},
-		"night-refiner": {ID: "refiner-id", Engine: codexEngine, Path: refinerTranscript, CWD: stage},
+		"night-distill": {ID: "distill-id", Engine: pfmengine.Codex, Path: distillTranscript, CWD: stage},
+		"night-refiner": {ID: "refiner-id", Engine: pfmengine.Codex, Path: refinerTranscript, CWD: stage},
 	}}
 	commands := &scriptedCommands{results: []CommandResult{
 		{Stdout: discoveryMCPOutput, ExitCode: 0},
@@ -651,7 +652,7 @@ func TestTimeoutFailsClosedAndCleansTheProcessGroupWithoutRetry(t *testing.T) {
 	working := filepath.Join(t.TempDir(), "working.jsonl")
 	writeCodexTranscript(t, working, codexUser("still waiting"))
 	rollouts.chats[request.distill.Name] = headless.Chat{
-		ID: "working-id", Engine: codexEngine, Path: working, CWD: request.stage,
+		ID: "working-id", Engine: pfmengine.Codex, Path: working, CWD: request.stage,
 	}
 	runner.seatTimeout = 3 * time.Millisecond
 	runner.poll = 100 * time.Microsecond
@@ -804,7 +805,7 @@ func TestWrongOrMissingTranscriptModelFailsAfterCleanup(t *testing.T) {
 		t, path, codexAssistant("answer"), "some-other-model", SeatEffort,
 	)
 	rollouts.chats[request.distill.Name] = headless.Chat{
-		ID: "wrong-id", Engine: codexEngine, Path: path, CWD: request.stage,
+		ID: "wrong-id", Engine: pfmengine.Codex, Path: path, CWD: request.stage,
 	}
 	result, err := runTestNight(context.Background(), runner, request)
 	if err == nil || !strings.Contains(err.Error(), "reports model") {
@@ -825,7 +826,7 @@ func TestWrongTranscriptEffortFailsAfterCleanup(t *testing.T) {
 		t, path, codexAssistant("answer"), SeatModel, "low",
 	)
 	rollouts.chats[request.distill.Name] = headless.Chat{
-		ID: "wrong-effort-id", Engine: codexEngine, Path: path, CWD: request.stage,
+		ID: "wrong-effort-id", Engine: pfmengine.Codex, Path: path, CWD: request.stage,
 	}
 	result, err := runTestNight(context.Background(), runner, request)
 	if err == nil || !strings.Contains(err.Error(), "reports effort") {

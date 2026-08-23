@@ -7,6 +7,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
@@ -28,25 +29,27 @@ type backend struct {
 
 func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error) {
 	if len(runtime.Accounts) == 0 {
-		machine := pfmconfig.Defaults(runtime.Paths.Home, runtime.Paths.ClaudeRoots)
+		machine := pfmconfig.Defaults(runtime.Paths.Home, runtime.Paths.Roots[pfmengine.Claude])
 		runtime.Accounts = machine.Accounts
 	}
 	if runtime.CodexBinary == "" {
-		runtime.CodexBinary = "codex"
+		runtime.CodexBinary = pfmengine.MustLookup(pfmengine.Codex).Binary
 	}
 	if runtime.ClaudeBinary == "" {
-		runtime.ClaudeBinary = "claude"
+		runtime.ClaudeBinary = pfmengine.MustLookup(pfmengine.Claude).Binary
 	}
 	if runtime.OpencodeBinary == "" {
-		runtime.OpencodeBinary = "opencode"
+		runtime.OpencodeBinary = pfmengine.MustLookup(pfmengine.Opencode).Binary
 	}
 	database, err := store.Open(store.WithWarningWriter(warnings))
 	if err != nil {
 		return nil, err
 	}
 	resolver, err := resolve.New(nil, resolve.Binaries{
-		Claude:        runtime.ClaudeBinary,
-		Codex:         runtime.CodexBinary,
+		Values: map[pfmengine.ID]string{
+			pfmengine.Claude: runtime.ClaudeBinary,
+			pfmengine.Codex:  runtime.CodexBinary,
+		},
 		AccountEmojis: accountEmojis(runtime.Accounts),
 	})
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -183,10 +184,10 @@ func TestFinisherDiscoversConfigOwnedClaudeRoots(t *testing.T) {
 		`{"claudeAiOauth":{"accessToken":"fixture"}}`,
 	)
 	finisher, err := NewFinisher(database, Dependencies{Paths: paths.Values{
-		Home:      jail.home,
-		SIDDir:    jail.sidDir,
-		CodexRoot: jail.codexRoot,
-		TmuxDir:   jail.tmuxDir,
+		Home:    jail.home,
+		SIDDir:  jail.sidDir,
+		Roots:   map[pfmengine.ID][]string{pfmengine.Codex: {jail.codexRoot}},
+		TmuxDir: jail.tmuxDir,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +223,7 @@ func TestManagerCanExitResolvedCodexSelfWithoutAmbientTmux(t *testing.T) {
 	const id = "20202020-2020-4020-8020-202020202020"
 	target, err := manager.Kill(context.Background(), Request{
 		ID:         id,
-		Engine:     CodexEngine,
+		Engine:     pfmengine.Codex,
 		Exit:       true,
 		SocketName: "probe-codex-self",
 		PaneID:     "%7",
@@ -308,10 +309,10 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target.ID != claudeID || target.Engine != ClaudeEngine {
+	if target.ID != claudeID || target.Engine != pfmengine.Claude {
 		t.Fatalf("Claude target = %#v", target)
 	}
-	assertKilled(t, database, claudeID, ClaudeEngine, now.Unix())
+	assertKilled(t, database, claudeID, pfmengine.Claude, now.Unix())
 
 	cxSocket := filepath.Join(jail.tmuxDir, "cx-200-1-1")
 	target, err = manager.Kill(ctx, Request{
@@ -325,10 +326,10 @@ func TestManagerIdentifiesClaudeAndCodexSelf(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target.ID != codexID || target.Engine != CodexEngine {
+	if target.ID != codexID || target.Engine != pfmengine.Codex {
 		t.Fatalf("Codex target = %#v", target)
 	}
-	assertKilled(t, database, codexID, CodexEngine, now.Unix())
+	assertKilled(t, database, codexID, pfmengine.Codex, now.Unix())
 	if len(spawner.args) != 1 ||
 		spawner.args[0].ID != codexID ||
 		spawner.args[0].PaneID != "%8" ||
@@ -396,7 +397,7 @@ func TestManagerStoreOnlyCodexSelfKills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store-only Codex self-kill: %v", err)
 	}
-	if target.ID != threadID || target.Engine != CodexEngine {
+	if target.ID != threadID || target.Engine != pfmengine.Codex {
 		t.Fatalf("store-only Codex target = %#v", target)
 	}
 	// No rollout row exists for this thread — it lives only in Codex's own
@@ -552,7 +553,7 @@ func TestKilledChatStaysKilledAsItGrowsUntilUnkill(t *testing.T) {
 	if _, err := manager.Kill(ctx, Request{ID: id}); err != nil {
 		t.Fatal(err)
 	}
-	assertKilled(t, database, id, ClaudeEngine, 50)
+	assertKilled(t, database, id, pfmengine.Claude, 50)
 	if listedByDefault(t, database, id) {
 		t.Fatal("killed chat is still listed")
 	}
@@ -571,7 +572,7 @@ func TestKilledChatStaysKilledAsItGrowsUntilUnkill(t *testing.T) {
 	if listedByDefault(t, database, id) {
 		t.Fatal("a killed chat returned once its prompt count grew")
 	}
-	assertKilled(t, database, id, ClaudeEngine, 50)
+	assertKilled(t, database, id, pfmengine.Claude, 50)
 
 	if err := manager.Unkill(ctx, id); err != nil {
 		t.Fatal(err)
@@ -686,7 +687,7 @@ func TestKilledCodexLineageMatchesAnyMemberIDUntilUnkill(t *testing.T) {
 	// session appends to.
 	if err := database.Kill(ctx, store.Killed{
 		ID:       childID,
-		Engine:   CodexEngine,
+		Engine:   pfmengine.Codex,
 		KilledAt: 50,
 	}); err != nil {
 		t.Fatal(err)
@@ -780,7 +781,7 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 	}
 	if err := database.Kill(ctx, store.Killed{
 		ID:       id,
-		Engine:   ClaudeEngine,
+		Engine:   pfmengine.Claude,
 		KilledAt: 100,
 	}); err != nil {
 		t.Fatal(err)
@@ -829,7 +830,7 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := finisher.Run(ctx, ExitArgs{
-		Engine:     ClaudeEngine,
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   transcriptPath,
 		SocketPath: filepath.Join(jail.tmuxDir, socketName),
@@ -860,7 +861,7 @@ func TestFinisherChoreographyAndTeammateReaping(t *testing.T) {
 			t.Fatalf("%s remains after cleanup: %v", path, err)
 		}
 	}
-	assertKilled(t, database, id, ClaudeEngine, 100)
+	assertKilled(t, database, id, pfmengine.Claude, 100)
 }
 
 // The live fleet registers teammates in the shared store and writes no flat
@@ -914,7 +915,7 @@ func TestFinisherReapsTeammatesFromTheSharedChildrenTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := finisher.Run(ctx, ExitArgs{
-		Engine:     ClaudeEngine,
+		Engine:     pfmengine.Claude,
 		ID:         id,
 		DataPath:   transcriptPath,
 		SocketPath: filepath.Join(jail.tmuxDir, socketName),
@@ -974,7 +975,7 @@ func TestFinisherCodexUsesQuit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := finisher.Run(ctx, ExitArgs{
-		Engine:     CodexEngine,
+		Engine:     pfmengine.Codex,
 		ID:         id,
 		DataPath:   path,
 		SocketPath: filepath.Join(jail.tmuxDir, "cx-500-1-1"),
@@ -986,7 +987,7 @@ func TestFinisherCodexUsesQuit(t *testing.T) {
 	if !reflect.DeepEqual(tmux.sent, []string{"/quit"}) {
 		t.Fatalf("sent = %q, want /quit", tmux.sent)
 	}
-	assertKilled(t, database, id, CodexEngine, tmuxKilledAt(t, database, id))
+	assertKilled(t, database, id, pfmengine.Codex, tmuxKilledAt(t, database, id))
 }
 
 func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
@@ -1011,7 +1012,7 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 		ConfigPath: "/jail/config/pfm.json",
 	}
 	args := ExitArgs{
-		Engine:     ClaudeEngine,
+		Engine:     pfmengine.Claude,
 		ID:         "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
 		DataPath:   "/jail/transcript.jsonl",
 		SocketPath: "/jail/tmux/cc-1-1-1",
@@ -1033,7 +1034,7 @@ func TestCommandSpawnerUsesSetsidSelfReexec(t *testing.T) {
 		"internal",
 		"kill-exit",
 		"--engine",
-		args.Engine,
+		string(args.Engine),
 		"--id",
 		args.ID,
 		"--path",
@@ -1178,7 +1179,8 @@ INSERT INTO threads (
 func assertKilled(
 	t *testing.T,
 	database *store.Store,
-	id, engine string,
+	id string,
+	engine pfmengine.ID,
 	killedAt int64,
 ) {
 	t.Helper()
@@ -1268,11 +1270,11 @@ func TestKillingALiveAgentRowSticksWhileItRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The picker's own call: it holds the row, so it names the engine.
-	target, err := manager.Kill(ctx, Request{ID: agentID, Engine: ClaudeEngine})
+	target, err := manager.Kill(ctx, Request{ID: agentID, Engine: pfmengine.Claude})
 	if err != nil {
 		t.Fatalf("Kill() on a live agent row error = %v", err)
 	}
-	if target.ID != agentID || target.Engine != ClaudeEngine {
+	if target.ID != agentID || target.Engine != pfmengine.Claude {
 		t.Fatalf("Kill() target = %#v, want the agent's own session uuid", target)
 	}
 

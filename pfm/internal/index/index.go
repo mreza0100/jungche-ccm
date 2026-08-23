@@ -1,13 +1,13 @@
-// Package index incrementally indexes Claude transcripts and Codex rollouts.
+// Package index incrementally indexes every registered engine's sessions.
 package index
 
 import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 )
@@ -45,15 +45,17 @@ type Counters struct {
 
 	// OcSessions counts the OpenCode sessions mirrored this pass. The mirror
 	// is a full replace, so this is the population, not a delta.
-	OcSessions int
+	OcSessions            int
+	Skipped               map[pfmengine.ID]string
+	options               Options
+	legacySingleCodexRoot bool
 }
 
-// Indexer incrementally mirrors transcript stores into SQLite.
+// Indexer incrementally mirrors session stores into SQLite.
 type Indexer struct {
-	database         *store.Store
-	paths            paths.Values
-	codexRoots       []string
-	configOwnedCodex bool
+	database              *store.Store
+	roots                 map[pfmengine.ID][]string
+	legacySingleCodexRoot bool
 }
 
 // New resolves the jailed or default host paths used by an Indexer.
@@ -72,414 +74,53 @@ func New(database *store.Store) (*Indexer, error) {
 // Callers that have loaded command policy must pass those paths here so the
 // indexer reads the same account roots as the rest of the command.
 func NewWithPaths(database *store.Store, resolved paths.Values) (*Indexer, error) {
-	indexer, err := newWithCodexRoots(database, resolved, []string{resolved.CodexRoot})
+	indexer, err := newWithRoots(database, resolved.Roots)
 	if indexer != nil {
-		indexer.configOwnedCodex = false
+		indexer.legacySingleCodexRoot = true
 	}
 	return indexer, err
 }
 
-// NewWithCodexRoots constructs an Indexer over the config-owned Codex roster.
-// An explicitly empty slice scans no Codex store; nil is also empty because
-// legacy callers that want paths.CodexRoot use NewWithPaths.
-func NewWithCodexRoots(database *store.Store, resolved paths.Values, roots []string) (*Indexer, error) {
-	indexer, err := newWithCodexRoots(database, resolved, roots)
-	if indexer != nil {
-		indexer.configOwnedCodex = true
-	}
-	return indexer, err
+// NewWithRoots constructs an Indexer over config-owned engine roots.
+func NewWithRoots(database *store.Store, _ paths.Values, roots map[pfmengine.ID][]string) (*Indexer, error) {
+	return newWithRoots(database, roots)
 }
 
-func newWithCodexRoots(database *store.Store, resolved paths.Values, roots []string) (*Indexer, error) {
+func newWithRoots(database *store.Store, roots map[pfmengine.ID][]string) (*Indexer, error) {
 	if database == nil {
 		return nil, fmt.Errorf("index store is nil")
 	}
-	codexRoots := make([]string, 0, len(roots))
-	seen := make(map[string]bool, len(roots))
-	for _, root := range roots {
-		clean := filepath.Clean(strings.TrimSpace(root))
-		if clean == "." || seen[clean] {
-			continue
+	cleanRoots := make(map[pfmengine.ID][]string, len(roots))
+	for id, values := range roots {
+		seen := make(map[string]bool, len(values))
+		for _, root := range values {
+			clean := filepath.Clean(strings.TrimSpace(root))
+			if clean == "." || seen[clean] {
+				continue
+			}
+			seen[clean] = true
+			cleanRoots[id] = append(cleanRoots[id], clean)
 		}
-		seen[clean] = true
-		codexRoots = append(codexRoots, clean)
 	}
-	return &Indexer{database: database, paths: resolved, codexRoots: codexRoots}, nil
+	return &Indexer{database: database, roots: cleanRoots}, nil
 }
 
-// Run executes one complete Claude, Codex, and session-index pass.
+// Run asks every registered engine source to perform its indexing pass.
 func (indexer *Indexer) Run(ctx context.Context, options Options) (Counters, error) {
-	var counters Counters
-
-	claudeFiles, err := walkClaudeRoots(ctx, indexer.paths.ClaudeRoots)
-	if err != nil {
-		return counters, err
+	counters := Counters{
+		Skipped:               make(map[pfmengine.ID]string),
+		options:               options,
+		legacySingleCodexRoot: indexer.legacySingleCodexRoot,
 	}
-	existingTranscripts, err := indexer.database.Transcripts(ctx)
-	if err != nil {
-		return counters, err
-	}
-	existingRollouts, err := indexer.database.Rollouts(ctx)
-	if err != nil {
-		return counters, err
-	}
-	claudeFiles = prioritizeClaudeFiles(
-		claudeFiles,
-		options.PriorityCWD,
-		existingTranscripts,
-		options.PriorityOnly,
-	)
-	var codexFiles []diskFile
-	if !options.PriorityOnly {
-		for _, codexRoot := range indexer.codexRoots {
-			files, walkErr := walkCodexRollouts(ctx, codexRoot)
-			if walkErr != nil {
-				return counters, walkErr
-			}
-			codexFiles = append(codexFiles, files...)
-		}
-		sort.Slice(codexFiles, func(left, right int) bool { return codexFiles[left].Path < codexFiles[right].Path })
-	}
-	counters.FilesSeen = len(claudeFiles) + len(codexFiles)
-
-	storedCodexVersion, codexVersionFound, err := indexer.database.Meta(
-		ctx,
-		codexParserVersionKey,
-	)
-	if err != nil {
-		return counters, err
-	}
-	forceCodexFull := options.Full ||
-		!codexVersionFound ||
-		storedCodexVersion != codexParserVersion
-
-	storedClaudeVersion, claudeVersionFound, err := indexer.database.Meta(
-		ctx,
-		claudeParserVersionKey,
-	)
-	if err != nil {
-		return counters, err
-	}
-	forceClaudeFull := options.Full ||
-		!claudeVersionFound ||
-		storedClaudeVersion != claudeParserVersion
-
-	transcriptByPath := make(map[string]store.Transcript, len(existingTranscripts))
-	for _, transcript := range existingTranscripts {
-		transcriptByPath[transcript.Path] = transcript
-	}
-	rolloutByPath := make(map[string]store.Rollout, len(existingRollouts))
-	rolloutByID := make(map[string]store.Rollout, len(existingRollouts))
-	for _, rollout := range existingRollouts {
-		rolloutByPath[rollout.Path] = rollout
-		rolloutByID[rollout.ID] = rollout
-	}
-
-	transcriptUpdates := make([]store.Transcript, 0)
-	presentTranscriptPaths := make(map[string]struct{}, len(claudeFiles))
-	presentTranscriptIDs := make(map[string]struct{}, len(claudeFiles))
-	for _, file := range claudeFiles {
-		presentTranscriptPaths[file.Path] = struct{}{}
-		presentTranscriptIDs[file.ID] = struct{}{}
-
-		existing, found := transcriptByPath[file.Path]
-		if shouldSkip(file, found, existing.Size, existing.MTimeNS, forceClaudeFull) {
-			counters.FilesSkipped++
+	for _, id := range pfmengine.All() {
+		source, err := SourceFor(id)
+		if err != nil {
+			counters.Skipped[id] = "no index source registered"
 			continue
 		}
-
-		start := int64(0)
-		base := store.Transcript{}
-		if shouldDelta(file, found, existing.Size, existing.ParsedOffset, forceClaudeFull) {
-			start = existing.ParsedOffset
-			base = existing
-			counters.DeltaParsed++
-		} else {
-			counters.FullParsed++
-		}
-		transcript, bytesRead, err := parseClaude(file, start, base)
-		if err != nil {
-			return counters, err
-		}
-		counters.BytesRead += bytesRead
-		transcriptUpdates = append(transcriptUpdates, transcript)
-	}
-
-	rolloutUpdates := make([]store.Rollout, 0)
-	presentRolloutPaths := make(map[string]struct{}, len(codexFiles))
-	presentRolloutIDs := make(map[string]struct{}, len(codexFiles))
-	for _, file := range codexFiles {
-		presentRolloutPaths[file.Path] = struct{}{}
-		existing, found := rolloutByPath[file.Path]
-		if shouldSkip(file, found, existing.Size, existing.MTimeNS, forceCodexFull) {
-			counters.FilesSkipped++
-			presentRolloutIDs[existing.ID] = struct{}{}
-			continue
-		}
-
-		start := int64(0)
-		base := store.Rollout{}
-		if shouldDelta(file, found, existing.Size, existing.ParsedOffset, forceCodexFull) {
-			start = existing.ParsedOffset
-			base = existing
-			counters.DeltaParsed++
-		} else {
-			counters.FullParsed++
-		}
-		rollout, bytesRead, err := parseCodex(file, start, base)
-		if err != nil {
-			return counters, err
-		}
-		counters.BytesRead += bytesRead
-		rolloutUpdates = append(rolloutUpdates, rollout)
-		presentRolloutIDs[rollout.ID] = struct{}{}
-	}
-
-	// The Codex state store is consulted after the rollout files are parsed:
-	// files supply sizes and prompt counts, the store supplies the population,
-	// its classification, and the conversations that wrote no file at all.
-	var codexThreads []store.CodexThread
-	if !options.PriorityOnly {
-		for _, codexRoot := range indexer.codexRoots {
-			threads, readErr := readCodexThreads(ctx, codexRoot)
-			if readErr != nil {
-				return counters, readErr
-			}
-			codexThreads = append(codexThreads, threads...)
-			rolloutUpdates = reconcileCodexState(
-				threads,
-				codexRoot,
-				rolloutUpdates,
-				rolloutByID,
-				presentRolloutIDs,
-				&counters,
-			)
-		}
-	}
-
-	transcriptDeletes := make([]string, 0)
-	rolloutDeletes := make([]string, 0)
-	if !options.PriorityOnly {
-		for _, transcript := range existingTranscripts {
-			_, pathPresent := presentTranscriptPaths[transcript.Path]
-			_, idPresent := presentTranscriptIDs[transcript.UUID]
-			if !pathPresent && !idPresent {
-				transcriptDeletes = append(transcriptDeletes, transcript.UUID)
-			}
-		}
-		for _, rollout := range existingRollouts {
-			_, pathPresent := presentRolloutPaths[rollout.Path]
-			_, idPresent := presentRolloutIDs[rollout.ID]
-			if !pathPresent && !idPresent {
-				rolloutDeletes = append(rolloutDeletes, rollout.ID)
-			}
-		}
-	}
-
-	if err := writeTranscriptUpdates(ctx, indexer.database, transcriptUpdates); err != nil {
-		return counters, err
-	}
-	if err := writeRolloutUpdates(ctx, indexer.database, rolloutUpdates); err != nil {
-		return counters, err
-	}
-	if err := deleteTranscripts(ctx, indexer.database, transcriptDeletes); err != nil {
-		return counters, err
-	}
-	if err := deleteRollouts(ctx, indexer.database, rolloutDeletes); err != nil {
-		return counters, err
-	}
-	if !options.PriorityOnly {
-		if err := indexer.database.ReconcileCodexLineageRoots(ctx); err != nil {
-			return counters, fmt.Errorf("reconcile Codex lineage roots: %w", err)
-		}
-	}
-
-	if !options.PriorityOnly {
-		if err := syncOpencodeMirror(ctx, indexer.database, indexer.paths.OpenCodeRoot, &counters); err != nil {
-			return counters, err
-		}
-	}
-
-	counters.Deleted = len(transcriptDeletes) + len(rolloutDeletes)
-	counters.RowsTouched = len(transcriptUpdates) + len(rolloutUpdates) + counters.Deleted
-	if !options.PriorityOnly {
-		var namesErr error
-		if indexer.configOwnedCodex {
-			namesErr = reloadCxNamesFromRoots(ctx, indexer.database, indexer.codexRoots, &counters)
-		} else {
-			namesErr = reloadCxNames(ctx, indexer.database, indexer.paths.CodexRoot, &counters)
-		}
-		if namesErr != nil {
-			return counters, namesErr
-		}
-		// Store names are applied after the session_index mirror is rebuilt,
-		// so a rename made inside Codex outranks the file it left behind.
-		if err := reconcileCodexNames(
-			ctx,
-			indexer.database,
-			codexThreads,
-			&counters,
-		); err != nil {
-			return counters, err
-		}
-		if !codexVersionFound || storedCodexVersion != codexParserVersion {
-			if err := indexer.database.SetMeta(
-				ctx,
-				codexParserVersionKey,
-				codexParserVersion,
-			); err != nil {
-				return counters, err
-			}
-		}
-		if !claudeVersionFound || storedClaudeVersion != claudeParserVersion {
-			if err := indexer.database.SetMeta(
-				ctx,
-				claudeParserVersionKey,
-				claudeParserVersion,
-			); err != nil {
-				return counters, err
-			}
+		if err := source.Sync(ctx, indexer.database, indexer.roots[id], &counters); err != nil {
+			return counters, fmt.Errorf("index engine %s: %w", id, err)
 		}
 	}
 	return counters, nil
-}
-
-func prioritizeClaudeFiles(
-	files []diskFile,
-	cwd string,
-	existing []store.Transcript,
-	only bool,
-) []diskFile {
-	cwd = filepath.Clean(cwd)
-	if cwd == "." || cwd == "" {
-		if only {
-			return nil
-		}
-		return files
-	}
-	knownPaths := make(map[string]struct{})
-	for _, transcript := range existing {
-		if filepath.Clean(transcript.CWD) == cwd {
-			knownPaths[filepath.Clean(transcript.Path)] = struct{}{}
-		}
-	}
-	encoded := strings.ReplaceAll(cwd, string(filepath.Separator), "-")
-	if filepath.VolumeName(cwd) != "" {
-		encoded = strings.ReplaceAll(encoded, ":", "-")
-	}
-	isPriority := func(file diskFile) bool {
-		if _, found := knownPaths[filepath.Clean(file.Path)]; found {
-			return true
-		}
-		return filepath.Base(filepath.Dir(file.Path)) == encoded
-	}
-	if only {
-		selected := make([]diskFile, 0)
-		for _, file := range files {
-			if isPriority(file) {
-				selected = append(selected, file)
-			}
-		}
-		return selected
-	}
-	sort.SliceStable(files, func(left, right int) bool {
-		leftPriority := isPriority(files[left])
-		rightPriority := isPriority(files[right])
-		if leftPriority != rightPriority {
-			return leftPriority
-		}
-		return files[left].Path < files[right].Path
-	})
-	return files
-}
-
-func shouldSkip(
-	file diskFile,
-	found bool,
-	oldSize int64,
-	oldMTimeNS int64,
-	full bool,
-) bool {
-	return !full &&
-		found &&
-		file.Size == oldSize &&
-		file.MTimeNS == oldMTimeNS
-}
-
-// shouldDelta reports whether the previous parse of this file can be resumed.
-// A row with no parsed bytes has no parse to continue — a Codex row the state
-// store created before its rollout file existed is exactly that — so it is
-// parsed in full instead of adding a whole file onto a carried-over base.
-func shouldDelta(
-	file diskFile,
-	found bool,
-	oldSize int64,
-	parsedOffset int64,
-	full bool,
-) bool {
-	return !full &&
-		found &&
-		oldSize > 0 &&
-		file.Size > oldSize &&
-		file.Size >= parsedOffset
-}
-
-func writeTranscriptUpdates(
-	ctx context.Context,
-	database *store.Store,
-	updates []store.Transcript,
-) error {
-	return database.Batch(ctx, len(updates), func(tx *store.ImmediateTx, start, end int) error {
-		for _, transcript := range updates[start:end] {
-			if err := tx.UpsertTranscript(ctx, transcript); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func writeRolloutUpdates(
-	ctx context.Context,
-	database *store.Store,
-	updates []store.Rollout,
-) error {
-	return database.Batch(ctx, len(updates), func(tx *store.ImmediateTx, start, end int) error {
-		for _, rollout := range updates[start:end] {
-			if err := tx.UpsertRollout(ctx, rollout); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func deleteTranscripts(
-	ctx context.Context,
-	database *store.Store,
-	ids []string,
-) error {
-	return database.Batch(ctx, len(ids), func(tx *store.ImmediateTx, start, end int) error {
-		for _, id := range ids[start:end] {
-			if err := tx.DeleteTranscript(ctx, id); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func deleteRollouts(
-	ctx context.Context,
-	database *store.Store,
-	ids []string,
-) error {
-	return database.Batch(ctx, len(ids), func(tx *store.ImmediateTx, start, end int) error {
-		for _, id := range ids[start:end] {
-			if err := tx.DeleteRollout(ctx, id); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }

@@ -10,15 +10,14 @@ import (
 	"time"
 
 	"hostops/pfm/internal/action"
-	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
-	"hostops/pfm/internal/store"
 )
 
 // spawnTraceEnv turns on the spawn choreography trace on stderr.
@@ -104,10 +103,6 @@ func runRun(
 		return 2
 	}
 
-	kind := compose.NewClaude
-	if engineName == store.CodexEngine {
-		kind = compose.NewCodex
-	}
 	// PFM_SPAWN_TRACE turns on a step-by-step log of the TUI
 	// choreography: what was typed, which screen came back, which overlay was
 	// dismissed. A chat driven blind is a chat debugged blind.
@@ -118,15 +113,16 @@ func runRun(
 	result, err := spawn.Run(context.Background(), spawn.CommandTmux{
 		TmuxDir: resolved.TmuxDir,
 	}, spawn.Request{
-		Trace:  trace,
-		Engine: engineName,
-		Name:   *name,
-		Socket: freshSocket(kind),
-		CWD:    directory,
-		Run:    plan.Run,
-		Prompt: promptForTUI(plan, prompt),
-		Width:  action.HeadlessWidth,
-		Height: action.HeadlessHeight,
+		Trace:               trace,
+		Engine:              engineName,
+		Name:                *name,
+		Socket:              freshEngineSocket(engineName),
+		CWD:                 directory,
+		Run:                 plan.Run,
+		Prompt:              prompt,
+		PromptOnCommandLine: plan.PromptOnCommandLine,
+		Width:               action.HeadlessWidth,
+		Height:              action.HeadlessHeight,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
@@ -184,23 +180,32 @@ func resolveRunEngineAccount(
 	requestedAccount int,
 	machine pfmconfig.Config,
 	primaryClaude int,
-) (string, int, error) {
+) (pfmengine.ID, int, error) {
 	engineInput := requestedEngine
 	if strings.TrimSpace(engineInput) == "" {
 		defaultEngine, err := machine.DefaultEngine()
 		if err != nil {
 			return "", 0, err
 		}
-		engineInput = defaultEngine
+		return resolveRunEngineIDAccount(defaultEngine, requestedAccount, machine, primaryClaude)
 	}
-	engine, ok := action.NormalizeEngine(engineInput)
-	if !ok {
-		return "", 0, fmt.Errorf("unknown engine %q", requestedEngine)
+	id, err := pfmengine.Parse(engineInput)
+	if err != nil {
+		return "", 0, err
 	}
+	return resolveRunEngineIDAccount(id, requestedAccount, machine, primaryClaude)
+}
+
+func resolveRunEngineIDAccount(
+	id pfmengine.ID,
+	requestedAccount int,
+	machine pfmconfig.Config,
+	primaryClaude int,
+) (pfmengine.ID, int, error) {
 
 	account := requestedAccount
-	switch engine {
-	case store.ClaudeEngine:
+	switch id {
+	case pfmengine.Claude:
 		if account == 0 {
 			account = primaryClaude
 			if _, found := machine.Account(account); !found && len(machine.Accounts) != 0 {
@@ -210,7 +215,7 @@ func resolveRunEngineAccount(
 		if _, found := machine.Account(account); !found {
 			return "", 0, fmt.Errorf("Claude account %d is not in the configured roster", account)
 		}
-	case store.CodexEngine:
+	case pfmengine.Codex:
 		if account == 0 && len(machine.CodexAccounts) != 0 {
 			account = machine.CodexAccounts[0].ID
 		}
@@ -218,7 +223,7 @@ func resolveRunEngineAccount(
 			return "", 0, fmt.Errorf("Codex account %d is not in the configured roster", account)
 		}
 	}
-	return engine, account, nil
+	return id, account, nil
 }
 
 func parentChatID() string {
@@ -387,15 +392,6 @@ func rescueLaunchPrompt(
 	return true
 }
 
-// promptForTUI is the prompt the spawner must type, which is empty whenever
-// the engine already took it on its command line.
-func promptForTUI(plan action.HeadlessPlan, prompt string) string {
-	if plan.PromptOnCommandLine {
-		return ""
-	}
-	return prompt
-}
-
 // runPrompt takes the launch prompt from a file or from the command line,
 // never from both: an inline argument caps out around what a shell will carry,
 // which is why --prompt-file exists, and silently preferring one over the
@@ -440,7 +436,7 @@ func runDirectory(requested string) (string, error) {
 
 func printRunResult(
 	stdout io.Writer,
-	engineName string,
+	engineName pfmengine.ID,
 	result spawn.Result,
 ) {
 	state := "named"

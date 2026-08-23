@@ -6,6 +6,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 func TestCodexLaunchesUseTheSelectedRosterHome(t *testing.T) {
@@ -20,7 +21,7 @@ func TestCodexLaunchesUseTheSelectedRosterHome(t *testing.T) {
 	}
 
 	headless, err := HeadlessRun(HeadlessRequest{
-		Engine: "codex", Name: "worker", CWD: "/work/project",
+		Engine: pfmengine.Codex, Name: "worker", CWD: "/work/project",
 		PrimaryAccount: 9, Config: machine,
 	})
 	if err != nil {
@@ -45,7 +46,7 @@ func TestCodexLaunchesUseTheSelectedRosterHome(t *testing.T) {
 	}
 
 	_, err = HeadlessRun(HeadlessRequest{
-		Engine: "codex", Name: "worker", CWD: "/work/project",
+		Engine: pfmengine.Codex, Name: "worker", CWD: "/work/project",
 		PrimaryAccount: 8, Config: machine,
 	})
 	if err == nil || !strings.Contains(err.Error(), "Codex account 8") {

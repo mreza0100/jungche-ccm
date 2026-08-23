@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	pfmengine "hostops/pfm/internal/engine"
 	"syscall"
 	"time"
 
@@ -89,13 +91,13 @@ func ResolveVertexProject(ctx context.Context) (string, error) {
 // ReadGPTRateLimits performs the complete Codex App Server initialize exchange
 // and returns its id=1 response. It runs only in a detached refresher child.
 func ReadGPTRateLimits(ctx context.Context) ([]byte, error) {
-	return ReadGPTRateLimitsWithBinary(ctx, "codex")
+	return ReadGPTRateLimitsWithBinary(ctx, pfmengine.MustLookup(pfmengine.Codex).Binary)
 }
 
 // ReadGPTRateLimitsWithBinary uses the machine-configured Codex command.
 func ReadGPTRateLimitsWithBinary(ctx context.Context, binary string) ([]byte, error) {
 	if binary == "" {
-		binary = "codex"
+		binary = pfmengine.MustLookup(pfmengine.Codex).Binary
 	}
 	child, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()

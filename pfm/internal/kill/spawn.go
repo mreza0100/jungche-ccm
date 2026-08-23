@@ -42,7 +42,7 @@ func (spawner CommandSpawner) Spawn(
 		"internal",
 		"kill-exit",
 		"--engine",
-		args.Engine,
+		string(args.Engine),
 		"--id",
 		args.ID,
 		"--path",

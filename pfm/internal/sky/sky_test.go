@@ -4,9 +4,19 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const sec = int64(1_000_000_000)
+
+func TestEveryEngineHasAStar(t *testing.T) {
+	for _, id := range pfmengine.All() {
+		if _, ok := starBase[id]; !ok {
+			t.Errorf("engine %s has no star class", id)
+		}
+	}
+}
 
 // plain renders an uncolored frame at the design size unless overridden.
 func plain(claude, codex int, tNS int64, events []Event, size ...int) []string {

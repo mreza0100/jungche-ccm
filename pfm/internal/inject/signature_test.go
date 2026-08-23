@@ -2,6 +2,7 @@ package inject
 
 import (
 	"context"
+	pfmengine "hostops/pfm/internal/engine"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -165,7 +166,7 @@ func TestSignatureUsesAncestryRecoveredIdentity(t *testing.T) {
 			SocketPath: "/tmp/tmux-jail/cx-1700000000-1-1",
 			SocketName: "cx-1700000000-1-1",
 			Pane:       "%3",
-			Engine:     resolve.CodexEngine,
+			Engine:     string(pfmengine.Codex),
 			ID:         "thread-xyz",
 			Source:     "ancestry",
 			Recovered:  true,
@@ -215,7 +216,7 @@ func TestSignatureUsesCodexThreadSeatAfterAncestryMiss(t *testing.T) {
 		Session:    "cc-1700000000-1-1",
 		SocketPath: "/tmp/tmux-jail/cc-1700000000-1-1",
 		SocketName: "cc-1700000000-1-1",
-		Engine:     resolve.CodexEngine,
+		Engine:     string(pfmengine.Codex),
 		ID:         "019ffd1e-300f-7872",
 		Source:     "codex-thread",
 		Recovered:  true,
@@ -256,7 +257,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 			SocketPath: "/tmp/tmux-jail/cx-1700000000-1-1",
 			SocketName: "cx-1700000000-1-1",
 			Pane:       "%3",
-			Engine:     resolve.CodexEngine,
+			Engine:     string(pfmengine.Codex),
 		},
 	})
 	if _, err := engine.Inject(context.Background(), Request{
@@ -280,7 +281,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 			Session:    "cc-1700000000-1-1",
 			SocketPath: "/tmp/tmux-jail/cc-1700000000-1-1",
 			SocketName: "cc-1700000000-1-1",
-			Engine:     resolve.ClaudeEngine,
+			Engine:     string(pfmengine.Claude),
 		},
 	})
 	if _, err := engine.Inject(context.Background(), Request{

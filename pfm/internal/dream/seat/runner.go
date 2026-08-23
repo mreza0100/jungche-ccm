@@ -12,14 +12,13 @@ import (
 	"time"
 
 	"hostops/pfm/internal/action"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/transcript"
 )
 
 const (
-	codexEngine = "cx"
-
 	// PerSeatTimeout is a law, not a caller tuning knob. Tests shorten the
 	// private Runner field while this exported constant pins the live bound.
 	PerSeatTimeout = 2700 * time.Second
@@ -373,7 +372,7 @@ func (runner *Runner) runSeat(
 		prompt:    input.Prompt,
 	}
 	spawnResult, spawnErr := spawn.Run(seatContext, gateHost, spawn.Request{
-		Engine:  codexEngine,
+		Engine:  pfmengine.Codex,
 		Name:    input.Name,
 		Socket:  input.Socket,
 		CWD:     stage,
@@ -511,7 +510,7 @@ func (runner *Runner) runSeat(
 			fmt.Errorf("%s seat transcript reports effort %q, require %q", role, turnEvidence.Effort, SeatEffort),
 		)
 	}
-	entries, _, err := transcript.Tail(seatContext, chat.Path, codexEngine, 1, 0)
+	entries, _, err := transcript.Tail(seatContext, chat.Path, string(pfmengine.Codex), 1, 0)
 	if err != nil {
 		return runner.finishSeat(result, role, started, "transcript-error", err)
 	}

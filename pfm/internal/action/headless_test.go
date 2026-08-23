@@ -3,6 +3,8 @@ package action
 import (
 	"strings"
 	"testing"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 // TestHeadlessClaudeCarriesTheFullLaunchCeremony pins the command a headless
@@ -71,7 +73,7 @@ func TestHeadlessClaudeAccountOneAndCacheArmed(t *testing.T) {
 // before that can happen.
 func TestHeadlessCodexTakesNeitherNameNorPrompt(t *testing.T) {
 	plan, err := headlessWithTestConfig(HeadlessRequest{
-		Engine:         "codex",
+		Engine:         pfmengine.Codex,
 		Name:           "_KILL codex worker",
 		CWD:            "/work/alpha",
 		Prompt:         "read the incident report",
@@ -115,7 +117,7 @@ func TestHeadlessRunRefusals(t *testing.T) {
 		{"no name", func(r *HeadlessRequest) { r.Name = "" }, "requires a name"},
 		{"newline in name", func(r *HeadlessRequest) { r.Name = "a\nb" }, "newlines"},
 		{"no directory", func(r *HeadlessRequest) { r.CWD = "" }, "project directory"},
-		{"unknown engine", func(r *HeadlessRequest) { r.Engine = "gpt" }, "unsupported engine"},
+		{"unknown engine", func(r *HeadlessRequest) { r.Engine = "gpt" }, "no headless planner registered"},
 		{"account off roster", func(r *HeadlessRequest) { r.PrimaryAccount = 9 }, "primary account"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -129,28 +131,5 @@ func TestHeadlessRunRefusals(t *testing.T) {
 				t.Fatalf("error = %v, want it to mention %q", err, testCase.message)
 			}
 		})
-	}
-}
-
-func TestNormalizeEngine(t *testing.T) {
-	for _, testCase := range []struct {
-		value string
-		want  string
-		ok    bool
-	}{
-		{"", "cc", true},
-		{"cc", "cc", true},
-		{"claude", "cc", true},
-		{"CLAUDE", "cc", true},
-		{"cx", "cx", true},
-		{"codex", "cx", true},
-		{" Codex ", "cx", true},
-		{"gemini", "", false},
-	} {
-		got, ok := NormalizeEngine(testCase.value)
-		if got != testCase.want || ok != testCase.ok {
-			t.Fatalf("NormalizeEngine(%q) = %q,%t want %q,%t",
-				testCase.value, got, ok, testCase.want, testCase.ok)
-		}
 	}
 }

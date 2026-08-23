@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -131,7 +132,7 @@ func TestJailedWhoamiEnvironmentAndAncestryPaths(t *testing.T) {
 		identity.SocketPath != socketPath ||
 		identity.SocketName != socket ||
 		identity.Pane != pane ||
-		identity.Engine != ClaudeEngine ||
+		identity.Engine != string(pfmengine.Claude) ||
 		identity.ID != "11111111-2222-4333-8444-555555555555" ||
 		identity.Source != "env-claude" ||
 		identity.Recovered {
@@ -172,7 +173,7 @@ func TestJailedWhoamiEnvironmentAndAncestryPaths(t *testing.T) {
 	if identity.Session != codexSession ||
 		identity.SocketPath != codexSocketPath ||
 		identity.Pane != codexPane ||
-		identity.Engine != CodexEngine ||
+		identity.Engine != string(pfmengine.Codex) ||
 		identity.ID != "thread-abc" ||
 		identity.Source != "env-codex" ||
 		!identity.Recovered {
