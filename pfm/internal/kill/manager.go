@@ -215,7 +215,8 @@ func (manager *Manager) SeedCodexPane(
 
 // KillClearedCodex records a prompt-baseline kill on the visible lineage root
 // for an already indexed Codex thread. It never guesses an id: callers must
-// supply the pane binding established before /clear created the replacement.
+// supply the hook-observed previous id from a pane binding or inherited
+// CODEX_THREAD_ID.
 func (manager *Manager) KillClearedCodex(
 	ctx context.Context,
 	id string,
