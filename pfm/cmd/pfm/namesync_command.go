@@ -63,6 +63,7 @@ func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime
 	// renames it plans, and only a read-only pass plans without applying.
 	live, err := gatherFleet(
 		ctx,
+		database,
 		environment.paths,
 		environment.config,
 		data,
@@ -75,7 +76,7 @@ func runNameSync(args []string, stdout, stderr io.Writer, runtime commandRuntime
 		return 1
 	}
 	if !*dryRun {
-		rememberCodexPaneBindings(ctx, database, live, runtime, stderr)
+		reconcileCodexPanes(ctx, database, live, runtime, stderr)
 	}
 	verb := "renamed"
 	if *dryRun {

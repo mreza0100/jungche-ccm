@@ -25,26 +25,31 @@ type CodexThread struct {
 	RolloutPath string
 }
 
-// CodexThreadID names the Codex conversation behind a pane. An exported
-// CODEX_THREAD_ID is authoritative and is honored even when the state store
-// has not caught up with it. Without one, the pane is matched to the thread
-// created nearest its own start within CodexBirthWindowSeconds in the same
-// directory; a tie prefers the newer thread. A pane that matches nothing
-// returns an error rather than a guess, because a wrong identity would attach,
-// rename, or kill the wrong chat.
+// CodexThreadID names the Codex conversation behind a pane. bound — the
+// pane's own kill.Manager binding, when the caller has one — outranks
+// everything else: the pane's TUI process is never restarted by /clear, so
+// matching it by birth time or an exported CODEX_THREAD_ID keeps returning
+// the PRE-clear thread forever, while the binding is what a pane-status-line
+// reconcile pass (pipeline.reconcileCodexPanes) actively advances across a
+// clear. Without a binding, an exported CODEX_THREAD_ID is authoritative and
+// is honored even when the state store has not caught up with it. Without
+// either, the pane is matched to the thread created nearest its own start
+// within CodexBirthWindowSeconds in the same directory; a tie prefers the
+// newer thread. A pane that matches nothing returns an error rather than a
+// guess, because a wrong identity would attach, rename, or kill the wrong
+// chat.
 func CodexThreadID(
 	exported string,
+	bound string,
 	cwd string,
 	birth int64,
 	candidates []CodexThread,
 ) (CodexThread, error) {
+	if bound != "" {
+		return matchCodexThreadByID(bound, candidates), nil
+	}
 	if exported != "" {
-		for _, candidate := range candidates {
-			if candidate.ID == exported {
-				return candidate, nil
-			}
-		}
-		return CodexThread{ID: exported}, nil
+		return matchCodexThreadByID(exported, candidates), nil
 	}
 	if cwd == "" || birth <= 0 {
 		return CodexThread{}, fmt.Errorf(
@@ -84,6 +89,18 @@ func CodexThreadID(
 		)
 	}
 	return best, nil
+}
+
+// matchCodexThreadByID looks a known thread id up among candidates for its
+// rollout path; an id the state store has not caught up with yet still
+// resolves, bare, rather than being refused.
+func matchCodexThreadByID(id string, candidates []CodexThread) CodexThread {
+	for _, candidate := range candidates {
+		if candidate.ID == id {
+			return candidate
+		}
+	}
+	return CodexThread{ID: id}
 }
 
 func newerCodexThread(challenger, incumbent CodexThread) bool {

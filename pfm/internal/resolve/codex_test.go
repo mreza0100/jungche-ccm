@@ -37,6 +37,7 @@ func TestCodexThreadIDPrefersTheExportedIdentity(t *testing.T) {
 	// it, and it is honored even when the state store has not recorded it yet.
 	thread, err := CodexThreadID(
 		"born-earlier",
+		"",
 		"/work/project",
 		1100,
 		codexCandidates(),
@@ -51,6 +52,7 @@ func TestCodexThreadIDPrefersTheExportedIdentity(t *testing.T) {
 
 	unknown, err := CodexThreadID(
 		"not-in-the-store",
+		"",
 		"/work/project",
 		1100,
 		codexCandidates(),
@@ -64,7 +66,7 @@ func TestCodexThreadIDPrefersTheExportedIdentity(t *testing.T) {
 }
 
 func TestCodexThreadIDFallsBackToDirectoryAndBirth(t *testing.T) {
-	thread, err := CodexThreadID("", "/work/project/", 1100, codexCandidates())
+	thread, err := CodexThreadID("", "", "/work/project/", 1100, codexCandidates())
 	if err != nil {
 		t.Fatalf("CodexThreadID(birth match) error = %v", err)
 	}
@@ -72,7 +74,7 @@ func TestCodexThreadIDFallsBackToDirectoryAndBirth(t *testing.T) {
 		t.Fatalf("CodexThreadID(birth match) = %#v, want the nearest birth", thread)
 	}
 
-	edge, err := CodexThreadID("", "/work/project", 1341, []CodexThread{
+	edge, err := CodexThreadID("", "", "/work/project", 1341, []CodexThread{
 		{ID: "exactly-at-the-bound", CWD: "/work/project", CreatedAt: 1221},
 	})
 	if err != nil {
@@ -84,10 +86,54 @@ func TestCodexThreadIDFallsBackToDirectoryAndBirth(t *testing.T) {
 	}
 }
 
+// The pane's own binding outranks the birth guess: the birth match would
+// pick born-nearest (the thread the pane's TUI process happened to start
+// closest to), but a pane that has cleared onto a NEWER thread in the same
+// directory must resolve to what it actually bound to, not to whichever
+// candidate merely sits closest on the clock.
+func TestCodexThreadIDPrefersTheBoundIdentityOverTheBirthGuess(t *testing.T) {
+	candidates := append(codexCandidates(), CodexThread{
+		ID:          "born-after-the-window",
+		CWD:         "/work/project",
+		CreatedAt:   5000,
+		RolloutPath: "/codex/sessions/rollout-born-after-the-window.jsonl",
+	})
+	thread, err := CodexThreadID("", "born-after-the-window", "/work/project", 1100, candidates)
+	if err != nil {
+		t.Fatalf("CodexThreadID(bound) error = %v", err)
+	}
+	if thread.ID != "born-after-the-window" ||
+		thread.RolloutPath != "/codex/sessions/rollout-born-after-the-window.jsonl" {
+		t.Fatalf("CodexThreadID(bound) = %#v, want the bound thread over the birth match", thread)
+	}
+
+	// The bound identity also outranks an exported CODEX_THREAD_ID: it is
+	// the reconcile pass's own live observation, the exported variable is
+	// merely inherited.
+	stale, err := CodexThreadID("born-earlier", "born-after-the-window", "/work/project", 1100, candidates)
+	if err != nil {
+		t.Fatalf("CodexThreadID(bound over exported) error = %v", err)
+	}
+	if stale.ID != "born-after-the-window" {
+		t.Fatalf("CodexThreadID(bound over exported) = %#v, want the bound thread", stale)
+	}
+
+	// An unresolvable bound id still resolves bare rather than falling back
+	// to a birth guess — the state store may simply not have caught up yet.
+	bare, err := CodexThreadID("", "not-in-the-store", "/work/project", 1100, candidates)
+	if err != nil {
+		t.Fatalf("CodexThreadID(unknown bound) error = %v", err)
+	}
+	if bare.ID != "not-in-the-store" || bare.RolloutPath != "" {
+		t.Fatalf("CodexThreadID(unknown bound) = %#v, want the bare bound id", bare)
+	}
+}
+
 func TestCodexThreadIDReportsAMissInsteadOfGuessing(t *testing.T) {
 	// 121 seconds past born-nearest and 221 past born-earlier: nothing is
 	// close enough, and the other candidate is in a different directory.
 	if thread, err := CodexThreadID(
+		"",
 		"",
 		"/work/project",
 		1221,
@@ -99,11 +145,11 @@ func TestCodexThreadIDReportsAMissInsteadOfGuessing(t *testing.T) {
 		t.Fatalf("CodexThreadID(no match) error = %v, want the directory and window", err)
 	}
 
-	if _, err := CodexThreadID("", "", 1100, codexCandidates()); err == nil ||
+	if _, err := CodexThreadID("", "", "", 1100, codexCandidates()); err == nil ||
 		!strings.Contains(err.Error(), CodexThreadEnv) {
 		t.Fatalf("CodexThreadID(no directory) error = %v, want a clean refusal", err)
 	}
-	if _, err := CodexThreadID("", "/work/project", 0, codexCandidates()); err == nil {
+	if _, err := CodexThreadID("", "", "/work/project", 0, codexCandidates()); err == nil {
 		t.Fatal("CodexThreadID(no birth time) = nil error, want a clean refusal")
 	}
 }
