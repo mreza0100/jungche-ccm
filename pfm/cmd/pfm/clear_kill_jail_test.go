@@ -51,6 +51,9 @@ func TestClaudeClearKillHookOwnsOnlySessionEndClear(t *testing.T) {
 			root := jailTest(t)
 			sharedPath := filepath.Join(root, "shared.db")
 			t.Setenv("PFM_SHARED_DB", sharedPath)
+			t.Setenv("TMUX", "")
+			t.Setenv("TMUX_PANE", "")
+			t.Setenv("CODEX_THREAD_ID", "")
 			id := "11111111-1111-4111-8111-111111111111"
 			transcriptPath := filepath.Join(root, "claude", "project", id+".jsonl")
 			if err := os.MkdirAll(filepath.Dir(transcriptPath), 0o700); err != nil {
@@ -235,6 +238,66 @@ func TestCodexClearKillsPreviousPaneThreadAndThenAutoUnkills(t *testing.T) {
 	}
 	if err := database.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCodexClearWithoutTmuxKillsInheritedThread(t *testing.T) {
+	root := jailTest(t)
+	writeJailedCodexAuth(t, root)
+	t.Setenv("PFM_SHARED_DB", filepath.Join(root, "shared.db"))
+	t.Setenv("TMUX", "")
+	t.Setenv("TMUX_PANE", "")
+	oldID := "55555555-5555-4555-8555-555555555555"
+	newID := "66666666-6666-4666-8666-666666666666"
+	t.Setenv("CODEX_THREAD_ID", oldID)
+	rolloutPath := filepath.Join(
+		root,
+		"codex",
+		"sessions",
+		"2030",
+		"01",
+		"02",
+		"rollout-2030-01-02T03-04-05-"+oldID+".jsonl",
+	)
+	if err := os.MkdirAll(filepath.Dir(rolloutPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rolloutBody := strings.Join([]string{
+		`{"type":"session_meta","payload":{"id":"` + oldID + `","thread_source":"user","cwd":"/work/example"}}`,
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"first"}]}}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(rolloutPath, []byte(rolloutBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpsertRollout(context.Background(), store.Rollout{
+		ID: oldID, Path: rolloutPath, CWD: "/work/example", UserThread: true,
+		PromptCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	clear := `{"hook_event_name":"SessionStart","source":"clear","session_id":"` + newID + `","cwd":"/work/example"}`
+	if code, stdout, stderr := runClearKillPayload(t, clear); code != 0 || stdout != "" || stderr != "" {
+		t.Fatalf("Codex clear rc=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+
+	database, err = store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	killed, found, err := database.Killed(context.Background(), oldID)
+	if err != nil || !found || killed.Engine != store.CodexEngine ||
+		killed.BaselinePrompts == nil || *killed.BaselinePrompts != 1 {
+		t.Fatalf("Codex clear killed=%#v found=%v error=%v", killed, found, err)
 	}
 }
 

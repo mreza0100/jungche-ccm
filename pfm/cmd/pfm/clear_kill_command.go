@@ -15,8 +15,9 @@ import (
 // runClearKill is the fail-open /clear hook for both engines. Claude supplies
 // the completed id directly in SessionEnd(reason=clear). Codex supplies the
 // replacement id later in SessionStart(source=clear), so pfm resolves the
-// completed id from the same pane's previously observed binding. Every
-// unrelated or malformed payload returns 0 without output.
+// completed id from the same pane's previously observed binding or, outside
+// tmux, Codex's inherited CODEX_THREAD_ID. Every unrelated or malformed
+// payload returns 0 without output.
 func runClearKill(args []string, stdin io.Reader, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"internal clear-kill",
@@ -95,7 +96,9 @@ func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes
 	tmux := strings.SplitN(os.Getenv("TMUX"), ",", 2)[0]
 	socket := filepath.Base(tmux)
 	pane := os.Getenv("TMUX_PANE")
-	if tmux == "" || pane == "" {
+	hasPane := tmux != "" && pane != ""
+	inheritedID := strings.TrimSpace(os.Getenv("CODEX_THREAD_ID"))
+	if !hasPane && (source != "clear" || inheritedID == "" || inheritedID == sessionID) {
 		return 0
 	}
 	database, manager, code := openKillManager(stderr, runtimes...)
@@ -105,10 +108,19 @@ func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes
 	}
 	defer database.Close()
 	ctx := context.Background()
-	previous, found, err := manager.CodexPaneBinding(ctx, socket, pane)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm internal clear-kill: resolve Codex pane binding (fail-open): %v\n", err)
-		return 0
+	var previous string
+	found := false
+	if hasPane {
+		var err error
+		previous, found, err = manager.CodexPaneBinding(ctx, socket, pane)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm internal clear-kill: resolve Codex pane binding (fail-open): %v\n", err)
+			return 0
+		}
+	}
+	if source == "clear" && !found && inheritedID != "" && inheritedID != sessionID {
+		previous = inheritedID
+		found = true
 	}
 	if source == "clear" && found && previous != sessionID {
 		priorityCWD := cwd
@@ -141,8 +153,10 @@ func runCodexClearKill(source, sessionID, cwd string, stderr io.Writer, runtimes
 			fmt.Fprintln(stderr, "pfm internal clear-kill: previous Codex thread was not indexed (fail-open)")
 		}
 	}
-	if err := manager.BindCodexPane(ctx, socket, pane, sessionID); err != nil {
-		fmt.Fprintf(stderr, "pfm internal clear-kill: bind Codex pane (fail-open): %v\n", err)
+	if hasPane {
+		if err := manager.BindCodexPane(ctx, socket, pane, sessionID); err != nil {
+			fmt.Fprintf(stderr, "pfm internal clear-kill: bind Codex pane (fail-open): %v\n", err)
+		}
 	}
 	return 0
 }
