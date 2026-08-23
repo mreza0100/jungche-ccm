@@ -108,10 +108,7 @@ func nextSettingsHookOwnership(
 		// The delta above already covers a hook this run wrote at a NEW
 		// slot — including a legacy hook whose text `rewriteCommandFields`
 		// converts to canonical in place without moving it to the
-		// template's own event (e.g. a `dreamer-nudge.sh` SessionStart
-		// entry rewritten to the canonical nudge command but left under
-		// SessionStart, not UserPromptSubmit; see
-		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks).
+		// template's own event.
 		// What it never credits on its own is a hook nothing changed this
 		// run AND the ledger never recorded — an already fully-wired host
 		// predating the ownership ledger, or one converged by an install
@@ -133,7 +130,7 @@ func nextSettingsHookOwnership(
 		// pins), but DOES fire the moment an operator's hook shares an
 		// entry with installer-adjacent text (the PostToolUse/
 		// UserPromptSubmit manual copies
-		// TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks
+		// TestDreamHookPauseRetiresEveryCopyAndPreservesNeighbors
 		// pins as permanently NOT owned) — proof, anywhere in the file,
 		// that an operator hand-edited an installer-adjacent hook list, so
 		// an untouched-but-canonical-looking neighbor is no longer

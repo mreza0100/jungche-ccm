@@ -23,8 +23,6 @@ func updateSettings(
 	groupCommand := commandByName(expected, "group")
 	statusCommand := pfmBinary + " statusline"
 	usageCommand := commandByName(expected, "usage")
-	agentInjectCommand := commandByName(expected, "agent-inject")
-	nudgeCommand := commandByName(expected, "nudge")
 	exploreDenyCommand := commandByName(expected, "explore-deny")
 	epicInjectCommand := commandByName(expected, "epic-inject")
 	launcherRepairCommand := commandByName(expected, "launcher-repair")
@@ -38,10 +36,6 @@ func updateSettings(
 	} else {
 		changed = rewriteCommandFields(document, func(command string) string {
 			switch {
-			case strings.Contains(command, "dreamer-agent-inject.sh"):
-				return agentInjectCommand
-			case strings.Contains(command, "dreamer-nudge.sh"):
-				return nudgeCommand
 			case strings.Contains(command, "explore-deny.sh"):
 				return exploreDenyCommand
 			case command == oldBinary || strings.HasPrefix(command, oldBinary+" "):
@@ -50,6 +44,9 @@ func updateSettings(
 				return command
 			}
 		})
+	}
+	if removeRetiredHookCommands(document) {
+		changed = true
 	}
 	if _, present := document["cleanupPeriodDays"]; !present && !uninstall {
 		document["cleanupPeriodDays"] = float64(36500)
@@ -104,7 +101,7 @@ func updateSettings(
 				changed = true
 				continue
 			}
-			if !uninstall && (command == groupCommand || command == usageCommand || command == nudgeCommand || command == epicInjectCommand) {
+			if !uninstall && (command == groupCommand || command == usageCommand || command == epicInjectCommand) {
 				if seenUserPromptCommands[command] {
 					changed = true
 					continue
@@ -122,7 +119,7 @@ func updateSettings(
 			for _, hookValue := range hooks {
 				hook, _ := hookValue.(map[string]any)
 				command, _ := hook["command"].(string)
-				if command == agentInjectCommand || command == exploreDenyCommand {
+				if command == exploreDenyCommand {
 					if entry["matcher"] != "Agent|Task" {
 						entry["matcher"] = "Agent|Task"
 						changed = true
@@ -173,16 +170,8 @@ func updateSettings(
 			appendHook(document, "SessionEnd", clearCommand)
 			changed = true
 		}
-		if !hasHookCommandWithMatcher(hookEntries(document, "PreToolUse", true), agentInjectCommand, "Agent|Task") {
-			appendHookWithMatcher(document, "PreToolUse", "Agent|Task", agentInjectCommand)
-			changed = true
-		}
 		if !hasHookCommandWithMatcher(hookEntries(document, "PreToolUse", true), exploreDenyCommand, "Agent|Task") {
 			appendHookWithMatcher(document, "PreToolUse", "Agent|Task", exploreDenyCommand)
-			changed = true
-		}
-		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), nudgeCommand, "") {
-			appendHookWithMatcher(document, "UserPromptSubmit", "", nudgeCommand)
 			changed = true
 		}
 		if !hasHookCommandWithMatcher(hookEntries(document, "UserPromptSubmit", true), epicInjectCommand, "") {
@@ -254,6 +243,9 @@ var retiredHookCommands = []struct {
 	{Name: "bb", Subcommand: "bb"},
 	{Name: "bb", Subcommand: "chat bb"},
 	{Name: "clear-hide", Subcommand: "internal clear-hide"},
+	{Name: "dream-agent-inject", Subcommand: "dream hook agent-inject"},
+	{Name: "dream-nudge", Subcommand: "dream hook nudge"},
+	{Name: "dream-codex-subagent-inject", Subcommand: "dream hook codex-subagent-inject"},
 }
 
 // retiredHookShimHints are legacy shell-script hook file substrings that
@@ -264,6 +256,8 @@ var retiredHookShimHints = []struct {
 	Hint string
 }{
 	{Name: "bb", Hint: "bb-hook.sh"},
+	{Name: "dream-agent-inject", Hint: "dreamer-agent-inject.sh"},
+	{Name: "dream-nudge", Hint: "dreamer-nudge.sh"},
 }
 
 // retiredHookCommandName reports whether command matches a retired hook
@@ -292,6 +286,64 @@ func retiredHookCommandName(command string) (string, bool) {
 func isRetiredHookCommand(command string) bool {
 	_, retired := retiredHookCommandName(command)
 	return retired
+}
+
+// removeRetiredHookCommands strips retired automatic hooks from every event,
+// not only from the event where the installer once wrote them. Operators and
+// older installers may have copied a hook under another event; a real pause
+// must not leave those copies firing while preserving unrelated neighbors.
+func removeRetiredHookCommands(document map[string]any) bool {
+	events, _ := document["hooks"].(map[string]any)
+	changed := false
+	for event, eventValue := range events {
+		entries, ok := eventValue.([]any)
+		if !ok {
+			continue
+		}
+		keptEntries := make([]any, 0, len(entries))
+		eventChanged := false
+		for _, entryValue := range entries {
+			entry, ok := entryValue.(map[string]any)
+			if !ok {
+				keptEntries = append(keptEntries, entryValue)
+				continue
+			}
+			hooks, ok := entry["hooks"].([]any)
+			if !ok {
+				keptEntries = append(keptEntries, entryValue)
+				continue
+			}
+			keptHooks := make([]any, 0, len(hooks))
+			entryChanged := false
+			for _, hookValue := range hooks {
+				hook, _ := hookValue.(map[string]any)
+				command, _ := hook["command"].(string)
+				if isRetiredHookCommand(command) {
+					entryChanged = true
+					eventChanged = true
+					changed = true
+					continue
+				}
+				keptHooks = append(keptHooks, hookValue)
+			}
+			if entryChanged {
+				if len(keptHooks) == 0 {
+					continue
+				}
+				entry["hooks"] = keptHooks
+			}
+			keptEntries = append(keptEntries, entryValue)
+		}
+		if !eventChanged {
+			continue
+		}
+		if len(keptEntries) == 0 {
+			delete(events, event)
+		} else {
+			events[event] = keptEntries
+		}
+	}
+	return changed
 }
 
 func hookEntries(document map[string]any, event string, create bool) []map[string]any {

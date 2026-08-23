@@ -84,9 +84,7 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	for _, hook := range []struct {
 		event, matcher, command string
 	}{
-		{"PreToolUse", "Agent|Task", prefix + " dream hook agent-inject"},
 		{"PreToolUse", "Agent|Task", prefix + " internal explore-deny"},
-		{"UserPromptSubmit", "", prefix + " dream hook nudge"},
 		{"UserPromptSubmit", "", prefix + " internal epic-inject"},
 		{"UserPromptSubmit", "", prefix + " chat group hook"},
 		{"UserPromptSubmit", "", prefix + " usage-hook"},
@@ -100,8 +98,8 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 			t.Fatalf("%s %s matcher count=%d, want 1\n%s", hook.event, hook.command, got, updated)
 		}
 	}
-	if len(owned) != 8 {
-		t.Fatalf("owned hooks=%d, want 8: %#v", len(owned), owned)
+	if len(owned) != 6 {
+		t.Fatalf("owned hooks=%d, want 6: %#v", len(owned), owned)
 	}
 
 	withManual := append([]byte(`{"hooks":{"PreToolUse":[{"matcher":"Agent|Task","hooks":[{"type":"command","command":"operator-keep"}]}]}}`), '\n')
@@ -115,6 +113,170 @@ func TestSettingsInstallAddsWaveHooksCleanupAndOwnsOnlyItsEntries(t *testing.T) 
 	}
 	if strings.Contains(string(removed), prefix+" ") || !strings.Contains(string(removed), "operator-keep") {
 		t.Fatalf("uninstall ownership result=%s", removed)
+	}
+}
+
+func TestInstallPausesAutomaticDreamHooksAcrossClaudeAndCodex(t *testing.T) {
+	home := t.TempDir()
+	pfm := filepath.Join(home, ".local", "bin", "pfm")
+	claudeRaw := []byte(`{
+  "hooks": {
+    "PreToolUse": [{"matcher":"Agent|Task","hooks":[
+      {"type":"command","command":"` + pfm + ` dream hook agent-inject"},
+      {"type":"command","command":"claude-neighbor"}
+    ]}],
+    "UserPromptSubmit": [{"matcher":"","hooks":[
+      {"type":"command","command":"` + pfm + ` dream hook nudge"}
+    ]}],
+    "SessionStart": [{"matcher":"startup","hooks":[
+      {"type":"command","command":"bash ` + home + `/.claude/hooks/dreamer-agent-inject.sh"}
+    ]}],
+    "PostToolUse": [{"matcher":"Agent","hooks":[
+      {"type":"command","command":"bash ` + home + `/.claude/hooks/dreamer-nudge.sh"}
+    ]}]
+  }
+}`)
+	claudeUpdated, _, _, err := updateSettings(claudeRaw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"dream hook agent-inject",
+		"dream hook nudge",
+		"dreamer-agent-inject.sh",
+		"dreamer-nudge.sh",
+	} {
+		if strings.Contains(string(claudeUpdated), forbidden) {
+			t.Fatalf("paused Claude settings retained %q:\n%s", forbidden, claudeUpdated)
+		}
+	}
+	if !strings.Contains(string(claudeUpdated), "claude-neighbor") {
+		t.Fatalf("pausing Dream hooks removed a neighboring Claude hook:\n%s", claudeUpdated)
+	}
+
+	codexRaw := []byte(`{
+  "hooks": {
+    "AfterToolUse": [{"matcher":"spawn_agent","hooks":[
+      {"type":"command","command":"` + pfm + ` dream hook codex-subagent-inject"},
+      {"type":"command","command":"codex-neighbor"}
+    ]}],
+    "SessionStart": [{"matcher":"startup","hooks":[
+      {"type":"command","command":"` + home + `/.local/bin/cc-fleet dream hook codex-subagent-inject"}
+    ]}]
+  }
+}`)
+	codexUpdated, _, _, err := updateCodexHooks(codexRaw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(codexUpdated), "dream hook codex-subagent-inject") {
+		t.Fatalf("paused Codex hooks retained automatic Dream injection:\n%s", codexUpdated)
+	}
+	if !strings.Contains(string(codexUpdated), "codex-neighbor") {
+		t.Fatalf("pausing Dream hooks removed a neighboring Codex hook:\n%s", codexUpdated)
+	}
+}
+
+func TestInstallPausesDreamHooksAcrossUnknownEventsAndPreservesMalformedNeighbors(t *testing.T) {
+	home := t.TempDir()
+	raw := []byte(`{
+  "hooks": {
+    "Notification": [null, {"matcher":"", "hooks":[
+      {"type":"command","command":"pfm dream hook nudge"},
+      {"type":"command","command":"notification-neighbor"},
+      "malformed-hook"
+    ]}],
+    "Stop": [{"matcher":"", "hooks":[
+      {"type":"command","command":"bash /fixture/dreamer-agent-inject.sh"}
+    ]}]
+  }
+}`)
+
+	updated, changed, _, err := updateSettings(raw, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Fatal("install did not change a document containing retired Dream hooks")
+	}
+	var document map[string]any
+	if err := json.Unmarshal(updated, &document); err != nil {
+		t.Fatal(err)
+	}
+	events, ok := document["hooks"].(map[string]any)
+	if !ok {
+		t.Fatalf("hooks document has wrong shape: %#v", document["hooks"])
+	}
+	if _, ok := events["Stop"]; ok {
+		t.Fatalf("event containing only a retired Dream hook survived: %#v", events["Stop"])
+	}
+	notification, ok := events["Notification"].([]any)
+	if !ok || len(notification) != 2 {
+		t.Fatalf("Notification entries=%#v, want the malformed entry and its surviving neighbor", events["Notification"])
+	}
+	if notification[0] != nil {
+		t.Fatalf("non-map Notification entry was not preserved: %#v", notification)
+	}
+	entry, ok := notification[1].(map[string]any)
+	if !ok {
+		t.Fatalf("surviving Notification entry has wrong shape: %#v", notification[1])
+	}
+	hooks, ok := entry["hooks"].([]any)
+	if !ok || len(hooks) != 2 {
+		t.Fatalf("malformed hook or neighbor was not preserved: %#v", entry["hooks"])
+	}
+	malformed, neighbor := false, false
+	for _, hook := range hooks {
+		if hook == "malformed-hook" {
+			malformed = true
+		}
+		if got, ok := hook.(map[string]any); ok && got["command"] == "notification-neighbor" {
+			neighbor = true
+		}
+	}
+	if !malformed || !neighbor {
+		t.Fatalf("surviving hooks malformed=%v neighbor=%v: %#v", malformed, neighbor, hooks)
+	}
+	if strings.Contains(string(updated), "dream hook nudge") || strings.Contains(string(updated), "dreamer-agent-inject.sh") {
+		t.Fatalf("retired Dream hook survived in an unknown event:\n%s", updated)
+	}
+
+	again, changedAgain, _, err := updateSettings(updated, home, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedAgain || !bytes.Equal(again, updated) {
+		t.Fatalf("unknown-event cleanup was not idempotent: changed=%v\n%s", changedAgain, again)
+	}
+}
+
+func TestRetiredHookCommandMatchingRecognizesAllDreamAliases(t *testing.T) {
+	cases := []struct {
+		name    string
+		command string
+		want    string
+	}{
+		{name: "bare pfm agent inject", command: "pfm dream hook agent-inject", want: "dream-agent-inject"},
+		{name: "path cc fleet nudge", command: "/opt/legacy/.local/bin/cc-fleet dream hook nudge", want: "dream-nudge"},
+		{name: "bare codex injection", command: "cc-fleet dream hook codex-subagent-inject", want: "dream-codex-subagent-inject"},
+		{name: "legacy shell shim", command: "bash /opt/legacy/hooks/dreamer-agent-inject.sh --fixture", want: "dream-agent-inject"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, retired := retiredHookCommandName(tc.command)
+			if !retired || got != tc.want {
+				t.Fatalf("retiredHookCommandName(%q)=(%q,%v), want (%q,true)", tc.command, got, retired, tc.want)
+			}
+		})
+	}
+	for _, command := range []string{
+		"pfm dream hook agent-injector",
+		"/opt/legacy/bin/pfm-helper dream hook nudge",
+		"cc-fleet dream hook codex-subagent-injector",
+	} {
+		if name, retired := retiredHookCommandName(command); retired {
+			t.Fatalf("near-miss command %q classified as retired %q", command, name)
+		}
 	}
 }
 
@@ -148,8 +310,8 @@ func TestInstallOwnershipLedgerClaimsHooksAlreadyPresentInSettings(t *testing.T)
 	if changed {
 		t.Fatalf("an already fully-wired settings.json was unexpectedly rewritten")
 	}
-	if len(owned) != 8 {
-		t.Fatalf("owned hooks=%d, want 8 — every already-present expected hook must be claimed: %#v", len(owned), owned)
+	if len(owned) != 6 {
+		t.Fatalf("owned hooks=%d, want 6 — every already-present expected hook must be claimed: %#v", len(owned), owned)
 	}
 	for key, count := range owned {
 		if count != 1 {
@@ -226,9 +388,7 @@ func TestInstallOwnershipLedgerClaimsHooksDespiteForeignHooksPresent(t *testing.
 
 	prefix := home + "/.local/bin/pfm"
 	expectedKeys := []settingsHookKey{
-		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " dream hook agent-inject"},
 		{Event: "PreToolUse", Matcher: "Agent|Task", Command: prefix + " internal explore-deny"},
-		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " dream hook nudge"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " internal epic-inject"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " chat group hook"},
 		{Event: "UserPromptSubmit", Matcher: "", Command: prefix + " usage-hook"},
@@ -359,7 +519,7 @@ func hookMatcherCount(t *testing.T, raw, event, command, matcher string) int {
 	return count
 }
 
-func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *testing.T) {
+func TestDreamHookPauseRetiresEveryCopyAndPreservesNeighbors(t *testing.T) {
 	home := t.TempDir()
 	settingsPath := filepath.Join(home, ".claude", "settings.json")
 	secondaryPath := filepath.Join(home, ".cc", "3", "settings.json")
@@ -400,27 +560,21 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 		t.Fatalf("ownership ledger mode=%v err=%v, want 0600", info, err)
 	}
 	settings := readFixture(t, settingsPath)
-	if strings.Contains(settings, "dreamer-agent-inject.sh") || strings.Contains(settings, "dreamer-nudge.sh") {
-		t.Fatalf("legacy dream hook scripts survived migration:\n%s", settings)
+	for _, forbidden := range []string{
+		"dreamer-agent-inject.sh", "dreamer-nudge.sh",
+		"dream hook agent-inject", "dream hook nudge",
+	} {
+		if strings.Contains(settings, forbidden) {
+			t.Fatalf("paused settings retained %q:\n%s", forbidden, settings)
+		}
 	}
-	if got := hookCommandCount(t, settings, "PreToolUse", pfm+" dream hook agent-inject"); got != 1 {
-		t.Fatalf("PreToolUse agent-inject count=%d, want 1\n%s", got, settings)
-	}
-	if got := hookCommandCount(t, settings, "SessionStart", pfm+" dream hook nudge"); got != 1 {
-		t.Fatalf("SessionStart nudge count=%d, want 1\n%s", got, settings)
-	}
-	if got := hookCommandCount(t, settings, "PostToolUse", pfm+" dream hook agent-inject"); got != 1 {
-		t.Fatalf("manual PostToolUse hook moved or disappeared: count=%d\n%s", got, settings)
-	}
-	for _, neighbor := range []string{"agent-neighbor", "nudge-neighbor"} {
+	for _, neighbor := range []string{"agent-neighbor", "nudge-neighbor", "operator-keep"} {
 		if !strings.Contains(settings, neighbor) {
 			t.Fatalf("dream migration dropped same-event sibling %q:\n%s", neighbor, settings)
 		}
 	}
 	secondary := readFixture(t, secondaryPath)
 	for _, command := range []string{
-		pfm + " dream hook agent-inject",
-		pfm + " dream hook nudge",
 		pfm + " internal explore-deny",
 		pfm + " internal epic-inject",
 		pfm + " internal launcher-repair",
@@ -445,24 +599,15 @@ func TestDreamHookMigrationIsMigrateOnlyAndUninstallPreservesManualHooks(t *test
 	}
 	settings = readFixture(t, settingsPath)
 	for event, command := range map[string]string{
-		"PreToolUse":   pfm + " dream hook agent-inject",
-		"SessionStart": pfm + " dream hook nudge",
-	} {
-		if got := hookCommandCount(t, settings, event, command); got != 0 {
-			t.Fatalf("uninstall retained installer-migrated %s hook: count=%d\n%s", event, got, settings)
-		}
-	}
-	for event, command := range map[string]string{
-		"PostToolUse":      pfm + " dream hook agent-inject",
 		"UserPromptSubmit": pfm + " chat group hook",
 		"SessionEnd":       pfm + " internal clear-kill",
 	} {
-		if got := hookCommandCount(t, settings, event, command); got != 1 {
-			t.Fatalf("uninstall deleted manually wired %s hook: count=%d want 1\n%s", event, got, settings)
+		if got := hookCommandCount(t, settings, event, command); got != 0 {
+			t.Fatalf("uninstall retained installer-owned %s hook: count=%d\n%s", event, got, settings)
 		}
 	}
-	if got := hookCommandCount(t, settings, "UserPromptSubmit", pfm+" usage-hook"); got != 1 {
-		t.Fatalf("uninstall deleted manually wired usage hook: count=%d want 1\n%s", got, settings)
+	if got := hookCommandCount(t, settings, "UserPromptSubmit", pfm+" usage-hook"); got != 0 {
+		t.Fatalf("uninstall retained installer-owned usage hook: count=%d\n%s", got, settings)
 	}
 	if !strings.Contains(settings, "operator-keep") {
 		t.Fatalf("uninstall deleted unrelated hook:\n%s", settings)
