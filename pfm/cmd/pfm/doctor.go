@@ -976,6 +976,16 @@ func nonFleetServerCrumb(name string) bool {
 }
 
 func knownSIDMetadata(name string) bool {
+	const reloadPrefix = "reload-"
+	const logSuffix = ".log"
+	if strings.HasPrefix(name, reloadPrefix) && strings.HasSuffix(name, logSuffix) {
+		socket := strings.TrimSuffix(strings.TrimPrefix(name, reloadPrefix), logSuffix)
+		if _, paneID, ok := gather.ParseCrumbName(socket); ok && paneID == "" {
+			return true
+		}
+		return nonFleetServerCrumb(socket)
+	}
+
 	const suffix = ".then-failed"
 	if !strings.HasSuffix(name, suffix) {
 		return false
