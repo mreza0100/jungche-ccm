@@ -506,7 +506,7 @@ func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int,
 
 func lastComposerLine(capture string) string {
 	lines := strings.Split(capture, "\n")
-	for index := len(lines) - 1; index >= 0 && index >= len(lines)-15; index-- {
+	for index := len(lines) - 1; index >= 0; index-- {
 		if strings.Contains(lines[index], "❯") || strings.Contains(lines[index], "›") {
 			return lines[index]
 		}

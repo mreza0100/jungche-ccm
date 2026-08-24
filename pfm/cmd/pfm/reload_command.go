@@ -82,7 +82,9 @@ func (tmux reloadCommandTmux) CancelMode(ctx context.Context, socket, pane strin
 	return tmux.command(ctx, socket, "send-keys", "-t", pane, "-X", "cancel").Run()
 }
 func (tmux reloadCommandTmux) Capture(ctx context.Context, socket, pane string) (string, error) {
-	out, err := tmux.command(ctx, socket, "capture-pane", "-t", pane, "-p", "-J", "-S", "-").Output()
+	// Reload decisions concern the active TUI only. Including scrollback lets an
+	// old composer or selector masquerade as current state.
+	out, err := tmux.command(ctx, socket, "capture-pane", "-t", pane, "-p", "-J").Output()
 	return string(out), err
 }
 func (tmux reloadCommandTmux) SendKey(ctx context.Context, socket, pane, key string) error {
