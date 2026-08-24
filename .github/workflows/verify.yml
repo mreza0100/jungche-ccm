@@ -27,7 +27,8 @@ jobs:
 
       - name: Run the repository gate through the isolated fence
         shell: bash
-        run: "$RUNNER_TEMP/professor-fence/.claude/scripts/dev.sh" iso test blueprint
+        run: |
+          "$RUNNER_TEMP/professor-fence/.claude/scripts/dev.sh" iso test blueprint
 
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
