@@ -134,12 +134,13 @@ One writer per surface — the law that keeps the two installers from fighting o
 
 ## Updating
 
-**From `v0.60.0` or earlier:** install the checksum-verified `v0.60.1` binary with path 1 or 2
-above, then follow the
-[v0.60.1 LLM upgrade runbook](releases/v0.60.1.md#llm-upgrade-runbook). Do not use the v0.60.0
-binary's `pfm update` for this one-time hop; its candidate-check repair takes effect in v0.60.1.
+**Any existing installation:** follow the
+[v0.61.0 LLM upgrade runbook](releases/v0.61.0.md#llm-upgrade-runbook). Installations already on
+`v0.60.1` or later use `pfm update --to v0.61.0`; `v0.60.0` or earlier must bootstrap the
+checksum-verified v0.61.0 binary directly because the older updater cannot validate its own
+replacement safely.
 
-**`pfm` (machine layer, after `v0.60.1`):** `pfm update` consumes a tagged source-clone release
+**`pfm` (machine layer, from `v0.60.1` onward):** `pfm update` consumes a tagged source-clone release
 transactionally, then runs `install --yes` and `doctor`; `/pcm:update` remains the semantic
 blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
 

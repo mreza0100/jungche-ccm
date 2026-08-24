@@ -2,6 +2,19 @@
 
 The discipline + character of the pipeline. Read this before installing it.
 
+## Contents
+
+- [The three-tier framework](#the-three-tier-framework)
+- [The five load-bearing walls](#the-five-load-bearing-walls)
+- [The non-negotiable rules baked into every install](#the-non-negotiable-rules-baked-into-every-install)
+- [Pipeline architecture](#pipeline-architecture)
+- [File layout (what you end up with after install)](#file-layout-what-you-end-up-with-after-install)
+- [What you get out of the box](#what-you-get-out-of-the-box)
+- [What you adapt vs. what you keep](#what-you-adapt-vs-what-you-keep)
+- [Optional: Codex dual-runtime](#optional-codex-dual-runtime)
+- [Staying current — the update mechanism](#staying-current--the-update-mechanism)
+- [The smell test](#the-smell-test)
+
 > **Personality is load-bearing.** Strip the Professor's voice and you have a Confluence wiki. Strip JC's panic energy and the hotfix command becomes a checklist. Strip Professor's cross-disciplinary depth and the analysis becomes generic. The blueprint is a transplantable nervous system — characters, multi-PhD professor and all — refitted to your domain at install time. It drops into **any Claude Code project at any repo size**: structure is captured at install as a **roster** of 1..N projects, so a single-project repo (roster of one — first-class) and a multi-project monorepo get correctly-sized files from the same templates.
 
 ---
@@ -79,7 +92,9 @@ The `gitter` agent is the **single git operator**. No other agent runs `git add`
 - Prevents agents from racing each other for the merge.
 - Makes "what got committed" auditable.
 
-If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, MERGE, DOCS-COMMIT, JC-COMMIT, PUSH, PULL.
+If an agent needs to commit, it asks gitter. Gitter has phases: SETUP, COMMIT, MERGE, PUSH, PULL,
+and TAG. The active main Codex chat may use the explicit-authority fallback only when the
+registered role is unavailable; subagents remain read-only.
 
 ### 2. QA gates the merge
 

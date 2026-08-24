@@ -20,8 +20,8 @@ For a maintainer checkout, `pfm doctor` must report
 unwired or non-executable hook is a warning and a non-zero doctor result.
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
-Upgrading from `v0.60.0` or earlier? Follow the one-time
-[v0.60.1 LLM upgrade runbook](releases/v0.60.1.md#llm-upgrade-runbook).
+Upgrading an existing installation? Follow the complete
+[v0.61.0 LLM upgrade runbook](releases/v0.61.0.md#llm-upgrade-runbook).
 
 ---
 
@@ -102,8 +102,9 @@ out loud:
 
 What that discipline looks like in practice:
 
-- **One agent writes git.** `gitter` runs eight named phases (SETUP, MERGE, DOCS-COMMIT,
-  JC-COMMIT, PUSH, PULL, WORKTREE-CHECKPOINT, SYNC). No other agent and no main loop commits.
+- **One agent writes git.** `gitter` runs six named phases (SETUP, COMMIT, MERGE, PUSH, PULL,
+  TAG). No other agent commits; the active main Codex chat may use the explicit-authority fallback
+  only when the registered role is unavailable.
 - **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` plus
   a session that has read the quality-prompt contract. The deny message carries the unlock steps.
 - **Fix loops are capped.** Three attempts, then BLOCKED-DEFERRED — a bounded failure instead of
