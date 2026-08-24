@@ -400,11 +400,8 @@ func deliverThen(ctx context.Context, request Request, options Options, tmux Tmu
 			if trustPrompt {
 				continue
 			}
-			lines := strings.Split(capture, "\n")
-			for j := len(lines) - 1; j >= 0 && j >= len(lines)-15; j-- {
-				if strings.Contains(lines[j], "❯") {
-					goto ready
-				}
+			if lastComposerLine(capture) != "" {
+				goto ready
 			}
 		}
 		timer := time.NewTimer(time.Second)
@@ -509,7 +506,7 @@ func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int,
 
 func lastComposerLine(capture string) string {
 	lines := strings.Split(capture, "\n")
-	for index := len(lines) - 1; index >= 0; index-- {
+	for index := len(lines) - 1; index >= 0 && index >= len(lines)-15; index-- {
 		if strings.Contains(lines[index], "❯") || strings.Contains(lines[index], "›") {
 			return lines[index]
 		}

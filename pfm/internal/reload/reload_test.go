@@ -3,6 +3,7 @@ package reload
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,7 @@ type delayedThenTmux struct {
 	fakeReloadTmux
 	ready     bool
 	submitted bool
+	marker    string
 }
 
 type delayedExitRenderTmux struct {
@@ -121,22 +123,26 @@ func (tmux *delayedExitRenderTmux) SendKey(_ context.Context, _, _, key string) 
 }
 
 func (tmux *delayedThenTmux) Capture(context.Context, string, string) (string, error) {
+	marker := tmux.marker
+	if marker == "" {
+		marker = "❯"
+	}
 	if tmux.respawn == "" {
 		if tmux.literal == "/exit" {
-			return "Claude\n❯ /exit", nil
+			return "Chat\n" + marker + " /exit", nil
 		}
-		return "Claude\n❯ ", nil
+		return "Chat\n" + marker + " ", nil
 	}
 	tmux.ready = true
 	if tmux.literal == "continue the task" {
 		if tmux.submitted {
 			// Submitted text remains in scrollback while the active composer is
 			// empty. Submit proof must inspect the composer, not the whole pane.
-			return "❯ continue the task\nWorking\n❯ ", nil
+			return marker + " continue the task\nWorking\n" + marker + " ", nil
 		}
-		return "Claude\n❯ continue the task", nil
+		return "Chat\n" + marker + " continue the task", nil
 	}
-	return "Claude\n❯ ", nil
+	return "Chat\n" + marker + " ", nil
 }
 
 func (tmux *delayedThenTmux) SendKey(_ context.Context, _, _, key string) error {
@@ -440,6 +446,33 @@ func TestRunWaitsForTheRebornPromptBeforeCheckingClaudeAndSubmittingThen(t *test
 	}
 	if len(tmux.displays) != 0 {
 		t.Fatalf("successful --then displayed a failure: %q", tmux.displays)
+	}
+}
+
+func TestDeliverThenRecognizesTheCodexComposerMarker(t *testing.T) {
+	tmux := &delayedThenTmux{marker: "›"}
+	tmux.respawn = "codex"
+	proc := fakeReloadProc{
+		pids: []int{801},
+		argv: map[int][]string{801: {"codex"}},
+		stat: map[int]gather.ProcStat{801: {ParentPID: 700}},
+	}
+	err := deliverThen(
+		context.Background(),
+		Request{
+			Engine: pfmengine.Codex, SocketPath: "/tmp/tmux-1000/probe-codex-then", Pane: "%7",
+			PanePID: 700, Then: "continue the task",
+		},
+		Options{ThenTries: 2},
+		tmux,
+		proc,
+		io.Discard,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tmux.ready || !tmux.submitted {
+		t.Fatalf("ready=%t submitted=%t", tmux.ready, tmux.submitted)
 	}
 }
 
