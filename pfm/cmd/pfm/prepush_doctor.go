@@ -28,9 +28,11 @@ type prePushGate struct {
 var prePushGateProbeOverride func(context.Context) prePushGate
 
 func printPrePushDoctor(ctx context.Context, stdout io.Writer) int {
-	gate := inspectPrePushGate(ctx)
+	var gate prePushGate
 	if prePushGateProbeOverride != nil {
 		gate = prePushGateProbeOverride(ctx)
+	} else {
+		gate = inspectPrePushGate(ctx)
 	}
 	switch gate.State {
 	case "outside-repository":
