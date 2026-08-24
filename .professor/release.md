@@ -31,6 +31,8 @@ and `(cost)` on any env / hook / permission / model-config delta.
   reboot confirms `/exit` rendered and was submitted before replacing the pane; `--then` recognizes
   both Claude and Codex composers before delivering its continuation, and state probes inspect only
   the visible pane so historical scrollback cannot trigger a reload action.
+- Fixed: doctor SID metadata — completed reload logs are recognized as owned satellite metadata
+  instead of inflating invalid-crumb warnings after every successful reboot.
 
 #### → For: in a maintainer checkout, run `git config core.hooksPath .githooks`, then require
 
