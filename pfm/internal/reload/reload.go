@@ -199,6 +199,9 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 	if err := tmux.SendLiteral(ctx, request.SocketPath, request.Pane, "/exit"); err != nil {
 		return Result{}, fmt.Errorf("send /exit: %w", err)
 	}
+	if err := waitExitRendered(ctx, request, tmux, stderr); err != nil {
+		return Result{}, err
+	}
 	if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
 		return Result{}, fmt.Errorf("submit /exit: %w", err)
 	}
@@ -224,6 +227,14 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 			}
 			if dead {
 				break
+			}
+		}
+		capture, captureErr := tmux.Capture(ctx, request.SocketPath, request.Pane)
+		if captureErr != nil {
+			fmt.Fprintf(stderr, "pfm chat reload: confirm /exit submission (try %d): %v\n", i+1, captureErr)
+		} else if strings.Contains(strings.Join(strings.Fields(lastComposerLine(capture)), " "), "/exit") {
+			if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
+				return Result{}, fmt.Errorf("retry /exit submission: %w", err)
 			}
 		}
 		timer := time.NewTimer(options.Poll)
@@ -264,6 +275,25 @@ func Run(ctx context.Context, request Request, options Options, tmux Tmux, proc 
 		}
 	}
 	return Result{Account: request.Account, Cache1H: request.Cache1H, Fresh: request.SessionID == ""}, nil
+}
+
+func waitExitRendered(ctx context.Context, request Request, tmux Tmux, stderr io.Writer) error {
+	for attempt := 0; attempt < 40; attempt++ {
+		capture, err := tmux.Capture(ctx, request.SocketPath, request.Pane)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat reload: confirm typed /exit (try %d): %v\n", attempt+1, err)
+		} else if strings.Contains(strings.Join(strings.Fields(lastComposerLine(capture)), " "), "/exit") {
+			return nil
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return errors.New("typed /exit never rendered — refusing blind Enter")
 }
 
 func rosterContains(accounts []int, wanted int) bool {
@@ -480,7 +510,7 @@ func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int,
 func lastComposerLine(capture string) string {
 	lines := strings.Split(capture, "\n")
 	for index := len(lines) - 1; index >= 0; index-- {
-		if strings.Contains(lines[index], "❯") {
+		if strings.Contains(lines[index], "❯") || strings.Contains(lines[index], "›") {
 			return lines[index]
 		}
 	}

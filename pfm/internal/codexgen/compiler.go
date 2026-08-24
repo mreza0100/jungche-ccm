@@ -30,6 +30,18 @@ type Result struct {
 	Warnings         []string
 	Problems         []string
 	OverrideStatuses []OverrideStatus
+	Wrote            int
+	Unchanged        int
+	Deleted          int
+}
+
+// GlobalCommandsOptions selects the host HOME whose installed Claude
+// commands are mirrored into the global Codex prompt and skill registries.
+// Unlike Options, it deliberately has no repository root: host install and
+// uninstall must not compile or reconcile project files as a side effect.
+type GlobalCommandsOptions struct {
+	Home string
+	Mode Mode
 }
 
 const defaultAgentPreamble = "You are the ${name} role in this repository, running as a native Codex subagent.\nFirst action: read the repository root AGENTS.md in full. Follow its laws and the protocol below exactly; your mode and task come from the dispatch prompt.\n\n"
@@ -147,6 +159,56 @@ func Run(options Options) (Result, error) {
 	}
 	result.Warnings = append(result.Warnings, reconciled.Warnings...)
 	result.Problems = append(result.Problems, reconciled.Problems...)
+	result.Wrote = reconciled.Wrote
+	result.Unchanged = reconciled.Unchanged
+	result.Deleted = reconciled.Deleted
+	result.OK = len(result.Problems) == 0
+	return result, nil
+}
+
+// RunGlobalCommands compiles and reconciles only $HOME/.claude/commands into
+// $HOME/.codex/{prompts,skills}. Check is read-only; build replaces or deletes
+// only artifacts carrying the compiler marker and preserves every unmarked
+// conflict.
+func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
+	home, err := resolveHome(options.Home)
+	if err != nil {
+		return Result{}, err
+	}
+	cfg := defaultConfig()
+	result := Result{Warnings: []string{}, Problems: []string{}, OverrideStatuses: []OverrideStatus{}}
+	outputs := make([]generatedFile, 0)
+	add := func(output generatedFile) { outputs = append(outputs, output) }
+	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
+	problem := func(message string) { result.Problems = append(result.Problems, message) }
+	sourceRoot := filepath.Join(home, ".claude", "commands")
+	roster := discoverCommandRosterIn(sourceRoot, nil, &result)
+	transform := TransformOptions{ModelMap: cfg.ModelMap, Commands: roster}
+	compileGlobalCommands(home, home, cfg, transform, add, problem, warn, &result)
+
+	if options.Mode == ModeCheck {
+		for _, warning := range result.Warnings {
+			if strings.Contains(strings.ToLower(warning), "dangling") {
+				result.Problems = append(result.Problems, warning)
+			}
+		}
+	}
+	if options.Mode == ModeBuild && len(result.Problems) != 0 {
+		result.OK = false
+		return result, nil
+	}
+	reconciled, err := reconcileManagedWithClaim(outputs, options.Mode, []string{
+		filepath.Join(home, ".codex", "skills"),
+		filepath.Join(home, ".codex", "prompts"),
+	}, markerClaimable)
+	if err != nil {
+		return Result{}, err
+	}
+	result.Warnings = append(result.Warnings, reconciled.Warnings...)
+	result.Problems = append(result.Problems, reconciled.Problems...)
+	result.Wrote = reconciled.Wrote
+	result.Unchanged = reconciled.Unchanged
+	result.Deleted = reconciled.Deleted
 	result.OK = len(result.Problems) == 0
 	return result, nil
 }
@@ -240,13 +302,17 @@ func excluded(exclusions []string, name string) bool {
 }
 
 func discoverCommandRoster(root string, cfg Config, result *Result) map[string]string {
+	return discoverCommandRosterIn(filepath.Join(root, ".claude", "commands"), cfg.ExcludeDirs, result)
+}
+
+func discoverCommandRosterIn(sourceRoot string, exclusions []string, result *Result) map[string]string {
 	roster := map[string]string{}
-	entries := discoverMarkdown(filepath.Join(root, ".claude", "commands"), cfg.ExcludeDirs, result)
+	entries := discoverMarkdown(sourceRoot, exclusions, result)
 	for _, entry := range entries {
 		rel := entry.rel
 		if !entry.skillDir {
 			var err error
-			rel, err = filepath.Rel(filepath.Join(root, ".claude", "commands"), entry.path)
+			rel, err = filepath.Rel(sourceRoot, entry.path)
 			if err != nil {
 				continue
 			}

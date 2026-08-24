@@ -6,6 +6,18 @@ set -euo pipefail
 
 zero_sha="0000000000000000000000000000000000000000"
 
+repo_root="$(git rev-parse --show-toplevel)"
+effective_hooks_path="$(git config --get core.hooksPath 2>/dev/null || true)"
+case "$effective_hooks_path" in
+  .githooks) ;;
+  "$repo_root/.githooks") ;;
+  *)
+    echo "PUSH BLOCKED: pre-push ran with unexpected core.hooksPath=${effective_hooks_path:-\(unset\)} (want .githooks)" >&2
+    exit 1
+    ;;
+esac
+echo "pre-push: gate=armed core.hooksPath=$effective_hooks_path" >&2
+
 failed=0
 
 while read -r local_ref local_sha remote_ref remote_sha; do
@@ -44,7 +56,6 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     old="$remote_sha"
   fi
 
-  repo_root="$(git rev-parse --show-toplevel)"
   if ! "$repo_root/scripts/leak-check.sh" --range "$old" "$local_sha"; then
     failed=1
   fi

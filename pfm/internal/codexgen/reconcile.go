@@ -25,23 +25,31 @@ type reconcileResult struct {
 }
 
 func reconcile(root, home string, outputs []generatedFile, mode Mode, manageGlobal bool) (reconcileResult, error) {
-	result := reconcileResult{}
-	sort.Slice(outputs, func(i, j int) bool { return outputs[i].Path < outputs[j].Path })
-	wanted := map[string]bool{}
 	managed := []string{filepath.Join(root, ".codex", "agents"), filepath.Join(root, ".codex", "skills"), filepath.Join(home, ".codex", "skills"), filepath.Join(home, ".codex", "prompts")}
 	if !manageGlobal {
 		managed = managed[:2]
 	}
+	return reconcileManaged(outputs, mode, managed)
+}
+
+func reconcileManaged(outputs []generatedFile, mode Mode, managed []string) (reconcileResult, error) {
+	return reconcileManagedWithClaim(outputs, mode, managed, claimable)
+}
+
+func reconcileManagedWithClaim(outputs []generatedFile, mode Mode, managed []string, owns func(string) bool) (reconcileResult, error) {
+	result := reconcileResult{}
+	sort.Slice(outputs, func(i, j int) bool { return outputs[i].Path < outputs[j].Path })
+	wanted := map[string]bool{}
 	for _, output := range outputs {
 		wanted[managedEntry(output.Path, managed)] = true
 		if output.Link != "" {
-			result.reconcileLink(output, mode)
+			result.reconcileLink(output, mode, owns)
 			continue
 		}
-		result.reconcileFile(output, mode)
+		result.reconcileFile(output, mode, owns)
 	}
 	for _, dir := range managed {
-		result.reconcileOrphans(dir, wanted, mode)
+		result.reconcileOrphans(dir, wanted, mode, owns)
 	}
 	return result, nil
 }
@@ -58,7 +66,7 @@ func managedEntry(path string, managed []string) string {
 	return path
 }
 
-func (r *reconcileResult) reconcileLink(output generatedFile, mode Mode) {
+func (r *reconcileResult) reconcileLink(output generatedFile, mode Mode, owns func(string) bool) {
 	info, err := os.Lstat(output.Path)
 	if err == nil && info.Mode()&os.ModeSymlink != 0 {
 		link, readErr := os.Readlink(output.Path)
@@ -75,7 +83,7 @@ func (r *reconcileResult) reconcileLink(output generatedFile, mode Mode) {
 		r.Problems = append(r.Problems, fmt.Sprintf("%s %s (want symlink → %s)", state, output.Path, output.Link))
 		return
 	}
-	if err == nil && !output.ManagedFence && !claimable(output.Path) {
+	if err == nil && !output.ManagedFence && !owns(output.Path) {
 		r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
 		return
 	}
@@ -94,7 +102,7 @@ func (r *reconcileResult) reconcileLink(output generatedFile, mode Mode) {
 	r.Wrote++
 }
 
-func (r *reconcileResult) reconcileFile(output generatedFile, mode Mode) {
+func (r *reconcileResult) reconcileFile(output generatedFile, mode Mode, owns func(string) bool) {
 	info, err := os.Lstat(output.Path)
 	current := ""
 	if err == nil && info.Mode().IsRegular() {
@@ -115,7 +123,7 @@ func (r *reconcileResult) reconcileFile(output generatedFile, mode Mode) {
 		}
 		return
 	}
-	if err == nil && !output.ManagedFence && !claimable(output.Path) {
+	if err == nil && !output.ManagedFence && !owns(output.Path) {
 		r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
 		return
 	}
@@ -147,7 +155,7 @@ func (r *reconcileResult) reconcileFile(output generatedFile, mode Mode) {
 	r.Wrote++
 }
 
-func (r *reconcileResult) reconcileOrphans(dir string, wanted map[string]bool, mode Mode) {
+func (r *reconcileResult) reconcileOrphans(dir string, wanted map[string]bool, mode Mode, owns func(string) bool) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return
@@ -161,7 +169,7 @@ func (r *reconcileResult) reconcileOrphans(dir string, wanted map[string]bool, m
 		if wanted[path] {
 			continue
 		}
-		if !claimable(path) {
+		if !owns(path) {
 			continue
 		}
 		if mode == ModeCheck {
@@ -174,6 +182,21 @@ func (r *reconcileResult) reconcileOrphans(dir string, wanted map[string]bool, m
 			r.Deleted++
 		}
 	}
+}
+
+// markerClaimable is the stricter ownership rule used for host-global
+// reconciliation. A symlink cannot carry the compiler marker, so an unknown
+// symlink in ~/.codex is foreign and must survive. Repository reconciliation
+// retains its historical symlink ownership rule through claimable.
+func markerClaimable(path string) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	return claimable(path)
 }
 
 func claimable(path string) bool {

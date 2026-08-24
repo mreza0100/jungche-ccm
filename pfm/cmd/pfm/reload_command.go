@@ -123,7 +123,7 @@ func runChatReloadWithRuntime(
 	resolved := runtime.Paths
 	tmux := reloadCommandTmux{}
 	socketPath, _, _, code := reloadTarget(
-		context.Background(), reloadSocketArgument(args), resolved, tmux, stderr,
+		context.Background(), reloadSocketArgument(args), resolved, runtime, tmux, stderr,
 	)
 	if code != 0 {
 		return code
@@ -225,13 +225,9 @@ func runChatReloadWorkerWithRuntime(
 			account = args[index]
 		}
 	}
-	if account == "" && cacheOverride == "" {
-		fmt.Fprintln(stderr, reloadUsage)
-		return 2
-	}
 	resolved := runtime.Paths
 	tmux := reloadCommandTmux{}
-	socketPath, pane, paneState, code := reloadTarget(context.Background(), sock, resolved, tmux, stderr)
+	socketPath, pane, paneState, code := reloadTarget(context.Background(), sock, resolved, runtime, tmux, stderr)
 	if code != 0 {
 		return code
 	}
@@ -301,7 +297,7 @@ func reloadSocketArgument(args []string) string {
 }
 
 func validateReloadArgs(args []string) error {
-	account, cache := false, false
+	account := false
 	for index := 0; index < len(args); index++ {
 		switch args[index] {
 		case "--then", "--sock":
@@ -313,7 +309,6 @@ func validateReloadArgs(args []string) error {
 			if index+1 >= len(args) || (args[index+1] != "on" && args[index+1] != "off" && args[index+1] != "1" && args[index+1] != "0") {
 				return errors.New("--1h needs on|off")
 			}
-			cache = true
 			index++
 		default:
 			if _, valid := positiveAccount(args[index]); !valid {
@@ -324,9 +319,6 @@ func validateReloadArgs(args []string) error {
 			}
 			account = true
 		}
-	}
-	if !account && !cache {
-		return errors.New(reloadUsage)
 	}
 	return nil
 }
@@ -362,7 +354,7 @@ func reloadDurationEnv(name string, fallbackMS int) time.Duration {
 	return time.Duration(fallbackMS) * time.Millisecond
 }
 
-func reloadTarget(ctx context.Context, sock string, resolved paths.Values, tmux reload.Tmux, stderr io.Writer) (string, string, reload.Pane, int) {
+func reloadTarget(ctx context.Context, sock string, resolved paths.Values, runtime commandRuntime, tmux reload.Tmux, stderr io.Writer) (string, string, reload.Pane, int) {
 	if sock != "" {
 		path := sock
 		if !filepath.IsAbs(path) {
@@ -390,21 +382,32 @@ func reloadTarget(ctx context.Context, sock string, resolved paths.Values, tmux 
 	}
 	identity, err := identifier.Identify(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat reload: couldn't identify this chat: %v\n", err)
-		return "", "", reload.Pane{}, 1
+		recovered, found := codexSeatIdentity(ctx, runtime)
+		if !found {
+			fmt.Fprintf(stderr, "pfm chat reload: couldn't identify this chat: %v\n", err)
+			return "", "", reload.Pane{}, 1
+		}
+		identity = recovered
 	}
+	return reloadTargetFromIdentity(ctx, identity, tmux, stderr)
+}
+
+func reloadTargetFromIdentity(ctx context.Context, identity resolve.Identity, tmux reload.Tmux, stderr io.Writer) (string, string, reload.Pane, int) {
 	path := identity.SocketPath
 	pane := identity.Pane
 	if pane == "" {
 		pane = os.Getenv("TMUX_PANE")
 	}
-	if pane == "" {
-		fmt.Fprintln(stderr, "pfm chat reload: not in tmux")
-		return "", "", reload.Pane{}, 1
-	}
 	panes, err := tmux.ListPanes(ctx, path)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat reload: list panes: %v\n", err)
+		return "", "", reload.Pane{}, 1
+	}
+	if pane == "" {
+		if len(panes) == 1 {
+			return path, panes[0].ID, panes[0], 0
+		}
+		fmt.Fprintf(stderr, "pfm chat reload: recovered %s but found %d panes — target is ambiguous\n", identity.Session, len(panes))
 		return "", "", reload.Pane{}, 1
 	}
 	for _, item := range panes {
