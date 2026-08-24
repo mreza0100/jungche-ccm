@@ -16,17 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     container: ubuntu:24.04
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0
-
-      - name: Install e2e tools
+      - name: Install checkout and e2e tools
         shell: bash
         run: |
           set -euo pipefail
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git tmux zsh
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git tmux zsh
+
+      - name: Check out the repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5.5.0
@@ -43,7 +43,8 @@ jobs:
           set -euo pipefail
           export PFM_E2E_SOURCE_REPO="$GITHUB_WORKSPACE"
           export PFM_DEV_REPO_WORK_TREE="$GITHUB_WORKSPACE"
-          export PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
+          PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
+          export PFM_DEV_REPO_GIT_DIR
           go -C pfm test -count=1 -tags e2e -p 1 ./e2e/...
 
   darwin:
@@ -72,5 +73,6 @@ jobs:
           set -euo pipefail
           export PFM_E2E_SOURCE_REPO="$GITHUB_WORKSPACE"
           export PFM_DEV_REPO_WORK_TREE="$GITHUB_WORKSPACE"
-          export PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
+          PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
+          export PFM_DEV_REPO_GIT_DIR
           go -C pfm test -count=1 -tags e2e -p 1 ./e2e/...

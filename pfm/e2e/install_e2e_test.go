@@ -82,6 +82,8 @@ type e2eHarness struct {
 	t          *testing.T
 	repo       string
 	headBinary string
+	goCache    string
+	goModCache string
 }
 
 type commandResult struct {
@@ -299,7 +301,12 @@ func runInstallE2E(t *testing.T) {
 	t.Helper()
 	requireE2EFence(t)
 	repo := sourceRepo(t)
-	harness := &e2eHarness{t: t, repo: repo}
+	harness := &e2eHarness{
+		t:          t,
+		repo:       repo,
+		goCache:    requiredGoEnv(t, "GOCACHE"),
+		goModCache: requiredGoEnv(t, "GOMODCACHE"),
+	}
 	harness.headBinary = harness.build(repo, filepath.Join(t.TempDir(), "pfm-head"))
 
 	var fresh surfaceSnapshot
@@ -366,6 +373,20 @@ func requireE2EFence(t *testing.T) {
 	if os.Getenv("PFM_DEV_FENCE") != "1" {
 		t.Fatal("e2e harness refuses to run without PFM_DEV_FENCE=1")
 	}
+}
+
+func requiredGoEnv(t *testing.T, name string) string {
+	t.Helper()
+	command := exec.Command("go", "env", name)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("resolve go environment %s: %v: %s", name, err, strings.TrimSpace(string(output)))
+	}
+	value := strings.TrimSpace(string(output))
+	if value == "" {
+		t.Fatalf("resolve go environment %s: empty output", name)
+	}
+	return value
 }
 
 func sourceRepo(t *testing.T) string {
@@ -684,6 +705,8 @@ func (h *e2eHarness) environment(home string) []string {
 		filepath.Join(home, ".cc", "3", "projects"),
 	}
 	values := map[string]string{
+		"GOCACHE":               h.goCache,
+		"GOMODCACHE":            h.goModCache,
 		"HOME":                  home,
 		"PFM_HOME":              home,
 		"PFM_DB":                filepath.Join(home, ".local", "state", "pfm", "fleet.db"),
@@ -710,7 +733,8 @@ func appendCleanEnv(base []string, values map[string]string) []string {
 	result := make([]string, 0, len(base)+len(values))
 	for _, entry := range base {
 		name, _, ok := strings.Cut(entry, "=")
-		if !ok || name == "HOME" || name == "PATH" || strings.HasPrefix(name, "PFM_") ||
+		_, overridden := values[name]
+		if !ok || overridden || name == "HOME" || name == "PATH" || strings.HasPrefix(name, "PFM_") ||
 			name == "TMUX" || name == "TMUX_TMPDIR" || name == "TMPDIR" || name == "XDG_CONFIG_HOME" {
 			continue
 		}
