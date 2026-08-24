@@ -589,7 +589,15 @@ func (h *e2eHarness) build(source, output string) string {
 
 func (h *e2eHarness) newHome(binary string) string {
 	h.t.Helper()
-	home := h.t.TempDir()
+	home, err := os.MkdirTemp("/tmp", "pfm-e2e-home-")
+	if err != nil {
+		h.t.Fatalf("create short e2e home: %v", err)
+	}
+	h.t.Cleanup(func() {
+		if err := os.RemoveAll(home); err != nil {
+			h.t.Errorf("remove short e2e home: %v", err)
+		}
+	})
 	for _, relative := range []string{
 		".claude", ".cc/1/projects", ".cc/2/projects", ".cc/3/projects",
 		".codex", ".config", "proc", "cgroup", "tmux", "tmp", ".local/bin",
