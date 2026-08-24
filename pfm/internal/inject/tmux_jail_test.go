@@ -532,7 +532,9 @@ func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	const focusRunes = 2147
-	focus := strings.Repeat("f", focusRunes)
+	// Keep the tail unique so render-settle proves the final byte reached the
+	// deliberately slow fixture instead of matching an earlier repeated run.
+	focus := strings.Repeat("f", focusRunes-1) + "z"
 	want := "/compact " + focus
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -546,7 +548,22 @@ func TestJailedLongCompactFocusFiresWithFullTranscript(t *testing.T) {
 	}
 	if result.Code != 0 || result.Status != "queued" || !result.Typed ||
 		result.AutoFilePath != "" || result.LiteralChunks < 2 {
-		t.Fatalf("long compact result=%+v", result)
+		capture, captureErr := CommandTmux{}.Capture(
+			context.Background(),
+			socketPath,
+			pane,
+			false,
+			FullScrollback,
+		)
+		recorded, recordErr := os.ReadFile(transcript)
+		t.Fatalf(
+			"long compact result=%+v capture_err=%v capture=%q transcript_err=%v transcript=%q",
+			result,
+			captureErr,
+			capture,
+			recordErr,
+			recorded,
+		)
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	var recorded []byte
