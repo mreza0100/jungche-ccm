@@ -24,10 +24,10 @@ Each release file (`releases/vX.Y.Z.md`) uses categorized headings the update fl
 Bullets MUST follow this shape:
 
 ```
-- {Tier A|Tier B|Mechanics|Docs|Scripts}: {file path or scope} — {what changed semantically}
+- {Tier}: {file path or scope} — {what changed semantically}
 ```
 
-Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requires migration even outside a Breaking section, `(safe-auto)` to mark unconditional auto-apply.
+`{Tier}` is a non-empty display/routing label, not a closed enum. The `##` heading is the authoritative semantic category; a prefix never reclassifies a Fixed bullet as Changed, for example. Optional trailing tags: `(opt-in)` for optional additions, `(breaking)` if it requires migration even outside a Breaking section, `(safe-auto)` to mark unconditional auto-apply, and `(cost)` for environment, hook, permission, or model/config cost.
 
 ---
 
