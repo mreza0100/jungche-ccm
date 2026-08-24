@@ -22,8 +22,16 @@ type prePushGate struct {
 	Error      error
 }
 
+// prePushGateProbeOverride keeps command-package tests independent of the
+// checkout that runs them. Production leaves it nil; the dedicated pre-push
+// tests clear the test default and exercise inspectPrePushGate end to end.
+var prePushGateProbeOverride func(context.Context) prePushGate
+
 func printPrePushDoctor(ctx context.Context, stdout io.Writer) int {
 	gate := inspectPrePushGate(ctx)
+	if prePushGateProbeOverride != nil {
+		gate = prePushGateProbeOverride(ctx)
+	}
 	switch gate.State {
 	case "outside-repository":
 		fmt.Fprintln(stdout, "doctor: pre-push gate=not-applicable outside-repository")
