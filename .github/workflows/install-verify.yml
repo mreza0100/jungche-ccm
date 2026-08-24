@@ -41,6 +41,9 @@ jobs:
           PFM_HARVESTPY_OFFLINE: "1"
         run: |
           set -euo pipefail
+          export PFM_E2E_SOURCE_REPO="$GITHUB_WORKSPACE"
+          export PFM_DEV_REPO_WORK_TREE="$GITHUB_WORKSPACE"
+          export PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
           export HOME="$(mktemp -d)"
           go -C pfm test -tags e2e -p 1 ./e2e/...
 
@@ -68,5 +71,8 @@ jobs:
           PFM_HARVESTPY_OFFLINE: "1"
         run: |
           set -euo pipefail
+          export PFM_E2E_SOURCE_REPO="$GITHUB_WORKSPACE"
+          export PFM_DEV_REPO_WORK_TREE="$GITHUB_WORKSPACE"
+          export PFM_DEV_REPO_GIT_DIR="$(git rev-parse --absolute-git-dir)"
           export HOME="$(mktemp -d)"
           go -C pfm test -tags e2e -p 1 ./e2e/...

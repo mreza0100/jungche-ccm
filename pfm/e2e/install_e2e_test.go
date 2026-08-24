@@ -889,9 +889,12 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 		h.t.Fatalf("tmux probe setup failed; differing paths: tmux.conf; status: %v", err)
 	}
 	socket := "e2e-probe-" + strconv.Itoa(os.Getpid())
-	result := runTool(home, "tmux", "-f", configuration, "-L", socket, "start-server", ";", "kill-server")
+	result := runTool(home, "tmux", "-f", configuration, "-L", socket, "new-session", "-d", "-s", "pfm-e2e-probe", ";", "kill-server")
 	if result.err != nil {
-		h.t.Fatalf("tmux probe failed; differing paths: tmux config/socket; status: %v", result.err)
+		h.t.Fatalf(
+			"tmux probe failed; differing paths: tmux config/socket; status: %v; stdout=%q stderr=%q",
+			result.err, result.stdout, result.stderr,
+		)
 	}
 }
 
