@@ -63,6 +63,9 @@ func noNetworkHarvestDigest() harvestpy.EnvironmentDigest {
 func TestMain(m *testing.M) {
 	installHarvestProvisionerOverride = noNetworkHarvestProvisioner{}
 	harvestDoctorOverride = noNetworkHarvestDoctor{}
+	prePushGateProbeOverride = func(context.Context) prePushGate {
+		return prePushGate{State: "outside-repository"}
+	}
 	dependencyProbeOverride = func(_ context.Context, entries []deps.Entry, _ deps.ProbeOptions) []deps.Result {
 		results := make([]deps.Result, 0, len(entries))
 		for _, entry := range entries {

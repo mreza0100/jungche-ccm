@@ -428,6 +428,10 @@ func TestDoctorReportsDamagedDatabaseWithoutPanic(t *testing.T) {
 // the repository shipped the hook but no diagnostic distinguished "armed"
 // from "file exists and Git will never execute it".
 func TestDoctorNamesAnExistingButUnwiredPrePushGate(t *testing.T) {
+	savedProbe := prePushGateProbeOverride
+	prePushGateProbeOverride = nil
+	t.Cleanup(func() { prePushGateProbeOverride = savedProbe })
+
 	root := jailTest(t)
 	repository := filepath.Join(root, "repository")
 	if err := os.MkdirAll(filepath.Join(repository, ".git"), 0o700); err != nil {
