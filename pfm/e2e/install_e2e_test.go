@@ -375,7 +375,12 @@ func sourceRepo(t *testing.T) string {
 		if err != nil {
 			t.Fatalf("resolve %s: %v", e2eSourceRepo, err)
 		}
-		return prepareSourceRepo(t, root)
+		return prepareSourceRepoWithGit(
+			t,
+			root,
+			strings.TrimSpace(os.Getenv("PFM_DEV_REPO_WORK_TREE")),
+			strings.TrimSpace(os.Getenv("PFM_DEV_REPO_GIT_DIR")),
+		)
 	}
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -390,8 +395,19 @@ func sourceRepo(t *testing.T) string {
 
 func prepareSourceRepo(t *testing.T, root string) string {
 	t.Helper()
+	workTree := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_WORK_TREE"))
+	gitDir := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_GIT_DIR"))
+	if workTree == "" || gitDir == "" || filepath.Clean(root) != filepath.Clean(workTree) {
+		workTree = ""
+		gitDir = ""
+	}
+	return prepareSourceRepoWithGit(t, root, workTree, gitDir)
+}
+
+func prepareSourceRepoWithGit(t *testing.T, root, workTree, gitDir string) string {
+	t.Helper()
 	fixture := filepath.Join(t.TempDir(), "source")
-	if err := copySourceTree(root, fixture); err != nil {
+	if err := copySourceTreeWithGit(root, fixture, workTree, gitDir); err != nil {
 		t.Fatalf("stage e2e source repository: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(fixture, filepath.FromSlash(e2eFixtureSkill))); errors.Is(err, fs.ErrNotExist) {
@@ -454,19 +470,37 @@ func currentE2ETag(t *testing.T) string {
 }
 
 func copySourceTree(source, target string) error {
+	workTree := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_WORK_TREE"))
+	gitDir := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_GIT_DIR"))
+	if workTree == "" || gitDir == "" || filepath.Clean(source) != filepath.Clean(workTree) {
+		metadata := fmt.Sprintf("worktree=%q git-dir=%q", workTree, gitDir)
+		workTree = ""
+		gitDir = ""
+		if err := copySourceTreeWithGit(source, target, workTree, gitDir); err != nil {
+			return fmt.Errorf("%s; fenced metadata not applicable (%s)", err, metadata)
+		}
+		return nil
+	}
+	return copySourceTreeWithGit(source, target, workTree, gitDir)
+}
+
+func copySourceTreeWithGit(source, target, workTree, gitDir string) error {
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		return err
 	}
 	gitArgs := []string{"-c", "safe.directory=" + source, "-C", source, "ls-files", "--cached", "--others", "--exclude-standard", "-z"}
-	fencedWorkTree := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_WORK_TREE"))
-	fencedGitDir := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_GIT_DIR"))
-	if fencedWorkTree != "" && fencedGitDir != "" && filepath.Clean(source) == filepath.Clean(fencedWorkTree) {
-		gitArgs = append([]string{"--git-dir=" + fencedGitDir, "--work-tree=" + fencedWorkTree}, gitArgs...)
+	gitContext := "repository discovery"
+	if workTree != "" && gitDir != "" {
+		gitArgs = append([]string{"--git-dir=" + gitDir, "--work-tree=" + workTree}, gitArgs...)
+		gitContext = "explicit worktree metadata"
 	}
 	command := exec.Command("git", gitArgs...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("enumerate source fixture files: %w: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf(
+			"enumerate source fixture files from %q with %s: %w: %s",
+			source, gitContext, err, strings.TrimSpace(string(output)),
+		)
 	}
 	for _, rawRelative := range bytes.Split(output, []byte{0}) {
 		if len(rawRelative) == 0 {
@@ -888,12 +922,28 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 	if err := os.WriteFile(configuration, []byte("set -g history-limit 100\n"), 0o600); err != nil {
 		h.t.Fatalf("tmux probe setup failed; differing paths: tmux.conf; status: %v", err)
 	}
-	socket := "e2e-probe-" + strconv.Itoa(os.Getpid())
-	result := runTool(home, "tmux", "-f", configuration, "-L", socket, "new-session", "-d", "-s", "pfm-e2e-probe", ";", "kill-server")
+	socketRoot, err := os.MkdirTemp("/tmp", "pfm-e2e-tmux-")
+	if err != nil {
+		h.t.Fatalf("tmux probe setup failed; create short socket root: %v", err)
+	}
+	h.t.Cleanup(func() {
+		if err := os.RemoveAll(socketRoot); err != nil {
+			h.t.Errorf("tmux probe cleanup failed: %v", err)
+		}
+	})
+	socket := filepath.Join(socketRoot, "socket")
+	result := runTool(home, "tmux", "-f", configuration, "-S", socket, "new-session", "-d", "-s", "pfm-e2e-probe")
 	if result.err != nil {
 		h.t.Fatalf(
 			"tmux probe failed; differing paths: tmux config/socket; status: %v; stdout=%q stderr=%q",
 			result.err, result.stdout, result.stderr,
+		)
+	}
+	cleanup := runTool(home, "tmux", "-S", socket, "kill-server")
+	if cleanup.err != nil {
+		h.t.Fatalf(
+			"tmux probe cleanup failed; status: %v; stdout=%q stderr=%q",
+			cleanup.err, cleanup.stdout, cleanup.stderr,
 		)
 	}
 }
