@@ -101,7 +101,7 @@ func Run(options Options) (Result, error) {
 	compileRepoCommands(root, cfg, transform, roster, add, problem, warn, &result)
 	compileRepoSkills(root, add, problem, warn)
 	if cfg.GlobalCommands {
-		compileGlobalCommands(root, home, cfg, transform, add, problem, warn, &result)
+		compileInstalledGlobalCommands(home, add, problem, warn, &result)
 	}
 
 	mcp, mcpErr := compileMCP(root)
@@ -175,16 +175,12 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	cfg := defaultConfig()
 	result := Result{Warnings: []string{}, Problems: []string{}, OverrideStatuses: []OverrideStatus{}}
 	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
 	problem := func(message string) { result.Problems = append(result.Problems, message) }
-	sourceRoot := filepath.Join(home, ".claude", "commands")
-	roster := discoverCommandRosterIn(sourceRoot, nil, &result)
-	transform := TransformOptions{ModelMap: cfg.ModelMap, Commands: roster}
-	compileGlobalCommands(home, home, cfg, transform, add, problem, warn, &result)
+	compileInstalledGlobalCommands(home, add, problem, warn, &result)
 
 	if options.Mode == ModeCheck {
 		for _, warning := range result.Warnings {
@@ -528,6 +524,18 @@ func compileGlobalCommands(root, home string, cfg Config, options TransformOptio
 		}
 		compileCommandFile(root, home, sourceRoot, entry, "$HOME/.claude/commands", "", cfg, options, add, problem, warn, result, true)
 	}
+}
+
+// compileInstalledGlobalCommands is the single planner for installer-owned
+// host commands. Full repository build/check and install reconciliation must
+// use the same source roster and defaults or they can disagree about the
+// bytes under $HOME/.codex immediately after a successful install.
+func compileInstalledGlobalCommands(home string, add func(generatedFile), problem func(string), warn func(string), result *Result) {
+	cfg := defaultConfig()
+	sourceRoot := filepath.Join(home, ".claude", "commands")
+	roster := discoverCommandRosterIn(sourceRoot, nil, result)
+	transform := TransformOptions{ModelMap: cfg.ModelMap, Commands: roster}
+	compileGlobalCommands(home, home, cfg, transform, add, problem, warn, result)
 }
 
 func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourceEntry, label, outputRoot string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result, global bool) {
