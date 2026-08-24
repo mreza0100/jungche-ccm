@@ -508,6 +508,9 @@ func TestDoctorRecognizesThenFailedAsSatelliteMetadata(t *testing.T) {
 	for name, content := range map[string]string{
 		"cc-1-2-3":              "/transcripts/live.jsonl",
 		"cc-1-2-3.then-failed":  "prompt preserved for retry",
+		"reload-cc-1-2-3.log":   "completed fleet reload",
+		"reload-vsct.log":       "completed bunker reload",
+		"reload-probe.log":      "not a fleet reload",
 		".open.uuid":            "lock metadata",
 		"cc-1-2-3.not-metadata": "invalid",
 	} {
@@ -523,7 +526,7 @@ func TestDoctorRecognizesThenFailedAsSatelliteMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if entries != 4 || invalid != 1 {
+	if entries != 7 || invalid != 2 {
 		t.Fatalf("crumbHealth() entries=%d invalid=%d", entries, invalid)
 	}
 }
