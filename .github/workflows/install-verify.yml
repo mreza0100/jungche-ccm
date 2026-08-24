@@ -22,6 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install e2e tools
+        shell: bash
         run: |
           set -euo pipefail
           apt-get update
@@ -34,6 +35,7 @@ jobs:
           cache-dependency-path: pfm/go.sum
 
       - name: Run serial installer e2e
+        shell: bash
         env:
           PFM_DEV_FENCE: "1"
           PFM_HARVESTPY_OFFLINE: "1"

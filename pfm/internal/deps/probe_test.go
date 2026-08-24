@@ -67,6 +67,27 @@ func TestProbePlatformAndHarvestFiltering(t *testing.T) {
 	}
 }
 
+func TestDarwinLsofAcceptsApplesVersionlessBanner(t *testing.T) {
+	directory := t.TempDir()
+	writeProbeStub(t, directory, "lsof", "printf 'lsof version information:\n' >&2")
+	t.Setenv("PATH", directory)
+
+	var lsof Entry
+	for _, entry := range Registry(Options{Home: t.TempDir(), GOOS: "darwin", GOARCH: "arm64"}) {
+		if entry.Name == "lsof" {
+			lsof = entry
+			break
+		}
+	}
+	if lsof.Name == "" {
+		t.Fatal("Darwin registry has no lsof entry")
+	}
+	result := Probe(context.Background(), []Entry{lsof}, ProbeOptions{GOOS: "darwin"})[0]
+	if result.State != StateOK || result.Path == "" {
+		t.Fatalf("Darwin lsof result=%#v, want present and ok without a fabricated version", result)
+	}
+}
+
 func TestEngineDependenciesAreRequiredOnlyForPresentRosters(t *testing.T) {
 	tests := []struct {
 		name                  string
