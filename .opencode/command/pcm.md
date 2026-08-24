@@ -21,7 +21,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 - `CLAUDE.md` — the law + guards + routing; names mandatory-load obligations; carries no rosters of commands or skills (§ Authoring conventions, no-rosters law)
 - `.claude/commands/**/*.md` — slash commands (`/pcm`, `/pcm-release`, `/pcm-context-meter`, `/quality:*`, `/dev`, `/git`)
-- `.claude/agents/*.md` — registered agents: `gitter` (the sole git writer) and `tracer` (consumer-tree trace)
+- `.claude/agents/*.md` — registered agents: `gitter` (preferred Git writer) and `tracer` (consumer-tree trace)
 - `.claude/skills/*/SKILL.md` — reusable skills (`ls .claude/skills/` for the current set; source-fetched per `blueprint/skills/sources.json`, never vendored)
 - `.claude/output-styles/*.md` — persona registry: `professor.md` (session style) + `dr-house.md` (this command's overlay)
 - `.claude/scripts/*.{sh,mjs}` — dev.sh, pcm-guard.sh, guard-stamp.sh, format-md.sh, codex-sync.sh (mirror auto-compile; the Codex compiler itself is `pfm codex build`)
@@ -42,7 +42,7 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 ### Inventory (derive, never recall)
 
-- **Projects:** `blueprint/` (markdown + shell, no build), `pfm/` (Go), `dreamer/` (npm), `engines/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
+- **Projects:** `blueprint/` (markdown + shell, no build), `pfm/` (Go, including the memory organ), `engines/wave-walker/engine/` (npm) — confirm with `.claude/scripts/dev.sh status`
 - **Agents:** `ls .claude/agents/` — model tiers per CLAUDE.md § Model Selection
 - **Commands, skills, output styles:** `ls -R .claude/commands/ .claude/skills/ .claude/output-styles/`
 - **Shipped surface:** `find blueprint -type f -not -name refresh-map.json | wc -l` — the count that matters to adopters

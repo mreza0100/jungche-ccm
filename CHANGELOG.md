@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.60.0](releases/v0.60.0.md) — three-engine fleet, PFM-owned Harvester, and isolated verification
 - [v0.58.0](releases/v0.58.0.md) — pfm harvest with a pinned-Python runtime across a four-platform matrix, and the native codex compiler as single writer
 - [v0.57.0](releases/v0.57.0.md) — the wave-pipeline event-driven rewrite + chain-walk update protocol
 - [v0.56.0](releases/v0.56.0.md) — the port that found a time bomb: `pfm ls` deleted the tmux sockets of five live healthy chats, because five parsers split tmux's `-F` output on the literal `\037` while tmux 3.6 emits the raw byte, and the sweep in `tmuxprobe.go` removed a socket on ANY probe error — the `ErrServerGone` guard was attached to the warning, one statement short of the deletion. Linux is unsprung only because tmux ≤3.5 escapes the separator, and the `>1h` age check selects for the victim rather than protecting it: untouched for an hour describes a live idle chat, not a dead one. Both halves ship, each insufficient alone. With them, macOS becomes a real target from one binary — `sysctl` where there is no `/proc`, a launchd agent where there are no systemd units, and an rc 97 gate that narrows to "not mid-execution" because there is no dead-launchd jail to demand

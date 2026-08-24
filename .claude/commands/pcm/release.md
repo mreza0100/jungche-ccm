@@ -47,15 +47,15 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 7. `echo "{NEW_VERSION}" > VERSION`
 
-8. **Gate, then hand off to gitter** — you do not run git writes yourself (root `CLAUDE.md`: only gitter writes git):
+8. **Gate, then use the authorized Git writer** — route each phase through `/git`; it uses gitter when available and the active main Codex fallback only after explicit current-turn authorization:
 
    a. `scripts/leak-check.sh --files <every changed file>` — brand current+former, user PII, machine home paths, zero secrets. Report its exit status. A single leftover is a refresh bug, not an exception. The committed `.githooks/pre-push` hook enforces the same gate at push time; do not treat that as a reason to skip this one.
 
-   b. Spawn `gitter` — `Phase: COMMIT`, naming the exact paths, message `release: v{NEW_VERSION} — {summary}` with a `Source: {sha}` trailer (the live source SHA when Step 3 ran; omit the trailer when it did not) and `Co-Authored-By: Professor <noreply@anthropic.com>`.
+   b. `/git commit` — name the exact paths and message `release: v{NEW_VERSION} — {summary}` with a `Source: {sha}` trailer (the live source SHA when Step 3 ran; omit the trailer when it did not) and `Co-Authored-By: Professor <noreply@anthropic.com>`.
 
-   c. Spawn `gitter` — `Phase: TAG`, annotated `v{NEW_VERSION}`. It re-checks that `VERSION`, `CHANGELOG.md`, and `releases/v{NEW_VERSION}.md` agree before the tag exists.
+   c. `/git tag v{NEW_VERSION}` — create an annotated tag after re-checking that `VERSION`, `CHANGELOG.md`, and `releases/v{NEW_VERSION}.md` agree.
 
-   d. Spawn `gitter` — `Phase: PUSH`, `git push origin main --follow-tags`, carrying the user's explicit publish request as its authority. Relay the pre-push hook's output verbatim. STOP if it fails; NEVER force-push.
+   d. `/git push origin main --follow-tags`, carrying the user's explicit publish request as its authority. Relay the pre-push hook's output verbatim. STOP if it fails; NEVER force-push.
 
 9. **Clear `.professor/release.md`** — its entries shipped in this release; empty the pending list, keep the header.
 

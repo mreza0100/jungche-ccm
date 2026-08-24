@@ -118,11 +118,11 @@ Claude interviews you — structure, stack, disciplines, optional roles, persona
 
 One writer per surface — the law that keeps the two installers from fighting over the same file.
 
-| Surface | Written by | Paths |
-| --- | --- | --- |
-| Host fleet wiring | `pfm install` — the only writer | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/hooks.json`, one `~/.zshrc` line |
-| Project discipline layer | The interview — the only writer | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/` |
-| Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the six host-fleet surfaces above — the interview never writes them directly |
+| Surface                                        | Written by                            | Paths                                                                                                                                                                       |
+| ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/hooks.json`, one `~/.zshrc` line |
+| Project discipline layer                       | The interview — the only writer       | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                       |
+| Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the six host-fleet surfaces above — the interview never writes them directly                                                                                   |
 
 `pfm install --config-dir DIR` retargets the `~/.claude`-rooted writes to a different config directory — the only supported override.
 
@@ -130,7 +130,13 @@ One writer per surface — the law that keeps the two installers from fighting o
 
 ## Updating
 
-**`pfm` (machine layer):** `pfm update` consumes the latest tagged source-clone release transactionally, then runs `install --yes` and `doctor`; `/pcm:update` remains the semantic blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
+**From `v0.58.0` or earlier:** that binary does not have `pfm update`. Install the `v0.60.0`
+binary with path 1 or 2 above, then follow the
+[v0.60.0 LLM upgrade runbook](releases/v0.60.0.md#llm-upgrade-runbook).
+
+**`pfm` (machine layer, after `v0.60.0`):** `pfm update` consumes a tagged source-clone release
+transactionally, then runs `install --yes` and `doctor`; `/pcm:update` remains the semantic
+blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
 
 **The discipline layer (path 3):**
 

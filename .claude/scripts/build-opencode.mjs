@@ -259,8 +259,8 @@ if (isDir(skillsDir)) {
 //    extra keys, fixed order otherwise, so generate is stable across runs.
 const PERMISSION_POLICY = {
   // LAST matching rule wins (insertion order matters): broad allow first, the
-  // narrow denies after. The deny set mirrors .codex/rules/repo-law.rules —
-  // one canonical pin set across runtimes.
+  // narrow denies after. OpenCode keeps the guarded-file and publication pins
+  // at its harness layer; the active main Codex fallback does not apply here.
   edit: {
     '**': 'allow',
     '**/.claude/**': 'deny',
