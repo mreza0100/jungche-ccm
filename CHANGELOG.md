@@ -39,6 +39,7 @@ Optional trailing tags: `(opt-in)` for Tier B additions, `(breaking)` if it requ
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.61.0](releases/v0.61.0.md) — Harvester ask, complete cross-runtime agent parity, and reliable in-place reload
 - [v0.60.1](releases/v0.60.1.md) — safe one-time updater repair, Darwin diagnostics, MCP cutover checks, and native installer CI
 - [v0.60.0](releases/v0.60.0.md) — three-engine fleet, PFM-owned Harvester, and isolated verification
 - [v0.58.0](releases/v0.58.0.md) — pfm harvest with a pinned-Python runtime across a four-platform matrix, and the native codex compiler as single writer
