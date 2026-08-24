@@ -3,9 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,9 +18,6 @@ func TestStatuslineCommandRendersFromJailedInput(t *testing.T) {
 	root := t.TempDir()
 	cacheDir := filepath.Join(root, "tmp")
 	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(cacheDir, "cc-vertex-spend"), []byte("1.23|4.56|0"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PFM_HOME", root)
@@ -46,56 +40,16 @@ func TestStatuslineCommandRendersFromJailedInput(t *testing.T) {
 	}
 }
 
-func TestDetachedRefreshCLIPathsWriteCachesInTwinHome(t *testing.T) {
+func TestDetachedRefreshCLIPathWritesGPTCacheInTwinHome(t *testing.T) {
 	jailTest(t)
 	root := t.TempDir()
 	cacheDir := filepath.Join(root, "tmp")
 	t.Setenv("PFM_HOME", root)
 
-	monitoring, err := os.ReadFile(filepath.Join("..", "..", "internal", "statusline", "testdata", "monitoring.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	billing, err := os.ReadFile(filepath.Join("..", "..", "internal", "statusline", "testdata", "billing.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	storage, err := os.ReadFile(filepath.Join("..", "..", "internal", "statusline", "testdata", "storage.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch {
-		case strings.Contains(request.URL.Path, "/timeSeries"):
-			_, _ = writer.Write(monitoring)
-		case strings.Contains(request.URL.Path, "/skus"):
-			_, _ = writer.Write(billing)
-		case strings.Contains(request.URL.Path, "/cachedContents"):
-			_, _ = writer.Write(storage)
-		default:
-			http.NotFound(writer, request)
-		}
-	}))
-	defer server.Close()
-
-	originalVertex := statuslineVertexOptions
 	originalGPT := statuslineGPTOptions
 	t.Cleanup(func() {
-		statuslineVertexOptions = originalVertex
 		statuslineGPTOptions = originalGPT
 	})
-	statuslineVertexOptions = func(context.Context, io.Writer) (statusline.VertexOptions, error) {
-		return statusline.VertexOptions{
-			Now:               func() time.Time { return time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC) },
-			Project:           "sample-project",
-			Locations:         []string{"europe-west4"},
-			AccessToken:       func(context.Context) (string, error) { return "fixture-token", nil },
-			Client:            server.Client(),
-			MonitoringBaseURL: server.URL,
-			BillingBaseURL:    server.URL,
-			AIBaseURL:         server.URL,
-		}, nil
-	}
 	statuslineGPTOptions = func() statusline.GPTOptions {
 		return statusline.GPTOptions{
 			Now: func() time.Time { return time.Unix(1_786_838_400, 0) },
@@ -105,19 +59,24 @@ func TestDetachedRefreshCLIPathsWriteCachesInTwinHome(t *testing.T) {
 		}
 	}
 
-	for _, flag := range []string{"--refresh-vertex", "--refresh-gpt"} {
-		var stdout, stderr bytes.Buffer
-		if code := runStatusline([]string{flag}, strings.NewReader(""), &stdout, &stderr); code != 0 {
-			t.Fatalf("%s code=%d stdout=%q stderr=%q", flag, code, stdout.String(), stderr.String())
-		}
+	var stdout, stderr bytes.Buffer
+	if code := runStatusline([]string{"--refresh-gpt"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("--refresh-gpt code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	for _, path := range []string{
-		filepath.Join(cacheDir, "cc-vertex-spend"),
-		filepath.Join(cacheDir, "cc-gpt-usage-"+strconv.Itoa(os.Getuid())+".json"),
-	} {
-		if info, err := os.Stat(path); err != nil || info.Size() == 0 {
-			t.Fatalf("native refresher did not write %s: info=%v err=%v", path, info, err)
-		}
+	path := filepath.Join(cacheDir, "cc-gpt-usage-"+strconv.Itoa(os.Getuid())+".json")
+	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+		t.Fatalf("native refresher did not write %s: info=%v err=%v", path, info, err)
+	}
+}
+
+func TestStatuslineRejectsRetiredVertexRefreshFlag(t *testing.T) {
+	jailTest(t)
+	root := t.TempDir()
+	t.Setenv("PFM_HOME", root)
+
+	var stdout, stderr bytes.Buffer
+	if code := runStatusline([]string{"--refresh-vertex"}, strings.NewReader(""), &stdout, &stderr); code != 2 {
+		t.Fatalf("--refresh-vertex code=%d stdout=%q stderr=%q, want usage error", code, stdout.String(), stderr.String())
 	}
 }
 

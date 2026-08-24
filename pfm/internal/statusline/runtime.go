@@ -19,8 +19,7 @@ import (
 type RefreshKind string
 
 const (
-	RefreshKindVertex RefreshKind = "vertex"
-	RefreshKindGPT    RefreshKind = "gpt"
+	RefreshKindGPT RefreshKind = "gpt"
 )
 
 // CommandRunner is the small read-only command seam used by the git segment.

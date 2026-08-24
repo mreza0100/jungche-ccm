@@ -117,6 +117,14 @@ func TestEngineDependenciesAreRequiredOnlyForPresentRosters(t *testing.T) {
 	}
 }
 
+func TestRegistryDoesNotAdvertiseRetiredGCloud(t *testing.T) {
+	for _, entry := range Registry(Options{Home: t.TempDir(), GOOS: "linux", GOARCH: "amd64"}) {
+		if entry.Name == "gcloud" || entry.Command == "gcloud" {
+			t.Fatalf("retired gcloud dependency remains registered: %#v", entry)
+		}
+	}
+}
+
 func TestResolveRejectsRegisteredOffPlatformCommand(t *testing.T) {
 	var command string
 	switch runtime.GOOS {

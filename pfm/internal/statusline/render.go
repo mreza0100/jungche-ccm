@@ -246,7 +246,7 @@ func Render(ctx context.Context, raw []byte, runtime Runtime) (string, error) {
 	}
 	l2 += sep + dim + "⏱ " + formatDuration(data.Cost.TotalDurationMS) + reset
 
-	l3 := vertexSegment(runtime, now)
+	l3 := ""
 	if runtime.Engine == pfmengine.Codex {
 		gptLine, replacement := gptSegment(runtime, now, contextTokens, l2)
 		if replacement != "" {
@@ -783,9 +783,6 @@ func armRefresh(runtime Runtime, kind RefreshKind, cachePath string, ttl time.Du
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
 		return
 	}
-	if kind == RefreshKindVertex && fileAge(lockPath, runtime.now()) > 5*time.Minute {
-		_ = os.Remove(lockPath)
-	}
 	lock, err := os.OpenFile(lockPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return
@@ -794,25 +791,6 @@ func armRefresh(runtime Runtime, kind RefreshKind, cachePath string, ttl time.Du
 	if err := runtime.Spawn(kind); err != nil {
 		_ = os.Remove(lockPath)
 	}
-}
-
-func vertexSegment(runtime Runtime, now time.Time) string {
-	cachePath := filepath.Join(runtime.CacheDir, "cc-vertex-spend")
-	armRefresh(runtime, RefreshKindVertex, cachePath, 10*time.Minute)
-	body, err := os.ReadFile(cachePath)
-	if err != nil {
-		return ""
-	}
-	fields := strings.Split(strings.TrimSpace(string(body)), "|")
-	if len(fields) < 2 || fields[0] == "" {
-		return ""
-	}
-	segment := cyan + "☁️ Vertex" + reset + " " + white + "~€" + fields[0] +
-		" today" + reset + " " + dim + "·" + reset + " " + white + "~€" + fields[1] + " 7d" + reset
-	if fileAge(cachePath, now) > time.Hour {
-		segment += " " + dim + "(stale)" + reset
-	}
-	return segment
 }
 
 type gptUsageCache struct {
