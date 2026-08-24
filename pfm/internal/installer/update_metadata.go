@@ -32,22 +32,30 @@ func SourceRepoPath(home string) string {
 
 // WriteSourceRepoMarker records exactly one normalized clone path.
 func WriteSourceRepoMarker(home, repo string) error {
+	content, err := sourceRepoMarkerContent(repo)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(SourceRepoPath(home), content, 0o600)
+}
+
+func sourceRepoMarkerContent(repo string) ([]byte, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
-		return errors.New("source repository path is empty")
+		return nil, errors.New("source repository path is empty")
 	}
 	abs, err := filepath.Abs(repo)
 	if err != nil {
-		return fmt.Errorf("resolve source repository %q: %w", repo, err)
+		return nil, fmt.Errorf("resolve source repository %q: %w", repo, err)
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return fmt.Errorf("inspect source repository %s: %w", abs, err)
+		return nil, fmt.Errorf("inspect source repository %s: %w", abs, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("source repository %s is not a directory", abs)
+		return nil, fmt.Errorf("source repository %s is not a directory", abs)
 	}
-	return atomicWrite(SourceRepoPath(home), []byte(abs+"\n"), 0o600)
+	return []byte(abs + "\n"), nil
 }
 
 // ReadSourceRepoMarker reads the one-line clone marker and verifies that it
@@ -94,20 +102,35 @@ func ReadBinaryOwnership(home string) (BinaryOwnership, error) {
 
 // RecordCanonicalBinary records only the canonical ~/.local/bin/pfm path.
 func RecordCanonicalBinary(home string) error {
-	path := filepath.Join(home, ".local", "bin", "pfm")
-	ledger, err := ReadBinaryOwnership(home)
+	content, err := canonicalBinaryOwnershipContent(home)
 	if err != nil {
 		return err
 	}
+	if sameFile(binaryOwnershipPath(home), content, 0o600) {
+		return nil
+	}
+	return atomicWrite(binaryOwnershipPath(home), content, 0o600)
+}
+
+func canonicalBinaryOwnershipContent(home string) ([]byte, error) {
+	path := filepath.Join(home, ".local", "bin", "pfm")
+	ledger, err := ReadBinaryOwnership(home)
+	if err != nil {
+		return nil, err
+	}
+	found := false
 	for _, owned := range ledger.Paths {
 		if filepath.Clean(owned) == filepath.Clean(path) {
-			return nil
+			found = true
+			break
 		}
 	}
-	ledger.Paths = append(ledger.Paths, path)
+	if !found {
+		ledger.Paths = append(ledger.Paths, path)
+	}
 	encoded, err := json.MarshalIndent(ledger, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode binary ownership ledger: %w", err)
+		return nil, fmt.Errorf("encode binary ownership ledger: %w", err)
 	}
-	return atomicWrite(binaryOwnershipPath(home), append(encoded, '\n'), 0o600)
+	return append(encoded, '\n'), nil
 }

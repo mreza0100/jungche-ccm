@@ -983,12 +983,18 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 
 func (h *e2eHarness) assertInit(project, source string) {
 	h.t.Helper()
-	for _, relative := range []string{"CLAUDE.md", "AGENTS.md", ".claude/settings.json"} {
-		h.assertInitPath(filepath.Join(project, relative), relative)
+	blueprint := filepath.Join(source, "blueprint")
+	for _, mapping := range []struct{ source, target string }{
+		{"CLAUDE.md", "CLAUDE.md"},
+		{"CLAUDE.md", "AGENTS.md"},
+		{"settings.json", ".claude/settings.json"},
+	} {
+		h.assertInitFile(filepath.Join(blueprint, mapping.source), filepath.Join(project, mapping.target), mapping.target)
 	}
-	for _, directory := range []string{".claude/output-styles", ".claude/commands", ".claude/agents", ".claude/skills"} {
-		sourceDir := filepath.Join(source, directory)
-		h.assertInitPath(filepath.Join(project, directory), directory)
+	for _, directory := range []string{"output-styles", "commands", "agents", "skills"} {
+		sourceDir := filepath.Join(blueprint, directory)
+		targetDir := filepath.Join(project, ".claude", directory)
+		h.assertInitPath(targetDir, filepath.Join(".claude", directory))
 		if err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -996,17 +1002,33 @@ func (h *e2eHarness) assertInit(project, source string) {
 			if entry.IsDir() {
 				return nil
 			}
-			relative, relErr := filepath.Rel(source, path)
+			relative, relErr := filepath.Rel(sourceDir, path)
 			if relErr != nil {
 				return relErr
 			}
-			h.assertInitPath(filepath.Join(project, relative), relative)
+			target := filepath.Join(targetDir, relative)
+			h.assertInitFile(path, target, filepath.Join(".claude", directory, relative))
 			return nil
 		}); err != nil {
 			h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", directory, err)
 		}
 	}
 	h.readJSON(filepath.Join(project, ".claude", "settings.json"))
+}
+
+func (h *e2eHarness) assertInitFile(source, target, relative string) {
+	h.t.Helper()
+	want, err := os.ReadFile(source)
+	if err != nil {
+		h.t.Fatalf("read init source %s: %v", source, err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", relative, err)
+	}
+	if !bytes.Equal(got, want) {
+		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match blueprint source", relative)
+	}
 }
 
 func (h *e2eHarness) assertInitPath(path, relative string) {

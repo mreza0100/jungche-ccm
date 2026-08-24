@@ -13,9 +13,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// seedOpencodeStore builds a minimal but schema-faithful opencode.db: only
-// the tables and columns the reader queries, populated with one real-shaped
-// session plus one subagent child and one archived session.
+// seedOpencodeStore builds the native OpenCode store shape: user prompts live
+// in message/part JSON rows, never in PFM's optional session_input queue.
 func seedOpencodeStore(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -43,14 +42,24 @@ CREATE TABLE session (
   time_updated INTEGER NOT NULL,
   time_archived INTEGER
 );
-CREATE TABLE session_input (
+CREATE TABLE message (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
-  prompt TEXT NOT NULL,
-  delivery TEXT NOT NULL,
-  admitted_seq INTEGER NOT NULL,
-  time_created INTEGER NOT NULL
-);`
+  time_created INTEGER NOT NULL,
+  time_updated INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+CREATE TABLE part (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  time_created INTEGER NOT NULL,
+  time_updated INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+CREATE INDEX message_session_time_created_id_idx ON message (session_id, time_created, id);
+CREATE INDEX part_message_id_id_idx ON part (message_id, id);
+CREATE INDEX part_session_idx ON part (session_id);`
 	if _, err := db.Exec(script); err != nil {
 		t.Fatalf("seed schema: %v", err)
 	}
@@ -77,17 +86,25 @@ CREATE TABLE session_input (
 			t.Fatalf("seed session %s: %v", session.id, err)
 		}
 	}
-	prompts := [][4]any{
-		{"i1", "ses_root", "prove the bound", 100},
-		{"i2", "ses_root", "now generalize", 200},
-		{"i3", "ses_child", "child probe", 150},
+	prompts := [][5]any{
+		{"m1", "i1", "ses_root", "prove the bound", 100},
+		{"m2", "i2", "ses_root", "now generalize", 200},
+		{"m3", "i3", "ses_child", "child probe", 150},
 	}
 	for _, p := range prompts {
 		if _, err := db.Exec(
-			"INSERT INTO session_input (id, session_id, prompt, delivery, admitted_seq, time_created) VALUES (?, ?, ?, 'text', 0, ?)",
-			p[0], p[1], p[2], p[3],
+			`INSERT INTO message (id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, '{"role":"user"}')`,
+			p[0], p[2], p[4], p[4],
 		); err != nil {
-			t.Fatalf("seed input %v: %v", p[0], err)
+			t.Fatalf("seed message %v: %v", p[0], err)
+		}
+		if _, err := db.Exec(
+			`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, ?, json_object('type','text','text',?))`,
+			p[1], p[0], p[2], p[4], p[4], p[3],
+		); err != nil {
+			t.Fatalf("seed part %v: %v", p[1], err)
 		}
 	}
 }
@@ -135,6 +152,37 @@ func TestReadOpencodeSessionsReadsTheFixtureStore(t *testing.T) {
 	if !found || sessions[child].ParentID != "ses_root" {
 		t.Errorf("child session lost or unparented: %#v", sessions)
 	}
+}
+
+func TestReadOpencodeSessionsCompactsNativeModelID(t *testing.T) {
+	root := t.TempDir()
+	seedOpencodeStore(t, root)
+
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE session SET model = '{"providerID":"openai","modelID":"gpt-5.6-sol"}' WHERE id = 'ses_root'`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := ReadOpencodeSessions(context.Background(), root)
+	if err != nil {
+		t.Fatalf("read sessions: %v", err)
+	}
+	for _, session := range sessions {
+		if session.ID == "ses_root" {
+			if session.Model != "openai/gpt-5.6-sol" {
+				t.Fatalf("model = %q, want native provider/modelID", session.Model)
+			}
+			return
+		}
+	}
+	t.Fatal("native model session missing")
 }
 
 func TestReadOpencodeSessionsMissingStoreIsQuietlyEmpty(t *testing.T) {

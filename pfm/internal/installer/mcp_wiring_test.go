@@ -136,6 +136,27 @@ func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T)
 		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
 		MCPPort: 8377, MCPConfigPath: configPath, Force: true, Runner: &fakeRunner{},
 	}
+	previewOptions := options
+	previewOptions.Mode = ModeDryRun
+	var preview strings.Builder
+	previewOptions.Stdout = &preview
+	if _, err := Run(context.Background(), previewOptions); err != nil {
+		t.Fatalf("preview legacy MCP cleanup: %v\n%s", err, preview.String())
+	}
+	for _, path := range []string{
+		configPath,
+		credentialPath,
+		filepath.Join(home, ".mcp.json"),
+		filepath.Join(home, ".codex", "config.toml"),
+		filepath.Join(home, ".local", "share", "pfm", "install", mcpOwnershipName),
+	} {
+		if !strings.Contains(preview.String(), path) {
+			t.Errorf("preview omitted MCP apply path %s:\n%s", path, preview.String())
+		}
+	}
+	if config := readFixture(t, configPath); !strings.Contains(config, "authToken") {
+		t.Fatalf("preview mutated the legacy MCP config: %s", config)
+	}
 	if _, err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}

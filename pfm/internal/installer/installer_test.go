@@ -59,6 +59,27 @@ func TestDryRunNeverGatesOnAReachableUserManager(t *testing.T) {
 	}
 }
 
+func TestDryRunNamesUpdateMetadataWithoutWritingIt(t *testing.T) {
+	home := t.TempDir()
+	source := t.TempDir()
+	var output bytes.Buffer
+	report, err := Run(context.Background(), Options{
+		Mode: ModeDryRun, Home: home, SourceRepo: source,
+		Stdout: &output, Runner: &fakeRunner{},
+	})
+	if err != nil || report.Changed == 0 {
+		t.Fatalf("dry run report=%#v err=%v\n%s", report, err, output.String())
+	}
+	for _, path := range []string{SourceRepoPath(home), binaryOwnershipPath(home)} {
+		if !strings.Contains(output.String(), "write "+path) {
+			t.Errorf("dry run omitted update-metadata path %s:\n%s", path, output.String())
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("dry run wrote update metadata %s: %v", path, err)
+		}
+	}
+}
+
 func TestReachableIdleUserManagerAllowsMutatingModes(t *testing.T) {
 	for _, mode := range []Mode{ModeApply, ModeUninstall} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
@@ -491,6 +512,110 @@ func TestApplyLeavesUnrelatedBBSymlinkAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertLink(t, target, operatorSource)
+}
+
+func TestApplyRetiresDanglingBBLinksFromTheRecordedProfessorClone(t *testing.T) {
+	home := t.TempDir()
+	repo := filepath.Join(home, "professor-clone")
+	if err := os.MkdirAll(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSourceRepoMarker(home, repo); err != nil {
+		t.Fatal(err)
+	}
+	commandTarget := filepath.Join(home, ".claude", "commands", "bb.md")
+	skillTarget := filepath.Join(home, ".agents", "skills", "bb")
+	for _, target := range []string{commandTarget, skillTarget} {
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacyRoot := filepath.Join(repo, "blueprint", "templates", "host-swap")
+	if err := os.Symlink(filepath.Join(legacyRoot, "bb.command.md"), commandTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(legacyRoot, "codex-skills", "bb"), skillTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	installer := &engine{
+		options: Options{Mode: ModeApply, Home: home, ConfigDir: filepath.Join(home, ".claude"), Stdout: io.Discard},
+		apply:   true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"),
+	}
+	if err := installer.retireBBInstall(); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{commandTarget, skillTarget} {
+		if _, err := os.Lstat(target); !os.IsNotExist(err) {
+			t.Fatalf("recorded legacy /bb link remains at %s: %v", target, err)
+		}
+	}
+}
+
+func TestDryRunNamesFutureCodexWritesAndRefusesTheirConflicts(t *testing.T) {
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(home, ".professor", "agents", "tracer.md"), `---
+name: tracer
+description: Trace a target.
+---
+Read only.
+`)
+	conflict := filepath.Join(home, ".codex", "prompts", "chat-inject.md")
+	writeFixture(t, conflict, "operator-owned\n")
+
+	var output bytes.Buffer
+	_, err := Run(context.Background(), Options{
+		Mode: ModeDryRun, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "CONFLICT "+conflict) {
+		t.Fatalf("dry-run error=%v, want future Codex conflict; output:\n%s", err, output.String())
+	}
+	for _, path := range []string{
+		conflict,
+		filepath.Join(home, ".professor", "agents", "tracer.toml"),
+		filepath.Join(home, ".claude", "agents", "tracer.md"),
+		filepath.Join(home, ".codex", "agents", "tracer.toml"),
+	} {
+		if !strings.Contains(output.String(), path) {
+			t.Errorf("dry-run omitted planned path %s:\n%s", path, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "would reconcile") || strings.Contains(output.String(), "would run pfm codex agents") {
+		t.Fatalf("dry-run retained vague placeholders:\n%s", output.String())
+	}
+	if got := readFixture(t, conflict); got != "operator-owned\n" {
+		t.Fatalf("dry-run mutated conflict = %q", got)
+	}
+	for _, path := range []string{
+		filepath.Join(home, ".professor", "agents", "tracer.toml"),
+		filepath.Join(home, ".claude", "agents", "tracer.md"),
+		filepath.Join(home, ".codex", "agents", "tracer.toml"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("dry-run wrote agent artifact %s: %v", path, err)
+		}
+	}
+
+	output.Reset()
+	_, err = Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	})
+	if err == nil || !strings.Contains(err.Error(), "preflight apply plan") ||
+		!strings.Contains(err.Error(), "CONFLICT "+conflict) {
+		t.Fatalf("apply error=%v, want pre-mutation conflict refusal; output:\n%s", err, output.String())
+	}
+	for _, path := range []string{
+		filepath.Join(home, ".local", "share", "pfm", "install"),
+		filepath.Join(home, ".claude", "agents", "tracer.md"),
+		binaryOwnershipPath(home),
+	} {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Errorf("apply preflight wrote %s before refusing conflict: %v", path, statErr)
+		}
+	}
+	if got := readFixture(t, conflict); got != "operator-owned\n" {
+		t.Fatalf("apply preflight mutated conflict = %q", got)
+	}
 }
 
 func TestUninstallAlsoRemovesRetiredDreamHooks(t *testing.T) {

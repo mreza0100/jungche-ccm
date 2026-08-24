@@ -65,8 +65,9 @@ var (
 	labelStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#67e8f9"))
-	limitGradient   []color.Color
-	limitErrorStyle = lipgloss.NewStyle().Bold(true).Blink(true)
+	limitGradient     []color.Color
+	limitPercentStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
+	limitErrorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fb7185"))
 )
 
 func configureStyles(palette theme.Palette) {
@@ -98,9 +99,11 @@ func configureStyles(palette theme.Palette) {
 		lipgloss.Color(palette.LimitAmber),
 		lipgloss.Color(palette.LimitRed),
 	)
+	limitPercentStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(palette.Header))
 	limitErrorStyle = lipgloss.NewStyle().
 		Bold(true).
-		Blink(true).
 		Foreground(lipgloss.Color(palette.LimitRed))
 }
 
@@ -536,7 +539,7 @@ func renderLimitWindow(now time.Time, window pfmstats.Window, innerWidth int) st
 	name := fmt.Sprintf("%-*s", nameWidth, clipRunes(cleanField(window.Name), nameWidth))
 	bar := limitBar(window.UsedPct, barWidth)
 	percent := fmt.Sprintf("%.0f%%", window.UsedPct)
-	percentStyle := limitUsageStyle(window.UsedPct)
+	percentStyle := limitPercentStyle
 	if window.UsedPct >= 95 {
 		percentStyle = limitErrorStyle
 	}

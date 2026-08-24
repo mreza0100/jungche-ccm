@@ -12,14 +12,14 @@ import (
 	"hostops/pfm/internal/installer"
 )
 
-var initBlueprintPaths = []string{
-	"CLAUDE.md",
-	"AGENTS.md",
-	".claude/settings.json",
-	".claude/output-styles",
-	".claude/commands",
-	".claude/agents",
-	".claude/skills",
+var initBlueprintPaths = []struct{ source, target string }{
+	{source: "CLAUDE.md", target: "CLAUDE.md"},
+	{source: "CLAUDE.md", target: "AGENTS.md"},
+	{source: "settings.json", target: ".claude/settings.json"},
+	{source: "output-styles", target: ".claude/output-styles"},
+	{source: "commands", target: ".claude/commands"},
+	{source: "agents", target: ".claude/agents"},
+	{source: "skills", target: ".claude/skills"},
 }
 
 func runInit(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
@@ -61,13 +61,29 @@ func runInit(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 		return 1
 	}
 	fmt.Fprintf(stdout, "initialized %s from %s\n", target, source)
-	fmt.Fprintln(stdout, "open Claude here and follow docs/SETUP.md")
+	fmt.Fprintf(stdout, "open Claude here and follow %s\n", filepath.Join(source, "docs", "SETUP.md"))
 	return 0
 }
 
 func initScaffold(source, target string, force bool) error {
-	if err := os.MkdirAll(target, 0o700); err != nil {
-		return fmt.Errorf("create target %s: %w", target, err)
+	blueprintRoot := filepath.Join(source, "blueprint")
+	type plannedCopy struct {
+		source string
+		target string
+		info   fs.FileInfo
+	}
+	plan := make([]plannedCopy, 0, len(initBlueprintPaths))
+	for _, mapping := range initBlueprintPaths {
+		sourcePath := filepath.Join(blueprintRoot, filepath.FromSlash(mapping.source))
+		info, err := os.Stat(sourcePath)
+		if err != nil {
+			return fmt.Errorf("recorded clone blueprint is missing %s: %w", mapping.source, err)
+		}
+		plan = append(plan, plannedCopy{
+			source: sourcePath,
+			target: filepath.Join(target, filepath.FromSlash(mapping.target)),
+			info:   info,
+		})
 	}
 	claudeTarget := filepath.Join(target, ".claude")
 	if _, err := os.Stat(claudeTarget); err == nil && !force {
@@ -75,21 +91,25 @@ func initScaffold(source, target string, force bool) error {
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("inspect target .claude: %w", err)
 	}
-	for _, relative := range initBlueprintPaths {
-		sourcePath := filepath.Join(source, filepath.FromSlash(relative))
-		targetPath := filepath.Join(target, filepath.FromSlash(relative))
-		info, err := os.Stat(sourcePath)
-		if err != nil {
-			return fmt.Errorf("recorded clone is missing %s: %w", relative, err)
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return fmt.Errorf("create target %s: %w", target, err)
+	}
+	if force {
+		for _, entry := range plan {
+			if err := os.RemoveAll(entry.target); err != nil {
+				return fmt.Errorf("replace stale scaffold path %s: %w", entry.target, err)
+			}
 		}
-		if info.IsDir() {
-			if err := copyInitTree(sourcePath, targetPath); err != nil {
-				return fmt.Errorf("copy %s: %w", relative, err)
+	}
+	for _, entry := range plan {
+		if entry.info.IsDir() {
+			if err := copyInitTree(entry.source, entry.target); err != nil {
+				return fmt.Errorf("copy %s: %w", entry.source, err)
 			}
 			continue
 		}
-		if err := copyInitFile(sourcePath, targetPath, info.Mode().Perm()); err != nil {
-			return fmt.Errorf("copy %s: %w", relative, err)
+		if err := copyInitFile(entry.source, entry.target, entry.info.Mode().Perm()); err != nil {
+			return fmt.Errorf("copy %s: %w", entry.source, err)
 		}
 	}
 	return nil

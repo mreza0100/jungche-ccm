@@ -150,8 +150,8 @@ func TestInstallHarvestApplyUsesCentralRuntimeRootAndCheckFastPath(t *testing.T)
 	}); err != nil {
 		t.Fatalf("apply: %v\n%s", err, output.String())
 	}
-	if fake.planCalls != 1 || fake.checkCalls != 1 || fake.provisionCalls != 1 {
-		t.Fatalf("repair calls plan=%d check=%d provision=%d, want 1/1/1", fake.planCalls, fake.checkCalls, fake.provisionCalls)
+	if fake.planCalls != 2 || fake.checkCalls != 1 || fake.provisionCalls != 1 {
+		t.Fatalf("repair calls plan=%d check=%d provision=%d, want 2/1/1 (preflight + apply plans)", fake.planCalls, fake.checkCalls, fake.provisionCalls)
 	}
 	if fake.lastOptions.Root != root || fake.lastOptions.Cache != filepath.Join(root, "cache") {
 		t.Fatalf("provision root/cache = %q/%q, want %q/%q", fake.lastOptions.Root, fake.lastOptions.Cache, root, filepath.Join(root, "cache"))
@@ -175,8 +175,8 @@ func TestInstallHarvestApplyUsesCentralRuntimeRootAndCheckFastPath(t *testing.T)
 	}); err != nil {
 		t.Fatalf("healthy fast-path apply: %v\n%s", err, output.String())
 	}
-	if fast.planCalls != 1 || fast.checkCalls != 1 || fast.provisionCalls != 0 {
-		t.Fatalf("healthy fast-path calls plan=%d check=%d provision=%d, want 1/1/0", fast.planCalls, fast.checkCalls, fast.provisionCalls)
+	if fast.planCalls != 2 || fast.checkCalls != 1 || fast.provisionCalls != 0 {
+		t.Fatalf("healthy fast-path calls plan=%d check=%d provision=%d, want 2/1/0 (preflight + apply plans)", fast.planCalls, fast.checkCalls, fast.provisionCalls)
 	}
 	if fast.lastCheckRoot != root || fast.lastCheckPlat != (harvestpy.Platform{GOOS: "linux", GOARCH: "amd64"}) {
 		t.Fatalf("healthy fast-path check root/platform=%q/%s, want %q/linux-amd64", fast.lastCheckRoot, fast.lastCheckPlat, root)

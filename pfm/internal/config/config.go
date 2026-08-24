@@ -1176,40 +1176,56 @@ func SetMCPServer(config Config, name string, enabled bool) (bool, error) {
 // while preserving every unrelated field. The strict loader still accepts the
 // legacy key so an existing host can reach this cleanup path.
 func RemoveMCPAuthToken(config Config) (bool, error) {
+	content, changed, err := configWithoutMCPAuthToken(config)
+	if err != nil || !changed {
+		return changed, err
+	}
+	if err := writeAtomic(config.Path, content); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// MCPAuthTokenPresent reports whether the retired installer credential is
+// present without modifying the config. Install preview uses the same parser
+// as apply so the cleanup appears in the plan before any host mutation.
+func MCPAuthTokenPresent(config Config) (bool, error) {
+	_, changed, err := configWithoutMCPAuthToken(config)
+	return changed, err
+}
+
+func configWithoutMCPAuthToken(config Config) ([]byte, bool, error) {
 	if config.Path == "" {
-		return false, errors.New("MCP auth token cleanup has no config path")
+		return nil, false, errors.New("MCP auth token cleanup has no config path")
 	}
 	top := make(map[string]json.RawMessage)
 	if !config.Exists {
-		return false, nil
+		return nil, false, nil
 	}
 	content, err := os.ReadFile(config.Path)
 	if err != nil {
-		return false, fmt.Errorf("read config %s for MCP auth cleanup: %w", config.Path, err)
+		return nil, false, fmt.Errorf("read config %s for MCP auth cleanup: %w", config.Path, err)
 	}
 	if err := json.Unmarshal(content, &top); err != nil {
-		return false, configJSONError(config.Path, err)
+		return nil, false, configJSONError(config.Path, err)
 	}
 	mcpObject := make(map[string]json.RawMessage)
 	if content := top["mcp"]; len(content) != 0 {
 		if err := json.Unmarshal(content, &mcpObject); err != nil {
-			return false, fmt.Errorf("decode config %s mcp for auth cleanup: %w", config.Path, err)
+			return nil, false, fmt.Errorf("decode config %s mcp for auth cleanup: %w", config.Path, err)
 		}
 	}
 	if _, present := mcpObject["authToken"]; !present {
-		return false, nil
+		return nil, false, nil
 	}
 	delete(mcpObject, "authToken")
 	mcpContent, _ := json.Marshal(mcpObject)
 	top["mcp"] = mcpContent
 	content, err = json.MarshalIndent(top, "", "  ")
 	if err != nil {
-		return false, fmt.Errorf("encode config %s: %w", config.Path, err)
+		return nil, false, fmt.Errorf("encode config %s: %w", config.Path, err)
 	}
-	if err := writeAtomic(config.Path, append(content, '\n')); err != nil {
-		return false, err
-	}
-	return true, nil
+	return append(content, '\n'), true, nil
 }
 
 func writeAtomic(path string, content []byte) error {

@@ -33,6 +33,15 @@ type Result struct {
 	Wrote            int
 	Unchanged        int
 	Deleted          int
+	Actions          []Action
+}
+
+// Action is one filesystem mutation a build performs. Check returns the same
+// list without writing, while Problems retains its existing drift diagnostics.
+type Action struct {
+	Kind   string
+	Path   string
+	Target string
 }
 
 // GlobalCommandsOptions selects the host HOME whose installed Claude
@@ -40,8 +49,9 @@ type Result struct {
 // Unlike Options, it deliberately has no repository root: host install and
 // uninstall must not compile or reconcile project files as a side effect.
 type GlobalCommandsOptions struct {
-	Home string
-	Mode Mode
+	Home       string
+	SourceHome string
+	Mode       Mode
 }
 
 const defaultAgentPreamble = "You are the ${name} role in this repository, running as a native Codex subagent.\nFirst action: read the repository root AGENTS.md in full. Follow its laws and the protocol below exactly; your mode and task come from the dispatch prompt.\n\n"
@@ -101,7 +111,7 @@ func Run(options Options) (Result, error) {
 	compileRepoCommands(root, cfg, transform, roster, add, problem, warn, &result)
 	compileRepoSkills(root, add, problem, warn)
 	if cfg.GlobalCommands {
-		compileInstalledGlobalCommands(home, add, problem, warn, &result)
+		compileInstalledGlobalCommands(home, home, add, problem, warn, &result)
 	}
 
 	mcp, mcpErr := compileMCP(root)
@@ -162,6 +172,7 @@ func Run(options Options) (Result, error) {
 	result.Wrote = reconciled.Wrote
 	result.Unchanged = reconciled.Unchanged
 	result.Deleted = reconciled.Deleted
+	result.Actions = reconciled.Actions
 	result.OK = len(result.Problems) == 0
 	return result, nil
 }
@@ -175,12 +186,19 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	sourceHome := home
+	if options.SourceHome != "" {
+		sourceHome, err = resolveHome(options.SourceHome)
+		if err != nil {
+			return Result{}, err
+		}
+	}
 	result := Result{Warnings: []string{}, Problems: []string{}, OverrideStatuses: []OverrideStatus{}}
 	outputs := make([]generatedFile, 0)
 	add := func(output generatedFile) { outputs = append(outputs, output) }
 	warn := func(message string) { result.Warnings = append(result.Warnings, message) }
 	problem := func(message string) { result.Problems = append(result.Problems, message) }
-	compileInstalledGlobalCommands(home, add, problem, warn, &result)
+	compileInstalledGlobalCommands(sourceHome, home, add, problem, warn, &result)
 
 	if options.Mode == ModeCheck {
 		for _, warning := range result.Warnings {
@@ -205,6 +223,7 @@ func RunGlobalCommands(options GlobalCommandsOptions) (Result, error) {
 	result.Wrote = reconciled.Wrote
 	result.Unchanged = reconciled.Unchanged
 	result.Deleted = reconciled.Deleted
+	result.Actions = reconciled.Actions
 	result.OK = len(result.Problems) == 0
 	return result, nil
 }
@@ -514,15 +533,19 @@ func compileRepoCommands(root string, cfg Config, options TransformOptions, rost
 	}
 }
 
-func compileGlobalCommands(root, home string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result) {
-	sourceRoot := filepath.Join(home, ".claude", "commands")
+func compileGlobalCommands(root, sourceHome, outputHome string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result) {
+	sourceRoot := filepath.Join(sourceHome, ".claude", "commands")
 	for _, entry := range discoverMarkdown(sourceRoot, nil, result) {
 		if entry.skillDir {
-			dst := filepath.Join(home, ".codex", "skills", flatName(filepath.ToSlash(entry.rel)))
-			add(generatedFile{Path: dst, Link: entry.path})
+			dst := filepath.Join(outputHome, ".codex", "skills", flatName(filepath.ToSlash(entry.rel)))
+			link := entry.path
+			if sourceHome != outputHome {
+				link = filepath.Join(outputHome, ".claude", "commands", entry.rel)
+			}
+			add(generatedFile{Path: dst, Link: link})
 			continue
 		}
-		compileCommandFile(root, home, sourceRoot, entry, "$HOME/.claude/commands", "", cfg, options, add, problem, warn, result, true)
+		compileCommandFile(root, outputHome, sourceRoot, entry, "$HOME/.claude/commands", "", cfg, options, add, problem, warn, result, true)
 	}
 }
 
@@ -530,12 +553,12 @@ func compileGlobalCommands(root, home string, cfg Config, options TransformOptio
 // host commands. Full repository build/check and install reconciliation must
 // use the same source roster and defaults or they can disagree about the
 // bytes under $HOME/.codex immediately after a successful install.
-func compileInstalledGlobalCommands(home string, add func(generatedFile), problem func(string), warn func(string), result *Result) {
+func compileInstalledGlobalCommands(sourceHome, outputHome string, add func(generatedFile), problem func(string), warn func(string), result *Result) {
 	cfg := defaultConfig()
-	sourceRoot := filepath.Join(home, ".claude", "commands")
+	sourceRoot := filepath.Join(sourceHome, ".claude", "commands")
 	roster := discoverCommandRosterIn(sourceRoot, nil, result)
 	transform := TransformOptions{ModelMap: cfg.ModelMap, Commands: roster}
-	compileGlobalCommands(home, home, cfg, transform, add, problem, warn, result)
+	compileGlobalCommands(outputHome, sourceHome, outputHome, cfg, transform, add, problem, warn, result)
 }
 
 func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourceEntry, label, outputRoot string, cfg Config, options TransformOptions, add func(generatedFile), problem func(string), warn func(string), result *Result, global bool) {

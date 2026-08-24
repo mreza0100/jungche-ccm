@@ -67,7 +67,9 @@ func (h *Harvester) fetchUnshared(ctx context.Context, source string, options Fe
 		return Result{Source: source, Error: "source is empty"}
 	}
 	var result Result
-	if id := ClassifyIdentifier(source); id != IdentifierNone {
+	if isDefiniteLocalSource(source) {
+		result = h.fetchLocal(ctx, source, options)
+	} else if id := ClassifyIdentifier(source); id != IdentifierNone {
 		result = h.fetchKnownID(ctx, source, id, options)
 	} else if isLocalSource(source) {
 		result = h.fetchLocal(ctx, source, options)
@@ -89,6 +91,19 @@ func (h *Harvester) fetchUnshared(ctx context.Context, source string, options Fe
 		result.Content = ""
 	}
 	return result
+}
+
+// isDefiniteLocalSource gives an existing or explicitly local path precedence
+// over identifier heuristics. ISBN normalization intentionally ignores
+// punctuation, so a filename such as 9780306406157.txt would otherwise be
+// mistaken for the book identifier instead of read from disk.
+func isDefiniteLocalSource(source string) bool {
+	if strings.HasPrefix(strings.ToLower(source), "file://") ||
+		filepath.IsAbs(source) || strings.HasPrefix(source, ".") {
+		return true
+	}
+	_, err := os.Stat(source)
+	return err == nil
 }
 
 func canonicalNegativeKey(media, source string) string {

@@ -22,6 +22,7 @@ type generatedFile struct {
 type reconcileResult struct {
 	Wrote, Unchanged, Deleted int
 	Problems, Warnings        []string
+	Actions                   []Action
 }
 
 func reconcile(root, home string, outputs []generatedFile, mode Mode, manageGlobal bool) (reconcileResult, error) {
@@ -76,17 +77,23 @@ func (r *reconcileResult) reconcileLink(output generatedFile, mode Mode, owns fu
 		}
 	}
 	if mode == ModeCheck {
+		if err == nil && !output.ManagedFence && !owns(output.Path) {
+			r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
+			return
+		}
 		state := "STALE"
 		if os.IsNotExist(err) {
 			state = "MISSING"
 		}
 		r.Problems = append(r.Problems, fmt.Sprintf("%s %s (want symlink → %s)", state, output.Path, output.Link))
+		r.Actions = append(r.Actions, Action{Kind: "link", Path: output.Path, Target: output.Link})
 		return
 	}
 	if err == nil && !output.ManagedFence && !owns(output.Path) {
 		r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
 		return
 	}
+	r.Actions = append(r.Actions, Action{Kind: "link", Path: output.Path, Target: output.Link})
 	if removeErr := os.RemoveAll(output.Path); removeErr != nil {
 		r.Problems = append(r.Problems, fmt.Sprintf("remove %s: %v", output.Path, removeErr))
 		return
@@ -116,17 +123,23 @@ func (r *reconcileResult) reconcileFile(output generatedFile, mode Mode, owns fu
 		return
 	}
 	if mode == ModeCheck {
+		if err == nil && !output.ManagedFence && !owns(output.Path) {
+			r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
+			return
+		}
 		if current == "" {
 			r.Problems = append(r.Problems, "MISSING "+output.Path)
 		} else {
 			r.Problems = append(r.Problems, "STALE "+output.Path)
 		}
+		r.Actions = append(r.Actions, Action{Kind: "write", Path: output.Path})
 		return
 	}
 	if err == nil && !output.ManagedFence && !owns(output.Path) {
 		r.Problems = append(r.Problems, fmt.Sprintf("CONFLICT %s — exists without a generated marker; not touching it", output.Path))
 		return
 	}
+	r.Actions = append(r.Actions, Action{Kind: "write", Path: output.Path})
 	if mkdirErr := os.MkdirAll(filepath.Dir(output.Path), 0o755); mkdirErr != nil {
 		r.Problems = append(r.Problems, fmt.Sprintf("mkdir %s: %v", output.Path, mkdirErr))
 		return
@@ -174,8 +187,10 @@ func (r *reconcileResult) reconcileOrphans(dir string, wanted map[string]bool, m
 		}
 		if mode == ModeCheck {
 			r.Problems = append(r.Problems, "ORPHAN "+path)
+			r.Actions = append(r.Actions, Action{Kind: "delete", Path: path})
 			continue
 		}
+		r.Actions = append(r.Actions, Action{Kind: "delete", Path: path})
 		if err := os.RemoveAll(path); err != nil {
 			r.Problems = append(r.Problems, fmt.Sprintf("remove orphan %s: %v", path, err))
 		} else {

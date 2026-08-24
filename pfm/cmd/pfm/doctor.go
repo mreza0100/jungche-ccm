@@ -76,6 +76,7 @@ func runDoctor(
 	}
 	printDoctorConfig(stdout, runtime)
 	warnings += printEngineDoctor(stdout, runtime.Config)
+	warnings += printOpencodeStoreDoctor(context.Background(), stdout, runtime.Config)
 	warnings += printEngineCapabilities(stdout)
 	warnings += printMCPClientCutover(stdout, runtime)
 	if mcpConfigured(runtime) {
@@ -282,6 +283,23 @@ func runDoctor(
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+func printOpencodeStoreDoctor(ctx context.Context, stdout io.Writer, machine config.Config) int {
+	if len(machine.OpencodeAccounts) == 0 {
+		fmt.Fprintln(stdout, "doctor: opencode store=absent")
+		return 0
+	}
+	warnings := 0
+	for _, account := range machine.OpencodeAccounts {
+		if err := index.ProbeOpencodeStore(ctx, account.Home); err != nil {
+			warnings++
+			fmt.Fprintf(stdout, "doctor: opencode store=unhealthy account=%d error=%v\n", account.ID, err)
+			continue
+		}
+		fmt.Fprintf(stdout, "doctor: opencode store=healthy account=%d\n", account.ID)
+	}
+	return warnings
 }
 
 func printEngineDoctor(stdout io.Writer, machine config.Config) int {

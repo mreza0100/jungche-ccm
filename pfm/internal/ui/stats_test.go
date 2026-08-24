@@ -14,6 +14,7 @@ import (
 	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 	pfmstats "hostops/pfm/internal/stats"
+	"hostops/pfm/internal/theme"
 )
 
 type countingStatsSampler struct {
@@ -363,6 +364,20 @@ func TestLimitBarsKeepEighthCellPrecisionAndFullTail(t *testing.T) {
 	full := ansi.Strip(limitBar(100, 20))
 	if !strings.Contains(full, "FULL▏") {
 		t.Fatalf("full bar=%q, want FULL tail", full)
+	}
+}
+
+func TestLimitPercentageUsesStableHighContrastForeground(t *testing.T) {
+	palette := theme.Load("default")
+	configureStyles(palette)
+	t.Cleanup(func() { configureStyles(theme.Load("default")) })
+	line := renderLimitWindow(time.Unix(0, 0), pfmstats.Window{Name: "5h", UsedPct: 4}, 80)
+	want := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color(palette.Header)).
+		Render("  4%")
+	if !strings.Contains(line, want) {
+		t.Fatalf("percentage does not use stable high-contrast foreground:\n%q\nwant fragment %q", line, want)
 	}
 }
 

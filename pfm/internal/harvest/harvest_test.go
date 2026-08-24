@@ -168,6 +168,23 @@ func TestIdentifiersAndOAOrdering(t *testing.T) {
 	}
 }
 
+func TestExistingLocalFileWinsOverISBNClassification(t *testing.T) {
+	t.Chdir(t.TempDir())
+	const source = "9780306406157.txt"
+	const content = "local evidence whose filename happens to be a valid ISBN\n"
+	if err := os.WriteFile(source, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := New(Options{CacheDir: t.TempDir(), Converter: &fakeConverter{}})
+	result := h.Fetch(context.Background(), source)
+	if result.Error != "" {
+		t.Fatalf("existing local file was classified as a scholarly identifier: %s", result.Error)
+	}
+	if !strings.Contains(result.Content, "local evidence") {
+		t.Fatalf("local content missing from result: %#v", result)
+	}
+}
+
 func TestLegacyUnknownOASourceKeepsWorstDefaultPriority(t *testing.T) {
 	if got := candidatePriority("future-provider", "", "", "pdf"); got != 50 {
 		t.Fatalf("unknown provider priority=%d, want legacy default 50", got)
