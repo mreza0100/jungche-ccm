@@ -201,6 +201,16 @@ type runJail struct {
 	transcript string
 }
 
+func TestRunJailPinsXDGConfigHome(t *testing.T) {
+	foreign := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", foreign)
+	jail := newRunJail(t)
+	want := filepath.Join(jail.root, "home", ".config")
+	if got := os.Getenv("XDG_CONFIG_HOME"); got != want {
+		t.Fatalf("XDG_CONFIG_HOME=%q, want jailed config root %q", got, want)
+	}
+}
+
 func newRunJail(t *testing.T) *runJail {
 	t.Helper()
 	// /tmp, not t.TempDir(): a tmux socket path must stay inside the ~100
@@ -278,6 +288,7 @@ func newRunJail(t *testing.T) *runJail {
 	// chat must not inherit its tmux server, pane, or chat identity.
 	t.Setenv("PATH", jail.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HOME", filepath.Join(root, "home"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "home", ".config"))
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")

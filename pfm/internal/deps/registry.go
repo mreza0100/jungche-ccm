@@ -49,7 +49,10 @@ var fixedCommands = []Entry{
 	{Name: "bash", Purpose: "installed compatibility scripts", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install bash"},
 	{Name: "zsh", Purpose: "interactive generated action execution", Required: true, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install zsh"},
 	{Name: "ps", Purpose: "Darwin process-table inspection", Required: true, Platforms: []string{"darwin"}, InstallHint: "restore the system ps command"},
-	{Name: "lsof", Purpose: "Darwin open-file inspection", Required: true, Platforms: []string{"darwin"}, VersionArgs: []string{"-v"}, Parse: firstVersion, InstallHint: "install lsof"},
+	// Apple's system lsof is a supported required dependency, but its `-v`
+	// banner contains no version number. Presence and executability are the
+	// contract; inventing a version gate makes every stock Darwin host broken.
+	{Name: "lsof", Purpose: "Darwin open-file inspection", Required: true, Platforms: []string{"darwin"}, InstallHint: "install lsof"},
 	{Name: "script", Purpose: "terminal-backed command execution", InstallHint: "install util-linux or the BSD script command"},
 	{Name: "setsid", Purpose: "detached Linux helper processes", Required: true, Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install util-linux (setsid)"},
 	{Name: "nohup", Purpose: "detached Linux helper fallback", Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install coreutils (nohup)"},
