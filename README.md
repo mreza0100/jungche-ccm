@@ -21,7 +21,7 @@ unwired or non-executable hook is a warning and a non-zero doctor result.
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
 Upgrading an existing installation? Follow the complete
-[v0.61.0 LLM upgrade runbook](releases/v0.61.0.md#llm-upgrade-runbook).
+[v0.61.1 LLM upgrade runbook](releases/v0.61.1.md#llm-upgrade-runbook).
 
 ---
 
