@@ -476,6 +476,13 @@ func TestDeliverThenRecognizesTheCodexComposerMarker(t *testing.T) {
 	}
 }
 
+func TestLastComposerLineFindsCodexCommandAbovePopupWhitespace(t *testing.T) {
+	capture := "Codex\n› /exit\n" + strings.Repeat("\n", 30)
+	if got := lastComposerLine(capture); !strings.Contains(got, "/exit") {
+		t.Fatalf("lastComposerLine()=%q, want the visible Codex command", got)
+	}
+}
+
 func TestRunRefreshesThePanePIDAfterRespawnBeforeSubmittingThen(t *testing.T) {
 	tmux := &respawnPIDTmux{oldPID: 700, newPID: 900}
 	_, err := Run(

@@ -29,7 +29,8 @@ and `(cost)` on any env / hook / permission / model-config delta.
 - Fixed: in-place reload — bare `/reload` keeps the current engine account, Codex app-server turns
   recover their tmux seat through the fleet-bound thread identity when `$TMUX` is absent, and the
   reboot confirms `/exit` rendered and was submitted before replacing the pane; `--then` recognizes
-  both Claude and Codex composers before delivering its continuation.
+  both Claude and Codex composers before delivering its continuation, and state probes inspect only
+  the visible pane so historical scrollback cannot trigger a reload action.
 
 #### → For: in a maintainer checkout, run `git config core.hooksPath .githooks`, then require
 
