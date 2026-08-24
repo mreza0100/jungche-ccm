@@ -51,14 +51,15 @@ git clone --branch v{TARGET} --depth 1 https://github.com/{BLUEPRINT_REPO}.git /
 
 ### Step 3 — Walk the release chain, version by version
 
-The update may span many releases; process each individually, in ascending semver order — the range is never flattened into one bullet pool. For every version `> {INSTALLED}` and `<= {TARGET}`, read its full per-release file `releases/v{X}.md` (release files accumulate in the repo, so the target clone holds the whole chain; `CHANGELOG.md` is only the index) and record a per-version ledger entry: bullets grouped by heading (Added/Changed/Fixed/Removed), its `### Breaking` + `### Migration` sections, and any new interview placeholders.
+The update may span many releases; process each individually, in ascending semver order — the range is never flattened into one bullet pool. For every version `> {INSTALLED}` and `<= {TARGET}`, read its full per-release file `releases/v{X}.md` (release files accumulate in the repo, so the target clone holds the whole chain; `CHANGELOG.md` is only the index) and record a per-version ledger entry: bullets grouped by semantic heading (`## Added`, `## Changed`, `## Fixed`, `## Removed`, `## Breaking`, `## Migration`) and any new interview placeholders. Accept `### Breaking`/`### Migration` only as compatibility for historical release files that predate the canonical heading grammar.
 
 Parse each bullet:
 
-- Prefix → category (`Tier A:`, `Tier B:`, `Mechanics:`, `Docs:`, `Scripts:`)
-- Trailing tags → override (`(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)`)
+- Heading → semantic category and default apply policy. The heading is authoritative; never infer Added/Changed/Fixed/Removed/Breaking/Migration from a bullet prefix.
+- Leading `{Tier}:` label → display/routing tier or scope. Accept any non-empty label before the first colon; it is not a closed enum and does not replace the heading.
+- Trailing tags → policy override (`(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)`)
 
-**Migration chain replay (order-dependent — runs before Step 5):** apply the chain's `### Migration`/`### Breaking` structural steps (renames, moves, deletes, splits/merges) in version order to the manifest's file paths and `drift.md`'s KEEP-LOCAL paths — a customized file follows its rename chain to its final path, so Step 5 pairs old-path local state with new-path upstream state and the divergence lands on the right successor. A flat installed-vs-target diff reads a rename lineage as remove+add and strands the customization; only the ordered walk sees it. On-disk moves still happen at Step 7 after approval, and content merges ONCE against the final target in Step 5 — order lives in the migration chain, never in repeated content application.
+**Migration chain replay (order-dependent — runs before Step 5):** apply the chain's canonical `## Migration`/`## Breaking` structural steps (plus the historical `###` compatibility form) in version order to the manifest's file paths and `drift.md`'s KEEP-LOCAL paths — a customized file follows its rename chain to its final path, so Step 5 pairs old-path local state with new-path upstream state and the divergence lands on the right successor. A flat installed-vs-target diff reads a rename lineage as remove+add and strands the customization; only the ordered walk sees it. On-disk moves still happen at Step 7 after approval, and content merges ONCE against the final target in Step 5 — order lives in the migration chain, never in repeated content application.
 
 ### Step 4 — Classify bump magnitude
 
@@ -88,11 +89,11 @@ If new templates introduce placeholders not in the manifest → flag as `[manual
 
 ### Step 6 — Present three buckets
 
-**Bucket 1 — Auto-apply** (summary, apply unless user objects): `A→A→B` files, new Tier C / `(safe-auto)` files, `Scripts:`/`Mechanics:` the user hasn't customized.
+**Bucket 1 — Auto-apply** (summary, apply unless user objects): `A→A→B` files, entries marked `(safe-auto)`, and uncustomized mechanics/scripts changes whose semantic heading permits automatic application.
 
 **Bucket 2 — Review** (show diff, ask per-file): `A→B→C` conflicts, `Tier A:` content changes, new `(opt-in)` Tier B archetypes, entries marked `(breaking)`. Cost-bearing deltas — env vars, hooks, permissions, model/config changes (`settings.json` or any file) — ALWAYS land here with an explicit cost/behavior note, regardless of the comparison or `(safe-auto)` tags.
 
-**Bucket 3 — Manual** (interactive walkthrough): new interview questions (new placeholders), structural migrations (renames, moves, deletes), `### Breaking` and `### Migration` entries — walked in version order per the Step 3 ledger.
+**Bucket 3 — Manual** (interactive walkthrough): new interview questions (new placeholders), structural migrations (renames, moves, deletes), canonical `## Breaking`/`## Migration` entries and their historical `###` compatibility form — walked in version order per the Step 3 ledger.
 
 Every bucket entry carries its source version (`v{X}: …`) so a multi-version chain stays attributable.
 

@@ -221,9 +221,7 @@
       }
     },
     "commands/pcm/update.md": {
-      "sources": {
-        ".claude/commands/pcm/update.md": "0c7dbc0c6bd58e83af522a557af83ea841da7fb2202c7770527e8fdc9b227aae"
-      }
+      "curated": true
     },
     "commands/pm.md": {
       "sources": {
