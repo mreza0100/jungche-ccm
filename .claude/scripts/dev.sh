@@ -179,6 +179,13 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         fail_step "codex marker claim FAILED — a stranded marker or an orphaned generated file (see output)"
       fi
 
+      head_ "blueprint — generated agent rosters"
+      if node scripts/check-agent-roster.mjs; then
+        ok "Codex and OpenCode agent rosters match their Claude sources"
+      else
+        fail_step "agent roster FAILED — a source role is missing or cannot perform its protocol"
+      fi
+
       head_ "blueprint — opencode mirror"
       # The OpenCode mirror must be current AND valid: check re-derives every
       # output from the Claude sources; doctor additionally parses each artifact.

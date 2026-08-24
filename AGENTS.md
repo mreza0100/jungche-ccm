@@ -20,7 +20,7 @@ Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verif
 
 ## Three-runtime team — Claude + Codex + OpenCode
 
-`AGENTS.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `AGENTS.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `AGENTS.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where guarded-file and Git-write denies remain pinned. Codex and OpenCode subagents keep Git read-only; the active main Codex chat may use the user-authorized fallback under § Process when gitter is unavailable. After a Bash-driven write bypassed the hook:
+`AGENTS.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `AGENTS.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `AGENTS.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where guarded-file and non-gitter Git-write denies remain pinned. Every `.claude/agents/*.md` role compiles for Codex and OpenCode; only registered `gitter` retains Git-write authority. The active main Codex chat may use the user-authorized fallback under § Process when gitter is unavailable. After a Bash-driven write bypassed the hook:
 
 ```bash
 pfm codex build . && pfm codex check .
@@ -62,7 +62,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 ### Process
 
-- **Git writes use gitter when available.** When gitter is unavailable, only the active main Codex chat may perform scoped Git writes, and only after explicit user authorization in the current turn; subagents remain read-only. Publication still requires the separate explicit in-turn request above.
+- **Git writes use registered gitter.** Every other subagent is read-only. When gitter is unavailable, only the active main Codex chat may perform scoped Git writes, and only after explicit user authorization in the current turn. Publication still requires the separate explicit in-turn request above.
 - **Never commit broken code** — tests pass before the commit.
 - **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (blueprint/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`$wave-refine`, `$wave-live`, `$wave-walker`, `$wave-walker-invariants`, `$wave-ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `AGENTS.md`, or `blueprint/**` routes to `$pcm`. Their `blueprint/commands/wave/` twins keep the adopter pipeline.
 - **Guarded files:** a PreToolUse hook gates `.claude/**` and every `AGENTS.md` behind `$pcm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
@@ -106,7 +106,7 @@ The cast, its triggers, and each agent's pinned model live in the harness regist
 - Sync-dispatch: all sibling agents of a wave go in ONE message; a missing report is a loud, named coverage hole.
 - An empty enumeration is never a verdict: "looked and found nothing" ≠ "failed to look" — the parent reports which.
 - Reconcile telemetry: agents dispatched vs reports received must match, and the count appears in the report.
-- **No subagent writes git or edits `.claude/**` / a `AGENTS.md`** — the guard denies it; routing around the guard is a violation, not initiative.
+- **Only gitter writes git; no subagent edits `.claude/**` / a `AGENTS.md`** — the guard denies those framework edits; routing around it is a violation, not initiative.
 - Agent reports are evidence, not truth — verify a claim against what you can read yourself before relaying it.
 
 ## Cross-Disciplinary System Analysis
@@ -128,7 +128,7 @@ This file is compiled verbatim from CLAUDE.md by pfm codex build; Claude model a
 - Workflow() scripts → no equivalent: decompose sequentially or fan out `spawn_agent` calls
 - Skills / slash commands → `.codex/skills/{name}/SKILL.md`, invoked as `$name` — Codex has no `/name` syntax, so every `/name` reference below is already rewritten to `$name` (nested Claude names flatten: `/wave:orchestrator` → `$wave-orchestrator`)
 - PreToolUse hooks (guarded files) → Codex has NO hook layer, so the guard is absolute: never edit `.claude/**`, any `CLAUDE.md`, or any `AGENTS.md` (generated — change CLAUDE.md and re-run the build) — stop and report instead
-- Git writes → Codex subagents stay read-only; when gitter is unavailable, the active main Codex chat may use the user-authorized fallback in § Process. This repo carries no Codex execpolicy Git lock.
+- Git writes → registered `gitter` owns them; every other Codex subagent is read-only. When gitter is unavailable, the active main Codex chat may use the user-authorized fallback in § Process. This repo carries no Codex execpolicy Git lock.
 
 ## OpenCode adapter — reading this file in the OpenCode harness
 
@@ -139,4 +139,4 @@ The law above binds an OpenCode session identically. Model aliases were already 
 - Workflow() scripts → no equivalent: decompose sequentially
 - Skills / slash commands → `.opencode/command/*.md`, invoked as `/flat-name` — nested Claude names are flattened (`/wave:orchestrator` → `/wave-orchestrator`); repo skills compile into `.opencode/skills/`
 - PreToolUse hooks (guarded files) → pinned at the harness layer instead: `.opencode/opencode.jsonc` `permission.edit` DENIES `.claude/**`, any `CLAUDE.md`, any `AGENTS.md`. A denial quoting this law IS the guard working — never route around it
-- gitter's git monopoly binds unchanged, and here too it is a PIN, not a promise: `.opencode/opencode.jsonc` `permission.bash` rejects `git commit` / `git push` / `git tag` / `gh release`. A rejection quoting its justification is the law working — never shell-trick around it
+- Git writes → the global permission denies them; generated `gitter` alone carries a per-agent override. Every other OpenCode agent remains pinned read-only for Git.

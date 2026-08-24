@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+
+// Fail when a source agent silently disappears from a generated runtime roster.
+// A healthy run proves source discovery completed for both Codex and OpenCode;
+// missing generated directories/files are failures named by runtime and path.
+
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const CODEX_CONFIG = JSON.parse(
+  readFileSync(join(ROOT, ".claude/codex-build.json"), "utf8"),
+);
+const failures = [];
+
+const markdownNames = (dir) =>
+  existsSync(dir)
+    ? readdirSync(dir)
+        .filter((name) => name.endsWith(".md"))
+        .map((name) => name.slice(0, -3))
+        .sort()
+    : [];
+
+const generatedNames = (dir, extension) =>
+  existsSync(dir)
+    ? readdirSync(dir)
+        .filter((name) => name.endsWith(extension))
+        .map((name) => name.slice(0, -extension.length))
+        .sort()
+    : [];
+
+const projects = readdirSync(ROOT, { withFileTypes: true })
+  .filter(
+    (entry) =>
+      entry.isDirectory() && existsSync(join(ROOT, entry.name, "CLAUDE.md")),
+  )
+  .map((entry) => entry.name)
+  .sort();
+
+const rootAgents = markdownNames(join(ROOT, ".claude/agents"));
+
+function expectedAgents(excludedProjects, suffixMode, suffixPrefix = "") {
+  const expected = [...rootAgents];
+  for (const project of projects) {
+    if (excludedProjects.includes(project)) continue;
+    for (const agent of markdownNames(join(ROOT, project, ".claude/agents"))) {
+      let suffix = project;
+      if (suffixMode === "none") suffix = "";
+      if (suffixMode === "strip-prefix")
+        suffix = project.startsWith(suffixPrefix)
+          ? project.slice(suffixPrefix.length)
+          : project;
+      expected.push(suffix ? `${agent}-${suffix}` : agent);
+    }
+  }
+  return [...new Set(expected)].sort();
+}
+
+function compare(runtime, expected, actual, extension) {
+  const missing = expected.filter((name) => !actual.includes(name));
+  const extra = actual.filter((name) => !expected.includes(name));
+  for (const name of missing)
+    failures.push(
+      `${runtime}: source agent missing from generated roster: ${name}${extension}`,
+    );
+  for (const name of extra)
+    failures.push(
+      `${runtime}: generated agent has no source: ${name}${extension}`,
+    );
+}
+
+const codexExpected = expectedAgents(
+  CODEX_CONFIG.excludeProjects ?? [],
+  CODEX_CONFIG.suffixMode ?? "project",
+  CODEX_CONFIG.suffixPrefix ?? "",
+);
+const codexActual = generatedNames(join(ROOT, ".codex/agents"), ".toml");
+compare("codex", codexExpected, codexActual, ".toml");
+
+const openCodeExpected = expectedAgents(["blueprint"], "project");
+const openCodeActual = generatedNames(join(ROOT, ".opencode/agent"), ".md");
+compare("opencode", openCodeExpected, openCodeActual, ".md");
+
+for (const runtime of ["codex", "opencode"]) {
+  const expected = runtime === "codex" ? codexExpected : openCodeExpected;
+  if (!expected.length)
+    failures.push(
+      `${runtime}: source discovery returned an empty agent roster`,
+    );
+}
+
+if (codexExpected.includes("gitter")) {
+  const path = join(ROOT, ".codex/agents/gitter.toml");
+  if (
+    existsSync(path) &&
+    /sandbox_mode\s*=\s*"read-only"/.test(readFileSync(path, "utf8"))
+  ) {
+    failures.push(
+      "codex: gitter.toml is registered read-only and cannot perform its source protocol",
+    );
+  }
+}
+
+if (openCodeExpected.includes("gitter")) {
+  const path = join(ROOT, ".opencode/agent/gitter.md");
+  if (existsSync(path) && !/"git \*": allow/.test(readFileSync(path, "utf8"))) {
+    failures.push(
+      "opencode: gitter.md lacks its per-agent git write permission",
+    );
+  }
+}
+
+if (failures.length) {
+  for (const failure of failures) console.error(`agent-roster: ${failure}`);
+  console.error(
+    `agent-roster: FAIL — ${failures.length} roster/capability problem(s)`,
+  );
+  process.exit(1);
+}
+
+console.log(
+  `agent-roster: clean — ${codexExpected.length} Codex and ${openCodeExpected.length} OpenCode agents match source`,
+);
