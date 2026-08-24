@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  linked-worktree-fence:
+    name: Linked-worktree isolated fence
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Create a clean linked worktree
+        shell: bash
+        run: git worktree add --detach "$RUNNER_TEMP/professor-fence" HEAD
+
+      - name: Run the repository gate through the isolated fence
+        shell: bash
+        run: "$RUNNER_TEMP/professor-fence/.claude/scripts/dev.sh" iso test blueprint
+
   cross-compile:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest

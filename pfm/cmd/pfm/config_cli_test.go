@@ -259,6 +259,22 @@ func TestConfigCLIInitShowValidateAndBrokenDiagnostics(t *testing.T) {
 	}
 }
 
+func TestConfigShowDistinguishesInputAndEffectiveSchema(t *testing.T) {
+	root := jailTest(t)
+	path := writeConfigFixture(t, root, `{"version":1}`)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--config", path, "config", "show"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("config show code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if want := "config version=2 effective (input=1 file)\n"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("config show stdout=%q, want explicit schema line %q", stdout.String(), want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("config show stderr=%q, want empty", stderr.String())
+	}
+}
+
 func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 	root := jailTest(t)
 	home := filepath.Join(root, "config-home")
@@ -284,7 +300,7 @@ func TestDoctorConfigRenderingShowsEffectiveValuesAndSources(t *testing.T) {
 	printDoctorConfig(&stdout, commandRuntime{Config: loaded})
 	want := strings.Join([]string{
 		"doctor: config path=" + path + " exists=true",
-		"doctor: config version=2 (file)",
+		"doctor: config version=2 effective (input=1 file)",
 		"doctor: config theme=default (default)",
 		"doctor: config accounts=7:" + filepath.Join(home, "account-seven") + " (file)",
 		"doctor: config claude.permissionMode=prompted (file)",

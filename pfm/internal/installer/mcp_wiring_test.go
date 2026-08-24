@@ -206,3 +206,23 @@ func TestMCPManualConflictIsNotClaimedOrRemoved(t *testing.T) {
 		t.Fatal("uninstall retained PFM's owned chat registration")
 	}
 }
+
+func TestInspectHarvesterClientCutoverNamesHealthyLegacyAndUnreadableStates(t *testing.T) {
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester"}}}`)
+	writeFixture(t, filepath.Join(home, ".codex", "config.toml"), "[mcp_servers.harvester]\ncommand = \"uv\"\nargs = [\"--directory\", \"/fixture/harvester\", \"run\", \"harvester\"]\n")
+
+	reports := InspectHarvesterClientCutover(home, 8377)
+	if len(reports) != 2 || reports[0].Client != "claude" || reports[0].State != MCPClientPFM || reports[0].Error != nil {
+		t.Fatalf("Claude cutover report=%#v, want healthy PFM route", reports)
+	}
+	if reports[1].Client != "codex" || reports[1].State != MCPClientLegacyStandalone || reports[1].Error != nil {
+		t.Fatalf("Codex cutover report=%#v, want legacy standalone route", reports)
+	}
+
+	writeFixture(t, filepath.Join(home, ".codex", "config.toml"), "broken = [\n")
+	reports = InspectHarvesterClientCutover(home, 8377)
+	if reports[1].State != MCPClientUnreadable || reports[1].Error == nil || !strings.Contains(reports[1].Error.Error(), "config.toml") {
+		t.Fatalf("Codex unreadable report=%#v, want path-bearing parse error", reports[1])
+	}
+}

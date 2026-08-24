@@ -73,7 +73,7 @@ func runConfigInit(args []string, stdout, stderr io.Writer, runtime commandRunti
 func printResolvedConfig(stdout io.Writer, runtime commandRuntime) {
 	config := runtime.Config
 	fmt.Fprintf(stdout, "config path=%s exists=%t\n", config.Path, config.Exists)
-	fmt.Fprintf(stdout, "config version=%d (%s)\n", config.Version, config.Source("version"))
+	fmt.Fprintf(stdout, "config version=%d effective (input=%d %s)\n", config.Version, config.InputVersion, config.Source("version"))
 	fmt.Fprintf(stdout, "config theme=%s (%s)\n", config.Theme, config.Source("theme"))
 	accounts := make([]string, 0, len(config.Accounts))
 	for index, account := range config.Accounts {

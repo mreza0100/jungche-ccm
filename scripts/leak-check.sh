@@ -39,7 +39,20 @@ else
   usage
 fi
 
-repo_root="$(git rev-parse --show-toplevel)"
+if [[ -n "${PFM_DEV_REPO_GIT_DIR:-}" || -n "${PFM_DEV_REPO_WORK_TREE:-}" ]]; then
+  if [[ -z "${PFM_DEV_REPO_GIT_DIR:-}" || -z "${PFM_DEV_REPO_WORK_TREE:-}" ]]; then
+    echo "leak-check: PFM_DEV_REPO_GIT_DIR and PFM_DEV_REPO_WORK_TREE must be set together" >&2
+    exit 1
+  fi
+  repo_root="$PFM_DEV_REPO_WORK_TREE"
+  repo_git() {
+    git --git-dir="$PFM_DEV_REPO_GIT_DIR" --work-tree="$PFM_DEV_REPO_WORK_TREE" \
+      -c safe.directory="$PFM_DEV_REPO_WORK_TREE" "$@"
+  }
+else
+  repo_root="$(git rev-parse --show-toplevel)"
+  repo_git() { git "$@"; }
+fi
 cd "$repo_root"
 
 is_excluded_path() {
@@ -96,7 +109,7 @@ trap 'rm -f "$hits_file"' EXIT
 
 case "$mode" in
   staged)
-    git diff --cached -U0 --no-color -- . \
+    repo_git diff --cached -U0 --no-color -- . \
       ':(exclude)scripts/placeholder-map.tsv' \
       ':(exclude)scripts/leak-check.sh' \
       ':(exclude).githooks' \
@@ -104,7 +117,7 @@ case "$mode" in
       | scan_diff_stream > "$hits_file"
     ;;
   range)
-    git diff "$range_old" "$range_new" -U0 --no-color -- . \
+    repo_git diff "$range_old" "$range_new" -U0 --no-color -- . \
       ':(exclude)scripts/placeholder-map.tsv' \
       ':(exclude)scripts/leak-check.sh' \
       ':(exclude).githooks' \

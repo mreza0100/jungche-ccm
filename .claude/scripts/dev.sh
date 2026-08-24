@@ -61,6 +61,15 @@ run() { # run <label> -- <cmd...>
   if "$@"; then ok "$label"; else fail_step "$label (exit $?)"; fi
 }
 
+repo_git() {
+  if [[ -n "${PFM_DEV_REPO_GIT_DIR:-}" && -n "${PFM_DEV_REPO_WORK_TREE:-}" ]]; then
+    git --git-dir="$PFM_DEV_REPO_GIT_DIR" --work-tree="$PFM_DEV_REPO_WORK_TREE" \
+      -c safe.directory="$PFM_DEV_REPO_WORK_TREE" "$@"
+  else
+    git "$@"
+  fi
+}
+
 # ─── status ──────────────────────────────────────────────────────────────────
 
 cmd_status() {
@@ -92,9 +101,9 @@ cmd_status() {
   done
 
   head_ "git"
-  local dirty; dirty=$(git status --porcelain | wc -l | tr -d ' ')
-  info "branch $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD) — $dirty changed file(s)"
-  info "version $(cat VERSION 2>/dev/null || echo '?') — newest tag $(git describe --tags --abbrev=0 2>/dev/null || echo 'none')"
+  local dirty; dirty=$(repo_git status --porcelain | wc -l | tr -d ' ')
+  info "branch $(repo_git rev-parse --abbrev-ref HEAD) @ $(repo_git rev-parse --short HEAD) — $dirty changed file(s)"
+  info "version $(cat VERSION 2>/dev/null || echo '?') — newest tag $(repo_git describe --tags --abbrev=0 2>/dev/null || echo 'none')"
 
   head_ "install"
   for f in .professor/VERSION .professor/manifest.json CLAUDE.md AGENTS.md .claude/settings.json; do
@@ -111,12 +120,12 @@ act_blueprint() { # the shipped product: mechanical gates, no build
     verify|test|all)
       head_ "blueprint — leak gate"
       local changed
-      changed=$(git status --porcelain -- blueprint scripts README.md INSTALL.md CHANGELOG.md releases \
+      changed=$(repo_git status --porcelain -- blueprint scripts README.md INSTALL.md CHANGELOG.md releases \
                 | awk '{print $NF}' | grep -v '/$' || true)
       if [[ -z "$changed" ]]; then
         info "no changed blueprint/public files — scanning the whole tracked blueprint tree instead"
         # shellcheck disable=SC2046
-        if git ls-files blueprint README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
+        if repo_git ls-files blueprint README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
           ok "leak-check clean (full tracked scan)"
         else
           fail_step "leak-check FAILED — brand / PII / machine-path string in a public file"
@@ -143,8 +152,12 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         if [[ -z "$unregistered" ]]; then
           ok "every markdown-template token is registered in PLACEHOLDERS.md ($(wc -l <<<"$used") tokens)"
         else
-          out="tmp/blueprint-unregistered-tokens.txt"
-          mkdir -p tmp
+          if [[ -n "${PFM_DEV_FENCE:-}" ]]; then
+            out="$(mktemp)"
+          else
+            out="tmp/blueprint-unregistered-tokens.txt"
+            mkdir -p tmp
+          fi
           printf '%s\n' "$unregistered" > "$out"
           warn "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md"
           info "most frequent 10 (full list: $out):"
@@ -174,6 +187,20 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         ok "opencode mirror current and parseable"
       else
         fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
+      fi
+
+      head_ "blueprint — isolated-fence mount preflight"
+      if bash infra/fence-preflight-test.sh; then
+        ok "Docker Desktop mount targets are prepared before the read-only worktree bind"
+      else
+        fail_step "isolated-fence mount preflight FAILED — nested volume targets are not safely prepared"
+      fi
+
+      head_ "blueprint — self-hosted manifest"
+      if bash infra/check-self-hosted-manifest.sh "$REPO_ROOT" blueprint pfm engines/wave-walker/engine; then
+        ok "self-hosted manifest version, roster, and hashes match the repository"
+      else
+        fail_step "self-hosted manifest FAILED — its install ledger is stale or unreadable"
       fi
 
       ;;
@@ -247,11 +274,29 @@ dispatch() { # dispatch <project> <action>
 cmd_iso() { # cmd_iso <action> [project]
   local action="${1:-}" target="${2:-pfm}"
   need_tool docker iso || exit 1
+  need_tool git iso || exit 1
   local compose="$REPO_ROOT/infra/docker-compose.yml"
   if [[ ! -f "$compose" ]]; then
     fail_step "iso: TOOLCHAIN-MISSING — $compose not found"; exit 1
   fi
+  if ! bash "$REPO_ROOT/infra/prepare-fence-mounts.sh" "$REPO_ROOT"; then
+    fail_step "iso: prepare nested Docker volume targets under $REPO_ROOT"; exit 1
+  fi
+
+  local git_common git_dir git_dir_relative
+  git_common="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)"
+  if [[ "$git_common" != /* ]]; then git_common="$REPO_ROOT/$git_common"; fi
+  git_common="$(cd "$git_common" && pwd -P)"
+  git_dir="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir)"
+  git_dir="$(cd "$git_dir" && pwd -P)"
+  case "$git_dir" in
+    "$git_common") git_dir_relative="." ;;
+    "$git_common"/*) git_dir_relative="${git_dir#"$git_common"/}" ;;
+    *) fail_step "iso: git directory $git_dir is outside common directory $git_common"; exit 1 ;;
+  esac
   export PFM_DEV_WORKTREE="$REPO_ROOT"
+  export PFM_DEV_GIT_COMMON="$git_common"
+  export PFM_DEV_GIT_DIR_REL="$git_dir_relative"
   local proof='echo "fence: container=$(hostname) HOME=$HOME work=$(pwd)"'
   case "$action" in
     shell)

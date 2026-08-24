@@ -4,7 +4,7 @@
 # The worktree is edited on the HOST; this container only builds and tests it.
 FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git zsh tmux python3 xz-utils \
+    ca-certificates curl git jq zsh tmux python3 xz-utils \
  && rm -rf /var/lib/apt/lists/*
 # Go pinned to pfm/go.mod — bump both together or the fence tests a different compiler.
 ARG GO_VERSION=1.24.13

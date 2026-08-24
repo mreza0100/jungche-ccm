@@ -14,6 +14,13 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 
 ## Post-install customizations
 
+- **KEEP-LOCAL: the self-hosted manifest and isolated fence are mechanically audited.** The manifest
+  follows the live three-project roster, records the complete tracked Professor surface, and omits
+  an impossible self-referential source SHA; `dev.sh test blueprint` verifies its version, roster,
+  coverage, and hashes. Before Docker mounts the checkout read-only, the fence creates Walker's
+  ignored nested volume targets and mounts the active Git common directory read-only, so Docker
+  Desktop and linked worktrees run the same gates without weakening source immutability.
+
 - **KEEP-LOCAL: the fence replaces "no worktree pipeline" (2026-08-20, user-ordered).** Code waves
   build in `.worktrees/{train}/` through `dev.sh iso` — the `infra/` pfm-dev container (fresh
   machine, worktree mounted; design `docs/dev/isolated-dev-foundation.md`). Markdown-only waves
