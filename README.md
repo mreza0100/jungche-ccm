@@ -15,8 +15,8 @@ cat docs/SETUP.md      # the install interview — start here
 ```
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
-Upgrading from `v0.58.0` or earlier? Follow the
-[v0.60.0 LLM upgrade runbook](releases/v0.60.0.md#llm-upgrade-runbook).
+Upgrading from `v0.60.0` or earlier? Follow the one-time
+[v0.60.1 LLM upgrade runbook](releases/v0.60.1.md#llm-upgrade-runbook).
 
 ---
 
