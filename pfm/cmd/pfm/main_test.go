@@ -424,6 +424,84 @@ func TestDoctorReportsDamagedDatabaseWithoutPanic(t *testing.T) {
 	}
 }
 
+// TestDoctorNamesAnExistingButUnwiredPrePushGate is the issue-6 regression:
+// the repository shipped the hook but no diagnostic distinguished "armed"
+// from "file exists and Git will never execute it".
+func TestDoctorNamesAnExistingButUnwiredPrePushGate(t *testing.T) {
+	root := jailTest(t)
+	repository := filepath.Join(root, "repository")
+	if err := os.MkdirAll(filepath.Join(repository, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repository, ".githooks"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(repository, ".git", "config"),
+		[]byte("[core]\n\trepositoryformatversion = 0\n\tbare = false\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(repository, ".git", "HEAD"),
+		[]byte("ref: refs/heads/main\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, directory := range []string{"objects", filepath.Join("refs", "heads")} {
+		if err := os.MkdirAll(filepath.Join(repository, ".git", directory), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(repository, ".githooks", "pre-push"),
+		[]byte("#!/bin/sh\nexit 0\n"),
+		0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repository)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"doctor"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("doctor code=%d, want warning exit\nstdout=%s\nstderr=%s", code, stdout.String(), stderr.String())
+	}
+	want := "doctor: pre-push gate=UNWIRED expected=.githooks actual=(unset)"
+	if !strings.Contains(stdout.String(), want) {
+		t.Fatalf("doctor omitted %q:\n%s", want, stdout.String())
+	}
+
+	if err := os.WriteFile(
+		filepath.Join(repository, ".git", "config"),
+		[]byte("[core]\n\trepositoryformatversion = 0\n\tbare = false\n\thooksPath = .githooks\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"doctor"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("armed doctor code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if want := "doctor: pre-push gate=armed core.hooksPath=.githooks"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("armed doctor omitted %q:\n%s", want, stdout.String())
+	}
+
+	if err := os.Chmod(filepath.Join(repository, ".githooks", "pre-push"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"doctor"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("broken-hook doctor code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if want := "doctor: pre-push gate=BROKEN core.hooksPath=.githooks"; !strings.Contains(stdout.String(), want) {
+		t.Fatalf("broken-hook doctor omitted %q:\n%s", want, stdout.String())
+	}
+}
+
 func TestDoctorRecognizesThenFailedAsSatelliteMetadata(t *testing.T) {
 	root := jailTest(t)
 	sidDir := filepath.Join(root, "sid")

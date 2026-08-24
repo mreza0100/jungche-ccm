@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
@@ -28,7 +29,10 @@ func (*fakeReloadTmux) PaneInMode(context.Context, string, string) (bool, error)
 	return false, nil
 }
 func (*fakeReloadTmux) CancelMode(context.Context, string, string) error { return nil }
-func (*fakeReloadTmux) Capture(context.Context, string, string) (string, error) {
+func (tmux *fakeReloadTmux) Capture(context.Context, string, string) (string, error) {
+	if tmux.literal == "/exit" {
+		return "Claude\n❯ /exit", nil
+	}
 	return "Claude\n❯ ", nil
 }
 func (tmux *fakeReloadTmux) SendKey(_ context.Context, _, _, key string) error {
@@ -74,8 +78,53 @@ type delayedThenTmux struct {
 	submitted bool
 }
 
+type delayedExitRenderTmux struct {
+	fakeReloadTmux
+	exitRendered     bool
+	earlySubmitCount int
+}
+
+type neverExitRenderTmux struct {
+	fakeReloadTmux
+	enterCount int
+}
+
+func (tmux *neverExitRenderTmux) Capture(context.Context, string, string) (string, error) {
+	return "Codex\n› ", nil
+}
+
+func (tmux *neverExitRenderTmux) SendKey(_ context.Context, _, _, key string) error {
+	if key == "Enter" && tmux.literal == "/exit" {
+		tmux.enterCount++
+	}
+	return nil
+}
+
+func (tmux *delayedExitRenderTmux) Capture(context.Context, string, string) (string, error) {
+	if tmux.literal == "/exit" {
+		tmux.exitRendered = true
+		return "Codex\n› /exit", nil
+	}
+	return "Codex\n› ", nil
+}
+
+func (tmux *delayedExitRenderTmux) SendKey(_ context.Context, _, _, key string) error {
+	if key != "Enter" || tmux.literal != "/exit" {
+		return nil
+	}
+	if !tmux.exitRendered {
+		tmux.earlySubmitCount++
+		return nil
+	}
+	tmux.dead = true
+	return nil
+}
+
 func (tmux *delayedThenTmux) Capture(context.Context, string, string) (string, error) {
 	if tmux.respawn == "" {
+		if tmux.literal == "/exit" {
+			return "Claude\n❯ /exit", nil
+		}
 		return "Claude\n❯ ", nil
 	}
 	tmux.ready = true
@@ -303,6 +352,56 @@ func TestRunGracefullyExitsThenRespawnsTheSamePane(t *testing.T) {
 		if !strings.Contains(tmux.respawn, want) {
 			t.Fatalf("respawn %q lacks %q", tmux.respawn, want)
 		}
+	}
+}
+
+func TestRunWaitsForExitTextToRenderBeforeSubmitting(t *testing.T) {
+	tmux := &delayedExitRenderTmux{}
+	_, err := Run(
+		context.Background(),
+		Request{
+			Engine: pfmengine.Codex, SocketPath: "/tmp/tmux-1000/probe-reload-render", Pane: "%7",
+			PanePID: 700, SessionID: "019ff700-0000-7000-8000-000000000001", CWD: "/jail/project",
+			Account: 1, AccountIDs: []int{1}, AccountHome: "/jail/codex/1",
+		},
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 2},
+		tmux,
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tmux.earlySubmitCount != 0 || !tmux.exitRendered || tmux.respawn == "" {
+		t.Fatalf(
+			"early submits=%d rendered=%t respawn=%q",
+			tmux.earlySubmitCount, tmux.exitRendered, tmux.respawn,
+		)
+	}
+}
+
+func TestRunRefusesBlindExitWhenTextNeverRenders(t *testing.T) {
+	t.Setenv("TMUX_TMPDIR", t.TempDir())
+	tmux := &neverExitRenderTmux{}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	_, err := Run(
+		ctx,
+		Request{
+			Engine: pfmengine.Codex, SocketPath: filepath.Join(t.TempDir(), "fake-codex-socket"), Pane: "%7",
+			PanePID: 700, SessionID: "019ff700-0000-7000-8000-000000000001", CWD: "/jail/project",
+			Account: 1, AccountIDs: []int{1}, AccountHome: "/jail/codex/1",
+		},
+		Options{SIDDir: t.TempDir(), Delay: -1, Poll: -1, ExitTries: 1},
+		tmux,
+		nil,
+		nil,
+	)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("never-rendered /exit error=%v, want context deadline while waiting for visible text", err)
+	}
+	if tmux.enterCount != 0 || tmux.respawn != "" {
+		t.Fatalf("blind exit mutation: enters=%d respawn=%q", tmux.enterCount, tmux.respawn)
 	}
 }
 

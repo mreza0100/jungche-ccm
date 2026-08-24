@@ -784,7 +784,8 @@ func (h *e2eHarness) requireSkippedHarvestDoctor(result commandResult) {
 		"doctor: dep uv path= broken",
 		"doctor: dep harvestpy path= broken",
 		"doctor: harvestpy skipped",
-		"doctor: warnings=2",
+		"doctor: pre-push gate=UNWIRED expected=.githooks actual=(unset)",
+		"doctor: warnings=3",
 	} {
 		if !strings.Contains(output, want) {
 			h.t.Fatalf("doctor after --skip-harvest omitted %q; stdout=%q stderr=%q", want, result.stdout, result.stderr)

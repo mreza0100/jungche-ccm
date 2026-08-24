@@ -135,10 +135,13 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
-	if err := installer.wireCodexAgents(); err != nil {
+	if err := installer.retireLegacySwapCommand(); err != nil {
 		return err
 	}
-	if err := installer.retireLegacySwapCommand(); err != nil {
+	if err := installer.reconcileCodexCommands(); err != nil {
+		return err
+	}
+	if err := installer.wireCodexAgents(); err != nil {
 		return err
 	}
 	// The periodic name-sync has one job and two schedulers. Linux gets the
@@ -215,6 +218,30 @@ func (installer *engine) wireCodexAgents() error {
 	return nil
 }
 
+func (installer *engine) reconcileCodexCommands() error {
+	if !installer.apply {
+		installer.say("Codex global commands: would reconcile after Claude command wiring")
+		return nil
+	}
+	result, err := codexgen.RunGlobalCommands(codexgen.GlobalCommandsOptions{
+		Home: installer.options.Home,
+		Mode: codexgen.ModeBuild,
+	})
+	if err != nil {
+		return fmt.Errorf("reconcile Codex global commands: %w", err)
+	}
+	if !result.OK {
+		return fmt.Errorf("reconcile Codex global commands: %s", strings.Join(result.Problems, "; "))
+	}
+	installer.ok(fmt.Sprintf(
+		"Codex global commands wrote=%d unchanged=%d deleted=%d",
+		result.Wrote,
+		result.Unchanged,
+		result.Deleted,
+	))
+	return nil
+}
+
 func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.uninstallHarvest(); err != nil {
 		return err
@@ -227,6 +254,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 		return err
 	}
 	if err := installer.unwireCommands(assets); err != nil {
+		return err
+	}
+	if err := installer.reconcileCodexCommands(); err != nil {
 		return err
 	}
 	if err := installer.retireBBInstall(); err != nil {

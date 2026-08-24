@@ -11,8 +11,13 @@ other.
 
 ```bash
 git clone https://github.com/mreza0100/professor && cd professor
+git config core.hooksPath .githooks
 cat docs/SETUP.md      # the install interview — start here
 ```
+
+For a maintainer checkout, `pfm doctor` must report
+`pre-push gate=armed core.hooksPath=.githooks`. A hook file that merely exists is not armed; an
+unwired or non-executable hook is a warning and a non-zero doctor result.
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
 Upgrading from `v0.60.0` or earlier? Follow the one-time
@@ -41,7 +46,7 @@ find › type project or name                                                   
 ││ ↻ CCC                           🥈                                           452p    32M     54m│
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
  ↑↓ move  enter open  esc cancel  type to fuzzy-find
- ⌃X kill  ⌃E 1h  ⌃S account  ⌃O reboot
+ ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot
 ```
 
 > Every AI chat on the machine — Claude Code, Codex (⬢), and OpenCode — across accounts
@@ -132,19 +137,26 @@ timed out · 6 message not delivered`.
 - **Reload without losing the conversation.** `pfm chat reload` reboots a running chat in place
   onto another account — same pane, same history, new billing identity. With `--then`, a chat
   running low on budget swaps itself and hands itself the baton unattended.
-- **Repository memory.** `pfm dream` builds and injects memory organs from a repo's own history,
-  with `night`, `apply`, `inspect`, `morning`, `migrate-anchors`, `restamp` and `hook` verbs.
+- **Repository memory is manually available, automatically paused.** `pfm dream` retains its
+  development commands (`night`, `apply`, `inspect`, `morning`, `migrate-anchors`, `restamp`, and
+  `hook`), but install removes automatic Dream/STM injection hooks and never adds them back. Chats
+  do not read STM at startup.
 - **A research harvester.** `pfm harvest` turns a URL, DOI, ISBN, PMID, PMCID, or local path into
   Markdown, over a pinned Python sidecar and an open-access resolver chain (Unpaywall, OpenAlex,
   Semantic Scholar, Europe PMC, OpenAIRE, Crossref, CORE and more). It exposes the same surface
-  through MCP.
+  through MCP. `pfm harvest ask -p "…" <sources...>` feeds the full cached artifacts—not clipped
+  terminal previews—to the configured Claude or Codex ask engine; failed sources remain visible as
+  explicit receipts instead of disappearing from the answer corpus. `pfm harvest --ask -p "…"`
+  is the equivalent compatibility spelling.
 - **Crash-safety by construction.** `reap`, `archive`, `heal`, and `install` all default to a dry
   run, and the dry run **is** the apply's preview — identical classification either way, only the
   actions differ. `heal` backs up the store before it deletes a row. A probe that could not run is
   never reported as "nothing found".
 - **Housekeeping.** `doctor` checks the dependency registry and fleet DB; `index` refreshes the
   transcript index; `config` validates the machine config; `codex build|check` is the single
-  writer of the Codex mirror; `statusline` renders identity, session and spend.
+  writer of the Codex mirror; `statusline` renders identity, session and spend. Host install also
+  reconciles global Claude commands into marker-owned Codex prompt/skill mirrors, preserving every
+  unmarked conflict and foreign file.
 
 **Requirements** (from `pfm doctor`'s own registry, not prose): `tmux` ≥ 1.8, `git`, `sh`, `bash`,
 `zsh`, `sleep`; `setsid` on Linux, `ps`/`lsof`/`launchctl` on macOS. Linux and macOS, amd64 and

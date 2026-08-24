@@ -395,7 +395,7 @@ func applyUpdateInstall(ctx context.Context, candidate string, runtime commandRu
 	if skipHarvest {
 		args = append(args, "--skip-harvest")
 	}
-	return runUpdateCandidateCommand(ctx, candidate, runtime, stdout, stderr, "install", args...)
+	return runUpdateCandidateCommand(ctx, candidate, runtime, "", stdout, stderr, "install", args...)
 }
 
 func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
@@ -403,13 +403,28 @@ func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRunti
 	if skipHarvest {
 		args = []string{"--skip-harvest"}
 	}
-	return runUpdateCandidateCommand(ctx, candidate, runtime, stdout, stderr, "doctor", args...)
+	// Doctor normally inspects the current repository's publication hook as
+	// well as host health. An update is validating the newly installed host
+	// binary, not whichever source checkout invoked it, so run from a fresh
+	// non-repository directory and keep an unwired maintainer checkout from
+	// rolling back an otherwise healthy update.
+	doctorDirectory, err := os.MkdirTemp("", "pfm-update-doctor-")
+	if err != nil {
+		return fmt.Errorf("create isolated doctor directory: %w", err)
+	}
+	defer func() {
+		if cleanupErr := os.RemoveAll(doctorDirectory); cleanupErr != nil {
+			fmt.Fprintf(stderr, "pfm update: cleanup isolated doctor directory %s: %v\n", doctorDirectory, cleanupErr)
+		}
+	}()
+	return runUpdateCandidateCommand(ctx, candidate, runtime, doctorDirectory, stdout, stderr, "doctor", args...)
 }
 
 func runUpdateCandidateCommand(
 	ctx context.Context,
 	candidate string,
 	runtime commandRuntime,
+	workingDirectory string,
 	stdout, stderr io.Writer,
 	commandName string,
 	commandArgs ...string,
@@ -421,6 +436,7 @@ func runUpdateCandidateCommand(
 	args = append(args, commandName)
 	args = append(args, commandArgs...)
 	command := exec.CommandContext(ctx, candidate, args...)
+	command.Dir = workingDirectory
 	command.Stdout = stdout
 	command.Stderr = stderr
 	if err := command.Run(); err != nil {

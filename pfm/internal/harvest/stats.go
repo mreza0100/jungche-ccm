@@ -51,12 +51,20 @@ func (h *Harvester) recordStat(item string, result Result) {
 		log.Printf("harvest: stats marshal failed: %v", err)
 		return
 	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		log.Printf("harvest: create stats directory %s: %v", dir, err)
+		return
+	}
 	file, err := os.OpenFile(filepath.Join(dir, statsFilename), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		log.Printf("harvest: stats append failed: %v", err)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("harvest: stats close failed: %v", closeErr)
+		}
+	}()
 	if _, err := file.Write(append(line, '\n')); err != nil {
 		log.Printf("harvest: stats write failed: %v", err)
 	}

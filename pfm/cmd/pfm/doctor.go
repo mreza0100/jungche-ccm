@@ -109,6 +109,7 @@ func runDoctor(
 	if len(pathWarnings) == 0 {
 		fmt.Fprintln(stdout, "doctor: path canonical")
 	}
+	warnings += printPrePushDoctor(context.Background(), stdout)
 	launcher, launcherErr := installer.InspectClaudeLauncher(resolved.Home)
 	if launcherErr != nil {
 		warnings++
