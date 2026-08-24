@@ -183,7 +183,6 @@ func TestStatuslineCapturedInputGoldens(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			writeGoldenCache(t, filepath.Join(cacheDir, "cc-vertex-spend"), "1.23|4.56|1786838400", now)
 			if sample.account == 4 {
 				writeGoldenCache(t, filepath.Join(cacheDir, "cc-gpt-usage-1000.json"),
 					`{"primary":{"usedPercent":32,"windowDurationMins":300,"resetsAt":1786845600},"secondary":{"usedPercent":71,"windowDurationMins":10080,"resetsAt":1787443200},"planType":"plus"}`,

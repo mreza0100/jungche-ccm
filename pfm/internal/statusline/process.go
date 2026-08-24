@@ -27,8 +27,6 @@ func SpawnDetached(kind RefreshKind) error {
 	}
 	argument := ""
 	switch kind {
-	case RefreshKindVertex:
-		argument = "--refresh-vertex"
 	case RefreshKindGPT:
 		argument = "--refresh-gpt"
 	default:
@@ -51,41 +49,6 @@ func SpawnDetached(kind RefreshKind) error {
 		return fmt.Errorf("release detached %s refresher: %w", kind, err)
 	}
 	return nil
-}
-
-// GCloudAccessToken reads an OAuth token without ever placing it in argv.
-func GCloudAccessToken(ctx context.Context) (string, error) {
-	child, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(child, deps.Executable("gcloud"), "auth", "print-access-token").Output()
-	if err != nil {
-		return "", fmt.Errorf("gcloud auth print-access-token: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
-// ResolveVertexProject uses explicit environment first, then gcloud's active
-// project. No machine- or account-specific project name is compiled into pfm.
-func ResolveVertexProject(ctx context.Context) (string, error) {
-	for _, name := range []string{"PFM_VERTEX_PROJECT", "GOOGLE_CLOUD_PROJECT"} {
-		if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-			return value, nil
-		}
-	}
-	child, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(
-		child,
-		deps.Executable("gcloud"), "config", "get-value", "project",
-	).Output()
-	if err != nil {
-		return "", fmt.Errorf("gcloud config get-value project: %w", err)
-	}
-	project := strings.TrimSpace(string(output))
-	if project == "" || project == "(unset)" {
-		return "", fmt.Errorf("gcloud has no active project")
-	}
-	return project, nil
 }
 
 // ReadGPTRateLimits performs the complete Codex App Server initialize exchange

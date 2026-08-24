@@ -13,7 +13,7 @@ Shortest path first.
 
 No clone, no Go toolchain. The installer's own assets (command cards, launcher shim, scheduler units) are embedded in the binary.
 
-Prerequisites: `linux` or `darwin`, `amd64` or `arm64`, `git` (to resolve the latest tag — or read it off the [Releases page](https://github.com/mreza0100/professor/releases) by hand). The installer's preflight also hard-requires these before any preview renders: `tmux` ≥ 1.8, `zsh`, `bash`, a POSIX `sh`, and on Linux `setsid` (`apt install tmux zsh bash` / `brew install tmux zsh` covers them). Optional, per feature: `systemd` (Linux user units), `gcloud`, the `claude`/`codex` CLIs.
+Prerequisites: `linux` or `darwin`, `amd64` or `arm64`, `git` (to resolve the latest tag — or read it off the [Releases page](https://github.com/mreza0100/professor/releases) by hand). The installer's preflight also hard-requires these before any preview renders: `tmux` ≥ 1.8, `zsh`, `bash`, a POSIX `sh`, and on Linux `setsid` (`apt install tmux zsh bash` / `brew install tmux zsh` covers them). Optional, per feature: `systemd` (Linux user units) and the `claude`/`codex` CLIs.
 
 ```bash
 REPO=mreza0100/professor

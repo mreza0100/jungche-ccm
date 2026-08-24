@@ -13,18 +13,6 @@ import (
 	"hostops/pfm/internal/usagehook"
 )
 
-var statuslineVertexOptions = func(ctx context.Context, log io.Writer) (statusline.VertexOptions, error) {
-	project, err := statusline.ResolveVertexProject(ctx)
-	if err != nil {
-		return statusline.VertexOptions{}, err
-	}
-	return statusline.VertexOptions{
-		Project:     project,
-		AccessToken: statusline.GCloudAccessToken,
-		Log:         log,
-	}, nil
-}
-
 var statuslineGPTOptions = func() statusline.GPTOptions {
 	return statusline.GPTOptions{}
 }
@@ -47,32 +35,19 @@ func runStatuslineWithRuntime(
 	const statuslineHostEngine = pfmengine.Claude // pfm statusline is launched only by Claude Code's statusline hook; an environment that names no engine is that hook's
 	flags := newFlagSet(
 		"statusline",
-		"usage: pfm statusline [--refresh-vertex | --refresh-gpt]",
+		"usage: pfm statusline [--refresh-gpt]",
 		stderr,
 	)
-	refreshVertex := flags.Bool("refresh-vertex", false, "refresh the Vertex spend cache")
 	refreshGPT := flags.Bool("refresh-gpt", false, "refresh the GPT usage cache")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
-	if flags.NArg() != 0 || (*refreshVertex && *refreshGPT) {
+	if flags.NArg() != 0 {
 		flags.Usage()
 		return 2
 	}
 
 	ctx := context.Background()
-	if *refreshVertex {
-		options, err := statuslineVertexOptions(ctx, stderr)
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm statusline: resolve Vertex project: %v\n", err)
-			return 1
-		}
-		if err := statusline.RefreshVertex(ctx, options); err != nil {
-			fmt.Fprintf(stderr, "pfm statusline: refresh Vertex cache: %v\n", err)
-			return 1
-		}
-		return 0
-	}
 	if *refreshGPT {
 		options := statuslineGPTOptions()
 		account := accountForCodexHome(machine.Config, os.Getenv("CODEX_HOME"))
