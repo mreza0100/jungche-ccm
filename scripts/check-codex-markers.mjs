@@ -79,7 +79,16 @@ let orphans = 0;
 const deletedTracked = [];
 let tracked = [];
 try {
-  tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const gitArgs = [];
+  if (process.env.PFM_DEV_REPO_GIT_DIR && process.env.PFM_DEV_REPO_WORK_TREE) {
+    gitArgs.push(
+      `--git-dir=${process.env.PFM_DEV_REPO_GIT_DIR}`,
+      `--work-tree=${process.env.PFM_DEV_REPO_WORK_TREE}`,
+      '-c',
+      `safe.directory=${process.env.PFM_DEV_REPO_WORK_TREE}`,
+    );
+  }
+  tracked = execFileSync('git', [...gitArgs, 'ls-files', '-z'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
     .split('\0')
     .filter(Boolean);
 } catch {

@@ -85,11 +85,12 @@ func selectHighestSemver(tags []string) (string, error) {
 func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"update",
-		"usage: pfm update [--to vX.Y.Z] [--repo PATH]",
+		"usage: pfm update [--to vX.Y.Z] [--repo PATH] [--skip-harvest]",
 		stderr,
 	)
 	target := flags.String("to", "", "target semantic-version tag")
 	repoFlag := flags.String("repo", "", "source clone to update")
+	skipHarvest := flags.Bool("skip-harvest", false, "leave the optional harvestpy runtime unmanaged")
 	positional, code, ok := parseFlagsAnywhere(flags, args)
 	if !ok {
 		return code
@@ -116,7 +117,7 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		fmt.Fprintf(stderr, "pfm update: resolve repository: %v\n", err)
 		return 1
 	}
-	if err := updateRepository(context.Background(), repo, *target, stdout, stderr, runtime); err != nil {
+	if err := updateRepository(context.Background(), repo, *target, *skipHarvest, stdout, stderr, runtime); err != nil {
 		fmt.Fprintf(stderr, "pfm update: %v\n", err)
 		return 1
 	}
@@ -126,6 +127,7 @@ func runUpdate(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 func updateRepository(
 	ctx context.Context,
 	repo, requestedTag string,
+	skipHarvest bool,
 	stdout, stderr io.Writer,
 	runtime commandRuntime,
 ) (err error) {
@@ -184,10 +186,10 @@ func updateRepository(
 	defer os.RemoveAll(stage)
 	candidateA := filepath.Join(stage, "pfm-a")
 	candidateB := filepath.Join(stage, "pfm-b")
-	if err := updateBuildCandidate(ctx, repo, candidateA); err != nil {
+	if err := updateBuildCandidate(ctx, repo, target, candidateA); err != nil {
 		return fmt.Errorf("build candidate first pass: %w", err)
 	}
-	if err := updateBuildCandidate(ctx, repo, candidateB); err != nil {
+	if err := updateBuildCandidate(ctx, repo, target, candidateB); err != nil {
 		return fmt.Errorf("build candidate second pass: %w", err)
 	}
 	hashA, err := fileHash(candidateA)
@@ -228,10 +230,10 @@ func updateRepository(
 		replacements[index].replaced = true
 	}
 
-	if err := updateApplyInstall(ctx, runtime, stdout, stderr); err != nil {
+	if err := updateApplyInstall(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(fmt.Errorf("install --yes after staging: %w", err), rollbackUpdateReplacements(replacements, stderr))
 	}
-	if err := updateRunDoctor(ctx, runtime, stdout, stderr); err != nil {
+	if err := updateRunDoctor(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(fmt.Errorf("doctor after update: %w", err), rollbackUpdateReplacements(replacements, stderr))
 	}
 	fmt.Fprintf(stdout, "updated %s from %s\n", target, repo)
@@ -299,12 +301,19 @@ func updateGitOutput(ctx context.Context, repo string, args ...string) (string, 
 	return string(output), nil
 }
 
-func buildUpdateCandidate(ctx context.Context, repo, output string) error {
+func buildUpdateCandidate(ctx context.Context, repo, version, output string) error {
 	moduleRoot := repo
 	if _, err := os.Stat(filepath.Join(repo, "pfm", "go.mod")); err == nil {
 		moduleRoot = filepath.Join(repo, "pfm")
 	}
-	command := exec.CommandContext(ctx, deps.Executable("go"), "-C", moduleRoot, "build", "-trimpath", "-o", output, "./cmd/pfm")
+	command := exec.CommandContext(
+		ctx,
+		deps.Executable("go"),
+		"-C", moduleRoot,
+		"build", "-trimpath", "-ldflags", "-X main.version="+version,
+		"-o", output,
+		"./cmd/pfm",
+	)
 	command.Env = envWithEmptyGOFLAGS()
 	command.Dir = repo
 	outputBytes, err := command.CombinedOutput()
@@ -381,16 +390,41 @@ func writeUpdateFile(path string, raw []byte, mode os.FileMode) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func applyUpdateInstall(_ context.Context, runtime commandRuntime, stdout, stderr io.Writer) error {
-	if code := runInstall([]string{"--yes"}, stdout, stderr, runtime); code != 0 {
-		return fmt.Errorf("pfm install exited with code %d", code)
+func applyUpdateInstall(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
+	args := []string{"--yes"}
+	if skipHarvest {
+		args = append(args, "--skip-harvest")
 	}
-	return nil
+	return runUpdateCandidateCommand(ctx, candidate, runtime, stdout, stderr, "install", args...)
 }
 
-func runUpdateDoctor(_ context.Context, runtime commandRuntime, stdout, stderr io.Writer) error {
-	if code := runDoctor(nil, stdout, stderr, runtime); code != 0 {
-		return fmt.Errorf("pfm doctor exited with code %d", code)
+func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
+	var args []string
+	if skipHarvest {
+		args = []string{"--skip-harvest"}
+	}
+	return runUpdateCandidateCommand(ctx, candidate, runtime, stdout, stderr, "doctor", args...)
+}
+
+func runUpdateCandidateCommand(
+	ctx context.Context,
+	candidate string,
+	runtime commandRuntime,
+	stdout, stderr io.Writer,
+	commandName string,
+	commandArgs ...string,
+) error {
+	args := make([]string, 0, len(commandArgs)+3)
+	if runtime.Config.Path != "" {
+		args = append(args, "--config", runtime.Config.Path)
+	}
+	args = append(args, commandName)
+	args = append(args, commandArgs...)
+	command := exec.CommandContext(ctx, candidate, args...)
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("target candidate %s: %w", commandName, err)
 	}
 	return nil
 }

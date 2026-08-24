@@ -134,6 +134,7 @@ func (config AskConfig) PrefsFor(id pfmengine.ID) EnginePrefs {
 // each effective value came from the machine file or from a default.
 type Config struct {
 	Version          int
+	InputVersion     int
 	Theme            string
 	Accounts         []Account
 	AccountSkips     []AccountSkip
@@ -342,6 +343,7 @@ func defaultsWithMCPServers(
 	}
 	return Config{
 		Version:          Version,
+		InputVersion:     Version,
 		Theme:            "default",
 		Accounts:         accounts,
 		AccountSkips:     accountSkips,
@@ -549,6 +551,7 @@ func loadWithMCPServers(
 		return Config{}, fmt.Errorf("config %s: version must be 1 or %d, got %d", result.Path, Version, *raw.Version)
 	}
 	result.Sources["version"] = SourceFile
+	result.InputVersion = *raw.Version
 	// Version 1 is accepted as a compatibility input, but callers always see
 	// the current materialized schema version.
 	result.Version = Version

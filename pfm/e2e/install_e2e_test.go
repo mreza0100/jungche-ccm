@@ -25,6 +25,7 @@ import (
 const (
 	e2eHomeEnv         = "PFM_E2E_HOME"
 	e2ePreviousTag     = "PFM_E2E_PREVIOUS_TAG"
+	e2eCurrentTag      = "PFM_E2E_CURRENT_TAG"
 	e2eSourceRepo      = "PFM_E2E_SOURCE_REPO"
 	e2eHarvestSkipLine = "harvestpy: skipped (blocked, not attempted)"
 	e2eFixtureSkill    = ".claude/skills/e2e-fixture/SKILL.md"
@@ -203,6 +204,46 @@ func TestCopySourceTreePreservesInternalSymlinks(t *testing.T) {
 	}
 }
 
+func TestCopySourceTreeEnumeratesLinkedWorktreeWithFenceGitDir(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "repository")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tracked.txt"), []byte("linked fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitFixture(t, root, "init", "-q")
+	runGitFixture(t, root, "config", "user.email", "fixture.invalid")
+	runGitFixture(t, root, "config", "user.name", "fixture-identity")
+	runGitFixture(t, root, "add", "tracked.txt")
+	runGitFixture(t, root, "commit", "-qm", "linked fixture")
+
+	source := filepath.Join(t.TempDir(), "linked-worktree")
+	runGitFixture(t, root, "worktree", "add", "--detach", "-q", source, "HEAD")
+	gitDirResult := runGit(source, "rev-parse", "--git-dir")
+	if gitDirResult.err != nil {
+		t.Fatalf("resolve linked worktree git dir: %v\n%s", gitDirResult.err, gitDirResult.stderr)
+	}
+	gitDir := strings.TrimSpace(gitDirResult.stdout)
+	if gitDir == "" {
+		t.Fatal("linked worktree returned an empty git dir")
+	}
+	// Simulate the fenced mount: the linked worktree's .git file points at
+	// the host path, while the fence supplies its mounted git dir explicitly.
+	if err := os.WriteFile(filepath.Join(source, ".git"), []byte("gitdir: /fixture/host-only/worktree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PFM_DEV_REPO_WORK_TREE", source)
+	t.Setenv("PFM_DEV_REPO_GIT_DIR", gitDir)
+	target := filepath.Join(t.TempDir(), "staged")
+	if err := copySourceTree(source, target); err != nil {
+		t.Fatalf("copy linked worktree through fence: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(target, "tracked.txt")); err != nil || string(got) != "linked fixture\n" {
+		t.Fatalf("staged linked worktree file=%q err=%v, want fixture", got, err)
+	}
+}
+
 func TestCopySourceTreeSkipsTrackedDeletedPaths(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "source")
 	target := filepath.Join(t.TempDir(), "target")
@@ -292,9 +333,19 @@ func runInstallE2E(t *testing.T) {
 		result := harness.pfm(home, "install", "--yes", "--skip-harvest")
 		harness.requireSuccess("previous install", result)
 		harness.requireHarvestGate("previous install", result)
-		result = harness.pfmWithBinary(harness.headBinary, home, "install", "--yes", "--skip-harvest")
-		harness.requireSuccess("head install over previous", result)
-		harness.requireHarvestGate("head install over previous", result)
+		currentTag := currentE2ETag(t)
+		result = harness.pfm(home, "update", "--skip-harvest", "--to", currentTag, "--repo", harness.repo)
+		harness.requireSuccess("self-update from previous release", result)
+		harness.requireHarvestGate("self-update from previous release", result)
+		if !strings.Contains(result.stdout, "updated "+currentTag) {
+			t.Fatalf("self-update output=%q, want target %s", result.stdout, currentTag)
+		}
+		version := harness.pfm(home, "version")
+		harness.requireSuccess("updated version", version)
+		wantVersion := "pfm " + currentTag
+		if strings.TrimSpace(version.stdout) != wantVersion {
+			t.Fatalf("updated pfm version=%q, want %s", strings.TrimSpace(version.stdout), wantVersion)
+		}
 		harness.assertInstalled(home)
 		updated, _ := harness.snapshot(home)
 		if differences := snapshotDifferences(fresh, updated); len(differences) != 0 {
@@ -374,14 +425,45 @@ func prepareSourceRepo(t *testing.T, root string) string {
 	}
 	runGitFixture(t, fixture, "add", ".e2e-current-source")
 	runGitFixture(t, fixture, "commit", "-qm", "fixture current source")
+	runGitFixture(t, fixture, "tag", currentE2ETag(t))
+	runGitFixture(t, fixture, "remote", "add", "origin", fixture)
 	return fixture
+}
+
+func currentE2ETag(t *testing.T) string {
+	t.Helper()
+	if explicit := strings.TrimSpace(os.Getenv(e2eCurrentTag)); explicit != "" {
+		if !isReleaseTag(explicit) {
+			t.Fatalf("invalid %s=%q: want semantic release tag", e2eCurrentTag, explicit)
+		}
+		return explicit
+	}
+	previous := strings.TrimSpace(os.Getenv(e2ePreviousTag))
+	if previous == "" {
+		previous = "v0.0.1"
+	}
+	parts := strings.Split(strings.TrimPrefix(previous, "v"), ".")
+	if len(parts) != 3 {
+		t.Fatalf("derive current tag from invalid previous tag %q", previous)
+	}
+	patch, err := strconv.Atoi(parts[2])
+	if err != nil {
+		t.Fatalf("derive current tag from invalid previous tag %q: %v", previous, err)
+	}
+	return fmt.Sprintf("v%s.%s.%d", parts[0], parts[1], patch+1)
 }
 
 func copySourceTree(source, target string) error {
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		return err
 	}
-	command := exec.Command("git", "-c", "safe.directory="+source, "-C", source, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	gitArgs := []string{"-c", "safe.directory=" + source, "-C", source, "ls-files", "--cached", "--others", "--exclude-standard", "-z"}
+	fencedWorkTree := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_WORK_TREE"))
+	fencedGitDir := strings.TrimSpace(os.Getenv("PFM_DEV_REPO_GIT_DIR"))
+	if fencedWorkTree != "" && fencedGitDir != "" && filepath.Clean(source) == filepath.Clean(fencedWorkTree) {
+		gitArgs = append([]string{"--git-dir=" + fencedGitDir, "--work-tree=" + fencedWorkTree}, gitArgs...)
+	}
+	command := exec.Command("git", gitArgs...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("enumerate source fixture files: %w: %s", err, strings.TrimSpace(string(output)))

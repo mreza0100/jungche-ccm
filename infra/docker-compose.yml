@@ -13,6 +13,9 @@ services:
       # and tests. Build/test outputs land in the cache volumes and container-HOME,
       # never the tree — an in-container write to /worktree fails loudly.
       - ${PFM_DEV_WORKTREE:?set by dev.sh iso — the worktree to fence}:/worktree:ro
+      # dev.sh resolves the active checkout's common Git directory and mounts it
+      # read-only so both main and linked worktrees retain git-backed gates.
+      - ${PFM_DEV_GIT_COMMON:?set by dev.sh iso — the common Git directory}:/pfm-git-common:ro
       - pfm-dev-gocache:/root/.cache/go-build
       - pfm-dev-gomod:/root/go/pkg/mod
       - pfm-dev-npm-cache:/root/.npm
@@ -23,6 +26,8 @@ services:
       PFM_DEV_FENCE: "1"
       # root-vs-uid1000 dubious ownership + an unmounted worktree gitdir break `git`-shelling go builds; pfm reports version "dev", so no VCS stamp is lost.
       GOFLAGS: "-buildvcs=false"
+      PFM_DEV_REPO_GIT_DIR: /pfm-git-common/${PFM_DEV_GIT_DIR_REL:?set by dev.sh iso — relative active gitdir}
+      PFM_DEV_REPO_WORK_TREE: /worktree
 
 volumes:
   pfm-dev-gocache:

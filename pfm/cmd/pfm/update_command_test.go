@@ -68,22 +68,37 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 		updateRunDoctor = oldDoctor
 	})
 	builds := 0
-	updateBuildCandidate = func(_ context.Context, _ string, output string) error {
+	updateBuildCandidate = func(_ context.Context, _ string, version, output string) error {
 		builds++
+		if version != "v0.10.0" {
+			t.Fatalf("build version=%q, want selected release v0.10.0", version)
+		}
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
 	installCalls, doctorCalls := 0, 0
-	updateApplyInstall = func(context.Context, commandRuntime, io.Writer, io.Writer) error {
+	updateApplyInstall = func(_ context.Context, candidate string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
 		installCalls++
+		if !strings.HasSuffix(candidate, "pfm-a") {
+			t.Fatalf("install candidate=%q, want first reproducible build", candidate)
+		}
+		if !skipHarvest {
+			t.Fatal("update did not propagate --skip-harvest to install")
+		}
 		return nil
 	}
-	updateRunDoctor = func(context.Context, commandRuntime, io.Writer, io.Writer) error {
+	updateRunDoctor = func(_ context.Context, candidate string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
 		doctorCalls++
+		if !strings.HasSuffix(candidate, "pfm-a") {
+			t.Fatalf("doctor candidate=%q, want first reproducible build", candidate)
+		}
+		if !skipHarvest {
+			t.Fatal("update did not propagate --skip-harvest to doctor")
+		}
 		return nil
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := runUpdate([]string{"--repo", repo}, &stdout, &stderr, runtime); code != 0 {
+	if code := runUpdate([]string{"--skip-harvest", "--repo", repo}, &stdout, &stderr, runtime); code != 0 {
 		t.Fatalf("runUpdate() code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	if builds != 2 {
@@ -97,6 +112,85 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	}
 	if got, err := os.ReadFile(unowned); err != nil || string(got) != "unowned\n" {
 		t.Fatalf("unowned binary=%q err=%v, want unchanged", got, err)
+	}
+}
+
+func TestUpdateBuildsSelectedTagIntoOwnedBinaryAndSkipsHarvestProvisioning(t *testing.T) {
+	jailTest(t)
+	repo := newTaggedBuildFixture(t)
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(runtime.Paths.Home, ".local", "bin", "pfm")
+	if err := os.WriteFile(canonical, []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.RecordCanonicalBinary(runtime.Paths.Home); err != nil {
+		t.Fatal(err)
+	}
+
+	previousInstaller := runInstaller
+	t.Cleanup(func() { runInstaller = previousInstaller })
+	var provisionHarvest bool
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		provisionHarvest = options.ProvisionHarvest
+		return installer.Report{}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"--skip-harvest", "--to", "v0.10.0", "--repo", repo}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("runUpdate() code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if provisionHarvest {
+		t.Fatal("update propagated harvest provisioning despite --skip-harvest")
+	}
+	if !strings.Contains(stdout.String(), "updated v0.10.0") {
+		t.Fatalf("update stdout=%q, want selected tag", stdout.String())
+	}
+
+	version := exec.Command(canonical, "version")
+	output, err := version.CombinedOutput()
+	if err != nil {
+		t.Fatalf("updated binary version: %v output=%q", err, output)
+	}
+	if got := strings.TrimSpace(string(output)); got != "pfm v0.10.0" {
+		t.Fatalf("updated binary version=%q, want selected tag v0.10.0", got)
+	}
+}
+
+func TestUpdateRunsPostBuildActionsThroughTheSelectedCandidate(t *testing.T) {
+	jailTest(t)
+	repo := newTaggedBuildFixture(t)
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(runtime.Paths.Home, ".local", "bin", "pfm")
+	if err := os.WriteFile(canonical, []byte("old\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.RecordCanonicalBinary(runtime.Paths.Home); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "candidate-argv.log")
+	t.Setenv("PFM_UPDATE_CANDIDATE_MARKER", marker)
+	previousInstaller := runInstaller
+	t.Cleanup(func() { runInstaller = previousInstaller })
+	runInstaller = func(_ context.Context, _ installer.Options) (installer.Report, error) {
+		return installer.Report{}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"--skip-harvest", "--to", "v0.10.0", "--repo", repo}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("runUpdate() code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read candidate action marker: %v", err)
+	}
+	if !strings.Contains(string(raw), "install") || !strings.Contains(string(raw), "doctor") {
+		t.Fatalf("post-build actions ran outside selected candidate; marker=%q", raw)
 	}
 }
 
@@ -122,13 +216,13 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 		updateApplyInstall = oldInstall
 		updateRunDoctor = oldDoctor
 	})
-	updateBuildCandidate = func(_ context.Context, _ string, output string) error {
+	updateBuildCandidate = func(_ context.Context, _ string, _ string, output string) error {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
-	updateApplyInstall = func(context.Context, commandRuntime, io.Writer, io.Writer) error {
+	updateApplyInstall = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
 		return errors.New("injected install failure")
 	}
-	updateRunDoctor = func(context.Context, commandRuntime, io.Writer, io.Writer) error {
+	updateRunDoctor = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
 		t.Fatal("doctor ran after install failure")
 		return nil
 	}
@@ -234,6 +328,44 @@ func newUpdateGitFixture(t *testing.T) string {
 	gitTemp(t, remote, "init", "--bare", "-q")
 	gitTemp(t, repo, "remote", "add", "origin", remote)
 	gitTemp(t, repo, "push", "-q", "origin", "HEAD", "--tags")
+	return repo
+}
+
+func newTaggedBuildFixture(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	gitTemp(t, repo, "init", "-q")
+	gitTemp(t, repo, "config", "user.email", "fixture.invalid")
+	gitTemp(t, repo, "config", "user.name", "fixture-identity")
+	mainPath := filepath.Join(repo, "pfm", "cmd", "pfm", "main.go")
+	if err := os.MkdirAll(filepath.Dir(mainPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "pfm", "go.mod"), []byte("module fixture.invalid/pfm\n\ngo 1.24\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The fixture command only needs version output. Keep the source small and
+	// deterministic so two staged update builds hash identically.
+	if err := os.WriteFile(mainPath, []byte("package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nvar version = \"dev\"\n\nfunc main() {\n\tif marker := os.Getenv(\"PFM_UPDATE_CANDIDATE_MARKER\"); marker != \"\" {\n\t\tfile, err := os.OpenFile(marker, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)\n\t\tif err != nil {\n\t\t\tpanic(err)\n\t\t}\n\t\tfmt.Fprintln(file, os.Args[1:])\n\t\t_ = file.Close()\n\t}\n\tfmt.Println(\"pfm\", version)\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTemp(t, repo, "add", ".")
+	gitTemp(t, repo, "commit", "-qm", "fixture previous release")
+	gitTemp(t, repo, "tag", "v0.9.0")
+	if err := os.WriteFile(filepath.Join(repo, ".e2e-current-source"), []byte("current\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTemp(t, repo, "add", ".e2e-current-source")
+	gitTemp(t, repo, "commit", "-qm", "fixture current release")
+	gitTemp(t, repo, "tag", "v0.10.0")
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	if err := os.MkdirAll(remote, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gitTemp(t, remote, "init", "--bare", "-q")
+	gitTemp(t, repo, "remote", "add", "origin", remote)
+	gitTemp(t, repo, "push", "-q", "origin", "HEAD", "--tags")
+	gitTemp(t, repo, "checkout", "-q", "v0.9.0")
 	return repo
 }
 

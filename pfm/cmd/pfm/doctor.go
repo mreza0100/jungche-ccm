@@ -58,8 +58,9 @@ func runDoctor(
 	stdout, stderr io.Writer,
 	runtime commandRuntime,
 ) int {
-	flags := newFlagSet("doctor", "usage: pfm doctor [--verbose]", stderr)
+	flags := newFlagSet("doctor", "usage: pfm doctor [--verbose] [--skip-harvest]", stderr)
 	verbose := flags.Bool("verbose", false, "write raw dependency probe output under tmp/")
+	skipHarvest := flags.Bool("skip-harvest", false, "exclude the optional harvestpy runtime from health")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -76,6 +77,7 @@ func runDoctor(
 	printDoctorConfig(stdout, runtime)
 	warnings += printEngineDoctor(stdout, runtime.Config)
 	warnings += printEngineCapabilities(stdout)
+	warnings += printMCPClientCutover(stdout, runtime)
 	if mcpConfigured(runtime) {
 		status, daemonErr := mcpDaemonReachability(runtime)
 		if daemonErr != nil {
@@ -133,7 +135,7 @@ func runDoctor(
 	warnings += printDependencyDoctor(ctx, stdout, deps.Registry(deps.Options{
 		Home: resolved.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
 		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
-	}), deps.ProbeOptions{VerboseDir: verboseDir})
+	}), deps.ProbeOptions{VerboseDir: verboseDir, SkipHarvest: *skipHarvest})
 	warnings += printHookDoctor(stdout, resolved.Home, runtime.Config)
 
 	version, err := database.UserVersion(ctx)
@@ -267,7 +269,11 @@ func runDoctor(
 			crumbInvalid,
 		)
 	}
-	warnings += printHarvestPythonDoctor(ctx, stdout, resolved.Home, harvestpy.Platform{}, configuredHarvestDoctor())
+	if *skipHarvest {
+		fmt.Fprintln(stdout, "doctor: harvestpy skipped (--skip-harvest)")
+	} else {
+		warnings += printHarvestPythonDoctor(ctx, stdout, resolved.Home, harvestpy.Platform{}, configuredHarvestDoctor())
+	}
 	warnings += printHarvestCacheDoctor(stdout)
 	if warnings != 0 {
 		fmt.Fprintf(stdout, "doctor: warnings=%d\n", warnings)
@@ -764,7 +770,7 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 		runtime.Config.Path,
 		runtime.Config.Exists,
 	)
-	fmt.Fprintf(stdout, "doctor: config version=%d (%s)\n", runtime.Config.Version, runtime.Config.Source("version"))
+	fmt.Fprintf(stdout, "doctor: config version=%d effective (input=%d %s)\n", runtime.Config.Version, runtime.Config.InputVersion, runtime.Config.Source("version"))
 	fmt.Fprintf(stdout, "doctor: config theme=%s (%s)\n", runtime.Config.Theme, runtime.Config.Source("theme"))
 	accounts := make([]string, 0, len(runtime.Config.Accounts))
 	for _, account := range runtime.Config.Accounts {
@@ -780,6 +786,31 @@ func printDoctorConfig(stdout io.Writer, runtime commandRuntime) {
 		fmt.Fprintf(stdout, "doctor: config %s=%t (%s)\n", key, runtime.Config.MCPServers[name].Enabled, runtime.Config.Source(key))
 	}
 	fmt.Fprintf(stdout, "doctor: config mcp.http.port=%d (%s)\n", runtime.Config.MCP.HTTP.Port, runtime.Config.Source("mcp.http.port"))
+}
+
+func printMCPClientCutover(stdout io.Writer, runtime commandRuntime) int {
+	warnings := 0
+	for _, report := range installer.InspectHarvesterClientCutover(runtime.Paths.Home, runtime.Config.MCP.HTTP.Port) {
+		switch report.State {
+		case installer.MCPClientAbsent, installer.MCPClientPFM:
+			continue
+		case installer.MCPClientUnreadable:
+			warnings++
+			fmt.Fprintf(stdout, "doctor: mcp client=%s harvester=unreadable error=%v\n", report.Client, report.Error)
+		default:
+			warnings++
+			fmt.Fprintf(
+				stdout,
+				"doctor: mcp client=%s harvester=%s warning=consumer cutover incomplete remediation=repoint to PFM, verify it, then remove the foreign registration\n",
+				report.Client,
+				report.State,
+			)
+		}
+	}
+	if warnings == 0 {
+		fmt.Fprintln(stdout, "doctor: mcp client-cutover=complete")
+	}
+	return warnings
 }
 
 // pfmPathWarnings checks both precedence and byte identity. A copied binary

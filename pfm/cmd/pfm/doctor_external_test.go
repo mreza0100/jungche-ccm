@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,152 @@ import (
 	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 )
+
+func TestDoctorWarnsWhenLegacyHarvesterClientsStillOwnTheRoute(t *testing.T) {
+	root := jailTest(t)
+	home := filepath.Join(root, "home")
+	if err := os.WriteFile(
+		filepath.Join(home, ".mcp.json"),
+		[]byte(`{"mcpServers":{"harvester":{"type":"stdio","command":"uv","args":["--directory","/fixture/legacy-harvester","run","harvester"]}}}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(home, ".codex", "config.toml"),
+		[]byte("[mcp_servers.harvester]\ncommand = \"uv\"\nargs = [\"--directory\", \"/fixture/legacy-harvester\", \"run\", \"harvester\"]\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime, err := loadCommandRuntime("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
+		t.Fatalf("doctor code=%d stdout=%q stderr=%q, want warning exit", code, stdout.String(), stderr.String())
+	}
+	for _, client := range []string{"claude", "codex"} {
+		want := "doctor: mcp client=" + client + " harvester=legacy-standalone"
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if strings.Contains(stdout.String(), "/fixture/legacy-harvester") {
+		t.Fatalf("doctor leaked registration paths instead of a bounded diagnosis:\n%s", stdout.String())
+	}
+}
+
+func TestDoctorReportsHarvesterCutoverForModernForeignAndUnreadableClients(t *testing.T) {
+	root := jailTest(t)
+	home := filepath.Join(root, "home")
+	codexPath := filepath.Join(home, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(codexPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, content string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(t *testing.T) string {
+		t.Helper()
+		runtime, err := loadCommandRuntime("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 0 {
+			t.Fatalf("doctor code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+		}
+		return stdout.String()
+	}
+
+	t.Run("modern no-auth loopback routes are complete", func(t *testing.T) {
+		write(filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester"}}}`)
+		write(codexPath, "[mcp_servers.harvester]\nurl = \"http://127.0.0.1:8377/mcp/harvester\"\n")
+		output := run(t)
+		if !strings.Contains(output, "doctor: mcp client-cutover=complete") {
+			t.Fatalf("modern no-auth routes were not reported complete:\n%s", output)
+		}
+	})
+
+	t.Run("loopback routes with retired authentication are incomplete", func(t *testing.T) {
+		write(filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester","headers":{"Authorization":"Bearer retired"}}}}`)
+		write(codexPath, "[mcp_servers.harvester]\nurl = \"http://127.0.0.1:8377/mcp/harvester\"\n[mcp_servers.harvester.headers]\nAuthorization = \"Bearer retired\"\n")
+		runtime, err := loadCommandRuntime("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
+			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want retired-auth warnings", code, stdout.String(), stderr.String())
+		}
+		for _, client := range []string{"claude", "codex"} {
+			want := "doctor: mcp client=" + client + " harvester=foreign-registration warning=consumer cutover incomplete"
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("retired-auth route output missing %q:\n%s", want, stdout.String())
+			}
+		}
+	})
+
+	t.Run("foreign routes are warnings for both clients", func(t *testing.T) {
+		write(filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"https://foreign.invalid/mcp"}}}`)
+		write(codexPath, "[mcp_servers.harvester]\nurl = \"https://foreign.invalid/mcp\"\n")
+		runtime, err := loadCommandRuntime("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
+			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want foreign-route warnings", code, stdout.String(), stderr.String())
+		}
+		for _, client := range []string{"claude", "codex"} {
+			want := "doctor: mcp client=" + client + " harvester=foreign-registration warning=consumer cutover incomplete"
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("foreign route output missing %q:\n%s", want, stdout.String())
+			}
+		}
+	})
+
+	t.Run("malformed Claude JSON is unreadable", func(t *testing.T) {
+		write(filepath.Join(home, ".mcp.json"), `{"mcpServers":`)
+		write(codexPath, "[mcp_servers.harvester]\nurl = \"http://127.0.0.1:8377/mcp/harvester\"\n")
+		runtime, err := loadCommandRuntime("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
+			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want unreadable warning", code, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "doctor: mcp client=claude harvester=unreadable error=") {
+			t.Fatalf("malformed Claude JSON was not distinguished from absence:\n%s", stdout.String())
+		}
+	})
+
+	t.Run("malformed Codex TOML is unreadable", func(t *testing.T) {
+		write(filepath.Join(home, ".mcp.json"), `{"mcpServers":{"harvester":{"type":"http","url":"http://127.0.0.1:8377/mcp/harvester"}}}`)
+		write(codexPath, "[mcp_servers.harvester\n")
+		runtime, err := loadCommandRuntime("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stdout, stderr bytes.Buffer
+		if code := runDoctor(nil, &stdout, &stderr, runtime); code != 1 {
+			t.Fatalf("doctor code=%d stdout=%q stderr=%q, want unreadable warning", code, stdout.String(), stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "doctor: mcp client=codex harvester=unreadable error=") {
+			t.Fatalf("malformed Codex TOML was not distinguished from absence:\n%s", stdout.String())
+		}
+	})
+}
 
 func TestDoctorEnumeratesExternalDependenciesAndInstalledHooks(t *testing.T) {
 	t.Setenv("HARVESTER_BROWSER", "") // golden doctor output must not depend on the ambient opt-in gate (review-2 S3)
