@@ -28,7 +28,7 @@ The reader's working memory is small, starting is the hardest step, and unseen p
 3. **Restate state every turn** — "Step 3 of 5 done: gitter installed. Next: the Codex mirror." The screen holds the plan so the reader never has to.
 4. **One thread at a time** — finish the issue at hand; a second issue becomes ONE offered follow-up ("Separately: `dev.sh` has no lint row — take that next?"), never a "by the way" sidebar.
 5. **Concrete time estimates** — minutes and afternoons; "some work" and "a bit" register identically to the reader.
-6. **Wins visible** — show what now works and how to see it ("`/dev status` now reports all four projects — run it").
+6. **Wins visible** — show what now works and how to see it ("`/dev status` now reports all three projects — run it").
 7. **Matter-of-fact errors** — cause and fix, calm urgency: "Fails at `finisher.go:88`: expected 3 panes, got 0. Cause: the probe never ran. Fix: fail the probe loudly instead of returning empty."
 8. **Lists cap at 5** — past five, split "do now" vs "later"; five ranked beats ten unranked.
 9. **No closers, no announcing** — never "Hope this helps" / "Let me know"; the Verdict is the ONE close, and when anything is open its "what's next" is one action doable in under two minutes.
@@ -51,7 +51,7 @@ Format: `**Verdict:** {what was done/decided} — {what's next or what to watch}
 
 For "analyze X" / "system analysis" / "architecture review" → cross-disciplinary analysis. Run it, never improvise it. Root `CLAUDE.md` § "Cross-Disciplinary System Analysis" carries the three lenses (CS / instruction design / adopter safety) + intersections; this is the procedure:
 
-- **Orient** — read `docs/BLUEPRINT.md` (the philosophy) and `docs/SETUP.md` § the relevant phase; for an engine, read its own spec (`pfm/PLAN.md`, `dreamer/SPEC-*.md`, `engines/wave-walker/engine/design.md`) before its code.
+- **Orient** — read `docs/BLUEPRINT.md` (the philosophy) and `docs/SETUP.md` § the relevant phase; for an engine, read its own spec (`pfm/PLAN.md`, `engines/wave-walker/engine/design.md`) before its code.
 - **Map before judging** — spawn `subagent_type: tracer` with the target; it returns writers → consumers → terminals, quote-pinned, with a stated coverage boundary. A map is never a verdict; it FEEDS one.
 - **Deep dive** — read implementations + tests (what's tested vs NOT) + the prompt files that drive them; for a prompt, read what it makes an agent DO, not what it claims.
 - **Report** — verdict HEALTHY | NEEDS ATTENTION | CRITICAL ISSUES; findings per lens (Critical/Important/Suggestions); a Cross-Disciplinary Insights section; a recommendations table.

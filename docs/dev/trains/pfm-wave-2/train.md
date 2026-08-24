@@ -58,7 +58,7 @@ spec — #20–#22's in-body references (#11, #20, #21, #22) all resolve inside 
 | #10 installer completeness | DONE — verified `settings.go:25-28` (4 hook commands), `:52-53` (`cleanupPeriodDays` 36500), `installer.go:197-202` (`pfm codex agents`) |
 | #11 e2e harness | **WAVE 1** — BUILT, not green: `pfm/e2e/{doc.go,README,install_e2e_test.go}`, `scripts/e2e-linux.sh`, `.github/workflows/install-verify.yml` exist in the tree; every local e2e run so far was compile-only (`-run '^$'`); closes at S5 (real local docker run) + S10 (CI, post-push). Call forms reconciled against #20's ruling in `waves/1-pfm-e2e-verification/ordering.md` |
 | #12 `pfm update` + `pfm init` | DONE — `update_command.go`, `init_command.go`, `installer/update_metadata.go` |
-| #13 blueprint persona / intuita diff / tokyo-night | **WAVE 2** — not started (`blueprint/themes/tokyo-night.json` absent) |
+| #13 blueprint persona / live-source diff / tokyo-night | **WAVE 2** — not started (`blueprint/themes/tokyo-night.json` absent) |
 | #14 retire `{FOUNDER_NAME}` | **WAVE 2** — not started (84 occurrences across 18 files); flag **F2**, dispatches only after ruling R2 |
 | #15 epic-inject hook | DONE — `epic_inject_command.go` + `store/migration_v5.sql` |
 | #16 register the invariant | **WAVE 2, HELD** — not started; flag **F3** |

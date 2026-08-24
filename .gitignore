@@ -7,7 +7,9 @@ node_modules/
 !.env.example
 /tmp/
 engines/wave-walker/engine/tmp/
-engines/wave-walker/engine/dist/
+# Reproducible cross-runtime candidates are rebuilt locally. The immutable
+# legacy bundle and the explicit active pointer remain tracked release inputs.
+engines/wave-walker/engine/dist/cross-workflow/
 engines/wave-walker/engine/headless-equivalence-input.json
 engines/wave-walker/engine/runtime-smoke-input.json
 .worktrees/

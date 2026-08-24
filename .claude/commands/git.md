@@ -1,19 +1,19 @@
 ---
 name: git
-description: Gateway to gitter, the only agent allowed to run git WRITES — routes commit/push/pull/tag to gitter phases and forwards anything else git-related as freeform. Route ALL git WRITES here; read-only git (status/diff/log/show/rev-parse) runs directly.
+description: Git gateway — routes commit/push/pull/tag to gitter when available; when unavailable, the active main Codex chat may perform scoped Git writes after explicit current-turn user authorization. Subagents stay read-only; publication remains explicit-request-only.
 argument-hint: [commit|push|pull|tag|freeform request]
 ---
 
-# Git — Gitter Gateway
+# Git — Authorized Writer Gateway
 
-Talk to gitter: $ARGUMENTS
+Handle: $ARGUMENTS
 
-Spawn the `gitter` agent (`subagent_type: gitter`) with a brief read off `$ARGUMENTS`; the user's words travel verbatim — gitter interprets them, this command never does.
+Use `gitter` when it is registered. If it is unavailable, the active main Codex chat may execute the requested write only when the user explicitly authorized it in the current turn; first read `.claude/agents/gitter.md` and follow its phase protocol, banned-command list, scoped path discipline, and pre-push gate. Subagents and OpenCode remain read-only.
 
 - starts with `commit` — `Phase: COMMIT`. The brief names the **exact paths** to commit and the verification that ran (which `/dev test` passed, or "docs only"). An unnamed path set is not a commit brief.
 - starts with `push` — `Phase: PUSH`, `$MESSAGE` set to the text after `push`, or empty
 - starts with `pull` — `Phase: PULL`
 - starts with `tag` — `Phase: TAG`, carrying the version
-- anything else, empty included — name no Phase; the brief opens `The user ran /git with the following request:` and quotes `$ARGUMENTS`. Gitter handles a Phase-less brief as freeform.
+- anything else, empty included — name no Phase; quote `$ARGUMENTS` verbatim to gitter, or handle it directly under the same fallback boundary.
 
-`/git push`, `/git tag`, or a user request that plainly says to push / publish / release, is the only thing that may name `Phase: PUSH` or `Phase: TAG` — `agents/gitter.md` § Remote Publication Boundary governs, and this repo is public.
+`/git push`, `/git tag`, or a user request that plainly says to push / publish / release is the only authority for `Phase: PUSH` or `Phase: TAG` — `.claude/agents/gitter.md` § Remote Publication Boundary governs, and this repo is public.

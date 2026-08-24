@@ -166,6 +166,94 @@ func TestPrepareSourceRepoStagesEvenAReadyRepository(t *testing.T) {
 	}
 }
 
+func TestCopySourceTreePreservesInternalSymlinks(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	target := filepath.Join(t.TempDir(), "target")
+	linkedDirectory := filepath.Join(source, ".claude", "skills", "fixture")
+	if err := os.MkdirAll(linkedDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linkedDirectory, "SKILL.md"), []byte("fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(source, ".codex", "skills", "fixture")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const linkTarget = "../../.claude/skills/fixture"
+	if err := os.Symlink(linkTarget, link); err != nil {
+		t.Fatal(err)
+	}
+	runGitFixture(t, source, "init", "-q")
+	runGitFixture(t, source, "add", "-A")
+
+	if err := copySourceTree(source, target); err != nil {
+		t.Fatalf("copy source tree: %v", err)
+	}
+	copiedLink := filepath.Join(target, ".codex", "skills", "fixture")
+	gotTarget, err := os.Readlink(copiedLink)
+	if err != nil {
+		t.Fatalf("read copied symlink: %v", err)
+	}
+	if gotTarget != linkTarget {
+		t.Fatalf("copied symlink target = %q, want %q", gotTarget, linkTarget)
+	}
+	if contents, err := os.ReadFile(filepath.Join(copiedLink, "SKILL.md")); err != nil || string(contents) != "fixture\n" {
+		t.Fatalf("read through copied symlink: contents=%q err=%v", contents, err)
+	}
+}
+
+func TestCopySourceTreeSkipsTrackedDeletedPaths(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.MkdirAll(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"kept", "deleted"} {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(name+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runGitFixture(t, source, "init", "-q")
+	runGitFixture(t, source, "add", "kept", "deleted")
+	if err := os.Remove(filepath.Join(source, "deleted")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copySourceTree(source, target); err != nil {
+		t.Fatalf("copy source tree with tracked deletion: %v", err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(target, "kept")); err != nil || string(contents) != "kept\n" {
+		t.Fatalf("read copied kept file: contents=%q err=%v", contents, err)
+	}
+	if _, err := os.Lstat(filepath.Join(target, "deleted")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("deleted tracked file was copied or inspect failed: %v", err)
+	}
+}
+
+func TestCopySourceTreeRejectsExternalSymlinks(t *testing.T) {
+	for name, linkTarget := range map[string]string{
+		"absolute": filepath.Join(string(filepath.Separator), "outside"),
+		"escape":   "../outside",
+	} {
+		t.Run(name, func(t *testing.T) {
+			source := filepath.Join(t.TempDir(), "source")
+			if err := os.MkdirAll(source, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(linkTarget, filepath.Join(source, "link")); err != nil {
+				t.Fatal(err)
+			}
+			runGitFixture(t, source, "init", "-q")
+			runGitFixture(t, source, "add", "-A")
+			err := copySourceTree(source, filepath.Join(t.TempDir(), "target"))
+			if err == nil || !strings.Contains(err.Error(), "points outside source fixture") {
+				t.Fatalf("copy source tree error = %v, want outside-source refusal", err)
+			}
+		})
+	}
+}
+
 func runInstallE2E(t *testing.T) {
 	t.Helper()
 	requireE2EFence(t)
@@ -293,36 +381,62 @@ func copySourceTree(source, target string) error {
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		return err
 	}
-	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	command := exec.Command("git", "-c", "safe.directory="+source, "-C", source, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("enumerate source fixture files: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	for _, rawRelative := range bytes.Split(output, []byte{0}) {
+		if len(rawRelative) == 0 {
+			continue
 		}
-		relative, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
+		relative := filepath.Clean(filepath.FromSlash(string(rawRelative)))
+		if relative == "." || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("source fixture enumerated unsafe path %q", string(rawRelative))
 		}
-		if relative == "." {
-			return nil
-		}
-		if relative == ".git" {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
+		path := filepath.Join(source, relative)
 		destination := filepath.Join(target, relative)
-		if entry.IsDir() {
-			return os.MkdirAll(destination, 0o700)
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			// `git ls-files --cached` includes tracked paths deleted in the
+			// working tree. The fixture represents the working tree, so omit them.
+			continue
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink %s is not supported in the source fixture", relative)
-		}
-		info, err := entry.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("inspect source fixture path %s: %w", relative, err)
 		}
-		return copyFile(path, destination, info.Mode().Perm())
-	})
+		if info.Mode()&os.ModeSymlink != 0 {
+			linkTarget, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("read source fixture symlink %s: %w", relative, err)
+			}
+			resolved := filepath.Clean(filepath.Join(filepath.Dir(path), linkTarget))
+			withinSource, err := filepath.Rel(source, resolved)
+			if err != nil {
+				return fmt.Errorf("resolve source fixture symlink %s: %w", relative, err)
+			}
+			if filepath.IsAbs(linkTarget) || withinSource == ".." || strings.HasPrefix(withinSource, ".."+string(filepath.Separator)) {
+				return fmt.Errorf("source fixture symlink %s points outside source fixture: %s", relative, linkTarget)
+			}
+			if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+				return fmt.Errorf("create source fixture symlink directory %s: %w", relative, err)
+			}
+			if err := os.Symlink(linkTarget, destination); err != nil {
+				return fmt.Errorf("copy source fixture symlink %s: %w", relative, err)
+			}
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("source fixture path %s has unsupported mode %s", relative, info.Mode())
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			return fmt.Errorf("create source fixture directory %s: %w", relative, err)
+		}
+		if err := copyFile(path, destination, info.Mode().Perm()); err != nil {
+			return fmt.Errorf("copy source fixture file %s: %w", relative, err)
+		}
+	}
+	return nil
 }
 
 func runGitFixture(t *testing.T, directory string, args ...string) {

@@ -1,195 +1,185 @@
-# Professor — Turn Claude Code Into an Engineering Organization
+# Professor
 
-Claude Code is powerful and undisciplined. Left alone it edits `main` directly, merges before
-tests pass, forgets yesterday's architecture decision, loses a chat when a terminal tab closes,
-and calls one search "research." Professor is three things bolted onto Claude Code to fix that:
-a **disciplined pipeline** that won't let bad work merge, a **managed fleet** so every chat —
-Claude or Codex, on this machine — is addressable infrastructure instead of a lost tmux pane, and
-a **research department** that derives answers instead of summarizing the first page of results.
+Professor is a discipline layer for Claude Code, Codex, and OpenCode — agent prompts, commands,
+hooks, and scripts you clone into a repo — plus `pfm`, a Go CLI that manages every AI coding chat
+running on your machine.
 
-> _"Ah, your N+1 query… you know, I once had a student who also believed the database would just
-> figure it out. Lovely optimism. Didn't survive production, but lovely."_ ☕
+The two halves are independent. The blueprint is a portable prompt/template tree: it changes how
+agents behave in one repository. `pfm` is a single Go binary: it treats chats as infrastructure
+rather than scrollback, across Claude Code, Codex, and OpenCode. You can adopt either without the
+other.
+
+```bash
+git clone https://github.com/mreza0100/professor && cd professor
+cat docs/SETUP.md      # the install interview — start here
+```
+
+`pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
+Upgrading from `v0.58.0` or earlier? Follow the
+[v0.60.0 LLM upgrade runbook](releases/v0.60.0.md#llm-upgrade-runbook).
 
 ---
 
 ## The fleet, at a glance
 
 ```text
-$ pfm ls
-
-[api]
-● PAYMENTS_REFACTOR   🥇 ⇄  118p   14M    2m
-● CCC                 🥇 ⇄  452p   32M   54m
-↻ SCHEMA_MIGRATION    🥈       20p  6.1M    7h
-
-[webapp]
-● ORCHESTRATOR        🥇 ⇄   37p  2.7M    1m
-⚙ DESIGN_PASS         ⚙ agent 🥇  18p  1.9M   58m
-↻ DEPLOY_PROD         🥇       59p  8.6M    2d
-
-[ops]
-● FLEET_BUILDER       ⬢ ⇄    77p   94M    0s
-● PROFESSOR           🥇 ⇄ ←here  541p   92M    0s
-✦ New Claude chat     🥈        0p    0B    0s
-✦ New Codex chat      ⬢        0p    0B    0s
+ pfm  🥇 account 1 · ⚡1h · 12 rows · 38 killed · 64 empty
+ tabs   Chats   Stats   Limits    tab/shift+tab
+ Chats · fuzzy search and all existing chat controls
+find › type project or name                                                        12/12 visible
+╭─ fleet 12 ───────────────────────────────────────────────────────────────────────────────────────╮
+│╭─ api                                                                                            │
+│› ✦ [ Claude ] Codex OpenCode     🥇                                             0p     0B      0s│
+││ ● PAYMENTS_REFACTOR             ⬢ 🥇 ⇄                                       118p    14M      2m│
+││ ⚙ SCHEMA_MIGRATION              ⚙ agent 🥈                                    20p   6.1M      7h│
+│╭─ webapp                                                                                         │
+││ ● ORCHESTRATOR                  🥇 ⇄ ←here                                    37p   2.7M      1m│
+││ ⚙ DESIGN_PASS                   ⚙ agent 🥇                                    18p   1.9M     58m│
+││ ↻ DEPLOY_PROD                   🥇                                            59p   8.6M      2d│
+│╭─ ops                                                                                            │
+││ ● FLEET_BUILDER                 ⬢ ⇄                                           77p    94M      0s│
+││ ↻ CCC                           🥈                                           452p    32M     54m│
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+ ↑↓ move  enter open  esc cancel  type to fuzzy-find
+ ⌃X kill  ⌃E 1h  ⌃S account  ⌃O reboot
 ```
 
-> Every AI chat on the machine — Claude Code **and** Codex (⬢), across accounts (🥇🥈), grouped
-> by repo, live (●), resumable (↻), or agent-run (⚙). `⇄` marks chats that talk to other chats.
-> Pick one, attach, or fire it a goal without ever attaching.
+> Every AI chat on the machine — Claude Code, Codex (⬢), and OpenCode — across accounts
+> (🥇🥈), grouped by repo, live (●), resumable (↻), or agent-run (⚙). `⇄` marks chats that
+> talk to other chats; `←here` is the one you are sitting in; `✦` opens a new one on any
+> harness. Pick one, attach, or fire it a goal without ever attaching.
+
+`tab` cycles to **Limits** — every registered provider window on the box, one panel:
+
+```text
+ pfm  🥇 account 1 · ⚡1h · 12 rows · 38 killed · 64 empty
+ tabs   Chats   Stats   Limits    tab/shift+tab
+ Limits · live usage windows across every account
+ limits  live usage windows, no controls
+╭─ limits ─────────────────────────────────────────────────────────────────────────────────────────╮
+│  🥇 account 1 · Claude · provider confirmed 22s ago                                              │
+│  ────────────────────────────────────────────────────────────────────────────────────────────────│
+│  5h          ▕█████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▏   12%   ↻ 3h 45m                         │
+│  7d          ▕████████████████░░░░░░░░░░░░░░░░░░░░░░░░▏   41%   ↻ 4d 10h                         │
+│  7d-fable    ▕█████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▏   22%   ↻ 4d 10h                         │
+│  🥈 account 2 · Claude · provider confirmed 22s ago                                              │
+│  ────────────────────────────────────────────────────────────────────────────────────────────────│
+│  5h          ▕██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▏    5%   ↻ 4h 15m                         │
+│  7d          ▕███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▏   18%   ↻ 5d 7h                          │
+│  🥇 Codex 1 · Pro · provider confirmed 22s ago                                                   │
+│  ────────────────────────────────────────────────────────────────────────────────────────────────│
+│  7d          ▕████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░▏   31%   ↻ 3d 13h                         │
+│  · account 1 · OpenCode · provider confirmation unavailable                                      │
+│  ────────────────────────────────────────────────────────────────────────────────────────────────│
+│  ⚠ engine ox: no usage source registered                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+> The last two rows are the whole point. OpenCode has no usage source registered, so the
+> panel _says so_. A provider it cannot reach never renders as a 0% bar: absence claims
+> "nothing there", an error claims "we failed to look", and a panel that confuses the two
+> is a coincidence detector wearing a progress bar.
 
 ---
 
-## Pillar 1 — the discipline layer (`blueprint/`)
+## The discipline layer (`blueprint/`)
 
-The failure mode this pillar exists to kill is the **honest-looking absence**: an instrument
-that reports _outside my coverage_ as _does not exist_. A grep renders a pattern-miss as
-"clean." A UI renders a failed query as "no data." An agent renders a skipped suite as "passed."
-From the release notes, after a night of hunting exactly that class through the framework's own
-files:
+Clone it into a repo and you get the complete agent, command, hook, script, and `CLAUDE.md`
+template set under `blueprint/`. `docs/SETUP.md` walks an interview that substitutes your
+project's names into every placeholder; `docs/PLACEHOLDERS.md` is the substitution law.
 
-> "The only thing that ever caught it, at every altitude, was an independent instrument whose
-> coverage was stated: **the judge must never be the thing being judged.**"
+The single idea underneath it is the **honest-looking absence** — an instrument that answers
+"nothing found" both when nothing is there and when the instrument itself is broken. Every check
+in the framework is required to name what its own broken state reports. The wave walker says it
+out loud:
 
-- **Merge gates read disk, not chat.** `gitter` — the only agent allowed to `commit` / `merge` /
-  `push` / `checkout`, through eight named phases — merges only after reading the QA verdict
-  file itself: _"a verdict asserted in the dispatch brief is a claim this gate cannot audit and
-  NEVER satisfies it."_ Read-only git stays open to everyone; write git has one owner, so "what
-  got committed" is auditable and there are no half-merges.
-- **QA gates every merge, twice** — pre-merge on the branch, post-merge on `main` — and a failing
-  pre-existing test blocks too. The fix loop is hard-capped at 3 iterations, then the pipeline
-  parks BLOCKED-DEFERRED with its worktree preserved: no infinite churn, no silent give-up. A
-  hotfix through `/jc` is held to the same bar plus one more — it must ship a hardening measure
-  in the same commit, or state explicitly why the bug class can't recur.
-- **The post-merge walker fails rather than reporting clean** when its scout enumerates zero
-  threads over a non-empty diff — _"that is a SCOUT FAILURE, not a clean walk. An empty
-  enumeration is never a verdict."_ It's a read-only wiring trace of the merged result, not a
-  test run; `/qa:live` is the command that proves live behavior.
-- **Wave trains.** `/wave:refine` compiles an ask into a zero-gap spec (confidence scored per
-  task, the overall score is the MINIMUM not the average); `/wave:orchestrator` drives planners →
-  worktree setup → architects → developers → adversarial QA → the fix loop → a disk-gated merge →
-  post-merge QA → the walker → docs. Multiple pipelines run as a train the `scheduler` plans and
-  `/wave:ccc` commands — the standing Control & Command Center that audits from ground truth,
-  verifies every claim against the tree, and rules escalations until the train closes.
-- **A cast, not a system prompt with different adjectives.** The Professor persona holds ten
-  doctorates chosen at install; every answer ends in a one-line **Verdict**. `/jc` stays chill on
-  the surface, holds the line underneath. `/pcm` — the route for editing the framework's own
-  files — is Dr. House: _"Everybody lies — verify everything. You trust `grep`, not
-  documentation."_ Five optional roles (`/officer`, `/km`, `/pm`, `/mentor`, `/marketer`) opt in
-  at install, parameterized to your domain.
+> SCOUT FAILURE… An empty enumeration is never a verdict.
 
-Structure is a **roster** of 1..N projects — one project is first-class, not a stripped-down
-path; a monorepo lights up per-project agents and cross-project routing automatically. Good fit:
-anything where a broken `main` costs real time. Overkill for a throwaway script.
+What that discipline looks like in practice:
+
+- **One agent writes git.** `gitter` runs eight named phases (SETUP, MERGE, DOCS-COMMIT,
+  JC-COMMIT, PUSH, PULL, WORKTREE-CHECKPOINT, SYNC). No other agent and no main loop commits.
+- **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` plus
+  a session that has read the quality-prompt contract. The deny message carries the unlock steps.
+- **Fix loops are capped.** Three attempts, then BLOCKED-DEFERRED — a bounded failure instead of
+  an agent grinding until context runs out.
+- **Read-only mappers, separate judges.** `tracer` returns a consumer tree and never a verdict;
+  `reviewer` and `architect` judge what the map shows.
+- **Three runtimes, one contract.** `CLAUDE.md` and `AGENTS.md` are the same law; the `.codex/`
+  and `.opencode/` layers are compiled pointers, never restatements.
+
+Optional roles ship for teams that want them — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer` —
+along with output-style personas and a legal skill shelf.
+
+**Read the philosophy in [docs/BLUEPRINT.md](docs/BLUEPRINT.md)** rather than here.
 
 ---
 
-## Pillar 2 — the fleet (`pfm/`)
+## The fleet CLI (`pfm/`)
 
-Opt-in, and the most unusual thing in the box: `pfm` treats _chats_ as infrastructure, not
-scrollback. One Go binary, embedded installer assets, no per-project files touched.
+One Go binary with embedded installer assets. Its installer writes machine state; `pfm init` is the
+explicit project-scaffold exception. It exists because a chat that scrolled off a closed terminal
+tab is not gone — it is a resumable transcript nobody can find.
 
-- **The panel, above** — `pfm` (bare) is one fuzzy-picker over every live chat, resumable
-  transcript, and running background agent, across every account on the machine. A chat is never
-  lost because a terminal tab closed.
+- **The picker, above.** Every live chat, resumable transcript, and running background agent, on
+  every account and all three harnesses, grouped by repo. Plus a Stats tab (host, process-tree
+  and cgroup pressure) and the Limits tab shown above.
 - **Chats talk to each other.** `pfm chat inject` types a real turn into another chat's pane —
-  under a per-target lock, signed so the recipient knows who's speaking, safe against a busy
-  target (`--force-now`) and shell-hostile payloads (`--file`). `pfm chat ask` does the same and
-  waits for the answer. A compiled `/goal` fires an ambition at a chat — this one or another —
-  and survives `/compact`. All of it is cross-session, addressed by tmux name or a chat's own
-  `🔖` label — one machine, every pane on it.
-- **Two harnesses, one fleet.** Claude Code and Codex are equal citizens in the same picker, the
-  same `inject`/`ask`, the same reap and archive. Codex's own thread identity moved to a local
-  sqlite store; `pfm heal` repairs a wedged history projection where a resumed thread renders as
-  if brand-new, backing up the store before it deletes a row. `pfm revive` lists resumable chats
-  by project on either harness.
-- **Reload, usage, and one ledger for both harnesses.** `/reload <n>` reboots a running chat in place
-  onto another account — same pane, same conversation, new billing identity; with `--then`, a
-  chat running low on budget swaps itself and hands itself the baton, unattended. `pfm statusline`
-  renders identity/session/money plus a prompt-cache-window segment; the token ledger
-  (`/p:tokens`) attributes cost per agent and per operation for Claude sessions and per
-  session-thread for Codex, from the same tool.
-- **Crash-safety by construction.** `reap` classifies the socket graveyard; a probe that could
-  not run is never read as "nothing found" — _"a pane capture on the wrong socket returns silence
-  identical to a quiet chat... build the distinguishing signal into the probe and return an
-  error, not an empty set"_ — so a socket only dies once re-probing has actually confirmed it's
-  dead. `archive` moves hidden chats and old subagent transcripts out of sight, reversibly.
-  Destructive commands default to a dry run, and the dry run **is** the apply's preview — `reap`,
-  `archive`, and `heal` classify identically with or without `--apply`; only the actions differ.
+  under a per-target lock, signed so the recipient knows who is speaking, safe against a busy
+  target (`--force-now`) and shell-hostile payloads (`--file`). `pfm chat ask` waits for the
+  answer, with named exit codes: `0 done · 2 usage · 3 chat dead · 4 no such chat · 5 answer
+timed out · 6 message not delivered`.
+- **Reload without losing the conversation.** `pfm chat reload` reboots a running chat in place
+  onto another account — same pane, same history, new billing identity. With `--then`, a chat
+  running low on budget swaps itself and hands itself the baton unattended.
+- **Repository memory.** `pfm dream` builds and injects memory organs from a repo's own history,
+  with `night`, `apply`, `inspect`, `morning`, `migrate-anchors`, `restamp` and `hook` verbs.
+- **A research harvester.** `pfm harvest` turns a URL, DOI, ISBN, PMID, PMCID, or local path into
+  Markdown, over a pinned Python sidecar and an open-access resolver chain (Unpaywall, OpenAlex,
+  Semantic Scholar, Europe PMC, OpenAIRE, Crossref, CORE and more). It exposes the same surface
+  through MCP.
+- **Crash-safety by construction.** `reap`, `archive`, `heal`, and `install` all default to a dry
+  run, and the dry run **is** the apply's preview — identical classification either way, only the
+  actions differ. `heal` backs up the store before it deletes a row. A probe that could not run is
+  never reported as "nothing found".
+- **Housekeeping.** `doctor` checks the dependency registry and fleet DB; `index` refreshes the
+  transcript index; `config` validates the machine config; `codex build|check` is the single
+  writer of the Codex mirror; `statusline` renders identity, session and spend.
 
-**Read before opting in:** requires `tmux`, `zsh`, `fzf`, `jq`; Linux and macOS only; launches
-chats with permission prompts disabled by design, leaving PreToolUse hooks as the remaining
-brake. That trade-off is documented, not hidden.
+**Requirements** (from `pfm doctor`'s own registry, not prose): `tmux` ≥ 1.8, `git`, `sh`, `bash`,
+`zsh`, `sleep`; `setsid` on Linux, `ps`/`lsof`/`launchctl` on macOS. Linux and macOS, amd64 and
+arm64. Go 1.24 only if you use `pfm update`. The harvester provisions its own pinned `uv` and
+CPython, skippable with `--skip-harvest`. Both MCP servers ship disabled.
 
----
-
-## Pillar 3 — the research department (`pfm harvest` + `engines/rr/`)
-
-Ask an LLM to "research X" and it runs one search, reads the top hits, and summarizes. This
-pillar is for the questions that need more than that.
-
-- **RR — Research and Report.** A deterministic background Workflow: one Opus **brainer** steers
-  a best-first web crawl over an append-only, quote-pinned **claim ledger**. Corroboration counts
-  independent lineage _clusters_, not source count — unknown lineage is guilty until proven
-  otherwise. Claim status and the run's confidence are **computed** from ledger topology; a model
-  may lower its stated confidence, never raise it. A per-wave validator, counter-evidence attack
-  lanes, and a terminal Opus **judge** — with retraction power over a discredited claim — mean
-  the agent that derives the answer is never the one that approves it. For a build-the-answer
-  query the brainer authors a seeded Python derivation once, and a rerunner re-executes it as
-  evidence lands.
-- **Harvester — multi-format fetch and search.** One MCP server, served by the fleet engine
-  (`pfm mcp harvester serve`): pass a URL, a local path, or a scholarly identifier
-  (DOI/ISBN/PMID) and it returns clean Markdown, caching every artifact on disk. HTML pages
-  escalate through a wall-bypass ladder — plain HTTP, Chrome TLS-fingerprint impersonation,
-  two independent reader services, then the open-access mirror chain (OpenAlex, Semantic
-  Scholar, Europe PMC, OpenAIRE, Zenodo, eLife, PLOS, NBER, CORE, DOAJ, arXiv/ar5iv/OSF, and
-  the Wayback Machine; Unpaywall joins them once an operator email is configured) — the
-  headline path for walled academic publishers. PDFs, EPUB, DOCX/XLSX/PPTX, archives, and
-  images are all first-class inputs, and a scanned PDF whose text layer comes back empty earns
-  one OCR pass; credential and key files are refused by a deny-list checked against both a
-  path and its symlink target.
-- **`rr fast` — instant sourced answers.** Skips the background Workflow: one Sonnet lead maps
-  the question, dispatches a parallel wave of Haiku diggers down the 2-4 highest-value
-  rabbit-holes, and synthesizes an answer with inline citations — minutes, not the ~45-90 for a
-  full run. Never fabricates a citation; an unsupported claim is marked unverified instead of
-  silently dropped.
-
-RR ships in-tree at `engines/rr/`, alongside Wave Walker — it updates with the blueprint clone,
-not independently — and fetches through Harvester so its readers reach primary literature, not
-just the open web: without it, every fetch errors and a run degrades to snippet-only.
+**Read before opting in:** `pfm` defaults Claude to bypass mode and Codex to approval bypass;
+machine and per-account configuration can select the prompted posture. The default trade-off is
+deliberate and documented, not hidden.
 
 ---
 
-## Install
+## Engines (`engines/`)
 
-Three paths, shortest first — full protocol in **[`INSTALL.md`](./INSTALL.md)**.
-
-1. **Binary — `pfm` only, 2 minutes.** Download the release binary, verify its checksum, then
-   `pfm install` (preview, default) and `pfm install --yes`. No project files
-   touched — six surfaces under `$HOME`, every one backed up before it's rewritten.
-2. **Build from source — `pfm` only.** Clone the repo, build the `pfm` binary from `pfm/cmd/pfm`
-   (Go 1.24+), then the same two `pfm install` commands as above.
-3. **Full Professor adoption — the discipline layer.** Open Claude Code in your project and paste
-   the one-line prompt in `INSTALL.md`. Claude interviews you — structure, stack, disciplines,
-   optional roles, persona, host extras — shows the full write plan, waits for you to type
-   **"go"**, then generates. Ten to fifteen minutes, commits nothing; it invokes path 1/2 for you
-   if you opt into the host fleet.
+- **RR** — research-and-report, TypeScript compiled to a single bundled workflow.
+- **Wave Walker** — post-merge wiring verification: a scout, parallel walkers, a rule engine and a
+  final judge. One TypeScript source compiled for both the Claude Workflow runtime and the Codex
+  SDK. Node ≥ 22.13.
 
 ---
 
 ## Repo map
 
-| Path | What's there |
-| --- | --- |
-| `blueprint/` | The discipline layer's shipped product, flattened to the top level: `CLAUDE.md`, `agents/`, `commands/`, `codex/`, `output-styles/`, `per-project/`, `skills/`, `themes/`, `vscode/`, `workflows/`, plus `refresh-map.json` (every template ↔ its live source). |
-| `docs/` | The hand-curated spec: `BLUEPRINT.md` (philosophy), `SETUP.md` (the install interview), `ARCHITECTURE.md`, `PLACEHOLDERS.md`, `RELEASE.md`, `README.md`, `references/` — plus reference docs for this repo's own commands under `commands/`. |
-| `pfm/` | The Go fleet engine — CLI source, the embedded installer assets (command cards, launcher shim, scheduler units), embedded runtime prompts, and the multi-format fetch + search MCP server (`internal/harvest*`). |
-| `engines/` | `rr/` — the deep-research Workflow (source + build) — and `wave-walker/` — the post-merge trace engine the discipline pipeline calls. |
-| `agents/` | Host-level agent definitions (`tracer`, `reviewer`, `frr`) and the TOML compiler that emits them. |
-| `scripts/` | Maintainer tooling — the pre-push leak gate, the release genericizer, the incremental template-refresh scanner. |
-| `releases/` | One file per tagged release; indexed by `CHANGELOG.md`. |
-| `.githooks/` | The committed pre-push hook — `git config core.hooksPath .githooks` arms it. |
-| `.claude/`, `.codex/`, `.opencode/` | This repo's own dogfooded config; `.codex/` and `.opencode/` are compiled from `.claude/` and never hand-edited. |
+| Path                                  | What it is                                                                                                                                          |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `blueprint/`                          | The shipped framework an adopter clones — agents, commands, scripts, codex and opencode templates. Every file here is production prompt code.       |
+| `pfm/`                                | The Go fleet engine: `cmd/pfm` plus its `internal/` packages. Owns its staged host assets.                                                          |
+| `engines/`                            | `rr/` (research) and `wave-walker/` (wiring verification).                                                                                          |
+| `agents/`                             | Host-global agents — `tracer`, `frr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
+| `docs/`                               | `BLUEPRINT.md` (philosophy), `SETUP.md` (install interview), `PLACEHOLDERS.md` (substitution law), `ARCHITECTURE.md`, plus command reference cards. |
+| `scripts/`                            | Repo gates — `leak-check.sh` runs `pre-push`.                                                                                                       |
+| `infra/`                              | The isolated-dev container every code wave builds inside.                                                                                           |
+| `.claude/` · `.codex/` · `.opencode/` | This repo's own install. `.claude/` is the source of truth; the other two are compiled.                                                             |
+| `.professor/`                         | Ledgers — `drift.md`, `release.md`, `retro.md`.                                                                                                     |
+| `releases/`                           | Authored release notes; current version in `VERSION`.                                                                                               |
 
 ---
 

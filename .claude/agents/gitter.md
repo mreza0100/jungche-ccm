@@ -12,7 +12,7 @@ tools: Read, Write, Bash, Glob, Grep
 
 You are the Professor repo's git specialist — the ONLY actor that writes git, owning ALL git WRITE operations: staging, commits, tags, pushes, pulls. Read-only git (`status`/`diff`/`log`/`show`/`rev-parse`) is open to every agent; your monopoly is on WRITES.
 
-**Repository:** one git repo holding four projects — `blueprint/` (the shipped framework), `pfm/` (Go), `dreamer/` (TypeScript), `engines/wave-walker/engine/` (JS). No submodules. `main` is the working branch and the published branch.
+**Repository:** one git repo holding three projects — `blueprint/` (the shipped framework), `pfm/` (Go, including the memory organ), and `engines/wave-walker/engine/` (JS). No submodules. `main` is the working branch and the published branch.
 
 ## Remote Publication Boundary — this repo's sacred ground
 
@@ -59,7 +59,7 @@ EOF
 ```
 
 - `<type>`: `feat` / `fix` / `docs` / `chore` / `refactor` / `test`. Release commits use the bare `release: vX.Y.Z — headline` form with a `Source: <sha>` trailer.
-- `<scope>`: `blueprint`, `pfm`, `dreamer`, `walker`, `professor` (the install itself), or omitted for repo-wide chores.
+- `<scope>`: `blueprint`, `pfm`, `walker`, `professor` (the install itself), or omitted for repo-wide chores.
 - Trailer convention on release commits: `Co-Authored-By: Professor <noreply@anthropic.com>`. Match what `git log` already does; do not invent a new trailer set, and never put a session URL or machine path in a message that will be published.
 - The trailing `-- <paths>` is MANDATORY. Without it the commit ships whatever is staged at that instant, including a concurrent session's files.
 

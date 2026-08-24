@@ -23,13 +23,13 @@ Task bodies below are byte-identical to the source spec. Scheduler flags follow 
 
 ---
 
-### Task #13 — Blueprint: persona/Verdict in CLAUDE.md (a), intuita content diff (b), tokyo-night theme file (c) `[CMD: /pcm]`
+### Task #13 — Blueprint: persona/Verdict in CLAUDE.md (a), live-source content diff (b), tokyo-night theme file (c) `[CMD: /pcm]`
 
 **Routing:** /pcm (guarded paths). **Build agents:** /pcm flow, qa.
 
 **Key behaviors:**
 a. `blueprint/CLAUDE.md` gains a `## Persona` section: respond as the install's persona (pointer to the active output style) and the mandatory one-line Verdict close. **Why it must live here:** Codex reads only CLAUDE.md/AGENTS.md — output-styles never reach it, so a Codex chat today has no Verdict rule. Wording mirrors the host-ops pattern (2 lines), passes `/quality:prompt` (no voice content in CLAUDE.md — a pointer plus the one structural mandate).
-b. Section-level diff of `~/work/intuita/CLAUDE.md` against `blueprint/CLAUDE.md`: any live section the template lacks gets added genericized (refresh.md Tier-A law: parameterize, never trim). Deltas found by the diff are listed in the task's PR-style report to the founder before landing.
+b. Section-level diff of a live source project's `CLAUDE.md` against `blueprint/CLAUDE.md`: any live section the template lacks gets added genericized (refresh.md Tier-A law: parameterize, never trim). Deltas found by the diff are listed in the task's PR-style report to the user before landing.
 c. NEW `blueprint/themes/tokyo-night.json` (content salvaged from the `add-tokyo-night-theme` branch, path corrected from dead `blueprint/templates/`); `blueprint/themes/` gains a 3-line README naming the palette JSON shape and that pfm embeds palettes at build time (Task #2).
 
 **Publication surface:** all three touch `blueprint/**` — no founder name, no machine paths, invented example values only.

@@ -6,8 +6,7 @@
 ## Repo structure
 
 - `blueprint/`: the shipped framework — agent/command/script/codex templates an adopter clones. Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
-- `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them. Also the only harvester: `internal/harvest` + `internal/harvestmcp`, over a pinned Python conversion sidecar in `internal/harvestpy/`.
-- `dreamer/`: memory-organ engine — TypeScript ESM, Node ≥20.
+- `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them. Also owns the memory organ under `internal/dream` and the only harvester under `internal/harvest` + `internal/harvestmcp`, over a pinned Python conversion sidecar in `internal/harvestpy/`.
 - `engines/wave-walker/engine/`: wave-walker engine — JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK.
 - `agents/`: host-global agents (`tracer`, `frr`) — the live copies the host runs sit at `~/.claude/agents/`; the `.toml` twins are their Codex compile.
 - `docs/`: the specs — `BLUEPRINT.md` (philosophy), `SETUP.md` (generation), `PLACEHOLDERS.md` (substitution law) — plus `commands/` reference cards and `dev/` wave trains.
@@ -17,11 +16,11 @@
 - `.professor/`: ledgers — `drift.md` (keep-local), `release.md` (pending upstream), `retro.md` (steering inbox).
 - `tmp/`: gitignored scratch — every generated artifact lands here, never in a tracked dir.
 
-Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verify|test} {blueprint|pfm|dreamer|walker}`.
+Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verify|test} {blueprint|pfm|walker}`.
 
 ## Three-runtime team — Claude + Codex + OpenCode
 
-`AGENTS.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `AGENTS.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `AGENTS.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where the repo law is pinned at the harness layer — guarded-file edit denies and gitter's git monopoly as bash denies. A Codex role gets read-only git (`status`/`log`/`diff`/`show`) and nothing more — there is no `gitter.toml`, and there must not be one; the same holds for OpenCode roles (`gitter` is in every compiler's never-register set). After a Bash-driven write bypassed the hook:
+`AGENTS.md` and `AGENTS.md` are one shared contract; runtime wrappers translate mechanics, never identity or protocol. `AGENTS.md` is **compiled** from this file — never hand-edited, never a symlink; edit `AGENTS.md` and the `Stop` hook recompiles both mirrors. OpenCode reads the same compiled `AGENTS.md` (its loader prefers it over `AGENTS.md`) plus its own `.opencode/` layer, compiled by `build-opencode.mjs`: agents (`.opencode/agent/*.md`), commands (`/flat-name`), skill symlinks, and `opencode.jsonc`, where guarded-file and Git-write denies remain pinned. Codex and OpenCode subagents keep Git read-only; the active main Codex chat may use the user-authorized fallback under § Process when gitter is unavailable. After a Bash-driven write bypassed the hook:
 
 ```bash
 pfm codex build . && pfm codex check .
@@ -38,7 +37,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 ### Publication (this repo's sacred ground)
 
-- **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. Only gitter pushes, only on the user's plain ask in that turn.
+- **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. The authorized writer publishes only on the user's plain ask in that turn.
 - **Nothing identifying ships:** no source-project brand, no user PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` (`pre-push`) is the backstop, not the plan — write it clean the first time.
 - Template example values are invented placeholders, never mined from a live private repo.
 - **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `$pcm-release` owns the sequence.
@@ -63,9 +62,9 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 ### Process
 
-- **Only gitter WRITES git** — every state-changing git (commit/merge/checkout/branch/stash/reset/push) is gitter's, for the main loop and every agent; read-only git is open to all.
+- **Git writes use gitter when available.** When gitter is unavailable, only the active main Codex chat may perform scoped Git writes, and only after explicit user authorization in the current turn; subagents remain read-only. Publication still requires the separate explicit in-turn request above.
 - **Never commit broken code** — tests pass before the commit.
-- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (blueprint/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → gitter merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`$wave-refine`, `$wave-live`, `$wave-walker`, `$wave-walker-invariants`, `$wave-ccc`) are rewired to this cast — `dev` builds, `qa` tests, `gitter` commits and merges; a task touching `.claude/**`, any `AGENTS.md`, or `blueprint/**` routes to `$pcm`. Their `blueprint/commands/wave/` twins keep the adopter pipeline.
+- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (blueprint/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`$wave-refine`, `$wave-live`, `$wave-walker`, `$wave-walker-invariants`, `$wave-ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `AGENTS.md`, or `blueprint/**` routes to `$pcm`. Their `blueprint/commands/wave/` twins keep the adopter pipeline.
 - **Guarded files:** a PreToolUse hook gates `.claude/**` and every `AGENTS.md` behind `$pcm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
 - Execute explicit instructions as given: user delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
 - "God speed" = full autonomy: resolve every ambiguity yourself, finish, report the decisions at the end; only failure = stop/ask.
@@ -129,7 +128,7 @@ This file is compiled verbatim from CLAUDE.md by pfm codex build; Claude model a
 - Workflow() scripts → no equivalent: decompose sequentially or fan out `spawn_agent` calls
 - Skills / slash commands → `.codex/skills/{name}/SKILL.md`, invoked as `$name` — Codex has no `/name` syntax, so every `/name` reference below is already rewritten to `$name` (nested Claude names flatten: `/wave:orchestrator` → `$wave-orchestrator`)
 - PreToolUse hooks (guarded files) → Codex has NO hook layer, so the guard is absolute: never edit `.claude/**`, any `CLAUDE.md`, or any `AGENTS.md` (generated — change CLAUDE.md and re-run the build) — stop and report instead
-- gitter's git monopoly binds unchanged, and here it is a PIN, not a promise: `.codex/rules/repo-law.rules` rejects `git push` / `git tag` / `git commit` outright. A rejection quoting its justification is the law working — never shell-trick around it
+- Git writes → Codex subagents stay read-only; when gitter is unavailable, the active main Codex chat may use the user-authorized fallback in § Process. This repo carries no Codex execpolicy Git lock.
 
 ## OpenCode adapter — reading this file in the OpenCode harness
 

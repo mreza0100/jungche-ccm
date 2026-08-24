@@ -106,7 +106,7 @@ this repo" rather than treating it as absent.
 | command / agent name | frontmatter `name:` → every `/name` and `subagent_type:` reference across `blueprint/**` and `.claude/**` → `README.md` / `BLUEPRINT.md` cast tables |
 | hook → script | `settings.json` / `settings-global.json` `hooks` block → the script path → what the script reads and what it writes on failure |
 | Go symbol | `pfm/internal/**` definition → `grep -rn` callers → `cmd/pfm` entry → `shim/pfm.zsh` if it crosses the shell boundary |
-| TS/JS export | `src/*.ts` export → importers → the compiled entry (`dreamer/dist*`, walker `build.js` output) → its shell wrapper |
+| TS/JS export | `src/*.ts` export → importers → the compiled entry (for example, walker `build.js` output) → its shell wrapper |
 | release claim | `releases/vX.Y.Z.md` line → the file it names → the actual diff at that tag |
 
 **Knobs:** threads ≤6 (default 4), tracer budget ≤12 tool calls, children are Explore+haiku (never

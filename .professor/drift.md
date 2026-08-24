@@ -30,11 +30,11 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   because the pipeline that dispatches them is absent. The Remote Publication Boundary, the banned
   commands, and the scoped-commit discipline are kept verbatim.
 
-- **KEEP-LOCAL: the execpolicy git lock is ENABLED.** `.codex/rules/repo-law.rules` promotes the
-  git monopoly from prose to a pin (`git commit` / `git push` / `git tag` / `gh release` forbidden).
-  The blueprint ships those rules commented out, and that default is correct for a private repo
-  where a mistake is recoverable. This repo is public; a push cannot be unpublished. The rules file
-  states the trade it buys.
+- **KEEP-LOCAL: the Codex execpolicy git lock is removed.** Gitter remains preferred; when it is
+  unavailable, the active main Codex chat may perform scoped Git writes after explicit in-turn user
+  authorization. Subagents stay read-only, and the publication boundary, leak gate, scoped-commit
+  discipline, banned commands, and pre-push hook remain unchanged. The blueprint keeps its
+  gitter-only prose law and commented-out lock because this fallback is specific to this repo.
 
 - **KEEP-LOCAL: `.claude/skills/` is gitignored.** Source-fetched skills (`rr`) are cloned at
   install from their own public repos and never vendored — the `sources.json` law. Each also

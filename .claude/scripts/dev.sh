@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # dev.sh — the single entry point for building, testing, and inspecting this
-# repo's four projects. /dev drives it; agents call it directly.
+# repo's three projects. /dev drives it; agents call it directly.
 #
 # WHAT THIS SCRIPT REPORTS WHEN IT IS ITSELF BROKEN:
 #   - a missing toolchain (go/node/npm) is TOOLCHAIN-MISSING and exits non-zero.
@@ -16,14 +16,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-PROJECTS=(blueprint pfm dreamer walker)
+PROJECTS=(blueprint pfm walker)
 
 # project -> directory
 proj_dir() {
   case "$1" in
     blueprint) echo "blueprint" ;;
     pfm)  echo "pfm" ;;
-    dreamer)   echo "dreamer" ;;
     walker)    echo "engines/wave-walker/engine" ;;
     *) return 1 ;;
   esac
@@ -49,7 +48,7 @@ need_tool() { # need_tool <bin> <project>
 }
 
 node_installed() { # node_installed <dir> <project>
-  if [[ ! -d "$1/node_modules" ]]; then
+  if [[ ! -f "$1/node_modules/.package-lock.json" ]]; then
     fail_step "$2: NOT-INSTALLED — no node_modules; run '$(basename "$0") install $2'"
     return 1
   fi
@@ -77,13 +76,13 @@ cmd_status() {
   head_ "projects"
   for p in "${PROJECTS[@]}"; do
     local d; d="$(proj_dir "$p")"
-    if [[ ! -d "$d" ]]; then bad "$p — directory $d/ is MISSING"; continue; fi
+    if [[ ! -d "$d" ]]; then fail_step "$p — directory $d/ is MISSING"; continue; fi
     case "$p" in
       blueprint)
-        ok "$p — $d/ ($(find "$d/templates" -type f | wc -l | tr -d ' ') template files, no build)" ;;
+        ok "$p — $d/ ($(find "$d" -type f -not -name refresh-map.json | wc -l | tr -d ' ') shipped files, no build)" ;;
       pfm)
         ok "$p — $d/ (go $(sed -n 's/^go //p' "$d/go.mod" | head -1))" ;;
-      dreamer|walker)
+      walker)
         if [[ -d "$d/node_modules" ]]; then
           ok "$p — $d/ (npm, deps installed)"
         else
@@ -177,15 +176,6 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
       fi
 
-      head_ "blueprint — opencode mirror"
-      # The OpenCode mirror must be current AND valid: check re-derives every
-      # output from the Claude sources; doctor additionally parses each artifact.
-      if need_tool node blueprint && node .claude/scripts/build-opencode.mjs check \
-        && node .claude/scripts/build-opencode.mjs doctor | tail -1; then
-        ok "opencode mirror current and parseable"
-      else
-        fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
-      fi
       ;;
     *) return 0 ;;
   esac
@@ -229,20 +219,10 @@ act_npm() { # act_npm <project> <action> [extra script...]
   esac
 }
 
-act_dreamer() {
-  local action="$1"
-  case "$action" in
-    all) act_npm dreamer typecheck; act_npm dreamer build; act_npm dreamer test ;;
-    # dreamer's test runs the COMPILED tests — build first or it tests stale output
-    test) act_npm dreamer build; act_npm dreamer test ;;
-    *) act_npm dreamer "$action" ;;
-  esac
-}
-
 act_walker() {
   local action="$1"
   case "$action" in
-    all) act_npm walker verify; act_npm walker typecheck; act_npm walker test ;;
+    all) act_npm walker build; act_npm walker verify; act_npm walker typecheck; act_npm walker test ;;
     *) act_npm walker "$action" ;;
   esac
 }
@@ -251,7 +231,6 @@ dispatch() { # dispatch <project> <action>
   case "$1" in
     blueprint) act_blueprint "$2" ;;
     pfm)  act_pfm "$2" ;;
-    dreamer)   act_dreamer "$2" ;;
     walker)    act_walker "$2" ;;
   esac
 }
@@ -276,11 +255,11 @@ cmd_iso() { # cmd_iso <action> [project]
   local proof='echo "fence: container=$(hostname) HOME=$HOME work=$(pwd)"'
   case "$action" in
     shell)
-      docker compose -f "$compose" run --rm pfm-dev zsh -c "$proof; exec zsh -i" ;;
+      docker compose -f "$compose" run --rm --build pfm-dev zsh -c "$proof; exec zsh -i" ;;
     e2e)
-      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; go -C pfm test -tags e2e -p 1 ./e2e/..." ;;
+      docker compose -f "$compose" run --rm --build pfm-dev bash -c "$proof; go -C pfm test -count=1 -tags e2e -p 1 ./e2e/..." ;;
     install|build|typecheck|verify|test|all|status)
-      docker compose -f "$compose" run --rm pfm-dev bash -c "$proof; ./.claude/scripts/dev.sh $action $target" ;;
+      docker compose -f "$compose" run --rm --build pfm-dev bash -c "$proof; ./.claude/scripts/dev.sh $action $target" ;;
     *)
       echo "usage: dev.sh iso {install|build|typecheck|verify|test|all|status|e2e|shell} [project]" >&2; exit 2 ;;
   esac

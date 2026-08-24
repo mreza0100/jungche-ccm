@@ -16,7 +16,7 @@ All train/code work happens in a `git worktree` under `.worktrees/{train-or-wave
 
 ### 2. Container — a brand-new machine per run
 
-A dev container (seeded from #11's e2e image: `ubuntu:24.04` + zsh/tmux/git, plus pinned Go 1.24) mounts the worktree and behaves as a fresh box:
+A dev container (`ubuntu:24.04` + zsh/tmux/git, pinned Go 1.24, and pinned Node 22) mounts the worktree and behaves as a fresh box:
 
 - Own `$HOME` inside the container — `pfm install --yes` runs against it, doctor runs in it, the shim sources into its zshrc. Ephemeral by default (fresh machine per run); a named volume when a task needs iterative state.
 - Own tmux server, own socket dir — fleet experiments (spawn/inject/capture) run against container-local chats, never the live `cc-*`/`cx-*` sockets. The live-box law gains teeth: it is now physically satisfied, not just promised.
@@ -29,7 +29,7 @@ gitter merges worktree → main only after in-fence verification (project gates 
 
 ## Mechanics
 
-- `dev.sh` grows an `iso` verb: `dev.sh iso {build|verify|test|e2e|shell} [project]` → `docker run --rm -v {worktree}:/work -w /work pfm-dev …`. Docker absent → loud `TOOLCHAIN-MISSING`, never a silent host fallback.
+- `dev.sh` provides `iso {install|build|typecheck|verify|test|all|status|e2e|shell} [project]` through Docker Compose. The active checkout is read-only; Go caches plus walker dependencies and generated cross-runtime candidates use container volumes, while its tracked legacy bundle and active pointer stay visible. Walker `all` builds before verifying the generated targets. Every invocation builds the current Dockerfile before running. Docker absent → loud `TOOLCHAIN-MISSING`, never a silent host fallback.
 - **Broken-state report:** every `iso` run prints the container id and the in-container `$HOME` as its first line — a run that cannot prove it is inside the fence did not run inside the fence. A host-toolchain fallback is impossible by construction (the verb IS the docker invocation).
 - Builder briefs change one clause: all build/test through `dev.sh iso`; never build to the host's `~/.local/bin`; never run `pfm install` on the host.
 - The CLAUDE.md § Process "no worktree pipeline — deliberate scope choice" clause is reversed for code waves (a /pcm change, ordered by the user 2026-08-20). Blueprint/docs-only waves are markdown and cannot destabilize the box — see decision (a).
