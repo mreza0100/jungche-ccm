@@ -16,31 +16,45 @@ import (
 // .toml, Codex reads it directly).
 type GlobalAgentsOptions struct {
 	Home string
+	Mode Mode
 }
 
-// GlobalAgentCompiled is one TOML this run wrote directly into the source
-// directory, alongside its .md — the same layout the incumbent host script
-// used, so the compiled artifact stays next to the source that produced it.
+// GlobalAgentCompiled is one desired TOML beside its source .md. Build writes
+// changed bytes; check reports the same desired artifact without writing it.
 type GlobalAgentCompiled struct {
 	Path string
 	Size int64
 }
 
-// GlobalAgentInstalled is one file copied into a live registry directory.
-// RegularFile is false only when the copy landed on something other than a
-// plain file — the one shape Codex/Claude registries refuse to load.
+// GlobalAgentInstalled is one desired file in a live registry directory.
+// Build leaves it as a regular file; check reports that same final shape.
 type GlobalAgentInstalled struct {
 	Path        string
 	RegularFile bool
 }
 
-// GlobalAgentsResult reports every artifact this run touched, in the same
-// two phases the host script performed: every compiled TOML, then every
-// installed file (sources into ~/.claude/agents, TOMLs into
-// ~/.codex/agents).
+// GlobalAgentsResult reports every desired artifact in the same two phases
+// the host script performed. Actions narrows that roster to paths build would
+// actually replace.
 type GlobalAgentsResult struct {
 	Compiled  []GlobalAgentCompiled
 	Installed []GlobalAgentInstalled
+	Actions   []GlobalAgentAction
+}
+
+// GlobalAgentAction is one exact path a build would replace. Check mode emits
+// the same action list without touching disk, which lets the host installer
+// present its complete plan before any earlier install mutation can land.
+type GlobalAgentAction struct {
+	Kind string
+	Path string
+}
+
+type globalAgentOutput struct {
+	path      string
+	content   []byte
+	compiled  bool
+	installed bool
 }
 
 // Codex has no Agent tool — the lead spawns children through spawn_agent
@@ -93,73 +107,114 @@ func RunGlobalAgents(options GlobalAgentsOptions) (GlobalAgentsResult, error) {
 		return GlobalAgentsResult{}, fmt.Errorf("no agent .md files in %s", agentsDir)
 	}
 
-	written := make([]string, 0, len(sources))
+	outputs := make([]globalAgentOutput, 0, len(sources)*3)
 	for _, src := range sources {
-		out, err := emitGlobalAgentTOML(src)
+		out, content, err := renderGlobalAgentTOML(src)
 		if err != nil {
 			return GlobalAgentsResult{}, err
 		}
-		written = append(written, out)
+		if parseErr := validateTOML(content); parseErr != nil {
+			return GlobalAgentsResult{}, fmt.Errorf("%s: does not parse: %w", out, parseErr)
+		}
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			return GlobalAgentsResult{}, fmt.Errorf("read %s: %w", src, err)
+		}
+		outputs = append(outputs,
+			globalAgentOutput{path: out, content: []byte(content), compiled: true},
+			globalAgentOutput{path: filepath.Join(home, ".claude", "agents", filepath.Base(src)), content: raw, installed: true},
+			globalAgentOutput{path: filepath.Join(home, ".codex", "agents", filepath.Base(out)), content: []byte(content), installed: true},
+		)
 	}
 
 	result := GlobalAgentsResult{}
-	for _, out := range written {
-		data, err := os.ReadFile(out)
-		if err != nil {
-			return GlobalAgentsResult{}, fmt.Errorf("read %s: %w", out, err)
+	for _, output := range outputs {
+		if output.compiled {
+			result.Compiled = append(result.Compiled, GlobalAgentCompiled{Path: output.path, Size: int64(len(output.content))})
 		}
-		if parseErr := validateTOML(string(data)); parseErr != nil {
-			return GlobalAgentsResult{}, fmt.Errorf("%s: does not parse: %w", out, parseErr)
+		if output.installed {
+			result.Installed = append(result.Installed, GlobalAgentInstalled{Path: output.path, RegularFile: true})
 		}
-		info, statErr := os.Stat(out)
-		if statErr != nil {
-			return GlobalAgentsResult{}, statErr
-		}
-		result.Compiled = append(result.Compiled, GlobalAgentCompiled{Path: out, Size: info.Size()})
-	}
-
-	claudeDest := filepath.Join(home, ".claude", "agents")
-	for _, src := range sources {
-		installed, err := installGlobalAgentFile(src, claudeDest)
+		same, err := sameGlobalAgentFile(output.path, output.content)
 		if err != nil {
 			return GlobalAgentsResult{}, err
 		}
-		result.Installed = append(result.Installed, installed)
+		if same {
+			continue
+		}
+		result.Actions = append(result.Actions, GlobalAgentAction{Kind: "write", Path: output.path})
 	}
-
-	tomls, err := globSorted(filepath.Join(agentsDir, "*.toml"))
-	if err != nil {
-		return GlobalAgentsResult{}, fmt.Errorf("glob %s: %w", agentsDir, err)
+	if options.Mode == ModeCheck {
+		return result, nil
 	}
-	codexDest := filepath.Join(home, ".codex", "agents")
-	for _, src := range tomls {
-		installed, err := installGlobalAgentFile(src, codexDest)
+	for _, output := range outputs {
+		same, err := sameGlobalAgentFile(output.path, output.content)
 		if err != nil {
 			return GlobalAgentsResult{}, err
 		}
-		result.Installed = append(result.Installed, installed)
+		if same {
+			continue
+		}
+		if err := writeGlobalAgentFile(output.path, output.content); err != nil {
+			return GlobalAgentsResult{}, err
+		}
 	}
 
 	return result, nil
 }
 
-// emitGlobalAgentTOML reads one Claude agent .md, and writes its compiled
-// TOML twin next to it. It returns the path written.
-func emitGlobalAgentTOML(mdPath string) (string, error) {
+func sameGlobalAgentFile(path string, content []byte) (bool, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect global agent artifact %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("read global agent artifact %s: %w", path, err)
+	}
+	return string(raw) == string(content), nil
+}
+
+func writeGlobalAgentFile(path string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("inspect global agent destination %s: %w", path, err)
+	}
+	if err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove symlink %s: %w", path, err)
+		}
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+func renderGlobalAgentTOML(mdPath string) (string, string, error) {
 	raw, err := os.ReadFile(mdPath)
 	if err != nil {
-		return "", fmt.Errorf("read %s: %w", mdPath, err)
+		return "", "", fmt.Errorf("read %s: %w", mdPath, err)
 	}
 	match := globalAgentFrontmatter.FindStringSubmatch(string(raw))
 	if match == nil {
-		return "", fmt.Errorf("%s: no frontmatter", mdPath)
+		return "", "", fmt.Errorf("%s: no frontmatter", mdPath)
 	}
 	frontmatter, body := match[1], strings.TrimSpace(match[2])
 
 	nameMatch := globalAgentNameField.FindStringSubmatch(frontmatter)
 	descMatch := globalAgentDescField.FindStringSubmatch(frontmatter)
 	if nameMatch == nil || descMatch == nil {
-		return "", fmt.Errorf("%s: frontmatter needs both name: and description:", mdPath)
+		return "", "", fmt.Errorf("%s: frontmatter needs both name: and description:", mdPath)
 	}
 	name := strings.TrimSpace(nameMatch[1])
 	description := strings.TrimSpace(descMatch[1])
@@ -171,10 +226,7 @@ func emitGlobalAgentTOML(mdPath string) (string, error) {
 		"developer_instructions = \"\"\"\n" + globalAgentEscapeMultiline(body) + "\n\"\"\"\n"
 
 	out := filepath.Join(filepath.Dir(mdPath), name+".toml")
-	if err := os.WriteFile(out, []byte(content), 0o644); err != nil {
-		return "", fmt.Errorf("write %s: %w", out, err)
-	}
-	return out, nil
+	return out, content, nil
 }
 
 // globalAgentEscape is for a TOML basic string — build-codex.mjs:151.
@@ -191,32 +243,6 @@ func globalAgentEscape(s string) string {
 func globalAgentEscapeMultiline(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	return strings.ReplaceAll(s, `"""`, `\"\"\"`)
-}
-
-// installGlobalAgentFile copies src as a real file into destDir, replacing
-// any symlink that sits at the destination first. A symlink also loads —
-// verified by the host script's own A/B test — but a copy is used anyway so
-// the registry holds no dependency on the source directory's path.
-func installGlobalAgentFile(src, destDir string) (GlobalAgentInstalled, error) {
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return GlobalAgentInstalled{}, fmt.Errorf("mkdir %s: %w", destDir, err)
-	}
-	dest := filepath.Join(destDir, filepath.Base(src))
-	if info, err := os.Lstat(dest); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		if err := os.Remove(dest); err != nil {
-			return GlobalAgentInstalled{}, fmt.Errorf("remove symlink %s: %w", dest, err)
-		}
-	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return GlobalAgentInstalled{}, fmt.Errorf("read %s: %w", src, err)
-	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
-		return GlobalAgentInstalled{}, fmt.Errorf("write %s: %w", dest, err)
-	}
-	info, err := os.Lstat(dest)
-	regular := err == nil && info.Mode().IsRegular()
-	return GlobalAgentInstalled{Path: dest, RegularFile: regular}, nil
 }
 
 func globSorted(pattern string) ([]string, error) {

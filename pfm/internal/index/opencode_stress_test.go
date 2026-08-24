@@ -47,14 +47,24 @@ CREATE TABLE session (
   time_updated INTEGER NOT NULL,
   time_archived INTEGER
 );
-CREATE TABLE session_input (
+CREATE TABLE message (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL,
-  prompt TEXT NOT NULL,
-  delivery TEXT NOT NULL,
-  admitted_seq INTEGER NOT NULL,
-  time_created INTEGER NOT NULL
-);`
+  time_created INTEGER NOT NULL,
+  time_updated INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+CREATE TABLE part (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  time_created INTEGER NOT NULL,
+  time_updated INTEGER NOT NULL,
+  data TEXT NOT NULL
+);
+CREATE INDEX message_session_time_created_id_idx ON message (session_id, time_created, id);
+CREATE INDEX part_message_id_id_idx ON part (message_id, id);
+CREATE INDEX part_session_idx ON part (session_id);`
 	if _, err := db.Exec(script); err != nil {
 		t.Fatalf("seed schema: %v", err)
 	}
@@ -112,11 +122,20 @@ CREATE TABLE session_input (
 		if i%2 == 0 {
 			prompt = hostileTitles[i%len(hostileTitles)]
 		}
+		messageID := fmt.Sprintf("msg_%d", i)
 		if _, err := tx.Exec(
-			"INSERT INTO session_input (id, session_id, prompt, delivery, admitted_seq, time_created) VALUES (?, ?, ?, 'text', 0, ?)",
-			fmt.Sprintf("in_%d", i), fmt.Sprintf("ses_%d", i), prompt, int64(i),
+			`INSERT INTO message (id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, '{"role":"user"}')`,
+			messageID, fmt.Sprintf("ses_%d", i), int64(i), int64(i),
 		); err != nil {
-			t.Fatalf("seed input %d: %v", i, err)
+			t.Fatalf("seed message %d: %v", i, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, ?, json_object('type','text','text',?))`,
+			fmt.Sprintf("part_%d", i), messageID, fmt.Sprintf("ses_%d", i), int64(i), int64(i), prompt,
+		); err != nil {
+			t.Fatalf("seed part %d: %v", i, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -253,10 +272,32 @@ func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
 				return
 			default:
 			}
-			if _, err := live.Exec(
-				"INSERT INTO session_input (id, session_id, prompt, delivery, admitted_seq, time_created) VALUES (?, 'ses_0', ?, 'text', 0, ?)",
-				fmt.Sprintf("live_%d", round), strings.Repeat("w", 2000), int64(1_000_000+round),
+			tx, err := live.Begin()
+			if err != nil {
+				writerDone <- err
+				return
+			}
+			messageID := fmt.Sprintf("live_msg_%d", round)
+			timestamp := int64(1_000_000 + round)
+			if _, err := tx.Exec(
+				`INSERT INTO message (id, session_id, time_created, time_updated, data)
+				 VALUES (?, 'ses_0', ?, ?, '{"role":"user"}')`,
+				messageID, timestamp, timestamp,
 			); err != nil {
+				_ = tx.Rollback()
+				writerDone <- err
+				return
+			}
+			if _, err := tx.Exec(
+				`INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+				 VALUES (?, ?, 'ses_0', ?, ?, json_object('type','text','text',?))`,
+				fmt.Sprintf("live_part_%d", round), messageID, timestamp, timestamp, strings.Repeat("w", 2000),
+			); err != nil {
+				_ = tx.Rollback()
+				writerDone <- err
+				return
+			}
+			if err := tx.Commit(); err != nil {
 				writerDone <- err
 				return
 			}

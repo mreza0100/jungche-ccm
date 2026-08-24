@@ -13,12 +13,12 @@ import (
 )
 
 // The OpenCode mirror. OpenCode keeps its sessions in a SQLite database at
-// <root>/opencode.db (tables `session`, `project`, `session_input`), which is
-// LIVE while any OpenCode TUI runs. The reader opens it READ-ONLY and reads
-// both queries inside ONE transaction: WAL concurrency makes that a
-// consistent, non-blocking snapshot, and a bounded busy timeout turns a
-// hot-writer moment into an error instead of a hang. An index seconds behind
-// a live chat is the same contract the Claude and Codex walkers already have.
+// <root>/opencode.db (tables `session`, `project`, `message`, and `part`), which is
+// LIVE while any OpenCode TUI runs. The reader opens it READ-ONLY and uses one
+// statement, so WAL concurrency gives it a consistent, non-blocking snapshot;
+// a bounded busy timeout turns a hot-writer moment into an error instead of a
+// hang. An index seconds behind a live chat is the same contract the Claude
+// and Codex walkers already have.
 
 type opencodeRow struct {
 	sessionID      string
@@ -37,6 +37,29 @@ type opencodeRow struct {
 	promptCount    int64
 	firstPrompt    sql.NullString
 }
+
+const opencodeSessionsQuery = `
+SELECT s.id, s.title, s.directory, p.worktree, s.parent_id, s.agent, s.model,
+       s.tokens_input, s.tokens_output, s.cost,
+       s.time_created, s.time_updated, s.time_archived,
+	   (SELECT COUNT(*)
+	      FROM message m
+	     WHERE m.session_id = s.id
+	       AND json_extract(m.data, '$.role') = 'user'),
+	   (SELECT json_extract(text_part.data, '$.text')
+	      FROM message first_message
+	      JOIN part text_part ON text_part.message_id = first_message.id
+	     WHERE first_message.session_id = s.id
+	       AND text_part.session_id = s.id
+	       AND json_extract(first_message.data, '$.role') = 'user'
+	       AND json_extract(text_part.data, '$.type') = 'text'
+	       AND COALESCE(json_extract(text_part.data, '$.text'), '') <> ''
+	     ORDER BY first_message.time_created, first_message.id,
+	              text_part.time_created, text_part.id
+	     LIMIT 1)
+FROM session s
+LEFT JOIN project p ON p.id = s.project_id
+`
 
 // ReadOpencodeSessions reads OpenCode's session store into OcSession rows.
 // A missing opencode.db means the engine is not installed — that is a real,
@@ -75,37 +98,7 @@ func ReadOpencodeSessions(ctx context.Context, root string) (
 			)
 		}
 	}()
-	rows, err := db.QueryContext(ctx, `
-WITH input_counts AS (
-  SELECT session_id, COUNT(*) AS prompt_count
-  FROM session_input
-  GROUP BY session_id
-),
-first_times AS (
-  SELECT session_id, MIN(time_created) AS first_time
-  FROM session_input
-  GROUP BY session_id
-),
-first_ids AS (
-  SELECT i.session_id, MIN(i.id) AS first_id
-  FROM session_input i
-  JOIN first_times f
-    ON f.session_id = i.session_id AND f.first_time = i.time_created
-  GROUP BY i.session_id
-),
-input_summary AS (
-  SELECT c.session_id, c.prompt_count, i.prompt AS first_prompt
-  FROM input_counts c
-  JOIN first_ids f ON f.session_id = c.session_id
-  JOIN session_input i ON i.id = f.first_id
-)
-SELECT s.id, s.title, s.directory, p.worktree, s.parent_id, s.agent, s.model,
-       s.tokens_input, s.tokens_output, s.cost,
-       s.time_created, s.time_updated, s.time_archived,
-	   COALESCE(i.prompt_count, 0), i.first_prompt
-FROM session s
-LEFT JOIN project p ON p.id = s.project_id
-LEFT JOIN input_summary i ON i.session_id = s.id`)
+	rows, err := db.QueryContext(ctx, opencodeSessionsQuery)
 	if err != nil {
 		return nil, fmt.Errorf("query opencode sessions: %w", err)
 	}
@@ -154,6 +147,14 @@ LEFT JOIN input_summary i ON i.session_id = s.id`)
 	return sessions, nil
 }
 
+// ProbeOpencodeStore runs the production reader and discards its rows. Doctor
+// therefore proves that both the native schema and the stored JSON are readable;
+// a schema-only prepare could report healthy while every real index pass fails.
+func ProbeOpencodeStore(ctx context.Context, root string) error {
+	_, err := ReadOpencodeSessions(ctx, root)
+	return err
+}
+
 func nonEmpty(value sql.NullString) string {
 	if !value.Valid {
 		return ""
@@ -161,7 +162,7 @@ func nonEmpty(value sql.NullString) string {
 	return value.String
 }
 
-// compactModel flattens OpenCode's model JSON ({"id":...,"providerID":...})
+// compactModel flattens OpenCode's model JSON ({"modelID":...,"providerID":...})
 // to its provider/model word; anything unparsable travels verbatim rather
 // than being dropped silently.
 func compactModel(raw string) string {
@@ -170,15 +171,23 @@ func compactModel(raw string) string {
 	}
 	var decoded struct {
 		ID         string `json:"id"`
+		ModelID    string `json:"modelID"`
 		ProviderID string `json:"providerID"`
 	}
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil || decoded.ID == "" {
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return raw
+	}
+	modelID := decoded.ModelID
+	if modelID == "" {
+		modelID = decoded.ID
+	}
+	if modelID == "" {
 		return raw
 	}
 	if decoded.ProviderID == "" {
-		return decoded.ID
+		return modelID
 	}
-	return decoded.ProviderID + "/" + decoded.ID
+	return decoded.ProviderID + "/" + modelID
 }
 
 // clip bounds a first prompt to what a picker row can show.

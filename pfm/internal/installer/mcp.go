@@ -47,27 +47,10 @@ func (installer *engine) wireMCP() error {
 		return installer.removeMCPClientRegistrations()
 	}
 	if !installer.mcpAnyEnabled() {
-		if installer.options.Mode == ModeApply {
-			return installer.removeMCPClientRegistrations()
-		}
-		installer.skip("MCP disabled; daemon units and client registrations will be removed on apply")
-		return nil
+		return installer.removeMCPClientRegistrations()
 	}
-	if !installer.apply {
-		installer.say("MCP enabled: would install the loopback-only daemon units and register unauthenticated HTTP clients")
-		return nil
-	}
-	if installer.options.MCPConfigPath != "" {
-		effective, err := pfmconfig.Load(installer.options.MCPConfigPath, installer.options.Home, nil)
-		if err != nil {
-			return fmt.Errorf("load MCP config for legacy auth cleanup: %w", err)
-		}
-		if changed, err := pfmconfig.RemoveMCPAuthToken(effective); err != nil {
-			return fmt.Errorf("remove retired MCP installer credential: %w", err)
-		} else if changed {
-			installer.report.Changed++
-			installer.say("  change  remove retired MCP authToken from " + installer.options.MCPConfigPath)
-		}
+	if err := installer.removeLegacyMCPConfigAuth(); err != nil {
+		return err
 	}
 	names := enabledMCPNames(installer.options.MCPEnabled)
 	wiredNames, err := installer.writeMCPClientJSON(names)
@@ -341,15 +324,17 @@ func (installer *engine) removeLegacyMCPConfigAuth() error {
 	if err != nil {
 		return fmt.Errorf("load MCP config for legacy auth cleanup: %w", err)
 	}
-	changed, err := pfmconfig.RemoveMCPAuthToken(effective)
+	changed, err := pfmconfig.MCPAuthTokenPresent(effective)
 	if err != nil {
-		return fmt.Errorf("remove retired MCP installer credential: %w", err)
+		return fmt.Errorf("plan retired MCP installer credential removal: %w", err)
 	}
-	if changed {
-		installer.report.Changed++
-		installer.say("  change  remove retired MCP authToken from " + installer.options.MCPConfigPath)
+	if !changed {
+		return nil
 	}
-	return nil
+	return installer.change("remove retired MCP authToken from "+installer.options.MCPConfigPath, func() error {
+		_, err := pfmconfig.RemoveMCPAuthToken(effective)
+		return err
+	})
 }
 
 func (installer *engine) removeMCPCodeConfig() error {

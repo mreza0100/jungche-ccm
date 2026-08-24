@@ -255,7 +255,24 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte("{{PLACEHOLDER}}\n"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte("maintainer-only\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blueprint := map[string]string{
+		"blueprint/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
+		"blueprint/settings.json":          "{}\n",
+		"blueprint/output-styles/style.md": "{{PROJECT_NAME}} style\n",
+		"blueprint/commands/command.md":    "{{PROJECT_NAME}} command\n",
+		"blueprint/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
+		"blueprint/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
+	}
+	for relative, content := range blueprint {
+		path := filepath.Join(source, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -264,6 +281,13 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 	}
 	target := t.TempDir()
 	if err := os.Mkdir(filepath.Join(target, ".claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(target, ".claude", "commands", "stale.md")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("stale\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runtime := commandRuntime{Paths: paths.Values{Home: home}}
@@ -279,24 +303,28 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 	if code := runInit([]string{"--force", target}, &stdout, &stderr, runtime); code != 0 {
 		t.Fatalf("runInit(--force) code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	for _, relative := range []string{
-		"CLAUDE.md",
-		"AGENTS.md",
-		".claude/settings.json",
-		".claude/output-styles/style.md",
-		".claude/commands/command.md",
-		".claude/agents/agent.md",
-		".claude/skills/skill/SKILL.md",
-	} {
-		got, err := os.ReadFile(filepath.Join(target, relative))
+	want := map[string]string{
+		"CLAUDE.md":                      "{{PROJECT_NAME}} contract\n",
+		"AGENTS.md":                      "{{PROJECT_NAME}} contract\n",
+		".claude/settings.json":          "{}\n",
+		".claude/output-styles/style.md": "{{PROJECT_NAME}} style\n",
+		".claude/commands/command.md":    "{{PROJECT_NAME}} command\n",
+		".claude/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
+		".claude/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
+	}
+	for relative, expected := range want {
+		got, err := os.ReadFile(filepath.Join(target, filepath.FromSlash(relative)))
 		if err != nil {
 			t.Fatalf("copied %s: %v", relative, err)
 		}
-		if string(got) != "{{PLACEHOLDER}}\n" {
-			t.Fatalf("copied %s = %q, placeholders changed", relative, got)
+		if string(got) != expected {
+			t.Fatalf("copied %s = %q, want adopter blueprint %q", relative, got, expected)
 		}
 	}
-	if !strings.Contains(stdout.String(), "open Claude here and follow docs/SETUP.md") {
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("--force overlaid instead of replacing stale command: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "open Claude here and follow "+filepath.Join(source, "docs", "SETUP.md")) {
 		t.Fatalf("init handoff=%q", stdout.String())
 	}
 }

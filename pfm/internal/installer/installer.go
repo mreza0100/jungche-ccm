@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,6 +27,7 @@ type engine struct {
 	stamp       string
 	managedRoot string
 	outputErr   error
+	planErrors  []error
 }
 
 type pinnedHarvestProvisioner struct{}
@@ -86,11 +88,19 @@ func Run(ctx context.Context, options Options) (Report, error) {
 		installer.say("MODE: uninstall")
 	}
 	installer.say("")
+	if options.Mode == ModeApply {
+		if err := installer.preflightInstall(ctx); err != nil {
+			return installer.report, err
+		}
+	}
 
 	if options.Mode == ModeUninstall {
 		err = installer.uninstall(ctx)
 	} else {
 		err = installer.install(ctx)
+	}
+	if len(installer.planErrors) != 0 {
+		err = errors.Join(append([]error{err}, installer.planErrors...)...)
 	}
 	installer.say("")
 	installer.say(
@@ -103,6 +113,33 @@ func Run(ctx context.Context, options Options) (Report, error) {
 		err = errors.Join(err, installer.outputErr)
 	}
 	return installer.report, err
+}
+
+// preflightInstall executes the complete dry planner against the same host
+// snapshot immediately before apply. Every planner stays read-only, but all
+// conflicts and future paths are computed before installHarvest or asset
+// staging can mutate the machine.
+func (installer *engine) preflightInstall(ctx context.Context) error {
+	options := installer.options
+	options.Mode = ModeDryRun
+	options.Stdout = io.Discard
+	preview := &engine{
+		options:     options,
+		apply:       false,
+		stamp:       installer.stamp,
+		managedRoot: installer.managedRoot,
+	}
+	installErr := preview.install(ctx)
+	if len(preview.planErrors) != 0 {
+		installErr = errors.Join(append([]error{installErr}, preview.planErrors...)...)
+	}
+	if installErr != nil {
+		return fmt.Errorf("preflight apply plan: %w", installErr)
+	}
+	if preview.outputErr != nil {
+		return fmt.Errorf("preflight apply plan output: %w", preview.outputErr)
+	}
+	return nil
 }
 
 func (installer *engine) install(ctx context.Context) error {
@@ -138,7 +175,7 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.retireLegacySwapCommand(); err != nil {
 		return err
 	}
-	if err := installer.reconcileCodexCommands(); err != nil {
+	if err := installer.reconcileCodexCommands(assets); err != nil {
 		return err
 	}
 	if err := installer.wireCodexAgents(); err != nil {
@@ -190,10 +227,8 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireShell(false); err != nil {
 		return err
 	}
-	if installer.apply {
-		if err := installer.writeUpdateMetadata(); err != nil {
-			return err
-		}
+	if err := installer.writeUpdateMetadata(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -206,11 +241,22 @@ func (installer *engine) wireCodexAgents() error {
 	} else if err != nil {
 		return fmt.Errorf("inspect Codex global agents source %s: %w", source, err)
 	}
+	plan, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{
+		Home: installer.options.Home,
+		Mode: codexgen.ModeCheck,
+	})
+	if err != nil {
+		return fmt.Errorf("plan pfm codex agents: %w", err)
+	}
+	for _, action := range plan.Actions {
+		if err := installer.change(action.Kind+" "+action.Path, nil); err != nil {
+			return err
+		}
+	}
 	if !installer.apply {
-		installer.say("Codex global agents: would run pfm codex agents")
 		return nil
 	}
-	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: installer.options.Home})
+	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: installer.options.Home, Mode: codexgen.ModeBuild})
 	if err != nil {
 		return fmt.Errorf("run pfm codex agents: %w", err)
 	}
@@ -218,9 +264,32 @@ func (installer *engine) wireCodexAgents() error {
 	return nil
 }
 
-func (installer *engine) reconcileCodexCommands() error {
+func (installer *engine) reconcileCodexCommands(assets []assetFile) error {
+	plan, err := installer.planCodexCommands(assets, !installer.apply)
+	if err != nil {
+		return err
+	}
+	for _, action := range plan.Actions {
+		message := action.Kind + " " + action.Path
+		if action.Target != "" {
+			message += " -> " + action.Target
+		}
+		if err := installer.change(message, nil); err != nil {
+			return err
+		}
+	}
+	if blockers := codexPlanBlockers(plan.Problems); len(blockers) != 0 {
+		for _, blocker := range blockers {
+			installer.say("  conflict %s", blocker)
+		}
+		conflictErr := fmt.Errorf("reconcile Codex global commands: %s", strings.Join(blockers, "; "))
+		if !installer.apply {
+			installer.planErrors = append(installer.planErrors, conflictErr)
+			return nil
+		}
+		return conflictErr
+	}
 	if !installer.apply {
-		installer.say("Codex global commands: would reconcile after Claude command wiring")
 		return nil
 	}
 	result, err := codexgen.RunGlobalCommands(codexgen.GlobalCommandsOptions{
@@ -242,6 +311,148 @@ func (installer *engine) reconcileCodexCommands() error {
 	return nil
 }
 
+func codexPlanBlockers(problems []string) []string {
+	blockers := make([]string, 0)
+	for _, problem := range problems {
+		if strings.HasPrefix(problem, "MISSING ") || strings.HasPrefix(problem, "STALE ") || strings.HasPrefix(problem, "ORPHAN ") {
+			continue
+		}
+		blockers = append(blockers, problem)
+	}
+	return blockers
+}
+
+func (installer *engine) planCodexCommands(assets []assetFile, future bool) (result codexgen.Result, returnErr error) {
+	sourceHome := ""
+	cleanup := func() error { return nil }
+	if future && filepath.Clean(installer.options.ConfigDir) == filepath.Join(filepath.Clean(installer.options.Home), ".claude") {
+		var err error
+		sourceHome, cleanup, err = installer.futureCommandSource(assets)
+		if err != nil {
+			return codexgen.Result{}, err
+		}
+	}
+	defer func() {
+		if err := cleanup(); err != nil {
+			returnErr = errors.Join(returnErr, err)
+		}
+	}()
+	result, err := codexgen.RunGlobalCommands(codexgen.GlobalCommandsOptions{
+		Home: installer.options.Home, SourceHome: sourceHome, Mode: codexgen.ModeCheck,
+	})
+	if err != nil {
+		return codexgen.Result{}, fmt.Errorf("plan Codex global commands: %w", err)
+	}
+	return result, nil
+}
+
+func (installer *engine) futureCommandSource(assets []assetFile) (string, func() error, error) {
+	temporary, err := os.MkdirTemp("", "pfm-install-command-plan-")
+	if err != nil {
+		return "", func() error { return nil }, fmt.Errorf("create Codex command plan root: %w", err)
+	}
+	cleanup := func() error {
+		if err := os.RemoveAll(temporary); err != nil {
+			return fmt.Errorf("remove Codex command plan root %s: %w", temporary, err)
+		}
+		return nil
+	}
+	fail := func(cause error) (string, func() error, error) {
+		return "", func() error { return nil }, errors.Join(cause, cleanup())
+	}
+	source := filepath.Join(installer.options.Home, ".claude", "commands")
+	target := filepath.Join(temporary, ".claude", "commands")
+	if _, err := os.Lstat(source); err == nil {
+		if err := copyCommandPlanTree(source, target); err != nil {
+			return fail(fmt.Errorf("stage current Claude commands for preview: %w", err))
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fail(fmt.Errorf("inspect Claude commands for preview: %w", err))
+	}
+	for _, asset := range assets {
+		commandTarget, found := installer.commandTarget(asset.path)
+		if !found {
+			continue
+		}
+		relative, err := filepath.Rel(filepath.Join(installer.options.ConfigDir, "commands"), commandTarget)
+		if err != nil {
+			return fail(fmt.Errorf("map planned command %s: %w", commandTarget, err))
+		}
+		content, err := readAsset(asset.path)
+		if err != nil {
+			return fail(fmt.Errorf("read planned command asset %s: %w", asset.path, err))
+		}
+		if err := atomicWrite(filepath.Join(target, relative), content, asset.mode); err != nil {
+			return fail(fmt.Errorf("stage planned command %s: %w", relative, err))
+		}
+	}
+	for _, retired := range []string{"bb.md", "swap.md"} {
+		if err := os.RemoveAll(filepath.Join(target, retired)); err != nil {
+			return fail(fmt.Errorf("retire %s from command preview: %w", retired, err))
+		}
+	}
+	return temporary, cleanup, nil
+}
+
+// copyCommandPlanTree snapshots the current command source while omitting the
+// two retired top-level commands. In particular, an old dangling /bb symlink
+// must not make preview fail before the installer can report and retire it.
+func copyCommandPlanTree(source, target string) error {
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() == "bb.md" || entry.Name() == "swap.md" {
+			continue
+		}
+		if err := copyPlanTree(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func copyPlanTree(source, target string) error {
+	info, err := os.Lstat(source)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		resolved, err := filepath.EvalSymlinks(source)
+		if err != nil {
+			return err
+		}
+		return copyPlanTree(resolved, target)
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(source)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := copyPlanTree(filepath.Join(source, entry.Name()), filepath.Join(target, entry.Name())); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("unsupported command source mode %s", info.Mode())
+	}
+	content, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(target, content, info.Mode().Perm())
+}
+
 func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.uninstallHarvest(); err != nil {
 		return err
@@ -256,7 +467,7 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.unwireCommands(assets); err != nil {
 		return err
 	}
-	if err := installer.reconcileCodexCommands(); err != nil {
+	if err := installer.reconcileCodexCommands(nil); err != nil {
 		return err
 	}
 	if err := installer.retireBBInstall(); err != nil {
@@ -351,14 +562,35 @@ func (installer *engine) removeUpdateMetadata() error {
 
 func (installer *engine) writeUpdateMetadata() error {
 	if installer.options.SourceRepo != "" {
-		if err := WriteSourceRepoMarker(installer.options.Home, installer.options.SourceRepo); err != nil {
+		content, err := sourceRepoMarkerContent(installer.options.SourceRepo)
+		if err != nil {
 			return err
 		}
+		path := SourceRepoPath(installer.options.Home)
+		if !sameFile(path, content, 0o600) {
+			if err := installer.change("write "+path, func() error {
+				return atomicWrite(path, content, 0o600)
+			}); err != nil {
+				return err
+			}
+		} else {
+			installer.ok(path)
+		}
 	}
-	if err := RecordCanonicalBinary(installer.options.Home); err != nil {
+	content, err := canonicalBinaryOwnershipContent(installer.options.Home)
+	if err != nil {
 		return err
 	}
-	installer.ok("update ownership metadata")
+	path := binaryOwnershipPath(installer.options.Home)
+	if !sameFile(path, content, 0o600) {
+		if err := installer.change("write "+path, func() error {
+			return atomicWrite(path, content, 0o600)
+		}); err != nil {
+			return err
+		}
+	} else {
+		installer.ok(path)
+	}
 	return nil
 }
 
@@ -733,18 +965,35 @@ func (installer *engine) retireLegacySwapCommand() error {
 
 func (installer *engine) retireBBInstall() error {
 	installer.say("retired /bb surfaces")
-	for _, link := range []struct{ target, source string }{
+	sourceRepos, err := installer.recordedProfessorSourceRepos()
+	if err != nil {
+		return err
+	}
+	for _, link := range []struct {
+		target         string
+		managedSource  string
+		legacyRelative string
+	}{
 		{
-			target: filepath.Join(installer.options.ConfigDir, "commands", "bb.md"),
-			source: filepath.Join(installer.managedRoot, "bb.command.md"),
+			target:         filepath.Join(installer.options.ConfigDir, "commands", "bb.md"),
+			managedSource:  filepath.Join(installer.managedRoot, "bb.command.md"),
+			legacyRelative: filepath.Join("blueprint", "templates", "host-swap", "bb.command.md"),
 		},
 		{
-			target: filepath.Join(installer.options.Home, ".agents", "skills", "bb"),
-			source: filepath.Join(installer.managedRoot, "codex-skills", "bb"),
+			target:         filepath.Join(installer.options.Home, ".agents", "skills", "bb"),
+			managedSource:  filepath.Join(installer.managedRoot, "codex-skills", "bb"),
+			legacyRelative: filepath.Join("blueprint", "templates", "host-swap", "codex-skills", "bb"),
 		},
 	} {
 		current, linked := resolvedLink(link.target)
-		if !linked || current != filepath.Clean(link.source) {
+		owned := linked && current == filepath.Clean(link.managedSource)
+		for _, repo := range sourceRepos {
+			if linked && current == filepath.Join(repo, link.legacyRelative) {
+				owned = true
+				break
+			}
+		}
+		if !owned {
 			installer.skip(link.target + " is not an installed /bb link")
 			continue
 		}
@@ -768,6 +1017,31 @@ func (installer *engine) retireBBInstall() error {
 	}
 	installer.say("")
 	return nil
+}
+
+func (installer *engine) recordedProfessorSourceRepos() ([]string, error) {
+	repos := make([]string, 0, 2)
+	seen := map[string]bool{}
+	add := func(repo string) {
+		repo = filepath.Clean(strings.TrimSpace(repo))
+		if repo != "." && !seen[repo] {
+			seen[repo] = true
+			repos = append(repos, repo)
+		}
+	}
+	add(installer.options.SourceRepo)
+	marker := SourceRepoPath(installer.options.Home)
+	if _, err := os.Lstat(marker); errors.Is(err, fs.ErrNotExist) {
+		return repos, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("inspect source repository marker for /bb retirement: %w", err)
+	}
+	repo, err := ReadSourceRepoMarker(installer.options.Home)
+	if err != nil {
+		return nil, fmt.Errorf("read source repository marker for /bb retirement: %w", err)
+	}
+	add(repo)
+	return repos, nil
 }
 
 func (installer *engine) retireEmptyDirectory(path string) error {
