@@ -40,13 +40,13 @@ prefix_rule(
 # file does not carry claims it has not earned. In the live pipeline git is NOT
 # gated here: it binds as LAW — every role card states that read-only git
 # (status/log/diff/show) is the role's, while commits, merges, pushes and branch
-# changes are gitter's alone — and that discipline has held. The registry
-# deliberately ships no gitter agent for the same reason.
+# changes are gitter's alone. The generated registry includes that one writer,
+# so a repo-wide Git deny would disable the authorized role along with everyone
+# else.
 #
-# Uncomment if you want the pin rather than the promise, and know what you buy:
-# the lock also blocks a lane's legitimate recovery paths when the prefix is
-# wrong, and `codex execpolicy check` is the only way to find out which. A rule
-# you have not run through the checker is a comment, not a control.
+# Uncomment only if this installation intentionally disables every Git writer,
+# including gitter. `codex execpolicy check` is the only way to prove the pin;
+# a rule you have not run through the checker is a comment, not a control.
 #
 # prefix_rule(
 #     pattern = ["git", "commit"],

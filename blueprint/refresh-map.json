@@ -79,15 +79,6 @@
     "codex/README.md": {
       "curated": true
     },
-    "codex/agents/mono-documenter.toml": {
-      "curated": true
-    },
-    "codex/agents/per-project/developer.toml": {
-      ".codex/agents/developer-be.toml": "76beb9bd7c8777acd7fa000fcd7eddb4360402c78c1469e19fa9008a29d76e3e"
-    },
-    "codex/agents/per-project/qa.toml": {
-      ".codex/agents/qa-be.toml": "b575ade661aef147629bdc0c730b35d592cb112bd242aabaaabe95b6fc5962fe"
-    },
     "codex/config.toml": {
       "sources": {
         ".codex/config.toml": "81ce89deef53d11b37a30789d03bb78a7562797f002b4f84ea884977a81e6f49"
