@@ -18,9 +18,11 @@ import (
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/reload"
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/tmuxfmt"
 )
 
@@ -667,6 +669,12 @@ func resolveReloadSession(
 			}
 		}
 	}
+	if id == "" && engine == pfmengine.Codex {
+		id, err = resolveReloadCodexPaneBinding(resolved, machine, socketPath, pane)
+		if err != nil {
+			return "", "", err
+		}
+	}
 	if id == "" {
 		return "", "", errors.New("couldn't identify this chat — run the statusline before reloading")
 	}
@@ -684,6 +692,45 @@ func resolveReloadSession(
 		return "", "", nil
 	}
 	return id, transcript, nil
+}
+
+func resolveReloadCodexPaneBinding(
+	resolved paths.Values,
+	machine pfmconfig.Config,
+	socketPath, pane string,
+) (id string, err error) {
+	database, err := store.Open()
+	if err != nil {
+		return "", fmt.Errorf("open fleet store for Codex reload identity: %w", err)
+	}
+	defer func() {
+		if closeErr := database.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close fleet store after Codex reload identity: %w", closeErr))
+		}
+	}()
+
+	manager, err := kill.New(database, killDependencies(commandRuntime{
+		Config: machine,
+		Paths:  resolved,
+	}))
+	if err != nil {
+		return "", fmt.Errorf("initialize Codex reload identity resolver: %w", err)
+	}
+	id, found, err := manager.CodexPaneBinding(
+		context.Background(),
+		filepath.Base(socketPath),
+		pane,
+	)
+	if err != nil {
+		return "", fmt.Errorf("read Codex pane binding for %s %s: %w", filepath.Base(socketPath), pane, err)
+	}
+	if !found {
+		return "", nil
+	}
+	if !chatUUIDPattern.MatchString(id) {
+		return "", fmt.Errorf("Codex pane binding for %s %s is not a valid thread id", filepath.Base(socketPath), pane)
+	}
+	return id, nil
 }
 
 func findEngineTranscript(resolved paths.Values, machine pfmconfig.Config, engine pfmengine.ID, id string) (string, error) {

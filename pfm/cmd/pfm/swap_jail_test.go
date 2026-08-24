@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,7 +12,9 @@ import (
 
 	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/store"
 )
 
 // The swap verb is a public chat operation. Before its port, dispatch treated
@@ -184,5 +187,75 @@ func TestSwapTargetIdentityNeverFallsBackToTheCallerSession(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "couldn't identify") {
 		t.Fatalf("target without its own breadcrumb borrowed caller identity: %v", err)
+	}
+}
+
+func TestExplicitCodexReloadUsesPaneBindingWithoutBreadcrumb(t *testing.T) {
+	jailTest(t)
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine := pfmconfig.Defaults(
+		resolved.Home,
+		resolved.Roots[pfmengine.Claude],
+		firstRoot(resolved.Roots[pfmengine.Codex]),
+	)
+	machine.CodexAccounts = []pfmconfig.CodexAccount{{
+		ID:   1,
+		Home: firstRoot(resolved.Roots[pfmengine.Codex]),
+	}}
+	const (
+		socket = "cx-probe-reload-bound"
+		pane   = "%7"
+		wantID = "22222222-2222-4222-8222-222222222222"
+	)
+	rollout := filepath.Join(
+		firstRoot(resolved.Roots[pfmengine.Codex]),
+		"sessions",
+		"rollout-2026-08-24T00-00-00-"+wantID+".jsonl",
+	)
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rollout, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := kill.New(database, killDependencies(commandRuntime{
+		Config: machine,
+		Paths:  resolved,
+	}))
+	if err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, pane, wantID); err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	gotID, gotTranscript, err := resolveReloadSession(
+		resolved,
+		machine,
+		filepath.Join(resolved.TmuxDir, socket),
+		pane,
+		false,
+	)
+	if err != nil || gotID != wantID || gotTranscript != rollout {
+		t.Fatalf(
+			"resolve bound Codex reload = (%q, %q, %v), want (%q, %q, nil)",
+			gotID,
+			gotTranscript,
+			err,
+			wantID,
+			rollout,
+		)
 	}
 }
