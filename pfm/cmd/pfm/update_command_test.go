@@ -55,6 +55,26 @@ func TestUpdateRefusesSourceDowngrade(t *testing.T) {
 	}
 }
 
+func TestPreferredUpdateSourceRepoPreservesRecordedAlias(t *testing.T) {
+	home := t.TempDir()
+	realRepo := filepath.Join(t.TempDir(), "source")
+	if err := os.MkdirAll(realRepo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	aliasRoot := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(filepath.Dir(realRepo), aliasRoot); err != nil {
+		t.Fatal(err)
+	}
+	aliasRepo := filepath.Join(aliasRoot, filepath.Base(realRepo))
+	if err := installer.WriteSourceRepoMarker(home, aliasRepo); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := preferredUpdateSourceRepo(home, realRepo); got != aliasRepo {
+		t.Fatalf("preferredUpdateSourceRepo()=%q, want recorded alias %q", got, aliasRepo)
+	}
+}
+
 func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	repo := newUpdateGitFixture(t)
 	previousBranch := updateGitBranch(t, repo)
@@ -95,7 +115,7 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
 	installCalls, doctorCalls := 0, 0
-	updateApplyInstall = func(_ context.Context, candidate, workingDirectory string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
+	updateApplyInstall = func(_ context.Context, candidate, workingDirectory, sourceRepo string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
 		installCalls++
 		if !strings.HasSuffix(candidate, "pfm-a") {
 			t.Fatalf("install candidate=%q, want first reproducible build", candidate)
@@ -105,6 +125,9 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 		}
 		if workingDirectory != repo {
 			t.Fatalf("candidate installer working directory=%q, want source repo %q", workingDirectory, repo)
+		}
+		if sourceRepo != repo {
+			t.Fatalf("candidate installer source marker=%q, want %q", sourceRepo, repo)
 		}
 		if got := updateGitRevision(t, repo, "HEAD"); got != updateGitRevision(t, repo, "v0.10.0") {
 			t.Fatalf("candidate installer saw source revision %q, want v0.10.0", got)
@@ -260,7 +283,7 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
 	managedMutation := filepath.Join(runtime.Paths.Home, ".local", "share", "pfm", "install", "new-asset")
-	updateApplyInstall = func(context.Context, string, string, commandRuntime, bool, io.Writer, io.Writer) error {
+	updateApplyInstall = func(context.Context, string, string, string, commandRuntime, bool, io.Writer, io.Writer) error {
 		if err := os.MkdirAll(filepath.Dir(managedMutation), 0o700); err != nil {
 			return err
 		}
@@ -273,12 +296,15 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 		t.Fatal("doctor ran after install failure")
 		return nil
 	}
-	updateRollbackInstall = func(_ context.Context, candidate, workingDirectory string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
+	updateRollbackInstall = func(_ context.Context, candidate, workingDirectory, sourceRepo string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
 		if !strings.Contains(candidate, "previous-") {
 			t.Fatalf("rollback installer candidate=%q, want preserved previous binary", candidate)
 		}
 		if workingDirectory != repo {
 			t.Fatalf("rollback installer working directory=%q, want restored source repo %q", workingDirectory, repo)
+		}
+		if sourceRepo != repo {
+			t.Fatalf("rollback installer source marker=%q, want %q", sourceRepo, repo)
 		}
 		if got := updateGitRevision(t, repo, "HEAD"); got != previousRef {
 			t.Fatalf("rollback installer saw source revision %q, want previous %q", got, previousRef)
