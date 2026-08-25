@@ -7,3 +7,5 @@ Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line wh
 and `(cost)` on any env / hook / permission / model-config delta.
 
 ## Pending
+
+- Changed: GitHub Actions runtime — Verify, Installer, and Release now use the current Node-24/ESM generations of checkout, Go setup, artifact upload, and artifact download, removing GitHub's forced deprecated-runtime compatibility path. (cost)

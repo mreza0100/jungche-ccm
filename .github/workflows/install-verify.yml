@@ -24,12 +24,12 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git tmux zsh
 
       - name: Check out the repository
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: pfm/go.mod
           cache-dependency-path: pfm/go.sum
@@ -53,12 +53,12 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5.5.0
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: pfm/go.mod
           cache-dependency-path: pfm/go.sum
