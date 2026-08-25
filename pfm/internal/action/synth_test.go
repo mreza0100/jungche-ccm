@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"hostops/pfm/internal/compose"
+	pfmconfig "hostops/pfm/internal/config"
 )
 
 func TestQuoteRoundTripsHostileWords(t *testing.T) {
@@ -344,6 +345,67 @@ func TestSynthesizeRejectsNUL(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "NUL") {
 		t.Fatalf("NUL error = %v", err)
+	}
+}
+
+func TestPickerLaunchPromptReachesClaudeCodexAndOpenCode(t *testing.T) {
+	prompt := "Explain v0.61.2, ask for approval, then run pfm update."
+	machine := testMachineConfig("/home/test")
+	machine.OpencodeAccounts = []pfmconfig.OpenCodeAccount{{ID: 1, Home: "/home/test/.local/share/opencode"}}
+
+	tests := []struct {
+		name string
+		row  compose.Row
+		want []string
+	}{
+		{
+			name: "Claude",
+			row:  compose.Row{Kind: compose.NewClaude, CWD: "/work/.professor"},
+			want: []string{"cc1", Quote(prompt)},
+		},
+		{
+			name: "Codex",
+			row:  compose.Row{Kind: compose.NewCodex, CWD: "/work/.professor"},
+			want: []string{"cx", Quote(prompt)},
+		},
+		{
+			name: "OpenCode",
+			row:  compose.Row{Kind: compose.NewOpencode, CWD: "/work/.professor"},
+			want: []string{"opencode", "--prompt", Quote(prompt)},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan, err := Synthesize(Request{
+				Row: test.row, PrimaryAccount: 1, Home: "/home/test",
+				FreshSocket: "engine-update-fixture", Config: machine,
+				Prompt: prompt,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := plan.Line + " " + plan.Run
+			for _, want := range test.want {
+				if !strings.Contains(command, want) {
+					t.Fatalf("launch command %q lacks %q", command, want)
+				}
+			}
+		})
+	}
+}
+
+func TestPickerLaunchPromptCannotLeakIntoResumeOrLiveRoutes(t *testing.T) {
+	for _, row := range []compose.Row{
+		{Kind: compose.ResumeClaude, ID: "11111111-1111-4111-8111-111111111111", CWD: "/work/project"},
+		{Kind: compose.LiveClaude, ID: "11111111-1111-4111-8111-111111111111", Socket: "cc-live"},
+	} {
+		_, err := synthesizeWithTestConfig(Request{
+			Row: row, PrimaryAccount: 1, Home: "/home/test",
+			FreshSocket: "cc-new", Prompt: "must not disappear",
+		})
+		if err == nil || !strings.Contains(err.Error(), "initial prompt is not valid") {
+			t.Fatalf("kind %s prompt error = %v", row.Kind, err)
+		}
 	}
 }
 

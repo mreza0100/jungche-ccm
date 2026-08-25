@@ -31,6 +31,10 @@ const (
 	// NewOpencode is appended for the same compatibility reason. It launches a
 	// fresh OpenCode TUI in a fleet-owned ox socket.
 	NewOpencode
+	// ProfessorUpdate is a cached, interactive-only release notice inserted by
+	// cmd/pfm ahead of the merged new-chat row. It is deliberately not emitted
+	// by Compose, so plain and TSV output retain their stable row contracts.
+	ProfessorUpdate
 )
 
 func (kind Kind) String() string {
@@ -57,6 +61,8 @@ func (kind Kind) String() string {
 		return "resume-opencode"
 	case NewOpencode:
 		return "new-opencode"
+	case ProfessorUpdate:
+		return "professor-update"
 	default:
 		return "unknown"
 	}
