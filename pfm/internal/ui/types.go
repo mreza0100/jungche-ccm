@@ -90,9 +90,12 @@ type Snapshot struct {
 	// launched something (Enter, ⌃O), so closing the picker the natural
 	// way threw every mark away. Nil leaves the picker read-only (the plain
 	// twin, tests).
-	ApplyKill    func(KillChange) error
-	StatsSampler StatsSampler
-	NoSky        bool
+	ApplyKill func(KillChange) error
+	// ApplyDeactivate ends one selected live chat while the picker remains open.
+	// Nil makes the action unavailable; the model reports that refusal in-frame.
+	ApplyDeactivate func(compose.Row) error
+	StatsSampler    StatsSampler
+	NoSky           bool
 	// Activity is the presence clock the background refresh reads to pick its
 	// cadence. Nil for every non-interactive picker, which reads as always
 	// active. Set once when the model is built; refresh snapshots leave it

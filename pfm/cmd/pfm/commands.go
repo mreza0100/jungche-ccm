@@ -118,6 +118,7 @@ func runLS(
 			return 1
 		}
 		scan.Snapshot.ApplyKill = applier
+		scan.Snapshot.ApplyDeactivate = deactivateApplier(ctx, scan.Paths)
 		scan.Snapshot.MergeNewChat = true
 		statsSampler := pfmstats.NewSampler(
 			scan.Paths.ProcRoot,
@@ -518,6 +519,18 @@ func killChatServer(
 		)
 	}
 	return nil
+}
+
+func deactivateApplier(
+	ctx context.Context,
+	resolved paths.Values,
+) func(compose.Row) error {
+	return func(row compose.Row) error {
+		if row.Socket == "" {
+			return errors.New("selected chat has no live server")
+		}
+		return killChatServer(ctx, resolved, row.Socket)
+	}
 }
 
 func rebootRow(

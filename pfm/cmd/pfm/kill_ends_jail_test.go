@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
@@ -129,7 +130,8 @@ func TestDeactivatingALiveChatEndsItAndClearsItsHandles(t *testing.T) {
 	if err := os.WriteFile(crumb, []byte("/transcript.jsonl\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := killChatServer(context.Background(), jailPaths(t), socket); err != nil {
+	apply := deactivateApplier(context.Background(), jailPaths(t))
+	if err := apply(compose.Row{Kind: compose.LiveClaude, Socket: socket, Name: "sleeping"}); err != nil {
 		t.Fatalf("deactive live chat: %v", err)
 	}
 	if jailServerAlive(tmuxDir, socket) {
