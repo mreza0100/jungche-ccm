@@ -104,8 +104,10 @@ type Model struct {
 	// receipt: what landed, or why the keystroke was refused. A ⌃X NEVER goes
 	// silent — a keystroke that appears to do nothing reads as a kill that
 	// took, and the row's return on the next open reads as data loss.
-	applyKill  func(KillChange) error
-	killStatus string
+	applyKill          func(KillChange) error
+	applyDeactivate    func(compose.Row) error
+	deactivatedSockets map[string]bool
+	killStatus         string
 }
 
 // NewModel builds the first frame entirely from cached state.
@@ -143,6 +145,8 @@ func NewModel(snapshot Snapshot) Model {
 		initialKilled:       make(map[string]bool),
 		killChanges:         make(map[string]KillChange),
 		applyKill:           snapshot.ApplyKill,
+		applyDeactivate:     snapshot.ApplyDeactivate,
+		deactivatedSockets:  make(map[string]bool),
 		statsSampler:        snapshot.StatsSampler,
 		skyEnabled:          !snapshot.NoSky,
 		activity:            snapshot.Activity,
@@ -367,9 +371,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				case row.Kind == compose.LiveSplit:
 					model.killStatus = "deactive refused — split live window; deactivate its chats individually"
 				case isLive(row.Kind) && row.Socket != "":
-					model.outcome = OutcomeDeactivate
-					model.outcomeRow = row
-					return model, tea.Quit
+					model.deactivate(row)
 				default:
 					model.killStatus = "deactive refused — " + row.Name + " is not running"
 				}
@@ -802,9 +804,26 @@ func trimLastWord(value string) string {
 func (model *Model) applyRefresh(snapshot Snapshot) {
 	follow := model.selectedKey()
 	fallback := model.cursor
+	rows := snapshot.Rows
+	if len(model.deactivatedSockets) != 0 {
+		live := liveSockets(rows)
+		for socket := range model.deactivatedSockets {
+			if !live[socket] {
+				delete(model.deactivatedSockets, socket)
+			}
+		}
+		filtered := make([]compose.Row, 0, len(rows))
+		for _, row := range rows {
+			if isLive(row.Kind) && model.deactivatedSockets[row.Socket] {
+				continue
+			}
+			filtered = append(filtered, row)
+		}
+		rows = filtered
+	}
 	if model.skyEnabled {
 		before := liveSockets(model.rows)
-		after := liveSockets(snapshot.Rows)
+		after := liveSockets(rows)
 		eventTime := snapshot.NowNS
 		if eventTime == 0 {
 			eventTime = model.nowNS
@@ -824,7 +843,7 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 			}
 		}
 	}
-	model.rows = append(model.rows[:0], snapshot.Rows...)
+	model.rows = append(model.rows[:0], rows...)
 	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View
 	model.killedCount = snapshot.KilledCount
@@ -845,6 +864,30 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 		}
 	}
 	model.rebuild(follow, fallback)
+}
+
+func (model *Model) deactivate(row compose.Row) {
+	if model.applyDeactivate == nil {
+		model.killStatus = "deactive refused — this picker cannot stop chats"
+		return
+	}
+	if err := model.applyDeactivate(row); err != nil {
+		model.killStatus = fmt.Sprintf("deactive failed — %s: %v", row.Name, err)
+		return
+	}
+	model.deactivatedSockets[row.Socket] = true
+	model.killStatus = "deactivated — " + row.Name + " — ready to resume"
+	key := rowKey(row)
+	fallback := model.cursor
+	kept := model.rows[:0]
+	for _, candidate := range model.rows {
+		if rowKey(candidate) != key {
+			kept = append(kept, candidate)
+		}
+	}
+	model.rows = kept
+	model.actionIndex = 0
+	model.rebuild("", fallback)
 }
 
 func (model *Model) toggleKilled() {

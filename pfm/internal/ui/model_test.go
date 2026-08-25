@@ -160,6 +160,11 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 
 	snapshot.Rows = []compose.Row{{Kind: compose.LiveClaude, ID: "live", Name: "live", Project: "p", Socket: "s"}}
 	snapshot.InitialCursorID = "live"
+	var deactivated []compose.Row
+	snapshot.ApplyDeactivate = func(row compose.Row) error {
+		deactivated = append(deactivated, row)
+		return nil
+	}
 	model = NewModel(snapshot)
 	model, command = applyKey(t, model, specialKey(tea.KeyRight))
 	if command != nil || model.ActionIndex() != 1 {
@@ -178,8 +183,11 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 		}
 	}
 	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
-	if command == nil || model.Result().Kind != OutcomeDeactivate || model.Result().Row.Socket != "s" {
-		t.Fatalf("deactive carousel Enter result=%#v command=%v", model.Result(), command)
+	if command != nil || model.Result().Kind != OutcomeNone || len(deactivated) != 1 || deactivated[0].Socket != "s" {
+		t.Fatalf("deactive carousel Enter result=%#v command=%v deactivated=%#v", model.Result(), command, deactivated)
+	}
+	if model.FilteredRowCount() != 0 {
+		t.Fatalf("deactivated live row remained visible: %#v", model.VisibleRows())
 	}
 }
 
