@@ -21,7 +21,7 @@ unwired or non-executable hook is a warning and a non-zero doctor result.
 
 `pfm` installs separately and is opt-in: see [INSTALL.md](INSTALL.md).
 Upgrading an existing installation? Follow the complete
-[v0.61.1 LLM upgrade runbook](releases/v0.61.1.md#llm-upgrade-runbook).
+[v0.61.2 LLM upgrade runbook](releases/v0.61.2.md#llm-upgrade-runbook).
 
 ---
 
@@ -53,6 +53,13 @@ find › type project or name                                                   
 > (🥇🥈), grouped by repo, live (●), resumable (↻), or agent-run (⚙). `⇄` marks chats that
 > talk to other chats; `←here` is the one you are sitting in; `✦` opens a new one on any
 > harness. Pick one, attach, or fire it a goal without ever attaching.
+
+Every `pfm ls` invocation also starts a detached, silent Professor release check. A successful
+lookup is consumed only by the next invocation: when a newer release exists, the interactive
+picker leads with a full-width animated gold **PROFESSOR UPDATE** banner. Choose Claude, Codex, or
+OpenCode on that banner and press Enter; the selected engine opens in the recorded Professor clone,
+summarizes the release and migration impact, asks for approval, and only then runs `pfm update`.
+The lookup never blocks or writes into the active picker frame.
 
 `tab` cycles to **Limits** — every registered provider window on the box, one panel:
 
