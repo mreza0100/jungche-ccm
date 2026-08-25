@@ -449,7 +449,21 @@ func isCredentialRejection(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"401", "403", "unauthorized", "forbidden", "access token rejected"} {
+	for _, marker := range []string{"unauthorized", "forbidden", "access token rejected", "credential rejected"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return hasAuthHTTPStatus(message)
+}
+
+func hasAuthHTTPStatus(message string) bool {
+	for _, marker := range []string{
+		"http 401", "http 403",
+		"returned 401", "returned 403",
+		"status 401", "status 403",
+		"401 unauthorized", "403 forbidden",
+	} {
 		if strings.Contains(message, marker) {
 			return true
 		}
@@ -523,12 +537,12 @@ func needsCredentialRefresh(err error) bool {
 		return false
 	}
 	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"credential", "access token", "401", "403", "unauthorized", "forbidden"} {
+	for _, marker := range []string{"credential", "access token", "unauthorized", "forbidden"} {
 		if strings.Contains(message, marker) {
 			return true
 		}
 	}
-	return false
+	return hasAuthHTTPStatus(message)
 }
 
 func defaultAck(ctx context.Context, account LimitAccount) error {
