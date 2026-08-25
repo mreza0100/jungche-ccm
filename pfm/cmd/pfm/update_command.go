@@ -21,9 +21,11 @@ import (
 // These seams keep update tests entirely inside their throwaway repositories;
 // production uses the real build/install/doctor functions below.
 var (
-	updateBuildCandidate = buildUpdateCandidate
-	updateApplyInstall   = applyUpdateInstall
-	updateRunDoctor      = runUpdateDoctor
+	updateBuildCandidate  = buildUpdateCandidate
+	updateApplyInstall    = applyUpdateInstall
+	updateRunDoctor       = runUpdateDoctor
+	updateRollbackInstall = applyUpdateInstall
+	updateRollbackDoctor  = runUpdateDoctor
 )
 
 type updateVersion struct {
@@ -136,15 +138,9 @@ func updateRepository(
 		return fmt.Errorf("resolve current revision: %w", err)
 	}
 	previousRef = strings.TrimSpace(previousRef)
-	checkedOut := false
-	defer func() {
-		if err == nil || !checkedOut {
-			return
-		}
-		if restoreErr := updateGitRun(ctx, repo, "checkout", "--detach", "--quiet", previousRef); restoreErr != nil {
-			err = errors.Join(err, fmt.Errorf("restore source revision %s: %w; source clone remains at the update revision", previousRef, restoreErr))
-		}
-	}()
+	if _, err := updateGitOutput(ctx, repo, "symbolic-ref", "--quiet", "--short", "HEAD"); err != nil {
+		return errors.New("source checkout is detached; checkout its update branch before running pfm update")
+	}
 
 	if err := updateGitRun(ctx, repo, "fetch", "--tags"); err != nil {
 		return fmt.Errorf("fetch tags: %w", err)
@@ -173,23 +169,49 @@ func updateRepository(
 	if strings.TrimSpace(status) != "" {
 		return errors.New("refuse dirty worktree; commit or stash changes before update")
 	}
-	if err := updateGitRun(ctx, repo, "checkout", "--detach", "--quiet", target); err != nil {
-		return fmt.Errorf("checkout %s: %w", target, err)
+	sourceAlreadyContainsTarget := updateGitRun(ctx, repo, "merge-base", "--is-ancestor", target, previousRef) == nil
+	if !sourceAlreadyContainsTarget {
+		if err := updateGitRun(ctx, repo, "merge-base", "--is-ancestor", previousRef, target); err != nil {
+			return fmt.Errorf("target %s does not fast-forward the current source branch", target)
+		}
 	}
-	checkedOut = true
 
 	managedRoot := filepath.Dir(installer.SourceRepoPath(runtime.Paths.Home))
-	stage, err := os.MkdirTemp(managedRoot, "update-")
+	stage, err := os.MkdirTemp(filepath.Dir(managedRoot), "update-")
 	if err != nil {
-		return fmt.Errorf("stage update under managedRoot: %w", err)
+		return fmt.Errorf("stage update beside managed root: %w", err)
 	}
-	defer os.RemoveAll(stage)
+	worktreeAdded := false
+	defer func() {
+		var cleanupErr error
+		if worktreeAdded {
+			if removeErr := updateGitRun(ctx, repo, "worktree", "remove", "--force", filepath.Join(stage, "source")); removeErr != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup staged source worktree: %w", removeErr))
+			}
+		}
+		if removeErr := os.RemoveAll(stage); removeErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cleanup update stage %s: %w", stage, removeErr))
+		}
+		if cleanupErr == nil {
+			return
+		}
+		if err != nil {
+			err = errors.Join(err, cleanupErr)
+			return
+		}
+		fmt.Fprintf(stderr, "pfm update: cleanup warning after successful update: %v\n", cleanupErr)
+	}()
+	stagedSource := filepath.Join(stage, "source")
+	if err := updateGitRun(ctx, repo, "worktree", "add", "--detach", "--quiet", stagedSource, target); err != nil {
+		return fmt.Errorf("stage source at %s: %w", target, err)
+	}
+	worktreeAdded = true
 	candidateA := filepath.Join(stage, "pfm-a")
 	candidateB := filepath.Join(stage, "pfm-b")
-	if err := updateBuildCandidate(ctx, repo, target, candidateA); err != nil {
+	if err := updateBuildCandidate(ctx, stagedSource, target, candidateA); err != nil {
 		return fmt.Errorf("build candidate first pass: %w", err)
 	}
-	if err := updateBuildCandidate(ctx, repo, target, candidateB); err != nil {
+	if err := updateBuildCandidate(ctx, stagedSource, target, candidateB); err != nil {
 		return fmt.Errorf("build candidate second pass: %w", err)
 	}
 	hashA, err := fileHash(candidateA)
@@ -203,6 +225,10 @@ func updateRepository(
 	if hashA != hashB {
 		return fmt.Errorf("candidate hash mismatch: first=%s second=%s", hashA, hashB)
 	}
+	if err := updateGitRun(ctx, repo, "worktree", "remove", "--force", stagedSource); err != nil {
+		return fmt.Errorf("remove staged source worktree: %w", err)
+	}
+	worktreeAdded = false
 
 	ledger, err := installer.ReadBinaryOwnership(runtime.Paths.Home)
 	if err != nil {
@@ -231,10 +257,24 @@ func updateRepository(
 	}
 
 	if err := updateApplyInstall(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
-		return updateFailure(fmt.Errorf("install --yes after staging: %w", err), rollbackUpdateReplacements(replacements, stderr))
+		return updateFailure(
+			fmt.Errorf("install --yes after staging: %w", err),
+			rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
+		)
 	}
 	if err := updateRunDoctor(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
-		return updateFailure(fmt.Errorf("doctor after update: %w", err), rollbackUpdateReplacements(replacements, stderr))
+		return updateFailure(
+			fmt.Errorf("doctor after update: %w", err),
+			rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
+		)
+	}
+	if !sourceAlreadyContainsTarget {
+		if err := updateGitRun(ctx, repo, "merge", "--ff-only", "--quiet", target); err != nil {
+			return updateFailure(
+				fmt.Errorf("fast-forward source branch to %s: %w", target, err),
+				rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
+			)
+		}
 	}
 	fmt.Fprintf(stdout, "updated %s from %s\n", target, repo)
 	return nil
@@ -248,7 +288,7 @@ type updateReplacement struct {
 
 func updateFailure(primary, rollbackErr error) error {
 	if rollbackErr != nil {
-		return fmt.Errorf("%w; rollback residue: %v; manually repair the listed owned binary paths", primary, rollbackErr)
+		return fmt.Errorf("%w; rollback residue: %v; manually repair the reported update-owned state", primary, rollbackErr)
 	}
 	return fmt.Errorf("%w; rolled back update-owned changes", primary)
 }
@@ -265,6 +305,31 @@ func rollbackUpdateReplacements(replacements []updateReplacement, stderr io.Writ
 			continue
 		}
 		fmt.Fprintf(stderr, "pfm update: rolled back %s\n", replacement.target)
+	}
+	return rollbackErr
+}
+
+// rollbackUpdateState first restores every owned binary, then uses the prior
+// binary's embedded installer to converge all installer-owned host wiring back
+// to the previous release. A clean doctor is part of rollback proof; without
+// it, updateFailure reports residue instead of claiming a safe rollback.
+func rollbackUpdateState(
+	ctx context.Context,
+	replacements []updateReplacement,
+	runtime commandRuntime,
+	skipHarvest bool,
+	stdout, stderr io.Writer,
+) error {
+	rollbackErr := rollbackUpdateReplacements(replacements, stderr)
+	if len(replacements) == 0 {
+		return errors.Join(rollbackErr, errors.New("no previous binary is available to restore installer state"))
+	}
+	previousBinary := replacements[0].backup
+	if err := updateRollbackInstall(ctx, previousBinary, runtime, skipHarvest, stdout, stderr); err != nil {
+		return errors.Join(rollbackErr, fmt.Errorf("reapply previous installer state: %w", err))
+	}
+	if err := updateRollbackDoctor(ctx, previousBinary, runtime, skipHarvest, stdout, stderr); err != nil {
+		return errors.Join(rollbackErr, fmt.Errorf("doctor after rollback: %w", err))
 	}
 	return rollbackErr
 }

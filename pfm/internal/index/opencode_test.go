@@ -13,8 +13,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// seedOpencodeStore builds the native OpenCode store shape: user prompts live
-// in message/part JSON rows, never in PFM's optional session_input queue.
+// seedOpencodeStore builds the OpenCode v1.14.30 store shape from its published
+// Drizzle schema. Session usage lived only in assistant-message JSON in that
+// release; later OpenCode versions added denormalized session summary columns.
 func seedOpencodeStore(t *testing.T, root string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -26,20 +27,40 @@ func seedOpencodeStore(t *testing.T, root string) {
 	}
 	defer db.Close()
 	script := `
-CREATE TABLE project (id TEXT PRIMARY KEY, worktree TEXT NOT NULL);
+CREATE TABLE project (
+  id TEXT PRIMARY KEY,
+  worktree TEXT NOT NULL,
+  vcs TEXT,
+  name TEXT,
+  icon_url TEXT,
+  icon_url_override TEXT,
+  icon_color TEXT,
+  time_created INTEGER NOT NULL,
+  time_updated INTEGER NOT NULL,
+  time_initialized INTEGER,
+  sandboxes TEXT NOT NULL,
+  commands TEXT
+);
 CREATE TABLE session (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
+  workspace_id TEXT,
   parent_id TEXT,
+  slug TEXT NOT NULL,
   directory TEXT NOT NULL,
+  path TEXT,
   title TEXT NOT NULL,
-  agent TEXT NOT NULL DEFAULT '',
-  model TEXT NOT NULL DEFAULT '',
-  tokens_input INTEGER NOT NULL DEFAULT 0,
-  tokens_output INTEGER NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0,
+  version TEXT NOT NULL,
+  share_url TEXT,
+  summary_additions INTEGER,
+  summary_deletions INTEGER,
+  summary_files INTEGER,
+  summary_diffs TEXT,
+  revert TEXT,
+  permission TEXT,
   time_created INTEGER NOT NULL,
   time_updated INTEGER NOT NULL,
+  time_compacting INTEGER,
   time_archived INTEGER
 );
 CREATE TABLE message (
@@ -63,25 +84,23 @@ CREATE INDEX part_session_idx ON part (session_id);`
 	if _, err := db.Exec(script); err != nil {
 		t.Fatalf("seed schema: %v", err)
 	}
-	if _, err := db.Exec("INSERT INTO project (id, worktree) VALUES ('p1', '/work/nuts')"); err != nil {
+	if _, err := db.Exec("INSERT INTO project (id, worktree, time_created, time_updated, sandboxes) VALUES ('p1', '/work/nuts', 1, 1, '[]')"); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 	sessions := []struct {
 		id     string
 		parent any
 		title  string
-		model  string
-		cost   float64
 		arch   any
 	}{
-		{"ses_root", nil, "Ramsey attack", `{"id":"m1","providerID":"prov"}`, 1.5, nil},
-		{"ses_child", "ses_root", "subagent", "", 0, nil},
-		{"ses_gone", nil, "old", "", 0, 500},
+		{"ses_root", nil, "Ramsey attack", nil},
+		{"ses_child", "ses_root", "subagent", nil},
+		{"ses_gone", nil, "old", 500},
 	}
 	for _, session := range sessions {
 		if _, err := db.Exec(
-			"INSERT INTO session (id, project_id, parent_id, directory, title, agent, model, tokens_input, tokens_output, cost, time_created, time_updated, time_archived) VALUES (?, 'p1', ?, '/work/nuts/03-ramsey', ?, 'build', ?, 1, 1, ?, 10, 20, ?)",
-			session.id, session.parent, session.title, session.model, session.cost, session.arch,
+			"INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated, time_archived) VALUES (?, 'p1', ?, ?, '/work/nuts/03-ramsey', ?, '1.14.30', 10, 20, ?)",
+			session.id, session.parent, session.id, session.title, session.arch,
 		); err != nil {
 			t.Fatalf("seed session %s: %v", session.id, err)
 		}
@@ -107,6 +126,14 @@ CREATE INDEX part_session_idx ON part (session_id);`
 			t.Fatalf("seed part %v: %v", p[1], err)
 		}
 	}
+	if _, err := db.Exec(
+		`INSERT INTO message (id, session_id, time_created, time_updated, data)
+		 VALUES ('m4', 'ses_root', 300, 300,
+		 json_object('role','assistant','agent','build','providerID','prov','modelID','m1',
+		             'cost',1.5,'tokens',json_object('input',1,'output',1,'reasoning',0)))`,
+	); err != nil {
+		t.Fatalf("seed assistant message: %v", err)
+	}
 }
 
 func TestReadOpencodeSessionsReadsTheFixtureStore(t *testing.T) {
@@ -129,22 +156,31 @@ func TestReadOpencodeSessionsReadsTheFixtureStore(t *testing.T) {
 	want := struct {
 		title       string
 		projectDir  string
+		agent       string
 		model       string
 		firstPrompt string
 		promptCount int64
+		tokensInput int64
+		tokensOut   int64
 		costMilli   int64
-	}{"Ramsey attack", "/work/nuts", "prov/m1", "prove the bound", 2, 1500}
+	}{"Ramsey attack", "/work/nuts", "build", "prov/m1", "prove the bound", 2, 1, 1, 1500}
 	switch {
 	case got.Title != want.title:
 		t.Errorf("title = %q, want %q", got.Title, want.title)
 	case got.ProjectDir != want.projectDir:
 		t.Errorf("project dir = %q, want %q", got.ProjectDir, want.projectDir)
+	case got.Agent != want.agent:
+		t.Errorf("agent = %q, want %q", got.Agent, want.agent)
 	case got.Model != want.model:
 		t.Errorf("model = %q, want %q", got.Model, want.model)
 	case got.FirstPrompt != want.firstPrompt:
 		t.Errorf("first prompt = %q, want %q", got.FirstPrompt, want.firstPrompt)
 	case got.PromptCount != want.promptCount:
 		t.Errorf("prompt count = %d, want %d", got.PromptCount, want.promptCount)
+	case got.TokensInput != want.tokensInput:
+		t.Errorf("input tokens = %d, want %d", got.TokensInput, want.tokensInput)
+	case got.TokensOutput != want.tokensOut:
+		t.Errorf("output tokens = %d, want %d", got.TokensOutput, want.tokensOut)
 	case got.CostMillicents != want.costMilli:
 		t.Errorf("cost millicents = %d, want %d", got.CostMillicents, want.costMilli)
 	}
@@ -162,7 +198,9 @@ func TestReadOpencodeSessionsCompactsNativeModelID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE session SET model = '{"providerID":"openai","modelID":"gpt-5.6-sol"}' WHERE id = 'ses_root'`); err != nil {
+	if _, err := db.Exec(`UPDATE message
+		SET data = json_set(data, '$.providerID', 'openai', '$.modelID', 'gpt-5.6-sol')
+		WHERE id = 'm4'`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
