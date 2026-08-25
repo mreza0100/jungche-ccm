@@ -39,6 +39,7 @@ Bullets MUST follow this shape:
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.61.5](releases/v0.61.5.md) — accepted repair for legacy OpenCode indexing, transactional updates, and stable release gates
 - [v0.61.4](releases/v0.61.4.md) — repair legacy OpenCode indexing, transactional updates, and release gates
 - [v0.61.3](releases/v0.61.3.md) — corrective Darwin verification release for the complete Drive, deactivation, and guided-update wave
 - [v0.61.2](releases/v0.61.2.md) — complete Google Drive harvesting, non-closing deactivation, and guided gold update discovery
