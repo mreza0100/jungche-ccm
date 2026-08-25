@@ -14,6 +14,28 @@ import (
 
 func uintString(value uint64) string { return strconv.FormatUint(value, 10) }
 
+func TestSamplerSampleLimitsSkipsLinuxResourceFiles(t *testing.T) {
+	now := int64(123456789)
+	sampler := &Sampler{
+		ProcRoot: filepath.Join(t.TempDir(), "missing-proc"),
+		Clock:    func() int64 { return now },
+		Limits: NewLimitsSampler([]LimitAccount{{
+			ID: 3, Label: "account 3", Absent: true,
+		}}),
+	}
+
+	snapshot := sampler.SampleLimits()
+	if !snapshot.Ready || snapshot.SampleTime != now {
+		t.Fatalf("Limits snapshot = %#v, want ready snapshot at %d", snapshot, now)
+	}
+	if len(snapshot.Chats) != 0 || len(snapshot.Docker) != 0 {
+		t.Fatalf("Limits snapshot unexpectedly sampled resources: %#v", snapshot)
+	}
+	if len(snapshot.Limits) != 1 || !snapshot.Limits[0].Absent || snapshot.Limits[0].Status != "account 3" {
+		t.Fatalf("Limits snapshot lost account status: %#v", snapshot.Limits)
+	}
+}
+
 func TestSamplerComputesInstantaneousTreeCPUFromTwoProcSamples(t *testing.T) {
 	root := t.TempDir()
 	proc := filepath.Join(root, "proc")

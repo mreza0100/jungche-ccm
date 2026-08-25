@@ -200,6 +200,10 @@ func TestProfessorUpdateRowLeadsNewChatPersistsAcrossRefreshAndLaunchesChosenEng
 				Name: "Professor v0.61.2 available — update", Project: ".professor",
 				CWD: "/home/test/.professor",
 			},
+			{
+				Kind: compose.LiveClaude, ID: "professor-work", Name: "Professor work",
+				Project: ".professor", CWD: "/home/test/.professor",
+			},
 			{Kind: compose.NewClaude, Name: "New Claude chat", Project: "project", CWD: "/work/project"},
 			{Kind: compose.NewCodex, Name: "New Codex chat", Project: "project", CWD: "/work/project"},
 			{Kind: compose.NewOpencode, Name: "New OpenCode chat", Project: "project", CWD: "/work/project"},
@@ -244,6 +248,34 @@ func TestProfessorUpdateRowLeadsNewChatPersistsAcrossRefreshAndLaunchesChosenEng
 	if command == nil || result.Kind != OutcomeProfessorUpdate || result.Engine != pfmengine.Codex ||
 		result.PrimaryAccount != 2 || result.Row.CWD != "/home/test/.professor" {
 		t.Fatalf("update selection result=%#v command=%v", result, command)
+	}
+}
+
+func TestProfessorUpdateCtrlSCyclesVisibleClaudeAccountEvenWhenCodexChosen(t *testing.T) {
+	snapshot := Snapshot{
+		Rows: []compose.Row{
+			{Kind: compose.ProfessorUpdate, ID: "pfm-update-v0.61.2", Name: "v0.61.2", Project: ".professor"},
+			{Kind: compose.NewClaude, Name: "New Claude chat", Project: "project"},
+			{Kind: compose.NewCodex, Name: "New Codex chat", Project: "project"},
+		},
+		View:                compose.DefaultView,
+		PrimaryAccount:      2,
+		AccountIDs:          []int{1, 2},
+		CodexPrimaryAccount: 7,
+		CodexAccountIDs:     []int{7},
+		MergeNewChat:        true,
+		NowNS:               fixtureNowNS,
+		Width:               120,
+		Height:              20,
+	}
+	model := NewModel(snapshot)
+	model, command := applyKey(t, model, specialKey(tea.KeyRight))
+	if command != nil || model.NewChatEngine() != pfmengine.Codex {
+		t.Fatalf("update engine after Right = %q command=%v, want Codex", model.NewChatEngine(), command)
+	}
+	model, command = applyKey(t, model, controlKey('s'))
+	if command != nil || model.PrimaryAccount() != 1 {
+		t.Fatalf("Ctrl+S on update selected for Codex left visible Claude account=%d command=%v, want 1", model.PrimaryAccount(), command)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -123,6 +124,51 @@ func TestStatuslineRendersFableRateAndSymbol(t *testing.T) {
 	plain := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(got, "")
 	if !strings.Contains(plain, "✦ Fable") || !strings.Contains(plain, "7d-fable-used:23%") {
 		t.Fatalf("fable statusline=%q", plain)
+	}
+}
+
+func TestStatuslineQuotaSnapshotCarriesAccountConfigIdentity(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, ".cc", "2")
+	rateDir := filepath.Join(root, "rates")
+	now := time.Now().Truncate(time.Second)
+	runtime := Runtime{
+		Now: func() time.Time { return now }, Home: root, ConfigDir: configDir,
+		CacheDir: filepath.Join(root, "cache"), RateLimitDir: rateDir,
+		SIDDir: filepath.Join(root, "sid"), TmuxDir: filepath.Join(root, "tmux"),
+		ProcRoot: filepath.Join(root, "proc"), Columns: 120, UID: 1000,
+		AccountDirs: map[string]int{configDir: 2}, Env: map[string]string{}, Command: quietRunner{},
+	}
+	if _, account := accountBadge(runtime); account != 2 {
+		t.Fatalf("accountBadge(config 2)=%d, want 2", account)
+	}
+	input := []byte(fmt.Sprintf(`{
+  "model":{"display_name":"Opus 4"},
+  "session_id":"account-two-session",
+  "rate_limits":{
+    "five_hour":{"used_percentage":31,"resets_at":%d},
+    "seven_day":{"used_percentage":47,"resets_at":%d}
+  }
+}`, now.Add(4*time.Hour).Unix(), now.Add(6*24*time.Hour).Unix()))
+	_, err := Render(context.Background(), input, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(rateDir, "acct-2.account-two-session.json"))
+	if err != nil {
+		entries, _ := os.ReadDir(rateDir)
+		t.Fatalf("read account 2 quota snapshot: %v; entries=%v", err, entries)
+	}
+	var snapshot struct {
+		Account   int    `json:"acct"`
+		ConfigDir string `json:"config_dir"`
+		TS        int64  `json:"ts"`
+	}
+	if err := json.Unmarshal(body, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Account != 2 || snapshot.ConfigDir != configDir || snapshot.TS != now.Unix() {
+		t.Fatalf("quota snapshot identity=%#v, want account 2 config %q at %d", snapshot, configDir, now.Unix())
 	}
 }
 

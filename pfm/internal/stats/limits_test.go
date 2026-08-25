@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,89 @@ import (
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/usagehook"
 )
+
+func TestLimitsSamplerUsesIdentityMatchedStatuslineQuotaWithoutCredentialFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	configDir := filepath.Join(home, ".cc", "2")
+	realConfigDir := filepath.Join(home, ".claude2")
+	if err := os.MkdirAll(filepath.Dir(configDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(realConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realConfigDir, configDir); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	rateDir := filepath.Join(home, "tmp", "cc-rate-limits")
+	writeStatuslineQuotaFixture(t, rateDir, realConfigDir, now)
+
+	sampler := NewLimitsSampler([]LimitAccount{{
+		ID: 2, Emoji: "🥈", Engine: pfmengine.Claude, Label: "account 2", ConfigDir: configDir,
+	}})
+	sampler.Now = func() time.Time { return now }
+	var acks int
+	sampler.Ack = func(context.Context, LimitAccount) error {
+		acks++
+		return fmt.Errorf("credential refresh must not run")
+	}
+	limits, warnings := sampler.Sample(context.Background())
+	if acks != 0 || len(warnings) != 0 || len(limits) != 1 || len(limits[0].Windows) != 2 {
+		t.Fatalf("acks=%d warnings=%v limits=%#v, want two statusline-confirmed windows", acks, warnings, limits)
+	}
+	if limits[0].Windows[0].UsedPct != 31 || limits[0].Windows[1].UsedPct != 47 ||
+		!limits[0].ConfirmedAt.Equal(now) {
+		t.Fatalf("statusline quota provenance = %#v, want 31/47 confirmed at %s", limits[0], now)
+	}
+}
+
+func TestLimitsSamplerRejectsStatuslineQuotaFromPreviousAccountIdentity(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(paths.EnvHome, home)
+	currentConfig := filepath.Join(home, ".cc", "2")
+	if err := os.MkdirAll(currentConfig, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	writeStatuslineQuotaFixture(t, filepath.Join(home, "tmp", "cc-rate-limits"), filepath.Join(home, ".old-account-2"), now)
+
+	sampler := NewLimitsSampler([]LimitAccount{{ID: 2, Engine: pfmengine.Claude, Label: "account 2", ConfigDir: currentConfig}})
+	sampler.Now = func() time.Time { return now }
+	var acks int
+	sampler.Ack = func(context.Context, LimitAccount) error {
+		acks++
+		return nil
+	}
+	limits, warnings := sampler.Sample(context.Background())
+	if acks != 0 || len(warnings) != 1 || len(limits) != 1 || len(limits[0].Windows) != 0 ||
+		!strings.Contains(limits[0].Status, ".credentials.json") {
+		t.Fatalf("acks=%d warnings=%v limits=%#v, want old identity refused and missing credentials surfaced", acks, warnings, limits)
+	}
+}
+
+func writeStatuslineQuotaFixture(t *testing.T, rateDir, configDir string, now time.Time) {
+	t.Helper()
+	if err := os.MkdirAll(rateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := json.Marshal(map[string]any{
+		"acct":                2,
+		"config_dir":          configDir,
+		"five_hour_used":      31,
+		"seven_day_used":      47,
+		"five_hour_resets_at": now.Add(4 * time.Hour).Unix(),
+		"seven_day_resets_at": now.Add(6 * 24 * time.Hour).Unix(),
+		"ts":                  now.Unix(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rateDir, "acct-2.session.json"), append(snapshot, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestLimitsSamplerMapsCanonicalAndScopedWindowsAndCaches(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)

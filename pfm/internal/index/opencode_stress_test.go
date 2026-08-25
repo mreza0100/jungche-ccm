@@ -36,16 +36,23 @@ CREATE TABLE session (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   parent_id TEXT,
+  slug TEXT NOT NULL,
   directory TEXT NOT NULL,
   title TEXT NOT NULL,
-  agent TEXT NOT NULL DEFAULT '',
-  model TEXT NOT NULL DEFAULT '',
-  tokens_input INTEGER NOT NULL DEFAULT 0,
-  tokens_output INTEGER NOT NULL DEFAULT 0,
-  cost REAL NOT NULL DEFAULT 0,
+  version TEXT NOT NULL,
+  share_url TEXT,
+  summary_additions INTEGER,
+  summary_deletions INTEGER,
+  summary_files INTEGER,
+  summary_diffs TEXT,
+  revert TEXT,
+  permission TEXT,
   time_created INTEGER NOT NULL,
   time_updated INTEGER NOT NULL,
-  time_archived INTEGER
+  time_compacting INTEGER,
+  time_archived INTEGER,
+  workspace_id TEXT,
+  path TEXT
 );
 CREATE TABLE message (
   id TEXT PRIMARY KEY,
@@ -85,13 +92,6 @@ CREATE INDEX part_session_idx ON part (session_id);`
 		"",
 		"; rm -rf / --no-preserve-root",
 	}
-	hostileModels := []string{
-		`{"id":"m","providerID":"p"}`,
-		`{malformed json`,
-		``,
-		`{"id":""}`,
-		strings.Repeat("x", 10_000),
-	}
 	bigPrompt := strings.Repeat("prompt body ", 8192) // ~100KB
 	tx, err := db.Begin()
 	if err != nil {
@@ -107,12 +107,11 @@ CREATE INDEX part_session_idx ON part (session_id);`
 			archived = int64(i * 100)
 		}
 		if _, err := tx.Exec(
-			"INSERT INTO session (id, project_id, parent_id, directory, title, agent, model, tokens_input, tokens_output, cost, time_created, time_updated, time_archived) VALUES (?, 'p1', ?, ?, ?, 'build', ?, ?, ?, ?, ?, ?, ?)",
+			"INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated, time_archived) VALUES (?, 'p1', ?, ?, ?, ?, '1.14.30', ?, ?, ?)",
 			fmt.Sprintf("ses_%d", i), parent,
+			fmt.Sprintf("session-%d", i),
 			[]any{"/stress/repo", "", "/stress/repo/"}[i%3],
 			hostileTitles[i%len(hostileTitles)],
-			hostileModels[i%len(hostileModels)],
-			i, i, float64(i%97)/7.0,
 			int64(i), int64(i), // duplicate timestamps on purpose
 			archived,
 		); err != nil {
@@ -125,7 +124,10 @@ CREATE INDEX part_session_idx ON part (session_id);`
 		messageID := fmt.Sprintf("msg_%d", i)
 		if _, err := tx.Exec(
 			`INSERT INTO message (id, session_id, time_created, time_updated, data)
-			 VALUES (?, ?, ?, ?, '{"role":"user"}')`,
+			 VALUES (?, ?, ?, ?, json_object(
+			   'role','user', 'agent','build',
+			   'model',json_object('providerID','stress','modelID','fixture')
+			 ))`,
 			messageID, fmt.Sprintf("ses_%d", i), int64(i), int64(i),
 		); err != nil {
 			t.Fatalf("seed message %d: %v", i, err)
@@ -136,6 +138,19 @@ CREATE INDEX part_session_idx ON part (session_id);`
 			fmt.Sprintf("part_%d", i), messageID, fmt.Sprintf("ses_%d", i), int64(i), int64(i), prompt,
 		); err != nil {
 			t.Fatalf("seed part %d: %v", i, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO message (id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, json_object(
+			   'role','assistant', 'agent','build',
+			   'providerID','stress', 'modelID','fixture',
+			   'tokens',json_object('input',?,'output',?),
+			   'cost',?
+			 ))`,
+			fmt.Sprintf("assistant_%d", i), fmt.Sprintf("ses_%d", i),
+			int64(i), int64(i), i, i, float64(i%97)/7.0,
+		); err != nil {
+			t.Fatalf("seed assistant %d: %v", i, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -285,7 +300,10 @@ func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
 			timestamp := int64(1_000_000 + round)
 			if _, err := tx.Exec(
 				`INSERT INTO message (id, session_id, time_created, time_updated, data)
-				 VALUES (?, 'ses_0', ?, ?, '{"role":"user"}')`,
+				 VALUES (?, 'ses_0', ?, ?, json_object(
+				   'role','user', 'agent','build',
+				   'model',json_object('providerID','stress','modelID','fixture')
+				 ))`,
 				messageID, timestamp, timestamp,
 			); err != nil {
 				_ = tx.Rollback()

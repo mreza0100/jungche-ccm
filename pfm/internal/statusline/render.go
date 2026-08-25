@@ -575,8 +575,9 @@ func harvestRateLimits(runtime Runtime, now time.Time, account int, data input) 
 	if sessionID == "" {
 		sessionID = "anon"
 	}
-	body, err := json.Marshal(map[string]int64{
+	body, err := json.Marshal(map[string]any{
 		"acct":                int64(account),
+		"config_dir":          filepath.Clean(runtime.ConfigDir),
 		"five_hour_used":      int64(five),
 		"seven_day_used":      int64(seven),
 		"five_hour_resets_at": fiveWindow.ResetsAt,

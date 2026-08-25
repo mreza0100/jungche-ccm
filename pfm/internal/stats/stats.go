@@ -133,10 +133,25 @@ func (sampler *Sampler) Sample(rows []compose.Row) (Snapshot, error) {
 }
 
 // SampleResources returns the fast, local Stats view without waiting for
-// provider quota calls. The UI uses it on the Stats tab; the Limits tab uses
-// Sample so its account cards still refresh through the same sampler cache.
+// provider quota calls. The UI uses it on the Stats tab.
 func (sampler *Sampler) SampleResources(rows []compose.Row) (Snapshot, error) {
 	return sampler.sample(rows, false)
+}
+
+// SampleLimits returns provider quota cards without requiring Linux resource
+// counters. Provider failures remain visible in the returned cards and
+// warnings; they do not make the snapshot unready.
+func (sampler *Sampler) SampleLimits() Snapshot {
+	now := time.Now().UnixNano()
+	if sampler.Clock != nil {
+		now = sampler.Clock()
+	}
+	var limits []AccountLimits
+	var warnings []string
+	if sampler.Limits != nil {
+		limits, warnings = sampler.Limits.Sample(context.Background())
+	}
+	return Snapshot{Limits: limits, Ready: true, Warnings: warnings, SampleTime: now}
 }
 
 func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot, error) {
@@ -144,32 +159,16 @@ func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot
 	if sampler.Clock != nil {
 		now = sampler.Clock()
 	}
-	procRoot := sampler.ProcRoot
-	if procRoot == "" {
-		procRoot = "/proc"
-	}
-	cgroupRoot := sampler.CgroupRoot
-	if cgroupRoot == "" {
-		cgroupRoot = "/sys/fs/cgroup"
-	}
 	cpuCount := sampler.CPUCount
 	if cpuCount <= 0 {
 		cpuCount = runtime.NumCPU()
 	}
 
-	total, idle, err := readSystemCPU(procRoot)
+	total, idle, header, processes, warnings, err := readHostResources(sampler.ProcRoot, now, cpuCount)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	header, err := readHeader(procRoot)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	processes, warnings, err := readProcesses(procRoot)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	docker, dockerRaw, dockerWarnings, err := readDocker(cgroupRoot)
+	docker, dockerRaw, dockerWarnings, err := readDockerResources(sampler.CgroupRoot)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -193,15 +192,16 @@ func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot
 
 	if previous != nil && total > previous.systemTotal {
 		deltaTotal := total - previous.systemTotal
-		deltaIdle := uint64(0)
-		if idle > previous.systemIdle {
-			deltaIdle = idle - previous.systemIdle
+		if idle >= previous.systemIdle {
+			deltaIdle := idle - previous.systemIdle
+			// A disappearing Darwin process can remove its lifetime CPU from
+			// the ps total. That interval has no honest host delta; leave CPU
+			// unavailable instead of rendering the counter reset as 0%.
+			if deltaIdle <= deltaTotal {
+				header.CPUPercent = percent(deltaTotal-deltaIdle, deltaTotal)
+				header.CPUValid = true
+			}
 		}
-		if deltaIdle > deltaTotal {
-			deltaIdle = deltaTotal
-		}
-		header.CPUPercent = percent(deltaTotal-deltaIdle, deltaTotal)
-		header.CPUValid = true
 	}
 	chats := chatTrees(rows, processes, previous, total, cpuCount, header.MemoryBytes)
 	tokenWarnings := sampler.attachTokenUsage(rows, chats, now)
@@ -234,7 +234,30 @@ func (sampler *Sampler) sample(rows []compose.Row, includeLimits bool) (Snapshot
 	}, nil
 }
 
-func readSystemCPU(root string) (total, idle uint64, err error) {
+func readLinuxHostResources(root string) (
+	total uint64,
+	idle uint64,
+	header Header,
+	processes map[int]processSample,
+	warnings []string,
+	err error,
+) {
+	total, idle, err = readLinuxSystemCPU(root)
+	if err != nil {
+		return 0, 0, Header{}, nil, nil, err
+	}
+	header, err = readLinuxHeader(root)
+	if err != nil {
+		return 0, 0, Header{}, nil, nil, err
+	}
+	processes, warnings, err = readLinuxProcesses(root)
+	if err != nil {
+		return 0, 0, Header{}, nil, nil, err
+	}
+	return total, idle, header, processes, warnings, nil
+}
+
+func readLinuxSystemCPU(root string) (total, idle uint64, err error) {
 	content, err := os.ReadFile(filepath.Join(root, "stat"))
 	if err != nil {
 		return 0, 0, fmt.Errorf("read host CPU counters: %w", err)
@@ -260,7 +283,7 @@ func readSystemCPU(root string) (total, idle uint64, err error) {
 	return total, idle, nil
 }
 
-func readHeader(root string) (Header, error) {
+func readLinuxHeader(root string) (Header, error) {
 	content, err := os.ReadFile(filepath.Join(root, "meminfo"))
 	if err != nil {
 		return Header{}, fmt.Errorf("read host memory counters: %w", err)
@@ -304,7 +327,7 @@ func readHeader(root string) (Header, error) {
 	return header, nil
 }
 
-func readProcesses(root string) (map[int]processSample, []string, error) {
+func readLinuxProcesses(root string) (map[int]processSample, []string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read process root: %w", err)

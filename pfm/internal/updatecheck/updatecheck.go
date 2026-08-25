@@ -52,7 +52,7 @@ func Read(path, current string) (Notice, bool, error) {
 		return Notice{}, false, fmt.Errorf("decode update cache: %w", err)
 	}
 	installed, installedOK := parseVersion(current)
-	latest, latestOK := parseVersion(notice.Latest)
+	latest, latestOK := parseReleaseVersion(notice.Latest)
 	if !installedOK || !latestOK || !newer(latest, installed) {
 		return Notice{}, false, nil
 	}
@@ -106,7 +106,7 @@ func Check(ctx context.Context, path, current, latestURL string, client *http.Cl
 		return fmt.Errorf("parse latest Professor release redirect: %w", err)
 	}
 	latest := pathVersion(resolved)
-	if _, ok := parseVersion(latest); !ok {
+	if _, ok := parseReleaseVersion(latest); !ok {
 		return fmt.Errorf("latest Professor release redirect %q has no vMAJOR.MINOR.PATCH tag", location)
 	}
 	notice := Notice{
@@ -203,6 +203,12 @@ func normalizeVersion(value string) string {
 
 func parseVersion(value string) (semanticVersion, bool) {
 	value = strings.TrimPrefix(normalizeVersion(value), "v")
+	if separator := strings.IndexAny(value, "-+"); separator >= 0 {
+		if separator == 0 || separator == len(value)-1 {
+			return semanticVersion{}, false
+		}
+		value = value[:separator]
+	}
 	parts := strings.Split(value, ".")
 	if len(parts) != 3 {
 		return semanticVersion{}, false
@@ -219,6 +225,14 @@ func parseVersion(value string) (semanticVersion, bool) {
 		numbers[index] = number
 	}
 	return semanticVersion{major: numbers[0], minor: numbers[1], patch: numbers[2]}, true
+}
+
+func parseReleaseVersion(value string) (semanticVersion, bool) {
+	normalized := strings.TrimPrefix(normalizeVersion(value), "v")
+	if strings.ContainsAny(normalized, "-+") {
+		return semanticVersion{}, false
+	}
+	return parseVersion(normalized)
 }
 
 func newer(candidate, current semanticVersion) bool {

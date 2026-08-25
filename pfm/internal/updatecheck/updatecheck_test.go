@@ -31,6 +31,24 @@ func TestCheckPersistsLatestReleaseForTheNextInvocation(t *testing.T) {
 	}
 }
 
+func TestLocalHotfixVersionStillDiscoversNewRelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Location", "/mreza0100/professor/releases/tag/v0.61.5")
+		writer.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+
+	cache := filepath.Join(t.TempDir(), "update.json")
+	const current = "v0.61.3-local.2"
+	if err := Check(context.Background(), cache, current, server.URL, server.Client()); err != nil {
+		t.Fatalf("Check(local hotfix) error = %v", err)
+	}
+	notice, found, err := Read(cache, current)
+	if err != nil || !found || notice.Latest != "v0.61.5" || notice.Current != current {
+		t.Fatalf("Read(local hotfix) notice=%#v found=%t err=%v", notice, found, err)
+	}
+}
+
 func TestFailedRefreshPreservesLastSuccessfulNotice(t *testing.T) {
 	good := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Location", "/mreza0100/professor/releases/tag/v0.61.2")

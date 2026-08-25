@@ -59,16 +59,23 @@ CREATE TABLE session (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   parent_id TEXT,
+  slug TEXT NOT NULL,
   directory TEXT NOT NULL,
   title TEXT NOT NULL,
-  agent TEXT NOT NULL,
-  model TEXT NOT NULL,
-  tokens_input INTEGER NOT NULL,
-  tokens_output INTEGER NOT NULL,
-  cost REAL NOT NULL,
+  version TEXT NOT NULL,
+  share_url TEXT,
+  summary_additions INTEGER,
+  summary_deletions INTEGER,
+  summary_files INTEGER,
+  summary_diffs TEXT,
+  revert TEXT,
+  permission TEXT,
   time_created INTEGER NOT NULL,
   time_updated INTEGER NOT NULL,
-  time_archived INTEGER
+  time_compacting INTEGER,
+  time_archived INTEGER,
+  workspace_id TEXT,
+  path TEXT
 );
 CREATE TABLE message (
   id TEXT PRIMARY KEY,
@@ -86,7 +93,8 @@ CREATE TABLE part (
   data TEXT NOT NULL
 );
 INSERT INTO project VALUES ('project', '/fixture');
-INSERT INTO session VALUES ('session', 'project', NULL, '/fixture', 'fixture', 'build', '{}', 0, 0, 0, 1, 1, NULL);
+INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated)
+VALUES ('session', 'project', NULL, 'session', '/fixture', 'fixture', '1.14.30', 1, 1);
 INSERT INTO message VALUES ('message', 'session', 1, 1, 'not-json');
 INSERT INTO part VALUES ('part', 'message', 'session', 1, 1, '{"type":"text","text":"prompt"}');
 `)

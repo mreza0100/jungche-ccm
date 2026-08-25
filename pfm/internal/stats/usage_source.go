@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -41,7 +42,16 @@ func FetchClaude(ctx context.Context, account LimitAccount) (AccountLimits, erro
 	}
 	result := AccountLimits{}
 	usage, confirmedAt, fetchErr := sampler.fetchClaude(ctx, account)
-	if fetchErr != nil && needsCredentialRefresh(fetchErr) {
+	if fetchErr != nil && errors.Is(fetchErr, os.ErrNotExist) {
+		statuslineUsage, statuslineConfirmedAt, found, statuslineErr := sampler.fetchClaudeStatusline(account)
+		switch {
+		case statuslineErr != nil:
+			fetchErr = statuslineErr
+		case found:
+			usage, confirmedAt, fetchErr = statuslineUsage, statuslineConfirmedAt, nil
+		}
+	}
+	if fetchErr != nil && !errors.Is(fetchErr, os.ErrNotExist) && needsCredentialRefresh(fetchErr) {
 		if sampler.tryAck(ctx, account) == nil {
 			usage, confirmedAt, fetchErr = sampler.fetchClaudeAfterCredentialRefresh(ctx, account)
 		}
