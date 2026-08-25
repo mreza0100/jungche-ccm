@@ -174,6 +174,13 @@ func updateRepository(
 		if err := updateGitRun(ctx, repo, "merge-base", "--is-ancestor", previousRef, target); err != nil {
 			return fmt.Errorf("target %s does not fast-forward the current source branch", target)
 		}
+	} else {
+		currentTag, describeErr := updateGitOutput(ctx, repo, "describe", "--tags", "--abbrev=0", previousRef)
+		currentVersion, currentOK := parseUpdateVersion(strings.TrimSpace(currentTag))
+		targetVersion, targetOK := parseUpdateVersion(target)
+		if describeErr == nil && currentOK && targetOK && targetVersion.less(currentVersion) {
+			return fmt.Errorf("target %s would downgrade source from %s", target, strings.TrimSpace(currentTag))
+		}
 	}
 
 	managedRoot := filepath.Dir(installer.SourceRepoPath(runtime.Paths.Home))
@@ -248,33 +255,34 @@ func updateRepository(
 		}
 		replacements = append(replacements, updateReplacement{target: targetPath, backup: backup})
 	}
+	sourceAdvanced := false
+	if !sourceAlreadyContainsTarget {
+		if err := updateGitRun(ctx, repo, "merge", "--ff-only", "--quiet", target); err != nil {
+			return fmt.Errorf("fast-forward source branch to %s: %w", target, err)
+		}
+		sourceAdvanced = true
+	}
 	for index := range replacements {
 		if err := replaceUpdateFile(candidateA, replacements[index].target); err != nil {
-			rollbackErr := rollbackUpdateReplacements(replacements[:index], stderr)
+			rollbackErr := rollbackUpdateState(
+				ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr,
+			)
 			return updateFailure(fmt.Errorf("replace owned binary %s: %w", replacements[index].target, err), rollbackErr)
 		}
 		replacements[index].replaced = true
 	}
 
-	if err := updateApplyInstall(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
+	if err := updateApplyInstall(ctx, candidateA, repo, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(
 			fmt.Errorf("install --yes after staging: %w", err),
-			rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
+			rollbackUpdateState(ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
 		)
 	}
 	if err := updateRunDoctor(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(
 			fmt.Errorf("doctor after update: %w", err),
-			rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
+			rollbackUpdateState(ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
 		)
-	}
-	if !sourceAlreadyContainsTarget {
-		if err := updateGitRun(ctx, repo, "merge", "--ff-only", "--quiet", target); err != nil {
-			return updateFailure(
-				fmt.Errorf("fast-forward source branch to %s: %w", target, err),
-				rollbackUpdateState(ctx, replacements, runtime, skipHarvest, stdout, stderr),
-			)
-		}
 	}
 	fmt.Fprintf(stdout, "updated %s from %s\n", target, repo)
 	return nil
@@ -315,17 +323,25 @@ func rollbackUpdateReplacements(replacements []updateReplacement, stderr io.Writ
 // it, updateFailure reports residue instead of claiming a safe rollback.
 func rollbackUpdateState(
 	ctx context.Context,
+	repo, previousRef string,
+	sourceAdvanced bool,
 	replacements []updateReplacement,
 	runtime commandRuntime,
 	skipHarvest bool,
 	stdout, stderr io.Writer,
 ) error {
 	rollbackErr := rollbackUpdateReplacements(replacements, stderr)
+	if sourceAdvanced {
+		if err := updateGitRun(ctx, repo, "reset", "--keep", previousRef); err != nil {
+			return errors.Join(rollbackErr, fmt.Errorf("restore source revision %s: %w", previousRef, err))
+		}
+		fmt.Fprintf(stderr, "pfm update: rolled back source to %s\n", previousRef)
+	}
 	if len(replacements) == 0 {
 		return errors.Join(rollbackErr, errors.New("no previous binary is available to restore installer state"))
 	}
 	previousBinary := replacements[0].backup
-	if err := updateRollbackInstall(ctx, previousBinary, runtime, skipHarvest, stdout, stderr); err != nil {
+	if err := updateRollbackInstall(ctx, previousBinary, repo, runtime, skipHarvest, stdout, stderr); err != nil {
 		return errors.Join(rollbackErr, fmt.Errorf("reapply previous installer state: %w", err))
 	}
 	if err := updateRollbackDoctor(ctx, previousBinary, runtime, skipHarvest, stdout, stderr); err != nil {
@@ -455,12 +471,12 @@ func writeUpdateFile(path string, raw []byte, mode os.FileMode) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func applyUpdateInstall(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
+func applyUpdateInstall(ctx context.Context, candidate, repo string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
 	args := []string{"--yes"}
 	if skipHarvest {
 		args = append(args, "--skip-harvest")
 	}
-	return runUpdateCandidateCommand(ctx, candidate, runtime, "", stdout, stderr, "install", args...)
+	return runUpdateCandidateCommand(ctx, candidate, runtime, repo, stdout, stderr, "install", args...)
 }
 
 func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {

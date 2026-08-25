@@ -10,4 +10,4 @@ and `(cost)` on any env / hook / permission / model-config delta.
 
 - Changed: GitHub Actions runtime — Verify, Installer, and Release now use the current Node-24/ESM generations of checkout, Go setup, artifact upload, and artifact download, removing GitHub's forced deprecated-runtime compatibility path. (cost)
 - Fixed: OpenCode indexing — reads agent, model, token, and cost data from native assistant-message JSON, so both the v1.14 store without session summary columns and newer denormalized stores index successfully.
-- Fixed: transactional updates — builds release tags in a temporary worktree without detaching the live source clone, preserves its branch with a final fast-forward, and proves rollback by reapplying and diagnosing the previous binary's installer state before claiming recovery.
+- Fixed: transactional updates — builds release tags without detaching the live clone, advances its attached branch before installation so staged assets come from the selected release, refuses source downgrades, and restores the previous source revision before reapplying and diagnosing the old installer during rollback.
