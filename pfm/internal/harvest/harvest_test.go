@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -383,6 +384,76 @@ func TestExtensionlessSniffedKindCachesAndJinaEnvelopeIsStripped(t *testing.T) {
 	got := h.Fetch(context.Background(), "https://example.test/page")
 	if got.Error != "" || got.Kind != "html" || got.Content != "# Body\ntext" {
 		t.Fatalf("Jina envelope = %#v", got)
+	}
+}
+
+func TestGoogleDriveFileViewFetchesCompleteDownloadInsteadOfPreviewHTML(t *testing.T) {
+	const source = "https://drive.google.com/file/d/1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy/view"
+	transport := &recordingTransport{respond: func(request *http.Request) (*http.Response, error) {
+		if request.URL.Hostname() == "drive.usercontent.google.com" {
+			if got := request.URL.Query().Get("id"); got != "1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy" {
+				t.Fatalf("download id = %q", got)
+			}
+			return response(request, http.StatusOK, "application/pdf", "%PDF-1.7\npage 1\npage 18\n%%EOF"), nil
+		}
+		return response(request, http.StatusOK, "text/html", strings.Repeat("<p>Drive preview page 1 through page 4 only</p>", 20)), nil
+	}}
+	h := New(Options{
+		CacheDir:  t.TempDir(),
+		Client:    &http.Client{Transport: transport},
+		Chrome:    &http.Client{Transport: transport},
+		Converter: &fakeConverter{},
+	})
+	if _, err := h.cache.save(source, "html", "jina", strings.Repeat("Drive preview page 1 through page 4 only\n", 20), []string{"direct", "chrome-impersonation", "jina"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result := h.Fetch(context.Background(), source)
+	if result.Error != "" || result.Kind != "pdf" || result.Method != "google-drive-download" {
+		t.Fatalf("Drive file result = %#v, want complete PDF download", result)
+	}
+	if result.Source != source {
+		t.Fatalf("result source = %q, want original share URL", result.Source)
+	}
+	transport.mu.Lock()
+	seen := append([]string(nil), transport.seen...)
+	transport.mu.Unlock()
+	if len(seen) != 1 || !strings.HasPrefix(seen[0], "https://drive.usercontent.google.com/download?") {
+		t.Fatalf("requests = %#v, want only the complete-file download endpoint", seen)
+	}
+}
+
+func TestGoogleDriveDownloadURLRecognizesOnlyOwnedFileLinks(t *testing.T) {
+	tests := []struct {
+		source string
+		wantID string
+	}{
+		{"https://drive.google.com/file/d/1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy/view?usp=sharing", "1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy"},
+		{"https://drive.google.com/open?id=1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy", "1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy"},
+		{"https://drive.google.com.evil.test/file/d/1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy/view", ""},
+		{"https://drive.google.com/file/d/short/view", ""},
+		{"https://drive.google.com/drive/folders/1UEfsp7vKFqBb8C7Th8CuM2k0CxyKe2fy", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.source, func(t *testing.T) {
+			target, ok := googleDriveDownloadURL(test.source)
+			if test.wantID == "" {
+				if ok || target != "" {
+					t.Fatalf("googleDriveDownloadURL() = %q, %v; want no rewrite", target, ok)
+				}
+				return
+			}
+			if !ok {
+				t.Fatal("googleDriveDownloadURL() did not recognize file link")
+			}
+			parsed, err := url.Parse(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if parsed.Scheme != "https" || parsed.Hostname() != "drive.usercontent.google.com" || parsed.Query().Get("id") != test.wantID {
+				t.Fatalf("download target = %q", target)
+			}
+		})
 	}
 }
 

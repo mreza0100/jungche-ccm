@@ -178,15 +178,29 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	// extension gives us an early key; response sniffing may move it to another
 	// partition after the fetch.
 	guess := kindFromName(source)
+	fetchTarget, googleDriveFile := googleDriveDownloadURL(source)
+	if !googleDriveFile {
+		fetchTarget = source
+	}
 	if !options.Refresh {
-		if body, meta, path, ok := h.cache.load(source, guess); ok {
-			return h.resultFromCache(source, guess, body, meta, path)
-		}
-		// Extensionless scholarly/PDF URLs are classified from response headers
-		// on the first request. Search every type partition on subsequent calls
-		// so the sniffed kind remains cacheable without a sidecar index.
-		if body, kind, meta, path, ok := h.cache.loadAny(source, []string{"pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "epub", "html"}); ok {
-			return h.resultFromCache(source, kind, body, meta, path)
+		if googleDriveFile {
+			// Before complete-file dispatch existed, Drive share URLs were cached as
+			// Jina/direct HTML previews (usually only four pages). Only a cache entry
+			// produced by the download rung can satisfy a Drive file request now.
+			if body, kind, meta, path, ok := h.cache.loadAny(source, []string{"pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "epub", "html"}); ok &&
+				strings.HasPrefix(meta["method"], "google-drive-download") {
+				return h.resultFromCache(source, kind, body, meta, path)
+			}
+		} else {
+			if body, meta, path, ok := h.cache.load(source, guess); ok {
+				return h.resultFromCache(source, guess, body, meta, path)
+			}
+			// Extensionless scholarly/PDF URLs are classified from response headers
+			// on the first request. Search every type partition on subsequent calls
+			// so the sniffed kind remains cacheable without a sidecar index.
+			if body, kind, meta, path, ok := h.cache.loadAny(source, []string{"pdf", "docx", "xlsx", "pptx", "csv", "json", "txt", "epub", "html"}); ok {
+				return h.resultFromCache(source, kind, body, meta, path)
+			}
 		}
 	}
 	rungs := []string{}
@@ -204,6 +218,11 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	case "pdf", "docx", "xlsx", "pptx", "csv", "zip", "tar", "7z", "rar":
 		directClient, chromeClient = h.binaryDirectOrClient(), h.binaryChromeOrChrome()
 	}
+	directRung, chromeRung := "direct", "chrome-impersonation"
+	if googleDriveFile {
+		directClient, chromeClient = h.binaryDirectOrClient(), h.binaryChromeOrChrome()
+		directRung, chromeRung = "google-drive-download", "google-drive-download-chrome"
+	}
 	// Ladder note: the Python reference also carried this defuddle.md reader
 	// rung and an opt-in real-browser rung (Patchright + system Chrome); both
 	// are wired below. Chrome impersonation here remains tls-client at the
@@ -215,8 +234,8 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 		target string
 		ua     string
 	}{
-		{"direct", directClient, source, h.userAgent},
-		{"chrome-impersonation", chromeClient, source, chromeUA},
+		{directRung, directClient, fetchTarget, h.userAgent},
+		{chromeRung, chromeClient, fetchTarget, chromeUA},
 	} {
 		rungs = append(rungs, rung.name)
 		body, status, contentType, err := getBody(ctx, rung.client, rung.target, rung.ua, h.options.MaxBytes)
@@ -295,6 +314,13 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 			method = "plain-text"
 		}
 		return h.storeResult(source, kind, method, converted, int64(len(body)), status, rungs, options)
+	}
+	if googleDriveFile {
+		message := fmt.Sprintf("Could not download the complete Google Drive file from %s — make the file available to anyone with the link, or download it locally and pass its path. Harvester will not substitute Drive's truncated preview page for the file.", source)
+		if lastStatus >= 400 {
+			message = fmt.Sprintf("Could not download the complete Google Drive file from %s (HTTP %d) — make the file available to anyone with the link, or download it locally and pass its path. Harvester will not substitute Drive's truncated preview page for the file.", source, lastStatus)
+		}
+		return Result{Source: source, HTTPStatus: lastStatus, Error: message, ErrorKind: lastErrorKind, Challenge: lastChallenge, Rungs: rungs}
 	}
 	if !isPrivateURL(source) && guess != "pdf" {
 		rungs = append(rungs, "jina")
@@ -505,6 +531,35 @@ func (h *Harvester) fetchURLWithPolicy(ctx context.Context, source string, optio
 	}
 	message = withRungs(message, rungs)
 	return Result{Source: source, HTTPStatus: lastStatus, Error: message, ErrorKind: lastErrorKind, Challenge: lastChallenge, Chars: lastContentChars, ContentChars: lastContentChars, Rungs: rungs}
+}
+
+var googleDriveFileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{10,256}$`)
+
+// googleDriveDownloadURL turns an uploaded Drive file's share/view link into
+// the public complete-file endpoint. The share page is not the artifact: its
+// reader-facing HTML commonly exposes only the first four PDF pages.
+func googleDriveDownloadURL(raw string) (string, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(strings.TrimSuffix(u.Hostname(), "."), "drive.google.com") {
+		return "", false
+	}
+	var id string
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) >= 3 && parts[0] == "file" && parts[1] == "d" {
+		id = parts[2]
+	} else if len(parts) == 1 && (parts[0] == "open" || parts[0] == "uc") {
+		id = u.Query().Get("id")
+	}
+	if !googleDriveFileIDPattern.MatchString(id) {
+		return "", false
+	}
+	target := &url.URL{Scheme: "https", Host: "drive.usercontent.google.com", Path: "/download"}
+	query := target.Query()
+	query.Set("id", id)
+	query.Set("export", "download")
+	query.Set("confirm", "t")
+	target.RawQuery = query.Encode()
+	return target.String(), true
 }
 
 func isPubMedSearchURL(raw string) bool {
