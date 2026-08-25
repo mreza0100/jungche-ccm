@@ -259,7 +259,11 @@ func TestStressOpencodeReadWhileWriterActive(t *testing.T) {
 	stop := make(chan struct{})
 	writerDone := make(chan error, 1)
 	go func() {
-		live, err := sql.Open("sqlite", dbPath)
+		// A zero-timeout fixture can fail while SQLite performs ordinary WAL
+		// recovery even though the reader never blocks a write transaction. Give
+		// the writer one bounded lock wait, matching the production reader's
+		// contract: persistent contention still fails after five seconds.
+		live, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(5000)")
 		if err != nil {
 			writerDone <- err
 			return
