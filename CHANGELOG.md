@@ -39,6 +39,7 @@ Bullets MUST follow this shape:
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.61.2](releases/v0.61.2.md) — complete Google Drive harvesting, non-closing deactivation, and guided gold update discovery
 - [v0.61.1](releases/v0.61.1.md) — native OpenCode indexing, exact installer plans, reliable scaffolding, and visible runtime evidence
 - [v0.61.0](releases/v0.61.0.md) — Harvester ask, complete cross-runtime agent parity, and reliable in-place reload
 - [v0.60.1](releases/v0.60.1.md) — safe one-time updater repair, Darwin diagnostics, MCP cutover checks, and native installer CI
