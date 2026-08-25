@@ -112,6 +112,7 @@ const (
 	OutcomeReboot
 	OutcomeDeactivate
 	OutcomeCancelled
+	OutcomeProfessorUpdate
 )
 
 // KillChange is one hidden-state change, applied the moment it is typed.
@@ -132,6 +133,7 @@ type KillChange struct {
 type Outcome struct {
 	Kind                 OutcomeKind
 	Row                  compose.Row
+	Engine               pfmengine.ID
 	PrimaryAccount       int
 	ClaudePrimaryAccount int
 	Cache1H              bool

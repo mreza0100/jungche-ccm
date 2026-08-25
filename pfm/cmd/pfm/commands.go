@@ -54,6 +54,10 @@ func runLS(
 		flags.Usage()
 		return 2
 	}
+	// Read first, then arm the detached lookup: a network result from THIS
+	// invocation is deliberately eligible only for the NEXT `pfm ls`.
+	updateRow, hasUpdate := cachedProfessorUpdateRow(runtime)
+	triggerProfessorUpdateCheck(runtime)
 	if killed {
 		if flags.NArg() != 0 || all || *plain {
 			flags.Usage()
@@ -111,6 +115,9 @@ func runLS(
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 			return 1
+		}
+		if hasUpdate {
+			scan.Snapshot.Rows = append([]compose.Row{updateRow}, scan.Snapshot.Rows...)
 		}
 		applier, err := killApplier(ctx, database, runtime)
 		if err != nil {
@@ -184,6 +191,8 @@ func runLS(
 	}
 	cache1H := outcome.Cache1H
 	switch outcome.Kind {
+	case ui.OutcomeProfessorUpdate:
+		return openProfessorUpdate(ctx, outcome, stdout, stderr, runtime)
 	case ui.OutcomeDeactivate:
 		if outcome.Row.Socket == "" {
 			fmt.Fprintf(stderr, "pfm ls: deactive %s: no live server\n", outcome.Row.Name)
@@ -326,6 +335,18 @@ func openRow(
 	stdout, stderr io.Writer,
 	runtime commandRuntime,
 ) int {
+	return openRowWithPrompt(ctx, row, primary, cache1H, "", stdout, stderr, runtime)
+}
+
+func openRowWithPrompt(
+	ctx context.Context,
+	row compose.Row,
+	primary int,
+	cache1H bool,
+	prompt string,
+	stdout, stderr io.Writer,
+	runtime commandRuntime,
+) int {
 	resolved := runtime.Paths
 	if row.Kind != compose.LiveClaude &&
 		row.Kind != compose.LiveCodex &&
@@ -360,6 +381,7 @@ func openRow(
 	}
 	line, err := executor.Open(ctx, action.Request{
 		Row:            row,
+		Prompt:         prompt,
 		PrimaryAccount: primary,
 		Cache1H:        cache1H,
 		Bunker:         inBunker(),

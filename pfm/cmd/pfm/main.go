@@ -354,6 +354,9 @@ func runInternal(
 	if len(args) != 0 && args[0] == "then" {
 		return runInternalThen(args[1:], stderr, runtime)
 	}
+	if len(args) != 0 && args[0] == "update-check" {
+		return runInternalUpdateCheck(args[1:], stderr)
+	}
 	if len(args) != 0 && args[0] == "primary-get" {
 		fmt.Fprintln(stdout, readPrimaryAccount(runtime.Paths, runtime.Config))
 		return 0
@@ -383,7 +386,7 @@ func runInternal(
 		return 0
 	}
 	if len(args) == 0 || args[0] != "kill-exit" {
-		fmt.Fprintln(stderr, "usage: pfm internal clear-kill|kill-exit|then|explore-deny|epic-inject [options]")
+		fmt.Fprintln(stderr, "usage: pfm internal clear-kill|kill-exit|then|update-check|explore-deny|epic-inject [options]")
 		return 2
 	}
 	flags := newFlagSet(

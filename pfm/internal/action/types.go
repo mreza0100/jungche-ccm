@@ -25,7 +25,11 @@ const (
 
 // Request is every value needed to synthesize and prepare one selected row.
 type Request struct {
-	Row            compose.Row
+	Row compose.Row
+	// Prompt is optional initial work for a fresh engine picker row. Resume and
+	// live routes reject/ignore no hidden input: cmd/pfm uses it only for the
+	// explicit Professor-update banner.
+	Prompt         string
 	PrimaryAccount int
 	Cache1H        bool
 	Bunker         bool

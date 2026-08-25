@@ -77,6 +77,9 @@ func Synthesize(request Request) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
+	if request.Prompt != "" && route != NewClaude && route != NewCodex && route != NewOpencode {
+		return Plan{}, fmt.Errorf("initial prompt is not valid for %s route", request.Row.Kind)
+	}
 	switch route {
 	case ResumeOpencode:
 		// One fleet-wide OpenCode seat: no per-account roster to satisfy, the
@@ -111,6 +114,7 @@ func Synthesize(request Request) (Plan, error) {
 		request.Row.WindowName,
 		request.Row.Name,
 		request.Row.ConfigDir,
+		request.Prompt,
 		request.Home,
 		request.FreshSocket,
 	) {
@@ -130,13 +134,20 @@ func Synthesize(request Request) (Plan, error) {
 		}
 		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && " +
 			armed + command + ")"
+		if request.Prompt != "" {
+			plan.Line = strings.TrimSuffix(plan.Line, ")") + " " + Quote(request.Prompt) + ")"
+		}
 	case NewCodex:
 		if request.Row.CWD == "" {
 			return Plan{}, errors.New("new Codex action requires a project directory")
 		}
 		account, _ := machine.CodexAccountByID(request.PrimaryAccount)
 		plan.Line = "(cd -- " + Quote(request.Row.CWD) + " && CODEX_HOME=" +
-			Quote(account.Home) + " cx)"
+			Quote(account.Home) + " cx"
+		if request.Prompt != "" {
+			plan.Line += " " + Quote(request.Prompt)
+		}
+		plan.Line += ")"
 	case NewOpencode:
 		if request.Row.CWD == "" || request.FreshSocket == "" {
 			return Plan{}, errors.New("new OpenCode action requires cwd and fresh socket")
@@ -151,6 +162,10 @@ func Synthesize(request Request) (Plan, error) {
 		))
 		command.WriteByte(' ')
 		command.WriteString(Quote(request.Row.CWD))
+		if request.Prompt != "" {
+			command.WriteString(" --prompt ")
+			command.WriteString(Quote(request.Prompt))
+		}
 		plan.Run = command.String()
 		plan.Line = newSessionLine(
 			request.FreshSocket,

@@ -98,6 +98,7 @@ type Model struct {
 	query         textinput.Model
 	outcome       OutcomeKind
 	outcomeRow    compose.Row
+	outcomeEngine pfmengine.ID
 	initialKilled map[string]bool
 	killChanges   map[string]KillChange
 	// applyKill performs a ⌃X the instant it is typed. killStatus is the
@@ -333,6 +334,12 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return model, nil
 	case "enter":
 		if row, ok := model.selectedRow(); ok {
+			if row.Kind == compose.ProfessorUpdate {
+				model.outcome = OutcomeProfessorUpdate
+				model.outcomeRow = row
+				model.outcomeEngine = model.newChatEngine
+				return model, tea.Quit
+			}
 			if model.mergeNewChat && isNewChatKind(row.Kind) {
 				switch model.newChatEngine {
 				case pfmengine.Codex:
@@ -494,7 +501,7 @@ func isSamplingTab(tab Tab) bool {
 
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if row, ok := model.selectedRow(); ok && model.mergeNewChat &&
-		isNewChatKind(row.Kind) {
+		(isNewChatKind(row.Kind) || row.Kind == compose.ProfessorUpdate) {
 		model.newChatEngine = adjacentID(model.newChatEngine, direction, model.newChatEngines())
 		return model, nil
 	}
@@ -568,7 +575,7 @@ func (model *Model) cycleSelectedAccount() {
 		return
 	}
 	engine := compose.EngineForKind(row.Kind)
-	if model.mergeNewChat && isNewChatKind(row.Kind) {
+	if model.mergeNewChat && (isNewChatKind(row.Kind) || row.Kind == compose.ProfessorUpdate) {
 		engine = model.newChatEngine
 	}
 	if engine == pfmengine.Codex {
@@ -805,6 +812,21 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 	follow := model.selectedKey()
 	fallback := model.cursor
 	rows := snapshot.Rows
+	updatePresent := false
+	for _, row := range rows {
+		if row.Kind == compose.ProfessorUpdate {
+			updatePresent = true
+			break
+		}
+	}
+	if !updatePresent {
+		for _, row := range model.rows {
+			if row.Kind == compose.ProfessorUpdate {
+				rows = append([]compose.Row{row}, rows...)
+				break
+			}
+		}
+	}
 	if len(model.deactivatedSockets) != 0 {
 		live := liveSockets(rows)
 		for socket := range model.deactivatedSockets {
@@ -908,6 +930,9 @@ func (model *Model) toggleKilled() {
 	// store row that is not holding it down and the chat would stay killed
 	// anyway. Renaming it is the unkill.
 	switch {
+	case row.Kind == compose.ProfessorUpdate:
+		model.killStatus = "⌃X refused — the Professor update banner is an action, not a chat"
+		return
 	case row.Kind == compose.Booting:
 		model.killStatus = "⌃X refused — " + row.Name +
 			" is still booting (no identity yet); retry once it settles"
@@ -1188,14 +1213,30 @@ func (model Model) Result() Outcome {
 			KillChanges:          model.appliedChanges(),
 		}
 	}
+	primary := model.accountForKind(model.outcomeRow.Kind)
+	if model.outcome == OutcomeProfessorUpdate {
+		primary = model.accountForEngine(model.outcomeEngine)
+	}
 	return Outcome{
 		Kind:                 model.outcome,
 		Row:                  model.outcomeRow,
-		PrimaryAccount:       model.accountForKind(model.outcomeRow.Kind),
+		Engine:               model.outcomeEngine,
+		PrimaryAccount:       primary,
 		ClaudePrimaryAccount: model.primary,
 		Cache1H:              model.cache1H,
 		Query:                model.query.Value(),
 		KillChanges:          model.appliedChanges(),
+	}
+}
+
+func (model Model) accountForEngine(engine pfmengine.ID) int {
+	switch engine {
+	case pfmengine.Codex:
+		return model.codexPrimary
+	case pfmengine.Opencode:
+		return model.opencodePrimary
+	default:
+		return model.primary
 	}
 }
 

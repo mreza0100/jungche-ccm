@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -188,6 +189,90 @@ func TestNewChatCarouselAndChatActionCarousel(t *testing.T) {
 	}
 	if model.FilteredRowCount() != 0 {
 		t.Fatalf("deactivated live row remained visible: %#v", model.VisibleRows())
+	}
+}
+
+func TestProfessorUpdateRowLeadsNewChatPersistsAcrossRefreshAndLaunchesChosenEngine(t *testing.T) {
+	snapshot := Snapshot{
+		Rows: []compose.Row{
+			{
+				Kind: compose.ProfessorUpdate, ID: "pfm-update-v0.61.2",
+				Name: "Professor v0.61.2 available — update", Project: ".professor",
+				CWD: "/home/test/.professor",
+			},
+			{Kind: compose.NewClaude, Name: "New Claude chat", Project: "project", CWD: "/work/project"},
+			{Kind: compose.NewCodex, Name: "New Codex chat", Project: "project", CWD: "/work/project"},
+			{Kind: compose.NewOpencode, Name: "New OpenCode chat", Project: "project", CWD: "/work/project"},
+		},
+		View:                   compose.DefaultView,
+		PrimaryAccount:         1,
+		AccountIDs:             []int{1},
+		CodexPrimaryAccount:    2,
+		CodexAccountIDs:        []int{2},
+		OpencodePrimaryAccount: 3,
+		OpencodeAccountIDs:     []int{3},
+		MergeNewChat:           true,
+		NowNS:                  fixtureNowNS,
+		Width:                  120,
+		Height:                 20,
+	}
+	model := NewModel(snapshot)
+	visible := model.VisibleRows()
+	if len(visible) < 2 || visible[0].Kind != compose.ProfessorUpdate || !isNewChatKind(visible[1].Kind) {
+		t.Fatalf("visible order = %#v, want update immediately before merged new-chat row", visible)
+	}
+	model, command := applyKey(t, model, controlKey('x'))
+	if command != nil || len(model.Result().KillChanges) != 0 || !strings.Contains(model.killStatus, "not a chat") {
+		t.Fatalf("update banner accepted hide: status=%q result=%#v command=%v", model.killStatus, model.Result(), command)
+	}
+
+	refresh := snapshot
+	refresh.Rows = snapshot.Rows[1:]
+	updated, _ := model.Update(RefreshMsg{Snapshot: refresh})
+	model = updated.(Model)
+	visible = model.VisibleRows()
+	if len(visible) == 0 || visible[0].Kind != compose.ProfessorUpdate {
+		t.Fatalf("refresh dropped cached update row: %#v", visible)
+	}
+
+	model, command = applyKey(t, model, specialKey(tea.KeyRight))
+	if command != nil || model.NewChatEngine() != pfmengine.Codex {
+		t.Fatalf("update engine after Right = %q command=%v, want Codex", model.NewChatEngine(), command)
+	}
+	model, command = applyKey(t, model, specialKey(tea.KeyEnter))
+	result := model.Result()
+	if command == nil || result.Kind != OutcomeProfessorUpdate || result.Engine != pfmengine.Codex ||
+		result.PrimaryAccount != 2 || result.Row.CWD != "/home/test/.professor" {
+		t.Fatalf("update selection result=%#v command=%v", result, command)
+	}
+}
+
+func TestProfessorUpdateBannerIsFullWidthGoldAndAnimated(t *testing.T) {
+	snapshot := Snapshot{
+		Rows: []compose.Row{
+			{Kind: compose.ProfessorUpdate, ID: "pfm-update-v0.61.2", Name: "v0.61.2", Project: ".professor"},
+			{Kind: compose.NewClaude, Name: "New Claude chat", Project: ".professor"},
+			{Kind: compose.NewCodex, Name: "New Codex chat", Project: ".professor"},
+			{Kind: compose.NewOpencode, Name: "New OpenCode chat", Project: ".professor"},
+		},
+		View: compose.DefaultView, MergeNewChat: true, NowNS: fixtureNowNS,
+		AccountIDs: []int{1}, CodexAccountIDs: []int{1}, OpencodeAccountIDs: []int{1},
+		Width: 120, Height: 20,
+	}
+	model := NewModel(snapshot)
+	line := model.renderRow(snapshot.Rows[0], false, 118)
+	plain := ansi.Strip(line)
+	for _, want := range []string{"✦ PROFESSOR UPDATE ✦", "v0.61.2", "▐ Claude ▌", "[ Codex ]", "[ OpenCode ]", "guided upgrade"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("update banner %q lacks %q", plain, want)
+		}
+	}
+	if ansi.StringWidth(line) != 118 || !strings.Contains(line, ";5;") {
+		t.Fatalf("update banner width=%d raw=%q, want full width and ANSI blink", ansi.StringWidth(line), line)
+	}
+	model.nowNS += int64(500 * time.Millisecond)
+	if next := ansi.Strip(model.renderRow(snapshot.Rows[0], false, 118)); !strings.Contains(next, "✧ PROFESSOR UPDATE ✧") {
+		t.Fatalf("animated update banner = %q, want alternate sparkle phase", next)
 	}
 }
 

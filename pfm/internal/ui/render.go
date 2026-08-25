@@ -65,9 +65,13 @@ var (
 	labelStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#67e8f9"))
-	limitGradient     []color.Color
-	limitPercentStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
-	limitErrorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fb7185"))
+	limitGradient        []color.Color
+	limitPercentStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff"))
+	limitErrorStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fb7185"))
+	professorUpdateStyle = lipgloss.NewStyle().Bold(true).Blink(true).
+				Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color("#facc15"))
+	professorUpdateSelectedStyle = lipgloss.NewStyle().Bold(true).Blink(true).
+					Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color("#fde047"))
 )
 
 func configureStyles(palette theme.Palette) {
@@ -105,6 +109,10 @@ func configureStyles(palette theme.Palette) {
 	limitErrorStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color(palette.LimitRed))
+	professorUpdateStyle = lipgloss.NewStyle().Bold(true).Blink(true).
+		Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color(palette.LimitAmber))
+	professorUpdateSelectedStyle = lipgloss.NewStyle().Bold(true).Blink(true).
+		Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color(palette.LimitAmber))
 }
 
 // View renders only the visible viewport, so frame cost is independent of the
@@ -750,7 +758,7 @@ func (model Model) renderGroupedRow(
 	if name == "" {
 		name = "(unnamed)"
 	}
-	if model.mergeNewChat && isNewChatKind(row.Kind) {
+	if model.mergeNewChat && (isNewChatKind(row.Kind) || row.Kind == compose.ProfessorUpdate) {
 		ids := model.newChatEngines()
 		labels := make([]string, 0, len(ids))
 		for _, id := range ids {
@@ -760,7 +768,30 @@ func (model Model) renderGroupedRow(
 			}
 			labels = append(labels, label)
 		}
-		name = strings.Join(labels, " ")
+		if row.Kind == compose.ProfessorUpdate {
+			for index, label := range labels {
+				if strings.HasPrefix(label, "[ ") {
+					labels[index] = "▐ " + strings.TrimSuffix(strings.TrimPrefix(label, "[ "), " ]") + " ▌"
+				} else {
+					labels[index] = "[ " + label + " ]"
+				}
+			}
+			name += "  " + strings.Join(labels, " ")
+		} else {
+			name = strings.Join(labels, " ")
+		}
+	}
+	if row.Kind == compose.ProfessorUpdate {
+		sparkle := "✦"
+		if (model.nowNS/int64(500*time.Millisecond))%2 != 0 {
+			sparkle = "✧"
+		}
+		content := pointer + sparkle + " PROFESSOR UPDATE " + sparkle + "  " + name + "  Enter → guided upgrade"
+		line := fillLine(ansi.Truncate(content, width, "…"), width)
+		if selected {
+			return professorUpdateSelectedStyle.Render(line)
+		}
+		return professorUpdateStyle.Render(line)
 	}
 	name = fixedDisplayColumn(name, 30)
 	marker := rowMarker(row.Kind)
@@ -771,7 +802,7 @@ func (model Model) renderGroupedRow(
 	left := pointer + marker + " " + name + " " + badges + " " +
 		fmt.Sprintf("%4s %6s", prompts, size)
 	age := formatAge(row, model.nowNS)
-	if selected && !(model.mergeNewChat && isNewChatKind(row.Kind)) {
+	if selected && !(model.mergeNewChat && (isNewChatKind(row.Kind) || row.Kind == compose.ProfessorUpdate)) {
 		age += "  " + carouselBoxes(model.actionIndex)
 	}
 	leftWidth := maxInt(1, width-lipgloss.Width(age)-1)
@@ -782,9 +813,14 @@ func (model Model) renderGroupedRow(
 	) + age
 	line = fillLine(line, width)
 	if selected {
+		if row.Kind == compose.ProfessorUpdate {
+			return professorUpdateSelectedStyle.Render(line)
+		}
 		return selectedStyle.Render(line)
 	}
 	switch row.Kind {
+	case compose.ProfessorUpdate:
+		return professorUpdateStyle.Render(line)
 	case compose.LiveCodex, compose.ResumeCodex, compose.NewCodex:
 		return codexStyle.Render(line)
 	case compose.ResumeOpencode, compose.NewOpencode:
@@ -859,6 +895,8 @@ func rowMarker(kind compose.Kind) string {
 		return "↻"
 	case compose.NewClaude, compose.NewCodex, compose.NewOpencode:
 		return "✦"
+	case compose.ProfessorUpdate:
+		return "⬆"
 	default:
 		return "·"
 	}
