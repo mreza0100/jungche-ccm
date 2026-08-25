@@ -41,6 +41,20 @@ func TestUpdateRefusesDirtyWorktree(t *testing.T) {
 	}
 }
 
+func TestUpdateRefusesSourceDowngrade(t *testing.T) {
+	repo := newUpdateGitFixture(t)
+	gitTemp(t, repo, "merge", "--ff-only", "--quiet", "v0.10.0")
+	runtime := updateTestRuntime(t)
+
+	var stdout, stderr bytes.Buffer
+	if code := runUpdate([]string{"--to", "v0.9.0", "--repo", repo}, &stdout, &stderr, runtime); code == 0 {
+		t.Fatalf("runUpdate() code = 0, want source-downgrade refusal; stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "would downgrade source from v0.10.0") {
+		t.Fatalf("runUpdate() stderr = %q, want source-downgrade diagnostic", stderr.String())
+	}
+}
+
 func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	repo := newUpdateGitFixture(t)
 	previousBranch := updateGitBranch(t, repo)
@@ -81,13 +95,19 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
 	installCalls, doctorCalls := 0, 0
-	updateApplyInstall = func(_ context.Context, candidate string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
+	updateApplyInstall = func(_ context.Context, candidate, workingDirectory string, _ commandRuntime, skipHarvest bool, _ io.Writer, _ io.Writer) error {
 		installCalls++
 		if !strings.HasSuffix(candidate, "pfm-a") {
 			t.Fatalf("install candidate=%q, want first reproducible build", candidate)
 		}
 		if !skipHarvest {
 			t.Fatal("update did not propagate --skip-harvest to install")
+		}
+		if workingDirectory != repo {
+			t.Fatalf("candidate installer working directory=%q, want source repo %q", workingDirectory, repo)
+		}
+		if got := updateGitRevision(t, repo, "HEAD"); got != updateGitRevision(t, repo, "v0.10.0") {
+			t.Fatalf("candidate installer saw source revision %q, want v0.10.0", got)
 		}
 		return nil
 	}
@@ -240,7 +260,7 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
 	managedMutation := filepath.Join(runtime.Paths.Home, ".local", "share", "pfm", "install", "new-asset")
-	updateApplyInstall = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
+	updateApplyInstall = func(context.Context, string, string, commandRuntime, bool, io.Writer, io.Writer) error {
 		if err := os.MkdirAll(filepath.Dir(managedMutation), 0o700); err != nil {
 			return err
 		}
@@ -253,9 +273,15 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 		t.Fatal("doctor ran after install failure")
 		return nil
 	}
-	updateRollbackInstall = func(_ context.Context, candidate string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
+	updateRollbackInstall = func(_ context.Context, candidate, workingDirectory string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
 		if !strings.Contains(candidate, "previous-") {
 			t.Fatalf("rollback installer candidate=%q, want preserved previous binary", candidate)
+		}
+		if workingDirectory != repo {
+			t.Fatalf("rollback installer working directory=%q, want restored source repo %q", workingDirectory, repo)
+		}
+		if got := updateGitRevision(t, repo, "HEAD"); got != previousRef {
+			t.Fatalf("rollback installer saw source revision %q, want previous %q", got, previousRef)
 		}
 		return os.RemoveAll(filepath.Dir(managedMutation))
 	}
@@ -396,6 +422,11 @@ func newUpdateGitFixture(t *testing.T) string {
 	gitTemp(t, repo, "add", "README.md")
 	gitTemp(t, repo, "commit", "-qm", "fixture")
 	gitTemp(t, repo, "tag", "v0.9.0")
+	if err := os.WriteFile(filepath.Join(repo, "RELEASE"), []byte("next\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitTemp(t, repo, "add", "RELEASE")
+	gitTemp(t, repo, "commit", "-qm", "fixture next release")
 	gitTemp(t, repo, "tag", "v0.10.0")
 	remote := filepath.Join(t.TempDir(), "remote.git")
 	if err := os.MkdirAll(remote, 0o700); err != nil {
@@ -404,6 +435,7 @@ func newUpdateGitFixture(t *testing.T) string {
 	gitTemp(t, remote, "init", "--bare", "-q")
 	gitTemp(t, repo, "remote", "add", "origin", remote)
 	gitTemp(t, repo, "push", "-q", "origin", "HEAD", "--tags")
+	gitTemp(t, repo, "checkout", "-qb", "installed", "v0.9.0")
 	return repo
 }
 
