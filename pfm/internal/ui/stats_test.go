@@ -25,6 +25,7 @@ type countingStatsSampler struct {
 type splitStatsSampler struct {
 	fullCalls     int
 	resourceCalls int
+	limitCalls    int
 }
 
 type switchingStatsSampler struct {
@@ -180,6 +181,14 @@ func (sampler *splitStatsSampler) SampleResources(_ []compose.Row) (pfmstats.Sna
 	return pfmstats.Snapshot{Ready: true}, nil
 }
 
+func (sampler *splitStatsSampler) SampleLimits() pfmstats.Snapshot {
+	sampler.limitCalls++
+	return pfmstats.Snapshot{
+		Ready:  true,
+		Limits: []pfmstats.AccountLimits{{Account: 4, Status: "credential rejected"}},
+	}
+}
+
 func TestStatsTabSamplesResourcesWithoutWaitingForLimits(t *testing.T) {
 	sampler := &splitStatsSampler{}
 	snapshot := fixtureSnapshot(120)
@@ -201,6 +210,35 @@ func TestStatsTabSamplesResourcesWithoutWaitingForLimits(t *testing.T) {
 			sampler.resourceCalls,
 			sampler.fullCalls,
 		)
+	}
+}
+
+func TestLimitsTabSamplesLimitsWithoutReadingResources(t *testing.T) {
+	sampler := &splitStatsSampler{}
+	snapshot := fixtureSnapshot(120)
+	snapshot.StatsSampler = sampler
+	model := NewModel(snapshot)
+
+	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
+	model, command := applyKey(t, model, specialKey(tea.KeyTab))
+	if command == nil {
+		t.Fatal("entering Limits returned no sampling command")
+	}
+	message, ok := command().(statsSampleMsg)
+	if !ok {
+		t.Fatalf("Limits command returned %T", message)
+	}
+	if message.err != nil || sampler.limitCalls != 1 || sampler.fullCalls != 0 || sampler.resourceCalls != 0 {
+		t.Fatalf(
+			"Limits sample err=%v limits=%d full=%d resource=%d; limits sampling must not read resources",
+			message.err,
+			sampler.limitCalls,
+			sampler.fullCalls,
+			sampler.resourceCalls,
+		)
+	}
+	if !message.snapshot.Ready || len(message.snapshot.Limits) != 1 || message.snapshot.Limits[0].Status != "credential rejected" {
+		t.Fatalf("Limits sample lost truthful account status: %#v", message.snapshot)
 	}
 }
 

@@ -81,7 +81,7 @@ func DefaultRuntime(id pfmengine.ID) (Runtime, error) {
 		configDir = filepath.Join(resolved.Home, ".claude")
 	}
 	cacheDir := filepath.Dir(GPTCachePath(os.Getenv(paths.EnvHome), os.Getuid()))
-	rateDir := filepath.Join(cacheDir, "cc-rate-limits")
+	rateDir := ClaudeRateLimitDir(os.Getenv(paths.EnvHome), os.Getuid())
 	return Runtime{
 		Now:          time.Now,
 		Home:         resolved.Home,
@@ -135,6 +135,13 @@ func GPTCachePath(jailHome string, uid int) string {
 		cacheDir = filepath.Join(jailHome, "tmp")
 	}
 	return filepath.Join(cacheDir, "cc-gpt-usage-"+strconv.Itoa(uid)+".json")
+}
+
+// ClaudeRateLimitDir is the one filesystem rule for provider-confirmed Claude
+// windows harvested from statusline input. Limits readers use the same path so
+// the statusline writer remains the single owner of this cache.
+func ClaudeRateLimitDir(jailHome string, uid int) string {
+	return filepath.Join(filepath.Dir(GPTCachePath(jailHome, uid)), "cc-rate-limits")
 }
 
 func (runtime Runtime) getenv(name string) string {

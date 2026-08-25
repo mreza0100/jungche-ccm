@@ -493,8 +493,8 @@ func (model *Model) statsTabTransition(previous Tab) tea.Cmd {
 }
 
 // isSamplingTab reports whether tab is one of the two live tabs backed by the
-// same pfmstats.Snapshot sample loop (Stats and Limits) — one Sample() call
-// every 2s while either is focused, none while the picker sits on Chats.
+// pfmstats.Snapshot sample loop — one tab-appropriate sampler call every 2s
+// while either is focused, none while the picker sits on Chats.
 func isSamplingTab(tab Tab) bool {
 	return tab == TabStats || tab == TabLimits
 }
@@ -574,8 +574,16 @@ func (model *Model) cycleSelectedAccount() {
 	if !ok {
 		return
 	}
+	// The update banner is a global action, not a chat belonging to the
+	// carousel engine shown inside it. Keep its account key aligned with the
+	// always-visible Claude account in the header; the chosen engine still
+	// resolves its own launch account when Enter is pressed.
+	if row.Kind == compose.ProfessorUpdate {
+		model.primary = nextAccount(model.primary, model.accountIDs)
+		return
+	}
 	engine := compose.EngineForKind(row.Kind)
-	if model.mergeNewChat && (isNewChatKind(row.Kind) || row.Kind == compose.ProfessorUpdate) {
+	if model.mergeNewChat && isNewChatKind(row.Kind) {
 		engine = model.newChatEngine
 	}
 	if engine == pfmengine.Codex {
@@ -731,7 +739,11 @@ func (model *Model) startStatsSample() tea.Cmd {
 	return func() tea.Msg {
 		var snapshot pfmstats.Snapshot
 		var err error
-		if resourceSampler, ok := sampler.(interface {
+		if limitsSampler, ok := sampler.(interface {
+			SampleLimits() pfmstats.Snapshot
+		}); !resourcesOnly && ok {
+			snapshot = limitsSampler.SampleLimits()
+		} else if resourceSampler, ok := sampler.(interface {
 			SampleResources([]compose.Row) (pfmstats.Snapshot, error)
 		}); resourcesOnly && ok {
 			snapshot, err = resourceSampler.SampleResources(rows)
@@ -1038,8 +1050,31 @@ func (model *Model) rebuildOrder() {
 		}
 	}
 	emitted := make(map[string]bool)
+	pinned := make(map[int]bool)
+	if model.mergeNewChat {
+		// The update notice is an extra global action above the ordinary new-chat
+		// row. Neither row belongs to project activity order: pinning both keeps
+		// an active Professor chat from slipping between them.
+		for index, row := range model.rows {
+			if row.Kind == compose.ProfessorUpdate && model.visibleInView(row) {
+				model.order = append(model.order, index)
+				pinned[index] = true
+			}
+		}
+		for index, row := range model.rows {
+			if isNewChatKind(row.Kind) && model.visibleInView(row) {
+				model.order = append(model.order, index)
+				pinned[index] = true
+				newChatEmitted = true
+				break
+			}
+		}
+	}
 	for _, group := range model.groups {
 		for _, index := range group.indices {
+			if pinned[index] {
+				continue
+			}
 			if !model.visibleInView(model.rows[index]) {
 				continue
 			}

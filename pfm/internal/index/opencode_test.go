@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hostops/pfm/internal/paths"
@@ -44,11 +45,9 @@ CREATE TABLE project (
 CREATE TABLE session (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
-  workspace_id TEXT,
   parent_id TEXT,
   slug TEXT NOT NULL,
   directory TEXT NOT NULL,
-  path TEXT,
   title TEXT NOT NULL,
   version TEXT NOT NULL,
   share_url TEXT,
@@ -61,7 +60,9 @@ CREATE TABLE session (
   time_created INTEGER NOT NULL,
   time_updated INTEGER NOT NULL,
   time_compacting INTEGER,
-  time_archived INTEGER
+  time_archived INTEGER,
+  workspace_id TEXT,
+  path TEXT
 );
 CREATE TABLE message (
   id TEXT PRIMARY KEY,
@@ -105,16 +106,19 @@ CREATE INDEX part_session_idx ON part (session_id);`
 			t.Fatalf("seed session %s: %v", session.id, err)
 		}
 	}
-	prompts := [][5]any{
-		{"m1", "i1", "ses_root", "prove the bound", 100},
-		{"m2", "i2", "ses_root", "now generalize", 200},
-		{"m3", "i3", "ses_child", "child probe", 150},
+	prompts := [][8]any{
+		{"m1", "i1", "ses_root", "prove the bound", 100, "build", "prov", "m1"},
+		{"m2", "i2", "ses_root", "now generalize", 200, "plan", "openai", "m2"},
+		{"m3", "i3", "ses_child", "child probe", 150, "explore", "anthropic", "claude"},
 	}
 	for _, p := range prompts {
 		if _, err := db.Exec(
 			`INSERT INTO message (id, session_id, time_created, time_updated, data)
-			 VALUES (?, ?, ?, ?, '{"role":"user"}')`,
-			p[0], p[2], p[4], p[4],
+			 VALUES (?, ?, ?, ?, json_object(
+			   'role','user', 'agent',?,
+			   'model',json_object('providerID',?,'modelID',?)
+			 ))`,
+			p[0], p[2], p[4], p[4], p[5], p[6], p[7],
 		); err != nil {
 			t.Fatalf("seed message %v: %v", p[0], err)
 		}
@@ -126,13 +130,24 @@ CREATE INDEX part_session_idx ON part (session_id);`
 			t.Fatalf("seed part %v: %v", p[1], err)
 		}
 	}
-	if _, err := db.Exec(
-		`INSERT INTO message (id, session_id, time_created, time_updated, data)
-		 VALUES ('m4', 'ses_root', 300, 300,
-		 json_object('role','assistant','agent','build','providerID','prov','modelID','m1',
-		             'cost',1.5,'tokens',json_object('input',1,'output',1,'reasoning',0)))`,
-	); err != nil {
-		t.Fatalf("seed assistant message: %v", err)
+	assistants := [][6]any{
+		{"a1", "ses_root", 110, 100, 25, 1.234567},
+		{"a2", "ses_root", 210, 50, 10, 0.265433},
+	}
+	for _, assistant := range assistants {
+		if _, err := db.Exec(
+			`INSERT INTO message (id, session_id, time_created, time_updated, data)
+			 VALUES (?, ?, ?, ?, json_object(
+			   'role','assistant', 'agent','build',
+			   'providerID','prov', 'modelID','m1',
+			   'tokens',json_object('input',?,'output',?),
+			   'cost',?
+			 ))`,
+			assistant[0], assistant[1], assistant[2], assistant[2],
+			assistant[3], assistant[4], assistant[5],
+		); err != nil {
+			t.Fatalf("seed assistant %v: %v", assistant[0], err)
+		}
 	}
 }
 
@@ -154,16 +169,16 @@ func TestReadOpencodeSessionsReadsTheFixtureStore(t *testing.T) {
 	}
 	got := sessions[rootSession]
 	want := struct {
-		title       string
-		projectDir  string
-		agent       string
-		model       string
-		firstPrompt string
-		promptCount int64
-		tokensInput int64
-		tokensOut   int64
-		costMilli   int64
-	}{"Ramsey attack", "/work/nuts", "build", "prov/m1", "prove the bound", 2, 1, 1, 1500}
+		title        string
+		projectDir   string
+		agent        string
+		model        string
+		firstPrompt  string
+		promptCount  int64
+		tokensInput  int64
+		tokensOutput int64
+		costMilli    int64
+	}{"Ramsey attack", "/work/nuts", "plan", "openai/m2", "prove the bound", 2, 150, 35, 150000}
 	switch {
 	case got.Title != want.title:
 		t.Errorf("title = %q, want %q", got.Title, want.title)
@@ -178,15 +193,23 @@ func TestReadOpencodeSessionsReadsTheFixtureStore(t *testing.T) {
 	case got.PromptCount != want.promptCount:
 		t.Errorf("prompt count = %d, want %d", got.PromptCount, want.promptCount)
 	case got.TokensInput != want.tokensInput:
-		t.Errorf("input tokens = %d, want %d", got.TokensInput, want.tokensInput)
-	case got.TokensOutput != want.tokensOut:
-		t.Errorf("output tokens = %d, want %d", got.TokensOutput, want.tokensOut)
+		t.Errorf("tokens input = %d, want %d", got.TokensInput, want.tokensInput)
+	case got.TokensOutput != want.tokensOutput:
+		t.Errorf("tokens output = %d, want %d", got.TokensOutput, want.tokensOutput)
 	case got.CostMillicents != want.costMilli:
 		t.Errorf("cost millicents = %d, want %d", got.CostMillicents, want.costMilli)
 	}
 	child, found := byID["ses_child"]
 	if !found || sessions[child].ParentID != "ses_root" {
 		t.Errorf("child session lost or unparented: %#v", sessions)
+	}
+	empty, found := byID["ses_gone"]
+	if !found {
+		t.Fatalf("empty session missing from %#v", sessions)
+	}
+	if got := sessions[empty]; got.Agent != "" || got.Model != "" || got.PromptCount != 0 ||
+		got.TokensInput != 0 || got.TokensOutput != 0 || got.CostMillicents != 0 {
+		t.Errorf("empty session acquired message-derived values: %#v", got)
 	}
 }
 
@@ -198,9 +221,13 @@ func TestReadOpencodeSessionsCompactsNativeModelID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`UPDATE message
-		SET data = json_set(data, '$.providerID', 'openai', '$.modelID', 'gpt-5.6-sol')
-		WHERE id = 'm4'`); err != nil {
+	if _, err := db.Exec(`
+UPDATE message
+   SET data = json_object(
+       'role','user', 'agent','build',
+       'model',json_object('providerID','openai','modelID','gpt-5.6-sol')
+   )
+ WHERE id = 'm2'`); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}
@@ -217,6 +244,9 @@ func TestReadOpencodeSessionsCompactsNativeModelID(t *testing.T) {
 			if session.Model != "openai/gpt-5.6-sol" {
 				t.Fatalf("model = %q, want native provider/modelID", session.Model)
 			}
+			if session.Agent != "build" {
+				t.Fatalf("agent = %q, want latest user-message agent", session.Agent)
+			}
 			return
 		}
 	}
@@ -227,6 +257,117 @@ func TestReadOpencodeSessionsMissingStoreIsQuietlyEmpty(t *testing.T) {
 	sessions, err := ReadOpencodeSessions(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatalf("missing store must not error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("sessions = %#v, want empty", sessions)
+	}
+}
+
+func TestReadOpencodeSessionsRejectsMalformedNativeJSONAndShapes(t *testing.T) {
+	tests := []struct {
+		name      string
+		statement string
+		wantError string
+	}{
+		{
+			name:      "message JSON",
+			statement: `UPDATE message SET data = 'not-json' WHERE id = 'm1'`,
+			wantError: "validate opencode message JSON",
+		},
+		{
+			name: "message shape",
+			statement: `UPDATE message SET data = json_object(
+			  'role','user', 'agent','build',
+			  'model',json_object('providerID',7,'modelID','m1')
+			) WHERE id = 'm1'`,
+			wantError: "validate opencode message shape",
+		},
+		{
+			name:      "assistant shape",
+			statement: `UPDATE message SET data = json_remove(data, '$.agent') WHERE id = 'a1'`,
+			wantError: "validate opencode message shape",
+		},
+		{
+			name:      "part JSON",
+			statement: `UPDATE part SET data = 'not-json' WHERE id = 'i1'`,
+			wantError: "validate opencode part JSON",
+		},
+		{
+			name:      "part shape",
+			statement: `UPDATE part SET data = json_object('type','text','text',7) WHERE id = 'i1'`,
+			wantError: "validate opencode part shape",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			seedOpencodeStore(t, root)
+			db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(test.statement); err != nil {
+				db.Close()
+				t.Fatal(err)
+			}
+			if err := db.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = ReadOpencodeSessions(context.Background(), root)
+			if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("ReadOpencodeSessions() error = %v, want %q", err, test.wantError)
+			}
+			if strings.Contains(err.Error(), "not-json") {
+				t.Fatalf("validation error leaked stored content: %v", err)
+			}
+		})
+	}
+}
+
+func TestReadOpencodeSessionsRejectsMalformedOrphansWithoutSessions(t *testing.T) {
+	root := t.TempDir()
+	seedOpencodeStore(t, root)
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+DELETE FROM session;
+UPDATE message SET data = 'not-json' WHERE id = 'm1';
+UPDATE part SET data = 'not-json' WHERE id = 'i1';
+`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ReadOpencodeSessions(context.Background(), root)
+	if err == nil || !strings.Contains(err.Error(), "validate opencode message JSON") {
+		t.Fatalf("ReadOpencodeSessions() error = %v, want orphan validation error", err)
+	}
+}
+
+func TestReadOpencodeSessionsAcceptsACompletelyEmptyNativeStore(t *testing.T) {
+	root := t.TempDir()
+	seedOpencodeStore(t, root)
+	db, err := sql.Open("sqlite", filepath.Join(root, "opencode.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM part; DELETE FROM message; DELETE FROM session;`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := ReadOpencodeSessions(context.Background(), root)
+	if err != nil {
+		t.Fatalf("empty native store must remain valid: %v", err)
 	}
 	if len(sessions) != 0 {
 		t.Fatalf("sessions = %#v, want empty", sessions)

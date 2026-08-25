@@ -17,6 +17,7 @@ import (
 
 	"hostops/pfm/internal/deps"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/statusline"
 	"hostops/pfm/internal/usagehook"
 )
@@ -58,6 +59,16 @@ type cachedLimits struct {
 	limits   AccountLimits
 	warnings []string
 	when     time.Time
+}
+
+type statuslineClaudeLimits struct {
+	Account          int    `json:"acct"`
+	ConfigDir        string `json:"config_dir"`
+	FiveHourUsed     int64  `json:"five_hour_used"`
+	SevenDayUsed     int64  `json:"seven_day_used"`
+	FiveHourResetsAt int64  `json:"five_hour_resets_at"`
+	SevenDayResetsAt int64  `json:"seven_day_resets_at"`
+	ConfirmedAt      int64  `json:"ts"`
 }
 
 // defaultLimitsTTL is shared by the in-memory per-process read-through layer
@@ -133,6 +144,101 @@ func (sampler *LimitsSampler) fetchClaude(
 		return usage, sampler.now(), nil
 	}
 	return sampler.fetchClaudeCached(ctx, account, false)
+}
+
+// fetchClaudeStatusline reads provider-confirmed windows that a running
+// Claude seat supplied to its statusline. It is the no-credential fallback:
+// account number alone is not identity, so snapshots written before
+// config_dir was recorded or belonging to a different config directory are
+// deliberately ignored.
+func (sampler *LimitsSampler) fetchClaudeStatusline(
+	account LimitAccount,
+) (usagehook.Usage, time.Time, bool, error) {
+	directory := statusline.ClaudeRateLimitDir(os.Getenv(paths.EnvHome), os.Getuid())
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return usagehook.Usage{}, time.Time{}, false, nil
+		}
+		return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("read statusline quota directory: %w", err)
+	}
+	prefix := fmt.Sprintf("acct-%d.", account.ID)
+	var latest statuslineClaudeLimits
+	var latestAt time.Time
+	found := false
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("stat statusline quota %s: %w", entry.Name(), err)
+		}
+		if !info.Mode().IsRegular() {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("statusline quota %s is not a regular file", entry.Name())
+		}
+		body, err := os.ReadFile(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("read statusline quota %s: %w", entry.Name(), err)
+		}
+		var snapshot statuslineClaudeLimits
+		if err := json.Unmarshal(body, &snapshot); err != nil {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("decode statusline quota %s: %w", entry.Name(), err)
+		}
+		if snapshot.Account != account.ID {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf(
+				"statusline quota %s claims account %d, want %d", entry.Name(), snapshot.Account, account.ID,
+			)
+		}
+		if snapshot.ConfigDir == "" || !sameConfigDirectory(snapshot.ConfigDir, account.ConfigDir) {
+			continue
+		}
+		confirmedAt := time.Unix(snapshot.ConfirmedAt, 0)
+		if snapshot.ConfirmedAt <= 0 || confirmedAt.After(sampler.now().Add(time.Minute)) {
+			return usagehook.Usage{}, time.Time{}, false, fmt.Errorf("statusline quota %s has invalid confirmation time", entry.Name())
+		}
+		if sampler.now().Sub(confirmedAt) > maxStaleLimitsAge {
+			continue
+		}
+		if !found || confirmedAt.After(latestAt) {
+			latest, latestAt, found = snapshot, confirmedAt, true
+		}
+	}
+	if !found {
+		return usagehook.Usage{}, time.Time{}, false, nil
+	}
+	usage := usagehook.Usage{}
+	setWindow := func(target *usagehook.Window, used, resetsAt int64) error {
+		if resetsAt <= sampler.now().Unix() {
+			return nil
+		}
+		if used < 0 || used > 100 {
+			return fmt.Errorf("statusline quota utilization %d is outside 0..100", used)
+		}
+		percent := float64(used)
+		target.Utilization = &percent
+		target.ResetsAt = time.Unix(resetsAt, 0).UTC().Format(time.RFC3339)
+		return nil
+	}
+	if err := setWindow(&usage.FiveHour, latest.FiveHourUsed, latest.FiveHourResetsAt); err != nil {
+		return usagehook.Usage{}, time.Time{}, false, err
+	}
+	if err := setWindow(&usage.SevenDay, latest.SevenDayUsed, latest.SevenDayResetsAt); err != nil {
+		return usagehook.Usage{}, time.Time{}, false, err
+	}
+	if len(usageWindows(usage, sampler.now())) == 0 {
+		return usagehook.Usage{}, time.Time{}, false, nil
+	}
+	return usage, latestAt, true, nil
+}
+
+func sameConfigDirectory(left, right string) bool {
+	leftResolved, leftErr := filepath.EvalSymlinks(left)
+	rightResolved, rightErr := filepath.EvalSymlinks(right)
+	if leftErr == nil && rightErr == nil {
+		return filepath.Clean(leftResolved) == filepath.Clean(rightResolved)
+	}
+	return filepath.Clean(left) == filepath.Clean(right)
 }
 
 // fetchClaudeAfterCredentialRefresh performs the one live retry authorized by
