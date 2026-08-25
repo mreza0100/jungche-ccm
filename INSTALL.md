@@ -44,9 +44,11 @@ Add `$HOME/.local/bin` to `PATH` if it isn't already, then:
 ```bash
 pfm install             # preview — the default mode, no writes
 pfm install --yes       # apply the preview
+pfm install --vscode    # opt-in preview: make PFM the default VS Code terminal
+pfm install --yes --vscode
 ```
 
-`pfm install --yes` wires seven surfaces, all under `$HOME`:
+`pfm install --yes` wires seven surfaces, all under `$HOME`; `--vscode` adds an eighth:
 
 1. Staged assets — `~/.local/share/pfm/install/`
 2. Command symlinks — `~/.claude/commands/` (`/reload`, the `/chat:*` family)
@@ -58,10 +60,18 @@ pfm install --yes       # apply the preview
 6. `~/.codex/hooks.json` — migrates surviving binary paths and removes retired clear-kill and
    Dream/STM hooks; it installs no automatic Codex hook
 7. One source line appended to `~/.zshrc` — restart your shell (or `source ~/.zshrc`) for it to take effect
+8. **Opt-in:** the VS Code user or remote-machine `settings.json` — adds a `PFM` terminal profile
+   and selects it as the platform default. The profile opens a login zsh, then the installed shim
+   opens the PFM picker at the shell's first prompt. PFM edits JSONC surgically, so comments and
+   unrelated profiles survive; later installs retain ownership, and uninstall restores the prior
+   default unless the operator changed it after installation.
 
 Every rewritten file is backed up before it's touched.
 
-**Known gate — read before you run it.** On any host where a user `systemd` bus is already reachable (true for most already-logged-in Linux sessions, not just a host with a live fleet), `pfm install --yes` refuses with exit 97 and `live user systemd bus is reachable; run in a proven dead-bus jail`; the preview remains read-only. No flag bypasses this (checked `pfm install --help` and the installer source); a first-time install on a machine with no running user bus is unaffected. macOS gates only when the name-sync launch agent is actively mid-run: `launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync` clears it, then retry.
+**Known gate — read before you run it.** A mutating install refuses with exit 97 only while
+PFM's name-sync job is actively running, so it cannot replace the job or binary mid-execution.
+On Linux, wait or run `systemctl --user stop pfm-name-sync.service`; on macOS, wait or run
+`launchctl bootout gui/$(id -u)/com.professor.pfm.name-sync`. The preview remains read-only.
 
 ---
 
@@ -79,7 +89,7 @@ pfm install
 pfm install --yes
 ```
 
-Same seven surfaces, same rc-97 gate.
+Same seven base surfaces, the same optional VS Code surface, and the same rc-97 gate.
 
 ---
 
@@ -124,7 +134,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 
 | Surface                                        | Written by                            | Paths                                                                                                                                                                                               |
 | ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line |
+| Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
 | Project discipline layer                       | The interview — the only writer       | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
 | Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the six host-fleet surfaces above — the interview never writes them directly                                                                                                           |
 

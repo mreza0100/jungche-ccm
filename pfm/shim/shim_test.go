@@ -339,6 +339,10 @@ printf 'EVALUATED %s\n' "$*" >> "$SHIM_AUTO_LOG"
 		want    []string
 		absent  []string
 	}{{
+		name:    "the managed VS Code profile opens the PFM picker",
+		environ: []string{"CC_AUTO_OPEN=pfm"},
+		want:    []string{"picker"},
+	}, {
 		name:    "bare truthy value opens the picker",
 		environ: []string{"CC_AUTO_OPEN=1"},
 		want:    []string{"picker"},

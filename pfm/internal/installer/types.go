@@ -79,6 +79,15 @@ type Options struct {
 	ClaudeBinary   string
 	ClaudePrompted map[int]bool
 	CodexYolo      map[int]bool
+	// VSCode explicitly opts the first install into managing a PFM terminal
+	// profile. Once written, the ownership ledger keeps later ordinary installs
+	// and updates reconciled without requiring the flag again.
+	VSCode bool
+
+	// Test seams for platform/path discovery. Production callers leave these
+	// empty so the installer discovers the current host's VS Code settings.
+	vscodePlatform      string
+	vscodeSettingsPaths []string
 
 	// ProvisionHarvest makes install/uninstall own the pinned conversion
 	// environment. The command sets this for real user actions; existing

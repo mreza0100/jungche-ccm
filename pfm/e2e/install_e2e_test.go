@@ -334,6 +334,39 @@ func runInstallE2E(t *testing.T) {
 		harness.assertLauncherRuntime(freshHome)
 	})
 
+	t.Run("vscode terminal profile", func(t *testing.T) {
+		home := harness.newHome(harness.headBinary)
+		settings := filepath.Join(home, ".config", "Code", "User", "settings.json")
+		if err := os.MkdirAll(filepath.Dir(settings), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		original := "{\n  // e2e operator setting\n  \"editor.fontSize\": 16,\n  \"terminal.integrated.defaultProfile.linux\": \"zsh\",\n}\n"
+		if err := os.WriteFile(settings, []byte(original), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		result := harness.pfm(home, "install", "--yes", "--vscode", "--skip-harvest")
+		harness.requireSuccess("VS Code terminal install", result)
+		merged, err := os.ReadFile(settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"// e2e operator setting", `"PFM"`, `"CC_AUTO_OPEN": "pfm"`, `"terminal.integrated.defaultProfile.linux": "PFM"`} {
+			if !strings.Contains(string(merged), want) {
+				t.Fatalf("VS Code settings missing %q after install:\n%s", want, merged)
+			}
+		}
+		result = harness.pfm(home, "uninstall")
+		harness.requireSuccess("VS Code terminal uninstall", result)
+		restored, err := os.ReadFile(settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(restored), `"terminal.integrated.defaultProfile.linux": "zsh"`) ||
+			strings.Contains(string(restored), `"PFM"`) || strings.Contains(string(restored), "CC_AUTO_OPEN") {
+			t.Fatalf("VS Code settings were not selectively restored:\n%s", restored)
+		}
+	})
+
 	t.Run("update", func(t *testing.T) {
 		previous := harness.previousBinary()
 		home := harness.newHome(previous)

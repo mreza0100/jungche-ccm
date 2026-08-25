@@ -164,7 +164,8 @@ timed out · 6 message not delivered`.
   transcript index; `config` validates the machine config; `codex build|check` is the single
   writer of the Codex mirror; `statusline` renders identity, session and spend. Host install also
   reconciles global Claude commands into marker-owned Codex prompt/skill mirrors, preserving every
-  unmarked conflict and foreign file.
+  unmarked conflict and foreign file. `pfm install --vscode` additionally installs a reversible
+  `PFM` VS Code terminal profile so each new integrated terminal opens at the fleet picker.
 
 **Requirements** (from `pfm doctor`'s own registry, not prose): `tmux` ≥ 1.8, `git`, `sh`, `bash`,
 `zsh`, `sleep`; `setsid` on Linux, `ps`/`lsof`/`launchctl` on macOS. Linux and macOS, amd64 and
