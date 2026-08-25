@@ -58,7 +58,10 @@ func TestLimitsSamplerUsesIdentityMatchedStatuslineQuotaWithoutCredentialFile(t 
 func TestLimitsSamplerRejectsStatuslineQuotaFromPreviousAccountIdentity(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv(paths.EnvHome, home)
-	currentConfig := filepath.Join(home, ".cc", "2")
+	// A path may legitimately contain HTTP-looking digits. Credential
+	// classification must inspect the error semantics, never arbitrary path
+	// substrings such as this directory name.
+	currentConfig := filepath.Join(home, "403", ".cc", "2")
 	if err := os.MkdirAll(currentConfig, 0o700); err != nil {
 		t.Fatal(err)
 	}
