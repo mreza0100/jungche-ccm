@@ -244,6 +244,7 @@ func updateRepository(
 	if len(ledger.Paths) == 0 {
 		return errors.New("binary ownership ledger is empty; refusing to overwrite PATH copies")
 	}
+	installSourceRepo := preferredUpdateSourceRepo(runtime.Paths.Home, repo)
 	replacements := make([]updateReplacement, 0, len(ledger.Paths))
 	for _, targetPath := range ledger.Paths {
 		if strings.TrimSpace(targetPath) == "" || !filepath.IsAbs(targetPath) {
@@ -265,23 +266,23 @@ func updateRepository(
 	for index := range replacements {
 		if err := replaceUpdateFile(candidateA, replacements[index].target); err != nil {
 			rollbackErr := rollbackUpdateState(
-				ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr,
+				ctx, repo, installSourceRepo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr,
 			)
 			return updateFailure(fmt.Errorf("replace owned binary %s: %w", replacements[index].target, err), rollbackErr)
 		}
 		replacements[index].replaced = true
 	}
 
-	if err := updateApplyInstall(ctx, candidateA, repo, runtime, skipHarvest, stdout, stderr); err != nil {
+	if err := updateApplyInstall(ctx, candidateA, repo, installSourceRepo, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(
 			fmt.Errorf("install --yes after staging: %w", err),
-			rollbackUpdateState(ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
+			rollbackUpdateState(ctx, repo, installSourceRepo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
 		)
 	}
 	if err := updateRunDoctor(ctx, candidateA, runtime, skipHarvest, stdout, stderr); err != nil {
 		return updateFailure(
 			fmt.Errorf("doctor after update: %w", err),
-			rollbackUpdateState(ctx, repo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
+			rollbackUpdateState(ctx, repo, installSourceRepo, previousRef, sourceAdvanced, replacements, runtime, skipHarvest, stdout, stderr),
 		)
 	}
 	fmt.Fprintf(stdout, "updated %s from %s\n", target, repo)
@@ -323,7 +324,7 @@ func rollbackUpdateReplacements(replacements []updateReplacement, stderr io.Writ
 // it, updateFailure reports residue instead of claiming a safe rollback.
 func rollbackUpdateState(
 	ctx context.Context,
-	repo, previousRef string,
+	repo, installSourceRepo, previousRef string,
 	sourceAdvanced bool,
 	replacements []updateReplacement,
 	runtime commandRuntime,
@@ -341,13 +342,26 @@ func rollbackUpdateState(
 		return errors.Join(rollbackErr, errors.New("no previous binary is available to restore installer state"))
 	}
 	previousBinary := replacements[0].backup
-	if err := updateRollbackInstall(ctx, previousBinary, repo, runtime, skipHarvest, stdout, stderr); err != nil {
+	if err := updateRollbackInstall(ctx, previousBinary, repo, installSourceRepo, runtime, skipHarvest, stdout, stderr); err != nil {
 		return errors.Join(rollbackErr, fmt.Errorf("reapply previous installer state: %w", err))
 	}
 	if err := updateRollbackDoctor(ctx, previousBinary, runtime, skipHarvest, stdout, stderr); err != nil {
 		return errors.Join(rollbackErr, fmt.Errorf("doctor after rollback: %w", err))
 	}
 	return rollbackErr
+}
+
+func preferredUpdateSourceRepo(home, repo string) string {
+	recorded, err := installer.ReadSourceRepoMarker(home)
+	if err != nil {
+		return repo
+	}
+	recordedInfo, recordedErr := os.Stat(recorded)
+	repoInfo, repoErr := os.Stat(repo)
+	if recordedErr == nil && repoErr == nil && os.SameFile(recordedInfo, repoInfo) {
+		return recorded
+	}
+	return repo
 }
 
 func containsString(values []string, want string) bool {
@@ -471,12 +485,12 @@ func writeUpdateFile(path string, raw []byte, mode os.FileMode) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func applyUpdateInstall(ctx context.Context, candidate, repo string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
+func applyUpdateInstall(ctx context.Context, candidate, repo, sourceRepo string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
 	args := []string{"--yes"}
 	if skipHarvest {
 		args = append(args, "--skip-harvest")
 	}
-	return runUpdateCandidateCommand(ctx, candidate, runtime, repo, stdout, stderr, "install", args...)
+	return runUpdateCandidateCommand(ctx, candidate, runtime, repo, sourceRepo, stdout, stderr, "install", args...)
 }
 
 func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRuntime, skipHarvest bool, stdout, stderr io.Writer) error {
@@ -498,7 +512,7 @@ func runUpdateDoctor(ctx context.Context, candidate string, runtime commandRunti
 			fmt.Fprintf(stderr, "pfm update: cleanup isolated doctor directory %s: %v\n", doctorDirectory, cleanupErr)
 		}
 	}()
-	return runUpdateCandidateCommand(ctx, candidate, runtime, doctorDirectory, stdout, stderr, "doctor", args...)
+	return runUpdateCandidateCommand(ctx, candidate, runtime, doctorDirectory, "", stdout, stderr, "doctor", args...)
 }
 
 func runUpdateCandidateCommand(
@@ -506,6 +520,7 @@ func runUpdateCandidateCommand(
 	candidate string,
 	runtime commandRuntime,
 	workingDirectory string,
+	sourceRepo string,
 	stdout, stderr io.Writer,
 	commandName string,
 	commandArgs ...string,
@@ -518,10 +533,24 @@ func runUpdateCandidateCommand(
 	args = append(args, commandArgs...)
 	command := exec.CommandContext(ctx, candidate, args...)
 	command.Dir = workingDirectory
+	if sourceRepo != "" {
+		command.Env = updateSourceRepoEnv(sourceRepo)
+	}
 	command.Stdout = stdout
 	command.Stderr = stderr
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("target candidate %s: %w", commandName, err)
 	}
 	return nil
+}
+
+func updateSourceRepoEnv(sourceRepo string) []string {
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "PFM_SOURCE_REPO=") {
+			continue
+		}
+		environment = append(environment, entry)
+	}
+	return append(environment, "PFM_SOURCE_REPO="+sourceRepo)
 }

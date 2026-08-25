@@ -150,13 +150,22 @@ exit 3
 	waitForPath(t, ready)
 
 	var listOut, listErr bytes.Buffer
-	if code := runWithTestTimeout(t, 10*time.Second, "pfm ls --plain", func() int {
-		return run([]string{"ls", "--plain"}, &listOut, &listErr)
-	}); code != 0 {
-		t.Fatalf("pfm ls --plain code=%d stderr=%q", code, listErr.String())
-	}
-	if !strings.Contains(listOut.String(), "● fixture") {
-		t.Fatalf("pfm ls --plain did not list the fake Claude as live:\n%s", listOut.String())
+	liveDeadline := time.Now().Add(10 * time.Second)
+	for {
+		listOut.Reset()
+		listErr.Reset()
+		if code := runWithTestTimeout(t, 10*time.Second, "pfm ls --plain", func() int {
+			return run([]string{"ls", "--plain"}, &listOut, &listErr)
+		}); code != 0 {
+			t.Fatalf("pfm ls --plain code=%d stderr=%q", code, listErr.String())
+		}
+		if strings.Contains(listOut.String(), "● fixture") {
+			break
+		}
+		if time.Now().After(liveDeadline) {
+			t.Fatalf("pfm ls --plain did not observe the fake Claude as live before timeout:\n%s", listOut.String())
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	var tsvOut, tsvErr bytes.Buffer
 	if code := runWithTestTimeout(t, 10*time.Second, "pfm ls --tsv", func() int {
