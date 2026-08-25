@@ -36,7 +36,19 @@ func TestOlderPFMDiscoversUpdateThenPickerLaunchesGuidedEngine(t *testing.T) {
 	opencodeHome := filepath.Join(home, ".local", "share", "opencode")
 	managed := filepath.Join(home, ".local", "share", "pfm", "install")
 	state := filepath.Join(root, "state")
-	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
+	// Darwin limits Unix-domain socket paths to 104 bytes. Go's testing temp
+	// directory is already long there, so keep tmux's socket root explicitly
+	// short while leaving every other fixture inside the test jail.
+	tmuxBase, err := os.MkdirTemp("/tmp", "pfm-update-tmux-")
+	if err != nil {
+		t.Fatalf("create short tmux socket root: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(tmuxBase); err != nil {
+			t.Errorf("remove short tmux socket root: %v", err)
+		}
+	})
+	tmuxDir := filepath.Join(tmuxBase, "tmux-"+strconv.Itoa(os.Getuid()))
 	for _, directory := range []string{
 		home, professor, binDir, configDir, codexHome, opencodeHome, managed, state, tmuxDir,
 		filepath.Join(home, ".config", "pfm"),
@@ -142,7 +154,7 @@ func TestOlderPFMDiscoversUpdateThenPickerLaunchesGuidedEngine(t *testing.T) {
 		"PATH":                    binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"TERM":                    "xterm-256color",
 		"TMUX":                    "",
-		"TMUX_TMPDIR":             root,
+		"TMUX_TMPDIR":             tmuxBase,
 		"PFM_HOME":                home,
 		"PFM_DB":                  filepath.Join(state, "fleet.db"),
 		"PFM_SHARED_DB":           filepath.Join(state, "shared.db"),
