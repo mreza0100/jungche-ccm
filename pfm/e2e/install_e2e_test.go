@@ -336,11 +336,17 @@ func runInstallE2E(t *testing.T) {
 
 	t.Run("vscode terminal profile", func(t *testing.T) {
 		home := harness.newHome(harness.headBinary)
+		platform := "linux"
 		settings := filepath.Join(home, ".config", "Code", "User", "settings.json")
+		if runtime.GOOS == "darwin" {
+			platform = "osx"
+			settings = filepath.Join(home, "Library", "Application Support", "Code", "User", "settings.json")
+		}
 		if err := os.MkdirAll(filepath.Dir(settings), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		original := "{\n  // e2e operator setting\n  \"editor.fontSize\": 16,\n  \"terminal.integrated.defaultProfile.linux\": \"zsh\",\n}\n"
+		defaultKey := "terminal.integrated.defaultProfile." + platform
+		original := fmt.Sprintf("{\n  // e2e operator setting\n  \"editor.fontSize\": 16,\n  %q: \"zsh\",\n}\n", defaultKey)
 		if err := os.WriteFile(settings, []byte(original), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -350,7 +356,7 @@ func runInstallE2E(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, want := range []string{"// e2e operator setting", `"PFM"`, `"CC_AUTO_OPEN": "pfm"`, `"terminal.integrated.defaultProfile.linux": "PFM"`} {
+		for _, want := range []string{"// e2e operator setting", `"PFM"`, `"CC_AUTO_OPEN": "pfm"`, fmt.Sprintf("%q: \"PFM\"", defaultKey)} {
 			if !strings.Contains(string(merged), want) {
 				t.Fatalf("VS Code settings missing %q after install:\n%s", want, merged)
 			}
@@ -361,7 +367,7 @@ func runInstallE2E(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(restored), `"terminal.integrated.defaultProfile.linux": "zsh"`) ||
+		if !strings.Contains(string(restored), fmt.Sprintf("%q: \"zsh\"", defaultKey)) ||
 			strings.Contains(string(restored), `"PFM"`) || strings.Contains(string(restored), "CC_AUTO_OPEN") {
 			t.Fatalf("VS Code settings were not selectively restored:\n%s", restored)
 		}
