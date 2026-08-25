@@ -107,10 +107,31 @@ func TestInstallUsesOnlyTheNewSurface(t *testing.T) {
 			if code := runInstall([]string{retired}, &stdout, &stderr); code != 2 {
 				t.Fatalf("runInstall(%q) code=%d stdout=%q stderr=%q, want unknown-flag usage", retired, code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--skip-harvest] [--force] [--config-dir DIR]") {
+			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--vscode] [--skip-harvest] [--force] [--config-dir DIR]") {
 				t.Fatalf("runInstall(%q) stderr=%q, want new usage", retired, stderr.String())
 			}
 		})
+	}
+}
+
+func TestInstallCarriesExplicitVSCodeTerminalOptIn(t *testing.T) {
+	previous := runInstaller
+	t.Cleanup(func() { runInstaller = previous })
+	var captured installer.Options
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		captured = options
+		return installer.Report{}, nil
+	}
+	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--vscode", "--skip-harvest"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("pfm install --vscode code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !captured.VSCode {
+		t.Fatal("pfm install --vscode did not reach installer.Options")
+	}
+	if !strings.HasSuffix(stdout.String(), "if you agree, run again: pfm install --yes --vscode --skip-harvest\n") {
+		t.Fatalf("VS Code preview dropped its apply flag: %q", stdout.String())
 	}
 }
 

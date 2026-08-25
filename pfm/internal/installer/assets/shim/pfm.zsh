@@ -381,7 +381,8 @@ if [[ -o interactive && -z "${CLAUDECODE:-}" && -n "${CC_AUTO_OPEN:-}${VSCODE_AU
       cc|new|chat)  cmd=cc ;;                 # straight into a fresh chat, no picker
       cc1|cc2)      cmd="$_cc_auto_what" ;;   # a fresh chat on that account — the roster is two
       cx|codex)     cmd=cx ;;                 # a fresh Codex chat
-      *)            cmd=cc-ls ;;              # 1 / yes / ls / picker — and the default
+      pfm|picker|ls) cmd=cc-ls ;;              # the managed VS Code profile is explicit
+      *)             cmd=cc-ls ;;              # 1 / yes / unknown — safe picker default
     esac
     unset _cc_auto_what
     $cmd

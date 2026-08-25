@@ -227,6 +227,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireShell(false); err != nil {
 		return err
 	}
+	if err := installer.wireVSCode(); err != nil {
+		return err
+	}
 	if err := installer.writeUpdateMetadata(); err != nil {
 		return err
 	}
@@ -519,6 +522,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 		return err
 	}
 	if err := installer.wireShell(true); err != nil {
+		return err
+	}
+	if err := installer.wireVSCode(); err != nil {
 		return err
 	}
 	if err := installer.removeManagedAssets(assets); err != nil {
