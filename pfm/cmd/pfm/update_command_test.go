@@ -43,6 +43,7 @@ func TestUpdateRefusesDirtyWorktree(t *testing.T) {
 
 func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	repo := newUpdateGitFixture(t)
+	previousBranch := updateGitBranch(t, repo)
 	runtime := updateTestRuntime(t)
 	canonical := filepath.Join(runtime.Paths.Home, ".local", "bin", "pfm")
 	unowned := filepath.Join(t.TempDir(), "pfm")
@@ -62,10 +63,14 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	oldBuild := updateBuildCandidate
 	oldInstall := updateApplyInstall
 	oldDoctor := updateRunDoctor
+	oldRollbackInstall := updateRollbackInstall
+	oldRollbackDoctor := updateRollbackDoctor
 	t.Cleanup(func() {
 		updateBuildCandidate = oldBuild
 		updateApplyInstall = oldInstall
 		updateRunDoctor = oldDoctor
+		updateRollbackInstall = oldRollbackInstall
+		updateRollbackDoctor = oldRollbackDoctor
 	})
 	builds := 0
 	updateBuildCandidate = func(_ context.Context, _ string, version, output string) error {
@@ -113,6 +118,9 @@ func TestUpdateReplacesOwnedBinaryLeavesUnownedCopyAndRunsDoctor(t *testing.T) {
 	if got, err := os.ReadFile(unowned); err != nil || string(got) != "unowned\n" {
 		t.Fatalf("unowned binary=%q err=%v, want unchanged", got, err)
 	}
+	if got := updateGitBranch(t, repo); got != previousBranch {
+		t.Fatalf("source branch after successful update = %q, want unchanged %q", got, previousBranch)
+	}
 }
 
 func TestUpdateBuildsSelectedTagIntoOwnedBinaryAndSkipsHarvestProvisioning(t *testing.T) {
@@ -157,6 +165,12 @@ func TestUpdateBuildsSelectedTagIntoOwnedBinaryAndSkipsHarvestProvisioning(t *te
 	if got := strings.TrimSpace(string(output)); got != "pfm v0.10.0" {
 		t.Fatalf("updated binary version=%q, want selected tag v0.10.0", got)
 	}
+	if got := updateGitBranch(t, repo); got != "installed" {
+		t.Fatalf("source branch after update = %q, want installed", got)
+	}
+	if got := updateGitRevision(t, repo, "HEAD"); got != updateGitRevision(t, repo, "v0.10.0") {
+		t.Fatalf("source HEAD after update = %q, want v0.10.0", got)
+	}
 }
 
 func TestUpdateRunsPostBuildActionsThroughTheSelectedCandidate(t *testing.T) {
@@ -196,6 +210,8 @@ func TestUpdateRunsPostBuildActionsThroughTheSelectedCandidate(t *testing.T) {
 
 func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 	repo := newUpdateGitFixture(t)
+	previousBranch := updateGitBranch(t, repo)
+	previousRef := updateGitRevision(t, repo, "HEAD")
 	runtime := updateTestRuntime(t)
 	canonical := filepath.Join(runtime.Paths.Home, ".local", "bin", "pfm")
 	if err := os.MkdirAll(filepath.Dir(canonical), 0o700); err != nil {
@@ -211,19 +227,42 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 	oldBuild := updateBuildCandidate
 	oldInstall := updateApplyInstall
 	oldDoctor := updateRunDoctor
+	oldRollbackInstall := updateRollbackInstall
+	oldRollbackDoctor := updateRollbackDoctor
 	t.Cleanup(func() {
 		updateBuildCandidate = oldBuild
 		updateApplyInstall = oldInstall
 		updateRunDoctor = oldDoctor
+		updateRollbackInstall = oldRollbackInstall
+		updateRollbackDoctor = oldRollbackDoctor
 	})
 	updateBuildCandidate = func(_ context.Context, _ string, _ string, output string) error {
 		return os.WriteFile(output, []byte("new\n"), 0o755)
 	}
+	managedMutation := filepath.Join(runtime.Paths.Home, ".local", "share", "pfm", "install", "new-asset")
 	updateApplyInstall = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
+		if err := os.MkdirAll(filepath.Dir(managedMutation), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(managedMutation, []byte("partially installed\n"), 0o600); err != nil {
+			return err
+		}
 		return errors.New("injected install failure")
 	}
 	updateRunDoctor = func(context.Context, string, commandRuntime, bool, io.Writer, io.Writer) error {
 		t.Fatal("doctor ran after install failure")
+		return nil
+	}
+	updateRollbackInstall = func(_ context.Context, candidate string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
+		if !strings.Contains(candidate, "previous-") {
+			t.Fatalf("rollback installer candidate=%q, want preserved previous binary", candidate)
+		}
+		return os.RemoveAll(filepath.Dir(managedMutation))
+	}
+	updateRollbackDoctor = func(_ context.Context, candidate string, _ commandRuntime, _ bool, _ io.Writer, _ io.Writer) error {
+		if !strings.Contains(candidate, "previous-") {
+			t.Fatalf("rollback doctor candidate=%q, want preserved previous binary", candidate)
+		}
 		return nil
 	}
 
@@ -236,6 +275,15 @@ func TestUpdateRollsBackAfterStagingFailure(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "rolled back") {
 		t.Fatalf("rollback diagnostic=%q", stderr.String())
+	}
+	if _, err := os.Stat(managedMutation); !os.IsNotExist(err) {
+		t.Fatalf("installer mutation survived rollback: %v", err)
+	}
+	if got := updateGitBranch(t, repo); got != previousBranch {
+		t.Fatalf("source branch after failed update = %q, want unchanged %q", got, previousBranch)
+	}
+	if got := updateGitRevision(t, repo, "HEAD"); got != previousRef {
+		t.Fatalf("source revision after failed update = %q, want unchanged %q", got, previousRef)
 	}
 }
 
@@ -393,7 +441,7 @@ func newTaggedBuildFixture(t *testing.T) string {
 	gitTemp(t, remote, "init", "--bare", "-q")
 	gitTemp(t, repo, "remote", "add", "origin", remote)
 	gitTemp(t, repo, "push", "-q", "origin", "HEAD", "--tags")
-	gitTemp(t, repo, "checkout", "-q", "v0.9.0")
+	gitTemp(t, repo, "checkout", "-qb", "installed", "v0.9.0")
 	return repo
 }
 
@@ -404,4 +452,26 @@ func gitTemp(t *testing.T, repo string, args ...string) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, output)
 	}
+}
+
+func updateGitBranch(t *testing.T, repo string) string {
+	t.Helper()
+	command := exec.Command("git", "symbolic-ref", "--quiet", "--short", "HEAD")
+	command.Dir = repo
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("resolve fixture branch: %v\n%s", err, output)
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func updateGitRevision(t *testing.T, repo, revision string) string {
+	t.Helper()
+	command := exec.Command("git", "rev-parse", "--verify", revision)
+	command.Dir = repo
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("resolve fixture revision %s: %v\n%s", revision, err, output)
+	}
+	return strings.TrimSpace(string(output))
 }

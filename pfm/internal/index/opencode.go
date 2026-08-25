@@ -39,8 +39,44 @@ type opencodeRow struct {
 }
 
 const opencodeSessionsQuery = `
-SELECT s.id, s.title, s.directory, p.worktree, s.parent_id, s.agent, s.model,
-       s.tokens_input, s.tokens_output, s.cost,
+SELECT s.id, s.title, s.directory, p.worktree, s.parent_id,
+	   COALESCE((
+	     SELECT json_extract(latest_agent.data, '$.agent')
+	       FROM message latest_agent
+	      WHERE latest_agent.session_id = s.id
+	        AND json_extract(latest_agent.data, '$.role') = 'assistant'
+	      ORDER BY latest_agent.time_created DESC, latest_agent.id DESC
+	      LIMIT 1
+	   ), ''),
+	   COALESCE((
+	     SELECT json_object(
+	              'providerID', json_extract(latest_model.data, '$.providerID'),
+	              'modelID', json_extract(latest_model.data, '$.modelID'))
+	       FROM message latest_model
+	      WHERE latest_model.session_id = s.id
+	        AND json_extract(latest_model.data, '$.role') = 'assistant'
+	        AND COALESCE(json_extract(latest_model.data, '$.modelID'), '') <> ''
+	      ORDER BY latest_model.time_created DESC, latest_model.id DESC
+	      LIMIT 1
+	   ), ''),
+	   COALESCE((
+	     SELECT SUM(COALESCE(json_extract(usage_message.data, '$.tokens.input'), 0))
+	       FROM message usage_message
+	      WHERE usage_message.session_id = s.id
+	        AND json_extract(usage_message.data, '$.role') = 'assistant'
+	   ), 0),
+	   COALESCE((
+	     SELECT SUM(COALESCE(json_extract(usage_message.data, '$.tokens.output'), 0))
+	       FROM message usage_message
+	      WHERE usage_message.session_id = s.id
+	        AND json_extract(usage_message.data, '$.role') = 'assistant'
+	   ), 0),
+	   COALESCE((
+	     SELECT SUM(COALESCE(json_extract(usage_message.data, '$.cost'), 0))
+	       FROM message usage_message
+	      WHERE usage_message.session_id = s.id
+	        AND json_extract(usage_message.data, '$.role') = 'assistant'
+	   ), 0),
        s.time_created, s.time_updated, s.time_archived,
 	   (SELECT COUNT(*)
 	      FROM message m
