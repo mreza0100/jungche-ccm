@@ -25,8 +25,9 @@ func newFixtureService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	service, err := NewConfigured("test", io.Discard, Runtime{
-		Paths:      resolved,
-		Operations: fixtureSharedOperations(),
+		Paths:                resolved,
+		Operations:           fixtureSharedOperations(),
+		AllowAmbientIdentity: true,
 	})
 	if err != nil {
 		t.Fatal(err)

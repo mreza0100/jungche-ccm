@@ -68,7 +68,6 @@ type Options struct {
 	// SourceRepo is the clone whose blueprint and binary are being installed.
 	// Empty preserves an existing marker when install is invoked elsewhere.
 	SourceRepo string
-	Force      bool
 	Now        func() time.Time
 	Stdout     io.Writer
 	Runner     CommandRunner

@@ -16,12 +16,7 @@ import (
 
 const mcpProtocolVersion = "2025-06-18"
 
-var chatMCPTools = []string{
-	"chat_capture", "chat_find", "chat_inject", "chat_keys", "chat_last",
-	"chat_ls", "chat_name", "chat_new", "chat_open", "chat_read",
-	"chat_reload", "chat_resolve", "chat_save", "chat_status", "chat_unkill",
-	"chat_kill", "chat_whoami",
-}
+var chatMCPTools = mcpserv.ToolNames()
 
 var harvesterMCPTools = []string{
 	"archive", "fetch", "fetchImage", "findWorks", "search", "searchCache",
@@ -62,6 +57,13 @@ func newMCPDaemonHandler(options mcpDaemonOptions) http.Handler {
 		Endpoint:  options.Endpoint,
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// Browsers attach Origin even when script code targets loopback. Local
+		// MCP clients do not. Refuse browser-capable cross-origin requests before
+		// they can reach chat_inject or any other mounted tool.
+		if request.Header.Get("Origin") != "" {
+			http.Error(writer, "browser-origin requests are forbidden", http.StatusForbidden)
+			return
+		}
 		switch request.URL.Path {
 		case "/status":
 			if request.Method != http.MethodGet {
@@ -132,7 +134,13 @@ func runMCPServe(stdout, stderr io.Writer, runtime commandRuntime) int {
 		Endpoint: "http://" + address,
 		Chat:     chat.NewHTTPHandler(), Harvester: harvester.NewHTTPHandler(),
 	})
-	server := &http.Server{Handler: handler}
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       2 * time.Minute,
+	}
 	fmt.Fprintf(stdout, "pfm mcp serve\thttp://%s\n", address)
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintf(stderr, "pfm mcp serve: %v\n", err)

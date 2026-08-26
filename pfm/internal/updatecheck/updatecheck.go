@@ -17,7 +17,10 @@ import (
 	"time"
 )
 
-const lockStaleAfter = 2 * time.Minute
+const (
+	lockStaleAfter = 2 * time.Minute
+	checkFreshFor  = 6 * time.Hour
+)
 
 // Notice is one successful release lookup. Current is rewritten to the
 // invoking binary's version when Read returns it; the cached value is retained
@@ -65,6 +68,9 @@ func Read(path, current string) (Notice, bool, error) {
 // successful notice intact, so temporary network failures cannot make an
 // already-known update disappear.
 func Check(ctx context.Context, path, current, latestURL string, client *http.Client) error {
+	if _, ok := parseVersion(current); !ok {
+		return fmt.Errorf("current version %q is not vMAJOR.MINOR.PATCH", current)
+	}
 	release, err := acquire(path + ".lock")
 	if err != nil {
 		return err
@@ -74,8 +80,13 @@ func Check(ctx context.Context, path, current, latestURL string, client *http.Cl
 	}
 	defer release()
 
-	if _, ok := parseVersion(current); !ok {
-		return fmt.Errorf("current version %q is not vMAJOR.MINOR.PATCH", current)
+	now := time.Now().UTC()
+	recent, err := checkedRecently(path, current, now)
+	if err != nil {
+		return err
+	}
+	if recent {
+		return nil
 	}
 	if client == nil {
 		client = &http.Client{Timeout: 12 * time.Second}
@@ -113,12 +124,38 @@ func Check(ctx context.Context, path, current, latestURL string, client *http.Cl
 		Current:    normalizeVersion(current),
 		Latest:     latest,
 		ReleaseURL: resolved.String(),
-		CheckedAt:  time.Now().UTC(),
+		CheckedAt:  now,
 	}
 	if err := writeAtomic(path, notice); err != nil {
 		return fmt.Errorf("write update cache: %w", err)
 	}
 	return nil
+}
+
+// checkedRecently recognizes only a complete, successful notice. Malformed
+// cache state is stale rather than fatal here so Check can repair it with a
+// fresh lookup; Read still reports the malformed state to its callers.
+func checkedRecently(path, current string, now time.Time) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read update cache freshness: %w", err)
+	}
+	var notice Notice
+	if err := json.Unmarshal(raw, &notice); err != nil {
+		return false, nil
+	}
+	_, latestOK := parseReleaseVersion(notice.Latest)
+	if notice.CheckedAt.IsZero() ||
+		notice.Current != normalizeVersion(current) ||
+		!latestOK ||
+		strings.TrimSpace(notice.ReleaseURL) == "" {
+		return false, nil
+	}
+	age := now.Sub(notice.CheckedAt)
+	return age >= 0 && age <= checkFreshFor, nil
 }
 
 func acquire(path string) (func(), error) {

@@ -42,6 +42,25 @@ func TestAssertFetchableStrictRefusesAnEmptyAnswer(t *testing.T) {
 	}
 }
 
+func TestAssertFetchableStrictRechecksDNSImmediatelyBeforeBrowserApproval(t *testing.T) {
+	previous := lookupIP
+	t.Cleanup(func() { lookupIP = previous })
+	calls := 0
+	lookupIP = func(host string) ([]net.IP, error) {
+		calls++
+		if calls == 1 {
+			return []net.IP{net.ParseIP("93.184.216.34")}, nil
+		}
+		return []net.IP{net.ParseIP("127.0.0.1")}, nil
+	}
+	if err := AssertFetchableStrict("https://rebind.attacker.test/page"); err == nil {
+		t.Fatal("strict browser guard approved a host that rebound between its two immediate resolutions")
+	}
+	if calls != 2 {
+		t.Fatalf("strict browser guard DNS calls=%d, want two immediate checks", calls)
+	}
+}
+
 // TestAssertFetchableAppliesTheSuffixList pins the corollary: the per-redirect
 // chokepoint must refuse the same internal suffixes IsPrivateHost refuses one
 // hop earlier (.internal, .ts.net), or a 302 to an internal vault slips

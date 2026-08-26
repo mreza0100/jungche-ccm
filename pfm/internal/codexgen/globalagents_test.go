@@ -154,6 +154,24 @@ func TestGlobalAgentsNoSourcesIsAHardError(t *testing.T) {
 	}
 }
 
+func TestGlobalAgentsCheckReportsActualInstalledFileShape(t *testing.T) {
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(home, ".professor", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home, Mode: ModeCheck})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Installed) != 2 {
+		t.Fatalf("installed rows=%#v, want two desired targets", result.Installed)
+	}
+	for _, installed := range result.Installed {
+		if installed.RegularFile {
+			t.Fatalf("check mode fabricated absent target as a regular file: %#v", installed)
+		}
+	}
+}
+
 // TestGlobalAgentsInstallReplacesASymlinkWithARegularFile matches the host
 // script's own documented behavior: a symlink also loads, but install always
 // leaves a real file behind so the registry holds no dependency on the

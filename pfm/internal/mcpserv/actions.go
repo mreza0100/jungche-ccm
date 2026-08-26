@@ -6,41 +6,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
-	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
-	"hostops/pfm/internal/transcript"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func (service *Service) chatLast(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	input LastInput,
 ) (*mcp.CallToolResult, LastOutput, error) {
 	if strings.TrimSpace(input.Target) == "" {
 		return nil, LastOutput{}, fmt.Errorf("target is required")
 	}
-	source, err := service.backend.resolveReadSource(ctx, input.Target)
+	if service.backend.dispatch == nil {
+		return nil, LastOutput{}, fmt.Errorf("chat_last command is not configured")
+	}
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
 	if err != nil {
 		return nil, LastOutput{}, err
 	}
-	entries, _, err := transcript.Tail(ctx, source.path, source.engine, 200, 0)
-	if err != nil {
-		return nil, LastOutput{}, err
+	var stdout, stderr bytes.Buffer
+	code := service.backend.dispatch(
+		ctx,
+		[]string{"chat", "last", target},
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		return nil, LastOutput{}, fmt.Errorf(
+			"chat_last command rc=%d stderr=%q",
+			code,
+			strings.TrimSpace(stderr.String()),
+		)
 	}
-	entry, ok := transcript.Last(entries, transcript.RoleAssistant)
-	if !ok {
-		return nil, LastOutput{}, fmt.Errorf("%q has not answered yet", source.name)
+	text := strings.TrimRight(stdout.String(), "\r\n")
+	if text == "" {
+		return nil, LastOutput{}, fmt.Errorf("chat_last command returned no answer")
 	}
-	return nil, LastOutput{Target: input.Target, Text: entry.Text}, nil
+	return nil, LastOutput{Target: input.Target, Text: text}, nil
 }
 
 func (service *Service) chatStatus(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	input StatusInput,
 ) (*mcp.CallToolResult, StatusOutput, error) {
 	if strings.TrimSpace(input.Target) == "" {
@@ -49,63 +59,44 @@ func (service *Service) chatStatus(
 	if !input.Summary && (input.Engine != "" || input.Model != "") {
 		return nil, StatusOutput{}, fmt.Errorf("engine and model require summary=true")
 	}
+	if service.backend.dispatch == nil {
+		return nil, StatusOutput{}, fmt.Errorf("chat_status command is not configured")
+	}
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, StatusOutput{}, err
+	}
+	args := []string{"chat", "status", target, "--json"}
 	if input.Summary {
-		if service.backend.dispatch == nil {
-			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command is not configured")
-		}
-		args := []string{"chat", "status", input.Target, "--json", "--summary"}
-		if input.Engine != "" {
-			args = append(args, "--engine", input.Engine)
-		}
-		if input.Model != "" {
-			args = append(args, "--model", input.Model)
-		}
-		var stdout, stderr bytes.Buffer
-		code := service.backend.dispatch(ctx, args, &stdout, &stderr)
-		var output StatusOutput
-		if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
-			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d stderr=%q: decode output: %w", code, strings.TrimSpace(stderr.String()), err)
-		}
-		if code != 0 && output.State != headless.StateDead {
-			return nil, StatusOutput{}, fmt.Errorf("chat_status summary command rc=%d state=%s stderr=%q", code, output.State, strings.TrimSpace(stderr.String()))
-		}
-		return nil, output, nil
+		args = append(args, "--summary")
 	}
-	source, err := service.backend.resolveReadSource(ctx, input.Target)
-	if err != nil {
-		return nil, StatusOutput{}, err
+	if input.Engine != "" {
+		args = append(args, "--engine", input.Engine)
 	}
-	target, code, detail, err := service.backend.injector.Resolve(ctx, input.Target)
-	if err != nil {
-		return nil, StatusOutput{}, err
+	if input.Model != "" {
+		args = append(args, "--model", input.Model)
 	}
-	if code != 0 && detail != "" {
-		return nil, StatusOutput{}, fmt.Errorf("resolve %q: %s", input.Target, detail)
+	var stdout, stderr bytes.Buffer
+	code := service.backend.dispatch(ctx, args, &stdout, &stderr)
+	var output StatusOutput
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		return nil, StatusOutput{}, fmt.Errorf(
+			"chat_status command rc=%d stderr=%q: decode output: %w",
+			code,
+			strings.TrimSpace(stderr.String()),
+			err,
+		)
 	}
-	engineID, err := pfmengine.Parse(source.engine)
-	if err != nil {
-		return nil, StatusOutput{}, err
+	if code != 0 && output.State != headless.StateDead {
+		return nil, StatusOutput{}, fmt.Errorf(
+			"chat_status command rc=%d state=%s stderr=%q",
+			code,
+			output.State,
+			strings.TrimSpace(stderr.String()),
+		)
 	}
-	status, err := headless.Inspect(ctx, headless.Chat{
-		Name: source.name, ID: source.id, Engine: engineID, Path: source.path,
-		CWD: source.dir, Socket: target.SocketPath, Pane: target.Pane, Live: code == 0,
-	}, now())
-	if err != nil {
-		return nil, StatusOutput{}, err
-	}
-	return nil, StatusOutput{
-		Name: status.Name, State: status.State, IdleSeconds: status.IdleSeconds,
-		Engine: string(status.Engine), Model: status.Model, CWD: status.CWD,
-		SessionID: status.SessionID, Socket: status.Socket,
-		ContextPct: status.ContextPct, Last: status.Last,
-		Summary: status.Summary, SummaryCached: status.SummaryCached,
-	}, nil
+	return nil, output, nil
 }
-
-// now is a small seam for the status adapter; unlike the CLI's package-level
-// test clock, production uses wall time and MCP callers receive the same
-// headless.Inspect semantics.
-var now = func() (value time.Time) { return time.Now() }
 
 func (service *Service) chatNew(ctx context.Context, _ *mcp.CallToolRequest, input NewInput) (*mcp.CallToolResult, ActionOutput, error) {
 	if strings.TrimSpace(input.Name) == "" {
@@ -151,39 +142,91 @@ func (service *Service) chatNew(ctx context.Context, _ *mcp.CallToolRequest, inp
 	return service.cliAction(ctx, args...)
 }
 
-func (service *Service) chatOpen(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
-	return service.cliTargetAction(ctx, "open", input.Target)
+func (service *Service) chatOpen(ctx context.Context, request *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	return service.cliTargetAction(ctx, "open", target)
 }
 
-func (service *Service) chatName(ctx context.Context, _ *mcp.CallToolRequest, input NameInput) (*mcp.CallToolResult, ActionOutput, error) {
+func (service *Service) chatName(ctx context.Context, request *mcp.CallToolRequest, input NameInput) (*mcp.CallToolResult, ActionOutput, error) {
 	if strings.TrimSpace(input.Name) == "" || strings.ContainsAny(input.Name, "\r\n\x00") {
 		return nil, ActionOutput{}, fmt.Errorf("name must be one non-empty line")
 	}
-	return service.cliAction(ctx, "chat", "name", input.Target, input.Name)
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	return service.cliAction(ctx, "chat", "name", target, input.Name)
 }
 
-func (service *Service) chatKill(ctx context.Context, _ *mcp.CallToolRequest, input KillInput) (*mcp.CallToolResult, ActionOutput, error) {
-	args := []string{"chat", "kill", input.Target}
+func (service *Service) chatKill(ctx context.Context, request *mcp.CallToolRequest, input KillInput) (*mcp.CallToolResult, ActionOutput, error) {
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	args := []string{"chat", "kill", target}
 	if input.Exit {
 		args = append(args, "--exit")
 	}
 	return service.cliAction(ctx, args...)
 }
 
-func (service *Service) chatUnkill(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
-	return service.cliTargetAction(ctx, "unkill", input.Target)
+func (service *Service) chatUnkill(ctx context.Context, request *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	return service.cliTargetAction(ctx, "unkill", target)
 }
 
-func (service *Service) chatReload(ctx context.Context, _ *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
-	return service.cliTargetAction(ctx, "reload", input.Target)
+func (service *Service) chatReload(ctx context.Context, request *mcp.CallToolRequest, input TargetInput) (*mcp.CallToolResult, ActionOutput, error) {
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	return service.cliTargetAction(ctx, "reload", target)
 }
 
-func (service *Service) chatSave(ctx context.Context, _ *mcp.CallToolRequest, input SaveInput) (*mcp.CallToolResult, ActionOutput, error) {
-	args := []string{"chat", "save", input.Target}
+func (service *Service) chatSave(ctx context.Context, request *mcp.CallToolRequest, input SaveInput) (*mcp.CallToolResult, ActionOutput, error) {
+	target, err := service.cliTargetForRequest(ctx, request, input.Target)
+	if err != nil {
+		return nil, ActionOutput{}, err
+	}
+	args := []string{"chat", "save", target}
 	if input.Transcript != "" {
 		args = append(args, input.Transcript)
 	}
 	return service.cliAction(ctx, args...)
+}
+
+// cliTargetForRequest translates a request-scoped Codex self into the stable
+// thread id understood by the in-process CLI dispatcher. The HTTP daemon has
+// no tmux ancestry of its own, so forwarding the literal word "self" asks the
+// daemon who it is and necessarily resolves nothing.
+func (service *Service) cliTargetForRequest(
+	ctx context.Context,
+	request *mcp.CallToolRequest,
+	target string,
+) (string, error) {
+	if !selfTarget(target) {
+		return target, nil
+	}
+	caller, err := service.backend.callerForRequest(ctx, requestMeta(request))
+	if err != nil {
+		return "", err
+	}
+	if !caller.present {
+		if !service.backend.allowAmbientIdentity {
+			return "", fmt.Errorf("resolve MCP self: request has no _meta.threadId; shared-daemon ambient identity is disabled")
+		}
+		return target, nil
+	}
+	if !caller.valid {
+		return "", fmt.Errorf("resolve MCP self: %s", caller.detail)
+	}
+	return caller.identity.ID, nil
 }
 
 func (service *Service) cliTargetAction(ctx context.Context, verb, target string) (*mcp.CallToolResult, ActionOutput, error) {

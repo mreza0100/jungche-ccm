@@ -19,6 +19,8 @@ const (
 	vscodeProfileName      = "PFM"
 )
 
+var errMalformedVSCodeSettings = errors.New("malformed VS Code settings")
+
 type vscodeOwnershipDocument struct {
 	Version int                     `json:"version"`
 	Files   []vscodeOwnershipRecord `json:"files"`
@@ -48,7 +50,7 @@ func (installer *engine) wireVSCode() error {
 		return nil
 	}
 
-	platform, err := installer.vscodePlatform()
+	livePlatform, err := installer.vscodePlatform()
 	if err != nil {
 		return err
 	}
@@ -69,13 +71,15 @@ func (installer *engine) wireVSCode() error {
 
 	for _, path := range ordered {
 		record, alreadyOwned := ownership[path]
-		if alreadyOwned {
-			platform = record.Platform
-		} else {
-			record = vscodeOwnershipRecord{Path: path, Platform: platform}
+		if !alreadyOwned {
+			record = vscodeOwnershipRecord{Path: path, Platform: livePlatform}
 		}
 		updated, next, changed, err := installer.mergeVSCodeSettings(path, record, alreadyOwned)
 		if err != nil {
+			if errors.Is(err, errMalformedVSCodeSettings) {
+				installer.skip("VS Code settings skipped " + path + ": " + err.Error())
+				continue
+			}
 			return err
 		}
 		if next.ProfileOwned || next.DefaultOwned {
@@ -88,14 +92,16 @@ func (installer *engine) wireVSCode() error {
 			continue
 		}
 		if err := installer.change("merge VS Code PFM terminal profile "+path, func() error {
-			if _, statErr := os.Stat(path); statErr == nil {
+			mode := fs.FileMode(0o600)
+			if info, statErr := os.Stat(path); statErr == nil {
+				mode = info.Mode().Perm()
 				if err := copyBackup(path, availableBackup(path, installer.stamp)); err != nil {
 					return err
 				}
 			} else if !errors.Is(statErr, fs.ErrNotExist) {
 				return statErr
 			}
-			return atomicWrite(path, updated, 0o600)
+			return atomicWrite(path, updated, mode)
 		}); err != nil {
 			return err
 		}
@@ -115,7 +121,7 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 	}
 	document, err := decodeJSONCObject(raw)
 	if err != nil {
-		return nil, record, false, fmt.Errorf("decode VS Code settings %s: %w", path, err)
+		return nil, record, false, fmt.Errorf("%w: decode VS Code settings %s: %v", errMalformedVSCodeSettings, path, err)
 	}
 	profileKey, defaultKey := vscodeSettingKeys(record.Platform)
 	canonical := vscodeProfile()
@@ -126,21 +132,25 @@ func (installer *engine) mergeVSCodeSettings(path string, record vscodeOwnership
 		var ok bool
 		profiles, ok = profilesValue.(map[string]any)
 		if !ok {
-			return nil, record, false, fmt.Errorf("VS Code settings %s: %s must be an object", path, profileKey)
+			return nil, record, false, fmt.Errorf("%w: VS Code settings %s: %s must be an object", errMalformedVSCodeSettings, path, profileKey)
 		}
 	} else {
 		profiles = map[string]any{}
 	}
 	existingProfile, hasProfile := profiles[vscodeProfileName]
+	profileRelinquished := false
 	if alreadyOwned && record.ProfileOwned && hasProfile && !reflect.DeepEqual(existingProfile, canonical) {
 		// A user edit after installation wins. Relinquish this field instead of
 		// rewriting it during an unrelated update.
 		record.ProfileOwned = false
 		record.ProfilesPropertyAdded = false
+		profileRelinquished = true
 	}
 	if installer.options.VSCode || record.ProfileOwned {
 		if hasProfile && !reflect.DeepEqual(existingProfile, canonical) {
-			return nil, record, false, fmt.Errorf("VS Code settings %s: profile %q already exists and is not PFM-owned", path, vscodeProfileName)
+			if !profileRelinquished {
+				return nil, record, false, fmt.Errorf("VS Code settings %s: profile %q already exists and is not PFM-owned", path, vscodeProfileName)
+			}
 		}
 		if !hasProfile {
 			record.ProfileOwned = true
@@ -223,7 +233,8 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 		}
 		document, err := decodeJSONCObject(raw)
 		if err != nil {
-			return fmt.Errorf("decode VS Code settings %s: %w", settings, err)
+			installer.skip("VS Code settings skipped " + settings + ": " + fmt.Errorf("%w: decode VS Code settings: %v", errMalformedVSCodeSettings, err).Error())
+			continue
 		}
 		profileKey, defaultKey := vscodeSettingKeys(record.Platform)
 		updated := append([]byte(nil), raw...)
@@ -238,7 +249,11 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 				return err
 			}
 			changed = true
+			record.DefaultOwned = false
+			record.HadDefault = false
+			record.PreviousDefault = nil
 		}
+		profileRetained := false
 		if record.ProfileOwned {
 			// Re-decode after the root edit because byte offsets have changed.
 			current, decodeErr := decodeJSONCObject(updated)
@@ -246,7 +261,8 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 				return decodeErr
 			}
 			profiles, _ := current[profileKey].(map[string]any)
-			if reflect.DeepEqual(profiles[vscodeProfileName], vscodeProfile()) {
+			profile, hasProfile := profiles[vscodeProfileName]
+			if reflect.DeepEqual(profile, vscodeProfile()) {
 				if record.ProfilesPropertyAdded && len(profiles) == 1 {
 					updated, err = removeJSONCProperty(updated, 0, profileKey)
 				} else {
@@ -260,6 +276,10 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 					return err
 				}
 				changed = true
+				record.ProfileOwned = false
+				record.ProfilesPropertyAdded = false
+			} else if hasProfile {
+				profileRetained = true
 			}
 		}
 		if changed {
@@ -275,17 +295,26 @@ func (installer *engine) unwireVSCode(path string, existing []byte, ownership ma
 				if removeEmptyFile {
 					return os.Remove(settings)
 				}
+				info, err := os.Stat(settings)
+				if err != nil {
+					return err
+				}
 				if err := copyBackup(settings, availableBackup(settings, installer.stamp)); err != nil {
 					return err
 				}
-				return atomicWrite(settings, updated, 0o600)
+				return atomicWrite(settings, updated, info.Mode().Perm())
 			}); err != nil {
 				return err
 			}
 		} else {
 			installer.ok("VS Code settings preserved " + settings)
 		}
-		delete(ownership, settings)
+		if profileRetained {
+			ownership[settings] = record
+			installer.skip("VS Code PFM terminal profile was edited; left it in place and retained recovery ownership at " + settings)
+		} else {
+			delete(ownership, settings)
+		}
 	}
 	return installer.writeVSCodeOwnership(path, existing, ownership)
 }

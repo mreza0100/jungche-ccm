@@ -93,6 +93,11 @@ func Run(ctx context.Context, options Options) (Report, error) {
 			return installer.report, err
 		}
 	}
+	if options.Mode == ModeUninstall {
+		if err := installer.preflightUninstall(ctx); err != nil {
+			return installer.report, err
+		}
+	}
 
 	if options.Mode == ModeUninstall {
 		err = installer.uninstall(ctx)
@@ -138,6 +143,30 @@ func (installer *engine) preflightInstall(ctx context.Context) error {
 	}
 	if preview.outputErr != nil {
 		return fmt.Errorf("preflight apply plan output: %w", preview.outputErr)
+	}
+	return nil
+}
+
+// preflightUninstall runs the complete removal planner before any installed
+// launcher, command, hook, unit, or ownership artifact is touched. Codex
+// command conflicts are therefore refusals, never half-uninstalled hosts.
+func (installer *engine) preflightUninstall(ctx context.Context) error {
+	options := installer.options
+	options.Mode = ModeUninstall
+	options.Stdout = io.Discard
+	preview := &engine{
+		options: options, apply: false, stamp: installer.stamp,
+		managedRoot: installer.managedRoot,
+	}
+	uninstallErr := preview.uninstall(ctx)
+	if len(preview.planErrors) != 0 {
+		uninstallErr = errors.Join(append([]error{uninstallErr}, preview.planErrors...)...)
+	}
+	if uninstallErr != nil {
+		return fmt.Errorf("preflight uninstall plan: %w", uninstallErr)
+	}
+	if preview.outputErr != nil {
+		return fmt.Errorf("preflight uninstall plan output: %w", preview.outputErr)
 	}
 	return nil
 }
@@ -214,15 +243,16 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCodexHooks(); err != nil {
 		return err
 	}
-	if err := installer.wireMCP(); err != nil {
-		return err
-	}
+	mcpErr := installer.wireMCP()
 	// A host build replaces the binary without changing the unit file, and MCP
 	// client wiring can change without changing either. enable --now leaves an
 	// already-running process untouched, so always restart the enabled Linux
 	// daemon after its complete config/client transaction has landed.
 	if !schedulerIsLaunchd && installer.apply && installer.mcpAnyEnabled() && installer.userManagerAvailable(ctx) {
 		installer.runSystemctl(ctx, "restart", mcpUnitName)
+	}
+	if mcpErr != nil {
+		return mcpErr
 	}
 	if err := installer.wireShell(false); err != nil {
 		return err
@@ -549,19 +579,9 @@ func (installer *engine) removeUpdateMetadata() error {
 			return err
 		}
 	}
-	for directory := filepath.Dir(SourceRepoPath(installer.options.Home)); strings.HasPrefix(directory, installer.managedRoot); directory = filepath.Dir(directory) {
-		if err := os.Remove(directory); err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			if errors.Is(err, syscall.ENOTEMPTY) {
-				break
-			}
-			return err
-		}
-		if directory == installer.managedRoot {
-			break
-		}
+	if err := os.Remove(installer.managedRoot); err != nil &&
+		!errors.Is(err, fs.ErrNotExist) && !errors.Is(err, syscall.ENOTEMPTY) {
+		return err
 	}
 	return nil
 }
@@ -575,7 +595,7 @@ func (installer *engine) writeUpdateMetadata() error {
 		path := SourceRepoPath(installer.options.Home)
 		if !sameFile(path, content, 0o600) {
 			if err := installer.change("write "+path, func() error {
-				return atomicWrite(path, content, 0o600)
+				return WriteSourceRepoMarker(installer.options.Home, installer.options.SourceRepo)
 			}); err != nil {
 				return err
 			}
@@ -590,7 +610,7 @@ func (installer *engine) writeUpdateMetadata() error {
 	path := binaryOwnershipPath(installer.options.Home)
 	if !sameFile(path, content, 0o600) {
 		if err := installer.change("write "+path, func() error {
-			return atomicWrite(path, content, 0o600)
+			return RecordCanonicalBinary(installer.options.Home)
 		}); err != nil {
 			return err
 		}
@@ -766,9 +786,12 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 			return false, fmt.Errorf("read embedded asset %s: %w", asset.path, err)
 		}
 		if asset.path == "shim/pfm.zsh" {
-			content = renderShimAsset(content, installer.options)
+			content, err = renderShimAsset(content, installer.options)
 		} else if asset.path == "bin/claude" {
-			content = renderClaudeLauncherAsset(content, installer.options)
+			content, err = renderClaudeLauncherAsset(content, installer.options)
+		}
+		if err != nil {
+			return false, fmt.Errorf("render embedded asset %s: %w", asset.path, err)
 		}
 		target := filepath.Join(installer.managedRoot, filepath.FromSlash(asset.path))
 		if sameFile(target, content, asset.mode) {
@@ -785,14 +808,16 @@ func (installer *engine) stageAssets(assets []assetFile) (bool, error) {
 		}
 	}
 	if !installer.mcpAnyEnabled() {
-		mcpAsset := filepath.Join(installer.managedRoot, "systemd", "pfm-mcp.service")
-		if _, err := os.Lstat(mcpAsset); err == nil {
-			if err := installer.change("remove "+mcpAsset, func() error { return os.Remove(mcpAsset) }); err != nil {
+		for _, relative := range []string{"systemd/pfm-mcp.service", "launchd/com.professor.pfm.mcp.plist"} {
+			mcpAsset := filepath.Join(installer.managedRoot, filepath.FromSlash(relative))
+			if _, err := os.Lstat(mcpAsset); err == nil {
+				if err := installer.change("remove "+mcpAsset, func() error { return os.Remove(mcpAsset) }); err != nil {
+					return false, err
+				}
+				systemdChanged = systemdChanged || strings.HasPrefix(relative, "systemd/")
+			} else if !errors.Is(err, fs.ErrNotExist) {
 				return false, err
 			}
-			systemdChanged = true
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return false, err
 		}
 	}
 	installer.say("")
@@ -1092,6 +1117,7 @@ var unitEnablements = []struct {
 }{
 	{unit: "pfm-name-sync.path", wants: "default.target.wants"},
 	{unit: "pfm-name-sync.timer", wants: "timers.target.wants"},
+	{unit: mcpUnitName, wants: "default.target.wants"},
 }
 
 func (installer *engine) wireUnits(ctx context.Context) (bool, error) {
@@ -1157,6 +1183,24 @@ func (installer *engine) wireUnits(ctx context.Context) (bool, error) {
 	for _, enablement := range unitEnablements {
 		source := filepath.Join(directory, enablement.unit)
 		target := filepath.Join(directory, enablement.wants, enablement.unit)
+		if enablement.unit == mcpUnitName && !installer.mcpAnyEnabled() {
+			info, err := os.Lstat(target)
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return false, err
+			}
+			if info.Mode()&os.ModeSymlink == 0 {
+				installer.skip("unexpected non-symlink MCP enablement left untouched: " + target)
+				continue
+			}
+			if err := installer.change("remove "+target, func() error { return os.Remove(target) }); err != nil {
+				return false, err
+			}
+			changed = true
+			continue
+		}
 		linkChanged, err := installer.ensureLink(source, target)
 		if err != nil {
 			return false, err
@@ -1164,7 +1208,7 @@ func (installer *engine) wireUnits(ctx context.Context) (bool, error) {
 		changed = changed || linkChanged
 	}
 	if !managerAvailable {
-		installer.skip("systemd --user unavailable; units are staged but not enabled")
+		installer.skip("systemd --user unavailable; units are staged and enabled for next login but not started now")
 	}
 	installer.say("")
 	return changed, nil
@@ -1287,6 +1331,9 @@ func (installer *engine) wireSettings() error {
 			}
 			installer.skip("invalid settings JSON at " + candidate + ": " + err.Error())
 			continue
+		}
+		if installer.options.Mode != ModeUninstall && hasPreservedMixedExploreDenyMatcher(updated, filepath.Join(installer.options.Home, ".local", "bin", "pfm")) {
+			installer.skip("mixed PreToolUse hook entry preserved with its existing matcher at " + candidate)
 		}
 		if len(nextOwned) == 0 {
 			delete(ownership, physical)
@@ -1499,7 +1546,7 @@ func (installer *engine) migrateOldState() error {
 }
 
 func (installer *engine) migrateLegacyCarrier(ctx context.Context) error {
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
 	file, err := os.Open(carrier)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -1579,7 +1626,7 @@ func (installer *engine) retirePredecessors() error {
 			return err
 		}
 	}
-	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-killed")
+	carrier := filepath.Join(installer.options.Home, ".claude", ".cc-ls-hidden")
 	for _, path := range []string{carrier, carrier + ".at", carrier + ".lock"} {
 		if err := installer.retire(path, "SQLite is the sole kill store"); err != nil {
 			return err

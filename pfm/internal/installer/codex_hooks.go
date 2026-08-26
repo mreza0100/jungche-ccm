@@ -7,8 +7,8 @@ import (
 )
 
 // codexClearMatcher is the matcher the retired Codex SessionStart clear-kill
-// hook used to carry — kept as the shape a leftover installer-owned entry is
-// still recognized by (installerOwnedHookKey), never written again.
+// hook used to carry. It remains only so leftover entries can be removed; no
+// current ownership path recognizes or writes this retired shape.
 const codexClearMatcher = "startup|resume|clear"
 
 // updateCodexHooks converges ~/.codex/hooks.json two ways: an ordinary

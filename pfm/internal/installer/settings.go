@@ -121,6 +121,9 @@ func updateSettings(
 				command, _ := hook["command"].(string)
 				if command == exploreDenyCommand {
 					if entry["matcher"] != "Agent|Task" {
+						if settingsHookEntryHasMixedOwnership(entry, pfmBinary) {
+							continue
+						}
 						entry["matcher"] = "Agent|Task"
 						changed = true
 					}
@@ -199,6 +202,27 @@ func updateSettings(
 		return nil, false, nil, fmt.Errorf("encode settings: %w", err)
 	}
 	return append(updated, '\n'), true, nextOwned, nil
+}
+
+func hasPreservedMixedExploreDenyMatcher(raw []byte, pfmBinary string) bool {
+	var document map[string]any
+	if json.Unmarshal(raw, &document) != nil {
+		return false
+	}
+	exploreDeny := pfmBinary + " internal explore-deny"
+	for _, entry := range hookEntries(document, "PreToolUse", false) {
+		if entry["matcher"] == "Agent|Task" || !settingsHookEntryHasMixedOwnership(entry, pfmBinary) {
+			continue
+		}
+		hooks, _ := entry["hooks"].([]any)
+		for _, hookValue := range hooks {
+			hook, _ := hookValue.(map[string]any)
+			if hook["command"] == exploreDeny {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func rewriteCommandFields(value any, rewrite func(string) string) bool {

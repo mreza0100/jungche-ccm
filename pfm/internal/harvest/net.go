@@ -339,8 +339,17 @@ func AssertFetchable(raw string) error { return assertFetchable(raw, false) }
 
 // AssertFetchableStrict additionally FAILS CLOSED on resolver failure. It is
 // the authority for the browser worker: Chrome re-resolves every URL with no
-// pinning hop, so an unverifiable address must be refused outright.
-func AssertFetchableStrict(raw string) error { return assertFetchable(raw, true) }
+// pinning hop, so an unverifiable address must be refused outright. Two
+// immediate resolutions narrow the TTL-0 rebind window and catch a record
+// changing between policy checks. Chrome still resolves independently after
+// approval, so a DNS change after the second check remains a documented
+// residual risk until the browser transport can pin a validated address.
+func AssertFetchableStrict(raw string) error {
+	if err := assertFetchable(raw, true); err != nil {
+		return err
+	}
+	return assertFetchable(raw, true)
+}
 
 func IsPrivateHost(raw string) bool {
 	u, err := url.Parse(raw)

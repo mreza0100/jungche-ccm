@@ -193,10 +193,12 @@ func newHTTPClient(runtime Runtime) (*http.Client, error) {
 		copyTransport.Proxy = http.ProxyURL(proxy)
 		transport = copyTransport
 	}
-	if runtime.UserAgent != "" {
-		transport = userAgentTransport{base: transport, value: runtime.UserAgent}
+	transport = userAgentTransport{base: transport, value: runtime.UserAgent}
+	client := &http.Client{Timeout: 60 * time.Second, Transport: transport}
+	client.CheckRedirect = func(request *http.Request, _ []*http.Request) error {
+		return assertPublicURL(request.URL)
 	}
-	return &http.Client{Timeout: 60 * time.Second, Transport: transport}, nil
+	return client, nil
 }
 
 type userAgentTransport struct {
@@ -205,8 +207,13 @@ type userAgentTransport struct {
 }
 
 func (transport userAgentTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if err := assertPublicURL(request.URL); err != nil {
+		return nil, err
+	}
 	clone := request.Clone(request.Context())
-	clone.Header.Set("User-Agent", transport.value)
+	if transport.value != "" {
+		clone.Header.Set("User-Agent", transport.value)
+	}
 	return transport.base.RoundTrip(clone)
 }
 
@@ -362,7 +369,7 @@ func (service *Service) NewHTTPHandler() http.Handler {
 		&mcp.StreamableHTTPOptions{
 			JSONResponse:               true,
 			Stateless:                  false,
-			DisableLocalhostProtection: true,
+			DisableLocalhostProtection: false,
 		},
 	)
 }

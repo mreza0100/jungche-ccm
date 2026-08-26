@@ -128,7 +128,7 @@ func TestExpectedHooksEmitsNoCodexHookEvenWithCodexAccountsConfigured(t *testing
 // repaired or migrated forward: there is nothing left to converge it toward.
 func TestCodexHookWiringStripsALeftoverClearKillHookInEveryShape(t *testing.T) {
 	home := t.TempDir()
-	canonical := codexHookTemplate(home).Command
+	canonical := filepath.Join(home, ".local", "bin", "pfm") + " internal clear-kill"
 	legacyParent := filepath.Join(home, ".local", "bin", "pfm") + ` internal clear-kill --parent "$PPID"`
 	raw := []byte(fmt.Sprintf(
 		`{"hooks":{"SessionStart":[`+

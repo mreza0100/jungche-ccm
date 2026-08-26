@@ -159,7 +159,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 }`)
 	secondarySettings := filepath.Join(home, ".cc", "2", "settings.json")
 	writeFixture(t, secondarySettings, `{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"pfm chat bb"},{"type":"command","command":"secondary-keep"}]}]}}`)
-	writeFixture(t, filepath.Join(config, ".cc-ls-killed"), "killed-b\nkilled-a\n")
+	writeFixture(t, filepath.Join(config, ".cc-ls-hidden"), "killed-b\nkilled-a\n")
 	writeFixture(t, filepath.Join(config, "bin", "cc-kill.sh"), "retired\n")
 	writeFixture(t, filepath.Join(home, ".zshrc"), "alias keep=yes\nsource /old/cc-fleet.zsh\n")
 	unitDirectory := filepath.Join(home, ".config", "systemd", "user")
@@ -256,7 +256,7 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		t.Fatalf("install backed up an unowned bb.md: %v", err)
 	}
 	for _, retired := range []string{
-		filepath.Join(config, ".cc-ls-killed"),
+		filepath.Join(config, ".cc-ls-hidden"),
 		filepath.Join(config, "bin", "cc-kill.sh"),
 	} {
 		if _, err := os.Lstat(retired); !os.IsNotExist(err) {
@@ -364,6 +364,79 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 		if _, err := os.Lstat(removed); !os.IsNotExist(err) {
 			t.Fatalf("uninstall left enablement link at %s: %v", removed, err)
 		}
+	}
+}
+
+func TestMCPEnablementSurvivesAnUnavailableSystemdUserManagerAndDisableRemovesIt(t *testing.T) {
+	if schedulerIsLaunchd {
+		t.Skip("systemd enablement is not installed on launchd hosts")
+	}
+	home := t.TempDir()
+	wants := filepath.Join(home, ".config", "systemd", "user", "default.target.wants", mcpUnitName)
+	options := Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+		MCPEnabled: map[string]bool{"chat": true},
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	assertLink(t, wants, filepath.Join(home, ".config", "systemd", "user", mcpUnitName))
+
+	options.MCPEnabled = map[string]bool{"chat": false}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(wants); !os.IsNotExist(err) {
+		t.Fatalf("MCP disable retained wants link %s: %v", wants, err)
+	}
+}
+
+func TestMCPDisableRemovesEveryStagedSchedulerAsset(t *testing.T) {
+	home := t.TempDir()
+	managed := filepath.Join(home, ".local", "share", "pfm", "install")
+	staleLaunchd := filepath.Join(managed, "launchd", "com.professor.pfm.mcp.plist")
+	writeFixture(t, staleLaunchd, "stale staged plist\n")
+	installer := engine{
+		options: Options{Mode: ModeApply, Home: home, MCPEnabled: map[string]bool{"chat": false}, Stdout: io.Discard},
+		apply:   true, managedRoot: managed,
+	}
+	assets, err := assetFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installer.stageAssets(assets); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(staleLaunchd); !os.IsNotExist(err) {
+		t.Fatalf("MCP disable retained stale staged launchd plist: %v", err)
+	}
+}
+
+func TestUninstallCodexConflictRefusesBeforeRemovingGlobalCommands(t *testing.T) {
+	home := t.TempDir()
+	options := Options{Mode: ModeApply, Home: home, Runner: &fakeRunner{}}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(home, ".claude", "commands", "chat", "group", "send.md")
+	if _, err := os.Lstat(command); err != nil {
+		t.Fatalf("install did not wire command fixture: %v", err)
+	}
+	operatorSource := filepath.Join(home, ".claude", "commands", "audit-fixture.md")
+	writeFixture(t, operatorSource, "# Operator command\n")
+	conflict := filepath.Join(home, ".codex", "prompts", "audit-fixture.md")
+	writeFixture(t, conflict, "operator-owned conflict\n")
+
+	options.Mode = ModeUninstall
+	_, err := Run(context.Background(), options)
+	if err == nil || !strings.Contains(err.Error(), "CONFLICT "+conflict) {
+		t.Fatalf("uninstall error=%v, want Codex conflict", err)
+	}
+	if _, err := os.Lstat(command); err != nil {
+		t.Fatalf("uninstall conflict removed global command before aborting: %v", err)
+	}
+	if got := readFixture(t, conflict); got != "operator-owned conflict\n" {
+		t.Fatalf("uninstall conflict changed operator file: %q", got)
 	}
 }
 

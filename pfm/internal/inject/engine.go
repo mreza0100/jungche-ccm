@@ -106,6 +106,41 @@ func New(dependencies Dependencies) (*Engine, error) {
 	}, nil
 }
 
+// WithIdentity returns a request-scoped engine whose caller identity is the
+// live seat supplied by the fleet registry. MCP's HTTP server is shared by
+// every Codex thread, so the long-lived engine must never cache one caller's
+// sender or use it to resolve another caller's "self" target.
+//
+// The engine is rebuilt field-by-field instead of copying Engine: senderOnce
+// is a sync.Once and may already have been used by the shared engine. The
+// scoped copy starts with a fresh sender cache and an explicit sender.
+func (engine *Engine) WithIdentity(identity resolve.Identity, label string) *Engine {
+	sender := &Sender{
+		Session: identity.Session,
+		Label:   strings.TrimSpace(label),
+		UUID:    identity.ID,
+	}
+	options := engine.options
+	options.Sender = sender
+	return &Engine{
+		resolver:      engine.resolver,
+		tmux:          engine.tmux,
+		spawner:       engine.spawner,
+		options:       options,
+		whoami:        fixedIdentifier{identity: identity},
+		binaries:      cloneEngineBinaries(engine.binaries),
+		accountEmojis: append([]string(nil), engine.accountEmojis...),
+	}
+}
+
+type fixedIdentifier struct {
+	identity resolve.Identity
+}
+
+func (fixed fixedIdentifier) Identify(context.Context) (resolve.Identity, error) {
+	return fixed.identity, nil
+}
+
 func cloneEngineBinaries(values map[pfmengine.ID]string) map[pfmengine.ID]string {
 	cloned := make(map[pfmengine.ID]string, len(values))
 	for id, binary := range values {
@@ -357,6 +392,58 @@ func (engine *Engine) Capture(
 		capture = lastNonEmptyLines(capture, tailLines)
 	}
 	return target, capture, 0, "", nil
+}
+
+// ScheduleAfterCurrentTurn arms a detached steer chain without typing into
+// the current composer. Slash commands queued while a Codex model turn is
+// running become ordinary model input rather than TUI commands; the detached
+// waiter must therefore wait for idle before it types the primary command.
+func (engine *Engine) ScheduleAfterCurrentTurn(
+	ctx context.Context,
+	request Request,
+) (Result, error) {
+	if request.Message == "" {
+		return refused(CodeUndelivered, "refusing to schedule an empty message"), nil
+	}
+	if result, ok := engine.checkSteerChain(request); !ok {
+		return result, nil
+	}
+	target, code, detail, err := engine.Resolve(ctx, request.Target)
+	if err != nil {
+		return Result{}, err
+	}
+	if code != 0 {
+		return refused(code, detail), nil
+	}
+	if _, captureErr := engine.capture(ctx, target, 0); captureErr != nil {
+		return refused(CodeDead, "target pane is dead or unreadable"), nil
+	}
+	steers := make([]string, 0, len(request.Then)+1)
+	steers = append(steers, request.Message)
+	steers = append(steers, request.Then...)
+	logPath := engine.steerLogPath(target.Pane)
+	if err := engine.spawner.Spawn(ctx, SteerSpawn{
+		SocketPath: target.SocketPath,
+		Target:     target.Pane,
+		Steers:     steers,
+		LogPath:    logPath,
+		Append:     request.Chain,
+		Sender:     engine.sender(ctx),
+	}); err != nil {
+		return refused(
+			CodeUndelivered,
+			fmt.Sprintf("could not schedule command after the current turn: %v", err),
+		), nil
+	}
+	return Result{
+		Status:     "scheduled",
+		Code:       0,
+		Message:    fmt.Sprintf("scheduled COMMAND into %q after the current turn settles — %d post-command steer(s) armed (log: %s)", target.Pane, len(request.Then), logPath),
+		SocketPath: target.SocketPath,
+		Pane:       target.Pane,
+		Steers:     len(request.Then),
+		SteerLog:   logPath,
+	}, nil
 }
 
 // Inject performs the full guard/type/submit/proof transaction.

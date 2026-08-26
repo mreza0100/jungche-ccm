@@ -188,6 +188,16 @@ func TestWaveStatsScoreboardRoundtrip(t *testing.T) {
 	}
 }
 
+func TestWaveStatsAllCorruptIsDistinctFromNoData(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, statsFilename), []byte("{broken\nnot-json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if buckets, err := SummarizeStats(dir, 100); err == nil {
+		t.Fatalf("all-corrupt stats returned healthy empty result: %#v", buckets)
+	}
+}
+
 func TestWaveStatsWrittenByRealFetch(t *testing.T) {
 	// The scoreboard provably RUNS on the live dispatch path — an absent stats.jsonl
 	// after a real fetch means the recorder never fired (coincidence-detector failure).

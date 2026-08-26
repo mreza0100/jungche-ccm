@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -82,6 +83,33 @@ func (fake *fakeSpawner) spawned() []SteerSpawn {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	return append([]SteerSpawn(nil), fake.calls...)
+}
+
+func TestScheduleAfterCurrentTurnDoesNotQueueACompactAsModelInput(t *testing.T) {
+	fake := &fakeTmux{capture: "Working (10s)\n› Ask Codex to do anything"}
+	spawner := &fakeSpawner{}
+	engine := newTestEngineWith(t, "cx-scheduled-compact", fake, spawner)
+	result, err := engine.ScheduleAfterCurrentTurn(context.Background(), Request{
+		Target:  "chat",
+		Message: "/compact preserve the live findings",
+		Then:    []string{"resume after real compaction"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Status != "scheduled" || result.Typed || result.Steers != 1 {
+		t.Fatalf("scheduled compact result = %+v", result)
+	}
+	if len(fake.literals) != 0 || len(fake.keys) != 0 {
+		t.Fatalf("scheduler typed into the busy model turn: literals=%q keys=%q", fake.literals, fake.keys)
+	}
+	calls := spawner.spawned()
+	if len(calls) != 1 || !reflect.DeepEqual(calls[0].Steers, []string{
+		"/compact preserve the live findings",
+		"resume after real compaction",
+	}) {
+		t.Fatalf("detached compact chain = %+v", calls)
+	}
 }
 
 func (fake *fakeTmux) Capture(
@@ -350,6 +378,35 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			wantCode:   0,
 			wantStatus: "queued",
 			wantTyped:  true,
+		},
+		{
+			name:   "busy codex vitest output is not a composer draft",
+			socket: "cx-1-2-3",
+			capture: "Working (2s · 9 tokens) · esc to interrupt\n" +
+				"└ ❯ src/tests/integration/gate-transaction-crash-safety.db.test.ts (3 tests | 1\n" +
+				"› ",
+			configure: func(fake *fakeTmux) {
+				fake.submitOnEnter = true
+			},
+			request:    Request{Target: "chat", Message: "queue after vitest output"},
+			wantCode:   0,
+			wantStatus: "queued",
+			wantTyped:  true,
+			wantNoKey:  "C-s",
+		},
+		{
+			name:   "busy claude agent overlay row is not a composer draft",
+			socket: "cc-1-2-3",
+			capture: "Working (2s · 9 tokens)\n" +
+				"❯ ● qa-cortex  Verifying 6-bugs.md is untracked",
+			configure: func(fake *fakeTmux) {
+				fake.submitOnEnter = true
+			},
+			request:    Request{Target: "chat", Message: "queue after agent overlay"},
+			wantCode:   0,
+			wantStatus: "queued",
+			wantTyped:  true,
+			wantNoKey:  "C-s",
 		},
 		{
 			name:    "busy codex dim placeholder is not a draft",

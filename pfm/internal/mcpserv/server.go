@@ -24,6 +24,20 @@ const (
 	maxCaptureBytes     = 4 << 20
 )
 
+var chatToolNames = []string{
+	"chat_capture", "chat_find", "chat_inject", "chat_keys", "chat_kill",
+	"chat_last", "chat_ls", "chat_name", "chat_new", "chat_open",
+	"chat_read", "chat_reload", "chat_resolve", "chat_save", "chat_self_compact",
+	"chat_status", "chat_unkill", "chat_whoami",
+}
+
+// ToolNames returns the canonical advertised chat MCP roster. The jailed
+// protocol test compares it to tools/list, so a registered tool cannot vanish
+// from daemon status and doctor through a second hand-maintained list.
+func ToolNames() []string {
+	return append([]string(nil), chatToolNames...)
+}
+
 // Service owns one MCP server and its long-lived SQLite handle.
 type Service struct {
 	server  *mcp.Server
@@ -43,6 +57,11 @@ type Runtime struct {
 	OpencodeBinary string
 	Operations     SharedOperations
 	Dispatch       Dispatch
+	// AllowAmbientIdentity is reserved for the stdio server, whose process is
+	// launched by the calling chat. A shared HTTP daemon must leave it false:
+	// its environment and ancestry identify the daemon's launcher, not the MCP
+	// request that happens to be using it now.
+	AllowAmbientIdentity bool
 }
 
 // SharedOperations are the canonical chat operations supplied by the CLI
@@ -73,7 +92,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Inspect, resolve, capture, search, read, name, kill, reload, save, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
+		Instructions: "Inspect, resolve, capture, search, read, name, kill, reload, save, self-compact with a mandatory continuation steer, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -113,6 +132,11 @@ func (service *Service) register() {
 		Description: "Safely type and submit a message to a live chat after selector, busy, draft, and submit-confirm guards.",
 		Annotations: mutating,
 	}, service.chatInject)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name:        "chat_self_compact",
+		Description: "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended.",
+		Annotations: mutating,
+	}, service.chatSelfCompact)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_keys",
 		Description: "Press validated tmux key names or explicitly type literal key text into a live chat.",
@@ -167,9 +191,58 @@ func (service *Service) register() {
 	}, service.chatSave)
 }
 
+type requestScopedInjector interface {
+	WithIdentity(resolve.Identity, string) *inject.Engine
+}
+
+func requestMeta(request *mcp.CallToolRequest) mcp.Meta {
+	if request == nil || request.Params == nil {
+		return nil
+	}
+	return request.Params.Meta
+}
+
+func selfTarget(target string) bool {
+	return target == "self" || target == "me"
+}
+
+func (service *Service) selfCallerRefusal(caller callerIdentity) (bool, string) {
+	if caller.valid {
+		return false, ""
+	}
+	if caller.present {
+		return true, caller.detail
+	}
+	if !service.backend.allowAmbientIdentity {
+		return true, "MCP request has no _meta.threadId; shared-daemon ambient identity is disabled"
+	}
+	return false, ""
+}
+
+// injectorForRequest binds a valid Codex _meta.threadId to a fresh injection
+// engine. A malformed or unknown metadata value remains usable only for an
+// explicit target; self is refused by each stateful handler below.
+func (service *Service) injectorForRequest(
+	ctx context.Context,
+	request *mcp.CallToolRequest,
+) (injectionService, callerIdentity, error) {
+	caller, err := service.backend.callerForRequest(ctx, requestMeta(request))
+	if err != nil {
+		return nil, caller, err
+	}
+	if !caller.valid {
+		return service.backend.injector, caller, nil
+	}
+	scoped, ok := service.backend.injector.(requestScopedInjector)
+	if !ok {
+		return nil, caller, fmt.Errorf("request-scoped MCP caller identity is unsupported by the injection engine")
+	}
+	return scoped.WithIdentity(caller.identity, caller.row.Name), caller, nil
+}
+
 func (service *Service) chatKeys(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	input KeysInput,
 ) (*mcp.CallToolResult, KeysOutput, error) {
 	if strings.TrimSpace(input.Target) == "" {
@@ -196,7 +269,14 @@ func (service *Service) chatKeys(
 		}
 		delay = time.Duration(input.DelayMS) * time.Millisecond
 	}
-	target, code, detail, err := service.backend.injector.Resolve(ctx, input.Target)
+	injector, caller, err := service.injectorForRequest(ctx, request)
+	if err != nil {
+		return nil, KeysOutput{}, err
+	}
+	if refused, _ := service.selfCallerRefusal(caller); selfTarget(input.Target) && refused {
+		return nil, KeysOutput{Status: "not_found", Code: inject.CodeUnknown, Keys: append([]string(nil), input.Keys...)}, nil
+	}
+	target, code, detail, err := injector.Resolve(ctx, input.Target)
 	if err != nil {
 		return nil, KeysOutput{}, err
 	}
@@ -232,7 +312,7 @@ func (service *Service) chatKeys(
 		Count: len(input.Keys), Keys: append([]string(nil), input.Keys...),
 	}
 	if input.Capture {
-		_, text, captureCode, detail, captureErr := service.backend.injector.Capture(ctx, input.Target, 0)
+		_, text, captureCode, detail, captureErr := injector.Capture(ctx, input.Target, 0)
 		if captureErr != nil {
 			return nil, output, fmt.Errorf("capture: %w", captureErr)
 		}
@@ -286,16 +366,55 @@ func (service *Service) chatResolve(
 
 func (service *Service) chatInject(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	input InjectInput,
 ) (*mcp.CallToolResult, InjectOutput, error) {
-	result, err := service.backend.injector.Inject(ctx, inject.Request{
+	injector, caller, err := service.injectorForRequest(ctx, request)
+	if err != nil {
+		return nil, InjectOutput{}, err
+	}
+	if refused, detail := service.selfCallerRefusal(caller); selfTarget(input.Target) && refused {
+		return nil, InjectOutput{
+			Status: "not_found", Code: inject.CodeUnknown, Message: detail,
+		}, nil
+	}
+	result, err := injector.Inject(ctx, inject.Request{
 		Target:   input.Target,
 		Message:  input.Message,
 		ForceNow: input.ForceNow,
 		Then:     input.Then,
 	})
-	return nil, InjectOutput{
+	return nil, outputFromInject(result), err
+}
+
+func (service *Service) chatSelfCompact(
+	ctx context.Context,
+	request *mcp.CallToolRequest,
+	input SelfCompactInput,
+) (*mcp.CallToolResult, InjectOutput, error) {
+	focus := strings.TrimSpace(input.Focus)
+	if focus == "" || strings.ContainsAny(focus, "\r\n\x00") {
+		return nil, InjectOutput{}, fmt.Errorf("focus must be one non-empty line")
+	}
+	injector, caller, err := service.injectorForRequest(ctx, request)
+	if err != nil {
+		return nil, InjectOutput{}, err
+	}
+	if refused, detail := service.selfCallerRefusal(caller); refused {
+		return nil, InjectOutput{
+			Status: "not_found", Code: inject.CodeUnknown, Message: detail,
+		}, nil
+	}
+	result, err := injector.ScheduleAfterCurrentTurn(ctx, inject.Request{
+		Target:  "self",
+		Message: "/compact",
+		Then:    input.Then,
+	})
+	return nil, outputFromInject(result), err
+}
+
+func outputFromInject(result inject.Result) InjectOutput {
+	return InjectOutput{
 		Status:        result.Status,
 		Code:          result.Code,
 		Message:       result.Message,
@@ -312,17 +431,44 @@ func (service *Service) chatInject(
 		Unsigned:      result.Unsigned,
 		AutoFilePath:  result.AutoFilePath,
 		LiteralChunks: result.LiteralChunks,
-	}, err
+	}
 }
 
-// chatWhoami answers with this process's own chat identity. It takes no
-// arguments on purpose: identity is derived from the caller's own process
-// chain, never accepted from a caller.
+// chatWhoami answers with the requesting chat's identity. Codex sends its
+// thread id in reserved protocol metadata. Only the per-chat stdio transport
+// may use environment/ancestry; a shared daemon has no ambient caller identity.
 func (service *Service) chatWhoami(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	_ WhoamiInput,
 ) (*mcp.CallToolResult, WhoamiOutput, error) {
+	caller, err := service.backend.callerForRequest(ctx, requestMeta(request))
+	if err != nil {
+		return nil, WhoamiOutput{}, err
+	}
+	if caller.present {
+		if !caller.valid {
+			return nil, WhoamiOutput{Status: "not_found", Message: caller.detail}, nil
+		}
+		identity := caller.identity
+		return nil, WhoamiOutput{
+			Status:     "ok",
+			Session:    identity.Session,
+			SocketPath: identity.SocketPath,
+			SocketName: identity.SocketName,
+			Pane:       identity.Pane,
+			Engine:     identity.Engine,
+			ID:         identity.ID,
+			Source:     identity.Source,
+			Recovered:  identity.Recovered,
+		}, nil
+	}
+	if !service.backend.allowAmbientIdentity {
+		return nil, WhoamiOutput{
+			Status:  "not_found",
+			Message: "MCP request has no _meta.threadId; shared-daemon ambient identity is disabled",
+		}, nil
+	}
 	identifier, err := resolve.NewWhoami(resolve.WhoamiDependencies{})
 	if err != nil {
 		return nil, WhoamiOutput{}, err
@@ -352,7 +498,7 @@ func (service *Service) chatWhoami(
 
 func (service *Service) chatCapture(
 	ctx context.Context,
-	_ *mcp.CallToolRequest,
+	request *mcp.CallToolRequest,
 	input CaptureInput,
 ) (*mcp.CallToolResult, CaptureOutput, error) {
 	lines := input.TailLines
@@ -374,7 +520,14 @@ func (service *Service) chatCapture(
 			maxCaptureBytes,
 		)
 	}
-	target, text, code, detail, err := service.backend.injector.Capture(
+	injector, caller, err := service.injectorForRequest(ctx, request)
+	if err != nil {
+		return nil, CaptureOutput{}, err
+	}
+	if refused, detail := service.selfCallerRefusal(caller); selfTarget(input.Target) && refused {
+		return nil, CaptureOutput{Status: "not_found", Code: inject.CodeUnknown, Message: detail}, nil
+	}
+	target, text, code, detail, err := injector.Capture(
 		ctx,
 		input.Target,
 		lines,

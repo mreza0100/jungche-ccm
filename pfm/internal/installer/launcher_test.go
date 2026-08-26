@@ -86,7 +86,11 @@ func TestRenderedClaudeLauncherUsesConfiguredAbsoluteBinaryThenSkipsItself(t *te
 		t.Fatal(err)
 	}
 	configured := filepath.Join(t.TempDir(), "configured claude")
-	rendered := string(renderClaudeLauncherAsset(raw, Options{ClaudeBinary: configured}))
+	renderedBytes, err := renderClaudeLauncherAsset(raw, Options{ClaudeBinary: configured})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(renderedBytes)
 	if !strings.Contains(rendered, configured) {
 		t.Fatalf("rendered launcher omitted configured binary %q:\n%s", configured, rendered)
 	}
@@ -94,6 +98,15 @@ func TestRenderedClaudeLauncherUsesConfiguredAbsoluteBinaryThenSkipsItself(t *te
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered launcher omitted %q:\n%s", want, rendered)
 		}
+	}
+}
+
+func TestAssetRenderersRefuseMissingTemplateMarkers(t *testing.T) {
+	if _, err := renderShimAsset([]byte("marker drift\n"), Options{}); err == nil {
+		t.Fatal("shim renderer silently accepted missing markers")
+	}
+	if _, err := renderClaudeLauncherAsset([]byte("marker drift\n"), Options{}); err == nil {
+		t.Fatal("launcher renderer silently accepted missing marker")
 	}
 }
 
@@ -107,7 +120,11 @@ func TestRenderedClaudeLauncherChoosesNewestVersionByFreshness(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(launcher), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(launcher, renderClaudeLauncherAsset(raw, Options{}), 0o700); err != nil {
+	rendered, err := renderClaudeLauncherAsset(raw, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(launcher, rendered, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	versions := filepath.Join(home, ".local", "share", "claude", "versions")

@@ -64,26 +64,30 @@ func settingsDocumentHasMixedOwnershipEntry(document map[string]any, pfmBinary s
 		entries, _ := eventValue.([]any)
 		for _, entryValue := range entries {
 			entry, _ := entryValue.(map[string]any)
-			hooks, _ := entry["hooks"].([]any)
-			hasOwned, hasForeign := false, false
-			for _, hookValue := range hooks {
-				hook, _ := hookValue.(map[string]any)
-				command, _ := hook["command"].(string)
-				if command == "" {
-					continue
-				}
-				if installerOwnedHookCommand(command, pfmBinary) {
-					hasOwned = true
-				} else {
-					hasForeign = true
-				}
-			}
-			if hasOwned && hasForeign {
+			if settingsHookEntryHasMixedOwnership(entry, pfmBinary) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func settingsHookEntryHasMixedOwnership(entry map[string]any, pfmBinary string) bool {
+	hooks, _ := entry["hooks"].([]any)
+	hasOwned, hasForeign := false, false
+	for _, hookValue := range hooks {
+		hook, _ := hookValue.(map[string]any)
+		command, _ := hook["command"].(string)
+		if command == "" {
+			continue
+		}
+		if installerOwnedHookCommand(command, pfmBinary) {
+			hasOwned = true
+		} else {
+			hasForeign = true
+		}
+	}
+	return hasOwned && hasForeign
 }
 
 func nextSettingsHookOwnership(
@@ -165,7 +169,7 @@ func installerOwnedHookCommand(command, pfmBinary string) bool {
 			return true
 		}
 	}
-	return codexHookTemplate(home).Command == command
+	return false
 }
 
 func installerOwnedHookKey(key settingsHookKey, pfmBinary string) bool {
@@ -175,8 +179,7 @@ func installerOwnedHookKey(key settingsHookKey, pfmBinary string) bool {
 			return true
 		}
 	}
-	codex := codexHookTemplate(home)
-	return codex.Event == key.Event && codex.Matcher == key.Matcher && codex.Command == key.Command
+	return false
 }
 
 func removeOwnedSettingsHooks(document map[string]any, owned settingsHookCounts) bool {

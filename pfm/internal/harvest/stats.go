@@ -78,9 +78,9 @@ type StatBucket struct {
 }
 
 // SummarizeStats reads the scoreboard tail from *cacheDir* and buckets the last
-// records by detail → {total, ok, rate}. An empty map with no error means the
-// file does not exist or holds no parseable records — distinguishable at the
-// caller by checking the file first.
+// records by detail → {total, ok, rate}. Missing/empty data is a healthy empty
+// map; malformed records are counted under _corrupt, and an all-corrupt file
+// returns an error so failed enumeration never renders as absence.
 func SummarizeStats(cacheDir string, lastN int) (map[string]*StatBucket, error) {
 	path := filepath.Join(cacheDir, statsFilename)
 	file, err := os.Open(path)
@@ -110,6 +110,8 @@ func SummarizeStats(cacheDir string, lastN int) (map[string]*StatBucket, error) 
 		}
 	}
 	buckets := map[string]*StatBucket{}
+	corrupt := 0
+	parsed := 0
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -118,8 +120,10 @@ func SummarizeStats(cacheDir string, lastN int) (map[string]*StatBucket, error) 
 		}
 		var rec statRecord
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			continue // malformed lines are skipped, never fatal
+			corrupt++
+			continue
 		}
+		parsed++
 		detail := rec.Detail
 		if detail == "" {
 			if rec.OK {
@@ -140,6 +144,12 @@ func SummarizeStats(cacheDir string, lastN int) (map[string]*StatBucket, error) 
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan stats file: %w", err)
+	}
+	if corrupt > 0 {
+		buckets["_corrupt"] = &StatBucket{Total: corrupt}
+	}
+	if parsed == 0 && corrupt > 0 {
+		return buckets, fmt.Errorf("stats file contains %d malformed record(s) and no valid records", corrupt)
 	}
 	for _, bucket := range buckets {
 		if bucket.Total > 0 {

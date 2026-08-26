@@ -230,7 +230,7 @@ func liveCrumbSession(
 }
 
 // registeredDaemonSession asks every configured account. A partial or failed
-// registry query cannot be interpreted as absence: the exact session killed
+// registry query cannot be interpreted as absence: the exact session hidden
 // behind the failed account is the one a transcript append would lose.
 func registeredDaemonSession(
 	ctx context.Context,

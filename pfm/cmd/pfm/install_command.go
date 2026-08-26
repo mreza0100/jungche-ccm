@@ -28,13 +28,12 @@ func installHarvestProvisioner() installer.HarvestProvisioner {
 func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"install",
-		"usage: pfm install [--yes] [--vscode] [--skip-harvest] [--force] [--config-dir DIR]",
+		"usage: pfm install [--yes] [--vscode] [--skip-harvest] [--config-dir DIR]",
 		stderr,
 	)
 	yes := flags.Bool("yes", false, "apply the installation")
 	vscode := flags.Bool("vscode", false, "make PFM the default VS Code terminal profile")
 	skipHarvest := flags.Bool("skip-harvest", false, "skip harvestpy provisioning")
-	force := flags.Bool("force", false, "reconcile installer-owned wiring")
 	configDir := flags.String("config-dir", "", "target config directory instead of ~/.claude")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -63,7 +62,7 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 		fmt.Fprintln(stderr, "pfm install: required dependency preflight failed")
 		return 1
 	}
-	options := newInstallerOptions(mode, *configDir, *force, *skipHarvest, stdout, runtime)
+	options := newInstallerOptions(mode, *configDir, *skipHarvest, stdout, runtime)
 	options.VSCode = *vscode
 	code := runInstallerCommand("install", options, stderr)
 	if code == 0 && mode == installer.ModeDryRun {
@@ -86,7 +85,6 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 func newInstallerOptions(
 	mode installer.Mode,
 	configDir string,
-	force bool,
 	skipHarvest bool,
 	stdout io.Writer,
 	runtimes ...commandRuntime,
@@ -95,7 +93,6 @@ func newInstallerOptions(
 		Mode:               mode,
 		ConfigDir:          configDir,
 		SourceRepo:         discoverSourceRepo(),
-		Force:              force,
 		Stdout:             stdout,
 		ProvisionHarvest:   !skipHarvest,
 		HarvestProvisioner: installHarvestProvisioner(),

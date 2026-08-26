@@ -49,6 +49,10 @@ var claudeEfforts = map[string]struct{}{
 	"low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {},
 }
 
+var codexEfforts = map[string]struct{}{
+	"minimal": {}, "low": {}, "medium": {}, "high": {}, "xhigh": {}, "max": {}, "ultra": {},
+}
+
 // HeadlessPlan is the pure result: the command the tmux session runs, and
 // whether the prompt travelled on it.
 type HeadlessPlan struct {
@@ -123,6 +127,11 @@ func PlanCodex(request HeadlessRequest) (HeadlessPlan, error) {
 	machine := normalizedMachineConfig(request.Config, request.Home)
 	if _, found := machine.CodexAccountByID(request.PrimaryAccount); !found {
 		return HeadlessPlan{}, fmt.Errorf("Codex account %d is not in the configured roster", request.PrimaryAccount)
+	}
+	if request.Effort != "" {
+		if _, known := codexEfforts[strings.ToLower(request.Effort)]; !known {
+			return HeadlessPlan{}, fmt.Errorf("unknown Codex effort %q (want minimal, low, medium, high, xhigh, max or ultra)", request.Effort)
+		}
 	}
 	arguments := make([]string, 0, 4)
 	if request.Model != "" {

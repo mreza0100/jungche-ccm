@@ -474,10 +474,14 @@ func TestShimAssetEmitsConfiguredClaudeAndCodexPosture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered := string(renderShimAsset(raw, Options{
+	renderedBytes, err := renderShimAsset(raw, Options{
 		ClaudePrompted: map[int]bool{1: false, 2: true},
 		CodexYolo:      map[int]bool{1: true, 2: false},
-	}))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered := string(renderedBytes)
 	for _, want := range []string{
 		"[1]=0",
 		"[2]=1",
@@ -517,6 +521,37 @@ func hookMatcherCount(t *testing.T, raw, event, command, matcher string) int {
 		}
 	}
 	return count
+}
+
+func TestExploreDenyMatcherMigrationPreservesMixedOperatorEntry(t *testing.T) {
+	home := t.TempDir()
+	config := filepath.Join(home, ".claude")
+	settings := filepath.Join(config, "settings.json")
+	pfm := home + "/.local/bin/pfm"
+	writeFixture(t, settings, `{
+  "hooks": {
+    "PreToolUse": [{"matcher":"","hooks":[
+      {"type":"command","command":"`+pfm+` internal explore-deny"},
+      {"type":"command","command":"operator-all-tools-hook"}
+    ]}]
+  }
+}`)
+	var output bytes.Buffer
+	installer := engine{
+		options: Options{Mode: ModeApply, Home: home, ConfigDir: config, Stdout: &output},
+		apply:   true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"),
+		stamp: "fixture",
+	}
+	if err := installer.wireSettings(); err != nil {
+		t.Fatal(err)
+	}
+	raw := readFixture(t, settings)
+	if got := hookMatcherCount(t, raw, "PreToolUse", "operator-all-tools-hook", ""); got != 1 {
+		t.Fatalf("mixed operator hook matcher was narrowed: count=%d\n%s", got, raw)
+	}
+	if !strings.Contains(output.String(), "mixed") || !strings.Contains(output.String(), "matcher") {
+		t.Fatalf("mixed matcher preservation was silent:\n%s", output.String())
+	}
 }
 
 func TestDreamHookPauseRetiresEveryCopyAndPreservesNeighbors(t *testing.T) {
@@ -667,7 +702,7 @@ func TestUninstallRefusesToStrandOwnedHookInInvalidCodexJSON(t *testing.T) {
 	managed := filepath.Join(home, ".local", "share", "pfm", "install")
 	hooksPath := filepath.Join(home, ".codex", "hooks.json")
 	writeFixture(t, hooksPath, "{broken\n")
-	expected := codexHookTemplate(home)
+	expected := ExpectedHook{Event: "SessionStart", Matcher: codexClearMatcher, Command: filepath.Join(home, ".local", "bin", "pfm") + " internal clear-kill"}
 	physical := physicalSettingsPath(hooksPath)
 	encoded, err := encodeSettingsHookOwnership(map[string]settingsHookCounts{
 		physical: {{Event: expected.Event, Matcher: expected.Matcher, Command: expected.Command}: 1},
@@ -713,7 +748,7 @@ func TestCodexHookWiringWritesNoClearKillHookAcrossConfiguredHomes(t *testing.T)
 func TestCodexHookWiringStripsALeftoverAcrossConfiguredHomes(t *testing.T) {
 	home := t.TempDir()
 	homes := []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-2")}
-	canonical := codexHookTemplate(home).Command
+	canonical := filepath.Join(home, ".local", "bin", "pfm") + " internal clear-kill"
 	for _, codexHome := range homes {
 		writeFixture(t, filepath.Join(codexHome, "hooks.json"), fmt.Sprintf(
 			`{"hooks":{"SessionStart":[{"matcher":%q,"hooks":[{"type":"command","command":%q}]}]}}`,

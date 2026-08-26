@@ -103,6 +103,18 @@ func TestALiveChatWithNoTranscriptYetIsWorking(t *testing.T) {
 	}
 }
 
+func TestDeadChatTranscriptReadFailureIsNotRenderedAsAbsence(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "missing-transcript.jsonl")
+	if err := os.Symlink(filepath.Join(directory, "does-not-exist.jsonl"), path); err != nil {
+		t.Fatal(err)
+	}
+	status, err := Inspect(context.Background(), Chat{Name: "broken", Engine: "cc", Path: path, Live: false}, time.Now())
+	if err == nil {
+		t.Fatalf("unreadable transcript returned nil error and state %q", status.State)
+	}
+}
+
 func TestIdleSecondsComeFromTheTranscriptMtime(t *testing.T) {
 	path := writeChat(t, userLine("go"), assistantLine("done"))
 	stamp := time.Now().Add(-90 * time.Second)

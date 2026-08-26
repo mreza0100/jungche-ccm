@@ -16,7 +16,7 @@ func (service *Service) NewHTTPHandler() http.Handler {
 		&mcp.StreamableHTTPOptions{
 			JSONResponse:               true,
 			Stateless:                  false,
-			DisableLocalhostProtection: true,
+			DisableLocalhostProtection: false,
 		},
 	)
 }

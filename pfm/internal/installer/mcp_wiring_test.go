@@ -3,6 +3,7 @@ package installer
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,32 @@ func TestMCPSystemdUnitStartsAtLogin(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Fatalf("pfm-mcp.service missing %q; enabled Harvester would not return after login:\n%s", want, unit)
 		}
+	}
+}
+
+func TestMCPWireFailureStillRefreshesRunningLinuxDaemon(t *testing.T) {
+	if schedulerIsLaunchd {
+		t.Skip("Linux systemd daemon refresh")
+	}
+	home := t.TempDir()
+	configPath := filepath.Join(home, ".config", "pfm", "config.json")
+	if err := os.MkdirAll(configPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{manager: true}
+	installer := engine{
+		options: Options{
+			Mode: ModeApply, Home: home, ConfigDir: filepath.Join(home, ".claude"),
+			MCPEnabled: map[string]bool{"chat": true}, MCPPort: 8377,
+			MCPConfigPath: configPath, Runner: runner, Stdout: io.Discard,
+		},
+		apply: true, managedRoot: filepath.Join(home, ".local", "share", "pfm", "install"), stamp: "fixture",
+	}
+	if err := installer.install(context.Background()); err == nil {
+		t.Fatal("fixture did not trigger wireMCP failure")
+	}
+	if calls := strings.Join(runner.calls, "\n"); !strings.Contains(calls, "systemctl --user restart "+mcpUnitName) {
+		t.Fatalf("wireMCP failure left running daemon stale:\n%s", calls)
 	}
 }
 
@@ -134,7 +161,7 @@ func TestMCPInstallRemovesLegacyCredentialAndAuthHeadersEverywhere(t *testing.T)
 	options := Options{
 		Mode: ModeApply, Home: home, ConfigDir: canonical,
 		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
-		MCPPort: 8377, MCPConfigPath: configPath, Force: true, Runner: &fakeRunner{},
+		MCPPort: 8377, MCPConfigPath: configPath, Runner: &fakeRunner{},
 	}
 	previewOptions := options
 	previewOptions.Mode = ModeDryRun

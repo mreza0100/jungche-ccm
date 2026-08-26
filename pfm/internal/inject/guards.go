@@ -12,7 +12,9 @@ var (
 	numberedOption    = regexp.MustCompile(`^[[:space:]]*›?[[:space:]]*[0-9]+\.[[:space:]]`)
 	busyPattern       = regexp.MustCompile(`(?i)esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens`)
 	menuHintPattern   = regexp.MustCompile(`(?i)enter to (confirm|continue|select)|esc to (cancel|go back)`)
-	ansiPattern       = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	ansiPattern       = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
+	oscPattern        = regexp.MustCompile("\x1b\\][^\x07]*(\x07|\x1b\\\\)")
+	claudeAgentRow    = regexp.MustCompile(`^❯[[:space:]]+●[[:space:]]+[^[:space:]]+[[:space:]]{2,}[^[:space:]]`)
 	compactPattern    = regexp.MustCompile(`^[[:space:]]*/compact([[:space:]]|$)`)
 	queueProofPattern = regexp.MustCompile(`(?i)press up to edit queued messages|queued messages?|pending messages?|message (will be|was) (queued|submitted)|submitted after (the )?next tool call`)
 )
@@ -35,13 +37,19 @@ func IsBusy(capture string) bool {
 // SelectorLine returns the selected numbered option for a real open menu.
 // A lone Codex "› 1. draft" remains a legal composer line.
 func SelectorLine(capture string) string {
-	claude := lastLineContaining(capture, "❯")
-	if claudeMenuPattern.MatchString(claude) {
-		return strings.TrimSpace(claude)
+	line := lastComposerLine(capture)
+	if line == "" {
+		return ""
 	}
-
-	codex := lastLineContaining(capture, "›")
-	if !codexMenuPattern.MatchString(codex) {
+	clean := stripTerminalControl(strings.TrimSuffix(line, "\r"))
+	clean = strings.TrimSpace(clean)
+	if strings.HasPrefix(clean, "❯") {
+		if claudeMenuPattern.MatchString(clean) {
+			return clean
+		}
+		return ""
+	}
+	if !codexMenuPattern.MatchString(clean) {
 		return ""
 	}
 	options := 0
@@ -51,7 +59,7 @@ func SelectorLine(capture string) string {
 		}
 	}
 	if menuHintPattern.MatchString(capture) || options >= 2 {
-		return strings.TrimSpace(codex)
+		return clean
 	}
 	return ""
 }
@@ -60,16 +68,16 @@ func hasDraft(line string) bool {
 	if line == "" {
 		return false
 	}
+	line = stripTerminalControl(strings.TrimSuffix(line, "\r"))
 	rest := strings.TrimSpace(line)
 	rest = strings.TrimPrefix(rest, "❯")
 	rest = strings.TrimPrefix(rest, "›")
 	rest = strings.TrimSpace(rest)
 	rest = strings.ReplaceAll(rest, "Press up to edit queued messages", "")
 	for _, character := range rest {
-		// POSIX [[:graph:]] is printable ASCII excluding space. Go's
-		// unicode.IsGraphic includes ASCII space, which turns format-only
-		// placeholders into apparent drafts.
-		if character >= 0x21 && character <= 0x7e {
+		// A genuine non-ASCII draft is still text. Exclude whitespace and
+		// format controls so contextual zero-width placeholders stay empty.
+		if unicode.IsGraphic(character) && !unicode.IsSpace(character) {
 			return true
 		}
 	}
@@ -101,25 +109,35 @@ func isDimPlaceholder(styledLine string) bool {
 		}
 		withoutDim = withoutDim[:start] + rest[end:]
 	}
-	withoutDim = ansiPattern.ReplaceAllString(withoutDim, "")
+	withoutDim = stripTerminalControl(withoutDim)
 	return !hasDraft(withoutDim)
 }
 
 func lastComposerLine(capture string) string {
-	if line := lastLineContaining(capture, "❯"); line != "" {
-		return line
-	}
-	return lastLineContaining(capture, "›")
-}
-
-func lastLineContaining(capture, marker string) string {
 	last := ""
 	for _, line := range strings.Split(capture, "\n") {
-		if strings.Contains(line, marker) {
+		clean := stripTerminalControl(strings.TrimSuffix(line, "\r"))
+		visible := strings.TrimLeftFunc(clean, unicode.IsSpace)
+		if strings.HasPrefix(visible, "❯") {
+			// Claude renders live agent activity as a bullet row beneath the
+			// composer. Require the complete row shape, including the two-space
+			// name/status boundary, so a genuine draft beginning with a bullet
+			// is not broadly exempted.
+			if claudeAgentRow.MatchString(visible) {
+				continue
+			}
+			last = line
+			continue
+		}
+		if strings.HasPrefix(visible, "›") {
 			last = line
 		}
 	}
 	return last
+}
+
+func stripTerminalControl(value string) string {
+	return oscPattern.ReplaceAllString(ansiPattern.ReplaceAllString(value, ""), "")
 }
 
 func lastNonEmptyLines(capture string, limit int) string {

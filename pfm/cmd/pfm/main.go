@@ -188,7 +188,11 @@ func runMCP(
 		fmt.Fprintf(stderr, "pfm mcp %s: registered server has no implementation\n", name)
 		return 1
 	}
-	service, err := mcpserv.NewConfigured(version, stderr, mcpRuntime(runtime))
+	chatRuntime := mcpRuntime(runtime)
+	// Stdio is launched by one chat and inherits that caller deliberately. The
+	// shared HTTP daemon uses mcpRuntime's fail-closed default instead.
+	chatRuntime.AllowAmbientIdentity = true
+	service, err := mcpserv.NewConfigured(version, stderr, chatRuntime)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm mcp: %v\n", err)
 		return 1

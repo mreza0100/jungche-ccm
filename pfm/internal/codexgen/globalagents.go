@@ -27,7 +27,8 @@ type GlobalAgentCompiled struct {
 }
 
 // GlobalAgentInstalled is one desired file in a live registry directory.
-// Build leaves it as a regular file; check reports that same final shape.
+// Build reports its promised final shape; check reports the shape actually on
+// disk so a missing or non-regular target cannot certify itself.
 type GlobalAgentInstalled struct {
 	Path        string
 	RegularFile bool
@@ -133,7 +134,15 @@ func RunGlobalAgents(options GlobalAgentsOptions) (GlobalAgentsResult, error) {
 			result.Compiled = append(result.Compiled, GlobalAgentCompiled{Path: output.path, Size: int64(len(output.content))})
 		}
 		if output.installed {
-			result.Installed = append(result.Installed, GlobalAgentInstalled{Path: output.path, RegularFile: true})
+			regular := true
+			if options.Mode == ModeCheck {
+				info, statErr := os.Lstat(output.path)
+				if statErr != nil && !os.IsNotExist(statErr) {
+					return GlobalAgentsResult{}, fmt.Errorf("inspect global agent artifact %s: %w", output.path, statErr)
+				}
+				regular = statErr == nil && info.Mode().IsRegular()
+			}
+			result.Installed = append(result.Installed, GlobalAgentInstalled{Path: output.path, RegularFile: regular})
 		}
 		same, err := sameGlobalAgentFile(output.path, output.content)
 		if err != nil {

@@ -533,16 +533,7 @@ func (account LimitAccount) cacheKey() string {
 }
 
 func needsCredentialRefresh(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	for _, marker := range []string{"credential", "access token", "unauthorized", "forbidden"} {
-		if strings.Contains(message, marker) {
-			return true
-		}
-	}
-	return hasAuthHTTPStatus(message)
+	return isCredentialRejection(err)
 }
 
 func defaultAck(ctx context.Context, account LimitAccount) error {

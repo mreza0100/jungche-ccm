@@ -83,14 +83,6 @@ func claudeHookTemplates(home string) []ExpectedHook {
 	}
 }
 
-func codexHookTemplate(home string) ExpectedHook {
-	return ExpectedHook{
-		Event: "SessionStart", Matcher: codexClearMatcher,
-		Command: filepath.Join(home, ".local", "bin", "pfm") + " internal clear-kill",
-		Name:    "clear-kill",
-	}
-}
-
 func commandByName(hooks []ExpectedHook, name string) string {
 	for _, hook := range hooks {
 		if hook.Name == name {

@@ -28,7 +28,7 @@ func TestInstallerOptionsCarryEachEngineRosterIndependently(t *testing.T) {
 			},
 		},
 	}
-	options := newInstallerOptions(installer.ModeDryRun, "", false, true, io.Discard, runtime)
+	options := newInstallerOptions(installer.ModeDryRun, "", true, io.Discard, runtime)
 	if !reflect.DeepEqual(options.ConfigDirs, []string{runtime.Config.Accounts[0].ConfigDir}) ||
 		!reflect.DeepEqual(options.CodexHomes, []string{runtime.Config.CodexAccounts[0].Home, runtime.Config.CodexAccounts[1].Home}) {
 		t.Fatalf("installer rosters ConfigDirs=%q CodexHomes=%q", options.ConfigDirs, options.CodexHomes)
@@ -107,10 +107,21 @@ func TestInstallUsesOnlyTheNewSurface(t *testing.T) {
 			if code := runInstall([]string{retired}, &stdout, &stderr); code != 2 {
 				t.Fatalf("runInstall(%q) code=%d stdout=%q stderr=%q, want unknown-flag usage", retired, code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--vscode] [--skip-harvest] [--force] [--config-dir DIR]") {
+			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--vscode] [--skip-harvest] [--config-dir DIR]") {
 				t.Fatalf("runInstall(%q) stderr=%q, want new usage", retired, stderr.String())
 			}
 		})
+	}
+}
+
+func TestInstallRejectsRetiredForceFlag(t *testing.T) {
+	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--force", "--skip-harvest"}, &stdout, &stderr, runtime); code != 2 {
+		t.Fatalf("retired --force code=%d stdout=%q stderr=%q, want unknown-flag usage", code, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "[--force]") {
+		t.Fatalf("install usage still advertises retired --force: %q", stderr.String())
 	}
 }
 
@@ -146,11 +157,11 @@ func TestInstallPreviewAndYesUseTheSameInstallerClassification(t *testing.T) {
 	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
 	configDir := filepath.Join(t.TempDir(), "config")
 	var previewOut, previewErr bytes.Buffer
-	if code := runInstall([]string{"--force", "--config-dir", configDir}, &previewOut, &previewErr, runtime); code != 0 {
+	if code := runInstall([]string{"--config-dir", configDir}, &previewOut, &previewErr, runtime); code != 0 {
 		t.Fatalf("preview code=%d stdout=%q stderr=%q", code, previewOut.String(), previewErr.String())
 	}
 	var applyOut, applyErr bytes.Buffer
-	if code := runInstall([]string{"--yes", "--force", "--config-dir", configDir}, &applyOut, &applyErr, runtime); code != 0 {
+	if code := runInstall([]string{"--yes", "--config-dir", configDir}, &applyOut, &applyErr, runtime); code != 0 {
 		t.Fatalf("yes code=%d stdout=%q stderr=%q", code, applyOut.String(), applyErr.String())
 	}
 	if len(calls) != 2 {

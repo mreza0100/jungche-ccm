@@ -215,25 +215,8 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 		toolNames = append(toolNames, tool.Name)
 	}
 	sort.Strings(toolNames)
-	wantTools := []string{
-		"chat_capture",
-		"chat_find",
-		"chat_inject",
-		"chat_keys",
-		"chat_kill",
-		"chat_last",
-		"chat_ls",
-		"chat_name",
-		"chat_new",
-		"chat_open",
-		"chat_read",
-		"chat_reload",
-		"chat_resolve",
-		"chat_save",
-		"chat_status",
-		"chat_unkill",
-		"chat_whoami",
-	}
+	wantTools := ToolNames()
+	sort.Strings(wantTools)
 	if !reflect.DeepEqual(toolNames, wantTools) {
 		t.Fatalf("tools = %q, want %q", toolNames, wantTools)
 	}

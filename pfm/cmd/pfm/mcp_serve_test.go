@@ -49,6 +49,30 @@ func TestMCPDaemonHandlerIsUnauthenticatedAndReportsSurface(t *testing.T) {
 	}
 }
 
+func TestMCPDaemonRejectsBrowserOriginBeforeDispatch(t *testing.T) {
+	dispatched := 0
+	handler := newMCPDaemonHandler(mcpDaemonOptions{
+		Chat: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			dispatched++
+			w.WriteHeader(http.StatusNoContent)
+		}),
+	})
+	browser := httptest.NewRequest(http.MethodPost, "/mcp/chat", nil)
+	browser.Header.Set("Origin", "https://attacker.example")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, browser)
+	if response.Code != http.StatusForbidden || dispatched != 0 {
+		t.Fatalf("browser-origin request status=%d dispatched=%d, want 403/0", response.Code, dispatched)
+	}
+
+	local := httptest.NewRequest(http.MethodPost, "/mcp/chat", nil)
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, local)
+	if response.Code != http.StatusNoContent || dispatched != 1 {
+		t.Fatalf("origin-free local request status=%d dispatched=%d, want 204/1", response.Code, dispatched)
+	}
+}
+
 func TestMCPDaemonMountedServersNeedNoAuthAndServeTools(t *testing.T) {
 	root := jailTest(t)
 	resolved, err := paths.Resolve()
@@ -89,7 +113,7 @@ func TestMCPDaemonMountedServersNeedNoAuthAndServeTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		seen[tool.Name] = true
 	}
-	for _, name := range []string{"chat_keys", "chat_whoami", "chat_new", "chat_reload"} {
+	for _, name := range []string{"chat_keys", "chat_whoami", "chat_self_compact", "chat_new", "chat_reload"} {
 		if !seen[name] {
 			t.Fatalf("chat tools omitted %q: %v", name, seen)
 		}

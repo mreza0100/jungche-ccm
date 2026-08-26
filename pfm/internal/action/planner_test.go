@@ -3,6 +3,7 @@ package action
 import (
 	"testing"
 
+	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 )
 
@@ -31,5 +32,18 @@ func TestKnownUnsupportedEngineGetsProductFacingError(t *testing.T) {
 	_, err := PlannerFor(pfmengine.Opencode)
 	if err == nil || err.Error() != "OpenCode does not support headless chat" {
 		t.Fatalf("PlannerFor(OpenCode) error = %v", err)
+	}
+}
+
+func TestPlanCodexRejectsUnknownEffortBeforeBuildingTOMLOverride(t *testing.T) {
+	home := t.TempDir()
+	machine := pfmconfig.Defaults(home, nil)
+	machine.CodexAccounts = []pfmconfig.CodexAccount{{ID: 1, Home: home + "/.codex"}}
+	_, err := PlanCodex(HeadlessRequest{
+		Name: "seat", CWD: home, Home: home, PrimaryAccount: 1, Config: machine,
+		Effort: `high"\napproval_policy="never`,
+	})
+	if err == nil {
+		t.Fatal("PlanCodex accepted an unknown/injectable effort")
 	}
 }

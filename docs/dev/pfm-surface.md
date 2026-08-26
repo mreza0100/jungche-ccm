@@ -3,6 +3,14 @@
 Current operator and integration surface. Legend: **●** established · **◆** enhanced ·
 **✚** added.
 
+## Contents
+
+- [Global](#global)
+- [Top-level commands](#top-level-commands)
+- [`pfm chat` family](#pfm-chat-family)
+- [MCP surface](#mcp-surface)
+- [Shared engine `internal/ask`](#shared-engine-internalask)
+
 ## Global
 
 - Config: `~/.config/pfm/config.json` (v2, strict JSON — accounts/emoji/theme/permission posture/mcp/ask; `$XDG_CONFIG_HOME` honored). Missing file = defaults. **Malformed file = hard failure for every command** except the three diagnostics (`doctor`, `config show`, `config validate`), which run on defaults and print the exact error. `config show` redacts secrets.
@@ -84,6 +92,7 @@ CLI verb calls — no second implementation, ever.
 | `chat_last`                 | ✚      | `{target, role?}`                                         | Newest entry.                                                                                                                                                                 |
 | `chat_status`               | ✚      | `{target}`                                                | Liveness/state.                                                                                                                                                               |
 | `chat_inject`               | ●      | `{target, text, then?}`                                   | Delivery report (signing rules apply).                                                                                                                                        |
+| `chat_self_compact`         | ✚      | `{focus, then: [steer, …]}`                               | Request-scoped bare `/compact`, scheduled after the caller's active turn settles; focus remains in tool-call history and a post-compact steer is mandatory.                   |
 | `chat_capture`              | ●      | `{target}`                                                | Pane text.                                                                                                                                                                    |
 | `chat_keys`                 | ✚      | `{target, keys: [string], literal?, delay_ms?, capture?}` | Press keys in the chat's pane — the model's hands on a TUI that swallowed a keystroke. Same validation as the CLI verb: an unknown key name is an error, never typed as text. |
 | `chat_name`                 | ✚      | `{target, name}`                                          | Rename result.                                                                                                                                                                |

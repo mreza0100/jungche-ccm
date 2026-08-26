@@ -218,7 +218,7 @@ func TestDependencyDoctorRowsKeepMissingBrokenAndSkippedDistinct(t *testing.T) {
 	}
 }
 
-func TestInstallPreflightRefusesRequiredDependencyEvenWithForce(t *testing.T) {
+func TestInstallPreflightRefusesRequiredDependencyBeforeInstallerRuns(t *testing.T) {
 	savedProbe, savedInstaller := dependencyProbeOverride, runInstaller
 	t.Cleanup(func() {
 		dependencyProbeOverride = savedProbe
@@ -244,7 +244,7 @@ func TestInstallPreflightRefusesRequiredDependencyEvenWithForce(t *testing.T) {
 		Paths:  paths.Values{Home: home, Roots: map[pfmengine.ID][]string{pfmengine.Codex: {filepath.Join(home, ".codex")}}},
 	}
 	var stdout, stderr bytes.Buffer
-	if code := runInstall([]string{"--yes", "--force", "--skip-harvest"}, &stdout, &stderr, runtime); code != 1 {
+	if code := runInstall([]string{"--yes", "--skip-harvest"}, &stdout, &stderr, runtime); code != 1 {
 		t.Fatalf("install code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if called || !strings.Contains(stdout.String(), "doctor: dep tmux path=(none) MISSING required") || !strings.Contains(stderr.String(), "required dependency preflight failed") {

@@ -123,11 +123,7 @@ func Inspect(
 	}
 	meta, err := transcript.ReadMeta(chat.Path, string(chat.Engine))
 	if err != nil {
-		if chat.Live {
-			status.State = StateWorking
-			return status, nil
-		}
-		return status, nil
+		return status, fmt.Errorf("read chat transcript metadata %s: %w", chat.Path, err)
 	}
 	status.Model = meta.Model
 	status.ContextPct = meta.ContextPercent()

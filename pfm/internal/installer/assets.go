@@ -2,6 +2,7 @@ package installer
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 	"path"
 	"sort"
@@ -69,7 +70,7 @@ func mcpSchedulerAsset(relative string) bool {
 	return relative == "systemd/pfm-mcp.service" || relative == "launchd/com.professor.pfm.mcp.plist"
 }
 
-func renderShimAsset(content []byte, options Options) []byte {
+func renderShimAsset(content []byte, options Options) ([]byte, error) {
 	claude := []string{"typeset -gA PFM_CLAUDE_PROMPTED=("}
 	for _, account := range sortedBoolKeys(options.ClaudePrompted) {
 		value := 0
@@ -88,21 +89,31 @@ func renderShimAsset(content []byte, options Options) []byte {
 		codex = append(codex, "  ["+strconv.Itoa(account)+"]="+strconv.Itoa(value))
 	}
 	codex = append(codex, ")")
-	text := strings.Replace(string(content), "typeset -gA PFM_CLAUDE_PROMPTED=()", strings.Join(claude, "\n"), 1)
-	text = strings.Replace(text, "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"), 1)
-	return []byte(text)
+	text, err := replaceSingleAssetMarker(string(content), "typeset -gA PFM_CLAUDE_PROMPTED=()", strings.Join(claude, "\n"))
+	if err != nil {
+		return nil, err
+	}
+	text, err = replaceSingleAssetMarker(text, "typeset -gA PFM_CODEX_YOLO=()", strings.Join(codex, "\n"))
+	if err != nil {
+		return nil, err
+	}
+	return []byte(text), nil
 }
 
-func renderClaudeLauncherAsset(content []byte, options Options) []byte {
+func renderClaudeLauncherAsset(content []byte, options Options) ([]byte, error) {
 	configured := ""
 	if strings.HasPrefix(options.ClaudeBinary, "/") {
 		configured = options.ClaudeBinary
 	}
-	return []byte(strings.ReplaceAll(
-		string(content),
-		"__PFM_CONFIGURED_CLAUDE__",
-		shellSingleQuoted(configured),
-	))
+	rendered, err := replaceSingleAssetMarker(string(content), "__PFM_CONFIGURED_CLAUDE__", shellSingleQuoted(configured))
+	return []byte(rendered), err
+}
+
+func replaceSingleAssetMarker(content, marker, replacement string) (string, error) {
+	if count := strings.Count(content, marker); count != 1 {
+		return "", fmt.Errorf("asset marker %q occurs %d times, want exactly once", marker, count)
+	}
+	return strings.Replace(content, marker, replacement, 1), nil
 }
 
 func shellSingleQuoted(value string) string {

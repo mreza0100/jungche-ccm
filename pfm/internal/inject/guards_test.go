@@ -64,14 +64,55 @@ func TestIsBusyExactMarkers(t *testing.T) {
 	}
 }
 
-func TestHasDraftUsesPOSIXGraphNotUnicodeSpace(t *testing.T) {
-	// Format controls are not POSIX graph characters. The ASCII space between
-	// them must not turn an otherwise non-graph placeholder into a real draft.
+func TestHasDraftRecognizesUnicodeTextButNotFormatPlaceholders(t *testing.T) {
+	// Format controls are not visible draft text. The ASCII space between them
+	// must not turn an otherwise invisible placeholder into a real draft.
 	if hasDraft("❯ \u200b \u200b") {
 		t.Fatal("ASCII space was counted as draft text")
 	}
 	if !hasDraft("❯ real draft") {
 		t.Fatal("printable ASCII draft was missed")
+	}
+	for _, draft := range []string{"› 你好", "❯ مرحبا", "› 🫖"} {
+		if !hasDraft(draft) {
+			t.Errorf("visible Unicode draft %q was missed", draft)
+		}
+	}
+}
+
+func TestLastComposerLineUsesStructuralScreenOrder(t *testing.T) {
+	tests := []struct {
+		name    string
+		capture string
+		want    string
+	}{
+		{
+			name:    "vitest marker cannot outrank later codex composer",
+			capture: "└ ❯ suite.test.ts (3 tests | 1 failed)\n› ",
+			want:    "› ",
+		},
+		{
+			name:    "claude agent activity is not an editable composer",
+			capture: "❯ \n❯ ● qa-cortex  Verifying results",
+			want:    "❯ ",
+		},
+		{
+			name:    "mixed markers follow screen order",
+			capture: "❯ old output\n\x1b[2m› \x1b[0m",
+			want:    "\x1b[2m› \x1b[0m",
+		},
+		{
+			name:    "carriage return is tolerated",
+			capture: "conversation\r\n› draft\r",
+			want:    "› draft\r",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := lastComposerLine(test.capture); got != test.want {
+				t.Fatalf("lastComposerLine() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -80,6 +121,9 @@ func FuzzSelectorLine(f *testing.F) {
 		"❯ 1. allow\n2. deny",
 		"› 1. draft",
 		"› 1. allow\n2. deny\nenter to confirm",
+		"└ ❯ suite.test.ts\n› ",
+		"❯ ● worker  Running\n› ",
+		"› 你好",
 		"\x00\xff❯",
 	} {
 		f.Add(seed)

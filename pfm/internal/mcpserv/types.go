@@ -76,6 +76,15 @@ type InjectOutput struct {
 	LiteralChunks int    `json:"literal_chunks,omitempty"`
 }
 
+// SelfCompactInput safely compacts the requesting chat and carries the turns
+// that must resume work after compaction. Focus is retained in the tool-call
+// history for the compactor; Codex accepts no inline arguments on /compact,
+// so the detached TUI command itself is deliberately bare.
+type SelfCompactInput struct {
+	Focus string   `json:"focus" jsonschema:"single-line compact focus authored after inspecting the requesting chat's current context and in-flight work"`
+	Then  []string `json:"then" jsonschema:"mandatory post-compact steers, delivered in order one settled turn apart; no steer may start with /compact"`
+}
+
 // KeysInput requests tmux keypresses for one resolved live chat. Keys are
 // key names unless Literal is explicitly true; this mirrors `pfm chat keys`.
 type KeysInput struct {
@@ -117,8 +126,8 @@ type CaptureOutput struct {
 	Truncated  bool   `json:"truncated,omitempty"`
 }
 
-// WhoamiInput takes no arguments: identity is derived from this process, never
-// accepted from a caller.
+// WhoamiInput takes no arguments: Codex identity arrives in the reserved MCP
+// request metadata, while stdio callers retain environment/ancestry recovery.
 type WhoamiInput struct{}
 
 // WhoamiOutput is chat.sh whoami's answer plus the engine identity behind it.

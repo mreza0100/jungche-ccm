@@ -49,6 +49,7 @@ const (
 	// this package never presses `t` or Enter on a screen it has not confirmed.
 	codexComposer = "›"
 	codexStatus   = "% used"
+	codexPrompt   = "› Ask Codex to do anything"
 
 	// startupEscapes bounds how many overlays are dismissed before giving up,
 	// so a screen that is simply slow is never escaped forever.
@@ -236,8 +237,30 @@ func waitForBoot(
 
 // composerReady reports whether a capture shows an idle composer.
 func composerReady(capture string) bool {
-	return strings.Contains(capture, codexComposer) &&
-		strings.Contains(capture, codexStatus)
+	if !strings.Contains(capture, codexComposer) {
+		return false
+	}
+	if strings.Contains(capture, codexStatus) {
+		return true
+	}
+	// Codex 0.149's default status line no longer includes a context percent.
+	// Its empty-composer prompt plus the model/CWD footer is the equivalent
+	// two-part proof: startup modals can select a › row, but do not render this
+	// prompt followed by the idle footer.
+	lines := strings.Split(capture, "\n")
+	for index, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), codexPrompt) {
+			continue
+		}
+		for footerIndex := index + 1; footerIndex < len(lines) && footerIndex <= index+4; footerIndex++ {
+			footer := strings.TrimSpace(lines[footerIndex])
+			if footer != "" && strings.Contains(footer, " · ") &&
+				!strings.HasPrefix(footer, codexComposer) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // waitForCodexComposer returns once the composer is drawn, dismissing startup
