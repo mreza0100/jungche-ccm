@@ -132,7 +132,7 @@ func (installer *engine) writeMCPClientJSON(names []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encode MCP client config %s: %w", path, err)
 	}
-	err = installer.change("rewrite "+path+" (backup preserved)", func() error {
+	err = installer.change(changeDescription(path, existed), func() error {
 		if existed {
 			backup := availableBackup(path, installer.stamp)
 			if err := copyBackup(path, backup); err != nil {
@@ -225,7 +225,7 @@ func (installer *engine) writeMCPCodeConfig(names []string) error {
 		installer.ok(path + " wiring")
 		return nil
 	}
-	return installer.change("rewrite "+path+" (backup preserved)", func() error {
+	return installer.change(changeDescription(path, existed), func() error {
 		if existed {
 			backup := availableBackup(path, installer.stamp)
 			if err := copyBackup(path, backup); err != nil {
@@ -293,7 +293,7 @@ func (installer *engine) removeMCPClientRegistrations() error {
 		if err != nil {
 			return err
 		}
-		if err := installer.change("rewrite "+path+" (backup preserved)", func() error {
+		if err := installer.change(changeDescription(path, existed), func() error {
 			if existed {
 				if err := copyBackup(path, availableBackup(path, installer.stamp)); err != nil {
 					return err

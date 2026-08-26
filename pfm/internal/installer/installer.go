@@ -770,6 +770,19 @@ func (installer *engine) change(message string, action func() error) error {
 	return action()
 }
 
+// changeDescription selects the message installer.change reports for a
+// conditional rewrite: "create" when nothing existed to back up, and
+// "rewrite ... (backup preserved)" only when a backup will actually be
+// written. Callers must pass the SAME existed value that gates the backup —
+// deriving it a second, independent way is how the message and the write it
+// describes drift apart.
+func changeDescription(path string, existed bool) string {
+	if !existed {
+		return "create " + path
+	}
+	return "rewrite " + path + " (backup preserved)"
+}
+
 func (installer *engine) ok(message string) {
 	installer.say("  ok      %s", message)
 	installer.report.OK++
@@ -1545,7 +1558,7 @@ func (installer *engine) wireCodexHooks() error {
 			installer.ok(path + " wiring")
 			continue
 		}
-		if err := installer.change("rewrite "+path+" (backup preserved)", func() error {
+		if err := installer.change(changeDescription(path, existed), func() error {
 			if existed {
 				backup := availableBackup(path, installer.stamp)
 				if err := copyBackup(path, backup); err != nil {

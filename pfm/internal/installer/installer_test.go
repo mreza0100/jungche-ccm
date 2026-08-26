@@ -111,6 +111,28 @@ func TestRunningNameSyncRefusesMutatingModesBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestChangeDescriptionNamesCreateVsBackedUpRewrite is a direct pin on the
+// #9 helper: installer.change must report "create" for a target that had
+// nothing to back up and "rewrite ... (backup preserved)" only when a
+// backup is actually written. Callers pass the SAME existed value that
+// gates the backup, so this contract is the whole guarantee.
+func TestChangeDescriptionNamesCreateVsBackedUpRewrite(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		existed bool
+		want    string
+	}{
+		{"nothing existed to back up", false, "create /fixture/path"},
+		{"a prior file is backed up", true, "rewrite /fixture/path (backup preserved)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := changeDescription("/fixture/path", test.existed); got != test.want {
+				t.Fatalf("changeDescription(%q, %v) = %q, want %q", "/fixture/path", test.existed, got, test.want)
+			}
+		})
+	}
+}
+
 func TestZshrcCreateOnFreshHomeNamesItselfHonestly(t *testing.T) {
 	home := t.TempDir()
 	var applied bytes.Buffer

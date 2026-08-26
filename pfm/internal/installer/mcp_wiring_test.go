@@ -49,6 +49,38 @@ func TestMCPWireFailureStillRefreshesRunningLinuxDaemon(t *testing.T) {
 	}
 }
 
+// TestMCPInstallCreatesClientJSONWithoutClaimingABackup is an end-to-end pin
+// on the #9 fix: writeMCPClientJSON must run its message through
+// changeDescription, not report a hardcoded "rewrite ... (backup preserved)"
+// regardless of whether .mcp.json existed. Asserting changeDescription alone
+// would not catch the original bug — the bug was that the helper was never
+// consulted at this call site.
+func TestMCPInstallCreatesClientJSONWithoutClaimingABackup(t *testing.T) {
+	home := t.TempDir()
+	canonical := filepath.Join(home, ".claude")
+	writeFixture(t, filepath.Join(canonical, "settings.json"), `{}`)
+	var applied strings.Builder
+	options := Options{
+		Mode: ModeApply, Home: home, ConfigDir: canonical,
+		ConfigDirs: []string{canonical}, MCPEnabled: map[string]bool{"chat": true},
+		MCPPort: 8377, Runner: &fakeRunner{}, Stdout: &applied,
+	}
+	if _, err := Run(context.Background(), options); err != nil {
+		t.Fatalf("apply on a fresh home: %v\n%s", err, applied.String())
+	}
+	clientPath := filepath.Join(home, ".mcp.json")
+	out := applied.String()
+	if !strings.Contains(out, "create "+clientPath) {
+		t.Fatalf("apply output never says it created %s:\n%s", clientPath, out)
+	}
+	if strings.Contains(out, "rewrite "+clientPath+" (backup preserved)") {
+		t.Fatalf("claimed a backed-up rewrite for a client registration that never existed:\n%s", out)
+	}
+	if matches, _ := filepath.Glob(clientPath + ".pre-professor-*"); len(matches) != 0 {
+		t.Fatalf("backup written for a client registration that did not exist: %v", matches)
+	}
+}
+
 func TestMCPInstallWiresConfigDrivenUnauthenticatedLoopbackClients(t *testing.T) {
 	home := t.TempDir()
 	canonical := filepath.Join(home, ".claude")
