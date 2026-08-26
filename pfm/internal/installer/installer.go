@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goRuntime "runtime"
 	"sort"
@@ -65,10 +66,14 @@ func Run(ctx context.Context, options Options) (Report, error) {
 			if !probed {
 				options.launchGateUnprobed = true
 			}
-		} else if err := options.Runner.Run(
-			ctx, "systemctl", "--user", "is-active", "--quiet", "pfm-name-sync.service",
-		); err == nil {
-			return Report{}, ErrNameSyncRunning
+		} else {
+			running, probed := nameSyncServiceRunning(ctx, options.Runner)
+			if running {
+				return Report{}, ErrNameSyncRunning
+			}
+			if !probed {
+				options.nameSyncGateUnprobed = true
+			}
 		}
 	}
 
@@ -118,6 +123,29 @@ func Run(ctx context.Context, options Options) (Report, error) {
 		err = errors.Join(err, installer.outputErr)
 	}
 	return installer.report, err
+}
+
+// nameSyncServiceRunning reports whether the Linux name-sync service is
+// executing right now, and whether the question could be asked at all.
+//
+// `systemctl is-active --quiet` exits non-zero both when the service is
+// inactive AND when the probe itself never ran: systemctl missing from PATH,
+// the user bus unreachable, permission denied. Those are opposite answers to
+// two different questions ("it is idle" vs "we do not know"), so the error is
+// inspected rather than treated as one signal: an *exec.ExitError means
+// systemctl started, ran to completion, and reported a status — inactive is
+// proceed-safe, as before. Anything else means the probe never got an
+// answer, and the caller must not read that silence as safety.
+func nameSyncServiceRunning(ctx context.Context, runner CommandRunner) (running bool, probed bool) {
+	err := runner.Run(ctx, "systemctl", "--user", "is-active", "--quiet", "pfm-name-sync.service")
+	if err == nil {
+		return true, true
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false, true
+	}
+	return false, false
 }
 
 // preflightInstall executes the complete dry planner against the same host
@@ -232,6 +260,9 @@ func (installer *engine) install(ctx context.Context) error {
 			return err
 		}
 	} else {
+		if installer.apply && installer.options.nameSyncGateUnprobed {
+			installer.skip("name-sync gate NOT probed (systemctl is-active could not run); an apply during a name-sync run is not refused")
+		}
 		unitChanged, err := installer.wireUnits(ctx)
 		if err != nil {
 			return err

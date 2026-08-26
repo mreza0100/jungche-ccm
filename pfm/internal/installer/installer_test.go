@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,14 +20,27 @@ import (
 type fakeRunner struct {
 	manager        bool
 	nameSyncActive bool
-	calls          []string
+	// nameSyncIdle makes the is-active probe for pfm-name-sync.service run to
+	// completion and report the service inactive via a genuine
+	// *exec.ExitError — the only shape nameSyncServiceRunning's classifier
+	// accepts as "probed, and idle" rather than "the probe never answered".
+	// Leaving both this and nameSyncActive false models a probe that could
+	// not run at all (systemctl missing, dead bus, permission denied), via a
+	// plain error that does NOT satisfy errors.As(*exec.ExitError).
+	nameSyncIdle bool
+	calls        []string
 }
 
 func (runner *fakeRunner) Run(_ context.Context, name string, args ...string) error {
 	call := name + " " + strings.Join(args, " ")
 	runner.calls = append(runner.calls, call)
-	if call == "systemctl --user is-active --quiet pfm-name-sync.service" && runner.nameSyncActive {
-		return nil
+	if call == "systemctl --user is-active --quiet pfm-name-sync.service" {
+		if runner.nameSyncActive {
+			return nil
+		}
+		if runner.nameSyncIdle {
+			return genuineExitError()
+		}
 	}
 	if call == "systemctl --user show-environment" && runner.manager {
 		return nil
@@ -38,6 +52,21 @@ func (runner *fakeRunner) Run(_ context.Context, name string, args ...string) er
 		return nil
 	}
 	return errors.New("dead user bus")
+}
+
+// genuineExitError returns a real *exec.ExitError from a command that
+// actually ran and exited non-zero — the shape `systemctl is-active` takes
+// when it genuinely reports "inactive", as opposed to never having run at
+// all. A hand-rolled type that merely satisfies errors.As(*exec.ExitError)
+// would defeat the point of the distinction nameSyncServiceRunning draws, so
+// fakeRunner earns one for real instead of faking the type.
+func genuineExitError() error {
+	err := exec.Command("sh", "-c", "exit 3").Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		panic(fmt.Sprintf("fake idle probe did not produce a genuine *exec.ExitError: %v (%T)", err, err))
+	}
+	return exitErr
 }
 
 func TestDryRunNeverGatesOnAReachableUserManager(t *testing.T) {
@@ -80,17 +109,51 @@ func TestDryRunNamesUpdateMetadataWithoutWritingIt(t *testing.T) {
 	}
 }
 
+// TestReachableIdleUserManagerAllowsMutatingModes is behavior (b): the
+// systemctl is-active probe ran to completion and genuinely reported the
+// service inactive (a real *exec.ExitError, via fakeRunner's nameSyncIdle).
+// That is the proceed-silently case: install must not refuse, and — unlike
+// the probe-could-not-run case — must never claim the gate was unprobed.
 func TestReachableIdleUserManagerAllowsMutatingModes(t *testing.T) {
 	for _, mode := range []Mode{ModeApply, ModeUninstall} {
 		t.Run(fmt.Sprint(mode), func(t *testing.T) {
 			home := t.TempDir()
+			var output bytes.Buffer
 			_, err := Run(context.Background(), Options{
-				Mode: mode, Home: home, Runner: &fakeRunner{manager: true},
+				Mode: mode, Home: home, Stdout: &output,
+				Runner: &fakeRunner{manager: true, nameSyncIdle: true},
 			})
 			if err != nil {
-				t.Fatalf("mode %d refused an idle reachable manager: %v", mode, err)
+				t.Fatalf("mode %d refused an idle reachable manager: %v\n%s", mode, err, output.String())
+			}
+			if strings.Contains(output.String(), "gate NOT probed") {
+				t.Fatalf("mode %d claimed the gate was unprobed for a genuinely idle service:\n%s", mode, output.String())
 			}
 		})
+	}
+}
+
+// TestUnprobedNameSyncGateProceedsButSaysSo is behavior (c): the systemctl
+// is-active probe never got an answer at all — modeled by fakeRunner's
+// default is-active response, a plain error that is NOT an *exec.ExitError
+// (as would come from systemctl missing, a dead user bus, or permission
+// denied). Install must still proceed (this gate only ever refuses a
+// CONFIRMED running service), but it must say the gate was not probed rather
+// than silently reading that ambiguity as safe — the entire point of the fix.
+func TestUnprobedNameSyncGateProceedsButSaysSo(t *testing.T) {
+	if schedulerIsLaunchd {
+		t.Skip("the systemd name-sync gate is Linux-only")
+	}
+	home := t.TempDir()
+	var output bytes.Buffer
+	_, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	})
+	if err != nil {
+		t.Fatalf("an unprobed gate refused the install: %v\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), "name-sync gate NOT probed") {
+		t.Fatalf("an unprobed name-sync gate was silent:\n%s", output.String())
 	}
 }
 

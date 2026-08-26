@@ -99,6 +99,11 @@ type Options struct {
 	// launchGateUnprobed records that the launch-agent gate could not ask its
 	// question. It is set by Run, never by a caller.
 	launchGateUnprobed bool
+	// nameSyncGateUnprobed is the systemd twin: it records that the Linux
+	// name-sync gate's systemctl probe never ran at all (as opposed to
+	// running and reporting the service inactive). It is set by Run, never by
+	// a caller.
+	nameSyncGateUnprobed bool
 }
 
 type Report struct {
