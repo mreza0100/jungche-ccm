@@ -8,6 +8,7 @@ import (
 	pfmengine "hostops/pfm/internal/engine"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -253,6 +254,79 @@ func (manager *Manager) KillClearedCodex(
 	}, true, nil
 }
 
+// ForgetCodexPane erases one pane's binding.
+//
+// It exists for the one binding that cannot possibly be true: a pane bound to
+// a thread a /clear already retired. That state never heals on its own,
+// because from then on the pane shows a NAME and a name is not allowed to move
+// a binding. Erasing it returns the pane to "unbound", which is honest — pfm
+// genuinely does not know what that pane runs — and lets the next observation
+// of its own screen re-seat it.
+func (manager *Manager) ForgetCodexPane(ctx context.Context, socket, pane string) error {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok {
+		return nil
+	}
+	if err := manager.database.DeleteMeta(ctx, key); err != nil {
+		return fmt.Errorf("forget Codex pane binding: %w", err)
+	}
+	return nil
+}
+
+// CodexPaneBinding is one pane binding decoded back to the address it names.
+type CodexPaneBinding struct {
+	Socket   string
+	PaneID   string
+	ThreadID string
+}
+
+// CodexPaneBindings returns every Codex pane binding the store holds.
+//
+// One binding read alone can never look wrong — it is just a string. The
+// defects this table exists to expose are RELATIONS between bindings: two
+// panes pointing at one thread, or a pane pointing at a thread a clear already
+// retired. Auditing that needs the whole family at once, which is why this
+// exists beside the single-key CodexPaneBinding rather than inside it.
+//
+// A key that will not decode is returned with an empty Socket rather than
+// dropped: a binding pfm cannot address is a defect to report, not a row to
+// quietly lose.
+func (manager *Manager) CodexPaneBindings(ctx context.Context) ([]CodexPaneBinding, error) {
+	values, err := manager.database.MetaPrefix(ctx, codexPaneBindingPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("read Codex pane bindings: %w", err)
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	bindings := make([]CodexPaneBinding, 0, len(keys))
+	for _, key := range keys {
+		socket, pane := decodeCodexPaneBindingKey(key)
+		bindings = append(bindings, CodexPaneBinding{
+			Socket: socket, PaneID: pane, ThreadID: values[key],
+		})
+	}
+	return bindings, nil
+}
+
+func decodeCodexPaneBindingKey(key string) (socket, pane string) {
+	address, err := base64.RawURLEncoding.DecodeString(
+		strings.TrimPrefix(key, codexPaneBindingPrefix),
+	)
+	if err != nil {
+		return "", ""
+	}
+	socket, pane, found := strings.Cut(string(address), "\x00")
+	if !found {
+		return "", ""
+	}
+	return socket, pane
+}
+
+const codexPaneBindingPrefix = "codex_clear_pane_"
+
 func codexPaneBindingKey(socket, pane string) (string, bool) {
 	socket = filepath.Base(strings.TrimSpace(socket))
 	pane = strings.TrimSpace(pane)
@@ -260,7 +334,7 @@ func codexPaneBindingKey(socket, pane string) (string, bool) {
 		return "", false
 	}
 	address := base64.RawURLEncoding.EncodeToString([]byte(socket + "\x00" + pane))
-	return "codex_clear_pane_" + address, true
+	return codexPaneBindingPrefix + address, true
 }
 
 // Unkill removes one kill through the store's non-fatal busy policy.

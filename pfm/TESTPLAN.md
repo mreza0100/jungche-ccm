@@ -219,6 +219,17 @@ permanently wired fixture in this suite.
 | picker/name-sync live scans seed empty Codex pane bindings but never overwrite a hook-supplied post-clear id | JAIL | `cmd/pfm/clear_kill_jail_test.go`, `cmd/pfm/pipeline.go` | |
 | `internal clear-kill` owns Claude `SessionEnd(reason=clear)` and Codex `SessionStart(source=clear)`, ignores unrelated lifecycle events, and fails open | JAIL | `cmd/pfm/clear_kill_jail_test.go` | |
 | clear-kill refreshes the indexed Claude transcript or Codex lineage before recording its prompt baseline | JAIL | `cmd/pfm/clear_kill_jail_test.go`, `internal/store/killed_test.go` | |
+| a Codex pane's display NAME may SEED an unbound pane but NEVER moves a bound one — the lagging index made a name walk a binding backwards onto the cleared thread and clear-kill the live one | JAIL+tmux | `cmd/pfm/codexpanes.go`, `cmd/pfm/codexpanes_test.go`, `cmd/pfm/reconcile_codex_panes_jail_test.go` | watched RED: binding moved to the cleared thread with empty stderr |
+| one thread is never bound to two panes — incumbent keeps it, the newcomer is refused out loud | JAIL+tmux | `cmd/pfm/codexpanes_test.go`, `cmd/pfm/reconcile_codex_panes_jail_test.go` | watched RED: 2 panes bound to 1 thread, silently |
+| a same-lineage resume/fork in one pane is NOT a clear and never retires the chat's own lineage root | JAIL+tmux | `cmd/pfm/codexpanes.go`, `cmd/pfm/reconcile_codex_panes_jail_test.go` | watched RED: the resume retired the root |
+| an unreadable lineage advances the binding but refuses the kill — a failed look is never a clear | JAIL | `cmd/pfm/codexpanes_test.go` | |
+| a binding on a thread a /clear already RETIRED is impossible and is dropped, never re-seeded, so the pane can be re-seated from its own screen | JAIL+tmux | `cmd/pfm/codexpanes.go`, `cmd/pfm/codexpanes_test.go`, `cmd/pfm/reconcile_codex_panes_jail_test.go` | the state a real fleet was stuck in; a name can never move it back |
+| an UNREADABLE kill table never drops a binding, and an explicit `pfm chat kill` (no prompt baseline) never does either | JAIL | `cmd/pfm/codexpanes_test.go`, `cmd/pfm/pipeline.go` | |
+| `pfm doctor` names contested and clear-retired pane bindings, and an unreadable binding table is not an empty one | JAIL | `cmd/pfm/doctor.go`, `cmd/pfm/doctor_codex_pane_test.go` | |
+| `pfm doctor` names a live Codex pane pfm cannot follow through a clear; the reconcile pass stays quiet there so the picker is not spammed | JAIL+tmux | `cmd/pfm/doctor.go`, `cmd/pfm/doctor_codex_pane_test.go`, `cmd/pfm/gather_warnings_jail_test.go` | |
+| `pfm chat inject` REFUSES an unsigned send instead of delivering an UNSIGNED-stamped message; `--allow-unsigned` is the only way through, and the auto-file pointer is checked separately | JAIL | `internal/inject/body.go`, `internal/inject/signature_test.go` | replaces the old deliver-and-warn contract |
+| `pfm chat reload` takes `--account N`; a bare prose word is refused with the flag it should have been | JAIL | `cmd/pfm/reload_command.go`, `cmd/pfm/reload_args_test.go` | |
+| the picker groups a LONE `{GROUP}:{NAME}` chat, and a prose colon (`fix: the bug`) still declares no group | JAIL | `internal/ui/model.go`, `internal/ui/name_group_test.go`, `internal/ui/model_test.go` | |
 
 ## B — Picker TUI: key bindings and model state
 

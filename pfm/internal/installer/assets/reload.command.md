@@ -1,20 +1,38 @@
 ---
 name: reload
-description: Reboot THIS Claude or Codex chat IN PLACE — same pane, socket, conversation, and current engine account by default. Pass another configured account to switch seats; Claude also accepts --1h on|off. Optional --then "<prompt>" resumes work unattended. Invoke it yourself when registry/config changes require a fresh session or the current account is near its limit. Usage /reload [account] [--1h on|off] [--then "<prompt>"].
+description: 'Reboot THIS Claude or Codex chat IN PLACE — same pane, socket, conversation, and current account. EVERY setting is a FLAG; there are no positional words. Run exactly: `~/.local/bin/pfm chat reload [--account N] [--1h on|off] [--then "<prompt>"]`. Translate the request into flags before running: "cache off"/"5m cache" -> `--1h off`; "cache on"/"1h cache" -> `--1h on`; "switch to account 2"/"other seat" -> `--account 2`; "then continue X" -> `--then "X"`. NEVER pass bare words like `cache off` — they are not arguments. The calling chat targets ITSELF automatically; do NOT pass --sock. Invoke it yourself when config changes need a fresh session or the account is near its limit.'
 ---
 
-# `/reload [account] [--1h on|off] [--then "<prompt>"]` — reboot this chat in place
+# `/reload [--account N] [--1h on|off] [--then "<prompt>"]` — reboot this chat in place
 
 Run this ONCE via the Bash tool — and make it your LAST action, the chat is about to exit:
 
 ```
-~/.local/bin/pfm chat reload $ARGUMENTS
+~/.local/bin/pfm chat reload [--account N] [--1h on|off] [--then "<prompt>"]
 ```
 
-With no arguments, the current engine account is preserved. The command resolves Claude panes
-from tmux and Codex app-server turns from their fleet-bound thread identity, then the chat
-auto-exits and reboots in the same window and pane. Split siblings are untouched. With `--then`,
-the script waits for the reborn chat's input box, then types and submits the prompt.
+**Every setting has a flag. There are no positional arguments.** Whatever words the request
+used, map them to a flag first:
+
+| the request says | pass |
+| --- | --- |
+| "cache off", "5m cache", "short cache" | `--1h off` |
+| "cache on", "1h cache", "long cache" | `--1h on` |
+| "account 2", "switch seats", "other account" | `--account 2` |
+| "then continue with X" | `--then "X"` |
+| nothing in particular | no flags at all |
+
+`pfm chat reload cache off` is not a call — `cache` is not an argument, and the command will
+refuse it. If a rejection ever comes back, read the flag it names rather than reshuffling the
+words.
+
+**Do not pass `--sock`.** With no `--sock`, the command finds the CALLING chat's own pane by
+itself — Claude panes from tmux, Codex from the fleet-bound thread identity. `--sock` exists only
+to reboot a DIFFERENT chat from outside it, which is not what this command is for.
+
+With no flags, the current engine account is preserved. The chat auto-exits and reboots in the
+same window and pane; split siblings are untouched. With `--then`, the script waits for the reborn
+chat's input box, then types and submits the prompt.
 
 After running it, reply with ONE short line and END YOUR TURN immediately — a turn still running
 when the `/exit` lands is force-killed after 20s, and in-flight sub-agents die with it.
@@ -23,7 +41,7 @@ when the `/exit` lands is force-killed after 20s, and in-flight sub-agents die w
 
 For Claude, `--1h` flips the chat's prompt-cache TTL across the reboot: `on` = ⚡1h (`ENABLE_PROMPT_CACHING_1H=1`),
 `off` = 5m (`FORCE_PROMPT_CACHING_5M=1` — since CC 2.1.215 the harness defaults to 1h, so 5m must
-be forced, never assumed). With no account given the chat KEEPS its current account — `/reload --1h off`
+be forced, never assumed). With no `--account` the chat KEEPS its current account — `/reload --1h off`
 is the pure "restart this chat on the 5m cache" move. Without `--1h`, an account reload preserves
 the chat's existing cache mode (a flagless elder counts as 1h, the default it actually runs).
 
@@ -36,6 +54,6 @@ instead of stalling:
    reboot. Finish or checkpoint them; never reload mid-flight.
 2. **Pick a different configured account for the current engine** from `pfm config show`.
 3. **Swap with a handoff**:
-   `~/.local/bin/pfm chat reload <other-n> --then "Continue: <what you were doing + the next concrete step>"`
+   `~/.local/bin/pfm chat reload --account <other-n> --then "Continue: <what you were doing + the next concrete step>"`
 4. One short line to the user (which account you moved to and why), end turn. The reborn you
    reads the `--then` prompt and continues on the fresh account's budget.

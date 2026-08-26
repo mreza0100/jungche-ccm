@@ -173,6 +173,13 @@ type Options struct {
 	Now               func() time.Time
 	Sender            *Sender
 	DisableSignature  bool
+	// AllowUnsigned permits delivery when no sender identity could be derived.
+	// It is OFF by default: an unsigned message asks its recipient to act on
+	// an instruction from nobody, and the recipient's only correct response is
+	// to distrust it — so the message was never worth sending. Refusing at the
+	// SENDER, where the operator can still fix the identity, beats delivering
+	// something the far end must ignore.
+	AllowUnsigned bool
 
 	// --then waiter cadence, mirroring chat.sh's __then subcommand.
 	ThenMin        time.Duration

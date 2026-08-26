@@ -1,0 +1,104 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+// The exact call that failed on a real host: a caller told "reload the cache
+// off" wrote the words it was given into the positional slot. The command must
+// reject it AND say what the right flag is — an error that only restates the
+// grammar leaves the caller to guess a second time.
+func TestReloadRejectsProseAndNamesTheRightFlag(t *testing.T) {
+	for _, test := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"cache", "off"}, want: "--1h on|off"},
+		{args: []string{"--cache", "off"}, want: "--1h on|off"},
+		{args: []string{"account", "2"}, want: "--account N"},
+		{args: []string{"then", "keep going"}, want: "--then"},
+		{args: []string{"socket"}, want: "--sock"},
+		{args: []string{"nonsense"}, want: "--account N"},
+	} {
+		t.Run(strings.Join(test.args, " "), func(t *testing.T) {
+			err := validateReloadArgs(test.args)
+			if err == nil {
+				t.Fatalf("%v was accepted", test.args)
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error %q does not point at %q", err.Error(), test.want)
+			}
+			if !strings.Contains(err.Error(), test.args[0]) {
+				t.Fatalf("error %q does not quote the rejected word %q", err.Error(), test.args[0])
+			}
+		})
+	}
+}
+
+// --account is the documented spelling and must work everywhere the bare
+// positional did.
+func TestReloadAccountFlag(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		args    []string
+		wantErr string
+		want    int
+	}{
+		{name: "flag form", args: []string{"--account", "2"}, want: 2},
+		{name: "flag form with other flags", args: []string{"--1h", "off", "--account", "3"}, want: 3},
+		{name: "bare positional still accepted", args: []string{"2"}, want: 2},
+		{name: "no account", args: []string{"--1h", "off"}, want: 0},
+		{name: "missing value", args: []string{"--account"}, wantErr: "--account needs an account number"},
+		{name: "non-numeric value", args: []string{"--account", "personal"}, wantErr: "account NUMBER"},
+		{name: "zero is not an account", args: []string{"--account", "0"}, wantErr: "account NUMBER"},
+		{name: "twice", args: []string{"--account", "2", "--account", "3"}, wantErr: "twice"},
+		{name: "flag and positional", args: []string{"--account", "2", "3"}, wantErr: "twice"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateReloadArgs(test.args)
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("error = %v, want one containing %q", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := reloadRequestedAccount(test.args); got != test.want {
+				t.Fatalf("account = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+// A value that happens to look like a flag name must never be re-read as one.
+// `--then "--account 4"` asks to send that text to the reborn chat; it does not
+// ask to switch seats.
+func TestReloadFlagValuesAreNotReparsedAsFlags(t *testing.T) {
+	args := []string{"--then", "--account 4", "--1h", "off"}
+	if err := validateReloadArgs(args); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := reloadRequestedAccount(args); got != 0 {
+		t.Fatalf("account = %d, want 0 — a --then payload was read as a seat switch", got)
+	}
+}
+
+// The usage line is the last thing a confused caller reads, so it must carry
+// the two facts that were missing: every setting has a flag, and the socket
+// finds itself.
+func TestReloadUsageTeachesTheFlagsAndTheSocketDefault(t *testing.T) {
+	for _, want := range []string{
+		"--account N",
+		"--1h on|off",
+		"--then",
+		"--sock",
+		"detected automatically",
+	} {
+		if !strings.Contains(reloadUsage, want) {
+			t.Errorf("reloadUsage is missing %q:\n%s", want, reloadUsage)
+		}
+	}
+}

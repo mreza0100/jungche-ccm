@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -696,6 +697,16 @@ func (jail *stdioJail) environment() []string {
 		paths.EnvTmuxDir+"="+jail.tmuxDir,
 		paths.EnvProcRoot+"="+jail.proc,
 		"PFM_CODEX_AVAILABLE=0",
+		// A jailed daemon has no tmux server, no session id and no ancestry to
+		// recover a handle from, so it derives NO sender — and pfm refuses to
+		// deliver an unsigned message rather than hand the recipient an
+		// instruction from nobody. Stating the sender is the supported answer
+		// for exactly this shape (a detached or scrubbed caller), so the
+		// fixture states one instead of disabling the guard it shares a code
+		// path with.
+		inject.SenderSessionEnv+"=cc-1700000000-1-1",
+		inject.SenderLabelEnv+"=mcp-jail-fixture",
+		inject.SenderIDEnv+"=00000000-0000-4000-8000-000000000000",
 	)
 }
 

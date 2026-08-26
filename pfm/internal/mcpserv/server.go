@@ -213,7 +213,7 @@ func (service *Service) register() {
 		Name: "chat_unkill", Description: "Unkill a chat through the canonical pfm chat unkill dispatcher.", Annotations: mutating,
 	}, service.chatUnkill)
 	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_reload", Description: "Reload a Claude seat through the canonical pfm chat reload dispatcher.", Annotations: mutating,
+		Name: "chat_reload", Description: "Reboot a chat in place through the canonical pfm chat reload dispatcher. Takes a target ONLY: no account switch, no cache mode, no --then follow-up. For any of those run `pfm chat reload [--account N] [--1h on|off] [--then \"prompt\"]` yourself — every setting there is a flag, never a bare word.", Annotations: mutating,
 	}, service.chatReload)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_save", Description: "Append a transcript snapshot through the canonical pfm chat save dispatcher.", Annotations: mutating,

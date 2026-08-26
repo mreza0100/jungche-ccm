@@ -60,6 +60,7 @@ func TestAskHoldsATwoWayConversation(t *testing.T) {
 		t.Skip("tmux is not installed")
 	}
 	jail := newRunJail(t)
+	statedTestSender(t)
 	defer jail.killSockets(t)
 
 	var stdout, stderr bytes.Buffer
@@ -97,6 +98,7 @@ func TestAskReportsATimeoutWithoutLosingDelivery(t *testing.T) {
 		t.Skip("tmux is not installed")
 	}
 	jail := newRunJail(t)
+	statedTestSender(t)
 	defer jail.killSockets(t)
 	t.Setenv("STUB_MUTE", "1")
 

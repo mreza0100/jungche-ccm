@@ -2,6 +2,7 @@ package inject
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	pfmengine "hostops/pfm/internal/engine"
 	"os"
@@ -711,6 +712,12 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 	)
 	if prepareErr != nil {
 		base.Code = CodeUndelivered
+		if errors.Is(prepareErr, ErrUnsigned) {
+			// Nothing was sent, so nothing is unsigned: the flag describes what
+			// the RECIPIENT got, and the recipient got nothing.
+			base.Message = prepareErr.Error()
+			return base, nil
+		}
 		base.Message = fmt.Sprintf("could not persist long inject body: %v", prepareErr)
 		return base, nil
 	}

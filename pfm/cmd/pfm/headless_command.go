@@ -591,14 +591,16 @@ func runHeadlessStream(args []string, stdout, stderr io.Writer, runtimes ...comm
 func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat inject",
-		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] <target> <message>",
+		"usage: pfm chat inject [--force-now] [--then STEER]... [--file PATH] [--allow-unsigned] <target> <message>",
 		stderr,
 	)
 	var force bool
 	var retiredNoSig bool
+	var allowUnsigned bool
 	flags.BoolVar(&force, "now", false, "interrupt a working chat instead of waiting")
 	flags.BoolVar(&force, "force-now", false, "interrupt a working chat instead of waiting")
 	flags.BoolVar(&retiredNoSig, "no-sig", false, "retired compatibility flag; signatures remain mandatory")
+	flags.BoolVar(&allowUnsigned, "allow-unsigned", false, "send even when no sender identity can be derived")
 	messageFile := flags.String("file", "", "read the message from a file")
 	var steers steerList
 	flags.Var(&steers, "then", "follow-up steer; repeat for a chain")
@@ -647,7 +649,7 @@ func runHeadlessInject(args []string, stdout, stderr io.Writer, runtimes ...comm
 		return 2
 	}
 	ctx := context.Background()
-	engine, err := newInjectEngine(runtimes...)
+	engine, err := newInjectEngineAllowingUnsigned(allowUnsigned, runtimes...)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat inject: %v\n", err)
 		return codeUndelivered
@@ -815,13 +817,20 @@ func writeInjectResult(
 	return 0
 }
 
+// writeUnsignedInjectWarning is now reached only when the operator asked for
+// it with --allow-unsigned. Without that flag the send is REFUSED before
+// delivery (inject.ErrUnsigned), because a message the recipient must not act
+// on was never worth delivering. The warning stays because a deliberate
+// unsigned send should still say what it cost.
 func writeUnsignedInjectWarning(stderr io.Writer) {
 	fmt.Fprintln(
 		stderr,
-		"WARNING: sent UNSIGNED — this process derived no identity of its"+
-			" own. If it ran DETACHED (setsid/nohup/disowned), that is"+
-			" why: detaching severs the process chain the handle is"+
-			" recovered from. Send from the chat itself, or state it: "+
+		"WARNING: sent UNSIGNED (--allow-unsigned) — this process derived no"+
+			" identity of its own, so the recipient cannot verify who sent"+
+			" this and should not act on it. If this ran DETACHED"+
+			" (setsid/nohup/disowned), that is why: detaching severs the"+
+			" process chain the handle is recovered from. Send from the chat"+
+			" itself, or state it: "+
 			inject.SenderSessionEnv+"=$(pfm whoami) "+
 			inject.SenderLabelEnv+"=<label> <command>.",
 	)

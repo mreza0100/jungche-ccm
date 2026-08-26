@@ -155,8 +155,20 @@ func (identifier codexSeatIdentifier) Identify(ctx context.Context) (resolve.Ide
 }
 
 func newInjectEngine(runtimes ...commandRuntime) (*inject.Engine, error) {
+	return newInjectEngineAllowingUnsigned(false, runtimes...)
+}
+
+// newInjectEngineAllowingUnsigned builds the same engine with the unsigned
+// refusal lifted. Only `pfm chat inject --allow-unsigned` passes true: every
+// other caller gets the refusal, because an unsigned message is one the
+// recipient must not act on.
+func newInjectEngineAllowingUnsigned(
+	allowUnsigned bool,
+	runtimes ...commandRuntime,
+) (*inject.Engine, error) {
 	identifier := codexSeatIdentifier{}
 	dependencies := inject.Dependencies{}
+	dependencies.Options.AllowUnsigned = allowUnsigned
 	if len(runtimes) != 0 {
 		identifier.Runtime = &runtimes[0]
 		dependencies.Spawner = inject.CommandThenSpawner{

@@ -678,6 +678,43 @@ func (s *Store) Meta(ctx context.Context, key string) (string, bool, error) {
 	return value, true, nil
 }
 
+// MetaPrefix returns every metadata key/value whose key starts with prefix.
+// A caller that wants to audit a whole key FAMILY — the per-pane Codex
+// bindings, say — cannot do it one Meta() at a time, because the thing worth
+// auditing is what two keys say about each other.
+func (s *Store) MetaPrefix(ctx context.Context, prefix string) (map[string]string, error) {
+	if prefix == "" {
+		return nil, errors.New("meta prefix scan needs a prefix")
+	}
+	rows, err := s.db.QueryContext(
+		ctx, "SELECT key, value FROM meta WHERE key LIKE ? ESCAPE '\\' ORDER BY key",
+		escapeLikePrefix(prefix)+"%",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query meta prefix %q: %w", prefix, err)
+	}
+	defer rows.Close()
+	values := make(map[string]string)
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return nil, fmt.Errorf("scan meta prefix %q: %w", prefix, err)
+		}
+		values[key] = value
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read meta prefix %q: %w", prefix, err)
+	}
+	return values, nil
+}
+
+// escapeLikePrefix neutralises LIKE's own wildcards so a prefix containing
+// "%" or "_" matches literally rather than sweeping the whole table.
+func escapeLikePrefix(prefix string) string {
+	replacer := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_")
+	return replacer.Replace(prefix)
+}
+
 // DeleteMeta deletes a metadata value by key.
 func (s *Store) DeleteMeta(ctx context.Context, key string) error {
 	if _, err := s.db.ExecContext(ctx, "DELETE FROM meta WHERE key=?", key); err != nil {
