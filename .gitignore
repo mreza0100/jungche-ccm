@@ -37,3 +37,7 @@ engines/wave-walker/engine/runtime-smoke-input.json
 .opencode/.gitignore
 # Python bytecode caches (harvestpy browser worker dev runs).
 __pycache__/
+
+# The scrub table maps real private values to placeholder tokens — it MUST stay local,
+# never tracked/public. Untrack with: git rm --cached scripts/placeholder-map.tsv
+scripts/placeholder-map.tsv

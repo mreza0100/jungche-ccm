@@ -92,7 +92,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `main` and names uncommitted done-work as a finding; hygiene checks stray dirs, a dirty `main`,
   and the fence worktree under `.worktrees/{train}/`; suite evidence reads `.claude/scripts/dev.sh
   test` logs, fenced code waves through `dev.sh iso` logs opening with their fence proof line;
-  token burn reads seat statuslines from `/chat:capture`; structure drift adds the gitter-only
+  token burn reads seat statuslines from `chat_capture`; structure drift adds the gitter-only
   git-write law and the fence close order. The CCC identity itself (standing command seat replacing
   the one-shot sentinel) ships upstream via `release.md` — this entry records only the rewire.
 
@@ -125,3 +125,74 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   repo's Codex mirror has one writer, the Go `pfm codex build`; the repo-local `build-codex.mjs` is
   gone, so the "New agent" step and the scripts roster (a duplicated `codex-sync.sh`) now name the
   live compiler. `blueprint/commands/pcm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.
+
+- **KEEP-LOCAL: `scripts/placeholder-map.tsv` is untracked (leak-stop).** The scrub table necessarily
+  holds this repo's real private values (name, email, domain, machine paths) mapped to placeholder
+  tokens, and `scripts/leak-check.sh` excludes it from its own scan by design — so a tracked copy is
+  a leak the gate can never see. It is now `.gitignore`d and read from disk locally, where the refresh
+  pass still finds it. FLAGGED FOR THE MAINTAINER: this stops FUTURE exposure only; the value has been
+  public in git history since `9b9663d` — purging the past needs a history rewrite + force-push, a
+  destructive decision left to the user.
+
+- **KEEP-LOCAL: the three memory-backup templates are `curated: true` in the public refresh map (leak-stop).**
+  `blueprint/refresh-map.json` shipped their source paths verbatim: two under a private `~/work/<repo>/`
+  checkout and one under the memory vault whose directory name IS this repo's `{MEMORY_VAULT_DIR}` value —
+  the very thing that token exists to hide — all three naming private repos in a public file. The literal
+  strings are deliberately NOT repeated here: this ledger is tracked and published too, and a note that
+  quotes the paths it removed leaks them a second time. Recover them from the map's history if a hand
+  refresh is ever needed (`git log -p -- blueprint/refresh-map.json`). No adopter can resolve those paths,
+  so the honest public classification is `curated`. Refresh `blueprint/scripts/cc-memory-consolidate.sh`,
+  `cc-memory-wire.sh`, and `memory-sync.sh` by hand from their host originals. TRADEOFF: `refresh-scope.sh`
+  no longer raises a drift signal when the host copies change — this note is the only reminder.
+  `settings-global.json → ~/.claude/settings.json` stays mapped: that path is generic to every install.
+
+- **KEEP-LOCAL: `leak-check.sh`'s home-path rule is `~/work/[A-Za-z0-9]`, not bare `~/work`.**
+  `$HOME/work/{MEMORY_VAULT_DIR}` and `~/work/<project>` are the blueprint's OWN documented defaults
+  (`docs/references/memory-backup.md`, `blueprint/scripts/cc-memory-*.sh`) and must pass the gate; a
+  concrete directory under `~/work/` names a private repo and must not. Same discriminator as the
+  pre-existing `/Users/[A-Za-z0-9]` alternative — a home path leaks only when it names a real directory.
+  This ledger is TRACKED: a drift note must describe a leak it fixed, never quote the string verbatim.
+
+- **KEEP-LOCAL: `leak-check.sh --files` fails when it examined NOTHING (2026-08-26).** The files-mode
+  loop guarded every path with `[[ -f "$f" ]]` and had no else branch, so a path that was not a regular
+  file was skipped in silence and the run still printed `leak-check: clean`, exit 0. "We scanned forty
+  files and found no leak" and "we scanned zero files" printed the same word — the coincidence detector
+  this repo exists to hunt, sitting inside the publication gate itself. Found the honest way: the gate
+  passed a file set that DID contain a leak, because the caller ran it from zsh where an unquoted
+  `$changed` does not word-split, so all 69 paths arrived as ONE argument that matched no file. Now a
+  non-regular path prints `NOT-SCANNED` by name on stderr, and a run that examined zero of the paths it
+  was given fails outright. Absence alone does not fail — a deleted file in a changed-file list is
+  ordinary and must not block a commit — but it is never counted as clean either. Red/green proven:
+  `--files /nonexistent/xyz.md` was exit 0 "clean" before and is exit 1 after; a real file plus a
+  deleted one still exits 0 while naming the unscanned path.
+
+- **KEEP-LOCAL: `.claude/scripts/dev.sh` gate-honesty pass (2026-08-26).** This repo's build/test entry
+  point, no blueprint twin (`blueprint/scripts/dev.sh` is the environment manager). Four fixes, each
+  red/green-proven against the pre-change script: (1) bare `status` exited 0 while printing `WARN go —
+  MISSING`, contradicting its own header contract — a missing `go`/`node`/`npm`/`git` now increments
+  FAILURES; (2) `status {project}` ignored its TARGET arg and always reported the full fleet, so
+  `status bogus` printed "all steps passed" — it now scopes to that project (new `proj_tools`: a tool
+  the scope does not need warns, a tool it does need fails) and an unknown project exits 2 with usage;
+  (3) `iso` checked only the `docker` binary, so a dead daemon surfaced as an opaque compose connect
+  error AFTER `prepare-fence-mounts.sh` had already run its `mkdir -p` — `docker info` is now probed
+  first and named TOOLCHAIN-MISSING; (4) the blueprint token gate demoted unregistered template tokens
+  to `warn`, which nobody read and which let 27 tokens sit unruled — it now `fail_step`s, and the
+  registry was completed upstream first so the flip lands green rather than permanently red.
+
+- **KEEP-LOCAL: `scripts/leak-check.sh` reports its own broken state (2026-08-26).** The gate that
+  guards this repo's publication; no blueprint twin. Files-mode swallowed read errors with `|| true`,
+  so a permission-denied or unreadable file printed "leak-check: clean" and exited 0 — identical to a
+  genuinely clean scan. A `grep` exit ≥ 2 is now a loud `SCAN-ERROR … treated as FAILURE, never as
+  clean` line, red/green-proven against an unreadable file.
+
+- **KEEP-LOCAL: roster and pointer corrections across this repo's own install (2026-08-26).**
+  `CLAUDE.md` § Repo structure listed `agents/` as `(tracer, frr)` after `reviewer.md` joined it;
+  `.claude/commands/pcm.md` still named the registered agents as "gitter and tracer" when
+  `.claude/agents/` holds five, and now points at `ls` instead of a roster that re-rots;
+  `.claude/agents/gitter.md` frontmatter claimed to be the ONLY agent allowed to run git writes,
+  contradicting the § Process fallback that lets the active main Codex chat write when gitter is
+  unavailable — it now reads "the registered Git writer — no other subagent runs git WRITES here";
+  `.claude/commands/p/tokens/SKILL.md` pointed at `.claude/workflows/`, a directory this repo deleted,
+  and now names the `wave-walker` engine; `.claude/commands/wave/live.md` claimed "this install has no
+  worktree pipeline" while `CLAUDE.md` fences code waves — it now states what is actually true, that
+  `/wave:live` lands on `main` under `/dev` verification and the isolated fence is for code-wave trains.

@@ -1,7 +1,7 @@
 ---
 name: gitter
 description: >
-  The ONLY agent allowed to run git WRITES — no other agent, and not the main loop, commits here.
+  The registered Git writer — no other subagent runs git WRITES here.
   Phases: SETUP, COMMIT, MERGE, PUSH, PULL, TAG. Code waves work in isolated worktrees and land on
   main only after their fenced gates pass.
 model: sonnet # spec-execution tier — see CLAUDE.md § Model Selection

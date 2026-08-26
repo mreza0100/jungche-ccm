@@ -402,14 +402,10 @@
       }
     },
     "scripts/cc-memory-consolidate.sh": {
-      "sources": {
-        "~/work/host-ops/devbox/scripts/cc-memory-consolidate.sh": "32fd7f5ed41816aef943a81c1a81e265c544b8e42bffc039630453400bc29819"
-      }
+      "curated": true
     },
     "scripts/cc-memory-wire.sh": {
-      "sources": {
-        "~/work/host-ops/devbox/scripts/cc-memory-wire.sh": "ef579bff42f8fd8ae64ae05b747fea98c0e19b535a7b5cc2918ff0ccb04706f3"
-      }
+      "curated": true
     },
     "scripts/checkpoint.sh": {
       "sources": {
@@ -467,9 +463,7 @@
       }
     },
     "scripts/memory-sync.sh": {
-      "sources": {
-        "~/work/cc-memory/.sync.sh": "7883914853be67220f62aef5a9f1e5816a06f586b720d7b5b32b9c170af418cd"
-      }
+      "curated": true
     },
     "scripts/notify.sh": {
       "sources": {
@@ -499,7 +493,13 @@
     "skills/sources.json": {
       "curated": true
     },
+    "themes/README.md": {
+      "curated": true
+    },
     "themes/sources.json": {
+      "curated": true
+    },
+    "themes/tokyo-night.json": {
       "curated": true
     },
     "vscode/README.md": {
@@ -589,6 +589,12 @@
       "sources": {
         ".claude/commands/wave/ccc.md": "f708267a5a1c170e9209c571cdaf1b8a0b3d7b2113856e7789b4721d20e74112"
       }
+    },
+    "agents/reviewer.md": {
+      "curated": true
+    },
+    "agents/tracer.md": {
+      "curated": true
     },
     "agents/scheduler.md": {
       "sources": {

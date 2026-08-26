@@ -23,7 +23,7 @@ node .claude/commands/p/tokens/token-ledger.mjs [flags]
 
 ## What gets a `wf_*` row
 
-Only a Workflow-engine run — a script under `.claude/workflows/` or a skill-embedded engine (`/rr`). An orchestrated wave is not one: `/wave:orchestrator` and `/wave:builder` run in their chats' main sessions and spawn session-level sub-agents, which land in `(non-workflow agents)`; total a wave with `--filter <wave-label>` instead. The wave's walker pass runs the `wave-walker` script, so its cost sits in a separate `wf_*` row, outside that filter. A dual-chat wave spans two chats — sum default scope in the orchestrator chat with `--session {builder-session}` for the builder.
+Only a Workflow-engine run — the `wave-walker` engine (`engines/wave-walker/engine/`) or a skill-embedded engine (`/rr`). An orchestrated wave is not one: `/wave:orchestrator` and `/wave:builder` run in their chats' main sessions and spawn session-level sub-agents, which land in `(non-workflow agents)`; total a wave with `--filter <wave-label>` instead. The wave's walker pass runs the `wave-walker` script, so its cost sits in a separate `wf_*` row, outside that filter. A dual-chat wave spans two chats — sum default scope in the orchestrator chat with `--session {builder-session}` for the builder.
 
 ## Codex sessions — `--codex`
 

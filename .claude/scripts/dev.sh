@@ -28,6 +28,18 @@ proj_dir() {
   esac
 }
 
+# project -> the toolchain binaries that project's checks actually need. A tool
+# absent from the SCOPE being reported is a warn, not a failure: `status pfm`
+# must not fail on a missing npm, and must still fail on a missing go.
+proj_tools() {
+  case "$1" in
+    blueprint) echo "node" ;;
+    pfm)       echo "go" ;;
+    walker)    echo "node npm" ;;
+    *) return 1 ;;
+  esac
+}
+
 RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; DIM=$'\033[2m'; OFF=$'\033[0m'
 [[ -t 1 ]] || { RED=""; GREEN=""; YELLOW=""; DIM=""; OFF=""; }
 
@@ -72,18 +84,34 @@ repo_git() {
 
 # ─── status ──────────────────────────────────────────────────────────────────
 
-cmd_status() {
-  head_ "toolchain"
+cmd_status() { # cmd_status [project|all]
+  local target="${1:-all}"
+  local scope=()
+  if [[ "$target" == "all" ]]; then
+    scope=("${PROJECTS[@]}")
+  else
+    proj_dir "$target" >/dev/null 2>&1 || { echo "unknown project: $target" >&2; usage; }
+    scope=("$target")
+  fi
+
+  # git is repo-level (branch, tag, dirty count below), so it is required in
+  # every scope; each targeted project adds the binaries its own checks run.
+  local required=" git " p
+  for p in "${scope[@]}"; do required+="$(proj_tools "$p") "; done
+
+  head_ "toolchain — scope: $target"
   for t in go node npm git jq; do
     if command -v "$t" >/dev/null 2>&1; then
       ok "$t — $(command -v "$t")"
+    elif [[ "$required" == *" $t "* ]]; then
+      fail_step "$t — MISSING (TOOLCHAIN-MISSING; '$target' cannot be checked without it)"
     else
-      warn "$t — MISSING (projects needing it report TOOLCHAIN-MISSING, not a pass)"
+      warn "$t — MISSING (not required by the '$target' scope)"
     fi
   done
 
   head_ "projects"
-  for p in "${PROJECTS[@]}"; do
+  for p in "${scope[@]}"; do
     local d; d="$(proj_dir "$p")"
     if [[ ! -d "$d" ]]; then fail_step "$p — directory $d/ is MISSING"; continue; fi
     case "$p" in
@@ -142,6 +170,11 @@ act_blueprint() { # the shipped product: mechanical gates, no build
       head_ "blueprint — placeholder registry"
       # Scope: markdown templates only. Shell/JS templates use {VAR} for their own
       # runtime values, which are not install placeholders and never will be.
+      # PLACEHOLDERS.md registers BOTH classes a markdown template can carry —
+      # install placeholders SETUP fills, and the runtime metavariables it must
+      # NOT fill (its own § Runtime metavariables). So an unregistered token is
+      # genuinely unruled, not merely uncategorised, and FAILS: a warning here
+      # was read by nobody and let a token sit unruled release after release.
       local used unregistered out
       used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint 2>/dev/null | sort -u || true)
       if [[ -z "$used" ]]; then
@@ -159,7 +192,7 @@ act_blueprint() { # the shipped product: mechanical gates, no build
             mkdir -p tmp
           fi
           printf '%s\n' "$unregistered" > "$out"
-          warn "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md"
+          fail_step "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md — register each as an install placeholder or under § Runtime metavariables"
           info "most frequent 10 (full list: $out):"
           grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint \
             | grep -xFf "$out" | sort | uniq -c | sort -rn | head -10 \
@@ -275,13 +308,20 @@ dispatch() { # dispatch <project> <action>
 # fresh machine per run (own HOME, own tmux, no published ports). Files are
 # edited on the host; the container only builds and tests.
 # First output line is the fence proof (container hostname + HOME + /work).
-# BROKEN STATE: docker or the compose file missing = TOOLCHAIN-MISSING and a
-# non-zero exit — never a host fallback; a run that cannot print its fence
-# proof did not run inside the fence.
+# BROKEN STATE: docker missing, its DAEMON unreachable, or the compose file
+# missing = TOOLCHAIN-MISSING and a non-zero exit — never a host fallback; a run
+# that cannot print its fence proof did not run inside the fence. The daemon is
+# probed explicitly: an installed `docker` binary with nothing behind it is the
+# common failure, and it must be named as TOOLCHAIN-MISSING here rather than
+# surfacing later as an opaque compose connect error.
 cmd_iso() { # cmd_iso <action> [project]
   local action="${1:-}" target="${2:-pfm}"
   need_tool docker iso || exit 1
   need_tool git iso || exit 1
+  if ! docker info >/dev/null 2>&1; then
+    fail_step "iso: TOOLCHAIN-MISSING — the docker daemon is not reachable ('docker info' failed); start Docker and retry"
+    exit 1
+  fi
   local compose="$REPO_ROOT/infra/docker-compose.yml"
   if [[ ! -f "$compose" ]]; then
     fail_step "iso: TOOLCHAIN-MISSING — $compose not found"; exit 1
@@ -322,7 +362,8 @@ usage() {
 usage: dev.sh <command> [project]
 
 commands:
-  status                 toolchain, projects, git, install state (default)
+  status [project]       toolchain, projects, git, install state (default);
+                         a project narrows the scope to that project's toolchain
   install                fetch dependencies
   build                  compile
   typecheck              vet / tsc --noEmit
@@ -344,7 +385,7 @@ CMD="${1:-status}"
 TARGET="${2:-all}"
 
 case "$CMD" in
-  status) cmd_status ;;
+  status) cmd_status "$TARGET" ;;
   install|build|test|typecheck|verify|all)
     if [[ "$TARGET" == "all" ]]; then
       for p in "${PROJECTS[@]}"; do head_ "$p :: $CMD"; dispatch "$p" "$CMD"; done

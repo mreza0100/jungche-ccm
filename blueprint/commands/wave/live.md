@@ -22,7 +22,7 @@ The fix machinery the steps below cite is the jc-core card, `docs/commands/jc/re
 
 ## W1 — Resolve, stage & pre-flight
 
-**user-question forecast (gate):** enumerate and CLOSE every user-only item the batch will hit (secrets, deploy reviews, destructive ratifications, merge nods) before W2 — a mid-batch the user wait is a failed pre-flight and a reversal retro.
+**user-question forecast (gate):** enumerate and CLOSE every user-only item the batch will hit (secrets, deploy reviews, destructive ratifications, merge nods) before W2 — a mid-batch wait on the user is a failed pre-flight and a reversal retro.
 
 **Resolve the task list:** empty/blank arg → task file is `wave.md` at repo root; a path → read that file; a description → parse as inline tasks. Wave-train partitioning (splitting a multi-area spec into per-area waves) is orchestrator-only — `/wave:live` always flattens a partitioned spec into one flat batch.
 

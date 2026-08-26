@@ -9,9 +9,13 @@
 # brand `[Ii]ntuita` and matched neither `INTUITA` nor `iNTUITA`, so an all-caps chat name carried
 # the client's name straight through a "clean" gate. A denylist that only knows two capitalisations
 # of a word does not know the word. Keep the alternatives lowercase and let -i do the work.
+# `~/work/[A-Za-z0-9]` and `/Users/[A-Za-z0-9]` share one discriminator: a home path is a
+# leak only when it names a CONCRETE directory. `~/work/<project>` and
+# `$HOME/work/{MEMORY_VAULT_DIR}` are the blueprint's own documented defaults and must pass;
+# `~/work/host-ops/devbox` names a private repo and must not.
 set -euo pipefail
 
-PATTERN='(intuita|freudche|nervah|soulcheck|khosravivala|mohammadreza|\breza\b|reza@|/home/reza|/Users/[A-Za-z0-9])'
+PATTERN='(intuita|freudche|nervah|soulcheck|khosravivala|mohammadreza|\breza\b|reza@|/home/reza|~/work/[A-Za-z0-9]|/Users/[A-Za-z0-9])'
 
 usage() {
   echo "Usage: leak-check.sh [--range OLD NEW | --files f1 [f2 ...]]" >&2
@@ -126,19 +130,36 @@ case "$mode" in
     ;;
   files)
     : > "$hits_file"
+    # A named path that is not a regular file was NOT examined. That is normal for a
+    # deleted file in a changed-file list, so absence alone does not fail — but it is
+    # never silently counted as clean, and a run that examined NOTHING always fails:
+    # "we scanned 40 files and found no leak" and "we scanned zero files" must not
+    # print the same word. A caller whose shell folded its file list into one argument
+    # (zsh does not word-split an unquoted variable) lands exactly here.
+    scanned=0
+    skipped=0
     for f in "${files[@]}"; do
       if is_excluded_path "$f"; then
         continue
       fi
       if [[ -f "$f" ]]; then
-        matches="$(grep -niE "$PATTERN" "$f" || true)"
-        if [[ -n "$matches" ]]; then
+        scanned=$((scanned + 1))
+        matches="$(grep -niE "$PATTERN" "$f")" && rc=0 || rc=$?
+        if (( rc >= 2 )); then
+          printf 'SCAN-ERROR %s: leak-check could NOT read this file (grep rc=%d) — treated as FAILURE, never as clean\n' "$f" "$rc" >> "$hits_file"
+        elif [[ -n "$matches" ]]; then
           while IFS=: read -r lnum content; do
             printf 'LEAK %s: %s\n' "$f" "$content"
           done <<< "$matches" >> "$hits_file"
         fi
+      else
+        skipped=$((skipped + 1))
+        printf 'NOT-SCANNED %s: not a regular file (deleted or misnamed) — examined by nothing, counted as clean by nothing\n' "$f" >&2
       fi
     done
+    if (( scanned == 0 && ${#files[@]} > 0 )); then
+      printf 'SCAN-ERROR: --files named %d path(s) and NONE were examined (%d not a regular file) — refusing to report clean\n' "${#files[@]}" "$skipped" >> "$hits_file"
+    fi
     ;;
 esac
 

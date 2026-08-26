@@ -9,7 +9,7 @@ Run a batch of tasks live on `main`: $ARGUMENTS
 
 ## Overview
 
-A task list runs here. This install has no worktree pipeline: every task lands on `main` under `/dev` verification and a gitter commit.
+A task list runs here. This command lands every task on `main` under `/dev` verification and a gitter commit — the isolated worktree fence is for code-wave trains, not `/wave-live`.
 
 The fix loop the steps below cite is this repo's own: the `dev` agent implements, `.claude/scripts/dev.sh` verifies, the `qa` agent writes the tests, `gitter` commits. A change touching `.claude/**`, any `CLAUDE.md`, or `blueprint/**` routes through `/pcm` instead of a `dev` agent — those files are guarded and a dev agent is denied by the hook.
 

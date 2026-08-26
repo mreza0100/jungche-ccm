@@ -156,8 +156,10 @@ Real slots, register as siblings of their aggregate:
 ## The 10 PhDs (root CLAUDE.md persona)
 
 Keep the **structure** (5 + 5, each with title + bullets + "Think:" line). All ten slots are
-placeholders: `{PHD_DISCIPLINE_1}` … `{PHD_DISCIPLINE_10}` (generically `{PHD_DISCIPLINE_N}`
-in prose) — matching the shipped templates (`output-styles/professor.full.md:15-27`,
+placeholders — `{PHD_DISCIPLINE_1}`, `{PHD_DISCIPLINE_2}`, `{PHD_DISCIPLINE_3}`,
+`{PHD_DISCIPLINE_4}`, `{PHD_DISCIPLINE_5}`, `{PHD_DISCIPLINE_6}`, `{PHD_DISCIPLINE_7}`,
+`{PHD_DISCIPLINE_8}`, `{PHD_DISCIPLINE_9}`, `{PHD_DISCIPLINE_10}` (generically
+`{PHD_DISCIPLINE_N}` in prose) — matching the shipped templates (`output-styles/professor.full.md:15-27`,
 `professor.compact.md:11`) and `refresh.md:62`'s transformation rule ("Professor's
 disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`"). SETUP seeds slots 1-5 with the
 5 CS defaults (Claude may keep or swap them per adopter) and always fills slots 6-10 from
@@ -229,6 +231,7 @@ These slot into the concept families above — registered here to close prior ga
 | transcript / case note / session record (the artifact holding `{SENSITIVE_DATA}`)           | `{RECORD_NOUN}`                                                   | Domain nouns |
 | illustrative persona examples — a tech artifact, a domain artifact, a domain risk (Professor opening + Model Selection examples) | `{TECH_EXAMPLE_A}` / `{DOMAIN_EXAMPLE_A}` / `{DOMAIN_RISK_EXAMPLE}` | Persona      |
 | the Codex model this repo defaults to (`blueprint/codex/config.toml` `model =`)             | `{CODEX_MODEL}`                                                    | Model pins   |
+| the Codex model id named per tier in the token-ledger `PRICING` notes (frontier / spec-execution / collector) | `{CODEX_MODEL_FRONTIER}` / `{CODEX_MODEL_SPEC}` / `{CODEX_MODEL_COLLECTOR}` | Model pins   |
 | the Codex reasoning effort this repo defaults to (`blueprint/codex/config.toml` `model_reasoning_effort =`) | `{CODEX_REASONING_EFFORT}`                                         | Model pins   |
 | the database CLI forbidden at the execpolicy layer (e.g. `psql`)                           | `{DB_CLI}`                                                         | Tech stack   |
 | the container runtime forbidden at the execpolicy layer (e.g. `docker`)                    | `{CONTAINER_RUNTIME}`                                              | Tech stack   |
@@ -239,3 +242,23 @@ These slot into the concept families above — registered here to close prior ga
 | the N+1-query-joke punchline concept, domain-side                                           | `{DOMAIN_UNCONSCIOUS}`                                             | Persona      |
 | the N+1-query-joke setup concept, domain-side                                                | `{DOMAIN_DEFENSE_MECHANISM}`                                       | Persona      |
 | generic tech-stack mention inside Tier-A prose (refresh.md's own documented catch-all)      | `{TECH_STACK_PLACEHOLDER}`                                         | Persona      |
+
+## Runtime metavariables — registered here so they are NOT substituted
+
+These ALL-CAPS brace tokens appear in shipped templates but are **not install placeholders**. They are metavariables inside a format string, filled by the running command at runtime — siblings of the lowercase `{name}`, `{summary}`, `{sha}`, `{path}`, `{project}`, `{YYYY-MM-DD}` metavariables they sit beside. SETUP must never fill them; a regeneration agent must never swap them for a placeholder or invent a value for one.
+
+They are listed because the template token gate (`dev.sh verify blueprint`) FAILS on any ALL-CAPS brace token absent from this file. Both classes must therefore be registered, and the two lists carry different instructions: everything above gets substituted, everything here is left exactly as written. A new token that belongs to neither list is an unruled token, and the gate is right to stop the release for it.
+
+| Token                                                                        | Owner template                                       | Filled at runtime with                                       |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
+| `{FORMAT}`                                                                   | `commands/km.md`                                     | the knowledge format's short code                            |
+| `{INSTALLED}` / `{TARGET}` / `{OLD}`                                         | `commands/pcm/update.md`                             | the installed, target, and previous version strings          |
+| `{NEW_VERSION}`                                                              | `commands/pcm/release.md`                            | the version being cut                                        |
+| `{SHA}`                                                                      | `epics/TEMPLATE.md`, `commands/documenter.md`        | a commit sha                                                 |
+| `{MB}`                                                                       | `docs-commands/git/references/gitter-history.md`     | a file size in megabytes                                     |
+| `{PID}`                                                                      | `commands/wave/live.md`                              | the lock holder's process id                                 |
+| `{PIPELINE}`                                                                 | `commands/documenter/archive.md`, `docs-commands/documenter/references/scopes/*.md` | the pipeline's name          |
+| `{SCOPE}`                                                                    | `commands/pcm.md`                                    | the audit scope being run                                    |
+| `{SESSION_ID}`                                                               | `codex/skills/wave-builder/SKILL.md`                 | the Codex session id to resume                               |
+| `{STATUS_LITERAL}`                                                           | `commands/audit/code-hygiene.md`                     | an example status string literal in the code being audited   |
+| `{SEED_INSERTED}` / `{SEED_EXPECTED}` / `{SEED_STATUS}` / `{SEED_DETAIL}`    | `commands/dev.md`                                    | the seed progress row's counts, state, and detail            |
