@@ -205,7 +205,12 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   all 357 published commits and the result was force-pushed over 5 branches and 77 tags.
   `origin/main` moved `f96c660` → `08b78b3`; 25 tags (`v0.44.0`–`v0.62.0`) were re-pointed. Verified from a
   FRESH clone, not from the mirror: zero commits and zero of 77 tags carry the file.
-  Backup of the pre-rewrite history: `~/professor-backup-f96c660.bundle` (20M, `git bundle verify` clean).
+  Recovery handle for the pre-rewrite history: the local branch ref `pre-rewrite-main-f96c660` at
+  `f96c6608457f68ad9c2450429ec40963afb59b3f`, verified present
+  (`git show-ref --verify refs/heads/pre-rewrite-main-f96c660`). **CORRECTION (2026-08-26):** this
+  entry originally claimed a backup bundle at `~/professor-backup-f96c660.bundle` (20M, `git bundle
+  verify` clean); that file does NOT exist on this host (`ls -lh ~/professor-backup-f96c660.bundle`
+  returns "No such file or directory") — the ref above is the actual, verified recovery handle.
   **The rewrite was done against this repo's own `NEVER force-push` hard rule** (`.claude/commands/pcm/release.md`
   § Hard rules), on the user's explicit, thrice-reaffirmed in-turn override after being shown the full cost.
   The registered `gitter` agent refused the operation categorically and correctly — it also refused to treat a
@@ -220,3 +225,9 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   design accordingly.
   **Local fallout:** the 21 pre-existing worktree branches still sit on pre-rewrite commits and share no
   ancestry with the new `main`; each needs rebasing onto `08b78b3` before its next merge.
+
+- **FLAGGED — phantom backup in an install log, not yet root-caused (2026-08-26).** A `pfm install
+  --yes` run on this host logged rewriting the user's global `~/.mcp.json` with "(backup preserved)",
+  but no `.mcp.json.bak*` file exists anywhere under the home directory (`ls ~/.mcp.json*` shows only
+  the live file). The installer's log message asserts a side effect that did not happen on disk.
+  Tracking here until root-caused; not filed as a GitHub issue by this pass.
