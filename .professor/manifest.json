@@ -164,7 +164,7 @@
     ".codex/agents/scheduler.toml": "0798af7d001f39b8cdbf487df1c3351beaacb4b2f5836cba4a43d6696d8cc891",
     ".codex/agents/tracer.toml": "cf0bc9253515c7c805adf468df2ac6bc0416eae0fe819f6926106148c62c707f",
     ".codex/config.toml": "7509ceded2e03bdae6e3e3d4241a9e958df0a7ffa80bf2861d83dcb2c14161da",
-    ".gitignore": "631fe76f0af3e12e2d38ac04af00d102a2f4d3415e5c6cfd67b612ac88304341",
+    ".gitignore": "33523689fe0ec2115929362e4bc98b500e5c199c5c2d9b3bb7b4fd7c3cfd6f01",
     ".opencode/agent/dev.md": "edf1e0c167af4877ef042f7a964575707f1421cdef02b243deb8d4f6a9cad7ae",
     ".opencode/agent/gitter.md": "d6d78253ea2807c1c6eb3de1960d79c7b3bbed3b10acb565ee35accd13263af4",
     ".opencode/agent/qa.md": "30992b75a2e1cd0f5e6afa81ac2b57c2473fa3324b7de3b083df0577a2048ecf",

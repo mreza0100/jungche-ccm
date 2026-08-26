@@ -223,8 +223,62 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   permanently, by the user's accepted ruling ("that's not our responsibility"). The values are a name, an
   email, and paths — unlike a credential they cannot be rotated, so treat them as permanently disclosed and
   design accordingly.
-  **Local fallout:** the 21 pre-existing worktree branches still sit on pre-rewrite commits and share no
-  ancestry with the new `main`; each needs rebasing onto `08b78b3` before its next merge.
+  **Local fallout (resolved 2026-08-26, see the next entry):** the 21 pre-existing worktrees sat on
+  pre-rewrite commits and share no ancestry with the new `main`. "Each needs rebasing" overstated it —
+  18 of the 21 were already merged into the pre-rewrite tip and needed nothing but deletion.
+
+- **KEEP-LOCAL: all 21 stale worktrees purged (2026-08-26).** Ancestry was recomputed against the
+  PRE-rewrite tip `f96c660`, not against today's `main` — the history rewrite changed every SHA, so a
+  check against `main` reports `anc=NO` for all 21 and would have condemned the merged ones alongside the
+  rest. Against `f96c660`: 18 fully merged, 3 carrying commits of their own — two `walker-consumer-tree`
+  A/B benchmark checkpoints explicitly labelled "to be squashed by the builder" (the squashed result
+  landed as `2abf196`) and `review/pr-5-combined`, whose subject landed as `b93b674`. All three were
+  therefore superseded, and all 21 were removed. **Branch refs were NOT deleted**, so every commit
+  remains reachable; only the checkouts are gone.
+  Two things made the removal safe rather than merely convenient: three worktrees were DIRTY with work
+  that exists nowhere else (`walker-v2` 12 modified + 108 deleted, `limits-clarity` 33 modified,
+  `engine-contract-ready` 1), and one worktree was DETACHED with no branch ref, so its commits would have
+  become unreachable and collectable. Everything was archived first to
+  `~/professor-worktree-archive-20260826/` — per-worktree `git diff HEAD` patches, the untracked-file
+  lists, and a `worktree-tips.bundle` — and the bundle was verified by CLONING it and confirming all
+  three at-risk commits resolve, not by trusting `git bundle verify` alone.
+
+- **KEEP-LOCAL: leak-check.sh stopped publishing its own denylist (2026-08-26).** The gate's `PATTERN`
+  spelled out a surname, a first name and four private brand names in a tracked, public file — and
+  line 65 excluded `scripts/leak-check.sh` from its own scan, so the one file guaranteed to contain every
+  forbidden string was the one file the gate never read. It reported "clean" for months while being the
+  leak. This is the repo's standing question landing on the instrument itself.
+  The private terms now live in `scripts/leak-terms.txt` — untracked, gitignored, `LEAK_TERMS` env
+  override, mirroring `genericize.sh`'s `GENERICIZE_MAP` idiom. **A missing or empty terms file is a hard
+  non-zero failure**, never a pass: a fresh clone would otherwise scan for the structural patterns alone,
+  find nothing, and print the same word it prints when the tree is genuinely clean. "We have no denylist"
+  and "we found no leak" must not be the same output. Consequence to expect: `pre-push` and
+  `dev.sh verify blueprint` now refuse to run on any clone without a terms file — that is the design, and
+  the error message carries the fix.
+  The self-exclusion is gone; the gate scans itself and passes. It passes by CONSTRUCTION, not by
+  exemption: the three structural patterns are written as bracket classes (`/home/[A-Za-z0-9]`,
+  `/Users/[A-Za-z0-9]`, `~/work/[A-Za-z0-9]`), and a bracket class cannot match its own source text.
+  Only `scripts/leak-terms.txt` and `scripts/placeholder-map.tsv` remain excluded — the two files that
+  hold real private values by design.
+  Two further honesty fixes fell out of it. The empty-scan guard could not tell "excluded by design" from
+  "named but not a regular file" and failed a list of only-excluded paths; it now counts the three
+  outcomes separately and fails only when every non-excluded path went unexamined — which still catches
+  the zsh one-argument trap it was written for. And widening the old machine-specific home pattern to `/home/[A-Za-z0-9]` (so
+  another machine's path is caught too) surfaced 15 hits on invented fixture names; rather than exclude
+  the test directories, an explicit `BENIGN_TOKENS` allowlist strips those exact tokens before judging,
+  requires a non-word character after each so a longer real username is never suppressed, and REPORTS its
+  suppression count on every run — an allowlist that hides its own work is the next coincidence detector.
+  Three files were genericized rather than allowlisted, because they named real things:
+  `docs/dev/trains/pfm-wave-2/waves/1-pfm-e2e-verification/walk.md` (a `~/work/<project>` reference whose
+  own note had asked for exactly this scrub), `engines/rr/engine/test/persist.test.ts`, and a prose
+  false positive in `pfm-wave-2/STATE.md`.
+  **Verified, not asserted:** eight red/green cases (missing terms, empty terms, comments-only terms,
+  private term present, clean file, self-scan, benign token, near-miss username, mixed benign+real line,
+  zsh one-argument trap); a full tracked-tree scan reporting `scanned 1274 file(s), 2 excluded, 0 leaks,
+  93 benign suppressed`; and an end-to-end control planting a term in `README.md` and re-running the
+  IDENTICAL command to prove the scan that says "clean" can actually fail. `mreza0100` was checked and
+  is NOT a leak — it is this repo's own published GitHub identity, in `LICENSE`, `README.md` and
+  `INSTALL.md` by design.
 
 - **FLAGGED — phantom backup in an install log, not yet root-caused (2026-08-26).** A `pfm install
   --yes` run on this host logged rewriting the user's global `~/.mcp.json` with "(backup preserved)",

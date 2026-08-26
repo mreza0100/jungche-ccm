@@ -8,7 +8,7 @@
 // — i.e. relative to WHERE THE SCRIPT FILE ITSELF LIVES, not the caller's cwd. So to keep every write
 // out of the real repo, each test copies persist.js verbatim into a fresh throwaway git repo under
 // os.tmpdir() and runs THAT copy — __dirname then resolves to the throwaway repo, and every RR/... path
-// persist.js writes lands there instead of the real ~/work/skills/rr tree.
+// persist.js writes lands there instead of the real skills tree.
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';

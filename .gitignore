@@ -41,3 +41,7 @@ __pycache__/
 # The scrub table maps real private values to placeholder tokens — it MUST stay local,
 # never tracked/public. Untrack with: git rm --cached scripts/placeholder-map.tsv
 scripts/placeholder-map.tsv
+
+# leak-check.sh private denylist — names the very things that must never be
+# published, so it is never tracked/public. See scripts/leak-check.sh header.
+scripts/leak-terms.txt
