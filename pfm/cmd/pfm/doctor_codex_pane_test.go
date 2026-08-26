@@ -20,7 +20,13 @@ import (
 // this section existed, both facts sat in the meta table for weeks while
 // `pfm doctor` printed "clean".
 func TestCodexPaneBindingDoctorNamesContestedAndRetiredBindings(t *testing.T) {
-	jailTest(t)
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
 	database, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +40,10 @@ func TestCodexPaneBindingDoctorNamesContestedAndRetiredBindings(t *testing.T) {
 	}
 	const shared = "01a02dca-c83c-7871-bdf1-461c75441c77"
 	for _, socket := range []string{"cx-1787594704-779857-6265", "cx-1787594801-791822-11110"} {
+		// Both panes must be LIVE: a binding whose socket is gone is ordinary
+		// history, and counting it as contested would report litter as an
+		// emergency.
+		startCodexStatusPane(t, tmuxTmpDir, socket, `  ENGINE_BUILDER · /work/example · Full Access\n`)
 		if _, _, err := manager.AdvanceCodexPane(ctx, socket, "%0", shared); err != nil {
 			t.Fatal(err)
 		}
@@ -46,7 +56,7 @@ func TestCodexPaneBindingDoctorNamesContestedAndRetiredBindings(t *testing.T) {
 	}
 
 	var stdout bytes.Buffer
-	warnings := printCodexPaneBindingDoctor(ctx, &stdout, database, commandRuntime{})
+	warnings := printCodexPaneBindingDoctor(ctx, &stdout, database, commandRuntime{Paths: resolved})
 	report := stdout.String()
 	if warnings < 2 {
 		t.Fatalf("warnings = %d, want at least 2 (contested + retired): %s", warnings, report)
@@ -54,7 +64,7 @@ func TestCodexPaneBindingDoctorNamesContestedAndRetiredBindings(t *testing.T) {
 	for _, want := range []string{
 		"codex_pane_binding=contested",
 		"codex_pane_binding=retired-thread",
-		"codex_pane_bindings total=2 contested=1 retired=1",
+		"codex_pane_bindings total=2 live=2 stale=0 contested=1 retired=1",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("report is missing %q:\n%s", want, report)
@@ -65,7 +75,13 @@ func TestCodexPaneBindingDoctorNamesContestedAndRetiredBindings(t *testing.T) {
 // The other half of the same contract: a healthy table must NOT print the same
 // words. A check that says "contested" in both states is worth nothing.
 func TestCodexPaneBindingDoctorStaysQuietOnAHealthyTable(t *testing.T) {
-	jailTest(t)
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
 	database, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -77,15 +93,16 @@ func TestCodexPaneBindingDoctorStaysQuietOnAHealthyTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := manager.AdvanceCodexPane(
-		ctx, "cx-1787757492-3196324-4837", "%0",
-		"01a03ea6-8276-7141-b1ff-1a813901371a",
-	); err != nil {
+	const socket = "cx-1787757492-3196324-4837"
+	const threadID = "01a03ea6-8276-7141-b1ff-1a813901371a"
+	startCodexStatusPane(t, tmuxTmpDir, socket, "  "+threadID+` · /work/example · Full Access\n`)
+	codexJailRollout(t, database, root, threadID, 1)
+	if _, _, err := manager.AdvanceCodexPane(ctx, socket, "%0", threadID); err != nil {
 		t.Fatal(err)
 	}
 
 	var stdout bytes.Buffer
-	warnings := printCodexPaneBindingDoctor(ctx, &stdout, database, commandRuntime{})
+	warnings := printCodexPaneBindingDoctor(ctx, &stdout, database, commandRuntime{Paths: resolved})
 	report := stdout.String()
 	if warnings != 0 {
 		t.Fatalf("healthy table reported %d warnings: %s", warnings, report)
@@ -93,7 +110,7 @@ func TestCodexPaneBindingDoctorStaysQuietOnAHealthyTable(t *testing.T) {
 	if strings.Contains(report, "warning") {
 		t.Fatalf("healthy table printed a warning: %s", report)
 	}
-	if !strings.Contains(report, "codex_pane_bindings total=1 contested=0 retired=0") {
+	if !strings.Contains(report, "codex_pane_bindings total=1 live=1 stale=0 contested=0 retired=0") {
 		t.Fatalf("healthy table did not report its own count: %s", report)
 	}
 }
@@ -203,5 +220,51 @@ func TestCodexPaneDoctorStaysQuietOnAFollowablePane(t *testing.T) {
 	}
 	if !strings.Contains(report, "codex_panes live=1 unfollowable=0") {
 		t.Fatalf("doctor did not report its own coverage:\n%s", report)
+	}
+}
+
+// A binding whose pane is long gone is ordinary history, not a contest. This
+// host held 78 bindings for 19 live panes; counting the dead ones would have
+// reported a fleet-wide emergency made almost entirely of litter, and a check
+// that cries wolf fails the same way as one that stays silent.
+func TestCodexPaneBindingDoctorCountsDeadPaneBindingsAsStale(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two DEAD panes sharing one thread: no tmux server was ever started for
+	// either socket.
+	const shared = "99999999-9999-4999-8999-999999999999"
+	for _, socket := range []string{"cx-1700000090-1-1", "cx-1700000091-1-1"} {
+		if _, _, err := manager.AdvanceCodexPane(ctx, socket, "%0", shared); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var stdout bytes.Buffer
+	warnings := printCodexPaneBindingDoctor(ctx, &stdout, database, commandRuntime{Paths: resolved})
+	report := stdout.String()
+	if strings.Contains(report, "contested") && !strings.Contains(report, "contested=0") {
+		t.Fatalf("dead-pane litter was reported as contested:\n%s", report)
+	}
+	if !strings.Contains(report, "codex_pane_bindings total=2 live=0 stale=2 contested=0 retired=0") {
+		t.Fatalf("the totals do not reconcile:\n%s", report)
+	}
+	if warnings != 0 {
+		t.Fatalf("stale bindings raised %d warnings:\n%s", warnings, report)
 	}
 }

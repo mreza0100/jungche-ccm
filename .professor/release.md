@@ -34,6 +34,14 @@ and `(cost)` on any env / hook / permission / model-config delta.
   a pane bound to a thread a clear already retired, and every live pane pfm currently cannot follow
   through a clear. All three were invisible on every surface until now; the first two were found by
   reading the meta table by hand.
+- Fixed: `pfm doctor` counts a Codex pane binding whose PANE is gone as stale rather than contested,
+  and reports the split (`total / live / stale / contested / retired`) so the numbers reconcile. The
+  binding table outlives its panes — a real host held 76 bindings for 19 live panes — so the first
+  cut of this check reported eight fleet-wide collisions that were entirely dead-pane litter. A
+  check that cries wolf fails the same way as one that stays silent.
+- Fixed: `pfm doctor` no longer says a binding "was dropped" when it did not drop one. The reason
+  string is shared with the reconcile pass, which is the only writer; the read-only report now
+  states the condition and the pass states the write.
 - Changed: `pfm chat inject` REFUSES to send when no sender identity can be derived, instead of
   delivering the message stamped `UNSIGNED — sender identity underivable`. An unsigned message asks
   its recipient to act on an instruction from nobody, and the recipient's only defensible answer is
