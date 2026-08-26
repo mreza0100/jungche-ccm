@@ -322,16 +322,38 @@ func printCodexPaneBindingDoctor(
 		return 1
 	}
 
+	// The binding table outlives the panes: a socket that is gone leaves its
+	// row behind, and this host held 78 bindings for 19 live panes. Counting
+	// those as "contested" would report a fleet-wide emergency made almost
+	// entirely of litter — a check that cries wolf is the same failure as one
+	// that stays silent, just louder.
+	live := make(map[string]bool)
+	panes, paneErr := liveCodexPanes(ctx, runtime)
+	if paneErr != nil {
+		// A pane list that could not be read is not an empty one. Without it,
+		// nothing can be called stale, so the contested count is left over the
+		// whole table and the uncertainty is stated rather than hidden.
+		fmt.Fprintf(stdout, "doctor: warning codex_panes=unreadable error=%v\n", paneErr)
+	}
+	for _, pane := range panes {
+		live[pane.Socket+" "+pane.PaneID] = true
+	}
+	knowLive := paneErr == nil
+
 	panesByThread := make(map[string][]string, len(bindings))
 	undecodable := 0
+	stale := 0
 	for _, binding := range bindings {
 		if binding.Socket == "" {
 			undecodable++
 			continue
 		}
-		panesByThread[binding.ThreadID] = append(
-			panesByThread[binding.ThreadID], binding.Socket+" "+binding.PaneID,
-		)
+		address := binding.Socket + " " + binding.PaneID
+		if knowLive && !live[address] {
+			stale++
+			continue
+		}
+		panesByThread[binding.ThreadID] = append(panesByThread[binding.ThreadID], address)
 	}
 
 	warnings := 0
@@ -381,12 +403,16 @@ func printCodexPaneBindingDoctor(
 		warnings++
 		fmt.Fprintf(stdout, "doctor: warning codex_pane_binding=undecodable count=%d\n", undecodable)
 	}
+	// stale is REPORTED, never warned about: a binding whose pane is gone is
+	// ordinary history, and the next pass on that socket overwrites it. It is
+	// counted so the totals reconcile — a reader who sees total=78 and
+	// contested=2 must be able to see where the other 76 went.
 	fmt.Fprintf(
 		stdout,
-		"doctor: codex_pane_bindings total=%d contested=%d retired=%d undecodable=%d\n",
-		len(bindings), contested, retired, undecodable,
+		"doctor: codex_pane_bindings total=%d live=%d stale=%d contested=%d retired=%d undecodable=%d\n",
+		len(bindings), len(bindings)-stale-undecodable, stale, contested, retired, undecodable,
 	)
-	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime)
+	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime, panes, paneErr)
 	if warnings != 0 {
 		fmt.Fprintln(
 			stdout,
@@ -417,12 +443,13 @@ func printCodexPaneFollowDoctor(
 	database *store.Store,
 	manager *kill.Manager,
 	runtime commandRuntime,
+	panes []gather.Pane,
+	paneErr error,
 ) int {
-	panes, err := liveCodexPanes(ctx, runtime)
-	if err != nil {
+	if paneErr != nil {
 		// "No live panes" and "we could not look for live panes" are different
-		// answers and must not print the same word.
-		fmt.Fprintf(stdout, "doctor: warning codex_panes=unreadable error=%v\n", err)
+		// answers and must not print the same word. The caller already named
+		// the failure; this only refuses to report coverage it does not have.
 		return 1
 	}
 	if len(panes) == 0 {

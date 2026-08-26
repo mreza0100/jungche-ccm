@@ -44,7 +44,7 @@ const (
 	codexPaneLineageUnknown   = "lineage could not be read, so a clear cannot be told from a resume"
 	codexPaneSameLineage      = "the new thread continues the bound thread's lineage; a resume is not a clear"
 	codexPaneBindingContested = "another pane was bound to this pane's own thread; that binding was stale"
-	codexPaneBindingRetired   = "the bound thread was retired by a /clear, so the binding was impossible; it was dropped"
+	codexPaneBindingRetired   = "the bound thread was retired by a /clear, so this binding is impossible"
 	codexPaneNameRetired      = "status line name matches only threads a /clear already retired"
 )
 

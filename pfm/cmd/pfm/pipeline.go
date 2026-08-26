@@ -864,6 +864,15 @@ func reconcileCodexPanes(
 						"codex pane %s %s: drop impossible binding: %v",
 						action.Socket, action.PaneID, err,
 					))
+				} else {
+					// Only the pass that WRITES may claim the write. The same
+					// reason string reaches `pfm doctor`, which is read-only,
+					// and a report that claims a repair it never performed is
+					// the failure mode this whole wave is about.
+					warn(fmt.Sprintf(
+						"codex pane %s %s: binding dropped",
+						action.Socket, action.PaneID,
+					))
 				}
 			}
 			continue
