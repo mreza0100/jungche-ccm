@@ -134,6 +134,116 @@ func TestMCPDaemonMountedServersNeedNoAuthAndServeTools(t *testing.T) {
 	}
 }
 
+// TestMCPDaemonDisabledRouteReturns503DistinctFromEnabledAndUnknownPath pins
+// the #8 fix: mcp.servers.<name>.enabled=false must produce a response that
+// cannot be mistaken for either a live server or a route that never existed.
+// Before the fix, enabled=false and "fully live" were indistinguishable.
+func TestMCPDaemonDisabledRouteReturns503DistinctFromEnabledAndUnknownPath(t *testing.T) {
+	handler := newMCPDaemonHandler(mcpDaemonOptions{
+		Chat: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }),
+		// Harvester left nil: mcp.servers.harvester.enabled=false never
+		// constructs a handler for it to mount.
+	})
+
+	disabled := httptest.NewRecorder()
+	handler.ServeHTTP(disabled, httptest.NewRequest(http.MethodPost, "/mcp/harvester", nil))
+	if disabled.Code != http.StatusServiceUnavailable {
+		t.Fatalf("disabled route status = %d, want %d", disabled.Code, http.StatusServiceUnavailable)
+	}
+	wantBody := "pfm mcp: harvester is disabled by config; enable it with: pfm mcp harvester enable\n"
+	if disabled.Body.String() != wantBody {
+		t.Fatalf("disabled route body = %q, want %q", disabled.Body.String(), wantBody)
+	}
+
+	enabled := httptest.NewRecorder()
+	handler.ServeHTTP(enabled, httptest.NewRequest(http.MethodPost, "/mcp/chat", nil))
+	if enabled.Code != http.StatusNoContent {
+		t.Fatalf("enabled route status = %d, want %d — disabling harvester must not dark chat", enabled.Code, http.StatusNoContent)
+	}
+
+	unknown := httptest.NewRecorder()
+	handler.ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/mcp/unknown", nil))
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unregistered path status = %d, want %d", unknown.Code, http.StatusNotFound)
+	}
+	if unknown.Code == disabled.Code {
+		t.Fatalf("unregistered path and disabled server both report %d; a disabled server must read as disabled, not as an absent route", unknown.Code)
+	}
+}
+
+// TestMCPDaemonStatusServersListsOnlyMountedHandlers pins the #8 fix to
+// /status: the Servers surface must name only what was actually mounted,
+// never a hardcoded pair regardless of config. This is the surface the
+// original defect let lie.
+func TestMCPDaemonStatusServersListsOnlyMountedHandlers(t *testing.T) {
+	noop := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	for _, test := range []struct {
+		name            string
+		chat, harvester http.Handler
+		want            []string
+	}{
+		{"chat only mounted", noop, nil, []string{"chat"}},
+		{"harvester only mounted", nil, noop, []string{"harvester"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newMCPDaemonHandler(mcpDaemonOptions{Chat: test.chat, Harvester: test.harvester})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/status", nil))
+			var status mcpDaemonStatus
+			if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
+				t.Fatal(err)
+			}
+			if len(status.Servers) != len(test.want) {
+				t.Fatalf("Servers = %v, want exactly %v", status.Servers, test.want)
+			}
+			for _, name := range test.want {
+				if _, ok := status.Servers[name]; !ok {
+					t.Fatalf("Servers = %v, missing mounted %q", status.Servers, name)
+				}
+			}
+		})
+	}
+}
+
+// TestMCPServeBothDisabledRefusesBeforeBindingPort pins the #8 fix at the
+// command layer: mcp.servers.chat.enabled=false AND
+// mcp.servers.harvester.enabled=false must refuse to start with a non-zero
+// exit BEFORE the port is ever bound, not start an empty daemon that answers
+// nothing.
+func TestMCPServeBothDisabledRefusesBeforeBindingPort(t *testing.T) {
+	probe, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := probe.Addr().(*net.TCPAddr).Port
+	if err := probe.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := commandRuntime{Config: config.Defaults(t.TempDir(), nil)}
+	runtime.Config.MCP.HTTP.Port = port
+	// config.Defaults leaves both chat and harvester disabled; do not enable
+	// either here — that is the case under test.
+
+	var stdout, stderr bytes.Buffer
+	if code := runMCPServe(&stdout, &stderr, runtime); code != 1 {
+		t.Fatalf("both-disabled serve code = %d, want 1", code)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("both-disabled serve stdout = %q, want no startup line — nothing was mounted", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "every registered server is disabled by config") ||
+		!strings.Contains(stderr.String(), "pfm mcp <server> enable") {
+		t.Fatalf("both-disabled serve stderr = %q, want the disabled-config refusal and its enable hint", stderr.String())
+	}
+
+	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+	if err != nil {
+		t.Fatalf("port %d still bound after refusal: %v", port, err)
+	}
+	listener.Close()
+}
+
 func TestMCPServeRefusesHealthySecondInstance(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
