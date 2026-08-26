@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	goRuntime "runtime"
 	"strings"
 	"testing"
 
@@ -38,15 +39,71 @@ func TestInstallerOptionsCarryEachEngineRosterIndependently(t *testing.T) {
 	}
 }
 
-func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
-	t.Run("bare preview ignores reachable manager", func(t *testing.T) {
-		home := t.TempDir()
-		bin := filepath.Join(t.TempDir(), "systemctl")
-		if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+// writeManagerFakes stages fake systemctl and launchctl binaries in one PATH
+// directory, each appending its own invocation to a shared log so a subtest
+// can assert WHICH manager the sandbox actually reached instead of assuming
+// a PATH miss silently degraded interception into "hopefully not found."
+func writeManagerFakes(t *testing.T, systemctlBody, launchctlBody string) (binDir, logPath string) {
+	t.Helper()
+	binDir = t.TempDir()
+	logPath = filepath.Join(t.TempDir(), "manager-calls.log")
+	write := func(name, body string) {
+		script := "#!/bin/sh\necho \"" + name + " $*\" >> " + logPath + "\n" + body
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte(script), 0o700); err != nil {
 			t.Fatal(err)
 		}
+	}
+	write("systemctl", systemctlBody)
+	write("launchctl", launchctlBody)
+	return binDir, logPath
+}
+
+// assertManagerConsulted proves the sandbox intercepted the platform's real
+// scheduler manager by design (schedulerIsLaunchd, scheduler_darwin.go /
+// scheduler_other.go) rather than by a PATH lookup happening not to find the
+// real binary: on Linux, only systemd may ever be consulted; on Darwin, only
+// launchd may ever be consulted. wantDarwinConsulted covers the one case
+// that differs across the two platforms — a dry-run preview reaches systemd
+// for plan messaging on Linux (wireUnits' unconditional probe) but reaches
+// no manager at all on Darwin (wireLaunchAgent never dials out unless
+// applying).
+func assertManagerConsulted(t *testing.T, logPath string, wantDarwinConsulted bool) {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read manager call log: %v", err)
+	}
+	log := string(data)
+	if goRuntime.GOOS == "darwin" {
+		if strings.Contains(log, "systemctl ") {
+			t.Fatalf("manager log=%q, systemd must never be consulted on darwin", log)
+		}
+		if got := strings.Contains(log, "launchctl "); got != wantDarwinConsulted {
+			t.Fatalf("manager log=%q, launchctl consulted=%v want=%v", log, got, wantDarwinConsulted)
+		}
+		return
+	}
+	if strings.Contains(log, "launchctl ") {
+		t.Fatalf("manager log=%q, launchd must never be consulted off darwin", log)
+	}
+	if !strings.Contains(log, "systemctl ") {
+		t.Fatalf("manager log=%q, want systemd consulted", log)
+	}
+}
+
+func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
+	// The launchctl fake's "print" reply models launchAgentRunning's state
+	// line (launchd.go:177-196); its exit code always succeeds like the
+	// existing systemctl fakes below, so a subtest's only lever is the
+	// reported state, never a manager it forgot to answer.
+	const launchctlIdle = "case \"$1\" in\n  print) echo \"state = not running\" ;;\nesac\nexit 0\n"
+	const launchctlRunning = "case \"$1\" in\n  print) echo \"state = running\" ;;\nesac\nexit 0\n"
+
+	t.Run("bare preview ignores reachable manager", func(t *testing.T) {
+		home := t.TempDir()
+		binDir, logPath := writeManagerFakes(t, "exit 0\n", launchctlIdle)
 		t.Setenv("HOME", home)
-		t.Setenv("PATH", filepath.Dir(bin))
+		t.Setenv("PATH", binDir)
 		var stdout, stderr bytes.Buffer
 		if code := runInstall(nil, &stdout, &stderr); code != 0 {
 			t.Fatalf("preview code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
@@ -58,31 +115,27 @@ func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
 		if !strings.HasSuffix(stdout.String(), confirmation) || strings.Count(stdout.String(), confirmation) != 1 {
 			t.Fatalf("preview confirmation=%q, want one final line %q", stdout.String(), confirmation)
 		}
+		assertManagerConsulted(t, logPath, false)
 	})
 
 	t.Run("idle reachable manager applies with yes", func(t *testing.T) {
 		home := t.TempDir()
-		bin := filepath.Join(t.TempDir(), "systemctl")
-		script := "#!/bin/sh\nif [ \"$*\" = \"--user is-active --quiet pfm-name-sync.service\" ]; then exit 1; fi\nexit 0\n"
-		if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
-			t.Fatal(err)
-		}
+		script := "if [ \"$*\" = \"--user is-active --quiet pfm-name-sync.service\" ]; then exit 1; fi\nexit 0\n"
+		binDir, logPath := writeManagerFakes(t, script, launchctlIdle)
 		t.Setenv("HOME", home)
-		t.Setenv("PATH", filepath.Dir(bin))
+		t.Setenv("PATH", binDir)
 		var stdout, stderr bytes.Buffer
 		if code := runInstall([]string{"--yes"}, &stdout, &stderr); code != 0 {
 			t.Fatalf("idle yes code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 		}
+		assertManagerConsulted(t, logPath, true)
 	})
 
 	t.Run("running service refuses actionably", func(t *testing.T) {
 		home := t.TempDir()
-		bin := filepath.Join(t.TempDir(), "systemctl")
-		if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-			t.Fatal(err)
-		}
+		binDir, logPath := writeManagerFakes(t, "exit 0\n", launchctlRunning)
 		t.Setenv("HOME", home)
-		t.Setenv("PATH", filepath.Dir(bin))
+		t.Setenv("PATH", binDir)
 
 		var stdout, stderr bytes.Buffer
 		if code := runInstall([]string{"--yes"}, &stdout, &stderr); code != 97 {
@@ -95,6 +148,7 @@ func TestInstallGateScopesDryRunIdleAndRunningService(t *testing.T) {
 		if err != nil || len(entries) != 0 {
 			t.Fatalf("rc 97 refusal wrote files: entries=%v err=%v", entries, err)
 		}
+		assertManagerConsulted(t, logPath, true)
 	})
 }
 
