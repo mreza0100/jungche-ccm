@@ -504,7 +504,7 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 				t.Fatalf("selector refusal changed capture: %q -> %q", before, fake.capture)
 			}
 			if test.wantTyped &&
-				!strings.Contains(result.Proof, "to reply: /chat:inject sender <message>") {
+				!strings.Contains(result.Proof, "to reply: chat_inject sender <message>") {
 				t.Fatalf("proof lacks mandatory sender signature: %q", result.Proof)
 			}
 		})
@@ -633,7 +633,7 @@ func TestLongProseAutoFilePreservesBodySignatureAndProof(t *testing.T) {
 	pointer := fake.literals[0]
 	if strings.Contains(pointer, body) ||
 		!strings.Contains(pointer, "long prose payload — read "+result.AutoFilePath+" fully") ||
-		!strings.Contains(pointer, "to reply: /chat:inject sender <message>") {
+		!strings.Contains(pointer, "to reply: chat_inject sender <message>") {
 		t.Fatalf("pointer changed body/signature semantics: %q", pointer)
 	}
 	if !strings.Contains(result.Message, "AUTO-FILE") ||

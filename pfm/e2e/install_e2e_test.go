@@ -42,24 +42,10 @@ const (
 
 var commandLinks = []string{
 	"reload.md",
-	"chat/branch.md", "chat/capture.md", "chat/find.md", "chat/goal.md",
-	"chat/inject.md", "chat/interrogate.md", "chat/load.md", "chat/ls.md",
-	"chat/new.md", "chat/read.md", "chat/save.md", "chat/whoami.md",
-	"chat/group/create.md", "chat/group/invite.md", "chat/group/ls.md",
-	"chat/group/read.md", "chat/group/send.md", "chat/group/subscribe.md",
-	"chat/self/compact.md", "chat/chat.sh", "chat/history.sh",
 }
 
 var managedAssets = []string{
 	"reload.command.md",
-	"chat/branch.command.md", "chat/capture.command.md", "chat/chat.sh",
-	"chat/find.command.md", "chat/goal.command.md", "chat/inject.command.md",
-	"chat/interrogate.command.md", "chat/load.command.md", "chat/ls.command.md",
-	"chat/new.command.md", "chat/read.command.md", "chat/save.command.md",
-	"chat/self/compact.command.md", "chat/history.sh", "chat/whoami.command.md",
-	"chat/group/create.command.md", "chat/group/invite.command.md",
-	"chat/group/ls.command.md", "chat/group/read.command.md",
-	"chat/group/send.command.md", "chat/group/subscribe.command.md",
 	"shim/pfm.zsh",
 	"bin/claude",
 }

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -451,68 +449,9 @@ func runChatSatellite(
 	case "ls":
 		return runChatLS(args, stdout, stderr, runtimes...)
 	case "history":
-		return runChatScript("history.sh", args, stdin, stdout, stderr, runtimes...)
+		return runChatHistory(args, stdout, stderr, runtimes...)
 	default:
 		fmt.Fprintf(stderr, "pfm chat: unsupported compatibility command %q\n", verb)
 		return 2
 	}
-}
-
-func runChatScript(
-	name string,
-	args []string,
-	stdin io.Reader,
-	stdout, stderr io.Writer,
-	runtimes ...commandRuntime,
-) int {
-	path, err := locateChatScript(name)
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat: %v\n", err)
-		return 1
-	}
-	command := exec.Command(deps.Executable("bash"), append([]string{path}, args...)...)
-	command.Stdin = stdin
-	command.Stdout = stdout
-	command.Stderr = stderr
-	if name == "history.sh" && len(runtimes) != 0 {
-		roots, err := json.Marshal(runtimes[0].Paths.Roots[pfmengine.Claude])
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat: encode history roots: %v\n", err)
-			return 1
-		}
-		command.Env = append(os.Environ(), "PFM_HISTORY_ROOTS_JSON="+string(roots))
-	}
-	if err := command.Run(); err != nil {
-		var exit *exec.ExitError
-		if errors.As(err, &exit) {
-			return exit.ExitCode()
-		}
-		fmt.Fprintf(stderr, "pfm chat: run %s: %v\n", name, err)
-		return 1
-	}
-	return 0
-}
-
-func locateChatScript(name string) (string, error) {
-	candidates := make([]string, 0, 6)
-	if home := os.Getenv("PFM_HOME"); home != "" {
-		candidates = append(candidates, filepath.Join(home, "chat", name))
-	}
-	if resolved, err := paths.Resolve(); err == nil {
-		candidates = append(candidates,
-			filepath.Join(resolved.Home, ".claude", "commands", "chat", name),
-			filepath.Join(resolved.Home, ".professor", "pfm", "internal", "installer", "assets", "chat", name),
-		)
-	}
-	candidates = append(candidates,
-		filepath.Join("pfm", "internal", "installer", "assets", "chat", name),
-		filepath.Join("internal", "installer", "assets", "chat", name),
-	)
-	for _, candidate := range candidates {
-		info, err := os.Stat(candidate)
-		if err == nil && info.Mode().IsRegular() {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("locate %s", name)
 }

@@ -198,6 +198,9 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.retireBBInstall(); err != nil {
 		return err
 	}
+	if err := installer.retireChatCommands(); err != nil {
+		return err
+	}
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
@@ -504,6 +507,9 @@ func (installer *engine) uninstall(ctx context.Context) error {
 		return err
 	}
 	if err := installer.retireBBInstall(); err != nil {
+		return err
+	}
+	if err := installer.retireChatCommands(); err != nil {
 		return err
 	}
 	if schedulerIsLaunchd {
@@ -980,12 +986,6 @@ func (installer *engine) commandTarget(asset string) (string, bool) {
 	switch asset {
 	case "reload.command.md":
 		return filepath.Join(commands, "reload.md"), true
-	case "chat/chat.sh", "chat/history.sh":
-		return filepath.Join(commands, filepath.FromSlash(asset)), true
-	}
-	if strings.HasPrefix(asset, "chat/") && strings.HasSuffix(asset, ".command.md") {
-		relative := strings.TrimSuffix(asset, ".command.md") + ".md"
-		return filepath.Join(commands, filepath.FromSlash(relative)), true
 	}
 	return "", false
 }
@@ -1050,6 +1050,83 @@ func (installer *engine) retireBBInstall() error {
 	return nil
 }
 
+// retireChatCommands retires the 19 /chat:* Claude slash commands and the
+// chat.sh/history.sh compatibility scripts they shared a directory with —
+// every one of them superseded by the chat MCP tools, with history.sh's
+// behavior ported natively into `pfm chat history`. Same discipline as
+// retireBBInstall: only a link this installer's own managed root actually
+// owns gets unlinked, never a path the operator happens to have there.
+func (installer *engine) retireChatCommands() error {
+	installer.say("retired /chat: slash commands")
+	commands := filepath.Join(installer.options.ConfigDir, "commands")
+	for _, link := range []struct {
+		target        string
+		managedSource string
+	}{
+		{filepath.Join(commands, "chat", "branch.md"), filepath.Join(installer.managedRoot, "chat", "branch.command.md")},
+		{filepath.Join(commands, "chat", "capture.md"), filepath.Join(installer.managedRoot, "chat", "capture.command.md")},
+		{filepath.Join(commands, "chat", "find.md"), filepath.Join(installer.managedRoot, "chat", "find.command.md")},
+		{filepath.Join(commands, "chat", "goal.md"), filepath.Join(installer.managedRoot, "chat", "goal.command.md")},
+		{filepath.Join(commands, "chat", "inject.md"), filepath.Join(installer.managedRoot, "chat", "inject.command.md")},
+		{filepath.Join(commands, "chat", "interrogate.md"), filepath.Join(installer.managedRoot, "chat", "interrogate.command.md")},
+		{filepath.Join(commands, "chat", "load.md"), filepath.Join(installer.managedRoot, "chat", "load.command.md")},
+		{filepath.Join(commands, "chat", "ls.md"), filepath.Join(installer.managedRoot, "chat", "ls.command.md")},
+		{filepath.Join(commands, "chat", "new.md"), filepath.Join(installer.managedRoot, "chat", "new.command.md")},
+		{filepath.Join(commands, "chat", "read.md"), filepath.Join(installer.managedRoot, "chat", "read.command.md")},
+		{filepath.Join(commands, "chat", "save.md"), filepath.Join(installer.managedRoot, "chat", "save.command.md")},
+		{filepath.Join(commands, "chat", "whoami.md"), filepath.Join(installer.managedRoot, "chat", "whoami.command.md")},
+		{filepath.Join(commands, "chat", "group", "create.md"), filepath.Join(installer.managedRoot, "chat", "group", "create.command.md")},
+		{filepath.Join(commands, "chat", "group", "invite.md"), filepath.Join(installer.managedRoot, "chat", "group", "invite.command.md")},
+		{filepath.Join(commands, "chat", "group", "ls.md"), filepath.Join(installer.managedRoot, "chat", "group", "ls.command.md")},
+		{filepath.Join(commands, "chat", "group", "read.md"), filepath.Join(installer.managedRoot, "chat", "group", "read.command.md")},
+		{filepath.Join(commands, "chat", "group", "send.md"), filepath.Join(installer.managedRoot, "chat", "group", "send.command.md")},
+		{filepath.Join(commands, "chat", "group", "subscribe.md"), filepath.Join(installer.managedRoot, "chat", "group", "subscribe.command.md")},
+		{filepath.Join(commands, "chat", "self", "compact.md"), filepath.Join(installer.managedRoot, "chat", "self", "compact.command.md")},
+		{filepath.Join(commands, "chat", "chat.sh"), filepath.Join(installer.managedRoot, "chat", "chat.sh")},
+		{filepath.Join(commands, "chat", "history.sh"), filepath.Join(installer.managedRoot, "chat", "history.sh")},
+	} {
+		current, linked := resolvedLink(link.target)
+		if !linked || current != filepath.Clean(link.managedSource) {
+			installer.skip(link.target + " is not an installed /chat: link")
+			continue
+		}
+		if err := installer.unlinkOne(link.target); err != nil {
+			return err
+		}
+	}
+	for _, relative := range []string{
+		"chat/branch.command.md", "chat/capture.command.md", "chat/find.command.md",
+		"chat/goal.command.md", "chat/inject.command.md", "chat/interrogate.command.md",
+		"chat/load.command.md", "chat/ls.command.md", "chat/new.command.md",
+		"chat/read.command.md", "chat/save.command.md", "chat/whoami.command.md",
+		"chat/group/create.command.md", "chat/group/invite.command.md", "chat/group/ls.command.md",
+		"chat/group/read.command.md", "chat/group/send.command.md", "chat/group/subscribe.command.md",
+		"chat/self/compact.command.md", "chat/chat.sh", "chat/history.sh",
+	} {
+		if err := installer.retire(filepath.Join(installer.managedRoot, filepath.FromSlash(relative)), "retired /chat: slash command — superseded by the chat MCP tools"); err != nil {
+			return err
+		}
+	}
+	for _, relative := range []string{"chat/group", "chat/self", "chat"} {
+		if err := installer.retireEmptyDirectory(filepath.Join(installer.managedRoot, filepath.FromSlash(relative))); err != nil {
+			return err
+		}
+	}
+	// The host side is never unconditionally empty the way managedRoot is: an
+	// operator's own file, or one of the links above skipped as unowned,
+	// legitimately survives here. retireEmptyDirectory's hard failure on a
+	// non-empty directory is right for managedRoot's fully pfm-owned tree; it
+	// would wrongly abort every future install for an operator with one
+	// leftover file, so the host cleanup is best-effort instead.
+	for _, relative := range []string{"chat/group", "chat/self", "chat"} {
+		if err := installer.retireEmptyDirectoryTolerant(filepath.Join(commands, filepath.FromSlash(relative))); err != nil {
+			return err
+		}
+	}
+	installer.say("")
+	return nil
+}
+
 func (installer *engine) recordedProfessorSourceRepos() ([]string, error) {
 	repos := make([]string, 0, 2)
 	seen := map[string]bool{}
@@ -1096,6 +1173,27 @@ func (installer *engine) retireEmptyDirectory(path string) error {
 		}
 	}
 	return installer.change("remove empty "+path, func() error { return os.Remove(path) })
+}
+
+// retireEmptyDirectoryTolerant removes path only once it has actually turned
+// out empty. Unlike retireEmptyDirectory, a directory left non-empty is a
+// routine, visible skip rather than a hard failure — the same tolerant
+// os.Remove-and-skip idiom removeManagedAssets uses for its own directory
+// sweep, appropriate wherever content the operator (not this installer)
+// controls can legitimately remain.
+func (installer *engine) retireEmptyDirectoryTolerant(path string) error {
+	if !installer.apply {
+		return nil
+	}
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		installer.skip("leave non-empty directory " + path + ": " + err.Error())
+		return nil
+	}
+	installer.ok("removed empty " + path)
+	return nil
 }
 
 var unitNames = []string{

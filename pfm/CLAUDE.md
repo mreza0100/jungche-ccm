@@ -33,7 +33,7 @@ Use `/dev build pfm` · `/dev verify pfm` · `/dev test pfm` for anything the pi
 | `compose/` | side-effect-free row composition: classification, merge, kill, caps, sort |
 | `action/` | run-string and attach-line synthesis, solo, open-gate, shell quoting |
 | `kill/` | permanent kills (the store table keeps its `hidden` name), self-identification, the `--exit` detached choreography |
-| `resolve/` | label / session / cxwin resolvers — the `chat.sh` contract |
+| `resolve/` | label / session / cxwin resolvers — the exact-match return-code contract |
 | `inject/` | target resolution and the guarded tmux delivery sequence |
 | `headless/` | two-way headless chat and its await protocol |
 | `mcpserv/` | the MCP server surface |

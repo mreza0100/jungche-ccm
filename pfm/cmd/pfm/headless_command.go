@@ -110,9 +110,9 @@ func runChatWithRuntime(
 	case "reload", "swap":
 		return runChatReloadWithRuntime(rest, stdout, stderr, runtime)
 	case "whoami":
-		// Compatibility for the installed chat.sh shim. The settled public
-		// command is `pfm whoami`, but the shim must remain safe while callers
-		// still invoke `chat.sh whoami` during the staged cutover.
+		// The settled public command is `pfm whoami`; `pfm chat whoami`
+		// remains a compatibility alias for callers already spelling it
+		// this way.
 		return runWhoami(rest, stdout, stderr, runtime)
 	case "find", "save", "load", "branch", "history", "ls":
 		return runChatSatellite(verb, rest, stdin, stdout, stderr, runtime)

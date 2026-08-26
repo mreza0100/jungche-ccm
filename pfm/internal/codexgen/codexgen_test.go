@@ -201,6 +201,30 @@ func TestMCPBackedChatCommandsRetireGlobalSkillsButKeepInterrogate(t *testing.T)
 	}
 }
 
+// TestCommandSwapNeverRewritesASlashContinuedPath is the regression for a
+// real corruption: swapCommands matched a command name by its PREFIX only,
+// so a filesystem path that merely starts with a command name (/dev/tty)
+// was rewritten right along with the actual command invocation (/dev build
+// pfm). A slash command is followed by whitespace, end-of-line, or
+// punctuation — never by another "/".
+func TestCommandSwapNeverRewritesASlashContinuedPath(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(root, ".claude", "commands", "dev.md"), "---\ndescription: dev\n---\ndev\n")
+	writeTestFile(t, filepath.Join(root, "CLAUDE.md"), "# Fixture\n\nTUI renders on /dev/tty. Use `/dev build pfm` for anything the pipeline reads.\n")
+	result, err := Run(Options{Root: root, Home: home, Mode: ModeBuild})
+	if err != nil || !result.OK {
+		t.Fatalf("build: result=%#v err=%v", result, err)
+	}
+	agents := string(mustReadTestFile(t, filepath.Join(root, "AGENTS.md")))
+	if !strings.Contains(agents, "TUI renders on /dev/tty.") {
+		t.Fatalf("a /-continued path was rewritten, corrupting it:\n%s", agents)
+	}
+	if !strings.Contains(agents, "Use `$dev build pfm` for anything the pipeline reads.") {
+		t.Fatalf("the real /dev command invocation was not rewritten:\n%s", agents)
+	}
+}
+
 func TestFrontmatterAndRosterTransform(t *testing.T) {
 	raw := "---\ndescription: >-\n  A quoted \\\"description\\\"\n  over two lines.\nmodel: opus\nhooks:\n  PostToolUse:\n    - matcher: Edit\n---\nUse /wave:go, not /wave or /scripts/x. Read CLAUDE.md.\n"
 	fm, body, err := parseFrontmatter(raw)

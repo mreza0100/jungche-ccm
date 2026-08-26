@@ -2,7 +2,7 @@
 
 Two independent things live in this repo. Install what you need.
 
-- **`pfm`** — the host fleet CLI: statusline, `/chat:*`, `/reload`, multi-account tooling. Binary or source, touches only your `$HOME`, no project files.
+- **`pfm`** — the host fleet CLI: statusline, `/reload`, the chat MCP server, multi-account tooling. Binary or source, touches only your `$HOME`, no project files.
 - **Professor, the discipline layer** — `CLAUDE.md`, agents, commands, the pipeline. Installed into YOUR project through a Claude-guided interview.
 
 Shortest path first.
@@ -51,7 +51,7 @@ pfm install --yes --vscode
 `pfm install --yes` wires seven surfaces, all under `$HOME`; `--vscode` adds an eighth:
 
 1. Staged assets — `~/.local/share/pfm/install/`
-2. Command symlinks — `~/.claude/commands/` (`/reload`, the `/chat:*` family)
+2. Command symlinks — `~/.claude/commands/` (`/reload`)
 3. The `pfm-name-sync` scheduler — three systemd user units (Linux) or one launchd agent (macOS)
 4. Every Claude account settings file it finds (`~/.claude/settings.json` and each `~/.cc/N/settings.json`) — adds the usage, group, and `/clear` `SessionEnd` hooks; adopts the statusline only if none is already set
 5. `~/.codex/prompts/`, `~/.codex/skills/`, and `~/.codex/agents/` — Codex mirrors generated from
@@ -136,7 +136,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 | ---------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
 | Project discipline layer                       | The interview — the only writer       | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
-| Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the six host-fleet surfaces above — the interview never writes them directly                                                                                                           |
+| Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the seven host-fleet surfaces above — the interview never writes them directly                                                                                                           |
 
 `pfm install --config-dir DIR` retargets the `~/.claude`-rooted writes to a different config directory — the only supported override.
 

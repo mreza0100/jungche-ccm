@@ -214,7 +214,10 @@ func TestApplyIsSelfContainedIdempotentAndReversible(t *testing.T) {
 	if content := readFixture(t, bbTarget); content != "operator copy\n" {
 		t.Fatalf("install changed operator bb.md: %q", content)
 	}
-	assertLink(t, filepath.Join(config, "commands", "chat", "group", "send.md"), filepath.Join(managed, "chat", "group", "send.command.md"))
+	assertLink(t, filepath.Join(config, "commands", "reload.md"), filepath.Join(managed, "reload.command.md"))
+	if _, err := os.Lstat(filepath.Join(config, "commands", "chat", "group", "send.md")); !os.IsNotExist(err) {
+		t.Fatalf("install wired a retired /chat: command link: %v", err)
+	}
 	// One job, two schedulers: assert the one this platform actually installs,
 	// and that it did NOT leave the other platform's files behind.
 	if schedulerIsLaunchd {
@@ -418,7 +421,7 @@ func TestUninstallCodexConflictRefusesBeforeRemovingGlobalCommands(t *testing.T)
 	if _, err := Run(context.Background(), options); err != nil {
 		t.Fatal(err)
 	}
-	command := filepath.Join(home, ".claude", "commands", "chat", "group", "send.md")
+	command := filepath.Join(home, ".claude", "commands", "reload.md")
 	if _, err := os.Lstat(command); err != nil {
 		t.Fatalf("install did not wire command fixture: %v", err)
 	}
@@ -464,8 +467,6 @@ func TestInstallReconcilesGlobalCodexCommands(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		filepath.Join(home, ".codex", "prompts", "chat-inject.md"),
-		filepath.Join(home, ".codex", "skills", "chat-interrogate", "SKILL.md"),
 		filepath.Join(home, ".codex", "prompts", "reload.md"),
 		filepath.Join(home, ".codex", "skills", "reload", "SKILL.md"),
 	} {
@@ -474,8 +475,18 @@ func TestInstallReconcilesGlobalCodexCommands(t *testing.T) {
 			t.Fatalf("global Codex command mirror %s is not marker-owned:\n%s", path, content)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", "chat-inject")); !os.IsNotExist(err) {
-		t.Fatalf("MCP-backed chat skill was installed: %v", err)
+	// The retired /chat: commands never reach ~/.claude/commands/chat/ at all,
+	// so their former Codex mirrors (chat-inject, chat-interrogate) must not
+	// exist either.
+	for _, path := range []string{
+		filepath.Join(home, ".codex", "prompts", "chat-inject.md"),
+		filepath.Join(home, ".codex", "prompts", "chat-interrogate.md"),
+		filepath.Join(home, ".codex", "skills", "chat-inject"),
+		filepath.Join(home, ".codex", "skills", "chat-interrogate"),
+	} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("retired /chat: command left a Codex mirror at %s: %v", path, err)
+		}
 	}
 
 	foreign := filepath.Join(home, ".codex", "prompts", "operator.md")
@@ -486,8 +497,6 @@ func TestInstallReconcilesGlobalCodexCommands(t *testing.T) {
 		t.Fatalf("uninstall: %v", err)
 	}
 	for _, path := range []string{
-		filepath.Join(home, ".codex", "prompts", "chat-inject.md"),
-		filepath.Join(home, ".codex", "skills", "chat-inject"),
 		filepath.Join(home, ".codex", "prompts", "reload.md"),
 		filepath.Join(home, ".codex", "skills", "reload"),
 	} {
@@ -636,7 +645,7 @@ description: Trace a target.
 ---
 Read only.
 `)
-	conflict := filepath.Join(home, ".codex", "prompts", "chat-inject.md")
+	conflict := filepath.Join(home, ".codex", "prompts", "reload.md")
 	writeFixture(t, conflict, "operator-owned\n")
 
 	var output bytes.Buffer

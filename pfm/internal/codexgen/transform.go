@@ -185,7 +185,11 @@ func isCommandPrefixChar(value byte) bool {
 }
 
 func isCommandSuffixChar(value byte) bool {
-	return isASCIIWord(value) || value == ':' || value == '-'
+	// A slash command is followed by whitespace, end-of-line, or punctuation
+	// — never by another "/". Without this, a filesystem path that merely
+	// starts with a command name (/dev/tty) gets rewritten right along with
+	// the actual command invocation (/dev build pfm).
+	return isASCIIWord(value) || value == ':' || value == '-' || value == '/'
 }
 
 func isASCIIWord(value byte) bool {

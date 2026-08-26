@@ -115,7 +115,7 @@ func TestSignatureUsesTheSenderStatedByTheSpawningChat(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid 019ffd1e",
-		"to reply: /chat:inject cx-1700000000-1-1 <message>",
+		"to reply: chat_inject cx-1700000000-1-1 <message>",
 		"🔖 WAVE_ORCHESTRATOR",
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {
@@ -184,7 +184,7 @@ func TestSignatureUsesAncestryRecoveredIdentity(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid thread-x",
-		"to reply: /chat:inject cx-1700000000-1-1 <message>",
+		"to reply: chat_inject cx-1700000000-1-1 <message>",
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {
 			t.Fatalf("typed text %q lacks %q", lastLiteral(fake), want)
@@ -233,7 +233,7 @@ func TestSignatureUsesCodexThreadSeatAfterAncestryMiss(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid 019ffd1e",
-		"to reply: /chat:inject cc-1700000000-1-1 <message>",
+		"to reply: chat_inject cc-1700000000-1-1 <message>",
 		"🔖 Delivery Trust",
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {

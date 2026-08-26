@@ -109,24 +109,37 @@ func TestChatLSUsesConfiguredAccountRoots(t *testing.T) {
 	}
 }
 
-func TestChatHistoryPassesConfiguredRootsToChild(t *testing.T) {
+func TestChatHistoryUsesConfiguredRootsToResolveTheTranscript(t *testing.T) {
 	root := t.TempDir()
-	chatDir := filepath.Join(root, "chat")
-	if err := os.MkdirAll(chatDir, 0o700); err != nil {
+	projects := filepath.Join(root, "account", "projects")
+	const slug = "-fixture-project"
+	const id = "70707070-7070-4070-8070-707070707070"
+	transcriptPath := filepath.Join(projects, slug, id+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(transcriptPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	script := filepath.Join(chatDir, "history.sh")
-	if err := os.WriteFile(script, []byte("#!/usr/bin/env bash\nprintf '%s' \"$PFM_HISTORY_ROOTS_JSON\"\n"), 0o700); err != nil {
+	// A leading line is always dropped as possibly-partial (history.sh's own
+	// `tail -n 800 | sed 1d`), so the fixture carries one throwaway record
+	// ahead of the message actually under test.
+	lines := `{"type":"user","message":{"content":"dropped as the possibly-partial first line"}}` + "\n" +
+		`{"type":"user","timestamp":"2026-01-02T03:04:05Z","message":{"content":"configured roots transcript"}}` + "\n"
+	if err := os.WriteFile(transcriptPath, []byte(lines), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PFM_HOME", root)
-	runtime := commandRuntime{Paths: paths.Values{Roots: map[pfmengine.ID][]string{pfmengine.Claude: {filepath.Join(root, "account", "projects")}}}}
+	// A pool other than the configured one must never be consulted: only the
+	// runtime's own Claude roots resolve the sid, exactly what runChatScript
+	// used to marshal into PFM_HISTORY_ROOTS_JSON for the retired history.sh.
+	t.Setenv("PFM_HOME", filepath.Join(root, "unused-home"))
+	runtime := commandRuntime{Paths: paths.Values{Roots: map[pfmengine.ID][]string{pfmengine.Claude: {projects}}}}
 	var stdout, stderr bytes.Buffer
-	if code := runChatSatellite("history", []string{"session"}, strings.NewReader(""), &stdout, &stderr, runtime); code != 0 {
+	if code := runChatSatellite("history", []string{id, "5", slug}, strings.NewReader(""), &stdout, &stderr, runtime); code != 0 {
 		t.Fatalf("history code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if want := `["` + runtime.Paths.Roots[pfmengine.Claude][0] + `"]`; stdout.String() != want {
-		t.Fatalf("history roots=%q, want %q", stdout.String(), want)
+	if !strings.Contains(stdout.String(), transcriptPath) {
+		t.Fatalf("history did not resolve through the configured root: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "configured roots transcript") {
+		t.Fatalf("history did not render the transcript message: %q", stdout.String())
 	}
 }
 

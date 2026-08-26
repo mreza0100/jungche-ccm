@@ -209,7 +209,7 @@ func TestLongCompactFocusChunksAndFires(t *testing.T) {
 				t.Fatalf("busy compact proof lacks queue evidence: %q", result.Proof)
 			}
 			if strings.Contains(typed.String(), "— sid ") ||
-				strings.Contains(typed.String(), "to reply: /chat:inject") {
+				strings.Contains(typed.String(), "to reply: chat_inject") {
 				t.Fatalf("slash command acquired a sender signature: %q", typed.String())
 			}
 		})

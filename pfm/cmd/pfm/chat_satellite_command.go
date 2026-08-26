@@ -775,6 +775,236 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 	return filepath.Join(resolved.Home, ".claude", "projects", slug, id+".jsonl")
 }
 
+// historyMessage is one surviving user/assistant turn from a transcript tail,
+// ready to print — the native port of history.sh's jq pipeline.
+type historyMessage struct {
+	timestamp, role, text string
+}
+
+// runChatHistory is the native port of the retired history.sh compatibility
+// script: read a chat's on-disk transcript as deep as its tail carries, not
+// bounded to a live pane's visible scrollback.
+func runChatHistory(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
+	flags := newFlagSet("chat history", "usage: pfm chat history <sid-prefix|jsonl-path> [messages] [project-slug]", stderr)
+	if code, ok := parseFlags(flags, args); !ok {
+		return code
+	}
+	if flags.NArg() < 1 || flags.NArg() > 3 {
+		flags.Usage()
+		return 2
+	}
+	sid := flags.Arg(0)
+	count := 20
+	if flags.NArg() >= 2 {
+		parsed, err := strconv.Atoi(flags.Arg(1))
+		if err != nil || parsed < 1 {
+			fmt.Fprintf(stderr, "pfm chat history: messages must be a positive integer, got %q\n", flags.Arg(1))
+			return 2
+		}
+		count = parsed
+	}
+	slug := flags.Arg(2)
+	if slug == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat history: current directory: %v\n", err)
+			return 1
+		}
+		slug = strings.ReplaceAll(cwd, "/", "-")
+	}
+	path := sid
+	if info, statErr := os.Stat(sid); statErr != nil || !info.Mode().IsRegular() {
+		resolvedPath, err := resolveHistoryTranscript(sid, slug, runtimes...)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		path = resolvedPath
+	}
+	messages, err := readHistoryMessages(path, count)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat history: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "== %s · last %d messages ==\n", path, count)
+	for _, message := range messages {
+		fmt.Fprintf(stdout, "\n───── %s · %s ─────\n%s\n", message.timestamp, message.role, message.text)
+	}
+	return 0
+}
+
+// resolveHistoryTranscript reproduces history.sh's pool search: each pool is
+// tried in order, the newest-mtime `{pool}/{slug}/{sid}*.jsonl` match wins,
+// and the first pool with any match short-circuits the rest.
+func resolveHistoryTranscript(sid, slug string, runtimes ...commandRuntime) (string, error) {
+	pools, err := historyPools(runtimes...)
+	if err != nil {
+		return "", err
+	}
+	for _, pool := range pools {
+		match, err := newestHistoryMatch(pool, slug, sid)
+		if err != nil {
+			return "", err
+		}
+		if match != "" {
+			return match, nil
+		}
+	}
+	return "", fmt.Errorf("no transcript matching sid '%s' under %s in any account pool", sid, slug)
+}
+
+// historyPools mirrors runChatScript's former PFM_HISTORY_ROOTS_JSON
+// marshalling exactly: a supplied runtime's configured Claude roots are used
+// as-is (even an empty list, never widened), and only the ENTIRE absence of a
+// runtime falls back to the unconfigured defaults history.sh assumed.
+func historyPools(runtimes ...commandRuntime) ([]string, error) {
+	if len(runtimes) != 0 {
+		return runtimes[0].Paths.Roots[pfmengine.Claude], nil
+	}
+	resolved, err := paths.Resolve()
+	if err != nil {
+		return nil, err
+	}
+	pools := []string{filepath.Join(resolved.Home, ".claude", "projects")}
+	matches, err := filepath.Glob(filepath.Join(resolved.Home, ".cc", "*", "projects"))
+	if err != nil {
+		return nil, fmt.Errorf("glob %s: %w", filepath.Join(resolved.Home, ".cc", "*", "projects"), err)
+	}
+	sort.Strings(matches)
+	return append(pools, matches...), nil
+}
+
+// newestHistoryMatch returns the newest-mtime file under pool/slug matching
+// sid*.jsonl, or "" when the pool has none. A glob candidate that fails to
+// stat for a reason other than having vanished between glob and stat is a
+// real error, never silently read as absence.
+func newestHistoryMatch(pool, slug, sid string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(pool, slug, sid+"*.jsonl"))
+	if err != nil {
+		return "", fmt.Errorf("scan %s: %w", pool, err)
+	}
+	newest := ""
+	var newestModTime time.Time
+	for _, match := range matches {
+		info, statErr := os.Stat(match)
+		if errors.Is(statErr, fs.ErrNotExist) {
+			continue
+		}
+		if statErr != nil {
+			return "", fmt.Errorf("stat %s: %w", match, statErr)
+		}
+		if newest == "" || info.ModTime().After(newestModTime) {
+			newest = match
+			newestModTime = info.ModTime()
+		}
+	}
+	return newest, nil
+}
+
+// readHistoryMessages is the native port of history.sh's jq pipeline: tail
+// generously, drop the (possibly partial) first line, keep only user/
+// assistant records with non-empty rendered text, drop synthetic reminder and
+// caveat preambles, then take the last count survivors.
+func readHistoryMessages(path string, count int) ([]historyMessage, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	lines := tailLines(string(content), 800)
+	if len(lines) > 0 {
+		lines = lines[1:]
+	}
+	var messages []historyMessage
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var record struct {
+			Type      string `json:"type"`
+			Timestamp string `json:"timestamp"`
+			Message   struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			// A malformed line is skipped, never fatal — history.sh's jq -s
+			// pipeline is fed pre-filtered valid JSON per line by construction,
+			// but a hand-edited or truncated transcript should not abort the
+			// whole read over one bad record.
+			continue
+		}
+		if record.Type != "user" && record.Type != "assistant" {
+			continue
+		}
+		text := historyMessageText(record.Message.Content)
+		if text == "" || strings.HasPrefix(text, "<system-reminder") ||
+			strings.HasPrefix(text, "Caveat: The messages below") {
+			continue
+		}
+		timestamp := record.Timestamp
+		if timestamp == "" {
+			timestamp = "?"
+		}
+		messages = append(messages, historyMessage{timestamp: timestamp, role: record.Type, text: text})
+	}
+	if len(messages) > count {
+		messages = messages[len(messages)-count:]
+	}
+	return messages, nil
+}
+
+// historyMessageText extracts message.content the way history.sh's jq does:
+// a string is itself; an array joins the .text of every type=="text" element
+// with "\n"; anything else renders as "".
+func historyMessageText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		return asString
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &parts); err == nil {
+		texts := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part.Type == "text" {
+				texts = append(texts, part.Text)
+			}
+		}
+		return strings.Join(texts, "\n")
+	}
+	return ""
+}
+
+// tailLines reproduces `tail -n count`: the last count newline-delimited
+// lines, tolerant of a missing trailing newline and of fewer lines than
+// count.
+func tailLines(content string, count int) []string {
+	if content == "" {
+		return nil
+	}
+	lines := strings.Split(content, "\n")
+	if lines[len(lines)-1] == "" {
+		// A file ending in a newline splits into one trailing empty element
+		// that is the terminator, not a line.
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > count {
+		lines = lines[len(lines)-count:]
+	}
+	return lines
+}
+
 func runChatModal(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 3 || args[1] != "deny" {
 		fmt.Fprintln(stderr, "usage: pfm chat modal <tmux-session> deny <down-count>")

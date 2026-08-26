@@ -1132,7 +1132,7 @@ func signatureParts(sender Sender) []string {
 	if sender.Session != "" {
 		parts = append(
 			parts,
-			"to reply: /chat:inject "+sender.Session+" <message>",
+			"to reply: chat_inject "+sender.Session+" <message>",
 		)
 	}
 	if sender.Label != "" {

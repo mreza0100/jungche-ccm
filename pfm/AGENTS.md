@@ -34,7 +34,7 @@ Use `$dev build pfm` · `$dev verify pfm` · `$dev test pfm` for anything the pi
 | `compose/` | side-effect-free row composition: classification, merge, kill, caps, sort |
 | `action/` | run-string and attach-line synthesis, solo, open-gate, shell quoting |
 | `kill/` | permanent kills (the store table keeps its `hidden` name), self-identification, the `--exit` detached choreography |
-| `resolve/` | label / session / cxwin resolvers — the `chat.sh` contract |
+| `resolve/` | label / session / cxwin resolvers — the exact-match return-code contract |
 | `inject/` | target resolution and the guarded tmux delivery sequence |
 | `headless/` | two-way headless chat and its await protocol |
 | `mcpserv/` | the MCP server surface |
@@ -49,7 +49,7 @@ Use `$dev build pfm` · `$dev verify pfm` · `$dev test pfm` for anything the pi
 
 ## Code Standards
 
-- **The eval protocol (K1) — the binary never execs the final tmux attach.** TUI renders on `$dev/tty`, informational output goes to **stderr**, and exactly ONE shell line goes to **stdout** for the zsh wrapper to `eval`. Bunker semantics need `exec tmux attach` to replace the interactive shell, and ✦-new rows must call the user's own `cc`/`cx` shell functions. Emitted lines are golden-testable — keep them that way.
+- **The eval protocol (K1) — the binary never execs the final tmux attach.** TUI renders on `/dev/tty`, informational output goes to **stderr**, and exactly ONE shell line goes to **stdout** for the zsh wrapper to `eval`. Bunker semantics need `exec tmux attach` to replace the interactive shell, and ✦-new rows must call the user's own `cc`/`cx` shell functions. Emitted lines are golden-testable — keep them that way.
 - **One implementation each (K3).** Naming precedence, the kill ratchet, row classification, and run-string synthesis each live in exactly ONE package with table-driven tests. A second copy is the bug this rewrite exists to kill.
 - **One binary, two kernels — and the seam is a build tag, never a runtime `if`.** Linux and macOS are both supported. Where they differ, a `_linux.go` / `_darwin.go` pair defines the same identifier and the caller stays platform-blind (`getTermios`, `nativeProcFS`, `nativeProcesses`, `schedulerIsLaunchd`). Three differences are load-bearing: there is no `/proc`, so the process table comes from `sysctl` and `ProcFS` dispatches through `gather.NewProcFS` — which still honours an EXISTING root, because that is how the jail feeds it fixtures; tmux's ioctl and format-separator spellings differ, so parse through `internal/tmuxfmt` and never against one spelling; and there is no dead-launchd jail, so the installer's rc 97 gate narrows to "not mid-execution" rather than "manager not live". A platform whose constants nobody has confirmed must fail to BUILD, not fall back to a guess.
 - **`internal/dream/*` may not import host packages, and the seam does not excuse it.** `internal/dream/isolation_test.go` is the enforcement: `gather` is forbidden outright and only the seat may cross into `action`, `spawn`, `headless`, `transcript`, `paths`. The `kern.procargs2` decode is therefore duplicated in `dream/seat` ON PURPOSE. Reaching for `gather` to DRY it up is the reasonable-looking mistake that test exists to stop.
@@ -87,7 +87,7 @@ Test-jail overrides only — **not a config system** (`internal/paths/paths.go`)
 
 `PFM_HOME` · `PFM_DB` · `PFM_SHARED_DB` · `PFM_SID_DIR` · `PFM_CLAUDE_ROOTS` · `PFM_CODEX_ROOT` · `PFM_TMUX_DIR` · `PFM_PROC_ROOT` · `PFM_TMUX_CONF`
 
-`PFM_TMUX_CONF` is load-bearing beyond the jail: unset, a chat's tmux server loads the user's own `~/.tmux.conf` — because a chat IS a terminal the user lives in, and one that ignores their config wears the wrong status bar. Jails set it to `$dev/null` so a real machine config can never steer a fixture.
+`PFM_TMUX_CONF` is load-bearing beyond the jail: unset, a chat's tmux server loads the user's own `~/.tmux.conf` — because a chat IS a terminal the user lives in, and one that ignores their config wears the wrong status bar. Jails set it to `/dev/null` so a real machine config can never steer a fixture.
 
 Pipeline-level test knobs live in `cmd/pfm/pipeline.go`: `PFM_TEST_NOW_NS`, `PFM_TEST_FRESH_SOCKET`, `PFM_CODEX_AVAILABLE`, `PFM_DB_SCRIPT`.
 

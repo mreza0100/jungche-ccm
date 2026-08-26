@@ -346,7 +346,7 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 	if occurrences := strings.Count(capture, "USER:"+steer); occurrences != 1 {
 		t.Fatalf("steer landed %d times, want exactly once:\n%s", occurrences, capture)
 	}
-	if !strings.Contains(capture, "to reply: /chat:inject sender <message>") {
+	if !strings.Contains(capture, "to reply: chat_inject sender <message>") {
 		t.Fatalf("steer was delivered unsigned:\n%s", capture)
 	}
 	if !strings.Contains(result.Proof, "USER:"+steer) {
