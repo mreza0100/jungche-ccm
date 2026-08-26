@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"hostops/pfm/internal/ask"
@@ -182,8 +181,9 @@ func capturePane(ctx context.Context, chat Chat) (string, error) {
 // writePreparedCapture mirrors writePreparedExchange's temp-file approach: a
 // labeled, disposable file the caller removes on every path.
 func writePreparedCapture(directory string, chat Chat, capture string) (string, error) {
-	if directory == "" {
-		directory = filepath.Join("tmp", "chat-status")
+	directory, err := preparedScratchDir(directory)
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", fmt.Errorf("create prepared capture directory: %w", err)

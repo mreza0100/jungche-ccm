@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"hostops/pfm/internal/ask"
@@ -109,8 +108,9 @@ func Summarize(ctx context.Context, chat Chat, options SummaryOptions) SummaryRe
 }
 
 func writePreparedExchange(directory string, prompt, response []transcript.Entry, complete bool) (string, error) {
-	if directory == "" {
-		directory = filepath.Join("tmp", "chat-status")
+	directory, err := preparedScratchDir(directory)
+	if err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", fmt.Errorf("create prepared exchange directory: %w", err)
