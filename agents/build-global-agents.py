@@ -8,11 +8,17 @@ the whole role down with it.
 
 Run after editing any ~/.professor/agents/*.md. Idempotent.
 """
-import pathlib, re, sys, tomllib
+import os, pathlib, re, sys, tomllib
 
 AGENTS = pathlib.Path(__file__).resolve().parent
-INSTALL_MD = pathlib.Path.home() / ".claude/agents"
-INSTALL_TOML = pathlib.Path.home() / ".codex/agents"
+# Honor the runtimes' own config-dir overrides. Hardcoding ~/.claude installs
+# into a directory a session with CLAUDE_CONFIG_DIR set never reads, so every
+# role lands "successfully" somewhere invisible and the chat reports the agent
+# as not found — an install that cannot fail is not an install that worked.
+CLAUDE_HOME = pathlib.Path(os.environ.get("CLAUDE_CONFIG_DIR") or pathlib.Path.home() / ".claude")
+CODEX_HOME = pathlib.Path(os.environ.get("CODEX_HOME") or pathlib.Path.home() / ".codex")
+INSTALL_MD = CLAUDE_HOME / "agents"
+INSTALL_TOML = CODEX_HOME / "agents"
 
 
 def esc(s: str) -> str:                 # TOML basic string

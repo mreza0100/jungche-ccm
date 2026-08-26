@@ -305,3 +305,19 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   `TestMCPInstallCreatesClientJSONWithoutClaimingABackup`, which runs the installer against a fresh temp
   home and asserts both the `create` wording and the absence of any `.bak` — the end-to-end reproduction
   of this exact report, watched failing against the unfixed code first.
+
+- **KEEP-LOCAL: global agent installer now honors CLAUDE_CONFIG_DIR (2026-08-27).** `agents/build-global-agents.py`
+  hardcoded `~/.claude/agents` and `~/.codex/agents` as its install targets. This host runs Claude with a
+  non-default `CLAUDE_CONFIG_DIR`, so every `.md` role installed "successfully" into a directory no
+  session reads: `frr` and `reviewer` were absent from the registry and chats reported them as not found,
+  while `tracer` resolved only because someone had hand-symlinked it into the real config dir. The Codex
+  half was never affected — `~/.codex/agents/` had all three `.toml` twins, byte-identical to source.
+  The installer now reads `CLAUDE_CONFIG_DIR` / `CODEX_HOME` with the old paths as fallbacks. Re-run
+  installs `frr`, `reviewer`, `tracer` into `$CLAUDE_CONFIG_DIR/agents/` as real files (its `install()` already
+  unlinks a symlink first, by design — the registry must not depend on the repo directory surviving).
+  **The failure mode is the interesting part:** an installer that writes to the wrong directory reports the
+  same success as one that writes to the right directory. It printed `installed …` for years' worth of runs
+  and was never wrong about anything except where. Nothing downstream verified that the file it wrote was
+  in a directory the runtime actually reads — a write is not an install.
+  Registries load at SESSION START, so a re-run never fixes the running session; the roles appear in the
+  next one.
