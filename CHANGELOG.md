@@ -39,6 +39,7 @@ Bullets MUST follow this shape:
 
 Reverse-chronological. Click a version to read its full notes.
 
+- [v0.62.0](releases/v0.62.0.md) — the `/chat:*` slash-command family retires into the chat MCP server: 27 native tools replace 19 command cards, `pfm chat history` is ported to Go and the last two bundled chat shell scripts are deleted, `pfm install` retires the symlinks it wrote and skips the ones it did not. Behind them the seven-day audit closes — the loopback MCP daemon refuses `Origin`-bearing requests, the harvest resolver goes through the SSRF chokepoint instead of around it, and two surfaces that rendered a read error as "nothing there" now tell the truth. The framework's own gates stop blessing their broken state: `dev.sh status` exits non-zero on a missing toolchain and honors its project argument, `leak-check.sh` fails loud on a file it could not read, and an unregistered template token fails the build instead of warning into the void.
 - [v0.61.5](releases/v0.61.5.md) — accepted repair for legacy OpenCode indexing, transactional updates, and stable release gates
 - [v0.61.4](releases/v0.61.4.md) — repair legacy OpenCode indexing, transactional updates, and release gates
 - [v0.61.3](releases/v0.61.3.md) — corrective Darwin verification release for the complete Drive, deactivation, and guided-update wave
