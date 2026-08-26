@@ -390,9 +390,10 @@ func printCodexPaneBindingDoctor(
 	if warnings != 0 {
 		fmt.Fprintln(
 			stdout,
-			"doctor: remediation: a contested or retired binding is followed into the wrong "+
-				"thread — clear it with `pfm chat kill --forget <chat>` or let the next /clear "+
-				"in that pane re-seat it from the pane's own status line",
+			"doctor: remediation: a RETIRED binding is dropped automatically on the next gather "+
+				"pass (`pfm ls`), which returns the pane to unbound so its own status line can "+
+				"re-seat it; a CONTESTED binding resolves as soon as either pane shows a bare "+
+				"thread id, which happens on its next /clear",
 		)
 	}
 	return warnings

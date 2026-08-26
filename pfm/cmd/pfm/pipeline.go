@@ -858,6 +858,14 @@ func reconcileCodexPanes(
 					action.Socket, action.PaneID, action.Skip,
 				))
 			}
+			if action.Forget {
+				if err := manager.ForgetCodexPane(ctx, action.Socket, action.PaneID); err != nil {
+					warn(fmt.Sprintf(
+						"codex pane %s %s: drop impossible binding: %v",
+						action.Socket, action.PaneID, err,
+					))
+				}
+			}
 			continue
 		}
 		if action.Skip != "" && action.Loud {
@@ -949,7 +957,49 @@ func observeCodexPanes(
 		}
 		observations = append(observations, observation)
 	}
-	return observations, decideCodexPanes(observations, cxNames, codexLineageRoots(ctx, database))
+	return observations, decideCodexPanes(
+		observations, cxNames,
+		codexLineageRoots(ctx, database), codexRetiredThreads(ctx, database),
+	)
+}
+
+// codexRetiredThreads answers whether a thread was retired by a /clear,
+// reading the kill table at most once per pass and only when asked.
+//
+// The "known" return is what keeps this honest. A kill table that could not be
+// read answers (false, false), and every caller treats that as "do not act" —
+// so a store outage can never be mistaken for proof that a thread is alive,
+// nor let a live binding be dropped. Only a CLEAR retirement counts: an
+// explicit `pfm chat kill` hides a chat that is still perfectly alive in its
+// pane, and dropping that pane's binding would be wrong.
+func codexRetiredThreads(ctx context.Context, database *store.Store) codexThreadRetired {
+	var (
+		loaded  bool
+		broken  bool
+		records map[string]store.Killed
+	)
+	return func(id string) (bool, bool) {
+		if id == "" {
+			return false, false
+		}
+		if !loaded {
+			loaded = true
+			killed, err := database.KilledChats(ctx)
+			if err != nil {
+				broken = true
+			} else {
+				records = make(map[string]store.Killed, len(killed))
+				for _, record := range killed {
+					records[record.ID] = record
+				}
+			}
+		}
+		if broken {
+			return false, false
+		}
+		record, found := records[id]
+		return found && record.BaselinePrompts != nil, true
+	}
 }
 
 // codexLineageRoots resolves thread ids to lineage roots, loading the rollout

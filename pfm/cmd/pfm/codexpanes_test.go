@@ -23,6 +23,22 @@ func staticLineage(roots map[string]string) func(string) string {
 
 func brokenLineage(string) string { return "" }
 
+// nothingRetired is the ordinary case: the kill table read fine and holds
+// nothing relevant.
+func nothingRetired(string) (bool, bool) { return false, true }
+
+// retiredThreads answers from a fixed set, and unknownRetirement is the store
+// outage — the answer that must never let a binding be dropped.
+func retiredThreads(ids ...string) codexThreadRetired {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return func(id string) (bool, bool) { return set[id], true }
+}
+
+func unknownRetirement(string) (bool, bool) { return false, false }
+
 func onePaneAction(t *testing.T, actions []codexPaneAction) codexPaneAction {
 	t.Helper()
 	if len(actions) != 1 {
@@ -45,6 +61,7 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 		observation codexPaneObservation
 		names       map[string]string
 		lineage     func(string) string
+		retired     codexThreadRetired
 		wantBind    string
 		wantKill    string
 		wantSkip    string
@@ -125,8 +142,12 @@ func TestDecideCodexPaneRulings(t *testing.T) {
 			if lineage == nil {
 				lineage = staticLineage(nil)
 			}
+			retired := test.retired
+			if retired == nil {
+				retired = nothingRetired
+			}
 			action := onePaneAction(t, decideCodexPanes(
-				[]codexPaneObservation{test.observation}, test.names, lineage,
+				[]codexPaneObservation{test.observation}, test.names, lineage, retired,
 			))
 			if action.Bind != test.wantBind {
 				t.Errorf("Bind = %q, want %q", action.Bind, test.wantBind)
@@ -159,7 +180,7 @@ func TestDecideCodexPanesNeverSeedsTwoPanesOntoOneThread(t *testing.T) {
 			{Socket: "cx-second", PaneID: "%0", Name: "ENGINE_BUILDER"},
 		},
 		map[string]string{shared: "ENGINE_BUILDER"},
-		staticLineage(nil),
+		staticLineage(nil), nothingRetired,
 	)
 	if len(actions) != 2 {
 		t.Fatalf("got %d actions, want 2", len(actions))
@@ -187,7 +208,7 @@ func TestDecideCodexPanesRefusesToSeedOntoAClaimedThread(t *testing.T) {
 			{Socket: "cx-newcomer", PaneID: "%0", Name: "ENGINE_BUILDER"},
 		},
 		map[string]string{shared: "ENGINE_BUILDER"},
-		staticLineage(nil),
+		staticLineage(nil), nothingRetired,
 	)
 	if actions[0].Bind != "" || actions[0].Skip != "" {
 		t.Fatalf("incumbent was disturbed: %+v", actions[0])
@@ -222,7 +243,7 @@ func TestDecideCodexPanesClearTimelineNeverWalksBackwards(t *testing.T) {
 		t.Helper()
 		observed.Socket, observed.PaneID, observed.Bound = socket, pane, binding
 		action := onePaneAction(t, decideCodexPanes(
-			[]codexPaneObservation{observed}, names, staticLineage(nil),
+			[]codexPaneObservation{observed}, names, staticLineage(nil), nothingRetired,
 		))
 		if action.Bind != "" {
 			binding = action.Bind
@@ -267,5 +288,94 @@ func TestDecideCodexPanesClearTimelineNeverWalksBackwards(t *testing.T) {
 	}
 	if len(kills) != 1 || kills[0] != before {
 		t.Fatalf("kills = %v, want exactly [%s]", kills, before)
+	}
+}
+
+// The state a real fleet was found in, and the reason it could never get out
+// of it: two panes bound to a thread a /clear had already retired. The pane
+// shows a NAME from then on, and a name may not move a binding — so without an
+// explicit repair the fleet follows that pane into a dead chat forever.
+//
+// The binding is impossible, so it is dropped. Nothing is invented in its
+// place: an unbound pane is the honest answer, and the pane's own screen
+// re-seats it the moment it shows a bare id.
+func TestDecideCodexPanesDropsABindingOnAClearRetiredThread(t *testing.T) {
+	const dead = "01a02dca-c83c-7871-bdf1-461c75441c77"
+	action := onePaneAction(t, decideCodexPanes(
+		[]codexPaneObservation{
+			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: dead},
+		},
+		map[string]string{dead: "ENGINE_BUILDER"},
+		staticLineage(nil),
+		retiredThreads(dead),
+	))
+	if action.Bind != "" {
+		t.Fatalf("a retired thread was re-seeded: %+v", action)
+	}
+	if !action.Forget {
+		t.Fatalf("the impossible binding was left in place: %+v", action)
+	}
+	if !action.Loud {
+		t.Fatalf("the repair was silent: %+v", action)
+	}
+}
+
+// The other half of the same repair: the drop must not be undone by the seed
+// path re-attaching the pane to the very thread it just let go of. That would
+// churn the store once per gather pass and change nothing.
+func TestDecideCodexPanesNeverSeedsOntoARetiredThread(t *testing.T) {
+	const dead = "01a02dca-c83c-7871-bdf1-461c75441c77"
+	action := onePaneAction(t, decideCodexPanes(
+		[]codexPaneObservation{{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER"}},
+		map[string]string{dead: "ENGINE_BUILDER"},
+		staticLineage(nil),
+		retiredThreads(dead),
+	))
+	if action.Bind != "" {
+		t.Fatalf("seeded onto a retired thread: %+v", action)
+	}
+	if action.Skip != codexPaneNameRetired || !action.Loud {
+		t.Fatalf("skip = (%q, loud=%v), want (%q, loud=true)", action.Skip, action.Loud, codexPaneNameRetired)
+	}
+}
+
+// A kill table that could not be READ is not proof that a thread is dead. The
+// repair is destructive — it erases a binding — so an unreadable table must
+// leave every binding exactly where it is.
+func TestDecideCodexPanesKeepsBindingsWhenRetirementIsUnknowable(t *testing.T) {
+	const bound = "01a02dca-c83c-7871-bdf1-461c75441c77"
+	action := onePaneAction(t, decideCodexPanes(
+		[]codexPaneObservation{
+			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: bound},
+		},
+		map[string]string{bound: "ENGINE_BUILDER"},
+		staticLineage(nil),
+		unknownRetirement,
+	))
+	if action.Forget {
+		t.Fatalf("an unreadable kill table erased a live binding: %+v", action)
+	}
+	if action.Bind != "" || action.Skip != "" {
+		t.Fatalf("an unreadable kill table changed the ruling: %+v", action)
+	}
+}
+
+// An explicit `pfm chat kill` hides a chat that is still running in its pane.
+// That binding is correct and must survive: only a /clear retirement (a
+// prompt-baseline kill) proves the pane moved on.
+func TestDecideCodexPanesKeepsABindingOnAnExplicitlyKilledChat(t *testing.T) {
+	const bound = "01a02dca-c83c-7871-bdf1-461c75441c77"
+	action := onePaneAction(t, decideCodexPanes(
+		[]codexPaneObservation{
+			{Socket: "cx-a", PaneID: "%0", Name: "ENGINE_BUILDER", Bound: bound},
+		},
+		map[string]string{bound: "ENGINE_BUILDER"},
+		staticLineage(nil),
+		// An explicit kill carries no baseline, so the oracle reports it as
+		// NOT clear-retired.
+		func(string) (bool, bool) { return false, true },
+	))
+	if action.Forget || action.Bind != "" || action.Skip != "" {
+		t.Fatalf("an explicit kill disturbed a live binding: %+v", action)
 	}
 }

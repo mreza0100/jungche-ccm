@@ -24,6 +24,12 @@ and `(cost)` on any env / hook / permission / model-config delta.
   looks exactly like a clear from the status line, no longer retires the chat's own lineage root and
   makes the chat vanish from the fleet. The lineage is consulted, and a lineage that could not be
   READ refuses the kill rather than guessing.
+- Fixed: `pfm` Codex `/clear` — a pane binding that points at a thread a clear already retired is now
+  DROPPED. That binding is impossible, and it was also a trap: from then on the pane shows a name,
+  and a name may not move a binding, so nothing could ever move it off the dead thread. Dropping it
+  returns the pane to unbound — the honest answer — and its own status line re-seats it. An
+  unreadable kill table drops nothing, and an explicit `pfm chat kill` (which hides a chat that is
+  still running) is not a retirement.
 - Added: `pfm doctor` reports the Codex pane bindings against each other — two panes on one thread,
   a pane bound to a thread a clear already retired, and every live pane pfm currently cannot follow
   through a clear. All three were invisible on every surface until now; the first two were found by

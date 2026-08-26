@@ -44,7 +44,15 @@ const (
 	codexPaneLineageUnknown   = "lineage could not be read, so a clear cannot be told from a resume"
 	codexPaneSameLineage      = "the new thread continues the bound thread's lineage; a resume is not a clear"
 	codexPaneBindingContested = "another pane was bound to this pane's own thread; that binding was stale"
+	codexPaneBindingRetired   = "the bound thread was retired by a /clear, so the binding was impossible; it was dropped"
+	codexPaneNameRetired      = "status line name matches only threads a /clear already retired"
 )
+
+// codexThreadRetired reports whether a thread was retired by a /clear, and
+// whether that could be determined AT ALL. The second return is the whole
+// point: a kill table that could not be read must never let a live binding be
+// dropped, because "we failed to look" is not "this thread is dead".
+type codexThreadRetired func(id string) (retired, known bool)
 
 // codexPaneObservation is one live Codex pane as a reconcile pass found it:
 // what the pane's own status line said, and what pfm believed it was running.
@@ -76,6 +84,9 @@ type codexPaneAction struct {
 	ClearKill string
 	// Skip names why the pane was left alone. Never empty when Bind is.
 	Skip string
+	// Forget erases this pane's binding outright. It is the repair for a
+	// binding that cannot possibly be true and would otherwise never heal.
+	Forget bool
 	// Loud marks a skip that must reach stderr on this pass rather than
 	// waiting for someone to run `pfm doctor`. Ordinary, self-healing states
 	// (a name lagging one index refresh behind a rename) are quiet; a pane pfm
@@ -95,7 +106,25 @@ func decideCodexPanes(
 	observations []codexPaneObservation,
 	cxNames map[string]string,
 	lineageRoot func(string) string,
+	retired codexThreadRetired,
 ) []codexPaneAction {
+	// A binding pointing at a thread a /clear already retired is not merely
+	// suspicious, it is IMPOSSIBLE: the clear that retired it is the same
+	// event that moved the pane onto its replacement. A fleet that reached
+	// that state is following the pane into a chat nobody is in — and it can
+	// never recover on its own, because the pane shows a NAME from then on and
+	// a name is not allowed to move a binding. So the impossible binding is
+	// dropped here, which frees the pane to be re-seated from its own screen.
+	dropped := make(map[string]bool, len(observations))
+	for index, observation := range observations {
+		if observation.Failed || observation.Bound == "" {
+			continue
+		}
+		if isRetired, known := retired(observation.Bound); known && isRetired {
+			dropped[observation.Socket+"\x00"+observation.PaneID] = true
+			observations[index].Bound = ""
+		}
+	}
 	threadsByName := make(map[string][]string, len(cxNames))
 	for id, name := range cxNames {
 		if name == "" {
@@ -133,7 +162,14 @@ func decideCodexPanes(
 
 	byPane := make(map[string]codexPaneAction, len(ordered))
 	for _, observation := range ordered {
-		action := decideCodexPane(observation, threadsByName, claimedBy, lineageRoot)
+		action := decideCodexPane(observation, threadsByName, claimedBy, lineageRoot, retired)
+		if dropped[observation.Socket+"\x00"+observation.PaneID] {
+			// Say it either way, but only ERASE the key when nothing replaced
+			// it: a fresh Bind overwrites the same key, and deleting it after
+			// would undo the repair.
+			action.Skip, action.Loud = codexPaneBindingRetired, true
+			action.Forget = action.Bind == ""
+		}
 		// A binding handed out in THIS pass claims its thread too. Without
 		// this, two unbound panes sharing one display name both seed onto the
 		// same thread — which is the state a real fleet was found in.
@@ -156,6 +192,7 @@ func decideCodexPane(
 	threadsByName map[string][]string,
 	claimedBy map[string]string,
 	lineageRoot func(string) string,
+	retired codexThreadRetired,
 ) codexPaneAction {
 	action := codexPaneAction{
 		Socket: observation.Socket, PaneID: observation.PaneID, Observed: observation,
@@ -229,13 +266,23 @@ func decideCodexPane(
 	}
 
 	free := make([]string, 0, len(matches))
+	retiredMatches := 0
 	for _, match := range matches {
 		if owner, taken := claimedBy[match]; taken && owner != self {
+			continue
+		}
+		// Seeding onto a retired thread would immediately re-create the
+		// impossible binding the drop above just repaired, once per pass,
+		// forever.
+		if isRetired, known := retired(match); known && isRetired {
+			retiredMatches++
 			continue
 		}
 		free = append(free, match)
 	}
 	switch {
+	case len(matches) != 0 && len(free) == 0 && retiredMatches != 0:
+		action.Skip, action.Loud = codexPaneNameRetired, true
 	case len(matches) == 0:
 		// Ordinary and self-healing: a chat named a moment ago is on screen
 		// before Codex's index has been re-read. It is quiet HERE because this

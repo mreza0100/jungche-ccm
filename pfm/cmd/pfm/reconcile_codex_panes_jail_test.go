@@ -672,3 +672,89 @@ func TestReconcileCodexPanesTreatsASameLineageResumeAsNoClear(t *testing.T) {
 		t.Fatalf("a same-lineage resume retired the chat's own root: killed=%v error=%v", killed, err)
 	}
 }
+
+// The stuck state, replayed against a real tmux server: a pane bound to a
+// thread a /clear already retired, showing a NAME that resolves only to that
+// same dead thread.
+//
+// This is where a real fleet was found, and it is a TRAP rather than a
+// transient: the pane shows a name from here on, a name may not move a
+// binding, so nothing in the ordinary pass can ever move it off the corpse.
+// The binding is impossible, so it is dropped — and NOT replaced by a guess.
+// The pane's own screen re-seats it on its next unnamed frame.
+func TestReconcileCodexPanesDropsABindingOnAClearRetiredThread(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000013-1-1"
+	startCodexStatusPane(t, tmuxTmpDir, socket, `  ENGINE_BUILDER · /work/example · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	ctx := context.Background()
+
+	const deadID = "77777777-7777-4777-8777-777777777777"
+	codexJailRollout(t, database, root, deadID, 5)
+	if err := database.ReplaceCxNames(ctx, []store.CxName{
+		{ID: deadID, ThreadName: "ENGINE_BUILDER"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(ctx, socket, "%0", deadID); err != nil {
+		t.Fatal(err)
+	}
+	// The /clear that retired it: a prompt-baseline kill, exactly what
+	// KillClearedCodex records.
+	if _, _, err := manager.KillClearedCodex(ctx, deadID); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		ctx,
+		database,
+		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	bound, found, err := manager.CodexPaneBinding(ctx, socket, "%0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Fatalf("the impossible binding survived, still on %q: stderr=%q", bound, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), codexPaneBindingRetired) &&
+		!strings.Contains(stderr.String(), codexPaneNameRetired) {
+		t.Fatalf("the repair was silent: stderr=%q", stderr.String())
+	}
+
+	// And the next pane to show a bare id is seated on it, without anything
+	// having been invented in between.
+	const liveID = "88888888-8888-4888-8888-888888888888"
+	const reseated = "cx-1800000013-2-2"
+	startCodexStatusPane(t, tmuxTmpDir, reseated, "  "+liveID+` · /work/example · Full Access\n`)
+	reconcileCodexPanes(
+		ctx,
+		database,
+		gather.Snapshot{Panes: []gather.Pane{codexPane(reseated, "%0")}},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+	bound, found, err = manager.CodexPaneBinding(ctx, reseated, "%0")
+	if err != nil || !found || bound != liveID {
+		t.Fatalf("re-seat = (%q, %v, %v), want %q", bound, found, err, liveID)
+	}
+}

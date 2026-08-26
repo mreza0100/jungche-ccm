@@ -254,6 +254,25 @@ func (manager *Manager) KillClearedCodex(
 	}, true, nil
 }
 
+// ForgetCodexPane erases one pane's binding.
+//
+// It exists for the one binding that cannot possibly be true: a pane bound to
+// a thread a /clear already retired. That state never heals on its own,
+// because from then on the pane shows a NAME and a name is not allowed to move
+// a binding. Erasing it returns the pane to "unbound", which is honest — pfm
+// genuinely does not know what that pane runs — and lets the next observation
+// of its own screen re-seat it.
+func (manager *Manager) ForgetCodexPane(ctx context.Context, socket, pane string) error {
+	key, ok := codexPaneBindingKey(socket, pane)
+	if !ok {
+		return nil
+	}
+	if err := manager.database.DeleteMeta(ctx, key); err != nil {
+		return fmt.Errorf("forget Codex pane binding: %w", err)
+	}
+	return nil
+}
+
 // CodexPaneBinding is one pane binding decoded back to the address it names.
 type CodexPaneBinding struct {
 	Socket   string
