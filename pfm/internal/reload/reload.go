@@ -19,6 +19,7 @@ import (
 	"hostops/pfm/internal/action"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
+	"hostops/pfm/internal/inject"
 )
 
 type Pane struct {
@@ -428,6 +429,16 @@ ready:
 	if !live {
 		return fmt.Errorf("reload --then: no live %s on the pane", engineLabel(request.Engine))
 	}
+	// A composer baseline captured BEFORE the send lets us tell a freshly
+	// typed paste placeholder from one left over from an earlier turn — a
+	// pre-existing placeholder must never count as proof. haveBaseline is
+	// tracked explicitly: a failed capture must never silently masquerade
+	// as an empty-but-legitimate baseline (an error is never absence).
+	baseline, baselineErr := tmux.Capture(ctx, request.SocketPath, request.Pane)
+	haveBaseline := baselineErr == nil
+	if baselineErr != nil {
+		fmt.Fprintf(stderr, "pfm chat reload --then: capture composer baseline before typing prompt: %v\n", baselineErr)
+	}
 	if err := tmux.SendLiteral(ctx, request.SocketPath, request.Pane, request.Then); err != nil {
 		return fmt.Errorf("reload --then: type prompt: %w", err)
 	}
@@ -443,14 +454,46 @@ ready:
 			fmt.Fprintf(stderr, "pfm chat reload --then: confirm typed text (try %d): %v\n", i+1, err)
 			continue
 		}
-		if strings.Contains(strings.Join(strings.Fields(capture), " "), needle) {
+		// A resumed session (--resume / resume <id>, reload.go:339-340,
+		// :380-381) renders its prior transcript in scrollback, and any
+		// message the human pasted earlier in that conversation re-renders
+		// as its own "[Pasted text #N +M lines]" placeholder there. Only the
+		// ACTIVE composer line — not the whole pane — can prove THIS send;
+		// scanning the full capture would let a stale placeholder from a
+		// past turn stand in for text that never landed.
+		composer := lastComposerLine(capture)
+		hasTail := strings.Contains(strings.Join(strings.Fields(composer), " "), needle)
+		hasPlaceholder := inject.HasPastePlaceholder(composer)
+		if !haveBaseline {
+			// No baseline means we cannot rule out a placeholder that was
+			// already sitting in the composer before we ever typed (e.g. a
+			// leftover unsent paste). A refusal here costs nothing —
+			// failThen preserves the prompt on disk — so require the tail
+			// needle, which is the human's own new prompt text and cannot
+			// come from a stale paste.
+			if hasTail {
+				typed = true
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		// capture != baseline is a weak, supporting signal only: both TUIs
+		// animate every frame (spinners, token counters, clocks), so the
+		// pane differs from any baseline within a beat regardless of
+		// whether our text landed. The composer-scoped needle/placeholder
+		// check above carries the real proof; this only guards against a
+		// placeholder that was already sitting in the composer (not
+		// scrollback) before we typed.
+		changed := capture != baseline
+		if changed && (hasTail || hasPlaceholder) {
 			typed = true
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	if !typed {
-		return errors.New("reload --then: typed text never rendered — refusing blind Enter")
+		return errors.New("reload --then: typed text never rendered in the composer — looked for the prompt's tail text and, when a pre-send baseline was captured, a paste placeholder there too, but neither appeared — refusing blind Enter")
 	}
 	prefix := flat
 	if len(prefix) > 24 {
@@ -481,7 +524,17 @@ ready:
 	if err := tmux.Display(ctx, request.SocketPath, request.Pane, "reload --then typed but submit unconfirmed — press Enter"); err != nil {
 		return fmt.Errorf("reload --then: display unconfirmed submit: %w", err)
 	}
-	return nil
+	// Neither "submitted" nor "never typed" is true here: the prompt was
+	// typed and Enter was sent 12 times, but the composer never cleared, so
+	// delivery is unproven either way. Returning an error (not nil) routes
+	// this through Run's failThen, which writes request.Then to
+	// <sidDir>/<socket-basename>.then-failed so the operator can recover it
+	// instead of it vanishing silently.
+	return fmt.Errorf(
+		"reload --then: prompt was typed into %q and Enter was sent 12 times, but the composer never cleared — submission is unproven; the prompt is being saved to %s.then-failed so it is not lost",
+		request.Pane,
+		filepath.Base(request.SocketPath),
+	)
 }
 
 func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int, error) {

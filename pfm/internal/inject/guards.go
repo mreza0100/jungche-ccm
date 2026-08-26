@@ -84,7 +84,11 @@ func hasDraft(line string) bool {
 	return false
 }
 
-func hasPastePlaceholder(value string) bool {
+// HasPastePlaceholder reports whether value contains the collapsed-paste
+// placeholder Claude Code and Codex render in place of a large literal paste
+// (e.g. "[Pasted text #3 +72 lines]"). Exported so internal/reload can prove
+// a large --then prompt landed even when its own tail text never renders.
+func HasPastePlaceholder(value string) bool {
 	lower := strings.ToLower(value)
 	return strings.Contains(lower, "[pasted text") ||
 		strings.Contains(lower, "[pasted content")
@@ -162,7 +166,7 @@ func lastNonEmptyLines(capture string, limit int) string {
 func deliveryProven(before, after, message string, queued, fileBacked bool) bool {
 	pastComposer := withoutLastComposerLine(after)
 	if messageVisible(pastComposer, message) ||
-		(fileBacked && hasPastePlaceholder(pastComposer)) {
+		(fileBacked && HasPastePlaceholder(pastComposer)) {
 		return true
 	}
 	if queued {

@@ -754,7 +754,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		_ = lock.beat()
 		capture, err = engine.capture(ctx, target, 0)
 		if err == nil && (strings.Contains(normalizeSpace(capture), needle) ||
-			(pasteTransport && hasPastePlaceholder(capture))) {
+			(pasteTransport && HasPastePlaceholder(capture))) {
 			break
 		}
 		sleepContext(ctx, engine.options.Poll)
@@ -805,7 +805,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 				input = lastComposerLine(scrollback)
 			}
 		}
-		if input == "" || hasPastePlaceholder(input) {
+		if input == "" || HasPastePlaceholder(input) {
 			continue
 		}
 		if !strings.Contains(normalizeSpace(input), prefix) {
@@ -873,7 +873,7 @@ func (engine *Engine) Inject(ctx context.Context, request Request) (Result, erro
 		proofInput = lastComposerLine(scrollback)
 	}
 	blindProof := proofInput == ""
-	if hasPastePlaceholder(proofInput) ||
+	if HasPastePlaceholder(proofInput) ||
 		(proofInput != "" && strings.Contains(normalizeSpace(proofInput), prefix)) {
 		base.Status = "typed_unconfirmed"
 		base.Code = CodeUndelivered
