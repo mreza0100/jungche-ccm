@@ -205,12 +205,24 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   all 357 published commits and the result was force-pushed over 5 branches and 77 tags.
   `origin/main` moved `f96c660` → `08b78b3`; 25 tags (`v0.44.0`–`v0.62.0`) were re-pointed. Verified from a
   FRESH clone, not from the mirror: zero commits and zero of 77 tags carry the file.
-  Recovery handle for the pre-rewrite history: the local branch ref `pre-rewrite-main-f96c660` at
-  `f96c6608457f68ad9c2450429ec40963afb59b3f`, verified present
-  (`git show-ref --verify refs/heads/pre-rewrite-main-f96c660`). **CORRECTION (2026-08-26):** this
-  entry originally claimed a backup bundle at `~/professor-backup-f96c660.bundle` (20M, `git bundle
-  verify` clean); that file does NOT exist on this host (`ls -lh ~/professor-backup-f96c660.bundle`
-  returns "No such file or directory") — the ref above is the actual, verified recovery handle.
+  Recovery handle for the pre-rewrite history: `~/professor-backup-f96c660.bundle` — 20,006,555 bytes,
+  verified by CLONING it and confirming the clone resolves `f96c6608457f68ad9c2450429ec40963afb59b3f`,
+  not by `git bundle verify` alone, which passes on a bundle that clones to nothing.
+  **CORRECTION (2026-08-26), superseding the correction that stood here:** an earlier pass replaced this
+  bundle with a local branch ref named `pre-rewrite-main-f96c660` and reported the bundle absent. Both
+  halves are wrong, and each is re-checkable with one command: `ls -la ~/professor-backup-f96c660.bundle`
+  returns the file, and `git show-ref --verify refs/heads/pre-rewrite-main-f96c660` returns
+  `fatal: 'refs/heads/pre-rewrite-main-f96c660' - not a valid ref`. That ref did not exist when the
+  entry claiming it was written.
+  **Why that was not a documentation nit:** `git for-each-ref --contains f96c660` returned NOTHING — no
+  branch, no tag, no remote ref reached the pre-rewrite tip. It survived on 3 reflog entries alone, so it
+  was unreachable-and-collectable the day reflog expiry or any `git gc --prune` ran, and the ledger's only
+  recovery pointer for 357 rewritten commits named a ref that was not there.
+  **Both handles exist now.** This pass created the missing ref rather than merely correcting the sentence
+  about it — `git branch pre-rewrite-main-f96c660 f96c6608457f68ad9c2450429ec40963afb59b3f`, local and
+  never pushed — so the commit is reachable and gc-proof, with the bundle as the off-repo copy. A recovery
+  record is the one document whose broken state must never read as healthy, and the cheapest way to fix a
+  false claim is sometimes to make it true.
   **The rewrite was done against this repo's own `NEVER force-push` hard rule** (`.claude/commands/pcm/release.md`
   § Hard rules), on the user's explicit, thrice-reaffirmed in-turn override after being shown the full cost.
   The registered `gitter` agent refused the operation categorically and correctly — it also refused to treat a
@@ -280,8 +292,16 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   is NOT a leak — it is this repo's own published GitHub identity, in `LICENSE`, `README.md` and
   `INSTALL.md` by design.
 
-- **FLAGGED — phantom backup in an install log, not yet root-caused (2026-08-26).** A `pfm install
+- **RESOLVED — phantom backup in an install log, root-caused and fixed (2026-08-26).** A `pfm install
   --yes` run on this host logged rewriting the user's global `~/.mcp.json` with "(backup preserved)",
-  but no `.mcp.json.bak*` file exists anywhere under the home directory (`ls ~/.mcp.json*` shows only
-  the live file). The installer's log message asserts a side effect that did not happen on disk.
-  Tracking here until root-caused; not filed as a GitHub issue by this pass.
+  but no `.mcp.json.bak*` file existed anywhere under the home directory (`ls ~/.mcp.json*` showed only
+  the live file). The installer's log message asserted a side effect that did not happen on disk.
+  **Cause:** `internal/installer/mcp.go:135` passed a hardcoded `"rewrite <path> (backup preserved)"`
+  into `installer.change`, while the `copyBackup` inside that same closure was guarded by `if existed`.
+  Creating a file that had never been there therefore announced a preserved backup of nothing. Three
+  further writers carried the identical shape.
+  **Fixed** in `8173fae` (GitHub issue #9): a shared `changeDescription(path, existed)` now derives the
+  wording from the SAME condition that gates the write. Pinned by
+  `TestMCPInstallCreatesClientJSONWithoutClaimingABackup`, which runs the installer against a fresh temp
+  home and asserts both the `create` wording and the absence of any `.bak` — the end-to-end reproduction
+  of this exact report, watched failing against the unfixed code first.
