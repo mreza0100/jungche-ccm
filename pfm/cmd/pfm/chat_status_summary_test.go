@@ -36,6 +36,7 @@ func TestChatStatusSummaryIsOptInCachedAndStructured(t *testing.T) {
 		t.Fatalf("base code=%d stdout=%q stderr=%q", baseCode, stdout.String(), stderr.String())
 	}
 	baseline := stdout.String()
+	baselineStable := statusLineWithoutIdle(baseline)
 	if strings.Contains(baseline, "summary") {
 		t.Fatalf("no-flag output grew a summary: %q", baseline)
 	}
@@ -45,7 +46,7 @@ func TestChatStatusSummaryIsOptInCachedAndStructured(t *testing.T) {
 	if code := run([]string{"chat", "status", "--summary", id}, &stdout, &stderr); code != codeDeadChat {
 		t.Fatalf("summary code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if !strings.HasPrefix(stdout.String(), baseline) || !strings.Contains(stdout.String(), "summary: cache now keys the last exchange\n") {
+	if statusLineWithoutIdle(stdout.String()) != baselineStable || !strings.Contains(stdout.String(), "summary: cache now keys the last exchange\n") {
 		t.Fatalf("summary stdout=%q baseline=%q", stdout.String(), baseline)
 	}
 
@@ -63,7 +64,7 @@ func TestChatStatusSummaryIsOptInCachedAndStructured(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"chat", "status", id}, &stdout, &stderr); code != codeDeadChat || stdout.String() != baseline {
+	if code := run([]string{"chat", "status", id}, &stdout, &stderr); code != codeDeadChat || statusLineWithoutIdle(stdout.String()) != baselineStable {
 		t.Fatalf("post-cache no-flag code=%d stdout=%q want=%q", code, stdout.String(), baseline)
 	}
 
@@ -76,4 +77,13 @@ func TestChatStatusSummaryIsOptInCachedAndStructured(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &status); err != nil || status["summary"] != "cache now keys the last exchange" || status["summary_cached"] != true {
 		t.Fatalf("json status=%v err=%v", status, err)
 	}
+}
+
+func statusLineWithoutIdle(output string) string {
+	line, _, _ := strings.Cut(output, "\n")
+	fields := strings.Split(line, "\t")
+	if len(fields) > 2 && strings.HasPrefix(fields[2], "idle=") {
+		fields[2] = "idle=<dynamic>"
+	}
+	return strings.Join(fields, "\t")
 }

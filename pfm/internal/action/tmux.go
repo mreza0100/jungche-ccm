@@ -127,6 +127,9 @@ func (tmux CommandTmux) CreateCodexServer(
 	ctx context.Context,
 	server CodexServer,
 ) error {
+	if err := paths.EnsureTmuxDir(tmux.TmuxDir); err != nil {
+		return err
+	}
 	arguments := append(paths.TmuxConfigArguments(),
 		"new-session",
 		"-d",

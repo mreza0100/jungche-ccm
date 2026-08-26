@@ -9,6 +9,10 @@ import (
 )
 
 const (
+	// CodeAmbiguous means more than one live target matched. It stays distinct
+	// from CodeUnknown so callers never report "not found" while listing the
+	// conflicting candidates in the same receipt.
+	CodeAmbiguous = 2
 	// CodeDead means the target resolved to a live pane that disappeared or
 	// became unreadable before delivery could complete.
 	CodeDead = 3

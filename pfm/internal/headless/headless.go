@@ -10,7 +10,9 @@ package headless
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
@@ -123,6 +125,14 @@ func Inspect(
 	}
 	meta, err := transcript.ReadMeta(chat.Path, string(chat.Engine))
 	if err != nil {
+		// A live engine can publish its fleet seat before it creates the first
+		// rollout record. That is the same honest state as an empty Path: the
+		// chat is working and has no transcript facts yet. A dead seat with the
+		// same missing path remains an error because its evidence was lost.
+		if chat.Live && errors.Is(err, fs.ErrNotExist) {
+			status.State = StateWorking
+			return status, nil
+		}
 		return status, fmt.Errorf("read chat transcript metadata %s: %w", chat.Path, err)
 	}
 	status.Model = meta.Model

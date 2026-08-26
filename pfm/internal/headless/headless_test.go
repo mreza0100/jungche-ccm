@@ -103,6 +103,21 @@ func TestALiveChatWithNoTranscriptYetIsWorking(t *testing.T) {
 	}
 }
 
+func TestALiveChatWithPendingTranscriptPathIsWorking(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rollout-not-created-yet.jsonl")
+	status, err := Inspect(
+		context.Background(),
+		Chat{Name: "fresh", Engine: "cx", Path: path, Live: true},
+		time.Now(),
+	)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if status.State != StateWorking {
+		t.Fatalf("state = %q, want %q", status.State, StateWorking)
+	}
+}
+
 func TestDeadChatTranscriptReadFailureIsNotRenderedAsAbsence(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "missing-transcript.jsonl")

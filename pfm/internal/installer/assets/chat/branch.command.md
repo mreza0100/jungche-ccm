@@ -1,6 +1,6 @@
 ---
 name: chat:branch
-description: Fork THIS Claude chat into a detached named seat without changing this pane, layout, or focus. Trigger — /chat:branch [name].
+description: Fork THIS Claude or Codex chat into a detached named seat without changing this pane, layout, or focus. Trigger — /chat:branch [name].
 argument-hint: [name]
 disable-model-invocation: true
 ---

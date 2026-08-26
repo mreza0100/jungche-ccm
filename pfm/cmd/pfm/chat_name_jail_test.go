@@ -86,6 +86,13 @@ func TestChatNameConvergesTheWindowInlineOnAProbeSocket(t *testing.T) {
 	}
 }
 
+func TestChatNameInjectsThroughTheLiveSessionNotTranscriptUUID(t *testing.T) {
+	chat := headless.Chat{ID: "thread-not-indexed", Session: "cx-live-socket", Socket: "cx-live-socket"}
+	if got := chatNameInjectTarget(chat); got != "cx-live-socket" {
+		t.Fatalf("chatNameInjectTarget() = %q", got)
+	}
+}
+
 func withoutEnv(environment []string, keys ...string) []string {
 	filtered := make([]string, 0, len(environment))
 	for _, entry := range environment {

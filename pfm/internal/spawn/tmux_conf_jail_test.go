@@ -21,7 +21,11 @@ func TestChatServerLoadsTheConfigItIsGiven(t *testing.T) {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		t.Skip("tmux is not installed")
 	}
-	root := t.TempDir()
+	root, err := os.MkdirTemp("/tmp", "pfs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	tmuxDir := filepath.Join(root, "tmux-"+strconv.Itoa(os.Getuid()))
 	if err := os.MkdirAll(tmuxDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -66,6 +70,39 @@ func TestChatServerLoadsTheConfigItIsGiven(t *testing.T) {
 	}
 	if got := string(output); got != "status-position top\n" {
 		t.Fatalf("chat server ignored the config it was given: %q", got)
+	}
+}
+
+func TestChatServerCreatesMissingSocketDirectoryOnFreshMachine(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root, err := os.MkdirTemp("/tmp", "pfs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
+	tmuxDir := filepath.Join(root, "missing", "tmux-"+strconv.Itoa(os.Getuid()))
+	t.Setenv(paths.EnvTmuxConf, "/dev/null")
+	const socket = "cx-1800000010-1-1"
+	tmux := CommandTmux{TmuxDir: tmuxDir}
+	if err := tmux.NewSession(context.Background(), SessionSpec{
+		Socket: socket, Session: socket, Window: "Codex", CWD: root,
+		Width: 180, Height: 45, Run: "sleep 120",
+	}); err != nil {
+		t.Fatalf("fresh-machine chat launch: %v", err)
+	}
+	t.Cleanup(func() {
+		kill := exec.Command("tmux", "-S", filepath.Join(tmuxDir, socket), "kill-server")
+		kill.Env = append(os.Environ(), "TMUX=")
+		_ = kill.Run()
+	})
+	info, err := os.Stat(tmuxDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("socket directory mode = %o, want 700", info.Mode().Perm())
 	}
 }
 

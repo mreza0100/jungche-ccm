@@ -26,6 +26,9 @@ func (tmux CommandTmux) NewSession(
 	ctx context.Context,
 	spec SessionSpec,
 ) error {
+	if err := paths.EnsureTmuxDir(tmux.TmuxDir); err != nil {
+		return err
+	}
 	arguments := append(paths.TmuxConfigArguments(),
 		"new-session", "-d",
 		"-s", spec.Session,

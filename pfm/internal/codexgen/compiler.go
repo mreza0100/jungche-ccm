@@ -595,12 +595,19 @@ func compileCommandFile(overrideRoot, outputBase, sourceRoot string, entry sourc
 	dst := filepath.Join(outputRoot, flat, "SKILL.md")
 	if global {
 		add(generatedFile{Path: filepath.Join(outputBase, ".codex", "prompts", flat+".md"), Content: generated})
-		if fields["disable-model-invocation"] == "true" {
+		if fields["disable-model-invocation"] == "true" || mcpBackedGlobalChatSkill(flat) {
 			return
 		}
 		dst = filepath.Join(outputBase, ".codex", "skills", flat, "SKILL.md")
 	}
 	add(generatedFile{Path: dst, Content: generated})
+}
+
+// MCP-backed chat operations do not need a second model-invocable global
+// skill. Keep prompt cards for explicit operator invocation and keep
+// chat-interrogate as the one workflow deliberately not exposed by MCP.
+func mcpBackedGlobalChatSkill(name string) bool {
+	return strings.HasPrefix(name, "chat-") && name != "chat-interrogate"
 }
 
 func frontmatterLines(text string) []string {

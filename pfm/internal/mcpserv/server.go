@@ -25,8 +25,10 @@ const (
 )
 
 var chatToolNames = []string{
-	"chat_capture", "chat_find", "chat_inject", "chat_keys", "chat_kill",
-	"chat_last", "chat_ls", "chat_name", "chat_new", "chat_open",
+	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_group_create",
+	"chat_group_invite", "chat_group_ls", "chat_group_read", "chat_group_send",
+	"chat_group_subscribe", "chat_inject", "chat_keys", "chat_kill",
+	"chat_last", "chat_load", "chat_ls", "chat_name", "chat_new", "chat_open",
 	"chat_read", "chat_reload", "chat_resolve", "chat_save", "chat_self_compact",
 	"chat_status", "chat_unkill", "chat_whoami",
 }
@@ -92,7 +94,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Inspect, resolve, capture, search, read, name, kill, reload, save, self-compact with a mandatory continuation steer, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, group, watch, stream, recover, history, branch, and load.",
+		Instructions: "Inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, coordinate through chat groups, name, kill, reload, save, self-compact with a mandatory continuation steer, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -118,6 +120,9 @@ func (service *Service) register() {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 	mutating := &mcp.ToolAnnotations{ReadOnlyHint: false}
 	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_branch", Description: "Fork the requesting Claude/Codex conversation into a new detached chat without changing the caller's pane.", Annotations: mutating,
+	}, service.chatBranch)
+	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_ls",
 		Description: "List live and resumable Claude/Codex chats as structured rows.",
 		Annotations: readOnly,
@@ -137,6 +142,30 @@ func (service *Service) register() {
 		Description: "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended.",
 		Annotations: mutating,
 	}, service.chatSelfCompact)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_goal", Description: "Fire an already-compiled, single-line /goal body (maximum 4000 characters) at a live chat or the requesting chat.", Annotations: mutating,
+	}, service.chatGoal)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_load", Description: "Return every complete non-empty text file beneath the requested paths; fail atomically if the complete set exceeds max_bytes.", Annotations: readOnly,
+	}, service.chatLoad)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_create", Description: "Create a local append-only chat group and subscribe the requesting chat.", Annotations: mutating,
+	}, service.chatGroupCreate)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_subscribe", Description: "Subscribe the requesting chat to an existing chat group at the current ledger cursor.", Annotations: mutating,
+	}, service.chatGroupSubscribe)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_invite", Description: "Send a signed invitation to a live chat; the target must subscribe itself.", Annotations: mutating,
+	}, service.chatGroupInvite)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_send", Description: "Append one message to a chat-group ledger and nudge caught-up members once; optional to-glob limits doorbells, not visibility.", Annotations: mutating,
+	}, service.chatGroupSend)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_read", Description: "Read and advance the requesting chat's unread cursor, or peek at the newest N ledger records without advancing it.", Annotations: mutating,
+	}, service.chatGroupRead)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name: "chat_group_ls", Description: "List chat groups, members, message counts, and the requesting chat's unread counts.", Annotations: readOnly,
+	}, service.chatGroupList)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_keys",
 		Description: "Press validated tmux key names or explicitly type literal key text into a live chat.",
@@ -501,18 +530,18 @@ func (service *Service) chatCapture(
 	request *mcp.CallToolRequest,
 	input CaptureInput,
 ) (*mcp.CallToolResult, CaptureOutput, error) {
-	lines := input.TailLines
-	if lines == 0 {
-		lines = 40
+	lines := 40
+	if input.TailLines != nil {
+		lines = *input.TailLines
 	}
 	if lines < 1 || lines > 1000 {
 		return nil, CaptureOutput{}, fmt.Errorf(
 			"tail_lines must be between 1 and 1000",
 		)
 	}
-	maxBytes := input.MaxBytes
-	if maxBytes == 0 {
-		maxBytes = defaultCaptureBytes
+	maxBytes := defaultCaptureBytes
+	if input.MaxBytes != nil {
+		maxBytes = *input.MaxBytes
 	}
 	if maxBytes < 1 || maxBytes > maxCaptureBytes {
 		return nil, CaptureOutput{}, fmt.Errorf(
@@ -533,7 +562,9 @@ func (service *Service) chatCapture(
 		lines,
 	)
 	status := "ok"
-	if code != 0 {
+	if code == inject.CodeAmbiguous {
+		status = "ambiguous"
+	} else if code != 0 {
 		status = "not_found"
 	}
 	// The engine captures the WHOLE scrollback; the byte bound is applied here,

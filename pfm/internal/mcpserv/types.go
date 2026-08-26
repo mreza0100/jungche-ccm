@@ -1,7 +1,10 @@
 // Package mcpserv exposes the pfm chat family over stdio MCP.
 package mcpserv
 
-import pfmengine "hostops/pfm/internal/engine"
+import (
+	"hostops/pfm/internal/chatgroup"
+	pfmengine "hostops/pfm/internal/engine"
+)
 
 // LSInput selects the fleet view returned by chat_ls.
 type LSInput struct {
@@ -110,8 +113,8 @@ type KeysOutput struct {
 // bounded by the caller after the capture.
 type CaptureInput struct {
 	Target    string `json:"target" jsonschema:"live session, Claude label, Codex thread name, self, or tmux pane"`
-	TailLines int    `json:"tail_lines,omitempty" jsonschema:"return at most this many non-empty lines of the scrollback; default 40"`
-	MaxBytes  int    `json:"max_bytes,omitempty" jsonschema:"maximum returned text bytes, default 262144 and maximum 4194304"`
+	TailLines *int   `json:"tail_lines,omitempty" jsonschema:"return at most this many non-empty lines of the scrollback; default 40"`
+	MaxBytes  *int   `json:"max_bytes,omitempty" jsonschema:"maximum returned text bytes, default 262144 and maximum 4194304"`
 }
 
 // CaptureOutput is chat_capture's structured response.
@@ -270,4 +273,98 @@ type KillInput struct {
 type SaveInput struct {
 	Target     string `json:"target"`
 	Transcript string `json:"transcript,omitempty"`
+}
+
+type BranchInput struct {
+	Name string `json:"name,omitempty" jsonschema:"optional name for the detached fork"`
+}
+
+type GoalInput struct {
+	Target string `json:"target,omitempty" jsonschema:"target chat; defaults to the requesting chat"`
+	Goal   string `json:"goal" jsonschema:"already-compiled inline /goal body, one line and at most 4000 characters"`
+}
+
+type LoadInput struct {
+	Paths    []string `json:"paths" jsonschema:"files or directories whose complete text set must be returned"`
+	MaxBytes int      `json:"max_bytes,omitempty" jsonschema:"whole-result byte ceiling, default 1048576 and maximum 4194304"`
+}
+
+type LoadFile struct {
+	Path  string `json:"path"`
+	Lines int    `json:"lines"`
+	Bytes int    `json:"bytes"`
+	Text  string `json:"text"`
+}
+
+type LoadOutput struct {
+	Files      []LoadFile `json:"files"`
+	Warnings   []string   `json:"warnings,omitempty"`
+	Count      int        `json:"count"`
+	TotalLines int        `json:"total_lines"`
+	TotalBytes int        `json:"total_bytes"`
+}
+
+type GroupInput struct {
+	Group string `json:"group"`
+}
+
+type GroupListInput struct{}
+
+type GroupInviteInput struct {
+	Group  string `json:"group"`
+	Target string `json:"target" jsonschema:"live chat selector to invite"`
+}
+
+type GroupReadInput struct {
+	Group string `json:"group"`
+	Peek  int    `json:"peek,omitempty" jsonschema:"return the last N messages without advancing the caller cursor"`
+}
+
+type GroupSendInput struct {
+	Group   string `json:"group"`
+	Message string `json:"message,omitempty"`
+	To      string `json:"to,omitempty" jsonschema:"optional member-label glob controlling doorbells only"`
+	File    string `json:"file,omitempty" jsonschema:"send a durable pointer to a readable regular file"`
+	Caption string `json:"caption,omitempty"`
+}
+
+type GroupReceiptOutput struct {
+	Status      string `json:"status"`
+	Code        int    `json:"code"`
+	Group       string `json:"group,omitempty"`
+	Member      string `json:"member,omitempty"`
+	Path        string `json:"path,omitempty"`
+	Message     string `json:"message,omitempty"`
+	Existing    bool   `json:"existing,omitempty"`
+	MemberCount int    `json:"member_count,omitempty"`
+}
+
+type GroupListOutput struct {
+	Groups []chatgroup.Summary `json:"groups"`
+	Count  int                 `json:"count"`
+	Member string              `json:"member"`
+}
+
+type GroupReadOutput struct {
+	Group    string   `json:"group"`
+	Member   string   `json:"member,omitempty"`
+	Messages []string `json:"messages"`
+	Count    int      `json:"count"`
+	Cursor   int      `json:"cursor"`
+	Total    int      `json:"total"`
+	Peek     bool     `json:"peek"`
+}
+
+type GroupSendOutput struct {
+	Status        string            `json:"status"`
+	Code          int               `json:"code"`
+	Group         string            `json:"group,omitempty"`
+	Sender        string            `json:"sender,omitempty"`
+	Number        int               `json:"number,omitempty"`
+	Record        string            `json:"record,omitempty"`
+	Target        string            `json:"target,omitempty"`
+	TargetMatches int               `json:"target_matches,omitempty"`
+	Nudges        []chatgroup.Nudge `json:"nudges,omitempty"`
+	SpillPath     string            `json:"spill_path,omitempty"`
+	Message       string            `json:"message,omitempty"`
 }

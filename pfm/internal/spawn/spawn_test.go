@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,8 @@ type fakeCodex struct {
 	// sent to them — the state no stub modelled the first time around.
 	startupModals   int
 	stuckModal      bool
+	trustModal      bool
+	dead            bool
 	modalAfterReads int
 	reads           int
 	// dropsEnters is how many of the prompt's Enters the composer swallows
@@ -60,6 +63,13 @@ func (fake *fakeCodex) NewSession(_ context.Context, spec SessionSpec) error {
 func (fake *fakeCodex) Capture(_ context.Context, _, _ string) (string, error) {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
+	if fake.dead {
+		return "", errors.New("chat exited")
+	}
+	if fake.trustModal {
+		return "Do you trust the contents of this directory?\n" +
+			"› 1. Yes, continue\n  2. No, quit\n\n  Press enter to continue\n", nil
+	}
 	// modalAfterReads reproduces the exact live failure: Codex paints its
 	// composer first and raises its startup modal a beat LATER, so the
 	// composer is visible for a flash before the screen is stolen.
@@ -115,6 +125,16 @@ func (fake *fakeCodex) SendKey(_ context.Context, _, _, key string) error {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
 	fake.keys = append(fake.keys, "key:"+key)
+	if fake.trustModal {
+		switch key {
+		case "Enter":
+			fake.trustModal = false
+		case "Escape":
+			fake.trustModal = false
+			fake.dead = true
+		}
+		return nil
+	}
 	switch key {
 	case "Enter":
 		if fake.stage == "composer" && fake.name != "" &&
@@ -162,6 +182,21 @@ func (fake *fakeCodex) SendKey(_ context.Context, _, _, key string) error {
 		fake.stage = "composer"
 	}
 	return nil
+}
+
+func TestCodexTrustDialogUsesAffirmativeEnter(t *testing.T) {
+	fake := newFakeCodex()
+	fake.trustModal = true
+	result, err := Run(context.Background(), fake, codexRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !result.Named || !result.Prompted || fake.dead {
+		t.Fatalf("trust launch result=%#v dead=%v keys=%v", result, fake.dead, fake.keys)
+	}
+	if len(fake.keys) == 0 || fake.keys[0] != "key:Enter" {
+		t.Fatalf("trust dialog keys=%v, want affirmative Enter first", fake.keys)
+	}
 }
 
 // collapseClears folds a run of BSpace presses into one "clear" token: the

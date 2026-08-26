@@ -21,6 +21,8 @@ const (
 	codexRenamePrompt  = "Type a name and press Enter"
 	codexRenameEmpty   = "Thread name cannot be empty."
 	codexRenameDone    = "Session renamed to"
+	codexTrustQuestion = "Do you trust the contents of this directory?"
+	codexTrustYes      = "1. Yes, continue"
 
 	// modalClearKeys is how many BSpace presses clear the rename field. Codex
 	// PRE-FILLS it with the thread's current name, so typing straight into it
@@ -264,11 +266,10 @@ func composerReady(capture string) bool {
 }
 
 // waitForCodexComposer returns once the composer is drawn, dismissing startup
-// overlays along the way. Escape is the documented way out of every one of
-// them ("esc to close" / "esc to go back"), and it is sent only once the
-// screen has stopped changing, so a slow paint is never mistaken for a stuck
-// modal. Escape on an empty composer does nothing, which is what makes it safe
-// to send before knowing which screen is up.
+// overlays along the way. Most overlays dismiss with Escape, but Codex
+// 0.149's directory-trust dialog makes Escape quit the whole TUI; its exact
+// affirmative row is accepted with Enter. A key is sent only once the screen
+// has stopped changing, so a slow paint is never mistaken for a stuck modal.
 func waitForCodexComposer(
 	ctx context.Context,
 	tmux Tmux,
@@ -289,7 +290,7 @@ func waitForComposer(
 ) bool {
 	deadline := time.Now().Add(timings.Boot)
 	previous := ""
-	escapes := 0
+	dismissals := 0
 	held := 0
 	for {
 		capture, err := tmux.Capture(ctx, socket, target)
@@ -305,10 +306,11 @@ func waitForComposer(
 			// a half-drawn frame is never mistaken for a stuck modal.
 			held = 0
 			trimmed := strings.TrimSpace(capture)
-			if trimmed != "" && trimmed == previous && escapes < startupEscapes {
-				trace.step("overlay %d dismissed with Escape | %s", escapes+1, screen(capture))
-				_ = tmux.SendKey(ctx, socket, target, "Escape")
-				escapes++
+			if trimmed != "" && trimmed == previous && dismissals < startupEscapes {
+				key := startupOverlayKey(capture)
+				trace.step("overlay %d dismissed with %s | %s", dismissals+1, key, screen(capture))
+				_ = tmux.SendKey(ctx, socket, target, key)
+				dismissals++
 				previous = ""
 			} else {
 				previous = trimmed
@@ -323,6 +325,13 @@ func waitForComposer(
 			return false
 		}
 	}
+}
+
+func startupOverlayKey(capture string) string {
+	if strings.Contains(capture, codexTrustQuestion) && strings.Contains(capture, codexTrustYes) {
+		return "Enter"
+	}
+	return "Escape"
 }
 
 // nameCodexThread waits for a composer that holds, then renames — retrying the

@@ -92,6 +92,8 @@ func callTool[T any](
 	return output
 }
 
+func captureInt(value int) *int { return &value }
+
 func TestChatStatusSummaryUsesCanonicalCommandAndReturnsField(t *testing.T) {
 	var gotArgs []string
 	service := newService("test", &backend{dispatch: func(_ context.Context, args []string, stdout, _ io.Writer) int {
@@ -255,7 +257,7 @@ func TestMCPHandshakeAndAllToolsOverJailedStdio(t *testing.T) {
 
 	captured := callTool[CaptureOutput](t, session, "chat_capture", CaptureInput{
 		Target:    "Fixture Label",
-		TailLines: 10,
+		TailLines: captureInt(10),
 	})
 	if captured.Status != "ok" ||
 		!strings.Contains(captured.Text, "🔖 Fixture Label") ||

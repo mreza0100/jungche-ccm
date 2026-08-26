@@ -171,6 +171,36 @@ func TestFullCheckAgreesWithInstallerGlobalReconciliation(t *testing.T) {
 	}
 }
 
+func TestMCPBackedChatCommandsRetireGlobalSkillsButKeepInterrogate(t *testing.T) {
+	home := t.TempDir()
+	for relative := range map[string]bool{
+		"chat/inject.md":      true,
+		"chat/interrogate.md": true,
+		"reload.md":           true,
+	} {
+		writeTestFile(t, filepath.Join(home, ".claude", "commands", relative), "---\ndescription: fixture\n---\nfixture\n")
+	}
+	managedInject := filepath.Join(home, ".codex", "skills", "chat-inject", "SKILL.md")
+	writeTestFile(t, managedInject, generatedHeader("old-chat-inject")+"\n")
+	result, err := RunGlobalCommands(GlobalCommandsOptions{Home: home, Mode: ModeBuild})
+	if err != nil || !result.OK {
+		t.Fatalf("global command reconciliation: result=%#v err=%v", result, err)
+	}
+	for _, path := range []string{
+		filepath.Join(home, ".codex", "prompts", "chat-inject.md"),
+		filepath.Join(home, ".codex", "prompts", "chat-interrogate.md"),
+		filepath.Join(home, ".codex", "skills", "chat-interrogate", "SKILL.md"),
+		filepath.Join(home, ".codex", "skills", "reload", "SKILL.md"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected global artifact %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(managedInject); !os.IsNotExist(err) {
+		t.Fatalf("MCP-backed global chat skill remains: %v", err)
+	}
+}
+
 func TestFrontmatterAndRosterTransform(t *testing.T) {
 	raw := "---\ndescription: >-\n  A quoted \\\"description\\\"\n  over two lines.\nmodel: opus\nhooks:\n  PostToolUse:\n    - matcher: Edit\n---\nUse /wave:go, not /wave or /scripts/x. Read CLAUDE.md.\n"
 	fm, body, err := parseFrontmatter(raw)

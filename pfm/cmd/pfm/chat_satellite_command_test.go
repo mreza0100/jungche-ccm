@@ -184,15 +184,3 @@ func TestChatLoadEnumeratesTextAndSkipsBuildTrees(t *testing.T) {
 		t.Fatalf("stdout=%q", stdout.String())
 	}
 }
-
-func TestBranchCommandPlacesEveryUnsetBeforeAssignments(t *testing.T) {
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(t.TempDir(), "account"))
-	t.Setenv("ENABLE_PROMPT_CACHING_1H", "1")
-	t.Setenv("FORCE_PROMPT_CACHING_5M", "")
-	command := branchClaudeCommand("session-id", "safe name", "sonnet[1m]")
-	assignment := strings.Index(command, "'CLAUDE_CONFIG_DIR=")
-	lastUnset := strings.LastIndex(command, "'-u'")
-	if assignment < 0 || lastUnset < 0 || lastUnset > assignment {
-		t.Fatalf("env options must precede assignments: %s", command)
-	}
-}

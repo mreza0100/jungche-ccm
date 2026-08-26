@@ -101,6 +101,30 @@ func TestChatLastAndStatusUseCanonicalCLITargetResolution(t *testing.T) {
 	}
 }
 
+func TestChatStatusReportsCommandFailureWithoutJSONDecodeNoise(t *testing.T) {
+	setupBackendFixture(t)
+	resolved, err := paths.Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewConfigured("test", nil, Runtime{
+		Paths: resolved,
+		Dispatch: func(_ context.Context, _ []string, _ io.Writer, stderr io.Writer) int {
+			_, _ = io.WriteString(stderr, "ambiguous target: two live panes\n")
+			return 2
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close()
+
+	_, _, err = service.chatStatus(context.Background(), nil, StatusInput{Target: "duplicate"})
+	if err == nil || !strings.Contains(err.Error(), "ambiguous target") || strings.Contains(err.Error(), "decode output") {
+		t.Fatalf("chat_status error = %v", err)
+	}
+}
+
 func TestChatMCPDispatchesStatefulActionsInProcess(t *testing.T) {
 	setupBackendFixture(t)
 	resolved, err := paths.Resolve()

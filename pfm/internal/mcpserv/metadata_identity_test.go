@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"reflect"
 	"strings"
@@ -159,6 +160,110 @@ func TestMetadataIdentityNormalizesCLIBackedSelfReads(t *testing.T) {
 	want := [][]string{{"chat", "last", "thread-a"}, {"chat", "status", "thread-a", "--json"}}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("self dispatch calls = %q, want %q", calls, want)
+	}
+}
+
+func TestChatBranchUsesRequestScopedCodexCaller(t *testing.T) {
+	service := metadataIdentityService(t)
+	var calls [][]string
+	service.backend.dispatch = func(_ context.Context, args []string, stdout, _ io.Writer) int {
+		calls = append(calls, append([]string(nil), args...))
+		_, _ = io.WriteString(stdout, "Branched thread-a into detached Codex fork.\n")
+		return 0
+	}
+	protocol := connectInMemory(t, service.Server())
+	branched := callToolWithMeta[ActionOutput](
+		t, protocol.clientSession, "chat_branch", mcp.Meta{"threadId": "thread-a"},
+		map[string]any{"name": "review fork"},
+	)
+	if branched.Status != "ok" || branched.Code != 0 ||
+		!strings.Contains(branched.Message, "detached Codex fork") {
+		t.Fatalf("request-scoped chat_branch = %+v", branched)
+	}
+	want := [][]string{{
+		"chat", "branch", "--engine", "cx", "--session-id", "thread-a",
+		"--cwd", "/work/alpha", "--name", "review fork",
+	}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("chat_branch dispatch calls = %q, want %q", calls, want)
+	}
+
+	missing := callToolWithMeta[ActionOutput](
+		t, protocol.clientSession, "chat_branch", nil,
+		map[string]any{"name": "must not launch"},
+	)
+	if missing.Status != "not_found" || missing.Code != inject.CodeUnknown ||
+		!strings.Contains(missing.Message, "no _meta.threadId") {
+		t.Fatalf("metadata-free chat_branch = %+v", missing)
+	}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("metadata-free chat_branch dispatched unexpectedly: %q", calls)
+	}
+}
+
+func TestWorkflowToolsUseRequestIdentityAndPreserveCompleteData(t *testing.T) {
+	service := metadataIdentityService(t)
+	protocol := connectInMemory(t, service.Server())
+	alpha := mcp.Meta{"threadId": "thread-a"}
+	beta := mcp.Meta{"threadId": "thread-b"}
+
+	created := callToolWithMeta[GroupReceiptOutput](
+		t, protocol.clientSession, "chat_group_create", alpha, GroupInput{Group: "stress"},
+	)
+	if created.Status != "ok" || created.Member != "Codex A" || created.MemberCount != 1 {
+		t.Fatalf("group create = %+v", created)
+	}
+	joined := callToolWithMeta[GroupReceiptOutput](
+		t, protocol.clientSession, "chat_group_subscribe", beta, GroupInput{Group: "stress"},
+	)
+	if joined.Status != "ok" || joined.Member != "Codex B" || joined.MemberCount != 2 {
+		t.Fatalf("group subscribe = %+v", joined)
+	}
+	sent := callToolWithMeta[GroupSendOutput](
+		t, protocol.clientSession, "chat_group_send", alpha,
+		GroupSendInput{Group: "stress", Message: "one complete ledger record", To: "Nobody"},
+	)
+	if sent.Status != "ok" || sent.Number != 1 || sent.TargetMatches != 0 || len(sent.Nudges) != 0 {
+		t.Fatalf("group send = %+v", sent)
+	}
+	read := callToolWithMeta[GroupReadOutput](
+		t, protocol.clientSession, "chat_group_read", beta, GroupReadInput{Group: "stress"},
+	)
+	if read.Count != 1 || read.Cursor != 1 || !strings.Contains(read.Messages[0], "one complete ledger record") {
+		t.Fatalf("group read = %+v", read)
+	}
+	peek := callToolWithMeta[GroupReadOutput](
+		t, protocol.clientSession, "chat_group_read", beta, GroupReadInput{Group: "stress", Peek: 1},
+	)
+	if peek.Count != 1 || !peek.Peek || peek.Cursor != 1 {
+		t.Fatalf("group peek = %+v", peek)
+	}
+	listed := callToolWithMeta[GroupListOutput](
+		t, protocol.clientSession, "chat_group_ls", alpha, GroupListInput{},
+	)
+	if listed.Count != 1 || listed.Member != "Codex A" || listed.Groups[0].Unread != 0 {
+		t.Fatalf("group ls = %+v", listed)
+	}
+
+	loadRoot := t.TempDir()
+	wantText := "first line\nsecond line\n"
+	loadPath := loadRoot + "/complete.txt"
+	if err := os.WriteFile(loadPath, []byte(wantText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded := callToolWithMeta[LoadOutput](
+		t, protocol.clientSession, "chat_load", nil, LoadInput{Paths: []string{loadRoot}},
+	)
+	if loaded.Count != 1 || loaded.Files[0].Text != wantText || loaded.TotalBytes != len(wantText) {
+		t.Fatalf("chat_load = %+v", loaded)
+	}
+
+	goal := callToolWithMeta[InjectOutput](
+		t, protocol.clientSession, "chat_goal", alpha,
+		GoalInput{Goal: "finish the request-scoped protocol stress test"},
+	)
+	if goal.Code != 0 || !goal.Typed || goal.Unsigned {
+		t.Fatalf("chat_goal = %+v", goal)
 	}
 }
 

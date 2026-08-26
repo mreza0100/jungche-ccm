@@ -359,7 +359,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 			}
 			return target, 0, outcome.Stderr, nil
 		case 2:
-			return Target{}, CodeUnknown, outcome.Stderr, nil
+			return Target{}, CodeAmbiguous, outcome.Stderr, nil
 		}
 	}
 	return Target{}, CodeUnknown, fmt.Sprintf("target %q matched no live chat", name), nil

@@ -224,8 +224,10 @@ func TestChatCaptureBoundsAreAppliedAfterTheCapture(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	for _, input := range []CaptureInput{
-		{Target: "missing-target", MaxBytes: maxCaptureBytes + 1},
-		{Target: "missing-target", TailLines: 5000},
+		{Target: "missing-target", MaxBytes: captureInt(maxCaptureBytes + 1)},
+		{Target: "missing-target", TailLines: captureInt(5000)},
+		{Target: "missing-target", MaxBytes: captureInt(0)},
+		{Target: "missing-target", TailLines: captureInt(0)},
 	} {
 		result, err := client.clientSession.CallTool(ctx, &mcp.CallToolParams{
 			Name:      "chat_capture",

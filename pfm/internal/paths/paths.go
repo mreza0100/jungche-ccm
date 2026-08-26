@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	pfmengine "hostops/pfm/internal/engine"
@@ -44,6 +45,30 @@ const (
 func TmuxConfigArguments() []string {
 	if config := os.Getenv(EnvTmuxConf); config != "" {
 		return []string{"-f", config}
+	}
+	return nil
+}
+
+// EnsureTmuxDir creates the private socket directory a fresh machine does not
+// have yet. Tmux's explicit -S form creates the socket, but not its parent.
+func EnsureTmuxDir(directory string) error {
+	if strings.TrimSpace(directory) == "" {
+		return fmt.Errorf("tmux socket directory is empty")
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return fmt.Errorf("create tmux socket directory %s: %w", directory, err)
+	}
+	info, err := os.Lstat(directory)
+	if err != nil {
+		return fmt.Errorf("inspect tmux socket directory %s: %w", directory, err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("tmux socket directory %s is not a real directory", directory)
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(directory, 0o700); err != nil {
+			return fmt.Errorf("secure tmux socket directory %s: %w", directory, err)
+		}
 	}
 	return nil
 }

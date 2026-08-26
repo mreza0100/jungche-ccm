@@ -119,7 +119,7 @@ func runChatWithRuntime(
 	case "modal":
 		return runChatModal(rest, stdout, stderr)
 	case "group":
-		return runChatGroup(rest, stdin, stdout, stderr)
+		return runChatGroup(rest, stdin, stdout, stderr, runtime)
 	case "resolve":
 		return runChatResolve(rest, stdout, stderr, runtime)
 	case "help", "-h", "--help":

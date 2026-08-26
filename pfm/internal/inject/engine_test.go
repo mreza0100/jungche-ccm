@@ -957,6 +957,15 @@ func TestInjectCarriesSuccessfulResolverNote(t *testing.T) {
 	}
 }
 
+func TestResolvePreservesAmbiguousVerdict(t *testing.T) {
+	engine := newTestEngine(t, "cx-ambiguous", &fakeTmux{})
+	engine.resolver = fakeResolver{code: 2, detail: "two live panes match"}
+	_, code, detail, err := engine.Resolve(context.Background(), "duplicate")
+	if err != nil || code != CodeAmbiguous || detail != "two live panes match" {
+		t.Fatalf("Resolve() code=%d detail=%q err=%v", code, detail, err)
+	}
+}
+
 func TestSecondEnterDefenseCoversCodexAndBusyQueues(t *testing.T) {
 	tests := []struct {
 		name    string

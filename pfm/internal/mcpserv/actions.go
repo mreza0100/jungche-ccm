@@ -79,20 +79,22 @@ func (service *Service) chatStatus(
 	var stdout, stderr bytes.Buffer
 	code := service.backend.dispatch(ctx, args, &stdout, &stderr)
 	var output StatusOutput
-	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+	decodeErr := json.Unmarshal(stdout.Bytes(), &output)
+	if code != 0 {
+		if decodeErr == nil && output.State == headless.StateDead {
+			return nil, output, nil
+		}
 		return nil, StatusOutput{}, fmt.Errorf(
-			"chat_status command rc=%d stderr=%q: decode output: %w",
+			"chat_status command rc=%d stderr=%q",
 			code,
 			strings.TrimSpace(stderr.String()),
-			err,
 		)
 	}
-	if code != 0 && output.State != headless.StateDead {
+	if decodeErr != nil {
 		return nil, StatusOutput{}, fmt.Errorf(
-			"chat_status command rc=%d state=%s stderr=%q",
-			code,
-			output.State,
+			"chat_status command returned invalid JSON stderr=%q: decode output: %w",
 			strings.TrimSpace(stderr.String()),
+			decodeErr,
 		)
 	}
 	return nil, output, nil

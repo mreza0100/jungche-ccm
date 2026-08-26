@@ -295,15 +295,22 @@ func deliverChatNameWithRuntime(
 	if err != nil {
 		return 1, "", err
 	}
-	target := chat.ID
-	if target == "" {
-		target = chat.Socket
-	}
+	// Inject through the live tmux namespace, not the transcript UUID. A newly
+	// spawned Codex seat can be addressable before its rollout has been indexed;
+	// converting that seat to its UUID makes the subsequent /rename miss it.
+	target := chatNameInjectTarget(chat)
 	result, err := engine.Inject(ctx, inject.Request{
 		Target:  target,
 		Message: "/rename " + name,
 	})
 	return result.Code, result.Message, err
+}
+
+func chatNameInjectTarget(chat headless.Chat) string {
+	if chat.Session != "" {
+		return chat.Session
+	}
+	return chat.Socket
 }
 
 func runChatNameWith(
@@ -423,17 +430,6 @@ func chatSocketPath(socket string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(resolved.TmuxDir, socket), nil
-}
-
-func runChatGroup(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	if len(args) > 0 && args[0] == "hook" {
-		// A UserPromptSubmit receiver must never block the prompt it enriches.
-		// The shell backend already follows this contract; keep it even when
-		// locating or starting that transitional backend fails.
-		_ = runChatScript("group.sh", args, stdin, stdout, io.Discard)
-		return 0
-	}
-	return runChatScript("group.sh", args, stdin, stdout, stderr)
 }
 
 func runChatSatellite(

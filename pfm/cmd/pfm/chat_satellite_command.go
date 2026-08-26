@@ -20,12 +20,14 @@ import (
 	"unicode"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/chatload"
 	"hostops/pfm/internal/compose"
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
@@ -381,69 +383,20 @@ func runChatLoad(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "usage: pfm chat load <dir-or-file>...")
 		return 2
 	}
-	unique := make(map[string]struct{})
-	for _, target := range args {
-		info, err := os.Stat(target)
-		if errors.Is(err, fs.ErrNotExist) {
-			fmt.Fprintf(stderr, "WARN: not found: %s\n", target)
-			continue
-		}
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat load: stat %s: %v\n", target, err)
-			return 1
-		}
-		if !info.IsDir() {
-			unique[target] = struct{}{}
-			continue
-		}
-		if err := filepath.WalkDir(target, func(path string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() && path != target && skippedLoadDir(entry.Name()) {
-				return filepath.SkipDir
-			}
-			if !entry.IsDir() {
-				unique[path] = struct{}{}
-			}
-			return nil
-		}); err != nil {
-			fmt.Fprintf(stderr, "pfm chat load: walk %s: %v\n", target, err)
-			return 1
-		}
+	loaded, err := chatload.Load(args, 0)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat load: %v\n", err)
+		return 1
 	}
-	files := make([]string, 0, len(unique))
-	for path := range unique {
-		files = append(files, path)
+	for _, warning := range loaded.Warnings {
+		fmt.Fprintf(stderr, "WARN: %s\n", warning)
 	}
-	sort.Strings(files)
-	count, total := 0, 0
-	for _, path := range files {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(stderr, "pfm chat load: read %s: %v\n", path, err)
-			return 1
-		}
-		if len(raw) == 0 || bytes.IndexByte(raw, 0) >= 0 {
-			continue
-		}
-		lines := bytes.Count(raw, []byte{'\n'})
-		fmt.Fprintf(stdout, "%7d  %s\n", lines, path)
-		count++
-		total += lines
+	for _, file := range loaded.Files {
+		fmt.Fprintf(stdout, "%7d  %s\n", file.Lines, file.Path)
 	}
 	fmt.Fprintln(stdout, "---")
-	fmt.Fprintf(stdout, "%d files, %d total lines. READ EVERY ONE in full with the Read tool — no skim, no sampling. Write nothing.\n", count, total)
+	fmt.Fprintf(stdout, "%d files, %d total lines. READ EVERY ONE in full with the Read tool — no skim, no sampling. Write nothing.\n", len(loaded.Files), loaded.TotalLines)
 	return 0
-}
-
-func skippedLoadDir(name string) bool {
-	switch name {
-	case ".git", "node_modules", ".venv", "__pycache__":
-		return true
-	default:
-		return false
-	}
 }
 
 func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
@@ -555,18 +508,64 @@ func withinDirectory(path, root string) bool {
 }
 
 func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
-	id := os.Getenv("CLAUDE_CODE_SESSION_ID")
-	if id == "" {
-		fmt.Fprintln(stderr, "pfm chat branch: CLAUDE_CODE_SESSION_ID is not set")
-		return 1
+	flags := newFlagSet("chat branch", "usage: pfm chat branch [--engine claude|codex] [--session-id ID] [--cwd DIR] [--account N] [--name NAME] [name]", stderr)
+	requestedEngine := flags.String("engine", "", "engine of the session to fork")
+	id := flags.String("session-id", "", "session id to fork")
+	requestedCWD := flags.String("cwd", "", "project directory for the detached fork")
+	account := flags.Int("account", 0, "configured engine account")
+	requestedName := flags.String("name", "", "detached fork name")
+	if code, ok := parseFlags(flags, args); !ok {
+		return code
+	}
+	if *requestedName != "" && flags.NArg() != 0 {
+		flags.Usage()
+		return 2
 	}
 	runtime, err := optionalCommandRuntime(runtimes)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat branch: load config: %v\n", err)
 		return 1
 	}
-	if _, err := deps.Resolve(runtime.Config.Claude.Binary); err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: configured Claude binary %q is not executable: %v\n", runtime.Config.Claude.Binary, err)
+	engineInput := strings.TrimSpace(*requestedEngine)
+	if engineInput == "" {
+		switch {
+		case os.Getenv(resolve.ClaudeSessionEnv) != "":
+			engineInput = string(pfmengine.Claude)
+		case os.Getenv(resolve.CodexThreadEnv) != "":
+			engineInput = string(pfmengine.Codex)
+		default:
+			fmt.Fprintln(stderr, "pfm chat branch: no ambient session id; pass --engine and --session-id")
+			return 1
+		}
+	}
+	engine, parseErr := pfmengine.Parse(engineInput)
+	if parseErr != nil || (engine != pfmengine.Claude && engine != pfmengine.Codex) {
+		fmt.Fprintf(stderr, "pfm chat branch: engine must be claude or codex: %v\n", parseErr)
+		return 2
+	}
+	if *id == "" {
+		if engine == pfmengine.Claude {
+			*id = os.Getenv(resolve.ClaudeSessionEnv)
+		} else {
+			*id = os.Getenv(resolve.CodexThreadEnv)
+		}
+	}
+	if strings.TrimSpace(*id) == "" || strings.ContainsAny(*id, "\r\n\x00") {
+		fmt.Fprintln(stderr, "pfm chat branch: --session-id is required and must be one safe line")
+		return 2
+	}
+	primary := readPrimaryAccount(runtime.Paths, runtime.Config)
+	engine, selectedAccount, err := resolveRunEngineIDAccount(engine, *account, runtime.Config, primary)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: %v\n", err)
+		return 1
+	}
+	binary := runtime.Config.Claude.Binary
+	if engine == pfmengine.Codex {
+		binary = runtime.Config.EffectiveCodex(selectedAccount).Binary
+	}
+	if _, err := deps.Resolve(binary); err != nil {
+		fmt.Fprintf(stderr, "pfm chat branch: configured %s binary %q is not executable: %v\n", engine, binary, err)
 		return 1
 	}
 	if _, err := deps.Resolve("tmux"); err != nil {
@@ -574,28 +573,58 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		return 1
 	}
 	resolved := runtime.Paths
-	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: current directory: %v\n", err)
-		return 1
+	cwd := strings.TrimSpace(*requestedCWD)
+	if cwd == "" {
+		cwd, err = os.Getwd()
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat branch: current directory: %v\n", err)
+			return 1
+		}
 	}
-	name := sanitizeBranchName(strings.Join(args, " "))
+	nameInput := *requestedName
+	if flags.NArg() != 0 {
+		nameInput = strings.Join(flags.Args(), " ")
+	}
+	name := sanitizeBranchName(nameInput)
 	if strings.TrimSpace(name) == "" {
-		name = defaultBranchName(id)
+		name = defaultBranchName(*id)
 	}
-	model := currentClaudeModel(id, runtime)
-	command := branchClaudeCommand(id, name, model, runtime.Config)
-	socket, err := freshSocket(compose.ResumeClaude)
+	model := ""
+	if engine == pfmengine.Claude {
+		model = currentClaudeModel(*id, runtime)
+	}
+	plan, err := action.HeadlessFork(action.HeadlessForkRequest{
+		Engine: engine, SessionID: *id, Name: name, CWD: cwd,
+		Home: runtime.Paths.Home, PrimaryAccount: selectedAccount,
+		Cache1H: engine == pfmengine.Claude && initialCache1H(runtime.Config, selectedAccount),
+		Model:   model, Config: runtime.Config,
+	})
 	if err != nil {
-		fmt.Fprintf(stderr, "pfm chat branch: allocate socket: %v\n", err)
+		fmt.Fprintf(stderr, "pfm chat branch: plan fork: %v\n", err)
 		return 1
+	}
+	socket := freshEngineSocket(engine)
+	if override := os.Getenv(testFreshSocketEnv); override != "" {
+		socket = override
 	}
 	tmux := spawn.CommandTmux{TmuxDir: resolved.TmuxDir}
-	if err := tmux.NewSession(context.Background(), spawn.SessionSpec{
-		Socket: socket, Session: socket, Window: spawn.WindowName(name),
-		CWD: cwd, Run: command,
-		Width: action.HeadlessWidth, Height: action.HeadlessHeight,
-	}); err != nil {
+	var branchWarnings []string
+	if engine == pfmengine.Codex {
+		spawned, spawnErr := spawn.Run(context.Background(), tmux, spawn.Request{
+			Engine: engine, Name: name, Socket: socket, CWD: cwd, Run: plan.Run,
+			PromptOnCommandLine: plan.PromptOnCommandLine,
+			Width:               action.HeadlessWidth, Height: action.HeadlessHeight,
+		})
+		err = spawnErr
+		branchWarnings = append(branchWarnings, spawned.Warnings...)
+	} else {
+		err = tmux.NewSession(context.Background(), spawn.SessionSpec{
+			Socket: socket, Session: socket, Window: spawn.WindowName(name),
+			CWD: cwd, Run: plan.Run,
+			Width: action.HeadlessWidth, Height: action.HeadlessHeight,
+		})
+	}
+	if err != nil {
 		rollbackErr := killChatServer(context.Background(), resolved, socket)
 		if rollbackErr != nil {
 			fmt.Fprintf(stderr, "pfm chat branch: create detached seat: %v; rollback: %v\n", err, rollbackErr)
@@ -604,8 +633,29 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		}
 		return 1
 	}
+	// A resumed Codex fork can expose its idle composer while declining the
+	// startup rename modal. The ordinary chat-name route does not depend on
+	// that modal: it submits the complete /rename command through the guarded
+	// injector and converges the tmux window. Retry with that already-proven
+	// path before reporting the requested name as unconfirmed.
+	if engine == pfmengine.Codex && len(branchWarnings) != 0 {
+		var renameStderr bytes.Buffer
+		deliver := func(ctx context.Context, chat headless.Chat, name string) (int, string, error) {
+			return deliverChatNameWithRuntime(ctx, chat, name, runtime)
+		}
+		renameCode := applyChatName(context.Background(), headless.Chat{
+			Name: name, Engine: engine, CWD: cwd, Socket: socket, Session: socket, Live: true,
+		}, name, deliver, &renameStderr)
+		if renameCode == 0 {
+			branchWarnings = nil
+		} else {
+			branchWarnings = append(branchWarnings,
+				fmt.Sprintf("guarded /rename retry rc=%d: %s", renameCode, strings.TrimSpace(renameStderr.String())),
+			)
+		}
+	}
 	state := shared.Open(context.Background(), resolved)
-	recordErr := state.RecordBranchSeat(context.Background(), socket, id, time.Now().Unix())
+	recordErr := state.RecordBranchSeat(context.Background(), socket, *id, time.Now().Unix())
 	closeErr := state.Close()
 	if recordErr != nil || closeErr != nil {
 		rollbackErr := killChatServer(context.Background(), resolved, socket)
@@ -616,8 +666,12 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		fmt.Fprintf(stderr, "pfm chat branch: record detached seat: %v\n", failure)
 		return 1
 	}
-	fmt.Fprintf(stdout, "Branched %s…", transcript.Truncate(id, 8))
-	fmt.Fprintf(stdout, " as %q", name)
+	fmt.Fprintf(stdout, "Branched %s…", transcript.Truncate(*id, 8))
+	if len(branchWarnings) == 0 {
+		fmt.Fprintf(stdout, " as %q", name)
+	} else {
+		fmt.Fprintf(stdout, " with requested name %q still unconfirmed", name)
+	}
 	if model != "" {
 		fmt.Fprintf(stdout, " on %s", model)
 	}
@@ -627,6 +681,11 @@ func runChatBranch(args []string, stdout, stderr io.Writer, runtimes ...commandR
 		socket,
 		name,
 	)
+	if len(branchWarnings) != 0 {
+		for _, warning := range branchWarnings {
+			fmt.Fprintf(stdout, "warning: %s\n", warning)
+		}
+	}
 	return 0
 }
 
@@ -714,46 +773,6 @@ func currentClaudeTranscriptPath(id, cwd string, runtimes ...commandRuntime) str
 		return ""
 	}
 	return filepath.Join(resolved.Home, ".claude", "projects", slug, id+".jsonl")
-}
-
-func branchClaudeCommand(id, name, model string, machines ...pfmconfig.Config) string {
-	machine := pfmconfig.Config{
-		Claude: pfmconfig.Claude{PermissionMode: pfmconfig.PermissionBypass, Binary: pfmengine.MustLookup(pfmengine.Claude).Binary},
-	}
-	if len(machines) != 0 {
-		machine = machines[0]
-	}
-	unsets := []string{"-u", "CLAUDE_CODE_SESSION_ID", "-u", "CLAUDECODE"}
-	var sets []string
-	if config := os.Getenv("CLAUDE_CONFIG_DIR"); config == "" {
-		unsets = append(unsets, "-u", "CLAUDE_CONFIG_DIR")
-	} else {
-		sets = append(sets, "CLAUDE_CONFIG_DIR="+config)
-	}
-	if os.Getenv("FORCE_PROMPT_CACHING_5M") == "1" {
-		unsets = append(unsets, "-u", "ENABLE_PROMPT_CACHING_1H")
-		sets = append(sets, "FORCE_PROMPT_CACHING_5M=1")
-	} else if os.Getenv("ENABLE_PROMPT_CACHING_1H") == "1" {
-		unsets = append(unsets, "-u", "FORCE_PROMPT_CACHING_5M")
-		sets = append(sets, "ENABLE_PROMPT_CACHING_1H=1")
-	}
-	parts := append([]string{"env"}, unsets...)
-	parts = append(parts, sets...)
-	parts = append(parts, machine.Claude.Binary, "--resume", id, "--fork-session")
-	if model != "" {
-		parts = append(parts, "--model", model)
-	}
-	if name != "" {
-		parts = append(parts, "--name", name)
-	}
-	if machine.Claude.PermissionMode != pfmconfig.PermissionPrompt {
-		parts = append(parts, "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions")
-	}
-	quoted := make([]string, len(parts))
-	for index, part := range parts {
-		quoted[index] = action.Quote(part)
-	}
-	return strings.Join(quoted, " ")
 }
 
 func runChatModal(args []string, stdout, stderr io.Writer) int {
