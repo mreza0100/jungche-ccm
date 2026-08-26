@@ -810,19 +810,24 @@ func streamFleetRefreshesWith(
 }
 
 // reconcileCodexPanes is the clear-detection pass itself, run every gather
-// pass: for each live Codex pane it reads the pane's own status line (#1),
-// resolves it to a thread, and advances the pane's binding (#2). A binding
-// that MOVED off a non-empty previous thread means that thread just cleared
-// in this pane — KillClearedCodex records the same prompt-baseline kill
-// Claude's own SessionEnd hook gets, and the chat's established name is
-// re-applied to the new thread (#6): Codex has no launch flag for a thread
-// name, so the pane would otherwise run the new thread unnamed forever.
+// pass: for each live Codex pane it reads the pane's own status line, hands
+// every pane at once to decideCodexPanes, and applies that ruling — advance
+// the binding, retire the thread a /clear replaced with the same
+// prompt-baseline kill Claude's SessionEnd hook gets, and re-apply the chat's
+// established name to the new thread. Codex has no launch flag for a thread
+// name, so without that last step the pane runs the new thread unnamed
+// forever.
 //
-// A capture that FAILED is never read as "this pane runs nothing" — it is
-// skipped outright. A successful capture that cannot be mapped to exactly one
-// thread is ordinary stale/ambiguous screen state, not a failed probe: use a
-// matching incumbent binding for duplicate names when one exists, otherwise
-// skip quietly. Either way, never kill or move a binding on a guess.
+// The ruling itself lives in codexpanes.go, pure and shared with
+// `pfm doctor`, so the health report cannot disagree with the decision it
+// reports on. Read the law at the top of that file before changing anything
+// here: a name may SEED an unbound pane, and only an observed thread id may
+// MOVE one.
+//
+// Every pane this pass declines to act on carries a reason. The loud ones
+// reach stderr now; the rest wait in `pfm doctor --verbose`, because this
+// runs behind an interactive picker and a warning on every pass for an
+// ordinary one-refresh lag is how a real signal gets tuned out.
 func reconcileCodexPanes(
 	ctx context.Context,
 	database *store.Store,
@@ -843,90 +848,147 @@ func reconcileCodexPanes(
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
 	renamer := spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
-	for _, identity := range gather.CaptureCodexIdentity(ctx, capturer, live.Panes) {
-		if identity.Failed {
-			warn(fmt.Sprintf("codex pane %s %s: capture failed", identity.Socket, identity.PaneID))
-			continue
-		}
-		threadID := identity.ThreadID
-		if threadID == "" && identity.Name != "" {
-			matches := make([]string, 0, 1)
-			for candidateID, candidateName := range cxNames {
-				if candidateName == identity.Name {
-					matches = append(matches, candidateID)
-				}
+
+	_, actions := observeCodexPanes(ctx, database, manager, capturer, live, cxNames, warn)
+	for _, action := range actions {
+		if action.Skip != "" && action.Bind == "" {
+			if action.Loud {
+				warn(fmt.Sprintf(
+					"codex pane %s %s: %s",
+					action.Socket, action.PaneID, action.Skip,
+				))
 			}
-			switch len(matches) {
-			case 0:
-				continue
-			case 1:
-				threadID = matches[0]
-			default:
-				// Display names are not unique. If this pane is already bound to
-				// one of the matches, that incumbent is the only safe identity:
-				// keeping it does not guess or move the binding, and avoids turning
-				// ordinary duplicate-name state into a warning when the picker
-				// releases the terminal. A missing or non-matching binding is still
-				// ambiguous, but ambiguity is not a failed probe: skip it without
-				// mutating or filling the terminal with shutdown warnings.
-				bound, found, bindErr := manager.CodexPaneBinding(
-					ctx,
-					identity.Socket,
-					identity.PaneID,
-				)
-				if bindErr != nil {
-					warn(fmt.Sprintf("codex pane %s %s: read binding for duplicate name %q: %v", identity.Socket, identity.PaneID, identity.Name, bindErr))
-					continue
-				}
-				if found {
-					for _, match := range matches {
-						if match == bound {
-							threadID = bound
-							break
-						}
-					}
-				}
-				if threadID != "" {
-					break
-				}
-				continue
-			}
-		}
-		if threadID == "" {
 			continue
 		}
-		previous, changed, err := manager.AdvanceCodexPane(ctx, identity.Socket, identity.PaneID, threadID)
+		if action.Skip != "" && action.Loud {
+			warn(fmt.Sprintf(
+				"codex pane %s %s: %s",
+				action.Socket, action.PaneID, action.Skip,
+			))
+		}
+		if _, _, err := manager.AdvanceCodexPane(
+			ctx, action.Socket, action.PaneID, action.Bind,
+		); err != nil {
+			warn(fmt.Sprintf(
+				"codex pane %s %s: advance binding: %v", action.Socket, action.PaneID, err,
+			))
+			continue
+		}
+		if action.ClearKill == "" {
+			continue
+		}
+		target, recorded, err := manager.KillClearedCodex(ctx, action.ClearKill)
 		if err != nil {
-			warn(fmt.Sprintf("codex pane %s %s: advance binding: %v", identity.Socket, identity.PaneID, err))
-			continue
-		}
-		if !changed || previous == "" {
-			continue
-		}
-		target, recorded, err := manager.KillClearedCodex(ctx, previous)
-		if err != nil {
-			warn(fmt.Sprintf("codex pane %s %s: record clear kill: %v", identity.Socket, identity.PaneID, err))
+			warn(fmt.Sprintf(
+				"codex pane %s %s: record clear kill: %v", action.Socket, action.PaneID, err,
+			))
 			continue
 		}
 		if !recorded {
 			continue
 		}
 		killed = true
-		name := cxNames[target.ID]
+		// The name is stored per THREAD, so the cleared thread's own row is
+		// the one that carries it. The lineage root is the fallback for a
+		// cleared thread that was itself a resumed child: its row can be
+		// absent while the root's is not.
+		name := cxNames[action.ClearKill]
+		if name == "" {
+			name = cxNames[target.ID]
+		}
 		if name == "" {
 			continue
 		}
 		warning, renameErr := spawn.RenameCodex(
-			ctx, renamer, identity.Socket, identity.PaneID, name, spawn.Defaults(), spawn.Trace{},
+			ctx, renamer, action.Socket, action.PaneID, name, spawn.Defaults(), spawn.Trace{},
 		)
 		if renameErr != nil {
-			warn(fmt.Sprintf("codex pane %s %s: re-apply chat name after clear: %v", identity.Socket, identity.PaneID, renameErr))
+			warn(fmt.Sprintf("codex pane %s %s: re-apply chat name after clear: %v", action.Socket, action.PaneID, renameErr))
 		} else if warning != "" {
-			warn(fmt.Sprintf("codex pane %s %s: chat name was not re-applied after clear: %s", identity.Socket, identity.PaneID, warning))
+			warn(fmt.Sprintf("codex pane %s %s: chat name was not re-applied after clear: %s", action.Socket, action.PaneID, warning))
 		}
 	}
 	return killed
 }
+
+// observeCodexPanes captures every live Codex pane, pairs each with the
+// binding pfm currently holds for it, and returns both the observations and
+// the ruling decideCodexPanes made over them. `pfm doctor` calls it for the
+// observations alone, which is why it never writes: the health report must be
+// able to describe this pass without performing it.
+func observeCodexPanes(
+	ctx context.Context,
+	database *store.Store,
+	manager *kill.Manager,
+	capturer gather.PaneCapturer,
+	live gather.Snapshot,
+	cxNames map[string]string,
+	warn gatherWarn,
+) ([]codexPaneObservation, []codexPaneAction) {
+	identities := gather.CaptureCodexIdentity(ctx, capturer, live.Panes)
+	observations := make([]codexPaneObservation, 0, len(identities))
+	for _, identity := range identities {
+		observation := codexPaneObservation{
+			Socket: identity.Socket, PaneID: identity.PaneID,
+			Name: identity.Name, ThreadID: identity.ThreadID, Failed: identity.Failed,
+		}
+		if !identity.Failed {
+			bound, found, bindErr := manager.CodexPaneBinding(ctx, identity.Socket, identity.PaneID)
+			if bindErr != nil {
+				// A store read that failed is not an unbound pane. Treating it
+				// as one would let a name seed a binding over a live one.
+				warn(fmt.Sprintf(
+					"codex pane %s %s: read binding: %v",
+					identity.Socket, identity.PaneID, bindErr,
+				))
+				continue
+			}
+			if found {
+				observation.Bound = bound
+			}
+		}
+		observations = append(observations, observation)
+	}
+	return observations, decideCodexPanes(observations, cxNames, codexLineageRoots(ctx, database))
+}
+
+// codexLineageRoots resolves thread ids to lineage roots, loading the rollout
+// table at most once and only when a caller actually asks — the common pass
+// moves no binding and never needs it.
+//
+// It returns "" for one reason only: the rollouts could not be read. A thread
+// that is simply its own root answers with its own id. That distinction is
+// load-bearing — decideCodexPanes reads "" as "we failed to look" and refuses
+// to call a clear on it.
+func codexLineageRoots(ctx context.Context, database *store.Store) func(string) string {
+	var (
+		loaded bool
+		broken bool
+		roots  map[string]string
+	)
+	return func(id string) string {
+		if id == "" {
+			return ""
+		}
+		if !loaded {
+			loaded = true
+			rollouts, err := database.Rollouts(ctx)
+			if err != nil {
+				broken = true
+			} else {
+				_, roots = store.ResolveCodexLineages(rollouts)
+			}
+		}
+		if broken {
+			return ""
+		}
+		if root := roots[id]; root != "" {
+			return root
+		}
+		return id
+	}
+}
+
 func enrichLiveFleetData(
 	ctx context.Context,
 	database *store.Store,

@@ -28,7 +28,16 @@ import (
 
 type reloadCommandTmux struct{}
 
-const reloadUsage = "usage: pfm chat reload [account] [--then prompt] [--sock socket] [--1h on|off]"
+// reloadUsage leads with the flags because a caller who guesses is guessing
+// at a POSITION, and a positional slot that only accepts a bare integer is the
+// one shape a model reading "reload the cache off" will fill with the words it
+// was given. Every meaning now has a flag with a name on it.
+//
+// --sock is deliberately last and documented as the exception: with no --sock
+// the command finds the CALLER'S OWN pane by itself, so asking for it is the
+// unusual case, not the normal one.
+const reloadUsage = "usage: pfm chat reload [--account N] [--1h on|off] [--then \"prompt\"] [--sock socket]\n" +
+	"       with no --sock, the calling chat's own pane is detected automatically"
 
 var startReloadWorker = func(command *exec.Cmd) error {
 	if err := command.Start(); err != nil {
@@ -215,9 +224,24 @@ func runChatReloadWorkerWithRuntime(
 			}
 			index++
 			cacheOverride = args[index]
+		case "--account":
+			if index+1 >= len(args) {
+				fmt.Fprintln(stderr, "pfm chat reload: --account needs an account number, as in --account 2")
+				return 2
+			}
+			index++
+			if _, valid := positiveAccount(args[index]); !valid {
+				fmt.Fprintf(stderr, "pfm chat reload: --account takes an account NUMBER, not %q\n", args[index])
+				return 2
+			}
+			if account != "" {
+				fmt.Fprintln(stderr, "pfm chat reload: account specified twice")
+				return 2
+			}
+			account = args[index]
 		default:
 			if _, valid := positiveAccount(args[index]); !valid {
-				fmt.Fprintln(stderr, reloadUsage)
+				fmt.Fprintf(stderr, "pfm chat reload: %s\n", reloadArgumentHint(args[index]))
 				return 2
 			}
 			if account != "" {
@@ -307,6 +331,21 @@ func validateReloadArgs(args []string) error {
 				return fmt.Errorf("%s needs a value", args[index])
 			}
 			index++
+		case "--account":
+			if index+1 >= len(args) {
+				return errors.New("--account needs an account number, as in --account 2")
+			}
+			if _, valid := positiveAccount(args[index+1]); !valid {
+				return fmt.Errorf(
+					"--account takes an account NUMBER, not %q — see `pfm config show` for the configured accounts",
+					args[index+1],
+				)
+			}
+			if account {
+				return errors.New("account specified twice")
+			}
+			account = true
+			index++
 		case "--1h":
 			if index+1 >= len(args) || (args[index+1] != "on" && args[index+1] != "off" && args[index+1] != "1" && args[index+1] != "0") {
 				return errors.New("--1h needs on|off")
@@ -314,7 +353,7 @@ func validateReloadArgs(args []string) error {
 			index++
 		default:
 			if _, valid := positiveAccount(args[index]); !valid {
-				return errors.New(reloadUsage)
+				return errors.New(reloadArgumentHint(args[index]))
 			}
 			if account {
 				return errors.New("account specified twice")
@@ -323,6 +362,31 @@ func validateReloadArgs(args []string) error {
 		}
 	}
 	return nil
+}
+
+// reloadArgumentHint turns a rejected word into an error the CALLER can act on
+// without re-reading the usage line and guessing again.
+//
+// The usage string alone was not enough: a caller told "reload the cache off"
+// sent `reload cache off`, got the bare usage back, and had to work out on its
+// own that "cache" meant --1h. An error that only restates the grammar makes
+// the reader do the mapping the command already knows how to do.
+func reloadArgumentHint(argument string) string {
+	suggestion := ""
+	switch strings.ToLower(strings.TrimPrefix(argument, "--")) {
+	case "cache", "1h", "ttl", "prompt-cache":
+		suggestion = "did you mean --1h on|off?"
+	case "account", "acct", "seat", "profile":
+		suggestion = "did you mean --account N?"
+	case "then", "prompt", "continue":
+		suggestion = "did you mean --then \"prompt\"?"
+	case "sock", "socket", "chat", "target":
+		suggestion = "did you mean --sock socket? (omit it and the calling chat is detected automatically)"
+	}
+	if suggestion == "" {
+		suggestion = "an account is passed as --account N, and every other setting has its own flag"
+	}
+	return fmt.Sprintf("%q is not a reload argument — %s\n%s", argument, suggestion, reloadUsage)
 }
 
 func positiveAccount(value string) (int, bool) {
@@ -336,7 +400,17 @@ func reloadRequestedAccount(args []string) int {
 		case "--then", "--sock", "--1h":
 			index++
 			continue
+		case "--account":
+			if index+1 < len(args) {
+				if account, valid := positiveAccount(args[index+1]); valid {
+					return account
+				}
+			}
+			index++
+			continue
 		}
+		// The bare positional stays accepted for callers already using it;
+		// only the documented spelling changed.
 		if account, valid := positiveAccount(args[index]); valid {
 			return account
 		}

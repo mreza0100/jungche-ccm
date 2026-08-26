@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goRuntime "runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ import (
 	"hostops/pfm/internal/harvestpy"
 	"hostops/pfm/internal/index"
 	"hostops/pfm/internal/installer"
+	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/stats"
@@ -256,6 +259,8 @@ func runDoctor(
 		len(roots),
 	)
 
+	warnings += printCodexPaneBindingDoctor(ctx, stdout, database, runtime)
+
 	crumbEntries, crumbInvalid, crumbErr := crumbHealth(resolved.SIDDir)
 	if crumbErr != nil {
 		warnings++
@@ -283,6 +288,216 @@ func runDoctor(
 	}
 	fmt.Fprintln(stdout, "doctor: clean")
 	return 0
+}
+
+// printCodexPaneBindingDoctor audits the Codex /clear bindings against each
+// other. It is the answer to "what does this instrument report when it is
+// itself broken": a single binding read alone always looks fine, so the two
+// states that actually break /clear are only visible in the relations —
+//
+//   - contested: two live panes bound to ONE thread, which means at least one
+//     pane is being followed into a chat it is not running;
+//   - retired: a pane bound to a thread a clear already killed, which is where
+//     `pfm chat resolve` starts answering with a corpse and every inject lands
+//     in a thread nobody is in.
+//
+// Both were found on a real host by reading the meta table by hand. Neither
+// produced a single line of output anywhere in pfm. They do now.
+func printCodexPaneBindingDoctor(
+	ctx context.Context,
+	stdout io.Writer,
+	database *store.Store,
+	runtime commandRuntime,
+) int {
+	manager, err := kill.New(database, killDependencies(runtime))
+	if err != nil {
+		fmt.Fprintf(stdout, "doctor: warning codex_pane_bindings=unreadable error=%v\n", err)
+		return 1
+	}
+	bindings, err := manager.CodexPaneBindings(ctx)
+	if err != nil {
+		// An unreadable table is not an empty one. Reporting "0 bindings"
+		// here would be the same word a genuinely clean fleet prints.
+		fmt.Fprintf(stdout, "doctor: warning codex_pane_bindings=unreadable error=%v\n", err)
+		return 1
+	}
+
+	panesByThread := make(map[string][]string, len(bindings))
+	undecodable := 0
+	for _, binding := range bindings {
+		if binding.Socket == "" {
+			undecodable++
+			continue
+		}
+		panesByThread[binding.ThreadID] = append(
+			panesByThread[binding.ThreadID], binding.Socket+" "+binding.PaneID,
+		)
+	}
+
+	warnings := 0
+	contested := 0
+	threads := make([]string, 0, len(panesByThread))
+	for thread := range panesByThread {
+		threads = append(threads, thread)
+	}
+	sort.Strings(threads)
+	for _, thread := range threads {
+		if len(panesByThread[thread]) < 2 {
+			continue
+		}
+		contested++
+		warnings++
+		fmt.Fprintf(
+			stdout,
+			"doctor: warning codex_pane_binding=contested thread=%s panes=%s\n",
+			thread, strings.Join(panesByThread[thread], ","),
+		)
+	}
+
+	retired := 0
+	for _, thread := range threads {
+		record, killed, err := database.Killed(ctx, thread)
+		if err != nil {
+			warnings++
+			fmt.Fprintf(
+				stdout,
+				"doctor: warning codex_pane_binding=kill-state-unreadable thread=%s error=%v\n",
+				thread, err,
+			)
+			continue
+		}
+		if !killed || record.BaselinePrompts == nil {
+			continue
+		}
+		retired++
+		warnings++
+		fmt.Fprintf(
+			stdout,
+			"doctor: warning codex_pane_binding=retired-thread thread=%s panes=%s\n",
+			thread, strings.Join(panesByThread[thread], ","),
+		)
+	}
+	if undecodable != 0 {
+		warnings++
+		fmt.Fprintf(stdout, "doctor: warning codex_pane_binding=undecodable count=%d\n", undecodable)
+	}
+	fmt.Fprintf(
+		stdout,
+		"doctor: codex_pane_bindings total=%d contested=%d retired=%d undecodable=%d\n",
+		len(bindings), contested, retired, undecodable,
+	)
+	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime)
+	if warnings != 0 {
+		fmt.Fprintln(
+			stdout,
+			"doctor: remediation: a contested or retired binding is followed into the wrong "+
+				"thread — clear it with `pfm chat kill --forget <chat>` or let the next /clear "+
+				"in that pane re-seat it from the pane's own status line",
+		)
+	}
+	return warnings
+}
+
+// printCodexPaneFollowDoctor reports the panes pfm cannot currently follow
+// through a /clear.
+//
+// The reconcile pass stays SILENT about these: it runs on every picker refresh,
+// and an unindexed name resolves itself the moment Codex's index is re-read, so
+// warning there trains the reader to ignore the channel. Silent on the hot path
+// is only defensible if something else says it out loud on request — and this
+// is that something. A pane listed here is a pane whose next /clear will go
+// unnoticed.
+//
+// It runs the SAME decision the reconcile pass runs, over a fresh capture, so
+// the report cannot drift from the behaviour it describes.
+func printCodexPaneFollowDoctor(
+	ctx context.Context,
+	stdout io.Writer,
+	database *store.Store,
+	manager *kill.Manager,
+	runtime commandRuntime,
+) int {
+	panes, err := liveCodexPanes(ctx, runtime)
+	if err != nil {
+		// "No live panes" and "we could not look for live panes" are different
+		// answers and must not print the same word.
+		fmt.Fprintf(stdout, "doctor: warning codex_panes=unreadable error=%v\n", err)
+		return 1
+	}
+	if len(panes) == 0 {
+		fmt.Fprintln(stdout, "doctor: codex_panes live=0")
+		return 0
+	}
+	cxNames, err := database.CxNames(ctx)
+	if err != nil {
+		fmt.Fprintf(stdout, "doctor: warning codex_pane_names=unreadable error=%v\n", err)
+		return 1
+	}
+	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
+	silent := func(string) {}
+	_, actions := observeCodexPanes(
+		ctx, database, manager, capturer, gather.Snapshot{Panes: panes}, cxNames, silent,
+	)
+
+	unfollowable := 0
+	warnings := 0
+	for _, action := range actions {
+		switch action.Skip {
+		case "", codexPaneSameLineage:
+			continue
+		}
+		unfollowable++
+		warnings++
+		fmt.Fprintf(
+			stdout,
+			"doctor: warning codex_pane=unfollowable socket=%s pane=%s reason=%q\n",
+			action.Socket, action.PaneID, action.Skip,
+		)
+	}
+	fmt.Fprintf(
+		stdout,
+		"doctor: codex_panes live=%d unfollowable=%d\n", len(actions), unfollowable,
+	)
+	if unfollowable != 0 {
+		fmt.Fprintln(
+			stdout,
+			"doctor: remediation: an unfollowable pane's next /clear goes unnoticed — "+
+				"name the chat with `pfm chat name`, or wait one index refresh if the chat "+
+				"was renamed moments ago",
+		)
+	}
+	return warnings
+}
+
+// liveCodexPanes enumerates the Codex panes on the fleet's private tmux
+// directory. It exists so `pfm doctor` can audit pane state without paying for
+// a whole fleet gather (procfs walk, every engine, every transcript) that it
+// would use one field of.
+func liveCodexPanes(ctx context.Context, runtime commandRuntime) ([]gather.Pane, error) {
+	entries, err := os.ReadDir(runtime.Paths.TmuxDir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			// No tmux directory is a real, knowable answer: no fleet has run.
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read tmux directory %s: %w", runtime.Paths.TmuxDir, err)
+	}
+	tmux := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
+	panes := make([]gather.Pane, 0, len(entries))
+	for _, entry := range entries {
+		socket := entry.Name()
+		if id, ok := pfmengine.FromSocket(socket); !ok || id != pfmengine.Codex {
+			continue
+		}
+		found, err := tmux.ListPanes(ctx, socket)
+		if err != nil {
+			// A dead socket file is ordinary litter, not a probe failure worth
+			// failing the whole audit over.
+			continue
+		}
+		panes = append(panes, found...)
+	}
+	return panes, nil
 }
 
 func printOpencodeStoreDoctor(ctx context.Context, stdout io.Writer, machine config.Config) int {

@@ -36,6 +36,7 @@ func newSignatureEngineWith(
 	tmux *fakeTmux,
 	identifier SelfIdentifier,
 	spawner ThenSpawner,
+	tune ...func(*Options),
 ) *Engine {
 	t.Helper()
 	t.Setenv("PFM_HOME", t.TempDir())
@@ -47,7 +48,7 @@ func newSignatureEngineWith(
 	t.Setenv("CODEX_THREAD_ID", "")
 	t.Setenv("CHAT_INJECT_SOCKET", "")
 	clearStatedSender(t)
-	engine, err := New(Dependencies{
+	dependencies := Dependencies{
 		Resolver: fakeResolver{
 			socket: filepath.Join("/tmp", "tmux-jail", socket),
 			target: "%1",
@@ -70,7 +71,11 @@ func newSignatureEngineWith(
 			LockRoot:    t.TempDir(),
 			ThenLogRoot: t.TempDir(),
 		},
-	})
+	}
+	for _, adjust := range tune {
+		adjust(&dependencies.Options)
+	}
+	engine, err := New(dependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,15 +130,62 @@ func TestSignatureUsesTheSenderStatedByTheSpawningChat(t *testing.T) {
 }
 
 // TestSignatureStatesAnUnderivableIdentity covers chat.sh:648-657: when every
-// derivation source is empty the footer says so out loud, because a silently
-// dropped footer is indistinguishable from a signed message at the recipient.
-func TestSignatureStatesAnUnderivableIdentity(t *testing.T) {
+// derivation source is empty, NOTHING is sent.
+//
+// The old behaviour stamped "UNSIGNED — sender identity underivable" on the
+// message and delivered it. That was strictly worse than silence: the
+// recipient is handed an instruction from nobody and its only defensible
+// response is to refuse to act on it, so the delivery bought nothing while
+// looking like it had worked. The sender is the only party who can still
+// repair the identity and the sender was the one told nothing.
+func TestUnderivableIdentityRefusesToSendAtAll(t *testing.T) {
 	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
 	engine := newSignatureEngine(
 		t,
 		"cc-1-2-3",
 		fake,
 		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "who is speaking",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code == 0 {
+		t.Fatalf("an unsigned message was delivered: %+v", result)
+	}
+	if result.Unsigned {
+		t.Fatalf("Unsigned describes what the RECIPIENT got, and it got nothing: %+v", result)
+	}
+	for _, want := range []string{
+		"refusing to send an UNSIGNED message",
+		"DETACHED",
+		SenderSessionEnv,
+		"--allow-unsigned",
+	} {
+		if !strings.Contains(result.Message, want) {
+			t.Errorf("refusal %q does not mention %q", result.Message, want)
+		}
+	}
+	if typed := lastLiteral(fake); strings.Contains(typed, "who is speaking") {
+		t.Fatalf("the refused message reached the pane anyway: %q", typed)
+	}
+}
+
+// The deliberate opt-in keeps the old contract intact: if an operator asks for
+// an unsigned send, the message goes out with the absence STATED, never
+// silently dropped, so the recipient can still tell it apart from a signed one.
+func TestAllowUnsignedStillStatesTheAbsence(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngineWith(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+		&fakeSpawner{},
+		func(options *Options) { options.AllowUnsigned = true },
 	)
 	result, err := engine.Inject(context.Background(), Request{
 		Target:  "chat",
@@ -152,6 +204,36 @@ func TestSignatureStatesAnUnderivableIdentity(t *testing.T) {
 	}
 	if !strings.Contains(result.Proof, want) {
 		t.Fatalf("proof %q lacks the unsigned marker", result.Proof)
+	}
+}
+
+// A long body takes the auto-file path, where the POINTER is signed separately
+// from the body. That second signature must be refused too, or the exact shape
+// the user saw — an UNSIGNED auto-file pointer ordering a protocol change —
+// walks straight through the guard on the body.
+func TestUnderivableIdentityRefusesTheAutoFilePointerToo(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: strings.Repeat("protocol change ", 4096),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code == 0 {
+		t.Fatalf("an unsigned auto-file pointer was delivered: %+v", result)
+	}
+	if !strings.Contains(result.Message, "refusing to send an UNSIGNED message") {
+		t.Fatalf("refusal %q is not the unsigned refusal", result.Message)
+	}
+	if result.AutoFilePath != "" {
+		t.Fatalf("a refused send still reported an auto-file at %q", result.AutoFilePath)
 	}
 }
 

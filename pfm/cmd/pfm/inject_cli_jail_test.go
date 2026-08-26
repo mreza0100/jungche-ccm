@@ -160,6 +160,7 @@ func TestChatInjectResolvesUnindexedLiveSessionAcrossProbeSockets(t *testing.T) 
 		time.Sleep(20 * time.Millisecond)
 	}
 
+	statedTestSender(t)
 	var stdout, stderr bytes.Buffer
 	message := fmt.Sprintf("direct ladder probe %d", time.Now().UnixNano())
 	code := run([]string{"chat", "inject", session, message}, &stdout, &stderr)
@@ -354,6 +355,7 @@ func TestChatInjectResumeLadderPathSessionAndExcerpt(t *testing.T) {
 			t.Setenv("PFM_CODEX_ROOT", filepath.Join(root, "codex"))
 			t.Setenv("PFM_TMUX_DIR", filepath.Join(root, "tmux"))
 			t.Setenv("PFM_PROC_ROOT", filepath.Join(root, "proc"))
+			statedTestSender(t)
 			var stdout, stderr bytes.Buffer
 			code := run(
 				[]string{"chat", "inject", testCase.target(transcript), "resume ladder message"},

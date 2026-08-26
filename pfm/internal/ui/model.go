@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textinput"
@@ -1085,7 +1086,19 @@ func (model *Model) rebuildOrder() {
 				newChatEmitted = true
 			}
 			prefix, grouped := nameGroupPrefix(model.rows[index].Name)
-			grouped = grouped && len(members[prefix]) >= 2
+			// ONE member is a group. A chat named GROUP:NAME has already
+			// declared where it belongs, and the panel is what makes that
+			// readable — so it gets the header and the indent immediately
+			// rather than sitting flat until a second member shows up and
+			// re-lays out the list underneath the reader.
+			//
+			// The membership test is the same one that built `members`: a row
+			// that is not itself a member must never take the group path,
+			// because that path emits the member list and skips the row it was
+			// called for.
+			grouped = grouped &&
+				isLiveNameGroupRow(model.rows[index].Kind) &&
+				len(members[prefix]) >= 1
 			if !grouped {
 				model.order = append(model.order, index)
 				continue
@@ -1106,10 +1119,29 @@ func isNewChatKind(kind compose.Kind) bool {
 	return kind == compose.NewClaude || kind == compose.NewCodex || kind == compose.NewOpencode
 }
 
+// nameGroupPrefix reads a GROUP:NAME declaration off a chat name.
+//
+// The shape is exact on purpose: a non-empty prefix with NO whitespace in it,
+// a colon, and a non-empty remainder that does not start with whitespace.
+// "P:BUILDER" declares a group; "fix: the bug" is a sentence with a colon in
+// it and declares nothing, and neither does "wave 3: rework".
+//
+// The strictness became load-bearing when a single member started opening a
+// panel. Under the old two-member threshold a prose colon was mostly harmless
+// — it took two of them to invent a group — so the rule could afford to be
+// loose. It cannot now: every stray colon would become a header.
 func nameGroupPrefix(name string) (string, bool) {
-	prefix, _, found := strings.Cut(cleanField(name), ":")
-	prefix = strings.TrimSpace(prefix)
-	return prefix, found && prefix != ""
+	prefix, rest, found := strings.Cut(cleanField(name), ":")
+	if !found || prefix == "" || rest == "" {
+		return "", false
+	}
+	if strings.ContainsFunc(prefix, unicode.IsSpace) {
+		return "", false
+	}
+	if unicode.IsSpace(rune(rest[0])) {
+		return "", false
+	}
+	return prefix, true
 }
 
 func isLiveNameGroupRow(kind compose.Kind) bool {

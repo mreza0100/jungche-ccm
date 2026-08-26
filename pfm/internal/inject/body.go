@@ -37,7 +37,40 @@ func (engine *Engine) PrepareForResume(
 	target, engineName, body string,
 ) (PreparedMessage, error) {
 	signed, unsigned := engine.SignForResume(ctx, body)
+	if err := engine.refuseUnsigned(unsigned); err != nil {
+		return PreparedMessage{}, err
+	}
 	return engine.prepareMessage(ctx, target, engineName, body, signed, unsigned, false, true)
+}
+
+// ErrUnsigned is returned instead of delivering a message no sender could be
+// derived for.
+//
+// The old behaviour stamped "UNSIGNED — sender identity underivable" onto the
+// message and sent it anyway. That is worse than it sounds: the recipient is
+// handed an instruction from nobody, and its only defensible response is to
+// refuse to act on it — so the send accomplished nothing except to look like
+// it worked. The sender is the only party who can still repair the identity,
+// and the sender is the one who was told nothing.
+//
+// Refusing here fails at the one moment somebody can fix it.
+var ErrUnsigned = errors.New("refusing to send an UNSIGNED message")
+
+// refuseUnsigned turns an underivable sender into a refusal, unless the caller
+// deliberately opted in.
+func (engine *Engine) refuseUnsigned(unsigned bool) error {
+	if !unsigned || engine.options.AllowUnsigned {
+		return nil
+	}
+	return fmt.Errorf(
+		"%w: this process derived no identity of its own, so the recipient "+
+			"would be asked to act on an instruction from nobody. If this ran "+
+			"DETACHED (setsid/nohup/disowned), that is why: detaching severs "+
+			"the process chain the handle is recovered from. Send from the "+
+			"chat itself, state the identity (%s=$(pfm whoami) %s=<label> "+
+			"<command>), or pass --allow-unsigned to send it anyway",
+		ErrUnsigned, SenderSessionEnv, SenderLabelEnv,
+	)
 }
 
 func (engine *Engine) prepareLiveMessage(
@@ -47,6 +80,9 @@ func (engine *Engine) prepareLiveMessage(
 	interrupted bool,
 ) (PreparedMessage, error) {
 	signed, unsigned := engine.signedMessage(ctx, body, interrupted)
+	if err := engine.refuseUnsigned(unsigned); err != nil {
+		return PreparedMessage{}, err
+	}
 	if isHarnessCommand(body) {
 		return PreparedMessage{Message: signed, Unsigned: unsigned}, nil
 	}
@@ -84,6 +120,12 @@ func (engine *Engine) prepareMessage(
 		pointer, pointerUnsigned = engine.SignForResume(ctx, pointer)
 	} else {
 		pointer, pointerUnsigned = engine.signedMessage(ctx, pointer, interrupted)
+	}
+	// The pointer is signed separately from the body, so it is checked
+	// separately: a body that signed and a pointer that did not must still
+	// refuse rather than deliver half an identity.
+	if err := engine.refuseUnsigned(pointerUnsigned); err != nil {
+		return PreparedMessage{}, err
 	}
 	return PreparedMessage{
 		Message:      pointer,
