@@ -309,10 +309,10 @@ func (model Model) renderFooter(width int) string {
 			dimStyle.Render(fillLine(second, width))
 	}
 	first := " ↑↓ move  enter open  esc cancel  type to fuzzy-find"
-	second := " ⌃X hide  ⌃E 1h  ⌃S account  ⌃O reboot"
+	second := " ⌃X kill  ⌃E 1h  ⌃S account  ⌃O reboot"
 	if width < 96 {
 		first = " ↑↓ move · enter open · esc cancel · type find"
-		second = " ⌃X hide · ⌃E 1h · ⌃S acct · ⌃O reboot"
+		second = " ⌃X kill · ⌃E 1h · ⌃S acct · ⌃O reboot"
 	}
 	return dimStyle.Render(fillLine(first, width)) + "\n" +
 		dimStyle.Render(fillLine(second, width))
@@ -840,7 +840,7 @@ var carouselActions = []struct{ Glyph, Label string }{
 	{"▶", "open"},
 	{"⚡", "reboot"},
 	{"🕐", "1h"},
-	{"✖", "hide"},
+	{"✖", "kill"},
 	{"⏸", "deactive"},
 }
 

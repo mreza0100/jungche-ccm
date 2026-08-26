@@ -10,7 +10,7 @@ import (
 // as → is pressed.
 func TestCarouselBoxesShowsEveryActionAtOnce(t *testing.T) {
 	boxes := carouselBoxes(0)
-	for _, label := range []string{"open", "reboot", "1h", "hide", "deactive"} {
+	for _, label := range []string{"open", "reboot", "1h", "kill", "deactive"} {
 		if !strings.Contains(boxes, label) {
 			t.Fatalf("carouselBoxes(0) = %q, missing the %q action", boxes, label)
 		}
@@ -29,7 +29,7 @@ func TestCarouselBoxesFillsOnlyTheCurrentAction(t *testing.T) {
 	for index, want := range map[int]string{
 		0: "▐▶ open▌",
 		1: "▐⚡ reboot▌",
-		3: "▐✖ hide▌",
+		3: "▐✖ kill▌",
 		4: "▐⏸ deactive▌",
 	} {
 		boxes := carouselBoxes(index)
