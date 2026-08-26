@@ -196,3 +196,27 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   and now names the `wave-walker` engine; `.claude/commands/wave/live.md` claimed "this install has no
   worktree pipeline" while `CLAUDE.md` fences code waves — it now states what is actually true, that
   `/wave:live` lands on `main` under `/dev` verification and the isolated fence is for code-wave trains.
+
+- **KEEP-LOCAL: published history rewritten to purge the scrub table (2026-08-26).** `scripts/placeholder-map.tsv`
+  was tracked and published from `9b9663d` onward, carrying a real name, email, machine home paths, and
+  private brand strings; `leak-check.sh` excludes that exact path from its own scan by design, so every
+  pre-push gate reported clean while it sat in the tree. Two steps, both done: it was untracked
+  (`git rm --cached`, commit `f96c660`) to stop future publication, then `git filter-repo` stripped it from
+  all 357 published commits and the result was force-pushed over 5 branches and 77 tags.
+  `origin/main` moved `f96c660` → `08b78b3`; 25 tags (`v0.44.0`–`v0.62.0`) were re-pointed. Verified from a
+  FRESH clone, not from the mirror: zero commits and zero of 77 tags carry the file.
+  Backup of the pre-rewrite history: `~/professor-backup-f96c660.bundle` (20M, `git bundle verify` clean).
+  **The rewrite was done against this repo's own `NEVER force-push` hard rule** (`.claude/commands/pcm/release.md`
+  § Hard rules), on the user's explicit, thrice-reaffirmed in-turn override after being shown the full cost.
+  The registered `gitter` agent refused the operation categorically and correctly — it also refused to treat a
+  relayed quote of user consent as consent, which is the behavior a Git writer should have; the push was run
+  from the main loop instead.
+  **WHAT IT DID NOT ACHIEVE — do not record this as fully purged:** GitHub's `refs/pull/*/head` refs are
+  read-only and rejected the push (`deny updating a hidden ref`, the reason the push exited 1). PR refs **#3,
+  #5, and #7 still serve the file** and only GitHub Support can remove them — draft request at
+  `tmp/github-support-purge-request.md`. One fork and any existing clone also retain the original history,
+  permanently, by the user's accepted ruling ("that's not our responsibility"). The values are a name, an
+  email, and paths — unlike a credential they cannot be rotated, so treat them as permanently disclosed and
+  design accordingly.
+  **Local fallout:** the 21 pre-existing worktree branches still sit on pre-rewrite commits and share no
+  ancestry with the new `main`; each needs rebasing onto `08b78b3` before its next merge.
