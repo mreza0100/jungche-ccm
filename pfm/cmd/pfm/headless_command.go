@@ -313,11 +313,12 @@ func headlessTarget(
 func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"chat status",
-		"usage: pfm chat status <target> [--json] [--summary] [--engine claude|codex] [--model MODEL]",
+		"usage: pfm chat status <target> [--json] [--summary] [--ask] [--engine claude|codex] [--model MODEL]",
 		stderr,
 	)
 	asJSON := flags.Bool("json", false, "emit one JSON object")
 	withSummary := flags.Bool("summary", false, "summarize the last exchange")
+	withAsk := flags.Bool("ask", false, "answer the chat's current status from its live pane capture and last exchange")
 	summaryEngine := flags.String("engine", "", "override the configured ask engine")
 	summaryModel := flags.String("model", "", "override the configured ask model")
 	names, code, ok := parseFlagsAnywhere(flags, args)
@@ -328,8 +329,8 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		flags.Usage()
 		return 2
 	}
-	if !*withSummary && (*summaryEngine != "" || *summaryModel != "") {
-		fmt.Fprintln(stderr, "pfm chat status: --engine and --model require --summary")
+	if !*withSummary && !*withAsk && (*summaryEngine != "" || *summaryModel != "") {
+		fmt.Fprintln(stderr, "pfm chat status: --engine and --model require --summary or --ask")
 		return 2
 	}
 	var summaryEngineID pfmengine.ID
@@ -351,28 +352,41 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		fmt.Fprintf(stderr, "pfm chat status: %v\n", err)
 		return 1
 	}
-	if *withSummary {
+	if *withSummary || *withAsk {
 		runtime, runtimeErr := optionalCommandRuntime(runtimes)
 		if runtimeErr != nil {
 			fmt.Fprintf(stderr, "pfm chat status: %v\n", runtimeErr)
 			return 1
 		}
-		database, openErr := store.Open(store.WithWarningWriter(stderr))
-		if openErr != nil {
-			fmt.Fprintf(stderr, "pfm chat status: %v\n", openErr)
-			return 1
+		if *withSummary {
+			database, openErr := store.Open(store.WithWarningWriter(stderr))
+			if openErr != nil {
+				fmt.Fprintf(stderr, "pfm chat status: %v\n", openErr)
+				return 1
+			}
+			summary := headless.Summarize(ctx, chat, headless.SummaryOptions{
+				Config: runtime.Config, Database: database,
+				Engine: summaryEngineID, Model: *summaryModel,
+			})
+			closeErr := database.Close()
+			if closeErr != nil {
+				fmt.Fprintf(stderr, "pfm chat status: close summary cache: %v\n", closeErr)
+				return 1
+			}
+			status.Summary = summary.Text
+			status.SummaryCached = summary.Cached
 		}
-		summary := headless.Summarize(ctx, chat, headless.SummaryOptions{
-			Config: runtime.Config, Database: database,
-			Engine: summaryEngineID, Model: *summaryModel,
-		})
-		closeErr := database.Close()
-		if closeErr != nil {
-			fmt.Fprintf(stderr, "pfm chat status: close summary cache: %v\n", closeErr)
-			return 1
+		if *withAsk {
+			// No cache: a pane changes continuously, so Ask pays an ask
+			// runner on every call instead of consulting Summarize's
+			// exact-offset cache, which would serve a confidently stale
+			// answer about a chat that has moved on.
+			answer := headless.Ask(ctx, chat, headless.AskOptions{
+				Config: runtime.Config,
+				Engine: summaryEngineID, Model: *summaryModel,
+			})
+			status.Ask = answer.Text
 		}
-		status.Summary = summary.Text
-		status.SummaryCached = summary.Cached
 	}
 	if *asJSON {
 		writeJSON(stdout, status)
@@ -380,6 +394,9 @@ func runHeadlessStatus(args []string, stdout, stderr io.Writer, runtimes ...comm
 		fmt.Fprintln(stdout, status.Line())
 		if *withSummary {
 			fmt.Fprintln(stdout, status.SummaryLine())
+		}
+		if *withAsk {
+			fmt.Fprintln(stdout, status.AskLine())
 		}
 	}
 	if !status.Alive() {

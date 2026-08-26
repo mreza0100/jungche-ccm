@@ -195,7 +195,7 @@ func (service *Service) register() {
 		Name: "chat_last", Description: "Return the newest assistant answer from a chat.", Annotations: readOnly,
 	}, service.chatLast)
 	mcp.AddTool(service.server, &mcp.Tool{
-		Name: "chat_status", Description: "Inspect one chat, optionally summarizing its last human exchange.", Annotations: readOnly,
+		Name: "chat_status", Description: "Inspect one chat, optionally summarizing its last human exchange or asking its current status from a live pane capture plus that exchange.", Annotations: readOnly,
 	}, service.chatStatus)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_new", Description: "Create a detached named chat through the canonical pfm chat new dispatcher.", Annotations: mutating,

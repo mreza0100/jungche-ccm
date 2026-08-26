@@ -1,11 +1,19 @@
-// Package headless answers questions about a spawned chat from its
-// TRANSCRIPT, never from its tmux pane.
+// Package headless answers questions about a spawned chat. Its STATE always
+// comes from the transcript and the socket, never from the tmux pane.
 //
-// The rule behind every function here: a chat that is gone must never look
-// like a chat that is quiet. Pane-scraping loses whatever scrolled, cannot
-// tell a crashed engine from a thinking one, and breaks the day either engine
-// repaints — so liveness comes from the socket and content comes from the
-// file, and both are reported explicitly.
+// The rule behind that: a chat that is gone must never look like a chat that
+// is quiet. Pane-scraping loses whatever scrolled, cannot tell a crashed
+// engine from a thinking one, and breaks the day either engine repaints — so
+// liveness comes from the socket and content comes from the file, and both
+// are reported explicitly.
+//
+// Ask is the single deliberate exception and it does not weaken the rule. It
+// reads the pane because a human asking "what is this chat doing right now"
+// wants the live screen, and it labels that capture as a distinct source so a
+// reader can tell it from the transcript. It feeds no state: State, Alive, and
+// everything Inspect decides are still derived from transcript and socket
+// alone, and Ask reports a capture it could not take as an explicit failure
+// rather than as an empty screen.
 package headless
 
 import (
@@ -56,6 +64,7 @@ type Status struct {
 	Last          string       `json:"last,omitempty"`
 	Summary       string       `json:"summary,omitempty"`
 	SummaryCached bool         `json:"summary_cached,omitempty"`
+	Ask           string       `json:"ask,omitempty"`
 }
 
 // SummaryLine is the human status suffix. Cached summaries say so at the
@@ -66,6 +75,12 @@ func (status Status) SummaryLine() string {
 		label = "summary(cached)"
 	}
 	return label + ": " + status.Summary
+}
+
+// AskLine is the human status suffix for --ask. Ask never caches, so unlike
+// SummaryLine there is no cached/live label to carry.
+func (status Status) AskLine() string {
+	return "ask: " + status.Ask
 }
 
 // Alive reports whether the chat is a running seat, which is the only

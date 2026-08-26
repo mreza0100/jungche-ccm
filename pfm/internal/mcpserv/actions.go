@@ -56,8 +56,8 @@ func (service *Service) chatStatus(
 	if strings.TrimSpace(input.Target) == "" {
 		return nil, StatusOutput{}, fmt.Errorf("target is required")
 	}
-	if !input.Summary && (input.Engine != "" || input.Model != "") {
-		return nil, StatusOutput{}, fmt.Errorf("engine and model require summary=true")
+	if !input.Summary && !input.Ask && (input.Engine != "" || input.Model != "") {
+		return nil, StatusOutput{}, fmt.Errorf("engine and model require summary=true or ask=true")
 	}
 	if service.backend.dispatch == nil {
 		return nil, StatusOutput{}, fmt.Errorf("chat_status command is not configured")
@@ -69,6 +69,9 @@ func (service *Service) chatStatus(
 	args := []string{"chat", "status", target, "--json"}
 	if input.Summary {
 		args = append(args, "--summary")
+	}
+	if input.Ask {
+		args = append(args, "--ask")
 	}
 	if input.Engine != "" {
 		args = append(args, "--engine", input.Engine)

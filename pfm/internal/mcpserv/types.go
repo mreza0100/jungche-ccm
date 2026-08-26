@@ -214,6 +214,7 @@ type LastOutput struct {
 type StatusInput struct {
 	Target  string `json:"target" jsonschema:"chat id, name, session, or tmux target"`
 	Summary bool   `json:"summary,omitempty" jsonschema:"summarize the last human exchange; off by default"`
+	Ask     bool   `json:"ask,omitempty" jsonschema:"answer the chat's current status from its live pane capture plus its last exchange; off by default, never cached"`
 	Engine  string `json:"engine,omitempty" jsonschema:"summary engine override: claude or codex"`
 	Model   string `json:"model,omitempty" jsonschema:"summary model override"`
 }
@@ -231,6 +232,7 @@ type StatusOutput struct {
 	Last          string  `json:"last,omitempty"`
 	Summary       string  `json:"summary,omitempty"`
 	SummaryCached bool    `json:"summary_cached,omitempty"`
+	Ask           string  `json:"ask,omitempty"`
 }
 
 // TargetInput is shared by chat actions whose CLI form takes one target.

@@ -420,14 +420,7 @@ func renameChatWindow(ctx context.Context, socket, target, name string) error {
 }
 
 func chatSocketPath(socket string) (string, error) {
-	if filepath.IsAbs(socket) {
-		return socket, nil
-	}
-	resolved, err := paths.Resolve()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(resolved.TmuxDir, socket), nil
+	return paths.SocketPath(socket)
 }
 
 func runChatSatellite(

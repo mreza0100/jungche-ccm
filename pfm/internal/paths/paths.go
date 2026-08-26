@@ -158,3 +158,20 @@ func Resolve() (Values, error) {
 		CgroupRoot: EnvOr(EnvCgroupRoot, "/sys/fs/cgroup"),
 	}, nil
 }
+
+// SocketPath resolves a chat's tmux socket to an absolute path: an absolute
+// socket is returned unchanged, a bare name resolves under the private tmux
+// directory. It lives here because both cmd/pfm and internal/headless need it
+// and TmuxDir's resolution — including its jail override — is this package's
+// to change. A second copy would keep working right up until that resolution
+// moves, then fail in whichever copy nobody remembered.
+func SocketPath(socket string) (string, error) {
+	if filepath.IsAbs(socket) {
+		return socket, nil
+	}
+	resolved, err := Resolve()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(resolved.TmuxDir, socket), nil
+}
