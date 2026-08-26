@@ -138,7 +138,7 @@ func printChatUsage(w io.Writer) {
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  new         start a named chat on its own server")
 	fmt.Fprintln(w, "  open        open a chat by name, socket, or id")
-	fmt.Fprintln(w, "  status      inspect state; optionally summarize the last exchange")
+	fmt.Fprintln(w, "  status      inspect state; --summary recaps the last exchange, --ask reads the live pane")
 	fmt.Fprintln(w, "  last        the chat's last assistant message")
 	fmt.Fprintln(w, "  read        read the chat's transcript")
 	fmt.Fprintln(w, "  stream      follow the transcript as it is written")
