@@ -39,6 +39,9 @@ type Palette struct {
 	CosmosLineage string
 	CosmosStar    string
 	CosmosBright  string
+	// CosmosSun colours the project stars — the anchors every chat of one
+	// project orbits. Warm on purpose: a sun, not another chat.
+	CosmosSun string
 
 	Header      string
 	HeaderBg    string
@@ -76,6 +79,7 @@ var defaultPalette = Palette{
 	CosmosLineage: "#828CA5",
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",
+	CosmosSun:     "#FFD27D",
 	Header:        "#ffffff",
 	HeaderBg:      "#5f3dc4",
 	GroupA:        "#5eead4",
@@ -112,6 +116,7 @@ var tokyoNightPalette = Palette{
 	CosmosLineage: "#828CA5",
 	CosmosStar:    "#52586E",
 	CosmosBright:  "#E1E6F0",
+	CosmosSun:     "#E0AF68",
 	Header:        "#c0caf5",
 	HeaderBg:      "#414868",
 	GroupA:        "#73daca",

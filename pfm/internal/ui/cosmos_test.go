@@ -243,8 +243,14 @@ func TestCosmosSeatSurvivesGraphRefreshAndSpawnStartsAtParent(t *testing.T) {
 func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 	model := cosmosTestModel(120, true)
 	parent := "chat:id:11111111-1111-4111-8111-111111111111"
-	moonA := compose.CosmosNode{Key: "chat:name:moon-a", Label: resolve.Named("moon-a")}
-	moonB := compose.CosmosNode{Key: "chat:name:moon-b", Label: resolve.Named("moon-b")}
+	parentHome := ""
+	for _, node := range model.cosmos.Nodes {
+		if node.Key == parent {
+			parentHome = node.Home
+		}
+	}
+	moonA := compose.CosmosNode{Key: "chat:name:moon-a", Label: resolve.Named("moon-a"), Home: parentHome}
+	moonB := compose.CosmosNode{Key: "chat:name:moon-b", Label: resolve.Named("moon-b"), Home: parentHome}
 	model.cosmos.Nodes = append(model.cosmos.Nodes, moonA, moonB)
 	model.cosmos.Edges = append(model.cosmos.Edges,
 		compose.CosmosEdge{From: parent, To: moonA.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS},
@@ -254,7 +260,7 @@ func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 	canvas := NewCanvas(118, 24)
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
 	now := time.Unix(0, fixtureNowNS)
-	points, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, false)
+	points, _, _, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, false)
 
 	anchor := points[parent]
 	orbitOf := func(p cosmosPoint) float64 {
@@ -276,20 +282,71 @@ func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 	}
 
 	// --no-sky is a still frame: a later clock renders the identical system.
-	later, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), false)
+	later, _, _, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), false)
 	if later[moonA.Key] != points[moonA.Key] {
 		t.Fatalf("no-sky moon moved: %#v vs %#v", later[moonA.Key], points[moonA.Key])
 	}
 
 	// The sky orbits the moon around its parent — position changes, the
 	// orbit distance does not.
-	skyLater, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), true)
+	skyLater, _, _, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), true)
 	if skyLater[moonA.Key] == points[moonA.Key] {
 		t.Fatalf("sky moon did not orbit")
 	}
 	skyAnchor := skyLater[parent]
 	if got := math.Hypot(skyLater[moonA.Key].x-skyAnchor.x, skyLater[moonA.Key].y-skyAnchor.y); math.Abs(got-wantOrbit) > 0.001 {
 		t.Fatalf("orbiting moon left its orbit: %v, want %v", got, wantOrbit)
+	}
+}
+
+// Residence wins over lineage: a chat spawned into ANOTHER star's system is
+// a planet of the star it lives under, never a moon of its parent — the
+// spawn edge alone carries the bloodline between the systems.
+func TestCosmosCrossStarSpawnIsAPlanetNotAMoon(t *testing.T) {
+	nodes := map[string]compose.CosmosNode{
+		"chat:name:parent": {Key: "chat:name:parent", Home: ".professor"},
+		"chat:name:child":  {Key: "chat:name:child", Home: "intuita"},
+		"chat:name:local":  {Key: "chat:name:local", Home: ".professor"},
+	}
+	edges := []compose.CosmosEdge{
+		{From: "chat:name:parent", To: "chat:name:child", Kind: shared.KindSpawn},
+		{From: "chat:name:parent", To: "chat:name:local", Kind: shared.KindSpawn},
+	}
+	parents, children := cosmosOrbits(edges, nodes)
+	if parents["chat:name:child"] != "" {
+		t.Fatalf("cross-star spawn became a moon of %q, want a free planet of its own star", parents["chat:name:child"])
+	}
+	if parents["chat:name:local"] != "chat:name:parent" || len(children["chat:name:parent"]) != 1 {
+		t.Fatalf("same-star spawn should still be a moon: parents=%v children=%v", parents, children)
+	}
+}
+
+// Every distinct Home is a star: one project alone holds the galactic
+// centre, several share the ring — and every star seats at a distinct point.
+func TestCosmosEveryHomeIsAStar(t *testing.T) {
+	single := map[string]compose.CosmosNode{
+		"chat:name:a": {Key: "chat:name:a", Home: ".professor"},
+	}
+	order, points := cosmosStarPoints(single, 100, 50, 60, 30)
+	if len(order) != 1 || points[".professor"] != (cosmosPoint{x: 100, y: 50}) {
+		t.Fatalf("single star should hold the centre: order=%v points=%v", order, points)
+	}
+	multi := map[string]compose.CosmosNode{
+		"chat:name:a": {Key: "chat:name:a", Home: ".professor"},
+		"chat:name:b": {Key: "chat:name:b", Home: "intuita"},
+		"chat:name:c": {Key: "chat:name:c", Home: "/tmp"},
+		"chat:name:g": {Key: "chat:name:g", Group: true},
+	}
+	order, points = cosmosStarPoints(multi, 100, 50, 60, 30)
+	if len(order) != 3 {
+		t.Fatalf("want three stars (groups are not stars), got %v", order)
+	}
+	distinct := map[cosmosPoint]bool{}
+	for _, home := range order {
+		distinct[points[home]] = true
+	}
+	if len(distinct) != 3 {
+		t.Fatalf("stars share a seat: %v", points)
 	}
 }
 

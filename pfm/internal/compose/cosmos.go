@@ -42,6 +42,12 @@ type CosmosNode struct {
 	// place — the answer resolve.Directory gave for this node's identity.
 	Label  resolve.DisplayName
 	Engine string
+	// Home is the star this chat belongs to — its Row.Project, the same
+	// project identity the picker groups by, so the cosmos and the list can
+	// never disagree about where a chat lives. Empty for a ghost with no
+	// matching row: its home is genuinely unknown, and the renderer seats it
+	// under the shared unknown star rather than guessing.
+	Home   string
 	Live   bool
 	Killed bool
 	Group  bool
@@ -292,6 +298,7 @@ func (builder *cosmosBuilder) chatNode(query resolve.Address) CosmosNode {
 	node := CosmosNode{Key: key, Label: answer.Display}
 	if answer.Found {
 		node.Engine = string(EngineForKind(answer.Chat.Kind))
+		node.Home = answer.Chat.Project
 		node.Live = answer.Chat.Socket != ""
 		node.Killed = answer.Chat.Killed
 		node.Dead = answer.Chat.Killed

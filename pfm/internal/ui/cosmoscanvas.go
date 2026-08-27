@@ -56,7 +56,8 @@ type Canvas struct {
 	// Quant is the colour quantisation step applied at the render boundary —
 	// 8 by default; vscode-safe mode widens it to 16 to cut the distinct
 	// (glyph, colour) pairs feeding VS Code's shared WebGL glyph atlas
-	// (microsoft/vscode#332859).
+	// (microsoft/vscode#332859). Pressure relief, not a proven cure — see
+	// cosmosTickInterval's honesty note.
 	Quant    uint16
 	cells    []cell
 	dots     []uint8
