@@ -374,3 +374,20 @@ type GroupSendOutput struct {
 	SpillPath     string            `json:"spill_path,omitempty"`
 	Message       string            `json:"message,omitempty"`
 }
+
+// IssueInput is one agent complaint filed against Professor itself. Reporter
+// identity is never accepted here — issue_servicedesk captures it the same
+// way chat_inject captures a sender, so a model can complain but never say
+// who is complaining.
+type IssueInput struct {
+	Title    string `json:"title" jsonschema:"short one-line issue title"`
+	Detail   string `json:"detail" jsonschema:"full issue body: what went wrong, what was expected, and the surface it happened on"`
+	Severity string `json:"severity,omitempty" jsonschema:"low, medium, or high; defaults to medium"`
+	Area     string `json:"area,omitempty" jsonschema:"free text naming the command, agent, file, or surface this is about"`
+}
+
+// IssueOutput is issue_servicedesk's receipt: the filed issue's stable id.
+type IssueOutput struct {
+	Status string `json:"status"`
+	ID     int64  `json:"id,omitempty"`
+}

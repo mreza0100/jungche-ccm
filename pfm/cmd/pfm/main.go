@@ -90,6 +90,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInit(args[1:], stdout, stderr, runtime)
 	case "whoami":
 		return runWhoami(args[1:], stdout, stderr, runtime)
+	case "issues":
+		return runIssues(args[1:], stdout, stderr, runtime)
 	case "mcp":
 		return runMCP(args[1:], stdout, stderr, runtime)
 	case pfmengine.MustLookup(pfmengine.Codex).LongName:
@@ -520,6 +522,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  dream     build and inject repository memory organs")
 	fmt.Fprintln(w, "  index     refresh the transcript index")
 	fmt.Fprintln(w, "  whoami    print this chat's own tmux session name")
+	fmt.Fprintln(w, "  issues    list servicedesk complaints filed through issue_servicedesk")
 	fmt.Fprintln(w, "  revive    list resumable chats by project")
 	fmt.Fprintln(w, "  reap      classify the socket graveyard; --apply reclaims it")
 	fmt.Fprintln(w, "  archive   move killed chats and old subagent transcripts out of sight, reversibly")

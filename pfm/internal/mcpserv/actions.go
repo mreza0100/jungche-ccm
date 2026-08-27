@@ -224,7 +224,7 @@ func (service *Service) cliTargetForRequest(
 	}
 	if !caller.present {
 		if !service.backend.allowAmbientIdentity {
-			return "", fmt.Errorf("resolve MCP self: request has no _meta.threadId; shared-daemon ambient identity is disabled")
+			return "", fmt.Errorf("resolve MCP self: %s", noAmbientCallerRemedy)
 		}
 		return target, nil
 	}
