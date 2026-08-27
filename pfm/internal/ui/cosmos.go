@@ -59,11 +59,16 @@ func cosmosWaitCmd(generation uint64) tea.Cmd {
 
 // cosmosTickInterval is the animation clock: ~15fps, fast enough that comets,
 // wind, and twinkle read as motion rather than a slideshow. Safe mode drops
-// back to 8fps — the rate VS Code's terminal demonstrably survived — because
-// heavy braille truecolor churn corrupts SIBLING terminals through the shared
-// WebGL glyph atlas there (microsoft/vscode#332859); the same mode coarsens
-// colour quantisation at the render boundary (Canvas.Quant) and announces
-// itself in the panel title, so the degraded state is never silent.
+// back to 8fps because heavy braille truecolor churn corrupts SIBLING
+// terminals through VS Code's shared WebGL glyph atlas
+// (microsoft/vscode#332859, xtermjs/xterm.js#6043). Honesty note: no
+// app-side output shaping is PROVEN to prevent that corruption — the atlas
+// is a shared, cumulative GPU resource one app cannot bound — so safe mode
+// only slows the pressure (fewer frames, coarser colours via Canvas.Quant)
+// until the upstream atlas-eviction fix (xterm.js 6.1.0) ships in stable
+// VS Code; the reliable user-side cure is
+// terminal.integrated.gpuAcceleration "off". The mode announces itself in
+// the panel title, so the degraded state is never silent.
 func (model Model) cosmosTickInterval() time.Duration {
 	if model.cosmosSafe {
 		return 125 * time.Millisecond
@@ -104,6 +109,13 @@ func cosmosOrbits(edges []compose.CosmosEdge, nodes map[string]compose.CosmosNod
 		parent, parentSeen := nodes[edge.From]
 		child, childSeen := nodes[edge.To]
 		if !parentSeen || !childSeen || parent.Group || child.Group {
+			continue
+		}
+		if parent.Home != child.Home {
+			// Residence wins: a chat spawned into another star's system is a
+			// planet of the star it lives under, never a moon dragged along
+			// by its parent — the spawn lineage stays fully visible as the
+			// dashed edge arcing between the two systems.
 			continue
 		}
 		if _, taken := parents[edge.To]; taken {
@@ -305,7 +317,21 @@ func (model *Model) mergeCosmosSeats() {
 		}
 		roots = append(roots, node)
 	}
-	assign(roots, -math.Pi/2)
+	// Roots ring their own star, not one global circle: each star's planets
+	// are spaced evenly among THEMSELVES, so a three-chat project reads as a
+	// three-planet system regardless of how crowded the next star over is.
+	byHome := make(map[string][]compose.CosmosNode)
+	for _, node := range roots {
+		byHome[node.Home] = append(byHome[node.Home], node)
+	}
+	homes := make([]string, 0, len(byHome))
+	for home := range byHome {
+		homes = append(homes, home)
+	}
+	sort.Strings(homes)
+	for _, home := range homes {
+		assign(byHome[home], -math.Pi/2)
+	}
 	assign(groups, math.Pi/6)
 	// A moon's seat is only the fallback for the day its parent vanishes:
 	// while the parent renders, cosmosLayout overrides the moon's position
@@ -534,7 +560,7 @@ func cosmosCometDuration(kind string) time.Duration {
 
 func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	points, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
+	points, starOrder, starPoints, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
 	clock := float64(now.UnixNano()) / 1e9
 
 	for _, edge := range model.cosmos.Edges {
@@ -701,10 +727,38 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return orbitDepth(ordered[i].Key) > orbitDepth(ordered[j].Key)
 	})
-	var glyphStamps []struct {
+	var glyphStamps, starStamps []struct {
 		x, y  int
 		glyph rune
 		color RGB
+	}
+	// The stars: one sun per project, drawn before the planets so a planet
+	// label may run over a star LABEL, while the star glyphs replay LAST in
+	// the re-stamp below — a sun can never be erased by its planets. A sun's
+	// radiance is its population: the more chats orbit it, the hotter it
+	// burns (see drawCosmosSun).
+	population := make(map[string]int)
+	for _, node := range model.cosmos.Nodes {
+		if !node.Group {
+			population[node.Home]++
+		}
+	}
+	for _, home := range starOrder {
+		point := starPoints[home]
+		color := drawCosmosSun(canvas, point, home, population[home], clock, model.skyEnabled)
+		colX, colY := int(point.x)/2, int(point.y)/4
+		canvas.SetCell(colX, colY, '✹', color, true)
+		label := home
+		if label == "" {
+			label = "unknown"
+		}
+		label = truncateRunes(label, maxInt(0, canvas.Cols-2))
+		canvas.Text(colX-len([]rune(label))/2, colY+1, label, cosmosDimColor(), false)
+		starStamps = append(starStamps, struct {
+			x, y  int
+			glyph rune
+			color RGB
+		}{colX, colY, '✹', color})
 	}
 	for _, node := range ordered {
 		point, ok := points[node.Key]
@@ -778,10 +832,76 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Glyphs win over labels: a later node's text may have paved over an
 	// earlier node's marker (a moon sitting inside its parent's long label),
 	// and a chat that exists must never render invisible — so every node's
-	// glyph is re-stamped after all text has landed, parents last.
+	// glyph is re-stamped after all text has landed, parents last, suns
+	// after everything.
 	for _, stamp := range glyphStamps {
 		canvas.SetCell(stamp.x, stamp.y, stamp.glyph, stamp.color, true)
 	}
+	for _, stamp := range starStamps {
+		canvas.SetCell(stamp.x, stamp.y, stamp.glyph, stamp.color, true)
+	}
+}
+
+// drawCosmosSun paints one project star and returns the colour its glyph
+// should wear. Radiance scales with population — the count of chats living
+// under this star: a lone chat gets a modest ember; a crowded project burns
+// white-hot with a wider corona, diffraction spikes from three planets up,
+// and periodic solar flares from five. Every element derives from (clock,
+// home, population) alone, so a pinned test clock renders the same sun.
+func drawCosmosSun(canvas *Canvas, point cosmosPoint, home string, population int, clock float64, sky bool) RGB {
+	sunColor := rgbFromHex(configuredCosmosPalette.CosmosSun)
+	bright := rgbFromHex(configuredCosmosPalette.CosmosBright)
+	heat := math.Min(1, float64(population)/8)
+	base := lerpRGB(sunColor, bright, 0.45*heat)
+	if !sky {
+		return scaleRGB(base, 0.75+0.25*heat)
+	}
+	phase := cosmosPhase(home)
+	glow := (0.78 + 0.10*heat) + (0.14+0.08*heat)*math.Sin(clock*(0.8+0.2*heat)+phase)
+
+	// Corona: dots multiply and widen with the family.
+	coronaRadius := 2.4 + math.Min(2.6, 0.25*float64(population))
+	coronaDots := minInt(14, 6+population)
+	for index := 0; index < coronaDots; index++ {
+		angle := clock*0.5 + phase + 2*math.Pi*float64(index)/float64(coronaDots)
+		shimmer := 0.30 + 0.25*heat + 0.20*math.Sin(clock*2.1+phase+float64(index))
+		canvas.Dot(int(point.x+coronaRadius*math.Cos(angle)*1.6), int(point.y+coronaRadius*math.Sin(angle)), scaleRGB(base, shimmer))
+	}
+
+	// Diffraction spikes from three planets up: four arms of light that
+	// twinkle independently, longer on hotter stars.
+	if population >= 3 {
+		armLength := 2 + minInt(4, population-2)
+		for arm := 0; arm < 4; arm++ {
+			angle := float64(arm) * math.Pi / 2
+			twinkle := 0.5 + 0.5*math.Sin(clock*1.7+phase+float64(arm)*1.9)
+			for step := 2; step <= armLength; step++ {
+				strength := (1 - float64(step)/float64(armLength+1)) * (0.35 + 0.45*twinkle)
+				canvas.Dot(int(point.x+float64(step)*math.Cos(angle)*1.6), int(point.y+float64(step)*math.Sin(angle)), scaleRGB(lerpRGB(base, bright, 0.4), strength))
+			}
+		}
+	}
+
+	// Solar flares from five planets up: every few seconds an arc erupts
+	// off the corona and fades — which bucket of time it is decides when
+	// and where, so the eruption is pure clockwork.
+	if population >= 5 {
+		const flarePeriod = 7.0
+		bucket := int64(clock / flarePeriod)
+		seed := uint64(bucket)*0x9E3779B97F4A7C15 + uint64(len(home))*0xBF58476D1CE4E5B9
+		seed ^= seed >> 29
+		progress := math.Mod(clock, flarePeriod) / 2.2
+		if seed%2 == 0 && progress < 1 {
+			eruptAt := phase + float64(seed%628)/100
+			reach := coronaRadius + 1.5 + 4*progress
+			for index := 0; index < 5; index++ {
+				angle := eruptAt + (float64(index)-2)*0.16
+				strength := (1 - progress) * (1 - math.Abs(float64(index)-2)/3) * (0.4 + 0.4*heat)
+				canvas.Dot(int(point.x+reach*math.Cos(angle)*1.6), int(point.y+reach*math.Sin(angle)), scaleRGB(lerpRGB(base, bright, 0.6), strength))
+			}
+		}
+	}
+	return scaleRGB(base, glow)
 }
 
 // cosmosDeathVisual is what a dead chat's node looks like deathAge after it
@@ -820,7 +940,38 @@ func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	return truncateRunes(label, available)
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) (map[string]cosmosPoint, float64, float64) {
+// cosmosStarPoints seats every star — one per distinct Home among the visible
+// chats, the unknown "" home included — on the galactic ring, or alone at the
+// centre when the whole fleet lives in one place. Sorted order keeps both the
+// seating and the draw order deterministic.
+func cosmosStarPoints(nodes map[string]compose.CosmosNode, cx, cy, rx, ry float64) ([]string, map[string]cosmosPoint) {
+	seen := make(map[string]bool)
+	for _, node := range nodes {
+		if !node.Group {
+			seen[node.Home] = true
+		}
+	}
+	order := make([]string, 0, len(seen))
+	for home := range seen {
+		order = append(order, home)
+	}
+	sort.Strings(order)
+	points := make(map[string]cosmosPoint, len(order))
+	if len(order) == 1 {
+		points[order[0]] = cosmosPoint{x: cx, y: cy}
+		return order, points
+	}
+	for index, home := range order {
+		// The ring starts at π — the LEFT of the canvas — so two stars land
+		// left and right, not stacked top and bottom: a terminal is wide
+		// before it is tall, and the wide axis is where systems fit.
+		angle := math.Pi + 2*math.Pi*float64(index)/float64(len(order))
+		points[home] = cosmosPoint{x: cx + rx*0.55*math.Cos(angle), y: cy + ry*0.5*math.Sin(angle)}
+	}
+	return order, points
+}
+
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) (map[string]cosmosPoint, []string, map[string]cosmosPoint, float64, float64) {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -834,6 +985,14 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 		ry = 6
 	}
 	clock := float64(now.UnixNano()) / 1e9
+	// The star tier: every chat orbits ITS OWN star — the project it lives
+	// in. One star sits at the galactic centre with the full canvas as its
+	// system; several stars share the ring, each with a tighter system.
+	starOrder, starPoints := cosmosStarPoints(nodes, cx, cy, rx, ry)
+	systemRx, systemRy := rx, ry
+	if len(starOrder) > 1 {
+		systemRx, systemRy = rx*0.32, ry*0.38
+	}
 	points := make(map[string]cosmosPoint, len(seats))
 	for key, seat := range seats {
 		angle, breath := seat.Angle, 1.0
@@ -845,13 +1004,21 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			angle += 0.035 * math.Sin(clock*0.45+phase)
 			breath = 1 + 0.015*math.Sin(clock*0.31+phase*1.7)
 		}
-		radius := breath
 		if nodes[key].Group {
-			radius = 0.34 * breath
+			radius := 0.34 * breath
+			points[key] = cosmosPoint{
+				x: cx + rx*radius*math.Cos(angle),
+				y: cy + ry*radius*math.Sin(angle),
+			}
+			continue
+		}
+		anchor, anchored := starPoints[nodes[key].Home]
+		if !anchored {
+			anchor = cosmosPoint{x: cx, y: cy}
 		}
 		points[key] = cosmosPoint{
-			x: cx + rx*radius*math.Cos(angle),
-			y: cy + ry*radius*math.Sin(angle),
+			x: anchor.x + systemRx*breath*math.Cos(angle),
+			y: anchor.y + systemRy*breath*math.Sin(angle),
 		}
 	}
 	// Planetary hierarchy: a spawned chat leaves the main ring and becomes
@@ -896,7 +1063,7 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			points[key] = place(key, 0)
 		}
 	}
-	return points, cx, cy
+	return points, starOrder, starPoints, cx, cy
 }
 
 func cosmosEdgeRail(from, to cosmosPoint, cx, cy float64) (x0, y0, cpx, cpy, x1, y1 float64) {
