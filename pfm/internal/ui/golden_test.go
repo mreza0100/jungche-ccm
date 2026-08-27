@@ -245,20 +245,28 @@ func limitsGoldenModel(width int) Model {
 func cosmosGoldenModel(width int) Model {
 	snapshot := fixtureSnapshot(width)
 	snapshot.NoSky = true
+	cosmosNowNS := time.Date(2027, time.January, 15, 8, 0, 0, 0, time.Local).UnixNano()
+	clockShift := cosmosNowNS - snapshot.NowNS
+	snapshot.NowNS = cosmosNowNS
+	for index := range snapshot.Rows {
+		if snapshot.Rows[index].ActivityNS != 0 {
+			snapshot.Rows[index].ActivityNS += clockShift
+		}
+	}
 	events := []shared.CommsEvent{
 		{
-			AtNS: fixtureNowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
+			AtNS: cosmosNowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
 			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[1].Name,
 			Message: "QA: cosmos goldens are pinned",
 		},
 		{
-			AtNS: fixtureNowNS - int64(5*time.Minute), Kind: shared.KindGroup,
+			AtNS: cosmosNowNS - int64(5*time.Minute), Kind: shared.KindGroup,
 			SenderUUID: snapshot.Rows[1].ID, GroupName: "wave-cosmos",
 			Members: `["123456789012345678901234567890X","Agent 界面 needle 列对齐测试名字"]`,
 			Message: "the ledger carries full text",
 		},
 		{
-			AtNS: fixtureNowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
+			AtNS: cosmosNowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
 			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[4].Name,
 			Message: "begin the child seat",
 		},
