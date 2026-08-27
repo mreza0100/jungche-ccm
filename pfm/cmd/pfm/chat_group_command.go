@@ -36,6 +36,8 @@ func runChatGroup(
 		fmt.Fprintf(stderr, "pfm chat group: %v\n", err)
 		return 1
 	}
+	bus.Recorder = sharedCommsRecorder(runtime.Paths)
+	bus.WarningWriter = stderr
 	if len(args) == 0 {
 		printChatGroupUsage(stderr)
 		return 2
@@ -254,7 +256,9 @@ func chatGroupNudge(runtime commandRuntime) chatgroup.NudgeFunc {
 		if err != nil {
 			return err
 		}
-		result, err := engine.Inject(ctx, inject.Request{Target: target, Message: message})
+		result, err := engine.Inject(ctx, inject.Request{
+			Target: target, Message: message, Origin: inject.OriginGroupNudge,
+		})
 		if err != nil {
 			return err
 		}

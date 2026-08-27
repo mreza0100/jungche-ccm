@@ -14,6 +14,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/sky"
 	"hostops/pfm/internal/spawn"
 	pfmstats "hostops/pfm/internal/stats"
@@ -21,9 +22,10 @@ import (
 )
 
 const (
-	defaultWidth         = 120
-	defaultHeight        = 28
-	statsRefreshInterval = 2 * time.Second
+	defaultWidth          = 120
+	defaultHeight         = 28
+	statsRefreshInterval  = 2 * time.Second
+	cosmosRefreshInterval = 2 * time.Second
 )
 
 type projectGroup struct {
@@ -41,6 +43,13 @@ type orderedSearch struct {
 	order  []int
 }
 
+type cosmosSeat struct {
+	Angle  float64
+	Target float64
+	X      float64
+	Y      float64
+}
+
 func (source orderedSearch) String(index int) string {
 	return source.search[source.order[index]]
 }
@@ -53,46 +62,53 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows                []compose.Row
-	search              []string
-	groups              []projectGroup
-	nameGroups          map[int]nameGroup
-	order               []int
-	filtered            []int
-	cursor              int
-	width               int
-	height              int
-	nowNS               int64
-	view                compose.View
-	killedCount         int
-	suppressedCount     int
-	refreshing          bool
-	primary             int
-	initialPrimary      int
-	accountIDs          []int
-	codexPrimary        int
-	initialCodexPrimary int
-	codexAccountIDs     []int
-	opencodePrimary     int
-	opencodeAccountIDs  []int
-	cache1H             bool
-	tab                 Tab
-	statsSubtab         StatsSubtab
-	statsFocus          StatsFocus
-	statsSort           StatsSort
-	statsCursor         int
-	statsDockerCursor   int
-	limitsOffset        int
-	stats               pfmstats.Snapshot
-	statsSampler        StatsSampler
-	statsGeneration     uint64
-	statsLoading        bool
-	statsError          string
-	skyEnabled          bool
-	skyEvents           []sky.Event
-	mergeNewChat        bool
-	actionIndex         int
-	newChatEngine       pfmengine.ID
+	rows                 []compose.Row
+	search               []string
+	groups               []projectGroup
+	nameGroups           map[int]nameGroup
+	order                []int
+	filtered             []int
+	cursor               int
+	width                int
+	height               int
+	nowNS                int64
+	view                 compose.View
+	killedCount          int
+	suppressedCount      int
+	refreshing           bool
+	primary              int
+	initialPrimary       int
+	accountIDs           []int
+	codexPrimary         int
+	initialCodexPrimary  int
+	codexAccountIDs      []int
+	opencodePrimary      int
+	opencodeAccountIDs   []int
+	cache1H              bool
+	tab                  Tab
+	statsSubtab          StatsSubtab
+	statsFocus           StatsFocus
+	statsSort            StatsSort
+	statsCursor          int
+	statsDockerCursor    int
+	limitsOffset         int
+	stats                pfmstats.Snapshot
+	statsSampler         StatsSampler
+	statsGeneration      uint64
+	statsLoading         bool
+	statsError           string
+	cosmos               compose.CosmosGraph
+	cosmosSampler        CosmosSampler
+	cosmosEvents         []shared.CommsEvent
+	cosmosSeats          map[string]*cosmosSeat
+	cosmosNowNS          int64
+	cosmosLoading        bool
+	cosmosTickGeneration uint64
+	skyEnabled           bool
+	skyEvents            []sky.Event
+	mergeNewChat         bool
+	actionIndex          int
+	newChatEngine        pfmengine.ID
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -150,6 +166,10 @@ func NewModel(snapshot Snapshot) Model {
 		applyDeactivate:     snapshot.ApplyDeactivate,
 		deactivatedSockets:  make(map[string]bool),
 		statsSampler:        snapshot.StatsSampler,
+		cosmos:              snapshot.Cosmos,
+		cosmosSampler:       snapshot.CosmosSampler,
+		cosmosSeats:         make(map[string]*cosmosSeat),
+		cosmosNowNS:         snapshot.NowNS,
 		skyEnabled:          !snapshot.NoSky,
 		activity:            snapshot.Activity,
 		mergeNewChat:        snapshot.MergeNewChat,
@@ -161,6 +181,7 @@ func NewModel(snapshot Snapshot) Model {
 		}
 	}
 	model.rebuild(snapshot.InitialCursorID, 0)
+	model.mergeCosmosSeats()
 	return model
 }
 
@@ -239,12 +260,13 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.width = positiveOr(message.Width, model.width)
 		model.height = positiveOr(message.Height, model.height)
 		model.query.SetWidth(maxInt(8, model.width/2))
+		model.layoutCosmosSeats()
 		return model, nil
 	case RefreshMsg:
 		model.applyRefresh(message.Snapshot)
 		return model, nil
 	case statsSampleMsg:
-		if !isSamplingTab(model.tab) || message.generation != model.statsGeneration {
+		if !isStatsSamplingTab(model.tab) || message.generation != model.statsGeneration {
 			return model, nil
 		}
 		model.statsLoading = false
@@ -256,10 +278,37 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return model, statsWaitCmd(message.generation)
 	case statsTickMsg:
-		if !isSamplingTab(model.tab) || message.generation != model.statsGeneration {
+		if !isStatsSamplingTab(model.tab) || message.generation != model.statsGeneration {
 			return model, nil
 		}
 		return model, model.startStatsSample()
+	case cosmosSampleMsg:
+		if model.tab != TabCosmos || message.generation != model.statsGeneration {
+			return model, nil
+		}
+		model.cosmosLoading = false
+		if message.err != nil {
+			model.cosmos.Err = message.err.Error()
+		} else {
+			model.cosmosEvents = append(model.cosmosEvents[:0], message.events...)
+			model.cosmos = compose.BuildCosmos(model.rows, model.cosmosEvents, model.cosmosNowNS)
+			if len(message.events) >= compose.CosmosEventCap {
+				model.cosmos.Warnings = append(model.cosmos.Warnings, compose.CosmosTruncationWarning)
+			}
+			model.mergeCosmosSeats()
+		}
+		return model, cosmosWaitCmd(message.generation)
+	case cosmosSampleTickMsg:
+		if model.tab != TabCosmos || message.generation != model.statsGeneration {
+			return model, nil
+		}
+		return model, model.startCosmosSample()
+	case cosmosTickMsg:
+		if model.tab != TabCosmos || !model.skyEnabled || message.generation != model.cosmosTickGeneration {
+			return model, nil
+		}
+		model.advanceCosmos(message.nowNS)
+		return model, cosmosTickCmd(message.generation)
 	case skyTickMsg:
 		if !model.skyEnabled {
 			return model, nil
@@ -312,6 +361,9 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if model.tab == TabLimits {
 		return model.updateLimitsKey(key)
+	}
+	if model.tab == TabCosmos {
+		return model, nil
 	}
 	switch key {
 	case "ctrl+x":
@@ -458,7 +510,7 @@ func (model Model) navigateHorizontal(direction int) (tea.Model, tea.Cmd) {
 	if model.tab == TabStats {
 		model.statsFocus = StatsFocusSubtab
 	}
-	return model, model.statsTabTransition(previous)
+	return model, model.samplingTabTransition(previous)
 }
 
 func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
@@ -467,37 +519,69 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 	if model.tab == TabStats {
 		model.statsFocus = StatsFocusSubtab
 	}
-	return model, model.statsTabTransition(previous)
+	return model, model.samplingTabTransition(previous)
 }
 
-// statsTabTransition owns cancellation-by-generation for the two sampling
-// tabs. Switching Stats↔Limits starts the newly appropriate sampler at once;
+// samplingTabTransition owns cancellation-by-generation for the live tabs.
+// Switching between them starts the newly appropriate sampler at once;
 // a late result from the tab just left carries the old generation and is
 // ignored. Leaving both tabs also clears the in-flight latch so a quick return
 // can start fresh instead of waiting for an obsolete command to finish.
-func (model *Model) statsTabTransition(previous Tab) tea.Cmd {
+func (model *Model) samplingTabTransition(previous Tab) tea.Cmd {
+	if previous != model.tab && (previous == TabCosmos || model.tab == TabCosmos) {
+		model.cosmosTickGeneration++
+	}
 	wasSampling := isSamplingTab(previous)
 	isSampling := isSamplingTab(model.tab)
 	switch {
 	case wasSampling && !isSampling:
 		model.statsGeneration++
 		model.statsLoading = false
+		model.cosmosLoading = false
 		return nil
 	case !wasSampling && isSampling:
-		return model.startStatsSample()
+		return model.startFocusedSample()
 	case wasSampling && isSampling && previous != model.tab:
 		model.statsLoading = false
-		return model.startStatsSample()
+		model.cosmosLoading = false
+		return model.startFocusedSample()
 	default:
 		return nil
 	}
 }
 
-// isSamplingTab reports whether tab is one of the two live tabs backed by the
-// pfmstats.Snapshot sample loop — one tab-appropriate sampler call every 2s
-// while either is focused, none while the picker sits on Chats.
 func isSamplingTab(tab Tab) bool {
-	return tab == TabStats || tab == TabLimits
+	return isStatsSamplingTab(tab) || tab == TabCosmos
+}
+
+func isStatsSamplingTab(tab Tab) bool { return tab == TabStats || tab == TabLimits }
+
+func (model *Model) startFocusedSample() tea.Cmd {
+	if model.tab == TabCosmos {
+		commands := []tea.Cmd{model.startCosmosSample()}
+		if model.skyEnabled {
+			commands = append(commands, cosmosTickCmd(model.cosmosTickGeneration))
+		}
+		return batchCommands(commands...)
+	}
+	return model.startStatsSample()
+}
+
+func batchCommands(commands ...tea.Cmd) tea.Cmd {
+	kept := commands[:0]
+	for _, command := range commands {
+		if command != nil {
+			kept = append(kept, command)
+		}
+	}
+	switch len(kept) {
+	case 0:
+		return nil
+	case 1:
+		return kept[0]
+	default:
+		return tea.Batch(kept...)
+	}
 }
 
 func (model Model) navigateChatHorizontal(direction int) (tea.Model, tea.Cmd) {
@@ -879,6 +963,13 @@ func (model *Model) applyRefresh(snapshot Snapshot) {
 		}
 	}
 	model.rows = append(model.rows[:0], rows...)
+	if snapshot.Cosmos.Err != "" {
+		model.cosmos.Err = snapshot.Cosmos.Err
+		model.cosmos.Warnings = append(model.cosmos.Warnings[:0], snapshot.Cosmos.Warnings...)
+	} else {
+		model.cosmos = snapshot.Cosmos
+	}
+	model.mergeCosmosSeats()
 	model.nowNS = snapshot.NowNS
 	model.view = snapshot.View
 	model.killedCount = snapshot.KilledCount

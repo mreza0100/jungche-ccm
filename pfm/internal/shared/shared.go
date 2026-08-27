@@ -70,6 +70,21 @@ CREATE TABLE IF NOT EXISTS chat(
   prompts INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS chat_mtime ON chat(mtime);
+CREATE TABLE IF NOT EXISTS comms(
+  id              INTEGER PRIMARY KEY,
+  at_ns           INTEGER NOT NULL,
+  kind            TEXT NOT NULL CHECK(kind IN ('inject','group','spawn')),
+  sender_session  TEXT NOT NULL DEFAULT '',
+  sender_label    TEXT NOT NULL DEFAULT '',
+  sender_uuid     TEXT NOT NULL DEFAULT '',
+  target          TEXT NOT NULL DEFAULT '',
+  receiver_socket TEXT NOT NULL DEFAULT '',
+  receiver_pane   TEXT NOT NULL DEFAULT '',
+  group_name      TEXT NOT NULL DEFAULT '',
+  members         TEXT NOT NULL DEFAULT '',
+  message         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comms_at ON comms(at_ns);
 INSERT OR IGNORE INTO meta(key,val,updated_at) VALUES('schema_version','1',strftime('%s','now'));
 `
 

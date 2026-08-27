@@ -107,6 +107,7 @@ func TestRapidLimitsToStatsDropsInFlightLimitsResult(t *testing.T) {
 	model := NewModel(snapshot)
 	model.stats = oldResources
 
+	model, _ = applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 	model, limitsCommand := applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
 	limitsResult := runStatsCommand(t, limitsCommand)
 	waitForSample(t, sampler.fullStarted)

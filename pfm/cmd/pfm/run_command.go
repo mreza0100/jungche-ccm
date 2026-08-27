@@ -15,7 +15,6 @@ import (
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
-	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 )
@@ -142,10 +141,22 @@ func runRun(
 	if !result.Named {
 		return 1
 	}
-	if parent := parentChatID(); parent != "" {
-		if err := registerDetachedChild(resolved, parent, result.Socket); err != nil {
+	spawnedAt := time.Now()
+	parent := parentChatID()
+	state := shared.Open(context.Background(), resolved)
+	if parent != "" {
+		if err := registerDetachedChild(state, parent, result.Socket, spawnedAt.Unix()); err != nil {
 			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for parent-close cleanup: %v\n", err)
 		}
+	}
+	if err := state.RecordComms(context.Background(), shared.CommsEvent{
+		AtNS: spawnedAt.UnixNano(), Kind: shared.KindSpawn, SenderSession: parent,
+		Target: *name, ReceiverSocket: result.Socket, Message: prompt,
+	}); err != nil {
+		fmt.Fprintf(stderr, "pfm: comms ledger: %v\n", err)
+	}
+	if err := state.Close(); err != nil {
+		fmt.Fprintf(stderr, "pfm: comms ledger: close shared state: %v\n", err)
 	}
 	if prompt == "" {
 		return attachRunResult(*attach, result, stdout, stderr)
@@ -240,9 +251,7 @@ func parentChatID() string {
 	return os.Getenv("CODEX_THREAD_ID")
 }
 
-func registerDetachedChild(resolved paths.Values, parent, socket string) error {
-	state := shared.Open(context.Background(), resolved)
-	defer state.Close()
+func registerDetachedChild(state *shared.Store, parent, socket string, createdAt int64) error {
 	if state.Degraded() != nil {
 		return state.Degraded()
 	}
@@ -251,7 +260,7 @@ func registerDetachedChild(resolved paths.Values, parent, socket string) error {
 		shared.KindNew,
 		parent,
 		socket,
-		time.Now().Unix(),
+		createdAt,
 	)
 }
 

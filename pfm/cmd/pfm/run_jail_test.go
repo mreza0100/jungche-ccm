@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 )
 
 // stubRecorder is the half of a stub engine that makes it a CHAT rather than a
@@ -420,6 +424,19 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	}
 	if got := jail.onlyWindowName(t); got != "_KILL codex worker" {
 		t.Fatalf("codex window=%q, want inline launch name", got)
+	}
+	state := shared.Open(context.Background(), paths.Values{
+		SharedDB: filepath.Join(jail.root, "home", ".cc", "fleet.db"),
+	})
+	t.Cleanup(func() { _ = state.Close() })
+	events, err := state.CommsSince(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Kind != shared.KindSpawn ||
+		events[0].SenderSession != "" || events[0].Target != "_KILL codex worker" ||
+		events[0].ReceiverSocket != entries[0].Name() || events[0].Message != "read the incident report" {
+		t.Fatalf("spawn comms = %#v", events)
 	}
 }
 

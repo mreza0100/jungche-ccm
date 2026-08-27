@@ -3,9 +3,11 @@ package inject
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 )
 
 const (
@@ -40,6 +42,9 @@ const (
 	// FullScrollback asks Capture for the entire retained buffer, chat.sh's
 	// `capture-pane -S -`, instead of the visible fold.
 	FullScrollback = -1
+	// OriginGroupNudge marks the doorbell delivery for a logical group send.
+	// The group bus records that send once, so the inject ledger skips nudges.
+	OriginGroupNudge = "group-nudge"
 )
 
 // Target is one resolved tmux destination.
@@ -54,6 +59,7 @@ type Request struct {
 	Target   string
 	Message  string
 	ForceNow bool
+	Origin   string
 	// FileBacked says Message came from --file. It travels through tmux's
 	// bracketed-paste transport so a long Codex body is not mistaken for an
 	// inline composer whose visible head/tail cannot be proven.
@@ -209,5 +215,8 @@ type Dependencies struct {
 	// CODEX_THREAD_ID to the live fleet seat after ambient tmux and ancestry
 	// recovery both fail. Nil means that lookup is unavailable.
 	CodexSeat SelfIdentifier
-	Options   Options
+	Recorder  func(context.Context, shared.CommsEvent) error
+	// WarningWriter receives non-fatal recorder failures. Nil uses stderr.
+	WarningWriter io.Writer
+	Options       Options
 }
