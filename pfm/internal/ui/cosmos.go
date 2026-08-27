@@ -56,10 +56,28 @@ func cosmosWaitCmd(generation uint64) tea.Cmd {
 	})
 }
 
+// cosmosTickInterval is the animation clock — ~15fps, fast enough that comets,
+// wind, and twinkle read as motion rather than a slideshow, and the same rate
+// the POC's vscode-safe mode settled on as gentle to terminal renderers.
+const cosmosTickInterval = 66 * time.Millisecond
+
 func cosmosTickCmd(generation uint64) tea.Cmd {
-	return tea.Tick(125*time.Millisecond, func(now time.Time) tea.Msg {
+	return tea.Tick(cosmosTickInterval, func(now time.Time) tea.Msg {
 		return cosmosTickMsg{generation: generation, nowNS: now.UnixNano()}
 	})
+}
+
+// cosmosPhase derives a stable personal phase from a node or edge key so
+// ambient motion never synchronizes across the universe — every seat, wind
+// particle, and breath runs on its own clock, and a pinned test clock still
+// renders the same frame every time.
+func cosmosPhase(key string) float64 {
+	var hash uint32 = 2166136261
+	for _, b := range []byte(key) {
+		hash ^= uint32(b)
+		hash *= 16777619
+	}
+	return float64(hash%4096) / 4096 * 2 * math.Pi
 }
 
 func wrapDelta(delta float64) float64 {
@@ -356,9 +374,18 @@ func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) strin
 }
 
 func drawCosmosStars(canvas *Canvas, now time.Time) {
+	t := float64(now.UnixNano()) / 1e9
+	starColor := rgbFromHex(configuredCosmosPalette.CosmosStar)
+	// Far layer: dimmer, slower, sparser — depth behind the main twinkle.
+	far := rand.New(rand.NewSource(56))
+	for range canvas.Cols * canvas.Rows / 32 {
+		px, py := far.Intn(canvas.PW()), far.Intn(canvas.PH())
+		phase := far.Float64() * 2 * math.Pi
+		speed := 0.2 + far.Float64()*0.5
+		canvas.Dot(px, py, scaleRGB(starColor, 0.10+0.16*(0.5+0.5*math.Sin(t*speed+phase))))
+	}
 	rng := rand.New(rand.NewSource(55))
 	count := canvas.Cols * canvas.Rows / 20
-	t := float64(now.UnixNano()) / 1e9
 	for range count {
 		star := star{
 			px: rng.Intn(canvas.PW()), py: rng.Intn(canvas.PH()),
@@ -366,7 +393,57 @@ func drawCosmosStars(canvas *Canvas, now time.Time) {
 			speed: 0.6 + rng.Float64()*1.8,
 		}
 		brightness := 0.18 + 0.42*(0.5+0.5*math.Sin(t*star.speed+star.phase))
-		canvas.Dot(star.px, star.py, scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), brightness))
+		canvas.Dot(star.px, star.py, scaleRGB(starColor, brightness))
+	}
+	// A few bright stars that flare into a four-point sparkle at their peak.
+	bright := rgbFromHex(configuredCosmosPalette.CosmosBright)
+	poles := rand.New(rand.NewSource(57))
+	for range 4 {
+		px, py := poles.Intn(canvas.PW()), poles.Intn(canvas.PH())
+		phase := poles.Float64() * 2 * math.Pi
+		glow := 0.5 + 0.5*math.Sin(t*0.7+phase)
+		canvas.Dot(px, py, scaleRGB(bright, 0.20+0.50*glow))
+		if glow > 0.75 {
+			cross := scaleRGB(bright, (glow-0.75)*2.2)
+			canvas.Dot(px+1, py, cross)
+			canvas.Dot(px-1, py, cross)
+			canvas.Dot(px, py+1, cross)
+			canvas.Dot(px, py-1, cross)
+		}
+	}
+	drawCosmosMeteor(canvas, now)
+}
+
+// drawCosmosMeteor streaks one meteor across the sky roughly every half
+// minute. Pure deterministic decoration: the time bucket alone decides
+// whether, where, and along which diagonal it flies, so a pinned test clock
+// always renders the same sky.
+func drawCosmosMeteor(canvas *Canvas, now time.Time) {
+	const bucketNS = int64(9 * time.Second)
+	bucket := now.UnixNano() / bucketNS
+	seed := uint64(bucket)*0x9E3779B97F4A7C15 + 0xD1B54A32D192ED03
+	seed ^= seed >> 29
+	if seed%3 != 0 {
+		return
+	}
+	flight := float64(now.UnixNano()-bucket*bucketNS) / float64(bucketNS) / 0.16
+	if flight >= 1 {
+		return
+	}
+	headX := float64(seed >> 8 % uint64(canvas.PW()))
+	headY := float64(seed >> 20 % uint64(maxInt(1, canvas.PH()/3)))
+	directionX, directionY := 34.0, 13.0
+	if seed%2 == 0 {
+		directionX = -34
+	}
+	headX += directionX * flight
+	headY += directionY * flight
+	bright := rgbFromHex(configuredCosmosPalette.CosmosBright)
+	starColor := rgbFromHex(configuredCosmosPalette.CosmosStar)
+	for segment := 0; segment < 7; segment++ {
+		trail := float64(segment) / 7
+		color := scaleRGB(lerpRGB(bright, starColor, trail), (1-trail)*(1-0.5*flight))
+		canvas.Dot(int(headX-directionX*trail*0.2), int(headY-directionY*trail*0.2), color)
 	}
 }
 
@@ -383,7 +460,8 @@ func cosmosCometDuration(kind string) time.Duration {
 
 func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	points, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes)
+	points, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, now, model.skyEnabled)
+	clock := float64(now.UnixNano()) / 1e9
 
 	for _, edge := range model.cosmos.Edges {
 		from, to := nodes[edge.From], nodes[edge.To]
@@ -414,6 +492,40 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	}
 
 	if model.skyEnabled {
+		// Ambient wind: every edge carries a slow drift of dim particles from
+		// sender to receiver, always — so a quiet universe breathes between
+		// real messages. Brightness follows the edge's own memory (a fresh
+		// edge blows brighter for ~15 minutes) and the drift stays tail-less
+		// and dim so it can never be misread as a comet, which is a real
+		// message in flight.
+		for _, edge := range model.cosmos.Edges {
+			fp, fok := points[edge.From]
+			tp, tok := points[edge.To]
+			if !fok || !tok {
+				continue
+			}
+			age := now.Sub(time.Unix(0, edge.LastNS)).Seconds()
+			if age < 0 {
+				age = 0
+			}
+			memory := 0.22 + 0.45*math.Exp(-age/900)
+			phase := cosmosPhase(edge.From + "\x00" + edge.To + "\x00" + edge.Kind)
+			period := 5 + 2.5*math.Sin(phase)
+			fromColor, toColor := cosmosNodeColor(nodes[edge.From]), cosmosNodeColor(nodes[edge.To])
+			particles := 2
+			if edge.Kind == shared.KindSpawn {
+				fromColor = rgbFromHex(configuredCosmosPalette.CosmosLineage)
+				particles = 1
+			}
+			x0, y0, cpx, cpy, x1, y1 := cosmosEdgeRail(fp, tp, cx, cy)
+			for index := 0; index < particles; index++ {
+				progress := math.Mod(clock/period+phase/(2*math.Pi)+float64(index)*0.5, 1)
+				px, py := BezierPoint(x0, y0, cpx, cpy, x1, y1, progress)
+				shimmer := 0.7 + 0.3*math.Sin(clock*2.4+phase+float64(index)*math.Pi)
+				canvas.Dot(int(px), int(py), scaleRGB(lerpRGB(fromColor, toColor, progress), memory*shimmer))
+			}
+		}
+
 		white := rgbFromHex(configuredCosmosPalette.CosmosBright)
 		const tailSegments = 18
 		for _, edge := range model.cosmos.Edges {
@@ -508,7 +620,13 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		}
 		colX, colY := int(point.x)/2, int(point.y)/4
 		base := cosmosNodeColor(node)
-		color := scaleRGB(base, 0.85)
+		brightness := 0.85
+		if model.skyEnabled && !node.Dead {
+			// Ambient breath: each node glows on its own slow clock so a
+			// quiet universe still reads as alive, not frozen.
+			brightness = 0.80 + 0.10*math.Sin(clock*1.3+cosmosPhase(node.Key))
+		}
+		color := scaleRGB(base, brightness)
 		arrival := math.Max(inboundFlash[node.Key], outboundFlash[node.Key])
 		if arrival > 0 {
 			color = lerpRGB(base, white, arrival*0.95)
@@ -528,6 +646,15 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 				// --no-sky: dimmed, never animated, the same frame every
 				// render.
 				color, bold = scaleRGB(base, 0.35), false
+			}
+		}
+		if model.skyEnabled && node.Group && !node.Dead {
+			// A hub is a little station: three faint satellites on a slow
+			// orbit. Text cells win over braille, so the glyph and label
+			// stay untouched above them.
+			for index := 0; index < 3; index++ {
+				orbit := clock*0.8 + cosmosPhase(node.Key) + float64(index)*2*math.Pi/3
+				canvas.Dot(int(point.x+3*math.Cos(orbit)*1.6), int(point.y+3*math.Sin(orbit)), scaleRGB(base, 0.5))
 			}
 		}
 		canvas.SetCell(colX, colY, cosmosNodeGlyph(node), color, true)
@@ -580,7 +707,7 @@ func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	return truncateRunes(label, available)
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode) (map[string]cosmosPoint, float64, float64) {
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, now time.Time, sky bool) (map[string]cosmosPoint, float64, float64) {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -593,15 +720,25 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	if ry < 6 {
 		ry = 6
 	}
+	clock := float64(now.UnixNano()) / 1e9
 	points := make(map[string]cosmosPoint, len(seats))
 	for key, seat := range seats {
-		radius := 1.0
+		angle, breath := seat.Angle, 1.0
+		if sky {
+			// Orbital sway: every seat drifts a couple of degrees around its
+			// anchor on its own slow clock, so nodes float instead of
+			// standing pinned. --no-sky reduces to the seat's exact values.
+			phase := cosmosPhase(key)
+			angle += 0.035 * math.Sin(clock*0.45+phase)
+			breath = 1 + 0.015*math.Sin(clock*0.31+phase*1.7)
+		}
+		radius := breath
 		if nodes[key].Group {
-			radius = 0.34
+			radius = 0.34 * breath
 		}
 		points[key] = cosmosPoint{
-			x: cx + rx*radius*math.Cos(seat.Angle),
-			y: cy + ry*radius*math.Sin(seat.Angle),
+			x: cx + rx*radius*math.Cos(angle),
+			y: cy + ry*radius*math.Sin(angle),
 		}
 	}
 	return points, cx, cy
