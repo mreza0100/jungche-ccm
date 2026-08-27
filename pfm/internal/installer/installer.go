@@ -203,6 +203,7 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.installHarvest(ctx); err != nil {
 		return err
 	}
+	installer.installThemes(ctx)
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
@@ -235,11 +236,16 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.retireLegacySwapCommand(); err != nil {
 		return err
 	}
-	if err := installer.reconcileCodexCommands(assets); err != nil {
-		return err
-	}
-	if err := installer.wireCodexAgents(); err != nil {
-		return err
+	if len(installer.codexHomes()) == 0 {
+		installer.skip("no Codex accounts configured — command mirror has nothing to write")
+		installer.skip("no Codex accounts configured — agent mirror has nothing to write")
+	} else {
+		if err := installer.reconcileCodexCommands(assets); err != nil {
+			return err
+		}
+		if err := installer.wireCodexAgents(); err != nil {
+			return err
+		}
 	}
 	// The periodic name-sync has one job and two schedulers. Linux gets the
 	// systemd units; macOS gets a launchd agent that carries both triggers.
@@ -524,6 +530,7 @@ func (installer *engine) uninstall(ctx context.Context) error {
 	if err := installer.uninstallHarvest(); err != nil {
 		return err
 	}
+	installer.uninstallThemes()
 	assets, err := assetFiles()
 	if err != nil {
 		return fmt.Errorf("enumerate embedded install assets: %w", err)
