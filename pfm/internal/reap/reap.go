@@ -46,6 +46,12 @@ const (
 	StateFork State = "fork"
 	// StateOrphan is an unattached idle chat — the reapable case.
 	StateOrphan State = "orph"
+	// StateIdle is an ATTACHED chat whose own last transcript record is older
+	// than the horizon and whose client has not moved in the active window
+	// either — the gap tmux window_activity and transcript mtime both hid: a
+	// chat can sit on the operator's screen for days, statusline redrawing
+	// forever, with not one real prompt or response inside that whole span.
+	StateIdle State = "IDLE"
 	// StateKilled is an orphan whose server this run actually killed.
 	StateKilled State = "KILL"
 	// StateDead is a socket file with no server behind it, old enough that it
@@ -53,6 +59,11 @@ const (
 	StateDead State = "dead"
 	// StateSkip is a socket deliberately left alone, with the reason attached.
 	StateSkip State = "SKIP"
+	// StateUnknown is a chat whose transcript could not be located, read, or
+	// parsed. Absence of a measurement is not a measurement of idleness —
+	// StateUnknown is NEVER reapable, whatever its idle time looks like from
+	// any other signal.
+	StateUnknown State = "UNKN"
 )
 
 // Action is what a decision asks the runner to perform.
@@ -100,6 +111,37 @@ type Socket struct {
 	// one. It stays unexported because it is probe plumbing, not a verdict
 	// input: Plan never reads it.
 	transcripts []string
+	// ActivityPaths is every transcript or rollout this socket's chat(s)
+	// write — Claude crumb paths and Codex rollout paths alike. It feeds
+	// ONLY the idle-horizon check below; unlike transcripts it carries no
+	// lockstep index into CrumbUUIDs; nothing else reads it.
+	ActivityPaths []string
+	// IdleFor is how long ago the newest record across ActivityPaths was
+	// written — never window_activity, never a raw file mtime, both proven
+	// to lie at this timescale on the live fleet. Meaningful only when
+	// ActivityOK.
+	IdleFor time.Duration
+	// ActivityOK is false when no path in ActivityPaths could be resolved,
+	// read, or parsed. False means UNKNOWN, and UNKNOWN is never reaped.
+	ActivityOK bool
+	// ClientIdle is how long ago #{client_activity} last moved for the most
+	// recently active client attached to this socket. Meaningful ONLY when
+	// ClientIdleOK — a zero-value ClientIdle on an unanswered probe must
+	// never be read as "just active".
+	ClientIdle time.Duration
+	// ClientIdleOK is true only when the client-activity probe actually
+	// answered: found && err == nil. False covers two different failures —
+	// the probe could not run at all (ClientProbeError set), or it ran and
+	// found NO client though the socket reads as Attached, which is the
+	// 17-day zombie-client shape this feature exists to catch (a foreground
+	// `tmux new-session` client whose terminal died, still counted
+	// attached). Neither may render as "active"; planAttached sends both to
+	// StateUnknown.
+	ClientIdleOK bool
+	// ClientProbeError is set only when the probe itself errored (timeout,
+	// permission, socket gone) — distinct from a clean answer of zero
+	// clients, which leaves this empty.
+	ClientProbeError string
 }
 
 // VSCTSession is one plain-terminal bunker session on the shared vsct socket.
@@ -123,6 +165,14 @@ type Input struct {
 	BusyRecent  time.Duration
 	DeadAfter   time.Duration
 	VSCTMaxIdle time.Duration
+	// Horizon is how long an ATTACHED chat may sit with no last-transcript-
+	// record activity before it is reapable. Default 48h — the order was
+	// "idle means no activity, 0, unless it's open for me".
+	Horizon time.Duration
+	// ClientActive is exemption 1's window: a socket whose most recently
+	// active attached client moved inside this span is NEVER reaped,
+	// whatever its transcript idle time. Default one hour.
+	ClientActive time.Duration
 }
 
 // Decision is one socket's verdict plus the action it earns.
@@ -134,6 +184,15 @@ type Decision struct {
 	Label  string
 	CWD    string
 	Action Action
+	// Failed is set by apply — never by Plan — when an action was actually
+	// attempted and the attempt itself errored (a kill-server that failed, a
+	// socket file remove that failed). It is NOT set when apply correctly
+	// declined a stale plan (the chat re-attached, the socket answered again
+	// before removal): those are the safety exemptions working, not a
+	// failure. A sweep with any Failed decision must exit non-zero — a
+	// report of success that quietly failed to kill is the exact failure
+	// mode this command exists to prevent.
+	Failed bool
 }
 
 // Reapable reports whether a decision asks for a destructive action.
@@ -223,22 +282,23 @@ func planSocket(input Input, socket Socket) Decision {
 		decision.Reason = "this command's own chat"
 		return decision
 	}
-	if socket.Attached {
-		decision.State = StateKeep
-		decision.Reason = "attached"
-		return decision
-	}
 
-	// The socket is idle by every chat signal — but a chat's panes are a
-	// SHELL, and a shell hosts whatever was typed into it. Killing the server
-	// kills all of it, so anything that is not a chat makes the socket
-	// load-bearing and unreapable, however long it has been quiet.
+	// The socket is idle by every chat signal so far — but a chat's panes are
+	// a SHELL, and a shell hosts whatever was typed into it. Killing the
+	// server kills all of it, so anything that is not a chat makes the
+	// socket load-bearing and unreapable however long it has been quiet,
+	// attached or not — checked here so it guards BOTH branches below.
 	if len(socket.Foreign) > 0 {
 		decision.State = StateHosts
 		decision.Reason = "hosts non-chat processes: " +
 			strings.Join(socket.Foreign, ", ")
 		return decision
 	}
+
+	if socket.Attached {
+		return planAttached(input, socket, decision)
+	}
+
 	if socket.DetachedFork && !socket.HasCrumb {
 		decision.State = StateFork
 		decision.Reason = "untouched detached fork"
@@ -269,6 +329,60 @@ func planSocket(input Input, socket Socket) Decision {
 	if input.Apply {
 		decision.Action = ActionKillServer
 	}
+	return decision
+}
+
+// planAttached judges a socket a live client is showing right now — the gap
+// the two proven-wrong signals left wide open. tmux's own #{window_activity}
+// answers "active" whether the chat is busy or abandoned, because the TUI
+// redraws its statusline forever; the transcript file's mtime gets touched
+// by bookkeeping records every 30-60 minutes with no conversational activity
+// behind it. Neither can tell a chat that has been open on the operator's
+// screen for weeks from one mid-turn right now. The only signal that held up
+// is the timestamp inside the transcript's own last parseable record.
+func planAttached(input Input, socket Socket, decision Decision) Decision {
+	// A probe that could not run, or one that ran and found NO client
+	// though the socket reads as Attached, is UNKNOWN — never "active".
+	// Reading socket.ClientIdle's zero value as freshness here is exactly
+	// the coincidence detector this whole feature exists to stop: it is the
+	// 17-day zombie-client shape (a foreground tmux client whose terminal
+	// died, still counted attached) rendering as the most reassuring
+	// sentence the command can print.
+	if !socket.ClientIdleOK {
+		decision.State = StateUnknown
+		if socket.ClientProbeError != "" {
+			decision.Reason = "attached, but the client-activity probe could not run — " +
+				socket.ClientProbeError +
+				"; absence of a measurement is not a measurement of idleness"
+		} else {
+			decision.Reason = "attached, but no client answered — the socket reads as " +
+				"attached with nobody there; absence of a measurement is not a measurement of idleness"
+		}
+		return decision
+	}
+	if socket.ClientIdle < input.ClientActive {
+		decision.State = StateKeep
+		decision.Reason = "attached, active within " + durationWords(input.ClientActive)
+		return decision
+	}
+	if !socket.ActivityOK {
+		decision.State = StateUnknown
+		decision.Reason = "attached, client idle past " + durationWords(input.ClientActive) +
+			" — transcript could not be read; absence of a measurement is not a measurement of idleness"
+		return decision
+	}
+	if socket.IdleFor >= input.Horizon {
+		decision.State = StateIdle
+		decision.Reason = "idle " + durationWords(socket.IdleFor) +
+			" — past the " + durationWords(input.Horizon) + " horizon"
+		if input.Apply {
+			decision.Action = ActionKillServer
+		}
+		return decision
+	}
+	decision.State = StateKeep
+	decision.Reason = "attached, idle " + durationWords(socket.IdleFor) +
+		" (under the " + durationWords(input.Horizon) + " horizon)"
 	return decision
 }
 
