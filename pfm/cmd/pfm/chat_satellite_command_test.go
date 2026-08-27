@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/paths"
@@ -196,4 +199,112 @@ func TestChatLoadEnumeratesTextAndSkipsBuildTrees(t *testing.T) {
 		!strings.Contains(stdout.String(), "1 files, 2 total lines") {
 		t.Fatalf("stdout=%q", stdout.String())
 	}
+}
+
+// TestChatLSHeaderNamesBothViewVariants pins the header text runChatLS
+// prints for each view: the in-repo view names name/session/state/activity,
+// and --all additionally names dir — both now lead with "name" ahead of
+// "session", matching the row format below.
+func TestChatLSHeaderNamesBothViewVariants(t *testing.T) {
+	jailTest(t)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"chat", "ls"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("chat ls code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "live chats in this repo (name · session · state · last activity):") {
+		t.Fatalf("chat ls header = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "(none)") {
+		t.Fatalf("chat ls with no live chats = %q, want (none)", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"chat", "ls", "--all"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("chat ls --all code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "live chats everywhere (name · session · state · dir · last activity):") {
+		t.Fatalf("chat ls --all header = %q", stdout.String())
+	}
+}
+
+// TestChatLSPrintsNameBeforeSessionAtAndOverTruncationBoundary is the
+// red-first proof for the NAME-primary row format: two real live tmux
+// panes get distinct pane-title-derived names, one exactly at the 28-char
+// truncation boundary and one well over it. For both rows the printed line
+// must carry the (possibly truncated) NAME first, at a fixed column, with
+// the tmux session id still present immediately after it — never lost,
+// never reordered, and never pushed out of alignment by an oversized name.
+func TestChatLSPrintsNameBeforeSessionAtAndOverTruncationBoundary(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	jail := newKillCLIJail(t)
+	sidDir := filepath.Join(jail.root, "sid")
+
+	epoch := strconv.FormatInt(time.Now().Unix(), 10)
+	pid := strconv.Itoa(os.Getpid())
+	exactSocket := "cc-" + epoch + "-" + pid + "-1"
+	overSocket := "cc-" + epoch + "-" + pid + "-2"
+	exactName := strings.Repeat("A", 28) // exactly at the truncation boundary
+	overName := strings.Repeat("B", 40)  // well over it
+
+	seat := func(socket, title string) {
+		startBootingPane(t, socket)
+		paneID := strings.TrimSpace(runTmuxOutput(t, socket, "list-panes", "-F", "#{pane_id}"))
+		if output, err := exec.Command(
+			"tmux", "-L", socket, "select-pane", "-t", paneID, "-T", title,
+		).CombinedOutput(); err != nil {
+			t.Fatalf("set pane title for %q: %v: %s", socket, err, output)
+		}
+		crumb := filepath.Join(sidDir, socket+"."+paneID)
+		if err := os.WriteFile(crumb, []byte("/nonexistent/"+socket+".jsonl\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seat(exactSocket, exactName)
+	seat(overSocket, overName)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"chat", "ls", "--all"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("chat ls --all code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+
+	findRow := func(socket string) string {
+		for _, line := range strings.Split(stdout.String(), "\n") {
+			if strings.Contains(line, socket) {
+				return line
+			}
+		}
+		t.Fatalf("no row for socket %q in stdout=%q", socket, stdout.String())
+		return ""
+	}
+
+	check := func(socket, fullName, wantTruncated string) {
+		line := findRow(socket)
+		const nameStart, nameWidth = 2, 28
+		if len(line) < nameStart+nameWidth+1 {
+			t.Fatalf("row for %q too short to hold the name column: %q", socket, line)
+		}
+		if got := line[nameStart : nameStart+nameWidth]; got != wantTruncated {
+			t.Fatalf("row for %q name column = %q, want %q (line=%q)", socket, got, wantTruncated, line)
+		}
+		if line[nameStart+nameWidth] != ' ' {
+			t.Fatalf("row for %q has no delimiter after the name column: %q", socket, line)
+		}
+		sessionStart := nameStart + nameWidth + 1
+		if got := line[sessionStart : sessionStart+len(socket)]; got != socket {
+			t.Fatalf("row for %q session id at column %d = %q, want %q — name column pushed it out of alignment: %q", socket, sessionStart, got, socket, line)
+		}
+		nameIdx := strings.Index(line, wantTruncated)
+		sessionIdx := strings.Index(line, socket)
+		if nameIdx < 0 || sessionIdx < 0 || nameIdx >= sessionIdx {
+			t.Fatalf("row for %q: name must appear before session id — name@%d session@%d line=%q", socket, nameIdx, sessionIdx, line)
+		}
+		if len(fullName) > nameWidth && strings.Contains(stdout.String(), fullName) {
+			t.Fatalf("full untruncated name %q leaked into stdout — truncation did not run", fullName)
+		}
+	}
+	check(exactSocket, exactName, exactName)
+	check(overSocket, overName, overName[:28])
 }

@@ -364,7 +364,7 @@ func (resolver *Resolver) resolveSession(want string, panes []Pane) Outcome {
 		}
 		return Outcome{
 			Code:   0,
-			Stdout: targetLine(matches[0].socketPath, matches[0].session),
+			Stdout: targetLine(matches[0].socketPath, sessionPanes[0].PaneID),
 		}
 	default:
 		var stderr strings.Builder

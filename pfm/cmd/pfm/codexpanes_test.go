@@ -334,8 +334,11 @@ func TestDecideCodexPanesNeverSeedsOntoARetiredThread(t *testing.T) {
 	if action.Bind != "" {
 		t.Fatalf("seeded onto a retired thread: %+v", action)
 	}
-	if action.Skip != codexPaneNameRetired || !action.Loud {
-		t.Fatalf("skip = (%q, loud=%v), want (%q, loud=true)", action.Skip, action.Loud, codexPaneNameRetired)
+	// Quiet on purpose: this is a standing structural condition, not an
+	// event, and it cannot self-heal — a Loud line here would repeat on
+	// every reconcile pass forever. `pfm doctor` carries it instead.
+	if action.Skip != codexPaneNameRetired || action.Loud {
+		t.Fatalf("skip = (%q, loud=%v), want (%q, loud=false)", action.Skip, action.Loud, codexPaneNameRetired)
 	}
 }
 

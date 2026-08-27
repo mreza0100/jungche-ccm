@@ -414,12 +414,18 @@ func printCodexPaneBindingDoctor(
 	)
 	warnings += printCodexPaneFollowDoctor(ctx, stdout, database, manager, runtime, panes, paneErr)
 	if warnings != 0 {
-		fmt.Fprintln(
+		fmt.Fprintf(
 			stdout,
 			"doctor: remediation: a RETIRED binding is dropped automatically on the next gather "+
 				"pass (`pfm ls`), which returns the pane to unbound so its own status line can "+
-				"re-seat it; a CONTESTED binding resolves as soon as either pane shows a bare "+
-				"thread id, which happens on its next /clear",
+				"re-seat it — unless that status line already shows a NAME resolving only to "+
+				"retired threads (%q); that pane cannot re-seat on its own, because a name never "+
+				"moves a binding and every thread it names is dead. Its remedy is giving the pane "+
+				"an identity pfm can observe again: rename it onto a live thread, or /clear it, "+
+				"which is the one input Codex renders as a bare thread id; a CONTESTED binding "+
+				"resolves as soon as either pane shows a bare thread id, which happens on its next "+
+				"/clear\n",
+			codexPaneNameRetired,
 		)
 	}
 	return warnings
