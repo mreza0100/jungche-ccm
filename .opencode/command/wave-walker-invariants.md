@@ -120,6 +120,28 @@ Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md 
 
 ---
 
+## COMMS-LEDGER
+
+**Law:** "Every chat→chat send records exactly one `comms` row in the shared ledger — an inject only when `Origin` is empty; a group send exactly one row carrying its matched members, with its nudge injects recording nothing; a spawn one row per `runRun`. A recorder failure surfaces on stderr and never blocks delivery. The cosmos surface distinguishes 'ledger unreachable' from 'no traffic' from 'truncated window' as three different renderings." — cosmos wave spec, `docs/dev/trains/queue/2026-08-27-cosmos.md` Task #8 (gap: no CLAUDE.md bullet codifies the ledger dimension yet; closest codified laws are `pfm/CLAUDE.md` § Code Standards "A probe that could not run never returns 'nothing found'" and root `CLAUDE.md` § Prompt & template code "An error never renders as ABSENCE").
+
+**Territory:**
+
+- `pfm/internal/inject/**`
+- `pfm/internal/chatgroup/**`
+- `pfm/internal/shared/**`
+- `pfm/internal/compose/**`
+- `pfm/internal/mcpserv/**`
+- `pfm/internal/ui/**`
+- `pfm/cmd/pfm/**`
+
+**Triggers:** diff touches a chat→chat send path (inject delivery, group bus send or nudge, chat spawn), the comms recorder or its wiring, the `comms` DDL or its queries, or a cosmos rendering/empty/error branch; diff adds a NEW send path (which must record); diff changes delivery-result classification (`Typed`, `Code`) that feeds the recorder's success predicate.
+
+**Exemplars:** *(none pinned on main yet — the cosmos wave review confirmed two bugs of exactly this class on the wave branch: a recorder gated on a partial success signal recording undelivered sends, and two empty-state guards disagreeing on the same graph. When that branch merges, add both here with STATUS: FIXED + `file:line`.)*
+
+**Hunt Brief:** Enumerate every chat→chat send path in the territory; for each, name where its exactly-one `comms` row is written and under WHICH success predicate — a recording site keyed on a partial success signal (typed-but-undelivered) is a finding. Verify nudge injects carry the group `Origin` and record nothing, so one group send can never double-count. Verify a recorder failure surfaces on stderr while the delivery still completes. Walk the cosmos surface's states and confirm 'ledger unreachable', 'no traffic recorded', and 'truncated window' render as three distinguishable outputs on every render path (full-size AND compact). A send path with no recording site is a finding with `file:line`.
+
+---
+
 ## § Consumption Contract (`args.invariants`)
 
 The engine never reads this file directly — the JS engine layer has no filesystem access (Workflow sandbox). The registry's data arrives structured via `args.invariants`, an array of:
