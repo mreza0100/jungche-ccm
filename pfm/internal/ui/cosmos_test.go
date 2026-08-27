@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	bits2 "math/bits"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"hostops/pfm/internal/compose"
+	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 )
 
@@ -219,7 +221,7 @@ func TestCosmosSeatSurvivesGraphRefreshAndSpawnStartsAtParent(t *testing.T) {
 	parent := "chat:id:11111111-1111-4111-8111-111111111111"
 	model.cosmosSeats[parent].Angle = 0.42
 	model.cosmosSeats[parent].Target = 0.42
-	child := compose.CosmosNode{Key: "chat:name:child", Label: "child"}
+	child := compose.CosmosNode{Key: "chat:name:child", Label: resolve.Named("child")}
 	model.cosmos.Nodes = append(model.cosmos.Nodes, child)
 	model.cosmos.Edges = append(model.cosmos.Edges, compose.CosmosEdge{
 		From: parent, To: child.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS,
@@ -318,7 +320,7 @@ func TestApplyCosmosGraphKeysDeathToDetectionNotLastMessage(t *testing.T) {
 
 	// First refresh: alive, idle for two hours already. Idle is not dead.
 	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: "X", LastNS: staleActivity}},
+		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: resolve.Named("X"), LastNS: staleActivity}},
 	})
 	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Dead {
 		t.Fatalf("setup: node should be alive: %#v", model.cosmos.Nodes)
@@ -334,7 +336,7 @@ func TestApplyCosmosGraphKeysDeathToDetectionNotLastMessage(t *testing.T) {
 	model.cosmosNowNS = detectionNS
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:id:X", Label: "X", Dead: true,
+			Key: "chat:id:X", Label: resolve.Named("X"), Dead: true,
 			LastNS: staleActivity, DiedNS: staleActivity,
 		}},
 	})
@@ -355,7 +357,7 @@ func TestApplyCosmosGraphKeysDeathToDetectionNotLastMessage(t *testing.T) {
 	model.cosmosNowNS = detectionNS + int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:id:X", Label: "X", Dead: true,
+			Key: "chat:id:X", Label: resolve.Named("X"), Dead: true,
 			LastNS: staleActivity, DiedNS: staleActivity,
 		}},
 	})
@@ -374,14 +376,14 @@ func TestApplyCosmosGraphDropsEdgesWithTheirPrunedNode(t *testing.T) {
 	model := NewModel(fixtureSnapshot(80))
 	model.cosmosNowNS = fixtureNowNS
 	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: "X"}, {Key: "chat:id:Y", Label: "Y"}},
+		Nodes: []compose.CosmosNode{{Key: "chat:id:X", Label: resolve.Named("X")}, {Key: "chat:id:Y", Label: resolve.Named("Y")}},
 	})
 
 	model.cosmosNowNS = fixtureNowNS + int64(time.Second)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{
-			{Key: "chat:id:X", Label: "X", Dead: true, LastNS: model.cosmosNowNS},
-			{Key: "chat:id:Y", Label: "Y"},
+			{Key: "chat:id:X", Label: resolve.Named("X"), Dead: true, LastNS: model.cosmosNowNS},
+			{Key: "chat:id:Y", Label: resolve.Named("Y")},
 		},
 		Edges: []compose.CosmosEdge{{From: "chat:id:X", To: "chat:id:Y", Kind: shared.KindInject}},
 	})
@@ -392,8 +394,8 @@ func TestApplyCosmosGraphDropsEdgesWithTheirPrunedNode(t *testing.T) {
 	model.cosmosNowNS += int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{
-			{Key: "chat:id:X", Label: "X", Dead: true, LastNS: fixtureNowNS + int64(time.Second)},
-			{Key: "chat:id:Y", Label: "Y"},
+			{Key: "chat:id:X", Label: resolve.Named("X"), Dead: true, LastNS: fixtureNowNS + int64(time.Second)},
+			{Key: "chat:id:Y", Label: resolve.Named("Y")},
 		},
 		Edges: []compose.CosmosEdge{{From: "chat:id:X", To: "chat:id:Y", Kind: shared.KindInject}},
 	})
@@ -427,7 +429,7 @@ func TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt(t *test
 
 	// Frame 1: alive.
 	model.applyCosmosGraph(compose.CosmosGraph{
-		Nodes: []compose.CosmosNode{{Key: "chat:session:ghost", Label: "ghost"}},
+		Nodes: []compose.CosmosNode{{Key: "chat:session:ghost", Label: resolve.Named("ghost")}},
 	})
 
 	// Frame 2: dies, with a baseline (previousAlive), so it is detected and
@@ -435,7 +437,7 @@ func TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt(t *test
 	model.cosmosNowNS = fixtureNowNS + int64(time.Second)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: "ghost", Dead: true, LastNS: model.cosmosNowNS,
+			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: model.cosmosNowNS,
 		}},
 	})
 	if len(model.cosmos.Nodes) != 1 {
@@ -447,7 +449,7 @@ func TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt(t *test
 	model.cosmosNowNS += int64(compose.CosmosDeathBlink+compose.CosmosDeathFade) + int64(time.Millisecond)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: "ghost", Dead: true, LastNS: fixtureNowNS + int64(time.Second),
+			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: fixtureNowNS + int64(time.Second),
 		}},
 	})
 	if len(model.cosmos.Nodes) != 0 {
@@ -460,7 +462,7 @@ func TestApplyCosmosGraphRetiredNodeStaysGoneWhileComposeKeepsEmittingIt(t *test
 	model.cosmosNowNS += int64(time.Millisecond)
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:ghost", Label: "ghost", Dead: true, LastNS: fixtureNowNS + int64(time.Second),
+			Key: "chat:session:ghost", Label: resolve.Named("ghost"), Dead: true, LastNS: fixtureNowNS + int64(time.Second),
 		}},
 	})
 	if len(model.cosmos.Nodes) != 0 {
@@ -491,7 +493,7 @@ func TestApplyCosmosGraphDropsAnUnwitnessedDeadNodeOnFirstSight(t *testing.T) {
 	model.cosmosNowNS = fixtureNowNS
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:already-dead", Label: "already-dead",
+			Key: "chat:session:already-dead", Label: resolve.Named("already-dead"),
 			Dead: true, LastNS: fixtureNowNS - int64(time.Hour),
 		}},
 	})
@@ -509,10 +511,109 @@ func TestApplyCosmosGraphRendersAPendingNodeInsideTheGraceWindow(t *testing.T) {
 	model.cosmosNowNS = fixtureNowNS
 	model.applyCosmosGraph(compose.CosmosGraph{
 		Nodes: []compose.CosmosNode{{
-			Key: "chat:session:newborn", Label: "newborn", LastNS: fixtureNowNS,
+			Key: "chat:session:newborn", Label: resolve.Named("newborn"), LastNS: fixtureNowNS,
 		}},
 	})
 	if len(model.cosmos.Nodes) != 1 || model.cosmos.Nodes[0].Dead {
 		t.Fatalf("a pending (not-yet-dead) node was not rendered normally: %#v", model.cosmos.Nodes)
 	}
+}
+
+// cosmosNodeByKey names the node a test means, so a miss fails with the whole
+// graph instead of panicking on an index.
+func cosmosNodeByKey(graph compose.CosmosGraph, key string) (compose.CosmosNode, bool) {
+	for _, node := range graph.Nodes {
+		if node.Key == key {
+			return node, true
+		}
+	}
+	return compose.CosmosNode{}, false
+}
+
+// TestCosmosRendersARawSessionAddressedSendOnTheExistingNode is the
+// end-to-end proof for the defect the operator watched happen: a chat sent an
+// MCP message to a live, named chat, and the cosmos tab grew a node labelled
+// with the RECEIVER's raw tmux session id, which then blinked out 2.7s later
+// when the no-row grace window expired.
+//
+// It asserts all three things that have to be true, not just the one that was
+// broken. The send must land on the two nodes that already exist and mint
+// NONE. The node must render the chat's human label. And the send visual must
+// still fire — a resolution fix that quietly stopped the comet would be a
+// regression the node-count assertion alone would never catch.
+func TestCosmosRendersARawSessionAddressedSendOnTheExistingNode(t *testing.T) {
+	const receiverSession = "cx-1799999900-1-1" // fixture row 1 ("RR")
+	build := func(noSky bool) Model {
+		snapshot := fixtureSnapshot(80)
+		snapshot.NoSky = noSky
+		snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{{
+			AtNS:       fixtureNowNS - int64(300*time.Millisecond),
+			Kind:       shared.KindInject,
+			SenderUUID: "11111111-1111-4111-8111-111111111111",
+			// The pathological shape: the caller addressed the chat by
+			// the raw session id the old reply footer handed it, and the
+			// receiver was recorded by its full socket PATH while a live
+			// row carries the bare name.
+			Target:         receiverSession,
+			ReceiverSocket: "/tmp/tmux-1000/" + receiverSession,
+			ReceiverPane:   "%0",
+			Message:        "hello cosmos",
+		}}, fixtureNowNS)
+		model := NewModel(snapshot)
+		model.tab = TabCosmos
+		return model
+	}
+
+	graph := build(true).cosmos
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("a send between two known chats produced %d nodes, want 2: %#v", len(graph.Nodes), graph.Nodes)
+	}
+	receiver, found := cosmosNodeByKey(graph, "chat:id:22222222-2222-4222-8222-222222222222")
+	if !found {
+		t.Fatalf("the receiver did not resolve to its existing row: %#v", graph.Nodes)
+	}
+	if got := receiver.Label.String(); got != "RR" {
+		t.Fatalf("receiver rendered as %q, want its label %q", got, "RR")
+	}
+	for _, node := range graph.Nodes {
+		if label := node.Label.String(); strings.Contains(label, receiverSession) {
+			t.Fatalf("a raw session id reached a node label: %q", label)
+		}
+	}
+
+	if !strings.Contains(build(true).View().Content, "RR") {
+		t.Fatalf("the rendered cosmos frame does not show the receiver's label")
+	}
+
+	// The send visual. Comparing a sky-ON frame against a sky-OFF one would
+	// prove nothing — the starfield alone makes those differ whether the
+	// comet flew or was never wired — so this holds the sky ON for both
+	// renders and moves only the CLOCK: once while the edge is in flight,
+	// once a full comet duration past it. The universe canvas is where the
+	// comet paints, and its dot count is the direct evidence.
+	model := build(false)
+	inFlight := cosmosUniverseDots(model, time.Unix(0, fixtureNowNS))
+	landed := cosmosUniverseDots(
+		model,
+		time.Unix(0, fixtureNowNS+int64(cosmosCometDuration(shared.KindInject))),
+	)
+	if inFlight <= landed {
+		t.Fatalf(
+			"the send visual did not fire: universe dots in flight = %d, after landing = %d",
+			inFlight, landed,
+		)
+	}
+}
+
+// cosmosUniverseDots renders the universe canvas at one instant and counts the
+// subpixels it painted. The comet, its head burst and its tail are all dots,
+// so this is what "the send animated" looks like from the outside.
+func cosmosUniverseDots(model Model, now time.Time) int {
+	canvas := NewCanvas(80, 24)
+	model.drawCosmosUniverse(canvas, now)
+	painted := 0
+	for _, bits := range canvas.dots {
+		painted += bits2.OnesCount8(bits)
+	}
+	return painted
 }

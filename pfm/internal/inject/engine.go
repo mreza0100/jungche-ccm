@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"hostops/pfm/internal/naming"
@@ -310,6 +311,7 @@ func withDefaults(options Options) Options {
 
 // Resolve applies chat.sh's live target ladder.
 func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, string, error) {
+	name = unquoteTarget(name)
 	if name == "" {
 		return Target{}, CodeUnknown, "empty target", nil
 	}
@@ -1199,21 +1201,77 @@ func (engine *Engine) SignForResume(ctx context.Context, message string) (string
 	return message + "\n\n— " + strings.Join(parts, " · "), false
 }
 
+// signatureParts builds the footer a recipient reads to know who spoke and
+// how to answer. Two rules it got wrong for a long time are load-bearing here.
+//
+// The reply hint advertises the LABEL whenever there is one. It used to
+// advertise sender.Session — a raw tmux session id — two lines above stating
+// the sender's label, while senderLabel's own contract is that the label is
+// carried bare precisely "since the recipient must be able to reply by
+// exactly the label the operator gave the chat". A caller obeying the old
+// footer replied with a raw session id, which landed in the comms ledger as
+// the target and minted a cosmos node named after a socket. The session is
+// still the fallback, and it is legitimate there: it is the literal argument
+// a caller must pass, not a name being presented as one.
+//
+// There is no 🔖 part any more, and its absence is deliberate rather than an
+// omission. 🔖 is the STATUSLINE's identity marker, and naming.BookmarkLabelFor
+// scrapes a pane's own label by finding the last 🔖 line on screen. Stamping
+// it into a delivered message wrote the SENDER's identity into the
+// RECIPIENT's pane, where the scraper could read it back as the recipient's
+// own label — a chat's identity becoming whatever the last message it
+// received claimed its sender was called. The reply hint above already names
+// the sender, so nothing is lost by not re-stating it under a marker that
+// means something else.
 func signatureParts(sender Sender) []string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 2)
 	if sender.UUID != "" {
 		parts = append(parts, "sid "+headRunes(sender.UUID, 8))
 	}
-	if sender.Session != "" {
+	if address := replyAddress(sender); address != "" {
 		parts = append(
 			parts,
-			"to reply: chat_inject "+sender.Session+" <message>",
+			naming.DeliveredFooterMarker+address+" <message>",
 		)
 	}
-	if sender.Label != "" {
-		parts = append(parts, "🔖 "+sender.Label)
-	}
 	return parts
+}
+
+// unquoteTarget strips one layer of surrounding double quotes from a target.
+//
+// It is the read side of the reply hint's write side: a label containing
+// spaces is advertised as chat_inject "Delivery Trust" <message>, because the
+// CLI form needs the shell quoting to see one argument. A recipient reaching
+// for the MCP tool instead passes the target as a JSON string, where those
+// quotes are just two extra characters that would make the label match
+// nothing. Accepting both spellings costs one trim; refusing one of them
+// would make the hint wrong for whichever caller read it the other way.
+func unquoteTarget(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if len(trimmed) >= 2 &&
+		strings.HasPrefix(trimmed, `"`) &&
+		strings.HasSuffix(trimmed, `"`) {
+		return strings.TrimSpace(trimmed[1 : len(trimmed)-1])
+	}
+	return trimmed
+}
+
+// replyAddress is the one string a recipient can pass straight back to
+// chat_inject. A label with whitespace is quoted, because a codex chat's
+// label is its tmux WINDOW name and those legitimately contain spaces —
+// unquoted, "chat_inject Delivery Trust <message>" reads as a target plus a
+// stray word. Quoting is safe for the label's other hazard too: ':' is tmux's
+// session:window separator, but this is a chat_inject argument and never a
+// tmux target, and inject.Resolve hands a label to the label resolver, which
+// answers with a %pane id.
+func replyAddress(sender Sender) string {
+	if sender.Label != "" {
+		if strings.ContainsFunc(sender.Label, unicode.IsSpace) {
+			return `"` + sender.Label + `"`
+		}
+		return sender.Label
+	}
+	return sender.Session
 }
 
 // unsignedFooter states what was TRIED, never what happens to be unset. Reading

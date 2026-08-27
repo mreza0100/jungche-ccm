@@ -506,7 +506,7 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 				t.Fatalf("selector refusal changed capture: %q -> %q", before, fake.capture)
 			}
 			if test.wantTyped &&
-				!strings.Contains(result.Proof, "to reply: chat_inject sender <message>") {
+				!strings.Contains(result.Proof, "to reply: chat_inject Operator <message>") {
 				t.Fatalf("proof lacks mandatory sender signature: %q", result.Proof)
 			}
 		})
@@ -719,7 +719,7 @@ func TestLongProseAutoFilePreservesBodySignatureAndProof(t *testing.T) {
 	pointer := fake.literals[0]
 	if strings.Contains(pointer, body) ||
 		!strings.Contains(pointer, "long prose payload — read "+result.AutoFilePath+" fully") ||
-		!strings.Contains(pointer, "to reply: chat_inject sender <message>") {
+		!strings.Contains(pointer, "to reply: chat_inject Operator <message>") {
 		t.Fatalf("pointer changed body/signature semantics: %q", pointer)
 	}
 	if !strings.Contains(result.Message, "AUTO-FILE") ||
@@ -1171,4 +1171,27 @@ func contains(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestResolveAcceptsAQuotedTargetFromTheReplyHint pins both readings of the
+// footer. A spaced label is advertised as chat_inject "Delivery Trust"
+// <message> so the CLI form sees one argument; a recipient going through the
+// MCP tool passes the target as a JSON string and would carry those quotes
+// straight into the target. Both must reach the same chat, and neither may
+// strip quotes out of a label that genuinely contains them mid-string.
+func TestResolveAcceptsAQuotedTargetFromTheReplyHint(t *testing.T) {
+	for _, test := range []struct{ in, want string }{
+		{`"Delivery Trust"`, "Delivery Trust"},
+		{`Delivery Trust`, "Delivery Trust"},
+		{`  "P:DO"  `, "P:DO"},
+		{`P:DO`, "P:DO"},
+		{`cc-1787705979-3980493-30867`, "cc-1787705979-3980493-30867"},
+		{`say "hi" now`, `say "hi" now`},
+		{`"`, `"`},
+		{``, ``},
+	} {
+		if got := unquoteTarget(test.in); got != test.want {
+			t.Fatalf("unquoteTarget(%q) = %q, want %q", test.in, got, test.want)
+		}
+	}
 }

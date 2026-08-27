@@ -384,8 +384,7 @@ func TestMCPMetadataThreadIdentityRoutesDistinctCodexSeats(t *testing.T) {
 		}
 		for _, signaturePart := range []string{
 			"sid " + metas[index]["threadId"].(string),
-			"to reply: chat_inject " + wantSessions[index] + " <message>",
-			"🔖 Codex " + string(rune('A'+index)),
+			`to reply: chat_inject "Codex ` + string(rune('A'+index)) + `" <message>`,
 		} {
 			if !strings.Contains(injected.Proof, signaturePart) {
 				t.Errorf("inject[%d] proof %q lacks request-scoped signature part %q", index, injected.Proof, signaturePart)
@@ -553,8 +552,7 @@ func TestMCPMetadataSignsExplicitTargetWithoutRedirectingIt(t *testing.T) {
 	if output.Code != 0 || !output.Typed || output.Unsigned ||
 		!strings.Contains(output.SocketPath, "cc-1700000002-1-3") ||
 		!strings.Contains(output.Proof, "sid thread-a") ||
-		!strings.Contains(output.Proof, "to reply: chat_inject fixture-session <message>") ||
-		!strings.Contains(output.Proof, "🔖 Codex A") {
+		!strings.Contains(output.Proof, `to reply: chat_inject "Codex A" <message>`) {
 		t.Fatalf("explicit target injection lost target or caller provenance: %+v", output)
 	}
 }

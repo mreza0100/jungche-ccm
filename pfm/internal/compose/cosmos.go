@@ -3,11 +3,11 @@ package compose
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 )
 
@@ -34,8 +34,13 @@ const (
 )
 
 type CosmosNode struct {
-	Key    string
-	Label  string
+	Key string
+	// Label is what a human reads. Its type is resolve.DisplayName, not a
+	// string, and that is the point: outside internal/resolve there is no
+	// literal that produces one, so a tmux session name or a socket path
+	// cannot be assigned here by accident. It arrives from exactly one
+	// place — the answer resolve.Directory gave for this node's identity.
+	Label  resolve.DisplayName
 	Engine string
 	Live   bool
 	Killed bool
@@ -82,17 +87,20 @@ type CosmosGraph struct {
 }
 
 type cosmosBuilder struct {
-	rowsByID   map[string]*Row
-	rowsByPane map[string]*Row
-	rowsByName map[string]*Row
-	nodes      map[string]CosmosNode
-	edges      map[string]CosmosEdge
-	warnings   []string
+	// directory is the ONE index every identity in this graph resolves
+	// through. Both halves of a conversation ask it the same question in
+	// the same way; the three hand-rolled maps that used to sit here were
+	// two divergent ladders, and the asymmetry between them was the root
+	// of the ghost-node family.
+	directory *resolve.Directory[Row]
+	nodes     map[string]CosmosNode
+	edges     map[string]CosmosEdge
+	warnings  []string
 	// unmatched holds every node key built with no matching row — no
 	// positive evidence of death, just its absence. BuildCosmos resolves
 	// these once every event has been walked and each key's final LastNS
-	// is known, via the grace window below; a matched row's Dead (set in
-	// cosmosRowNode from row.Killed) is never touched here.
+	// is known, via the grace window below; a resolved row's Dead (set in
+	// chatNode from row.Killed) is never touched here.
 	unmatched map[string]bool
 }
 
@@ -110,43 +118,26 @@ type cosmosBuilder struct {
 // render-detection moment only a caller with memory across calls can know.
 func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGraph {
 	builder := cosmosBuilder{
-		rowsByID:   make(map[string]*Row),
-		rowsByPane: make(map[string]*Row),
-		rowsByName: make(map[string]*Row),
-		nodes:      make(map[string]CosmosNode),
-		edges:      make(map[string]CosmosEdge),
-	}
-	for index := range rows {
-		row := &rows[index]
-		if row.ID != "" {
-			if _, exists := builder.rowsByID[row.ID]; !exists {
-				builder.rowsByID[row.ID] = row
-			}
-		}
-		if row.Socket != "" {
-			key := paneKey(row.Socket, row.PaneID)
-			if _, exists := builder.rowsByPane[key]; !exists {
-				builder.rowsByPane[key] = row
-			}
-		}
-		if row.Name != "" {
-			if _, exists := builder.rowsByName[row.Name]; !exists {
-				builder.rowsByName[row.Name] = row
-			}
-		}
+		directory: resolve.NewDirectory(rows, rowAddress),
+		nodes:     make(map[string]CosmosNode),
+		edges:     make(map[string]CosmosEdge),
 	}
 
 	for _, event := range events {
 		switch event.Kind {
 		case shared.KindInject:
-			from := builder.senderNode(event)
-			to := builder.receiverNode(event)
+			from := builder.chatNode(senderAddress(event))
+			to := builder.chatNode(receiverAddress(event))
 			builder.touch(from, event.AtNS)
 			builder.touch(to, event.AtNS)
 			builder.addEdge(from.Key, to.Key, event)
 		case shared.KindGroup:
-			from := builder.senderNode(event)
-			group := CosmosNode{Key: groupKey(event.GroupName), Label: event.GroupName, Group: true}
+			from := builder.chatNode(senderAddress(event))
+			group := CosmosNode{
+				Key:   groupKey(event.GroupName),
+				Label: resolve.Named(event.GroupName),
+				Group: true,
+			}
 			builder.touch(from, event.AtNS)
 			builder.touch(group, event.AtNS)
 			builder.addEdge(from.Key, group.Key, event)
@@ -158,17 +149,17 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 				continue
 			}
 			for _, member := range members {
-				node := builder.namedNode(member)
+				node := builder.chatNode(resolve.Address{Label: member})
 				builder.touch(node, event.AtNS)
 				builder.addEdge(group.Key, node.Key, event)
 			}
 		case shared.KindSpawn:
-			child := builder.receiverNode(event)
+			child := builder.chatNode(receiverAddress(event))
 			builder.touch(child, event.AtNS)
 			if event.SenderSession == "" && event.SenderUUID == "" && event.SenderLabel == "" {
 				continue
 			}
-			parent := builder.senderNode(event)
+			parent := builder.chatNode(senderAddress(event))
 			builder.touch(parent, event.AtNS)
 			builder.addEdge(parent.Key, child.Key, event)
 		default:
@@ -213,13 +204,13 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 		graph.Nodes = append(graph.Nodes, node)
 	}
 	sort.Slice(graph.Nodes, func(left, right int) bool {
-		leftLabel := strings.ToLower(graph.Nodes[left].Label)
-		rightLabel := strings.ToLower(graph.Nodes[right].Label)
+		leftLabel := graph.Nodes[left].Label.String()
+		rightLabel := graph.Nodes[right].Label.String()
+		if folded := strings.ToLower(leftLabel); folded != strings.ToLower(rightLabel) {
+			return folded < strings.ToLower(rightLabel)
+		}
 		if leftLabel != rightLabel {
 			return leftLabel < rightLabel
-		}
-		if graph.Nodes[left].Label != graph.Nodes[right].Label {
-			return graph.Nodes[left].Label < graph.Nodes[right].Label
 		}
 		return graph.Nodes[left].Key < graph.Nodes[right].Key
 	})
@@ -242,100 +233,110 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 	return graph
 }
 
-// senderNode resolves the row this event's sender still lives in. Row
-// lookup priority is unchanged from before: id, then session, then label.
-// Only the fallback below — reached once none of those match, meaning the
-// chat has no surviving row — changed shape.
-func (builder *cosmosBuilder) senderNode(event shared.CommsEvent) CosmosNode {
-	for _, id := range []string{event.SenderUUID, event.SenderSession} {
-		if row := builder.rowsByID[id]; row != nil {
-			return cosmosRowNode(*row)
-		}
+// rowAddress projects one fleet row into the shared identity address space.
+// It is the ONLY place this package states which of a Row's fields are
+// identities, and Row.Socket is deliberately handed over as Session: a live
+// row carries the BARE socket name tmux is addressed by (-L), while the
+// comms ledger records full -S paths, and resolve.Address normalises both to
+// the same tmux session name. Keying one side bare and the other by path is
+// what made the pane index unmatchable.
+func rowAddress(row Row) resolve.Address {
+	return resolve.Address{
+		ID:      row.ID,
+		Session: row.Socket,
+		Pane:    row.PaneID,
+		Label:   row.Name,
 	}
-	if row := builder.rowsByName[event.SenderLabel]; row != nil {
-		return cosmosRowNode(*row)
-	}
-	// No row survives. The tmux session name is the one identity both a
-	// sender and a receiver independently carry for the SAME chat (see
-	// receiverNode below), so it is preferred over a UUID or a label — an
-	// id-only or label-only fallback cannot be correlated with anything the
-	// other side of a conversation reports.
-	if event.SenderSession != "" {
-		return builder.chatSessionNode(event.SenderSession, firstNonEmpty(event.SenderLabel, event.SenderSession))
-	}
-	key := ""
-	switch {
-	case event.SenderUUID != "":
-		key = "chat:id:" + event.SenderUUID
-	case event.SenderLabel != "":
-		key = "chat:name:" + event.SenderLabel
-	}
-	label := event.SenderLabel
-	if label == "" {
-		label = event.SenderUUID
-	}
-	return builder.fallbackNode(key, label)
 }
 
-// receiverNode resolves the row this event's receiver still lives in. Row
-// lookup priority is unchanged: the exact (socket, pane) pair, then the
-// target name. Only the fallback below changed shape.
-func (builder *cosmosBuilder) receiverNode(event shared.CommsEvent) CosmosNode {
-	if event.ReceiverSocket != "" {
-		if row := builder.rowsByPane[paneKey(event.ReceiverSocket, event.ReceiverPane)]; row != nil {
-			return cosmosRowNode(*row)
-		}
+// senderAddress and receiverAddress are the ledger's two identity
+// projections. Every column lands in the field whose flavour it actually
+// has — except Target, which is whatever a caller typed and therefore goes
+// into Text, the untyped slot resolution sweeps across every namespace. That
+// is not a hedge: the reply footer used to hand callers a raw session id to
+// address a chat by, so the target column genuinely holds session names,
+// labels and stale labels alike.
+func senderAddress(event shared.CommsEvent) resolve.Address {
+	return resolve.Address{
+		ID:      event.SenderUUID,
+		Session: event.SenderSession,
+		Label:   event.SenderLabel,
 	}
-	if row := builder.rowsByName[event.Target]; row != nil {
-		return cosmosRowNode(*row)
-	}
-	if event.ReceiverSocket != "" {
-		// filepath.Base of a full socket PATH ("/tmp/tmux-1000/cc-…") and of
-		// a bare session NAME ("cc-…", the pre-fix writer's shape) both land
-		// on the same tmux session name — the one datum senderNode's
-		// fallback above can also produce from sender_session, so a dead
-		// chat's sent and received edges converge on ONE ghost, not two.
-		session := filepath.Base(event.ReceiverSocket)
-		return builder.chatSessionNode(session, firstNonEmpty(event.Target, event.ReceiverSocket))
-	}
-	return builder.namedNode(event.Target)
 }
 
-// chatSessionNode is the canonical no-row-matched identity for a chat: both
-// halves of the ledger can derive the same tmux session name independently,
-// so it is the only fallback key space that keeps a dead chat as one node.
-func (builder *cosmosBuilder) chatSessionNode(session, label string) CosmosNode {
-	if session == "" {
-		return CosmosNode{}
+func receiverAddress(event shared.CommsEvent) resolve.Address {
+	return resolve.Address{
+		Session: event.ReceiverSocket,
+		Pane:    event.ReceiverPane,
+		Text:    event.Target,
 	}
-	return builder.fallbackNode("chat:session:"+session, label)
 }
 
-func (builder *cosmosBuilder) namedNode(name string) CosmosNode {
-	if row := builder.rowsByName[name]; row != nil {
-		return cosmosRowNode(*row)
-	}
-	if name == "" {
-		return CosmosNode{}
-	}
-	return builder.fallbackNode("chat:name:"+name, name)
-}
-
-// fallbackNode builds a no-row-matched node identity and marks it for the
-// grace-window resolution BuildCosmos performs once every event has been
-// walked. It carries no Dead verdict here — the ABSENCE of a row is not
-// the same evidence as row.Killed, and whether a still-missing row means
-// PENDING or GONE cannot be decided until this key's final LastNS (every
-// touch this graph will ever see for it) is known.
-func (builder *cosmosBuilder) fallbackNode(key, label string) CosmosNode {
+// chatNode is the ONE path from any identity a recorded event carries to the
+// node it belongs to. Both halves of a conversation come through here, which
+// is the whole fix: a sender and a receiver describing the SAME chat used to
+// walk two different ladders and land on two different nodes.
+//
+// A node whose identity resolved to no row is still a node — the graph must
+// show that somebody talked — but it is marked for the grace-window
+// resolution BuildCosmos performs once every event has been walked. It
+// carries no Dead verdict here: the ABSENCE of a row is not the same
+// evidence as row.Killed, and whether a still-missing row means PENDING or
+// GONE cannot be decided until this key's final LastNS is known.
+func (builder *cosmosBuilder) chatNode(query resolve.Address) CosmosNode {
+	answer := builder.directory.Lookup(query)
+	key := cosmosKey(answer)
 	if key == "" {
 		return CosmosNode{}
+	}
+	node := CosmosNode{Key: key, Label: answer.Display}
+	if answer.Found {
+		node.Engine = string(EngineForKind(answer.Chat.Kind))
+		node.Live = answer.Chat.Socket != ""
+		node.Killed = answer.Chat.Killed
+		node.Dead = answer.Chat.Killed
+		return node
 	}
 	if builder.unmatched == nil {
 		builder.unmatched = make(map[string]bool)
 	}
 	builder.unmatched[key] = true
-	return CosmosNode{Key: key, Label: label}
+	return node
+}
+
+// cosmosKey is the graph's node identity, and it keys on machine addresses,
+// never on a label: chat_name renames a chat at will and a freed label is
+// reused by a later one, so a label-keyed node would retroactively rewrite
+// who said what in an append-only ledger.
+//
+// The unresolved branch prefers the SESSION over anything else for one
+// specific reason: it is the only identity both halves of a conversation
+// carry independently for the same chat — a sender states its own
+// sender_session, a receiver is recorded by socket — so a chat that has
+// vanished from the roster converges on ONE ghost instead of one per side.
+func cosmosKey(answer resolve.Answer[Row]) string {
+	address := answer.Address
+	name := firstNonEmpty(address.Label, address.Text)
+	if answer.Found {
+		switch {
+		case address.ID != "":
+			return "chat:id:" + address.ID
+		case address.Session != "":
+			return "chat:pane:" + address.Session + "\t" + address.Pane
+		case name != "":
+			return "chat:name:" + name
+		}
+		return ""
+	}
+	switch {
+	case address.Session != "":
+		return "chat:session:" + address.Session
+	case address.ID != "":
+		return "chat:id:" + address.ID
+	case name != "":
+		return "chat:name:" + name
+	}
+	return ""
 }
 
 func (builder *cosmosBuilder) touch(node CosmosNode, atNS int64) {
@@ -371,22 +372,4 @@ func (builder *cosmosBuilder) addEdge(from, to string, event shared.CommsEvent) 
 	builder.edges[key] = edge
 }
 
-func cosmosRowNode(row Row) CosmosNode {
-	key := ""
-	switch {
-	case row.ID != "":
-		key = "chat:id:" + row.ID
-	case row.Socket != "":
-		key = "chat:pane:" + paneKey(row.Socket, row.PaneID)
-	case row.Name != "":
-		key = "chat:name:" + row.Name
-	}
-	return CosmosNode{
-		Key: key, Label: firstNonEmpty(row.Name, row.ID, row.Socket),
-		Engine: string(EngineForKind(row.Kind)), Live: row.Socket != "", Killed: row.Killed,
-		Dead: row.Killed,
-	}
-}
-
-func paneKey(socket, pane string) string { return socket + "\t" + pane }
-func groupKey(name string) string        { return "group:" + name }
+func groupKey(name string) string { return "group:" + name }
