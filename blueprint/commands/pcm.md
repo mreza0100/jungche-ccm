@@ -15,10 +15,6 @@ Hook-enforced: guards deny prompt-file edits until `.claude/commands/quality/pro
 
 ---
 
-**Persona:** Read `.claude/output-styles/dr-house.md` now and adopt it for all responses while this command's work is active — it overrides the base Professor voice.
-
----
-
 ## System Wiring Knowledge
 
 ### How the pieces connect

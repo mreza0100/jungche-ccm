@@ -48,18 +48,13 @@ This becomes `{PROJECT_NAME}` and `{PROJECT_PITCH}`. Example: "Acme is a develop
 
 ### 2. Character name & voice (MANDATORY — cannot be skipped)
 
-> Default character is **Professor** — grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. Cross-disciplinary lens. Takes life easy but not too easy. Pick: keep Professor, rename (voice stays), or supply a custom voice (3–6 tone keywords + a one-line vibe). You MUST land on one — the persona section is load-bearing infrastructure, not optional flavor.
+> Default character is **Professor** — grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. Cross-disciplinary lens. Takes life easy but not too easy. Pick: keep Professor, rename (voice stays), or supply a custom voice (3–6 tone keywords + a one-line vibe). You MUST land on one — the persona section is load-bearing infrastructure, not optional flavor.
 
 Most adopters keep Professor as-is. The voice transplants well across domains. If you want a different name (e.g., "Beatrix" for a finance project, "Gandalf" for an open-source library), name it. The voice can stay.
 
-**Persona depth — full or compact.** Each persona (Professor, JC, Dr. House) ships in two depths; pick one for the install:
+Each persona ships as ONE version: the Professor (`professor.md`) is the **session style** loaded on every main-loop turn; JC (`jc.md`) is a command overlay loaded only when `/jc` runs.
 
-- **full** — the rich, showcase version: every worked voice example, the "What NOT to do" block, the full PhD roster, the relationship-with-the-work section. The voice IS the value. The reasonable showcase default.
-- **compact** — a lean version: the same behavioral contract (the Verdict rule, the sacred-ground red lines, the Analysis Protocol) and each character's distinct voice, with the flavor and PhD detail trimmed to a single visible one-line roster. Fewer tokens every turn.
-
-The Professor is the **session style** — its output style is loaded on every main-loop turn, so compact's per-turn savings land mostly there; JC and Dr. House are command overlays loaded only when `/jc` or `/pcm` runs. One install-wide choice covers all three personas; you can switch later by re-copying the other variant (see Phase 2) or re-answering this question.
-
-Then tell Claude your **sacred ground** — the topics where the character drops the humor and reports flat (e.g., "patient data", "user funds", "physical safety in autonomous control"). This goes into the persona's "What NOT to do" block. Without sacred ground defined, the character will make jokes in places it shouldn't.
+Sacred ground (the topics where humor drops) is collected in question 8 — it feeds JC and the Tier B archetypes; the Professor persona itself stays generic.
 
 ### 3. Project roster
 
@@ -110,23 +105,9 @@ For each subproject, Claude pins these into the agents and scripts:
 
 These go into `worktree.sh`, `dev.sh`, and the developer + qa agent files.
 
-### 5. Professor's disciplines
+### 5. (retired)
 
-> The Professor archetype holds 10+ PhDs. The voice is grandfatherly polymath; the **disciplines** parameterize per project. What 10+ disciplines should YOUR Professor hold, to span your domain?
-
-Examples:
-
-| Project type        | 10 disciplines                                                                                                                                                                                   |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Therapy AI          | CS, Clinical Psych, AI/ML, HCI, Statistics, Linguistics, Privacy/Security, UX, Software Architecture, Therapy Methodology                                                                        |
-| Neuropsych research | Neuroscience, Cognitive Science, Computational Modeling, Statistics, Clinical Methodology, Software Engineering, Information Theory, Linguistics, Philosophy of Mind, Research Methods           |
-| Game studio         | Game Design, Narrative Theory, Probability, Behavioral Economics, UX, Mathematics, Art Direction, Audio Design, Software Engineering, Player Psychology                                          |
-| FinTech trading     | Financial Engineering, Statistics, ML, Distributed Systems, Securities Law, Game Theory, Microeconomics, Software Engineering, Cybersecurity, Behavioral Finance                                 |
-| Open-source library | Software Engineering, Programming Language Theory, Distributed Systems, Cryptography, Type Theory, Compiler Design, Operating Systems, Performance Engineering, API Design, Documentation Theory |
-
-Pick the 10 that span what your project needs to reason about. Claude embeds them into the Professor command file.
-
-Also: identify the **intersection lens** — which two disciplines, when combined, produce your Professor's unique superpower? (Neuropsych: Neuroscience × Computational Modeling. Game studio: Game Design × Player Psychology. FinTech: Financial Engineering × Distributed Systems.)
+Question 5 (Professor's disciplines) is retired — the persona's qualification is fixed prose ("15+ PhDs, one in whatever area the work touches"), nothing to collect. The number is kept so `--re-interview N` stays stable for questions 6+.
 
 ### 6. Council panel
 
@@ -221,7 +202,6 @@ If no: skip — the entire Codex layer is omitted. No pipeline operation require
 
 This becomes `{SACRED_GROUND}` and is referenced by:
 
-- The Professor (the "sacred ground" rule where humor disappears)
 - JC (the trigger that escalates from chill to temple-flipping)
 - Officer (if opted in — the protected category)
 - Council (the trump card in verdicts)
@@ -249,7 +229,7 @@ Claude takes your answers and:
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, and the non-negotiable rules. Emits `{PROJECT_ROSTER}` (one Architecture bullet per roster entry) and `{PROJECT_AGENT_ROSTER}` (one Agents line per entry, listing only that project's installed agents); a single-project install collapses the monorepo framing to "the project." Strict-typing and infra rules emitted per roster entry (one typing rule per typed stack; infra rules only if a project owns infra).
 2. **Writes per-project `CLAUDE.md` files** (roster of 2+) — one per entry, with that entry's tech stack and conventions. A roster of one has no child CLAUDE.md.
 3. **Writes Tier A command files** — `/wave:builder`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave:orchestrator`, `/documenter`. Voice intact, domain content filled.
-   3a. **Installs output-style personas** — for each of `professor`, `jc`, `dr-house`, copies the **chosen depth** variant `blueprint/output-styles/{name}.{depth}.md` (where `{depth}` is `full` or `compact` from Q2) to `.claude/output-styles/{name}.md`, substituting placeholders. The install always lands on the canonical bare filenames — `professor.md` (the session style loaded every main-loop turn), `jc.md`, `dr-house.md` (the `/jc` and `/pcm` overlays); the `.full`/`.compact` suffix exists only in the blueprint templates. To switch depth later, re-copy the other variant over the bare filename.
+   3a. **Installs output-style personas** — copies `blueprint/output-styles/professor.md` (the session style loaded every main-loop turn) and `blueprint/output-styles/jc.md` (the `/jc` overlay) to `.claude/output-styles/`, substituting placeholders.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-documenter`, and `tracer` always; one `qa-{project}` gate wrapper per roster entry; `mono-planner` + `mono-architect` only for a roster of 2+, each with the roster pinned. A single-project install omits the two `mono-` consolidators.
 6. **Writes per-project agents** — for each roster entry, instantiates that project's `planner`, `architect`, `developer`, `qa` (plus any specialists from Q3) under `{project}/.claude/agents/`, with its test/lint/build commands pinned. One set per entry; none for projects not in the roster.
@@ -365,7 +345,6 @@ Claude takes your answers and:
         "project_pitch": "AI-assisted neuropsychological assessment platform",
         "character_name": "Professor",
         "character_voice": "keep",
-        "persona_depth": "full",
         "sacred_ground": "patient cognitive assessment data and diagnostic accuracy",
         "structure": "monorepo",
         "subprojects": [
@@ -376,8 +355,6 @@ Claude takes your answers and:
           "api": { "test": "pnpm test", "lint": "pnpm lint", "typecheck": "pnpm tsc --noEmit", "build": "pnpm build", "dev": "pnpm dev" },
           "web": { "test": "npm test", "lint": "npm run lint", "typecheck": "skip", "build": "npm run build", "dev": "npm run dev" }
         },
-        "disciplines": ["Neuroscience", "Cognitive Science", "Computational Modeling", "Statistics", "Clinical Methodology", "Software Engineering", "Information Theory", "Linguistics", "Philosophy of Mind", "Research Methods"],
-        "intersection_lens": "Neuroscience × Computational Modeling",
         "council_panel": ["Officer", "PM", "Mentor"],
         "tier_b": {
           "officer": { "enabled": true, "regulation": "HIPAA", "authority": "HHS OCR", "rights": "HIPAA Privacy Rule", "notification": "60 days" },

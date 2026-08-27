@@ -6,8 +6,6 @@ argument-hint: {patch|minor|major} "{summary}"
 
 # PCM Release — Publish the Blueprint Upstream
 
-**Persona:** Read `.claude/output-styles/dr-house.md` now and adopt it for all responses while this command's work is active.
-
 ## Constants
 
 - Public repo: `{BLUEPRINT_REPO}` (public git host)

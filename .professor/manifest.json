@@ -3,7 +3,7 @@
   "installed_from": {
     "mode": "self-hosted",
     "repo": "mreza0100/professor",
-    "version": "0.63.0"
+    "version": "0.64.0"
   },
   "profile": "minimal",
   "answers": {
@@ -51,7 +51,7 @@
       "Pragmatics & linguistics",
       "Cognitive load and attention"
     ],
-    "intersection_lens": "prompt engineering x epistemology of evidence — the judge must never be the thing being judged",
+    "intersection_lens": "prompt engineering x epistemology of evidence \u2014 the judge must never be the thing being judged",
     "failure_modes_watched": [
       "the honest-looking absence (a check that reports its own broken state as a clean result)",
       "drift between .claude/** and its blueprint/** twin",
@@ -65,8 +65,8 @@
       "renamed": false
     },
     "sacred_ground": [
-      "the leak line — no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
-      "the publication line — push/tag/release only on an explicit in-turn request"
+      "the leak line \u2014 no private brand, user PII, client domain content, or machine-absolute path in any tracked file",
+      "the publication line \u2014 push/tag/release only on an explicit in-turn request"
     ],
     "tier_b_roles": [],
     "codex": true,
@@ -114,13 +114,13 @@
         "repo": "https://github.com/mreza0100/rr",
         "sha": "4056d38b2f1e8afc91a493f6ffb98d6784aad0db",
         "tracked": false,
-        "reason": "sources.json law — never vendored; gitignored"
+        "reason": "sources.json law \u2014 never vendored; gitignored"
       }
     },
     "deliberately_absent": {
-      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile — the pipeline ships as blueprint source, it is not this repo's own workflow",
+      "wave pipeline (/wave:*, worktrees, ports, per-project planner/architect/developer/qa)": "minimal profile \u2014 the pipeline ships as blueprint source, it is not this repo's own workflow",
       "/pcm:update": "this repo IS upstream; there is no newer tag to consume",
-      "/jc": "no separate hotfix route needed without a worktree pipeline — work lands on main under /dev + gitter",
+      "/jc": "no separate hotfix route needed without a worktree pipeline \u2014 work lands on main under /dev + gitter",
       "format-md.sh + notify.sh + limits-hook.sh + km-guard.sh + filter-test-output.sh": "not wired: prettier is absent on this host and an npx-fetching hook is a silent network call mid-turn",
       "docs/agents/ cluster + /documenter": "no permanent cross-project doc tree in a template repo"
     }
@@ -188,7 +188,7 @@
     "AGENTS.md": "3fe17034517cc94bd2f864a63c38f60fc13be155c08750f567c21eaa7eb52d28",
     "CLAUDE.md": "2ab478da17b9eee761cae8e4ccf0f4987311a8d46153cf3e2eab4b74a021ac35",
     "docs/commands/pcm/references/audit-scopes.md": "8d617113eded4346c3da669599f124662ddf83a5a2752ec3a911a1e8c8e82bb9",
-    "docs/commands/pcm/references/refresh.md": "2d9aa597cfe7647ea33d6a710770bd39f38f183b6e8a9a4bec47a51d1e68ea28",
+    "docs/commands/pcm/references/refresh.md": "3a676d3d0fb76c4428cc63b9bc1c581b635a6fa4a711fbf6ee0f945969570902",
     "pfm/AGENTS.md": "45395f70b39d2f885e6edf9b065fe287004863cfd41f030b382323c766a70bb1",
     "pfm/CLAUDE.md": "2afd804df6aeea977fc552d4e3930018e44f7855009c0080aca4a005bbe05cac"
   }

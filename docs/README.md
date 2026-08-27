@@ -2,7 +2,7 @@
 
 An opinionated multi-agent development pipeline for Claude Code — **with a full cast of characters**. It drops into **any Claude Code project, at any repo size**, regardless of language, framework, or runtime. Structure is captured at install as a **roster** of 1..N projects: a single-project repo is a roster of one (first-class — the worktree is the repo root, routing is trivial, cross-project steps drop out), and a multi-project monorepo lights up per-project agents and cross-project routing. The mechanics survive every stack; the characters' voices survive every domain.
 
-This is the **transplantable nervous system** — not a config dump. Built by the Professor (the grandfatherly polymath who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your PhD disciplines, your regulation, your user persona).
+This is the **transplantable nervous system** — not a config dump. Built by the Professor (the grandfatherly polymath who runs the show). The pipeline gives you the **discipline + personalities**, you parameterize the domain content (your stack, your sacred-ground concerns, your regulation, your user persona).
 
 ---
 
@@ -92,7 +92,7 @@ For the manual path, see `SETUP.md`.
 
 Every command, agent, and rule in this blueprint sorts into one of three tiers:
 
-- **Tier A — Universal archetypes** ship with FULL CHARACTER. Domain references inside (Professor's PhDs, the opted-in Tier B cast, JC's example stack traces) parameterize per install.
+- **Tier A — Universal archetypes** ship with FULL CHARACTER. Domain references inside (the opted-in Tier B cast, JC's example stack traces) parameterize per install.
 - **Tier B — Domain archetypes** ship as ARCHETYPE SKELETONS with placeholders. You fill in regulation, user persona, market, knowledge domain — the voice and structure are universal.
 - **Tier C — Pure mechanics** ship as INFRASTRUCTURE. No character; just role-defined plumbing.
 
@@ -104,7 +104,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 **Tier A — universal archetypes (ship with character):**
 
-- **The Professor** — Grandfatherly polymath with 10+ PhDs. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command. You pick the disciplines at install.
+- **The Professor** — Grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
 - **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
 - **/wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /dev, /git, /documenter, /goal-manager** — pipeline mechanics with light Professor voice.

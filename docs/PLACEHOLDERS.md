@@ -148,24 +148,19 @@ Real slots, register as siblings of their aggregate:
 | therapy session                                                           | `{SESSION_NOUN}`                                                                                                 |
 | clinical / therapeutic (adj)                                              | `{DOMAIN_ADJ}`                                                                                                   |
 | therapy / clinical practice (the field)                                   | `{DOMAIN_NOUN}`                                                                                                  |
-| the domain's "sacred ground" / do-no-harm frame                           | `{SACRED_GROUND}` — every domain has a hard "never do this" line; keep the frame, swap the specifics. Canonical spelling as of this entry — `{DOMAIN_SAFETY}` was a duplicate naming the same concept (SETUP.md, professor.{full,compact}.md, jc.{full,compact}.md, marketer.md, docs-agents/standards.md all already used `{SACRED_GROUND}`, 8 occurrences vs `{DOMAIN_SAFETY}`'s 3 in officer.md/audit/security.md); collapsed toward the higher-occurrence spelling, never re-add `{DOMAIN_SAFETY}` |
+| the domain's "sacred ground" / do-no-harm frame                           | `{SACRED_GROUND}` — every domain has a hard "never do this" line; keep the frame, swap the specifics. Canonical spelling — `{DOMAIN_SAFETY}` was a duplicate spelling naming the same concept, collapsed into this one; never re-add `{DOMAIN_SAFETY}` |
 | DSM-5, diagnoses, treatment recommendations, diagnostic labels            | `{FORBIDDEN_DOMAIN_OUTPUTS}` — the `{SACRED_GROUND}` examples for this domain; keep the guard, swap the examples |
 | CBT/DBT/psychodynamic, Jung/Rogers/Freudian, Gottman, CCRT, Rose of Leary | `{DOMAIN_FRAMEWORKS}` — keep one illustrative slot                                                               |
 | clinic / SUPERVISOR / THERAPIST roles                                     | `{ORG_UNIT}` / `{ROLE_SUPER}` / `{ROLE_USER}` / `{ROLE_ADMIN}` (top-of-hierarchy admin, above SUPER)            |
 
-## The 10 PhDs (root CLAUDE.md persona)
+## The PhDs (persona qualification)
 
-Keep the **structure** (5 + 5, each with title + bullets + "Think:" line). All ten slots are
-placeholders — `{PHD_DISCIPLINE_1}`, `{PHD_DISCIPLINE_2}`, `{PHD_DISCIPLINE_3}`,
-`{PHD_DISCIPLINE_4}`, `{PHD_DISCIPLINE_5}`, `{PHD_DISCIPLINE_6}`, `{PHD_DISCIPLINE_7}`,
-`{PHD_DISCIPLINE_8}`, `{PHD_DISCIPLINE_9}`, `{PHD_DISCIPLINE_10}` (generically
-`{PHD_DISCIPLINE_N}` in prose) — matching the shipped templates (`output-styles/professor.full.md:15-27`,
-`professor.compact.md:11`) and `refresh.md:62`'s transformation rule ("Professor's
-disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`"). SETUP seeds slots 1-5 with the
-5 CS defaults (Claude may keep or swap them per adopter) and always fills slots 6-10 from
-the adopter's stated domain expertise — but on disk every slot is the same token family,
-never a mix of literal CS prose and templated domain slots. `{PHD_DOMAIN_DISCIPLINE_1..5}`
-is a dead spelling — retired by this entry, never re-add it.
+The Professor's qualification is fixed prose — "15+ PhDs, one in whatever area the work
+touches" — shipped verbatim in `output-styles/professor.md`; no per-install
+discipline slots exist and SETUP collects none. `{PHD_DISCIPLINE_1..10}` (prose form
+`{PHD_DISCIPLINE_N}`) and `{PHD_DOMAIN_DISCIPLINE_1..5}` are dead tokens — retired, never
+re-add them; a refresh pass finding a discipline roster in a live persona genericizes it
+to the fixed line.
 
 ## Regulation / compliance
 

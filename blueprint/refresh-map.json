@@ -360,30 +360,14 @@
     "epics/TEMPLATE.md": {
       "curated": true
     },
-    "output-styles/dr-house.compact.md": {
-      "curated": true
-    },
-    "output-styles/dr-house.full.md": {
-      "curated": true
-    },
-    "output-styles/jc.compact.md": {
+    "output-styles/jc.md": {
       "sources": {
         ".claude/output-styles/jc.md": "68f02d40260872ca60ab6fc01e4f09088965b16a4414e8f2a198f14921234217"
       }
     },
-    "output-styles/jc.full.md": {
+    "output-styles/professor.md": {
       "sources": {
-        ".claude/output-styles/jc.md": "68f02d40260872ca60ab6fc01e4f09088965b16a4414e8f2a198f14921234217"
-      }
-    },
-    "output-styles/professor.compact.md": {
-      "sources": {
-        ".claude/output-styles/professor.md": "a0f17a81879f140308e8ed84c24d65e53245f4fc723b77de5c38530f3873957e"
-      }
-    },
-    "output-styles/professor.full.md": {
-      "sources": {
-        ".claude/output-styles/professor.md": "a0f17a81879f140308e8ed84c24d65e53245f4fc723b77de5c38530f3873957e"
+        ".claude/output-styles/professor.md": "2cae23cc6c6ffe7f2dfe6d7e46a1d435152667564d15bb8659355a43d8de65eb"
       }
     },
     "per-project/CLAUDE.md": {

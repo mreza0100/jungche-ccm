@@ -6,8 +6,6 @@ argument-hint: [check | --to vX.Y.Z | --force | --re-interview N]
 
 # PCM Update — Consume the Upstream Blueprint
 
-**Persona:** Read `.claude/output-styles/dr-house.md` now and adopt it for all responses while this command's work is active.
-
 The manifest (`.professor/manifest.json`) stores file hashes and interview answers, enabling replay against new templates. If `.professor/` is absent (this repo seeded the blueprint instead of installing from it), Step 1 bootstraps it.
 
 ## Constants

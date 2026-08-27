@@ -59,7 +59,7 @@ From the project repo:
 
 ## 2. Tier-aware transformations
 
-**Tier A:** KEEP voice/tone/structure/character/pipeline mechanics. REPLACE project identifiers + tech specifics + Professor's disciplines → `{PHD_DISCIPLINE_1}...{PHD_DISCIPLINE_N}`. KEEP Epics section structure (manifest format, lifecycle, ownership rules) — it is domain-agnostic. **Persona depth is load-bearing — PARAMETERIZE a persona's generic sections (swap domain refs for placeholders); NEVER delete or trim them.** Worked voice examples and sections like "What NOT to do", "The relationship with the work", and the Verdict examples ARE the value; mirror the live persona section-for-section, genericized — a thinned persona ships a weaker character. When a live persona carries a section the blueprint lacks, add it (genericized), never drop it.
+**Tier A:** KEEP voice/tone/structure/character/pipeline mechanics. REPLACE project identifiers + tech specifics with placeholders (the Professor's qualification is fixed prose — "15+ PhDs, one in whatever area the work touches" — a discipline roster found live genericizes to that line, never to slots). KEEP Epics section structure (manifest format, lifecycle, ownership rules) — it is domain-agnostic. **Persona voice is load-bearing — PARAMETERIZE a persona's generic sections (swap domain refs for placeholders); NEVER delete or trim them.** Worked voice examples and the Verdict examples ARE the value; mirror the live persona section-for-section, genericized — a thinned persona ships a weaker character. When a live persona carries a section the blueprint lacks, add it (genericized), never drop it.
 
 **Tier B:** KEEP archetype skeleton. REPLACE domain content with named placeholders:
 

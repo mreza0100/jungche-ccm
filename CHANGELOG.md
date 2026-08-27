@@ -37,6 +37,7 @@ Bullets MUST follow this shape:
 
 ## Releases
 
+- [v0.64.0](releases/v0.64.0.md) — Codex `/clear` follows the pane again: a chat's display name may seed a binding but never move one, so the fleet stops walking backwards onto the thread the clear retired; `pfm doctor` gains the binding audit that would have caught it; `pfm chat inject` refuses an unsigned send instead of stamping it UNSIGNED; and the shipped personas collapse to one file each
 Reverse-chronological. Click a version to read its full notes.
 
 - [v0.63.0](releases/v0.63.0.md) — seven instruments that reported the same thing when broken as when healthy, corrected: an MCP server that kept serving after being disabled, an installer announcing backups it never wrote, a `reload --then` that typed a follow-up and never submitted it, an install gate reading a failed probe as an idle service, and a status command writing scratch into the caller's working directory. Plus `chat status --ask`, which answers what a chat is doing right now rather than what it last did.
