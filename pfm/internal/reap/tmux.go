@@ -20,6 +20,13 @@ type Tmux interface {
 	ListPanes(ctx context.Context, socket string) ([]gather.Pane, error)
 	Sessions(ctx context.Context, socket string) ([]VSCTSession, error)
 	KillSession(ctx context.Context, socket, session string) error
+	// ClientIdle answers exemption 1 — how long ago #{client_activity} last
+	// moved for the most recently active client attached to socket. found is
+	// false when no client answered at all, which the caller must treat as
+	// "cannot confirm" and default toward NOT reaping, never toward
+	// "definitely idle": Attached already means a client is supposed to be
+	// there, so a probe that comes back empty is an anomaly, not a fact.
+	ClientIdle(ctx context.Context, socket string) (idle time.Duration, found bool, err error)
 }
 
 // CommandTmux talks to tmux inside one socket directory and nowhere else, so a
@@ -103,6 +110,53 @@ func (tmux CommandTmux) Sessions(
 		})
 	}
 	return sessions, nil
+}
+
+// ClientIdle reads #{client_activity} for every client attached to socket
+// and returns how long ago the MOST recently active one moved — the freshest
+// client is the one that decides whether a chat is "open for the operator".
+func (tmux CommandTmux) ClientIdle(
+	ctx context.Context,
+	socket string,
+) (time.Duration, bool, error) {
+	output, err := tmux.command(ctx, socket, "list-clients", "-F", "#{client_activity}").Output()
+	if err != nil {
+		// tmux errors "no clients attached" identically to any other reason
+		// list-clients found nothing — that is the ordinary shape of a
+		// socket nobody currently has open, not a probe failure.
+		return 0, false, nil
+	}
+	now := tmux.Now
+	if now == nil {
+		now = time.Now
+	}
+	newest := int64(-1)
+	for _, line := range strings.Split(strings.TrimSuffix(string(output), "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		activity, err := strconv.ParseInt(line, 10, 64)
+		if err != nil {
+			return 0, false, fmt.Errorf(
+				"tmux %s client activity %q: %w",
+				socket,
+				line,
+				err,
+			)
+		}
+		if activity > newest {
+			newest = activity
+		}
+	}
+	if newest < 0 {
+		return 0, false, nil
+	}
+	idle := now().Sub(time.Unix(newest, 0))
+	if idle < 0 {
+		idle = 0
+	}
+	return idle, true, nil
 }
 
 // KillSession ends one session on a shared socket, leaving its neighbours up.

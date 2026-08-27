@@ -324,6 +324,28 @@ func TestReapLeavesAYoungEmptySocketAlone(t *testing.T) {
 	}
 }
 
+// A sweep that could not do what it said must not report success: a removal
+// that genuinely fails has to drive the command's own exit code non-zero, or
+// a script chaining on that exit code sees success where a corpse was left
+// behind untouched.
+//
+// This exact proof used to live here as a full-binary test, forcing the
+// failure with a read-only TmuxDir. That trick is a permission-bit check,
+// and this repo's own isolated fence runs the suite as root, where
+// permission bits are advisory — root's os.Remove succeeds right through a
+// chmod 0500 directory, so the "failure" never happened and the test only
+// ever proved itself on a machine that was not root. The same source branch
+// (internal/reap/runner.go's ActionRemoveSocketFile os.Remove failure) is
+// proven root-proof instead in internal/reap/reap_test.go, using a
+// non-empty directory in the corpse's place — os.Remove on a non-empty
+// directory returns ENOTEMPTY for every uid, root included — alongside
+// TestApplyMarksADecisionFailedWhenKillServerErrors, which was already
+// root-proof (a fake killServer returning an error, no filesystem trick at
+// all). Reaching that branch through the REAL binary and real tmux without
+// either a permission check or a timing race against a live server was not
+// achievable within the test-files-only boundary; see the audit report for
+// the mechanisms considered and why each was rejected.
+
 // reapRow returns the report line for one socket.
 func reapRow(t *testing.T, report, socket string) string {
 	t.Helper()
