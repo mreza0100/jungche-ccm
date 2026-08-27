@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,13 +57,22 @@ func cosmosWaitCmd(generation uint64) tea.Cmd {
 	})
 }
 
-// cosmosTickInterval is the animation clock — ~15fps, fast enough that comets,
-// wind, and twinkle read as motion rather than a slideshow, and the same rate
-// the POC's vscode-safe mode settled on as gentle to terminal renderers.
-const cosmosTickInterval = 66 * time.Millisecond
+// cosmosTickInterval is the animation clock: ~15fps, fast enough that comets,
+// wind, and twinkle read as motion rather than a slideshow. Safe mode drops
+// back to 8fps — the rate VS Code's terminal demonstrably survived — because
+// heavy braille truecolor churn corrupts SIBLING terminals through the shared
+// WebGL glyph atlas there (microsoft/vscode#332859); the same mode coarsens
+// colour quantisation at the render boundary (Canvas.Quant) and announces
+// itself in the panel title, so the degraded state is never silent.
+func (model Model) cosmosTickInterval() time.Duration {
+	if model.cosmosSafe {
+		return 125 * time.Millisecond
+	}
+	return 66 * time.Millisecond
+}
 
-func cosmosTickCmd(generation uint64) tea.Cmd {
-	return tea.Tick(cosmosTickInterval, func(now time.Time) tea.Msg {
+func cosmosTickCmd(generation uint64, interval time.Duration) tea.Cmd {
+	return tea.Tick(interval, func(now time.Time) tea.Msg {
 		return cosmosTickMsg{generation: generation, nowNS: now.UnixNano()}
 	})
 }
@@ -78,6 +88,34 @@ func cosmosPhase(key string) float64 {
 		hash *= 16777619
 	}
 	return float64(hash%4096) / 4096 * 2 * math.Pi
+}
+
+// cosmosOrbits reads the spawn lineage out of the visible graph: every chat
+// spawned by another visible chat is that parent's moon. Each parent keeps a
+// stable, key-sorted list of its moons so a moon holds the same orbital slot
+// no matter how the edge slice reorders on new activity.
+func cosmosOrbits(edges []compose.CosmosEdge, nodes map[string]compose.CosmosNode) (map[string]string, map[string][]string) {
+	parents := make(map[string]string)
+	children := make(map[string][]string)
+	for _, edge := range edges {
+		if edge.Kind != shared.KindSpawn || edge.From == edge.To {
+			continue
+		}
+		parent, parentSeen := nodes[edge.From]
+		child, childSeen := nodes[edge.To]
+		if !parentSeen || !childSeen || parent.Group || child.Group {
+			continue
+		}
+		if _, taken := parents[edge.To]; taken {
+			continue
+		}
+		parents[edge.To] = edge.From
+		children[edge.From] = append(children[edge.From], edge.To)
+	}
+	for _, moons := range children {
+		sort.Strings(moons)
+	}
+	return parents, children
 }
 
 func wrapDelta(delta float64) float64 {
@@ -256,8 +294,37 @@ func (model *Model) mergeCosmosSeats() {
 			newKeys[node.Key] = true
 		}
 	}
-	assign(chats, -math.Pi/2)
+	nodeMap := cosmosNodeMap(model.cosmos.Nodes)
+	parents, _ := cosmosOrbits(model.cosmos.Edges, nodeMap)
+	roots := make([]compose.CosmosNode, 0, len(chats))
+	moons := make([]compose.CosmosNode, 0, len(chats))
+	for _, node := range chats {
+		if parents[node.Key] != "" {
+			moons = append(moons, node)
+			continue
+		}
+		roots = append(roots, node)
+	}
+	assign(roots, -math.Pi/2)
 	assign(groups, math.Pi/6)
+	// A moon's seat is only the fallback for the day its parent vanishes:
+	// while the parent renders, cosmosLayout overrides the moon's position
+	// with the parent-anchored orbit, and the ring target parked here is
+	// where the orphan eases once the parent is gone.
+	for _, node := range moons {
+		target := 0.0
+		if parent := next[parents[node.Key]]; parent != nil {
+			target = parent.Target
+		}
+		if old := previous[node.Key]; old != nil {
+			copy := *old
+			copy.Target = target
+			next[node.Key] = &copy
+			continue
+		}
+		next[node.Key] = &cosmosSeat{Angle: target, Target: target}
+		newKeys[node.Key] = true
+	}
 	for _, edge := range model.cosmos.Edges {
 		if !hadSeats || edge.Kind != shared.KindSpawn || !newKeys[edge.To] {
 			continue
@@ -309,6 +376,13 @@ func (model Model) renderCosmosPanel(width, height int) string {
 		return model.renderCompactCosmos(width, innerWidth, innerHeight)
 	}
 	canvas := NewCanvas(innerWidth, innerHeight)
+	title := " cosmos "
+	if model.cosmosSafe {
+		// Safe mode names itself — a viewer must never wonder why the sky
+		// is calmer inside VS Code.
+		canvas.Quant = 16
+		title = " cosmos · safe "
+	}
 	now := time.Unix(0, model.cosmosNowNS)
 	if model.skyEnabled {
 		drawCosmosStars(canvas, now)
@@ -332,7 +406,7 @@ func (model Model) renderCosmosPanel(width, height int) string {
 		}
 		canvas.Text(1, canvas.Rows-1, truncateRunes(warning, maxInt(0, canvas.Cols-2)), cosmosDimColor(), false)
 	}
-	return framePanel(" cosmos ", strings.Split(canvas.render(), "\n"), width)
+	return framePanel(title, strings.Split(canvas.render(), "\n"), width)
 }
 
 func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) string {
@@ -460,7 +534,7 @@ func cosmosCometDuration(kind string) time.Duration {
 
 func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	points, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, now, model.skyEnabled)
+	points, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
 	clock := float64(now.UnixNano()) / 1e9
 
 	for _, edge := range model.cosmos.Edges {
@@ -612,7 +686,26 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		outboundFlash = newestOutboundFlash(model.cosmos.Edges, model.cosmosNowNS)
 	}
 	white := rgbFromHex(configuredCosmosPalette.CosmosBright)
+	moonParents, _ := cosmosOrbits(model.cosmos.Edges, nodes)
+	orbitDepth := func(key string) int {
+		depth := 0
+		for parent := moonParents[key]; parent != "" && depth <= 8; parent = moonParents[parent] {
+			depth++
+		}
+		return depth
+	}
+	// Deepest moons draw first so that where a system crowds, the parent's
+	// glyph and label overwrite the moon's — the anchor of a system stays
+	// readable, the way the bigger body wins an eclipse.
 	ordered := append(groupsOnly(model.cosmos.Nodes), chatsOnly(model.cosmos.Nodes)...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return orbitDepth(ordered[i].Key) > orbitDepth(ordered[j].Key)
+	})
+	var glyphStamps []struct {
+		x, y  int
+		glyph rune
+		color RGB
+	}
 	for _, node := range ordered {
 		point, ok := points[node.Key]
 		if !ok {
@@ -658,7 +751,20 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 			}
 		}
 		canvas.SetCell(colX, colY, cosmosNodeGlyph(node), color, true)
+		glyphStamps = append(glyphStamps, struct {
+			x, y  int
+			glyph rune
+			color RGB
+		}{colX, colY, cosmosNodeGlyph(node), color})
 		rightward := point.x >= cx
+		if parentKey := moonParents[node.Key]; parentKey != "" {
+			if anchor, ok := points[parentKey]; ok {
+				// A moon's label grows away from its PARENT, not away from
+				// the galactic centre — the parent's own label is the text
+				// most likely to sit beside it.
+				rightward = point.x >= anchor.x
+			}
+		}
 		label := clipCosmosLabel(node.Label.String(), rightward, colX, canvas.Cols)
 		if rightward {
 			canvas.Text(colX+2, colY, label, color, bold)
@@ -668,6 +774,13 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		if arrival > 0.55 {
 			canvas.SetCell(colX, colY-1, '✦', scaleRGB(white, arrival), false)
 		}
+	}
+	// Glyphs win over labels: a later node's text may have paved over an
+	// earlier node's marker (a moon sitting inside its parent's long label),
+	// and a chat that exists must never render invisible — so every node's
+	// glyph is re-stamped after all text has landed, parents last.
+	for _, stamp := range glyphStamps {
+		canvas.SetCell(stamp.x, stamp.y, stamp.glyph, stamp.color, true)
 	}
 }
 
@@ -707,7 +820,7 @@ func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	return truncateRunes(label, available)
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, now time.Time, sky bool) (map[string]cosmosPoint, float64, float64) {
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) (map[string]cosmosPoint, float64, float64) {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -739,6 +852,48 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 		points[key] = cosmosPoint{
 			x: cx + rx*radius*math.Cos(angle),
 			y: cy + ry*radius*math.Sin(angle),
+		}
+	}
+	// Planetary hierarchy: a spawned chat leaves the main ring and becomes
+	// its parent's moon — the ring point computed above stays behind only as
+	// the seat fallback. All moons of one parent share ONE orbit: the same
+	// distance from the parent, evenly spaced from each other, the ring
+	// widening with the brood so a bigger family never crowds. Like the
+	// earth: the moon circles its planet while the planet keeps circling
+	// the sun — and a moon's own children circle IT, one level down.
+	parents, children := cosmosOrbits(edges, nodes)
+	if len(parents) != 0 {
+		var place func(key string, depth int) cosmosPoint
+		place = func(key string, depth int) cosmosPoint {
+			parentKey := parents[key]
+			if parentKey == "" || depth > 8 {
+				return points[key]
+			}
+			anchor := place(parentKey, depth+1)
+			moons := children[parentKey]
+			slot := 0
+			for index, moon := range moons {
+				if moon == key {
+					slot = index
+					break
+				}
+			}
+			orbit := 5 + 2.5*float64(len(moons))
+			angle := 2*math.Pi*float64(slot)/float64(len(moons)) + cosmosPhase(parentKey)
+			if sky {
+				angle += clock * 0.09 // one slow revolution per ~70s
+			}
+			// No 1.6 aspect widening here on purpose: the orbit renders
+			// vertical-major, so moons spend most of their revolution above
+			// or below the parent's label row instead of ploughing through
+			// the text beside it.
+			return cosmosPoint{
+				x: anchor.x + orbit*math.Cos(angle),
+				y: anchor.y + orbit*math.Sin(angle),
+			}
+		}
+		for key := range parents {
+			points[key] = place(key, 0)
 		}
 	}
 	return points, cx, cy

@@ -106,6 +106,10 @@ type Snapshot struct {
 	Cosmos          compose.CosmosGraph
 	CosmosSampler   CosmosSampler
 	NoSky           bool
+	// CosmosSafe renders the cosmos tab in vscode-safe mode — a slower clock
+	// and coarser colour quantisation; resolved by resolveCosmosSafe in
+	// cmd/pfm from the --safe flag and TERM_PROGRAM.
+	CosmosSafe bool
 	// Activity is the presence clock the background refresh reads to pick its
 	// cadence. Nil for every non-interactive picker, which reads as always
 	// active. Set once when the model is built; refresh snapshots leave it
