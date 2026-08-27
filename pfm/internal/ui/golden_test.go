@@ -17,6 +17,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
 	"hostops/pfm/internal/theme"
 )
@@ -88,6 +89,20 @@ func TestRenderGoldens(t *testing.T) {
 			path: "ui_limits_120.ansi",
 			got: func() string {
 				return quoteANSI(limitsGoldenModel(120).View().Content)
+			},
+		},
+		{
+			name: "Cosmos ansi 80 columns",
+			path: "ui_cosmos_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosGoldenModel(80).View().Content)
+			},
+		},
+		{
+			name: "Cosmos ansi 120 columns",
+			path: "ui_cosmos_120.ansi",
+			got: func() string {
+				return quoteANSI(cosmosGoldenModel(120).View().Content)
 			},
 		},
 		{
@@ -224,6 +239,33 @@ func limitsGoldenModel(width int) Model {
 		{Account: 4, Emoji: "🍀", Engine: pfmengine.Claude, Label: "account 4", Status: "Claude credential rejected (HTTP 403)"},
 		{Account: 3, Engine: pfmengine.Claude, Label: "account 3", Status: "skipped account 3: no valid credentials"},
 	}}
+	return model
+}
+
+func cosmosGoldenModel(width int) Model {
+	snapshot := fixtureSnapshot(width)
+	snapshot.NoSky = true
+	events := []shared.CommsEvent{
+		{
+			AtNS: fixtureNowNS - int64(300*time.Millisecond), Kind: shared.KindInject,
+			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[1].Name,
+			Message: "QA: cosmos goldens are pinned",
+		},
+		{
+			AtNS: fixtureNowNS - int64(5*time.Minute), Kind: shared.KindGroup,
+			SenderUUID: snapshot.Rows[1].ID, GroupName: "wave-cosmos",
+			Members: `["123456789012345678901234567890X","Agent 界面 needle 列对齐测试名字"]`,
+			Message: "the ledger carries full text",
+		},
+		{
+			AtNS: fixtureNowNS - int64(10*time.Minute), Kind: shared.KindSpawn,
+			SenderUUID: snapshot.Rows[0].ID, Target: snapshot.Rows[4].Name,
+			Message: "begin the child seat",
+		},
+	}
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, events, snapshot.NowNS)
+	model := NewModel(snapshot)
+	model.tab = TabCosmos
 	return model
 }
 

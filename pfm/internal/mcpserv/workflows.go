@@ -221,7 +221,13 @@ func (service *Service) groupBus() (*chatgroup.Bus, error) {
 	if home == "" {
 		return nil, errors.New("chat group bus requires a configured home directory")
 	}
-	return chatgroup.New(chatgroup.DefaultRoot(home))
+	bus, err := chatgroup.New(chatgroup.DefaultRoot(home))
+	if err != nil {
+		return nil, err
+	}
+	bus.Recorder = service.backend.sharedState.RecordComms
+	bus.WarningWriter = service.backend.warnings
+	return bus, nil
 }
 
 func (service *Service) groupCaller(
@@ -255,7 +261,9 @@ func (service *Service) groupCaller(
 
 func injectorNudge(injector injectionService) chatgroup.NudgeFunc {
 	return func(ctx context.Context, target, message string) error {
-		result, err := injector.Inject(ctx, inject.Request{Target: target, Message: message})
+		result, err := injector.Inject(ctx, inject.Request{
+			Target: target, Message: message, Origin: inject.OriginGroupNudge,
+		})
 		if err != nil {
 			return err
 		}

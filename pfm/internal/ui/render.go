@@ -74,9 +74,11 @@ var (
 				Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color("#facc15"))
 	professorUpdateSelectedStyle = lipgloss.NewStyle().Bold(true).Blink(true).
 					Foreground(lipgloss.Color("#111827")).Background(lipgloss.Color("#fde047"))
+	configuredCosmosPalette theme.Palette
 )
 
 func configureStyles(palette theme.Palette) {
+	configuredCosmosPalette = palette
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.Header)).Background(lipgloss.Color(palette.HeaderBg))
 	groupStyleA = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupA))
 	groupStyleB = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(palette.GroupB))
@@ -142,6 +144,9 @@ func (model Model) render() string {
 	if model.tab == TabLimits {
 		body = model.renderLimitsPanel(width, bodyHeight)
 	}
+	if model.tab == TabCosmos {
+		body = model.renderCosmosPanel(width, bodyHeight)
+	}
 	return strings.Join([]string{header, query, body, footer}, "\n")
 }
 
@@ -149,15 +154,18 @@ func (model Model) renderTabs(width int) string {
 	chat := " Chats "
 	stats := " Stats "
 	limits := " Limits "
+	cosmos := " cosmos "
 	switch model.tab {
 	case TabChats:
 		chat = selectedStyle.Render(chat)
 	case TabStats:
 		stats = selectedStyle.Render(stats)
-	default:
+	case TabLimits:
 		limits = selectedStyle.Render(limits)
+	case TabCosmos:
+		cosmos = selectedStyle.Render(cosmos)
 	}
-	return fillLine(" tabs  "+chat+" "+stats+" "+limits+"   tab/shift+tab", width)
+	return fillLine(" tabs  "+chat+" "+stats+" "+limits+" "+cosmos+"   tab/shift+tab", width)
 }
 
 func (model Model) renderHeader(width int) string {
@@ -206,6 +214,17 @@ func (model Model) renderHeader(width int) string {
 			" Limits · live usage windows across every account",
 			contentWidth,
 		)))
+	case TabCosmos:
+		chatCount := 0
+		for _, node := range model.cosmos.Nodes {
+			if !node.Group {
+				chatCount++
+			}
+		}
+		lines = append(lines, dimStyle.Render(fillLine(fmt.Sprintf(
+			" cosmos · %d chats · %d edges · last 24h",
+			chatCount, len(model.cosmos.Edges),
+		), contentWidth)))
 	default:
 		lines = append(lines, dimStyle.Render(fillLine(
 			" Chats · fuzzy search and all existing chat controls",
@@ -236,6 +255,13 @@ func (model Model) renderQuery(width int) string {
 	}
 	if model.tab == TabLimits {
 		return dimStyle.Render(fillLine(" limits  live usage windows · ↑↓ scroll", width))
+	}
+	if model.tab == TabCosmos {
+		status := "live comms ledger"
+		if model.cosmosLoading {
+			status = "sampling…"
+		}
+		return dimStyle.Render(fillLine(" cosmos  "+status+" · newest 24h", width))
 	}
 	input := model.query.View()
 	status := fmt.Sprintf("%d/%d visible", len(model.filtered), len(model.order))
@@ -308,6 +334,12 @@ func (model Model) renderFooter(width int) string {
 	if model.tab == TabLimits {
 		first := " ↑↓ scroll  pgup/pgdown page  home/end jump"
 		second := " tab/shift+tab cycle tabs · esc cancel · live samples every 2s while focused"
+		return dimStyle.Render(fillLine(first, width)) + "\n" +
+			dimStyle.Render(fillLine(second, width))
+	}
+	if model.tab == TabCosmos {
+		first := " tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel"
+		second := " live ledger samples every 2s only while cosmos is focused"
 		return dimStyle.Render(fillLine(first, width)) + "\n" +
 			dimStyle.Render(fillLine(second, width))
 	}

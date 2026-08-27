@@ -80,20 +80,27 @@ func runLS(
 	if all {
 		view = compose.AllView
 	}
+	ctx := context.Background()
 	database, err := store.Open(store.WithWarningWriter(stderr))
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm ls: %v\n", err)
 		return 1
 	}
 	defer database.Close()
+	sharedState := shared.Open(ctx, runtime.Paths)
+	defer func() {
+		if err := sharedState.Close(); err != nil {
+			fmt.Fprintf(stderr, "pfm ls: close shared state: %v\n", err)
+		}
+	}()
 
-	ctx := context.Background()
 	request := scanRequest{
 		View: view,
 		// Fleet-wide picker: no chat chosen yet, so no per-account override applies.
 		Cache1H: initialCache1H(runtime.Config, 0),
 		NoSky:   *noSky,
 		Runtime: &runtime,
+		Comms:   sharedState,
 	}
 	var scan scanResult
 	var outcome ui.Outcome
@@ -133,6 +140,7 @@ func runLS(
 		)
 		statsSampler.Limits = pfmstats.NewLimitsSampler(limitAccounts(runtime))
 		scan.Snapshot.StatsSampler = statsSampler
+		scan.Snapshot.CosmosSampler = cosmosSampler{reader: sharedState}
 		refreshContext, refreshCancel := context.WithCancel(ctx)
 		updates := make(chan ui.Snapshot, 1)
 		// Bubble Tea owns the tty for as long as Pick runs: a probe warning

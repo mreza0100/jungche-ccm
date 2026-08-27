@@ -4,8 +4,10 @@ package chatgroup
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -13,6 +15,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"hostops/pfm/internal/shared"
 )
 
 const (
@@ -21,8 +25,10 @@ const (
 )
 
 type Bus struct {
-	Root string
-	Now  func() time.Time
+	Root          string
+	Now           func() time.Time
+	Recorder      func(context.Context, shared.CommsEvent) error
+	WarningWriter io.Writer
 }
 
 type Receipt struct {
@@ -83,7 +89,7 @@ func New(root string) (*Bus, error) {
 	if strings.TrimSpace(root) == "" {
 		return nil, errors.New("chat group bus root is empty")
 	}
-	return &Bus{Root: filepath.Clean(root), Now: time.Now}, nil
+	return &Bus{Root: filepath.Clean(root), Now: time.Now, WarningWriter: os.Stderr}, nil
 }
 
 func DefaultRoot(home string) string {
@@ -234,6 +240,7 @@ func (bus *Bus) Send(
 			return SendResult{}, fmt.Errorf("invalid target glob %q: %w", target, err)
 		}
 	}
+	sentAt := bus.now()
 	result := SendResult{Group: group, Sender: sender, Target: target}
 	var members []string
 	err = bus.withLock(ctx, path, func() error {
@@ -254,7 +261,7 @@ func (bus *Bus) Send(
 		stored := message
 		runes := []rune(stored)
 		if len(runes) > 400 {
-			stamp := bus.now().UTC().Format("20060102T150405.000000000Z")
+			stamp := sentAt.UTC().Format("20060102T150405.000000000Z")
 			spill := filepath.Join(path, "msgs", fmt.Sprintf("%s-%06d-%s.md", stamp, pre+1, fileMember(sender)))
 			if writeErr := os.WriteFile(spill, []byte(stored+"\n"), 0o600); writeErr != nil {
 				return fmt.Errorf("write group message spill: %w", writeErr)
@@ -270,7 +277,7 @@ func (bus *Bus) Send(
 		if target != "" {
 			targetMark = "→" + target + " "
 		}
-		record := fmt.Sprintf("- %s [%s] %s%s", bus.now().UTC().Format(time.RFC3339), sender, targetMark, stored)
+		record := fmt.Sprintf("- %s [%s] %s%s", sentAt.UTC().Format(time.RFC3339), sender, targetMark, stored)
 		handle, openErr := os.OpenFile(ledger, os.O_APPEND|os.O_WRONLY, 0o600)
 		if openErr != nil {
 			return fmt.Errorf("open group ledger: %w", openErr)
@@ -300,10 +307,7 @@ func (bus *Bus) Send(
 	if err != nil {
 		return SendResult{}, err
 	}
-	preview := message
-	if runes := []rune(preview); len(runes) > 300 {
-		preview = string(runes[:300]) + "… [full: chat_group_read " + group + "]"
-	}
+	matchedMembers := make([]string, 0, len(members))
 	for _, member := range members {
 		if member == sender {
 			continue
@@ -317,7 +321,30 @@ func (bus *Bus) Send(
 				continue
 			}
 		}
-		result.TargetMatches++
+		matchedMembers = append(matchedMembers, member)
+	}
+	result.TargetMatches = len(matchedMembers)
+	if bus.Recorder != nil {
+		encodedMembers, encodeErr := json.Marshal(matchedMembers)
+		if encodeErr != nil {
+			return SendResult{}, fmt.Errorf("encode matched group members: %w", encodeErr)
+		}
+		if recordErr := bus.Recorder(ctx, shared.CommsEvent{
+			AtNS: sentAt.UnixNano(), Kind: shared.KindGroup, SenderLabel: sender,
+			Target: target, GroupName: group, Members: string(encodedMembers), Message: message,
+		}); recordErr != nil {
+			writer := bus.WarningWriter
+			if writer == nil {
+				writer = os.Stderr
+			}
+			fmt.Fprintf(writer, "pfm: comms ledger: %v\n", recordErr)
+		}
+	}
+	preview := message
+	if runes := []rune(preview); len(runes) > 300 {
+		preview = string(runes[:300]) + "… [full: chat_group_read " + group + "]"
+	}
+	for _, member := range matchedMembers {
 		cursor, cursorErr := readCursor(path, member)
 		if cursorErr != nil {
 			return SendResult{}, cursorErr

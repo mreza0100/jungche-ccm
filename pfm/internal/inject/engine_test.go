@@ -1,6 +1,7 @@
 package inject
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 )
 
 type fakeResolver struct {
@@ -509,6 +511,70 @@ func TestInjectGuardAndDeliveryMatrix(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInjectRecordsOnlyDeliveredDirectMessages(t *testing.T) {
+	newEngine := func(t *testing.T, recorder func(context.Context, shared.CommsEvent) error) (*Engine, *bytes.Buffer) {
+		t.Helper()
+		fake := &fakeTmux{capture: "› ", submitOnEnter: true}
+		engine := newTestEngine(t, "cc-1-2-3", fake)
+		warnings := &bytes.Buffer{}
+		engine.recorder = recorder
+		engine.warningWriter = warnings
+		engine.options.Now = func() time.Time { return time.Unix(0, 123) }
+		return engine, warnings
+	}
+
+	t.Run("direct delivery", func(t *testing.T) {
+		var recorded []shared.CommsEvent
+		engine, warnings := newEngine(t, func(_ context.Context, event shared.CommsEvent) error {
+			recorded = append(recorded, event)
+			return nil
+		})
+		result, err := engine.Inject(context.Background(), Request{Target: "beta", Message: "hello\nverbatim"})
+		if err != nil || result.Code != 0 || !result.Typed {
+			t.Fatalf("Inject() = %+v, %v", result, err)
+		}
+		want := []shared.CommsEvent{{
+			AtNS: 123, Kind: shared.KindInject, SenderSession: "sender",
+			SenderLabel: "Operator", SenderUUID: "1234567890", Target: "beta",
+			ReceiverSocket: filepath.Join("/tmp", "tmux-jail", "cc-1-2-3"),
+			ReceiverPane:   "%1", Message: "hello\nverbatim",
+		}}
+		if !reflect.DeepEqual(recorded, want) {
+			t.Fatalf("recorded = %#v, want %#v", recorded, want)
+		}
+		if warnings.Len() != 0 {
+			t.Fatalf("warnings = %q", warnings.String())
+		}
+	})
+
+	t.Run("group nudge is skipped", func(t *testing.T) {
+		calls := 0
+		engine, _ := newEngine(t, func(context.Context, shared.CommsEvent) error {
+			calls++
+			return nil
+		})
+		result, err := engine.Inject(context.Background(), Request{
+			Target: "beta", Message: "doorbell", Origin: OriginGroupNudge,
+		})
+		if err != nil || result.Code != 0 || calls != 0 {
+			t.Fatalf("Inject() = %+v, %v; recorder calls=%d", result, err, calls)
+		}
+	})
+
+	t.Run("recorder failure warns without changing delivery", func(t *testing.T) {
+		engine, warnings := newEngine(t, func(context.Context, shared.CommsEvent) error {
+			return errors.New("database unavailable")
+		})
+		result, err := engine.Inject(context.Background(), Request{Target: "beta", Message: "delivered"})
+		if err != nil || result.Code != 0 || !result.Typed {
+			t.Fatalf("Inject() = %+v, %v", result, err)
+		}
+		if got := warnings.String(); !strings.Contains(got, "pfm: comms ledger: database unavailable") {
+			t.Fatalf("warnings = %q", got)
+		}
+	})
 }
 
 func TestInjectBodyAboveFormerAbsoluteCapUsesAutoFile(t *testing.T) {

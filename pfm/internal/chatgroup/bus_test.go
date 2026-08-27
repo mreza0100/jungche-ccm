@@ -1,7 +1,10 @@
 package chatgroup
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"hostops/pfm/internal/shared"
 )
 
 func TestGroupLifecycleAndDoorbellSuppression(t *testing.T) {
@@ -62,6 +67,72 @@ func TestGroupLifecycleAndDoorbellSuppression(t *testing.T) {
 	}
 	if len(peek.Messages) != 1 || !peek.Peek || peek.Cursor != 2 {
 		t.Fatalf("peek = %#v", peek)
+	}
+}
+
+func TestGroupSendRecordsOneLogicalEventWithMatchedMembers(t *testing.T) {
+	bus, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	for _, member := range []string{"alpha", "beta", "gamma"} {
+		if member == "alpha" {
+			_, err = bus.Create(ctx, "crew", member)
+		} else {
+			_, err = bus.Subscribe(ctx, "crew", member)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	bus.Now = func() time.Time { return time.Unix(0, 456) }
+	var recorded []shared.CommsEvent
+	bus.Recorder = func(_ context.Context, event shared.CommsEvent) error {
+		recorded = append(recorded, event)
+		return nil
+	}
+	result, err := bus.Send(ctx, "crew", "alpha", "hello\nworld", "bet*", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TargetMatches != 1 || len(recorded) != 1 {
+		t.Fatalf("Send() = %#v; recorded=%#v", result, recorded)
+	}
+	event := recorded[0]
+	if event.AtNS != 456 || event.Kind != shared.KindGroup || event.SenderLabel != "alpha" ||
+		event.GroupName != "crew" || event.Target != "bet*" || event.Message != "hello ⏎ world" {
+		t.Fatalf("recorded event = %#v", event)
+	}
+	var members []string
+	if err := json.Unmarshal([]byte(event.Members), &members); err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 || members[0] != "beta" {
+		t.Fatalf("recorded members = %v", members)
+	}
+}
+
+func TestGroupRecorderFailureWarnsWithoutFailingSend(t *testing.T) {
+	bus, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := bus.Create(ctx, "crew", "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	warnings := &bytes.Buffer{}
+	bus.WarningWriter = warnings
+	bus.Recorder = func(context.Context, shared.CommsEvent) error {
+		return errors.New("database unavailable")
+	}
+	result, err := bus.Send(ctx, "crew", "alpha", "still delivered", "", nil)
+	if err != nil || result.Number != 1 {
+		t.Fatalf("Send() = %#v, %v", result, err)
+	}
+	if got := warnings.String(); !strings.Contains(got, "pfm: comms ledger: database unavailable") {
+		t.Fatalf("warnings = %q", got)
 	}
 }
 

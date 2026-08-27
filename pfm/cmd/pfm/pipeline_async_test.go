@@ -3,20 +3,96 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"hostops/pfm/internal/config"
+	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/store"
 	"hostops/pfm/internal/ui"
 )
+
+type fakeCommsReader struct {
+	events  []shared.CommsEvent
+	err     error
+	sinceNS int64
+	limit   int
+}
+
+func (reader *fakeCommsReader) CommsSince(_ context.Context, sinceNS int64, limit int) ([]shared.CommsEvent, error) {
+	reader.sinceNS = sinceNS
+	reader.limit = limit
+	return reader.events, reader.err
+}
+
+func TestComposeFleetPacksCosmosLedgerState(t *testing.T) {
+	const nowNS = int64(48 * time.Hour)
+	t.Run("healthy", func(t *testing.T) {
+		reader := &fakeCommsReader{events: []shared.CommsEvent{{
+			AtNS: nowNS - 1, Kind: shared.KindInject,
+			SenderLabel: "Alpha", Target: "Beta", Message: "hello",
+		}}}
+		result := composeFleet(
+			context.Background(),
+			scanEnvironment{nowNS: nowNS},
+			scanRequest{Comms: reader},
+			fleetData{},
+			gather.Snapshot{},
+		)
+		if reader.sinceNS != nowNS-cosmosWindowNS || reader.limit != cosmosEventCap {
+			t.Fatalf("CommsSince() args = %d, %d", reader.sinceNS, reader.limit)
+		}
+		if result.Snapshot.Cosmos.Err != "" || len(result.Snapshot.Cosmos.Edges) != 1 {
+			t.Fatalf("Cosmos = %#v", result.Snapshot.Cosmos)
+		}
+	})
+
+	t.Run("read failure", func(t *testing.T) {
+		reader := &fakeCommsReader{err: errors.New("database unavailable")}
+		result := composeFleet(
+			context.Background(),
+			scanEnvironment{nowNS: nowNS},
+			scanRequest{Comms: reader},
+			fleetData{},
+			gather.Snapshot{},
+		)
+		if !strings.Contains(result.Snapshot.Cosmos.Err, "database unavailable") ||
+			len(result.Snapshot.Cosmos.Nodes) != 0 {
+			t.Fatalf("failed Cosmos = %#v", result.Snapshot.Cosmos)
+		}
+	})
+
+	t.Run("cap warning", func(t *testing.T) {
+		events := make([]shared.CommsEvent, cosmosEventCap)
+		for index := range events {
+			events[index] = shared.CommsEvent{
+				AtNS: int64(index + 1), Kind: shared.KindInject,
+				SenderLabel: "Alpha", Target: "Beta", Message: "hello",
+			}
+		}
+		result := composeFleet(
+			context.Background(),
+			scanEnvironment{nowNS: nowNS},
+			scanRequest{Comms: &fakeCommsReader{events: events}},
+			fleetData{},
+			gather.Snapshot{},
+		)
+		warnings := result.Snapshot.Cosmos.Warnings
+		if len(warnings) != 1 || warnings[0] != "showing newest 5000 events of the window" {
+			t.Fatalf("cap warnings = %v", warnings)
+		}
+	})
+}
 
 type slowIndexRunner struct {
 	started chan struct{}

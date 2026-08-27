@@ -36,7 +36,7 @@ func (engine *Engine) DeliverThen(
 		}
 	}
 	engine.waitForSettledTurn(ctx, socketPath, target)
-	return engine.Inject(ctx, Request{
+	return engine.inject(ctx, Request{
 		Target:  target,
 		Message: steers[0],
 		Then:    steers[1:],

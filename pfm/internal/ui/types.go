@@ -6,6 +6,7 @@ import (
 
 	"hostops/pfm/internal/compose"
 	pfmengine "hostops/pfm/internal/engine"
+	"hostops/pfm/internal/shared"
 	pfmstats "hostops/pfm/internal/stats"
 )
 
@@ -18,6 +19,7 @@ const (
 	TabChats Tab = iota
 	TabStats
 	TabLimits
+	TabCosmos
 	tabCount
 )
 
@@ -49,6 +51,12 @@ const (
 // resource counters and caches one identity lookup per new Docker cgroup ID.
 type StatsSampler interface {
 	Sample([]compose.Row) (pfmstats.Snapshot, error)
+}
+
+// CosmosSampler keeps the open cosmos tab current without making rendering
+// query the shared database.
+type CosmosSampler interface {
+	Sample(ctx context.Context, sinceNS int64) ([]shared.CommsEvent, error)
 }
 
 // Picker is the common boundary used by the interactive, plain, and TSV
@@ -95,6 +103,8 @@ type Snapshot struct {
 	// Nil makes the action unavailable; the model reports that refusal in-frame.
 	ApplyDeactivate func(compose.Row) error
 	StatsSampler    StatsSampler
+	Cosmos          compose.CosmosGraph
+	CosmosSampler   CosmosSampler
 	NoSky           bool
 	// Activity is the presence clock the background refresh reads to pick its
 	// cadence. Nil for every non-interactive picker, which reads as always

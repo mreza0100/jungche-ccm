@@ -2,6 +2,7 @@ package mcpserv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/store"
 )
 
@@ -26,11 +28,13 @@ type injectionService interface {
 
 type backend struct {
 	database             *store.Store
+	sharedState          *shared.Store
 	injector             injectionService
 	resolver             resolve.Resolver
 	operations           SharedOperations
 	dispatch             Dispatch
 	paths                paths.Values
+	warnings             io.Writer
 	allowAmbientIdentity bool
 }
 
@@ -52,6 +56,7 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 	if err != nil {
 		return nil, err
 	}
+	sharedState := shared.Open(context.Background(), runtime.Paths)
 	resolver, err := resolve.New(nil, resolve.Binaries{
 		Values: map[pfmengine.ID]string{
 			pfmengine.Claude: runtime.ClaudeBinary,
@@ -70,24 +75,29 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 		CodexBinary:    runtime.CodexBinary,
 		OpencodeBinary: runtime.OpencodeBinary,
 		AccountEmojis:  accountEmojis(runtime.Accounts),
+		Recorder:       sharedState.RecordComms,
+		WarningWriter:  warnings,
 	})
 	if err != nil {
 		_ = database.Close()
+		_ = sharedState.Close()
 		return nil, err
 	}
 	return &backend{
 		database:             database,
+		sharedState:          sharedState,
 		injector:             injector,
 		resolver:             *resolver,
 		operations:           runtime.Operations,
 		dispatch:             runtime.Dispatch,
 		paths:                runtime.Paths,
+		warnings:             warnings,
 		allowAmbientIdentity: runtime.AllowAmbientIdentity,
 	}, nil
 }
 
 func (current *backend) close() error {
-	return current.database.Close()
+	return errors.Join(current.database.Close(), current.sharedState.Close())
 }
 
 func accountEmojis(accounts []pfmconfig.Account) []string {

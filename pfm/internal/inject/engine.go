@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	pfmengine "hostops/pfm/internal/engine"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 )
 
 // SenderSessionEnv, SenderLabelEnv, and SenderIDEnv are how a chat states its
@@ -38,6 +40,8 @@ type Engine struct {
 	codexSeat     SelfIdentifier
 	binaries      map[pfmengine.ID]string
 	accountEmojis []string
+	recorder      func(context.Context, shared.CommsEvent) error
+	warningWriter io.Writer
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -66,6 +70,9 @@ func New(dependencies Dependencies) (*Engine, error) {
 	}
 	if dependencies.Spawner == nil {
 		dependencies.Spawner = CommandThenSpawner{}
+	}
+	if dependencies.WarningWriter == nil {
+		dependencies.WarningWriter = os.Stderr
 	}
 	resolved, err := paths.Resolve()
 	if err != nil {
@@ -104,6 +111,8 @@ func New(dependencies Dependencies) (*Engine, error) {
 		codexSeat:     dependencies.CodexSeat,
 		binaries:      cloneEngineBinaries(binaries.Values),
 		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
+		recorder:      dependencies.Recorder,
+		warningWriter: dependencies.WarningWriter,
 	}, nil
 }
 
@@ -131,6 +140,8 @@ func (engine *Engine) WithIdentity(identity resolve.Identity, label string) *Eng
 		whoami:        fixedIdentifier{identity: identity},
 		binaries:      cloneEngineBinaries(engine.binaries),
 		accountEmojis: append([]string(nil), engine.accountEmojis...),
+		recorder:      engine.recorder,
+		warningWriter: engine.warningWriter,
 	}
 }
 
@@ -447,8 +458,33 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 	}, nil
 }
 
-// Inject performs the full guard/type/submit/proof transaction.
+// Inject performs the delivery and records a successful direct send without
+// making the recipient pay for a ledger failure.
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
+	result, err := engine.inject(ctx, request)
+	if err != nil || !result.Typed || request.Origin != "" || engine.recorder == nil {
+		return result, err
+	}
+	sender := engine.sender(ctx)
+	event := shared.CommsEvent{
+		AtNS:           engine.options.Now().UnixNano(),
+		Kind:           shared.KindInject,
+		SenderSession:  sender.Session,
+		SenderLabel:    sender.Label,
+		SenderUUID:     sender.UUID,
+		Target:         request.Target,
+		ReceiverSocket: result.SocketPath,
+		ReceiverPane:   result.Pane,
+		Message:        request.Message,
+	}
+	if recordErr := engine.recorder(ctx, event); recordErr != nil {
+		fmt.Fprintf(engine.warningWriter, "pfm: comms ledger: %v\n", recordErr)
+	}
+	return result, nil
+}
+
+// inject performs the full guard/type/submit/proof transaction.
+func (engine *Engine) inject(ctx context.Context, request Request) (Result, error) {
 	if request.Message == "" {
 		return refused(CodeUndelivered, "refusing to inject an empty message"), nil
 	}

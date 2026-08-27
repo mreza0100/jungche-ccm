@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	pfmengine "hostops/pfm/internal/engine"
 	"io"
@@ -12,7 +13,9 @@ import (
 	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
+	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/store"
 )
 
@@ -177,6 +180,8 @@ func newInjectEngineAllowingUnsigned(
 		dependencies.ClaudeBinary = runtimes[0].Config.Claude.Binary
 		dependencies.CodexBinary = runtimes[0].Config.Codex.Binary
 		dependencies.OpencodeBinary = runtimes[0].Config.OpenCode.Binary
+		dependencies.Recorder = sharedCommsRecorder(runtimes[0].Paths)
+		dependencies.WarningWriter = os.Stderr
 		for _, account := range runtimes[0].Config.Accounts {
 			if emoji := runtimes[0].Config.EmojiFor(account.ID); emoji != "" && emoji != "·" {
 				dependencies.AccountEmojis = append(dependencies.AccountEmojis, emoji)
@@ -185,4 +190,16 @@ func newInjectEngineAllowingUnsigned(
 	}
 	dependencies.CodexSeat = identifier
 	return inject.New(dependencies)
+}
+
+func sharedCommsRecorder(values paths.Values) func(context.Context, shared.CommsEvent) error {
+	return func(ctx context.Context, event shared.CommsEvent) error {
+		state := shared.Open(ctx, values)
+		recordErr := state.RecordComms(ctx, event)
+		closeErr := state.Close()
+		if closeErr != nil {
+			closeErr = fmt.Errorf("close shared state after comms event: %w", closeErr)
+		}
+		return errors.Join(recordErr, closeErr)
+	}
 }

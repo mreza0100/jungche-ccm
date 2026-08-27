@@ -670,12 +670,16 @@ func TestTabsDefaultToChatsAndTabKeysWrap(t *testing.T) {
 		t.Fatalf("tab: tab=%d, want Limits", model.Tab())
 	}
 	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
+	if model.Tab() != TabCosmos {
+		t.Fatalf("tab: tab=%d, want Cosmos", model.Tab())
+	}
+	model, _ = applyKey(t, model, specialKey(tea.KeyTab))
 	if model.Tab() != TabChats {
 		t.Fatalf("tab wrap = %d, want Chats", model.Tab())
 	}
 	model, _ = applyKey(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
-	if model.Tab() != TabLimits {
-		t.Fatalf("shift+tab wrap = %d, want Limits", model.Tab())
+	if model.Tab() != TabCosmos {
+		t.Fatalf("shift+tab wrap = %d, want Cosmos", model.Tab())
 	}
 }
 

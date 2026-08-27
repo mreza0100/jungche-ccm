@@ -12,7 +12,32 @@ import (
 	"time"
 
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 )
+
+func TestDeliverThenDoesNotRecordExcludedHandoffEdge(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newTestEngine(t, "cc-1-2-3", fake)
+	engine.options.ThenMin = time.Nanosecond
+	engine.options.ThenBusyTries = 1
+	engine.options.ThenIdlePoll = time.Nanosecond
+	engine.options.ThenIdleTries = 1
+	engine.options.ThenIdleStable = 1
+	engine.options.ThenSettle = time.Nanosecond
+	recorded := 0
+	engine.recorder = func(context.Context, shared.CommsEvent) error {
+		recorded++
+		return nil
+	}
+
+	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"})
+	if err != nil || !result.Typed || result.Code != 0 {
+		t.Fatalf("DeliverThen() = %+v, %v", result, err)
+	}
+	if recorded != 0 {
+		t.Fatalf("reload --then delivery recorded %d excluded edge(s)", recorded)
+	}
+}
 
 // TestCompactFocusRuleRefusesBeforeAnyKey covers the remaining caller-side
 // chain guards: a steerless /compact and an invalid steer die before typing.

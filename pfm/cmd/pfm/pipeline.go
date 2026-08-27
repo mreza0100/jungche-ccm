@@ -47,6 +47,8 @@ const (
 	// abandoned picker under 1% of a core while still bounding how stale the
 	// frame in front of you can be.
 	fleetRefreshMaxInterval = 5 * time.Minute
+	cosmosWindowNS          = int64(24 * time.Hour)
+	cosmosEventCap          = 5000
 )
 
 // refreshCadence is one refresh stream's backoff state. It starts at
@@ -146,6 +148,17 @@ type scanRequest struct {
 	Cache1H  bool
 	NoSky    bool
 	Runtime  *commandRuntime
+	Comms    commsReader
+}
+
+type commsReader interface {
+	CommsSince(context.Context, int64, int) ([]shared.CommsEvent, error)
+}
+
+type cosmosSampler struct{ reader commsReader }
+
+func (sampler cosmosSampler) Sample(ctx context.Context, sinceNS int64) ([]shared.CommsEvent, error) {
+	return sampler.reader.CommsSince(ctx, sinceNS, cosmosEventCap)
 }
 
 type scanResult struct {
@@ -234,7 +247,7 @@ func scanFleet(
 			return scanResult{}, err
 		}
 	}
-	result := composeFleet(environment, request, data, live)
+	result := composeFleet(ctx, environment, request, data, live)
 	result.Counters = counters
 	result.Live = live
 	return result, nil
@@ -283,7 +296,7 @@ func resolveRowEngine(
 	if err != nil {
 		return "", ""
 	}
-	result := composeFleet(environment, request, data, live)
+	result := composeFleet(ctx, environment, request, data, live)
 	for _, row := range result.Output.Rows {
 		if row.ID == id {
 			return compose.EngineForKind(row.Kind), row.Path
@@ -310,7 +323,7 @@ func scanFleetCached(
 	if err != nil {
 		return scanResult{}, err
 	}
-	result := composeFleet(environment, request, data, gather.Snapshot{})
+	result := composeFleet(ctx, environment, request, data, gather.Snapshot{})
 	result.Snapshot.Refreshing = true
 	return result, nil
 }
@@ -498,6 +511,7 @@ func configuredAccountEmojis(machine pfmconfig.Config) []string {
 }
 
 func composeFleet(
+	ctx context.Context,
 	environment scanEnvironment,
 	request scanRequest,
 	data fleetData,
@@ -528,6 +542,22 @@ func composeFleet(
 		output.KilledCount = data.cachedCounts.Killed
 		output.SuppressedCount = data.cachedCounts.Suppressed
 	}
+	cosmos := compose.BuildCosmos(output.Rows, nil, environment.nowNS)
+	if request.Comms != nil {
+		events, err := request.Comms.CommsSince(
+			ctx,
+			environment.nowNS-cosmosWindowNS,
+			cosmosEventCap,
+		)
+		if err != nil {
+			cosmos.Err = fmt.Errorf("read comms ledger: %w", err).Error()
+		} else {
+			cosmos = compose.BuildCosmos(output.Rows, events, environment.nowNS)
+			if len(events) == cosmosEventCap {
+				cosmos.Warnings = append(cosmos.Warnings, "showing newest 5000 events of the window")
+			}
+		}
+	}
 	snapshot := ui.Snapshot{
 		Rows:                   output.Rows,
 		View:                   request.View,
@@ -546,6 +576,7 @@ func composeFleet(
 		NowNS:                  environment.nowNS,
 		InitialQuery:           request.Query,
 		NoSky:                  request.NoSky,
+		Cosmos:                 cosmos,
 	}
 	return scanResult{
 		Output:   output,
@@ -716,7 +747,7 @@ func streamFleetRefreshesWith(
 		writeRefreshError(ctx, stderr, "", err)
 		return
 	}
-	result := composeFleet(environment, request, data, live)
+	result := composeFleet(ctx, environment, request, data, live)
 	result.Snapshot.Refreshing = false
 	select {
 	case updates <- result.Snapshot:
@@ -1177,7 +1208,7 @@ func sendRefresh(
 	refreshing bool,
 	updates chan<- ui.Snapshot,
 ) bool {
-	result := composeFleet(environment, request, data, live)
+	result := composeFleet(ctx, environment, request, data, live)
 	result.Snapshot.Refreshing = refreshing
 	select {
 	case updates <- result.Snapshot:
