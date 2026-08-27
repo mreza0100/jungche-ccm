@@ -23,6 +23,23 @@ import (
 )
 
 func TestRenderGoldens(t *testing.T) {
+	// Render in a FIXED zone so these files pin the code and not the machine
+	// that generated them. Two separate zone dependencies feed a frame: the
+	// cosmos fixture's absolute clock (pinned to UTC in cosmosGoldenSnapshot,
+	// which the sky widget consumes via sky.Frame's TimeNS) and the ledger
+	// footer, which renders each edge as time.Unix(0, LastNS).Format(...) —
+	// and time.Unix returns a LOCAL time. That second one is correct
+	// production behaviour: an operator should read their own clock, not
+	// UTC. It is only the golden that must not vary, so the zone is pinned
+	// here, for this process, and never in the code under test.
+	//
+	// Without this, these goldens pass on the machine that wrote them and
+	// fail everywhere else — which is exactly how the sky-enabled golden
+	// passed on the host and failed in the dev container.
+	restoreLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = restoreLocal })
+
 	tests := []struct {
 		name string
 		path string
@@ -103,6 +120,13 @@ func TestRenderGoldens(t *testing.T) {
 			path: "ui_cosmos_120.ansi",
 			got: func() string {
 				return quoteANSI(cosmosGoldenModel(120).View().Content)
+			},
+		},
+		{
+			name: "Cosmos sky-enabled ansi 80 columns",
+			path: "ui_cosmos_sky_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosSkyGoldenModel(80).View().Content)
 			},
 		},
 		{
@@ -242,10 +266,24 @@ func limitsGoldenModel(width int) Model {
 	return model
 }
 
-func cosmosGoldenModel(width int) Model {
+// cosmosGoldenSnapshot builds the fixed-clock cosmos snapshot both the
+// no-sky and the sky-enabled goldens render. The inject event is pinned
+// 300ms before "now" on purpose: with cosmosCometDuration(shared.KindInject)
+// at 1500ms, that lands the comet genuinely mid-flight for any caller that
+// renders with the sky on, rather than pinning a frame the gate could pass
+// whether the glow code ran or was never wired.
+func cosmosGoldenSnapshot(width int, noSky bool) Snapshot {
 	snapshot := fixtureSnapshot(width)
-	snapshot.NoSky = true
-	cosmosNowNS := time.Date(2027, time.January, 15, 8, 0, 0, 0, time.Local).UnixNano()
+	snapshot.NoSky = noSky
+	// UTC, deliberately, not time.Local. Everything INSIDE the cosmos box is
+	// computed as a difference (now - LastNS) and survives a shifted clock,
+	// but the sky widget in the header margin is handed this ABSOLUTE value
+	// (render.go passes TimeNS: model.nowNS straight into sky.Frame), so a
+	// local-zone fixture renders a different starfield on every machine in a
+	// different timezone. That made the sky-enabled golden pass on the host
+	// and fail in the dev container. A golden that depends on where it runs
+	// pins the machine, not the code.
+	cosmosNowNS := time.Date(2027, time.January, 15, 8, 0, 0, 0, time.UTC).UnixNano()
 	clockShift := cosmosNowNS - snapshot.NowNS
 	snapshot.NowNS = cosmosNowNS
 	for index := range snapshot.Rows {
@@ -272,7 +310,22 @@ func cosmosGoldenModel(width int) Model {
 		},
 	}
 	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, events, snapshot.NowNS)
-	model := NewModel(snapshot)
+	return snapshot
+}
+
+func cosmosGoldenModel(width int) Model {
+	model := NewModel(cosmosGoldenSnapshot(width, true))
+	model.tab = TabCosmos
+	return model
+}
+
+// cosmosSkyGoldenModel is cosmosGoldenModel with the sky ON — the only
+// golden that actually exercises model.skyEnabled's comet, head burst,
+// shockwave rings, and in-flight rail lighting. Without it those code paths
+// are pinned by nothing: golden_test.go's NoSky-only cosmos goldens pass
+// identically whether the glow renders or was never wired at all.
+func cosmosSkyGoldenModel(width int) Model {
+	model := NewModel(cosmosGoldenSnapshot(width, false))
 	model.tab = TabCosmos
 	return model
 }

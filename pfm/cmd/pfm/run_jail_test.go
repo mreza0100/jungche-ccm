@@ -433,10 +433,22 @@ func TestChatNewSpawnsANamedCodexChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ReceiverSocket must be the full socket PATH ("-S" argument tmux
+	// itself takes), not the bare file name: the inject recorder
+	// (internal/inject/engine.go) already records result.SocketPath in
+	// this same shape, and a spawn recorded any other way cannot resolve
+	// against a live row's own (socket, pane) key
+	// (compose.paneKey/rowsByPane) — the bug that let one dead chat render
+	// as three ghost nodes. ReceiverPane is asserted empty deliberately:
+	// spawn.Result carries no pane id (a fresh session's first pane is
+	// conventionally "%0", but nothing here proves that invariant, so
+	// run_command.go does not invent one).
+	wantSocket := filepath.Join(jail.tmuxDir, entries[0].Name())
 	if len(events) != 1 || events[0].Kind != shared.KindSpawn ||
 		events[0].SenderSession != "" || events[0].Target != "_KILL codex worker" ||
-		events[0].ReceiverSocket != entries[0].Name() || events[0].Message != "read the incident report" {
-		t.Fatalf("spawn comms = %#v", events)
+		events[0].ReceiverSocket != wantSocket || events[0].ReceiverPane != "" ||
+		events[0].Message != "read the incident report" {
+		t.Fatalf("spawn comms = %#v, want ReceiverSocket %q and empty ReceiverPane", events, wantSocket)
 	}
 }
 
