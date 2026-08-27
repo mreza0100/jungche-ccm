@@ -32,7 +32,7 @@ func (list *steerList) Set(value string) error {
 func runInternalThen(args []string, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"internal then",
-		"usage: pfm internal then --socket path --target name --steer text [--steer text]...",
+		"usage: pfm internal then --socket path --target name [--self] --steer text [--steer text]...",
 		stderr,
 	)
 	socket := flags.String("socket", "", "tmux socket path of the target")
