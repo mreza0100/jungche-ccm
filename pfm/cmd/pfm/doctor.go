@@ -139,7 +139,6 @@ func runDoctor(
 	}
 	warnings += printDependencyDoctor(ctx, stdout, deps.Registry(deps.Options{
 		Home: resolved.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
-		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
 	}), deps.ProbeOptions{VerboseDir: verboseDir, SkipHarvest: *skipHarvest})
 	warnings += printHookDoctor(stdout, resolved.Home, runtime.Config)
 

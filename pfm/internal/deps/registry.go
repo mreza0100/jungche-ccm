@@ -17,6 +17,7 @@ import (
 type Entry struct {
 	Name           string
 	Command        string
+	Engine         pfmengine.ID
 	Purpose        string
 	Required       bool
 	Platforms      []string
@@ -30,13 +31,11 @@ type Entry struct {
 
 // Options materializes the config- and platform-owned registry entries.
 type Options struct {
-	Home           string
-	ClaudeBinary   string
-	CodexBinary    string
-	ClaudeAccounts int
-	CodexAccounts  int
-	GOOS           string
-	GOARCH         string
+	Home         string
+	ClaudeBinary string
+	CodexBinary  string
+	GOOS         string
+	GOARCH       string
 }
 
 var fixedCommands = []Entry{
@@ -78,10 +77,6 @@ func Registry(options ...Options) []Entry {
 		pfmengine.Claude: strings.TrimSpace(resolved.ClaudeBinary),
 		pfmengine.Codex:  strings.TrimSpace(resolved.CodexBinary),
 	}
-	engineAccounts := map[pfmengine.ID]int{
-		pfmengine.Claude: resolved.ClaudeAccounts,
-		pfmengine.Codex:  resolved.CodexAccounts,
-	}
 	for _, id := range []pfmengine.ID{pfmengine.Claude, pfmengine.Codex} {
 		descriptor := pfmengine.MustLookup(id)
 		binary := engineBinaries[id]
@@ -93,8 +88,8 @@ func Registry(options ...Options) []Entry {
 			doctorArgs = append(doctorArgs, "--summary", "--ascii", "--no-color")
 		}
 		entries = append(entries, Entry{
-			Name: descriptor.LongName, Command: binary,
-			Purpose: "configured " + descriptor.Short + " engine", Required: engineAccounts[id] > 0,
+			Name: descriptor.LongName, Command: binary, Engine: id,
+			Purpose:     "configured " + descriptor.Short + " engine",
 			VersionArgs: []string{"--version"}, Parse: firstVersion,
 			InstallHint: "install the configured " + descriptor.Short + " CLI", SelfDoctorArgs: doctorArgs,
 		})

@@ -252,6 +252,43 @@ func TestInstallPreflightRefusesRequiredDependencyBeforeInstallerRuns(t *testing
 	}
 }
 
+func TestInstallPreflightDoesNotRefuseBrokenOptionalEngine(t *testing.T) {
+	savedProbe, savedInstaller := dependencyProbeOverride, runInstaller
+	t.Cleanup(func() {
+		dependencyProbeOverride = savedProbe
+		runInstaller = savedInstaller
+	})
+	dependencyProbeOverride = func(_ context.Context, entries []deps.Entry, _ deps.ProbeOptions) []deps.Result {
+		for _, entry := range entries {
+			if entry.Name == "codex" {
+				return []deps.Result{{Entry: entry, State: deps.StateBroken, Path: "/fixture/codex", Error: "self-doctor failed: auth missing"}}
+			}
+		}
+		t.Fatal("codex registry entry missing")
+		return nil
+	}
+	called := false
+	runInstaller = func(context.Context, installer.Options) (installer.Report, error) {
+		called = true
+		return installer.Report{}, nil
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{
+		Config: pfmconfig.Config{
+			Codex:         pfmconfig.Codex{Binary: "codex"},
+			CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}},
+		},
+		Paths: paths.Values{Home: home},
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--yes", "--skip-harvest"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("install code=%d stdout=%s stderr=%s, want optional Codex failure to remain non-blocking", code, stdout.String(), stderr.String())
+	}
+	if !called || !strings.Contains(stdout.String(), "dep codex") || !strings.Contains(stdout.String(), "auth missing") {
+		t.Fatalf("called=%t stdout=%s stderr=%s, want a visible optional failure followed by install", called, stdout.String(), stderr.String())
+	}
+}
+
 func TestInstallPreflightFailureStillPreviewsInDryRun(t *testing.T) {
 	savedProbe, savedInstaller := dependencyProbeOverride, runInstaller
 	t.Cleanup(func() {

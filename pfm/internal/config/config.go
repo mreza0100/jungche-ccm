@@ -856,6 +856,9 @@ func validateAccounts(values []rawAccount, home string) ([]Account, error) {
 }
 
 func validateCodexHomes(values []rawCodexHome, home string, existing []CodexAccount, path string) ([]CodexAccount, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
 	accounts := append([]CodexAccount(nil), existing...)
 	ids := make(map[int]int, len(accounts)+len(values))
 	homes := make(map[string]int, len(accounts)+len(values))
@@ -1326,7 +1329,7 @@ func Marshal(config Config, redact bool) ([]byte, error) {
 		"yolo":   config.Codex.Yolo,
 		"binary": config.Codex.Binary,
 	}
-	if len(codexHomes) != 0 {
+	if len(codexHomes) != 0 || config.Source(engineConfigKey(pfmengine.Codex, "homes")) == SourceFile {
 		codexValue["homes"] = codexHomes
 	}
 	askValue := make(map[string]any, len(config.Ask.Prefs)+1)

@@ -143,6 +143,58 @@ func TestConfiguredCodexHomesAreCredentialedRosterEntriesWithPrefs(t *testing.T)
 	}
 }
 
+// An explicitly present empty roster is an operator decision, not a request
+// to rediscover the default home. This is the config-level exclusion path for
+// a host that has Codex state on disk but does not want PFM to use it.
+func TestExplicitlyEmptyCodexHomesClearsDiscoveredDefault(t *testing.T) {
+	home := t.TempDir()
+	writeCodexAuthFixture(t, filepath.Join(home, ".codex"))
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"version":2,"accounts":[],"codex":{"homes":[]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	machine, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("Load() error=%v", err)
+	}
+	if len(machine.CodexAccounts) != 0 {
+		t.Fatalf("CodexAccounts=%#v, want an authoritative empty roster", machine.CodexAccounts)
+	}
+	if machine.Source("codex.homes") != SourceFile {
+		t.Fatalf("Source(codex.homes)=%q, want %q", machine.Source("codex.homes"), SourceFile)
+	}
+}
+
+func TestExplicitlyEmptyCodexHomesSurvivesMarshalRoundTrip(t *testing.T) {
+	home := t.TempDir()
+	writeCodexAuthFixture(t, filepath.Join(home, ".codex"))
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"version":2,"accounts":[],"codex":{"homes":[]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	machine, err := Load(path, home, nil)
+	if err != nil {
+		t.Fatalf("initial Load() error=%v", err)
+	}
+	encoded, err := Marshal(machine, false)
+	if err != nil {
+		t.Fatalf("Marshal() error=%v", err)
+	}
+	roundTripPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(roundTripPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := Load(roundTripPath, home, nil)
+	if err != nil {
+		t.Fatalf("round-trip Load() error=%v\n%s", err, encoded)
+	}
+	if len(roundTrip.CodexAccounts) != 0 {
+		t.Fatalf("round-trip CodexAccounts=%#v, want authoritative empty roster\n%s", roundTrip.CodexAccounts, encoded)
+	}
+}
+
 func TestConfiguredCodexHomeRehomesAutoDiscoveredAccount(t *testing.T) {
 	for _, testCase := range []struct {
 		name      string

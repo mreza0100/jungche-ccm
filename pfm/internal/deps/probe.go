@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	pfmengine "hostops/pfm/internal/engine"
 )
 
 const ProbeTimeout = 5 * time.Second
@@ -48,6 +50,7 @@ type Result struct {
 type ProbeOptions struct {
 	GOOS         string
 	SkipHarvest  bool
+	SkipEngines  map[pfmengine.ID]bool
 	Provisioning bool
 	VerboseDir   string
 	LookPath     func(string) (string, error)
@@ -88,6 +91,9 @@ func Probe(ctx context.Context, entries []Entry, options ProbeOptions) []Result 
 		case !entry.AppliesTo(options.GOOS):
 			result.State = StateSkipped
 			result.Error = "not this platform"
+		case entry.Engine != "" && options.SkipEngines[entry.Engine]:
+			result.State = StateSkipped
+			result.Error = "--skip-engine " + pfmengine.MustLookup(entry.Engine).LongName
 		case entry.Harvest && options.SkipHarvest:
 			result.State = StateSkipped
 			result.Error = "--skip-harvest"
@@ -201,9 +207,32 @@ func probeSelfDoctor(ctx context.Context, path string, entry Entry, verboseDir s
 		if strings.Contains(strings.ToLower(string(output)), "tty") || strings.Contains(strings.ToLower(string(output)), "interactive") {
 			return "unavailable (interactive-only)", "", nil
 		}
-		return "broken", FirstLine(string(output)), nil
+		return "broken", selfDoctorFailureLine(string(output)), nil
 	}
 	return "ok", "", nil
+}
+
+func selfDoctorFailureLine(output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+		if strings.Contains(trimmed, "✗") || strings.Contains(lower, "[fail]") ||
+			strings.HasPrefix(lower, "fail") || strings.Contains(lower, "error:") {
+			return trimmed
+		}
+	}
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if index == 0 && len(lines) > 1 && strings.Contains(strings.ToLower(trimmed), "doctor") {
+			continue
+		}
+		return trimmed
+	}
+	return ""
 }
 
 func boundedOutput(parent context.Context, timeout time.Duration, path string, args ...string) ([]byte, error) {
