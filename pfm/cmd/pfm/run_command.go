@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hostops/pfm/internal/action"
+	"hostops/pfm/internal/agentrole"
 	pfmconfig "hostops/pfm/internal/config"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/headless"
@@ -36,7 +37,7 @@ func runRun(
 	flags := newFlagSet(
 		"chat new",
 		"usage: pfm chat new --name NAME [--engine cc|cx] [--cwd DIR] "+
-			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] "+
+			"[--account N] [--1h] [--model M] [--effort E] [--prompt-file PATH] [--role ROLE] "+
 			"[--await [--timeout SECS] [--settle SECS] [--progress]] [--attach] [prompt]",
 		stderr,
 	)
@@ -48,6 +49,7 @@ func runRun(
 	model := flags.String("model", "", "model the seat is born with")
 	effort := flags.String("effort", "", "reasoning effort the seat is born with")
 	promptFile := flags.String("prompt-file", "", "read the launch prompt from a file")
+	role := flags.String("role", "", "registered agent role whose constitution the seat reads first, before any prompt")
 	await := flags.Bool("await", false, "wait for the first answer and print it (the launch summary moves to stderr)")
 	timeout := flags.Int("timeout", askTimeoutSeconds, "with --await: seconds to wait (0 waits forever)")
 	settle := flags.Int("settle", askSettleSeconds, "with --await: seconds of quiet before an answer is finished")
@@ -85,6 +87,14 @@ func runRun(
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 2
+	}
+	if *role != "" {
+		constitution, err := agentrole.Resolve(engineName, *role, directory, resolved.Home)
+		if err != nil {
+			fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
+			return 2
+		}
+		prompt = composeRolePrompt(constitution, prompt)
 	}
 	plan, err := action.HeadlessRun(action.HeadlessRequest{
 		Engine:         engineName,
@@ -439,6 +449,21 @@ func runPrompt(path string, args []string) (string, error) {
 		return "", fmt.Errorf("prompt file %s is empty", path)
 	}
 	return prompt, nil
+}
+
+// rolePromptSeparator marks where a --role seat's constitution ends and the
+// caller's own prompt begins, the same "\n\n---\n\n" section rule
+// internal/recovery uses between its own prompt sections.
+const rolePromptSeparator = "\n\n---\n\n"
+
+// composeRolePrompt puts the role constitution first, before any goal — the
+// seat is the role from birth. --role alone (no caller prompt) is legal and
+// launches a seat that has read its constitution and nothing else.
+func composeRolePrompt(constitution, prompt string) string {
+	if prompt == "" {
+		return constitution
+	}
+	return constitution + rolePromptSeparator + prompt
 }
 
 func runDirectory(requested string) (string, error) {
