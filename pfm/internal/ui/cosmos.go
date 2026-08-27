@@ -1016,6 +1016,14 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 		if !anchored {
 			anchor = cosmosPoint{x: cx, y: cy}
 		}
+		if sky {
+			// The planets actually revolve: the whole ring turns rigidly
+			// around its sun — one revolution every ~3.5 minutes, slow
+			// enough to feel orbital, fast enough to see — while even
+			// spacing between siblings is preserved by construction. Moons
+			// orbit their planet faster (~70s) one tier down.
+			angle += clock * 0.03
+		}
 		points[key] = cosmosPoint{
 			x: anchor.x + systemRx*breath*math.Cos(angle),
 			y: anchor.y + systemRy*breath*math.Sin(angle),
