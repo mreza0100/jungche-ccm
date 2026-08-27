@@ -217,9 +217,17 @@ func resolveChat(
 func matchChat(rows []compose.Row, name string) (headless.Chat, bool, error) {
 	exact := make([]compose.Row, 0, 2)
 	folded := make([]compose.Row, 0, 2)
+	// A row's Socket is the BARE name tmux is addressed by (-L), while the
+	// fleet records full -S paths — inject writes one into the comms ledger,
+	// spawn writes one for every chat it starts — so a caller pasting the
+	// socket it was handed matched nothing. Both sides go through
+	// resolve.SessionName, the single implementation of that reduction.
+	session := resolve.SessionName(name)
 	for _, row := range rows {
 		switch {
-		case row.ID == name || row.Socket == name || row.Name == name:
+		case row.ID == name ||
+			(session != "" && resolve.SessionName(row.Socket) == session) ||
+			row.Name == name:
 			exact = append(exact, row)
 		case strings.EqualFold(row.Name, name) ||
 			(len(name) >= 8 && strings.HasPrefix(row.ID, name)):

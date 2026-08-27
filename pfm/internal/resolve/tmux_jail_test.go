@@ -479,3 +479,90 @@ func TestPaneOwnersSurvivesAStrippedEnvironment(t *testing.T) {
 		)
 	}
 }
+
+// TestJailedColonLabelResolvesToAPaneNeverATmuxTarget proves, against a real
+// tmux server, that the address the reply footer now hands out is safe.
+//
+// The footer advertises the sender's 🔖 LABEL, and the operator's labels
+// carry colons — P:DO, W:ORCHESTRATOR, COSMOSTEST:A. ':' is tmux's own
+// session:window separator, so a label is never a legal tmux target, and the
+// second half of this test shows that outright: tmux resolves "<session>:1"
+// and fails on "<session>:P:DO". Nothing in the resolve path may interpolate
+// a label into a target, and the first half pins the reason it does not have
+// to — label resolution answers with a %pane id, which is unambiguous
+// whatever the label contained.
+func TestJailedColonLabelResolvesToAPaneNeverATmuxTarget(t *testing.T) {
+	jail := newResolveJail(t)
+	jail.start(t, "cc-500-1-1", "colon-session", "colon", "P:DO")
+	// A second window, which tmux makes CURRENT. The labelled chat is now
+	// deliberately not the session's current window, which is the only
+	// arrangement in which the colon-target fallback below can be seen for
+	// what it is.
+	if output, err := jail.command(
+		"-L", "cc-500-1-1", "new-window", "-n", "other", "sleep 120",
+	).CombinedOutput(); err != nil {
+		t.Fatalf("second window: %v: %s", err, output)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	resolver, err := New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := resolver.Resolve(context.Background(), Label, "P:DO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Code != 0 {
+		t.Fatalf("colon label did not resolve: %#v\n%s", outcome, resolveDiagnostics(t, resolver))
+	}
+	assertTarget(t, outcome, "cc-500-1-1", "%")
+
+	fields := strings.Split(strings.TrimSuffix(outcome.Stdout, "\n"), "\t")
+	if strings.Contains(fields[1], ":") {
+		t.Fatalf("resolved target %q carries a colon — it is not a bare pane id", fields[1])
+	}
+
+	// The empirical half, and it came out WORSE than "a colon target
+	// fails": tmux does not reject "<session>:<label>" at all. It splits at
+	// the first ':', finds no window by that name, and silently falls back
+	// to the session's CURRENT window — the same pane it returns for
+	// outright nonsense. So a label interpolated into a tmux target does
+	// not error where a human would see it; it delivers to whichever chat
+	// window happens to be current. That is why the label never becomes a
+	// target and the resolver answers with a %pane id instead.
+	//
+	// The assertion is written to survive a tmux that behaves differently:
+	// either both spellings fail (the target is illegal), or both succeed
+	// identically (the text after ':' was ignored). What must never happen
+	// is the label selecting something of its own, because that would mean
+	// this whole premise needs re-verifying.
+	labelTarget, labelErr := jail.command(
+		"-L", "cc-500-1-1", "display-message", "-p",
+		"-t", "colon-session:P:DO", "#{pane_id}",
+	).Output()
+	nonsenseTarget, nonsenseErr := jail.command(
+		"-L", "cc-500-1-1", "display-message", "-p",
+		"-t", "colon-session:__no_such_window__", "#{pane_id}",
+	).Output()
+	if labelErr == nil && nonsenseErr == nil &&
+		strings.TrimSpace(string(labelTarget)) != strings.TrimSpace(string(nonsenseTarget)) {
+		t.Fatalf(
+			"tmux selected pane %q for the label and %q for nonsense — the label is being honoured as a target, which contradicts this test's premise; re-verify before trusting it",
+			strings.TrimSpace(string(labelTarget)),
+			strings.TrimSpace(string(nonsenseTarget)),
+		)
+	}
+	if labelErr == nil && strings.TrimSpace(string(labelTarget)) == fields[1] {
+		t.Fatalf(
+			"the colon target landed on the labelled pane %q, so the fallback is indistinguishable from a real match here and this proves nothing; the second window was supposed to be current",
+			fields[1],
+		)
+	}
+	if labelErr == nil {
+		t.Logf(
+			"tmux answered %q for target colon-session:P:DO while the labelled chat is pane %q — a label interpolated into a tmux target silently addresses the WRONG chat",
+			strings.TrimSpace(string(labelTarget)), fields[1],
+		)
+	}
+}

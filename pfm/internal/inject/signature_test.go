@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/resolve"
 )
 
@@ -120,8 +121,7 @@ func TestSignatureUsesTheSenderStatedByTheSpawningChat(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid 019ffd1e",
-		"to reply: chat_inject cx-1700000000-1-1 <message>",
-		"🔖 WAVE_ORCHESTRATOR",
+		"to reply: chat_inject WAVE_ORCHESTRATOR <message>",
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {
 			t.Fatalf("typed text %q lacks %q", lastLiteral(fake), want)
@@ -315,8 +315,7 @@ func TestSignatureUsesCodexThreadSeatAfterAncestryMiss(t *testing.T) {
 	}
 	for _, want := range []string{
 		"sid 019ffd1e",
-		"to reply: chat_inject cc-1700000000-1-1 <message>",
-		"🔖 Delivery Trust",
+		`to reply: chat_inject "Delivery Trust" <message>`,
 	} {
 		if !strings.Contains(lastLiteral(fake), want) {
 			t.Fatalf("typed text %q lacks %q", lastLiteral(fake), want)
@@ -326,7 +325,9 @@ func TestSignatureUsesCodexThreadSeatAfterAncestryMiss(t *testing.T) {
 
 // TestSignatureCodexLabelFallsBackToTheWindowName covers chat.sh:104-121: a
 // codex chat has no 🔖 statusline, so its label is the tmux window name — the
-// human thread name — carried BARE so a reply by that label resolves.
+// human thread name — which is what the reply hint must then advertise, so a
+// reply by that label resolves. A window name may contain spaces, so the hint
+// quotes it.
 func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 	fake := &fakeTmux{
 		capture:       "codex conversation\n› ",
@@ -348,7 +349,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(lastLiteral(fake), "🔖 Fleet Porter") {
+	if !strings.Contains(lastLiteral(fake), `to reply: chat_inject "Fleet Porter" <message>`) {
 		t.Fatalf("typed text %q lacks the codex window-name label", lastLiteral(fake))
 	}
 
@@ -372,7 +373,7 @@ func TestSignatureCodexLabelFallsBackToTheWindowName(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(lastLiteral(labelled), "🔖 Operator") ||
+	if !strings.Contains(lastLiteral(labelled), "to reply: chat_inject Operator <message>") ||
 		strings.Contains(lastLiteral(labelled), "Fleet Porter") {
 		t.Fatalf("statusline label lost to the window name: %q", lastLiteral(labelled))
 	}
@@ -402,4 +403,156 @@ func lastLiteral(fake *fakeTmux) string {
 		return ""
 	}
 	return fake.literals[len(fake.literals)-1]
+}
+
+// TestSignatureReplyHintCarriesTheLabelNotTheSessionID is the regression for
+// the footer that taught every recipient the one address that does not
+// resolve. signatureParts advertised sender.Session — a raw tmux session id —
+// as the reply target, two lines above stating the sender's 🔖 label; and
+// senderLabel's own contract is that the label is carried BARE precisely
+// "since the recipient must be able to reply by exactly the label the
+// operator gave the chat." A caller obeying the footer replied with the raw
+// session id, which arrived in the comms ledger as the target and minted a
+// cosmos node named after a socket.
+//
+// The label here carries a colon on purpose: ':' is tmux's own
+// session:window separator, so a fix that interpolated the label into a tmux
+// target would break on exactly the labels the operator actually uses
+// (P:DO, W:ORCHESTRATOR). The reply hint is a chat_inject argument, never a
+// tmux target, and this pins that.
+func TestSignatureReplyHintCarriesTheLabelNotTheSessionID(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	t.Setenv(SenderSessionEnv, "cc-1787705979-3980493-30867")
+	t.Setenv(SenderLabelEnv, "P:DO")
+	t.Setenv(SenderIDEnv, "019ffd1e-300f-7872")
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "reply to me by name",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Unsigned {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	typed := lastLiteral(fake)
+	if !strings.Contains(typed, "to reply: chat_inject P:DO <message>") {
+		t.Fatalf("footer %q does not tell the recipient to reply by label", typed)
+	}
+	if strings.Contains(typed, "chat_inject cc-1787705979-3980493-30867") {
+		t.Fatalf("footer %q still advertises the raw session id as the reply target", typed)
+	}
+}
+
+// TestSignatureReplyHintFallsBackToTheSessionWhenUnlabelled keeps the other
+// half honest: a chat whose label could not be scraped still has to be
+// replyable, and its tmux session name is the only address it has. The raw
+// id is legitimate HERE — it is the literal argument a caller must pass —
+// and nowhere in a name position.
+func TestSignatureReplyHintFallsBackToTheSessionWhenUnlabelled(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	t.Setenv(SenderSessionEnv, "cc-1787705979-3980493-30867")
+	t.Setenv(SenderIDEnv, "019ffd1e-300f-7872")
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "no label to offer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Unsigned {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	typed := lastLiteral(fake)
+	if !strings.Contains(typed, "to reply: chat_inject cc-1787705979-3980493-30867 <message>") {
+		t.Fatalf("unlabelled footer %q lost its only replyable address", typed)
+	}
+}
+
+// TestSignatureReplyHintQuotesALabelWithSpaces covers the codex label rung,
+// where the label is a tmux WINDOW name and may legitimately contain spaces.
+// Advertised bare, "chat_inject Delivery Trust <message>" reads as a target
+// plus a stray word.
+func TestSignatureReplyHintQuotesALabelWithSpaces(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	t.Setenv(SenderSessionEnv, "cc-1787705979-3980493-30867")
+	t.Setenv(SenderLabelEnv, "Delivery Trust")
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "spaces in my name",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Unsigned {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	typed := lastLiteral(fake)
+	if !strings.Contains(typed, `to reply: chat_inject "Delivery Trust" <message>`) {
+		t.Fatalf("footer %q left a spaced label unquoted", typed)
+	}
+}
+
+// TestSignatureFooterPlantsNoBookmarkMarkerInTheRecipientsPane is the
+// regression for footer label poisoning, caught live: a chat named W5_TESTER
+// had "🔖 W5_BUILDER" sitting in its own visible pane, put there by a message
+// it RECEIVED. naming.BookmarkLabelFor resolves a pane's label by taking the
+// last 🔖 line on screen, so a delivered footer could redefine the recipient's
+// identity as its sender's.
+//
+// The footer's job is to say who spoke and how to answer — the reply hint
+// above does both. 🔖 means "this pane's own label" and belongs to the
+// statusline alone, so inject stops writing it into somebody else's screen.
+func TestSignatureFooterPlantsNoBookmarkMarkerInTheRecipientsPane(t *testing.T) {
+	fake := &fakeTmux{capture: "conversation\n❯ ", submitOnEnter: true}
+	engine := newSignatureEngine(
+		t,
+		"cc-1-2-3",
+		fake,
+		fakeIdentifier{err: resolve.ErrNoTmux},
+	)
+	t.Setenv(SenderSessionEnv, "cc-1787705979-3980493-30867")
+	t.Setenv(SenderLabelEnv, "W5_BUILDER")
+	t.Setenv(SenderIDEnv, "019ffd1e-300f-7872")
+	result, err := engine.Inject(context.Background(), Request{
+		Target:  "chat",
+		Message: "do the thing",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Code != 0 || result.Unsigned {
+		t.Fatalf("Inject() = %+v", result)
+	}
+	typed := lastLiteral(fake)
+	if strings.Contains(typed, "🔖") {
+		t.Fatalf("delivered footer %q plants a 🔖 label in the recipient's pane", typed)
+	}
+	// The sender is still named — by the one line that tells the recipient
+	// what to do with the name.
+	if !strings.Contains(typed, "to reply: chat_inject W5_BUILDER <message>") {
+		t.Fatalf("footer %q no longer names its sender at all", typed)
+	}
+	// And what inject writes must be inert to the scraper that reads panes.
+	if label := naming.BookmarkLabel(typed); label != "" {
+		t.Fatalf("the delivered footer resolves as a pane label: %q", label)
+	}
 }

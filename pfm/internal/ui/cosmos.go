@@ -335,7 +335,7 @@ func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) strin
 			}
 			from, to := nodes[edge.From], nodes[edge.To]
 			labelWidth := maxInt(1, (innerWidth-3)/2)
-			identity := truncateRunes(from.Label, labelWidth) + " → " + truncateRunes(to.Label, labelWidth)
+			identity := truncateRunes(from.Label.String(), labelWidth) + " → " + truncateRunes(to.Label.String(), labelWidth)
 			lines = append(lines, fillLine(ansiTruncateRunes(identity, innerWidth), innerWidth))
 			if edge.LastMessage != "" && len(lines) < innerHeight {
 				lines = append(lines, dimStyle.Render(fillLine(
@@ -532,7 +532,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		}
 		canvas.SetCell(colX, colY, cosmosNodeGlyph(node), color, true)
 		rightward := point.x >= cx
-		label := clipCosmosLabel(node.Label, rightward, colX, canvas.Cols)
+		label := clipCosmosLabel(node.Label.String(), rightward, colX, canvas.Cols)
 		if rightward {
 			canvas.Text(colX+2, colY, label, color, bold)
 		} else {
@@ -565,9 +565,10 @@ func cosmosDeathVisual(base RGB, deathAge time.Duration) (RGB, bool) {
 }
 
 // clipCosmosLabel bounds a node's label to the canvas space actually
-// available in the direction it draws, so a long label (a raw socket name,
-// a long chat name) can be clipped with a visible ellipsis instead of
-// running off-canvas or smearing across whatever sits past the edge.
+// available in the direction it draws, so a long label (a long chat name, or
+// the bracketed diagnostic an unresolved identity renders as) can be clipped
+// with a visible ellipsis instead of running off-canvas or smearing across
+// whatever sits past the edge.
 func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	available := cols - (colX + 2)
 	if !rightward {
@@ -634,8 +635,8 @@ func cosmosTickerLine(edge compose.CosmosEdge, nodes map[string]compose.CosmosNo
 	from, to := nodes[edge.From], nodes[edge.To]
 	return fmt.Sprintf("%s %c %s → %c %s · %s",
 		time.Unix(0, edge.LastNS).Format("15:04:05"),
-		cosmosNodeGlyph(from), from.Label,
-		cosmosNodeGlyph(to), to.Label,
+		cosmosNodeGlyph(from), from.Label.String(),
+		cosmosNodeGlyph(to), to.Label.String(),
 		edge.LastMessage,
 	)
 }

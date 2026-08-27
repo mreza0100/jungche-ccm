@@ -228,3 +228,38 @@ func TestUnknownChatIsRc4WithAMachineShape(t *testing.T) {
 		t.Fatalf("status = %v", status)
 	}
 }
+
+// TestMatchChatAcceptsAFullSocketPathAndTheBareName covers the second
+// resolver's half of the same normalisation defect the cosmos graph had. A
+// compose.Row carries the BARE socket name tmux is addressed by (-L), while
+// everything the fleet RECORDS is a full -S path: inject writes one into the
+// comms ledger, spawn writes one for every chat it starts, and `pfm chat
+// resolve` prints one. An operator or a script pasting the path it was handed
+// matched nothing, and the miss reported as "no chat named …" — an absence,
+// for a chat that was right there.
+func TestMatchChatAcceptsAFullSocketPathAndTheBareName(t *testing.T) {
+	rows := []compose.Row{
+		{Kind: compose.LiveClaude, ID: "p-do-id", Name: "P:DO", Socket: "cc-1787705979-3980493-30867", PaneID: "%0"},
+		{Kind: compose.LiveCodex, ID: "other-id", Name: "Other", Socket: "cx-1787757492-3196324-4837", PaneID: "%1"},
+	}
+	for _, target := range []string{
+		"cc-1787705979-3980493-30867",
+		"/tmp/tmux-1000/cc-1787705979-3980493-30867",
+		"P:DO",
+		"p-do-id",
+	} {
+		chat, found, err := matchChat(rows, target)
+		if err != nil {
+			t.Fatalf("matchChat(%q) error: %v", target, err)
+		}
+		if !found {
+			t.Fatalf("matchChat(%q) found nothing; the chat is in the roster", target)
+		}
+		if chat.Name != "P:DO" {
+			t.Fatalf("matchChat(%q) = %q, want P:DO", target, chat.Name)
+		}
+	}
+	if _, found, err := matchChat(rows, "/tmp/tmux-1000/cc-0-0-0"); found || err != nil {
+		t.Fatalf("a path naming no live chat resolved: found=%v err=%v", found, err)
+	}
+}

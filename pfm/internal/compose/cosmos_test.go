@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 )
 
@@ -28,11 +29,11 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		t.Fatalf("BuildCosmos() state = err %q warnings %v", graph.Err, graph.Warnings)
 	}
 	wantNodes := []CosmosNode{
-		{Key: "chat:id:alpha-id", Label: "Alpha", Engine: "cc", Live: true, LastNS: 30},
-		{Key: "chat:id:beta-id", Label: "Beta", Engine: "cx", Live: true, LastNS: 40},
-		{Key: "chat:id:child-id", Label: "Child", Engine: "cc", Live: true, LastNS: 40},
-		{Key: "group:crew", Label: "crew", Group: true, LastNS: 30},
-		{Key: "chat:name:Gone", Label: "Gone", LastNS: 30},
+		{Key: "chat:id:alpha-id", Label: resolve.Named("Alpha"), Engine: "cc", Live: true, LastNS: 30},
+		{Key: "chat:id:beta-id", Label: resolve.Named("Beta"), Engine: "cx", Live: true, LastNS: 40},
+		{Key: "chat:id:child-id", Label: resolve.Named("Child"), Engine: "cc", Live: true, LastNS: 40},
+		{Key: "group:crew", Label: resolve.Named("crew"), Group: true, LastNS: 30},
+		{Key: "chat:name:Gone", Label: resolve.Named("Gone"), LastNS: 30},
 	}
 	if !reflect.DeepEqual(graph.Nodes, wantNodes) {
 		t.Fatalf("nodes = %#v, want %#v", graph.Nodes, wantNodes)
@@ -48,7 +49,7 @@ func TestBuildCosmosResolvesParticipantsAndAggregatesEdges(t *testing.T) {
 		t.Fatalf("edges = %#v, want %#v", graph.Edges, wantEdges)
 	}
 	for _, node := range graph.Nodes {
-		if node.Label == "Quiet" {
+		if nodeLabel(node) == "Quiet" {
 			t.Fatal("traffic-free live row became a cosmos node")
 		}
 	}
@@ -80,7 +81,7 @@ func TestBuildCosmosParentlessSpawnCreatesOnlyTheChildNode(t *testing.T) {
 		t.Fatalf("parentless spawn edges = %#v", graph.Edges)
 	}
 	want := []CosmosNode{{
-		Key: "chat:session:cx-orphan", Label: "Orphan", LastNS: 60,
+		Key: "chat:session:cx-orphan", Label: resolve.Named("Orphan"), LastNS: 60,
 	}}
 	if !reflect.DeepEqual(graph.Nodes, want) {
 		t.Fatalf("parentless nodes = %#v, want %#v", graph.Nodes, want)
@@ -172,7 +173,7 @@ func TestBuildCosmosLiveChatStillYieldsOneNodeAcrossSpawnAndInject(t *testing.T)
 	graph := BuildCosmos(rows, events, 100)
 	count := 0
 	for _, node := range graph.Nodes {
-		if node.Live && node.Label == "ghost" {
+		if node.Live && nodeLabel(node) == "ghost" {
 			count++
 		}
 	}
@@ -260,5 +261,194 @@ func TestBuildCosmosNoRowMatchIsPendingWithinGraceThenDead(t *testing.T) {
 	}
 	if !goneFound {
 		t.Fatal("dead node missing from the graph entirely")
+	}
+}
+
+// nodeLabel reads a node's human-facing label as text. It exists so the
+// identity assertions below read the same before and after DisplayName
+// stopped being a bare string.
+func nodeLabel(node CosmosNode) string { return node.Label.String() }
+
+// nodeWithKey finds one node by key, so a failure names the whole graph
+// rather than panicking on an index.
+func nodeWithKey(graph CosmosGraph, key string) (CosmosNode, bool) {
+	for _, node := range graph.Nodes {
+		if node.Key == key {
+			return node, true
+		}
+	}
+	return CosmosNode{}, false
+}
+
+// TestBuildCosmosResolvesReceiverAddressedByARawSessionID is the regression
+// for the ghost the operator watched appear and vanish in the cosmos tab: a
+// live, named chat received an MCP message and the graph minted a SECOND
+// node labelled with that chat's raw tmux session id, which then aged out of
+// the no-row grace window and was ruled GONE.
+//
+// Two independent misses produced it, and this event carries both. The
+// receiver's recorded socket is a full PATH ("/tmp/tmux-1000/cc-…") while a
+// live row's Socket is the BARE name tmux is addressed by (-L), so the pane
+// index could never match; and the Target is the raw session id rather than
+// the label, because the reply footer told the sender to address the chat
+// that way, so the name index could never match either.
+func TestBuildCosmosResolvesReceiverAddressedByARawSessionID(t *testing.T) {
+	const session = "cc-1787705979-3980493-30867"
+	rows := []Row{
+		{Kind: LiveClaude, ID: "p-do-id", Name: "P:DO", Socket: session, PaneID: "%0"},
+		{Kind: LiveClaude, ID: "sender-id", Name: "Sender", Socket: "cc-1787705979-3980493-1", PaneID: "%0"},
+	}
+	events := []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindInject,
+		SenderUUID: "sender-id", SenderSession: "cc-1787705979-3980493-1", SenderLabel: "Sender",
+		Target:         session,
+		ReceiverSocket: "/tmp/tmux-1000/" + session, ReceiverPane: "%0",
+		Message: "hello",
+	}}
+
+	graph := BuildCosmos(rows, events, 100)
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("a message between two known chats minted a node: got %d nodes, want 2\nnodes = %#v", len(graph.Nodes), graph.Nodes)
+	}
+	node, found := nodeWithKey(graph, "chat:id:p-do-id")
+	if !found {
+		t.Fatalf("receiver did not resolve to its existing row\nnodes = %#v", graph.Nodes)
+	}
+	if label := nodeLabel(node); label != "P:DO" {
+		t.Fatalf("receiver label = %q, want the chat's own label %q", label, "P:DO")
+	}
+	if !node.Live || node.Engine != "cc" {
+		t.Fatalf("receiver node lost its row's liveness/engine: %#v", node)
+	}
+}
+
+// TestBuildCosmosResolvesSenderByItsTmuxSessionName covers the wild shape an
+// inject-as-SENDER writes: sender_session only, no uuid and no label (a chat
+// whose 🔖 statusline had not rendered when it stated its identity). The
+// session name is the one identity that event carries, so it has to resolve.
+func TestBuildCosmosResolvesSenderByItsTmuxSessionName(t *testing.T) {
+	const session = "cc-1787705979-3980493-30867"
+	rows := []Row{{Kind: LiveClaude, ID: "p-do-id", Name: "P:DO", Socket: session, PaneID: "%0"}}
+	events := []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindInject, SenderSession: session,
+		Target: "Somebody", Message: "hi",
+	}}
+
+	graph := BuildCosmos(rows, events, 100)
+	node, found := nodeWithKey(graph, "chat:id:p-do-id")
+	if !found {
+		t.Fatalf("sender did not resolve to its existing row by session name\nnodes = %#v", graph.Nodes)
+	}
+	if label := nodeLabel(node); label != "P:DO" {
+		t.Fatalf("sender label = %q, want %q", label, "P:DO")
+	}
+}
+
+// TestBuildCosmosResolvesSpawnReceiverRecordedWithNoPane covers the third
+// wild shape: a spawn writes the receiver's FULL socket path and no pane id
+// at all (spawn.Result carries none), and its Target is the label the chat
+// was born with — which chat_name may since have replaced. Socket identity
+// is the only thing that survives a rename, so it has to resolve.
+func TestBuildCosmosResolvesSpawnReceiverRecordedWithNoPane(t *testing.T) {
+	const session = "cc-1787705979-3980493-30867"
+	rows := []Row{
+		{Kind: LiveClaude, ID: "parent-id", Name: "Parent", Socket: "cc-1787705979-3980493-1", PaneID: "%0"},
+		{Kind: LiveClaude, ID: "child-id", Name: "P:DO", Socket: session, PaneID: "%0"},
+	}
+	events := []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindSpawn,
+		SenderSession:  "cc-1787705979-3980493-1",
+		Target:         "born-as-this",
+		ReceiverSocket: "/tmp/tmux-1000/" + session,
+		ReceiverPane:   "",
+		Message:        "born",
+	}}
+
+	graph := BuildCosmos(rows, events, 100)
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("spawn between two known chats minted a node: got %d, want 2\nnodes = %#v", len(graph.Nodes), graph.Nodes)
+	}
+	child, found := nodeWithKey(graph, "chat:id:child-id")
+	if !found {
+		t.Fatalf("spawn receiver did not resolve to its existing row\nnodes = %#v", graph.Nodes)
+	}
+	if label := nodeLabel(child); label != "P:DO" {
+		t.Fatalf("spawn receiver label = %q, want the chat's CURRENT label %q", label, "P:DO")
+	}
+	if _, found := nodeWithKey(graph, "chat:id:parent-id"); !found {
+		t.Fatalf("spawn parent did not resolve to its existing row\nnodes = %#v", graph.Nodes)
+	}
+}
+
+// TestBuildCosmosUnresolvedIdentityNeverRendersAsAName pins the honesty rule
+// the ghost broke: an identity that matched no row must render as something
+// a human reads as "this did not resolve". A raw session id in the name
+// position is indistinguishable from a chat actually called that — the whole
+// reason the original defect went unnoticed until a node blinked out.
+func TestBuildCosmosUnresolvedIdentityNeverRendersAsAName(t *testing.T) {
+	const sender = "cc-1787705979-3980493-30867"
+	const target = "cc-1787705979-3980493-999"
+	graph := BuildCosmos(nil, []shared.CommsEvent{{
+		AtNS: 10, Kind: shared.KindInject, SenderSession: sender,
+		Target: target, Message: "neither end has a row",
+	}}, 100)
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("nodes = %#v, want one per unresolved end", graph.Nodes)
+	}
+	for _, node := range graph.Nodes {
+		label := nodeLabel(node)
+		if label == sender || label == target {
+			t.Fatalf("unresolved identity rendered as a plausible chat name: %q", label)
+		}
+		if !strings.Contains(label, "unresolved") {
+			t.Fatalf("unresolved node label %q does not say it failed to resolve", label)
+		}
+	}
+}
+
+// TestBuildCosmosSpawnResolvesASplitRowThatCarriesNoPaneID answers the one
+// question e94c34b left open. That fix made spawn record the receiver's FULL
+// socket path so it matched what inject already wrote; the worry was that a
+// spawn edge which used to match by pane no longer would.
+//
+// It is true, and for exactly one row class. A spawn records no pane at all
+// (spawn.Result carries none), and every row built from a tmux pane carries
+// tmux's own "%N" — so paneKey(socket, "") could never equal those, before or
+// after e94c34b. The exception is compose.splitRow, the ONLY row constructor
+// that sets Socket and leaves PaneID empty: pre-fix, paneKey(bare-socket, "")
+// matched it exactly; post-fix, paneKey(full-path, "") did not. So that one
+// class did regress, silently, into a ghost node.
+//
+// Resolution by session name repairs it for both recorded shapes at once,
+// which is what this pins.
+func TestBuildCosmosSpawnResolvesASplitRowThatCarriesNoPaneID(t *testing.T) {
+	const session = "cc-1787705979-3980493-30867"
+	// A split row as compose.splitRow builds one: a socket, no pane id, and
+	// no transcript id either.
+	rows := []Row{{Kind: LiveSplit, Name: "alpha+beta", Socket: session, SplitCount: 2}}
+	for _, recorded := range []struct {
+		name   string
+		socket string
+	}{
+		{"post-e94c34b full socket path", "/tmp/tmux-1000/" + session},
+		{"pre-e94c34b bare session name", session},
+	} {
+		t.Run(recorded.name, func(t *testing.T) {
+			graph := BuildCosmos(rows, []shared.CommsEvent{{
+				AtNS: 10, Kind: shared.KindSpawn, SenderLabel: "Parent",
+				Target: "child-at-birth", ReceiverSocket: recorded.socket,
+				ReceiverPane: "", Message: "born",
+			}}, 100)
+			node, found := nodeWithKey(graph, "chat:pane:"+session+"\t")
+			if !found {
+				t.Fatalf("the split row was not resolved; the spawn minted a ghost instead\nnodes = %#v", graph.Nodes)
+			}
+			if label := nodeLabel(node); label != "alpha+beta" {
+				t.Fatalf("split node label = %q, want the row's own name", label)
+			}
+			if !node.Live {
+				t.Fatalf("resolved split node lost its liveness: %#v", node)
+			}
+		})
 	}
 }
