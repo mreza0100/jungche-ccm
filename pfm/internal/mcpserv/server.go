@@ -24,6 +24,12 @@ const (
 	maxCaptureBytes     = 4 << 20
 )
 
+// selfCompactDescription is a named const so the registered text and the test
+// that pins it read the same string. The STOP clause is not decoration: the
+// --then waiter recognises the compaction turn by watching this pane yield and
+// then go busy again, and a caller that keeps working erases that boundary.
+const selfCompactDescription = "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steers are delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
+
 var chatToolNames = []string{
 	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_group_create",
 	"chat_group_invite", "chat_group_ls", "chat_group_read", "chat_group_send",
@@ -139,7 +145,7 @@ func (service *Service) register() {
 	}, service.chatInject)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_self_compact",
-		Description: "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended.",
+		Description: selfCompactDescription,
 		Annotations: mutating,
 	}, service.chatSelfCompact)
 	mcp.AddTool(service.server, &mcp.Tool{
@@ -465,6 +471,10 @@ func (service *Service) chatSelfCompact(
 		Message: "/compact",
 		Then:    input.Then,
 	})
+	// The stop notice is appended by the engine itself
+	// (inject.SelfCompactStopNotice), which is the single writer for every
+	// caller — MCP tool and `pfm chat inject` alike. Restating it here would
+	// double it on the MCP path only.
 	return nil, outputFromInject(result), err
 }
 

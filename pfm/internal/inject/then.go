@@ -21,6 +21,7 @@ func (engine *Engine) DeliverThen(
 	ctx context.Context,
 	socketPath, target string,
 	steers []string,
+	selfTarget bool,
 ) (Result, error) {
 	if target == "" || len(steers) == 0 || steers[0] == "" {
 		return refused(
@@ -35,55 +36,166 @@ func (engine *Engine) DeliverThen(
 			return Result{}, err
 		}
 	}
-	engine.waitForSettledTurn(ctx, socketPath, target)
-	return engine.inject(ctx, Request{
+	observed := engine.waitForSettledTurn(ctx, socketPath, target, selfTarget)
+	result, err := engine.inject(ctx, Request{
 		Target:  target,
 		Message: steers[0],
 		Then:    steers[1:],
 		Chain:   true,
 	})
+	if err == nil && !observed {
+		// Delivered, but without ever seeing the primary's turn begin and
+		// end. Stranding the chain would be worse, so the steer still goes —
+		// and the caller is told on the result itself, because a weaker
+		// guarantee that looks identical to a strong one is the failure this
+		// whole waiter exists to avoid.
+		result.Message += " (WARNING: no turn boundary was observed before " +
+			"delivery — the pane never went busy after the caller yielded, so " +
+			"this steer may have landed beside the primary rather than after it)"
+	}
+	return result, err
 }
 
-// waitForSettledTurn reproduces chat.sh:1062-1077: let the primary take hold,
-// wait (bounded) for the pane to go busy, then wait for idle to hold STEADY —
-// compaction shows brief stalls that would otherwise read as done — and settle.
-func (engine *Engine) waitForSettledTurn(
-	ctx context.Context,
-	socketPath, target string,
-) {
-	sleepContext(ctx, engine.options.ThenMin)
-	for attempt := 0; attempt < engine.options.ThenBusyTries; attempt++ {
-		if engine.paneBusy(ctx, socketPath, target) {
-			break
-		}
-		sleepContext(ctx, engine.options.Poll)
-	}
-	stable := 0
-	for attempt := 0; attempt < engine.options.ThenIdleTries; attempt++ {
-		if engine.paneBusy(ctx, socketPath, target) {
-			stable = 0
-		} else {
-			stable++
-		}
-		if stable >= engine.options.ThenIdleStable {
-			break
-		}
-		sleepContext(ctx, engine.options.ThenIdlePoll)
-	}
-	sleepContext(ctx, engine.options.ThenSettle)
+// paneSample is one observation of the target pane. Busy alone cannot answer
+// "is the turn I was sent to ride out over yet" — it is true for ANY turn,
+// including the caller's own and the one the session starts by itself after a
+// compaction. The receipt is the only positive evidence in the pane that a
+// compaction actually ran.
+type paneSample struct {
+	busy    bool
+	receipt bool
 }
 
-func (engine *Engine) paneBusy(
+func (engine *Engine) samplePane(
 	ctx context.Context,
 	socketPath, target string,
-) bool {
+) paneSample {
 	capture, err := engine.tmux.Capture(ctx, socketPath, target, false, 0)
 	if err != nil {
 		// An unreadable pane is not busy; the delivery attempt reports the
 		// dead pane truthfully instead of spinning here.
-		return false
+		return paneSample{}
 	}
-	return IsBusy(capture)
+	return paneSample{
+		busy:    IsBusy(capture),
+		receipt: CompactionReceipt(capture),
+	}
+}
+
+// waitForSettledTurn rides out the turn the PRIMARY started and reports whether
+// it ever actually saw that turn.
+//
+// The old shape (chat.sh:1062-1077) waited for the pane to go busy and then for
+// idle to hold steady. That works only if the busy it latches onto belongs to
+// the primary — and busy carries no identity. For a self-inject the pane is
+// already busy with the caller's own turn when the waiter wakes up, so the
+// waiter would ride out the WRONG turn and then race whichever idle came first,
+// losing in one of two directions depending on nothing but timing:
+//
+//   - caller stops promptly -> the waiter sees the idle BEFORE the queued
+//     /compact has run and delivers the steer into a session that is about to
+//     be compacted away, taking the steer with it.
+//   - caller keeps working -> the brief idle right after the compaction is
+//     shorter than the stability window, so the waiter sleeps through the one
+//     usable moment and delivers on top of work that already resumed.
+//
+// Both are the same defect. The fix is to stop inferring the turn from a
+// coincidence and identify it instead:
+//
+//  1. the caller's own turn must END first (an idle observation) — until then
+//     nothing on screen can belong to the primary;
+//  2. a turn must START after that (a busy observation) — that one is the
+//     primary's;
+//  3. a compaction receipt seen after BOTH is positive proof the primary was a
+//     compaction and that it finished, so the first quiet sample after it is
+//     the delivery point.
+//
+// Requiring the receipt to arrive after step 2 is what keeps step 3 from
+// becoming a coincidence detector in its own right: a receipt already on screen
+// when the waiter wakes up is scrollback from an EARLIER compaction and proves
+// nothing about this one.
+//
+// Step 3 cannot apply to a primary that prints no receipt — a reload steer, a
+// plain queued message, and (a NAMED gap) a Codex compaction, whose receipt
+// spelling nobody here has confirmed. Those fall back to steps 1-2 plus the
+// steady-idle window, which is strictly better than the old behaviour because
+// the caller's own turn can no longer be mistaken for the primary's.
+//
+// The returned bool is false when the bound expired without ever observing a
+// turn boundary. It is not an error — refusing to deliver would strand the
+// chain, which is worse — but it is a WEAKER guarantee than the caller asked
+// for, and DeliverThen says so on the visible result rather than only in a log.
+func (engine *Engine) waitForSettledTurn(
+	ctx context.Context,
+	socketPath, target string,
+	selfTarget bool,
+) bool {
+	sleepContext(ctx, engine.options.ThenMin)
+
+	// Step 1 exists only for a self-inject, where the pane is busy with the
+	// CALLER's turn when the waiter wakes up. For any other target nothing else
+	// owns that pane, so its first busy already belongs to the primary and
+	// insisting on a prior idle would wait out a boundary that never comes.
+	callerYielded := !selfTarget
+	turnStarted := false
+	stable := 0
+	sinceYield := 0
+
+	tries := engine.options.ThenBusyTries + engine.options.ThenIdleTries
+	for attempt := 0; attempt < tries; attempt++ {
+		sample := engine.samplePane(ctx, socketPath, target)
+
+		switch {
+		case !callerYielded:
+			callerYielded = !sample.busy
+		case !turnStarted:
+			turnStarted = sample.busy
+			sinceYield++
+		}
+
+		// Positive proof outranks the busy/idle dance: once this turn's own
+		// compaction receipt is on screen and the pane has gone quiet, the
+		// turn we were sent to ride out is provably over.
+		if turnStarted && sample.receipt && !sample.busy {
+			sleepContext(ctx, engine.options.ThenSettle)
+			return true
+		}
+
+		if turnStarted {
+			if sample.busy {
+				stable = 0
+			} else {
+				stable++
+			}
+			if stable >= engine.options.ThenIdleStable {
+				sleepContext(ctx, engine.options.ThenSettle)
+				return true
+			}
+		}
+
+		// The primary's turn never began. Either it started and finished
+		// inside ThenMin, or this pane does not report busy at all. Holding
+		// out for a boundary that already went by would burn the whole idle
+		// budget — minutes — and strand the steer, which is a worse failure
+		// than delivering on a weaker guarantee. So fall back to steady idle
+		// and return false, which is what puts the warning on the result
+		// instead of letting a guess pass for proof.
+		if callerYielded && !turnStarted &&
+			sinceYield > engine.options.ThenBusyTries {
+			if sample.busy {
+				stable = 0
+			} else {
+				stable++
+			}
+			if stable >= engine.options.ThenIdleStable {
+				sleepContext(ctx, engine.options.ThenSettle)
+				return false
+			}
+		}
+		sleepContext(ctx, engine.options.ThenIdlePoll)
+	}
+	sleepContext(ctx, engine.options.ThenSettle)
+	return false
 }
 
 // CommandThenSpawner starts this binary's own waiter under a detached process,
@@ -120,6 +232,9 @@ func (spawner CommandThenSpawner) Spawn(
 		"--target",
 		request.Target,
 	)
+	if request.SelfTarget {
+		arguments = append(arguments, "--self")
+	}
 	for _, steer := range request.Steers {
 		arguments = append(arguments, "--steer", steer)
 	}

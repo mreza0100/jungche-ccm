@@ -11,6 +11,13 @@ var (
 	codexMenuPattern  = regexp.MustCompile(`›[[:space:]]*[0-9]+\.[[:space:]]`)
 	numberedOption    = regexp.MustCompile(`^[[:space:]]*›?[[:space:]]*[0-9]+\.[[:space:]]`)
 	busyPattern       = regexp.MustCompile(`(?i)esc to interrupt|\([0-9]+s ·|· [0-9]+s|[0-9]+ tokens`)
+	// The receipt Claude Code prints once a compaction has actually happened.
+	// It is the only positive evidence a pane carries that the turn a --then
+	// waiter was sent to ride out was a compaction AND that it finished.
+	// NAMED GAP: the Codex receipt spelling is unconfirmed, so a Codex
+	// compaction falls back to the turn-boundary path in waitForSettledTurn
+	// rather than being silently treated as proven.
+	compactReceipt    = regexp.MustCompile(`(?i)compacted \(|(?:context|conversation) compacted`)
 	menuHintPattern   = regexp.MustCompile(`(?i)enter to (confirm|continue|select)|esc to (cancel|go back)`)
 	ansiPattern       = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
 	oscPattern        = regexp.MustCompile("\x1b\\][^\x07]*(\x07|\x1b\\\\)")
@@ -209,4 +216,11 @@ func messageVisible(capture, message string) bool {
 	}
 	return strings.Contains(capture, headRunes(message, 40)) ||
 		strings.Contains(capture, tailRunes(message, 40))
+}
+
+// CompactionReceipt reports whether the pane is showing the receipt a finished
+// compaction leaves behind. Presence alone proves only that SOME compaction
+// ran; waitForSettledTurn is what establishes that it was this turn's.
+func CompactionReceipt(capture string) bool {
+	return compactReceipt.MatchString(capture)
 }

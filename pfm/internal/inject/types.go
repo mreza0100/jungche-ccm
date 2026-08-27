@@ -151,6 +151,13 @@ type SteerSpawn struct {
 	// Sender is the spawning chat's own identity, carried down because the
 	// waiter runs detached and can derive none of its own.
 	Sender Sender
+	// SelfTarget marks the one shape where the pane being watched is ALSO the
+	// pane that asked for the wait. Only then is the pane busy with a turn
+	// that is not the primary's when the waiter starts, and only then must the
+	// waiter let that turn finish before it can recognise the primary's. For
+	// every other target the first busy IS the primary's turn, and waiting for
+	// an idle that already went by would delay the steer for nothing.
+	SelfTarget bool
 }
 
 // Options controls bounded retries. Zero values select chat.sh defaults.
