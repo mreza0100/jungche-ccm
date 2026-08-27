@@ -88,32 +88,36 @@ func TestDarwinLsofParsesApplesMultilineBanner(t *testing.T) {
 	}
 }
 
-func TestEngineDependenciesAreRequiredOnlyForPresentRosters(t *testing.T) {
-	tests := []struct {
-		name                  string
-		claude, codex         int
-		wantClaude, wantCodex bool
-	}{
-		{name: "zero zero"},
-		{name: "claude only", claude: 2, wantClaude: true},
-		{name: "codex only", codex: 3, wantCodex: true},
-		{name: "both", claude: 2, codex: 1, wantClaude: true, wantCodex: true},
+func TestConfiguredEngineDependenciesRemainOptionalForHostInstall(t *testing.T) {
+	entries := Registry(Options{Home: t.TempDir()})
+	for _, entry := range entries {
+		if entry.Name != "claude" && entry.Name != "codex" {
+			continue
+		}
+		if entry.Required {
+			t.Errorf("configured engine %s is required, want optional capability", entry.Name)
+		}
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entries := Registry(Options{
-				Home: t.TempDir(), ClaudeAccounts: test.claude, CodexAccounts: test.codex,
-			})
-			got := map[string]bool{}
-			for _, entry := range entries {
-				if entry.Name == "claude" || entry.Name == "codex" {
-					got[entry.Name] = entry.Required
-				}
-			}
-			if got["claude"] != test.wantClaude || got["codex"] != test.wantCodex {
-				t.Fatalf("required claude=%t codex=%t, want %t/%t", got["claude"], got["codex"], test.wantClaude, test.wantCodex)
-			}
-		})
+}
+
+func TestSelfDoctorFailureNamesTheSpecificFailingCheck(t *testing.T) {
+	directory := t.TempDir()
+	writeProbeStub(t, directory, "codex", `
+if [ "$1" = "--version" ]; then printf 'codex-cli 0.149.1\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--help" ]; then printf 'usage: codex doctor\n'; exit 0; fi
+if [ "$1" = "doctor" ] && [ "$2" = "--summary" ]; then
+  printf 'Codex Doctor v0.149.1 · linux-x86_64\n[FAIL] auth — active model provider auth env var is missing\n18 ok · 1 fail\n'
+  exit 1
+fi
+exit 2`)
+	t.Setenv("PATH", directory)
+	entry := Entry{
+		Name: "codex", Command: "codex", VersionArgs: []string{"--version"}, Parse: firstVersion,
+		SelfDoctorArgs: []string{"doctor", "--summary", "--ascii", "--no-color"},
+	}
+	result := Probe(context.Background(), []Entry{entry}, ProbeOptions{GOOS: "linux"})[0]
+	if result.State != StateBroken || !strings.Contains(result.Error, "auth") || strings.Contains(result.Error, "Codex Doctor v0.149.1") {
+		t.Fatalf("self-doctor result=%#v, want the auth failure rather than the banner", result)
 	}
 }
 

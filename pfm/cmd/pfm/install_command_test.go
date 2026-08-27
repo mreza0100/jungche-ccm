@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
+	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/installer"
 	"hostops/pfm/internal/paths"
 )
@@ -161,7 +163,7 @@ func TestInstallUsesOnlyTheNewSurface(t *testing.T) {
 			if code := runInstall([]string{retired}, &stdout, &stderr); code != 2 {
 				t.Fatalf("runInstall(%q) code=%d stdout=%q stderr=%q, want unknown-flag usage", retired, code, stdout.String(), stderr.String())
 			}
-			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--vscode] [--skip-harvest] [--config-dir DIR]") {
+			if !strings.Contains(stderr.String(), "usage: pfm install [--yes] [--vscode] [--skip-harvest] [--skip-engine codex] [--skip-themes] [--config-dir DIR]") {
 				t.Fatalf("runInstall(%q) stderr=%q, want new usage", retired, stderr.String())
 			}
 		})
@@ -281,6 +283,68 @@ func TestInstallSkipHarvestPreviewPreservesTheConfirmationFlag(t *testing.T) {
 	}
 	if !strings.HasSuffix(stdout.String(), "if you agree, run again: pfm install --yes --skip-harvest\n") {
 		t.Fatalf("skip preview output=%q, want preserved skip confirmation", stdout.String())
+	}
+}
+
+func TestInstallSkipEngineCodexReachesProbeInstallerAndConfirmation(t *testing.T) {
+	savedProbe, savedInstaller := dependencyProbeOverride, runInstaller
+	t.Cleanup(func() {
+		dependencyProbeOverride = savedProbe
+		runInstaller = savedInstaller
+	})
+	dependencyProbeOverride = func(_ context.Context, entries []deps.Entry, options deps.ProbeOptions) []deps.Result {
+		if !options.SkipEngines[pfmengine.Codex] {
+			t.Fatal("--skip-engine codex did not reach dependency probe options")
+		}
+		for _, entry := range entries {
+			if entry.Name == "codex" {
+				return []deps.Result{{Entry: entry, State: deps.StateSkipped, Error: "--skip-engine codex"}}
+			}
+		}
+		t.Fatal("codex registry entry missing")
+		return nil
+	}
+	var captured installer.Options
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		captured = options
+		return installer.Report{}, nil
+	}
+	home := t.TempDir()
+	runtime := commandRuntime{
+		Paths:  paths.Values{Home: home},
+		Config: pfmconfig.Config{CodexAccounts: []pfmconfig.CodexAccount{{ID: 1, Home: filepath.Join(home, ".codex")}}},
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--skip-harvest", "--skip-engine", "codex"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("skip-engine preview code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if captured.CodexHomes == nil || len(captured.CodexHomes) != 0 {
+		t.Fatalf("CodexHomes=%q, want an explicit empty roster", captured.CodexHomes)
+	}
+	if !strings.Contains(stdout.String(), "skipped (--skip-engine codex)") ||
+		!strings.HasSuffix(stdout.String(), "if you agree, run again: pfm install --yes --skip-harvest --skip-engine codex\n") {
+		t.Fatalf("skip-engine output=%q", stdout.String())
+	}
+}
+
+func TestInstallSkipThemesDisablesFetchAndPreservesConfirmation(t *testing.T) {
+	saved := runInstaller
+	t.Cleanup(func() { runInstaller = saved })
+	var captured installer.Options
+	runInstaller = func(_ context.Context, options installer.Options) (installer.Report, error) {
+		captured = options
+		return installer.Report{}, nil
+	}
+	runtime := commandRuntime{Paths: paths.Values{Home: t.TempDir()}}
+	var stdout, stderr bytes.Buffer
+	if code := runInstall([]string{"--skip-harvest", "--skip-themes"}, &stdout, &stderr, runtime); code != 0 {
+		t.Fatalf("skip-themes preview code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if captured.InstallThemes {
+		t.Fatal("--skip-themes left theme installation enabled")
+	}
+	if !strings.HasSuffix(stdout.String(), "if you agree, run again: pfm install --yes --skip-harvest --skip-themes\n") {
+		t.Fatalf("skip-themes confirmation=%q", stdout.String())
 	}
 }
 

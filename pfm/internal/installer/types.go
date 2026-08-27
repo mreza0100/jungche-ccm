@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"time"
@@ -95,6 +96,15 @@ type Options struct {
 	HarvestProvisioner HarvestProvisioner
 	HarvestPlatform    harvestpy.Platform
 	HarvestOffline     bool
+
+	// InstallThemes enables the optional source-fetched Claude Code themes.
+	// Command callers set it by default; unit callers opt in explicitly so a
+	// test can never acquire network access by accident.
+	InstallThemes bool
+	// ThemeManifestURL is the release-matched fallback used when SourceRepo is
+	// unavailable (for example, the checksum-verified binary install path).
+	ThemeManifestURL string
+	ThemeHTTPClient  *http.Client
 
 	// launchGateUnprobed records that the launch-agent gate could not ask its
 	// question. It is set by Run, never by a caller.

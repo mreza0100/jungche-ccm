@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	pfmconfig "hostops/pfm/internal/config"
@@ -29,6 +32,17 @@ func (noNetworkHarvestProvisioner) Provision(context.Context, harvestpy.Provisio
 }
 
 type noNetworkHarvestDoctor struct{}
+
+type noNetworkThemeTransport struct{}
+
+func (noNetworkThemeTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"name":"Tokyo Night","fixture":true}`)),
+	}, nil
+}
 
 func (noNetworkHarvestDoctor) Inspect(string, harvestpy.Platform) (harvestpy.EnvironmentDigest, error) {
 	return noNetworkHarvestDigest(), nil
@@ -62,6 +76,7 @@ func noNetworkHarvestDigest() harvestpy.EnvironmentDigest {
 // a path from it. See internal/testjail for why both properties matter.
 func TestMain(m *testing.M) {
 	installHarvestProvisionerOverride = noNetworkHarvestProvisioner{}
+	installThemeHTTPClientOverride = &http.Client{Transport: noNetworkThemeTransport{}}
 	harvestDoctorOverride = noNetworkHarvestDoctor{}
 	prePushGateProbeOverride = func(context.Context) prePushGate {
 		return prePushGate{State: "outside-repository"}

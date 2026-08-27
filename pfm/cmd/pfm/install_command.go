@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 
 	pfmconfig "hostops/pfm/internal/config"
 	"hostops/pfm/internal/deps"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/installer"
 )
 
@@ -15,6 +18,7 @@ import (
 // pinned adapter. The command-package TestMain replaces it with a no-network
 // fake so existing CLI wiring tests never download the conversion lock.
 var installHarvestProvisionerOverride installer.HarvestProvisioner
+var installThemeHTTPClientOverride *http.Client
 
 var runInstaller = installer.Run
 
@@ -28,12 +32,14 @@ func installHarvestProvisioner() installer.HarvestProvisioner {
 func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {
 	flags := newFlagSet(
 		"install",
-		"usage: pfm install [--yes] [--vscode] [--skip-harvest] [--config-dir DIR]",
+		"usage: pfm install [--yes] [--vscode] [--skip-harvest] [--skip-engine codex] [--skip-themes] [--config-dir DIR]",
 		stderr,
 	)
 	yes := flags.Bool("yes", false, "apply the installation")
 	vscode := flags.Bool("vscode", false, "make PFM the default VS Code terminal profile")
 	skipHarvest := flags.Bool("skip-harvest", false, "skip harvestpy provisioning")
+	skipEngine := flags.String("skip-engine", "", "skip one optional engine (supported: codex)")
+	skipThemes := flags.Bool("skip-themes", false, "skip source-fetched Claude Code themes")
 	configDir := flags.String("config-dir", "", "target config directory instead of ~/.claude")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
@@ -41,6 +47,15 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	if flags.NArg() != 0 {
 		flags.Usage()
 		return 2
+	}
+	skipCodex := false
+	if value := strings.TrimSpace(*skipEngine); value != "" {
+		id, err := pfmengine.Parse(value)
+		if err != nil || id != pfmengine.Codex {
+			fmt.Fprintf(stderr, "pfm install: --skip-engine supports only codex, got %q\n", value)
+			return 2
+		}
+		skipCodex = true
 	}
 	mode := installer.ModeDryRun
 	if *yes {
@@ -53,10 +68,9 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	}
 	entries := deps.Registry(deps.Options{
 		Home: runtime.Paths.Home, ClaudeBinary: runtime.Config.Claude.Binary, CodexBinary: runtime.Config.Codex.Binary,
-		ClaudeAccounts: len(runtime.Config.Accounts), CodexAccounts: len(runtime.Config.CodexAccounts),
 	})
 	preflight := printDependencyDoctor(context.Background(), stdout, entries, deps.ProbeOptions{
-		SkipHarvest: *skipHarvest, Provisioning: true,
+		SkipHarvest: *skipHarvest, SkipEngines: map[pfmengine.ID]bool{pfmengine.Codex: skipCodex}, Provisioning: true,
 	})
 	if preflight != 0 && mode == installer.ModeApply {
 		fmt.Fprintln(stderr, "pfm install: required dependency preflight failed")
@@ -64,6 +78,13 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	}
 	options := newInstallerOptions(mode, *configDir, *skipHarvest, stdout, runtime)
 	options.VSCode = *vscode
+	options.InstallThemes = !*skipThemes
+	options.ThemeManifestURL = professorThemeManifestURL(version)
+	options.ThemeHTTPClient = installThemeHTTPClientOverride
+	if skipCodex {
+		options.CodexHomes = []string{}
+		options.CodexYolo = map[int]bool{}
+	}
 	code := runInstallerCommand("install", options, stderr)
 	if code == 0 && mode == installer.ModeDryRun {
 		if preflight != 0 {
@@ -77,9 +98,23 @@ func runInstall(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 		if *skipHarvest {
 			confirmation += " --skip-harvest"
 		}
+		if skipCodex {
+			confirmation += " --skip-engine codex"
+		}
+		if *skipThemes {
+			confirmation += " --skip-themes"
+		}
 		fmt.Fprintln(stdout, confirmation)
 	}
 	return code
+}
+
+func professorThemeManifestURL(currentVersion string) string {
+	reference := strings.TrimSpace(currentVersion)
+	if reference == "" || reference == "dev" {
+		reference = "main"
+	}
+	return "https://raw.githubusercontent.com/mreza0100/professor/" + reference + "/blueprint/themes/sources.json"
 }
 
 func newInstallerOptions(
