@@ -37,7 +37,7 @@ func TestResolveClaudeSuccessReturnsBodyAfterFrontmatter(t *testing.T) {
 	mustWrite(t, filepath.Join(repo, ".claude", "agents", "reviewer.md"),
 		"---\nname: reviewer\ndescription: reads diffs\n---\nBody line one.\nBody line two.\n")
 
-	got, err := Resolve(pfmengine.Claude, "reviewer", repo, home)
+	got, _, err := Resolve(pfmengine.Claude, "reviewer", repo, home)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -64,7 +64,7 @@ func TestResolveCodexSuccessReturnsDeveloperInstructions(t *testing.T) {
 			"Body line two.\n"+
 			"\"\"\"\n")
 
-	got, err := Resolve(pfmengine.Codex, "reviewer", repo, home)
+	got, _, err := Resolve(pfmengine.Codex, "reviewer", repo, home)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -133,7 +133,7 @@ func TestUnknownRoleReportsDistinctDirectoryStates(t *testing.T) {
 		home := t.TempDir()
 		pinRepoBoundary(t, repo)
 
-		_, err := Resolve(pfmengine.Claude, "ghost", repo, home)
+		_, _, err := Resolve(pfmengine.Claude, "ghost", repo, home)
 		if err == nil {
 			t.Fatal("Resolve() returned nil error for an unregistered role")
 		}
@@ -157,7 +157,7 @@ func TestUnknownRoleReportsDistinctDirectoryStates(t *testing.T) {
 		pinRepoBoundary(t, repo)
 		mustMkdir(t, filepath.Join(repo, ".claude", "agents"))
 
-		_, err := Resolve(pfmengine.Claude, "ghost", repo, home)
+		_, _, err := Resolve(pfmengine.Claude, "ghost", repo, home)
 		if err == nil {
 			t.Fatal("Resolve() returned nil error for an unregistered role")
 		}
@@ -178,7 +178,7 @@ func TestUnknownRoleReportsDistinctDirectoryStates(t *testing.T) {
 		mustWrite(t, filepath.Join(repo, ".claude", "agents", "alpha.md"), "---\n---\nalpha body\n")
 		mustWrite(t, filepath.Join(repo, ".claude", "agents", "beta.md"), "---\n---\nbeta body\n")
 
-		_, err := Resolve(pfmengine.Claude, "ghost", repo, home)
+		_, _, err := Resolve(pfmengine.Claude, "ghost", repo, home)
 		if err == nil {
 			t.Fatal("Resolve() returned nil error for an unregistered role")
 		}
@@ -208,7 +208,7 @@ func TestLadderDedupeSameDirectoryListedOnce(t *testing.T) {
 	// therefore name the exact same directory without the guard.
 	home := t.TempDir()
 
-	_, err := Resolve(pfmengine.Claude, "ghost", home, home)
+	_, _, err := Resolve(pfmengine.Claude, "ghost", home, home)
 	if err == nil {
 		t.Fatal("Resolve() returned nil error for an unregistered role")
 	}
@@ -242,7 +242,7 @@ func TestUnreadableDirectoryIsAnError(t *testing.T) {
 		_ = os.Chmod(agentsDir, 0o700)
 	})
 
-	got, err := Resolve(pfmengine.Claude, "ghost", repo, home)
+	got, _, err := Resolve(pfmengine.Claude, "ghost", repo, home)
 	if err == nil {
 		t.Fatalf("Resolve() = %q, nil error; want an error naming the unreadable path", got)
 	}
@@ -268,7 +268,7 @@ func TestEmptyConstitutionIsAnError(t *testing.T) {
 		mustWrite(t, filepath.Join(repo, ".claude", "agents", "hollow.md"),
 			"---\nname: hollow\n---\n\n   \n")
 
-		got, err := Resolve(pfmengine.Claude, "hollow", repo, home)
+		got, _, err := Resolve(pfmengine.Claude, "hollow", repo, home)
 		if err == nil {
 			t.Fatalf("Resolve() = %q, nil error; want an error for an empty constitution", got)
 		}
@@ -286,7 +286,7 @@ func TestEmptyConstitutionIsAnError(t *testing.T) {
 		mustWrite(t, filepath.Join(repo, ".codex", "agents", "hollow.toml"),
 			"name = \"hollow\"\ndescription = \"nothing\"\n")
 
-		got, err := Resolve(pfmengine.Codex, "hollow", repo, home)
+		got, _, err := Resolve(pfmengine.Codex, "hollow", repo, home)
 		if err == nil {
 			t.Fatalf("Resolve() = %q, nil error; want an error for a missing key", got)
 		}
@@ -304,7 +304,7 @@ func TestEmptyConstitutionIsAnError(t *testing.T) {
 		mustWrite(t, filepath.Join(repo, ".codex", "agents", "blank.toml"),
 			"name = \"blank\"\ndeveloper_instructions = \"   \"\n")
 
-		got, err := Resolve(pfmengine.Codex, "blank", repo, home)
+		got, _, err := Resolve(pfmengine.Codex, "blank", repo, home)
 		if err == nil {
 			t.Fatalf("Resolve() = %q, nil error; want an error for a blank key", got)
 		}
@@ -326,7 +326,7 @@ func TestNoCrossEngineFallback(t *testing.T) {
 	mustWrite(t, filepath.Join(repo, ".claude", "agents", "reviewer.md"),
 		"---\nname: reviewer\n---\ncc-only constitution body\n")
 
-	got, err := Resolve(pfmengine.Codex, "reviewer", repo, home)
+	got, _, err := Resolve(pfmengine.Codex, "reviewer", repo, home)
 	if err == nil {
 		t.Fatalf("Resolve() = %q, nil error; a cc-only role must not resolve on a cx seat", got)
 	}
@@ -356,7 +356,7 @@ func TestRepoLocalBeatsHostGlobal(t *testing.T) {
 	mustWrite(t, filepath.Join(home, ".claude", "agents", "reviewer.md"),
 		"---\nname: reviewer\n---\nHOST GLOBAL BODY\n")
 
-	got, err := Resolve(pfmengine.Claude, "reviewer", repo, home)
+	got, _, err := Resolve(pfmengine.Claude, "reviewer", repo, home)
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
@@ -367,4 +367,69 @@ func TestRepoLocalBeatsHostGlobal(t *testing.T) {
 	if strings.Contains(got, "HOST GLOBAL BODY") {
 		t.Fatalf("Resolve() = %q, the host-global body leaked in alongside the repo-local one", got)
 	}
+}
+
+// Test 11 — Resolve's Artifact: Path is always ABSOLUTE, and TOMLKey
+// matches the engine that resolved it (cc -> false, the whole .md file; cx
+// -> true, the developer_instructions value inside the .toml). T1 re-arm
+// persists exactly this bit alongside the role name so a later reload or
+// self-compact re-reads the SAME rung birth used.
+func TestResolveArtifactPathIsAbsoluteAndTOMLKeyMatchesEngine(t *testing.T) {
+	t.Run("cc: RELATIVE cwd still resolves an absolute .md path, TOMLKey false", func(t *testing.T) {
+		// t.TempDir() itself already returns an absolute path, which would
+		// make Artifact.Path absolute by inheritance alone and prove
+		// nothing about Resolve's own filepath.Abs step. t.Chdir into the
+		// repo and pass "." as cwd instead, so a relative walk is the only
+		// thing Resolve has to work from — the one shape that actually
+		// exercises the conversion this assertion pins.
+		repo := t.TempDir()
+		home := t.TempDir()
+		mdPath := filepath.Join(repo, ".claude", "agents", "reviewer.md")
+		mustWrite(t, mdPath, "---\nname: reviewer\n---\nbody\n")
+		t.Chdir(repo)
+
+		_, artifact, err := Resolve(pfmengine.Claude, "reviewer", ".", home)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if !filepath.IsAbs(artifact.Path) {
+			t.Fatalf("Artifact.Path = %q, want an absolute path even from a relative cwd", artifact.Path)
+		}
+		wantPath, err := filepath.Abs(mdPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if artifact.Path != wantPath {
+			t.Fatalf("Artifact.Path = %q, want %q", artifact.Path, wantPath)
+		}
+		if artifact.TOMLKey {
+			t.Fatal("Artifact.TOMLKey = true for a cc (.md) seat, want false")
+		}
+	})
+
+	t.Run("cx: RELATIVE cwd still resolves an absolute .toml path, TOMLKey true", func(t *testing.T) {
+		repo := t.TempDir()
+		home := t.TempDir()
+		tomlPath := filepath.Join(repo, ".codex", "agents", "reviewer.toml")
+		mustWrite(t, tomlPath, "name = \"reviewer\"\ndeveloper_instructions = \"body\"\n")
+		t.Chdir(repo)
+
+		_, artifact, err := Resolve(pfmengine.Codex, "reviewer", ".", home)
+		if err != nil {
+			t.Fatalf("Resolve() error = %v", err)
+		}
+		if !filepath.IsAbs(artifact.Path) {
+			t.Fatalf("Artifact.Path = %q, want an absolute path even from a relative cwd", artifact.Path)
+		}
+		wantPath, err := filepath.Abs(tomlPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if artifact.Path != wantPath {
+			t.Fatalf("Artifact.Path = %q, want %q", artifact.Path, wantPath)
+		}
+		if !artifact.TOMLKey {
+			t.Fatal("Artifact.TOMLKey = false for a cx (.toml) seat, want true")
+		}
+	})
 }

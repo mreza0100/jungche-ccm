@@ -17,6 +17,7 @@ import (
 	"hostops/pfm/internal/headless"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/naming"
+	"hostops/pfm/internal/rearm"
 	"hostops/pfm/internal/shared"
 	"hostops/pfm/internal/spawn"
 )
@@ -88,12 +89,17 @@ func runRun(
 		fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 		return 2
 	}
+	// roleArtifact stays the zero value when --role was not given; the crumb
+	// write below is itself gated on *role != "", so a zero Artifact there
+	// is never reached.
+	var roleArtifact agentrole.Artifact
 	if *role != "" {
-		constitution, err := agentrole.Resolve(engineName, *role, directory, resolved.Home)
+		constitution, artifact, err := agentrole.Resolve(engineName, *role, directory, resolved.Home)
 		if err != nil {
 			fmt.Fprintf(stderr, "pfm chat new: %v\n", err)
 			return 2
 		}
+		roleArtifact = artifact
 		prompt = composeRolePrompt(constitution, prompt)
 	}
 	plan, err := action.HeadlessRun(action.HeadlessRequest{
@@ -158,6 +164,23 @@ func runRun(
 	if parent != "" {
 		if err := registerDetachedChild(state, parent, result.Socket, spawnedAt.Unix()); err != nil {
 			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for parent-close cleanup: %v\n", err)
+		}
+	}
+	// T1 re-arm: remember this seat's role, and the exact artifact birth
+	// read it from, so `pfm chat reload` and chat_self_compact can re-arm it
+	// after a reset. Keyed the bare-socket way (see internal/rearm) — a
+	// crumb write failure never fails the launch itself, since the seat is
+	// already live and born with its constitution either way; it only means
+	// this one seat cannot re-arm later.
+	if *role != "" {
+		if err := os.MkdirAll(resolved.SIDDir, 0o700); err != nil {
+			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not remember its role %q for re-arm: %v\n", *role, err)
+		} else if err := rearm.WriteCrumb(resolved.SIDDir, result.Socket, rearm.Crumb{
+			Role:         *role,
+			ArtifactPath: roleArtifact.Path,
+			TOMLKey:      roleArtifact.TOMLKey,
+		}); err != nil {
+			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not remember its role %q for re-arm: %v\n", *role, err)
 		}
 	}
 	// result.Socket is the bare session name spawn.Run was asked to create
