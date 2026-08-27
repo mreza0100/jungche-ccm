@@ -28,6 +28,10 @@ func TestCommsRoundTripIsNewestFirstAndBounded(t *testing.T) {
 			AtNS: 30, Kind: KindSpawn, SenderSession: "parent", Target: "child",
 			ReceiverSocket: "cx-child", Message: "initial prompt",
 		},
+		{
+			AtNS: 30, Kind: KindInject, SenderLabel: "newest tie", Target: "child",
+			Message: "newest row at the same timestamp",
+		},
 	}
 	for _, event := range events {
 		if err := state.RecordComms(ctx, event); err != nil {
@@ -35,11 +39,11 @@ func TestCommsRoundTripIsNewestFirstAndBounded(t *testing.T) {
 		}
 	}
 
-	got, err := state.CommsSince(ctx, 20, 2)
+	got, err := state.CommsSince(ctx, 20, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []CommsEvent{events[2], events[1]}
+	want := []CommsEvent{events[3], events[2], events[1]}
 	for index := range want {
 		want[index].ID = got[index].ID
 	}

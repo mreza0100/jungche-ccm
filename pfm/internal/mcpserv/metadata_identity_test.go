@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
+	"hostops/pfm/internal/shared"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -115,12 +117,19 @@ func metadataIdentityService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	testInjector, err := inject.New(inject.Dependencies{
-		Resolver:       &service.backend.resolver,
+		Resolver: metadataNamedResolver{
+			fallback: &service.backend.resolver,
+			name:     "Codex B",
+			socket:   filepath.Join(jail.tmuxDir, jail.busySocket),
+			pane:     "%0",
+		},
 		Tmux:           inject.CommandTmux{},
 		Spawner:        metadataThenSpawner{},
 		ClaudeBinary:   "claude",
 		CodexBinary:    "codex",
 		OpencodeBinary: "opencode",
+		Recorder:       service.backend.sharedState.RecordComms,
+		WarningWriter:  service.backend.warnings,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -221,10 +230,18 @@ func TestWorkflowToolsUseRequestIdentityAndPreserveCompleteData(t *testing.T) {
 	}
 	sent := callToolWithMeta[GroupSendOutput](
 		t, protocol.clientSession, "chat_group_send", alpha,
-		GroupSendInput{Group: "stress", Message: "one complete ledger record", To: "Nobody"},
+		GroupSendInput{Group: "stress", Message: "one complete ledger record", To: "Codex B"},
 	)
-	if sent.Status != "ok" || sent.Number != 1 || sent.TargetMatches != 0 || len(sent.Nudges) != 0 {
+	if sent.Status != "ok" || sent.Number != 1 || sent.TargetMatches != 1 || len(sent.Nudges) != 1 || sent.Nudges[0].Status != "nudged" {
 		t.Fatalf("group send = %+v", sent)
+	}
+	ledger, err := service.backend.sharedState.CommsSince(context.Background(), 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ledger) != 1 || ledger[0].Kind != shared.KindGroup || ledger[0].GroupName != "stress" ||
+		ledger[0].Members != `["Codex B"]` || ledger[0].Target != "Codex B" {
+		t.Fatalf("group+nudge comms ledger = %#v, want one group row and zero inject rows", ledger)
 	}
 	read := callToolWithMeta[GroupReadOutput](
 		t, protocol.clientSession, "chat_group_read", beta, GroupReadInput{Group: "stress"},
@@ -274,6 +291,24 @@ func TestWorkflowToolsUseRequestIdentityAndPreserveCompleteData(t *testing.T) {
 type metadataThenSpawner struct{}
 
 func (metadataThenSpawner) Spawn(context.Context, inject.SteerSpawn) error { return nil }
+
+type metadataNamedResolver struct {
+	fallback inject.Resolver
+	name     string
+	socket   string
+	pane     string
+}
+
+func (resolver metadataNamedResolver) Resolve(
+	ctx context.Context,
+	kind resolve.Kind,
+	query string,
+) (resolve.Outcome, error) {
+	if query == resolver.name {
+		return resolve.Outcome{Stdout: resolver.socket + "\t" + resolver.pane + "\n"}, nil
+	}
+	return resolver.fallback.Resolve(ctx, kind, query)
+}
 
 type recordingCompactInjector struct {
 	scheduled inject.Request

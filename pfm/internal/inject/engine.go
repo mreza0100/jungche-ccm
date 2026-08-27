@@ -462,7 +462,7 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 // making the recipient pay for a ledger failure.
 func (engine *Engine) Inject(ctx context.Context, request Request) (Result, error) {
 	result, err := engine.inject(ctx, request)
-	if err != nil || !result.Typed || request.Origin != "" || engine.recorder == nil {
+	if err != nil || result.Code != 0 || !result.Typed || request.Origin != "" || engine.recorder == nil {
 		return result, err
 	}
 	sender := engine.sender(ctx)

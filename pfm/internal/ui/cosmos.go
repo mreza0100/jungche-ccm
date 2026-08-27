@@ -30,7 +30,10 @@ type cosmosSampleMsg struct {
 }
 
 type cosmosSampleTickMsg struct{ generation uint64 }
-type cosmosTickMsg struct{ nowNS int64 }
+type cosmosTickMsg struct {
+	generation uint64
+	nowNS      int64
+}
 
 func (model *Model) startCosmosSample() tea.Cmd {
 	if model.cosmosSampler == nil || model.cosmosLoading {
@@ -40,7 +43,7 @@ func (model *Model) startCosmosSample() tea.Cmd {
 	generation := model.statsGeneration
 	model.cosmosLoading = true
 	sampler := model.cosmosSampler
-	sinceNS := model.nowNS - int64(cosmosWindow)
+	sinceNS := model.nowNS - int64(compose.CosmosWindow)
 	return func() tea.Msg {
 		events, err := sampler.Sample(context.Background(), sinceNS)
 		return cosmosSampleMsg{generation: generation, events: events, err: err}
@@ -53,9 +56,9 @@ func cosmosWaitCmd(generation uint64) tea.Cmd {
 	})
 }
 
-func cosmosTickCmd() tea.Cmd {
+func cosmosTickCmd(generation uint64) tea.Cmd {
 	return tea.Tick(125*time.Millisecond, func(now time.Time) tea.Msg {
-		return cosmosTickMsg{nowNS: now.UnixNano()}
+		return cosmosTickMsg{generation: generation, nowNS: now.UnixNano()}
 	})
 }
 
@@ -199,7 +202,7 @@ func (model Model) renderCompactCosmos(width, innerWidth, innerHeight int) strin
 		lines = append(lines, warnStyle.Render(fillLine(
 			ansiTruncateRunes("⚠ comms ledger unreachable: "+model.cosmos.Err, innerWidth), innerWidth,
 		)))
-	} else if len(model.cosmos.Edges) == 0 {
+	} else if len(model.cosmos.Nodes) == 0 {
 		lines = append(lines, dimStyle.Render(fillLine(
 			ansiTruncateRunes("no chat traffic recorded yet — the ledger fills as chats talk", innerWidth), innerWidth,
 		)))

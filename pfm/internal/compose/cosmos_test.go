@@ -85,3 +85,26 @@ func TestBuildCosmosParentlessSpawnCreatesOnlyTheChildNode(t *testing.T) {
 		t.Fatalf("parentless nodes = %#v, want %#v", graph.Nodes, want)
 	}
 }
+
+func TestBuildCosmosTimestampTieKeepsNewestFirstMessage(t *testing.T) {
+	graph := BuildCosmos(nil, []shared.CommsEvent{
+		{ID: 2, AtNS: 70, Kind: shared.KindInject, SenderLabel: "Alpha", Target: "Beta", Message: "newest id"},
+		{ID: 1, AtNS: 70, Kind: shared.KindInject, SenderLabel: "Alpha", Target: "Beta", Message: "older id"},
+	}, 100)
+	want := []CosmosEdge{{
+		From: "chat:name:Alpha", To: "chat:name:Beta", Kind: shared.KindInject,
+		Count: 2, LastNS: 70, LastMessage: "newest id",
+	}}
+	if !reflect.DeepEqual(graph.Edges, want) {
+		t.Fatalf("tie edges = %#v, want %#v", graph.Edges, want)
+	}
+}
+
+func TestBuildCosmosUnknownKindWarnsInsteadOfVanishingSilently(t *testing.T) {
+	graph := BuildCosmos(nil, []shared.CommsEvent{{ID: 9, AtNS: 80, Kind: "reload"}}, 100)
+	if len(graph.Nodes) != 0 || len(graph.Edges) != 0 || len(graph.Warnings) != 1 ||
+		!strings.Contains(graph.Warnings[0], `event 9`) ||
+		!strings.Contains(graph.Warnings[0], `unknown kind "reload"`) {
+		t.Fatalf("unknown-kind graph = %#v", graph)
+	}
+}

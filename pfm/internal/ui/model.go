@@ -26,8 +26,6 @@ const (
 	defaultHeight         = 28
 	statsRefreshInterval  = 2 * time.Second
 	cosmosRefreshInterval = 2 * time.Second
-	cosmosWindow          = 24 * time.Hour
-	cosmosEventCap        = 5000
 )
 
 type projectGroup struct {
@@ -64,52 +62,53 @@ func (source orderedSearch) Len() int {
 // Its commands only request Bubble Tea termination; all fleet I/O belongs to
 // the Picker caller.
 type Model struct {
-	rows                []compose.Row
-	search              []string
-	groups              []projectGroup
-	nameGroups          map[int]nameGroup
-	order               []int
-	filtered            []int
-	cursor              int
-	width               int
-	height              int
-	nowNS               int64
-	view                compose.View
-	killedCount         int
-	suppressedCount     int
-	refreshing          bool
-	primary             int
-	initialPrimary      int
-	accountIDs          []int
-	codexPrimary        int
-	initialCodexPrimary int
-	codexAccountIDs     []int
-	opencodePrimary     int
-	opencodeAccountIDs  []int
-	cache1H             bool
-	tab                 Tab
-	statsSubtab         StatsSubtab
-	statsFocus          StatsFocus
-	statsSort           StatsSort
-	statsCursor         int
-	statsDockerCursor   int
-	limitsOffset        int
-	stats               pfmstats.Snapshot
-	statsSampler        StatsSampler
-	statsGeneration     uint64
-	statsLoading        bool
-	statsError          string
-	cosmos              compose.CosmosGraph
-	cosmosSampler       CosmosSampler
-	cosmosEvents        []shared.CommsEvent
-	cosmosSeats         map[string]*cosmosSeat
-	cosmosNowNS         int64
-	cosmosLoading       bool
-	skyEnabled          bool
-	skyEvents           []sky.Event
-	mergeNewChat        bool
-	actionIndex         int
-	newChatEngine       pfmengine.ID
+	rows                 []compose.Row
+	search               []string
+	groups               []projectGroup
+	nameGroups           map[int]nameGroup
+	order                []int
+	filtered             []int
+	cursor               int
+	width                int
+	height               int
+	nowNS                int64
+	view                 compose.View
+	killedCount          int
+	suppressedCount      int
+	refreshing           bool
+	primary              int
+	initialPrimary       int
+	accountIDs           []int
+	codexPrimary         int
+	initialCodexPrimary  int
+	codexAccountIDs      []int
+	opencodePrimary      int
+	opencodeAccountIDs   []int
+	cache1H              bool
+	tab                  Tab
+	statsSubtab          StatsSubtab
+	statsFocus           StatsFocus
+	statsSort            StatsSort
+	statsCursor          int
+	statsDockerCursor    int
+	limitsOffset         int
+	stats                pfmstats.Snapshot
+	statsSampler         StatsSampler
+	statsGeneration      uint64
+	statsLoading         bool
+	statsError           string
+	cosmos               compose.CosmosGraph
+	cosmosSampler        CosmosSampler
+	cosmosEvents         []shared.CommsEvent
+	cosmosSeats          map[string]*cosmosSeat
+	cosmosNowNS          int64
+	cosmosLoading        bool
+	cosmosTickGeneration uint64
+	skyEnabled           bool
+	skyEvents            []sky.Event
+	mergeNewChat         bool
+	actionIndex          int
+	newChatEngine        pfmengine.ID
 	// activity is stamped on every real keystroke. The background refresh
 	// stream reads it to decide whether anyone is still watching.
 	activity      *ActivityClock
@@ -293,8 +292,8 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			model.cosmosEvents = append(model.cosmosEvents[:0], message.events...)
 			model.cosmos = compose.BuildCosmos(model.rows, model.cosmosEvents, model.cosmosNowNS)
-			if len(message.events) >= cosmosEventCap {
-				model.cosmos.Warnings = append(model.cosmos.Warnings, "showing newest 5000 events of the window")
+			if len(message.events) >= compose.CosmosEventCap {
+				model.cosmos.Warnings = append(model.cosmos.Warnings, compose.CosmosTruncationWarning)
 			}
 			model.mergeCosmosSeats()
 		}
@@ -305,11 +304,11 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return model, model.startCosmosSample()
 	case cosmosTickMsg:
-		if model.tab != TabCosmos || !model.skyEnabled {
+		if model.tab != TabCosmos || !model.skyEnabled || message.generation != model.cosmosTickGeneration {
 			return model, nil
 		}
 		model.advanceCosmos(message.nowNS)
-		return model, cosmosTickCmd()
+		return model, cosmosTickCmd(message.generation)
 	case skyTickMsg:
 		if !model.skyEnabled {
 			return model, nil
@@ -529,6 +528,9 @@ func (model Model) switchTab(direction int) (tea.Model, tea.Cmd) {
 // ignored. Leaving both tabs also clears the in-flight latch so a quick return
 // can start fresh instead of waiting for an obsolete command to finish.
 func (model *Model) samplingTabTransition(previous Tab) tea.Cmd {
+	if previous != model.tab && (previous == TabCosmos || model.tab == TabCosmos) {
+		model.cosmosTickGeneration++
+	}
 	wasSampling := isSamplingTab(previous)
 	isSampling := isSamplingTab(model.tab)
 	switch {
@@ -558,7 +560,7 @@ func (model *Model) startFocusedSample() tea.Cmd {
 	if model.tab == TabCosmos {
 		commands := []tea.Cmd{model.startCosmosSample()}
 		if model.skyEnabled {
-			commands = append(commands, cosmosTickCmd())
+			commands = append(commands, cosmosTickCmd(model.cosmosTickGeneration))
 		}
 		return batchCommands(commands...)
 	}

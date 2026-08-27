@@ -63,11 +63,11 @@ func TestCosmosBrokenStatesRemainDistinct(t *testing.T) {
 	}
 
 	snapshot.Cosmos.Err = ""
-	snapshot.Cosmos.Warnings = []string{"showing newest 5000 events of the window"}
+	snapshot.Cosmos.Warnings = []string{compose.CosmosTruncationWarning}
 	warned := NewModel(snapshot)
 	warned.tab = TabCosmos
 	warnedText := ansi.Strip(warned.renderCosmosPanel(80, 9))
-	if !strings.Contains(warnedText, "showing newest 5000 events of the window") || strings.Contains(warnedText, "unreachable") {
+	if !strings.Contains(warnedText, compose.CosmosTruncationWarning) || strings.Contains(warnedText, "unreachable") {
 		t.Fatalf("truncated cosmos was not distinct:\n%s", warnedText)
 	}
 }
@@ -77,6 +77,36 @@ func TestCosmosTinyPaneFallsBackToNewestEdges(t *testing.T) {
 	plain := ansi.Strip(model.renderCosmosPanel(19, 7))
 	if !strings.Contains(plain, "RR") || !strings.Contains(plain, "hello cosmos") {
 		t.Fatalf("tiny pane dropped truthful edge detail:\n%s", plain)
+	}
+}
+
+func TestCosmosParentlessSpawnIsNotEmptyInEitherLayout(t *testing.T) {
+	snapshot := fixtureSnapshot(80)
+	snapshot.NoSky = true
+	snapshot.Cosmos = compose.BuildCosmos(snapshot.Rows, []shared.CommsEvent{{
+		AtNS: fixtureNowNS, Kind: shared.KindSpawn, Target: "orphan",
+		ReceiverSocket: "cx-orphan",
+	}}, fixtureNowNS)
+	if len(snapshot.Cosmos.Nodes) != 1 || len(snapshot.Cosmos.Edges) != 0 {
+		t.Fatalf("parentless spawn fixture = %#v, want one node and zero edges", snapshot.Cosmos)
+	}
+	model := NewModel(snapshot)
+	model.tab = TabCosmos
+
+	tests := []struct {
+		name          string
+		width, height int
+	}{
+		{name: "full", width: 80, height: 9},
+		{name: "compact", width: 19, height: 7},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plain := ansi.Strip(model.renderCosmosPanel(test.width, test.height))
+			if strings.Contains(plain, "no chat traffic") {
+				t.Fatalf("parentless spawn rendered as empty universe:\n%s", plain)
+			}
+		})
 	}
 }
 
@@ -109,7 +139,7 @@ func TestCosmosSamplerIsLazyAndRetainsGraphOnFailure(t *testing.T) {
 			model = updated.(Model)
 		}
 	}
-	if sampler.calls != 1 || sampler.since != fixtureNowNS-int64(24*time.Hour) || len(model.cosmos.Edges) != 1 {
+	if sampler.calls != 1 || sampler.since != fixtureNowNS-int64(compose.CosmosWindow) || len(model.cosmos.Edges) != 1 {
 		t.Fatalf("cosmos sample calls=%d since=%d graph=%#v", sampler.calls, sampler.since, model.cosmos)
 	}
 
@@ -128,14 +158,20 @@ func TestCosmosSamplerIsLazyAndRetainsGraphOnFailure(t *testing.T) {
 func TestCosmosTickOnlyRunsWhileFocusedAndSkyEnabled(t *testing.T) {
 	model := cosmosTestModel(120, false)
 	before := model.cosmosNowNS
-	updated, command := model.Update(cosmosTickMsg{nowNS: before + int64(125*time.Millisecond)})
+	updated, command := model.Update(cosmosTickMsg{
+		generation: model.cosmosTickGeneration,
+		nowNS:      before + int64(125*time.Millisecond),
+	})
 	model = updated.(Model)
 	if model.cosmosNowNS != before || command != nil {
 		t.Fatalf("off-tab cosmos tick advanced clock: now=%d command=%v", model.cosmosNowNS, command)
 	}
 
 	model.tab = TabCosmos
-	updated, command = model.Update(cosmosTickMsg{nowNS: before + int64(125*time.Millisecond)})
+	updated, command = model.Update(cosmosTickMsg{
+		generation: model.cosmosTickGeneration,
+		nowNS:      before + int64(125*time.Millisecond),
+	})
 	model = updated.(Model)
 	if model.cosmosNowNS == before || command == nil {
 		t.Fatalf("focused cosmos tick now=%d command=%v", model.cosmosNowNS, command)
@@ -143,10 +179,38 @@ func TestCosmosTickOnlyRunsWhileFocusedAndSkyEnabled(t *testing.T) {
 
 	disabled := cosmosTestModel(120, true)
 	disabled.tab = TabCosmos
-	updated, command = disabled.Update(cosmosTickMsg{nowNS: disabled.cosmosNowNS + int64(125*time.Millisecond)})
+	updated, command = disabled.Update(cosmosTickMsg{
+		generation: disabled.cosmosTickGeneration,
+		nowNS:      disabled.cosmosNowNS + int64(125*time.Millisecond),
+	})
 	disabled = updated.(Model)
 	if command != nil || disabled.cosmosNowNS != fixtureNowNS {
 		t.Fatalf("NoSky cosmos tick advanced: now=%d command=%v", disabled.cosmosNowNS, command)
+	}
+}
+
+func TestCosmosRapidAwayAndBackDropsTheOldAnimationChain(t *testing.T) {
+	model := cosmosTestModel(120, false)
+	model.tab = TabCosmos
+	model.cosmosTickGeneration = 4
+	staleGeneration := model.cosmosTickGeneration
+
+	left, _ := model.switchTab(1)
+	model = left.(Model)
+	returned, command := model.switchTab(-1)
+	model = returned.(Model)
+	if model.tab != TabCosmos || command == nil || model.cosmosTickGeneration == staleGeneration {
+		t.Fatalf("rapid return did not start a fresh cosmos chain: tab=%d generation=%d command=%v", model.tab, model.cosmosTickGeneration, command)
+	}
+
+	before := model.cosmosNowNS
+	updated, staleCommand := model.Update(cosmosTickMsg{
+		generation: staleGeneration,
+		nowNS:      before + int64(125*time.Millisecond),
+	})
+	model = updated.(Model)
+	if model.cosmosNowNS != before || staleCommand != nil {
+		t.Fatalf("stale cosmos chain survived rapid return: now=%d command=%v", model.cosmosNowNS, staleCommand)
 	}
 }
 

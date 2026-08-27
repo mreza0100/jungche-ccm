@@ -5,8 +5,15 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"hostops/pfm/internal/shared"
+)
+
+const (
+	CosmosWindow            = 24 * time.Hour
+	CosmosEventCap          = 5000
+	CosmosTruncationWarning = "showing newest 5000 events of the window"
 )
 
 type CosmosNode struct {
@@ -110,6 +117,10 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			parent := builder.senderNode(event)
 			builder.touch(parent, event.AtNS)
 			builder.addEdge(parent.Key, child.Key, event)
+		default:
+			builder.warnings = append(builder.warnings, fmt.Sprintf(
+				"comms event %d has unknown kind %q", event.ID, event.Kind,
+			))
 		}
 	}
 
@@ -222,13 +233,15 @@ func (builder *cosmosBuilder) addEdge(from, to string, event shared.CommsEvent) 
 	key := from + "\x00" + to + "\x00" + event.Kind
 	edge := builder.edges[key]
 	if edge.Count == 0 {
-		edge = CosmosEdge{From: from, To: to, Kind: event.Kind}
-	}
-	edge.Count++
-	if event.AtNS >= edge.LastNS {
+		edge = CosmosEdge{
+			From: from, To: to, Kind: event.Kind,
+			LastNS: event.AtNS, LastMessage: event.Message,
+		}
+	} else if event.AtNS > edge.LastNS {
 		edge.LastNS = event.AtNS
 		edge.LastMessage = event.Message
 	}
+	edge.Count++
 	builder.edges[key] = edge
 }
 

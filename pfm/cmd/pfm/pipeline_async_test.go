@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/compose"
 	"hostops/pfm/internal/config"
 	"hostops/pfm/internal/gather"
 	fleetindex "hostops/pfm/internal/index"
@@ -49,7 +50,7 @@ func TestComposeFleetPacksCosmosLedgerState(t *testing.T) {
 			fleetData{},
 			gather.Snapshot{},
 		)
-		if reader.sinceNS != nowNS-cosmosWindowNS || reader.limit != cosmosEventCap {
+		if reader.sinceNS != nowNS-int64(compose.CosmosWindow) || reader.limit != compose.CosmosEventCap {
 			t.Fatalf("CommsSince() args = %d, %d", reader.sinceNS, reader.limit)
 		}
 		if result.Snapshot.Cosmos.Err != "" || len(result.Snapshot.Cosmos.Edges) != 1 {
@@ -73,7 +74,7 @@ func TestComposeFleetPacksCosmosLedgerState(t *testing.T) {
 	})
 
 	t.Run("cap warning", func(t *testing.T) {
-		events := make([]shared.CommsEvent, cosmosEventCap)
+		events := make([]shared.CommsEvent, compose.CosmosEventCap)
 		for index := range events {
 			events[index] = shared.CommsEvent{
 				AtNS: int64(index + 1), Kind: shared.KindInject,
@@ -88,7 +89,7 @@ func TestComposeFleetPacksCosmosLedgerState(t *testing.T) {
 			gather.Snapshot{},
 		)
 		warnings := result.Snapshot.Cosmos.Warnings
-		if len(warnings) != 1 || warnings[0] != "showing newest 5000 events of the window" {
+		if len(warnings) != 1 || warnings[0] != compose.CosmosTruncationWarning {
 			t.Fatalf("cap warnings = %v", warnings)
 		}
 	})

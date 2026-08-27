@@ -577,6 +577,26 @@ func TestInjectRecordsOnlyDeliveredDirectMessages(t *testing.T) {
 	})
 }
 
+func TestInjectDoesNotRecordTypedButUndeliveredMessage(t *testing.T) {
+	fake := &fakeTmux{capture: "› "}
+	engine := newTestEngine(t, "cx-undelivered-ledger", fake)
+	recorded := 0
+	engine.recorder = func(context.Context, shared.CommsEvent) error {
+		recorded++
+		return nil
+	}
+
+	result, err := engine.Inject(context.Background(), Request{
+		Target: "chat", Message: "typed but never submitted",
+	})
+	if err != nil || result.Code != CodeUndelivered || !result.Typed {
+		t.Fatalf("Inject() = %+v, %v; want typed undelivered result", result, err)
+	}
+	if recorded != 0 {
+		t.Fatalf("recorder calls = %d, want 0 for typed undelivered message", recorded)
+	}
+}
+
 func TestInjectBodyAboveFormerAbsoluteCapUsesAutoFile(t *testing.T) {
 	fake := &fakeTmux{capture: "› ", submitOnEnter: true}
 	engine := newTestEngine(t, "cx-former-absolute-cap", fake)

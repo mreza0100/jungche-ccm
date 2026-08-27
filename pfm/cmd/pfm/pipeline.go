@@ -47,8 +47,6 @@ const (
 	// abandoned picker under 1% of a core while still bounding how stale the
 	// frame in front of you can be.
 	fleetRefreshMaxInterval = 5 * time.Minute
-	cosmosWindowNS          = int64(24 * time.Hour)
-	cosmosEventCap          = 5000
 )
 
 // refreshCadence is one refresh stream's backoff state. It starts at
@@ -158,7 +156,7 @@ type commsReader interface {
 type cosmosSampler struct{ reader commsReader }
 
 func (sampler cosmosSampler) Sample(ctx context.Context, sinceNS int64) ([]shared.CommsEvent, error) {
-	return sampler.reader.CommsSince(ctx, sinceNS, cosmosEventCap)
+	return sampler.reader.CommsSince(ctx, sinceNS, compose.CosmosEventCap)
 }
 
 type scanResult struct {
@@ -546,15 +544,15 @@ func composeFleet(
 	if request.Comms != nil {
 		events, err := request.Comms.CommsSince(
 			ctx,
-			environment.nowNS-cosmosWindowNS,
-			cosmosEventCap,
+			environment.nowNS-int64(compose.CosmosWindow),
+			compose.CosmosEventCap,
 		)
 		if err != nil {
 			cosmos.Err = fmt.Errorf("read comms ledger: %w", err).Error()
 		} else {
 			cosmos = compose.BuildCosmos(output.Rows, events, environment.nowNS)
-			if len(events) == cosmosEventCap {
-				cosmos.Warnings = append(cosmos.Warnings, "showing newest 5000 events of the window")
+			if len(events) == compose.CosmosEventCap {
+				cosmos.Warnings = append(cosmos.Warnings, compose.CosmosTruncationWarning)
 			}
 		}
 	}

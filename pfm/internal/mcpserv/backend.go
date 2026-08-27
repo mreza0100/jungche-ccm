@@ -66,6 +66,7 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 	})
 	if err != nil {
 		_ = database.Close()
+		_ = sharedState.Close()
 		return nil, err
 	}
 	injector, err := inject.New(inject.Dependencies{
