@@ -53,14 +53,19 @@ type cell struct {
 // labels remain readable on top of line art.
 type Canvas struct {
 	Cols, Rows int
-	cells      []cell
-	dots       []uint8
-	dotColor   []RGB
-	dotLuma    []float64
+	// Quant is the colour quantisation step applied at the render boundary —
+	// 8 by default; vscode-safe mode widens it to 16 to cut the distinct
+	// (glyph, colour) pairs feeding VS Code's shared WebGL glyph atlas
+	// (microsoft/vscode#332859).
+	Quant    uint16
+	cells    []cell
+	dots     []uint8
+	dotColor []RGB
+	dotLuma  []float64
 }
 
 func NewCanvas(cols, rows int) *Canvas {
-	c := &Canvas{Cols: cols, Rows: rows}
+	c := &Canvas{Cols: cols, Rows: rows, Quant: 8}
 	n := cols * rows
 	c.cells = make([]cell, n)
 	c.dots = make([]uint8, n)
@@ -131,8 +136,10 @@ func BezierPoint(x0, y0, cx, cy, x1, y1, t float64) (float64, float64) {
 	return mt*mt*x0 + 2*mt*t*cx + t*t*x1, mt*mt*y0 + 2*mt*t*cy + t*t*y1
 }
 
-func quantRGB(c RGB) RGB {
-	const step uint16 = 8
+func quantRGB(c RGB, step uint16) RGB {
+	if step == 0 {
+		step = 8
+	}
 	q := func(v uint8) uint8 {
 		r := (uint16(v) + step/2) / step * step
 		if r > 255 {
@@ -158,9 +165,9 @@ func (c *Canvas) render() string {
 			bold := false
 			switch {
 			case c.cells[idx].used:
-				ch, fg, bold = c.cells[idx].ch, quantRGB(c.cells[idx].fg), c.cells[idx].bold
+				ch, fg, bold = c.cells[idx].ch, quantRGB(c.cells[idx].fg, c.Quant), c.cells[idx].bold
 			case c.dots[idx] != 0:
-				ch, fg = rune(0x2800+int(c.dots[idx])), quantRGB(c.dotColor[idx])
+				ch, fg = rune(0x2800+int(c.dots[idx])), quantRGB(c.dotColor[idx], c.Quant)
 			}
 			if ch != ' ' && (!styleValid || fg != last || bold != lastBold) {
 				if bold {

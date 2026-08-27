@@ -46,12 +46,17 @@ func runLS(
 	plain := flags.Bool("plain", false, "render a noninteractive list")
 	tsv := flags.Bool("tsv", false, "render stable tab-separated rows")
 	noSky := flags.Bool("no-sky", false, "disable the interactive sky widget")
+	safe := flags.String("safe", "auto", "vscode-safe cosmos rendering: auto|on|off (auto arms when TERM_PROGRAM=vscode)")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
 	if flags.NArg() > 1 ||
 		boolCount(*plain, *tsv) > 1 {
 		flags.Usage()
+		return 2
+	}
+	if *safe != "auto" && *safe != "on" && *safe != "off" {
+		fmt.Fprintf(stderr, "pfm ls: --safe must be auto, on, or off (got %q)\n", *safe)
 		return 2
 	}
 	// Read first, then arm the detached lookup: a network result from THIS
@@ -99,6 +104,7 @@ func runLS(
 		// Fleet-wide picker: no chat chosen yet, so no per-account override applies.
 		Cache1H: initialCache1H(runtime.Config, 0),
 		NoSky:   *noSky,
+		Safe:    *safe,
 		Runtime: &runtime,
 		Comms:   sharedState,
 	}

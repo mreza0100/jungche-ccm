@@ -111,6 +111,7 @@ type Model struct {
 	cosmosLoading        bool
 	cosmosTickGeneration uint64
 	skyEnabled           bool
+	cosmosSafe           bool
 	skyEvents            []sky.Event
 	mergeNewChat         bool
 	actionIndex          int
@@ -177,6 +178,7 @@ func NewModel(snapshot Snapshot) Model {
 		cosmosDiedAtNS:      make(map[string]int64),
 		cosmosNowNS:         snapshot.NowNS,
 		skyEnabled:          !snapshot.NoSky,
+		cosmosSafe:          snapshot.CosmosSafe,
 		activity:            snapshot.Activity,
 		mergeNewChat:        snapshot.MergeNewChat,
 		newChatEngine:       defaultNewChatEngine(snapshot.AccountIDs, snapshot.CodexAccountIDs, snapshot.OpencodeAccountIDs),
@@ -315,7 +317,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, nil
 		}
 		model.advanceCosmos(message.nowNS)
-		return model, cosmosTickCmd(message.generation)
+		return model, cosmosTickCmd(message.generation, model.cosmosTickInterval())
 	case skyTickMsg:
 		if !model.skyEnabled {
 			return model, nil
@@ -567,7 +569,7 @@ func (model *Model) startFocusedSample() tea.Cmd {
 	if model.tab == TabCosmos {
 		commands := []tea.Cmd{model.startCosmosSample()}
 		if model.skyEnabled {
-			commands = append(commands, cosmosTickCmd(model.cosmosTickGeneration))
+			commands = append(commands, cosmosTickCmd(model.cosmosTickGeneration, model.cosmosTickInterval()))
 		}
 		return batchCommands(commands...)
 	}

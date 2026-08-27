@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"math"
 	bits2 "math/bits"
 	"strings"
 	"testing"
@@ -232,6 +233,63 @@ func TestCosmosSeatSurvivesGraphRefreshAndSpawnStartsAtParent(t *testing.T) {
 	}
 	if model.cosmosSeats[child.Key].Angle != 0.42 {
 		t.Fatalf("spawn child was not born at parent angle: %#v", model.cosmosSeats[child.Key])
+	}
+}
+
+// The planetary law: every moon of one parent shares ONE orbit — the same
+// aspect-corrected distance from the parent, evenly spaced from its siblings,
+// the ring widening with the brood. --no-sky holds the system perfectly
+// still; the sky rotates it slowly around the parent.
+func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
+	model := cosmosTestModel(120, true)
+	parent := "chat:id:11111111-1111-4111-8111-111111111111"
+	moonA := compose.CosmosNode{Key: "chat:name:moon-a", Label: resolve.Named("moon-a")}
+	moonB := compose.CosmosNode{Key: "chat:name:moon-b", Label: resolve.Named("moon-b")}
+	model.cosmos.Nodes = append(model.cosmos.Nodes, moonA, moonB)
+	model.cosmos.Edges = append(model.cosmos.Edges,
+		compose.CosmosEdge{From: parent, To: moonA.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS},
+		compose.CosmosEdge{From: parent, To: moonB.Key, Kind: shared.KindSpawn, LastNS: fixtureNowNS},
+	)
+	model.mergeCosmosSeats()
+	canvas := NewCanvas(118, 24)
+	nodes := cosmosNodeMap(model.cosmos.Nodes)
+	now := time.Unix(0, fixtureNowNS)
+	points, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, false)
+
+	anchor := points[parent]
+	orbitOf := func(p cosmosPoint) float64 {
+		return math.Hypot(p.x-anchor.x, p.y-anchor.y)
+	}
+	wantOrbit := 5 + 2.5*2
+	if got := orbitOf(points[moonA.Key]); math.Abs(got-wantOrbit) > 0.001 {
+		t.Fatalf("moon A orbit = %v, want %v", got, wantOrbit)
+	}
+	if got := orbitOf(points[moonB.Key]); math.Abs(got-wantOrbit) > 0.001 {
+		t.Fatalf("moon B orbit = %v, want %v", got, wantOrbit)
+	}
+	// Two moons evenly spaced means directly opposite: their midpoint is the
+	// parent itself.
+	midX := (points[moonA.Key].x + points[moonB.Key].x) / 2
+	midY := (points[moonA.Key].y + points[moonB.Key].y) / 2
+	if math.Abs(midX-anchor.x) > 0.001 || math.Abs(midY-anchor.y) > 0.001 {
+		t.Fatalf("moons are not evenly spaced around the parent: mid=(%v,%v) parent=(%v,%v)", midX, midY, anchor.x, anchor.y)
+	}
+
+	// --no-sky is a still frame: a later clock renders the identical system.
+	later, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), false)
+	if later[moonA.Key] != points[moonA.Key] {
+		t.Fatalf("no-sky moon moved: %#v vs %#v", later[moonA.Key], points[moonA.Key])
+	}
+
+	// The sky orbits the moon around its parent — position changes, the
+	// orbit distance does not.
+	skyLater, _, _ := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), true)
+	if skyLater[moonA.Key] == points[moonA.Key] {
+		t.Fatalf("sky moon did not orbit")
+	}
+	skyAnchor := skyLater[parent]
+	if got := math.Hypot(skyLater[moonA.Key].x-skyAnchor.x, skyLater[moonA.Key].y-skyAnchor.y); math.Abs(got-wantOrbit) > 0.001 {
+		t.Fatalf("orbiting moon left its orbit: %v, want %v", got, wantOrbit)
 	}
 }
 

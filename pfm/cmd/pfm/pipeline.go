@@ -145,8 +145,27 @@ type scanRequest struct {
 	ReadOnly bool
 	Cache1H  bool
 	NoSky    bool
-	Runtime  *commandRuntime
-	Comms    commsReader
+	// Safe is the --safe flag verbatim (auto|on|off); resolveCosmosSafe
+	// turns it into the snapshot's CosmosSafe bool at build time.
+	Safe    string
+	Runtime *commandRuntime
+	Comms   commsReader
+}
+
+// resolveCosmosSafe decides whether the cosmos tab renders in vscode-safe
+// mode: a slower clock and coarser colour quantisation that sidestep the
+// VS Code WebGL glyph-atlas corruption heavy braille truecolor churn
+// triggers across SIBLING terminals (microsoft/vscode#332859). "auto" arms
+// it exactly when VS Code's terminal declares itself via TERM_PROGRAM.
+func resolveCosmosSafe(flagValue, termProgram string) bool {
+	switch flagValue {
+	case "on":
+		return true
+	case "off":
+		return false
+	default:
+		return termProgram == "vscode"
+	}
 }
 
 type commsReader interface {
@@ -574,6 +593,7 @@ func composeFleet(
 		NowNS:                  environment.nowNS,
 		InitialQuery:           request.Query,
 		NoSky:                  request.NoSky,
+		CosmosSafe:             resolveCosmosSafe(request.Safe, os.Getenv("TERM_PROGRAM")),
 		Cosmos:                 cosmos,
 	}
 	return scanResult{
