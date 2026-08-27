@@ -17,6 +17,7 @@ import (
 
 	"hostops/pfm/internal/naming"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/rearm"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/shared"
 )
@@ -43,6 +44,10 @@ type Engine struct {
 	accountEmojis []string
 	recorder      func(context.Context, shared.CommsEvent) error
 	warningWriter io.Writer
+	// sidDir is where T1 role re-arm crumbs live (paths.Values.SIDDir) —
+	// the same directory the existing SID transcript crumbs and reload
+	// worker logs already share. See internal/rearm.
+	sidDir string
 	// senderSelf is this process's own identity, resolved at most once: it
 	// costs a tmux capture, and it cannot change while we run.
 	senderOnce sync.Once
@@ -114,6 +119,7 @@ func New(dependencies Dependencies) (*Engine, error) {
 		accountEmojis: append([]string(nil), dependencies.AccountEmojis...),
 		recorder:      dependencies.Recorder,
 		warningWriter: dependencies.WarningWriter,
+		sidDir:        resolved.SIDDir,
 	}, nil
 }
 
@@ -143,6 +149,7 @@ func (engine *Engine) WithIdentity(identity resolve.Identity, label string) *Eng
 		accountEmojis: append([]string(nil), engine.accountEmojis...),
 		recorder:      engine.recorder,
 		warningWriter: engine.warningWriter,
+		sidDir:        engine.sidDir,
 	}
 }
 
@@ -432,9 +439,25 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 	if _, captureErr := engine.capture(ctx, target, 0); captureErr != nil {
 		return refused(CodeDead, "target pane is dead or unreadable"), nil
 	}
-	steers := make([]string, 0, len(request.Then)+1)
+	// T1 re-arm: a self-compact of a seat with a remembered --role appends
+	// rearm.Pointer as one more link in the steer chain. Then is already a
+	// chain — the --then waiter delivers each steer one settled turn apart
+	// (DeliverThen) — so this is one more hop, never a rewrite of the
+	// caller's own steers. See internal/rearm and cmd/pfm/run_command.go's
+	// WriteCrumb for the other half.
+	then := request.Then
+	if isSelfCompactRequest(request) {
+		pointer, hasRole, err := engine.rolePointer(target)
+		if err != nil {
+			return Result{}, err
+		}
+		if hasRole {
+			then = append(append([]string{}, request.Then...), pointer)
+		}
+	}
+	steers := make([]string, 0, len(then)+1)
 	steers = append(steers, request.Message)
-	steers = append(steers, request.Then...)
+	steers = append(steers, then...)
 	logPath := engine.steerLogPath(target.Pane)
 	if err := engine.spawner.Spawn(ctx, SteerSpawn{
 		SocketPath: target.SocketPath,
@@ -453,7 +476,7 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 			fmt.Sprintf("could not schedule command after the current turn: %v", err),
 		), nil
 	}
-	message := fmt.Sprintf("scheduled COMMAND into %q after the current turn settles — %d post-command steer(s) armed (log: %s)", target.Pane, len(request.Then), logPath)
+	message := fmt.Sprintf("scheduled COMMAND into %q after the current turn settles — %d post-command steer(s) armed (log: %s)", target.Pane, len(then), logPath)
 	if isSelfCompactRequest(request) {
 		message += SelfCompactStopNotice
 	}
@@ -463,9 +486,74 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 		Message:    message,
 		SocketPath: target.SocketPath,
 		Pane:       target.Pane,
-		Steers:     len(request.Then),
+		Steers:     len(then),
 		SteerLog:   logPath,
 	}, nil
+}
+
+// rolePointer looks up target's remembered T1 role — if any — and composes
+// its re-arm text. The three ReadCrumb states stay distinct here exactly as
+// they do in cmd/pfm/reload_command.go: no crumb returns ("", false, nil),
+// today's exact behavior; a crumb that exists but could not be read returns
+// a real error rather than silently behaving as "no role"; a live crumb
+// returns its rearm.Pointer text, sized to THIS channel's own budget — see
+// rearmThresholdBytes.
+func (engine *Engine) rolePointer(target Target) (string, bool, error) {
+	crumb, ok, err := rearm.ReadCrumb(engine.sidDir, filepath.Base(target.SocketPath), target.Pane)
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return "", false, nil
+	}
+	return rearm.Pointer(crumb, engine.rearmThresholdBytes(target)), true, nil
+}
+
+// rearmPreamblePadding is subtracted from a channel's own autoFileThreshold
+// before it becomes a T1 re-arm budget. Two things ride along with
+// rearm.Pointer's full-text branch that this function has no exact number
+// for: its own preamble ("you are still <role> — re-armed with your full
+// constitution:\n\n", role name length varies) and the mandatory sender
+// footer signedMessage always appends to a live steer (session/label/uuid,
+// also variable). Padding generously rather than measuring exactly keeps
+// this decision and prepareMessage's own spill decision (body.go) from
+// disagreeing at the boundary — the failure mode of guessing too LOW is a
+// pointer sent as a pointer one byte earlier than strictly required; the
+// failure mode of guessing too HIGH is the defect this function exists to
+// fix (a full-text attempt silently spilled and pointed at a snapshot).
+const rearmPreamblePadding = 200
+
+// rearmThresholdBytes derives the self-compact channel's own T1 re-arm
+// budget instead of handing rearm.Pointer its design ceiling
+// (rearm.DefaultThresholdBytes) unchecked.
+//
+// This channel is NOT reload's SendLiteral: DeliverThen -> engine.inject ->
+// prepareLiveMessage -> prepareMessage (body.go) spills ANY body above
+// autoFileThreshold(target.Engine) — 720 runes Claude, 900 Codex, both far
+// below every measured role constitution (dev 2.6KB, qa 3KB+) — into
+// ~/.local/state/pfm/inject-bodies and replaces it with a pointer at that
+// SNAPSHOT file. isHarnessCommand does not rescue a re-arm pointer: it is
+// plain prose, not a "/" command, so an un-budgeted full-text attempt here
+// would (a) never actually land as full text, (b) point the seat at a
+// frozen copy instead of the live artifact — destroying the exact "re-read
+// the CURRENT artifact, no second copy to drift" property T1 was approved
+// on — and (c) that copy rots into a dangling path once
+// defaultBodyMaxAge (7 days) sweeps it. Deriving the REAL budget here makes
+// rearm.Pointer's own size check choose the short pointer at the LIVE
+// artifact instead, which beats a pointer at a frozen one every time this
+// channel's budget is smaller than rearm.DefaultThresholdBytes — which, for
+// every role measured so far, it always is.
+//
+// cmd/pfm/reload_command.go keeps rearm.DefaultThresholdBytes unchanged: its
+// channel (reloadCommandTmux.SendLiteral) has no equivalent spill, so full
+// text genuinely lands there. Do not "harmonize" the two call sites — they
+// answer different questions about different channels.
+func (engine *Engine) rearmThresholdBytes(target Target) int {
+	budget := engine.autoFileThreshold(target.Engine) - rearmPreamblePadding
+	if budget < 0 {
+		budget = 0
+	}
+	return min(budget, rearm.DefaultThresholdBytes)
 }
 
 // isSelfCompactRequest is true for the one shape the stop rule applies to: a

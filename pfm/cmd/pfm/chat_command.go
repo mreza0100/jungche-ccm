@@ -16,6 +16,7 @@ import (
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/rearm"
 	"hostops/pfm/internal/recovery"
 	"hostops/pfm/internal/resolve"
 )
@@ -399,6 +400,18 @@ func runChatEnd(args []string, stdout, stderr io.Writer, runtimes ...commandRunt
 	if output, err := command.CombinedOutput(); err != nil {
 		fmt.Fprintf(stderr, "pfm chat end: %v: %s\n", err, strings.TrimSpace(string(output)))
 		return 1
+	}
+	// T1 re-arm cleanup: this socket is dead, so any role crumb it carried
+	// (cmd/pfm/run_command.go's WriteCrumb) is litter — nothing on this kill
+	// path, or any other, will ever read it again. Best-effort: SIDDir
+	// accumulating one un-removed crumb per --role seat ever launched is
+	// exactly what this exists to prevent, but the chat is dead either way,
+	// so a removal failure is a visible WARNING here, never a reason to
+	// report `pfm chat end` itself as failed.
+	if endRuntime, err := optionalCommandRuntime(runtimes); err != nil {
+		fmt.Fprintf(stderr, "pfm chat end: WARNING: could not resolve paths to remove its role re-arm crumb: %v\n", err)
+	} else if err := rearm.RemoveCrumb(endRuntime.Paths.SIDDir, filepath.Base(chat.Socket), chat.Pane); err != nil {
+		fmt.Fprintf(stderr, "pfm chat end: WARNING: could not remove role re-arm crumb: %v\n", err)
 	}
 	fmt.Fprintf(stdout, "ended %s\n", chat.ID)
 	return 0

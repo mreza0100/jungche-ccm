@@ -33,6 +33,29 @@ type artifactKind struct {
 	ext    string
 }
 
+// Artifact is exactly which file — and which part of it — a role's
+// constitution was read from. T1 re-arm persists this alongside the role
+// name so a later reload or self-compact can point at the SAME rung birth
+// used, instead of re-resolving the ladder independently and risking a
+// different rung if the search path changed under it.
+type Artifact struct {
+	// Path is the absolute path of the file Resolve actually read.
+	Path string
+	// TOMLKey is true when the constitution is the DeveloperInstructionsKey
+	// value inside that TOML file, not the whole file — a re-arm pointer at
+	// a TOML artifact must name the key as well as the file, or a seat told
+	// to "read the whole file" has to work out on its own which part binds
+	// it (name and description sit beside developer_instructions).
+	TOMLKey bool
+}
+
+// DeveloperInstructionsKey is the one TOML key readTOMLConstitution reads a
+// Codex seat's constitution out of. It is exported so a re-arm pointer can
+// name the exact key a TOML seat's binding lives under without duplicating
+// the string — the struct tag below must keep the same literal, since a Go
+// struct tag cannot itself reference a constant.
+const DeveloperInstructionsKey = "developer_instructions"
+
 func kindFor(engineID pfmengine.ID) (artifactKind, error) {
 	switch engineID {
 	case pfmengine.Claude:
@@ -59,24 +82,25 @@ func otherEngine(engineID pfmengine.ID) (pfmengine.ID, bool) {
 }
 
 // Resolve returns the constitution text for role, on a seat born with
-// engineID, launched from cwd, against host home. cwd is the same directory
-// value runRun already computes from --cwd (runDirectory's return, before
-// any repo walk); home is runtime.Paths.Home, the fleet's resolved $HOME.
+// engineID, launched from cwd, against host home, alongside the Artifact it
+// was read from. cwd is the same directory value runRun already computes
+// from --cwd (runDirectory's return, before any repo walk); home is
+// runtime.Paths.Home, the fleet's resolved $HOME.
 //
 // Resolution never falls back across engines and never merges two partial
 // artifacts: the first rung of the ladder that names an existing file wins,
 // full stop.
-func Resolve(engineID pfmengine.ID, role, cwd, home string) (string, error) {
+func Resolve(engineID pfmengine.ID, role, cwd, home string) (string, Artifact, error) {
 	if strings.TrimSpace(role) == "" {
-		return "", errors.New("agent role: role name is empty")
+		return "", Artifact{}, errors.New("agent role: role name is empty")
 	}
 	kind, err := kindFor(engineID)
 	if err != nil {
-		return "", err
+		return "", Artifact{}, err
 	}
 	repo, err := repoRoot(cwd)
 	if err != nil {
-		return "", err
+		return "", Artifact{}, err
 	}
 
 	// When cwd sits under $HOME with no repo of its own above it, the walk in
@@ -94,25 +118,33 @@ func Resolve(engineID pfmengine.ID, role, cwd, home string) (string, error) {
 		path := filepath.Join(dir, role+kind.ext)
 		info, statErr := os.Stat(path)
 		if statErr == nil && !info.IsDir() {
-			return readArtifact(engineID, path)
+			text, err := readArtifact(engineID, path)
+			if err != nil {
+				return "", Artifact{}, err
+			}
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return "", Artifact{}, fmt.Errorf("agent role: resolve absolute path for %s: %w", path, err)
+			}
+			return text, Artifact{Path: absPath, TOMLKey: engineID == pfmengine.Codex}, nil
 		}
 		if statErr != nil && !os.IsNotExist(statErr) {
-			return "", fmt.Errorf("agent role: inspect %s: %w", path, statErr)
+			return "", Artifact{}, fmt.Errorf("agent role: inspect %s: %w", path, statErr)
 		}
 		state, err := inspectDir(dir, kind.ext)
 		if err != nil {
-			return "", err
+			return "", Artifact{}, err
 		}
 		states = append(states, state)
 	}
 
 	if other, ok := otherEngine(engineID); ok {
 		if hintErr := crossEngineHint(engineID, other, kind, role, repo, home); hintErr != nil {
-			return "", hintErr
+			return "", Artifact{}, hintErr
 		}
 	}
 
-	return "", unknownRoleError(role, engineID, states)
+	return "", Artifact{}, unknownRoleError(role, engineID, states)
 }
 
 // readArtifact reads and validates the constitution once the ladder has
@@ -121,12 +153,25 @@ func Resolve(engineID pfmengine.ID, role, cwd, home string) (string, error) {
 func readArtifact(engineID pfmengine.ID, path string) (string, error) {
 	switch engineID {
 	case pfmengine.Claude:
-		return readMarkdownConstitution(path)
+		return ReadArtifact(path, false)
 	case pfmengine.Codex:
-		return readTOMLConstitution(path)
+		return ReadArtifact(path, true)
 	default:
 		return "", fmt.Errorf("agent role: engine %q has no registered agent artifact ladder", engineID)
 	}
+}
+
+// ReadArtifact re-reads path exactly as birth read it: the whole file, minus
+// frontmatter, for a .md constitution when tomlKey is false; just the
+// DeveloperInstructionsKey value for a compiled Codex .toml when tomlKey is
+// true. It is exported so a re-arm can re-read the CURRENT text of the same
+// artifact Resolve found at birth — using the TOMLKey bit Resolve returned
+// on its Artifact — without re-walking the ladder or re-deriving an engine.
+func ReadArtifact(path string, tomlKey bool) (string, error) {
+	if tomlKey {
+		return readTOMLConstitution(path)
+	}
+	return readMarkdownConstitution(path)
 }
 
 func readMarkdownConstitution(path string) (string, error) {

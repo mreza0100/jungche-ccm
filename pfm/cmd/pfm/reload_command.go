@@ -20,6 +20,7 @@ import (
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/kill"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/rearm"
 	"hostops/pfm/internal/reload"
 	"hostops/pfm/internal/resolve"
 	"hostops/pfm/internal/store"
@@ -209,7 +210,7 @@ func runChatReloadWorkerWithRuntime(
 				return 2
 			}
 			index++
-			then = strings.NewReplacer("\n", " ", "\r", " ").Replace(args[index])
+			then = flattenThenLine(args[index])
 		case "--sock":
 			if index+1 >= len(args) {
 				fmt.Fprintln(stderr, "pfm chat reload: --sock needs a socket")
@@ -256,6 +257,33 @@ func runChatReloadWorkerWithRuntime(
 	socketPath, pane, paneState, code := reloadTarget(context.Background(), sock, resolved, runtime, tmux, stderr)
 	if code != 0 {
 		return code
+	}
+	// T1 re-arm (2 of 2): a seat born with --role remembered its role in a
+	// crumb (cmd/pfm/run_command.go, WriteCrumb). ReadCrumb's three states
+	// stay distinct — no crumb is silently today's behavior; a crumb that
+	// exists but could not be read is a real error, never folded into "no
+	// role"; a live crumb appends rearm.Pointer to whatever --then already
+	// carries, flattened the same way the operator's own --then is, so it
+	// becomes one more line in the SAME single steer, never a rewrite of it.
+	if roleCrumb, ok, err := rearm.ReadCrumb(resolved.SIDDir, filepath.Base(socketPath), pane); err != nil {
+		fmt.Fprintf(stderr, "pfm chat reload: %v\n", err)
+		return 1
+	} else if ok {
+		// rearm.DefaultThresholdBytes UNCHANGED here — deliberately, not an
+		// oversight. This channel is reloadCommandTmux.SendLiteral: one
+		// literal tmux send-keys -l of the whole steer, with no auto-file
+		// spill (unlike internal/inject/engine.go's self-compact channel,
+		// which spills any body above ~720-900 runes into a snapshot file —
+		// see rearmThresholdBytes there for why that path derives its own,
+		// smaller budget). Full text genuinely lands here at or under 4KB;
+		// do not "harmonize" this constant with the self-compact one.
+		pointer := flattenThenLine(rearm.Pointer(roleCrumb, rearm.DefaultThresholdBytes))
+		if then == "" {
+			then = pointer
+		} else {
+			then = then + " " + pointer
+		}
+		fmt.Fprintf(stdout, "pfm chat reload: role %q remembered — re-arm pointer appended to the reborn chat's follow-up\n", roleCrumb.Role)
 	}
 	engine := reloadEngine(socketPath)
 	id, transcript, err := resolveReloadSession(resolved, runtime.Config, socketPath, pane, sock == "")
@@ -362,6 +390,17 @@ func validateReloadArgs(args []string) error {
 		}
 	}
 	return nil
+}
+
+// flattenThenLine collapses embedded newlines to spaces. deliverThen types
+// request.Then into the reborn pane with a single literal tmux send-keys -l
+// call (reload.go); a raw newline byte in that stream lands in the pane
+// exactly like an Enter keypress, submitting the composer mid-prompt. Both
+// an operator's own --then value and the T1 role re-arm pointer this file
+// appends to it go through this same flattening, so the two can never
+// diverge on what "one line" means to this delivery channel.
+func flattenThenLine(text string) string {
+	return strings.NewReplacer("\n", " ", "\r", " ").Replace(text)
 }
 
 // reloadArgumentHint turns a rejected word into an error the CALLER can act on
