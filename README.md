@@ -10,10 +10,20 @@ rather than scrollback, across Claude Code, Codex, and OpenCode. You can adopt e
 other.
 
 ```bash
-git clone https://github.com/mreza0100/professor && cd professor
+REPO=mreza0100/professor
+SOURCE_DIR="$HOME/.professor"
+TAG=$(git ls-remote --tags --sort=-v:refname "https://github.com/${REPO}.git" 'v*' \
+  | grep -v '\^{}' | head -1 | sed 's#.*/##')
+git clone "https://github.com/${REPO}.git" "$SOURCE_DIR"
+git -C "$HOME/.professor" checkout "$TAG"
+cd "$SOURCE_DIR"
 git config core.hooksPath .githooks
 cat docs/SETUP.md      # the install interview — start here
 ```
+
+The checkout is pinned to the latest semantic version tag, not an unversioned branch. For the
+binary path, source-build stamp, filtered-network guidance, and the full preview/apply flag
+family, see [INSTALL.md](INSTALL.md).
 
 For a maintainer checkout, `pfm doctor` must report
 `pre-push gate=armed core.hooksPath=.githooks`. A hook file that merely exists is not armed; an
@@ -167,10 +177,20 @@ timed out · 6 message not delivered`.
   unmarked conflict and foreign file. `pfm install --vscode` additionally installs a reversible
   `PFM` VS Code terminal profile so each new integrated terminal opens at the fleet picker.
 
-**Requirements** (from `pfm doctor`'s own registry, not prose): `tmux` ≥ 1.8, `git`, `sh`, `bash`,
-`zsh`, `sleep`; `setsid` on Linux, `ps`/`lsof`/`launchctl` on macOS. Linux and macOS, amd64 and
-arm64. Go 1.24 only if you use `pfm update`. The harvester provisions its own pinned `uv` and
-CPython, skippable with `--skip-harvest`. Both MCP servers ship disabled.
+**Requirements** (from `pfm doctor`'s own registry, not prose): Linux or macOS, `amd64` or
+`arm64`, plus `tmux` ≥ 1.8, `git`, `sh`, `bash`, `zsh`, and `sleep`; `setsid` on Linux, and
+`ps`/`lsof`/`launchctl` on macOS. Go **1.24.13 or newer** is needed for source builds and
+`pfm update`. The `claude` and `codex` CLIs are optional diagnostics even when accounts are
+configured: self-doctor failures stay visible without blocking unrelated installation.
+`--skip-engine codex` suppresses the Codex probe and Codex mirror/hooks.
+The harvester provisions its own pinned `uv` and CPython, skippable with `--skip-harvest`.
+Themes are source-fetched from `blueprint/themes/sources.json`, skippable with `--skip-themes`.
+Both MCP servers ship disabled.
+
+Before applying an install, run its dry preview with the same options and inspect the harvest
+plan. For the current Linux `amd64` lock, that optional runtime is about 3.1 GB to download and
+5.8 GB on disk; platform, cache, and lock revisions change the footprint. The complete command
+pair is documented in [INSTALL.md](INSTALL.md#preview-optional-components-and-harvest-footprint).
 
 **Read before opting in:** `pfm` defaults Claude to bypass mode and Codex to approval bypass;
 machine and per-account configuration can select the prompted posture. The default trade-off is
