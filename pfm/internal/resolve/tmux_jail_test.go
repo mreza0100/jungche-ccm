@@ -206,7 +206,7 @@ func TestJailedTmuxResolveContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertTarget(t, session, "cc-100-1-1", "alpha-session")
+	assertTarget(t, session, "cc-100-1-1", "%")
 
 	cx, err := resolver.Resolve(
 		ctx,

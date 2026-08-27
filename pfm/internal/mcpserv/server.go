@@ -30,7 +30,7 @@ var chatToolNames = []string{
 	"chat_group_subscribe", "chat_inject", "chat_keys", "chat_kill",
 	"chat_last", "chat_load", "chat_ls", "chat_name", "chat_new", "chat_open",
 	"chat_read", "chat_reload", "chat_resolve", "chat_save", "chat_self_compact",
-	"chat_status", "chat_unkill", "chat_whoami",
+	"chat_status", "chat_unkill", "chat_whoami", "issue_servicedesk",
 }
 
 // ToolNames returns the canonical advertised chat MCP roster. The jailed
@@ -218,6 +218,11 @@ func (service *Service) register() {
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name: "chat_save", Description: "Append a transcript snapshot through the canonical pfm chat save dispatcher.", Annotations: mutating,
 	}, service.chatSave)
+	mcp.AddTool(service.server, &mcp.Tool{
+		Name:        "issue_servicedesk",
+		Description: "File a durable complaint about Professor itself — what went wrong, and where — for a human to triage later. Reporter identity is captured automatically and can never be supplied by the caller.",
+		Annotations: mutating,
+	}, service.issueServicedesk)
 }
 
 type requestScopedInjector interface {
@@ -235,6 +240,27 @@ func selfTarget(target string) bool {
 	return target == "self" || target == "me"
 }
 
+// noAmbientCallerRemedy explains a missing-identity refusal in terms an MCP
+// caller can act on, instead of the config fact chat.sh's CLI-oriented
+// wording states. The shared HTTP daemon (one process serving every chat on
+// the machine) genuinely cannot derive who is calling it over this
+// transport: Claude Code attaches no per-call caller identity, so there is
+// nothing here to sign or resolve "self" against. A Codex chat is
+// unaffected — its MCP client attaches _meta.threadId to every call, and
+// that is what this daemon reads. The remedy is architectural, not
+// something available to THIS call: run the equivalent `pfm chat ...`
+// command from the chat's own shell, since that process IS the chat and can
+// derive its own identity; or ask the operator to move this chat's MCP
+// transport onto per-chat stdio (`pfm mcp chat serve`), which inherits
+// ambient identity deliberately.
+const noAmbientCallerRemedy = "MCP request has no _meta.threadId, and this " +
+	"server is pfm's shared HTTP daemon (one process serving every chat on " +
+	"the machine), so it cannot derive who is calling: Claude Code does not " +
+	"attach per-call caller identity over this transport. Run the " +
+	"equivalent `pfm chat ...` command from the chat's own shell instead — " +
+	"that process IS the chat. A Codex chat should resolve automatically; " +
+	"if it does not, its MCP client is not attaching _meta.threadId to this call."
+
 func (service *Service) selfCallerRefusal(caller callerIdentity) (bool, string) {
 	if caller.valid {
 		return false, ""
@@ -243,7 +269,7 @@ func (service *Service) selfCallerRefusal(caller callerIdentity) (bool, string) 
 		return true, caller.detail
 	}
 	if !service.backend.allowAmbientIdentity {
-		return true, "MCP request has no _meta.threadId; shared-daemon ambient identity is disabled"
+		return true, noAmbientCallerRemedy
 	}
 	return false, ""
 }
@@ -442,11 +468,29 @@ func (service *Service) chatSelfCompact(
 	return nil, outputFromInject(result), err
 }
 
+// mcpUnsignedMessage restates inject.ErrUnsigned's refusal for an MCP
+// caller. The engine's own wording (inject/body.go) is CLI-oriented — it
+// tells the reader to set an environment variable or pass --allow-unsigned,
+// both unreachable from an MCP tool call, and it blames a detached process
+// chain that is not what happened here. The daemon-level cause is real (this
+// process still derived no identity of its own), so only the remedy half is
+// replaced with one an MCP caller can act on.
+func mcpUnsignedMessage() string {
+	return inject.ErrUnsigned.Error() +
+		": this process derived no identity of its own, so the recipient " +
+		"would be asked to act on an instruction from nobody. " +
+		noAmbientCallerRemedy
+}
+
 func outputFromInject(result inject.Result) InjectOutput {
+	message := result.Message
+	if strings.Contains(message, inject.ErrUnsigned.Error()) {
+		message = mcpUnsignedMessage()
+	}
 	return InjectOutput{
 		Status:        result.Status,
 		Code:          result.Code,
-		Message:       result.Message,
+		Message:       message,
 		SocketPath:    result.SocketPath,
 		Pane:          result.Pane,
 		Proof:         result.Proof,
@@ -495,7 +539,7 @@ func (service *Service) chatWhoami(
 	if !service.backend.allowAmbientIdentity {
 		return nil, WhoamiOutput{
 			Status:  "not_found",
-			Message: "MCP request has no _meta.threadId; shared-daemon ambient identity is disabled",
+			Message: noAmbientCallerRemedy,
 		}, nil
 	}
 	identifier, err := resolve.NewWhoami(resolve.WhoamiDependencies{})

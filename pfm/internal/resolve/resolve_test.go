@@ -167,7 +167,7 @@ func TestResolveSessionExactAndSplitRules(t *testing.T) {
 		t,
 		resolver.resolveSession("exact", single),
 		0,
-		"/jail/cc-1-1-1\texact\n",
+		"/jail/cc-1-1-1\t%1\n",
 		"",
 	)
 	assertOutcome(t, resolver.resolveSession("ex", single), 1, "", "")

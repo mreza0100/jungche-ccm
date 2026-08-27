@@ -20,7 +20,7 @@ func TestSharedSchemaIsComplete(t *testing.T) {
 SELECT name FROM sqlite_master
 WHERE type='table' AND name NOT LIKE 'sqlite_%'
 ORDER BY name`)
-	want := []string{"chat", "children", "comms", "hidden", "meta", "swap_event"}
+	want := []string{"chat", "children", "comms", "hidden", "issues", "meta", "swap_event"}
 	if !reflect.DeepEqual(tables, want) {
 		t.Fatalf("shared tables = %v, want %v", tables, want)
 	}
@@ -44,6 +44,14 @@ ORDER BY name`)
 		"target", "receiver_socket", "receiver_pane", "group_name", "members", "message",
 	}) {
 		t.Fatalf("comms columns = %v", columns)
+	}
+	columns = queryColumn(t, state, "SELECT name FROM pragma_table_info('issues')")
+	if !reflect.DeepEqual(columns, []string{
+		"id", "at_ns", "title", "detail", "severity", "area",
+		"reporter_session", "reporter_label", "reporter_uuid", "reporter_cwd", "reporter_engine",
+		"status",
+	}) {
+		t.Fatalf("issues columns = %v", columns)
 	}
 
 	// Initialization stamps the schema version.

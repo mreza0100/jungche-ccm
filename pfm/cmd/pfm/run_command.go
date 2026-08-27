@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -149,9 +150,18 @@ func runRun(
 			fmt.Fprintf(stderr, "pfm chat new: WARNING: chat is live but could not be registered for parent-close cleanup: %v\n", err)
 		}
 	}
+	// result.Socket is the bare session name spawn.Run was asked to create
+	// (freshEngineSocket's own output), not a resolvable socket PATH — the
+	// inject recorder (internal/inject/engine.go) writes result.SocketPath,
+	// the full tmux -S argument. Recording the bare name here left the
+	// cosmos graph's receiver-side row lookup (paneKey(socket, pane)) unable
+	// to ever match a live row, because no live row's socket is a bare name.
+	// ReceiverPane is left unset: spawn.Result carries no pane id (a fresh
+	// session's first pane is conventionally "%0", but nothing here confirms
+	// that invariant, so it is not invented).
 	if err := state.RecordComms(context.Background(), shared.CommsEvent{
 		AtNS: spawnedAt.UnixNano(), Kind: shared.KindSpawn, SenderSession: parent,
-		Target: *name, ReceiverSocket: result.Socket, Message: prompt,
+		Target: *name, ReceiverSocket: filepath.Join(resolved.TmuxDir, result.Socket), Message: prompt,
 	}); err != nil {
 		fmt.Fprintf(stderr, "pfm: comms ledger: %v\n", err)
 	}

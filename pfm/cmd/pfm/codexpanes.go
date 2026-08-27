@@ -282,7 +282,17 @@ func decideCodexPane(
 	}
 	switch {
 	case len(matches) != 0 && len(free) == 0 && retiredMatches != 0:
-		action.Skip, action.Loud = codexPaneNameRetired, true
+		// This is a standing structural condition, not an event, and it
+		// cannot self-heal: Codex renders a bare thread id only while a
+		// thread is UNNAMED, so a named pane can never reveal the id that
+		// would re-seat it, and its name resolves only to threads a /clear
+		// already retired. There is no operator action available on THIS
+		// pass — `pfm doctor` already carries it as codex_pane=unfollowable
+		// with this same reason string. Making this Loud would print an
+		// identical, unactionable line on every reconcile pass of every pfm
+		// invocation, forever — precisely the "warning on every pass for an
+		// ordinary one-refresh lag" this file's own header warns against.
+		action.Skip = codexPaneNameRetired
 	case len(matches) == 0:
 		// Ordinary and self-healing: a chat named a moment ago is on screen
 		// before Codex's index has been re-read. It is quiet HERE because this

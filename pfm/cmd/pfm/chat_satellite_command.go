@@ -431,9 +431,9 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		return 1
 	}
 	if all {
-		fmt.Fprintln(stdout, "live chats everywhere (session · state · dir · last activity):")
+		fmt.Fprintln(stdout, "live chats everywhere (name · session · state · dir · last activity):")
 	} else {
-		fmt.Fprintln(stdout, "live chats in this repo (session · state · last activity):")
+		fmt.Fprintln(stdout, "live chats in this repo (name · session · state · last activity):")
 	}
 	found, elsewhere, killed := 0, 0, 0
 	for _, row := range scan.Output.Rows {
@@ -456,6 +456,15 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		} else {
 			state = status.State
 		}
+		// The chat's NAME is the identity an operator must act on — it is
+		// what `pfm chat name` / `pfm chat inject` / `pfm chat resolve`
+		// actually take, and it is already correctly derived (customTitle,
+		// aiTitle, first prompt, or an engine's own fallback marker) for
+		// every live row this loop reaches. Printing the raw tmux session id
+		// as the primary field trained an operator to copy THAT as an inject
+		// target, which put a session name where a pane id belongs. The
+		// session id is still printed, second, so nothing that parses this
+		// line loses information.
 		handle := row.Socket
 		if row.SessionName != "" {
 			handle = row.SessionName
@@ -464,7 +473,10 @@ func runChatLS(args []string, stdout, stderr io.Writer, runtimes ...commandRunti
 		if all {
 			location = strings.Replace(row.CWD, scan.Paths.Home, "~", 1) + "  "
 		}
-		fmt.Fprintf(stdout, "  %-24s %-7s %s%s\n", handle, state, location, transcript.Truncate(row.LastPrompt, 64))
+		fmt.Fprintf(
+			stdout, "  %-28s %-24s %-7s %s%s\n",
+			transcript.Truncate(row.Name, 28), handle, state, location, transcript.Truncate(row.LastPrompt, 64),
+		)
 		found++
 	}
 	if found == 0 {
