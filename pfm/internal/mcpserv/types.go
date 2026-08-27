@@ -83,6 +83,10 @@ type InjectOutput struct {
 // that must resume work after compaction. Focus is retained in the tool-call
 // history for the compactor; Codex accepts no inline arguments on /compact,
 // so the detached TUI command itself is deliberately bare.
+//
+// Focus and Then are the ONLY things that survive. A caller holding durable
+// state of its own — a ledger, a handoff file, a chat-specific memory — writes
+// to it before calling, because nothing here can carry that state across.
 type SelfCompactInput struct {
 	Focus string   `json:"focus" jsonschema:"single-line compact focus authored after inspecting the requesting chat's current context and in-flight work"`
 	Then  []string `json:"then" jsonschema:"mandatory post-compact steers, delivered in order one settled turn apart; no steer may start with /compact"`

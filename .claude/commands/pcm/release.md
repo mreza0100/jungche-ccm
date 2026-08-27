@@ -1,7 +1,7 @@
 ---
 name: pcm:release
-description: Version, tag, and publish this repo — regenerating the portable blueprint from a live source project via the refresh pass when one is named, then consuming .professor/release.md into the CHANGELOG and a releases/ note. Invoked by /pcm:release, "blueprint release", or "publish the blueprint". Publication is explicit-request-only.
-argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
+description: Version, tag, and publish this repo — regenerating the portable blueprint from a live source project via the refresh pass when one is named, sweeping every linked project's .professor/release.md, then consuming the collected bullets into the CHANGELOG and a releases/ note. Invoked by /pcm:release, "blueprint release", or "publish the blueprint". Publication is explicit-request-only.
+argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}] [--ledger {root}]…
 ---
 
 # PCM Release — Publish the Blueprint
@@ -27,9 +27,11 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 2. `git pull --ff-only origin main` — STOP if it fails.
 
+2b. **Ledger sweep — always runs.** `scripts/refresh-scope.sh ledgers . {--from root, if given} {each --ledger root}` enumerates every reachable `.professor/release.md`: each named root plus the sub-projects its own manifest names by role. Report the `swept=… pending=… bullets=… empty=… absent=… unreadable=…` line verbatim — it is the proof of how many ledgers were OPENED, and a sweep of zero must never read like a sweep that found nothing. `LEDGER-UNREADABLE` exits 4 and STOPS the release: a ledger that could not be read is a failed look, not an empty one. Every `LEDGER-PENDING` bullet joins this release; the union is what Step 5 consumes and Step 9 clears.
+
 3. **Refresh pass — only when `--from {live-project-root}` is given.** Without it, say `refresh skipped — no live source named` and go to Step 4; a release of hand-authored blueprint edits is legitimate, a SILENT skip is not.
 
-   a. `scripts/refresh-scope.sh scan {live-project-root}` — hashes every live source in `blueprint/refresh-map.json`. UNCHANGED hashes are a mechanical untouched-proof; those templates are SKIPPED. Re-derive only CHANGED templates plus any file a `.professor/release.md` bullet names. UNMAPPED-LIVE files get a mapping ruling (map it, or add to `ignore_sources`) before continuing; `curated` templates are hand-maintained, never auto-derived. **If the scan itself fails to run, that is a FAILED SCAN, not an empty one — stop.**
+   a. `scripts/refresh-scope.sh scan {live-project-root}` — hashes every live source in `blueprint/refresh-map.json`. UNCHANGED hashes are a mechanical untouched-proof; those templates are SKIPPED. Re-derive only CHANGED templates plus any file named by a bullet the Step 2b sweep collected, from ANY ledger — a linked project's bullet earns its template a re-derivation exactly as this repo's does. UNMAPPED-LIVE files get a mapping ruling (map it, or add to `ignore_sources`) before continuing; `curated` templates are hand-maintained, never auto-derived. **If the scan itself fails to run, that is a FAILED SCAN, not an empty one — stop.**
 
    b. Read `docs/commands/pcm/references/refresh.md` and execute it over that scope: run `scripts/genericize.sh` first on each re-derived template (deterministic placeholder pass from `scripts/placeholder-map.tsv`), then hand-judge structure only. Update the public README.
 
@@ -37,7 +39,7 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
 4. **Read `VERSION`, compute the new version.** It must exceed every tag from Pre-flight 4.
 
-5. **Build CHANGELOG bullets from `.professor/release.md`** — entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var / hook / permission / model-config changes are tagged `(cost)`. Empty `release.md` → prompt the user for bullets rather than inventing them.
+5. **Build CHANGELOG bullets from the Step 2b union** — every `LEDGER-PENDING` bullet from every swept ledger, this repo's included. Entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var / hook / permission / model-config changes are tagged `(cost)`. Two ledgers describing one change merge into a single bullet. `bullets=0` across the whole sweep → prompt the user rather than inventing any.
 
 5b. **Source-fetched skill release** — for each pending bullet naming a `sources.json` skill, ship the substance to the skill's OWN public repo first (the blueprint never vendors it): clone/pull the canonical repo → rebase-first against its current state (both-changed is the A→B→C conflict — keep the richer, never blast-overwrite) → genericize project identifiers in the public copy → sync the live `.claude/skills/{name}/` to byte-identical (zero standing drift) → bump the skill's `version:` frontmatter + README version refs → leak-grep the staged diff → commit + annotated tag + push to the skill repo. Then rewrite the professor bullet as a version pointer marked **`update`: skip — informational only** with a `#### → For:` re-pull note.
 
@@ -57,7 +59,7 @@ argument-hint: {patch|minor|major} "{summary}" [--from {live-project-root}]
 
    d. `/git push origin main --follow-tags`, carrying the user's explicit publish request as its authority. Relay the pre-push hook's output verbatim. STOP if it fails; NEVER force-push.
 
-9. **Clear `.professor/release.md`** — its entries shipped in this release; empty the pending list, keep the header.
+9. **Clear EVERY ledger Step 2b reported as PENDING** — each one's entries shipped in this release; empty each pending list, keep each header. A ledger left unclear re-ships its bullets in the next release; clearing one this release never opened would delete work that never shipped, so clear exactly the paths the sweep printed.
 
 10. **Report** tag URL, commit SHA, source SHA (or "no refresh"), and the changelog bullets, ending with:
     `Blueprint released: v{NEW_VERSION}. URL: https://github.com/mreza0100/professor/releases/tag/v{NEW_VERSION}`

@@ -809,6 +809,16 @@ func streamFleetRefreshesWith(
 	}
 }
 
+// codexRenamerFor returns the tmux driver reconcileCodexPanes re-applies a
+// chat's name through after a clear. It is a variable so a test can substitute
+// a driver: renaming is the one step of the pass that has to talk to a live
+// Codex composer, so before this seam existed the step had NO automated
+// coverage — and neither did anything sequenced after it. That is exactly
+// where the missing cx_names record hid.
+var codexRenamerFor = func(runtime commandRuntime) spawn.Tmux {
+	return spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
+}
+
 // reconcileCodexPanes is the clear-detection pass itself, run every gather
 // pass: for each live Codex pane it reads the pane's own status line, hands
 // every pane at once to decideCodexPanes, and applies that ruling — advance
@@ -847,33 +857,36 @@ func reconcileCodexPanes(
 		return killed
 	}
 	capturer := gather.CommandTmux{TmuxTmpDir: filepath.Dir(runtime.Paths.TmuxDir)}
-	renamer := spawn.CommandTmux{TmuxDir: runtime.Paths.TmuxDir}
+	renamer := codexRenamerFor(runtime)
 
 	_, actions := observeCodexPanes(ctx, database, manager, capturer, live, cxNames, warn)
 	for _, action := range actions {
 		if action.Skip != "" && action.Bind == "" {
-			if action.Loud {
+			switch {
+			case action.Forget:
+				// One event, one line. The reason and the repair are the same
+				// event, and reporting them as two separate warnings taught an
+				// operator that a SUCCESSFUL self-repair looks like a pair of
+				// failures. Only the pass that WRITES may claim the write —
+				// the same reason string reaches read-only `pfm doctor`, and a
+				// report claiming a repair it never performed is the failure
+				// mode this whole wave is about.
+				if err := manager.ForgetCodexPane(ctx, action.Socket, action.PaneID); err != nil {
+					warn(fmt.Sprintf(
+						"codex pane %s %s: %s — drop failed: %v",
+						action.Socket, action.PaneID, action.Skip, err,
+					))
+				} else {
+					warn(fmt.Sprintf(
+						"codex pane %s %s: repaired — %s; binding dropped",
+						action.Socket, action.PaneID, action.Skip,
+					))
+				}
+			case action.Loud:
 				warn(fmt.Sprintf(
 					"codex pane %s %s: %s",
 					action.Socket, action.PaneID, action.Skip,
 				))
-			}
-			if action.Forget {
-				if err := manager.ForgetCodexPane(ctx, action.Socket, action.PaneID); err != nil {
-					warn(fmt.Sprintf(
-						"codex pane %s %s: drop impossible binding: %v",
-						action.Socket, action.PaneID, err,
-					))
-				} else {
-					// Only the pass that WRITES may claim the write. The same
-					// reason string reaches `pfm doctor`, which is read-only,
-					// and a report that claims a repair it never performed is
-					// the failure mode this whole wave is about.
-					warn(fmt.Sprintf(
-						"codex pane %s %s: binding dropped",
-						action.Socket, action.PaneID,
-					))
-				}
 			}
 			continue
 		}
@@ -921,8 +934,33 @@ func reconcileCodexPanes(
 		)
 		if renameErr != nil {
 			warn(fmt.Sprintf("codex pane %s %s: re-apply chat name after clear: %v", action.Socket, action.PaneID, renameErr))
-		} else if warning != "" {
+			continue
+		}
+		if warning != "" {
 			warn(fmt.Sprintf("codex pane %s %s: chat name was not re-applied after clear: %s", action.Socket, action.PaneID, warning))
+			continue
+		}
+		// Record the rename pfm just performed, rather than waiting for it to
+		// come back around through Codex's session index.
+		//
+		// Without this the pass leaves a trap it set itself. cx_names is only
+		// ever refreshed by an index pass, so between the rename and the next
+		// one the chat's name resolves to exactly ONE thread — the retired
+		// pre-clear one. A pane that then loses its binding for any reason is
+		// unbindable: a name may seed an unbound pane, but every thread that
+		// name matches is retired, so nothing may seed it. It warns on every
+		// refresh and never recovers. pfm authored this rename; it does not
+		// need a mirror to tell it what it just did.
+		if err := database.UpsertCxName(ctx, store.CxName{
+			ID:         action.Bind,
+			ThreadName: name,
+			Source:     store.CxNameSourceSessionIndex,
+			RenamedAt:  time.Now().UnixNano(),
+		}); err != nil {
+			warn(fmt.Sprintf(
+				"codex pane %s %s: record re-applied chat name: %v",
+				action.Socket, action.PaneID, err,
+			))
 		}
 	}
 	return killed

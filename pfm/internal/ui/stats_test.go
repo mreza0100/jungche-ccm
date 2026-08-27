@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -669,7 +670,7 @@ func TestStatsPropertiesUseSemanticColors(t *testing.T) {
 	model.statsSubtab = StatsDocker
 	dockerPanel := model.renderStatsPanel(140, 8)
 	for name, sequence := range map[string]string{
-		"container name":  "\x1b[38;2;94;234;212m",
+		"container name":  "\x1b[38;2;103;232;249m",
 		"container image": "\x1b[38;2;192;132;252m",
 		"CPU":             "\x1b[38;2;74;222;128m",
 		"memory":          "\x1b[38;2;96;165;250m",
@@ -692,4 +693,85 @@ func TestStatsOpencodeEngineUsesItsOwnColor(t *testing.T) {
 	if !strings.Contains(panel, want) {
 		t.Fatalf("OpenCode stats row lacks its engine color %q:\n%s", want, panel)
 	}
+}
+
+// A name is not an engine. Both stats tables' NAME cells — a chat's and a
+// Docker container's — once borrowed the Claude row colour, which was harmless
+// while those colours were only a pleasant ramp and wrong the moment they
+// became an IDENTITY: a Codex chat whose name renders in Claude's orange beside
+// an engine cell rendering white is a row disagreeing with itself. This asserts
+// the decoupling directly rather than trusting the exact hex above, which a
+// palette edit is free to change.
+func TestStatsNameCellsNeverBorrowAnEngineIdentityColor(t *testing.T) {
+	model := NewModel(fixtureSnapshot(140))
+	model.tab = TabStats
+	model.stats = pfmstats.Snapshot{
+		Ready: true,
+		Chats: []pfmstats.Chat{{
+			Name: "REVIEW:idle", Engine: "codex", CPUPercent: 1, CPUValid: true,
+		}},
+		Docker: []pfmstats.Container{{
+			Name: "professor-web", Image: "registry.example/professor:web",
+			CPUPercent: 4.5, CPUValid: true, MemoryBytes: 128 << 20,
+			LimitBytes: 512 << 20, MemoryPercent: 25,
+		}},
+	}
+
+	model.statsSubtab = StatsChats
+	chatName := nameCellFor(model.renderStatsPanel(140, 8), "REVIEW:idle")
+	model.statsSubtab = StatsDocker
+	dockerName := nameCellFor(model.renderStatsPanel(140, 8), "professor-web")
+
+	loaded := theme.Load("default")
+	for _, id := range pfmengine.All() {
+		sequence := ansiForeground(loaded.StatsEngine[id])
+		if sequence == "" {
+			t.Fatalf("engine %s has an unparseable stats colour %q", id, loaded.StatsEngine[id])
+		}
+		for label, cell := range map[string]string{"chat": chatName, "container": dockerName} {
+			if cell == "" {
+				t.Fatalf("%s name cell was not rendered at all", label)
+			}
+			if strings.Contains(cell, sequence) {
+				t.Errorf("the %s name is rendered in engine %s's identity colour %s:\n%s",
+					label, id, loaded.StatsEngine[id], cell)
+			}
+		}
+	}
+}
+
+// nameCellFor returns just the NAME cell of the row carrying name, cut at the
+// column that follows it. The assertion must read that cell alone: the engine,
+// CPU and memory columns legitimately carry engine and ramp colours, and a
+// whole-panel search would match them and report a collision that is not one.
+func nameCellFor(panel, name string) string {
+	const reset = "\x1b[m"
+	for _, line := range strings.Split(panel, "\n") {
+		at := strings.Index(line, name)
+		if at < 0 {
+			continue
+		}
+		end := strings.Index(line[at:], reset)
+		if end < 0 {
+			return line[:at+len(name)]
+		}
+		// Stop at the cell's own reset. One byte further is the NEXT cell's
+		// opening escape, and including it would report the engine column's
+		// colour as if the name wore it.
+		return line[:at+end+len(reset)]
+	}
+	return ""
+}
+
+// ansiForeground renders a #rrggbb palette colour as the escape sequence
+// lipgloss emits for it.
+func ansiForeground(hex string) string {
+	if len(hex) != 7 || hex[0] != '#' {
+		return ""
+	}
+	var red, green, blue int
+	if _, err := fmt.Sscanf(hex[1:], "%02x%02x%02x", &red, &green, &blue); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", red, green, blue)
 }

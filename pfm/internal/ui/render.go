@@ -52,6 +52,8 @@ var (
 	statsEngineStyles map[pfmengine.ID]lipgloss.Style
 	statsCPUStyle     = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#4ade80"))
+	statsNameStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#67e8f9"))
 	statsMemoryStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#60a5fa"))
 	statsTokenStyle = lipgloss.NewStyle().
@@ -91,6 +93,7 @@ func configureStyles(palette theme.Palette) {
 		statsEngineStyles[id] = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsEngine[id]))
 	}
 	statsCPUStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsCPU))
+	statsNameStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsName))
 	statsMemoryStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsRAM))
 	statsTokenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsToken))
 	statsGearStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(palette.StatsGear))
@@ -366,7 +369,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 					engineStyle = style
 				}
 			}
-			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
+			line := "  " + statsNameStyle.Render(fmt.Sprintf(
 				"%-*s", nameWidth, clipRunes(cleanField(chat.Name), nameWidth),
 			)) + " " + engineStyle.Render(fmt.Sprintf("%-7s", chat.Engine)) +
 				" " + statsCPUStyle.Render(fmt.Sprintf("%7s", cpu)) +
@@ -410,7 +413,7 @@ func (model Model) renderStatsPanel(width, height int) string {
 				lines = append(lines, selectedStyle.Render("›"+ansi.Truncate(plain[1:], maxInt(0, innerWidth-1), "")))
 				continue
 			}
-			line := "  " + statsClaudeStyle.Render(fmt.Sprintf(
+			line := "  " + statsNameStyle.Render(fmt.Sprintf(
 				"%-*s", nameWidth, clipRunes(cleanField(container.Name), nameWidth),
 			)) + " " + statsImageStyle.Render(fmt.Sprintf(
 				"%-*s", imageWidth, clipRunes(cleanField(container.Image), imageWidth),

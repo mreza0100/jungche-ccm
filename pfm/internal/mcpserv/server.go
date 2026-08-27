@@ -139,7 +139,7 @@ func (service *Service) register() {
 	}, service.chatInject)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_self_compact",
-		Description: "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended.",
+		Description: "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended.",
 		Annotations: mutating,
 	}, service.chatSelfCompact)
 	mcp.AddTool(service.server, &mcp.Tool{

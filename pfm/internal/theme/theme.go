@@ -9,6 +9,12 @@ import (
 )
 
 // Palette is the color vocabulary shared by the picker and status panels.
+//
+// EngineRow/StatsEngine carry engine IDENTITY rather than a free slot in the
+// ramp: Claude is orange, Codex is light blue, OpenCode is green, in every
+// palette.
+// A theme restyles the shade, never the hue — an operator scanning a mixed
+// fleet reads the engine off the colour before reading the row.
 // The extra fields preserve the non-row literals that were already part of
 // the default renderer, so a palette change cannot leave a stray hardcoded
 // color behind.
@@ -18,9 +24,17 @@ type Palette struct {
 	StatsEngine map[pfmengine.ID]string
 	StatsCPU    string
 	StatsRAM    string
-	Accent      string
-	Muted       string
-	Warn        string
+	// StatsName colours the NAME cell of every stats table — a chat's name and
+	// a Docker container's alike. It is its own token because a name is not an
+	// engine: both cells used to borrow the Claude row colour, which was
+	// harmless while those colours were only a ramp and wrong the moment they
+	// became an identity. A Codex chat whose NAME renders in Claude's orange
+	// beside an engine cell that renders white is a row disagreeing with
+	// itself; the engine cell carries the identity, the name does not.
+	StatsName string
+	Accent    string
+	Muted     string
+	Warn      string
 
 	Header      string
 	HeaderBg    string
@@ -42,14 +56,15 @@ type Palette struct {
 
 var defaultPalette = Palette{
 	EngineRow: map[pfmengine.ID]string{
-		pfmengine.Claude: "#5eead4", pfmengine.Codex: "#e879f9", pfmengine.Opencode: "#60a5fa",
+		pfmengine.Claude: "#ff9e64", pfmengine.Codex: "#38bdf8", pfmengine.Opencode: "#5eead4",
 	},
 	AgentRow: "#fb923c",
 	StatsEngine: map[pfmengine.ID]string{
-		pfmengine.Claude: "#5eead4", pfmengine.Codex: "#e879f9", pfmengine.Opencode: "#60a5fa",
+		pfmengine.Claude: "#ff9e64", pfmengine.Codex: "#38bdf8", pfmengine.Opencode: "#5eead4",
 	},
 	StatsCPU:    "#4ade80",
 	StatsRAM:    "#60a5fa",
+	StatsName:   "#67e8f9",
 	Accent:      "#22d3ee",
 	Muted:       "#94a3b8",
 	Warn:        "#fde047",
@@ -73,14 +88,15 @@ var defaultPalette = Palette{
 
 var tokyoNightPalette = Palette{
 	EngineRow: map[pfmengine.ID]string{
-		pfmengine.Claude: "#73daca", pfmengine.Codex: "#bb9af7", pfmengine.Opencode: "#7aa2f7",
+		pfmengine.Claude: "#ffb38a", pfmengine.Codex: "#89ddff", pfmengine.Opencode: "#73daca",
 	},
-	AgentRow: "#ff9e64",
+	AgentRow: "#bb9af7",
 	StatsEngine: map[pfmengine.ID]string{
-		pfmengine.Claude: "#73daca", pfmengine.Codex: "#bb9af7", pfmengine.Opencode: "#7aa2f7",
+		pfmengine.Claude: "#ffb38a", pfmengine.Codex: "#89ddff", pfmengine.Opencode: "#73daca",
 	},
 	StatsCPU:    "#9ece6a",
 	StatsRAM:    "#7aa2f7",
+	StatsName:   "#2ac3de",
 	Accent:      "#7dcfff",
 	Muted:       "#565f89",
 	Warn:        "#e0af68",

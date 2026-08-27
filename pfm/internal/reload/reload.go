@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"hostops/pfm/internal/action"
 	pfmengine "hostops/pfm/internal/engine"
@@ -461,8 +462,8 @@ ready:
 		// ACTIVE composer line — not the whole pane — can prove THIS send;
 		// scanning the full capture would let a stale placeholder from a
 		// past turn stand in for text that never landed.
-		composer := lastComposerLine(capture)
-		hasTail := strings.Contains(strings.Join(strings.Fields(composer), " "), needle)
+		composer := composerText(capture)
+		hasTail := strings.Contains(squashSpace(composer), squashSpace(needle))
 		hasPlaceholder := inject.HasPastePlaceholder(composer)
 		if !haveBaseline {
 			// No baseline means we cannot rule out a placeholder that was
@@ -495,10 +496,13 @@ ready:
 	if !typed {
 		return errors.New("reload --then: typed text never rendered in the composer — looked for the prompt's tail text and, when a pre-send baseline was captured, a paste placeholder there too, but neither appeared — refusing blind Enter")
 	}
-	prefix := flat
-	if len(prefix) > 24 {
-		prefix = prefix[:24]
-	}
+	// The submit proof reuses the SAME tail needle the typed proof just saw
+	// present. Evidence seen present and then seen absent is a real transition;
+	// the head of the prompt, which this used to look for, was never verified
+	// present at all — and in a draft long enough to scroll inside the box, the
+	// head has scrolled out of view before the first Enter, so its absence
+	// would report a submission that never happened. The tail stays visible:
+	// the cursor sits at the end of what was just typed.
 	for i := 0; i < 12; i++ {
 		if err := tmux.SendKey(ctx, request.SocketPath, request.Pane, "Enter"); err != nil {
 			return fmt.Errorf("reload --then: submit prompt: %w", err)
@@ -515,8 +519,8 @@ ready:
 		// Submitted text remains in pane scrollback. Only the active composer
 		// decides whether Enter cleared it; scanning the whole capture would
 		// report every successful submission as still pending.
-		composer := lastComposerLine(capture)
-		if !strings.Contains(strings.Join(strings.Fields(composer), " "), prefix) {
+		composer := composerText(capture)
+		if !strings.Contains(squashSpace(composer), squashSpace(needle)) {
 			fmt.Fprintln(stderr, "then: follow-up delivered and submitted")
 			return nil
 		}
@@ -555,6 +559,69 @@ func currentPanePID(ctx context.Context, socket, wanted string, tmux Tmux) (int,
 		return pane.PID, nil
 	}
 	return 0, errors.New("reborn pane disappeared")
+}
+
+// composerText returns the ACTIVE composer's WHOLE draft: the marker line plus
+// every wrapped continuation line beneath it, up to the box's closing rule.
+//
+// A one-line read was the bug this replaces. Claude and Codex both wrap a long
+// draft inside the input box and print the ❯/› marker on the FIRST line only,
+// so a check that scanned the marker line alone saw the draft's head and never
+// its tail — and deliverThen proves delivery by the TAIL, which is the half
+// that proves nothing was truncated in transit. Every steer worth sending after
+// a reload is long enough to wrap, so the proof could never be satisfied and
+// the follow-up sat in the composer waiting for a human finger.
+//
+// The block ends at the box's horizontal rule. When a render carries no closing
+// rule the block runs to the end of the capture: the callers only ever ask
+// whether their OWN text is present, so trailing status rows cost nothing,
+// while a missing continuation line costs the whole delivery.
+func composerText(capture string) string {
+	lines := strings.Split(capture, "\n")
+	start := -1
+	for index := len(lines) - 1; index >= 0; index-- {
+		if strings.Contains(lines[index], "❯") || strings.Contains(lines[index], "›") {
+			start = index
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	block := lines[start : start+1]
+	for index := start + 1; index < len(lines); index++ {
+		if composerBoxRule(lines[index]) {
+			break
+		}
+		block = lines[start : index+1]
+	}
+	return strings.Join(block, "\n")
+}
+
+// composerBoxRule reports whether a captured line is one of the input box's
+// horizontal rules — visible content that is nothing but box-drawing glyphs.
+// Matching the CLASS (U+2500-U+257F) rather than one theme's glyph keeps a
+// restyled border from silently reopening the wrap bug.
+func composerBoxRule(line string) bool {
+	drawn := false
+	for _, character := range line {
+		switch {
+		case unicode.IsSpace(character):
+		case character >= 0x2500 && character <= 0x257F:
+			drawn = true
+		default:
+			return false
+		}
+	}
+	return drawn
+}
+
+// squashSpace drops every space so a comparison survives the composer's line
+// wrapping. Collapsing to single spaces survives a wrap at a word boundary and
+// NOT one inside a word, and a token wider than the box — a long path or URL,
+// the substance of most steers — is wrapped mid-word.
+func squashSpace(value string) string {
+	return strings.Join(strings.Fields(value), "")
 }
 
 func lastComposerLine(capture string) string {

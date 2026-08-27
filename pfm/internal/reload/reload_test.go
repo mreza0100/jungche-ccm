@@ -134,24 +134,58 @@ func (tmux *delayedThenTmux) Capture(context.Context, string, string) (string, e
 		return "Chat\n" + marker + " ", nil
 	}
 	tmux.ready = true
-	if tmux.literal == "continue the task" {
-		if tmux.submitted {
-			// Submitted text remains in scrollback while the active composer is
-			// empty. Submit proof must inspect the composer, not the whole pane.
-			return marker + " continue the task\nWorking\n" + marker + " ", nil
-		}
-		return "Chat\n" + marker + " continue the task", nil
+	draft := tmux.literal
+	if draft == "" || draft == "/exit" {
+		return "Chat\n" + marker + " ", nil
 	}
-	return "Chat\n" + marker + " ", nil
+	if tmux.submitted {
+		// Submitted text remains in scrollback while the active composer is
+		// empty. Submit proof must inspect the composer, not the whole pane.
+		return marker + " " + draft + "\nWorking\n" + wrapComposer(marker, "", 60), nil
+	}
+	return "Chat\n" + wrapComposer(marker, draft, 60), nil
+}
+
+// wrapComposer renders a draft the way Claude and Codex actually draw one: the
+// ❯/› marker on the FIRST line only, continuation lines indented beneath it,
+// the block framed by the input box's horizontal rules.
+//
+// The fixture this replaced echoed one hardcoded 17-character prompt onto a
+// single line, so it read the same whether the composer reader handled wrapping
+// or not — green against correct code and against the one-line reader that
+// could never confirm a real steer. It breaks lines at a fixed width, MID-word,
+// which is the harsher of the two real shapes (Claude breaks at word boundaries
+// until a single token is wider than the box — a path or a URL, the substance
+// of most steers).
+func wrapComposer(marker, text string, width int) string {
+	rule := strings.Repeat("─", width)
+	runes := []rune(text)
+	rows := []string{}
+	for start := 0; start < len(runes); start += width {
+		end := start + width
+		if end > len(runes) {
+			end = len(runes)
+		}
+		rows = append(rows, string(runes[start:end]))
+	}
+	if len(rows) == 0 {
+		rows = []string{""}
+	}
+	block := []string{rule, marker + " " + rows[0]}
+	for _, row := range rows[1:] {
+		block = append(block, "  "+row)
+	}
+	return strings.Join(append(block, rule), "\n")
 }
 
 func (tmux *delayedThenTmux) SendKey(_ context.Context, _, _, key string) error {
 	if key != "Enter" {
 		return nil
 	}
-	if tmux.literal == "/exit" {
+	switch {
+	case tmux.literal == "/exit":
 		tmux.dead = true
-	} else if tmux.literal == "continue the task" {
+	case tmux.literal != "":
 		tmux.submitted = true
 	}
 	return nil
@@ -553,5 +587,68 @@ func TestFailedThenWritesTheRecoverableSentinel(t *testing.T) {
 	}
 	if string(content) != "continue the task\n" || len(tmux.displays) != 1 {
 		t.Fatalf("sentinel=%q displays=%q", content, tmux.displays)
+	}
+}
+
+// TestDeliverThenSubmitsAPromptThatWrapsAcrossComposerLines reproduces the
+// defect the operator hit on every account switch: the steer landed in the
+// composer and pfm refused to press Enter, so a human had to.
+//
+// deliverThen proves delivery by the prompt's TAIL — the half that proves
+// nothing was truncated in transit — and read that proof off the composer's
+// MARKER line alone. Claude prints the marker on the first line of a wrapped
+// draft, so the tail of any prompt longer than one row was unreachable and the
+// proof could never be satisfied. Every real steer is longer than one row.
+func TestDeliverThenSubmitsAPromptThatWrapsAcrossComposerLines(t *testing.T) {
+	const then = "Continue the wave: read the refine checkpoint end to end, " +
+		"execute the remaining round, and write the zero-gap spec to the queue " +
+		"path before presenting the user gate."
+	tmux := &delayedThenTmux{}
+	tmux.respawn = "claude"
+	proc := fakeReloadProc{
+		pids: []int{801},
+		argv: map[int][]string{801: {"claude"}},
+		stat: map[int]gather.ProcStat{801: {ParentPID: 700}},
+	}
+	err := deliverThen(
+		context.Background(),
+		Request{
+			Engine: pfmengine.Claude, SocketPath: "/tmp/tmux-1000/probe-wrapped-then", Pane: "%7",
+			PanePID: 700, Then: then,
+		},
+		Options{ThenTries: 2},
+		tmux,
+		proc,
+		io.Discard,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tmux.submitted {
+		t.Fatal("a wrapped --then prompt was never submitted — Enter was withheld from a prompt that had fully landed")
+	}
+}
+
+// TestComposerTextReadsAWrappedDraftAndStopsAtTheBoxRule pins the render taken
+// from a live pane at the moment of a refusal: marker plus non-breaking space
+// on line one, continuations indented beneath, the box rule closing the block,
+// status rows below it that must stay OUT of the read.
+func TestComposerTextReadsAWrappedDraftAndStopsAtTheBoxRule(t *testing.T) {
+	rule := strings.Repeat("─", 40)
+	capture := strings.Join([]string{
+		"Chat",
+		rule,
+		"❯ \u00a0Continue the reload-then reproduction. This prompt is",
+		"  deliberately long enough to wrap across several rendered",
+		"  composer lines. END OF REPRO PROMPT MARKER.",
+		rule,
+		"  bypass permissions on (shift+tab to cycle)",
+	}, "\n")
+	got := composerText(capture)
+	if !strings.Contains(got, "END OF REPRO PROMPT MARKER.") {
+		t.Fatalf("composerText lost the wrapped tail: %q", got)
+	}
+	if strings.Contains(got, "bypass permissions") {
+		t.Fatalf("composerText read past the box rule into the status rows: %q", got)
 	}
 }

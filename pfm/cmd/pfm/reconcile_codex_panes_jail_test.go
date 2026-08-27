@@ -9,10 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/kill"
+	"hostops/pfm/internal/spawn"
 	"hostops/pfm/internal/store"
 )
 
@@ -45,6 +47,38 @@ func startCodexStatusPane(t *testing.T, tmuxTmpDir, socket, statusLine string) {
 		kill.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+tmuxTmpDir)
 		_ = kill.Run()
 	})
+	waitForPaneToPaint(t, tmuxTmpDir, socket, statusLine)
+}
+
+// waitForPaneToPaint blocks until the pane has actually rendered its status
+// line. `new-session -d` returns once the SESSION exists, not once its command
+// has run, so under load a capture can arrive before the printf lands — and a
+// pane that has not painted yet is byte-for-byte indistinguishable from a pane
+// with no identity at all. That is the very confusion these tests exist to
+// catch, so a fixture that can produce it silently turns the whole file into a
+// coincidence detector: green when the code is right, and green when the code
+// is wrong but the pane simply painted in time.
+//
+// A pane that never paints is a FIXTURE failure and says so in those words —
+// it is not evidence about the code under test.
+func waitForPaneToPaint(t *testing.T, tmuxTmpDir, socket, statusLine string) {
+	t.Helper()
+	// The fixture passes the line as a printf FORMAT; the trailing \n is the
+	// only escape it uses, so the painted text is the literal before it.
+	want := strings.TrimSpace(strings.TrimSuffix(statusLine, `\n`))
+	deadline := time.Now().Add(5 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		capture := exec.Command("tmux", "-L", socket, "capture-pane", "-p", "-t", socket)
+		capture.Env = append(os.Environ(), "TMUX=", "TMUX_TMPDIR="+tmuxTmpDir)
+		output, err := capture.CombinedOutput()
+		last = string(output)
+		if err == nil && strings.Contains(last, want) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("FIXTURE: pane %q never painted %q within 5s; last capture=%q", socket, want, last)
 }
 
 func codexJailRollout(
@@ -755,6 +789,135 @@ func TestReconcileCodexPanesDropsABindingOnAClearRetiredThread(t *testing.T) {
 	)
 	bound, found, err = manager.CodexPaneBinding(ctx, reseated, "%0")
 	if err != nil || !found || bound != liveID {
-		t.Fatalf("re-seat = (%q, %v, %v), want %q", bound, found, err, liveID)
+		t.Fatalf("re-seat = (%q, %v, %v), want %q: stderr=%q", bound, found, err, liveID, stderr.String())
+	}
+}
+
+// fakeCodexRenamer is a Codex composer that agrees to everything. Every marker
+// the rename state machine waits for is present in one capture, so each wait
+// satisfies immediately and the rename reports CONFIRMED. It exists to reach
+// the step AFTER the rename, which had no coverage at all.
+type fakeCodexRenamer struct{ name string }
+
+func (renamer fakeCodexRenamer) NewSession(context.Context, spawn.SessionSpec) error { return nil }
+
+func (renamer fakeCodexRenamer) Capture(context.Context, string, string) (string, error) {
+	return "› Ask Codex to do anything\n" +
+		"gpt-5-codex · /work/example · 12% used\n" +
+		"rename the current thread\n" +
+		"Type a name and press Enter\n" +
+		"• Session renamed to " + renamer.name + ".\n", nil
+}
+
+func (renamer fakeCodexRenamer) SendLiteral(context.Context, string, string, string) error {
+	return nil
+}
+
+func (renamer fakeCodexRenamer) SendKey(context.Context, string, string, string) error { return nil }
+
+// After a clear, pfm re-applies the chat's name to the NEW thread and must
+// record that rename in cx_names itself.
+//
+// Leaving the record to the next index pass set a trap the pass itself sprang.
+// Between the rename and that pass the chat's name resolved to exactly ONE
+// thread — the retired pre-clear one — so a pane that lost its binding in that
+// window could not be re-seated: a name may seed an unbound pane, but every
+// thread this name matched was retired. The pane then warned
+// "status line name matches only threads a /clear already retired" on every
+// single refresh and never recovered on its own.
+func TestReconcileCodexPanesRecordsTheNameItReAppliedAfterAClear(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000009-9-9"
+	const newID = "99999999-9999-4999-8999-999999999999"
+	const oldID = "88888888-8888-4888-8888-888888888888"
+	const chatName = "ENGINE_BUILDER"
+	startCodexStatusPane(t, tmuxTmpDir, socket, "  "+newID+` · /work/example · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	codexJailRollout(t, database, root, oldID, 1)
+
+	if err := database.UpsertCxName(context.Background(), store.CxName{
+		ID: oldID, ThreadName: chatName,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", oldID); err != nil {
+		t.Fatal(err)
+	}
+
+	previousRenamer := codexRenamerFor
+	codexRenamerFor = func(commandRuntime) spawn.Tmux { return fakeCodexRenamer{name: chatName} }
+	t.Cleanup(func() { codexRenamerFor = previousRenamer })
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{Panes: []gather.Pane{codexPane(socket, "%0")}},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	names, err := database.CxNames(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names[newID] != chatName {
+		t.Fatalf(
+			"cx_names[new thread] = %q, want %q — the pane is now unbindable by its own name: stderr=%q",
+			names[newID], chatName, stderr.String(),
+		)
+	}
+}
+
+// The recorded name must actually re-seat an unbound pane, which is the whole
+// point of recording it. This is the decision the live fleet could not reach:
+// the pane shows its NAME (Codex renamed the thread, so the bare id is gone
+// from the status line) and carries no binding, and the name must resolve to
+// the LIVE thread rather than only to the retired one.
+func TestAReAppliedNameReSeatsAnUnboundPane(t *testing.T) {
+	const retiredID = "88888888-8888-4888-8888-888888888888"
+	const liveID = "99999999-9999-4999-8999-999999999999"
+	const chatName = "ENGINE_BUILDER"
+
+	retired := func(id string) (bool, bool) { return id == retiredID, true }
+	observations := []codexPaneObservation{
+		{Socket: "cx-1", PaneID: "%0", Name: chatName},
+	}
+
+	stuck := decideCodexPanes(
+		observations,
+		map[string]string{retiredID: chatName},
+		func(string) string { return "" },
+		retired,
+	)
+	if stuck[0].Bind != "" || stuck[0].Skip != codexPaneNameRetired {
+		t.Fatalf("without the recorded name = %#v, want the stuck state", stuck[0])
+	}
+
+	healed := decideCodexPanes(
+		[]codexPaneObservation{{Socket: "cx-1", PaneID: "%0", Name: chatName}},
+		map[string]string{retiredID: chatName, liveID: chatName},
+		func(string) string { return "" },
+		retired,
+	)
+	if healed[0].Bind != liveID {
+		t.Fatalf("with the recorded name = %#v, want a bind onto %s", healed[0], liveID)
 	}
 }

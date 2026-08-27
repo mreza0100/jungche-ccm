@@ -1,7 +1,7 @@
 ---
 name: pcm:release
-description: Regenerate the portable Professor blueprint from the live .claude/ via the refresh pass, then version, tag, and push it upstream, consuming .professor/release.md. Invoked by /pcm:release, "blueprint release", or "publish the blueprint".
-argument-hint: {patch|minor|major} "{summary}"
+description: Regenerate the portable Professor blueprint from the live .claude/ via the refresh pass, then version, tag, and push it upstream, sweeping every linked project's .professor/release.md and consuming the collected bullets. Invoked by /pcm:release, "blueprint release", or "publish the blueprint".
+argument-hint: {patch|minor|major} "{summary}" [--ledger {root}]…
 ---
 
 # PCM Release — Publish the Blueprint Upstream
@@ -28,9 +28,11 @@ argument-hint: {patch|minor|major} "{summary}"
 
 2. Ensure the clone exists and is current: no `{BLUEPRINT_CLONE_PATH}.git` → create the repo on the host if needed → clone; else `git fetch origin && git pull --ff-only origin main` (STOP if it fails).
 
+2b. Ledger sweep — always runs. `{BLUEPRINT_CLONE_PATH}scripts/refresh-scope.sh ledgers {project-root} {each --ledger root}` enumerates every reachable `.professor/release.md`: each named root plus the sub-projects its own manifest names by role. Report the `swept=… pending=… bullets=… empty=… absent=… unreadable=…` line verbatim — it is the proof of how many ledgers were OPENED, and a sweep of zero must never read like a sweep that found nothing. `LEDGER-UNREADABLE` exits 4 and STOPS the release: a ledger that could not be read is a failed look, not an empty one. Every `LEDGER-PENDING` bullet joins this release; the union is what Step 5 consumes and Step 9 clears.
+
 3. Run the refresh pass, scoped by the refresh map:
 
-   a. `{BLUEPRINT_CLONE_PATH}scripts/refresh-scope.sh scan {project-root}` — hashes every live source in `blueprint/refresh-map.json`; UNCHANGED sources are a mechanical untouched-proof, their templates are SKIPPED. Re-derive only CHANGED templates plus any file a `.professor/release.md` bullet names; UNMAPPED-LIVE files get a mapping ruling (map or `ignore_sources`) before continuing; `curated` templates are hand-maintained, never auto-derived.
+   a. `{BLUEPRINT_CLONE_PATH}scripts/refresh-scope.sh scan {project-root}` — hashes every live source in `blueprint/refresh-map.json`; UNCHANGED sources are a mechanical untouched-proof, their templates are SKIPPED. Re-derive only CHANGED templates plus any file named by a bullet the Step 2b sweep collected, from ANY ledger — a linked project's bullet earns its template a re-derivation exactly as the main project's does; UNMAPPED-LIVE files get a mapping ruling (map or `ignore_sources`) before continuing; `curated` templates are hand-maintained, never auto-derived.
 
    b. Read `docs/commands/pcm/references/refresh.md` and execute it over that scope: run `scripts/genericize.sh` first on each re-derived template (deterministic placeholder pass from `scripts/placeholder-map.tsv`), hand-judge structure only. Update the public README.
 
@@ -38,7 +40,7 @@ argument-hint: {patch|minor|major} "{summary}"
 
 4. Read VERSION, compute the new version.
 
-5. Build CHANGELOG bullets from `.professor/release.md` — entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var/hook/permission/model-config changes are tagged `(cost)` — update Step 6 routes them to Bucket 2 review. Empty `release.md` → prompt the maintainer for bullets. Informational-only bullets marked: **`update`: skip — informational only.**
+5. Build CHANGELOG bullets from the Step 2b union — every `LEDGER-PENDING` bullet from every swept ledger. Entries are already final bullets (`- {Tier}: {scope} — {semantic change}` + optional `#### → For:` migration line): copy verbatim, never re-author. Bullets carrying env-var/hook/permission/model-config changes are tagged `(cost)` — update Step 6 routes them to Bucket 2 review. Two ledgers describing one change merge into a single bullet. `bullets=0` across the whole sweep → prompt the maintainer rather than inventing any. Informational-only bullets marked: **`update`: skip — informational only.**
 
 5b. Source-fetched skill release — for each pending bullet naming a `sources.json` skill, ship the substance to the skill's OWN public repo first (the blueprint never vendors it): clone/pull the canonical repo → rebase-first against its current state (both-changed is the A→B→C conflict — keep the richer, never blast-overwrite) → genericize project identifiers in the public copy (brand current AND former, internal role/example names), then sync the live `.claude/skills/{name}/` to byte-identical (zero standing drift) → bump the skill's `version:` frontmatter (semver by change nature) + repo README version refs → leak-grep the staged diff (brand names, user PII, machine home paths) → commit + annotated tag v{X.Y.Z} + push to the skill repo. Then rewrite the professor bullet as a version pointer marked **`update`: skip — informational only** with a `#### → For:` re-pull note — update Step 8b and fresh installs (`sources.json`) consume it.
 
@@ -55,7 +57,7 @@ argument-hint: {patch|minor|major} "{summary}"
    - `git tag -a "v{NEW_VERSION}" -m "v{NEW_VERSION}"` — annotated; `--follow-tags` skips lightweight tags
    - `git push origin main --follow-tags` (STOP if it fails, NEVER force-push)
 
-9. Clear `.professor/release.md` — its entries shipped in this release; empty the pending list, keep the header.
+9. Clear EVERY ledger Step 2b reported as PENDING — each one's entries shipped in this release; empty each pending list, keep each header. A ledger left unclear re-ships its bullets next release; clearing one this release never opened would delete work that never shipped, so clear exactly the paths the sweep printed.
 
 10. Report tag URL, commit, source SHA, and changelog bullets, ending with: `Blueprint released: v{NEW_VERSION}. URL: https://github.com/{BLUEPRINT_REPO}/releases/tag/v{NEW_VERSION}`
 
