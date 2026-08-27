@@ -441,22 +441,54 @@ func (engine *Engine) ScheduleAfterCurrentTurn(
 		LogPath:    logPath,
 		Append:     request.Chain,
 		Sender:     engine.sender(ctx),
+		// Only the ORIGINAL self-compaction needs the caller's turn ridden
+		// out. A chained re-arm is typed into a pane this waiter already
+		// watched settle, so its next busy is the steer's own turn.
+		SelfTarget: !request.Chain && isSelfTarget(request.Target),
 	}); err != nil {
 		return refused(
 			CodeUndelivered,
 			fmt.Sprintf("could not schedule command after the current turn: %v", err),
 		), nil
 	}
+	message := fmt.Sprintf("scheduled COMMAND into %q after the current turn settles — %d post-command steer(s) armed (log: %s)", target.Pane, len(request.Then), logPath)
+	if isSelfCompactRequest(request) {
+		message += SelfCompactStopNotice
+	}
 	return Result{
 		Status:     "scheduled",
 		Code:       0,
-		Message:    fmt.Sprintf("scheduled COMMAND into %q after the current turn settles — %d post-command steer(s) armed (log: %s)", target.Pane, len(request.Then), logPath),
+		Message:    message,
 		SocketPath: target.SocketPath,
 		Pane:       target.Pane,
 		Steers:     len(request.Then),
 		SteerLog:   logPath,
 	}, nil
 }
+
+// isSelfCompactRequest is true for the one shape the stop rule applies to: a
+// chat compacting ITSELF. For any other target the waiter is watching somebody
+// else's pane, so what this caller does next cannot blur the turn boundary.
+func isSelfCompactRequest(request Request) bool {
+	return isCompactCommand(request.Message) && isSelfTarget(request.Target)
+}
+
+// isSelfTarget reports the one target spelling that names the calling chat's
+// own pane.
+func isSelfTarget(target string) bool {
+	return strings.EqualFold(strings.TrimSpace(target), "self")
+}
+
+// SelfCompactStopNotice rides on the SUCCESS result of a self-compaction,
+// where it is read in the same breath as the decision it governs. The --then
+// waiter recognises the compaction turn by watching this pane yield and then go
+// busy again (waitForSettledTurn); a caller that keeps working after queueing
+// the compaction merges its own turn into the compaction's and leaves the
+// waiter no boundary to find.
+const SelfCompactStopNotice = " — STOP NOW: end this turn without running " +
+	"another tool. Say only that compaction is queued with its steer to " +
+	"follow. Any further work here competes with the compaction the waiter " +
+	"is watching for, and the steer will land beside it instead of after it."
 
 // Inject performs the delivery and records a successful direct send without
 // making the recipient pay for a ledger failure.

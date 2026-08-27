@@ -329,7 +329,7 @@ func TestJailedThenWaiterDeliversAfterIdleExactlyOnce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	steer := "post compact steer landed"
-	result, err := engine.DeliverThen(ctx, socketPath, pane, []string{steer})
+	result, err := engine.DeliverThen(ctx, socketPath, pane, []string{steer}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

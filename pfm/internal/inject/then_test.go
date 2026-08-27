@@ -30,7 +30,7 @@ func TestDeliverThenDoesNotRecordExcludedHandoffEdge(t *testing.T) {
 		return nil
 	}
 
-	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"})
+	result, err := engine.DeliverThen(context.Background(), "", "chat", []string{"resume"}, false)
 	if err != nil || !result.Typed || result.Code != 0 {
 		t.Fatalf("DeliverThen() = %+v, %v", result, err)
 	}

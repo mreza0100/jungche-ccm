@@ -39,6 +39,11 @@ func runInternalThen(args []string, stderr io.Writer, runtimes ...commandRuntime
 	target := flags.String("target", "", "tmux session name or pane id")
 	var steers steerList
 	flags.Var(&steers, "steer", "follow-up steer; repeat for a chain")
+	// Set only when the pane being watched is the pane that asked for the
+	// wait, which is true for a chat compacting itself and false otherwise.
+	// It decides whether the waiter must first let a turn it did NOT start
+	// finish before it can recognise the primary's turn.
+	selfTarget := flags.Bool("self", false, "the target pane is the caller's own")
 	if code, ok := parseFlags(flags, args); !ok {
 		return code
 	}
@@ -56,6 +61,7 @@ func runInternalThen(args []string, stderr io.Writer, runtimes ...commandRuntime
 		*socket,
 		*target,
 		steers,
+		*selfTarget,
 	)
 	if err != nil {
 		fmt.Fprintf(stderr, "pfm internal then: %v\n", err)
