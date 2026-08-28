@@ -363,6 +363,7 @@ func TestClipCosmosLabelTruncatesVisiblyWithinAvailableSpace(t *testing.T) {
 		{name: "clips rightward with a visible ellipsis", label: "123456789", rightward: true, colX: 73, cols: 80, want: "1234…"},
 		{name: "clips leftward with a visible ellipsis", label: "123456789", rightward: false, colX: 6, cols: 80, want: "1234…"},
 		{name: "no space left produces empty, not the raw label", label: "cc-1787827912-1607460-33758", rightward: true, colX: 79, cols: 80, want: ""},
+		{name: "ample canvas still caps at fourteen runes", label: "COSMOS:EXISTENTIALIST", rightward: true, colX: 5, cols: 120, want: "COSMOS:EXISTE…"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
