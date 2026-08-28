@@ -212,9 +212,10 @@ func TestDetectCodexThreadsSkipsUnidentifiedProcesses(t *testing.T) {
 	}
 }
 
-// A session holding a rollout descriptor keeps its file identity and gains the
-// exported thread id, without consulting the state store at all.
-func TestDetectCodexThreadsKeepsRolloutDescriptorIdentity(t *testing.T) {
+// A process-held rollout is current identity. A compact/reset continuation
+// can rotate it while argv and CODEX_THREAD_ID still name the old thread, so
+// the file must win without consulting the state-store resolver.
+func TestDetectCodexThreadsPrefersCurrentRolloutOverInheritedIdentity(t *testing.T) {
 	codexRoot := "/jail/codex"
 	rollout := filepath.Join(codexRoot, "sessions", "2026", "rollout-live.jsonl")
 	proc := &fakeProcFS{processes: map[int]fakeProcess{
@@ -246,10 +247,24 @@ func TestDetectCodexThreadsKeepsRolloutDescriptorIdentity(t *testing.T) {
 		Socket:      "cx-1-2-3",
 		PaneID:      "%4",
 		RolloutPath: rollout,
-		ThreadID:    "live-thread",
+		ThreadID:    "live",
 	}}
 	if !reflect.DeepEqual(live, want) {
 		t.Fatalf("DetectCodexThreads() = %#v, want %#v", live, want)
+	}
+}
+
+func TestCodexRolloutIDAcceptsTimestampedAndUntimestampedFiles(t *testing.T) {
+	tests := map[string]string{
+		"/codex/sessions/rollout-2026-01-02T03-04-05-thread-id.jsonl": "thread-id",
+		"/codex/sessions/rollout-unusual.jsonl":                       "unusual",
+		"/codex/sessions/not-a-rollout.jsonl":                         "",
+		"":                                                            "",
+	}
+	for path, want := range tests {
+		if got := CodexRolloutID(path); got != want {
+			t.Fatalf("CodexRolloutID(%q) = %q, want %q", path, got, want)
+		}
 	}
 }
 

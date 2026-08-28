@@ -19,8 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/compose"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
+	"hostops/pfm/internal/resolve"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -94,6 +97,75 @@ func callTool[T any](
 }
 
 func captureInt(value int) *int { return &value }
+
+type resolveGateInjector struct {
+	target inject.Target
+}
+
+func (fake resolveGateInjector) Resolve(context.Context, string) (inject.Target, int, string, error) {
+	return fake.target, 0, "", nil
+}
+
+func (fake resolveGateInjector) ResolveEngine(_ context.Context, _ string, engine string) (inject.Target, int, string, error) {
+	if engine != string(pfmengine.Codex) {
+		return inject.Target{}, inject.CodeUnknown, "", nil
+	}
+	return fake.target, 0, "", nil
+}
+
+func (resolveGateInjector) Capture(context.Context, string, int) (inject.Target, string, int, string, error) {
+	return inject.Target{}, "", 0, "", nil
+}
+
+func (resolveGateInjector) Inject(context.Context, inject.Request) (inject.Result, error) {
+	return inject.Result{}, nil
+}
+
+func (resolveGateInjector) ScheduleAfterCurrentTurn(context.Context, inject.Request) (inject.Result, error) {
+	return inject.Result{}, nil
+}
+
+func TestChatResolveCxWindowUsesTheInjectionResolutionGate(t *testing.T) {
+	t.Setenv("PFM_TMUX_DIR", t.TempDir())
+	t.Setenv("PFM_SID_DIR", t.TempDir())
+	raw, err := resolve.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := inject.Target{SocketPath: "/tmp/tmux-1000/cx-1-2-3", Pane: "%7", Engine: "cx"}
+	service := newService("test", &backend{
+		resolver: *raw,
+		injector: resolveGateInjector{target: want},
+	})
+	protocol := connectInMemory(t, service.Server())
+	resolved := callTool[ResolveOutput](t, protocol.clientSession, "chat_resolve", ResolveInput{
+		Kind: "cxwin", Name: "same name",
+	})
+	if resolved.Status != "ok" || resolved.Code != 0 ||
+		resolved.SocketPath != want.SocketPath || resolved.Pane != want.Pane {
+		t.Fatalf("chat_resolve=%+v, want injection gate target %+v", resolved, want)
+	}
+}
+
+func TestMCPRosterNameResolverKeepsCxWindowCodexScoped(t *testing.T) {
+	const name = "same name"
+	resolver := mcpRosterNameResolver{
+		tmuxDir: "/tmp/tmux-1000",
+		operations: SharedOperations{List: func(context.Context, LSInput) (LSOutput, error) {
+			return LSOutput{Rows: []ChatRow{
+				{ID: "claude-id", Name: name, Engine: pfmengine.Claude, Kind: compose.LiveClaude.String(), Socket: "cc-1-2-3", Pane: "%1"},
+				{ID: "codex-id", Name: name, Engine: pfmengine.Codex, Kind: compose.LiveCodex.String(), Socket: "cx-1-2-3", Pane: "%2"},
+			}}, nil
+		}},
+	}
+	target, code, detail, err := resolver.ResolveName(
+		context.Background(), name, string(pfmengine.Codex),
+	)
+	if err != nil || code != 0 || detail != "" || target.ID != "codex-id" ||
+		target.SocketPath != "/tmp/tmux-1000/cx-1-2-3" || target.Pane != "%2" {
+		t.Fatalf("ResolveName()=(%+v,%d,%q,%v), want Codex candidate", target, code, detail, err)
+	}
+}
 
 func TestChatStatusSummaryUsesCanonicalCommandAndReturnsField(t *testing.T) {
 	var gotArgs []string

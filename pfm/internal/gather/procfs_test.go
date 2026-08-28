@@ -97,6 +97,7 @@ func TestDetectCodexNumericFDAndAncestorMatching(t *testing.T) {
 		Socket:      "cx-1-2-3",
 		PaneID:      "%4",
 		RolloutPath: first,
+		ThreadID:    "first",
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DetectCodex() = %#v, want %#v", got, want)

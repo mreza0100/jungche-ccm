@@ -3,6 +3,9 @@ Description=Serve pfm chat and Harvester MCP over loopback HTTP
 
 [Service]
 Type=simple
+# Keep systemd's default KillMode=control-group: spawn wraps each new chat
+# server in its own user scope, so restarting this daemon reaps daemon work
+# without coupling any terminal's lifetime to the dispatcher that created it.
 ExecStart=%h/.local/bin/pfm mcp serve
 Restart=on-failure
 RestartSec=2

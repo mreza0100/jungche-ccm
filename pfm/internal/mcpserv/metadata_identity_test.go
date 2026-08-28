@@ -340,6 +340,10 @@ func (recorder *recordingCompactInjector) Resolve(context.Context, string) (inje
 	return inject.Target{}, 0, "", nil
 }
 
+func (recorder *recordingCompactInjector) ResolveEngine(context.Context, string, string) (inject.Target, int, string, error) {
+	return inject.Target{}, 0, "", nil
+}
+
 func (recorder *recordingCompactInjector) Capture(context.Context, string, int) (inject.Target, string, int, string, error) {
 	return inject.Target{}, "", 0, "", nil
 }

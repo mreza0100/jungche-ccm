@@ -21,6 +21,7 @@ import (
 
 type injectionService interface {
 	Resolve(context.Context, string) (inject.Target, int, string, error)
+	ResolveEngine(context.Context, string, string) (inject.Target, int, string, error)
 	Capture(context.Context, string, int) (inject.Target, string, int, string, error)
 	Inject(context.Context, inject.Request) (inject.Result, error)
 	ScheduleAfterCurrentTurn(context.Context, inject.Request) (inject.Result, error)
@@ -70,7 +71,11 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 		return nil, err
 	}
 	injector, err := inject.New(inject.Dependencies{
-		Resolver:       resolver,
+		Resolver: resolver,
+		Names: mcpRosterNameResolver{
+			operations: runtime.Operations,
+			tmuxDir:    runtime.Paths.TmuxDir,
+		},
 		Spawner:        inject.CommandThenSpawner{ConfigPath: runtime.ConfigPath},
 		ClaudeBinary:   runtime.ClaudeBinary,
 		CodexBinary:    runtime.CodexBinary,
@@ -95,6 +100,77 @@ func newBackendConfigured(warnings io.Writer, runtime Runtime) (*backend, error)
 		warnings:             warnings,
 		allowAmbientIdentity: runtime.AllowAmbientIdentity,
 	}, nil
+}
+
+type mcpRosterNameResolver struct {
+	operations SharedOperations
+	tmuxDir    string
+}
+
+func (resolver mcpRosterNameResolver) ResolveName(
+	ctx context.Context,
+	name, requiredEngine string,
+) (inject.Target, int, string, error) {
+	if resolver.operations.List == nil {
+		return inject.Target{}, inject.CodeUnknown, "", nil
+	}
+	listed, err := resolver.operations.List(ctx, LSInput{All: true})
+	if err != nil {
+		return inject.Target{}, inject.CodeUndelivered, "", fmt.Errorf(
+			"resolve roster name %q: list live chats: %w", name, err,
+		)
+	}
+	candidates := make([]resolve.RosterCandidate, 0, len(listed.Rows))
+	for _, row := range listed.Rows {
+		if row.Killed || !liveRosterKind(row.Kind) || row.Socket == "" ||
+			(requiredEngine != "" && string(row.Engine) != requiredEngine) {
+			continue
+		}
+		pane := row.Pane
+		if pane == "" {
+			pane = row.Session
+		}
+		if pane == "" {
+			continue
+		}
+		socketPath, pathErr := socketPathUnder(resolver.tmuxDir, row.Socket)
+		if pathErr != nil {
+			return inject.Target{}, inject.CodeUndelivered, "", fmt.Errorf(
+				"resolve roster name %q: row %q socket: %w", name, row.ID, pathErr,
+			)
+		}
+		candidates = append(candidates, resolve.RosterCandidate{
+			Name: row.Name, ID: row.ID, Socket: row.Socket, SocketPath: socketPath,
+			Session: row.Session, Pane: pane, Engine: string(row.Engine), Live: true,
+		})
+	}
+	match, found, err := resolve.ResolveRosterName(candidates, name)
+	if err != nil {
+		var ambiguous *resolve.RosterAmbiguityError
+		if errors.As(err, &ambiguous) {
+			return inject.Target{}, inject.CodeAmbiguous, ambiguous.Error(), nil
+		}
+		return inject.Target{}, inject.CodeUndelivered, "", err
+	}
+	if !found {
+		return inject.Target{}, inject.CodeUnknown, "", nil
+	}
+	return inject.Target{
+		SocketPath: match.SocketPath,
+		Pane:       match.Pane,
+		Engine:     match.Engine,
+		Name:       match.Name,
+		ID:         match.ID,
+		Session:    match.Session,
+	}, 0, "", nil
+}
+
+func liveRosterKind(kind string) bool {
+	return kind == compose.LiveClaude.String() ||
+		kind == compose.LiveCodex.String() ||
+		kind == compose.LiveSplit.String() ||
+		kind == compose.Agent.String() ||
+		kind == compose.Booting.String()
 }
 
 func (current *backend) close() error {

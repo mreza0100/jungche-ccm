@@ -180,11 +180,35 @@ func runChatResolve(args []string, stdout, stderr io.Writer, runtimes ...command
 		flags.Usage()
 		return 2
 	}
-	chat, code := headlessTarget(context.Background(), flags.Arg(0), stdout, stderr, false, runtimes...)
-	if code != 0 {
-		return code
+	name := flags.Arg(0)
+	engine, err := newInjectEngine(runtimes...)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat resolve: %v\n", err)
+		return codeUndelivered
 	}
-	fmt.Fprintf(stdout, "%s\t%s\t%s\n", chat.Socket, chat.Session, chat.ID)
+	target, code, detail, err := engine.Resolve(context.Background(), name)
+	if err != nil {
+		fmt.Fprintf(stderr, "pfm chat resolve: %v\n", err)
+		return codeUndelivered
+	}
+	if code != 0 {
+		if code == inject.CodeUnknown {
+			fmt.Fprintf(stdout, "%s\t%s\n", name, headless.StateMissing)
+			fmt.Fprintf(stderr, "pfm chat: no chat named %q\n", name)
+			return codeUnknownChat
+		}
+		if detail != "" {
+			fmt.Fprintln(stderr, detail)
+		}
+		if code == inject.CodeAmbiguous {
+			return 2
+		}
+		return codeUndelivered
+	}
+	fmt.Fprintf(
+		stdout, "%s\t%s\t%s\n",
+		filepath.Base(target.SocketPath), target.Session, target.ID,
+	)
 	return 0
 }
 

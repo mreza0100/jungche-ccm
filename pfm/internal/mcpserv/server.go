@@ -10,6 +10,7 @@ import (
 
 	"hostops/pfm/internal/chatkeys"
 	pfmconfig "hostops/pfm/internal/config"
+	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/inject"
 	"hostops/pfm/internal/paths"
 	"hostops/pfm/internal/resolve"
@@ -404,6 +405,30 @@ func (service *Service) chatResolve(
 		return nil, ResolveOutput{}, fmt.Errorf(
 			"kind must be label, session, or cxwin",
 		)
+	}
+	if kind == resolve.CxWindow {
+		target, code, detail, err := service.backend.injector.ResolveEngine(
+			ctx, input.Name, string(pfmengine.Codex),
+		)
+		if err != nil {
+			return nil, ResolveOutput{}, err
+		}
+		status := "ok"
+		switch code {
+		case 0:
+		case inject.CodeUnknown:
+			status, code = "not_found", 1
+		case inject.CodeAmbiguous:
+			status, code = "ambiguous", 2
+		default:
+			return nil, ResolveOutput{}, fmt.Errorf(
+				"resolve target %q failed with code %d: %s", input.Name, code, detail,
+			)
+		}
+		return nil, ResolveOutput{
+			Status: status, Code: code, SocketPath: target.SocketPath,
+			Pane: target.Pane, Candidates: detail,
+		}, nil
 	}
 	namespace, err := service.backend.resolver.Resolve(ctx, kind, input.Name)
 	if err != nil {

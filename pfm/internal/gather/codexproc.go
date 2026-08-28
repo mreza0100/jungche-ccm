@@ -95,14 +95,17 @@ func DetectCodexThreadsInRoots(
 				break
 			}
 		}
-		// The process's own argv is the deterministic identity, and the only
-		// one a RESUMED session has: its thread was created hours or days
-		// before the process, so no birth match can reach it, and the resume
-		// may write no rollout file at all. It outranks the exported
-		// CODEX_THREAD_ID because that variable is INHERITED — a `codex resume`
-		// launched from inside another Codex session's shell carries the
-		// parent's thread id in its environment and its own in its argv.
-		threadID := codexResumeArgv(cmdline)
+		// A process-held rollout is what the live process is doing NOW. It
+		// outranks launch argv and inherited environment because a compact or
+		// reset continuation can rotate the thread without replacing the
+		// process. The argv remains the deterministic identity for a RESUMED
+		// session that holds no rollout file: its thread was created hours or
+		// days before the process, so no birth match can reach it. Both outrank
+		// exported CODEX_THREAD_ID because that variable is inherited.
+		threadID := CodexRolloutID(rolloutPath)
+		if threadID == "" {
+			threadID = codexResumeArgv(cmdline)
+		}
 		if threadID == "" && identify != nil {
 			threadID = codexThreadEnv(proc, pid)
 		}
@@ -138,6 +141,41 @@ func DetectCodexThreadsInRoots(
 		return live[left].PID < live[right].PID
 	})
 	return live, nil
+}
+
+// CodexRolloutID returns the conversation id carried by a rollout path.
+// Empty means the process holds no recognisable Codex rollout. Keeping this
+// parser in gather makes the live-process observation the single source used
+// by both composition and persistent pane rebinding.
+func CodexRolloutID(path string) string {
+	base := filepath.Base(path)
+	if filepath.Ext(base) != ".jsonl" {
+		return ""
+	}
+	stem := strings.TrimSuffix(base, ".jsonl")
+	rest, found := strings.CutPrefix(stem, "rollout-")
+	if !found {
+		return ""
+	}
+	if len(rest) > 20 &&
+		rest[4] == '-' &&
+		rest[7] == '-' &&
+		rest[10] == 'T' &&
+		rest[13] == '-' &&
+		rest[16] == '-' &&
+		rest[19] == '-' {
+		return rest[20:]
+	}
+	return rest
+}
+
+// CodexThreadID names the live conversation a detected Codex process owns.
+// A current rollout always wins; ThreadID is the rollout-less resolver rung.
+func CodexThreadID(process LiveCodex) string {
+	if id := CodexRolloutID(process.RolloutPath); id != "" {
+		return id
+	}
+	return process.ThreadID
 }
 
 // codexResumeArgv reads the conversation a Codex process was launched to

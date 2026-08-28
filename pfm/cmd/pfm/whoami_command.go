@@ -188,6 +188,7 @@ func newInjectEngineAllowingUnsigned(
 			}
 		}
 	}
+	dependencies.Names = fleetNameResolver{runtimes: append([]commandRuntime(nil), runtimes...)}
 	dependencies.CodexSeat = identifier
 	return inject.New(dependencies)
 }

@@ -52,6 +52,9 @@ type Target struct {
 	SocketPath string `json:"socket_path"`
 	Pane       string `json:"pane"`
 	Engine     string `json:"engine"`
+	Name       string `json:"name,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Session    string `json:"session,omitempty"`
 }
 
 // Request describes one live injection.
@@ -103,6 +106,13 @@ type Sender struct {
 // Resolver is the existing chat.sh-compatible namespace resolver.
 type Resolver interface {
 	Resolve(context.Context, resolve.Kind, string) (resolve.Outcome, error)
+}
+
+// NameResolver projects the composed fleet roster into a live target. Code 4
+// means the roster has no answer and Engine must continue through its raw pane
+// fallbacks; Code 2 is authoritative roster ambiguity and stops resolution.
+type NameResolver interface {
+	ResolveName(context.Context, string, string) (Target, int, string, error)
 }
 
 // SelfIdentifier answers who the SENDER is — chat.sh's self_tmux, including
@@ -207,6 +217,7 @@ type Options struct {
 // Dependencies are injectable for jailed and adversarial tests.
 type Dependencies struct {
 	Resolver   Resolver
+	Names      NameResolver
 	Tmux       Tmux
 	Spawner    ThenSpawner
 	Identifier SelfIdentifier
