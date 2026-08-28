@@ -130,6 +130,13 @@ func TestRenderGoldens(t *testing.T) {
 			},
 		},
 		{
+			name: "Cosmos orbit-guides-off ansi 80 columns",
+			path: "ui_cosmos_no_orbits_80.ansi",
+			got: func() string {
+				return quoteANSI(cosmosNoOrbitsGoldenModel(80).View().Content)
+			},
+		},
+		{
 			name: "plain",
 			path: "ui_plain.txt",
 			got: func() string {
@@ -328,6 +335,34 @@ func cosmosSkyGoldenModel(width int) Model {
 	model := NewModel(cosmosGoldenSnapshot(width, false))
 	model.tab = TabCosmos
 	return model
+}
+
+// cosmosNoOrbitsGoldenModel is cosmosGoldenModel after the "o" toggle: the
+// one golden that pins the guides-off sky, so the hidden branch is exercised
+// rather than trusted.
+func cosmosNoOrbitsGoldenModel(width int) Model {
+	model := cosmosGoldenModel(width)
+	model.orbitsHidden = true
+	return model
+}
+
+// TestCosmosOrbitGuideToggle pins the "o" key contract on the cosmos tab:
+// one press hides the dashed orbit guides, a second restores them — and
+// hiding them must visibly change the frame, or the toggle is a switch
+// wired to nothing.
+func TestCosmosOrbitGuideToggle(t *testing.T) {
+	model := cosmosGoldenModel(80)
+	pressed, _ := applyKey(t, model, printableKey('o'))
+	if !pressed.orbitsHidden {
+		t.Fatalf("o on the cosmos tab did not hide the orbit guides")
+	}
+	restored, _ := applyKey(t, pressed, printableKey('o'))
+	if restored.orbitsHidden {
+		t.Fatalf("second o did not restore the orbit guides")
+	}
+	if cosmosGoldenModel(80).View().Content == cosmosNoOrbitsGoldenModel(80).View().Content {
+		t.Fatalf("hiding the orbit guides changed nothing in the rendered frame")
+	}
 }
 
 func TestAgentPaletteIsOrangeAndDistinctFromCodex(t *testing.T) {

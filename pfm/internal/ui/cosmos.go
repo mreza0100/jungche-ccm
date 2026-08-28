@@ -583,24 +583,27 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Orbit guides: the discipline made visible — a faint dashed ellipse
 	// under every planetary ring and every moon orbit, so a body is seen to
 	// FOLLOW a track rather than float. Structure, not animation: drawn in
-	// --no-sky too.
-	guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
-	for _, home := range starOrder {
-		anchor := starPoints[home]
-		for step := 0; step < 72; step += 3 {
-			angle := 2 * math.Pi * float64(step) / 72
-			canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+	// --no-sky too. The "o" key hides them for an operator who wants the
+	// bare pre-guide sky back.
+	if !model.orbitsHidden {
+		guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
+		for _, home := range starOrder {
+			anchor := starPoints[home]
+			for step := 0; step < 72; step += 3 {
+				angle := 2 * math.Pi * float64(step) / 72
+				canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+			}
 		}
-	}
-	for parentKey, moons := range moonChildren {
-		anchor, ok := points[parentKey]
-		if !ok {
-			continue
-		}
-		orbit := cosmosMoonOrbit(len(moons))
-		for step := 0; step < 48; step += 3 {
-			angle := 2 * math.Pi * float64(step) / 48
-			canvas.Dot(int(anchor.x+orbit*math.Cos(angle)), int(anchor.y+orbit*math.Sin(angle)), guide)
+		for parentKey, moons := range moonChildren {
+			anchor, ok := points[parentKey]
+			if !ok {
+				continue
+			}
+			orbit := cosmosMoonOrbit(len(moons))
+			for step := 0; step < 48; step += 3 {
+				angle := 2 * math.Pi * float64(step) / 48
+				canvas.Dot(int(anchor.x+orbit*math.Cos(angle)), int(anchor.y+orbit*math.Sin(angle)), guide)
+			}
 		}
 	}
 
@@ -864,10 +867,18 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 			}
 		}
 		label := clipCosmosLabel(node.Label.String(), rightward, colX, canvas.Cols)
+		// The label rides dimmer than its glyph — the terminal's "smaller
+		// font" — so a busy sky reads markers first, names second. An
+		// arriving chat flashes its name at full strength, and a dead
+		// node's alarm colour is never softened.
+		labelColor := scaleRGB(color, 0.62)
+		if node.Dead || arrival > 0.4 {
+			labelColor = color
+		}
 		if rightward {
-			canvas.Text(colX+2, colY, label, color, bold)
+			canvas.Text(colX+2, colY, label, labelColor, bold)
 		} else {
-			canvas.Text(colX-1-len([]rune(label)), colY, label, color, bold)
+			canvas.Text(colX-1-len([]rune(label)), colY, label, labelColor, bold)
 		}
 		if arrival > 0.55 {
 			canvas.SetCell(colX, colY-1, '✦', scaleRGB(white, arrival), false)
@@ -968,11 +979,17 @@ func cosmosDeathVisual(base RGB, deathAge time.Duration) (RGB, bool) {
 	return scaleRGB(base, 0.85*(1-fadeT)), false
 }
 
+// cosmosLabelCap is the flat rune ceiling on every node label, canvas space
+// notwithstanding: in a crowded system it is the labels, not the orbits,
+// that turn the sky into noise, and fourteen runes keep enough of a name to
+// recognize it while the glyph carries the rest.
+const cosmosLabelCap = 14
+
 // clipCosmosLabel bounds a node's label to the canvas space actually
-// available in the direction it draws, so a long label (a long chat name, or
-// the bracketed diagnostic an unresolved identity renders as) can be clipped
-// with a visible ellipsis instead of running off-canvas or smearing across
-// whatever sits past the edge.
+// available in the direction it draws — and to cosmosLabelCap on top — so a
+// long label (a long chat name, or the bracketed diagnostic an unresolved
+// identity renders as) is clipped with a visible ellipsis instead of
+// running off-canvas or smearing across whatever sits past the edge.
 func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	available := cols - (colX + 2)
 	if !rightward {
@@ -980,6 +997,9 @@ func clipCosmosLabel(label string, rightward bool, colX, cols int) string {
 	}
 	if available < 0 {
 		available = 0
+	}
+	if available > cosmosLabelCap {
+		available = cosmosLabelCap
 	}
 	return truncateRunes(label, available)
 }
