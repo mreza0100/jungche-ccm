@@ -7,7 +7,7 @@ thread id — `01a044f3-9bc4-7070-84cb-95936284c953` → `01a045a4-fa5c-7822-bd6
 after a session reset. The fleet's thread→socket binding did not follow:
 
 - `pfm ls --tsv` showed a `live-codex` row still bound to the OLD thread id
-  `01a044f3…` on that socket — even carrying the old project (`intuita`) while the
+  `01a044f3…` on that socket — even carrying the old thread's project while the
   pane's actual chat sits in `~/.professor`.
 - The NEW thread `01a045a4…` surfaced as a socketless `resume-codex` row.
 

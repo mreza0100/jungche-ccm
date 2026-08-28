@@ -305,7 +305,7 @@ func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 func TestCosmosCrossStarSpawnIsAPlanetNotAMoon(t *testing.T) {
 	nodes := map[string]compose.CosmosNode{
 		"chat:name:parent": {Key: "chat:name:parent", Home: ".professor"},
-		"chat:name:child":  {Key: "chat:name:child", Home: "intuita"},
+		"chat:name:child":  {Key: "chat:name:child", Home: "atlas"},
 		"chat:name:local":  {Key: "chat:name:local", Home: ".professor"},
 	}
 	edges := []compose.CosmosEdge{
@@ -333,7 +333,7 @@ func TestCosmosEveryHomeIsAStar(t *testing.T) {
 	}
 	multi := map[string]compose.CosmosNode{
 		"chat:name:a": {Key: "chat:name:a", Home: ".professor"},
-		"chat:name:b": {Key: "chat:name:b", Home: "intuita"},
+		"chat:name:b": {Key: "chat:name:b", Home: "atlas"},
 		"chat:name:c": {Key: "chat:name:c", Home: "/tmp"},
 		"chat:name:g": {Key: "chat:name:g", Group: true},
 	}
