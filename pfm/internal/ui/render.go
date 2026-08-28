@@ -338,7 +338,7 @@ func (model Model) renderFooter(width int) string {
 			dimStyle.Render(fillLine(second, width))
 	}
 	if model.tab == TabCosmos {
-		first := " tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel"
+		first := " o orbit guides · tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel"
 		second := " live ledger samples every 2s only while cosmos is focused"
 		return dimStyle.Render(fillLine(first, width)) + "\n" +
 			dimStyle.Render(fillLine(second, width))

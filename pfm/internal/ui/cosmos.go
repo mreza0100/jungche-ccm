@@ -583,24 +583,27 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Orbit guides: the discipline made visible — a faint dashed ellipse
 	// under every planetary ring and every moon orbit, so a body is seen to
 	// FOLLOW a track rather than float. Structure, not animation: drawn in
-	// --no-sky too.
-	guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
-	for _, home := range starOrder {
-		anchor := starPoints[home]
-		for step := 0; step < 72; step += 3 {
-			angle := 2 * math.Pi * float64(step) / 72
-			canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+	// --no-sky too. The "o" key hides them for an operator who wants the
+	// bare pre-guide sky back.
+	if !model.orbitsHidden {
+		guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
+		for _, home := range starOrder {
+			anchor := starPoints[home]
+			for step := 0; step < 72; step += 3 {
+				angle := 2 * math.Pi * float64(step) / 72
+				canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+			}
 		}
-	}
-	for parentKey, moons := range moonChildren {
-		anchor, ok := points[parentKey]
-		if !ok {
-			continue
-		}
-		orbit := cosmosMoonOrbit(len(moons))
-		for step := 0; step < 48; step += 3 {
-			angle := 2 * math.Pi * float64(step) / 48
-			canvas.Dot(int(anchor.x+orbit*math.Cos(angle)), int(anchor.y+orbit*math.Sin(angle)), guide)
+		for parentKey, moons := range moonChildren {
+			anchor, ok := points[parentKey]
+			if !ok {
+				continue
+			}
+			orbit := cosmosMoonOrbit(len(moons))
+			for step := 0; step < 48; step += 3 {
+				angle := 2 * math.Pi * float64(step) / 48
+				canvas.Dot(int(anchor.x+orbit*math.Cos(angle)), int(anchor.y+orbit*math.Sin(angle)), guide)
+			}
 		}
 	}
 
