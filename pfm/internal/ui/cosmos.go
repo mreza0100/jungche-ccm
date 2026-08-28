@@ -321,50 +321,58 @@ func (model *Model) mergeCosmosSeats() {
 			newKeys[node.Key] = true
 		}
 	}
-	nodeMap := cosmosNodeMap(model.cosmos.Nodes)
-	parents, _ := cosmosOrbits(model.cosmos.Edges, nodeMap)
-	roots := make([]compose.CosmosNode, 0, len(chats))
-	moons := make([]compose.CosmosNode, 0, len(chats))
-	for _, node := range chats {
-		if parents[node.Key] != "" {
-			moons = append(moons, node)
-			continue
+	if model.classicSky {
+		// The first cosmos' seating, kept verbatim: every chat evenly on ONE
+		// shared ring starting at the top, groups on the inner ring — no
+		// per-star systems, no moon parking.
+		assign(chats, -math.Pi/2)
+		assign(groups, math.Pi/6)
+	} else {
+		nodeMap := cosmosNodeMap(model.cosmos.Nodes)
+		parents, _ := cosmosOrbits(model.cosmos.Edges, nodeMap)
+		roots := make([]compose.CosmosNode, 0, len(chats))
+		moons := make([]compose.CosmosNode, 0, len(chats))
+		for _, node := range chats {
+			if parents[node.Key] != "" {
+				moons = append(moons, node)
+				continue
+			}
+			roots = append(roots, node)
 		}
-		roots = append(roots, node)
-	}
-	// Roots ring their own star, not one global circle: each star's planets
-	// are spaced evenly among THEMSELVES, so a three-chat project reads as a
-	// three-planet system regardless of how crowded the next star over is.
-	byHome := make(map[string][]compose.CosmosNode)
-	for _, node := range roots {
-		byHome[node.Home] = append(byHome[node.Home], node)
-	}
-	homes := make([]string, 0, len(byHome))
-	for home := range byHome {
-		homes = append(homes, home)
-	}
-	sort.Strings(homes)
-	for _, home := range homes {
-		assign(byHome[home], -math.Pi/2)
-	}
-	assign(groups, math.Pi/6)
-	// A moon's seat is only the fallback for the day its parent vanishes:
-	// while the parent renders, cosmosLayout overrides the moon's position
-	// with the parent-anchored orbit, and the ring target parked here is
-	// where the orphan eases once the parent is gone.
-	for _, node := range moons {
-		target := 0.0
-		if parent := next[parents[node.Key]]; parent != nil {
-			target = parent.Target
+		// Roots ring their own star, not one global circle: each star's planets
+		// are spaced evenly among THEMSELVES, so a three-chat project reads as a
+		// three-planet system regardless of how crowded the next star over is.
+		byHome := make(map[string][]compose.CosmosNode)
+		for _, node := range roots {
+			byHome[node.Home] = append(byHome[node.Home], node)
 		}
-		if old := previous[node.Key]; old != nil {
-			copy := *old
-			copy.Target = target
-			next[node.Key] = &copy
-			continue
+		homes := make([]string, 0, len(byHome))
+		for home := range byHome {
+			homes = append(homes, home)
 		}
-		next[node.Key] = &cosmosSeat{Angle: target, Target: target}
-		newKeys[node.Key] = true
+		sort.Strings(homes)
+		for _, home := range homes {
+			assign(byHome[home], -math.Pi/2)
+		}
+		assign(groups, math.Pi/6)
+		// A moon's seat is only the fallback for the day its parent vanishes:
+		// while the parent renders, cosmosLayout overrides the moon's position
+		// with the parent-anchored orbit, and the ring target parked here is
+		// where the orphan eases once the parent is gone.
+		for _, node := range moons {
+			target := 0.0
+			if parent := next[parents[node.Key]]; parent != nil {
+				target = parent.Target
+			}
+			if old := previous[node.Key]; old != nil {
+				copy := *old
+				copy.Target = target
+				next[node.Key] = &copy
+				continue
+			}
+			next[node.Key] = &cosmosSeat{Angle: target, Target: target}
+			newKeys[node.Key] = true
+		}
 	}
 	for _, edge := range model.cosmos.Edges {
 		if !hadSeats || edge.Kind != shared.KindSpawn || !newKeys[edge.To] {
@@ -377,6 +385,22 @@ func (model *Model) mergeCosmosSeats() {
 	}
 	model.cosmosSeats = next
 	model.layoutCosmosSeats()
+}
+
+// toggleClassicSky flips the cosmos between the orbital and the first-cosmos
+// layout and re-seats immediately: ring targets differ between the two skies.
+// With the sky on, the seats' easing carries the transition; --no-sky never
+// ticks the easing, so there the seats snap straight to their new targets —
+// a deliberate mode change may teleport, a graph refresh never does.
+func (model *Model) toggleClassicSky() {
+	model.classicSky = !model.classicSky
+	model.mergeCosmosSeats()
+	if !model.skyEnabled {
+		for _, seat := range model.cosmosSeats {
+			seat.Angle = seat.Target
+		}
+		model.layoutCosmosSeats()
+	}
 }
 
 func (model *Model) layoutCosmosSeats() {
@@ -575,7 +599,7 @@ func cosmosCometDuration(kind string) time.Duration {
 
 func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
+	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled, model.classicSky)
 	points, starOrder, starPoints, cx, cy := frame.points, frame.starOrder, frame.starPoints, frame.cx, frame.cy
 	clock := float64(now.UnixNano()) / 1e9
 	moonParents, moonChildren := cosmosOrbits(model.cosmos.Edges, nodes)
@@ -583,9 +607,8 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	// Orbit guides: the discipline made visible — a faint dashed ellipse
 	// under every planetary ring and every moon orbit, so a body is seen to
 	// FOLLOW a track rather than float. Structure, not animation: drawn in
-	// --no-sky too. The "o" key hides them for an operator who wants the
-	// bare pre-guide sky back.
-	if !model.orbitsHidden {
+	// --no-sky too. The classic sky has no orbits, so it has no tracks.
+	if !model.classicSky {
 		guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
 		for _, home := range starOrder {
 			anchor := starPoints[home]
@@ -861,7 +884,7 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		if anchor, ok := starPoints[node.Home]; ok && !node.Group {
 			rightward = point.x >= anchor.x
 		}
-		if parentKey := moonParents[node.Key]; parentKey != "" {
+		if parentKey := moonParents[node.Key]; parentKey != "" && !model.classicSky {
 			if anchor, ok := points[parentKey]; ok {
 				rightward = point.x >= anchor.x
 			}
@@ -1035,7 +1058,7 @@ func cosmosStarPoints(nodes map[string]compose.CosmosNode, cx, cy, rx, ry float6
 	return order, points
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) cosmosFrame {
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky, classic bool) cosmosFrame {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -1052,13 +1075,19 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	// The star tier: every chat orbits ITS OWN star — the project it lives
 	// in. One star sits at the galactic centre with the full canvas as its
 	// system; several stars share the ring, each with a tighter system.
-	starOrder, starPoints := cosmosStarPoints(nodes, cx, cy, rx, ry)
+	// The classic sky has no tier at all: empty star maps mean the sun and
+	// guide loops downstream simply have nothing to draw.
+	var starOrder []string
+	starPoints := map[string]cosmosPoint{}
 	systemRx, systemRy := rx, ry
-	if len(starOrder) > 1 {
-		// Sized against the 0.70/0.62 star ring above: adjacent systems
-		// keep clear water between their rings instead of printing into
-		// each other.
-		systemRx, systemRy = rx*0.34, ry*0.42
+	if !classic {
+		starOrder, starPoints = cosmosStarPoints(nodes, cx, cy, rx, ry)
+		if len(starOrder) > 1 {
+			// Sized against the 0.70/0.62 star ring above: adjacent systems
+			// keep clear water between their rings instead of printing into
+			// each other.
+			systemRx, systemRy = rx*0.34, ry*0.42
+		}
 	}
 	points := make(map[string]cosmosPoint, len(seats))
 	for key, seat := range seats {
@@ -1076,6 +1105,16 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			points[key] = cosmosPoint{
 				x: cx + rx*radius*math.Cos(angle),
 				y: cy + ry*radius*math.Sin(angle),
+			}
+			continue
+		}
+		if classic {
+			// The first cosmos: one shared ring around the galactic centre,
+			// no anchor star and no rigid revolution — the seat's own angle
+			// IS the position.
+			points[key] = cosmosPoint{
+				x: cx + rx*breath*math.Cos(angle),
+				y: cy + ry*breath*math.Sin(angle),
 			}
 			continue
 		}
@@ -1104,7 +1143,7 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	// earth: the moon circles its planet while the planet keeps circling
 	// the sun — and a moon's own children circle IT, one level down.
 	parents, children := cosmosOrbits(edges, nodes)
-	if len(parents) != 0 {
+	if !classic && len(parents) != 0 {
 		var place func(key string, depth int) cosmosPoint
 		place = func(key string, depth int) cosmosPoint {
 			parentKey := parents[key]

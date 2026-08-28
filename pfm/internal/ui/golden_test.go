@@ -130,10 +130,10 @@ func TestRenderGoldens(t *testing.T) {
 			},
 		},
 		{
-			name: "Cosmos orbit-guides-off ansi 80 columns",
-			path: "ui_cosmos_no_orbits_80.ansi",
+			name: "Cosmos classic sky ansi 80 columns",
+			path: "ui_cosmos_classic_80.ansi",
 			got: func() string {
-				return quoteANSI(cosmosNoOrbitsGoldenModel(80).View().Content)
+				return quoteANSI(cosmosClassicGoldenModel(80).View().Content)
 			},
 		},
 		{
@@ -337,31 +337,38 @@ func cosmosSkyGoldenModel(width int) Model {
 	return model
 }
 
-// cosmosNoOrbitsGoldenModel is cosmosGoldenModel after the "o" toggle: the
-// one golden that pins the guides-off sky, so the hidden branch is exercised
-// rather than trusted.
-func cosmosNoOrbitsGoldenModel(width int) Model {
+// cosmosClassicGoldenModel is cosmosGoldenModel after the "o" toggle: the
+// one golden that pins the classic sky — the first cosmos, one shared ring
+// with no stars — so the collapsed branch is exercised rather than trusted.
+func cosmosClassicGoldenModel(width int) Model {
 	model := cosmosGoldenModel(width)
-	model.orbitsHidden = true
+	model.toggleClassicSky()
 	return model
 }
 
-// TestCosmosOrbitGuideToggle pins the "o" key contract on the cosmos tab:
-// one press hides the dashed orbit guides, a second restores them — and
-// hiding them must visibly change the frame, or the toggle is a switch
-// wired to nothing.
-func TestCosmosOrbitGuideToggle(t *testing.T) {
+// TestCosmosClassicSkyToggle pins the "o" key contract on the cosmos tab:
+// one press collapses the orbital sky into the first cosmos — no ✹ suns,
+// every chat on the shared ring — and a second press restores the systems.
+func TestCosmosClassicSkyToggle(t *testing.T) {
 	model := cosmosGoldenModel(80)
 	pressed, _ := applyKey(t, model, printableKey('o'))
-	if !pressed.orbitsHidden {
-		t.Fatalf("o on the cosmos tab did not hide the orbit guides")
+	if !pressed.classicSky {
+		t.Fatalf("o on the cosmos tab did not switch to the classic sky")
 	}
 	restored, _ := applyKey(t, pressed, printableKey('o'))
-	if restored.orbitsHidden {
-		t.Fatalf("second o did not restore the orbit guides")
+	if restored.classicSky {
+		t.Fatalf("second o did not restore the orbital sky")
 	}
-	if cosmosGoldenModel(80).View().Content == cosmosNoOrbitsGoldenModel(80).View().Content {
-		t.Fatalf("hiding the orbit guides changed nothing in the rendered frame")
+	orbital := cosmosGoldenModel(80).View().Content
+	classic := cosmosClassicGoldenModel(80).View().Content
+	if !strings.ContainsRune(orbital, '✹') {
+		t.Fatalf("orbital sky renders no ✹ sun — the fixture lost its stars")
+	}
+	if strings.ContainsRune(classic, '✹') {
+		t.Fatalf("classic sky still renders a ✹ sun")
+	}
+	if orbital == classic {
+		t.Fatalf("switching to the classic sky changed nothing in the frame")
 	}
 }
 
