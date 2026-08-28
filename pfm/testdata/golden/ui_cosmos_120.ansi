@@ -13,5 +13,5 @@
 "\x1b[38;2;100;116;139m│\x1b[m \x1b[0;38;2;224;232;240m07:59:59 ✳ 123456789012345678901234567890X → ▲ RR · QA: cosmos goldens are pinned                                    \x1b[0m\x1b[38;2;100;116;139m│\x1b[m"
 "\x1b[38;2;100;116;139m│\x1b[m                                                                                                                      \x1b[0m\x1b[38;2;100;116;139m│\x1b[m"
 "\x1b[38;2;100;116;139m╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯\x1b[m"
-"\x1b[38;2;148;163;184m tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel                                                                 \x1b[m"
+"\x1b[38;2;148;163;184m o orbit guides · tab/shift+tab cycle tabs · ←/→ cycle tabs · esc cancel                                                \x1b[m"
 "\x1b[38;2;148;163;184m live ledger samples every 2s only while cosmos is focused                                                              \x1b[m"
