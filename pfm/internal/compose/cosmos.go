@@ -129,9 +129,13 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 		edges:     make(map[string]CosmosEdge),
 	}
 
+	unsigned := 0
 	for _, event := range events {
 		switch event.Kind {
 		case shared.KindInject:
+			if event.SenderSession == "" && event.SenderUUID == "" && event.SenderLabel == "" {
+				unsigned++
+			}
 			from := builder.chatNode(senderAddress(event))
 			to := builder.chatNode(receiverAddress(event))
 			builder.touch(from, event.AtNS)
@@ -163,6 +167,7 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 			child := builder.chatNode(receiverAddress(event))
 			builder.touch(child, event.AtNS)
 			if event.SenderSession == "" && event.SenderUUID == "" && event.SenderLabel == "" {
+				unsigned++
 				continue
 			}
 			parent := builder.chatNode(senderAddress(event))
@@ -181,6 +186,15 @@ func BuildCosmos(rows []Row, events []shared.CommsEvent, nowNS int64) CosmosGrap
 	// app wait before treating an absence as final" question this package
 	// already has one answer to, so a second, independently-tuned knob
 	// would just be two numbers that can drift apart for no reason.
+	if unsigned > 0 {
+		// Error is never absence: an unsigned event has no sender node, so
+		// its line and its lineage CANNOT be drawn — and a universe missing
+		// lines must say why, not render a quieter sky and let the gap read
+		// as "no traffic".
+		builder.warnings = append(builder.warnings, fmt.Sprintf(
+			"%d events carry no sender identity — their lines cannot be drawn", unsigned,
+		))
+	}
 	rowGrace := int64(CosmosDeathBlink + CosmosDeathFade)
 	graph := CosmosGraph{Warnings: builder.warnings}
 	graph.Nodes = make([]CosmosNode, 0, len(builder.nodes))

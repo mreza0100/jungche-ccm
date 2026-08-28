@@ -24,6 +24,21 @@ type star struct {
 
 type cosmosPoint struct{ x, y float64 }
 
+// cosmosFrame is one layout pass: every node's braille-pixel seat plus the
+// star anchors and system radii the seats were computed against, so the
+// renderer can draw orbit guides on exactly the geometry the planets follow.
+type cosmosFrame struct {
+	points               map[string]cosmosPoint
+	starOrder            []string
+	starPoints           map[string]cosmosPoint
+	systemRx, systemRy   float64
+	cx, cy               float64
+}
+
+// cosmosMoonOrbit is the one source of a moon ring's radius: the shared
+// orbit widens with the brood.
+func cosmosMoonOrbit(count int) float64 { return 5 + 2.5*float64(count) }
+
 type cosmosSampleMsg struct {
 	generation uint64
 	events     []shared.CommsEvent
@@ -560,8 +575,34 @@ func cosmosCometDuration(kind string) time.Duration {
 
 func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
-	points, starOrder, starPoints, cx, cy := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
+	frame := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, model.skyEnabled)
+	points, starOrder, starPoints, cx, cy := frame.points, frame.starOrder, frame.starPoints, frame.cx, frame.cy
 	clock := float64(now.UnixNano()) / 1e9
+	moonParents, moonChildren := cosmosOrbits(model.cosmos.Edges, nodes)
+
+	// Orbit guides: the discipline made visible — a faint dashed ellipse
+	// under every planetary ring and every moon orbit, so a body is seen to
+	// FOLLOW a track rather than float. Structure, not animation: drawn in
+	// --no-sky too.
+	guide := scaleRGB(rgbFromHex(configuredCosmosPalette.CosmosStar), 0.8)
+	for _, home := range starOrder {
+		anchor := starPoints[home]
+		for step := 0; step < 72; step += 3 {
+			angle := 2 * math.Pi * float64(step) / 72
+			canvas.Dot(int(anchor.x+frame.systemRx*math.Cos(angle)), int(anchor.y+frame.systemRy*math.Sin(angle)), guide)
+		}
+	}
+	for parentKey, moons := range moonChildren {
+		anchor, ok := points[parentKey]
+		if !ok {
+			continue
+		}
+		orbit := cosmosMoonOrbit(len(moons))
+		for step := 0; step < 48; step += 3 {
+			angle := 2 * math.Pi * float64(step) / 48
+			canvas.Dot(int(anchor.x+orbit*math.Cos(angle)), int(anchor.y+orbit*math.Sin(angle)), guide)
+		}
+	}
 
 	for _, edge := range model.cosmos.Edges {
 		from, to := nodes[edge.From], nodes[edge.To]
@@ -712,7 +753,6 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 		outboundFlash = newestOutboundFlash(model.cosmos.Edges, model.cosmosNowNS)
 	}
 	white := rgbFromHex(configuredCosmosPalette.CosmosBright)
-	moonParents, _ := cosmosOrbits(model.cosmos.Edges, nodes)
 	orbitDepth := func(key string) int {
 		depth := 0
 		for parent := moonParents[key]; parent != "" && depth <= 8; parent = moonParents[parent] {
@@ -810,12 +850,16 @@ func (model Model) drawCosmosUniverse(canvas *Canvas, now time.Time) {
 			glyph rune
 			color RGB
 		}{colX, colY, cosmosNodeGlyph(node), color})
+		// A label grows away from its own SUN, not away from the galactic
+		// centre — otherwise every label in a right-side system points the
+		// same way and prints into its siblings. Moons refine it one tier
+		// down: away from their parent planet.
 		rightward := point.x >= cx
+		if anchor, ok := starPoints[node.Home]; ok && !node.Group {
+			rightward = point.x >= anchor.x
+		}
 		if parentKey := moonParents[node.Key]; parentKey != "" {
 			if anchor, ok := points[parentKey]; ok {
-				// A moon's label grows away from its PARENT, not away from
-				// the galactic centre — the parent's own label is the text
-				// most likely to sit beside it.
 				rightward = point.x >= anchor.x
 			}
 		}
@@ -966,12 +1010,12 @@ func cosmosStarPoints(nodes map[string]compose.CosmosNode, cx, cy, rx, ry float6
 		// left and right, not stacked top and bottom: a terminal is wide
 		// before it is tall, and the wide axis is where systems fit.
 		angle := math.Pi + 2*math.Pi*float64(index)/float64(len(order))
-		points[home] = cosmosPoint{x: cx + rx*0.55*math.Cos(angle), y: cy + ry*0.5*math.Sin(angle)}
+		points[home] = cosmosPoint{x: cx + rx*0.70*math.Cos(angle), y: cy + ry*0.62*math.Sin(angle)}
 	}
 	return order, points
 }
 
-func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) (map[string]cosmosPoint, []string, map[string]cosmosPoint, float64, float64) {
+func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string]compose.CosmosNode, edges []compose.CosmosEdge, now time.Time, sky bool) cosmosFrame {
 	top := 4.0
 	bottom := float64((canvas.Rows - 4) * 4)
 	cx := float64(canvas.PW()) / 2
@@ -991,7 +1035,10 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 	starOrder, starPoints := cosmosStarPoints(nodes, cx, cy, rx, ry)
 	systemRx, systemRy := rx, ry
 	if len(starOrder) > 1 {
-		systemRx, systemRy = rx*0.32, ry*0.38
+		// Sized against the 0.70/0.62 star ring above: adjacent systems
+		// keep clear water between their rings instead of printing into
+		// each other.
+		systemRx, systemRy = rx*0.34, ry*0.42
 	}
 	points := make(map[string]cosmosPoint, len(seats))
 	for key, seat := range seats {
@@ -1053,7 +1100,7 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 					break
 				}
 			}
-			orbit := 5 + 2.5*float64(len(moons))
+			orbit := cosmosMoonOrbit(len(moons))
 			angle := 2*math.Pi*float64(slot)/float64(len(moons)) + cosmosPhase(parentKey)
 			if sky {
 				angle += clock * 0.09 // one slow revolution per ~70s
@@ -1071,7 +1118,10 @@ func cosmosLayout(canvas *Canvas, seats map[string]*cosmosSeat, nodes map[string
 			points[key] = place(key, 0)
 		}
 	}
-	return points, starOrder, starPoints, cx, cy
+	return cosmosFrame{
+		points: points, starOrder: starOrder, starPoints: starPoints,
+		systemRx: systemRx, systemRy: systemRy, cx: cx, cy: cy,
+	}
 }
 
 func cosmosEdgeRail(from, to cosmosPoint, cx, cy float64) (x0, y0, cpx, cpy, x1, y1 float64) {
