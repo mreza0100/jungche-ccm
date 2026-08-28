@@ -38,11 +38,15 @@ func (tmux CommandTmux) NewSession(
 		"-y", strconv.Itoa(spec.Height),
 		spec.Run,
 	)
-	if output, err := tmux.command(
+	command, err := tmux.newSessionCommand(
 		ctx,
 		spec.Socket,
 		arguments...,
-	).CombinedOutput(); err != nil {
+	)
+	if err != nil {
+		return fmt.Errorf("create chat server: %w", err)
+	}
+	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("create chat server: %w: %s", err, output)
 	}
 	for _, options := range [][]string{
@@ -59,6 +63,21 @@ func (tmux CommandTmux) NewSession(
 		}
 	}
 	return nil
+}
+
+func (tmux CommandTmux) newSessionCommand(
+	ctx context.Context,
+	socket string,
+	arguments ...string,
+) (*exec.Cmd, error) {
+	binary := tmux.Binary
+	if binary == "" {
+		binary = deps.Executable("tmux")
+	}
+	commandArguments := []string{"-S", filepath.Join(tmux.TmuxDir, socket)}
+	commandArguments = append(commandArguments, arguments...)
+	environment := append(os.Environ(), "TMUX=")
+	return serviceScopeCommand(ctx, binary, commandArguments, environment)
 }
 
 func (tmux CommandTmux) Capture(

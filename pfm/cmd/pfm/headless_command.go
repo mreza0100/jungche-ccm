@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -193,9 +192,21 @@ func resolveChat(
 			name = identity.Session
 		}
 	}
-	database, err := store.Open(store.WithWarningWriter(warn))
+	rows, err := composedChatRows(ctx, warn, runtimes...)
 	if err != nil {
 		return headless.Chat{}, false, err
+	}
+	return matchChat(rows, name)
+}
+
+func composedChatRows(
+	ctx context.Context,
+	warn io.Writer,
+	runtimes ...commandRuntime,
+) ([]compose.Row, error) {
+	database, err := store.Open(store.WithWarningWriter(warn))
+	if err != nil {
+		return nil, err
 	}
 	defer database.Close()
 	request := scanRequest{View: compose.AllView, ReadOnly: true}
@@ -209,65 +220,31 @@ func resolveChat(
 		warn,
 	)
 	if err != nil {
-		return headless.Chat{}, false, err
+		return nil, err
 	}
-	return matchChat(scan.Output.Rows, name)
+	return scan.Output.Rows, nil
 }
 
 func matchChat(rows []compose.Row, name string) (headless.Chat, bool, error) {
-	exact := make([]compose.Row, 0, 2)
-	folded := make([]compose.Row, 0, 2)
-	// A row's Socket is the BARE name tmux is addressed by (-L), while the
-	// fleet records full -S paths — inject writes one into the comms ledger,
-	// spawn writes one for every chat it starts — so a caller pasting the
-	// socket it was handed matched nothing. Both sides go through
-	// resolve.SessionName, the single implementation of that reduction.
-	session := resolve.SessionName(name)
+	candidates := make([]resolve.RosterCandidate, 0, len(rows))
 	for _, row := range rows {
-		switch {
-		case row.ID == name ||
-			(session != "" && resolve.SessionName(row.Socket) == session) ||
-			row.Name == name:
-			exact = append(exact, row)
-		case strings.EqualFold(row.Name, name) ||
-			(len(name) >= 8 && strings.HasPrefix(row.ID, name)):
-			folded = append(folded, row)
+		candidates = append(candidates, resolve.RosterCandidate{
+			Name: row.Name, ID: row.ID, Socket: row.Socket,
+			Session: row.SessionName, Pane: row.PaneID,
+			Engine: string(compose.EngineForKind(row.Kind)), Live: isLiveKind(row.Kind),
+		})
+	}
+	match, found, err := resolve.ResolveRosterName(candidates, name)
+	if err != nil || !found {
+		return headless.Chat{}, false, err
+	}
+	for _, row := range rows {
+		if row.ID == match.ID && row.Socket == match.Socket &&
+			row.PaneID == match.Pane && row.Name == match.Name {
+			return chatFromRow(row), true, nil
 		}
 	}
-	candidates := exact
-	if len(candidates) == 0 {
-		candidates = folded
-	}
-	if len(candidates) == 0 {
-		return headless.Chat{}, false, nil
-	}
-	if len(candidates) > 1 {
-		// A live row and its own resume row are the same conversation; prefer
-		// the live one rather than calling the pair ambiguous.
-		live := make([]compose.Row, 0, len(candidates))
-		for _, row := range candidates {
-			if isLiveKind(row.Kind) {
-				live = append(live, row)
-			}
-		}
-		if len(live) == 1 {
-			candidates = live
-		}
-	}
-	if len(candidates) > 1 {
-		names := make([]string, 0, len(candidates))
-		for _, row := range candidates {
-			names = append(names, fmt.Sprintf("%s (%s)", row.Name, row.ID))
-		}
-		sort.Strings(names)
-		return headless.Chat{}, false, fmt.Errorf(
-			"%q matches %d chats: %s",
-			name,
-			len(candidates),
-			strings.Join(names, ", "),
-		)
-	}
-	return chatFromRow(candidates[0]), true, nil
+	return headless.Chat{}, false, fmt.Errorf("resolved roster row disappeared from the same snapshot")
 }
 
 func isLiveKind(kind compose.Kind) bool {
@@ -812,6 +789,8 @@ func writeInjectResult(
 		switch result.Code {
 		case inject.CodeUnknown:
 			return codeUnknownChat
+		case inject.CodeAmbiguous:
+			return 2
 		case inject.CodeDead:
 			return codeDeadChat
 		default:

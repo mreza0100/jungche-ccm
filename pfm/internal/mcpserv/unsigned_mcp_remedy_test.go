@@ -19,6 +19,10 @@ func (fakeUnsignedInjector) Resolve(context.Context, string) (inject.Target, int
 	return inject.Target{SocketPath: "cc-fixture", Pane: "%0"}, 0, "", nil
 }
 
+func (fakeUnsignedInjector) ResolveEngine(context.Context, string, string) (inject.Target, int, string, error) {
+	return inject.Target{SocketPath: "cc-fixture", Pane: "%0"}, 0, "", nil
+}
+
 func (fakeUnsignedInjector) Capture(context.Context, string, int) (inject.Target, string, int, string, error) {
 	return inject.Target{}, "", 0, "", nil
 }

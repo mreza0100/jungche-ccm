@@ -35,6 +35,7 @@ const (
 // Engine owns target resolution and the guarded tmux delivery sequence.
 type Engine struct {
 	resolver      Resolver
+	names         NameResolver
 	tmux          Tmux
 	spawner       ThenSpawner
 	options       Options
@@ -110,6 +111,7 @@ func New(dependencies Dependencies) (*Engine, error) {
 	}
 	return &Engine{
 		resolver:      dependencies.Resolver,
+		names:         dependencies.Names,
 		tmux:          dependencies.Tmux,
 		spawner:       dependencies.Spawner,
 		options:       options,
@@ -141,6 +143,7 @@ func (engine *Engine) WithIdentity(identity resolve.Identity, label string) *Eng
 	options.Sender = sender
 	return &Engine{
 		resolver:      engine.resolver,
+		names:         engine.names,
 		tmux:          engine.tmux,
 		spawner:       engine.spawner,
 		options:       options,
@@ -318,11 +321,28 @@ func withDefaults(options Options) Options {
 
 // Resolve applies chat.sh's live target ladder.
 func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, string, error) {
+	return engine.resolve(ctx, name, "")
+}
+
+// ResolveEngine applies the same roster-first ladder within one explicit
+// engine namespace. MCP's cxwin preview uses this so its roster rung cannot
+// widen a Codex-window query into a same-named Claude target.
+func (engine *Engine) ResolveEngine(
+	ctx context.Context,
+	name, requiredEngine string,
+) (Target, int, string, error) {
+	return engine.resolve(ctx, name, requiredEngine)
+}
+
+func (engine *Engine) resolve(
+	ctx context.Context,
+	name, requiredEngine string,
+) (Target, int, string, error) {
 	name = unquoteTarget(name)
 	if name == "" {
 		return Target{}, CodeUnknown, "empty target", nil
 	}
-	if name == "self" || name == "me" {
+	if requiredEngine == "" && (name == "self" || name == "me") {
 		identity, err := engine.whoami.Identify(ctx)
 		if (err != nil || identity.Session == "") &&
 			engine.codexSeat != nil &&
@@ -342,7 +362,7 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 		}
 		return target, 0, "", nil
 	}
-	if rawPane(name) {
+	if requiredEngine == "" && rawPane(name) {
 		// chat.sh:549 — pane ids are unique per tmux SERVER, not globally, so a
 		// bare %id needs its socket from CHAT_INJECT_SOCKET (set by the __then
 		// waiter re-delivering to the pane it watched) or from our own $TMUX.
@@ -355,12 +375,41 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 		}
 		return targetFromParts(socket, name), 0, "", nil
 	}
+	if engine.names != nil {
+		target, code, detail, err := engine.names.ResolveName(ctx, name, requiredEngine)
+		if err != nil {
+			return Target{}, CodeUndelivered, "", err
+		}
+		switch code {
+		case 0:
+			return target, 0, detail, nil
+		case CodeAmbiguous:
+			return Target{}, CodeAmbiguous, detail, nil
+		case CodeUnknown:
+			// A fresh Codex spawn may not have written the rollout needed to
+			// compose a roster row. Raw session/label/window resolution is the
+			// required catch-up fallback for that window.
+		default:
+			return Target{}, CodeUndelivered, "", fmt.Errorf(
+				"roster resolver returned unsupported code %d", code,
+			)
+		}
+	}
 
-	for _, kind := range []resolve.Kind{
+	kinds := []resolve.Kind{
 		resolve.Session,
 		resolve.Label,
 		resolve.CxWindow,
-	} {
+	}
+	if requiredEngine != "" {
+		if requiredEngine != string(pfmengine.Codex) {
+			return Target{}, CodeUndelivered, "", fmt.Errorf(
+				"unsupported engine-scoped resolver %q", requiredEngine,
+			)
+		}
+		kinds = []resolve.Kind{resolve.CxWindow}
+	}
+	for _, kind := range kinds {
 		outcome, err := engine.resolver.Resolve(ctx, kind, name)
 		if err != nil {
 			return Target{}, CodeUndelivered, "", err
@@ -375,6 +424,10 @@ func (engine *Engine) Resolve(ctx context.Context, name string) (Target, int, st
 				)
 			}
 			target := targetFromParts(socket, pane)
+			target.Name = name
+			if session, sessionErr := engine.tmux.CurrentSession(ctx, socket); sessionErr == nil {
+				target.Session = session
+			}
 			if kind == resolve.CxWindow {
 				target.Engine = string(pfmengine.Codex)
 			}

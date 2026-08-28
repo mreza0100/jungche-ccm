@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"hostops/pfm/internal/compose"
 	pfmengine "hostops/pfm/internal/engine"
 	"hostops/pfm/internal/gather"
 	"hostops/pfm/internal/kill"
@@ -704,6 +705,113 @@ func TestReconcileCodexPanesTreatsASameLineageResumeAsNoClear(t *testing.T) {
 	}
 	if _, killed, err := database.Killed(context.Background(), parentID); err != nil || killed {
 		t.Fatalf("a same-lineage resume retired the chat's own root: killed=%v error=%v", killed, err)
+	}
+}
+
+// A compact/reset can rotate the thread behind a NAMED pane.
+// The status line then carries only the display name, so the status-only
+// reconciler cannot move the binding. The live process's open rollout is the
+// source-of-truth signal: it must advance the same pane to the new user thread.
+// This is NOT a subagent child and must not be folded into the old lineage.
+func TestReconcileCodexPanesFollowsTheLiveProcessesCurrentRollout(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux is not installed")
+	}
+	root := jailTest(t)
+	tmuxTmpDir := filepath.Join(root, "tmuxtmp")
+	const socket = "cx-1800000013-1-1"
+	const parentID = "66666666-6666-4666-8666-666666666666"
+	const rotatedID = "77777777-7777-4777-8777-777777777777"
+	startCodexStatusPane(t, tmuxTmpDir, socket, `  ROTATED_CHAT · /work/current · Full Access\n`)
+
+	resolved := jailPaths(t)
+	resolved.TmuxDir = filepath.Join(tmuxTmpDir, "tmux-"+strconv.Itoa(os.Getuid()))
+	database, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	codexJailRollout(t, database, root, parentID, 6)
+	codexJailRollout(t, database, root, rotatedID, 7)
+	rotated, found, err := database.Rollout(context.Background(), rotatedID)
+	if err != nil || !found {
+		t.Fatalf("read rotated rollout: found=%v error=%v", found, err)
+	}
+	rotated.CWD = "/work/current"
+	if err := database.UpsertRollout(context.Background(), rotated); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.ReplaceCxNames(context.Background(), []store.CxName{
+		{ID: parentID, ThreadName: "ROTATED_CHAT"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := kill.New(database, kill.Dependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.AdvanceCodexPane(context.Background(), socket, "%0", parentID); err != nil {
+		t.Fatal(err)
+	}
+	currentRollout := filepath.Join(
+		root, "codex", "sessions", "2030", "01", "02",
+		"rollout-2030-01-02T03-04-06-"+rotatedID+".jsonl",
+	)
+
+	var stderr bytes.Buffer
+	reconcileCodexPanes(
+		context.Background(),
+		database,
+		gather.Snapshot{
+			Panes: []gather.Pane{codexPane(socket, "%0")},
+			Codex: []gather.LiveCodex{{
+				Socket: socket, PaneID: "%0", RolloutPath: currentRollout,
+			}},
+		},
+		commandRuntime{Paths: resolved},
+		printWarn(&stderr),
+	)
+
+	bound, found, err := manager.CodexPaneBinding(context.Background(), socket, "%0")
+	if err != nil || !found || bound != rotatedID {
+		t.Fatalf(
+			"binding = (%q, %v, %v), want live process thread %q: stderr=%q",
+			bound, found, err, rotatedID, stderr.String(),
+		)
+	}
+	if _, killed, err := database.Killed(context.Background(), parentID); err != nil || !killed {
+		t.Fatalf("the replaced thread was not retired: killed=%v error=%v", killed, err)
+	}
+	rollouts, err := database.Rollouts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pane := codexPane(socket, "%0")
+	pane.CurrentPath = "/work/current"
+	output := compose.Compose(compose.Input{
+		Snapshot: gather.Snapshot{
+			Panes: []gather.Pane{pane},
+			Codex: []gather.LiveCodex{{
+				Socket: socket, PaneID: "%0", RolloutPath: currentRollout,
+			}},
+		},
+		Rollouts: rollouts,
+		Options:  compose.Options{View: compose.AllView},
+	})
+	liveRows := 0
+	for _, row := range output.Rows {
+		if row.Kind != compose.LiveCodex {
+			continue
+		}
+		liveRows++
+		if row.ID != rotatedID || row.Socket != socket || row.CWD != "/work/current" {
+			t.Fatalf("rotated live row = %#v, want new id/socket/current cwd", row)
+		}
+	}
+	if liveRows != 1 {
+		t.Fatalf("live Codex rows = %d, want exactly one: %#v", liveRows, output.Rows)
 	}
 }
 

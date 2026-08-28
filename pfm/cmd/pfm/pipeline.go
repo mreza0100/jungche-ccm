@@ -1029,9 +1029,49 @@ func observeCodexPanes(
 	cxNames map[string]string,
 	warn gatherWarn,
 ) ([]codexPaneObservation, []codexPaneAction) {
+	// A rollout held open by the pane's live Codex process is its current
+	// conversation even when the TUI status line has already returned to the
+	// display name. Compact/reset continuations can rotate that rollout without
+	// restarting the process, which makes argv, inherited CODEX_THREAD_ID, and
+	// an existing pane binding birth records rather than current identity.
+	processThreads := make(map[string]string, len(live.Codex))
+	processConflicts := make(map[string]bool)
+	for _, process := range live.Codex {
+		id := gather.CodexRolloutID(process.RolloutPath)
+		if id == "" {
+			continue
+		}
+		key := process.Socket + "\x00" + process.PaneID
+		if previous := processThreads[key]; previous != "" && previous != id {
+			processConflicts[key] = true
+			warn(fmt.Sprintf(
+				"codex pane %s %s: live processes hold conflicting rollouts %s and %s; binding not guessed",
+				process.Socket, process.PaneID, previous, id,
+			))
+			continue
+		}
+		processThreads[key] = id
+	}
 	identities := gather.CaptureCodexIdentity(ctx, capturer, live.Panes)
 	observations := make([]codexPaneObservation, 0, len(identities))
 	for _, identity := range identities {
+		key := identity.Socket + "\x00" + identity.PaneID
+		if processID := processThreads[key]; processID != "" && !processConflicts[key] {
+			if identity.Failed {
+				warn(fmt.Sprintf(
+					"codex pane %s %s: capture failed, but its live process holds rollout %s",
+					identity.Socket, identity.PaneID, processID,
+				))
+			} else if identity.ThreadID != "" && identity.ThreadID != processID {
+				warn(fmt.Sprintf(
+					"codex pane %s %s: status thread %s disagrees with live process rollout %s; using the live rollout",
+					identity.Socket, identity.PaneID, identity.ThreadID, processID,
+				))
+			}
+			identity.Name = ""
+			identity.ThreadID = processID
+			identity.Failed = false
+		}
 		observation := codexPaneObservation{
 			Socket: identity.Socket, PaneID: identity.PaneID,
 			Name: identity.Name, ThreadID: identity.ThreadID, Failed: identity.Failed,

@@ -241,7 +241,7 @@ func (current *composer) buildIndexes() {
 	wantedRolloutIDs := make(map[string]struct{}, len(current.input.Snapshot.Codex))
 	for _, process := range current.input.Snapshot.Codex {
 		wantedRolloutPaths[cleanPath(process.RolloutPath)] = struct{}{}
-		wantedRolloutIDs[liveCodexID(process)] = struct{}{}
+		wantedRolloutIDs[gather.CodexThreadID(process)] = struct{}{}
 	}
 	current.transcriptByID = make(
 		map[string]store.Transcript,
@@ -665,11 +665,11 @@ func (current *composer) liveCodexRows() []Row {
 		}
 		rollout, found := current.rolloutByPath[cleanPath(process.RolloutPath)]
 		if !found {
-			rollout, found = current.rolloutByID[liveCodexID(process)]
+			rollout, found = current.rolloutByID[gather.CodexThreadID(process)]
 		}
 		if !found {
 			rollout = store.Rollout{
-				ID:   liveCodexID(process),
+				ID:   gather.CodexThreadID(process),
 				Path: process.RolloutPath,
 			}
 		}
@@ -1176,41 +1176,6 @@ func targetKey(socket, paneID string) string {
 func transcriptIDFromPath(path string) string {
 	base := filepath.Base(path)
 	return strings.TrimSuffix(base, filepath.Ext(base))
-}
-
-// liveCodexID names the conversation behind a live Codex process. The rollout
-// filename carries it whenever the process holds a rollout file, and gather's
-// own resolution is the only identity a session that writes no rollout file
-// has — Codex 0.146.1 stopped writing one for a paginated thread.
-//
-// Deriving it from the path ALONE mints the empty id for such a process, and
-// an empty id is a row that cannot be killed (applyKill and the picker both
-// refuse one) and that never marks its conversation live — so the very same
-// chat also comes back as a resume row underneath itself.
-func liveCodexID(process gather.LiveCodex) string {
-	if id := rolloutIDFromPath(process.RolloutPath); id != "" {
-		return id
-	}
-	return process.ThreadID
-}
-
-func rolloutIDFromPath(path string) string {
-	// The extension comes off the BASE, not off the whole path: for the empty
-	// path Base is "." and Ext of the whole path is "", which left the stem as
-	// "." — a bogus non-empty id that every pathless live process shared.
-	base := filepath.Base(path)
-	stem := strings.TrimSuffix(base, filepath.Ext(base))
-	rest := strings.TrimPrefix(stem, "rollout-")
-	if len(rest) > 20 &&
-		rest[4] == '-' &&
-		rest[7] == '-' &&
-		rest[10] == 'T' &&
-		rest[13] == '-' &&
-		rest[16] == '-' &&
-		rest[19] == '-' {
-		return rest[20:]
-	}
-	return rest
 }
 
 func projectName(cwd string) string {

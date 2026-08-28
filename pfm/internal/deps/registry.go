@@ -55,6 +55,7 @@ var fixedCommands = []Entry{
 	{Name: "sleep", Purpose: "bounded shell-side polling", Required: true, InstallHint: "restore the system sleep command"},
 	{Name: "go", Purpose: "building a staged pfm update", VersionArgs: []string{"version"}, Parse: firstVersion, InstallHint: "install Go 1.24 or newer to use pfm update"},
 	{Name: "systemctl", Purpose: "Linux user-service wiring", Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install systemd to enable user units"},
+	{Name: "systemd-run", Purpose: "durable chat scopes spawned from Linux user services", Platforms: []string{"linux"}, VersionArgs: []string{"--version"}, Parse: firstVersion, InstallHint: "install systemd to spawn chats from the MCP service"},
 	{Name: "launchctl", Purpose: "Darwin launch-agent wiring", Required: true, Platforms: []string{"darwin"}, InstallHint: "restore the system launchctl command"},
 }
 
