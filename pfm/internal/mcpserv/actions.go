@@ -103,7 +103,7 @@ func (service *Service) chatStatus(
 	return nil, output, nil
 }
 
-func (service *Service) chatNew(ctx context.Context, _ *mcp.CallToolRequest, input NewInput) (*mcp.CallToolResult, ActionOutput, error) {
+func (service *Service) chatNew(ctx context.Context, request *mcp.CallToolRequest, input NewInput) (*mcp.CallToolResult, ActionOutput, error) {
 	if strings.TrimSpace(input.Name) == "" {
 		return nil, ActionOutput{}, fmt.Errorf("name is required")
 	}
@@ -113,6 +113,19 @@ func (service *Service) chatNew(ctx context.Context, _ *mcp.CallToolRequest, inp
 	}
 	if input.CWD != "" {
 		args = append(args, "--cwd", input.CWD)
+	} else {
+		// Canonical dir: a chat spawned over MCP is born in its CALLER's
+		// project directory, not wherever the MCP server process happens to
+		// sit — the same request-scoped identity chat_branch forks from. An
+		// unresolvable caller keeps the explicit-only behaviour (no --cwd)
+		// rather than guessing a home.
+		caller, err := service.backend.callerForRequest(ctx, requestMeta(request))
+		if err != nil {
+			return nil, ActionOutput{}, err
+		}
+		if caller.valid && strings.TrimSpace(caller.row.Dir) != "" {
+			args = append(args, "--cwd", caller.row.Dir)
+		}
 	}
 	if input.Account != 0 {
 		args = append(args, "--account", fmt.Sprint(input.Account))

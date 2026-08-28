@@ -172,6 +172,28 @@ func TestMetadataIdentityNormalizesCLIBackedSelfReads(t *testing.T) {
 	}
 }
 
+func TestChatNewDefaultsToRequestScopedCallerCWD(t *testing.T) {
+	service := metadataIdentityService(t)
+	var calls [][]string
+	service.backend.dispatch = func(_ context.Context, args []string, stdout, _ io.Writer) int {
+		calls = append(calls, append([]string(nil), args...))
+		_, _ = io.WriteString(stdout, "launched\n")
+		return 0
+	}
+	protocol := connectInMemory(t, service.Server())
+	created := callToolWithMeta[ActionOutput](
+		t, protocol.clientSession, "chat_new", mcp.Meta{"threadId": "thread-a"},
+		NewInput{Name: "child"},
+	)
+	if created.Status != "ok" || created.Code != 0 {
+		t.Fatalf("request-scoped chat_new = %+v", created)
+	}
+	want := [][]string{{"chat", "new", "--name", "child", "--cwd", "/work/alpha"}}
+	if !reflect.DeepEqual(calls, want) {
+		t.Fatalf("chat_new dispatch calls = %q, want %q", calls, want)
+	}
+}
+
 func TestChatBranchUsesRequestScopedCodexCaller(t *testing.T) {
 	service := metadataIdentityService(t)
 	var calls [][]string
