@@ -260,7 +260,7 @@ func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 	canvas := NewCanvas(118, 24)
 	nodes := cosmosNodeMap(model.cosmos.Nodes)
 	now := time.Unix(0, fixtureNowNS)
-	points := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, false).points
+	points := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now, false, false).points
 
 	anchor := points[parent]
 	orbitOf := func(p cosmosPoint) float64 {
@@ -282,14 +282,14 @@ func TestCosmosMoonsShareOneEvenlySpacedOrbit(t *testing.T) {
 	}
 
 	// --no-sky is a still frame: a later clock renders the identical system.
-	later := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), false).points
+	later := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), false, false).points
 	if later[moonA.Key] != points[moonA.Key] {
 		t.Fatalf("no-sky moon moved: %#v vs %#v", later[moonA.Key], points[moonA.Key])
 	}
 
 	// The sky orbits the moon around its parent — position changes, the
 	// orbit distance does not.
-	skyLater := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), true).points
+	skyLater := cosmosLayout(canvas, model.cosmosSeats, nodes, model.cosmos.Edges, now.Add(5*time.Second), true, false).points
 	if skyLater[moonA.Key] == points[moonA.Key] {
 		t.Fatalf("sky moon did not orbit")
 	}

@@ -112,9 +112,10 @@ type Model struct {
 	cosmosTickGeneration uint64
 	skyEnabled           bool
 	cosmosSafe           bool
-	// orbitsHidden is the cosmos tab's "o" toggle: true suppresses the
-	// dashed orbit guides. The zero value keeps them on — the default sky.
-	orbitsHidden         bool
+	// classicSky is the cosmos tab's "o" toggle: true collapses the orbital
+	// hierarchy back to the first cosmos — every chat on one shared ring, no
+	// stars, no revolution. The zero value keeps the solar systems on.
+	classicSky           bool
 	skyEvents            []sky.Event
 	mergeNewChat         bool
 	actionIndex          int
@@ -376,7 +377,7 @@ func (model Model) updateKey(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if model.tab == TabCosmos {
 		if key == "o" {
-			model.orbitsHidden = !model.orbitsHidden
+			model.toggleClassicSky()
 		}
 		return model, nil
 	}
