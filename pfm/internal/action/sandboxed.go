@@ -53,5 +53,8 @@ func SandboxedCodexRun(request SandboxedCodexRequest) (HeadlessPlan, error) {
 		command.WriteByte(' ')
 		command.WriteString(Quote(argument))
 	}
-	return HeadlessPlan{Run: command.String()}, nil
+	return HeadlessPlan{
+		Run:    command.String(),
+		Binary: binaryWord(request.Binary, pfmengine.MustLookup(pfmengine.Codex).Binary, false),
+	}, nil
 }

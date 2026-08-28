@@ -52,7 +52,29 @@ type workerProcess struct {
 	command *exec.Cmd
 	stdin   io.WriteCloser
 	stdout  *bufio.Reader
-	stderr  bytes.Buffer
+	stderr  lockedBuffer
+}
+
+// lockedBuffer is the stderr sink a worker subprocess fills from os/exec's
+// own pipe-copy goroutine for the life of the process, while the error paths
+// read it MID-FLIGHT to decorate their messages. A bare bytes.Buffer there is
+// a data race between that copy goroutine's Write and stderrTail's String —
+// the -race sweep catches it in both the conversion and the browser worker.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (buffer *lockedBuffer) Write(p []byte) (int, error) {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buf.Write(p)
+}
+
+func (buffer *lockedBuffer) String() string {
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.buf.String()
 }
 
 func NewConverter(runtime Runtime) *Converter {

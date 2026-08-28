@@ -135,6 +135,7 @@ func runRun(
 		Socket:              freshEngineSocket(engineName),
 		CWD:                 directory,
 		Run:                 plan.Run,
+		Binary:              plan.Binary,
 		Prompt:              prompt,
 		PromptOnCommandLine: plan.PromptOnCommandLine,
 		Width:               action.HeadlessWidth,

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"hostops/pfm/internal/deps"
 	"hostops/pfm/internal/paths"
@@ -19,6 +20,38 @@ type CommandTmux struct {
 	TmuxDir string
 }
 
+// preflightBinary proves the executable word a pane is about to run resolves
+// from THIS process's environment — the same environment the pane's shell
+// inherits. A pane whose command cannot resolve dies at launch and takes the
+// fresh server with it, so the visible failure becomes "no server running":
+// tmux named, the engine never mentioned. That silence is exactly how an MCP
+// daemon under systemd's default PATH failed to spawn `claude` on a live box.
+func preflightBinary(binary string) error {
+	if binary == "" {
+		return nil
+	}
+	if strings.Contains(binary, "/") {
+		info, err := os.Stat(binary)
+		if err != nil {
+			return fmt.Errorf(
+				"engine binary %s is not on disk: %w — fix the configured <engine>.binary path",
+				binary, err,
+			)
+		}
+		if info.IsDir() || info.Mode()&0o111 == 0 {
+			return fmt.Errorf("engine binary %s is not an executable file", binary)
+		}
+		return nil
+	}
+	if _, err := deps.Resolve(binary); err != nil {
+		return fmt.Errorf(
+			"engine binary %q is not reachable from this process's PATH: %w — a systemd user service starts with systemd's default PATH; pin an absolute <engine>.binary in the machine config or extend the unit's Environment=PATH",
+			binary, err,
+		)
+	}
+	return nil
+}
+
 // NewSession creates the detached session and gives it the title options a
 // fleet chat is expected to carry, so a headless pane's terminal title reads
 // like an attached one.
@@ -26,6 +59,9 @@ func (tmux CommandTmux) NewSession(
 	ctx context.Context,
 	spec SessionSpec,
 ) error {
+	if err := preflightBinary(spec.Binary); err != nil {
+		return err
+	}
 	if err := paths.EnsureTmuxDir(tmux.TmuxDir); err != nil {
 		return err
 	}
@@ -59,7 +95,13 @@ func (tmux CommandTmux) NewSession(
 			spec.Socket,
 			options...,
 		).CombinedOutput(); err != nil {
-			return fmt.Errorf("configure chat server: %w: %s", err, output)
+			// A server that vanished between creation and configuration died
+			// with its only pane — name the pane's command, because that is
+			// where the death almost always started.
+			return fmt.Errorf(
+				"configure chat server: %w: %s — the server died before it could be configured; its pane command likely exited at launch (%s)",
+				err, output, spec.Run,
+			)
 		}
 	}
 	return nil
