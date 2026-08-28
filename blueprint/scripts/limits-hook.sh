@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# limits-hook.sh — UserPromptSubmit hook: whispers the account rate-limit gauges into
+# limits-hook.sh — OPTIONAL, NOT WIRED BY DEFAULT. To enable, add to settings.json hooks:
+#   "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command",
+#     "command": "bash $CLAUDE_PROJECT_DIR/.claude/scripts/limits-hook.sh", "timeout": 10 }] }]
+#
+# UserPromptSubmit hook: whispers the account rate-limit gauges into
 # the WAVE ORCHESTRATOR's turns when either window is >= 80% used, so the GENTLE PAUSE
 # ruling never depends on a pane capture.
 #
