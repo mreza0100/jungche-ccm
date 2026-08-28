@@ -86,7 +86,7 @@ func NewConfigured(version string, runtime Runtime) (*Service, error) {
 		return nil, err
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "harvester", Version: version}, &mcp.ServerOptions{
-		Instructions: "Fetch, search, resolve, browse, and cache public documents with Harvester.",
+		Instructions: "Public-document retrieval with Harvester. Routing for common asks — \"fetch / get / read this URL, DOI, ISBN, PMID, PMCID, or local file\" is fetch; \"find papers / works / literature about X\" is findWorks; \"search the web for X\" is search; \"fetch this image\" is fetchImage; \"did we already fetch it / check the cache\" is searchCache; \"open / browse this .zip, .tar, .7z, or .rar\" is archive (a compressed-archive browser, NOT a webpage snapshotter). Results cache locally — prefer searchCache before re-fetching a document you may already hold.",
 	})
 	service := &Service{server: server, harvester: h, resolver: &harvest.Resolver{Client: resolverClient}, runtime: runtime, worker: worker}
 	service.register()

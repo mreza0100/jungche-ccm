@@ -29,7 +29,7 @@ const (
 // that pins it read the same string. The STOP clause is not decoration: the
 // --then waiter recognises the compaction turn by watching this pane yield and
 // then go busy again, and a caller that keeps working erases that boundary.
-const selfCompactDescription = "Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steers are delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
+const selfCompactDescription = "The \"give yourself a compact\" verb — when the operator says to compact yourself, take a compact at a milestone, or self-compact, this is the tool. Compact the requesting chat itself after its active turn settles, after the caller inspects its current screen and authors a single-line focus. Compaction DISCARDS context: if the caller keeps durable state of its own — a ledger, a scratch prompt, a state or handoff file, a chat-specific memory — it MUST write everything it wants to survive into that state BEFORE calling this, because the focus line and the steers are the only things that cross the boundary. Requires at least one non-/compact post-compact steer so the reborn chat resumes unattended. END THE TURN IMMEDIATELY after this call returns: run no further tool, start no further work, just report that compaction is queued. The steers are delivered by a waiter that identifies the compaction turn by watching this pane, so a caller that keeps working after calling this makes its own turn indistinguishable from the compaction and the steer lands beside the compaction instead of after it."
 
 var chatToolNames = []string{
 	"chat_branch", "chat_capture", "chat_find", "chat_goal", "chat_group_create",
@@ -101,7 +101,7 @@ func newService(version string, backend *backend) *Service {
 		Name:    "pfm",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, coordinate through chat groups, name, kill, reload, save, self-compact with a mandatory continuation steer, and safely inject into the local pfm chat fleet. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
+		Instructions: "The local pfm chat fleet: inspect, resolve, capture, search, read/load complete file sets, branch, compile/fire goals, coordinate through chat groups, name, kill, reload, save, and safely inject. Routing for common asks — any phrasing of delivering text to another chat (\"send\", \"tell\", \"message\", \"reply to\", \"inject into\" chat X) is chat_inject; \"give yourself a compact\" / \"self-compact at this milestone\" is chat_self_compact (single-line focus plus mandatory continuation steers); \"who are you / what is your address\" is chat_whoami; \"what chats are running\" is chat_ls; \"spawn/start a new chat\" is chat_new. Excluded interactive/plumbing verbs: end, modal, watch, stream, recover, and history.",
 	})
 	service := &Service{server: server, backend: backend}
 	service.register()
@@ -141,7 +141,7 @@ func (service *Service) register() {
 	}, service.chatResolve)
 	mcp.AddTool(service.server, &mcp.Tool{
 		Name:        "chat_inject",
-		Description: "Safely type and submit a message to a live chat after selector, busy, draft, and submit-confirm guards.",
+		Description: "Send a message to a live chat — the verb behind every \"send / tell / message / reply to chat X\" request. Safely types and submits after selector, busy, draft, and submit-confirm guards.",
 		Annotations: mutating,
 	}, service.chatInject)
 	mcp.AddTool(service.server, &mcp.Tool{
@@ -267,6 +267,22 @@ const noAmbientCallerRemedy = "MCP request has no _meta.threadId, and this " +
 	"equivalent `pfm chat ...` command from the chat's own shell instead — " +
 	"that process IS the chat. A Codex chat should resolve automatically; " +
 	"if it does not, its MCP client is not attaching _meta.threadId to this call."
+
+// selfCompactNoAmbientRemedy replaces noAmbientCallerRemedy for
+// chat_self_compact alone: that message's remedy — "run the equivalent
+// `pfm chat ...` command" — dangles here, because self-compact has no CLI
+// twin. The working equivalent from a Claude chat's own shell is an inject
+// into its own pane: the /compact travels as keystrokes and the steers ride
+// the same --then waiter every inject uses.
+const selfCompactNoAmbientRemedy = "MCP request has no _meta.threadId, and " +
+	"this server is pfm's shared HTTP daemon (one process serving every chat " +
+	"on the machine), so it cannot derive who is calling: Claude Code does " +
+	"not attach per-call caller identity over this transport — and " +
+	"chat_self_compact has no `pfm chat` CLI twin to fall back on. From the " +
+	"chat's own shell, queue the same choreography with `pfm chat inject " +
+	"$(pfm whoami) --force-now '/compact <focus>' --then '<steer>'`. A Codex " +
+	"chat should resolve automatically; if it does not, its MCP client is " +
+	"not attaching _meta.threadId to this call."
 
 func (service *Service) selfCallerRefusal(caller callerIdentity) (bool, string) {
 	if caller.valid {
@@ -487,6 +503,9 @@ func (service *Service) chatSelfCompact(
 		return nil, InjectOutput{}, err
 	}
 	if refused, detail := service.selfCallerRefusal(caller); refused {
+		if detail == noAmbientCallerRemedy {
+			detail = selfCompactNoAmbientRemedy
+		}
 		return nil, InjectOutput{
 			Status: "not_found", Code: inject.CodeUnknown, Message: detail,
 		}, nil

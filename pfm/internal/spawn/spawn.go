@@ -109,6 +109,7 @@ func Run(
 		Window:  window,
 		CWD:     request.CWD,
 		Run:     request.Run,
+		Binary:  request.Binary,
 		Width:   request.Width,
 		Height:  request.Height,
 	}

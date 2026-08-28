@@ -515,6 +515,18 @@ func binaryWord(value, fallback string, quote bool) string {
 	return value
 }
 
+// claudeBinaryWord is the raw executable word claudeCommandWith embeds —
+// stated separately so a plan can carry it for the spawn preflight without a
+// second copy of the binary decision drifting from the command itself.
+func claudeBinaryWord(machine pfmconfig.Config) string {
+	return binaryWord(machine.Claude.Binary, pfmengine.MustLookup(pfmengine.Claude).Binary, false)
+}
+
+// codexBinaryWord is the raw executable word codexCommandWithAccount embeds.
+func codexBinaryWord(machine pfmconfig.Config, account int) string {
+	return binaryWord(machine.EffectiveCodex(account).Binary, pfmengine.MustLookup(pfmengine.Codex).Binary, false)
+}
+
 func agentCommand(
 	cache1H bool,
 	id, cwd, machineConfigPath string,

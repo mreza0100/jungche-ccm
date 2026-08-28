@@ -57,6 +57,11 @@ var codexEfforts = map[string]struct{}{
 // whether the prompt travelled on it.
 type HeadlessPlan struct {
 	Run string
+	// Binary is the unquoted executable word Run launches, stated so the
+	// spawn layer can prove it resolves BEFORE a tmux server is created
+	// around it — a pane that dies on "command not found" takes the fresh
+	// server with it and the engine is never named in the wreckage.
+	Binary string
 	// PromptOnCommandLine is false when the prompt must be typed into the
 	// running TUI instead — Codex is named through its own rename UI, and a
 	// prompt on the command line would start a turn before that can happen.
@@ -101,6 +106,7 @@ func HeadlessFork(request HeadlessForkRequest) (HeadlessPlan, error) {
 		arguments = append(arguments, "--name", request.Name)
 		return HeadlessPlan{
 			Run:                 claudeCommandWith(headlessHygiene, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...),
+			Binary:              claudeBinaryWord(machine),
 			PromptOnCommandLine: true,
 		}, nil
 	case pfmengine.Codex:
@@ -114,6 +120,7 @@ func HeadlessFork(request HeadlessForkRequest) (HeadlessPlan, error) {
 		arguments = append(arguments, "fork", request.SessionID)
 		return HeadlessPlan{
 			Run:                 codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, arguments...),
+			Binary:              codexBinaryWord(machine, request.PrimaryAccount),
 			PromptOnCommandLine: true,
 		}, nil
 	default:
@@ -173,6 +180,7 @@ func PlanClaude(request HeadlessRequest) (HeadlessPlan, error) {
 	}
 	return HeadlessPlan{
 		Run:                 claudeCommandWith(headlessHygiene, request.Home, request.PrimaryAccount, request.Cache1H, machine, arguments...),
+		Binary:              claudeBinaryWord(machine),
 		PromptOnCommandLine: true,
 	}, nil
 }
@@ -198,5 +206,8 @@ func PlanCodex(request HeadlessRequest) (HeadlessPlan, error) {
 	if request.Effort != "" {
 		arguments = append(arguments, "-c", `model_reasoning_effort="`+strings.ToLower(request.Effort)+`"`)
 	}
-	return HeadlessPlan{Run: codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, arguments...)}, nil
+	return HeadlessPlan{
+		Run:    codexCommandWithAccount(headlessHygiene, machine, request.PrimaryAccount, arguments...),
+		Binary: codexBinaryWord(machine, request.PrimaryAccount),
+	}, nil
 }

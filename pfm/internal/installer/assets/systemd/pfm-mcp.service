@@ -6,6 +6,12 @@ Type=simple
 # Keep systemd's default KillMode=control-group: spawn wraps each new chat
 # server in its own user scope, so restarting this daemon reaps daemon work
 # without coupling any terminal's lifetime to the dispatcher that created it.
+# systemd user services start with systemd's bare default PATH, which cannot
+# see ~/.local/bin — where user-installed engine CLIs (claude, pfm itself)
+# live. Without this line every chat this daemon spawns dies at launch on
+# "command not found". A machine whose engines live elsewhere pins absolute
+# <engine>.binary paths in the pfm machine config instead.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=%h/.local/bin/pfm mcp serve
 Restart=on-failure
 RestartSec=2

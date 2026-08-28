@@ -21,6 +21,12 @@ func TestMCPSystemdUnitStartsAtLogin(t *testing.T) {
 			t.Fatalf("pfm-mcp.service missing %q; enabled Harvester would not return after login:\n%s", want, unit)
 		}
 	}
+	// systemd user services get systemd's bare default PATH, which cannot see
+	// ~/.local/bin — where user-installed engine CLIs live. Without this line
+	// every chat the daemon spawns dies at launch on "command not found".
+	if !strings.Contains(unit, "Environment=PATH=%h/.local/bin:") {
+		t.Fatalf("pfm-mcp.service does not extend PATH with %%h/.local/bin; a daemon-spawned chat cannot resolve its engine:\n%s", unit)
+	}
 }
 
 func TestMCPWireFailureStillRefreshesRunningLinuxDaemon(t *testing.T) {

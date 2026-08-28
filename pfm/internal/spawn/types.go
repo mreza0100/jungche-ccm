@@ -19,8 +19,14 @@ type SessionSpec struct {
 	Window  string
 	CWD     string
 	Run     string
-	Width   int
-	Height  int
+	// Binary is the executable word Run launches, stated so NewSession can
+	// prove it is reachable BEFORE a server is created around it. A pane
+	// whose command cannot resolve dies at launch and takes the fresh server
+	// with it, and the visible failure names tmux instead of the engine.
+	// Empty skips the preflight: not every Run names a single binary.
+	Binary string
+	Width  int
+	Height int
 }
 
 // Tmux is the whole effect surface of a spawn: create the session, read the
@@ -41,6 +47,9 @@ type Request struct {
 	Socket string
 	CWD    string
 	Run    string
+	// Binary mirrors SessionSpec.Binary: the executable word Run launches,
+	// preflighted before the server exists. Empty skips the preflight.
+	Binary string
 	Prompt string
 	// PromptOnCommandLine means the launch command already carries Prompt;
 	// the spawner records delivery without typing into the TUI.
