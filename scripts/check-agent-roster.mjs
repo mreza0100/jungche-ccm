@@ -78,7 +78,7 @@ const codexExpected = expectedAgents(
 const codexActual = generatedNames(join(ROOT, ".codex/agents"), ".toml");
 compare("codex", codexExpected, codexActual, ".toml");
 
-const openCodeExpected = expectedAgents(["blueprint"], "project");
+const openCodeExpected = expectedAgents(["templates"], "project");
 const openCodeActual = generatedNames(join(ROOT, ".opencode/agent"), ".md");
 compare("opencode", openCodeExpected, openCodeActual, ".md");
 

@@ -59,7 +59,7 @@ node .claude/commands/p/tokens/token-ledger.mjs --root /some/other/.claude --pro
 ### `--by-workflow` honesty caveat
 
 `--by-workflow` groups every agent file under each distinct `wf_*` run directory.
-It captures **Workflow-engine runs** (e.g. `/rr`, or the wave-build engine when it
+It captures **Workflow-engine runs** (e.g. `/deep-rr`, or the wave-build engine when it
 runs as a Workflow) **exactly**.
 
 It does **NOT** total a plain `/wave:orchestrator`. A `/wave:orchestrator` runs each `/wave:builder` in the **main
@@ -89,7 +89,7 @@ Within a session:
 - `{conversationId}.jsonl` — the **MAIN** conversation loop → its own row.
 - `{conversationId}/subagents/agent-*.jsonl` — each sub-agent → one row.
 - `{conversationId}/subagents/workflows/wf_*/agent-*.jsonl` — nested workflow
-  sub-agents (a Workflow-engine run, e.g. `/rr`) → one row each. See the
+  sub-agents (a Workflow-engine run, e.g. `/deep-rr`) → one row each. See the
   `--by-workflow` honesty caveat above: a plain orchestrated wave is NOT a `wf_*` run.
 
 ## Schema notes (verified against real files)
@@ -231,7 +231,7 @@ context calls for.
   transcripts can contain sensitive prompt content, so treat `--detail` output as
   sensitive and do not pipe it anywhere it would be retained.
 - `attributionAgent`/`attributionSkill` are generic for workflow sub-agents
-  (`"workflow-subagent"`/`"rr"`); the real per-worker identity for those lives only in
+  (`"workflow-subagent"`/`"deep-rr"`); the real per-worker identity for those lives only in
   the task prompt (first user line), which the label falls back to when meta has no
   `description`.
 - Cost is an **estimate**. Verify against the provider's actual billing before trusting

@@ -1,6 +1,6 @@
 # Release — framework changes pending publication
 
-Bullets here are FINAL changelog entries. `/pcm:release` copies them verbatim into
+Bullets here are FINAL changelog entries. `/ptm:release` copies them verbatim into
 `releases/vX.Y.Z.md`, then clears this file, keeping this header.
 
 Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line when adopters must act,

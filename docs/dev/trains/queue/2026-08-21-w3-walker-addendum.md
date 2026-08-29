@@ -19,4 +19,4 @@ Status: QUEUED · Source: docs/dev/trains/pfm-wave-2/waves/1-pfm-e2e-verificatio
 - HIGH: `pfm/cmd/pfm/doctor.go:415,436-439` out-of-home PATH skip; HIGH: `pfm/e2e/install_e2e_test.go:187-200,222-228` `refuseRealHome` tautology + `sourceRepositoryReady` fast path + README/TESTPLAN:529 wording; `doctor_harvest_test` unreadable-root + permission-denied cases; `scripts/e2e-linux.sh` `:ro` mount + image digest pin; `PFM_E2E_HARVESTPY_GATE` comment.
 
 ## Process (CCC-owned, done)
-- `scripts/leak-check.sh`: widen PATTERN with a home-relative `~/` alternative — a framework change, routed via /pcm separately.
+- `scripts/leak-check.sh`: widen PATTERN with a home-relative `~/` alternative — a framework change, routed via /ptm separately.

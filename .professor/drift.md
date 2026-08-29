@@ -1,7 +1,7 @@
 # Drift — this install's local customizations
 
 Customizations of **this repo's own self-install** that must stay local and must NOT be
-generalized into `blueprint/**`. `/pcm` appends here; `/pcm:release` never consumes it.
+generalized into `templates/**`. `/ptm` appends here; `/ptm:release` never consumes it.
 
 The test: would this make sense in a stranger's repo? If yes it belongs in `release.md` and its
 template twin. If it only makes sense because this repo IS the blueprint, it belongs here.
@@ -29,7 +29,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   The adopter worktree pipeline (`worktree.sh`, `alloc-ports.sh`, per-project agents) remains
   uninstalled; this fence is the repo's own, container-backed variant.
 
-- **KEEP-LOCAL: no `/pcm:update`.** This repo is upstream. There is no newer tag to replay a
+- **KEEP-LOCAL: no `/ptm:update`.** This repo is upstream. There is no newer tag to replay a
   manifest against, so shipping the command would be a route to nowhere.
 
 - **KEEP-LOCAL: `gitter` is trimmed to COMMIT / PUSH / PULL / TAG.** The SETUP / MERGE /
@@ -55,11 +55,11 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   has a project whose "tests" are a publication check.
 
 - **KEEP-LOCAL: the `/wave:*` commands are installed here, rewired to this repo's cast.**
-  `blueprint/commands/wave/{refine,live,walker,walker-invariants}.md` are the shipped source and
+  `templates/commands/wave/{refine,live,walker,walker-invariants}.md` are the shipped source and
   keep the worktree pipeline; the installed copies under `.claude/commands/wave/` drop it, because
   this install lands every wave on `main`. The rewiring replaces an absent cast: `/jc` and its
   jc-core card become `dev` → `.claude/scripts/dev.sh` → `qa` → `gitter`; `/documenter` becomes an
-  in-pass docs update routed through `/pcm` for guarded files; `Explore` readers become `tracer`;
+  in-pass docs update routed through `/ptm` for guarded files; `Explore` readers become `tracer`;
   `/wave:orchestrator`, `/officer`, `/pm`, `/km`, `architect`, `db-admin-*` and `ui-ux-*` are cut
   entirely rather than left as dangling pointers, which removes refine's merge mode and live's lane
   mode (both orchestrator-invoked, so both had no caller here).
@@ -99,32 +99,32 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 - **KEEP-LOCAL: root `CLAUDE.md` rewritten lean — 137 → 118 lines, agent roster removed, `## Repo
   structure` added.** The cast table duplicated the harness registry (`.claude/agents/` descriptions
   are injected every session; `model:` frontmatter already pins each tier), so it died; § Subagent
-  dispatch keeps only the briefing contract and dispatch laws, and `pcm.md`'s new-agent step
+  dispatch keeps only the briefing contract and dispatch laws, and `ptm.md`'s new-agent step
   retargeted off the dead table. The structure section now tells the truth the old file omitted:
-  `agents/` (host-global `tracer`/`frr`, live copies at `~/.claude/agents/`, `.toml` Codex twins)
+  `agents/` (host-global `tracer`/`rr`, live copies at `~/.claude/agents/`, `.toml` Codex twins)
   and `harvester/` (Python/uv, own `CLAUDE.md`, outside `dev.sh`'s roster) exist. Meta's three-lenses
   bullet folded into § Cross-Disciplinary System Analysis (its canonical, cited home); Meta's
   remaining rules moved into Process. Every behavioral rule, threshold, and sacred-ground law
-  survived verbatim in substance. Local file only — `blueprint/CLAUDE.md` is a different document
+  survived verbatim in substance. Local file only — `templates/CLAUDE.md` is a different document
   and unchanged.
 
-- **KEEP-LOCAL: `/p:tokens` installed from `blueprint/commands/p/tokens/` into `.claude/commands/p/tokens/`**
+- **KEEP-LOCAL: `/p:tokens` installed from `templates/commands/p/tokens/` into `.claude/commands/p/tokens/`**
   (SKILL.md + README.md + token-ledger.mjs, 2026-08-21). Verbatim except the three Codex
   `PRICING` rows: `{CODEX_MODEL_FRONTIER}` → `gpt-5.6-sol`, `{CODEX_MODEL_SPEC}` →
   `gpt-5.6-luna`; the collector row is dropped because this host maps collector to the spec
   model (`build-codex.mjs` MODEL_MAP) and a duplicate substring row can never match. The
   `refresh-map.json` entries for these templates keep pointing at the source project's copies.
 
-- **KEEP-LOCAL: `/p:rnd` + `/p:360` installed from `blueprint/commands/p/` into `.claude/commands/p/`**
-  (2026-08-21). Value swaps only (sandbox path kept at `.professor/RND/{goal}` by the user's ruling); `/jc` · `/wave:builder` → `/wave:live`; `/km` + `knowledge/` → `/pcm` +
+- **KEEP-LOCAL: `/p:rnd` + `/p:360` installed from `templates/commands/p/` into `.claude/commands/p/`**
+  (2026-08-21). Value swaps only (sandbox path kept at `.professor/RND/{goal}` by the user's ruling); `/jc` · `/wave:builder` → `/wave:live`; `/km` + `knowledge/` → `/ptm` +
   `.claude/`; `{AI_PROJECT}` chain clause → the wave-walker engine's prompt modules + dist build;
   360's `{USER_NOUN} vs {SUBJECT_NOUN}` → `adopter vs maintainer`. 360 ships because rnd.md's
   blind-spot sweep points at `.claude/commands/p/360.md`.
 
-- **KEEP-LOCAL: `/pcm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
+- **KEEP-LOCAL: `/ptm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
   repo's Codex mirror has one writer, the Go `pfm codex build`; the repo-local `build-codex.mjs` is
   gone, so the "New agent" step and the scripts roster (a duplicated `codex-sync.sh`) now name the
-  live compiler. `blueprint/commands/pcm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.
+  live compiler. `templates/commands/ptm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.
 
 - **KEEP-LOCAL: `scripts/placeholder-map.tsv` is untracked (leak-stop).** The scrub table necessarily
   holds this repo's real private values (name, email, domain, machine paths) mapped to placeholder
@@ -141,14 +141,14 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   strings are deliberately NOT repeated here: this ledger is tracked and published too, and a note that
   quotes the paths it removed leaks them a second time. Recover them from the map's history if a hand
   refresh is ever needed (`git log -p -- blueprint/refresh-map.json`). No adopter can resolve those paths,
-  so the honest public classification is `curated`. Refresh `blueprint/scripts/cc-memory-consolidate.sh`,
+  so the honest public classification is `curated`. Refresh `templates/scripts/cc-memory-consolidate.sh`,
   `cc-memory-wire.sh`, and `memory-sync.sh` by hand from their host originals. TRADEOFF: `refresh-scope.sh`
   no longer raises a drift signal when the host copies change — this note is the only reminder.
   `settings-global.json → ~/.claude/settings.json` stays mapped: that path is generic to every install.
 
 - **KEEP-LOCAL: `leak-check.sh`'s home-path rule is `~/work/[A-Za-z0-9]`, not bare `~/work`.**
   `$HOME/work/{MEMORY_VAULT_DIR}` and `~/work/<project>` are the blueprint's OWN documented defaults
-  (`docs/references/memory-backup.md`, `blueprint/scripts/cc-memory-*.sh`) and must pass the gate; a
+  (`docs/references/memory-backup.md`, `templates/scripts/cc-memory-*.sh`) and must pass the gate; a
   concrete directory under `~/work/` names a private repo and must not. Same discriminator as the
   pre-existing `/Users/[A-Za-z0-9]` alternative — a home path leaks only when it names a real directory.
   This ledger is TRACKED: a drift note must describe a leak it fixed, never quote the string verbatim.
@@ -167,7 +167,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   deleted one still exits 0 while naming the unscanned path.
 
 - **KEEP-LOCAL: `.claude/scripts/dev.sh` gate-honesty pass (2026-08-26).** This repo's build/test entry
-  point, no blueprint twin (`blueprint/scripts/dev.sh` is the environment manager). Four fixes, each
+  point, no blueprint twin (`templates/scripts/dev.sh` is the environment manager). Four fixes, each
   red/green-proven against the pre-change script: (1) bare `status` exited 0 while printing `WARN go —
   MISSING`, contradicting its own header contract — a missing `go`/`node`/`npm`/`git` now increments
   FAILURES; (2) `status {project}` ignored its TARGET arg and always reported the full fleet, so
@@ -186,8 +186,8 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   clean` line, red/green-proven against an unreadable file.
 
 - **KEEP-LOCAL: roster and pointer corrections across this repo's own install (2026-08-26).**
-  `CLAUDE.md` § Repo structure listed `agents/` as `(tracer, frr)` after `reviewer.md` joined it;
-  `.claude/commands/pcm.md` still named the registered agents as "gitter and tracer" when
+  `CLAUDE.md` § Repo structure listed `agents/` as `(tracer, rr)` after `reviewer.md` joined it;
+  `.claude/commands/ptm.md` still named the registered agents as "gitter and tracer" when
   `.claude/agents/` holds five, and now points at `ls` instead of a roster that re-rots;
   `.claude/agents/gitter.md` frontmatter claimed to be the ONLY agent allowed to run git writes,
   contradicting the § Process fallback that lets the active main Codex chat write when gitter is
@@ -223,7 +223,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   never pushed — so the commit is reachable and gc-proof, with the bundle as the off-repo copy. A recovery
   record is the one document whose broken state must never read as healthy, and the cheapest way to fix a
   false claim is sometimes to make it true.
-  **The rewrite was done against this repo's own `NEVER force-push` hard rule** (`.claude/commands/pcm/release.md`
+  **The rewrite was done against this repo's own `NEVER force-push` hard rule** (`.claude/commands/ptm/release.md`
   § Hard rules), on the user's explicit, thrice-reaffirmed in-turn override after being shown the full cost.
   The registered `gitter` agent refused the operation categorically and correctly — it also refused to treat a
   relayed quote of user consent as consent, which is the behavior a Git writer should have; the push was run
@@ -282,7 +282,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   suppression count on every run — an allowlist that hides its own work is the next coincidence detector.
   Three files were genericized rather than allowlisted, because they named real things:
   `docs/dev/trains/pfm-wave-2/waves/1-pfm-e2e-verification/walk.md` (a `~/work/<project>` reference whose
-  own note had asked for exactly this scrub), `engines/rr/engine/test/persist.test.ts`, and a prose
+  own note had asked for exactly this scrub), `engines/deep-rr/engine/test/persist.test.ts`, and a prose
   false positive in `pfm-wave-2/STATE.md`.
   **Verified, not asserted:** eight red/green cases (missing terms, empty terms, comments-only terms,
   private term present, clean file, self-scan, benign token, near-miss username, mixed benign+real line,
@@ -309,11 +309,11 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
 - **KEEP-LOCAL: global agent installer now honors CLAUDE_CONFIG_DIR (2026-08-27).** `agents/build-global-agents.py`
   hardcoded `~/.claude/agents` and `~/.codex/agents` as its install targets. This host runs Claude with a
   non-default `CLAUDE_CONFIG_DIR`, so every `.md` role installed "successfully" into a directory no
-  session reads: `frr` and `reviewer` were absent from the registry and chats reported them as not found,
+  session reads: `rr` and `reviewer` were absent from the registry and chats reported them as not found,
   while `tracer` resolved only because someone had hand-symlinked it into the real config dir. The Codex
   half was never affected — `~/.codex/agents/` had all three `.toml` twins, byte-identical to source.
   The installer now reads `CLAUDE_CONFIG_DIR` / `CODEX_HOME` with the old paths as fallbacks. Re-run
-  installs `frr`, `reviewer`, `tracer` into `$CLAUDE_CONFIG_DIR/agents/` as real files (its `install()` already
+  installs `rr`, `reviewer`, `tracer` into `$CLAUDE_CONFIG_DIR/agents/` as real files (its `install()` already
   unlinks a symlink first, by design — the registry must not depend on the repo directory surviving).
   **The failure mode is the interesting part:** an installer that writes to the wrong directory reports the
   same success as one that writes to the right directory. It printed `installed …` for years' worth of runs

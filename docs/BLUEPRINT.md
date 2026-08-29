@@ -33,25 +33,25 @@ Every command, agent, and rule sorts into one of three tiers:
 
 - **The Professor** — Grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. The orchestrator voice and root persona. Lives in CLAUDE.md — NOT a separate command.
 - **/jc** — "JESUS CHRIST production is on fire" panic-debug mode. Chill on the surface, holy at the core. The one command allowed to edit `main` directly.
-- **/pcm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `pcm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/pcm:context-meter` audits the framework's own context budget.
+- **/ptm** — meta-engineer that edits the pipeline at the source. Surgery, not journaling. `ptm audit [scope]` (`agents`, `commands`, `skills`, `pipeline`, `scripts`, `structure`, `cross-refs`, or `all`) walks the pipeline's own files against a checklist per scope; `/ptm:context-meter` audits the framework's own context budget.
 - **/wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /dev, /git, /documenter, /goal-manager, /p:slow-burn, /sleep** — pipeline mechanics with light Professor voice in their reports. `/reload` is the same tier but installs host-level (`~/.claude/commands/`, opt-in) from the self-contained `pfm` binary; chat control is the opt-in chat MCP server the same binary registers.
 
 > Each Tier A persona ships as ONE version: `professor.md` (the session style) and `jc.md` (the `/jc` overlay) — lean voice plus the behavioral contract (concise delivery, the Verdict, the Analysis Protocol).
 
 **Bundled commands (ship with the blueprint):**
 
-- **the framework bus** — `/pcm:update` consumes upstream releases, `/pcm:release` regenerates + publishes the blueprint.
+- **the framework bus** — the framework repo's release flow regenerates + publishes the blueprint; installs re-derive from the updated clone.
 - **/wave:refine** — wave task refinement into a zero-gap spec.
 - **/wave:walker** — merge-gating end-to-end functional + hygiene walk, run against the merge candidate before the merge it can condemn.
 - **/wave:ccc** — the Control & Command Center: the standing command seat over a running train. Full audit from ground truth on arrival, then holds command until the train closes — verifies claims against the tree, rules scope-allocation escalations, dispatches through the orchestrator.
-- **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`blueprint/commands/p/360.md`) — not source-fetched.
+- **/p:360** — exhaustive multi-angle analysis. Two domains: `test` (10 failure dimensions for QA) and `inquiry` (9 question dimensions for Professor). Ships as a portable command (`templates/commands/p/360.md`) — not source-fetched.
 - **/p:rnd** — goal-driven iterative research-and-develop loop.
 - **/p:tokens** — per-agent/per-workflow token spend attribution parsed from local transcripts, ranked by estimated cost.
 - **/quality:doc** / **/quality:prompt** — doc-shaping and prompt-quality gates.
 - **/audit:code-hygiene** / **/audit:security** / **/audit:ai-output** — code-hygiene, security, and AI-output audit scopes, each carrying their own 360-sweep pre-step. Code-hygiene additionally has a Sweep Mode (`code-hygiene sweep`) that promotes a report-only run to actively removing confirmed-dead code and unused dependencies, end-to-end behind QA.
 - **/qa:live** — live end-to-end QA of the running app on the dev stack: no mocks, no seeded data, judgment-based rather than regression assertions.
 
-**Source-fetched skills (installed at setup from canonical public repos via `blueprint/skills/sources.json`, never vendored):**
+**Source-fetched skills (installed at setup from canonical public repos via `templates/skills/sources.json`, never vendored):**
 
 - **rr** — Research-and-Report protocol.
 - **ghostwriter** — captures a writer's mechanical fingerprint and generates in that voice.
@@ -131,7 +131,7 @@ This means you can run **multiple pipelines in parallel on the same machine** wi
 
 ### 5. Self-improvement at the source
 
-When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/pcm` (the meta-agent that owns the pipeline itself). It edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
+When something goes wrong in the pipeline, you don't write a "lesson" file. You invoke `/ptm` (the meta-agent that owns the pipeline itself). It edits the actual agent definition or command instructions to prevent the bug class going forward. **Surgery at the source.** Pipeline files are meant to evolve.
 
 ---
 
@@ -222,7 +222,7 @@ These rules appear in `CLAUDE.md` and are referenced by every agent. They are th
 ```
 
 Hotfix path: `/jc {bug}` → locate → diagnose → fix → test → gitter JC-COMMIT. Same safety, less ceremony.
-Meta path: `/pcm {request}` → edits the agent definitions at the source.
+Meta path: `/ptm {request}` → edits the agent definitions at the source.
 
 ---
 
@@ -239,7 +239,7 @@ your-project/
 │   └── release.md                     ← framework changes pending upstream sync
 ├── .claude/
 │   ├── agents/                        ← root agents (mono-planner, mono-architect, mono-documenter, gitter, tracer, scheduler, architect, {role}-{project} wrappers)
-│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /pcm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/reload` is NOT here — `pfm install` installs it host-level)
+│   ├── commands/                      ← /wave:{orchestrator,builder,refine,walker,live,ccc}, /jc, /ptm:{update,release,context-meter}, /dev, /git, /documenter, /qa:live, /audit:{code-hygiene,security,ai-output}, /quality:{prompt,doc}, /p:{rnd,360,slow-burn,tokens}, /goal-manager, /sleep, /animate + opt-in Tier B (`/reload` is NOT here — `pfm install` installs it host-level)
 │   ├── output-styles/                 ← persona registry (Professor session style + per-command overlays)
 │   ├── scripts/                       ← worktree.sh, alloc-ports.sh, dev.sh, notify.sh, format-md.sh, filter-test-output.sh, checkpoint.sh, git-lock.sh, guard-stamp.sh, drain-wait.sh, limits-hook.sh
 │   ├── workflows/                     ← project-local Workflow scripts such as documenter-fanout and audit-ai-output-sessions; Wave Walker runs from the permanent Professor clone
@@ -284,7 +284,7 @@ A `.claude/` infrastructure — a **transplantable nervous system** — that tur
 - **One agent owns git** — only `gitter` runs `git add` / `commit` / `merge`. Centralized, auditable, safe.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **Cross-disciplinary analysis** — the Professor brings 15+ PhDs to bear on architecture, design, and safety/correctness questions. The Analysis Protocol lives in the active persona (`.claude/output-styles/professor.md`).
-- **Self-improvement** — `/pcm` is the meta-agent that edits its own pipeline rules at the source.
+- **Self-improvement** — `/ptm` is the meta-agent that edits its own pipeline rules at the source.
 - **Optional dual-runtime** — Codex (OpenAI) can mirror the Claude pipeline as a cheaper implementation layer. Same manuals, different runtime. Everything works without it.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent (`mono-documenter`) writes to permanent project docs.
@@ -326,7 +326,7 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 - `.claude/` is always the source of truth — command manuals, agent definitions, scripts, shared skills
 - `.codex/` is a **pointer layer** over `.claude/`, never a restatement of it — `scripts/build-codex.mjs` compiles it: `.codex/skills/` gets a true directory symlink for each `.claude/skills/*` skill and a generated `SKILL.md` pointer for each single-file `.claude/commands/**/*.md` command (nested names flatten — `/wave:orchestrator` → `wave-orchestrator`); `AGENTS.md` is compiled from `CLAUDE.md` (model aliases swapped to Codex equivalents, output-style-adoption pointers stripped, a Codex-adapter section appended — not a symlink); `.codex/agents/*.toml` is generated from `.claude/agents/*.md`; the `.mcp.json` server list mirrors into `.codex/config.toml` as a managed fence. Every generated file carries a marker line — only marker-carrying output is ever overwritten or deleted; anything else at a managed path is a CONFLICT, reported and left untouched. `generate` writes, `check` reports MISSING/STALE/ORPHAN/CONFLICT and writes nothing. Declared NOT covered: per-project `.claude/skills`, output-styles, workflows, hooks (Claude-harness-only), `$HOME`-level MCP registries.
-- `scripts/codex-sync.sh` keeps the mirror deterministic: a `PostToolUse` hook flags the repo dirty on any Edit/Write to a Claude source (`.claude/**`, any `CLAUDE.md`, `$HOME/.claude/commands/**`); a `Stop` hook then re-runs `build-codex.mjs generate` + `check` before the turn ends — a mirror that fails to compile blocks the turn rather than shipping broken. (A raw Bash write bypasses the hook; `pcm audit structure` is the backstop.)
+- `scripts/codex-sync.sh` keeps the mirror deterministic: a `PostToolUse` hook flags the repo dirty on any Edit/Write to a Claude source (`.claude/**`, any `CLAUDE.md`, `$HOME/.claude/commands/**`); a `Stop` hook then re-runs `build-codex.mjs generate` + `check` before the turn ends — a mirror that fails to compile blocks the turn rather than shipping broken. (A raw Bash write bypasses the hook; `ptm audit structure` is the backstop.)
 - `.codex/agents/*.toml` is the active Codex role registry. `scripts/build-codex.mjs` compiles every root and per-project `.claude/agents/*.md` source, and `spawn_agent` selects a role by its registered agent type. Registry changes take effect in a new or reloaded Codex session; `.codex/rules/repo-law.rules` is the execpolicy door lock.
 - Claude and Codex mirror the same Professor contract. The pointer layer translates mechanics (slash commands, agent spawning), never identity or protocol. The generated `gitter.toml` is the sole Git-writing Codex role; all other Codex agents keep read-only Git.
 
@@ -341,13 +341,13 @@ Professor's nervous system can optionally span **two AI runtimes**: Claude Code 
 
 **Opting in:** the installer asks at Batch 6 Q15b. If yes, it creates `.codex/` (`config.toml`, `rules/repo-law.rules`, the `agents/` registry), runs `scripts/build-codex.mjs generate` to compile `.codex/skills/`, `.codex/agents/*.toml`, and `AGENTS.md`, and wires `scripts/codex-sync.sh` into the hooks so every later framework edit re-compiles before its turn ends. If no, the entire layer is skipped. No pipeline operation requires Codex.
 
-See `blueprint/codex/README.md` for the full integration guide.
+See `templates/codex/README.md` for the full integration guide.
 
 ---
 
 ## Staying current — the update mechanism
 
-The blueprint evolves. Releases ship as **git tags** (`vX.Y.Z`) on `mreza0100/professor`. Adopters don't track `main` — they hop between tagged releases via `/pcm update`.
+The blueprint evolves. Releases ship as **git tags** (`vX.Y.Z`) on `mreza0100/professor`. Adopters don't track `main` — they hop between tagged releases via `/ptm update`.
 
 ### How it works
 
@@ -356,9 +356,9 @@ At install time, SETUP.md creates a `.professor/` directory at the repo root con
 1. **`VERSION`** — the release tag you installed from
 2. **`manifest.json`** — all interview answers (replay seed) + SHA-256 hashes of every Professor-owned file
 3. **`drift.md`** — local customizations the merge keeps (what makes your install different from vanilla Professor)
-4. **`release.md`** — framework changes pending upstream sync; `/pcm:release` consumes and clears it
+4. **`release.md`** — framework changes pending upstream sync; `/ptm:release` consumes and clears it
 
-When you run `/pcm update`, the update protocol:
+When you run `/ptm update`, the update protocol:
 
 1. Fetches available git tags from the public repo
 2. Clones the target tag into temp
@@ -385,7 +385,7 @@ The interview manifest is the key innovation — it means updates don't require 
 - Command-owned docs under `docs/commands/` (your content, not templates)
 - `.claude/settings.json` (hand-curated per project)
 
-See `SETUP.md` § "Staying current" for user-facing docs. See `blueprint/commands/pcm/update.md` for the full implementation.
+See `SETUP.md` § "Staying current" for user-facing docs.
 
 ---
 

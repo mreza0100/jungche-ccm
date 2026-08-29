@@ -66,7 +66,7 @@ type Options struct {
 	// the historical single ~/.codex target for direct legacy callers; an
 	// explicitly empty roster installs no Codex hook.
 	CodexHomes []string
-	// SourceRepo is the clone whose blueprint and binary are being installed.
+	// SourceRepo is the clone whose templates and binary are being installed.
 	// Empty preserves an existing marker when install is invoked elsewhere.
 	SourceRepo string
 	Now        func() time.Time

@@ -359,15 +359,15 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	blueprint := map[string]string{
-		"blueprint/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
-		"blueprint/settings.json":          "{}\n",
-		"blueprint/output-styles/style.md": "{{PROJECT_NAME}} style\n",
-		"blueprint/commands/command.md":    "{{PROJECT_NAME}} command\n",
-		"blueprint/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
-		"blueprint/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
+	templates := map[string]string{
+		"templates/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
+		"templates/settings.json":          "{}\n",
+		"templates/output-styles/style.md": "{{PROJECT_NAME}} style\n",
+		"templates/commands/command.md":    "{{PROJECT_NAME}} command\n",
+		"templates/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
+		"templates/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
 	}
-	for relative, content := range blueprint {
+	for relative, content := range templates {
 		path := filepath.Join(source, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
@@ -418,7 +418,7 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 			t.Fatalf("copied %s: %v", relative, err)
 		}
 		if string(got) != expected {
-			t.Fatalf("copied %s = %q, want adopter blueprint %q", relative, got, expected)
+			t.Fatalf("copied %s = %q, want adopter templates %q", relative, got, expected)
 		}
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {

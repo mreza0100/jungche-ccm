@@ -104,10 +104,10 @@ The lookup never blocks or writes into the active picker frame.
 
 ---
 
-## The discipline layer (`blueprint/`)
+## The discipline layer (`templates/`)
 
 Clone it into a repo and you get the complete agent, command, hook, script, and `CLAUDE.md`
-template set under `blueprint/`. `docs/SETUP.md` walks an interview that substitutes your
+template set under `templates/`. `docs/SETUP.md` walks an interview that substitutes your
 project's names into every placeholder; `docs/PLACEHOLDERS.md` is the substitution law.
 
 The single idea underneath it is the **honest-looking absence** — an instrument that answers
@@ -122,7 +122,7 @@ What that discipline looks like in practice:
 - **One agent writes git.** `gitter` runs six named phases (SETUP, COMMIT, MERGE, PUSH, PULL,
   TAG). No other agent commits; the active main Codex chat may use the explicit-authority fallback
   only when the registered role is unavailable.
-- **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` plus
+- **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/ptm` plus
   a session that has read the quality-prompt contract. The deny message carries the unlock steps.
 - **Fix loops are capped.** Three attempts, then BLOCKED-DEFERRED — a bounded failure instead of
   an agent grinding until context runs out.
@@ -184,7 +184,7 @@ timed out · 6 message not delivered`.
 configured: self-doctor failures stay visible without blocking unrelated installation.
 `--skip-engine codex` suppresses the Codex probe and Codex mirror/hooks.
 The harvester provisions its own pinned `uv` and CPython, skippable with `--skip-harvest`.
-Themes are source-fetched from `blueprint/themes/sources.json`, skippable with `--skip-themes`.
+Themes are source-fetched from `templates/themes/sources.json`, skippable with `--skip-themes`.
 Both MCP servers ship disabled.
 
 Before applying an install, run its dry preview with the same options and inspect the harvest
@@ -211,10 +211,10 @@ deliberate and documented, not hidden.
 
 | Path                                  | What it is                                                                                                                                          |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `blueprint/`                          | The shipped framework an adopter clones — agents, commands, scripts, codex and opencode templates. Every file here is production prompt code.       |
+| `templates/`                          | The shipped framework an adopter clones — agents, commands, scripts, codex and opencode templates. Every file here is production prompt code.       |
 | `pfm/`                                | The Go fleet engine: `cmd/pfm` plus its `internal/` packages. Owns its staged host assets.                                                          |
 | `engines/`                            | `rr/` (research) and `wave-walker/` (wiring verification).                                                                                          |
-| `agents/`                             | Host-global agents — `tracer`, `frr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
+| `agents/`                             | Host-global agents — `tracer`, `rr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
 | `docs/`                               | `BLUEPRINT.md` (philosophy), `SETUP.md` (install interview), `PLACEHOLDERS.md` (substitution law), `ARCHITECTURE.md`, plus command reference cards. |
 | `scripts/`                            | Repo gates — `leak-check.sh` runs `pre-push`.                                                                                                       |
 | `infra/`                              | The isolated-dev container every code wave builds inside.                                                                                           |

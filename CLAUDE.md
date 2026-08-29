@@ -1,13 +1,13 @@
 # Professor — the discipline layer for Claude Code
 
-**What this repo is:** the framework itself, not an app that uses it. Everything under `blueprint/` is **shipped source** — an adopter's live agent prompts, one clone away. Treat every prompt line as production code, because it is.
+**What this repo is:** the framework itself, not an app that uses it. Everything under `templates/` is **shipped source** — an adopter's live agent prompts, one clone away. Treat every prompt line as production code, because it is.
 
 ## Repo structure
 
-- `blueprint/`: the shipped framework — agent/command/script/codex templates an adopter clones. Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
+- `templates/`: the shipped framework — agent/command/script/codex templates an adopter clones. Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
 - `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them. Also owns the memory organ under `internal/dream` and the only harvester under `internal/harvest` + `internal/harvestmcp`, over a pinned Python conversion sidecar in `internal/harvestpy/`.
 - `engines/wave-walker/engine/`: wave-walker engine — JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK.
-- `agents/`: host-global agents (`tracer`, `frr`, `reviewer`) — the live copies the host runs sit at `~/.claude/agents/`; the `.toml` twins are their Codex compile.
+- `agents/`: host-global agents (`tracer`, `rr`, `reviewer`) — the live copies the host runs sit at `~/.claude/agents/`; the `.toml` twins are their Codex compile.
 - `docs/`: the specs — `BLUEPRINT.md` (philosophy), `SETUP.md` (generation), `PLACEHOLDERS.md` (substitution law) — plus `commands/` reference cards and `dev/` wave trains.
 - `scripts/`: repo-level gates (`leak-check.sh`, `refresh-scope.sh`); `.githooks/` runs the leak gate `pre-push`.
 - `releases/` + root `README.md` / `INSTALL.md` / `CHANGELOG.md` / `VERSION`: the public face — edited with template-grade care.
@@ -15,7 +15,7 @@
 - `.professor/`: ledgers — `drift.md` (keep-local), `release.md` (pending upstream), `retro.md` (steering inbox).
 - `tmp/`: gitignored scratch — every generated artifact lands here, never in a tracked dir.
 
-Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verify|test} {blueprint|pfm|walker}`.
+Build/test through `.claude/scripts/dev.sh {status|install|build|typecheck|verify|test} {templates|pfm|walker}`.
 
 ## Three-runtime team — Claude + Codex + OpenCode
 
@@ -26,7 +26,7 @@ pfm codex build . && pfm codex check .
 node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-opencode.mjs doctor
 ```
 
-`pfm codex build` is the SINGLE writer of the Codex mirror; the legacy repo-local JS compiler is retired — `blueprint/scripts/build-codex.mjs` lives only in the adopter blueprint.
+`pfm codex build` is the SINGLE writer of the Codex mirror; the legacy repo-local JS compiler is retired — `templates/scripts/build-codex.mjs` lives only in the adopter blueprint.
 
 ## Path vars
 
@@ -39,7 +39,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 - **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. The authorized writer publishes only on the user's plain ask in that turn.
 - **Nothing identifying ships:** no source-project brand, no user PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` (`pre-push`) is the backstop, not the plan — write it clean the first time.
 - Template example values are invented placeholders, never mined from a live private repo.
-- **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `/pcm:release` owns the sequence.
+- **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `/ptm:release` owns the sequence.
 
 ### Prompt & template code
 
@@ -63,10 +63,11 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 - **Git writes use registered gitter.** Every other subagent is read-only. When gitter is unavailable, only the active main Codex chat may perform scoped Git writes, and only after explicit user authorization in the current turn. Publication still requires the separate explicit in-turn request above.
 - **Never commit broken code** — tests pass before the commit.
-- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (blueprint/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`/wave:refine`, `/wave:live`, `/wave:walker`, `/wave:walker-invariants`, `/wave:ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `CLAUDE.md`, or `blueprint/**` routes to `/pcm`. Their `blueprint/commands/wave/` twins keep the adopter pipeline.
-- **Guarded files:** a PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pcm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
+- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (templates/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`/wave:refine`, `/wave:live`, `/wave:walker`, `/wave:walker-invariants`, `/wave:ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `CLAUDE.md`, or `templates/**` routes to `/ptm`. Their `templates/commands/wave/` twins keep the adopter pipeline.
+- **Guarded files:** a PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/ptm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
 - Execute explicit instructions as given: user delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
 - "God speed" = full autonomy: resolve every ambiguity yourself, finish, report the decisions at the end; only failure = stop/ask.
+- **Milestone = compact point:** at every milestone, checkpoint the plan to a `tmp/` file, then give yourself a compact before the next phase (a held turn arms an idle-fired self-inject instead).
 - "What's up / how's it going" = summarize everything since the last prompt.
 - **AskUserQuestion is the user's whole screen** — context travels inside the question text; each round simpler and more concrete, never a rephrase.
 - When in doubt, do the right thing — correct over convenient, even at re-architecting cost.
@@ -79,7 +80,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 ## Model Selection
 
-Match the tier to the cost of being wrong; judgment never delegates downward. Aliases are named inline at each spawn site; this section alone defines the tiers.
+Match the tier to the cost of being wrong; judgment never delegates downward — a higher tier spawning a lower tier OWNS the operation and its fix: the dispatch carries the exact spec (files, edits, commands, acceptance), never the open problem. Aliases are named inline at each spawn site; this section alone defines the tiers.
 
 - apex: optional frontier — R&D loops, architecture, the genuinely hardest problems, or the user's say; falls back to `opus`.
 - frontier-judgment (`opus`): product-shaping output — framework surgery, release judgment, salience over ambiguous input, any ruling on shipped prompt text.

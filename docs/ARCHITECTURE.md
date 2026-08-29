@@ -134,7 +134,7 @@ The maintainer's own monorepo — where the pipeline runs daily and improvements
 no special copy of anything **(designed; today it is the origin the blueprint is derived from)**.
 The terminal state:
 
-- **Framework templates are authored in `blueprint/`; fleet assets are authored in
+- **Framework templates are authored in `templates/`; fleet assets are authored in
   `pfm/internal/installer/assets/`.** The binary embeds the latter; machines consume both through
   their owning install paths rather than a duplicate host bundle.
 - **`refresh-map.json` retires file-by-file.** Its `curated` class (template IS the source, no
@@ -152,7 +152,7 @@ hash map; curated templates are edited here directly.
 | ------------------------------------ | ----------------------------------------------- | --------------------------------------- |
 | Host executable                      | shipped — self-installing Go binary             | unchanged                               |
 | Host assets (Claude and Codex)       | embedded and symlinked by `pfm install`         | unchanged                               |
-| Compiler (`build.mjs` + contexts)    | archived in the origin repo's history           | `blueprint/compiler/`, release-gated    |
+| Compiler (`build.mjs` + contexts)    | archived in the origin repo's history           | `templates/compiler/`, release-gated    |
 | Repo tier (agents, TOMLs, CLAUDE.md) | setup-interview instantiation                   | rendered from the adopter's values file |
 | `refresh-map.json`                   | mixed derived + curated entries                 | empty — every template source-authored  |
 

@@ -480,7 +480,7 @@ func TestThemeInstallIsIdempotentVisibleOnDriftAndReversible(t *testing.T) {
     }
   }
 }`, server.URL, server.URL+"/tokyo-night.json")
-	writeFixture(t, filepath.Join(sourceRepo, "blueprint", "themes", "sources.json"), manifest)
+	writeFixture(t, filepath.Join(sourceRepo, "templates", "themes", "sources.json"), manifest)
 
 	run := func(mode Mode) (Report, string, error) {
 		var output bytes.Buffer
@@ -539,7 +539,7 @@ func TestThemeFetchFailureIsLoudAndNonFatal(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 	manifest := fmt.Sprintf(`{"source_fetched":{"tokyo-night":{"repo":%q,"raw":%q,"target":"~/.claude/themes/tokyo-night.json","activate":"/theme","requires":"fixture"}}}`, server.URL, server.URL+"/tokyo-night.json")
-	writeFixture(t, filepath.Join(sourceRepo, "blueprint", "themes", "sources.json"), manifest)
+	writeFixture(t, filepath.Join(sourceRepo, "templates", "themes", "sources.json"), manifest)
 	var output bytes.Buffer
 	_, err := Run(context.Background(), Options{
 		Mode: ModeApply, Home: home, SourceRepo: sourceRepo, Stdout: &output,
@@ -595,7 +595,7 @@ description: fixture agent
 func TestThemeManifestResolvesRegisteredOwnerPlaceholder(t *testing.T) {
 	sourceRepo := t.TempDir()
 	writeFixture(t, filepath.Join(sourceRepo, ".professor", "manifest.json"), `{"installed_from":{"repo":"fixture-owner/professor"}}`)
-	writeFixture(t, filepath.Join(sourceRepo, "blueprint", "themes", "sources.json"), `{
+	writeFixture(t, filepath.Join(sourceRepo, "templates", "themes", "sources.json"), `{
   "source_fetched": {
     "tokyo-night": {
       "repo": "https://github.com/{GH_USER}/claude-code-tokyo-night",

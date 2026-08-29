@@ -1007,16 +1007,16 @@ func (h *e2eHarness) assertTmuxConfig(home string) {
 
 func (h *e2eHarness) assertInit(project, source string) {
 	h.t.Helper()
-	blueprint := filepath.Join(source, "blueprint")
+	templates := filepath.Join(source, "templates")
 	for _, mapping := range []struct{ source, target string }{
 		{"CLAUDE.md", "CLAUDE.md"},
 		{"CLAUDE.md", "AGENTS.md"},
 		{"settings.json", ".claude/settings.json"},
 	} {
-		h.assertInitFile(filepath.Join(blueprint, mapping.source), filepath.Join(project, mapping.target), mapping.target)
+		h.assertInitFile(filepath.Join(templates, mapping.source), filepath.Join(project, mapping.target), mapping.target)
 	}
 	for _, directory := range []string{"output-styles", "commands", "agents", "skills"} {
-		sourceDir := filepath.Join(blueprint, directory)
+		sourceDir := filepath.Join(templates, directory)
 		targetDir := filepath.Join(project, ".claude", directory)
 		h.assertInitPath(targetDir, filepath.Join(".claude", directory))
 		if err := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, err error) error {
@@ -1051,7 +1051,7 @@ func (h *e2eHarness) assertInitFile(source, target, relative string) {
 		h.t.Fatalf("init scaffold failed; differing paths: %s; status: %v", relative, err)
 	}
 	if !bytes.Equal(got, want) {
-		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match blueprint source", relative)
+		h.t.Fatalf("init scaffold failed; differing paths: %s; bytes do not match templates source", relative)
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 name: wave:walker-invariants
-description: The wave walker's engine config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, pcm-owned like `walker.md`.
+description: The wave walker's engine config and invariant registry — the engine's script path and `args.project` profile (§ Engine Config), plus durable, machine-readable sacred cross-cutting semantics that a per-wave diff-scoped walk misses by construction. Consumed by the wave-walker engine's scout + invariantHunter + coverageCritic seats via `args.invariants` and by every caller via `args.project` (see § Consumption Contract below). Guarded, ptm-owned like `walker.md`.
 ---
 
 # Wave Walker — Engine Config & Invariant Registry
@@ -53,7 +53,7 @@ A wave that INTRODUCES a new invariant registers it here in the SAME wave — a 
 
 ## § Curation
 
-Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md edit: a bad entry either arms nothing (dead territory globs) or arms everything (a territory of `**`), both silently.
+Any addition is `/ptm`-routed (guarded file) with the SAME rigor as a CLAUDE.md edit: a bad entry either arms nothing (dead territory globs) or arms everything (a territory of `**`), both silently.
 
 ---
 
@@ -86,7 +86,7 @@ Any addition is `/pcm`-routed (guarded file) with the SAME rigor as a CLAUDE.md 
 
 **Territory:**
 
-- `blueprint/**`
+- `templates/**`
 - `README.md`
 - `INSTALL.md`
 - `CHANGELOG.md`

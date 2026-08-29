@@ -1056,7 +1056,7 @@ function printByWorkflow(rows) {
   console.log(
     "\nFRESH = in+out+cache-write (the harness's subagent_tokens definition); GRAND TOTAL adds cache-read." +
       "\nA wf_* row exists only for a Workflow-engine run — a script under .claude/workflows/ or a skill-embedded" +
-      "\nengine (/rr); a wave's walker pass (wave-walker) is one too. /wave:orchestrator and /wave:builder run" +
+      "\nengine (/deep-rr); a wave's walker pass (wave-walker) is one too. /wave:orchestrator and /wave:builder run" +
       "\nin their chats' main sessions and land in (non-workflow agents) instead. The TOTAL row sums both —" +
       "\na wave's end-to-end chat cost. Total a wave with --filter <wave-label>."
   );
@@ -1090,7 +1090,7 @@ Usage: node token-ledger.mjs [options]
   --detail <id|substr>   list one agent's individual API calls in order
   --by-workflow          group by workflow run (wf_*) instead of by agent — one row
                          per run + a "(non-workflow agents)" summary row + TOTAL.
-                         wf_* = a Workflow-engine run (.claude/workflows/* or /rr); a
+                         wf_* = a Workflow-engine run (.claude/workflows/* or /deep-rr); a
                          wave's walker pass (wave-walker) is one too. /wave:orchestrator
                          and /wave:builder land in (non-workflow agents) instead — total
                          a wave with --filter <wave-label>.

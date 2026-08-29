@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	themeManifestRelative = "blueprint/themes/sources.json"
+	themeManifestRelative = "templates/themes/sources.json"
 	themeOwnershipName    = "theme-ownership.json"
 	themeOwnerToken       = "{GH_USER}"
 	maxThemeDownloadBytes = 10 << 20

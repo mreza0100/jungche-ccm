@@ -33,12 +33,12 @@ A task needing prototype evidence before it can be specified runs `refine poc` f
 
 Settle every technical branch before writing: data placement, mechanism, failure modes, migration. Every mechanism decision first names the incumbent pattern it follows; deviating carries a one-line justification. A branch with 2+ defensible options and materially different consequences goes to the user; everything else you settle. Per task, decide and write:
 
-- **Routing** — the exact roster project set the task touches, and the agents that will build it (`dev` per task, `qa` per modified project). A task touching `.claude/**`, any `CLAUDE.md`, or `blueprint/**` routes to `/pcm` instead — those files are guarded and a dev agent is denied by the hook.
+- **Routing** — the exact roster project set the task touches, and the agents that will build it (`dev` per task, `qa` per modified project). A task touching `.claude/**`, any `CLAUDE.md`, or `templates/**` routes to `/ptm` instead — those files are guarded and a dev agent is denied by the hook.
 - **Data model** — for `pfm`, every table, column with exact type, index, and constraint, plus the numbered `migration_vN.sql` that adds it; migrations are additive and never an edit to `schema.sql`.
 - **Contracts** — the exact cross-project seams the task changes: Go exports consumed by `shim/pfm.zsh`, the emitted eval line's shape, TS exports the walker engine consumes, and every placeholder token a template gains or loses.
 - **File plan** — every file to create/edit with the functions/exports it gains and their signatures. DELETE only for grep-verified single-purpose files; otherwise `EDIT (strip X by def-boundaries)`. A dropped field names its full coupling including string references; a removed config field names its env-var scrub set. A removal spanning >10 files or >3 layers is declared a fan-out candidate.
 - **Behavior** — success/failure/edge paths, terminal output, copy, scope. Every new check names what it reports when the check itself is broken.
-- **Publication surface** — every place the task touches `blueprint/**`, `README.md`, `INSTALL.md`, `CHANGELOG.md`, or `releases/**`. Nothing identifying may enter one: no personal name, no machine-absolute path, no client content, no example value mined from a live repo. A task that adds a template names the invented illustrative values it uses.
+- **Publication surface** — every place the task touches `templates/**`, `README.md`, `INSTALL.md`, `CHANGELOG.md`, or `releases/**`. Nothing identifying may enter one: no personal name, no machine-absolute path, no client content, no example value mined from a live repo. A task that adds a template names the invented illustrative values it uses.
 
 ### Spec format
 
@@ -52,7 +52,7 @@ Header: `# Wave: {slug}` · `**Status:** QUEUED` · `**Refined:** {YYYY-MM-DD} �
 6. `**File plan:**`
 7. `**Boundaries & anchors:**` what's NOT included + existing files/identifiers to reuse, every parity claim with its exact anchor
 
-Rules blocks binding a subset of tasks sit above those tasks; all-task rules sit in the header. Tag `[CMD: /pcm]` on tasks that must route through the change manager. Tag `[MILESTONE]` on checkpoint task headings.
+Rules blocks binding a subset of tasks sit above those tasks; all-task rules sit in the header. Tag `[CMD: /ptm]` on tasks that must route through the change manager. Tag `[MILESTONE]` on checkpoint task headings.
 
 ### RND findings (when a POC fed the wave)
 
@@ -60,7 +60,7 @@ Write `## RND-Validated Mandatory Rules` before the task list: every validated p
 
 ## R4 — Review + user gate
 
-- **Invariant registration:** a wave that introduces a new cross-cutting invariant registers it in `.claude/commands/wave/walker-invariants.md` in the SAME wave, as its own `[CMD: /pcm]` task. A registry that is never updated is exactly as blind as no registry.
+- **Invariant registration:** a wave that introduces a new cross-cutting invariant registers it in `.claude/commands/wave/walker-invariants.md` in the SAME wave, as its own `[CMD: /ptm]` task. A registry that is never updated is exactly as blind as no registry.
 - **User gate:** present the Scope/Deferred boundary plus one line per task (routing + the key technical and product decisions made for them). Loop until approved; approval queues the spec. Running it (`/wave-live {queue-path}`) is a separate decision.
 
 **Publication fence (sacred):** a push, a tag, or a GitHub release happens only on the user's explicit request in the turn that runs it. The spec never carries a task or clause instructing any agent to publish; a release need is listed in the R4 summary as a user-owned item.

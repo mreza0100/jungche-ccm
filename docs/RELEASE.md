@@ -1,6 +1,6 @@
 # RELEASE — How the blueprint ships and how adopters pull it
 
-Two mechanisms ship on every tag: the portable blueprint tree (this repo, at `blueprint/`) and the
+Two mechanisms ship on every tag: the portable blueprint tree (this repo, at `templates/`) and the
 compiled `pfm` CLI binaries (built from `pfm/`, attached to the GitHub Release). Both are versioned
 by the same git tag.
 
@@ -14,7 +14,7 @@ deleted or moved after push.
 
 | Bump | When | Adopter impact |
 | --- | --- | --- |
-| **PATCH** | Bug fixes, doc tweaks, non-interface mechanic changes | `/pcm:update` auto-applies with a diff preview |
+| **PATCH** | Bug fixes, doc tweaks, non-interface mechanic changes | adopters re-derive from the updated clone |
 | **MINOR** | New Tier B archetype, new mechanics command, new pipeline step | Mix of auto + interactive; may add optional files |
 | **MAJOR** | Breaking rename, removed command, changed core convention | Full interactive walkthrough, no silent applies |
 
@@ -29,24 +29,24 @@ Per-version notes live in `releases/v{X.Y.Z}.md`, one file per version, each tit
 `CHANGELOG.md` is a **slim index only** — one line per release (`- [v{X.Y.Z}](releases/v{X.Y.Z}.md) —
 {summary}`), prepended on every release. Never write full notes into `CHANGELOG.md` itself.
 
-Bullets carry a category prefix and optional trailing tags, both read by `/pcm:update`:
+Bullets carry a category prefix and optional trailing tags, both read at update time:
 
 - Prefix → `Tier A:` / `Tier B:` / `Mechanics:` / `Docs:` / `Scripts:`
 - Trailing tag → `(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)` (env var/hook/permission/model-config
   changes — always routed to manual review regardless of prefix)
 
-## Cutting a release (maintainer) — `/pcm:release {patch|minor|major} "{summary}"`
+## Cutting a release (maintainer) — `/ptm:release {patch|minor|major} "{summary}"`
 
 Run from inside the live source project against the local clone at `{BLUEPRINT_CLONE_PATH}` —
 the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user `{GH_USER}`).
 
 1. **Update-gate.** `baseline-sync.sh` checks the clone isn't behind published tags for reasons other
-   than this repo's own prior publish round-trip; a genuine peer-content gap forces `/pcm:update` first.
+   than this repo's own prior publish round-trip; a genuine peer-content gap forces updating the install from the clone first.
 2. **Sync the clone** — `git fetch && git pull --ff-only origin main` (stop on failure).
-3. **Refresh pass**, scoped by `blueprint/refresh-map.json`: `refresh-scope.sh scan` hashes every live
+3. **Refresh pass**, scoped by `templates/refresh-map.json`: `refresh-scope.sh scan` hashes every live
    source — unchanged sources skip their templates, changed sources (plus anything named in
    `.professor/release.md`) get re-derived, unmapped live files get a mapping ruling, `curated`
-   templates are never auto-derived. Then execute `docs/commands/pcm/references/refresh.md` over that
+   templates are never auto-derived. Then execute `docs/commands/ptm/references/refresh.md` over that
    scope: `scripts/genericize.sh` runs the deterministic placeholder pass first
    (`scripts/placeholder-map.tsv`), hand-judgment covers structure only (roster collapsing, domain
    nouns, persona metaphors). `refresh-scope.sh regen` re-baselines the hashes afterward.
@@ -56,7 +56,7 @@ the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user
    then get rewritten as a version-pointer bullet.
 6. **Write `releases/v{X.Y.Z}.md`**, prepend the index line to `CHANGELOG.md`.
 7. **Reconcile hand-curated docs** — `README.md` + `BLUEPRINT.md`'s cast/command/skill lists must
-   match `blueprint/`; the README's "any repo, any stack" promise is the contract to keep, never
+   match `templates/`; the README's "any repo, any stack" promise is the contract to keep, never
    downgrade.
 8. `echo "{X.Y.Z}" > VERSION`.
 9. **Gate, then ship:** `leak-check.sh` clean on the staged diff (brand names current+former, PII,
@@ -87,63 +87,19 @@ optional — the tag push fails release assembly without it.
 
 ---
 
-## Pulling an update (adopter) — `/pcm:update [check | --to vX.Y.Z | --force | --re-interview N]`
+## Pulling an update (adopter)
 
 State lives in `.professor/` inside the adopter's project: `VERSION` (installed version),
 `manifest.json` (file hashes + interview-answer replay seed), `drift.md` (forced KEEP-LOCAL
-customizations), `release.md` (local framework changes queued to publish upstream).
+customizations), `release.md` (local framework changes queued to publish upstream — swept by the
+framework repo's release flow).
 
-1. **Fetch tags** via `git ls-remote --tags`; target = latest by default, a pinned `--to` tag, or the
-   installed version again under `--force` (repair mode). Never downgrades.
-2. **Clone the target tag** into a temp dir.
-3. **Walk the release chain version by version** — for every version `> installed` and `<= target`,
-   read that version's `releases/v{X}.md` in full and record a per-version ledger entry (bullets by
-   heading, `### Breaking`, `### Migration`, new interview placeholders). The range is never
-   flattened into one pool — order matters for the migration-chain replay below.
-4. **Migration-chain replay** (runs before the hash comparison) — apply each version's structural
-   `### Migration`/`### Breaking` steps (renames, moves, deletes, splits/merges) in order against the
-   manifest's file paths and `drift.md`'s KEEP-LOCAL paths, so a customized file follows its rename
-   lineage to the correct final path before content is ever compared.
-5. **Three-way hash comparison**, per file — installed (manifest) → current (on-disk, always
-   re-hashed fresh, never trusted from cache) → upstream (re-parameterized with the manifest's
-   interview answers):
-
-   | Pattern | Verdict |
-   | --- | --- |
-   | `A→A→A` | Skip — unchanged |
-   | `A→A→B` | Auto-apply |
-   | `A→B→A` | Keep — user customized, upstream didn't move |
-   | `A→B→C` | Conflict — show diff, ask |
-   | `none→none→B` | New file |
-   | `A→A→none` | Removed upstream — interactive |
-   | `A→B→none` | User customized + removed upstream — warn, keep |
-
-   A `GENERATED FILE — DO NOT EDIT` banner or a built bundle under `.claude/workflows/` is always a
-   whole-file copy or rebuild — never a line-merge. A symlink into the blueprint clone is skipped
-   entirely; its update channel is the clone's own `git pull`.
-6. **Present three buckets:** Auto-apply (`A→A→B`, new safe-auto Tier C) · Review (conflicts, Tier A
-   content changes, new opt-in Tier B, `(breaking)`, and every cost-bearing delta regardless of tag)
-   · Manual (new interview questions, structural migrations, walked in version order). `check` mode
-   shows all three and writes nothing.
-7. **Apply, then regenerate `manifest.json`** (target version, fresh hashes, updated interview
-   answers) and append an update-history row + any new customizations to `drift.md`.
-8. Clean up the temp clone, report `v{OLD} → v{TARGET}` with counts (auto / reviewed / kept-local /
-   manual).
-9. **Refresh source-fetched skills** — for each `blueprint/skills/sources.json` entry, compare the
-   installed skill's `version:` frontmatter against its own repo's latest tag; offer a re-fetch when
-   behind, never downgrade an installed skill ahead of its repo.
-10. **Offer to publish** — if `.professor/release.md` has entries, or the update surfaced local
-    improvements worth sharing, ask before running `/pcm:release` (never auto-publishes). Every queued
-    entry is checked for genericity first — a customized entry moves to `drift.md` instead of counting
-    toward the publish offer.
-
----
-
-## What `/pcm:update` does NOT do
-
-- Touch `.claude/settings.json` — hand-curated per project
-- Touch the Tier A persona sections without explicit per-file confirmation
-- Auto-apply MAJOR migrations — always explicit consent, walked in version order
-- Downgrade — an installed version ahead of the target reports and asks, never rolls back
-- Overwrite a richer local original on a self-round-trip update — that's the `A→B→C` conflict path,
-  resolved by keeping local
+Updating is deliberate, by-hand work today: update the clone (`git pull --tags`, or `pfm update`,
+which also rebuilds the pfm binary), read `CHANGELOG.md` between the installed version and the new
+tag, port what applies, and honor `drift.md`'s KEEP-LOCAL entries — a customized file is never
+blindly overwritten. Two standing rules survive from the old protocol: a `GENERATED FILE — DO NOT
+EDIT` banner means whole-file rebuild by its stated generator, never a line-merge; a symlink into
+the blueprint clone updates through the clone's own `git pull`. Source-fetched skills
+(`templates/skills/sources.json`) update from their own repos — compare the installed `version:`
+frontmatter against the skill repo's latest tag; never downgrade. A mechanical, reviewed update
+transaction (per-file report, nothing silently applied) is queued as the blueprint-compiler train.

@@ -1,7 +1,7 @@
 ---
 name: dev
-description: Build, test, typecheck, and inspect this repo's three projects (blueprint, pfm, walker) through .claude/scripts/dev.sh. Subcommands — status (toolchain + projects + git + install state), install, build, typecheck, verify, test, all — each optionally scoped to one project. Route every build/test invocation here rather than calling go/npm directly, so a missing toolchain reports as TOOLCHAIN-MISSING instead of a silent skip.
-argument-hint: [status|install|build|typecheck|verify|test|all] [blueprint|pfm|walker]
+description: Build, test, typecheck, and inspect this repo's three projects (templates, pfm, walker) through .claude/scripts/dev.sh. Subcommands — status (toolchain + projects + git + install state), install, build, typecheck, verify, test, all — each optionally scoped to one project. Route every build/test invocation here rather than calling go/npm directly, so a missing toolchain reports as TOOLCHAIN-MISSING instead of a silent skip.
+argument-hint: [status|install|build|typecheck|verify|test|all] [templates|pfm|walker]
 ---
 
 # Dev
@@ -16,7 +16,7 @@ Run it, then report what it printed. No arguments = `status all`.
 
 | Project | Directory | Stack | What `verify` means |
 | --- | --- | --- | --- |
-| `blueprint` | `blueprint/` | markdown + shell, no build | `leak-check.sh` over changed public files + the placeholder-registry gate |
+| `templates` | `templates/` | markdown + shell, no build | `leak-check.sh` over changed public files + the placeholder-registry gate |
 | `pfm` | `pfm/` | Go 1.24 | `go vet ./...` |
 | `walker` | `engines/wave-walker/engine/` | JS/TS, npm, vitest | `npm run verify` (the bundle validator) |
 

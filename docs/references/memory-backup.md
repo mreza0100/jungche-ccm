@@ -1,6 +1,6 @@
 # Claude Memory Auto-Backup
 
-Reference for the optional **memory backup** capability — two `SessionStart` + `SessionEnd` hooks that auto-wire and auto-sync Claude Code's persistent project memory to one private git vault. Opt-in at install (see `SETUP.md` § "Memory backup"). Genericized script templates live at `blueprint/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh`.
+Reference for the optional **memory backup** capability — two `SessionStart` + `SessionEnd` hooks that auto-wire and auto-sync Claude Code's persistent project memory to one private git vault. Opt-in at install (see `SETUP.md` § "Memory backup"). Genericized script templates live at `templates/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh`.
 
 ---
 
@@ -70,7 +70,7 @@ Install copies the scripts to `~/.claude/scripts/` (user-level — they target `
 
 ## The scripts
 
-Three genericized templates under `blueprint/scripts/`:
+Three genericized templates under `templates/scripts/`:
 
 - **`cc-memory-wire.sh`** — `SessionStart`. Pulls the vault, reads the project dir from the hook's stdin JSON (`.cwd`, falling back to `$PWD`), derives the subdir from the project basename, and ensures the memory dir is symlinked into it. **Root-guard:** a memory dir already symlinked to the vault ROOT (a legacy single-project "main brain") is left untouched, never re-homed into a subdir. Migrates a pre-existing real memory dir into the subdir before linking (non-destructive — never clobbers a file already in the vault). Idempotent.
 - **`memory-sync.sh`** — `SessionEnd`. Pull-rebase --autostash, then commit + push the whole vault. Self-healing push (below).

@@ -12,7 +12,7 @@ import (
 	"hostops/pfm/internal/installer"
 )
 
-var initBlueprintPaths = []struct{ source, target string }{
+var initTemplatePaths = []struct{ source, target string }{
 	{source: "CLAUDE.md", target: "CLAUDE.md"},
 	{source: "CLAUDE.md", target: "AGENTS.md"},
 	{source: "settings.json", target: ".claude/settings.json"},
@@ -66,18 +66,18 @@ func runInit(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime
 }
 
 func initScaffold(source, target string, force bool) error {
-	blueprintRoot := filepath.Join(source, "blueprint")
+	templatesRoot := filepath.Join(source, "templates")
 	type plannedCopy struct {
 		source string
 		target string
 		info   fs.FileInfo
 	}
-	plan := make([]plannedCopy, 0, len(initBlueprintPaths))
-	for _, mapping := range initBlueprintPaths {
-		sourcePath := filepath.Join(blueprintRoot, filepath.FromSlash(mapping.source))
+	plan := make([]plannedCopy, 0, len(initTemplatePaths))
+	for _, mapping := range initTemplatePaths {
+		sourcePath := filepath.Join(templatesRoot, filepath.FromSlash(mapping.source))
 		info, err := os.Stat(sourcePath)
 		if err != nil {
-			return fmt.Errorf("recorded clone blueprint is missing %s: %w", mapping.source, err)
+			return fmt.Errorf("recorded clone templates dir is missing %s: %w", mapping.source, err)
 		}
 		plan = append(plan, plannedCopy{
 			source: sourcePath,

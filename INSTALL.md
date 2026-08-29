@@ -70,7 +70,7 @@ pfm install --yes --skip-harvest --skip-engine codex --skip-themes
 - `--skip-engine codex` suppresses the Codex dependency probe and Codex mirror/hooks. It does not
   alter Claude or OpenCode surfaces.
 - `--skip-themes` suppresses source-fetched theme installation. Theme entries come from
-  `blueprint/themes/sources.json` and the current Tokyo Night target is
+  `templates/themes/sources.json` and the current Tokyo Night target is
   `~/.claude/themes/tokyo-night.json`.
 
 The current embedded harvest plan is measured, not a promise for every host. On Linux `amd64`,
@@ -104,7 +104,7 @@ pfm install --yes --vscode
 6. `~/.codex/hooks.json` — migrates surviving binary paths and removes retired clear-kill and
    Dream/STM hooks; it installs no automatic Codex hook
 7. One source line appended to `~/.zshrc` — restart your shell (or `source ~/.zshrc`) for it to take effect
-8. `~/.claude/themes/` — source-fetched themes declared by `blueprint/themes/sources.json`; a
+8. `~/.claude/themes/` — source-fetched themes declared by `templates/themes/sources.json`; a
    failed cosmetic fetch is reported and skipped without aborting the other surfaces
 9. **Opt-in:** the VS Code user or remote-machine `settings.json` — adds a `PFM` terminal profile
    and selects it as the platform default. The profile opens a login zsh, then the installed shim
@@ -196,7 +196,7 @@ One writer per surface — the law that keeps the two installers from fighting o
 | Host fleet wiring                              | `pfm install` — the only writer       | `~/.local/share/pfm/install/`, `~/.claude/commands/`, the systemd/launchd scheduler units, every Claude account `settings.json`, `~/.codex/{prompts,skills,agents,hooks.json}`, one `~/.zshrc` line, and the opt-in VS Code user/remote `settings.json` |
 | Project discipline layer                       | The interview — the only writer       | `CLAUDE.md`, `.claude/`, `docs/`, `.professor/`, per-project `CLAUDE.md` + `.claude/`                                                                                                               |
 | Host-level opt-ins chosen during the interview | `pfm install`, invoked on your behalf | Lands inside the host-fleet surfaces above — the interview never writes them directly                                                                                                           |
-| Source-fetched themes (default; `--skip-themes` opts out) | `pfm install` | `~/.claude/themes/tokyo-night.json` and other targets declared by `blueprint/themes/sources.json`; exact ownership is recorded in the install ledger |
+| Source-fetched themes (default; `--skip-themes` opts out) | `pfm install` | `~/.claude/themes/tokyo-night.json` and other targets declared by `templates/themes/sources.json`; exact ownership is recorded in the install ledger |
 
 `pfm install --config-dir DIR` retargets the `~/.claude`-rooted writes to a different config directory — the only supported override.
 
@@ -230,18 +230,12 @@ checksum-verified v0.64.0 binary directly because the older updater cannot valid
 replacement safely.
 
 **`pfm` (machine layer, from `v0.60.1` onward):** `pfm update` consumes a tagged source-clone release
-transactionally, then runs `install --yes` and `doctor`; `/pcm:update` remains the semantic
-blueprint-content update. `pfm init` scaffolds a project from the clone recorded by install.
+transactionally, then runs `install --yes` and `doctor`. `pfm init` scaffolds a project from the
+clone recorded by install.
 
-**The discipline layer (path 3):**
-
-```
-/pcm:update              # interactive update to the latest tag, replays your interview answers
-/pcm:update check        # read-only preview
-/pcm:update --to vX.Y.Z  # pin a specific release
-```
-
-Every file lands in one of three buckets: **auto-apply** (upstream changed, you didn't), **review** (both changed, or the change costs money — new hooks, env vars, model config are always reviewed), **manual** (migrations, new interview questions). Anything recorded in `.professor/drift.md` is a forced keep-local that overrides an auto-apply.
+**The discipline layer (path 3):** updating an installed project's blueprint content is deliberate,
+by-hand work — see `docs/SETUP.md` § "Staying current". Anything recorded in `.professor/drift.md`
+is a forced keep-local that is never blindly overwritten.
 
 ---
 
@@ -249,4 +243,4 @@ Every file lands in one of three buckets: **auto-apply** (upstream changed, you 
 
 **`pfm`:** `pfm uninstall` — removes installer-owned links and theme files and restores the pre-install backups, per `pfm uninstall --help`. Locally modified theme files are preserved and reported rather than removed.
 
-**The discipline layer:** no uninstall command exists anywhere in `blueprint/` or the shipped commands. Removing it is a manual `git` operation on your side — revert the install commit, or delete the written paths from the ownership table above.
+**The discipline layer:** no uninstall command exists anywhere in `templates/` or the shipped commands. Removing it is a manual `git` operation on your side — revert the install commit, or delete the written paths from the ownership table above.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# refresh-scope.sh — incremental refresh: reads blueprint/refresh-map.json (template →
+# refresh-scope.sh — incremental refresh: reads templates/refresh-map.json (template →
 # live source paths + SHA-256 as of the last sync), hashes the live sources, and
 # reports which templates need LLM re-derivation. UNCHANGED hashes are a mechanical
 # untouched-proof — skipped. UNMAPPED live files need a mapping decision. `regen`
@@ -16,7 +16,7 @@ set -euo pipefail
 # `ledgers` is the other half of a release's scope, and it is mechanical for the
 # same reason `scan` is. A pending `.professor/release.md` bullet in a LINKED
 # project is a framework change waiting to ship, and before this subcommand
-# existed nothing ever opened one: /pcm:release read this repo's own ledger and
+# existed nothing ever opened one: /ptm:release read this repo's own ledger and
 # no other, so a release that swept every linked project and a release that
 # swept none printed the identical output. This enumerates the ledgers, counts
 # what is pending in each, and — the part that matters — refuses to be silent
@@ -139,7 +139,7 @@ esac
 [[ -d "$PROJECT_ROOT_ARG" ]] || { echo "refresh-scope: project_root not found: $PROJECT_ROOT_ARG" >&2; exit 1; }
 PROJECT_ROOT="$(cd "$PROJECT_ROOT_ARG" && pwd)"
 
-DEFAULT_MAP="$(dirname "$(readlink -f "$0")")/../blueprint/refresh-map.json"
+DEFAULT_MAP="$(dirname "$(readlink -f "$0")")/../templates/refresh-map.json"
 MAP_PATH="${3:-$DEFAULT_MAP}"
 
 [[ -f "$MAP_PATH" ]] || { echo "refresh-scope: map not found at $MAP_PATH" >&2; exit 1; }

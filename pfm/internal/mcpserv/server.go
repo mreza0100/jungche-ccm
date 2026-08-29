@@ -261,7 +261,7 @@ const selfCompactNoAmbientRemedy = "MCP request has no _meta.threadId, and " +
 	"not attach per-call caller identity over this transport — and " +
 	"chat_self_compact has no `pfm chat` CLI twin to fall back on. From the " +
 	"chat's own shell, queue the same choreography with `pfm chat inject " +
-	"$(pfm whoami) --force-now '/compact <focus>' --then '<steer>'`. A Codex " +
+	"--force-now --then '<steer>' $(pfm whoami) '/compact <focus>'`. A Codex " +
 	"chat should resolve automatically; if it does not, its MCP client is " +
 	"not attaching _meta.threadId to this call."
 

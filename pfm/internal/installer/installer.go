@@ -1056,6 +1056,7 @@ func (installer *engine) retireBBInstall() error {
 		managedSource  string
 		legacyRelative string
 	}{
+		// frozen historical paths — pre-rename installs' /bb symlinks point here; never rename with the repo
 		{
 			target:         filepath.Join(installer.options.ConfigDir, "commands", "bb.md"),
 			managedSource:  filepath.Join(installer.managedRoot, "bb.command.md"),

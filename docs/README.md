@@ -10,10 +10,10 @@ This is the **transplantable nervous system** — not a config dump. Built by th
 
 A complete `.claude/` infrastructure that turns Claude Code from "an AI that writes code when you ask" into **a self-disciplined engineering team with character**:
 
-- **The full cast** — The Professor (orchestrator), JC, PCM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
+- **The full cast** — The Professor (orchestrator), JC, PTM, Audit, plus optional Tier B archetypes (Officer, PM, Mentor, Marketer, KM). All ship with full voice; you parameterize the domain content at install.
 - **Worktree isolation** — every feature gets its own git worktree branch + a unique port allocation. Multiple parallel pipelines on the same repo without collisions.
 - **A pipeline that refuses cowboy coding** — `planner → architect → developer → QA → merge`. QA gates block bad code from reaching `main`. Only one agent (`gitter`) touches git.
-- **Self-improvement at the source** — a meta-agent (`/pcm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
+- **Self-improvement at the source** — a meta-agent (`/ptm`) edits the pipeline rules where they live instead of accumulating "lessons learned" files nobody reads.
 - **Hotfix mode** — `/jc` lets you bypass the full pipeline for surgical bug fixes, but still routes through tests + gitter.
 - **Path conventions that scale** — `$DOCS`, `$WORKTREE`, `$CDOCS` so agents never hardcode paths. Rename a directory once, every agent follows.
 - **Documentation discipline** — pipeline docs are temporary and archived; only one agent writes to permanent project docs.
@@ -46,13 +46,13 @@ docs/                     ← you are here
 ├── README.md, BLUEPRINT.md, ARCHITECTURE.md, SETUP.md, PLACEHOLDERS.md, RELEASE.md
 └── references/
 
-blueprint/                ← the shipped product, one clone away
+templates/                ← the shipped product, one clone away
     ├── refresh-map.json  ← every template ↔ its live source
     ├── CLAUDE.md          ← root project rules + Professor persona
     ├── agents/            ← gitter, mono-{planner,architect,documenter} + per-project agents
-    ├── commands/          ← Tier A: build, jc, pcm, dev, git, wave, documenter, save
+    ├── commands/          ← Tier A: build, jc, ptm, dev, git, wave, documenter, save
     │                         Tier B (opt-in): officer, km, pm, mentor, marketer
-    ├── skills/            ← bundled p:* skills (+ p:360/ghostwriter/vision-factory source-fetched via sources.json; rr is in-tree at engines/rr)
+    ├── skills/            ← bundled p:* skills (+ p:360/ghostwriter/vision-factory source-fetched via sources.json; deep-rr is in-tree at engines/deep-rr)
     ├── themes/            ← tokyo-night theme, source-fetched via sources.json
     ├── scripts/           ← worktree.sh, alloc-ports.sh, dev.sh
     └── codex/             ← (OPTIONAL) Codex dual-runtime templates
@@ -75,12 +75,12 @@ git clone --branch vX.Y.Z https://github.com/mreza0100/professor.git /path/to/pr
 
 cd /path/to/your-project
 claude
-> Read every file in /path/to/professor/blueprint/.
+> Read every file in /path/to/professor/templates/.
 > Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
 
-> Replace `/path/to/professor` with a permanent clone path, conventionally `~/.professor`. Keep it: installed Wave callers execute the engine in this clone, and `/pcm update` updates the same authority in place.
+> Replace `/path/to/professor` with a permanent clone path, conventionally `~/.professor`. Keep it: installed Wave callers execute the engine in this clone, and `/ptm update` updates the same authority in place.
 
 Claude runs an interview (~10 questions about your stack, character preferences, domain), customizes every template, copies them into your repo. First `/wave:builder` smoke-test reveals anything missed.
 
@@ -106,12 +106,12 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 - **The Professor** — Grandfatherly polymath with 15+ PhDs, one in whatever area the work touches. Warm, precise, gently devastating. The orchestrator and root identity — lives in CLAUDE.md, not a separate command.
 - **/jc** — "Jesus Christ but make it cool." Chill panic-debugger with holy weight. The one command allowed to edit `main` directly.
-- **/pcm** — Professor Change Manager. Edits pipeline rules at the source.
+- **/ptm** — Professor Template Management. Edits pipeline rules at the source.
 - **/wave:{orchestrator,builder,refine,walker,live,schedule,watcher}, /dev, /git, /documenter, /goal-manager** — pipeline mechanics with light Professor voice.
 
-**Bundled commands (ship with the blueprint):** the framework bus (`/pcm:update` · `/pcm:release`), `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
+**Bundled commands (ship with the blueprint):** `/wave:refine`, `/wave:walker`, `/p:rnd`, `/quality:doc`, `/quality:prompt`, `/audit:code-hygiene`, `/audit:security`, `/audit:ai-output`.
 
-**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `rr` skill is in-tree at `engines/rr/` and installs with the blueprint.
+**Source-fetched skills (installed at setup from canonical public repos via `sources.json`, never vendored):** `p:360`, `ghostwriter`, `vision-factory`. The `deep-rr` skill is in-tree at `engines/deep-rr/` and installs with the blueprint.
 
 **Host tooling (opt-in):** statusline, VSCode tmux launcher, a macOS multi-account `/reload` (per-chat billing switch across subscriptions), and the launcher-agnostic chat fleet (`pfm` picker, `/clear` auto-kill, `pfm reap` orphan sweeper).
 
@@ -129,7 +129,7 @@ See `SETUP.md` for the install interview and adaptation guidance.
 
 The blueprint pins your test command, build command, package manager, etc. at install time via the interview. After install, the templates are filled in for your stack — no leftover placeholders. The templates do NOT prescribe a stack; the install interview asks for one.
 
-If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/pcm` to fix it locally.
+If you find a tech-specific assumption leaking through after install (e.g., a hardcoded `pnpm` somewhere it should be your package manager), that's a bug — open an issue or invoke `/ptm` to fix it locally.
 
 ---
 

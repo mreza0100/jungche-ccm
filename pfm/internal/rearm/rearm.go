@@ -53,7 +53,7 @@ const crumbPrefix = "role-"
 // with its FULL text; above it, with a short pointer. It is ruled as a
 // PARAMETER, never hardcoded inside Pointer, so a later config layer can
 // override it without changing that function's shape. Measured examples
-// that set the default: dev (2.6KB) and frr (3.3KB) re-arm full-text;
+// that set the default: dev (2.6KB) and rr (3.3KB) re-arm full-text;
 // reviewer (10.5KB) re-arms by pointer.
 const DefaultThresholdBytes = 4096
 

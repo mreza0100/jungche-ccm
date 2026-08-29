@@ -530,7 +530,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  install   wire or remove the self-contained host integration")
 	fmt.Fprintln(w, "  uninstall remove the self-contained host integration")
 	fmt.Fprintln(w, "  update    update the installer-owned binary from a tagged source clone")
-	fmt.Fprintln(w, "  init      scaffold a project from the recorded blueprint clone")
+	fmt.Fprintln(w, "  init      scaffold a project from the recorded templates clone")
 	fmt.Fprintln(w, "  config    initialize, inspect, or validate machine configuration")
 	fmt.Fprintln(w, "  doctor    inspect fleet database and jail health")
 	fmt.Fprintln(w, "  version   print the pfm version")

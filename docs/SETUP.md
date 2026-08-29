@@ -23,12 +23,12 @@ git clone --branch v0.5.0 https://github.com/mreza0100/professor.git /path/to/pr
 # Inside YOUR project
 cd /path/to/your-project
 claude
-> Read every file in /path/to/professor/blueprint/.
+> Read every file in /path/to/professor/templates/.
 > Follow SETUP.md to install Professor in THIS project.
 > Conduct the interview before touching any files.
 ```
 
-> **Note:** `/path/to/professor` is the permanent absolute clone path used by the installed Wave Walker. Put it somewhere durable (conventionally `~/.professor`), keep it after installation, and use the same path for future `/pcm update` runs. A temporary clone would leave every Wave caller pointing at a dead engine.
+> **Note:** `/path/to/professor` is the permanent absolute clone path used by the installed Wave Walker. Put it somewhere durable (conventionally `~/.professor`) and keep it after installation — updates and template work read this clone. A temporary clone would leave every Wave caller pointing at a dead engine.
 
 Claude runs Phase 1 (interview), then Phase 2 (customization), then Phase 3 (smoke test). You answer about 10 questions. Claude does the rest.
 
@@ -228,34 +228,34 @@ Claude takes your answers and:
 
 1. **Writes root `CLAUDE.md`** — fills in `{PROJECT_NAME}`, `{PROJECT_PITCH}`, the Professor persona section, and the non-negotiable rules. Emits `{PROJECT_ROSTER}` (one Architecture bullet per roster entry) and `{PROJECT_AGENT_ROSTER}` (one Agents line per entry, listing only that project's installed agents); a single-project install collapses the monorepo framing to "the project." Strict-typing and infra rules emitted per roster entry (one typing rule per typed stack; infra rules only if a project owns infra).
 2. **Writes per-project `CLAUDE.md` files** (roster of 2+) — one per entry, with that entry's tech stack and conventions. A roster of one has no child CLAUDE.md.
-3. **Writes Tier A command files** — `/wave:builder`, `/jc`, `/pcm`, `/dev`, `/git`, `/wave:orchestrator`, `/documenter`. Voice intact, domain content filled.
-   3a. **Installs output-style personas** — copies `blueprint/output-styles/professor.md` (the session style loaded every main-loop turn) and `blueprint/output-styles/jc.md` (the `/jc` overlay) to `.claude/output-styles/`, substituting placeholders.
+3. **Writes Tier A command files** — `/wave:builder`, `/jc`, `/ptm`, `/dev`, `/git`, `/wave:orchestrator`, `/documenter`. Voice intact, domain content filled.
+   3a. **Installs output-style personas** — copies `templates/output-styles/professor.md` (the session style loaded every main-loop turn) and `templates/output-styles/jc.md` (the `/jc` overlay) to `.claude/output-styles/`, substituting placeholders.
 4. **Writes Tier B command files** for each opt-in — `/officer`, `/km`, `/pm`, `/mentor`, `/marketer`. Archetype skeletons with your placeholders filled. The leading `>`-quoted "Required placeholders (fill at install)" meta-block from each template is stripped before save — that block is install-time scaffolding, not runtime content. A correctly-installed Tier B command starts with the H1 heading and goes straight to the `$ARGUMENTS` line.
 5. **Writes root agents** — `gitter`, `mono-documenter`, and `tracer` always; one `qa-{project}` gate wrapper per roster entry; `mono-planner` + `mono-architect` only for a roster of 2+, each with the roster pinned. A single-project install omits the two `mono-` consolidators.
 6. **Writes per-project agents** — for each roster entry, instantiates that project's `planner`, `architect`, `developer`, `qa` (plus any specialists from Q3) under `{project}/.claude/agents/`, with its test/lint/build commands pinned. One set per entry; none for projects not in the roster.
 7. **Writes scripts** — `worktree.sh`, `alloc-ports.sh`, `dev.sh`, `notify.sh`. Fills the `PROJECTS=(…)` arrays in `worktree.sh`/`dev.sh` from the roster so they iterate the real entries, with each entry's setup logic and port ranges pinned. A single-project roster fills the array with one entry (or drops the loop).
-   7a. **Installs skills.** The blueprint bundles the attributed `legal` reference shelf under `blueprint/skills/legal/`; every registry skill is **source-fetched** from its canonical public repo (listed in `blueprint/skills/sources.json`) into `.claude/skills/{name}/`, so those external skills cannot silently drift inside the blueprint. The installer copies the bundled shelf, clones each registry skill, parameterizes where needed, and removes each clone's `.git/` directory so the installed skills are plain files. The reasoning protocols that once shipped as bundled skills — `/p:rnd`, `/p:360`, `/wave:refine`, `/wave:walker`, `/quality:prompt`, `/quality:doc`, `/audit:code-hygiene`, `/audit:security` — are now **commands** under `blueprint/commands/` and install with the other command files (steps 3–4). The table records each subject's source path and its parameterization.
+   7a. **Installs skills.** The blueprint bundles the attributed `legal` reference shelf under `templates/skills/legal/`; every registry skill is **source-fetched** from its canonical public repo (listed in `templates/skills/sources.json`) into `.claude/skills/{name}/`, so those external skills cannot silently drift inside the blueprint. The installer copies the bundled shelf, clones each registry skill, parameterizes where needed, and removes each clone's `.git/` directory so the installed skills are plain files. The reasoning protocols that once shipped as bundled skills — `/p:rnd`, `/p:360`, `/wave:refine`, `/wave:walker`, `/quality:prompt`, `/quality:doc`, `/audit:code-hygiene`, `/audit:security` — are now **commands** under `templates/commands/` and install with the other command files (steps 3–4). The table records each subject's source path and its parameterization.
 
 | Skill / command       | Source                                                                    | Parameterization                                                     |
 | --------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `legal`               | Bundled `blueprint/skills/legal/`                                         | None                                                                 |
-| `rr`                  | in-tree at `{BLUEPRINT_CLONE_PATH}/engines/rr/` — ships with the blueprint clone, no separate fetch | None                                                                 |
+| `legal`               | Bundled `templates/skills/legal/`                                         | None                                                                 |
+| `deep-rr`                  | in-tree at `{BLUEPRINT_CLONE_PATH}/engines/deep-rr/` — ships with the blueprint clone, no separate fetch | None                                                                 |
 | `ghostwriter`         | source-fetched (sources.json) https://github.com/mreza0100/ghost-writer   | None                                                                 |
 | `vision-factory`      | source-fetched (sources.json) https://github.com/mreza0100/vision-factory | None                                                                 |
-| `/p:360`              | Command `blueprint/commands/p/360.md`                                     | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
-| `/p:rnd`              | Command `blueprint/commands/p/rnd.md`                                     | None                                                                 |
-| `/wave:refine`        | Command `blueprint/commands/wave/refine.md`                               | None (pipeline-coupled)                                              |
-| `/wave:walker`        | Command `blueprint/commands/wave/walker.md`                               | None (pipeline-coupled)                                              |
-| `/quality:prompt`     | Command `blueprint/commands/quality/prompt.md`                            | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
-| `/quality:doc`        | Command `blueprint/commands/quality/doc.md`                               | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
-| `/audit:code-hygiene` | Command `blueprint/commands/audit/code-hygiene.md`                        | Hydrated by RR (Phase 2.5)                                           |
-| `/audit:security`     | Command `blueprint/commands/audit/security.md`                            | Hydrated by RR (Phase 2.5)                                           |
+| `/p:360`              | Command `templates/commands/p/360.md`                                     | Replace `{USER_PERSONA}` and `{SECONDARY_PERSONA}` in inquiry domain |
+| `/p:rnd`              | Command `templates/commands/p/rnd.md`                                     | None                                                                 |
+| `/wave:refine`        | Command `templates/commands/wave/refine.md`                               | None (pipeline-coupled)                                              |
+| `/wave:walker`        | Command `templates/commands/wave/walker.md`                               | None (pipeline-coupled)                                              |
+| `/quality:prompt`     | Command `templates/commands/quality/prompt.md`                            | Replace `{KNOWLEDGE_ROOT}`, `{KNOWLEDGE_DOMAIN}`, `{SACRED_GROUND}`  |
+| `/quality:doc`        | Command `templates/commands/quality/doc.md`                               | Replace `{DATABASE}`, `{ORM}`, `{API_PROTOCOL}` in examples          |
+| `/audit:code-hygiene` | Command `templates/commands/audit/code-hygiene.md`                        | Hydrated by RR (Phase 2.5)                                           |
+| `/audit:security`     | Command `templates/commands/audit/security.md`                            | Hydrated by RR (Phase 2.5)                                           |
 
 7b. **Prepares the dual-runtime Wave Walker engine** — requires Node `>=22.13`, keeps the blueprint clone at the permanent `{BLUEPRINT_CLONE_PATH}` embedded in `walker-invariants.md`, runs `npm ci --prefix {BLUEPRINT_CLONE_PATH}/engines/wave-walker/engine`, then runs that engine's `npm run build` and `npm run verify`. The engine consumes its integrity-pinned `cross-workflow` package at build/runtime; Claude callers execute the equivalence-gated `dist/active-workflow.js` pointer, while Codex callers execute `dist/cross-workflow/codex/runner.mjs`. Never copy either target into the project: one engine source and one clone own both.
 
 7c. **Installs statusline** — obtains the `pfm` binary and runs `pfm install --yes`, which merges a `statusLine` command running `~/.local/bin/pfm statusline` into `~/.claude/settings.json`. The native renderer shows model, fleet counts, context, git, cache state, cost, spend, and rate limits; detached refreshers keep network work off the render path.
 
-7c-i. **Installs global settings** — merge `blueprint/settings-global.json`'s keys into the adopter's OWN `~/.claude/settings.json`. **Merge, never overwrite**: this is the adopter's personal, machine-wide config file — it almost certainly already carries their own `model`, `theme`, MCP permissions, and hooks, and a blind copy would destroy them. Do a key-by-key JSON merge (add/update only the keys this template ships), the same discipline as step 7c's statusline block. The template currently ships exactly one key:
+7c-i. **Installs global settings** — merge `templates/settings-global.json`'s keys into the adopter's OWN `~/.claude/settings.json`. **Merge, never overwrite**: this is the adopter's personal, machine-wide config file — it almost certainly already carries their own `model`, `theme`, MCP permissions, and hooks, and a blind copy would destroy them. Do a key-by-key JSON merge (add/update only the keys this template ships), the same discipline as step 7c's statusline block. The template currently ships exactly one key:
 
     ```json
     { "cleanupPeriodDays": 36500 }
@@ -316,7 +316,7 @@ Claude takes your answers and:
 
     Requires `jq` and `prettier` (`npx prettier` — works if prettier is a project devDependency or globally installed). Fails silently if either is missing.
 
-7f. **(Opt-in) Installs VSCode tmux launcher** — with the user's consent (it edits _global_ editor + shell config), merges `blueprint/vscode/terminal-profile.json`'s two keys into the VSCode user `settings.json` and appends `zshrc-cc.snippet.sh` to `~/.zshrc`, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy). New VSCode terminals then open into tmux + Claude; `/exit` returns to a normal shell. The `cc` function is `typeset -f`-guarded so an existing `cc` is left untouched. Skipped if the user declines.
+7f. **(Opt-in) Installs VSCode tmux launcher** — with the user's consent (it edits _global_ editor + shell config), merges `templates/vscode/terminal-profile.json`'s two keys into the VSCode user `settings.json` and appends `zshrc-cc.snippet.sh` to `~/.zshrc`, and copies `tmux.conf` to `~/.tmux.conf` (mouse scroll + click-to-copy). New VSCode terminals then open into tmux + Claude; `/exit` returns to a normal shell. The `cc` function is `typeset -f`-guarded so an existing `cc` is left untouched. Skipped if the user declines.
 
 7g. **(Opt-in) Installs multi-account fleet tooling** (Linux and macOS — plain per-account config dirs, no Keychain) — with the user's consent (it edits global shell config and `~/.claude/`), gets the `pfm` binary and runs `pfm install --yes`. Building from the permanent clone with `go -C "$HOME/.professor/pfm" build -o "$HOME/.local/bin/pfm" ./cmd/pfm` is one way to obtain it; bare `pfm install` previews the exact changes. The self-contained binary embeds every host asset from `pfm/internal/installer/assets/`: the `/reload` instruction card, the chat helper scripts, the launcher shim, and the name-sync units. Its installer writes six surfaces and nothing else: the staged assets under `~/.local/share/pfm/install/`, command symlinks into `~/.claude/commands/`, the three `pfm-name-sync` systemd user units, every Claude account settings file it finds (`~/.claude/settings.json` plus each existing `~/.cc/N/settings.json`), `~/.codex/hooks.json`, and one source line in `~/.zshrc`. Inside a settings file it appends the usage hook, the group hook, and the `/clear` `SessionEnd` hook wherever they are absent; it adopts the statusline only when none is configured (an existing one is never replaced); and it migrates shell-era commands — the old group script, a legacy dreamer hook — to their native `pfm` verbs on the event they already occupy, without ever creating a hook the file did not already have. The Codex side gets the matching `SessionStart` entry that completes a Codex `/clear`. Dry-run is the default mode, and a reachable `systemd --user` bus makes the installer refuse before any write (rc 97) rather than leave a half-configured host. A real file at a destination is backed up, never destroyed; `pfm uninstall` reverses it. Skipped if the user declines.
 
@@ -324,13 +324,13 @@ Claude takes your answers and:
 
 7h. **Probes host tooling (git-host bridge)** — checks the install machine for `gh` and `glab` (`command -v`). For each present, writes a one-file index skill at `.claude/skills/host-{gh|glab}/SKILL.md` whose `description` records that the CLI is available on this host for {GitHub|GitLab} operations. It carries no procedure — it is the bridge that tells the Professor which CLI to drive: a GitLab adopter forks + releases through `glab`, a GitHub adopter through `gh`, and `/git` reads this marker to target the right host. Machine-specific, so it is generated per install (re-run on each machine), never shipped as a template. Absent tools get no skill.
 
-7i. **Installs themes (source-fetched)** — fetches each Claude Code theme listed in `blueprint/themes/sources.json` from its canonical public repo into `~/.claude/themes/` (the blueprint never vendors a copy, so it can't drift). For `tokyo-night`: `mkdir -p ~/.claude/themes && curl -fsSL https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/tokyo-night.json -o ~/.claude/themes/tokyo-night.json`. Activate with `/theme` → "Tokyo Night" (requires Claude Code v2.1.118+). Themes install to the user's home, so they are shared across all the user's projects. To match the terminal's own base background to the theme (VS Code `terminal.background`, or the profile background in iTerm2/Apple Terminal/Ghostty/Kitty/WezTerm), follow the theme repo README: <https://github.com/mreza0100/claude-code-tokyo-night#match-your-terminal-background-optional>.
+7i. **Installs themes (source-fetched)** — fetches each Claude Code theme listed in `templates/themes/sources.json` from its canonical public repo into `~/.claude/themes/` (the blueprint never vendors a copy, so it can't drift). For `tokyo-night`: `mkdir -p ~/.claude/themes && curl -fsSL https://raw.githubusercontent.com/mreza0100/claude-code-tokyo-night/main/tokyo-night.json -o ~/.claude/themes/tokyo-night.json`. Activate with `/theme` → "Tokyo Night" (requires Claude Code v2.1.118+). Themes install to the user's home, so they are shared across all the user's projects. To match the terminal's own base background to the theme (VS Code `terminal.background`, or the profile background in iTerm2/Apple Terminal/Ghostty/Kitty/WezTerm), follow the theme repo README: <https://github.com/mreza0100/claude-code-tokyo-night#match-your-terminal-background-optional>.
 
 8. **Creates directory structure** — `docs/agents/`, `docs/commands/`, `docs/dev/tasks/`, `docs/dev/tasks/archive/`, `docs/dev/waves/`, `.worktrees/` (gitignored).
 
-8a. **Installs command reference docs** — copies `blueprint/docs-commands/` into `docs/commands/` verbatim; the template tree mirrors `$CDOCS` exactly (e.g. `docs-commands/build/references/build-reference.md` → `docs/commands/build/references/build-reference.md`), so commands that cite a reference doc find it on disk.
+8a. **Installs command reference docs** — copies `templates/docs-commands/` into `docs/commands/` verbatim; the template tree mirrors `$CDOCS` exactly (e.g. `docs-commands/build/references/build-reference.md` → `docs/commands/build/references/build-reference.md`), so commands that cite a reference doc find it on disk.
 
-8b. **(If Codex opted in)** Creates `.codex/` as a pointer layer over `.claude/` — never a restatement of it. Writes `config.toml` (sandbox reach + the `{CODEX_MODEL}`/`{CODEX_REASONING_EFFORT}` pins) and `rules/repo-law.rules` (the execpolicy door lock for non-gitter roles). Runs `scripts/build-codex.mjs generate` to compile every root and per-project `.claude/agents/*.md` into the active `.codex/agents/` registry, including the sole Git writer `gitter`; every other role keeps read-only Git. The same pass builds `.codex/skills/` using true directory symlinks for `.claude/skills/*` and generated `SKILL.md` pointers for single-file `.claude/commands/*.md`, then compiles `AGENTS.md` from `CLAUDE.md`. Registry changes require a new or reloaded Codex session. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). 11. **Writes `.professor/VERSION`** — the blueprint version installed from. 12. **Writes `.professor/manifest.json`** — records the installed version, interview replay seed, and SHA-256 hashes of every installed file after substitution. `/pcm update` uses it for three-way comparison and replay. Format:
+8b. **(If Codex opted in)** Creates `.codex/` as a pointer layer over `.claude/` — never a restatement of it. Writes `config.toml` (sandbox reach + the `{CODEX_MODEL}`/`{CODEX_REASONING_EFFORT}` pins) and `rules/repo-law.rules` (the execpolicy door lock for non-gitter roles). Runs `scripts/build-codex.mjs generate` to compile every root and per-project `.claude/agents/*.md` into the active `.codex/agents/` registry, including the sole Git writer `gitter`; every other role keeps read-only Git. The same pass builds `.codex/skills/` using true directory symlinks for `.claude/skills/*` and generated `SKILL.md` pointers for single-file `.claude/commands/*.md`, then compiles `AGENTS.md` from `CLAUDE.md`. Registry changes require a new or reloaded Codex session. If Codex was NOT opted in, this step is skipped entirely. 9. **Updates `.gitignore`** — adds `.worktrees/`, `tmp/`. 10. **Creates `.professor/` directory** — Professor's own state at the repo root. Contains `VERSION` (installed version), `manifest.json` (machine-readable replay seed + file hashes), `drift.md` (local customizations the merge keeps), and `release.md` (framework changes pending upstream sync). 11. **Writes `.professor/VERSION`** — the blueprint version installed from. 12. **Writes `.professor/manifest.json`** — records the installed version, interview replay seed, and SHA-256 hashes of every installed file after substitution — the machine-readable replay seed an update consults. Format:
 
 **Build roster validation:** `/wave:builder` is not allowed to carry blueprint example projects that the target repo does not have. The installer must generate planner/architect/developer/QA/db/devops blocks only for installed subprojects, fail if any `{OPTIONAL_*}` placeholder remains, and then verify every referenced `*/.claude/agents/*.md` path exists. If a monorepo has only BE/FE/Cortex, no web or infra planner/architect/dev/QA blocks may remain.
 `json
@@ -369,17 +369,17 @@ Claude takes your answers and:
       "files": {
         "CLAUDE.md": "sha256:fa7b1ba7e0f3...",
         ".claude/commands/jc.md": "sha256:e3b0c44298fc...",
-        ".claude/commands/pcm.md": "sha256:2c26b46b68ff..."
+        ".claude/commands/ptm.md": "sha256:2c26b46b68ff..."
       }
     }
     `
-The `interview` field is the replay seed — `/pcm update` re-applies these answers to new upstream templates, then compares hashes to detect conflicts vs safe auto-applies. The `files` field is SHA-256 of every installed file AFTER placeholder substitution (a mismatch means the user edited post-install). The `installed_from_tag` records which git tag was used, enabling `/pcm update` to `git clone --branch` the exact version for diffing.
+The `interview` field is the replay seed an update re-applies to new upstream templates. The `files` field is SHA-256 of every installed file AFTER placeholder substitution (a mismatch means the user edited post-install). The `installed_from_tag` records which git tag was installed, so an update can diff against the exact source version.
 
 ### 2.7 Documentation scaffold (`docs/agents/`)
 
 `/documenter` and every architect read a documentation hub that must exist on disk, or their references dangle. Seed it from the shipped skeletons:
 
-1. Copy `blueprint/docs-agents/_index.md` → `docs/agents/_index.md` and `blueprint/docs-agents/standards.md` → `docs/agents/standards.md`, substituting `{PROJECT_NAME}` and roster tokens like every other template.
+1. Copy `templates/docs-agents/_index.md` → `docs/agents/_index.md` and `templates/docs-agents/standards.md` → `docs/agents/standards.md`, substituting `{PROJECT_NAME}` and roster tokens like every other template.
 2. **If the project has enough code to document** → run `/documenter bootstrap` to build the clusters (architecture, api, map, features) from the codebase, each with its own `_index.md`.
 3. **If the project is too new** (no code yet, or the adopter skipped stack details) → defer, mirroring the empty-skill hydration pattern: keep the seeded hub + standards skeleton, leave the cluster rows pointing at to-be-created indexes, and note that `/documenter bootstrap` fills them when the codebase exists. The hub must never reference a cluster file that is absent without marking it deferred.
 
@@ -393,7 +393,7 @@ After install, Claude runs a tiny `/wave:builder` to verify the pipeline works e
 /wave:builder add-readme-section
 ```
 
-Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/pcm` to fix it at the source.
+Walk through the prompts. The first run reveals anything missed in adaptation. If something asks the wrong question or runs the wrong command, invoke `/ptm` to fix it at the source.
 
 Before the pipeline smoke, rerun `{BLUEPRINT_CLONE_PATH}/engines/wave-walker/engine`'s `npm run verify` and confirm its Claude and Codex manifests carry the same `workflowHash`. This proves the permanent paths and pinned library survived materialization.
 
@@ -411,7 +411,7 @@ If **yes**, walk the procedure (full detail + every gotcha in `docs/references/m
 
 1. **Create ONE PRIVATE vault repo** (e.g. `<gh-user>/<you>-memory`) on GitHub, and `git init` a local clone at the vault path — `$HOME/work/<vault-dir>` (the `{MEMORY_VAULT_DIR}` config point) or wherever `$CLAUDE_MEMORY_REPO` points. One vault holds every project's memory.
 2. **Configure headless auth** — `gh auth setup-git` (registers `gh` as the credential helper; token in the OS keychain, HTTPS not SSH). Verify with `GIT_TERMINAL_PROMPT=0 git ls-remote origin HEAD` — it returns instantly, no prompt.
-3. **Install the scripts + hooks.** Copy `blueprint/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh` to `~/.claude/scripts/` (substitute `{MEMORY_VAULT_DIR}`). These are user-level — they target `~/.claude/...` across every project, so they ship into `~/.claude/scripts/`, NOT a project's `.claude/`. Then add the `SessionStart` + `SessionEnd` hooks to global `~/.claude/settings.json`:
+3. **Install the scripts + hooks.** Copy `templates/scripts/{cc-memory-wire,cc-memory-consolidate,memory-sync}.sh` to `~/.claude/scripts/` (substitute `{MEMORY_VAULT_DIR}`). These are user-level — they target `~/.claude/...` across every project, so they ship into `~/.claude/scripts/`, NOT a project's `.claude/`. Then add the `SessionStart` + `SessionEnd` hooks to global `~/.claude/settings.json`:
 
    ```json
    {
@@ -466,7 +466,7 @@ claude
 
 Claude reads the blueprint's Tier B template for that archetype, runs the relevant subset of the interview, and copies + customizes the file. No reinstall needed.
 
-Same for adding a new Tier A archetype if you build one — `/pcm` copies the template, you parameterize the content, done.
+Same for adding a new Tier A archetype if you build one — `/ptm` copies the template, you parameterize the content, done.
 
 ---
 
@@ -475,9 +475,9 @@ Same for adding a new Tier A archetype if you build one — `/pcm` copies the te
 1. **Worktree script can't find your tools.** Make sure your shell environment is loaded inside the script — `source ~/.zshrc`, use absolute paths, or pin tool versions in a script-local `PATH`.
 2. **Port allocation false positives.** `lsof -i :PORT` checks aren't always reliable across IPv4/IPv6 — adjust the script if you see false positives on your OS.
 3. **Gitter tries to merge with conflicts unresolved.** That's a gap in your gitter setup; the template handles it, but if you simplified, restore the conflict-detection block.
-4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/pcm` fix at the source agent.
+4. **Agents writing to permanent docs.** Only `mono-documenter` should write to `docs/agents/` or `{project}/docs/`. If another agent tries, that's a `/ptm` fix at the source agent.
 5. **`.worktrees/.ports` corrupted.** Manually edit; the format is one whitespace-separated line per pipeline.
-6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Voice is non-negotiable — adapt content, preserve character. Invoke `/pcm` and tell it which command lost its voice.
+6. **Character feels generic after install.** You probably stripped voice instead of parameterizing content. Voice is non-negotiable — adapt content, preserve character. Invoke `/ptm` and tell it which command lost its voice.
 
 ---
 
@@ -486,61 +486,25 @@ Same for adding a new Tier A archetype if you build one — `/pcm` copies the te
 - Read `BLUEPRINT.md` § "The five load-bearing walls" — these don't change, ever.
 - Verify the statusline shows in your terminal (you should see model, fleet counts, context %, and git branch). If not, check `~/.claude/settings.json` runs `~/.local/bin/pfm statusline` and that the binary is executable.
 - Verify notifications work — start a task that takes 30+ seconds and check you get the macOS notification when the turn completes.
-- Run `/wave:builder` for new features. Run `/jc` for hotfixes. Run `/pcm` to evolve the pipeline. Run the Professor analysis for cross-disciplinary analysis.
+- Run `/wave:builder` for new features. Run `/jc` for hotfixes. Run `/ptm` to evolve the pipeline. Run the Professor analysis for cross-disciplinary analysis.
 
 **When something feels wrong** after a few real pipelines:
 
-- An agent always asks the same clarification → add it to the agent definition (via `/pcm`).
-- A step always gets skipped → remove it or make it conditional (via `/pcm`).
-- A bug class keeps recurring → add a non-negotiable rule to the relevant CLAUDE.md (via `/pcm`).
-- A character feels off → describe what's missing to `/pcm` and let it edit the persona at the source.
+- An agent always asks the same clarification → add it to the agent definition (via `/ptm`).
+- A step always gets skipped → remove it or make it conditional (via `/ptm`).
+- A bug class keeps recurring → add a non-negotiable rule to the relevant CLAUDE.md (via `/ptm`).
+- A character feels off → describe what's missing to `/ptm` and let it edit the persona at the source.
 
 The pipeline is supposed to evolve. Static configurations rot — evolving ones get sharper with use.
 
 ---
 
-## Staying current — `/pcm update`
+## Staying current
 
-When new versions of Professor are released (as git tags on `mreza0100/professor`), your install can pull updates without losing customizations:
+New Professor versions are released as git tags on `mreza0100/professor` (semver: patch = fixes, minor = new features, major = breaking, walked through in the notes). Updating an install:
 
-```
-/pcm update              # Full interactive update to latest release tag
-/pcm update check        # Read-only — preview what would change
-/pcm update --to v1.2.0  # Pin to a specific version tag
-/pcm update --force      # Re-apply manifest (repair mode)
-/pcm update --re-interview 5  # Re-answer interview question 5
-```
+1. Update the clone: `git -C <your-clone> pull --tags` — or `pfm update`, which moves the recorded clone to the newest tag and rebuilds the pfm binary.
+2. Read `CHANGELOG.md` between your `.professor/VERSION` and the new tag — the release notes name what changed and any `→ For:` adopter actions.
+3. Port the changes that apply to your install, honoring `drift.md`'s KEEP-LOCAL entries — a customized file is never blindly overwritten.
 
-### How it works
-
-1. Reads `.professor/VERSION` + `.professor/manifest.json` (your installed version, interview answers, file hashes)
-2. Fetches available git tags from `mreza0100/professor` via `git ls-remote`
-3. Clones the target tag into temp, reads `CHANGELOG.md` entries between your version and target
-4. **Replays your interview answers** against new templates → computes re-parameterized upstream hashes
-5. **Three-way hash comparison** per file (installed baseline vs current on-disk vs upstream new):
-   - Upstream changed + you didn't touch → **auto-apply**
-   - You customized + upstream didn't change → **keep yours**
-   - Both changed → **conflict** — shows diff, you decide
-   - New file from upstream → **auto-add** (mechanics) or **ask** (Tier A/B)
-6. Presents changes in three buckets: auto-apply, review, manual
-7. Applies accepted changes, regenerates manifest with new hashes + updated version
-8. Appends to `.professor/drift.md` — records which files you kept over upstream, new opt-ins, re-interview changes
-
-### Version semantics
-
-Releases follow semver via git tags (`v0.5.0`, `v0.6.0`, `v1.0.0`):
-
-| Bump      | What it means for you                                  |
-| --------- | ------------------------------------------------------ |
-| **Patch** | Bug fixes, doc tweaks — mostly auto-apply              |
-| **Minor** | New features/commands — mix of auto + interactive      |
-| **Major** | Breaking changes — full walkthrough, no silent applies |
-
-### What it never touches without asking
-
-- Your `CLAUDE.md` persona section (character voice may have drifted intentionally)
-- Files under `docs/commands/{cmd}/` (command-owned content, not templates)
-- `.claude/settings.json` (hand-curated per project)
-- Any file you've customized post-install (detected via hash mismatch)
-
-See `RELEASE.md` for how releases are produced. See `pcm.md` § "Update Protocol" for the full implementation.
+This is deliberate, by-hand work today: a mechanical, reviewed update transaction (per-file report, nothing silently applied) is queued as the blueprint-compiler train. See `RELEASE.md` for how releases are produced.

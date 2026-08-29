@@ -16,12 +16,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-PROJECTS=(blueprint pfm walker)
+PROJECTS=(templates pfm walker)
 
 # project -> directory
 proj_dir() {
   case "$1" in
-    blueprint) echo "blueprint" ;;
+    templates) echo "templates" ;;
     pfm)  echo "pfm" ;;
     walker)    echo "engines/wave-walker/engine" ;;
     *) return 1 ;;
@@ -33,7 +33,7 @@ proj_dir() {
 # must not fail on a missing npm, and must still fail on a missing go.
 proj_tools() {
   case "$1" in
-    blueprint) echo "node" ;;
+    templates) echo "node" ;;
     pfm)       echo "go" ;;
     walker)    echo "node npm" ;;
     *) return 1 ;;
@@ -115,7 +115,7 @@ cmd_status() { # cmd_status [project|all]
     local d; d="$(proj_dir "$p")"
     if [[ ! -d "$d" ]]; then fail_step "$p — directory $d/ is MISSING"; continue; fi
     case "$p" in
-      blueprint)
+      templates)
         ok "$p — $d/ ($(find "$d" -type f -not -name refresh-map.json | wc -l | tr -d ' ') shipped files, no build)" ;;
       pfm)
         ok "$p — $d/ (go $(sed -n 's/^go //p' "$d/go.mod" | head -1))" ;;
@@ -141,19 +141,19 @@ cmd_status() { # cmd_status [project|all]
 
 # ─── per-project actions ─────────────────────────────────────────────────────
 
-act_blueprint() { # the shipped product: mechanical gates, no build
+act_templates() { # the shipped product: mechanical gates, no build
   local action="$1"
   case "$action" in
-    install|build|typecheck) info "blueprint: no $action step (markdown + shell)" ;;
+    install|build|typecheck) info "templates: no $action step (markdown + shell)" ;;
     verify|test|all)
-      head_ "blueprint — leak gate"
+      head_ "templates — leak gate"
       local changed
-      changed=$(repo_git status --porcelain -- blueprint scripts README.md INSTALL.md CHANGELOG.md releases \
+      changed=$(repo_git status --porcelain -- templates scripts README.md INSTALL.md CHANGELOG.md releases \
                 | awk '{print $NF}' | grep -v '/$' || true)
       if [[ -z "$changed" ]]; then
-        info "no changed blueprint/public files — scanning the whole tracked blueprint tree instead"
+        info "no changed templates/public files — scanning the whole tracked templates tree instead"
         # shellcheck disable=SC2046
-        if repo_git ls-files blueprint README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
+        if repo_git ls-files templates README.md INSTALL.md | xargs scripts/leak-check.sh --files; then
           ok "leak-check clean (full tracked scan)"
         else
           fail_step "leak-check FAILED — brand / PII / machine-path string in a public file"
@@ -167,7 +167,7 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         fi
       fi
 
-      head_ "blueprint — placeholder registry"
+      head_ "templates — placeholder registry"
       # Scope: markdown templates only. Shell/JS templates use {VAR} for their own
       # runtime values, which are not install placeholders and never will be.
       # PLACEHOLDERS.md registers BOTH classes a markdown template can carry —
@@ -176,7 +176,7 @@ act_blueprint() { # the shipped product: mechanical gates, no build
       # genuinely unruled, not merely uncategorised, and FAILS: a warning here
       # was read by nobody and let a token sit unruled release after release.
       local used unregistered out
-      used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint 2>/dev/null | sort -u || true)
+      used=$(grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' templates 2>/dev/null | sort -u || true)
       if [[ -z "$used" ]]; then
         fail_step "placeholder scan produced NO tokens at all — the SCAN is broken, not the templates"
       else
@@ -188,20 +188,20 @@ act_blueprint() { # the shipped product: mechanical gates, no build
           if [[ -n "${PFM_DEV_FENCE:-}" ]]; then
             out="$(mktemp)"
           else
-            out="tmp/blueprint-unregistered-tokens.txt"
+            out="tmp/templates-unregistered-tokens.txt"
             mkdir -p tmp
           fi
           printf '%s\n' "$unregistered" > "$out"
           fail_step "$(wc -l <<<"$unregistered") of $(wc -l <<<"$used") markdown-template tokens are absent from PLACEHOLDERS.md — register each as an install placeholder or under § Runtime metavariables"
           info "most frequent 10 (full list: $out):"
-          grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' blueprint \
+          grep -rhoE '\{[A-Z][A-Z0-9_]+\}' --include='*.md' templates \
             | grep -xFf "$out" | sort | uniq -c | sort -rn | head -10 \
             | while read -r n tok; do info "  ${n}x  $tok"; done
         fi
       fi
 
-      head_ "blueprint — codex generated-marker claim"
-      # The blueprint's shipped JS compiler and this repo's `pfm codex build`
+      head_ "templates — codex generated-marker claim"
+      # The templates dir's shipped JS compiler and this repo's `pfm codex build`
       # write the same $HOME/.codex outputs on adopter hosts. A copy that stops
       # claiming the other's marker reports its files STALE forever; the gate
       # also reconciles every marked file's declared source against disk, so a
@@ -212,32 +212,32 @@ act_blueprint() { # the shipped product: mechanical gates, no build
         fail_step "codex marker claim FAILED — a stranded marker or an orphaned generated file (see output)"
       fi
 
-      head_ "blueprint — generated agent rosters"
+      head_ "templates — generated agent rosters"
       if node scripts/check-agent-roster.mjs; then
         ok "Codex and OpenCode agent rosters match their Claude sources"
       else
         fail_step "agent roster FAILED — a source role is missing or cannot perform its protocol"
       fi
 
-      head_ "blueprint — opencode mirror"
+      head_ "templates — opencode mirror"
       # The OpenCode mirror must be current AND valid: check re-derives every
       # output from the Claude sources; doctor additionally parses each artifact.
-      if need_tool node blueprint && node .claude/scripts/build-opencode.mjs check \
+      if need_tool node templates && node .claude/scripts/build-opencode.mjs check \
         && node .claude/scripts/build-opencode.mjs doctor | tail -1; then
         ok "opencode mirror current and parseable"
       else
         fail_step "opencode mirror FAILED — run: node .claude/scripts/build-opencode.mjs generate"
       fi
 
-      head_ "blueprint — isolated-fence mount preflight"
+      head_ "templates — isolated-fence mount preflight"
       if bash infra/fence-preflight-test.sh; then
         ok "Docker Desktop mount targets are prepared before the read-only worktree bind"
       else
         fail_step "isolated-fence mount preflight FAILED — nested volume targets are not safely prepared"
       fi
 
-      head_ "blueprint — self-hosted manifest"
-      if bash infra/check-self-hosted-manifest.sh "$REPO_ROOT" blueprint pfm engines/wave-walker/engine; then
+      head_ "templates — self-hosted manifest"
+      if bash infra/check-self-hosted-manifest.sh "$REPO_ROOT" templates pfm engines/wave-walker/engine; then
         ok "self-hosted manifest version, roster, and hashes match the repository"
       else
         fail_step "self-hosted manifest FAILED — its install ledger is stale or unreadable"
@@ -296,7 +296,7 @@ act_walker() {
 
 dispatch() { # dispatch <project> <action>
   case "$1" in
-    blueprint) act_blueprint "$2" ;;
+    templates) act_templates "$2" ;;
     pfm)  act_pfm "$2" ;;
     walker)    act_walker "$2" ;;
   esac
@@ -367,7 +367,7 @@ commands:
   install                fetch dependencies
   build                  compile
   typecheck              vet / tsc --noEmit
-  verify                 pre-test gates (go vet, walker's verify, blueprint's leak + token gates)
+  verify                 pre-test gates (go vet, walker's verify, templates's leak + token gates)
   test                   run the test suite
   all                    verify + build + test for the project
   iso <cmd> [project]    run any command above — plus e2e | shell — inside the

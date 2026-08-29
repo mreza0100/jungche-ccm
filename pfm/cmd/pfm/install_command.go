@@ -114,7 +114,7 @@ func professorThemeManifestURL(currentVersion string) string {
 	if reference == "" || reference == "dev" {
 		reference = "main"
 	}
-	return "https://raw.githubusercontent.com/mreza0100/professor/" + reference + "/blueprint/themes/sources.json"
+	return "https://raw.githubusercontent.com/mreza0100/professor/" + reference + "/templates/themes/sources.json"
 }
 
 func newInstallerOptions(

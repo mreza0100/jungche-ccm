@@ -1,11 +1,11 @@
 ---
 name: quality:prompt
-description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/**/*.md, .claude/skills/*/SKILL.md, or any shipped prompt template under blueprint/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. General prompt-quality law for ANY LLM-consumed prompt — leanness (cut test, compaction, positive framing, no time-sensitive narration, one canonical term) plus correctness (compute numbers in code, no conflicting directives, per-language validation). Claude-harness file rules (size limits, voice location, hooks, routing) live in /pcm § Claude-harness prompt law. Mandatory load for /pcm — the guard hook denies prompt-file edits until this file is read.
+description: Use BEFORE editing any prompt file — CLAUDE.md, .claude/agents/*.md, .claude/commands/**/*.md, .claude/skills/*/SKILL.md, or any shipped prompt template under templates/. Subcommand `quality:prompt cut <file>` rewrites the target leaner in place. General prompt-quality law for ANY LLM-consumed prompt — leanness (cut test, compaction, positive framing, no time-sensitive narration, one canonical term) plus correctness (compute numbers in code, no conflicting directives, per-language validation). Claude-harness file rules (size limits, voice location, hooks, routing) live in /ptm § Claude-harness prompt law. Mandatory load for /ptm — the guard hook denies prompt-file edits until this file is read.
 ---
 
 # Prompt Quality
 
-You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (this repo's own agents, an adopter's install compiled from blueprint/, or the Codex mirror). A human-consumed reference file (README, docs/) follows `quality:doc` instead.
+You are about to edit a prompt file that an LLM consumes at runtime. Every line is paid for on every invocation. Two axes: LEANNESS (cut every line that doesn't change behavior) and CORRECTNESS (make the model's output right) — most rules here serve the first, `§ Correctness & model behavior` serves the second. Apply them at write-time — they hold for ANY prompt, whatever the consumer (this repo's own agents, an adopter's install compiled from templates/, or the Codex mirror). A human-consumed reference file (README, docs/) follows `quality:doc` instead.
 
 ## Cut mode — `quality:prompt cut <file>`
 
@@ -32,11 +32,11 @@ Before → after, at the aggression this expects:
 
 ## The prompt stream — audit in context, not in isolation
 
-A prompt rarely loads alone: the target LLM reads one concatenated context assembled from many files. Audit a prompt against that whole stream, not just the file in front of you: a rule may already live in a co-loaded file (duplication), contradict one (conflict), or push the combined context past what the model holds well (budget). Follow the stream the target LLM actually reads, end to end, before judging any single file. (The Claude Code harness's stream composition is enumerated in `/pcm § Claude-harness prompt law`.)
+A prompt rarely loads alone: the target LLM reads one concatenated context assembled from many files. Audit a prompt against that whole stream, not just the file in front of you: a rule may already live in a co-loaded file (duplication), contradict one (conflict), or push the combined context past what the model holds well (budget). Follow the stream the target LLM actually reads, end to end, before judging any single file. (The Claude Code harness's stream composition is enumerated in `/ptm § Claude-harness prompt law`.)
 
 ## Size discipline
 
-Every consumer imposes size limits on its prompt files; know the target's limits before writing and split via progressive disclosure above them (one reference level deep, with a Table of Contents at the top if >100 lines). The Claude-harness limits live in `/pcm § Claude-harness prompt law`.
+Every consumer imposes size limits on its prompt files; know the target's limits before writing and split via progressive disclosure above them (one reference level deep, with a Table of Contents at the top if >100 lines). The Claude-harness limits live in `/ptm § Claude-harness prompt law`.
 
 ## Anti-patterns — cut on sight
 
@@ -44,7 +44,7 @@ Every consumer imposes size limits on its prompt files; know the target's limits
 2. **Dates of change.** Changelog-style "changed 2026-06-07" lines or update-history dates inside a prompt are the same antipattern — version control already timestamps every change. State the current rule, never when it changed.
 3. **Restating one rule — reworded OR repeated across sections (NO DUPLICATION).** Two phrasings of one rule, or the same rule echoed in a non-negotiable, a routing-table cell, and a process bullet, make the model pick one arbitrarily and rot out of sync. State each rule ONCE in its canonical home. Before adding a rule, grep the whole file for its key noun; if it already lives somewhere, sharpen that one and stop. When a rule sits in both step prose and a Rules/checklist section, the Rules section is the canonical home; sacred-ground rules alone may keep one extra point-of-use reminder.
 4. **Frontmatter ↔ body duplication.** If `description:` says it, the body opening must not.
-5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Working prompts carry zero voice; voice belongs in the consumer's dedicated persona layer (for the Claude harness: `/pcm § Claude-harness prompt law`).
+5. **Voice flavor that doesn't change behavior.** Backstory, character arcs, "I built this", "the meta layer", provenance ("adapted from X"). Test clause by clause: inside a voice trait, "(no sunk cost fallacy)" is a rule — keep the kernel, cut the costume. Working prompts carry zero voice; voice belongs in the consumer's dedicated persona layer (for the Claude harness: `/ptm § Claude-harness prompt law`).
 6. **Rationale that rephrases the rule — labeled "Why:" or not.** Trailing purpose clauses and rationale parentheticals whose content the rule's wording already implies. The rule's purpose lives in the rule's wording.
 7. **Negative framing where positive works.** "Use prose paragraphs" beats "don't use bullets." Reserve do NOT / NEVER for sacred ground (the leak gate, the publication boundary, secrets) — an isolated "do not X" measurably degrades untargeted behavior (~31.5% collateral in the study this rule came from).
 8. **Aggressive emphasis on non-sacred rules** — "CRITICAL", "YOU MUST", "MANDATORY", "(MANDATORY)" heading suffixes, capitalized intensifiers. Frontier models overtrigger on it. Plain language for ordinary rules; reserve emphasis for invariants.
@@ -107,7 +107,7 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 ## Pre-commit self-check (run before saving any prompt file)
 
 1. **Cut test:** Did I delete every line that wouldn't change the model's behavior?
-2. **Size:** Is the file under its consumer's limit (Claude-harness limits: `/pcm § Claude-harness prompt law`)?
+2. **Size:** Is the file under its consumer's limit (Claude-harness limits: `/ptm § Claude-harness prompt law`)?
 3. **Frontmatter discipline:** Does the body re-state what's already in `description:`? Cut.
 4. **One canonical term:** Did I sweep for synonym mixing?
 5. **Positive framing:** Is every "do NOT" a sacred-ground rule? If not, rewrite as a positive instruction.
@@ -121,7 +121,7 @@ The incident narration moves to the commit message / epic manifest. The rule sta
 
 ## Enforce invariants with mechanisms, not repetition
 
-Prompts are advisory; the model can drift. For things that must happen every time (formatting, validation, secret-scanning), use the consumer's deterministic enforcement layer instead of repeating "ALWAYS DO X" in the prompt — and once a mechanism owns an invariant, delete the prompt rule that restated it (keeping both is duplication against a deterministic mechanism). The Claude-harness mechanism is hooks: `/pcm § Claude-harness prompt law`.
+Prompts are advisory; the model can drift. For things that must happen every time (formatting, validation, secret-scanning), use the consumer's deterministic enforcement layer instead of repeating "ALWAYS DO X" in the prompt — and once a mechanism owns an invariant, delete the prompt rule that restated it (keeping both is duplication against a deterministic mechanism). The Claude-harness mechanism is hooks: `/ptm § Claude-harness prompt law`.
 
 ## Iteration discipline
 
