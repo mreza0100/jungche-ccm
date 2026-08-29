@@ -1,7 +1,7 @@
 # Drift — this install's local customizations
 
 Customizations of **this repo's own self-install** that must stay local and must NOT be
-generalized into `templates/**`. `/ptm` appends here; `/ptm:release` never consumes it.
+generalized into `templates/**`. `/pfm` appends here; `/pfm:release` never consumes it.
 
 The test: would this make sense in a stranger's repo? If yes it belongs in `release.md` and its
 template twin. If it only makes sense because this repo IS the blueprint, it belongs here.
@@ -29,7 +29,7 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   The adopter worktree pipeline (`worktree.sh`, `alloc-ports.sh`, per-project agents) remains
   uninstalled; this fence is the repo's own, container-backed variant.
 
-- **KEEP-LOCAL: no `/ptm:update`.** This repo is upstream. There is no newer tag to replay a
+- **KEEP-LOCAL: no `/pfm:update`.** This repo is upstream. There is no newer tag to replay a
   manifest against, so shipping the command would be a route to nowhere.
 
 - **KEEP-LOCAL: `gitter` is trimmed to COMMIT / PUSH / PULL / TAG.** The SETUP / MERGE /
@@ -121,10 +121,10 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   360's `{USER_NOUN} vs {SUBJECT_NOUN}` → `adopter vs maintainer`. 360 ships because rnd.md's
   blind-spot sweep points at `.claude/commands/p/360.md`.
 
-- **KEEP-LOCAL: `/ptm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
+- **KEEP-LOCAL: `/pfm` § Special Operations names `pfm codex build .` as the agent-TOML compiler.** This
   repo's Codex mirror has one writer, the Go `pfm codex build`; the repo-local `build-codex.mjs` is
   gone, so the "New agent" step and the scripts roster (a duplicated `codex-sync.sh`) now name the
-  live compiler. `templates/commands/ptm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.
+  live compiler. `templates/project/commands/pfm.md` keeps `build-codex.mjs` — adopters ship the JS compiler.
 
 - **KEEP-LOCAL: `scripts/placeholder-map.tsv` is untracked (leak-stop).** The scrub table necessarily
   holds this repo's real private values (name, email, domain, machine paths) mapped to placeholder
@@ -321,3 +321,8 @@ template twin. If it only makes sense because this repo IS the blueprint, it bel
   in a directory the runtime actually reads — a write is not an install.
   Registries load at SESSION START, so a re-run never fixes the running session; the roles appear in the
   next one.
+
+- **KEEP-LOCAL: `docs/commands/pfm/references/refresh.md` § Output structure drops hardcoded rosters.**
+  The tree diagram named dead commands (`animate`, `slow-burn`) and pre-split paths; it now shows the
+  two-scope shape only and points at the tree + `refresh-map.json` for rosters (2026-08-29). The card
+  documents this repo's own refresh pass and never ships.

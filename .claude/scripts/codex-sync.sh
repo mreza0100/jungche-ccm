@@ -15,7 +15,7 @@ set -euo pipefail
 #          stays set so the next turn retries.
 # Coverage (declared): sees Edit/Write TOOL calls only. A Bash-driven write (sed,
 # redirect) to a Claude source does NOT set the flag — `pfm codex check` and
-# `build-opencode.mjs check` in the ptm `structure` audit scope remain the
+# `build-opencode.mjs check` in the pfm `structure` audit scope remain the
 # backstop for that shape.
 #
 # `pfm codex build` is the SINGLE writer of the Codex mirror; build-opencode.mjs

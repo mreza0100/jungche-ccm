@@ -11,12 +11,18 @@ import (
 
 // GlobalAgentsOptions selects the host HOME whose global Codex agents get
 // (re)compiled and installed. The source directory is always
-// {Home}/.professor/agents; installs land at {Home}/.claude/agents (the raw
-// .md, Claude reads it directly) and {Home}/.codex/agents (the compiled
-// .toml, Codex reads it directly).
+// {SourceRepo}/templates/global/agents; installs land at {Home}/.claude/agents
+// (a symlink to the raw .md, Claude reads it directly) and {Home}/.codex/agents
+// (a symlink to the compiled .toml, Codex reads it directly).
 type GlobalAgentsOptions struct {
 	Home string
-	Mode Mode
+	// SourceRepo is the clone the symlink targets and the source-repo
+	// conflict check are anchored on. Empty defaults to {Home}/.professor —
+	// the documented clone location (INSTALL.md's $HOME/.professor) — so a
+	// caller that never sets it (pfm codex agents has no --source-repo flag)
+	// keeps today's default.
+	SourceRepo string
+	Mode       Mode
 }
 
 // GlobalAgentCompiled is one desired TOML beside its source .md. Build writes
@@ -26,36 +32,35 @@ type GlobalAgentCompiled struct {
 	Size int64
 }
 
-// GlobalAgentInstalled is one desired file in a live registry directory.
-// Build reports its promised final shape; check reports the shape actually on
-// disk so a missing or non-regular target cannot certify itself.
+// GlobalAgentInstalled is one desired registry symlink and the shape check
+// found there — the classification codexgen.GlobalLinkState names, so a
+// missing, drifted, or foreign target can never certify itself as installed.
 type GlobalAgentInstalled struct {
-	Path        string
-	RegularFile bool
+	Path   string
+	Source string
+	State  GlobalLinkState
+	Found  string
 }
 
 // GlobalAgentsResult reports every desired artifact in the same two phases
 // the host script performed. Actions narrows that roster to paths build would
-// actually replace.
+// actually replace; Problems carries every conflict build refused to touch.
 type GlobalAgentsResult struct {
 	Compiled  []GlobalAgentCompiled
 	Installed []GlobalAgentInstalled
 	Actions   []GlobalAgentAction
+	Problems  []string
 }
 
 // GlobalAgentAction is one exact path a build would replace. Check mode emits
 // the same action list without touching disk, which lets the host installer
 // present its complete plan before any earlier install mutation can land.
+// Target is the symlink source for a "link" action; it is empty for the
+// "write" actions the .toml compile step still performs.
 type GlobalAgentAction struct {
-	Kind string
-	Path string
-}
-
-type globalAgentOutput struct {
-	path      string
-	content   []byte
-	compiled  bool
-	installed bool
+	Kind   string
+	Path   string
+	Target string
 }
 
 // Codex has no Agent tool — the lead spawns children through spawn_agent
@@ -78,11 +83,15 @@ var (
 )
 
 // RunGlobalAgents is the Go port of the retired host script
-// ~/.professor/agents/build-global-agents.py: it compiles every
-// {Home}/.professor/agents/*.md into a sibling TOML, validates every
-// compiled TOML parses, then installs the .md sources into
-// {Home}/.claude/agents and the compiled .toml files into
-// {Home}/.codex/agents.
+// ~/.professor/templates/global/agents/build-global-agents.py: it compiles
+// every {SourceRepo}/templates/global/agents/*.md into a sibling TOML,
+// validates every compiled TOML parses, then SYMLINKS {Home}/.claude/agents
+// to the .md sources and {Home}/.codex/agents to the compiled .toml files —
+// updates to the source repo propagate through the link, no reinstall
+// required. A regular-file copy already at a desired target (the shape the
+// old copy-based installer left behind) is replaced with the link; a
+// symlink pointing outside the source repository is a conflict this never
+// touches — see ClassifyGlobalLink/ApplyGlobalLink in globallink.go.
 //
 // TOML escaping mirrors build-codex.mjs:151-153 exactly — see
 // globalAgentEscape / globalAgentEscapeMultiline — because a raw `"` in an
@@ -98,7 +107,16 @@ func RunGlobalAgents(options GlobalAgentsOptions) (GlobalAgentsResult, error) {
 	if err != nil {
 		return GlobalAgentsResult{}, err
 	}
-	agentsDir := filepath.Join(home, ".professor", "agents")
+	sourceRepo := strings.TrimSpace(options.SourceRepo)
+	if sourceRepo == "" {
+		sourceRepo = filepath.Join(home, ".professor")
+	}
+	sourceRepo, err = filepath.Abs(sourceRepo)
+	if err != nil {
+		return GlobalAgentsResult{}, fmt.Errorf("resolve global agents source repository %q: %w", options.SourceRepo, err)
+	}
+	sourceRepo = filepath.Clean(sourceRepo)
+	agentsDir := filepath.Join(sourceRepo, "templates", "global", "agents")
 
 	sources, err := globSorted(filepath.Join(agentsDir, "*.md"))
 	if err != nil {
@@ -108,7 +126,15 @@ func RunGlobalAgents(options GlobalAgentsOptions) (GlobalAgentsResult, error) {
 		return GlobalAgentsResult{}, fmt.Errorf("no agent .md files in %s", agentsDir)
 	}
 
-	outputs := make([]globalAgentOutput, 0, len(sources)*3)
+	// Phase 1: compile and validate every TOML twin before touching disk —
+	// a failed compile or an unparseable TOML aborts before any install, the
+	// same fail-loud order the host script used.
+	type compiledAgent struct {
+		mdSource    string
+		tomlOutput  string
+		tomlContent []byte
+	}
+	compiledAgents := make([]compiledAgent, 0, len(sources))
 	for _, src := range sources {
 		out, content, err := renderGlobalAgentTOML(src)
 		if err != nil {
@@ -117,55 +143,71 @@ func RunGlobalAgents(options GlobalAgentsOptions) (GlobalAgentsResult, error) {
 		if parseErr := validateTOML(content); parseErr != nil {
 			return GlobalAgentsResult{}, fmt.Errorf("%s: does not parse: %w", out, parseErr)
 		}
-		raw, err := os.ReadFile(src)
-		if err != nil {
-			return GlobalAgentsResult{}, fmt.Errorf("read %s: %w", src, err)
+		if _, err := os.Stat(src); err != nil {
+			return GlobalAgentsResult{}, fmt.Errorf("inspect %s: %w", src, err)
 		}
-		outputs = append(outputs,
-			globalAgentOutput{path: out, content: []byte(content), compiled: true},
-			globalAgentOutput{path: filepath.Join(home, ".claude", "agents", filepath.Base(src)), content: raw, installed: true},
-			globalAgentOutput{path: filepath.Join(home, ".codex", "agents", filepath.Base(out)), content: []byte(content), installed: true},
+		compiledAgents = append(compiledAgents, compiledAgent{mdSource: src, tomlOutput: out, tomlContent: []byte(content)})
+	}
+
+	type desiredLink struct {
+		target string
+		source string
+	}
+	result := GlobalAgentsResult{}
+	links := make([]desiredLink, 0, len(compiledAgents)*2)
+	for _, agent := range compiledAgents {
+		result.Compiled = append(result.Compiled, GlobalAgentCompiled{Path: agent.tomlOutput, Size: int64(len(agent.tomlContent))})
+		same, err := sameGlobalAgentFile(agent.tomlOutput, agent.tomlContent)
+		if err != nil {
+			return GlobalAgentsResult{}, err
+		}
+		if !same {
+			result.Actions = append(result.Actions, GlobalAgentAction{Kind: "write", Path: agent.tomlOutput})
+		}
+		links = append(links,
+			desiredLink{target: filepath.Join(home, ".claude", "agents", filepath.Base(agent.mdSource)), source: agent.mdSource},
+			desiredLink{target: filepath.Join(home, ".codex", "agents", filepath.Base(agent.tomlOutput)), source: agent.tomlOutput},
 		)
 	}
 
-	result := GlobalAgentsResult{}
-	for _, output := range outputs {
-		if output.compiled {
-			result.Compiled = append(result.Compiled, GlobalAgentCompiled{Path: output.path, Size: int64(len(output.content))})
-		}
-		if output.installed {
-			regular := true
-			if options.Mode == ModeCheck {
-				info, statErr := os.Lstat(output.path)
-				if statErr != nil && !os.IsNotExist(statErr) {
-					return GlobalAgentsResult{}, fmt.Errorf("inspect global agent artifact %s: %w", output.path, statErr)
-				}
-				regular = statErr == nil && info.Mode().IsRegular()
-			}
-			result.Installed = append(result.Installed, GlobalAgentInstalled{Path: output.path, RegularFile: regular})
-		}
-		same, err := sameGlobalAgentFile(output.path, output.content)
+	// Phase 2: classify every desired registry symlink against what is
+	// actually on disk. A stat failure other than "not found" bubbles up as
+	// a genuine error — an unreadable target is never reported as absent.
+	for _, link := range links {
+		state, found, err := ClassifyGlobalLink(link.target, link.source, sourceRepo, GlobalLinkFile)
 		if err != nil {
-			return GlobalAgentsResult{}, err
+			return GlobalAgentsResult{}, fmt.Errorf("inspect global agent artifact %s: %w", link.target, err)
 		}
-		if same {
+		result.Installed = append(result.Installed, GlobalAgentInstalled{Path: link.target, Source: link.source, State: state, Found: found})
+		switch state {
+		case GlobalLinkConflict:
+			result.Problems = append(result.Problems, DescribeGlobalLinkState(state, link.target, link.source, found))
+			continue
+		case GlobalLinkCorrect:
 			continue
 		}
-		result.Actions = append(result.Actions, GlobalAgentAction{Kind: "write", Path: output.path})
+		result.Actions = append(result.Actions, GlobalAgentAction{Kind: "link", Path: link.target, Target: link.source})
 	}
+
 	if options.Mode == ModeCheck {
 		return result, nil
 	}
-	for _, output := range outputs {
-		same, err := sameGlobalAgentFile(output.path, output.content)
+
+	for _, agent := range compiledAgents {
+		same, err := sameGlobalAgentFile(agent.tomlOutput, agent.tomlContent)
 		if err != nil {
 			return GlobalAgentsResult{}, err
 		}
 		if same {
 			continue
 		}
-		if err := writeGlobalAgentFile(output.path, output.content); err != nil {
+		if err := writeGlobalAgentFile(agent.tomlOutput, agent.tomlContent); err != nil {
 			return GlobalAgentsResult{}, err
+		}
+	}
+	for _, installed := range result.Installed {
+		if err := ApplyGlobalLink(installed.Path, installed.Source, installed.State); err != nil {
+			return GlobalAgentsResult{}, fmt.Errorf("install global agent artifact %s: %w", installed.Path, err)
 		}
 	}
 

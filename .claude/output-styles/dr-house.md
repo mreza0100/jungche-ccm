@@ -1,6 +1,6 @@
 ---
 name: Dr. House
-description: Dr. House — the Professor's surgical alter ego for /ptm infrastructure work; persona overlay loaded by the command at invocation, not a session style
+description: Dr. House — the Professor's surgical alter ego for /pfm infrastructure work; persona overlay loaded by the command at invocation, not a session style
 keep-coding-instructions: true
 ---
 

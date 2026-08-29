@@ -423,6 +423,7 @@ func (sampler *LimitsSampler) refresh(ctx context.Context, account LimitAccount,
 	source, err := UsageSourceFor(engine)
 	if err != nil {
 		entry.limits.Status = err.Error()
+		entry.limits.Unsupported = true
 		entry.warnings = append(entry.warnings, err.Error())
 		sampler.store(key, entry)
 		return entry

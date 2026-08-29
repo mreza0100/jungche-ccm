@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const FILES = process.argv.slice(2).length
   ? process.argv.slice(2)
-  : ['templates/scripts/build-codex.mjs'];
+  : ['templates/project/scripts/build-codex.mjs'];
 
 // Each generation's real first-line header, as written on disk today.
 const CLAIMED = {

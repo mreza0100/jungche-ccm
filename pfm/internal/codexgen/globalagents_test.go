@@ -15,10 +15,10 @@ import (
 // does.
 func TestGlobalAgentsCompilesInstallsAndAppliesSpawnAgentSubstitution(t *testing.T) {
 	home := t.TempDir()
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "alpha.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
 		"---\nname: alpha\ndescription: Alpha role for testing.\ntools: Read\nmodel: sonnet\n---\n\n"+
 			"Delegate to children are Explore+haiku (never\nyour own type) for search fan-out.\n")
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "beta.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "beta.md"),
 		"---\nname: beta\ndescription: Beta role for testing.\ntools: Read\nmodel: haiku\n---\n\nBeta body, unrelated.\n")
 
 	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home})
@@ -32,12 +32,15 @@ func TestGlobalAgentsCompilesInstallsAndAppliesSpawnAgentSubstitution(t *testing
 		t.Fatalf("installed = %#v, want 4 entries (2 md + 2 toml)", result.Installed)
 	}
 	for _, installed := range result.Installed {
-		if !installed.RegularFile {
-			t.Fatalf("installed %s is not a regular file", installed.Path)
+		if installed.State != GlobalLinkMissing {
+			t.Fatalf("installed %s classified %s before install ran, want missing", installed.Path, installed.State)
 		}
 	}
+	if len(result.Problems) != 0 {
+		t.Fatalf("problems = %#v, want none for a fresh install", result.Problems)
+	}
 
-	alphaTOML := string(mustReadTestFile(t, filepath.Join(home, ".professor", "agents", "alpha.toml")))
+	alphaTOML := string(mustReadTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.toml")))
 	if strings.Contains(alphaTOML, "children are Explore+haiku") {
 		t.Fatalf("alpha.toml: substitution did not fire:\n%s", alphaTOML)
 	}
@@ -45,15 +48,13 @@ func TestGlobalAgentsCompilesInstallsAndAppliesSpawnAgentSubstitution(t *testing
 		t.Fatalf("alpha.toml: substitution target text missing:\n%s", alphaTOML)
 	}
 
-	for _, path := range []string{
-		filepath.Join(home, ".claude", "agents", "alpha.md"),
-		filepath.Join(home, ".claude", "agents", "beta.md"),
-		filepath.Join(home, ".codex", "agents", "alpha.toml"),
-		filepath.Join(home, ".codex", "agents", "beta.toml"),
+	for _, expect := range []struct{ target, source string }{
+		{filepath.Join(home, ".claude", "agents", "alpha.md"), filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md")},
+		{filepath.Join(home, ".claude", "agents", "beta.md"), filepath.Join(home, ".professor", "templates", "global", "agents", "beta.md")},
+		{filepath.Join(home, ".codex", "agents", "alpha.toml"), filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.toml")},
+		{filepath.Join(home, ".codex", "agents", "beta.toml"), filepath.Join(home, ".professor", "templates", "global", "agents", "beta.toml")},
 	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected install at %s: %v", path, err)
-		}
+		assertGlobalSymlink(t, expect.target, expect.source)
 	}
 
 	// The .claude install is the raw source, untouched by the Codex-only
@@ -61,6 +62,30 @@ func TestGlobalAgentsCompilesInstallsAndAppliesSpawnAgentSubstitution(t *testing
 	claudeAlpha := string(mustReadTestFile(t, filepath.Join(home, ".claude", "agents", "alpha.md")))
 	if !strings.Contains(claudeAlpha, "children are Explore+haiku (never\nyour own type)") {
 		t.Fatalf(".claude/agents/alpha.md: raw source was mutated:\n%s", claudeAlpha)
+	}
+}
+
+// assertGlobalSymlink fails the test unless target is a symlink resolving
+// exactly to source — the shape every global registry install now promises
+// in place of the old copy.
+func assertGlobalSymlink(t *testing.T, target, source string) {
+	t.Helper()
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("expected install at %s: %v", target, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is not a symlink (mode=%v)", target, info.Mode())
+	}
+	resolved, err := os.Readlink(target)
+	if err != nil {
+		t.Fatalf("readlink %s: %v", target, err)
+	}
+	if !filepath.IsAbs(resolved) {
+		resolved = filepath.Join(filepath.Dir(target), resolved)
+	}
+	if filepath.Clean(resolved) != filepath.Clean(source) {
+		t.Fatalf("%s -> %s, want -> %s", target, resolved, source)
 	}
 }
 
@@ -74,7 +99,7 @@ func TestGlobalAgentsCompilesInstallsAndAppliesSpawnAgentSubstitution(t *testing
 // parses as TOML (via BurntSushi/toml, not our own escaping logic).
 func TestGlobalAgentsAdversarialFixtureEmitsValidTOMLWithLiteralQuotesAndDelimiterCollision(t *testing.T) {
 	home := t.TempDir()
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "quirky.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "quirky.md"),
 		"---\nname: quirky\ndescription: Uses \"walker fast\" and \"map it now\" verbatim.\ntools: Read\nmodel: sonnet\n---\n\n"+
 			"Body has a literal triple quote \"\"\" and a backslash \\ standalone.\n")
 
@@ -86,7 +111,7 @@ func TestGlobalAgentsAdversarialFixtureEmitsValidTOMLWithLiteralQuotesAndDelimit
 		t.Fatalf("compiled = %#v, want 1 entry", result.Compiled)
 	}
 
-	got := string(mustReadTestFile(t, filepath.Join(home, ".professor", "agents", "quirky.toml")))
+	got := string(mustReadTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "quirky.toml")))
 	want := "name = \"quirky\"\n" +
 		"description = \"Uses \\\"walker fast\\\" and \\\"map it now\\\" verbatim.\"\n" +
 		"developer_instructions = \"\"\"\n" +
@@ -133,7 +158,7 @@ func TestGlobalAgentEscapeMultilineNeutralisesTripleQuoteCollision(t *testing.T)
 
 func TestGlobalAgentsMissingFrontmatterFieldIsAHardError(t *testing.T) {
 	home := t.TempDir()
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "broken.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "broken.md"),
 		"---\nname: broken\n---\n\nno description field.\n")
 
 	_, err := RunGlobalAgents(GlobalAgentsOptions{Home: home})
@@ -144,7 +169,7 @@ func TestGlobalAgentsMissingFrontmatterFieldIsAHardError(t *testing.T) {
 
 func TestGlobalAgentsNoSourcesIsAHardError(t *testing.T) {
 	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".professor", "agents"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".professor", "templates", "global", "agents"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,9 +179,13 @@ func TestGlobalAgentsNoSourcesIsAHardError(t *testing.T) {
 	}
 }
 
-func TestGlobalAgentsCheckReportsActualInstalledFileShape(t *testing.T) {
+// TestGlobalAgentsCheckReportsMissingBeforeInstall is the RED-then-GREEN pin
+// on check mode's classification: nothing has been installed yet, so every
+// desired target must classify as missing — never fabricated as "installed"
+// just because check mode looked.
+func TestGlobalAgentsCheckReportsMissingBeforeInstall(t *testing.T) {
 	home := t.TempDir()
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "alpha.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
 		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
 	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home, Mode: ModeCheck})
 	if err != nil {
@@ -166,19 +195,101 @@ func TestGlobalAgentsCheckReportsActualInstalledFileShape(t *testing.T) {
 		t.Fatalf("installed rows=%#v, want two desired targets", result.Installed)
 	}
 	for _, installed := range result.Installed {
-		if installed.RegularFile {
-			t.Fatalf("check mode fabricated absent target as a regular file: %#v", installed)
+		if installed.State != GlobalLinkMissing {
+			t.Fatalf("check mode classified an absent target as %s, not missing: %#v", installed.State, installed)
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(home, ".claude", "agents", "alpha.md"),
+		filepath.Join(home, ".codex", "agents", "alpha.toml"),
+	} {
+		if _, err := os.Lstat(path); !os.IsNotExist(err) {
+			t.Fatalf("check mode wrote %s: %v", path, err)
 		}
 	}
 }
 
-// TestGlobalAgentsInstallReplacesASymlinkWithARegularFile matches the host
-// script's own documented behavior: a symlink also loads, but install always
-// leaves a real file behind so the registry holds no dependency on the
-// source directory's path.
-func TestGlobalAgentsInstallReplacesASymlinkWithARegularFile(t *testing.T) {
+// TestGlobalAgentsInstallSymlinksTheDesiredTargets is the RED-then-GREEN pin
+// on the copy-to-symlink conversion itself: install must leave a symlink
+// resolving to the source-repo original, never a regular-file copy.
+func TestGlobalAgentsInstallSymlinksTheDesiredTargets(t *testing.T) {
 	home := t.TempDir()
-	writeTestFile(t, filepath.Join(home, ".professor", "agents", "alpha.md"),
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+
+	if _, err := RunGlobalAgents(GlobalAgentsOptions{Home: home}); err != nil {
+		t.Fatalf("RunGlobalAgents: %v", err)
+	}
+
+	assertGlobalSymlink(t,
+		filepath.Join(home, ".claude", "agents", "alpha.md"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"))
+	assertGlobalSymlink(t,
+		filepath.Join(home, ".codex", "agents", "alpha.toml"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.toml"))
+}
+
+// TestGlobalAgentsInstallReplacesALegacyCopyWithASymlink covers the exact
+// migration case this rewrite exists for: a regular-file copy the old
+// copy-based installer left behind at the desired path is ours (its basename
+// IS the roster entry) and gets replaced with the link, not backed up as a
+// stranger's file.
+func TestGlobalAgentsInstallReplacesALegacyCopyWithASymlink(t *testing.T) {
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+	writeTestFile(t, filepath.Join(home, ".claude", "agents", "alpha.md"), "stale copy from the old installer\n")
+
+	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home})
+	if err != nil {
+		t.Fatalf("RunGlobalAgents: %v", err)
+	}
+	if len(result.Problems) != 0 {
+		t.Fatalf("a legacy copy at our own desired path was reported as a conflict: %#v", result.Problems)
+	}
+	assertGlobalSymlink(t,
+		filepath.Join(home, ".claude", "agents", "alpha.md"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"))
+}
+
+// TestGlobalAgentsInstallRepointsAStaleInRepoSymlink covers a symlink that
+// already points somewhere INSIDE the source repository, just not at the
+// current desired source (a rename, a re-rostered agent) — still ours,
+// repointed rather than reported as a conflict.
+func TestGlobalAgentsInstallRepointsAStaleInRepoSymlink(t *testing.T) {
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+	staleSource := filepath.Join(home, ".professor", "templates", "global", "retired-alpha.md")
+	writeTestFile(t, staleSource, "a since-renamed agent source\n")
+	claudeDest := filepath.Join(home, ".claude", "agents")
+	if err := os.MkdirAll(claudeDest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(staleSource, filepath.Join(claudeDest, "alpha.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home})
+	if err != nil {
+		t.Fatalf("RunGlobalAgents: %v", err)
+	}
+	if len(result.Problems) != 0 {
+		t.Fatalf("a stale in-repo symlink was reported as a conflict: %#v", result.Problems)
+	}
+	assertGlobalSymlink(t,
+		filepath.Join(home, ".claude", "agents", "alpha.md"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"))
+}
+
+// TestGlobalAgentsInstallLeavesAForeignSymlinkAlone is the conflict-law pin:
+// a symlink pointing OUTSIDE the source repository entirely — an operator's
+// own file, nothing this installer ever wrote — is never overwritten, never
+// deleted, and is reported by exact CONFLICT wording rather than silently
+// skipped.
+func TestGlobalAgentsInstallLeavesAForeignSymlinkAlone(t *testing.T) {
+	home := t.TempDir()
+	writeTestFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
 		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
 
 	claudeDest := filepath.Join(home, ".claude", "agents")
@@ -186,23 +297,32 @@ func TestGlobalAgentsInstallReplacesASymlinkWithARegularFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	elsewhere := filepath.Join(home, "elsewhere.md")
-	writeTestFile(t, elsewhere, "stale symlink target\n")
-	if err := os.Symlink(elsewhere, filepath.Join(claudeDest, "alpha.md")); err != nil {
+	writeTestFile(t, elsewhere, "an operator's own file, unrelated to the source repo\n")
+	foreignLink := filepath.Join(claudeDest, "alpha.md")
+	if err := os.Symlink(elsewhere, foreignLink); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := RunGlobalAgents(GlobalAgentsOptions{Home: home}); err != nil {
+	result, err := RunGlobalAgents(GlobalAgentsOptions{Home: home})
+	if err != nil {
 		t.Fatalf("RunGlobalAgents: %v", err)
 	}
+	want := "CONFLICT " + foreignLink + ": not ours (points to " + elsewhere + ")"
+	found := false
+	for _, problem := range result.Problems {
+		if problem == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("problems = %#v, want to contain %q", result.Problems, want)
+	}
 
-	info, err := os.Lstat(filepath.Join(claudeDest, "alpha.md"))
+	resolved, err := os.Readlink(foreignLink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Fatalf("alpha.md is still a symlink after install")
-	}
-	if !info.Mode().IsRegular() {
-		t.Fatalf("alpha.md is not a regular file after install: mode=%v", info.Mode())
+	if resolved != elsewhere {
+		t.Fatalf("foreign symlink was rewritten: now -> %s, want -> %s", resolved, elsewhere)
 	}
 }

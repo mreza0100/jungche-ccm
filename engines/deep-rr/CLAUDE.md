@@ -66,4 +66,4 @@ The harness wraps `workflow.js` in an async function body with ambient globals (
 
 ## Process guards
 
-- Framework/prompt-surface changes — `CLAUDE.md`, `SKILL.md`, anything under `.claude/` — route through `/ptm` (hook-enforced: the pre-edit gate requires `/quality:prompt` loaded this session). Engine source under `engine/src/` is normal dev work gated by the commands above.
+- Framework/prompt-surface changes — `CLAUDE.md`, `SKILL.md`, anything under `.claude/` — route through `/pfm` (hook-enforced: the pre-edit gate requires `/quality:prompt` loaded this session). Engine source under `engine/src/` is normal dev work gated by the commands above.

@@ -126,14 +126,14 @@ func printCodexUsage(w io.Writer) {
 	fmt.Fprintln(w, "  --overrides-dir PATH")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "usage: pfm codex agents [--home PATH]")
-	fmt.Fprintln(w, "  compiles every {home}/.professor/agents/*.md into a sibling .toml,")
-	fmt.Fprintln(w, "  then installs sources into {home}/.claude/agents and TOMLs into")
-	fmt.Fprintln(w, "  {home}/.codex/agents — the global (host-level) agent registry.")
+	fmt.Fprintln(w, "  compiles every {home}/.professor/templates/global/agents/*.md into a sibling .toml,")
+	fmt.Fprintln(w, "  then symlinks {home}/.claude/agents to the .md sources and {home}/.codex/agents")
+	fmt.Fprintln(w, "  to the compiled .tomls — the global (host-level) agent registry.")
 }
 
 // runCodexAgents is the command adapter for the global (host-level) Codex
 // agent compiler — the Go port of the retired
-// ~/.professor/agents/build-global-agents.py. Unlike build/check it has no
+// ~/.professor/templates/global/agents/build-global-agents.py. Unlike build/check it has no
 // repository root: its source and destinations are all anchored on --home
 // (default: this process's resolved HOME).
 func runCodexAgents(args []string, stdout, stderr io.Writer, runtime commandRuntime) int {
@@ -165,11 +165,10 @@ func runCodexAgents(args []string, stdout, stderr io.Writer, runtime commandRunt
 		fmt.Fprintf(stdout, "%s: %d B, parses clean\n", compiled.Path, compiled.Size)
 	}
 	for _, installed := range result.Installed {
-		shape := "regular file"
-		if !installed.RegularFile {
-			shape = "NOT A REGULAR FILE"
-		}
-		fmt.Fprintf(stdout, "installed %s (%s)\n", installed.Path, shape)
+		fmt.Fprintf(stdout, "%s %s\n", installed.State, codexgen.DescribeGlobalLinkState(installed.State, installed.Path, installed.Source, installed.Found))
+	}
+	for _, problem := range result.Problems {
+		fmt.Fprintf(stderr, "pfm codex agents: %s\n", problem)
 	}
 	fmt.Fprintln(stdout, "CODEX AGENTS PASS")
 	return 0

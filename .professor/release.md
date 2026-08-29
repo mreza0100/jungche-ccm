@@ -1,6 +1,6 @@
 # Release — framework changes pending publication
 
-Bullets here are FINAL changelog entries. `/ptm:release` copies them verbatim into
+Bullets here are FINAL changelog entries. `/pfm:release` copies them verbatim into
 `releases/vX.Y.Z.md`, then clears this file, keeping this header.
 
 Shape: `- {Tier}: {scope} — {semantic change}`, plus a `#### → For:` line when adopters must act,
@@ -15,5 +15,14 @@ and `(cost)` on any env / hook / permission / model-config delta.
 - C: scripts — `dev.sh` health probe rejects a stale listener answering for a dead service (false-GREEN fix) and `up` exits 1 on any RED; `codex-sync.sh` resolves `pfm` off-PATH; `km-guard.sh` stops false-flagging prose arrows; `alloc-ports.sh` metrics-column semantics; `format-md.sh` doc-tree allow-list + `AGENTS.md`
 - C: codex layer — `config.toml` comment documents the generated `mcp_servers` fence (`pfm codex build` owns it); `repo-law.rules` read-only-git list matches canon
 - A: `p/rnd.md` — sandbox layout (`{family}/{N}-{goal}`) + self-contained harness sections; Step 0 baseline rule
+- A: templates — two-scope split: `templates/global/` (machine-global originals: agents, commands, skills) + `templates/project/` (per-install); `pfm install` symlinks global originals into engine registries (`~/.claude/agents|commands`), Codex `.toml` twins generate at release and link beside them
+- A: global agent bench — architect, gitter (detokenized), reviewer (unified: seat-review body + merge-gating `REVIEW.md` contract), rr, scheduler, tracer; project-twin reviewer/tracer removed
+- A: wave family — reviewer-gated merges: orchestrator entry-point census → `reviewer` agent → wave dir `REVIEW.md` (`F{n}` open/resolved @sha/waived) → gitter reads it from disk as the merge precondition (`gitter-phase-merge.md` § 1); walker demoted to optional reachability supplement; `/test` references neutralized (install ships no `test.md`)
+- B: commands — dead `slow-burn`, `sleep`, `goal-manager`, `animate` removed end to end; `p/tokens`→`/tokens`, `p/rnd`→`/rnd`, `context-meter` flat; `quality:*`, `wave:*`, `h:gh` globalized
+- B: `/ptm` → `/pfm` (Professor Framework Management) — command, guard (`pfm-guard.sh`, marker `professor_pfm_active`), reference docs, templates twins (cost: hook path + marker rename)
+- C: pfm — installer registers global symlinks via a conflict-preserving classifier (foreign files report `CONFLICT`, never overwritten); limits TUI hides engines without a limits concept, renders the rule above the section header, Codex shows first window only
+- C: `scripts/refresh-scope.sh` — an unresolvable `{project:role}` source now classifies MISSING-SOURCE (still blocking, exit 3) instead of killing the whole scan at first hit
 
 #### → For: adopters with existing officer/mentor/marketer documents under `docs/commands/{cmd}/references/` — move them to `docs/business/{compliance,marketing}/`; the cards now read/write there.
+
+#### → For: adopters — rename installs' `/ptm` routes to `/pfm` and re-run `pfm install` to link the global roster; local copies of globalized agents/commands shadow the symlinked originals and should be deleted.

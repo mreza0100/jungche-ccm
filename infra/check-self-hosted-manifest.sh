@@ -57,7 +57,7 @@ fi
 
 repo_git ls-files | while IFS= read -r path; do
   case "$path" in
-    .claude/*|.codex/*|.opencode/*|.gitignore|AGENTS.md|CLAUDE.md|pfm/AGENTS.md|pfm/CLAUDE.md|docs/commands/ptm/references/*)
+    .claude/*|.codex/*|.opencode/*|.gitignore|AGENTS.md|CLAUDE.md|pfm/AGENTS.md|pfm/CLAUDE.md|docs/commands/pfm/references/*)
       printf '%s\n' "$path"
       ;;
   esac

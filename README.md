@@ -122,7 +122,7 @@ What that discipline looks like in practice:
 - **One agent writes git.** `gitter` runs six named phases (SETUP, COMMIT, MERGE, PUSH, PULL,
   TAG). No other agent commits; the active main Codex chat may use the explicit-authority fallback
   only when the registered role is unavailable.
-- **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/ptm` plus
+- **Guarded files.** A PreToolUse hook gates `.claude/**` and every `CLAUDE.md` behind `/pfm` plus
   a session that has read the quality-prompt contract. The deny message carries the unlock steps.
 - **Fix loops are capped.** Three attempts, then BLOCKED-DEFERRED — a bounded failure instead of
   an agent grinding until context runs out.
@@ -214,7 +214,7 @@ deliberate and documented, not hidden.
 | `templates/`                          | The shipped framework an adopter clones — agents, commands, scripts, codex and opencode templates. Every file here is production prompt code.       |
 | `pfm/`                                | The Go fleet engine: `cmd/pfm` plus its `internal/` packages. Owns its staged host assets.                                                          |
 | `engines/`                            | `rr/` (research) and `wave-walker/` (wiring verification).                                                                                          |
-| `agents/`                             | Host-global agents — `tracer`, `rr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
+| `templates/global/agents/`            | Host-global agents — `tracer`, `rr`, `reviewer` — with their Codex `.toml` twins.                                                                  |
 | `docs/`                               | `BLUEPRINT.md` (philosophy), `SETUP.md` (install interview), `PLACEHOLDERS.md` (substitution law), `ARCHITECTURE.md`, plus command reference cards. |
 | `scripts/`                            | Repo gates — `leak-check.sh` runs `pre-push`.                                                                                                       |
 | `infra/`                              | The isolated-dev container every code wave builds inside.                                                                                           |

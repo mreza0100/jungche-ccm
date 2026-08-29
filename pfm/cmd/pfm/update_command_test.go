@@ -360,12 +360,12 @@ func TestInitCopiesRecordedBlueprintAndHonorsForce(t *testing.T) {
 		}
 	}
 	templates := map[string]string{
-		"templates/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
-		"templates/settings.json":          "{}\n",
-		"templates/output-styles/style.md": "{{PROJECT_NAME}} style\n",
-		"templates/commands/command.md":    "{{PROJECT_NAME}} command\n",
-		"templates/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
-		"templates/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
+		"templates/project/CLAUDE.md":              "{{PROJECT_NAME}} contract\n",
+		"templates/project/settings.json":          "{}\n",
+		"templates/project/output-styles/style.md": "{{PROJECT_NAME}} style\n",
+		"templates/project/commands/command.md":    "{{PROJECT_NAME}} command\n",
+		"templates/project/agents/agent.md":        "{{PROJECT_NAME}} agent\n",
+		"templates/project/skills/skill/SKILL.md":  "{{PROJECT_NAME}} skill\n",
 	}
 	for relative, content := range templates {
 		path := filepath.Join(source, filepath.FromSlash(relative))

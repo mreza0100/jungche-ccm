@@ -496,6 +496,11 @@ func (model Model) renderLimitCards(innerWidth int) []string {
 		lines = append(lines, line)
 	}
 	for _, account := range model.stats.Limits {
+		if account.Unsupported {
+			// The engine has no limits concept at all — a card would be pure
+			// noise, not an error the operator can act on.
+			continue
+		}
 		if account.Absent {
 			message := cleanField(account.Status)
 			if message == "" {
@@ -508,8 +513,8 @@ func (model Model) renderLimitCards(innerWidth int) []string {
 			skips = append(skips, cleanField(account.Status))
 			continue
 		}
-		appendLine(statsHeaderStyle.Render(fillLine("  "+limitAccountHeader(account, now), innerWidth)))
 		appendLine(borderStyle.Render(fillLine("  "+strings.Repeat("─", maxInt(0, innerWidth-2)), innerWidth)))
+		appendLine(statsHeaderStyle.Render(fillLine("  "+limitAccountHeader(account, now), innerWidth)))
 		if account.Status != "" {
 			appendLine(dimStyle.Render(fillLine("  ⚠ "+cleanField(account.Status), innerWidth)))
 			if len(account.Windows) == 0 {
@@ -520,6 +525,11 @@ func (model Model) renderLimitCards(innerWidth int) []string {
 		for _, window := range account.Windows {
 			if strings.HasPrefix(cleanField(window.Name), "unknown[") {
 				continue
+			}
+			// Codex reports reserve/spark side-windows nobody steers by; only
+			// its first (primary) window earns a row.
+			if account.Engine == pfmengine.Codex && renderedWindows >= 1 {
+				break
 			}
 			appendLine(renderLimitWindow(now, window, innerWidth))
 			renderedWindows++

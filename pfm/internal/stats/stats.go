@@ -72,6 +72,10 @@ type AccountLimits struct {
 	Engine      pfmengine.ID
 	Label       string
 	Absent      bool
+	// Unsupported marks an engine with no usage source registered — a
+	// structural "this engine has no limits concept", distinct from a fetch
+	// error. The TUI renders nothing for it; CLI surfaces keep the row.
+	Unsupported bool
 	Plan        string
 	ConfirmedAt time.Time
 	Status      string

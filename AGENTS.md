@@ -5,10 +5,10 @@
 
 ## Repo structure
 
-- `templates/`: the shipped framework — agent/command/script/codex templates an adopter clones. Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
+- `templates/`: the shipped framework an adopter clones — `templates/project/` (per-install templates) + `templates/global/` (machine-global agents/commands/skills — the originals). Markdown + shell, no build; the gates are `scripts/leak-check.sh` and `scripts/refresh-scope.sh`.
+- **Globalization protocol:** `templates/global/` content is globalized — `pfm install` symlinks each original into its engine's global registry (`~/.claude/agents/`, `~/.claude/commands/`); engine twins (Codex `.toml`) generate at release time, live committed beside their originals, and link into `~/.codex/agents/` — one original, every engine, updates propagate through the link.
 - `pfm/`: fleet engine — Go 1.24, `cmd/pfm` + `internal/*`. Owns its staged host assets under `pfm/internal/installer/assets/`; `pfm install` stages them. Also owns the memory organ under `internal/dream` and the only harvester under `internal/harvest` + `internal/harvestmcp`, over a pinned Python conversion sidecar in `internal/harvestpy/`.
 - `engines/wave-walker/engine/`: wave-walker engine — JS/TS compiled by `cross-workflow` for both the Claude Workflow runtime and the Codex SDK.
-- `agents/`: host-global agents (`tracer`, `rr`, `reviewer`) — the live copies the host runs sit at `~/.claude/agents/`; the `.toml` twins are their Codex compile.
 - `docs/`: the specs — `BLUEPRINT.md` (philosophy), `SETUP.md` (generation), `PLACEHOLDERS.md` (substitution law) — plus `commands/` reference cards and `dev/` wave trains.
 - `scripts/`: repo-level gates (`leak-check.sh`, `refresh-scope.sh`); `.githooks/` runs the leak gate `pre-push`.
 - `releases/` + root `README.md` / `INSTALL.md` / `CHANGELOG.md` / `VERSION`: the public face — edited with template-grade care.
@@ -27,7 +27,7 @@ pfm codex build . && pfm codex check .
 node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-opencode.mjs doctor
 ```
 
-`pfm codex build` is the SINGLE writer of the Codex mirror; the legacy repo-local JS compiler is retired — `templates/scripts/build-codex.mjs` lives only in the adopter blueprint.
+`pfm codex build` is the SINGLE writer of the Codex mirror; the legacy repo-local JS compiler is retired — `templates/project/scripts/build-codex.mjs` lives only in the adopter blueprint.
 
 ## Path vars
 
@@ -40,7 +40,7 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 - **No push, tag, or release without an explicit request in the current turn.** A finished task, a green build, a "finish it", or a completed release document is never permission to publish. The authorized writer publishes only on the user's plain ask in that turn.
 - **Nothing identifying ships:** no source-project brand, no user PII, no client domain content, no machine-absolute path (`/home/…`, `/Users/…`) in any tracked file. `scripts/leak-check.sh` (`pre-push`) is the backstop, not the plan — write it clean the first time.
 - Template example values are invented placeholders, never mined from a live private repo.
-- **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `$ptm-release` owns the sequence.
+- **Version discipline:** `VERSION`, `CHANGELOG.md`, `releases/vX.Y.Z.md`, and the tag agree or the release is wrong; `$pfm-release` owns the sequence.
 
 ### Prompt & template code
 
@@ -64,8 +64,8 @@ node .claude/scripts/build-opencode.mjs generate && node .claude/scripts/build-o
 
 - **Git writes use registered gitter.** Every other subagent is read-only. When gitter is unavailable, only the active main Codex chat may perform scoped Git writes, and only after explicit user authorization in the current turn. Publication still requires the separate explicit in-turn request above.
 - **Never commit broken code** — tests pass before the commit.
-- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (templates/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`$wave-refine`, `$wave-live`, `$wave-walker`, `$wave-walker-invariants`, `$wave-ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `AGENTS.md`, or `templates/**` routes to `$ptm`. Their `templates/commands/wave/` twins keep the adopter pipeline.
-- **Guarded files:** a PreToolUse hook gates `.claude/**` and every `AGENTS.md` behind `$ptm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
+- **Code waves build inside the fence** — a git worktree under `.worktrees/{train}/`, every build/test through `dev.sh iso` (the `infra/` container: fresh machine, own HOME, worktree mounted; design: `docs/dev/isolated-dev-foundation.md`). The live checkout, the host's `~/.local/bin`, and the real `$HOME` are never dev targets. Markdown-only waves (templates/docs/prompts) land on `main` directly. A fenced wave closes in order: QA pass → orchestrator review with issues fixed → authorized Git writer merges to `main` → the host mirror build (`go build -o ~/.local/bin/pfm ./cmd/pfm` + `pfm install --yes`). The installed wave commands (`$wave-refine`, `$wave-live`, `$wave-walker`, `$wave-walker-invariants`, `$wave-ccc`) are rewired to this cast — `dev` builds, `qa` tests, `$git` commits and merges; a task touching `.claude/**`, any `AGENTS.md`, or `templates/**` routes to `$pfm`. Their `templates/project/commands/wave/` twins keep the adopter pipeline.
+- **Guarded files:** a PreToolUse hook gates `.claude/**` and every `AGENTS.md` behind `$pfm` plus a session that has read `.claude/commands/quality/prompt.md`; the deny message carries the unlock steps. Never route around it by disabling the hook.
 - Execute explicit instructions as given: user delegation runs to completion — never narrow, drop, or swap scope; raise a genuine concern up front.
 - "God speed" = full autonomy: resolve every ambiguity yourself, finish, report the decisions at the end; only failure = stop/ask.
 - **Milestone = compact point:** at every milestone, checkpoint the plan to a `tmp/` file, then give yourself a compact before the next phase (a held turn arms an idle-fired self-inject instead).

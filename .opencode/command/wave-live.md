@@ -11,7 +11,7 @@ Run a batch of tasks live on `main`: $ARGUMENTS
 
 A task list runs here. This command lands every task on `main` under `/dev` verification and a gitter commit — the isolated worktree fence is for code-wave trains, not `/wave-live`.
 
-The fix loop the steps below cite is this repo's own: the `dev` agent implements, `.claude/scripts/dev.sh` verifies, the `qa` agent writes the tests, `gitter` commits. A change touching `.claude/**`, any `CLAUDE.md`, or `templates/**` routes through `/ptm` instead of a `dev` agent — those files are guarded and a dev agent is denied by the hook.
+The fix loop the steps below cite is this repo's own: the `dev` agent implements, `.claude/scripts/dev.sh` verifies, the `qa` agent writes the tests, `gitter` commits. A change touching `.claude/**`, any `CLAUDE.md`, or `templates/**` routes through `/pfm` instead of a `dev` agent — those files are guarded and a dev agent is denied by the hook.
 
 ## W1 — Resolve, stage & pre-flight
 
@@ -44,7 +44,7 @@ Every failure is blocking, pre-existing included. A regression test counts only 
 ## W5 — Cleanup → commit
 
 1. **Cleanup** — remove scratch output from tracked directories; generated artifacts belong in `tmp/`. Run each modified project's formatter and lint row through `.claude/scripts/dev.sh verify {project}`.
-2. **Docs** — update the docs the change makes wrong, in the same pass: a project `README`, a reference card under `docs/commands/`. A change to `CLAUDE.md`, `.claude/**`, or a `templates/**` template routes through `/ptm`.
+2. **Docs** — update the docs the change makes wrong, in the same pass: a project `README`, a reference card under `docs/commands/`. A change to `CLAUDE.md`, `.claude/**`, or a `templates/**` template routes through `/pfm`.
 3. **Commit** — invoke `gitter` (COMMIT phase): one commit per task or logical group. Never commit with a failing suite.
 
 ## W6 — Review & remediate

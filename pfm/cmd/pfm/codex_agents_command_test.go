@@ -10,13 +10,13 @@ import (
 
 // TestCodexAgentsCommandCompilesAndInstalls exercises the "pfm codex agents"
 // CLI adapter end to end inside the path jail: it reads
-// {PFM_HOME}/.professor/agents/*.md, writes a compiled sibling .toml, and
-// installs both shapes into the jailed home's .claude/agents and
-// .codex/agents.
+// {PFM_HOME}/.professor/templates/global/agents/*.md, writes a compiled
+// sibling .toml, and symlinks both shapes into the jailed home's
+// .claude/agents and .codex/agents — the same registries pfm install wires.
 func TestCodexAgentsCommandCompilesAndInstalls(t *testing.T) {
 	jailTest(t)
 	home := os.Getenv("PFM_HOME")
-	writeCodexCLIFile(t, filepath.Join(home, ".professor", "agents", "quirky.md"),
+	writeCodexCLIFile(t, filepath.Join(home, ".professor", "templates", "global", "agents", "quirky.md"),
 		"---\nname: quirky\ndescription: Uses \"walker fast\" and \"map it now\" verbatim.\ntools: Read\nmodel: sonnet\n---\n\n"+
 			"Body has a literal triple quote \"\"\" and a backslash \\ standalone.\n")
 
@@ -28,7 +28,7 @@ func TestCodexAgentsCommandCompilesAndInstalls(t *testing.T) {
 		t.Fatalf("codex agents did not report PASS: stdout=%q", stdout.String())
 	}
 
-	compiled := filepath.Join(home, ".professor", "agents", "quirky.toml")
+	compiled := filepath.Join(home, ".professor", "templates", "global", "agents", "quirky.toml")
 	want := "name = \"quirky\"\n" +
 		"description = \"Uses \\\"walker fast\\\" and \\\"map it now\\\" verbatim.\"\n" +
 		"developer_instructions = \"\"\"\n" +
@@ -42,12 +42,23 @@ func TestCodexAgentsCommandCompilesAndInstalls(t *testing.T) {
 		t.Fatalf("compiled toml =\n%q\nwant\n%q", string(got), want)
 	}
 
-	for _, path := range []string{
-		filepath.Join(home, ".claude", "agents", "quirky.md"),
-		filepath.Join(home, ".codex", "agents", "quirky.toml"),
+	for _, expect := range []struct{ target, source string }{
+		{filepath.Join(home, ".claude", "agents", "quirky.md"), filepath.Join(home, ".professor", "templates", "global", "agents", "quirky.md")},
+		{filepath.Join(home, ".codex", "agents", "quirky.toml"), compiled},
 	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected install at %s: %v", path, err)
+		info, err := os.Lstat(expect.target)
+		if err != nil {
+			t.Fatalf("expected install at %s: %v", expect.target, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("%s is not a symlink (mode=%v)", expect.target, info.Mode())
+		}
+		resolved, err := os.Readlink(expect.target)
+		if err != nil {
+			t.Fatalf("readlink %s: %v", expect.target, err)
+		}
+		if filepath.Clean(resolved) != filepath.Clean(expect.source) {
+			t.Fatalf("%s -> %s, want -> %s", expect.target, resolved, expect.source)
 		}
 	}
 }

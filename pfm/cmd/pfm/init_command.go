@@ -13,13 +13,13 @@ import (
 )
 
 var initTemplatePaths = []struct{ source, target string }{
-	{source: "CLAUDE.md", target: "CLAUDE.md"},
-	{source: "CLAUDE.md", target: "AGENTS.md"},
-	{source: "settings.json", target: ".claude/settings.json"},
-	{source: "output-styles", target: ".claude/output-styles"},
-	{source: "commands", target: ".claude/commands"},
-	{source: "agents", target: ".claude/agents"},
-	{source: "skills", target: ".claude/skills"},
+	{source: "project/CLAUDE.md", target: "CLAUDE.md"},
+	{source: "project/CLAUDE.md", target: "AGENTS.md"},
+	{source: "project/settings.json", target: ".claude/settings.json"},
+	{source: "project/output-styles", target: ".claude/output-styles"},
+	{source: "project/commands", target: ".claude/commands"},
+	{source: "project/agents", target: ".claude/agents"},
+	{source: "project/skills", target: ".claude/skills"},
 }
 
 func runInit(args []string, stdout, stderr io.Writer, runtimes ...commandRuntime) int {

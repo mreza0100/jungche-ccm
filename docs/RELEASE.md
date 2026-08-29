@@ -35,7 +35,7 @@ Bullets carry a category prefix and optional trailing tags, both read at update 
 - Trailing tag → `(safe-auto)`, `(breaking)`, `(opt-in)`, `(cost)` (env var/hook/permission/model-config
   changes — always routed to manual review regardless of prefix)
 
-## Cutting a release (maintainer) — `/ptm:release {patch|minor|major} "{summary}"`
+## Cutting a release (maintainer) — `/pfm:release {patch|minor|major} "{summary}"`
 
 Run from inside the live source project against the local clone at `{BLUEPRINT_CLONE_PATH}` —
 the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user `{GH_USER}`).
@@ -46,7 +46,7 @@ the only working copy — targeting the public repo (`{BLUEPRINT_REPO}`, GH user
 3. **Refresh pass**, scoped by `templates/refresh-map.json`: `refresh-scope.sh scan` hashes every live
    source — unchanged sources skip their templates, changed sources (plus anything named in
    `.professor/release.md`) get re-derived, unmapped live files get a mapping ruling, `curated`
-   templates are never auto-derived. Then execute `docs/commands/ptm/references/refresh.md` over that
+   templates are never auto-derived. Then execute `docs/commands/pfm/references/refresh.md` over that
    scope: `scripts/genericize.sh` runs the deterministic placeholder pass first
    (`scripts/placeholder-map.tsv`), hand-judgment covers structure only (roster collapsing, domain
    nouns, persona metaphors). `refresh-scope.sh regen` re-baselines the hashes afterward.
@@ -100,6 +100,6 @@ tag, port what applies, and honor `drift.md`'s KEEP-LOCAL entries — a customiz
 blindly overwritten. Two standing rules survive from the old protocol: a `GENERATED FILE — DO NOT
 EDIT` banner means whole-file rebuild by its stated generator, never a line-merge; a symlink into
 the blueprint clone updates through the clone's own `git pull`. Source-fetched skills
-(`templates/skills/sources.json`) update from their own repos — compare the installed `version:`
+(`templates/project/skills/sources.json`) update from their own repos — compare the installed `version:`
 frontmatter against the skill repo's latest tag; never downgrade. A mechanical, reviewed update
 transaction (per-file report, nothing silently applied) is queued as the blueprint-compiler train.

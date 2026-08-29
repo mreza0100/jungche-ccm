@@ -16,7 +16,7 @@ set -euo pipefail
 # `ledgers` is the other half of a release's scope, and it is mechanical for the
 # same reason `scan` is. A pending `.professor/release.md` bullet in a LINKED
 # project is a framework change waiting to ship, and before this subcommand
-# existed nothing ever opened one: /ptm:release read this repo's own ledger and
+# existed nothing ever opened one: /pfm:release read this repo's own ledger and
 # no other, so a release that swept every linked project and a release that
 # swept none printed the identical output. This enumerates the ledgers, counts
 # what is pending in each, and — the part that matters — refuses to be silent
@@ -148,19 +148,24 @@ MANIFEST_FILE="$PROJECT_ROOT/.professor/manifest.json"
 
 # Resolves {project:ROLE} (via .professor/manifest.json .interview.projects.ROLE)
 # and a leading ~/ (to $HOME) in a map path/glob string.
+# Returns 1 (empty output, one stderr note) when a {project:ROLE} cannot resolve —
+# manifest absent or key null. Callers classify that: scan/regen count it
+# MISSING-SOURCE (still BLOCKING via MISSING_SOURCE_EXIT); ignore/glob entries
+# match nothing. A hard exit here would kill the whole scan at the first
+# unresolvable source and report nothing about the rest.
 resolve_path() {
   local resolved="$1"
   while [[ "$resolved" =~ \{project:([a-zA-Z0-9_-]+)\} ]]; do
     local role="${BASH_REMATCH[1]}"
     [[ -f "$MANIFEST_FILE" ]] || {
       echo "refresh-scope: manifest not found at $MANIFEST_FILE (needed to resolve {project:$role})" >&2
-      exit 1
+      return 1
     }
     local val
     val="$(jq -r --arg r "$role" '.interview.projects[$r] // empty' "$MANIFEST_FILE")"
     [[ -n "$val" ]] || {
       echo "refresh-scope: manifest .interview.projects.$role is missing/null" >&2
-      exit 1
+      return 1
     }
     resolved="${resolved//\{project:$role\}/$val}"
   done
@@ -181,7 +186,7 @@ is_ignored() {
   local path="$1" entry resolved_entry
   while IFS= read -r entry; do
     [[ -z "$entry" ]] && continue
-    resolved_entry="$(resolve_path "$entry")"
+    resolved_entry="$(resolve_path "$entry")" || continue
     if [[ "$resolved_entry" == */ ]]; then
       [[ "$path" == "$resolved_entry"* ]] && return 0
     else
@@ -194,7 +199,7 @@ is_ignored() {
 list_glob_files() {
   local pattern resolved
   pattern="$1"
-  resolved="$(resolve_path "$pattern")"
+  resolved="$(resolve_path "$pattern")" || return 0
   (
     cd "$PROJECT_ROOT"
     shopt -s globstar nullglob
@@ -221,7 +226,12 @@ scan() {
     [[ -z "${template_ok[$tmpl]+x}" ]] && template_ok["$tmpl"]=1
 
     local resolved_rel abs
-    resolved_rel="$(resolve_path "$src")"
+    if ! resolved_rel="$(resolve_path "$src")"; then
+      echo "MISSING-SOURCE ${tmpl} <= ${src}"
+      x=$((x + 1))
+      template_ok["$tmpl"]=0
+      continue
+    fi
     abs="$(abspath_under_project "$resolved_rel")"
     printf '%s\n' "$resolved_rel" >> "$mapped_sources_file"
 
@@ -286,7 +296,11 @@ regen() {
   while IFS=$'\t' read -r tmpl src expected; do
     [[ -z "$tmpl" ]] && continue
     local resolved_rel abs
-    resolved_rel="$(resolve_path "$src")"
+    if ! resolved_rel="$(resolve_path "$src")"; then
+      echo "MISSING-SOURCE ${tmpl} <= ${src}" >&2
+      x=$((x + 1))
+      continue
+    fi
     abs="$(abspath_under_project "$resolved_rel")"
     if [[ ! -f "$abs" ]]; then
       echo "MISSING-SOURCE ${tmpl} <= ${src}" >&2
@@ -304,7 +318,10 @@ regen() {
   while IFS=$'\t' read -r tmpl src expected; do
     [[ -z "$tmpl" ]] && continue
     local resolved_rel abs
-    resolved_rel="$(resolve_path "$src")"
+    resolved_rel="$(resolve_path "$src")" || {
+      echo "refresh-scope: BUG — ${src} passed the missing-source preflight but failed to resolve; ${MAP_PATH} left unchanged" >&2
+      exit 1
+    }
     abs="$(abspath_under_project "$resolved_rel")"
     local actual
     actual="$(sha256sum "$abs" | awk '{print $1}')"

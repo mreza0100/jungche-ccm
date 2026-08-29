@@ -559,7 +559,7 @@ func TestThemeFetchFailureIsLoudAndNonFatal(t *testing.T) {
 func TestEmptyCodexRosterSkipsCommandAndAgentMirrors(t *testing.T) {
 	home := t.TempDir()
 	writeFixture(t, filepath.Join(home, ".claude", "commands", "fixture.md"), "# Fixture command\n")
-	writeFixture(t, filepath.Join(home, ".professor", "agents", "fixture.md"), `---
+	writeFixture(t, filepath.Join(home, ".professor", "templates", "global", "agents", "fixture.md"), `---
 name: fixture
 description: fixture agent
 ---
@@ -778,6 +778,233 @@ func TestInstallReconcilesGlobalCodexCommands(t *testing.T) {
 	}
 }
 
+// TestWireCodexAgentsInstallsSymlinksNotCopies is the RED-then-GREEN pin on
+// the copy-to-symlink conversion at the pfm install call site: both
+// {Home}/.claude/agents and {Home}/.codex/agents must resolve to the exact
+// source-repo originals, never a byte-for-byte copy install used to leave.
+func TestWireCodexAgentsInstallsSymlinksNotCopies(t *testing.T) {
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertLink(t,
+		filepath.Join(home, ".claude", "agents", "alpha.md"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"))
+	assertLink(t,
+		filepath.Join(home, ".codex", "agents", "alpha.toml"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.toml"))
+}
+
+// TestWireCodexAgentsReportsAndPreservesAForeignConflict is the conflict-law
+// pin at the installer boundary: a symlink pointing entirely outside the
+// source repository is reported by the exact "CONFLICT ...: not ours"
+// wording and is never overwritten or deleted — and, critically, a conflict
+// never aborts the rest of the install.
+func TestWireCodexAgentsReportsAndPreservesAForeignConflict(t *testing.T) {
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(home, ".professor", "templates", "global", "agents", "alpha.md"),
+		"---\nname: alpha\ndescription: Alpha role for testing.\n---\n\nbody\n")
+	elsewhere := filepath.Join(home, "elsewhere.md")
+	writeFixture(t, elsewhere, "operator file\n")
+	foreignLink := filepath.Join(home, ".claude", "agents", "alpha.md")
+	if err := os.MkdirAll(filepath.Dir(foreignLink), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, foreignLink); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatalf("apply refused on a conflict it must only report: %v\n%s", err, output.String())
+	}
+	want := "CONFLICT " + foreignLink + ": not ours"
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("apply output omitted %q:\n%s", want, output.String())
+	}
+	resolved, err := os.Readlink(foreignLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != elsewhere {
+		t.Fatalf("conflict link was rewritten: now -> %s", resolved)
+	}
+}
+
+// TestWireGlobalCommandsLinksFilesAndDirectories covers both shapes bullet 2
+// of the global-commands behavior spec names: a file entry links as a single
+// file symlink, a directory entry (wave/) links as ONE whole-directory
+// symlink — never a copy of its contents.
+func TestWireGlobalCommandsLinksFilesAndDirectories(t *testing.T) {
+	home := t.TempDir()
+	source := filepath.Join(home, ".professor", "templates", "global", "commands")
+	writeFixture(t, filepath.Join(source, "git.md"), "# git command\n")
+	writeFixture(t, filepath.Join(source, "wave", "refine.md"), "# wave refine\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertLink(t, filepath.Join(home, ".claude", "commands", "git.md"), filepath.Join(source, "git.md"))
+	assertLink(t, filepath.Join(home, ".claude", "commands", "wave"), filepath.Join(source, "wave"))
+}
+
+// TestWireGlobalCommandsSkipsAnAbsentOrEmptySource pins the spec's explicit
+// carve-out: a parallel lane may not have populated templates/global/commands
+// yet, and that is a reported skip (0 entries), never an error.
+func TestWireGlobalCommandsSkipsAnAbsentOrEmptySource(t *testing.T) {
+	for _, name := range []string{"absent", "empty"} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			if name == "empty" {
+				if err := os.MkdirAll(filepath.Join(home, ".professor", "templates", "global", "commands"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var output bytes.Buffer
+			if _, err := Run(context.Background(), Options{
+				Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+			}); err != nil {
+				t.Fatalf("apply: %v\n%s", err, output.String())
+			}
+			if !strings.Contains(output.String(), "(0 entries)") {
+				t.Fatalf("%s global commands source was not reported as 0 entries:\n%s", name, output.String())
+			}
+			entries, err := os.ReadDir(filepath.Join(home, ".claude", "commands"))
+			if err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if entry.Name() != "reload.md" {
+					t.Fatalf("%s global commands source still wrote %s", name, entry.Name())
+				}
+			}
+		})
+	}
+}
+
+// TestWireGlobalSkillsLinksDeepRR pins the third registry: a whole-directory
+// symlink at {Home}/.claude/skills/deep-rr resolving to the in-tree
+// engines/deep-rr skill.
+func TestWireGlobalSkillsLinksDeepRR(t *testing.T) {
+	home := t.TempDir()
+	writeFixture(t, filepath.Join(home, ".professor", "engines", "deep-rr", "SKILL.md"), "# deep-rr skill\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLink(t,
+		filepath.Join(home, ".claude", "skills", "deep-rr"),
+		filepath.Join(home, ".professor", "engines", "deep-rr"))
+}
+
+// TestWireGlobalSkillsReportsMissingSkillSource pins the exact
+// SKILL-SOURCE-MISSING wording bullet 3 requires when engines/deep-rr/
+// SKILL.md is absent at link time — reported, no link ever created.
+func TestWireGlobalSkillsReportsMissingSkillSource(t *testing.T) {
+	home := t.TempDir()
+	var output bytes.Buffer
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Stdout: &output, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatalf("apply: %v\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), "SKILL-SOURCE-MISSING deep-rr") {
+		t.Fatalf("apply output omitted the missing-skill-source report:\n%s", output.String())
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".claude", "skills", "deep-rr")); !os.IsNotExist(err) {
+		t.Fatalf("a missing skill source still produced a link: %v", err)
+	}
+}
+
+// TestRetireOrphanCodexAgentsDeletesExactlyTheKnownStrays pins bullet 4's
+// narrow, hardcoded sweep: the retired explorer agent's compiled TOML and
+// any timestamped backup are deleted; a genuinely unrelated agent file next
+// to them is never touched.
+func TestRetireOrphanCodexAgentsDeletesExactlyTheKnownStrays(t *testing.T) {
+	home := t.TempDir()
+	explorer := filepath.Join(home, ".codex", "agents", "explorer.toml")
+	writeFixture(t, explorer, "stale explorer agent\n")
+	backup := explorer + ".bak-20300101"
+	writeFixture(t, backup, "stale backup\n")
+	keeper := filepath.Join(home, ".codex", "agents", "tracer.toml")
+	writeFixture(t, keeper, "keeper\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []string{explorer, backup} {
+		if _, err := os.Lstat(retired); !os.IsNotExist(err) {
+			t.Fatalf("orphan sweep left %s: %v", retired, err)
+		}
+	}
+	if got := readFixture(t, keeper); got != "keeper\n" {
+		t.Fatalf("orphan sweep touched an unrelated agent file: %q", got)
+	}
+}
+
+// TestGlobalSourceRepoRootPrefersExplicitOptionOverDefault pins the
+// resolution order globalSourceRepoRoot promises: an explicit --source-repo
+// wins over the documented {Home}/.professor default, even when a same-named
+// fixture also exists at that default location.
+func TestGlobalSourceRepoRootPrefersExplicitOptionOverDefault(t *testing.T) {
+	home := t.TempDir()
+	elsewhere := t.TempDir()
+	writeFixture(t, filepath.Join(elsewhere, "engines", "deep-rr", "SKILL.md"), "# deep-rr skill\n")
+	writeFixture(t, filepath.Join(home, ".professor", "engines", "deep-rr", "SKILL.md"), "# wrong deep-rr skill\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, SourceRepo: elsewhere, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLink(t,
+		filepath.Join(home, ".claude", "skills", "deep-rr"),
+		filepath.Join(elsewhere, "engines", "deep-rr"))
+}
+
+// TestGlobalSourceRepoRootFallsBackToTheRecordedMarker pins the second rung:
+// a later install that omits --source-repo entirely must still resolve
+// through the marker the first install recorded, not silently reset to the
+// {Home}/.professor default.
+func TestGlobalSourceRepoRootFallsBackToTheRecordedMarker(t *testing.T) {
+	home := t.TempDir()
+	elsewhere := t.TempDir()
+	writeFixture(t, filepath.Join(elsewhere, "engines", "deep-rr", "SKILL.md"), "# deep-rr skill\n")
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, SourceRepo: elsewhere, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(home, ".claude", "skills", "deep-rr")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Run(context.Background(), Options{
+		Mode: ModeApply, Home: home, Runner: &fakeRunner{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertLink(t,
+		filepath.Join(home, ".claude", "skills", "deep-rr"),
+		filepath.Join(elsewhere, "engines", "deep-rr"))
+}
+
 func TestApplyRetiresInstalledBBCardsAndHook(t *testing.T) {
 	home := t.TempDir()
 	config := filepath.Join(home, ".claude")
@@ -905,7 +1132,7 @@ func TestApplyRetiresDanglingBBLinksFromTheRecordedProfessorClone(t *testing.T) 
 
 func TestDryRunNamesFutureCodexWritesAndRefusesTheirConflicts(t *testing.T) {
 	home := t.TempDir()
-	writeFixture(t, filepath.Join(home, ".professor", "agents", "tracer.md"), `---
+	writeFixture(t, filepath.Join(home, ".professor", "templates", "global", "agents", "tracer.md"), `---
 name: tracer
 description: Trace a target.
 ---
@@ -923,7 +1150,7 @@ Read only.
 	}
 	for _, path := range []string{
 		conflict,
-		filepath.Join(home, ".professor", "agents", "tracer.toml"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "tracer.toml"),
 		filepath.Join(home, ".claude", "agents", "tracer.md"),
 		filepath.Join(home, ".codex", "agents", "tracer.toml"),
 	} {
@@ -938,7 +1165,7 @@ Read only.
 		t.Fatalf("dry-run mutated conflict = %q", got)
 	}
 	for _, path := range []string{
-		filepath.Join(home, ".professor", "agents", "tracer.toml"),
+		filepath.Join(home, ".professor", "templates", "global", "agents", "tracer.toml"),
 		filepath.Join(home, ".claude", "agents", "tracer.md"),
 		filepath.Join(home, ".codex", "agents", "tracer.toml"),
 	} {

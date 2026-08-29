@@ -84,7 +84,7 @@ These are **NOT hand-filled.** SETUP renders them by expanding the per-project P
 | `{WEB_PROJECT}`                      | optional-role marker — web project (`"-"` sentinel when absent)     |
 | `{MIGRATIONS_DIR}`                   | optional-role marker — migrations dir (`"-"` sentinel when absent) |
 
-### Per-project `CLAUDE.md` decomposition (templates/per-project/CLAUDE.md)
+### Per-project `CLAUDE.md` decomposition (templates/project/per-project/CLAUDE.md)
 
 This file decomposes the aggregate roster tokens above into individual bullets/headings.
 Real slots, register as siblings of their aggregate:
@@ -209,7 +209,7 @@ This makes the codex-touched files a 3-way merge — read all three:
 2. **Current blueprint template** (re-inject the Codex sections/lines/refs that live deleted).
 3. **This map** (apply placeholders).
 
-Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" section + `.codex/` refs), the wave command dir `commands/wave/{builder,orchestrator}.md` (keep the dual-runtime paragraph), the codex mirror's own wave wrappers under `codex/` (`skills/wave/SKILL.md`, `skills/wave-build/SKILL.md`, `agents/{wave,wave-build}.toml` — keep the dual Skill/Agent runtime block, and keep their read-target pointers aimed at `commands/wave/orchestrator.md` and `commands/wave/builder.md`), `commands/documenter.md` (keep `.codex/` in ownership), `commands/ptm.md` (keep ALL Codex-management: invariants stay at 10, Special-Ops Codex steps, codex audit scope — also fix the 34-vs-31 agent-count inconsistency to ONE consistent generic count), `scripts/format-md.sh` (keep `AGENTS.md` in the allow-list). Keep `AGENTS.md` references generally — it is the Codex-side mirror of `CLAUDE.md`.
+Codex-touched shipped templates: root `CLAUDE.md` (keep the "Two-runtime team" section + `.codex/` refs), the wave command dir `commands/wave/{builder,orchestrator}.md` (keep the dual-runtime paragraph), the codex mirror's own wave wrappers under `codex/` (`skills/wave/SKILL.md`, `skills/wave-build/SKILL.md`, `agents/{wave,wave-build}.toml` — keep the dual Skill/Agent runtime block, and keep their read-target pointers aimed at `commands/wave/orchestrator.md` and `commands/wave/builder.md`), `commands/documenter.md` (keep `.codex/` in ownership), `commands/pfm.md` (keep ALL Codex-management: invariants stay at 10, Special-Ops Codex steps, codex audit scope — also fix the 34-vs-31 agent-count inconsistency to ONE consistent generic count), `scripts/format-md.sh` (keep `AGENTS.md` in the allow-list). Keep `AGENTS.md` references generally — it is the Codex-side mirror of `CLAUDE.md`.
 
 ## Ignored artifacts (do NOT ship, drop references)
 
@@ -225,9 +225,9 @@ These slot into the concept families above — registered here to close prior ga
 | the test database name (e.g. `<project>_test`)                                              | `{TEST_DB_NAME}`                                                  | Tech stack   |
 | transcript / case note / session record (the artifact holding `{SENSITIVE_DATA}`)           | `{RECORD_NOUN}`                                                   | Domain nouns |
 | illustrative persona examples — a tech artifact, a domain artifact, a domain risk (Professor opening + Model Selection examples) | `{TECH_EXAMPLE_A}` / `{DOMAIN_EXAMPLE_A}` / `{DOMAIN_RISK_EXAMPLE}` | Persona      |
-| the Codex model this repo defaults to (`templates/codex/config.toml` `model =`)             | `{CODEX_MODEL}`                                                    | Model pins   |
+| the Codex model this repo defaults to (`templates/project/codex/config.toml` `model =`)             | `{CODEX_MODEL}`                                                    | Model pins   |
 | the Codex model id named per tier in the token-ledger `PRICING` notes (frontier / spec-execution / collector) | `{CODEX_MODEL_FRONTIER}` / `{CODEX_MODEL_SPEC}` / `{CODEX_MODEL_COLLECTOR}` | Model pins   |
-| the Codex reasoning effort this repo defaults to (`templates/codex/config.toml` `model_reasoning_effort =`) | `{CODEX_REASONING_EFFORT}`                                         | Model pins   |
+| the Codex reasoning effort this repo defaults to (`templates/project/codex/config.toml` `model_reasoning_effort =`) | `{CODEX_REASONING_EFFORT}`                                         | Model pins   |
 | the database CLI forbidden at the execpolicy layer (e.g. `psql`)                           | `{DB_CLI}`                                                         | Tech stack   |
 | the container runtime forbidden at the execpolicy layer (e.g. `docker`)                    | `{CONTAINER_RUNTIME}`                                              | Tech stack   |
 | the cloud CLI forbidden at the execpolicy layer (e.g. `aws`)                                | `{CLOUD_CLI}`                                                      | Tech stack   |
@@ -251,7 +251,7 @@ They are listed because the template token gate (`dev.sh verify templates`) FAIL
 | `{MB}`                                                                       | `docs-commands/git/references/gitter-history.md`     | a file size in megabytes                                     |
 | `{PID}`                                                                      | `commands/wave/live.md`                              | the lock holder's process id                                 |
 | `{PIPELINE}`                                                                 | `commands/documenter/archive.md`, `docs-commands/documenter/references/scopes/*.md` | the pipeline's name          |
-| `{SCOPE}`                                                                    | `commands/ptm.md`                                    | the audit scope being run                                    |
+| `{SCOPE}`                                                                    | `commands/pfm.md`                                    | the audit scope being run                                    |
 | `{SESSION_ID}`                                                               | `codex/skills/wave-builder/SKILL.md`                 | the Codex session id to resume                               |
 | `{STATUS_LITERAL}`                                                           | `commands/audit/code-hygiene.md`                     | an example status string literal in the code being audited   |
 | `{SEED_INSERTED}` / `{SEED_EXPECTED}` / `{SEED_STATUS}` / `{SEED_DETAIL}`    | `commands/dev.md`                                    | the seed progress row's counts, state, and detail            |

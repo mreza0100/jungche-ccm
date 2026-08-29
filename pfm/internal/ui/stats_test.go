@@ -394,6 +394,67 @@ func TestLimitsTabRendersCachedWindowsUnderRefreshWarning(t *testing.T) {
 	}
 }
 
+func TestLimitsTabOmitsUnsupportedEngines(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{
+		{Account: 1, Engine: pfmengine.Claude, Windows: []pfmstats.Window{{Name: "5h", UsedPct: 5}}},
+		{Account: 1, Engine: pfmengine.Opencode, Unsupported: true, Status: "engine ox: no usage source registered"},
+	}}
+	plain := ansi.Strip(model.renderLimitsPanel(120, 10))
+	if strings.Contains(plain, "no usage source") || strings.Contains(plain, "OpenCode") {
+		t.Fatalf("unsupported engine rendered a card:\n%s", plain)
+	}
+	if !strings.Contains(plain, "5h") || !strings.Contains(plain, "5%") {
+		t.Fatalf("supported account lost its rows:\n%s", plain)
+	}
+}
+
+func TestLimitsTabRendersRuleAboveHeader(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 1, Emoji: "🥇", Engine: pfmengine.Claude,
+		Windows: []pfmstats.Window{{Name: "5h", UsedPct: 5}},
+	}}}
+	plain := ansi.Strip(model.renderLimitsPanel(120, 10))
+	ruleAt, headerAt := -1, -1
+	for i, line := range strings.Split(plain, "\n") {
+		if ruleAt == -1 && strings.Contains(line, "──") {
+			ruleAt = i
+		}
+		if headerAt == -1 && strings.Contains(line, "account 1") {
+			headerAt = i
+		}
+	}
+	if ruleAt == -1 || headerAt == -1 || ruleAt > headerAt {
+		t.Fatalf("rule (line %d) must sit above its header (line %d):\n%s", ruleAt, headerAt, plain)
+	}
+}
+
+func TestLimitsTabShowsOnlyFirstCodexWindow(t *testing.T) {
+	model := NewModel(fixtureSnapshot(120))
+	model.tab = TabLimits
+	model.stats = pfmstats.Snapshot{Limits: []pfmstats.AccountLimits{{
+		Account: 1, Engine: pfmengine.Codex, Label: "Codex 1",
+		Windows: []pfmstats.Window{
+			{Name: "7d", UsedPct: 2},
+			{Name: "7d-reserve", UsedPct: 0},
+			{Name: "5h-spark", UsedPct: 0},
+			{Name: "7d-spark", UsedPct: 0},
+		},
+	}}}
+	plain := ansi.Strip(model.renderLimitsPanel(120, 10))
+	if !strings.Contains(plain, "7d") {
+		t.Fatalf("first Codex window missing:\n%s", plain)
+	}
+	for _, hidden := range []string{"7d-reserve", "5h-spark", "7d-spark"} {
+		if strings.Contains(plain, hidden) {
+			t.Fatalf("Codex rendered %q beyond its first window:\n%s", hidden, plain)
+		}
+	}
+}
+
 func TestLimitBarsKeepEighthCellPrecisionAndFullTail(t *testing.T) {
 	_ = NewModel(fixtureSnapshot(120))
 	left := ansi.Strip(limitBar(52.4, 20))

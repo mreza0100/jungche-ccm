@@ -233,6 +233,12 @@ func (installer *engine) install(ctx context.Context) error {
 	if err := installer.wireCommands(assets); err != nil {
 		return err
 	}
+	if err := installer.wireGlobalCommands(); err != nil {
+		return err
+	}
+	if err := installer.wireGlobalSkills(); err != nil {
+		return err
+	}
 	if err := installer.retireLegacySwapCommand(); err != nil {
 		return err
 	}
@@ -244,6 +250,9 @@ func (installer *engine) install(ctx context.Context) error {
 			return err
 		}
 		if err := installer.wireCodexAgents(); err != nil {
+			return err
+		}
+		if err := installer.retireOrphanCodexAgents(); err != nil {
 			return err
 		}
 	}
@@ -307,7 +316,11 @@ func (installer *engine) install(ctx context.Context) error {
 }
 
 func (installer *engine) wireCodexAgents() error {
-	source := filepath.Join(installer.options.Home, ".professor", "agents")
+	sourceRepo, err := installer.globalSourceRepoRoot()
+	if err != nil {
+		return fmt.Errorf("resolve Codex global agents source repository: %w", err)
+	}
+	source := filepath.Join(sourceRepo, "templates", "global", "agents")
 	if _, err := os.Stat(source); errors.Is(err, fs.ErrNotExist) {
 		installer.skip("Codex global agents source absent at " + source)
 		return nil
@@ -315,26 +328,170 @@ func (installer *engine) wireCodexAgents() error {
 		return fmt.Errorf("inspect Codex global agents source %s: %w", source, err)
 	}
 	plan, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{
-		Home: installer.options.Home,
-		Mode: codexgen.ModeCheck,
+		Home:       installer.options.Home,
+		SourceRepo: sourceRepo,
+		Mode:       codexgen.ModeCheck,
 	})
 	if err != nil {
 		return fmt.Errorf("plan pfm codex agents: %w", err)
 	}
 	for _, action := range plan.Actions {
-		if err := installer.change(action.Kind+" "+action.Path, nil); err != nil {
+		message := action.Kind + " " + action.Path
+		if action.Target != "" {
+			message += " -> " + action.Target
+		}
+		if err := installer.change(message, nil); err != nil {
 			return err
 		}
+	}
+	for _, problem := range plan.Problems {
+		installer.skip(problem)
 	}
 	if !installer.apply {
 		return nil
 	}
-	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: installer.options.Home, Mode: codexgen.ModeBuild})
+	result, err := codexgen.RunGlobalAgents(codexgen.GlobalAgentsOptions{Home: installer.options.Home, SourceRepo: sourceRepo, Mode: codexgen.ModeBuild})
 	if err != nil {
 		return fmt.Errorf("run pfm codex agents: %w", err)
 	}
-	installer.ok(fmt.Sprintf("Codex global agents compiled=%d installed=%d", len(result.Compiled), len(result.Installed)))
+	installer.ok(fmt.Sprintf("Codex global agents compiled=%d linked=%d", len(result.Compiled), len(result.Installed)))
 	return nil
+}
+
+// globalSourceRepoRoot resolves the clone every global agent/command/skill
+// symlink target and conflict check is anchored on: this run's explicit
+// --source-repo when set, else the marker a prior install recorded, else the
+// documented default clone location (INSTALL.md's $HOME/.professor) so a
+// first-ever install with neither still resolves to something concrete
+// rather than refusing to plan at all.
+func (installer *engine) globalSourceRepoRoot() (string, error) {
+	if repo := strings.TrimSpace(installer.options.SourceRepo); repo != "" {
+		abs, err := filepath.Abs(repo)
+		if err != nil {
+			return "", fmt.Errorf("resolve source repository %q: %w", repo, err)
+		}
+		return filepath.Clean(abs), nil
+	}
+	marker := SourceRepoPath(installer.options.Home)
+	if _, err := os.Lstat(marker); errors.Is(err, fs.ErrNotExist) {
+		return filepath.Clean(filepath.Join(installer.options.Home, ".professor")), nil
+	} else if err != nil {
+		return "", fmt.Errorf("inspect source repository marker: %w", err)
+	}
+	repo, err := ReadSourceRepoMarker(installer.options.Home)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Clean(repo), nil
+}
+
+// retireOrphanCodexAgents deletes the exactly two known strays a retired
+// "explorer" Codex agent left behind: its compiled TOML and any timestamped
+// backup an earlier copy-based install wrote before this installer learned
+// to symlink instead. Nothing else here is ever deleted.
+func (installer *engine) retireOrphanCodexAgents() error {
+	target := filepath.Join(installer.options.Home, ".codex", "agents", "explorer.toml")
+	if err := installer.retire(target, "retired explorer agent"); err != nil {
+		return err
+	}
+	matches, err := filepath.Glob(target + ".bak-*")
+	if err != nil {
+		return fmt.Errorf("glob retired explorer agent backups: %w", err)
+	}
+	for _, match := range matches {
+		if err := installer.retire(match, "retired explorer agent backup"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wireGlobalCommands links every top-level entry of
+// <sourceRepo>/templates/global/commands/ into {ConfigDir}/commands/: one
+// file link per file entry, one whole-directory link per directory entry
+// (wave/, quality/, h/, tokens/). An absent or empty source directory is
+// reported and never an error — populating it is a parallel lane's job. The
+// pfm-owned chat/* and reload.md links belong to a different owner and are
+// never touched here.
+func (installer *engine) wireGlobalCommands() error {
+	sourceRepo, err := installer.globalSourceRepoRoot()
+	if err != nil {
+		return fmt.Errorf("resolve global commands source repository: %w", err)
+	}
+	source := filepath.Join(sourceRepo, "templates", "global", "commands")
+	entries, err := os.ReadDir(source)
+	if errors.Is(err, fs.ErrNotExist) {
+		installer.skip("global commands source absent at " + source + " (0 entries)")
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect global commands source %s: %w", source, err)
+	}
+	if len(entries) == 0 {
+		installer.skip("global commands source empty at " + source + " (0 entries)")
+		return nil
+	}
+	target := filepath.Join(installer.options.ConfigDir, "commands")
+	for _, entry := range entries {
+		if err := installer.wireGlobalLink(
+			filepath.Join(source, entry.Name()),
+			filepath.Join(target, entry.Name()),
+			sourceRepo,
+			entry.IsDir(),
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// wireGlobalSkills links {Home}/.claude/skills/deep-rr to the in-tree
+// engines/deep-rr skill directory. ghostwriter/vision-factory clone
+// management is explicitly out of scope here — a different owner entirely.
+func (installer *engine) wireGlobalSkills() error {
+	sourceRepo, err := installer.globalSourceRepoRoot()
+	if err != nil {
+		return fmt.Errorf("resolve global skills source repository: %w", err)
+	}
+	source := filepath.Join(sourceRepo, "engines", "deep-rr")
+	if _, err := os.Stat(filepath.Join(source, "SKILL.md")); errors.Is(err, fs.ErrNotExist) {
+		installer.skip("SKILL-SOURCE-MISSING deep-rr (" + filepath.Join(source, "SKILL.md") + " absent)")
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("inspect deep-rr skill source: %w", err)
+	}
+	target := filepath.Join(installer.options.Home, ".claude", "skills", "deep-rr")
+	return installer.wireGlobalLink(source, target, sourceRepo, true)
+}
+
+// wireGlobalLink classifies target against source with codexgen's shared
+// global-link machinery and reports/fixes it through this installer's own
+// change/ok/skip transcript — the same ensureLink pattern (correct link is a
+// no-op, anything else routed through installer.change so apply/dry-run
+// agree), extended with the one rule ensureLink never needed: a target that
+// is neither ours nor a link into the source repo is a conflict this
+// installer refuses to touch.
+func (installer *engine) wireGlobalLink(source, target, sourceRepoRoot string, isDir bool) error {
+	kind := codexgen.GlobalLinkFile
+	if isDir {
+		kind = codexgen.GlobalLinkDir
+	}
+	state, found, err := codexgen.ClassifyGlobalLink(target, source, sourceRepoRoot, kind)
+	if err != nil {
+		return fmt.Errorf("inspect global link %s: %w", target, err)
+	}
+	if state == codexgen.GlobalLinkCorrect {
+		installer.ok(target)
+		return nil
+	}
+	message := codexgen.DescribeGlobalLinkState(state, target, source, found)
+	if state == codexgen.GlobalLinkConflict {
+		installer.skip(message)
+		return nil
+	}
+	return installer.change(message, func() error {
+		return codexgen.ApplyGlobalLink(target, source, state)
+	})
 }
 
 func (installer *engine) reconcileCodexCommands(assets []assetFile) error {
